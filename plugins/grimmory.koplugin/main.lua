@@ -200,6 +200,11 @@ function Grimmory:onGrimmoryPair(touchmenu)
     return true
 end
 
+function Grimmory:onGrimmoryKeyboardLogin()
+    self:keyboardLogin()
+    return true
+end
+
 function Grimmory:startQrPairing()
     if self.pairing then return end
     local token = PairServer.randomToken(16)
@@ -261,10 +266,14 @@ function Grimmory:startQrPairing()
         return UIManager:show(InfoMessage:new{ text = T(_("Couldn't start pairing: %1"), tostring(err)) })
     end
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
-    local ip = PairServer.localIp(hint_host)
+    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
+    local ip, why = PairServer.localIp(hint_host, iface)
     if not ip then
         server:stop()
-        return UIManager:show(InfoMessage:new{ text = _("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") })
+        return UIManager:show(InfoMessage:new{
+            text = _("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.")
+                .. "\n\n" .. _("Details:") .. "\n" .. tostring(why),
+        })
     end
 
     self.pairing = true

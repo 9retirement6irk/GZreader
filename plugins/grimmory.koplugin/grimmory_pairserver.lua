@@ -129,21 +129,60 @@ function PairServer:waitEvent()
     return nil
 end
 
---- Best guess at this device's LAN address (no packets are sent).
-function PairServer.localIp(hint_host)
-    for _, target in ipairs({ hint_host, "192.0.2.1", "8.8.8.8" }) do
-        if target then
-            local udp = socket.udp()
-            if udp then
-                local ok = udp:setpeername(target, 80)
-                local ip = ok and udp:getsockname()
-                udp:close()
-                if ip and ip ~= "0.0.0.0" and not ip:match("^127%.") then
-                    return ip
-                end
-            end
+local function usable(ip)
+    return type(ip) == "string" and ip:match("^%d+%.%d+%.%d+%.%d+$")
+        and ip ~= "0.0.0.0" and not ip:match("^127%.") and not ip:match("^169%.254%.")
+end
+
+--- Address of a network interface, read from busybox/net-tools ifconfig
+--- output ("inet addr:1.2.3.4" or "inet 1.2.3.4").
+function PairServer.parseIfconfig(out)
+    for ip in (out or ""):gmatch("inet addr:(%d+%.%d+%.%d+%.%d+)") do
+        if usable(ip) then return ip end
+    end
+    for ip in (out or ""):gmatch("inet (%d+%.%d+%.%d+%.%d+)") do
+        if usable(ip) then return ip end
+    end
+end
+
+local function ifconfigIp(iface)
+    for _, cmd in ipairs({ "ifconfig " .. iface, "/sbin/ifconfig " .. iface, "ifconfig" }) do
+        local p = io.popen(cmd .. " 2>/dev/null")
+        if p then
+            local out = p:read("*a")
+            p:close()
+            local ip = PairServer.parseIfconfig(out)
+            if ip then return ip end
         end
     end
+end
+
+--- Best guess at this device's LAN address. Returns ip or nil, details.
+--- 1. "Connect" a UDP socket towards the Grimmory host / a public address and
+---    read the local address the kernel picked (no packets are sent).
+--- 2. Fall back to the Wi-Fi interface's address from ifconfig.
+function PairServer.localIp(hint_host, iface)
+    local tried = {}
+    -- NB: build the list without holes; ipairs() stops at the first nil.
+    local targets = {}
+    if hint_host and hint_host ~= "" then targets[#targets + 1] = hint_host end
+    targets[#targets + 1] = "192.0.2.1"
+    targets[#targets + 1] = "8.8.8.8"
+    for _, target in ipairs(targets) do
+        local udp = socket.udp()
+        if udp then
+            local ok, err = udp:setpeername(target, 80)
+            local ip = ok and udp:getsockname()
+            udp:close()
+            if usable(ip) then return ip end
+            tried[#tried + 1] = target .. ": " .. tostring(ip or err)
+        end
+    end
+    local ip = ifconfigIp(iface or "wlan0")
+    if ip then return ip end
+    tried[#tried + 1] = "ifconfig " .. (iface or "wlan0") .. ": no address"
+    logger.warn("Grimmory: couldn't determine local IP;", table.concat(tried, "; "))
+    return nil, table.concat(tried, "\n")
 end
 
 --- 128 random bits as hex (the secret in the QR URL).

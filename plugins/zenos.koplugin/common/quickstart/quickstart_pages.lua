@@ -579,6 +579,59 @@ function M.build_accent_page(ctx)
     }
 end
 
+-- Grimmory build: first setup page connects the Kindle to Grimmory.
+-- The choice runs when the user presses Next; the pairing screen opens on top
+-- of the guide and the guide continues once pairing finishes or is cancelled.
+local function grimmoryState(ctx)
+    -- Pages are built during ZenOS's init, before FileManager.instance is set;
+    -- the UI under construction (ctx.plugin.ui) already has grimmory registered
+    -- because plugins load in path order and "grimmory" sorts before "zenos".
+    local ui = ctx and ctx.plugin and ctx.plugin.ui
+    local g = ui and ui.grimmory
+    if type(g) ~= "table" then
+        local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
+        local fm = ok and type(FileManager) == "table" and FileManager.instance
+        g = type(fm) == "table" and fm.grimmory or nil
+    end
+    if type(g) ~= "table" or type(g.api) ~= "table" then return nil end
+    if not g then return nil end
+    local paired = g.api and g.api:isPaired()
+    return { paired = paired, username = g.store and g.store.username }
+end
+
+local function sendGrimmoryEvent(name)
+    local UIManager = require("ui/uimanager")
+    local Event = require("ui/event")
+    UIManager:scheduleIn(0.4, function()
+        UIManager:broadcastEvent(Event:new(name))
+    end)
+end
+
+local function buildGrimmoryPage(ctx)
+    local state = grimmoryState(ctx)
+    if not state then return nil end
+    local choices = {}
+    if state.paired then
+        choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
+    end
+    choices[#choices + 1] = { id = "qr",   text = _("Scan a QR code with my phone"), checked = not state.paired }
+    choices[#choices + 1] = { id = "type", text = _("Type my login on this Kindle"),   checked = false }
+    choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
+    return {
+        title       = _("Connect to Grimmory"),
+        description = _("Sign in to your Grimmory library to download books and keep your reading progress in sync.\nYou can do this later from the Grimmory tab."),
+        choice_type = "radio",
+        choices     = choices,
+        on_apply    = function(sel)
+            if sel["qr"] then
+                sendGrimmoryEvent("GrimmoryPair")
+            elseif sel["type"] then
+                sendGrimmoryEvent("GrimmoryKeyboardLogin")
+            end
+        end,
+    }
+end
+
 function M.build_install_pages(ctx)
     local config = ctx.config
     local plugin = ctx.plugin
@@ -910,6 +963,10 @@ function M.build_install_pages(ctx)
             })
         end
     end
+
+    local ok_gp, grimmory_page = pcall(buildGrimmoryPage, ctx)
+    if not ok_gp then grimmory_page = nil end
+    if grimmory_page then table.insert(pages, 1, grimmory_page) end
 
     -- Inject real cover art and rendered icons into preview pages.
     local ok_inject, err_inject = pcall(function()
