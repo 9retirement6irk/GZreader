@@ -42,6 +42,28 @@ Tap the **Grimmory** tab in the bottom bar (or Tools → Grimmory).
   when you press Back.
 - **Connect by typing** — same thing using the Kindle's keyboard.
 
+### Single sign-on (SSO / OIDC)
+
+If Grimmory has SSO turned on, the QR page shows **Sign in with <provider>**
+(and puts it first when Grimmory is SSO-only). Your phone goes to your
+identity provider, signs in, and is sent back to the Kindle, which completes
+the login with Grimmory. Grimmory itself needs no changes.
+
+One-time setup: your identity provider only redirects to addresses it knows,
+so add the Kindle's address as an extra redirect URI on Grimmory's client
+(Authentik, Pocket ID, Authelia, Keycloak…), next to the existing
+`https://<grimmory>/oauth2-callback`:
+
+```
+http://<kindle-ip>:8642/oauth2-callback
+```
+
+The exact address is shown on the QR page and under Tools → Grimmory →
+Single sign-on (SSO) setup. Reserve the Kindle's IP in your router so it
+stays the same. If your Grimmory admin set `ALLOWED_ORIGINS`, add
+`http://<kindle-ip>:8642` there too. Some providers only accept `https`
+redirect URIs for non-local addresses; check yours allows this one.
+
 ## Progress sync
 
 Sync is native: it talks to Grimmory's own reading-progress API (the one the

@@ -68,21 +68,23 @@ function PairServer:stop()
     end
 end
 
-local REASONS = { [200] = "OK", [400] = "Bad Request", [404] = "Not Found", [405] = "Method Not Allowed", [413] = "Payload Too Large" }
+local REASONS = { [200] = "OK", [302] = "Found", [400] = "Bad Request", [404] = "Not Found", [405] = "Method Not Allowed", [413] = "Payload Too Large" }
 
 local function respond(client, code, content_type, body)
     body = body or ""
-    local head = table.concat({
-        string.format("HTTP/1.0 %d %s", code, REASONS[code] or "OK"),
-        "Content-Type: " .. (content_type or "text/plain") .. "; charset=utf-8",
-        "Content-Length: " .. #body,
-        "Cache-Control: no-store",
-        "Referrer-Policy: no-referrer",
-        "X-Frame-Options: DENY",
-        "Connection: close",
-        "", "",
-    }, "\r\n")
-    client:send(head .. body)
+    local lines = { string.format("HTTP/1.0 %d %s", code, REASONS[code] or "OK") }
+    if code == 302 then
+        -- the handler returns the redirect target as the body
+        lines[#lines + 1] = "Location: " .. body
+        body, content_type = "", "text/plain"
+    end
+    lines[#lines + 1] = "Content-Type: " .. (content_type or "text/plain") .. "; charset=utf-8"
+    lines[#lines + 1] = "Content-Length: " .. #body
+    lines[#lines + 1] = "Cache-Control: no-store"
+    lines[#lines + 1] = "Referrer-Policy: no-referrer"
+    lines[#lines + 1] = "X-Frame-Options: DENY"
+    lines[#lines + 1] = "Connection: close"
+    client:send(table.concat(lines, "\r\n") .. "\r\n\r\n" .. body)
     client:close()
 end
 

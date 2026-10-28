@@ -51,7 +51,7 @@ local function rawRequest(method, full_url, opts)
     opts = opts or {}
     local headers = { ["Accept"] = "application/json", ["Accept-Encoding"] = "identity" }
     for k, v in pairs(opts.headers or {}) do headers[k] = v end
-    local body = opts.body
+    local body = opts.body or opts.raw_body
     if type(body) == "table" then
         body = JSON.encode(body)
         headers["Content-Type"] = "application/json"
@@ -286,6 +286,90 @@ function Api:postSession(body)
     local code, _, err = self:call("POST", "/api/v1/reading-sessions", { body = body, timeouts = { 8, 15 } })
     if code and code >= 200 and code < 300 then return true end
     return false, err or ("http_" .. tostring(code)), code
+end
+
+---------------------------------------------------------------- single sign-on (OIDC)
+
+local function urlencodeForm(t)
+    local parts = {}
+    for k, v in pairs(t) do
+        parts[#parts + 1] = url.escape(k) .. "=" .. url.escape(tostring(v))
+    end
+    table.sort(parts)
+    return table.concat(parts, "&")
+end
+
+--- RFC 7636 S256 code challenge for a verifier.
+function Api.pkceChallenge(verifier)
+    local sha2 = require("ffi/sha2")
+    local b64 = sha2.bin_to_base64(sha2.hex_to_bin(sha2.sha256(verifier)))
+    return (b64:gsub("%+", "-"):gsub("/", "_"):gsub("=", ""))
+end
+
+--- Unauthenticated GET returning decoded JSON.
+function Api.fetchJson(full_url)
+    local code, data = rawRequest("GET", full_url, { timeouts = { 10, 20 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, code and ("http_" .. code) or "unreachable"
+end
+
+--- Grimmory's public settings (SSO on/off, provider details). Tries https
+--- then http for a scheme-less address, like login. Returns base, settings.
+function Api:publicSettings(server)
+    local candidates = { server }
+    if server:match("^https://") and not self.explicit_https then
+        candidates[2] = "http://" .. server:sub(9)
+    end
+    local last_err
+    for _, base in ipairs(candidates) do
+        local data, err = Api.fetchJson(base .. "/api/v1/public-settings")
+        if data then return base, data end
+        last_err = err
+        if err ~= "unreachable" then break end
+    end
+    return nil, last_err
+end
+
+--- Authorization endpoint from the provider's discovery document.
+function Api.discoverAuthorizationEndpoint(issuer)
+    issuer = (issuer or ""):gsub("/+$", "")
+    local doc, err = Api.fetchJson(issuer .. "/.well-known/openid-configuration")
+    if not doc then return nil, err end
+    return str(doc.authorization_endpoint), "no_authorization_endpoint"
+end
+
+--- One-time state from Grimmory (it validates and consumes it on exchange).
+function Api.oidcState(base)
+    local data, err = Api.fetchJson(base .. "/api/v1/auth/oidc/state")
+    if data and str(data.state) then return data.state end
+    return nil, err or "no_state"
+end
+
+--- Exchange the provider's code for Grimmory tokens via the mobile callback.
+--- `origin` must be the origin of redirect_uri: Grimmory checks they match.
+function Api:oidcExchange(base, params, origin)
+    local form = urlencodeForm(params)
+    local code, data = rawRequest("POST", base .. "/api/v1/auth/oidc/mobile/callback", {
+        headers = {
+            ["Content-Type"] = "application/x-www-form-urlencoded",
+            ["Content-Length"] = tostring(#form),
+            ["Origin"] = origin,
+        },
+        raw_body = form,
+        timeouts = { 15, 30 },
+    })
+    if code == 200 and type(data) == "table" and str(data.accessToken) then
+        self.store.server = base
+        self:_saveTokens(data)
+        local c2, me = self:call("GET", "/api/v1/users/me")
+        if c2 == 200 and type(me) == "table" then
+            self.store.username = str(me.username) or str(me.name) or self.store.username
+            self.on_change()
+        end
+        return true
+    end
+    local msg = type(data) == "table" and (str(data.message) or str(data.error)) or nil
+    return false, msg or (code and ("http_" .. code) or "unreachable")
 end
 
 return Api

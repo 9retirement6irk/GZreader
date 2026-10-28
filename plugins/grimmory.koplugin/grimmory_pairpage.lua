@@ -22,6 +22,11 @@ input{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);bor
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
 button{width:100%;font:inherit;font-weight:600;padding:12px;border:0;border-radius:10px;background:var(--accent);color:var(--bg);cursor:pointer}
 button:disabled{opacity:.6}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--line);margin-top:10px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:16px 0 6px}
+.or:before,.or:after{content:"";flex:1;border-top:1px solid var(--line)}
+code{font-size:12px;word-break:break-all;background:var(--bg);padding:1px 4px;border-radius:4px}
+details{margin-top:14px}summary{cursor:pointer;font-size:14px;color:var(--muted)}
 .err{color:var(--bad);font-size:14px;margin:0 0 14px}
 .ok{color:var(--good);font-weight:600}
 .note{color:var(--muted);font-size:12px;margin-top:16px}
@@ -38,21 +43,46 @@ local function shell(title, inner)
     })
 end
 
+--- opts: server, username, error, redirect_uri (SSO callback on the Kindle),
+--- sso = nil (unknown: offer generic SSO) | false (server has no SSO) |
+--- { name = provider name, only = true when the server is SSO-only }
 function PairPage.form(opts)
     opts = opts or {}
     local err = opts.error and ('<p class="err">' .. esc(opts.error) .. "</p>") or ""
-    return shell("Connect Kindle to Grimmory", table.concat({
-        "<h1>Connect your Kindle</h1>",
-        '<p class="sub">Sign in to Grimmory. Your Kindle signs in directly and keeps only a login token, not your password.</p>',
-        '<form method="post" autocomplete="on" onsubmit="this.querySelector(\'button\').disabled=true;this.querySelector(\'button\').textContent=\'Connecting…\'">',
-        err,
-        '<label for="server">Grimmory address</label>',
-        '<input id="server" name="server" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://books.example.com or 192.168.1.20:6060" value="', esc(opts.server), '">',
+    local sso = opts.sso
+    local sso_label = type(sso) == "table" and sso.name and ("Sign in with " .. sso.name) or "Sign in with SSO"
+    local sso_block = ""
+    if sso ~= false then
+        sso_block = table.concat({
+            '<button class="', (type(sso) == "table" and sso.only) and "" or "alt",
+            '" type="submit" name="action" value="sso" formnovalidate>', esc(sso_label), "</button>",
+            '<p class="note">For single sign-on, your identity provider must allow this redirect address: <code>',
+            esc(opts.redirect_uri or ""), "</code></p>",
+        })
+    end
+    local password_block = table.concat({
         '<label for="username">Username</label>',
         '<input id="username" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" required value="', esc(opts.username), '">',
         '<label for="password">Password</label>',
         '<input id="password" name="password" type="password" autocomplete="current-password" required>',
-        "<button type=\"submit\">Connect Kindle</button>",
+        '<button type="submit" name="action" value="password">Connect Kindle</button>',
+    })
+    local body
+    if type(sso) == "table" and sso.only then
+        body = sso_block .. "<details><summary>Use a local Grimmory password instead</summary>" .. password_block .. "</details>"
+    elseif sso ~= false then
+        body = password_block .. '<div class="or">or</div>' .. sso_block
+    else
+        body = password_block
+    end
+    return shell("Connect Kindle to Grimmory", table.concat({
+        "<h1>Connect your Kindle</h1>",
+        '<p class="sub">Sign in to Grimmory. Your Kindle signs in directly and keeps only a login token, not your password.</p>',
+        '<form method="post" autocomplete="on" onsubmit="var b=event.submitter;if(b){setTimeout(function(){b.disabled=true;b.textContent=\'Connecting…\'},0)}">',
+        err,
+        '<label for="server">Grimmory address</label>',
+        '<input id="server" name="server" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://books.example.com or 192.168.1.20:6060" value="', esc(opts.server), '">',
+        body,
         '<p class="note">Your phone and Kindle must be on the same Wi‑Fi. This page works once and closes on the Kindle when you finish or press Back.</p>',
         "</form>",
     }))
