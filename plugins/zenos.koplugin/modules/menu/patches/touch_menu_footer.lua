@@ -1,0 +1,161 @@
+-- touch_menu_footer.lua
+-- Redesigns the TouchMenu footer for all menu tabs:
+--   LEFT slot   ← cleared.
+--   CENTER slot ← wide button using icons/large_chevron_up.svg
+--                 (2× icon width, same height). Goes up a level when
+--                 in a sub-menu, or closes when at the top level.
+--   RIGHT slot  ← pagination (page_info: chevrons + page text).
+-- Applies to every TouchMenu instance (reader, file manager, all tabs).
+
+local function apply_touch_menu_footer()
+    local zen_plugin     = rawget(_G, "__ZEN_UI_PLUGIN")
+    local utils          = require("common/utils")
+    local Device         = require("device")
+    local Geom           = require("ui/geometry")
+    local GestureRange   = require("ui/gesturerange")
+    local Hatching       = require("common/ui/hatching")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local IconWidget     = require("ui/widget/iconwidget")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local UIManager      = require("ui/uimanager")
+    local getFullRefreshMode = require("common/ui/refresh")
+    local Screen         = Device.screen
+
+    local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
+
+    -- Resolve the bundled icon through the active custom pack when available.
+    local _icon_file
+    do
+        local root = require("common/plugin_root")
+        if root then
+            _icon_file = utils.resolveIcon(root .. "/icons/", "large_chevron_up")
+        end
+    end
+
+    -- Minimal tappable icon widget.
+    -- Uses file= so we can point at the plugin's own icons/ dir.
+    -- GestureRange references self.dimen, which KOReader updates in-place
+    -- after painting, so hit-testing works correctly at runtime.
+    local TappableIcon = InputContainer:extend{}
+
+    function TappableIcon:init()
+        self.dimen = Geom:new{ w = self.width, h = self.height }
+        self.image = IconWidget:new{
+            file   = self.file,
+            icon   = self.file and nil or self.icon_name,
+            width  = self.width,
+            height = self.height,
+        }
+        self[1] = self.image
+        self.ges_events.TapSelect = {
+            GestureRange:new{
+                ges   = "tap",
+                range = self.dimen,
+            }
+        }
+    end
+
+    function TappableIcon:onTapSelect()
+        if self.callback then
+            local Feedback = require("common/ui/button_feedback")
+            Feedback.flashButton(self.dimen)
+            self.callback()
+        end
+        return true
+    end
+
+    local TouchMenu = require("ui/widget/touchmenu")
+    local orig_init = TouchMenu.init
+    local orig_onShow = TouchMenu.onShow
+    local orig_onCloseWidget = TouchMenu.onCloseWidget
+    local orig_paintTo = TouchMenu.paintTo
+
+    local function hatching_enabled()
+        local quick_settings = zen_plugin and zen_plugin.config and zen_plugin.config.quick_settings
+        return quick_settings and quick_settings.background_hatching == true
+    end
+
+    function TouchMenu:onShow(...)
+        local result = orig_onShow and orig_onShow(self, ...)
+        if hatching_enabled() then
+            self.is_fresh = false -- Use one screen-wide refresh for the backdrop.
+            UIManager:setDirty(nil, Screen.night_mode and getFullRefreshMode() or "ui")
+        end
+        return result
+    end
+
+    function TouchMenu:onCloseWidget(...)
+        local result = orig_onCloseWidget and orig_onCloseWidget(self, ...)
+        local ReaderUI = package.loaded["apps/reader/readerui"]
+        local reader = ReaderUI and ReaderUI.instance
+        local ReaderThemes = require("common/reader_themes")
+        if reader and not reader.tearing_down and ReaderThemes.isActiveInReader(zen_plugin) then
+            UIManager:nextTick(function()
+                if ReaderUI.instance == reader and not reader.tearing_down
+                        and ReaderThemes.isActiveInReader(zen_plugin) then
+                    ReaderThemes.refreshFull("all")
+                end
+            end)
+        elseif Screen.night_mode or (Device.hasColorScreen and Device:hasColorScreen()) then
+            local FileManager = package.loaded["apps/filemanager/filemanager"]
+            if (FileManager and FileManager.instance and not FileManager.instance.tearing_down)
+                    or (ReaderUI and ReaderUI.instance and not ReaderUI.instance.tearing_down) then
+                -- Choose the refresh after painting the uncovered screen.
+                UIManager:setDirty(nil, getFullRefreshMode)
+            end
+        end
+        return result
+    end
+
+    function TouchMenu:paintTo(bb, x, y)
+        if hatching_enabled() then
+            local menu_bottom = y + self.dimen.h
+            local ReaderUI = package.loaded["apps/reader/readerui"]
+            local reader_config = ReaderUI and ReaderUI.instance and ReaderUI.instance.config
+            local bottom_menu = reader_config and reader_config.config_dialog
+            local bottom = bottom_menu and bottom_menu[1]
+            local hatch_bottom = bottom and bottom:contentRange().y or self.screen_size.h
+            Hatching.paint(bb, 0, menu_bottom, self.screen_size.w, hatch_bottom - menu_bottom)
+        end
+        return orig_paintTo(self, bb, x, y)
+    end
+
+    function TouchMenu:init()
+        orig_init(self)
+
+        -- footer layout after orig_init:
+        --   footer[1] = LeftContainer  { up_button (backToUpperMenu) }
+        --   footer[2] = CenterContainer{ self.page_info              }
+        --   footer[3] = RightContainer { self.device_info            }
+
+        local icon_width  = Screen:scaleBySize(DGENERIC_ICON_SIZE)
+        local icon_height = icon_width
+
+        local close_btn = TappableIcon:new{
+            file      = _icon_file,
+            icon_name = "chevron.up",   -- fallback if file not found
+            width     = icon_width * 2,
+            height    = icon_height,
+            callback  = function() self:backToUpperMenu() end,
+        }
+
+        -- Clear the LEFT slot.
+        if self.footer and self.footer[1] then
+            self.footer[1][1] = HorizontalGroup:new{}
+        end
+
+        -- Place the wide close button in the CENTER slot.
+        if self.footer and self.footer[2] then
+            self.footer[2][1] = close_btn
+        end
+
+        -- Move page_info (pagination) to the RIGHT slot.
+        -- updateItems() still updates self.page_info_text / showHide() directly,
+        -- so pagination display continues to work correctly.
+        if self.footer and self.footer[3] then
+            self.footer[3][1] = self.page_info
+        end
+    end
+end
+
+return apply_touch_menu_footer

@@ -389,7 +389,8 @@ local Kindle = Generic:extend{
     isKindle = yes,
     -- NOTE: We can cheat by adding a platform-specific entry here, because the only code that will check for this is here.
     isSpecialOffers = isSpecialOffers(),
-    hasOTAUpdates = yes,
+    -- Grimmory build: OTA would replace this trimmed build with stock KOReader.
+    hasOTAUpdates = no,
     hasFastWifiStatusQuery = yes,
     hasWifiRestore = yes,
     -- NOTE: HW inversion is generally safe on mxcfb Kindles

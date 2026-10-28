@@ -174,6 +174,7 @@ local order = {
         "long_press",
     },
     tools = {
+        "grimmory",
         "read_timer",
         "calibre",
         "exporter",
