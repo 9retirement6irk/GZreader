@@ -55,8 +55,10 @@ No KOReader sync account or "KOReader Sync" permission is needed.
   Grimmory's web reader resume from the chapter + in-chapter position.
   PDFs and comics send the page number; FB2/MOBI/AZW3 send the percentage.
 - **From the web reader:** it saves a CFI, chapter and percentage. The Kindle
-  opens the CFI's or href's chapter and uses the percentage within it, so
-  it lands within a page or so of the web position.
+  opens that chapter and uses the percentage to pick the spot inside it, so it
+  lands in the right chapter at roughly the same point (the web reader and
+  KOReader measure percentages differently). Kindle-to-Kindle and
+  Kindle-to-web are exact to the chapter position.
 - **When:** pulled when you open a book and when the Kindle wakes; pushed every
   10 page turns (or 3 minutes), when you close the book and when it sleeps.
   Moving forward from another device is applied silently; going back asks
@@ -64,7 +66,9 @@ No KOReader sync account or "KOReader Sync" permission is needed.
 - **Stats:** each reading session (30 s or longer) is sent to Grimmory's
   reading statistics.
 - **Controls:** Tools → Grimmory → "Sync progress now" (in a book), and a
-  "Sync reading progress" switch.
+  "Sync reading progress" switch. With ZenOS's Zen Mode on, the Tools menu is
+  hidden; add the "Grimmory: sync progress now" action to a ZenOS Launcher
+  button or navbar tab instead.
 
 ## Rebuild the package
 
