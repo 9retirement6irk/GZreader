@@ -21,9 +21,8 @@ KEEP_PLUGINS="autosuspend coverbrowser grimmory kosync statistics zenos"
 unzip -q "$SRC_ZIP" -d "$STAGE"
 KO="$STAGE/koreader"
 BASE_REV=$(cat "$KO/git-rev")
-BRANCH_BASE=$(git -C "$REPO" describe --tags --abbrev=0 2>/dev/null || echo unknown)
-if [ "$BASE_REV" != "$BRANCH_BASE" ]; then
-    echo "warning: release is $BASE_REV but branch is based on $BRANCH_BASE" >&2
+if ! git -C "$REPO" merge-base --is-ancestor "$BASE_REV" HEAD 2>/dev/null; then
+    echo "warning: this branch is not based on $BASE_REV; frontend Lua may not match the release binaries" >&2
 fi
 
 # 1. Frontend: take the branch's Lua (menu order, Kindle OTA off).
