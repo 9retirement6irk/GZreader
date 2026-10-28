@@ -28,7 +28,10 @@ and UI translations.
 2. Unzip `koreader-grimmory-kindle-legacy-*.zip` and copy the `koreader`,
    `extensions` and `launchpad` folders to the root of the Kindle's USB drive,
    merging with anything already there.
-3. Eject, open KUAL → KOReader → Start KOReader.
+3. Eject, open KUAL → Grimmory → Start Grimmory. Or use the launchpad
+   shortcuts: Shift, G, G (last book), Shift, G, L (library), Shift, G, N
+   (without the Kindle framework, more memory). The old Shift, P, … shortcuts
+   still work.
 
 ## Connect to Grimmory
 

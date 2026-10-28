@@ -632,6 +632,7 @@ function Grimmory:onSuspend()
 end
 
 function Grimmory:onResume()
+    UIManager:scheduleIn(5, function() self:flushPending() end)
     if self.sync then
         self.sync:startSession()
         if self:syncEnabled() then

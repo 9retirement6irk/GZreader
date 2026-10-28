@@ -348,6 +348,9 @@ function Sync:push(force)
         self.entry.last_pushed_pct = p.pct
         self.entry.last_pushed_href = p.href
         self.plugin:clearQueued("progress", self.book_id)
+        -- we're evidently online: send anything queued while offline (the
+        -- Kindle can bring Wi-Fi up without KOReader announcing it)
+        UIManager:nextTick(function() self.plugin:flushPending() end)
     else
         self.plugin:queue("progress", self.book_id, body)
     end
@@ -386,6 +389,7 @@ end
 
 function Sync:onReady()
     self:startSession()
+    UIManager:scheduleIn(2, function() self.plugin:flushPending() end)
     if self.plugin:syncEnabled() then
         -- let the first page render before talking to the network
         UIManager:scheduleIn(1, function() self:pull(false) end)

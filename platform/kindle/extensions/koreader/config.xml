@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <extension>
 	<information>
-		<name>KOReader</name>
+		<name>Grimmory</name>
 		<version>1.1</version>
-		<author>KOReader Dev Team</author>
+		<author>KOReader Dev Team (Grimmory build)</author>
 		<id>KOReader</id>
 	</information>
 	<menus>

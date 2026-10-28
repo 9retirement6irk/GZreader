@@ -37,7 +37,12 @@ done
 # ZenOS ships an updater; drop its non-English catalogs to save space.
 find "$KO/plugins/zenos.koplugin/locales" -name '*.po' ! -name 'en.po' -delete
 
-# 3. Remove what a reading + sync device doesn't use.
+# 3. Launchers: KUAL menu and launchpad shortcuts say "Grimmory".
+cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
+   "$REPO/platform/kindle/extensions/koreader/config.xml" "$STAGE/extensions/koreader/"
+cp "$REPO/platform/kindle/launchpad/koreader.ini" "$STAGE/launchpad/"
+
+# 4. Remove what a reading + sync device doesn't use.
 rm -rf "$KO/ota" "$KO/zsync2" "$KO/spinning_zsync"        # OTA (disabled; would restore stock KOReader)
 rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
 rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font

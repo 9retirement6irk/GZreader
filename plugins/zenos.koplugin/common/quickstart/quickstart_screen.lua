@@ -33,6 +33,39 @@ if not ok_iw then ImageWidget = nil end
 local ok_ico, IconWidget = pcall(require, "ui/widget/iconwidget")
 if not ok_ico then IconWidget = nil end
 
+-- Grimmory build: while the guide is open, hold KOReader's "Styles have changed
+-- ... reload the document?" prompt (raised when the "Reader" page applies new
+-- defaults to an already-open book). The guide reloads the book itself when
+-- it closes, if the styles really did go stale.
+local function installReloadGuard()
+    local ok, ReaderRolling = pcall(require, "apps/reader/modules/readerrolling")
+    if not ok or type(ReaderRolling) ~= "table" or ReaderRolling._zen_qs_reload_guard then return end
+    ReaderRolling._zen_qs_reload_guard = true
+    local orig = ReaderRolling.onCheckDomStyleCoherence
+    ReaderRolling.onCheckDomStyleCoherence = function(rolling, ...)
+        if rawget(_G, "__ZEN_QUICKSTART_ACTIVE") then
+            _G.__ZEN_QUICKSTART_PENDING_RELOAD = rolling
+            return
+        end
+        return orig(rolling, ...)
+    end
+end
+
+local function finishReloadGuard()
+    _G.__ZEN_QUICKSTART_ACTIVE = nil
+    local rolling = rawget(_G, "__ZEN_QUICKSTART_PENDING_RELOAD")
+    _G.__ZEN_QUICKSTART_PENDING_RELOAD = nil
+    if not rolling then return end
+    UIManager:scheduleIn(0.6, function()
+        local ui = rolling.ui
+        local doc = ui and ui.document
+        if doc and type(doc.isBuiltDomStale) == "function" and doc:isBuiltDomStale()
+                and type(ui.reloadDocument) == "function" then
+            ui:reloadDocument()
+        end
+    end)
+end
+
 local QuickstartScreen = InputContainer:extend{
     pages    = nil,
     on_close = nil,
@@ -42,6 +75,9 @@ function QuickstartScreen:init()
     local sw = Screen:getWidth()
     local sh = Screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+
+    installReloadGuard()
+    _G.__ZEN_QUICKSTART_ACTIVE = true
 
     self.pages     = self.pages or {}
     self._page_idx = 1
@@ -141,6 +177,11 @@ function QuickstartScreen:init()
             QsConfirm = {
                 { "Press" },
                 event = "QsConfirm",
+            },
+            -- Grimmory build: Back leaves the guide (keyboard Kindles had no way out but Home)
+            QsClose = {
+                { Input.group.Back },
+                event = "QsClose",
             },
         }
     end
@@ -754,6 +795,7 @@ function QuickstartScreen:_onTap(ges)
 end
 
 function QuickstartScreen:onCloseWidget()
+    finishReloadGuard() -- however the guide was closed
     -- Free any dynamically composed cover blitbuffers.
     for _i, page in ipairs(self.pages or {}) do
         if page.image_bb then
@@ -775,7 +817,15 @@ function QuickstartScreen:onShow()
     end)
 end
 
+function QuickstartScreen:onQsClose()
+    self:onClose()
+    return true
+end
+
 function QuickstartScreen:onClose()
+    if self._closed then return end
+    self._closed = true
+    finishReloadGuard()
     if self[1] then self[1]:onApply() end
     UIManager:setDirty(nil, getFullRefreshMode())
     UIManager:close(self)
