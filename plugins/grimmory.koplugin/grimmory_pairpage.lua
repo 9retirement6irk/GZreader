@@ -58,13 +58,11 @@ function PairPage.form(opts)
     }))
 end
 
-function PairPage.success(username, sync_ok)
-    local sync = sync_ok
-        and "Reading progress will sync with Grimmory."
-        or "Library access works, but progress sync could not be set up. Ask your Grimmory admin to enable the KOReader Sync permission for your account, then pair again."
+function PairPage.success(username)
     return shell("Kindle connected", table.concat({
         '<h1>Kindle connected</h1><div class="card"><p class="ok">Signed in as ', esc(username), ".</p>",
-        "<p>", esc(sync), "</p><p>You can close this page.</p></div>",
+        "<p>Books you download on the Kindle will keep their reading progress in sync with Grimmory.</p>",
+        "<p>You can close this page.</p></div>",
     }))
 end
 

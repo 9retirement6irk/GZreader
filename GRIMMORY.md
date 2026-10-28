@@ -13,12 +13,12 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`.
 | --- | --- |
 | `zenos.koplugin` | The interface (Home, Library, navbar). English only. |
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
-| `kosync.koplugin` | Progress sync — pointed at Grimmory's KOReader endpoint. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `grimmory.koplugin` | New: QR pairing, library browser, downloads, sync setup. |
+| `grimmory.koplugin` | New: QR pairing, library browser, downloads, native progress sync. |
 
-Removed: the other 31 bundled plugins, SSH/SFTP binaries, OTA updater (it
+Removed: the other 32 bundled plugins (including KOReader's own progress
+sync, which this build replaces), SSH/SFTP binaries, OTA updater (it
 would replace this build with stock KOReader), the 16 MB CJK fallback font,
 and UI translations.
 
@@ -42,13 +42,29 @@ Tap the **Grimmory** tab in the bottom bar (or Tools → Grimmory).
   when you press Back.
 - **Connect by typing** — same thing using the Kindle's keyboard.
 
-Progress sync uses Grimmory's KOReader sync account for your user. If you
-already have one (e.g. another device), it's reused; otherwise one is
-created. Your account needs the **KOReader Sync** permission (admins have
-it; others can be granted it in Grimmory → Settings → Users).
+## Progress sync
 
-Progress only links up for books downloaded from Grimmory, because Grimmory
-matches books by file hash.
+Sync is native: it talks to Grimmory's own reading-progress API (the one the
+Grimmory web reader uses), not Grimmory's KOReader-compatible sync endpoint.
+No KOReader sync account or "KOReader Sync" permission is needed.
+
+- **Which books:** books downloaded through the Grimmory tab. They're matched
+  by Grimmory book ID, not by file hash. Sideloaded books are left alone.
+- **What's sent (EPUB):** the chapter (spine file), the position inside that
+  chapter, and the whole-book percentage. No CFI is sent, which makes
+  Grimmory's web reader resume from the chapter + in-chapter position.
+  PDFs and comics send the page number; FB2/MOBI/AZW3 send the percentage.
+- **From the web reader:** it saves a CFI, chapter and percentage. The Kindle
+  opens the CFI's or href's chapter and uses the percentage within it, so
+  it lands within a page or so of the web position.
+- **When:** pulled when you open a book and when the Kindle wakes; pushed every
+  10 page turns (or 3 minutes), when you close the book and when it sleeps.
+  Moving forward from another device is applied silently; going back asks
+  first. Offline updates are queued and sent when Wi-Fi comes back.
+- **Stats:** each reading session (30 s or longer) is sent to Grimmory's
+  reading statistics.
+- **Controls:** Tools → Grimmory → "Sync progress now" (in a book), and a
+  "Sync reading progress" switch.
 
 ## Rebuild the package
 

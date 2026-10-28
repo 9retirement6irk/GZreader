@@ -4,8 +4,9 @@ Grimmory for KOReader.
 * Pair with a Grimmory server by scanning a QR code shown on the Kindle (the
   phone does the typing), or by typing on the Kindle's own keyboard.
 * Browse the library and download books (text-only lists, no thumbnails).
-* Configure KOReader's progress sync (kosync) against Grimmory's KOReader
-  endpoint automatically, creating the sync account on the server if needed.
+* Native progress sync through Grimmory's own reading-progress API (the one
+  its web reader uses), plus reading sessions for Grimmory's statistics.
+  No KOReader sync account, permission or file-hash matching involved.
 
 @module koplugin.grimmory
 ]]
@@ -31,33 +32,11 @@ local Browser = require("grimmory_browser")
 local PairPage = require("grimmory_pairpage")
 local PairScreen = require("grimmory_pairscreen")
 local PairServer = require("grimmory_pairserver")
+local Sync = require("grimmory_sync")
 
 local PAIR_TIMEOUT_S = 10 * 60
 local PAIR_MAX_ATTEMPTS = 5
-
---- Edit KOReader's progress-sync settings in place. kosync's module (and its
---- LuaSettings object) is loaded once per run and shared by every reader
---- session, so update that cached object when it exists instead of only the file.
-local function editKOSyncSettings(fn)
-    local PluginLoader = require("pluginloader")
-    local mod
-    for _, p in ipairs(PluginLoader.enabled_plugins or {}) do
-        if p.name == "kosync" then mod = p break end
-    end
-    local obj = mod and mod.settings_obj
-    if not obj then
-        obj = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
-        if mod then mod.settings_obj = obj end
-    end
-    local cfg = obj:readSetting("settings")
-    if type(cfg) ~= "table" then
-        cfg = {}
-        for k, v in pairs(mod and mod.default_settings or {}) do cfg[k] = v end
-        obj:saveSetting("settings", cfg)
-    end
-    fn(cfg)
-    obj:flush()
-end
+local MAX_QUEUED_SESSIONS = 200
 
 local Grimmory = WidgetContainer:extend{
     name = "grimmory",
@@ -68,6 +47,7 @@ function Grimmory:init()
     self.settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/grimmory.lua")
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
+    self.store.pending = self.store.pending or { progress = {}, sessions = {} }
     self.api = Api:new(self.store, function() self:save() end)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
@@ -78,6 +58,10 @@ function Grimmory:save()
     self.settings:flush()
 end
 
+function Grimmory:syncEnabled()
+    return self.store.sync_disabled ~= true and self.api:isPaired()
+end
+
 function Grimmory:onDispatcherRegisterActions()
     Dispatcher:registerAction("grimmory_library", {
         category = "none", event = "ShowGrimmoryLibrary", title = _("Grimmory library"),
@@ -86,6 +70,10 @@ function Grimmory:onDispatcherRegisterActions()
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true, filemanager = true, reader = true,
+    })
+    Dispatcher:registerAction("grimmory_sync_now", {
+        category = "none", event = "GrimmorySyncNow", title = _("Grimmory: sync progress now"),
+        reader = true,
     })
 end
 
@@ -116,6 +104,28 @@ function Grimmory:menuItems()
             enabled_func = function() return self.api:isPaired() end,
             callback = function(touchmenu) self:onShowGrimmoryLibrary(touchmenu) end,
         },
+    }
+    if self.sync then
+        table.insert(items, {
+            text = _("Sync progress now"),
+            enabled_func = function() return self.api:isPaired() end,
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                self:onGrimmorySyncNow()
+            end,
+        })
+    end
+    local more = {
+        {
+            text = _("Sync reading progress"),
+            help_text = _("Send your position to Grimmory as you read, and pick up where you left off on other devices or in Grimmory's web reader."),
+            checked_func = function() return self.store.sync_disabled ~= true end,
+            callback = function()
+                self.store.sync_disabled = (self.store.sync_disabled ~= true) or nil
+                self:save()
+            end,
+            separator = true,
+        },
         {
             text = paired and _("Reconnect with QR code") or _("Connect with QR code"),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
@@ -131,6 +141,7 @@ function Grimmory:menuItems()
             callback = function() self:confirmDisconnect() end,
         },
     }
+    for _, item in ipairs(more) do table.insert(items, item) end
     return items
 end
 
@@ -146,7 +157,6 @@ local ERRORS = {
     unreachable = _("Couldn't reach the Grimmory server. Check Wi-Fi and the server address."),
     bad_credentials = _("Wrong username or password."),
     rate_limited = _("Too many attempts. Wait a minute and try again."),
-    no_sync_permission = _("Your Grimmory account doesn't have the KOReader Sync permission. An admin can enable it in Settings → Users."),
 }
 
 function Grimmory:describeError(err)
@@ -163,7 +173,7 @@ end
 
 ---------------------------------------------------------------- pairing
 
---- Log in, then wire up progress sync. Returns ok, err, sync_ok.
+--- Log in. Returns ok, err.
 function Grimmory:connect(server_input, username, password)
     local server = Api.normalizeServer(server_input)
     if not server then return false, _("That server address doesn't look right.") end
@@ -171,35 +181,16 @@ function Grimmory:connect(server_input, username, password)
     if username == "" or not password or password == "" then
         return false, _("Enter your username and password.")
     end
+    local previous_server, previous_user = self.store.server, self.store.username
     self.api.explicit_https = server_input:match("^%s*https://") ~= nil
     local ok, err = self.api:login(server, username, password)
     if not ok then return false, self:describeError(err) end
-    local sync_ok, sync_err = self:setupProgressSync()
-    if not sync_ok then logger.warn("Grimmory: progress sync setup failed:", sync_err) end
-    return true, nil, sync_ok, sync_err
-end
-
-function Grimmory:setupProgressSync()
-    local username, key = self.api:ensureSyncAccount(function() return PairServer.randomToken(12) end)
-    if not username or not key then return false, key end
-    self.store.sync_username = username
-    self:save()
-
-    local kosync_settings = {
-        custom_server = self.store.server .. "/api/koreader",
-        username = username,
-        userkey = key,
-        checksum_method = 0, -- binary: Grimmory matches books by file hash
-        auto_sync = true,
-        sync_forward = 2,    -- jump ahead silently when another device is further along
-        sync_backward = 3,   -- never jump backwards automatically
-    }
-    -- kosync only keeps auto-sync on when KOReader may turn Wi-Fi on by itself.
-    G_reader_settings:saveSetting("wifi_enable_action", "turn_on")
-
-    editKOSyncSettings(function(cfg)
-        for k, v in pairs(kosync_settings) do cfg[k] = v end
-    end)
+    if previous_server ~= self.store.server or previous_user ~= self.store.username then
+        -- Different server/account: queued data and sync baselines belong to the old one.
+        self.store.pending = { progress = {}, sessions = {} }
+        self:save()
+    end
+    self:flushPending()
     return true
 end
 
@@ -215,6 +206,7 @@ function Grimmory:startQrPairing()
     local attempts = 0
     local done = false
     local server, screen, timeout_task
+    local base_path = "/pair/" .. token
 
     local function finish()
         if done then return end
@@ -228,9 +220,8 @@ function Grimmory:startQrPairing()
         self.pairing = nil
     end
 
-    local base_path = "/pair/" .. token
     server = PairServer:new{
-        handler = function(method, path)
+        handler = function(method, path, _headers, body)
             path = path:gsub("%?.*$", "")
             if path ~= base_path then
                 return 404, "text/plain", "Not found"
@@ -243,35 +234,27 @@ function Grimmory:startQrPairing()
             elseif method ~= "POST" then
                 return 405, "text/plain", "Method not allowed"
             end
-            -- POST: the form body is read by the server and passed via `self.last_body`
-            return nil
+            attempts = attempts + 1
+            local form = PairServer.parseForm(body)
+            local ok, err = self:connect(form.server or "", form.username or "", form.password or "")
+            form.password = nil
+            if ok then
+                UIManager:nextTick(function()
+                    finish()
+                    self:announceConnected()
+                end)
+                return 200, "text/html", PairPage.success(self.store.username)
+            end
+            if attempts >= PAIR_MAX_ATTEMPTS then
+                UIManager:nextTick(function()
+                    finish()
+                    UIManager:show(InfoMessage:new{ text = _("Pairing stopped after too many failed attempts.") })
+                end)
+                return 200, "text/html", PairPage.gone()
+            end
+            return 200, "text/html", PairPage.form{ server = form.server, username = form.username, error = err }
         end,
     }
-    -- The handler needs the request body for POST; wrap it so we see all args.
-    local route = server.handler
-    server.handler = function(method, path, headers, body)
-        local code, ctype, resp = route(method, path, headers, body)
-        if code or method ~= "POST" then return code, ctype, resp end
-        attempts = attempts + 1
-        local form = PairServer.parseForm(body)
-        local ok, err, sync_ok = self:connect(form.server or "", form.username or "", form.password or "")
-        form.password = nil
-        if ok then
-            UIManager:nextTick(function()
-                finish()
-                self:announceConnected(sync_ok)
-            end)
-            return 200, "text/html", PairPage.success(self.store.username, sync_ok)
-        end
-        if attempts >= PAIR_MAX_ATTEMPTS then
-            UIManager:nextTick(function()
-                finish()
-                UIManager:show(InfoMessage:new{ text = _("Pairing stopped after too many failed attempts.") })
-            end)
-            return 200, "text/html", PairPage.gone()
-        end
-        return 200, "text/html", PairPage.form{ server = form.server, username = form.username, error = err }
-    end
 
     local ok, err = server:start()
     if not ok then
@@ -298,14 +281,11 @@ function Grimmory:startQrPairing()
     UIManager:scheduleIn(PAIR_TIMEOUT_S, timeout_task)
 end
 
-function Grimmory:announceConnected(sync_ok)
-    local text = T(_("Connected to Grimmory as %1."), self.store.username or "")
-    if sync_ok then
-        text = text .. "\n\n" .. _("Reading progress will sync automatically for books you download from Grimmory.")
-    else
-        text = text .. "\n\n" .. ERRORS.no_sync_permission
-    end
-    UIManager:show(InfoMessage:new{ text = text })
+function Grimmory:announceConnected()
+    UIManager:show(InfoMessage:new{
+        text = T(_("Connected to Grimmory as %1."), self.store.username or "") .. "\n\n"
+            .. _("Reading progress syncs automatically for books you download from Grimmory."),
+    })
 end
 
 function Grimmory:keyboardLogin()
@@ -326,10 +306,10 @@ function Grimmory:keyboardLogin()
                     local msg = InfoMessage:new{ text = _("Connecting…"), timeout = 0 }
                     UIManager:show(msg)
                     UIManager:forceRePaint()
-                    local ok, err, sync_ok = self:connect(f[1], f[2], f[3])
+                    local ok, err = self:connect(f[1], f[2], f[3])
                     UIManager:close(msg)
                     if ok then
-                        self:announceConnected(sync_ok)
+                        self:announceConnected()
                     else
                         UIManager:show(InfoMessage:new{ text = err, icon = "notice-warning" })
                     end
@@ -346,14 +326,132 @@ function Grimmory:confirmDisconnect()
         text = _("Disconnect this Kindle from Grimmory? Downloaded books stay on the Kindle. Progress sync will stop until you connect again."),
         ok_text = _("Disconnect"),
         ok_callback = function()
+            if self.sync then self.sync:onLeave() end
             NetworkMgr:runWhenConnected(function() self.api:logout() end)
             self.api:clearTokens()
-            editKOSyncSettings(function(cfg)
-                cfg.userkey, cfg.username, cfg.auto_sync = nil, nil, false
-            end)
             UIManager:show(InfoMessage:new{ text = _("Disconnected from Grimmory."), timeout = 3 })
         end,
     })
+end
+
+---------------------------------------------------------------- offline queue
+
+--- Remember a progress update (latest per book) or a reading session to send later.
+function Grimmory:queue(kind, book_id, body)
+    local pending = self.store.pending
+    if kind == "progress" then
+        pending.progress[tostring(book_id)] = body
+    else
+        table.insert(pending.sessions, body)
+        while #pending.sessions > MAX_QUEUED_SESSIONS do table.remove(pending.sessions, 1) end
+    end
+    self:save()
+end
+
+function Grimmory:clearQueued(kind, book_id)
+    if kind == "progress" then self.store.pending.progress[tostring(book_id)] = nil end
+end
+
+function Grimmory:flushPending()
+    if self.flushing or not self.api:isPaired() or not NetworkMgr:isConnected() then return end
+    local pending = self.store.pending
+    if next(pending.progress) == nil and #pending.sessions == 0 then return end
+    self.flushing = true
+    for book_id, body in pairs(pending.progress) do
+        local ok, _, code = self.api:putProgress(book_id, body)
+        if ok or code == 404 or code == 400 or code == 403 then
+            pending.progress[book_id] = nil -- sent, or the book is gone: drop it
+            local entry = self.store.downloads[book_id]
+            if ok and entry and body.fileProgress then entry.last_pushed_pct = body.fileProgress.progressPercent end
+        else
+            break -- still offline; try again later
+        end
+    end
+    while #pending.sessions > 0 do
+        local ok, _, code = self.api:postSession(pending.sessions[1])
+        if ok or code == 400 or code == 404 then
+            table.remove(pending.sessions, 1)
+        else
+            break
+        end
+    end
+    self.flushing = nil
+    self:save()
+end
+
+function Grimmory:onNetworkConnected()
+    UIManager:scheduleIn(2, function() self:flushPending() end)
+end
+
+---------------------------------------------------------------- reader integration
+
+--- Grimmory book id + download entry for an open file, if it came from Grimmory.
+function Grimmory:entryForPath(path)
+    if not path then return end
+    for id, entry in pairs(self.store.downloads) do
+        if type(entry) == "table" and entry.path == path then return id, entry end
+    end
+end
+
+function Grimmory:onReaderReady()
+    if not self.ui.document then return end
+    local book_id, entry = self:entryForPath(self.ui.document.file)
+    if not book_id then return end
+    if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
+        -- Downloaded by an older version of this plugin: look up the file id once.
+        local book = self.api:getBook(book_id)
+        local pf = book and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
+        if pf then entry.file_id = pf; self:save() end
+    end
+    self.sync = Sync:new(self, self.ui, entry, book_id)
+    self.sync:onReady()
+end
+
+function Grimmory:onPageUpdate()
+    if self.sync then self.sync:onPageTurned() end
+end
+
+function Grimmory:onPosUpdate()
+    if self.sync and self.ui.view and self.ui.view.view_mode ~= "page" then
+        -- scroll mode fires this continuously; count roughly a screen per call
+        self.sync:onPageTurned()
+    end
+end
+
+function Grimmory:onGrimmorySyncNow()
+    if not self.sync then
+        UIManager:show(InfoMessage:new{ text = _("This book wasn't downloaded from Grimmory, so it can't be synced."), timeout = 3 })
+        return true
+    end
+    NetworkMgr:runWhenOnline(function()
+        self.sync:push(true)
+        self.sync:pull(true)
+    end)
+    return true
+end
+
+function Grimmory:onSuspend()
+    if self.sync then self.sync:onLeave() end
+end
+
+function Grimmory:onResume()
+    if self.sync then
+        self.sync:startSession()
+        if self:syncEnabled() then
+            UIManager:scheduleIn(3, function() if self.sync then self.sync:pull(false) end end)
+        end
+    end
+end
+
+function Grimmory:onEndOfBook()
+    if self.sync and self:syncEnabled() then self.sync:push(true) end
+end
+
+function Grimmory:onCloseDocument()
+    if self.sync then
+        self.sync:onLeave()
+        self.sync = nil
+    end
 end
 
 ---------------------------------------------------------------- library
@@ -406,8 +504,10 @@ function Grimmory:downloadAndOpen(book, menu)
         path = path,
         title = type(book.title) == "string" and book.title or name,
         format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
+        file_id = tonumber(book.primaryFileId),
     }
     self:save()
+    logger.dbg("Grimmory: downloaded", book.id, "to", path)
     self:openBook(path, menu)
 end
 

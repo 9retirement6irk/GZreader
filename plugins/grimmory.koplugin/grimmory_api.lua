@@ -10,7 +10,6 @@ local JSON = require("json")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
 local logger = require("logger")
-local md5 = require("ffi/sha2").md5
 local socket = require("socket")
 local socketutil = require("socketutil")
 local url = require("socket.url")
@@ -266,37 +265,27 @@ function Api:downloadBook(book_id, dest_path)
     return false, code and ("http_" .. code) or "unreachable"
 end
 
---- Find or create this account's KOReader sync credentials on the server.
---- Returns username, md5_key or nil, error.
-function Api:ensureSyncAccount(gen_password)
-    local code, data, err = self:call("GET", "/api/v1/koreader-users/me")
-    if code == 403 then return nil, "no_sync_permission" end
-    if not code then return nil, err end
-    local username, key
-    if code == 200 and type(data) == "table" then
-        username, key = str(data.username), str(data.passwordMD5)
-        if username and key and data.syncEnabled ~= true then
-            self:call("PATCH", "/api/v1/koreader-users/me/sync?enabled=true")
-        end
-    end
-    if username and key then return username, key end
-    -- No sync account yet: create one. Reusing an existing one (above) keeps other
-    -- devices that already sync with it working.
-    local base = self.store.username or "kindle"
-    for _, candidate in ipairs({ base, base .. "-kindle" }) do
-        local password = gen_password()
-        code, data, err = self:call("PUT", "/api/v1/koreader-users/me",
-            { body = { username = candidate, password = password } })
-        if code == 200 and type(data) == "table" then
-            self:call("PATCH", "/api/v1/koreader-users/me/sync?enabled=true")
-            return str(data.username) or candidate, str(data.passwordMD5) or md5(password)
-        elseif code == 403 then
-            return nil, "no_sync_permission"
-        elseif not code then
-            return nil, err
-        end
-    end
-    return nil, "http_" .. tostring(code)
+--- Full book record (includes this user's progress for its files).
+function Api:getBook(book_id)
+    local code, data, err = self:call("GET", "/api/v1/books/" .. tostring(book_id),
+        { timeouts = { 8, 15 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- PUT /api/v1/app/books/{id}/progress with { fileProgress = {...} }.
+function Api:putProgress(book_id, body)
+    local code, _, err = self:call("PUT", "/api/v1/app/books/" .. tostring(book_id) .. "/progress",
+        { body = body, timeouts = { 8, 15 } })
+    if code == 200 or code == 204 then return true end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
+--- POST /api/v1/reading-sessions (feeds Grimmory's reading statistics).
+function Api:postSession(body)
+    local code, _, err = self:call("POST", "/api/v1/reading-sessions", { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return true end
+    return false, err or ("http_" .. tostring(code)), code
 end
 
 return Api

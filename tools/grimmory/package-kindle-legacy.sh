@@ -16,7 +16,7 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
-KEEP_PLUGINS="autosuspend coverbrowser grimmory kosync statistics zenos"
+KEEP_PLUGINS="autosuspend coverbrowser grimmory statistics zenos"
 
 unzip -q "$SRC_ZIP" -d "$STAGE"
 KO="$STAGE/koreader"
