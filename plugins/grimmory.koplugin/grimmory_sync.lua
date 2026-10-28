@@ -25,6 +25,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
+local Log = require("grimmory_log")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
@@ -133,6 +134,7 @@ function Sync:spine()
     if not doc:isXPointerInDocument(T("/body/DocFragment[%1]", n))
             or doc:isXPointerInDocument(T("/body/DocFragment[%1]", n + 1)) then
         logger.warn("Grimmory sync: spine/fragment mismatch, using percentages only")
+        Log.warn("sync: spine has", n, "xhtml items but crengine fragments differ; percentages only")
         return nil
     end
     self._spine = spine
@@ -280,6 +282,8 @@ function Sync:pull(interactive)
         return
     end
     local diff = remote.pct - here.pct
+    Log.info("sync pull book", self.book_id, "remote", remote.pct .. "%", remote.href or remote.cfi or "",
+        "local", here.pct .. "%")
     if math.abs(diff) < SAME_POSITION_PCT then
         if interactive then UIManager:show(InfoMessage:new{ text = _("Already in sync with Grimmory."), timeout = 2 }) end
         return
@@ -338,7 +342,8 @@ function Sync:push(force)
         self.plugin:queue("progress", self.book_id, body)
         return
     end
-    local ok = self.api:putProgress(self.book_id, body)
+    local ok, perr = self.api:putProgress(self.book_id, body)
+    Log.info("sync push book", self.book_id, p.pct .. "%", p.href or "", ok and "ok" or ("queued: " .. tostring(perr)))
     if ok then
         self.entry.last_pushed_pct = p.pct
         self.entry.last_pushed_href = p.href

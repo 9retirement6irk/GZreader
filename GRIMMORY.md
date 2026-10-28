@@ -64,6 +64,24 @@ stays the same. If your Grimmory admin set `ALLOWED_ORIGINS`, add
 `http://<kindle-ip>:8642` there too. Some providers only accept `https`
 redirect URIs for non-local addresses; check yours allows this one.
 
+## Downloads
+
+Books download in a background process with a progress bar, so the Kindle
+never freezes. Press any key (or tap) during a download for **Stop download**,
+**Continue in background** (you're told when it's ready, with an Open button)
+or **Keep watching**. A download that receives nothing for 90 seconds is
+stopped and reported. Books are saved to `<home folder>/Grimmory/`.
+
+## Diagnostic log
+
+Grimmory activity is logged to `koreader/grimmory.log` on the Kindle's USB
+drive (rotates at 512 KB): every request with its status and timing, pairing,
+SSO steps, downloads and sync. Passwords, tokens, SSO codes and the pairing
+URL secret are never written. **Tools → Grimmory → Save diagnostic log**
+copies it, plus the tail of KOReader's `crash.log`, to
+`<home folder>/Grimmory/grimmory-log-<date>.txt` for sharing. Logging can be
+turned off in the same menu.
+
 ## Progress sync
 
 Sync is native: it talks to Grimmory's own reading-progress API (the one the

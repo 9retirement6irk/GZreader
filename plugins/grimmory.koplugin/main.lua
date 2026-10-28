@@ -22,7 +22,6 @@ local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local lfs = require("libs/libkoreader-lfs")
-local logger = require("logger")
 local util = require("util")
 local _ = require("gettext")
 local T = require("ffi/util").template
@@ -33,6 +32,8 @@ local PairPage = require("grimmory_pairpage")
 local PairScreen = require("grimmory_pairscreen")
 local PairServer = require("grimmory_pairserver")
 local Sync = require("grimmory_sync")
+local Download = require("grimmory_download")
+local Log = require("grimmory_log")
 
 local PAIR_TIMEOUT_S = 10 * 60
 local PAIR_MAX_ATTEMPTS = 5
@@ -44,13 +45,30 @@ local Grimmory = WidgetContainer:extend{
 }
 
 function Grimmory:init()
-    self.settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/grimmory.lua")
+    -- One settings object for the whole run, shared by every instance: KOReader
+    -- creates a new plugin instance for each FileManager/ReaderUI, and a
+    -- background download or queued sync data must not be written to a stale copy.
+    if not Grimmory.shared_settings then
+        Grimmory.shared_settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/grimmory.lua")
+        Log.init(DataStorage:getDataDir())
+        Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
+            "device", tostring(Device.model))
+    end
+    self.settings = Grimmory.shared_settings
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
+    Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    if not self.ui.document and type(self.ui.active_widgets) == "table" then
+        -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top
+        -- window only; ZenOS's Home page sits above the file manager. Being an
+        -- active widget lets our events still reach us. File manager only, so
+        -- reader events are never delivered twice.
+        table.insert(self.ui.active_widgets, self)
+    end
 end
 
 function Grimmory:save()
@@ -63,13 +81,15 @@ function Grimmory:syncEnabled()
 end
 
 function Grimmory:onDispatcherRegisterActions()
+    -- NB: in KOReader's Dispatcher, `reader = true` means "reader only" (the
+    -- action is disabled in the file manager). These work everywhere: general.
     Dispatcher:registerAction("grimmory_library", {
         category = "none", event = "ShowGrimmoryLibrary", title = _("Grimmory library"),
-        general = true, filemanager = true, reader = true,
+        general = true,
     })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
-        general = true, filemanager = true, reader = true,
+        general = true,
     })
     Dispatcher:registerAction("grimmory_sync_now", {
         category = "none", event = "GrimmorySyncNow", title = _("Grimmory: sync progress now"),
@@ -143,6 +163,21 @@ function Grimmory:menuItems()
             text = _("Disconnect"),
             enabled_func = function() return self.api:isPaired() end,
             callback = function() self:confirmDisconnect() end,
+            separator = true,
+        },
+        {
+            text = _("Diagnostic logging"),
+            help_text = _("Keep a log of Grimmory activity in koreader/grimmory.log (passwords and tokens are never written)."),
+            checked_func = function() return self.store.logging_disabled ~= true end,
+            callback = function()
+                self.store.logging_disabled = (self.store.logging_disabled ~= true) or nil
+                Log.enabled = self.store.logging_disabled ~= true
+                self:save()
+            end,
+        },
+        {
+            text = _("Save diagnostic log"),
+            callback = function() self:exportLog() end,
         },
     }
     for _, item in ipairs(more) do table.insert(items, item) end
@@ -165,13 +200,29 @@ local ERRORS = {
 
 function Grimmory:describeError(err)
     if type(err) == "string" and ERRORS[err] then return ERRORS[err] end
+    if type(err) == "string" and err:match("^stalled") then
+        return T(_("The download stalled (%1). Check the Kindle's Wi-Fi signal and try again."), err:gsub("^stalled:%s*", ""))
+    end
     if type(err) == "string" and err:match("^http_") then
         return T(_("Grimmory returned an error (%1)."), err:sub(6))
     end
     return T(_("Something went wrong: %1"), tostring(err))
 end
 
+function Grimmory:exportLog()
+    local dest, err = Log.exportTo(self:downloadDir(), DataStorage:getDataDir() .. "/crash.log")
+    if dest then
+        Log.info("log exported to", dest)
+        UIManager:show(InfoMessage:new{
+            text = T(_("Diagnostic log saved:\n%1\n\nConnect the Kindle over USB to copy it."), dest),
+        })
+    else
+        UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log: %1"), tostring(err)) })
+    end
+end
+
 function Grimmory:showError(err)
+    Log.warn("shown to user:", tostring(err), "|", self:describeError(err))
     UIManager:show(InfoMessage:new{ text = self:describeError(err), icon = "notice-warning" })
 end
 
@@ -188,6 +239,7 @@ function Grimmory:connect(server_input, username, password)
     local previous = { self.store.server, self.store.username }
     self.api.explicit_https = server_input:match("^%s*https://") ~= nil
     local ok, err = self.api:login(server, username, password)
+    Log.info("password login to", ok and self.store.server or server, ok and "ok" or ("failed: " .. tostring(err)))
     if not ok then return false, self:describeError(err) end
     self:afterLogin(previous)
     return true
@@ -316,6 +368,7 @@ function Grimmory:startQrPairing()
             state = state,
             nonce = sso_session.nonce,
         }
+        Log.info("sso: redirecting phone to", auth_ep, "redirect_uri", sso_session.redirect_uri)
         local sep = auth_ep:find("?", 1, true) and "&" or "?"
         return 302, nil, auth_ep .. sep .. q:sub(2)
     end
@@ -343,9 +396,11 @@ function Grimmory:startQrPairing()
             state = session.state,
         }, origin)
         if ok then
+            Log.info("sso: signed in as", tostring(self.store.username))
             self:afterLogin(previous)
             return succeeded()
         end
+        Log.warn("sso: exchange failed:", tostring(err))
         return failed({ server = session.base }, T(_("Grimmory rejected the sign-in: %1"), self:describeError(err)))
     end
 
@@ -386,6 +441,7 @@ function Grimmory:startQrPairing()
     local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
     local ip, why = PairServer.localIp(hint_host, iface)
     if not ip then
+        Log.err("pairing: no local IP;", tostring(why))
         server:stop()
         return UIManager:show(InfoMessage:new{
             text = _("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.")
@@ -394,6 +450,7 @@ function Grimmory:startQrPairing()
     end
 
     origin = T("http://%1:%2", ip, server.port)
+    Log.info("pairing started on", origin)
     self.pairing = true
     UIManager:insertZMQ(server)
     screen = PairScreen:new{
@@ -542,6 +599,7 @@ function Grimmory:onReaderReady()
         local pf = book and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
         if pf then entry.file_id = pf; self:save() end
     end
+    Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady()
 end
@@ -633,21 +691,30 @@ function Grimmory:downloadAndOpen(book, menu)
     end
     name = util.getSafeFilename(name, dir)
     local path = dir .. "/" .. name
-    local msg = InfoMessage:new{ text = T(_("Downloading “%1”…"), book.title or name), timeout = 0 }
-    UIManager:show(msg)
-    UIManager:forceRePaint()
-    local ok, err = self.api:downloadBook(book.id, path)
-    UIManager:close(msg)
-    if not ok then return self:showError(err) end
-    self.store.downloads[tostring(book.id)] = {
-        path = path,
-        title = type(book.title) == "string" and book.title or name,
-        format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
-        file_id = tonumber(book.primaryFileId),
-    }
-    self:save()
-    logger.dbg("Grimmory: downloaded", book.id, "to", path)
-    self:openBook(path, menu)
+    local title = type(book.title) == "string" and book.title or name
+    Download.start(self, book, path, function(ok, err, watching)
+        if not ok then
+            if err ~= "cancelled" then self:showError(err) end
+            return
+        end
+        self.store.downloads[tostring(book.id)] = {
+            path = path,
+            title = title,
+            format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
+            file_id = tonumber(book.primaryFileId),
+        }
+        self:save()
+        if watching then
+            self:openBook(path, menu)
+        else
+            UIManager:show(ConfirmBox:new{
+                text = T(_("“%1” has finished downloading. Open it now?"), title),
+                ok_text = _("Open"),
+                cancel_text = _("Later"),
+                ok_callback = function() self:openBook(path, menu) end,
+            })
+        end
+    end)
 end
 
 function Grimmory:openBook(path, menu)

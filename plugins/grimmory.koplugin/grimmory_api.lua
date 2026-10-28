@@ -10,6 +10,7 @@ local JSON = require("json")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
 local logger = require("logger")
+local Log = require("grimmory_log")
 local socket = require("socket")
 local socketutil = require("socketutil")
 local url = require("socket.url")
@@ -74,14 +75,17 @@ local function rawRequest(method, full_url, opts)
         sink = sink,
     }
     logger.dbg("Grimmory:", method, full_url)
+    local t0 = socket.gettime()
     -- LuaSocket/LuaSec raise (rather than return) on some failures, e.g. a TLS
     -- handshake error; treat those like any other network error.
     local pcall_ok, code, resp_headers, status = pcall(function()
         return socket.skip(1, http.request(request))
     end)
     socketutil:reset_timeout()
+    local ms = math.floor((socket.gettime() - t0) * 1000)
     if not pcall_ok then
         logger.warn("Grimmory: request failed", method, full_url, code)
+        Log.err("HTTP", method, full_url, "raised:", code, ms .. "ms")
         return nil, nil, nil, code
     end
     local raw = table.concat(chunks)
@@ -92,7 +96,13 @@ local function rawRequest(method, full_url, opts)
     end
     if type(code) ~= "number" then
         logger.warn("Grimmory: network error", method, full_url, code)
+        Log.warn("HTTP", method, full_url, "network error:", code, ms .. "ms")
         return nil, data, resp_headers, code
+    end
+    if code >= 400 then
+        Log.warn("HTTP", method, full_url, code, ms .. "ms", raw ~= "" and raw:sub(1, 300) or "")
+    else
+        Log.info("HTTP", method, full_url, code, ms .. "ms")
     end
     return code, data, resp_headers, status
 end
@@ -155,6 +165,10 @@ function Api:ensureToken()
     end
     if not self.store.refresh_token or not self.store.server then
         return false, "not_paired"
+    end
+    if self.no_refresh then
+        -- download subprocess: a rotated refresh token would be lost on exit
+        return false, "expired"
     end
     local code, data = rawRequest("POST", self.store.server .. "/api/v1/auth/refresh", {
         body = { refreshToken = self.store.refresh_token },
@@ -242,27 +256,20 @@ function Api:simpleList(endpoint, limit)
     return nil, err or ("http_" .. tostring(code))
 end
 
---- Stream a book's primary file to `dest_path`. Returns true or false, err.
-function Api:downloadBook(book_id, dest_path)
+--- Stream a book's primary file straight into `path` (used by the download
+--- subprocess, which writes the ".part" file). Returns true or false, err.
+function Api:downloadToFile(book_id, path)
     local ok, err = self:ensureToken()
     if not ok then return false, err end
-    local tmp = dest_path .. ".part"
-    local fh, ferr = io.open(tmp, "wb")
+    local fh, ferr = io.open(path, "wb")
     if not fh then return false, ferr end
-    local code = rawRequest("GET", self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download", {
+    local code, _, _, status = rawRequest("GET", self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download", {
         headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" },
-        sink = socketutil.file_sink(fh),
-        timeouts = { socketutil.FILE_BLOCK_TIMEOUT, 600 },
+        sink = ltn12.sink.file(fh), -- closes the file when the transfer ends
+        timeouts = { 30, -1 },      -- 30 s per block; no overall cap (big books on slow Wi-Fi)
     })
-    -- file_sink closes the handle when the transfer ends.
-    if code == 200 then
-        os.remove(dest_path)
-        local renamed, rerr = os.rename(tmp, dest_path)
-        if not renamed then return false, rerr end
-        return true
-    end
-    os.remove(tmp)
-    return false, code and ("http_" .. code) or "unreachable"
+    if code == 200 then return true end
+    return false, code and ("http_" .. code) or tostring(status or "unreachable")
 end
 
 --- Full book record (includes this user's progress for its files).
