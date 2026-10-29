@@ -582,6 +582,17 @@ end
 -- Grimmory build: first setup page connects the Kindle to Grimmory.
 -- The choice runs when the user presses Next; the pairing screen opens on top
 -- of the guide and the guide continues once pairing finishes or is cancelled.
+local function grimmoryPlugin(ctx)
+    local ui = ctx and ctx.plugin and ctx.plugin.ui
+    local g = ui and ui.grimmory
+    if type(g) ~= "table" then
+        local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
+        local fm = ok and type(FileManager) == "table" and FileManager.instance
+        g = type(fm) == "table" and fm.grimmory or nil
+    end
+    return type(g) == "table" and g or nil
+end
+
 local function grimmoryState(ctx)
     -- Pages are built during ZenOS's init, before FileManager.instance is set;
     -- the UI under construction (ctx.plugin.ui) already has grimmory registered
@@ -900,69 +911,12 @@ function M.build_install_pages(ctx)
     local accent_page = M.build_accent_page(ctx)
     if accent_page then table.insert(pages, 3, accent_page) end
 
-    -- Insert home folder page before finale if home_dir has not been customized.
-    do
-        local current_home = paths.getConfiguredHomeDir()
-        if not current_home or current_home == "" then
-            -- Detect the device's primary storage root for path suggestions.
-            local base_storage = "/"
-            pcall(function()
-                local Dev = require("device")
-                if     Dev.isKobo       and Dev:isKobo()       then base_storage = "/mnt/onboard"
-                elseif Dev.isKindle     and Dev:isKindle()     then base_storage = "/mnt/base-us"
-                elseif Dev.isPocketBook and Dev:isPocketBook() then base_storage = "/mnt/ext1"
-                elseif Dev.isAndroid    and Dev:isAndroid()    then base_storage = "/sdcard"
-                end
-            end)
-            local books_dir = base_storage .. "/books"
-            -- Insert at second-to-last position (before finale).
-            table.insert(pages, #pages, {
-                title       = _("Home Folder"),
-                description = T(_("The place for all your books %1"), books_dir),
-                choice_type = "radio",
-                choices     = {
-                    { id = "books",  text = _("Create this folder and use as home"), checked = true  },
-                    { id = "choose", text = _("Choose a different folder"),           checked = false },
-                    { id = "skip",   text = _("Skip"),                                checked = false },
-                },
-                on_apply = function(sel)
-                    if sel["skip"] then return end
-                    local function apply_sort_defaults()
-                        G_reader_settings:saveSetting("collate", "access")
-                        G_reader_settings:saveSetting("collate_mixed", true)
-                    end
-                    if sel["books"] then
-                        local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
-                        if not ok_lfs then return end
-                        if lfs.attributes(books_dir, "mode") ~= "directory" then
-                            lfs.mkdir(books_dir)
-                        end
-                        if lfs.attributes(books_dir, "mode") == "directory" then
-                            G_reader_settings:saveSetting("home_dir", books_dir)
-                            apply_sort_defaults()
-                        end
-                    elseif sel["choose"] then
-                        local ok_ui, UIMan = pcall(require, "ui/uimanager")
-                        if not ok_ui then return end
-                        UIMan:scheduleIn(0.3, function()
-                            local ok_pc, PathChooser = pcall(require, "ui/widget/pathchooser")
-                            if not ok_pc then return end
-                            UIMan:show(PathChooser:new{
-                                select_directory = true,
-                                path             = base_storage,
-                                onConfirm        = function(chosen_path)
-                                    if chosen_path and chosen_path ~= "" then
-                                        G_reader_settings:saveSetting("home_dir", chosen_path)
-                                        apply_sort_defaults()
-                                    end
-                                end,
-                            })
-                        end)
-                    end
-                end,
-            })
-        end
-    end
+    -- Grimmory build: no "Home Folder" question. The home folder is the
+    -- Grimmory folder the plugin creates (downloads land there).
+    pcall(function()
+        local g = grimmoryPlugin(ctx)
+        if g and type(g.useLibraryAsHome) == "function" then g:useLibraryAsHome() end
+    end)
 
     local ok_gp, grimmory_page = pcall(buildGrimmoryPage, ctx)
     if not ok_gp then grimmory_page = nil end

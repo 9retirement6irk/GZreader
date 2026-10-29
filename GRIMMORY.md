@@ -17,6 +17,8 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`.
 | `autosuspend.koplugin` | Battery. |
 | `grimmory.koplugin` | New: QR pairing, library browser, downloads, native progress sync. |
 
+Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
+
 Removed: the other 32 bundled plugins (including KOReader's own progress
 sync, which this build replaces), SSH/SFTP binaries, OTA updater (it
 would replace this build with stock KOReader), the 16 MB CJK fallback font,
@@ -73,6 +75,21 @@ The Grimmory tab lists Continue reading, Recently added, All books (A–Z),
 **Libraries**, **Authors** (with author search), **Series** (books in series
 order, with numbers) and Search. Audiobooks are left out. The tab next to it,
 **Downloaded** (download icon), is the books on the Kindle.
+
+## Home folder
+
+The Grimmory folder (on a Kindle, `documents/Grimmory`, or the existing
+download folder from an earlier version) is created automatically and used as
+the home folder. ZenOS's setup guide no longer asks for one. Downloads go
+straight into it, so they appear in the **Downloaded** tab.
+
+## Dictionary
+
+An English dictionary is included: **Open English WordNet 2025** (about
+128,000 words and phrases with definitions, examples and synonyms; CC BY 4.0).
+Inflected forms such as "books", "geese" or "ran" find their headword.
+More dictionaries can be added from KOReader's dictionary settings →
+Download dictionaries.
 
 ## Downloads
 

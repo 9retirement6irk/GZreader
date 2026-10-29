@@ -42,7 +42,26 @@ cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
    "$REPO/platform/kindle/extensions/koreader/config.xml" "$STAGE/extensions/koreader/"
 cp "$REPO/platform/kindle/launchpad/koreader.ini" "$STAGE/launchpad/"
 
-# 4. Remove what a reading + sync device doesn't use.
+# 4. Bundled English dictionary: Open English WordNet (CC BY 4.0) as StarDict.
+OEWN_XML=${OEWN_XML:-"$REPO/tools/grimmory/cache/english-wordnet-2025.xml.gz"}
+if [ ! -f "$OEWN_XML" ]; then
+    mkdir -p "$(dirname "$OEWN_XML")"
+    curl -fsSL -o "$OEWN_XML" \
+        https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025.xml.gz
+fi
+DICT="$KO/data/dict/oewn"
+mkdir -p "$DICT"
+python3 -I "$REPO/tools/grimmory/build-wordnet-stardict.py" "$OEWN_XML" "$DICT"
+if command -v dictzip >/dev/null; then dictzip "$DICT/oewn.dict"; fi
+cat > "$DICT/README.txt" <<'TXT'
+Open English WordNet 2025 (https://en-word.net,
+https://github.com/globalwordnet/english-wordnet), licensed under
+Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Converted to StarDict format (definitions, examples, synonyms and word forms)
+for the Grimmory KOReader build by tools/grimmory/build-wordnet-stardict.py.
+TXT
+
+# 5. Remove what a reading + sync device doesn't use.
 rm -rf "$KO/ota" "$KO/zsync2" "$KO/spinning_zsync"        # OTA (disabled; would restore stock KOReader)
 rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
 rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font

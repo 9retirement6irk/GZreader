@@ -62,6 +62,10 @@ function Grimmory:init()
     self.api = Api:new(self.store, function() self:save() end)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
+    if not self.ui.document and not self.store.home_is_library then
+        -- Grimmory build: the home folder is the Grimmory folder (no setup question)
+        pcall(self.useLibraryAsHome, self)
+    end
     if not self.ui.document and type(self.ui.active_widgets) == "table" then
         -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top
         -- window only; ZenOS's Home page sits above the file manager. Being an
@@ -210,7 +214,9 @@ function Grimmory:describeError(err)
 end
 
 function Grimmory:exportLog()
-    local dest, err = Log.exportTo(self:downloadDir(), DataStorage:getDataDir() .. "/crash.log")
+    local lib = self:libraryDir()
+    local dest_dir = lib:match("^(.+)/[^/]+$") or lib -- next to the library, not in it
+    local dest, err = Log.exportTo(dest_dir, DataStorage:getDataDir() .. "/crash.log")
     if dest then
         Log.info("log exported to", dest)
         UIManager:show(InfoMessage:new{
@@ -668,10 +674,50 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     return true
 end
 
-function Grimmory:downloadDir()
-    local home = G_reader_settings:readSetting("home_dir") or Device.home_dir or DataStorage:getDataDir()
-    local dir = home .. "/Grimmory"
+--- The Grimmory folder: downloads go straight in, and it's KOReader's home
+--- folder (the "Downloaded" tab). Created on first use and remembered.
+function Grimmory:libraryDir()
+    local dir = self.store.library_dir
+    if not dir then
+        local home = G_reader_settings:readSetting("home_dir") or Device.home_dir or DataStorage:getDataDir()
+        local previous = home .. "/Grimmory" -- where earlier versions saved downloads
+        if lfs.attributes(previous, "mode") == "directory" then
+            dir = previous
+        else
+            dir = (Device.home_dir or home) .. "/Grimmory"
+        end
+        self.store.library_dir = dir
+        self:save()
+        Log.info("library folder:", dir)
+    end
     if lfs.attributes(dir, "mode") ~= "directory" then util.makePath(dir) end
+    return dir
+end
+Grimmory.downloadDir = Grimmory.libraryDir
+
+--- Make the Grimmory folder KOReader's home folder (no prompt).
+function Grimmory:useLibraryAsHome()
+    local dir = self:libraryDir()
+    if G_reader_settings:readSetting("home_dir") ~= dir then
+        G_reader_settings:saveSetting("home_dir", dir)
+        Log.info("home folder set to", dir)
+    end
+    if G_reader_settings:readSetting("collate") == nil then
+        -- same sort default ZenOS's folder page applied: most recently opened first
+        G_reader_settings:saveSetting("collate", "access")
+        G_reader_settings:saveSetting("collate_mixed", true)
+    end
+    self.store.home_is_library = true
+    self:save()
+    -- show it now; looked up later because during startup the file manager
+    -- isn't registered yet
+    UIManager:nextTick(function()
+        local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
+        local fm = ok and FileManager.instance
+        if fm and fm.file_chooser and fm.file_chooser.goHome then
+            pcall(fm.file_chooser.goHome, fm.file_chooser)
+        end
+    end)
     return dir
 end
 
