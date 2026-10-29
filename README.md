@@ -1,3 +1,15 @@
+# GZreader
+
+**Grimmory + ZenOS + KOReader for the Kindle Keyboard (Kindle 3) and other legacy Kindles.**
+Read, download books from a [Grimmory](https://grimmory.org) server, and keep reading
+position and bookmarks in sync. See **[GZREADER.md](GZREADER.md)** for features, install and
+updates; downloads are on the [Releases](https://github.com/9retirement6irk/GZreader/releases) page.
+
+GZreader is a fork of KOReader `v2026.07.1` with ZenOS `4.2.0` (AGPL-3.0). KOReader's original
+README follows.
+
+---
+
 [![KOReader](https://raw.githubusercontent.com/koreader/koreader.github.io/master/koreader-logo.png)](https://koreader.rocks)
 
 #### KOReader is a document viewer primarily aimed at e-ink readers.

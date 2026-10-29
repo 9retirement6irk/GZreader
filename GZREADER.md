@@ -41,8 +41,10 @@ view, keyboard, sync, sleep screen, clock and reading defaults.
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
 once a day (Settings → Updates, or Grimmory menu → GZreader updates). An
-update downloads `gzreader-update.zip`, checks its size (and GitHub's sha256
-digest when the Kindle can compute it), swaps in the new `frontend/`,
+update is simply the latest GitHub release: the Kindle downloads its
+`gzreader-update.zip` over HTTPS, checks the size matches what GitHub lists
+(no hashing on the Kindle), checks the zip has a complete GZreader layout,
+then swaps in the new `frontend/`,
 plugins, `reader.lua`, `koreader.sh` and version, and restarts. Settings,
 books, `.sdr` folders, history and the Grimmory folder are never touched; if
 anything fails, the previous files are put back.

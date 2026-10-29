@@ -8,7 +8,10 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     parts GZreader changes: frontend/, the kept plugins, reader.lua,
     koreader.sh, gzreader-version (the native binaries, fonts and dictionary
     stay as installed);
-  * GitHub's asset digest (sha256) is checked when the Kindle can compute it.
+  * no hashing on the Kindle: the download comes over HTTPS straight from
+    GitHub (which protects it in transit), its size must match the size
+    GitHub lists for the asset, and the zip must open and contain a
+    complete GZreader layout before anything is replaced.
 
 Installing never touches settings/, the books, their .sdr folders, history or
 the Grimmory folder. Each replaced folder is renamed aside first and put back
@@ -125,7 +128,7 @@ end
 
 ---------------------------------------------------------------- check
 
---- Parse a GitHub "latest release" JSON body into { version, url, sha256, notes, page }.
+--- Parse a GitHub "latest release" JSON body into { version, url, size, notes, page }.
 function Update.parseRelease(body)
     local ok, rel = pcall(JSON.decode, body or "")
     if not ok or type(rel) ~= "table" or type(rel.tag_name) ~= "string" then return nil, "bad release data" end
@@ -135,7 +138,6 @@ function Update.parseRelease(body)
         if a.name == Update.ASSET and type(a.browser_download_url) == "string" then
             info.url = a.browser_download_url
             info.size = tonumber(a.size)
-            info.sha256 = type(a.digest) == "string" and a.digest:match("^sha256:(%x+)$") or nil
         end
     end
     if not info.url then return nil, "release " .. rel.tag_name .. " has no " .. Update.ASSET end
@@ -212,16 +214,6 @@ local function rmTree(p)
         lfs.rmdir(p)
     else
         os.remove(p)
-    end
-end
-
-local function sha256File(path)
-    for _i, cmd in ipairs({ "sha256sum %q", "openssl dgst -sha256 %q" }) do
-        local p = io.popen(string.format(cmd, path) .. " 2>/dev/null")
-        local out = p and p:read("*a") or ""
-        if p then p:close() end
-        local hex = out:match("(%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x)")
-        if hex then return hex:lower() end
     end
 end
 
@@ -348,17 +340,11 @@ function Update.download(info)
             os.remove(zip)
             return UIManager:show(InfoMessage:new{ text = T(_("Download failed: %1"), res) })
         end
-        if info.size and size ~= info.size then
+        local final_size = lfs.attributes(zip, "size") or 0
+        if info.size and final_size ~= info.size then
             os.remove(zip)
+            Log.warn("update download size", final_size, "expected", info.size)
             return UIManager:show(InfoMessage:new{ text = _("The download was incomplete. Try again.") })
-        end
-        if info.sha256 then
-            local got = sha256File(zip)
-            if got and got ~= info.sha256:lower() then
-                os.remove(zip)
-                Log.err("update checksum mismatch", got, info.sha256)
-                return UIManager:show(InfoMessage:new{ text = _("The download is damaged (checksum mismatch). Try again.") })
-            end
         end
         local busy = InfoMessage:new{ text = _("Installing…"), timeout = 0 }
         UIManager:show(busy)
