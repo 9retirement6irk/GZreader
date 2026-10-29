@@ -262,7 +262,7 @@ function Engine.test(on_done)
         Log.info("audio test result", "mp3=" .. tostring(chosen.mp3), "aac=" .. tostring(chosen.aac))
         UIManager:show(InfoMessage:new{ text = _("Audio test finished.") .. "\n\n"
             .. T(_("MP3: %1\nM4B / AAC: %2"), chosen.mp3 or _("no working player found"), chosen.aac or _("no working player found"))
-            .. ((chosen.mp3 and chosen.aac) and "" or ("\n\n" .. _("Send the diagnostic log (Grimmory menu) so this can be fixed."))) })
+            .. ((chosen.mp3 and chosen.aac) and "" or ("\n\n" .. _("Send the diagnostic log (Settings → GZreader) so this can be fixed."))) })
         if on_done then on_done(chosen) end
     end
     local function step()

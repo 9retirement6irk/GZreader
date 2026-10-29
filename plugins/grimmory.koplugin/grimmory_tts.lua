@@ -414,7 +414,7 @@ function TTS.findVoice(on_done)
         TTS.testing = false
         if not template then
             Log.warn("tts: discovery failed:", tostring(why))
-            UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service didn't accept any request:\n%1\n\nSave the diagnostic log (Grimmory menu) and send it so this can be fixed."),
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service didn't accept any request:\n%1\n\nSave the diagnostic log (Settings → GZreader) and send it so this can be fixed."),
                 tostring(why):sub(1, 300)) })
             return
         end
@@ -431,7 +431,7 @@ function TTS.findVoice(on_done)
             end,
             cancel_callback = function()
                 Log.warn("tts: accepted but not heard", template.target.prop, TTS.hashText(template.fields))
-                UIManager:show(InfoMessage:new{ text = _("Check the volume (the Kindle's speaker or headphones), then try again. If it stays silent, save the diagnostic log (Grimmory menu) and send it.") })
+                UIManager:show(InfoMessage:new{ text = _("Check the volume (the Kindle's speaker or headphones), then try again. If it stays silent, save the diagnostic log (Settings → GZreader) and send it.") })
             end,
         })
         -- say it once more while the question is up

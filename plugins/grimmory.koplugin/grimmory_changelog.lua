@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.15",
+        changes = {
+            "The Grimmory settings are now Settings → GZreader, on the main Settings page (they were under Settings → General → Grimmory).",
+        },
+    },
+    {
         version = "1.0.14",
         changes = {
             "Night mode is switched off and can't be turned on on the Kindle 2, DX, Keyboard and 4: they can't invert the screen in hardware, and inverting in software made the Kindle unusably slow (and frozen at every start, because the setting was saved).",
@@ -11,7 +17,7 @@ return {
     {
         version = "1.0.13",
         changes = {
-            "Kindle Keyboard: the Menu key on Home and in the lists now opens the GZreader menu, a list with letter keys like the Reading menu (Grimmory library, continue reading, audiobooks, search, history, Wi-Fi, night mode, settings, updates, send log, sleep, restart, all settings, exit), instead of ZenOS's touch quick-settings panel. Switch: Settings → General → Grimmory → Menu key opens the GZreader menu.",
+            "Kindle Keyboard: the Menu key on Home and in the lists now opens the GZreader menu, a list with letter keys like the Reading menu (Grimmory library, continue reading, audiobooks, search, history, Wi-Fi, night mode, settings, updates, send log, sleep, restart, all settings, exit), instead of ZenOS's touch quick-settings panel. Switch: Settings → GZreader → Menu key opens the GZreader menu.",
             "Audiobooks: playback fixed. The Kindle's player doesn't take the option GZreader passed, and its MP3/AAC decoders are the Freescale hardware ones (mfw_mp3decoder, mfw_aacdecoder); the players now use them. Run Test audio playback again once.",
             "M4B: the Kindle 3 can't open MP4 files, so after download GZreader converts the audio (no re-encoding, seconds to a few minutes) into small AAC pieces the Kindle can play, and can start anywhere in the book. M4Bs downloaded with 1.0.12 are converted the first time you press play.",
             "Audiobook downloads resume where they stopped after a dropped connection or timeout (they used to start over and could never finish a large book), and the login is refreshed during long downloads.",

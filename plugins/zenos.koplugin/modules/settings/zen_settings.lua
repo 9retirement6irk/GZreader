@@ -82,6 +82,22 @@ function M.build(plugin)
         interface_item,
         IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
+        -- GZreader: the Grimmory plugin's settings (connection, sync, read
+        -- aloud, audiobooks, log, updates), also under KOReader → Tools → Grimmory.
+        IconItem.decorate({
+            text = "GZreader",
+            _zen_settings_root = "gzreader",
+            sub_item_table_func = function()
+                local g
+                for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
+                    local ok, cls = pcall(require, mod)
+                    local inst = ok and type(cls) == "table" and cls.instance
+                    if not g and type(inst) == "table" and type(inst.grimmory) == "table" then g = inst.grimmory end
+                end
+                if g and type(g.menuItems) == "function" then return g:menuItems() end
+                return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+            end,
+        }, icons.sync),
         {
             text = _("KOReader"),
             icon_file = plugin_root .. "/icons/koreader.png",

@@ -78,7 +78,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 ## Connect to Grimmory
 
 Open the **Grimmory** tab. All Grimmory options (connection, sync, bookmarks,
-read aloud, diagnostic log, updates) are in **Settings → General → Grimmory**
+read aloud, diagnostic log, updates) are in **Settings → GZreader**
 (also KOReader → Tools → Grimmory).
 
 - **Connect with QR code**: the Kindle shows a QR code. Scan it with your
@@ -163,7 +163,7 @@ settings → Slower / Faster). The diagnostic log records every step.
 
 ## Audiobooks (experimental)
 
-Grimmory tab → Audiobooks, or Settings → General → Grimmory → Audiobooks.
+Grimmory tab → Audiobooks, or Settings → GZreader → Audiobooks.
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
 
@@ -219,7 +219,7 @@ another option there restores KOReader/ZenOS's own sleep-screen settings.
 
 ## Diagnostic log
 
-**Send it to your phone:** Settings → General → Grimmory → Send diagnostic log
+**Send it to your phone:** Settings → GZreader → Send diagnostic log
 to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
 the file wherever you need it.
 
