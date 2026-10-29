@@ -67,6 +67,13 @@ stays the same. If your Grimmory admin set `ALLOWED_ORIGINS`, add
 `http://<kindle-ip>:8642` there too. Some providers only accept `https`
 redirect URIs for non-local addresses; check yours allows this one.
 
+## Browsing Grimmory
+
+The Grimmory tab lists Continue reading, Recently added, All books (A–Z),
+**Libraries**, **Authors** (with author search), **Series** (books in series
+order, with numbers) and Search. Audiobooks are left out. The tab next to it,
+**Downloaded** (download icon), is the books on the Kindle.
+
 ## Downloads
 
 Books download in a background process with a progress bar, so the Kindle

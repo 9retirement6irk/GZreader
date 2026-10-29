@@ -244,6 +244,27 @@ function Api:listBooks(params)
     return nil, err or ("http_" .. tostring(code))
 end
 
+--- GET /api/v1/app/libraries -> list of { id, name, bookCount, ... }
+function Api:listLibraries()
+    local code, data, err = self:call("GET", "/api/v1/app/libraries")
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- GET /api/v1/app/authors (paged; sort=name|bookCount..., search=...)
+function Api:listAuthors(params)
+    local code, data, err = self:call("GET", "/api/v1/app/authors" .. query(params))
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- GET /api/v1/app/series (paged; sort=name|bookCount|recentlyAdded...)
+function Api:listSeries(params)
+    local code, data, err = self:call("GET", "/api/v1/app/series" .. query(params))
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
 function Api:searchBooks(q, page, size)
     local code, data, err = self:call("GET", "/api/v1/app/books/search" .. query{ q = q, page = page or 0, size = size or 25 })
     if code == 200 and type(data) == "table" then return data end

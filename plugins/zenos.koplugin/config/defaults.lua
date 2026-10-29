@@ -177,7 +177,7 @@ local defaults = {
         show_labels = true,
         icon_size = 34,
         label_size = 20,
-        books_label = "Library",
+        books_label = "",  -- empty = "Downloaded" (Grimmory build)
         home_label = "Home",
         default_tab = "home",
         folder_path = "",
