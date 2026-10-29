@@ -91,6 +91,7 @@ function Grimmory:init()
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end
+                pcall(require("grimmory_shelfsync").run, self)
                 local idx = Index.load(self.store)
                 if idx then
                     pcall(self.relinkLibrary, self, idx)
@@ -214,6 +215,7 @@ function Grimmory:menuItems()
             end,
             separator = true,
         },
+        require("grimmory_shelfsync").menuItems(self),
         {
             text = _("Pre-size covers"),
             help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
@@ -758,35 +760,53 @@ function Grimmory:clearQueued(kind, book_id)
     if kind == "progress" then self.store.pending.progress[tostring(book_id)] = nil end
 end
 
+--- Send progress and reading sessions queued while offline. In the
+--- background (grimmory_async): sending a backlog can take many seconds.
 function Grimmory:flushPending()
     if self.flushing or not self.api:isPaired() or not NetworkMgr:isConnected() then return end
     local pending = self.store.pending
     if next(pending.progress) == nil and #pending.sessions == 0 then return end
     self.flushing = true
-    for book_id, body in pairs(pending.progress) do
-        local ok, _, code = self.api:putProgress(book_id, body)
-        if ok or code == 404 or code == 400 or code == 403 then
-            pending.progress[book_id] = nil -- sent, or the book is gone: drop it
+    local progress, sessions = {}, {}
+    for book_id, body in pairs(pending.progress) do progress[book_id] = body end
+    for i, body in ipairs(pending.sessions) do sessions[i] = body end
+    require("grimmory_async").run(self.api, function(api)
+        local sent, dropped, n_sessions = {}, {}, 0
+        for book_id, body in pairs(progress) do
+            local ok, _, code = api:putProgress(book_id, body)
+            if ok then sent[#sent + 1] = book_id
+            elseif code == 404 or code == 400 or code == 403 then dropped[#dropped + 1] = book_id -- the book is gone
+            else break end -- still offline; try again later
+        end
+        for _i, body in ipairs(sessions) do
+            local ok, _, code = api:postSession(body)
+            if ok or code == 400 or code == 404 then n_sessions = n_sessions + 1 else break end
+        end
+        return { sent = sent, dropped = dropped, sessions = n_sessions }
+    end, function(res)
+        self.flushing = nil
+        if type(res) ~= "table" then return end
+        for _i, book_id in ipairs(res.sent or {}) do
+            local body = progress[book_id]
+            -- only clear it if nothing newer was queued meanwhile
+            if pending.progress[book_id] == body then pending.progress[book_id] = nil end
             local entry = self.store.downloads[book_id]
-            if ok and entry and body.fileProgress then entry.last_pushed_pct = body.fileProgress.progressPercent end
-        else
-            break -- still offline; try again later
+            if entry and body and body.fileProgress then entry.last_pushed_pct = body.fileProgress.progressPercent end
         end
-    end
-    while #pending.sessions > 0 do
-        local ok, _, code = self.api:postSession(pending.sessions[1])
-        if ok or code == 400 or code == 404 then
-            table.remove(pending.sessions, 1)
-        else
-            break
+        for _i, book_id in ipairs(res.dropped or {}) do
+            if pending.progress[book_id] == progress[book_id] then pending.progress[book_id] = nil end
         end
-    end
-    self.flushing = nil
-    self:save()
+        for _i = 1, tonumber(res.sessions) or 0 do
+            if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
+        end
+        self:save()
+    end, "flush")
 end
 
 function Grimmory:onNetworkConnected()
     UIManager:scheduleIn(2, function() self:flushPending() end)
+    -- auto-download shelf (at most every 30 min)
+    UIManager:scheduleIn(6, function() pcall(require("grimmory_shelfsync").run, self) end)
 end
 
 ---------------------------------------------------------------- reader integration

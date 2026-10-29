@@ -147,37 +147,126 @@ function Audiobook.describe(book_id, info, primary_name)
         tracks = tracks, chapters = chapters, files = files }
 end
 
+local function needsConversion(t) return Engine.format(t.file) == "m4a" end
+
 --- M4B/M4A tracks are converted once into ADTS AAC chunks (the Kindle 3
 --- can decode AAC but can't open MP4 files): <file>.chunks/c0.aac, c1.aac…
---- plus index.json with each chunk's start time. Returns the chunk info
---- or nil, err. Runs in the download subprocess (or on play for books
---- downloaded before 1.0.13).
-function Audiobook.convertTrack(dir, t)
-    local Mp4 = require("grimmory_mp4")
-    local src = dir .. "/" .. t.file
-    local cdir = src .. ".chunks"
-    mkdirp(cdir)
-    local res, err = Mp4.convert(src, cdir)
-    if not res then return nil, err end
-    local info = { dir = t.file .. ".chunks", starts = res.starts, durationMs = res.durationMs, count = res.count }
-    local f = io.open(cdir .. "/index.json", "wb")
-    if not f then return nil, "cannot write index" end
-    f:write(JSON.encode(info))
-    f:close()
-    os.remove(src)
-    return info
-end
-
+--- plus index.json with each chunk's start time.
+---
+--- The conversion runs as its own small LuaJIT process at the lowest
+--- priority (grimmory_mp4.lua as a script), not in a fork of KOReader: a
+--- fork's copy of KOReader's memory gets duplicated page by page as its
+--- garbage collector runs, and on a Kindle 3 that ran out of memory and
+--- restarted the Kindle's software (1.0.21).
 local function readChunks(dir, t)
     local f = io.open(dir .. "/" .. t.file .. ".chunks/index.json", "rb")
     if not f then return nil end
     local ok, data = pcall(JSON.decode, f:read("*a"))
     f:close()
-    return ok and type(data) == "table" and data.starts and data or nil
+    if not (ok and type(data) == "table" and data.starts) then return nil end
+    data.dir = data.dir or (t.file .. ".chunks")
+    return data
 end
 Audiobook.readChunks = readChunks
 
-local function needsConversion(t) return Engine.format(t.file) == "m4a" end
+local function shellQuote(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
+
+function Audiobook.luajit()
+    if Audiobook.LUAJIT then return Audiobook.LUAJIT end
+    return lfs.attributes("./luajit", "mode") == "file" and "./luajit" or "luajit"
+end
+
+local nice_prefix
+local function nice()
+    if nice_prefix == nil then
+        nice_prefix = os.execute("nice -n 19 true >/dev/null 2>&1") == 0 and "nice -n 19 " or ""
+    end
+    return nice_prefix
+end
+
+--- Start converting one track in the background. Returns the progress file.
+function Audiobook.startConversion(dir, t)
+    local src = dir .. "/" .. t.file
+    local cdir = src .. ".chunks"
+    mkdirp(cdir)
+    os.remove(cdir .. "/index.json")
+    local prog = cdir .. "/progress"
+    os.remove(prog)
+    local root = Engine.root or "plugins/grimmory.koplugin"
+    local script = root .. "/grimmory_mp4.lua"
+    local cmd = string.format("%s%s %s %s %s %s", nice(), Audiobook.luajit(), shellQuote(script),
+        shellQuote(src), shellQuote(cdir), shellQuote(prog))
+    os.execute(string.format("(%s >/dev/null 2>&1; echo $? > %s) >/dev/null 2>&1 &", cmd, shellQuote(prog .. ".exit")))
+    return prog
+end
+
+--- Convert the tracks that need it, one after another, with a progress bar.
+--- on_done(true) or on_done(false, err).
+function Audiobook.prepare(dir, tracks, title, on_done)
+    local todo, total = {}, 0
+    for _i, t in ipairs(tracks) do
+        if needsConversion(t) and not readChunks(dir, t) and lfs.attributes(dir .. "/" .. t.file, "mode") == "file" then
+            todo[#todo + 1] = t
+            total = total + (lfs.attributes(dir .. "/" .. t.file, "size") or 0)
+        end
+    end
+    if #todo == 0 then return on_done(true) end
+    local awake_key = "audiobook-prepare-" .. dir
+    Awake.hold(awake_key)
+    local dialog = ProgressbarDialog:new{
+        title = T(_("Preparing “%1” for the Kindle…"), title or ""),
+        subtitle = _("Done once per audiobook. Press any key to hide; it carries on."),
+        progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
+    }
+    dialog.dismiss_callback = function() dialog = nil end
+    dialog:show()
+    Log.info("audiobook: preparing", #todo, "file(s) for the Kindle,", total, "bytes")
+    local started = os.time()
+    local i, before, prog, last_change, last_text = 0, 0, nil, os.time(), nil
+    local function finish(ok, err)
+        Awake.release(awake_key)
+        if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
+        if ok then Log.info("audiobook: prepared in", (os.time() - started) .. "s")
+        else Log.warn("audiobook: preparing failed:", tostring(err)) end
+        on_done(ok, err)
+    end
+    local poll
+    local function nextTrack()
+        i = i + 1
+        local t = todo[i]
+        if not t then return finish(true) end
+        prog = Audiobook.startConversion(dir, t)
+        last_change = os.time()
+        UIManager:scheduleIn(1, poll)
+    end
+    poll = function()
+        local t = todo[i]
+        local f = io.open(prog, "rb")
+        local text = f and f:read("*l")
+        if f then f:close() end
+        if text and text ~= last_text then last_text, last_change = text, os.time() end
+        local d = text and tonumber(text:match("^(%d+) %d+$"))
+        if d and dialog then dialog:reportProgress(math.min(total, before + d)) end
+        local err = text and text:match("^error (.*)$")
+        if err then return finish(false, err) end
+        if text and text:match("^done") then
+            local c = readChunks(dir, t)
+            if not c then return finish(false, "no index") end
+            os.remove(dir .. "/" .. t.file) -- the M4B itself isn't needed any more
+            os.remove(prog); os.remove(prog .. ".exit")
+            before = before + (t.size or lfs.attributes(dir .. "/" .. t.file, "size") or 0)
+            return nextTrack()
+        end
+        local ef = io.open(prog .. ".exit", "rb")
+        if ef then
+            local code = ef:read("*l"); ef:close()
+            return finish(false, "the conversion stopped (exit " .. tostring(code) .. ")")
+        end
+        if os.time() - last_change > 300 then return finish(false, "no progress for 5 minutes") end
+        UIManager:scheduleIn(1, poll)
+    end
+    nextTrack()
+end
 
 --- Download an audiobook (all tracks) in a background process, resuming
 --- interrupted transfers, then prepare M4B audio for the Kindle.
@@ -217,16 +306,6 @@ function Audiobook.download(plugin, summary, on_done, attempt)
                 end
                 os.rename(part, final)
             end
-            if needsConversion(t) and not readChunks(dir, t) then
-                local fh = io.open(dir .. "/.converting", "wb")
-                if fh then fh:write(t.file); fh:close() end
-                local cok, cerr = Audiobook.convertTrack(dir, t)
-                os.remove(dir .. "/.converting")
-                if not cok then
-                    ffiutil.writeToFD(wfd, "err could not prepare the audio: " .. tostring(cerr), true)
-                    return
-                end
-            end
         end
         ffiutil.writeToFD(wfd, "ok", true)
     end, true)
@@ -241,7 +320,6 @@ function Audiobook.download(plugin, summary, on_done, attempt)
     }
     dialog.dismiss_callback = function() dialog = nil end
     dialog:show()
-    local converting_shown
     local function poll()
         local have = 0
         for _i, t in ipairs(book.tracks) do
@@ -250,13 +328,6 @@ function Audiobook.download(plugin, summary, on_done, attempt)
                 or (readChunks(dir, t) and (t.size or 0)) or 0)
         end
         if dialog then dialog:reportProgress(total > 0 and math.min(have, total) or have) end
-        if not converting_shown and lfs.attributes(dir .. "/.converting", "mode") then
-            converting_shown = true
-            Log.info("audiobook: preparing M4B audio for the Kindle", summary.id)
-            if dialog then dialog:setStatus(_("Downloaded. Preparing the audio for the Kindle…")) else
-                UIManager:show(InfoMessage:new{ text = _("Downloaded. Preparing the audio for the Kindle (a few minutes for a long book)…"), timeout = 6 })
-            end
-        end
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         Awake.release(awake_key)
         require("grimmory_net").release(awake_key)
@@ -270,14 +341,17 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             end
             return on_done(nil, (res:match("^err (.*)$") or res):gsub(" %(resumable%)", ""))
         end
-        Audiobook.finishLayout(dir, book)
-        local f = io.open(dir .. "/audiobook.json", "wb")
-        if f then f:write(JSON.encode(book)); f:close() end
-        plugin.store.audiobooks = plugin.store.audiobooks or {}
-        plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
-        plugin:save()
         Log.info("audiobook downloaded", summary.id)
-        on_done(Audiobook.load(plugin, summary.id))
+        Audiobook.prepare(dir, book.tracks, book.title, function(pok, perr)
+            if not pok then return on_done(nil, T(_("Couldn't prepare the audio for the Kindle: %1"), tostring(perr))) end
+            Audiobook.finishLayout(dir, book)
+            local f = io.open(dir .. "/audiobook.json", "wb")
+            if f then f:write(JSON.encode(book)); f:close() end
+            plugin.store.audiobooks = plugin.store.audiobooks or {}
+            plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
+            plugin:save()
+            on_done(Audiobook.load(plugin, summary.id))
+        end)
     end
     UIManager:scheduleIn(1, poll)
 end
@@ -371,28 +445,40 @@ function Player:pull(on_done)
 end
 
 
---- What the engine plays for track `t`, and its format family.
+--- Record converted tracks in audiobook.json.
+function Player:saveLayout()
+    local dir = self.book.dir
+    Audiobook.finishLayout(dir, self.book)
+    local f = io.open(dir .. "/audiobook.json", "wb")
+    if f then
+        local copy = {}
+        for k, v in pairs(self.book) do if k ~= "dir" then copy[k] = v end end
+        f:write(JSON.encode(copy)); f:close()
+    end
+end
+
+--- What the engine plays for track `t`, and its format family (nil while
+--- the track is still being prepared).
 function Player:source(t, in_track)
     local dir = self.book.dir
     if not t.chunks and needsConversion(t) then
-        -- downloaded before GZreader 1.0.13: convert now (once)
-        local c = readChunks(dir, t)
-        if not c and lfs.attributes(dir .. "/" .. t.file, "mode") == "file" then
-            UIManager:show(InfoMessage:new{ text = _("Preparing the audio for the Kindle (once)…"), timeout = 2 })
-            UIManager:forceRePaint()
-            local err
-            c, err = Audiobook.convertTrack(dir, t)
-            if not c then Log.warn("audiobook: M4B conversion failed:", tostring(err)) end
+        -- downloaded before GZreader 1.0.13 (or preparing was interrupted)
+        if not readChunks(dir, t) then
+            if self.preparing then return nil end
+            self.preparing = true
+            Audiobook.prepare(dir, self.book.tracks, self.book.title, function(ok, err)
+                self.preparing = nil
+                if not ok then
+                    UIManager:show(InfoMessage:new{ text = T(_("Couldn't prepare the audio for the Kindle: %1"), tostring(err)) })
+                    return
+                end
+                self:saveLayout()
+                self:play()
+                if self.screen then self.screen:refresh() end
+            end)
+            return nil
         end
-        if c then
-            Audiobook.finishLayout(dir, self.book)
-            local f = io.open(dir .. "/audiobook.json", "wb")
-            if f then
-                local copy = {}
-                for k, v in pairs(self.book) do if k ~= "dir" then copy[k] = v end end
-                f:write(JSON.encode(copy)); f:close()
-            end
-        end
+        self:saveLayout()
     end
     if t.chunks then
         return { kind = "chunks", dir = dir .. "/" .. t.chunks.dir, starts = t.chunks.starts, offset_ms = in_track }, "aac"
@@ -407,6 +493,7 @@ function Player:play()
     local track, in_track = Audiobook.locate(self.book, g)
     local t = self.book.tracks[track]
     local src, fmt = self:source(t, in_track)
+    if not src then return false end
     local p = Engine.chosen(fmt)
     if not p then
         UIManager:show(ConfirmBox:new{

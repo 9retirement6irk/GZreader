@@ -7,12 +7,23 @@ takes directly, so an audiobook is converted once after download: each AAC
 frame from the MP4 sample table gets a 7-byte ADTS header. The output is
 split into chunk files of ~15 seconds (c0.aac, c1.aac, …), so playback can
 start at any chunk: that is how GZreader resumes and seeks.
+
+Memory: the sample-size and chunk-offset tables of a long book are millions
+of entries, so they're read from the file in small blocks as the conversion
+goes, never loaded whole. Output is written one MP4 chunk at a time.
+
+Run it as its own process (that's how GZreader uses it, at low priority):
+    luajit grimmory_mp4.lua <in.m4b> <out-dir> <progress-file>
+It writes "<done-bytes> <total-bytes>" to the progress file as it goes, and
+<out-dir>/index.json at the end. A fresh small process instead of a fork of
+KOReader: a forked copy would duplicate KOReader's whole memory as the
+garbage collector touches it, which ran the Kindle 3 out of memory.
 ]]
 
 local ffi = require("ffi")
 local bit = require("bit")
 
-local Mp4 = { CHUNK_SECONDS = 15 }
+local Mp4 = { CHUNK_SECONDS = 15, BLOCK = 65536 }
 
 local function u32(s, i)
     local a, b, c, d = s:byte(i, i + 3)
@@ -20,10 +31,33 @@ local function u32(s, i)
 end
 local function u64(s, i) return u32(s, i) * 4294967296 + u32(s, i + 4) end
 
-local CONTAINERS = { moov = true, trak = true, mdia = true, minf = true, stbl = true, udta = false }
+local CONTAINERS = { moov = true, trak = true, mdia = true, minf = true, stbl = true }
+
+--- Sequential reader of a table of `width`-byte big-endian entries starting
+--- at file offset `base`, through its own file handle and a small buffer.
+local function tableReader(path, base, width)
+    local f = assert(io.open(path, "rb"))
+    local buf, buf_first, buf_n = "", 0, 0 -- entries [buf_first, buf_first + buf_n)
+    local per = math.floor(Mp4.BLOCK / width)
+    local r = {}
+    function r.get(i) -- 0-based
+        if i < buf_first or i >= buf_first + buf_n then
+            buf_first = i
+            f:seek("set", base + i * width)
+            buf = f:read(per * width) or ""
+            buf_n = math.floor(#buf / width)
+            if buf_n == 0 then return nil end
+        end
+        local o = (i - buf_first) * width + 1
+        if width == 8 then return u64(buf, o) end
+        return u32(buf, o)
+    end
+    function r.close() f:close() end
+    return r
+end
 
 --- Read the box tree we need: for the first sound track, its timescale,
---- sample table (stts, stsc, stsz, stco/co64) and the AAC config (esds).
+--- where its sample tables are, and the AAC config (esds).
 function Mp4.parse(path)
     local f, err = io.open(path, "rb")
     if not f then return nil, err end
@@ -31,8 +65,17 @@ function Mp4.parse(path)
     local tracks, cur = {}, nil
 
     local function readAt(pos, n) f:seek("set", pos); return f:read(n) or "" end
+    local function readTable(body, entry_words) -- small tables (stts, stsc): into ffi arrays
+        local d = readAt(body, 8)
+        local n = u32(d, 5)
+        local arr = ffi.new("uint32_t[?]", math.max(1, n * entry_words))
+        local rd = tableReader(path, body + 8, 4)
+        for k = 0, n * entry_words - 1 do arr[k] = rd.get(k) or 0 end
+        rd.close()
+        return arr, n
+    end
 
-    local function walk(start, stop, depth)
+    local function walk(start, stop)
         local pos = start
         while pos + 8 <= stop do
             local hdr = readAt(pos, 16)
@@ -46,9 +89,9 @@ function Mp4.parse(path)
             if btype == "trak" then
                 cur = {}
                 tracks[#tracks + 1] = cur
-                walk(body, body_end, depth + 1)
+                walk(body, body_end)
             elseif CONTAINERS[btype] then
-                walk(body, body_end, depth + 1)
+                walk(body, body_end)
             elseif cur then
                 if btype == "hdlr" then
                     cur.handler = readAt(body + 8, 4)
@@ -57,7 +100,6 @@ function Mp4.parse(path)
                     if d:byte(1) == 1 then cur.timescale, cur.duration = u32(d, 21), u64(d, 25)
                     else cur.timescale, cur.duration = u32(d, 13), u32(d, 17) end
                 elseif btype == "stsd" then
-                    -- entry: [size type] 6 reserved, 2 ref idx, 8 reserved, 2 channels, 2 bits, 4, 4 rate -> children
                     local d = readAt(body, math.min(bsize - hlen, 4096))
                     cur.codec = d:sub(13, 16)
                     local esds = d:find("esds", 1, true)
@@ -80,43 +122,31 @@ function Mp4.parse(path)
                         end
                     end
                 elseif btype == "stts" then
-                    local d = readAt(body, bsize - hlen)
-                    local n = u32(d, 5)
-                    cur.stts = {}
-                    for k = 0, n - 1 do cur.stts[#cur.stts + 1] = { u32(d, 9 + k * 8), u32(d, 13 + k * 8) } end
+                    cur.stts, cur.stts_n = readTable(body, 2)
                 elseif btype == "stsc" then
-                    local d = readAt(body, bsize - hlen)
-                    local n = u32(d, 5)
-                    cur.stsc = {}
-                    for k = 0, n - 1 do cur.stsc[#cur.stsc + 1] = { u32(d, 9 + k * 12), u32(d, 13 + k * 12) } end
+                    cur.stsc, cur.stsc_n = readTable(body, 3)
                 elseif btype == "stsz" then
                     local d = readAt(body, 12)
                     local fixed, n = u32(d, 5), u32(d, 9)
                     cur.count = n
                     cur.fixed_size = fixed > 0 and fixed or nil
-                    if fixed == 0 then
-                        local raw = readAt(body + 12, n * 4)
-                        local sizes = ffi.new("uint32_t[?]", n)
-                        for k = 0, n - 1 do sizes[k] = u32(raw, 1 + k * 4) end
-                        cur.sizes = sizes
-                    end
+                    cur.stsz_at = body + 12
                 elseif btype == "stco" or btype == "co64" then
-                    local d = readAt(body, bsize - hlen)
-                    local n = u32(d, 5)
-                    local offs = ffi.new("double[?]", n)
-                    for k = 0, n - 1 do
-                        offs[k] = btype == "stco" and u32(d, 9 + k * 4) or u64(d, 9 + k * 8)
-                    end
-                    cur.chunks, cur.chunk_count = offs, n
+                    local d = readAt(body, 8)
+                    cur.chunk_count = u32(d, 5)
+                    cur.stco_at, cur.stco_w = body + 8, btype == "stco" and 4 or 8
                 end
             end
             pos = body_end
         end
     end
-    walk(0, size, 0)
+    walk(0, size)
     f:close()
     for _i, t in ipairs(tracks) do
-        if t.handler == "soun" and t.codec == "mp4a" and t.asc and t.count and t.chunks then return t end
+        if t.handler == "soun" and t.codec == "mp4a" and t.asc and t.count and t.stco_at and t.stsc and t.stts then
+            t.path, t.file_size = path, size
+            return t
+        end
     end
     return nil, "no AAC audio track found"
 end
@@ -143,7 +173,7 @@ function Mp4.adtsHeader(ot, sfi, ch, payload_len)
 end
 
 --- Convert `path` into ADTS chunk files out_dir/c0.aac, c1.aac, …
---- progress(done_bytes) is called now and then. Returns
+--- progress(done_bytes, total_bytes) is called now and then. Returns
 --- { starts = { ms… }, durationMs, count } or nil, err.
 function Mp4.convert(path, out_dir, progress)
     local t, err = Mp4.parse(path)
@@ -151,18 +181,19 @@ function Mp4.convert(path, out_dir, progress)
     local ot, sfi, ch = Mp4.config(t.asc)
     local inp = io.open(path, "rb")
     if not inp then return nil, "cannot open " .. path end
+    local sizes = not t.fixed_size and tableReader(path, t.stsz_at, 4) or nil
+    local offsets = tableReader(path, t.stco_at, t.stco_w)
     local chunk_len = Mp4.CHUNK_SECONDS * t.timescale
     -- per-sample duration from stts
-    local stts_i, stts_left = 1, t.stts and t.stts[1] and t.stts[1][1] or 0
+    local stts_i, stts_left = 0, t.stts_n > 0 and t.stts[0] or 0
     local function nextDuration()
-        while t.stts[stts_i] and stts_left == 0 do
+        while stts_i < t.stts_n and stts_left == 0 do
             stts_i = stts_i + 1
-            stts_left = t.stts[stts_i] and t.stts[stts_i][1] or 0
+            stts_left = stts_i < t.stts_n and t.stts[stts_i * 2] or 0
         end
-        local e = t.stts[stts_i]
-        if not e then return 1024 end
+        if stts_i >= t.stts_n then return 1024 end
         stts_left = stts_left - 1
-        return e[2]
+        return t.stts[stts_i * 2 + 1]
     end
     local starts, out, out_n = {}, nil, -1
     local time, sample, done = 0, 0, 0
@@ -173,37 +204,81 @@ function Mp4.convert(path, out_dir, progress)
         out = io.open(out_dir .. "/c" .. out_n .. ".aac", "wb")
         return out ~= nil
     end
-    if not openChunk() then inp:close(); return nil, "cannot write to " .. out_dir end
-    local stsc_i = 1
+    local function fail(msg)
+        if out then out:close() end
+        inp:close(); offsets.close(); if sizes then sizes.close() end
+        return nil, msg
+    end
+    if not openChunk() then return fail("cannot write to " .. out_dir) end
+    local stsc_i = 0
+    local next_report = 0
     for c = 0, t.chunk_count - 1 do
         -- samples per chunk from stsc (first_chunk is 1-based)
-        while t.stsc[stsc_i + 1] and t.stsc[stsc_i + 1][1] <= c + 1 do stsc_i = stsc_i + 1 end
-        local n = t.stsc[stsc_i][2]
-        local total = 0
+        while stsc_i + 1 < t.stsc_n and t.stsc[(stsc_i + 1) * 3] <= c + 1 do stsc_i = stsc_i + 1 end
+        local n = t.stsc[stsc_i * 3 + 1]
+        local chunk_sizes, total = {}, 0
         for k = 0, n - 1 do
             if sample + k >= t.count then break end
-            total = total + (t.fixed_size or t.sizes[sample + k])
+            local sz = t.fixed_size or sizes.get(sample + k) or 0
+            chunk_sizes[#chunk_sizes + 1] = sz
+            total = total + sz
         end
-        inp:seek("set", t.chunks[c])
+        local off = offsets.get(c)
+        if not off then break end
+        inp:seek("set", off)
         local data = inp:read(total) or ""
-        local pos = 1
-        for k = 0, n - 1 do
-            if sample >= t.count then break end
-            local sz = t.fixed_size or t.sizes[sample]
+        local pos, pieces = 1, {}
+        for k = 1, #chunk_sizes do
+            local sz = chunk_sizes[k]
             if time >= (out_n + 1) * chunk_len then
-                if not openChunk() then inp:close(); return nil, "cannot write chunk" end
+                if #pieces > 0 then out:write(table.concat(pieces)); pieces = {} end
+                if not openChunk() then return fail("cannot write chunk") end
             end
-            out:write(Mp4.adtsHeader(ot, sfi, ch, sz), data:sub(pos, pos + sz - 1))
+            pieces[#pieces + 1] = Mp4.adtsHeader(ot, sfi, ch, sz)
+            pieces[#pieces + 1] = data:sub(pos, pos + sz - 1)
             pos = pos + sz
             time = time + nextDuration()
             sample = sample + 1
         end
+        if #pieces > 0 and not out:write(table.concat(pieces)) then return fail("disk full?") end
         done = done + total
-        if progress and c % 200 == 0 then progress(done) end
+        if progress and done >= next_report then
+            progress(done, t.file_size)
+            next_report = done + math.max(256 * 1024, math.floor(t.file_size / 200))
+        end
     end
     if out then out:close() end
-    inp:close()
+    inp:close(); offsets.close(); if sizes then sizes.close() end
+    if progress then progress(t.file_size, t.file_size) end
     return { starts = starts, durationMs = math.floor(time * 1000 / t.timescale), count = out_n + 1 }
+end
+
+--- index.json for a conversion result (no JSON library needed here).
+function Mp4.indexJson(res)
+    local s = {}
+    for i, v in ipairs(res.starts) do s[i] = string.format("%d", v) end
+    return string.format('{"starts":[%s],"durationMs":%d,"count":%d}', table.concat(s, ","), res.durationMs, res.count)
+end
+
+-- Command line: luajit grimmory_mp4.lua <in> <out-dir> <progress-file>
+if type(arg) == "table" and type(arg[0]) == "string" and arg[0]:match("grimmory_mp4%.lua$") and arg[1] then
+    local input, out_dir, prog = arg[1], arg[2], arg[3]
+    local function report(text)
+        if not prog then return end
+        local f = io.open(prog .. ".tmp", "wb")
+        if f then f:write(text, "\n"); f:close(); os.rename(prog .. ".tmp", prog) end
+    end
+    local ok, res, cerr = pcall(Mp4.convert, input, out_dir, function(d, t) report(d .. " " .. t) end)
+    if not ok or not res then
+        report("error " .. tostring(ok and cerr or res))
+        os.exit(1)
+    end
+    local f = io.open(out_dir .. "/index.json.tmp", "wb")
+    if not f then report("error cannot write index"); os.exit(1) end
+    f:write(Mp4.indexJson(res)); f:close()
+    os.rename(out_dir .. "/index.json.tmp", out_dir .. "/index.json")
+    report("done " .. res.count)
+    os.exit(0)
 end
 
 return Mp4

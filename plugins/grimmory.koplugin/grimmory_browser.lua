@@ -113,6 +113,7 @@ function Browser:rootItems()
         { text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
         { text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
         { text = _("Libraries"), callback = function() self:openLibraries() end },
+        { text = _("Shelves"), callback = function() self:openShelves() end },
         { text = _("Authors"), callback = function() self:openAuthors() end },
         { text = _("Series"), callback = function() self:openSeries() end },
         { text = _("Search…"), callback = function() self:promptSearch() end },
@@ -282,6 +283,31 @@ function Browser:openLibraries()
         end
         self:push(_("Libraries"), sortedByName(items))
     end)
+end
+
+--- Shelves and magic shelves from Grimmory.
+function Browser:openShelves()
+    local msg = busy(_("Loading…"))
+    local shelves, err = self.api:listShelves()
+    UIManager:close(msg)
+    if not shelves then return self.plugin:showError(err) end
+    local items = {}
+    for _i, sh in ipairs(shelves) do
+        if sh.id then
+            local name = type(sh.name) == "string" and sh.name or T(_("Shelf %1"), sh.id)
+            items[#items + 1] = {
+                text = name,
+                sort_key = (sh.magic and "1" or "0") .. name:lower(),
+                mandatory = sh.magic and _("smart shelf") or countText(sh.bookCount),
+                callback = function()
+                    local params = { sort = "title", dir = "asc" }
+                    if sh.magic then params.magicShelfId = sh.id else params.shelfId = sh.id end
+                    self:openPaged(name, params)
+                end,
+            }
+        end
+    end
+    self:push(_("Shelves"), sortedByName(items))
 end
 
 function Browser:openAuthors(search, replace)

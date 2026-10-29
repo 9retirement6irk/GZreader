@@ -6,6 +6,7 @@ token (30 days, replaced on every refresh). Only the tokens are stored on the
 device; the account password is never written to disk.
 ]]
 
+local Gzip = require("grimmory_gzip")
 local JSON = require("json")
 local http = require("socket.http")
 local lfs = require("libs/libkoreader-lfs")
@@ -63,6 +64,9 @@ local function rawRequest(method, full_url, opts)
     end
     local chunks = {}
     local sink = opts.sink or socketutil.table_sink(chunks)
+    -- JSON replies: ask for gzip (5-10x smaller to receive and decrypt)
+    local gzip = not opts.sink and Gzip.available()
+    if gzip then headers["Accept-Encoding"] = "gzip" end
     if opts.timeouts then
         socketutil:set_timeout(opts.timeouts[1], opts.timeouts[2])
     else
@@ -92,6 +96,11 @@ local function rawRequest(method, full_url, opts)
         return nil, nil, nil, code
     end
     local raw = table.concat(chunks)
+    local enc = type(resp_headers) == "table" and (resp_headers["content-encoding"] or resp_headers["Content-Encoding"])
+    if gzip and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
+        local plain, zerr = Gzip.inflate(raw)
+        if plain then raw = plain else Log.warn("HTTP", method, full_url, "gzip:", tostring(zerr)) end
+    end
     local data
     if raw ~= "" and not opts.sink then
         local ok, decoded = pcall(JSON.decode, raw)
@@ -267,6 +276,22 @@ function Api:listLibraries()
         return nil, e2 or ("http_" .. tostring(c2))
     end
     return nil, err or ("http_" .. tostring(code))
+end
+
+--- GET /api/v1/app/shelves and /api/v1/app/shelves/magic -> both lists
+--- (magic ones marked magic = true).
+function Api:listShelves()
+    local code, data, err = self:call("GET", "/api/v1/app/shelves", { timeouts = { 10, 20 } })
+    if code ~= 200 or type(data) ~= "table" then return nil, err or ("http_" .. tostring(code)) end
+    local out = {}
+    for _i, s in ipairs(data) do if type(s) == "table" then out[#out + 1] = s end end
+    local c2, magic = self:call("GET", "/api/v1/app/shelves/magic", { timeouts = { 10, 20 } })
+    if c2 == 200 and type(magic) == "table" then
+        for _i, s in ipairs(magic) do
+            if type(s) == "table" then s.magic = true; out[#out + 1] = s end
+        end
+    end
+    return out
 end
 
 --- GET /api/v1/app/authors (paged; sort=name|bookCount..., search=...)

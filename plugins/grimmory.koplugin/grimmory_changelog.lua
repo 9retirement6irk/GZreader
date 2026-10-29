@@ -2,6 +2,18 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.23",
+        changes = {
+            "Audiobooks: fixed the Kindle restarting while preparing an M4B. The conversion now runs as its own small, lowest-priority process (about 8 MB of memory for a long book) instead of a copy of GZreader, and reads the book's sample tables bit by bit instead of all at once.",
+            "Audiobooks: the preparing step has its own progress bar (percentage, MB done of the total, speed, time left). M4Bs downloaded earlier are prepared, with the same bar, the first time you press play.",
+            "Syncing no longer freezes the page: progress sent while reading, Grimmory's position fetched when a book opens or wakes, and queued updates now go in a background process.",
+            "Grimmory's JSON replies are now requested gzip-compressed: lists and the library index arrive 5-10x smaller (less to receive and decrypt on the Kindle 3).",
+            "Shelves: Grimmory tab → Shelves lists your shelves and smart shelves.",
+            "Auto-download a shelf (Settings → GZreader): books you put on a Grimmory shelf, for example “Kindle”, download by themselves in the background when Wi-Fi is on (at most every 30 minutes), or right away with “Download new books from the shelf now”.",
+            "Download progress also shows the speed and time left.",
+        },
+    },
+    {
         version = "1.0.22",
         changes = {
             "Faster start: all of GZreader's Lua code (KOReader, ZenOS, the plugins) now ships precompiled for the Kindle's LuaJIT, so it isn't parsed on every start. Loading is about 4 times faster across the board and up to 15 times for the big ZenOS files.",

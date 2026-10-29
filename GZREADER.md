@@ -132,6 +132,15 @@ folder was replaced), the books are re-linked to Grimmory from it, or by file
 name from the library index, so progress sync and "on Kindle" marks keep
 working.
 
+## Shelves and auto-download
+
+Grimmory tab → **Shelves** lists your shelves and smart (magic) shelves.
+Settings → GZreader → **Auto-download shelf** picks one: books on it that
+aren't on the Kindle download in the background through the download queue
+when Wi-Fi connects (at most every 30 minutes) and with "Download new books
+from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
+krisboho/connecto-library's Shelf Sync.)
+
 ## Progress sync
 
 Native: Grimmory's own reading-progress API (the web reader's), not its
@@ -141,7 +150,9 @@ KOReader-compatible endpoint.
 - EPUB: chapter (spine file), position in the chapter and whole-book
   percentage. PDFs/comics: page. FB2/MOBI/AZW3: percentage.
 - Pulled on open and wake; pushed every 10 page turns (or 3 minutes), on
-  close and on sleep. Forward moves from other devices apply silently; going
+  close and on sleep. Pulls, page-turn pushes and queued updates run in a
+  short-lived background process one at a time (`grimmory_async.lua`), so
+  the page never waits for the network; JSON replies are gzip-compressed. Forward moves from other devices apply silently; going
   back asks. Offline updates are queued and sent when Wi‑Fi returns.
   Sync jumps are not added to the Back history.
 - Reading sessions (30 s or longer) go to Grimmory's reading statistics.
@@ -207,6 +218,13 @@ asks which you heard and remembers it.
 
 Downloads use Grimmory's audiobook stream endpoints and resume with HTTP
 Range after a dropped connection or timeout.
+
+The conversion runs as a separate `luajit grimmory_mp4.lua <in> <dir>
+<progress>` process at nice 19 (~8 MB for a long book; sample tables are
+read in 64 KB blocks), with a progress bar fed from its progress file. A
+fork of KOReader isn't used for it: the fork's copy of KOReader's heap gets
+duplicated page by page as its garbage collector runs, which ran the
+Kindle 3 out of memory in 1.0.21.
 
 ## Sleep screen
 

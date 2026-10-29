@@ -40,6 +40,9 @@ a built-in connection to a self-hosted **Grimmory** book server.
   KOReader sync endpoint. Pick up on the Kindle where you left off on the web, and the
   other way round.
 - **Bookmarks** sync both ways, deletions included.
+- **Shelves**, and **auto-download a shelf**: put books on a Grimmory shelf and
+  they land on the Kindle by themselves.
+- Syncing happens in the background: the page never waits for the network.
 - **Works offline:** changes are saved on the Kindle and sent when Wi‑Fi is back.
 - Reading sessions feed Grimmory's reading statistics.
 

@@ -23,6 +23,7 @@ local ConfirmBox = require("ui/widget/confirmbox")
 local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local NetworkMgr = require("ui/network/manager")
+local Async = require("grimmory_async")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local Log = require("grimmory_log")
@@ -269,7 +270,19 @@ function Sync:pull(interactive)
         return
     end
     self.plugin:flushPending()
-    local book, err = self.api:getBook(self.book_id)
+    if interactive then
+        local book, err = self.api:getBook(self.book_id)
+        return self:applyRemote(book, true, err)
+    end
+    -- opening / waking: fetch in the background so the page shows right away
+    Async.call(self.api, "getBook", { self.book_id }, function(book, err)
+        if not self.ui.document or self.plugin.sync ~= self then return end
+        self:applyRemote(book, false, err)
+    end)
+end
+
+--- Act on Grimmory's record of the book (from pull).
+function Sync:applyRemote(book, interactive, err)
     if not book then
         if interactive then self.plugin:showError(err) end
         return
@@ -327,7 +340,7 @@ function Sync:progressBody(p)
     return { fileProgress = fp }
 end
 
-function Sync:push(force)
+function Sync:push(force, background)
     if not self.entry.file_id or not self.ui.document then return end
     local p = self:localPosition()
     local last = num(self.entry.last_pushed_pct)
@@ -341,19 +354,25 @@ function Sync:push(force)
         self.plugin:queue("progress", self.book_id, body)
         return
     end
-    local ok, perr = self.api:putProgress(self.book_id, body)
-    Log.info("sync push book", self.book_id, p.pct .. "%", p.href or "", ok and "ok" or ("queued: " .. tostring(perr)))
-    if ok then
-        self.entry.last_pushed_pct = p.pct
-        self.entry.last_pushed_href = p.href
-        self.plugin:clearQueued("progress", self.book_id)
-        -- we're evidently online: send anything queued while offline (the
-        -- Kindle can bring Wi-Fi up without KOReader announcing it)
-        UIManager:nextTick(function() self.plugin:flushPending() end)
-    else
-        self.plugin:queue("progress", self.book_id, body)
+    local function done(ok, perr)
+        Log.info("sync push book", self.book_id, p.pct .. "%", p.href or "", ok and "ok" or ("queued: " .. tostring(perr)))
+        if ok then
+            self.entry.last_pushed_pct = p.pct
+            self.entry.last_pushed_href = p.href
+            self.plugin:clearQueued("progress", self.book_id)
+            -- we're evidently online: send anything queued while offline (the
+            -- Kindle can bring Wi-Fi up without KOReader announcing it)
+            UIManager:nextTick(function() self.plugin:flushPending() end)
+        else
+            self.plugin:queue("progress", self.book_id, body)
+        end
+        self.plugin:save()
     end
-    self.plugin:save()
+    if background then
+        -- page turns: don't make the page wait for Grimmory
+        return Async.call(self.api, "putProgress", { self.book_id, body }, done)
+    end
+    done(self.api:putProgress(self.book_id, body))
 end
 
 ---------------------------------------------------------------- sessions
@@ -400,7 +419,7 @@ function Sync:onPageTurned()
     if not self.plugin:syncEnabled() then return end
     if self.pages_since_push >= PUSH_EVERY_PAGES
             or os.time() - self.last_push_time >= PUSH_EVERY_SECONDS then
-        if NetworkMgr:isConnected() then self:push(false) end
+        if NetworkMgr:isConnected() then self:push(false, true) end
     end
 end
 
