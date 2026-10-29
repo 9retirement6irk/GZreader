@@ -14,8 +14,13 @@ local Log = {
     path = nil,
 }
 
+-- Size tracked in memory (checked on disk once per run), so a log line is
+-- one open + write, not two opens.
+local size_known
+
 function Log.init(dir)
     Log.path = dir .. "/grimmory.log"
+    size_known = nil
 end
 
 local SECRET_KEYS = {
@@ -28,6 +33,8 @@ function Log.redact(s)
     s = tostring(s)
     s = s:gsub("([Bb]earer%s+)[%w%-%._~+/=]+", "%1<redacted>")
     s = s:gsub("(/pair/)%x+", "%1<token>")
+    -- every pattern below needs "=" or a quoted key: most lines have neither
+    if not s:find("=", 1, true) and not s:find('"', 1, true) then return s end
     for _, k in ipairs(SECRET_KEYS) do
         -- key=value in query strings / form bodies
         s = s:gsub("([?&]" .. k .. "=)[^&%s\"]*", "%1<redacted>")
@@ -38,14 +45,17 @@ function Log.redact(s)
     return s
 end
 
-local function rotateIfNeeded()
-    local f = io.open(Log.path, "rb")
-    if not f then return end
-    local size = f:seek("end")
-    f:close()
-    if size and size > MAX_BYTES then
+local function rotateIfNeeded(adding)
+    if not size_known then
+        local f = io.open(Log.path, "rb")
+        size_known = f and f:seek("end") or 0
+        if f then f:close() end
+    end
+    size_known = size_known + adding
+    if size_known > MAX_BYTES then
         os.remove(Log.path .. ".1")
         os.rename(Log.path, Log.path .. ".1")
+        size_known = adding
     end
 end
 
@@ -59,7 +69,7 @@ local function write(level, ...)
     local line = string.format("%s [%s] %s\n", os.date("%Y-%m-%d %H:%M:%S"), level,
         Log.redact(table.concat(parts, " ")))
     pcall(function()
-        rotateIfNeeded()
+        rotateIfNeeded(#line)
         local f = io.open(Log.path, "ab")
         if f then
             f:write(line)

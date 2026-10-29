@@ -49,12 +49,17 @@ local GetText_mt = {
 -- screen still credits both).
 -- Labels that open KOReader's own menus keep its name.
 local GZ_KEEP = { ["KOReader"] = true, ["KOReader menu"] = true, ["KOReader settings"] = true }
+local gz_branded = {} -- UI strings are a fixed set: brand each one once
 GetText.wrapUntranslated_nowrap = function(text)
-    if type(text) == "string" and not GZ_KEEP[text]
-            and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
-        return (text:gsub("KOReader", "GZreader"):gsub("ZenOS", "GZreader"))
+    if type(text) ~= "string" then return text end
+    local done = gz_branded[text]
+    if done then return done end
+    done = text
+    if not GZ_KEEP[text] and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
+        done = (text:gsub("KOReader", "GZreader"):gsub("ZenOS", "GZreader"))
     end
-    return text
+    if #text < 400 then gz_branded[text] = done end -- skip long one-off texts
+    return done
 end
 GetText.wrapUntranslated = GetText.wrapUntranslated_nowrap
 -- Note: this won't be possible if we switch from our Lua GetText to

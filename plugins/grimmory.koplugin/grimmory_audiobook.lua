@@ -50,6 +50,7 @@ local T = ffiutil.template
 local Audiobook = {
     PUSH_EVERY = 60,       -- seconds between progress pushes while playing
     SKIP_MS = 30000,
+    TICK_SECONDS = 2,      -- player housekeeping (track end, sleep timer); each wake-up costs battery
     current = nil,         -- the Player that is playing or paused
 }
 
@@ -502,7 +503,7 @@ function Player:schedule()
         self.ticker = nil
         self:tick()
     end
-    UIManager:scheduleIn(1, self.ticker)
+    UIManager:scheduleIn(Audiobook.TICK_SECONDS, self.ticker)
 end
 
 function Player:tick()
@@ -641,9 +642,12 @@ function Screen:refresh()
 end
 
 function Screen:refreshTime()
-    -- e-ink: redraw every 10 s only
-    self.ticks = (self.ticks or 0) + 1
-    if self.ticks % 10 == 0 then self:build(); UIManager:setDirty(self, "fast") end
+    -- e-ink: redraw the time every 30 s only (each redraw costs battery)
+    local now = os.time()
+    if now - (self.last_time_redraw or 0) >= 30 then
+        self.last_time_redraw = now
+        self:build(); UIManager:setDirty(self, "fast")
+    end
 end
 
 function Screen:onToggle() self.player:toggle(); self:refresh(); return true end

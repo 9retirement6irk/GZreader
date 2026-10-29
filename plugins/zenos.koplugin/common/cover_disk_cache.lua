@@ -216,6 +216,17 @@ end
 
 function M.knownSizes() return sizes() end
 
+--- Are all the sizes this cover is shown at on disk (and fresh)?
+function M.hasAllFor(path, sw, sh)
+    if not M.enabled then return false end
+    local targets = M.targetsFor(sw, sh)
+    if #targets == 0 then return false end
+    for _i, t in ipairs(targets) do
+        if not M.has(path, t[1], t[2]) then return false end
+    end
+    return true
+end
+
 --- Watch CoverUtils.fitDims to learn the boxes ZenOS fits covers into.
 function M.install()
     if M.installed then return end

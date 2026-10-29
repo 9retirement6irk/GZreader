@@ -236,6 +236,9 @@ Wi-Fi GZreader turned on.
 
 ## Speed on the Kindle 3
 
+- Lua is shipped as precompiled bytecode (see Rebuild the package): no parsing
+  at start (~4x faster loading overall, up to 15x for big files).
+
 - Covers are pre-sized (Settings → GZreader → Pre-size covers). ZenOS scales
   every cover to the exact size of where it's shown; on the Kindle 3 that took
   ~4 s of CPU per Home screen (the cover strip), and its memory cache starts
@@ -282,3 +285,10 @@ tools/grimmory/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip ou
 The branch changes only Lua and shell scripts, so the script overlays it onto
 the official release built from the same tag rather than rebuilding the
 native toolchain.
+
+It then precompiles every Lua file under `frontend/`, `plugins/` and
+`common/` to LuaJIT bytecode with the release's own `luajit` (run through
+`qemu-arm-static`; needs `qemu-user-static`, `libc6-armel-cross` and
+`libgcc-s1-armel-cross`), keeping the `.lua` names and debug info (line
+numbers, upvalue names, source paths), so loading skips parsing. Without
+qemu it warns and ships source. `GZ_BYTECODE=0` turns it off.

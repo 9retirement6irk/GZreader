@@ -29,16 +29,18 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local Api = require("grimmory_api")
-local Browser = require("grimmory_browser")
-local PairPage = require("grimmory_pairpage")
-local PairScreen = require("grimmory_pairscreen")
-local PairServer = require("grimmory_pairserver")
 local Sync = require("grimmory_sync")
-local Download = require("grimmory_download")
+-- Loaded on first use (pairing, browsing, downloading, read aloud), not at start.
+local LAZY = { Browser = "grimmory_browser", PairPage = "grimmory_pairpage", PairScreen = "grimmory_pairscreen",
+    PairServer = "grimmory_pairserver", Download = "grimmory_download", TTS = "grimmory_tts" }
+local Mod = setmetatable({}, { __index = function(t, k)
+    local v = require(LAZY[k])
+    rawset(t, k, v)
+    return v
+end })
 local Log = require("grimmory_log")
 local Index = require("grimmory_index")
 local JSON = require("json")
-local TTS = require("grimmory_tts")
 local ReadMenu = require("grimmory_readmenu")
 local Bookmarks = require("grimmory_bookmarks")
 
@@ -371,7 +373,7 @@ function Grimmory:shareLog()
     local content = f:read("*a")
     f:close()
     local filename = dest:match("[^/]+$")
-    local token = PairServer.randomToken(16)
+    local token = Mod.PairServer.randomToken(16)
     local base = "/log/" .. token
     local server, screen, timeout_task, done
     local function finish()
@@ -389,7 +391,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
 <p><a class="b" href="%s/%s" download="%s">Download the log</a></p>
 <p>Then attach the downloaded file wherever you need it, for example in your chat with Claude.</p></body></html>]],
         filename, math.ceil(#content / 1024), base, filename, filename)
-    server = PairServer:new{
+    server = Mod.PairServer:new{
         handler = function(method, path)
             if method ~= "GET" then return 405, "text/plain", "Method not allowed" end
             if path == base then return 200, "text/html", page end
@@ -407,7 +409,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
     end
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
     local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = PairServer.localIp(hint_host, iface)
+    local ip, why = Mod.PairServer.localIp(hint_host, iface)
     if not ip then
         server:stop()
         return UIManager:show(InfoMessage:new{
@@ -417,7 +419,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
     UIManager:insertZMQ(server)
     local url = T("http://%1:%2%3", ip, server.port, base)
     Log.info("sharing log on", T("http://%1:%2", ip, server.port))
-    screen = PairScreen:new{
+    screen = Mod.PairScreen:new{
         url = url,
         title = _("Send the diagnostic log"),
         instructions = T(_("Scan this code with your phone's camera and tap \"Download the log\". Your phone must be on the same Wi-Fi as this Kindle.\n\nThe log was also saved as %1."), dest),
@@ -477,7 +479,7 @@ end
 
 function Grimmory:startQrPairing()
     if self.pairing then return end
-    local token = PairServer.randomToken(16)
+    local token = Mod.PairServer.randomToken(16)
     local attempts = 0
     local done = false
     local server, screen, timeout_task
@@ -520,7 +522,7 @@ function Grimmory:startQrPairing()
     local function formPage(opts)
         opts.redirect_uri = origin .. "/oauth2-callback"
         if opts.sso == nil then opts.sso = ssoInfo(opts.server) end
-        return 200, "text/html", PairPage.form(opts)
+        return 200, "text/html", Mod.PairPage.form(opts)
     end
 
     local function succeeded()
@@ -528,7 +530,7 @@ function Grimmory:startQrPairing()
             finish()
             self:announceConnected()
         end)
-        return 200, "text/html", PairPage.success(self.store.username)
+        return 200, "text/html", Mod.PairPage.success(self.store.username)
     end
 
     local function failed(form, err)
@@ -537,7 +539,7 @@ function Grimmory:startQrPairing()
                 finish()
                 UIManager:show(InfoMessage:new{ text = _("Pairing stopped after too many failed attempts.") })
             end)
-            return 200, "text/html", PairPage.gone()
+            return 200, "text/html", Mod.PairPage.gone()
         end
         return formPage{ server = form.server, username = form.username, error = err }
     end
@@ -562,8 +564,8 @@ function Grimmory:startQrPairing()
         sso_session = {
             base = base,
             state = state,
-            verifier = PairServer.randomToken(32), -- 64 hex chars, valid PKCE verifier
-            nonce = PairServer.randomToken(16),
+            verifier = Mod.PairServer.randomToken(32), -- 64 hex chars, valid PKCE verifier
+            nonce = Mod.PairServer.randomToken(16),
             redirect_uri = origin .. "/oauth2-callback",
         }
         local q = Api.query{
@@ -583,7 +585,7 @@ function Grimmory:startQrPairing()
 
     -- Identity provider sent the phone back here.
     local function finishSso(query)
-        local params = PairServer.parseForm(query)
+        local params = Mod.PairServer.parseForm(query)
         local session = sso_session
         if params.error then
             sso_session = nil
@@ -591,7 +593,7 @@ function Grimmory:startQrPairing()
                 params.error_description or params.error))
         end
         if not session or not params.code or params.state ~= session.state then
-            return 200, "text/html", PairPage.gone()
+            return 200, "text/html", Mod.PairPage.gone()
         end
         sso_session = nil -- single use
         attempts = attempts + 1
@@ -612,7 +614,7 @@ function Grimmory:startQrPairing()
         return failed({ server = session.base }, T(_("Grimmory rejected the sign-in: %1"), self:describeError(err)))
     end
 
-    server = PairServer:new{
+    server = Mod.PairServer:new{
         handler = function(method, full_path, _headers, body)
             local path, query = full_path:match("^([^?]*)%??(.*)$")
             if path == "/oauth2-callback" and method == "GET" and not done then
@@ -622,14 +624,14 @@ function Grimmory:startQrPairing()
                 return 404, "text/plain", "Not found"
             end
             if done then
-                return 200, "text/html", PairPage.gone()
+                return 200, "text/html", Mod.PairPage.gone()
             end
             if method == "GET" then
                 return formPage{ server = self.store.server, username = self.store.username }
             elseif method ~= "POST" then
                 return 405, "text/plain", "Method not allowed"
             end
-            local form = PairServer.parseForm(body)
+            local form = Mod.PairServer.parseForm(body)
             if form.action == "sso" then
                 return startSso(form)
             end
@@ -647,7 +649,7 @@ function Grimmory:startQrPairing()
     end
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
     local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = PairServer.localIp(hint_host, iface)
+    local ip, why = Mod.PairServer.localIp(hint_host, iface)
     if not ip then
         Log.err("pairing: no local IP;", tostring(why))
         server:stop()
@@ -661,7 +663,7 @@ function Grimmory:startQrPairing()
     Log.info("pairing started on", origin)
     self.pairing = true
     UIManager:insertZMQ(server)
-    screen = PairScreen:new{
+    screen = Mod.PairScreen:new{
         url = T("http://%1:%2%3", ip, server.port, base_path),
         on_cancel = function() screen = nil; finish() end,
     }
@@ -676,8 +678,8 @@ end
 function Grimmory:showSsoSetup()
     local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
-    local ip = PairServer.localIp(hint_host, iface)
-    local uri = ip and T("http://%1:%2/oauth2-callback", ip, PairServer.port) or _("(connect to Wi-Fi to see it)")
+    local ip = Mod.PairServer.localIp(hint_host, iface)
+    local uri = ip and T("http://%1:%2/oauth2-callback", ip, Mod.PairServer.port) or _("(connect to Wi-Fi to see it)")
     UIManager:show(InfoMessage:new{
         text = _("To sign in with SSO from the QR code page, add this redirect URI to Grimmory's client in your identity provider (Authentik, Pocket ID, Authelia, Keycloak…), next to the existing …/oauth2-callback one:")
             .. "\n\n" .. uri .. "\n\n"
@@ -799,7 +801,7 @@ end
 
 function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
-    self.tts = TTS.Reader:new(self.ui)
+    self.tts = Mod.TTS.Reader:new(self.ui)
     local menu = self.ui.menu
     if menu and not Device:isTouchDevice() and Device:hasKeyboard() then
         local orig = menu.onKeyPressShowMenu
@@ -821,9 +823,9 @@ function Grimmory:onKeyPress(key)
     end
     -- The Kindle Keyboard's volume rocker sets the read-aloud volume.
     if key.key == "VPlus" or key.key == "VMinus" then
-        TTS.setVolume(TTS.volume() + (key.key == "VPlus" and 1 or -1))
+        Mod.TTS.setVolume(Mod.TTS.volume() + (key.key == "VPlus" and 1 or -1))
         UIManager:show(require("ui/widget/notification"):new{
-            text = T(_("Read-aloud volume %1 / %2"), TTS.volume(), TTS.VOLUME_MAX) })
+            text = T(_("Read-aloud volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) })
         return true
     end
 end
@@ -838,23 +840,23 @@ function Grimmory:showTtsSettings()
     local function speedRow()
         return {
             { text = _("Slower"), callback = function()
-                TTS.setSpeed(math.max(50, TTS.speed() - 10)); UIManager:close(dialog); self:showTtsSettings()
+                Mod.TTS.setSpeed(math.max(50, Mod.TTS.speed() - 10)); UIManager:close(dialog); self:showTtsSettings()
             end },
-            { text = T(_("Speed %1"), TTS.speed()), enabled = false },
+            { text = T(_("Speed %1"), Mod.TTS.speed()), enabled = false },
             { text = _("Faster"), callback = function()
-                TTS.setSpeed(math.min(200, TTS.speed() + 10)); UIManager:close(dialog); self:showTtsSettings()
+                Mod.TTS.setSpeed(math.min(200, Mod.TTS.speed() + 10)); UIManager:close(dialog); self:showTtsSettings()
             end },
         }
     end
     local function volumeRow()
         local function set(v)
-            TTS.setVolume(v); UIManager:close(dialog); self:showTtsSettings()
-            TTS.say("Volume " .. TTS.volume() .. ".")
+            Mod.TTS.setVolume(v); UIManager:close(dialog); self:showTtsSettings()
+            Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
         end
         return {
-            { text = _("Quieter"), callback = function() set(TTS.volume() - 1) end },
-            { text = T(_("Volume %1 / %2"), TTS.volume(), TTS.VOLUME_MAX), enabled = false },
-            { text = _("Louder"), callback = function() set(TTS.volume() + 1) end },
+            { text = _("Quieter"), callback = function() set(Mod.TTS.volume() - 1) end },
+            { text = T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX), enabled = false },
+            { text = _("Louder"), callback = function() set(Mod.TTS.volume() + 1) end },
         }
     end
     dialog = ButtonDialog:new{
@@ -863,7 +865,7 @@ function Grimmory:showTtsSettings()
             volumeRow(),
             speedRow(),
             { { text = _("Find the Kindle voice (test)"), callback = function()
-                UIManager:close(dialog); TTS.findVoice()
+                UIManager:close(dialog); Mod.TTS.findVoice()
             end } },
             { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
         },
@@ -977,7 +979,7 @@ function Grimmory:audiobookItems()
         enabled_func = function() return self.api:isPaired() end,
         callback = function(touchmenu)
             if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-            Net.run(function() local b = Browser:new(self); b:show(); b:openAudiobooks() end, { reason = "audiobooks" })
+            Net.run(function() local b = Mod.Browser:new(self); b:show(); b:openAudiobooks() end, { reason = "audiobooks" })
         end,
         separator = true,
     }
@@ -1051,7 +1053,7 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
         })
         return true
     end
-    Net.run(function() Browser:new(self):show() end, { reason = "Grimmory library" })
+    Net.run(function() Mod.Browser:new(self):show() end, { reason = "Grimmory library" })
     return true
 end
 
@@ -1199,7 +1201,7 @@ function Grimmory:downloadAndOpen(book, menu)
     name = util.getSafeFilename(name, dir)
     local path = dir .. "/" .. name
     local title = type(book.title) == "string" and book.title or name
-    Download.start(self, book, path, function(ok, err, watching, info)
+    Mod.Download.start(self, book, path, function(ok, err, watching, info)
         info = info or {}
         if not ok then
             if err ~= "cancelled" then

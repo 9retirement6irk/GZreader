@@ -1230,6 +1230,21 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         return compact
     end
 
+    -- GZreader: metadata of a book whose covers are all pre-sized on disk
+    -- (common/cover_disk_cache), or nil.
+    local function presized_cover(BookInfoManager, path)
+        local ok_d, Disk = pcall(require, "common/cover_disk_cache")
+        if not ok_d or not Disk.enabled or type(Disk.hasAllFor) ~= "function" then return nil end
+        local meta = type(DecodeCache.getFreshMetadata) == "function"
+            and DecodeCache:getFreshMetadata(path, now(), 30) or nil
+        meta = meta or BookInfoManager:getBookInfo(path, false)
+        if meta and meta.cover_fetched and meta.has_cover and not meta.ignore_cover
+                and Disk.hasAllFor(path, tonumber(meta.cover_w), tonumber(meta.cover_h)) then
+            return meta
+        end
+        return nil
+    end
+
     local function get_book(path, need_time_left, metadata_only)
         if dataset.rakuyomi_recent and dataset.rakuyomi_recent[path] then
             return require("modules/filebrowser/patches/rakuyomi")
@@ -1259,10 +1274,18 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         local has_real_cover = false
         local cover_pending = false
         local cover_loaded = metadata_only ~= true
+        local presized = false
         if ok_bim and BookInfoManager then
             local bi
             if metadata_only and type(DecodeCache.getFreshMetadata) == "function" then
                 bi = DecodeCache:getFreshMetadata(path, now(), 30)
+            end
+            -- GZreader: when this book's covers are pre-sized on disk, skip
+            -- unpacking the full cover (zstd + copy, slow on a Kindle 3); the
+            -- cover widget loads its final-size bitmap from the disk cache.
+            if not bi and not metadata_only then
+                bi = presized_cover(BookInfoManager, path)
+                presized = bi ~= nil
             end
             bi = bi or BookInfoManager:getBookInfo(path, not metadata_only)
             book_info = bi
@@ -1440,7 +1463,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             cover_w = book_info and tonumber(book_info.cover_w) or nil,
             cover_h = book_info and tonumber(book_info.cover_h) or nil,
             has_real_cover = has_real_cover,
-            is_cover_pending = metadata_only and cover_pending or nil,
+            is_cover_pending = (metadata_only or presized) and cover_pending or nil,
             bookinfo = bookinfo_without_cover(book_info),
             percent = pct or 0,
             percent_finished = pct,

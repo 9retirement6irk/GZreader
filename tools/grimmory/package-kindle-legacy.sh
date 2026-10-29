@@ -78,6 +78,41 @@ rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
 rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font
 find "$KO/l10n" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +   # UI translations (English UI)
 
+# 6. Precompile Lua to LuaJIT bytecode with the Kindle's own LuaJIT (run
+#    through qemu-arm), keeping the .lua names and debug info (line numbers,
+#    upvalue names, source paths relative to the koreader folder, exactly as
+#    when loading source). Loading bytecode skips parsing: ~4-15x faster per
+#    file, about a second or more off every start on a Kindle 3.
+#    Skipped (with a warning) when the Kindle's LuaJIT can't be run here.
+LJ_RUN=""
+if "$KO/luajit" -v >/dev/null 2>&1; then
+    LJ_RUN="$KO/luajit"
+elif command -v qemu-arm-static >/dev/null; then
+    for root in "${QEMU_LD_PREFIX:-}" /usr/arm-linux-gnueabi /usr/arm-linux-gnueabihf; do
+        if [ -n "$root" ] && qemu-arm-static -L "$root" "$KO/luajit" -v >/dev/null 2>&1; then
+            LJ_RUN="qemu-arm-static -L $root $KO/luajit"
+            break
+        fi
+    done
+fi
+if [ -n "$LJ_RUN" ] && [ "${GZ_BYTECODE:-1}" = "1" ]; then
+    n=0
+    while IFS= read -r f; do
+        # keep plain source where people may look or edit
+        case "$f" in */_meta.lua|defaults.lua|setupkoenv.lua) continue ;; esac
+        if (cd "$KO" && LUA_PATH="$KO/?.lua;;" $LJ_RUN -b -g "$f" "$f.bc" 2>/dev/null) && [ -s "$KO/$f.bc" ]; then
+            mv "$KO/$f.bc" "$KO/$f"
+            n=$((n + 1))
+        else
+            rm -f "$KO/$f.bc"
+            echo "warning: kept source for $f (bytecode failed)" >&2
+        fi
+    done < <(cd "$KO" && find frontend plugins common -name '*.lua')
+    echo "precompiled $n Lua files to bytecode"
+else
+    echo "warning: the Kindle's LuaJIT can't run here (install qemu-user-static and libc6-armel-cross); shipping Lua source" >&2
+fi
+
 echo "${BASE_REV}-gzreader-${GZ_VERSION}" > "$KO/git-rev"
 echo "$GZ_VERSION" > "$KO/gzreader-version"
 

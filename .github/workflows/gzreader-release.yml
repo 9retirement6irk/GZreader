@@ -29,7 +29,8 @@ jobs:
         with:
           ref: ${{ env.TAG }}
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip
+        # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
       - name: Official KOReader kindle-legacy release (native binaries)
         run: |
           gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern '*kindle-legacy*.zip' --dir dl

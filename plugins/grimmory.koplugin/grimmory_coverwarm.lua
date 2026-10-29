@@ -74,8 +74,8 @@ function Warm.plan(plugin)
     return { jobs = jobs, missing = missing, count = nsizes }
 end
 
---- Child process: make and save the covers.
-local function work(jobs, wfd)
+--- Child process: make and save the covers. Returns how many were made.
+local function work(jobs)
     local BIM = require("bookinfomanager")
     local Disk = require("common/cover_disk_cache")
     local RC = require("common/cover_render_cache")
@@ -95,7 +95,7 @@ local function work(jobs, wfd)
             pcall(src.free, src)
         end
     end
-    ffiutil.writeToFD(wfd, tostring(made), true)
+    return made
 end
 
 local function extractMissing(missing)
@@ -128,16 +128,13 @@ local function extractMissing(missing)
 end
 
 --- Run once now (if not already running). on_done(made) optional.
+--- Everything that touches many files (finding what's missing, making the
+--- covers, measuring the cache) happens in the low-priority child process,
+--- so the screen never waits for it.
 function Warm.run(plugin, on_done)
     if Warm.running then return end
-    local plan = Warm.plan(plugin)
-    if not plan then return end
-    if plan.count == 0 then
-        if extractMissing(plan.missing) then Warm.schedule(plugin, 120) end -- then pre-size those
-        if on_done then on_done(0) end
-        return
-    end
-    local BIM = require("bookinfomanager")
+    local ok_b, BIM = pcall(require, "bookinfomanager")
+    if not ok_b or not pcall(require, "common/cover_disk_cache") then return end
     if BIM:isExtractingInBackground() then
         -- don't compete with KOReader's own extraction; try again later
         UIManager:scheduleIn(30, function() Warm.run(plugin, on_done) end)
@@ -146,21 +143,33 @@ function Warm.run(plugin, on_done)
     Warm.running = true
     local started = os.time()
     BIM:closeDbConnection() -- not shared with the child (like KOReader's extraction)
-    local pid, fd = ffiutil.runInSubProcess(function(_p, wfd) work(plan.jobs, wfd) end, true)
+    local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
+        local plan = Warm.plan(plugin) or { jobs = {}, missing = {}, count = 0 }
+        local made = 0
+        if plan.count > 0 then
+            made = work(plan.jobs) -- writes nothing itself
+        end
+        local files, bytes = require("common/cover_disk_cache").usage()
+        local out = { string.format("%d %d %d %d", made, plan.count, files, bytes) }
+        for _i, m in ipairs(plan.missing) do out[#out + 1] = m end
+        ffiutil.writeToFD(wfd, table.concat(out, "\n"), true)
+    end, true)
     if not pid then Warm.running = false; return end
     renice(pid)
-    Log.info("covers: pre-sizing", plan.count, "cover(s) for", #plan.jobs, "book(s)")
     local function poll()
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(2, poll) end
-        local made = tonumber(ffiutil.readAllFromFD(fd)) or 0
+        local res = ffiutil.readAllFromFD(fd) or ""
         Warm.running = false
-        local okd, Disk = pcall(require, "common/cover_disk_cache")
-        local files, bytes = 0, 0
-        if okd then files, bytes = Disk.usage() end
-        Log.info("covers: pre-sized", made, "in", (os.time() - started) .. "s;", files, "on disk,",
-            string.format("%.1f MB", bytes / 1048576))
-        if extractMissing(plan.missing) then Warm.schedule(plugin, 120) end
-        if on_done then on_done(made) end
+        local head, rest = res:match("^([^\n]*)\n?(.*)$")
+        local made, wanted, files, bytes = (head or ""):match("^(%d+) (%d+) (%d+) (%d+)$")
+        local missing = {}
+        for line in (rest or ""):gmatch("[^\n]+") do missing[#missing + 1] = line end
+        if tonumber(wanted) and tonumber(wanted) > 0 then
+            Log.info("covers: pre-sized", made, "of", wanted, "in", (os.time() - started) .. "s;", files, "on disk,",
+                string.format("%.1f MB", (tonumber(bytes) or 0) / 1048576))
+        end
+        if extractMissing(missing) then Warm.schedule(plugin, 120) end -- then pre-size those
+        if on_done then on_done(tonumber(made) or 0) end
     end
     UIManager:scheduleIn(2, poll)
 end

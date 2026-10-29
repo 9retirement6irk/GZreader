@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.22",
+        changes = {
+            "Faster start: all of GZreader's Lua code (KOReader, ZenOS, the plugins) now ships precompiled for the Kindle's LuaJIT, so it isn't parsed on every start. Loading is about 4 times faster across the board and up to 15 times for the big ZenOS files.",
+            "Home: books whose covers are pre-sized no longer have their full cover unpacked on every Home rebuild; the ready-made cover is loaded instead.",
+            "The cover pre-sizing job now does all its file checks in its background process, so the screen never waits for it.",
+            "Less background work: the audiobook player checks in every 2 seconds instead of every second and redraws its clock every 30 seconds; diagnostic logging opens the log file once per line instead of twice and skips the secret filter on lines that can't contain secrets; UI text branding is worked out once per string.",
+            "Pairing, the Grimmory browser, downloads and read aloud load when first used instead of at start.",
+        },
+    },
+    {
         version = "1.0.21",
         changes = {
             "Covers are pre-sized: each downloaded book's cover is made once at the exact sizes Home, the cover strip and the library show it, kept on the Kindle, and just loaded after that. No scaling or unpacking while you wait, also after a restart. This runs in a low-priority background process a minute after start, after each download, and when a view shows covers at a new size. Switch: Settings → GZreader → Pre-size covers.",
