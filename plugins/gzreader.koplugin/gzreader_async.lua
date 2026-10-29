@@ -9,8 +9,11 @@ and the result comes back a moment later.
 
 - One request process at a time, first come first served: Grimmory rotates
   refresh tokens, so two processes refreshing at once would lock each other
-  out. The login is refreshed here, in the main process, before each one
-  (a token rotated inside the child would be lost when it exits).
+  out. The login is refreshed inside that process when it's due, and the new
+  tokens come back with the result (1.2.3; before, the refresh ran on the
+  screen's thread and could freeze it for the whole request, or much longer
+  when the network was half down). Nothing here ever does network work on
+  the screen's thread.
 - Results travel back as JSON (plain values only).
 - `Async.sync = true` runs everything inline (tests; and where a result is
   needed right away, e.g. while going to sleep).
@@ -40,8 +43,10 @@ local function protected(fn, api)
     return out
 end
 
-local function encode(res)
-    local out = { n = res.n }
+local TOKEN_FIELDS = { "access_token", "refresh_token", "access_expires_at" }
+
+local function encode(res, tokens)
+    local out = { n = res.n, tokens = tokens }
     for i = 1, res.n do
         if res[i] ~= nil then out["r" .. i] = res[i] end
     end
@@ -51,7 +56,7 @@ end
 local function decode(s)
     local ok, t = pcall(JSON.decode, s or "")
     if not ok or type(t) ~= "table" then return nil end
-    local res = { n = tonumber(t.n) or 0 }
+    local res = { n = tonumber(t.n) or 0, tokens = type(t.tokens) == "table" and t.tokens or nil }
     for i = 1, res.n do res[i] = t["r" .. i] end
     return res
 end
@@ -68,6 +73,16 @@ end
 local function finish(job, res)
     Async.busy = false
     netHold(false)
+    if res.tokens and job.api and job.api.store then
+        -- the login was refreshed in the background process: keep the new tokens
+        local store = job.api.store
+        if res.tokens.cleared then
+            pcall(job.api.clearTokens, job.api)
+        else
+            for _i, k in ipairs(TOKEN_FIELDS) do if res.tokens[k] ~= nil then store[k] = res.tokens[k] end end
+            if job.api.on_change then pcall(job.api.on_change) end
+        end
+    end
     local ok, err = pcall(job.on_done, unpack(res, 1, res.n))
     if not ok then Log.warn("async callback failed:", tostring(err)) end
     UIManager:nextTick(pump)
@@ -80,15 +95,32 @@ pump = function()
     Async.busy = true
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
     local api = job.api
-    local ok, err = api:ensureToken()
-    if not ok then return finish(job, pack(nil, err)) end
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
-        api.no_refresh = true
-        ffiutil.writeToFD(wfd, encode(protected(job.fn, api)), true)
+        local store = api.store or {}
+        local before = {}
+        for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end
+        api.no_refresh = false
+        api.on_change = function() end -- saved by the main process instead
+        if api.ensureToken then
+            local okt, err = api:ensureToken()
+            if not okt then
+                local tokens = (store.refresh_token == nil and before.refresh_token ~= nil) and { cleared = true } or nil
+                ffiutil.writeToFD(wfd, encode(pack(nil, err), tokens), true)
+                return
+            end
+        end
+        local res = protected(job.fn, api)
+        local tokens
+        for _i, k in ipairs(TOKEN_FIELDS) do
+            if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end
+        end
+        if tokens and store.refresh_token == nil then tokens = { cleared = true } end
+        ffiutil.writeToFD(wfd, encode(res, tokens), true)
     end, true)
     if not pid then
-        -- couldn't fork (low memory?): do it here instead
-        return finish(job, protected(job.fn, api))
+        -- couldn't fork (low memory?): give up rather than freeze the screen
+        Log.warn("async: couldn't start a background process for", job.name or "?")
+        return finish(job, pack(nil, "busy"))
     end
     if job.nice then -- long CPU work: let the screen go first
         os.execute(string.format("renice -n 10 -p %d >/dev/null 2>&1 || renice 10 %d >/dev/null 2>&1", pid, pid))
@@ -118,12 +150,24 @@ end
 function Async.run(api, fn, on_done, name, opts)
     on_done = on_done or function() end
     if Async.sync then
+        if api and api.ensureToken then
+            local okt, err = api:ensureToken()
+            if not okt then return on_done(nil, err) end
+        end
         local res = protected(fn, api)
         return on_done(unpack(res, 1, res.n))
     end
     table.insert(Async.queue, { api = api, fn = fn, on_done = on_done, name = name, nice = opts and opts.nice,
         timeout = opts and opts.timeout })
     pump()
+end
+
+--- A valid login for a process forked outside this queue (downloads, the
+--- library index): refreshed in the background if needed, then cb(ok, err).
+function Async.ensureToken(api, cb)
+    local store = api.store or {}
+    if store.access_token and os.time() < (store.access_expires_at or 0) - 120 then return cb(true) end
+    Async.run(api, function() return true end, function(ok, err) cb(ok == true, err) end, "refresh login")
 end
 
 --- Shortcut: api:method(...) in the background.

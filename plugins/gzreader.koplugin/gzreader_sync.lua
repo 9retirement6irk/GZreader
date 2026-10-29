@@ -313,6 +313,7 @@ function Sync:remotePosition(book)
             href = str(ep.href),
             chapter_pct = num(ep.contentSourceProgressPercent),
             cfi = str(ep.cfi),
+            xp = str(book.gz_xp), -- converted in the background
         }
     end
     local paged = type(pp) == "table" and pp or (type(cp) == "table" and cp or nil)
@@ -325,9 +326,8 @@ end
 function Sync:targetPos(r)
     local doc = self.ui.document
     local height = doc.info.doc_height
-    if r.cfi then
-        local xp = self:xpOf(r.cfi)
-        local pos = xp and doc:getPosFromXPointer(xp)
+    if r.xp and (not doc.isXPointerInDocument or doc:isXPointerInDocument(r.xp)) then
+        local pos = doc:getPosFromXPointer(r.xp)
         if pos then return pos, true end
     end
     local by_pct = r.pct / 100 * height
@@ -399,15 +399,20 @@ function Sync:pull(interactive)
         return
     end
     self.plugin:flushPending()
-    if interactive then
-        local book, err = self.api:getBook(self.book_id)
-        return self:applyRemote(book, true, err)
-    end
-    -- opening / waking: fetch in the background so the page shows right away
-    Async.call(self.api, "getBook", { self.book_id }, function(book, err)
+    -- in the background, with the web reader's CFI turned into an XPointer there
+    local file = self:isEpub() and self.ui.document.file or nil
+    local book_id = self.book_id
+    Async.run(self.api, function(api)
+        local book, err = api:getBook(book_id)
+        local ep = type(book) == "table" and book.epubProgress
+        if file and type(ep) == "table" and type(ep.cfi) == "string" and ep.cfi ~= "" then
+            book.gz_xp = Sync.xpInFile(file, ep.cfi)
+        end
+        return book, err
+    end, function(book, err)
         if not self.ui.document or self.plugin.sync ~= self then return end
-        self:applyRemote(book, false, err)
-    end)
+        self:applyRemote(book, interactive, err)
+    end, "pull")
 end
 
 --- Act on Grimmory's record of the book (from pull).
@@ -484,41 +489,52 @@ function Sync:progressBody(p)
     return { fileProgress = fp }
 end
 
-function Sync:push(force, background)
+--- Send the position. Never on the screen's thread: it's queued and sent by
+--- flushPending in the background (also when the book closes or the Kindle
+--- goes to sleep); the CFI is made there too, from the page's XPointer.
+function Sync:push(force, _background)
     if not self.entry.file_id or not self.ui.document then return end
     local p = self:localPosition()
     local last = num(self.entry.last_pushed_pct)
     if not force and last and math.abs(p.pct - last) < 0.05 and self.entry.last_pushed_href == p.href then
         return
     end
-    if p.xp and p.href then p.cfi = self:cfiOf(p.xp) end
     local body = self:progressBody(p)
+    if p.xp and p.href and self:isEpub() then
+        body.gz_xp = p.xp -- turned into the CFI in the background (gz_* fields aren't sent)
+        body.gz_file = self.ui.document.file
+    end
     self.pages_since_push = 0
     self.last_push_time = os.time()
-    if not self:canTalk() then
-        self.plugin:queue("progress", self.book_id, body)
-        return
-    end
-    local function done(ok, perr)
-        Log.info("sync push book", self.book_id, p.pct .. "%", p.href or "", ok and "ok" or ("queued: " .. tostring(perr)))
-        if ok then
-            self.entry.last_pushed_pct = p.pct
-            self.entry.last_pushed_href = p.href
-            self.entry.last_pushed_cfi = p.cfi
-            self.plugin:clearQueued("progress", self.book_id)
-            -- we're evidently online: send anything queued while offline (the
-            -- Kindle can bring Wi-Fi up without KOReader announcing it)
-            UIManager:nextTick(function() self.plugin:flushPending() end)
-        else
-            self.plugin:queue("progress", self.book_id, body)
-        end
-        self.plugin:save()
-    end
-    if background then
-        -- page turns: don't make the page wait for Grimmory
-        return Async.call(self.api, "putProgress", { self.book_id, body }, done)
-    end
-    done(self.api:putProgress(self.book_id, body))
+    self.entry.last_pushed_pct = p.pct
+    self.entry.last_pushed_href = p.href
+    self.plugin:queue("progress", self.book_id, body)
+    if self:canTalk() then self.plugin:flushPending() end
+end
+
+--- CFI of an XPointer in an EPUB file, with a fresh converter (for the
+--- background process: parsing chapters is slow on a Kindle 3).
+function Sync.cfiInFile(file, xp)
+    local ok, cfi = pcall(function()
+        local conv = assert(loadfile(package.searchpath("gzreader_cfi", package.path)))()
+        assert(conv.initBook(file, Sync.cfiReader and Sync.cfiReader(file)))
+        local c = conv.xpointerToCFI(xp)
+        conv.clearCache()
+        return c
+    end)
+    return ok and type(cfi) == "string" and cfi or nil
+end
+
+--- XPointer of a (point or range) CFI in an EPUB file (background process).
+function Sync.xpInFile(file, cfi)
+    local ok, xp = pcall(function()
+        local conv = assert(loadfile(package.searchpath("gzreader_cfi", package.path)))()
+        assert(conv.initBook(file, Sync.cfiReader and Sync.cfiReader(file)))
+        local x = conv.cfiToXPointer(cfi)
+        conv.clearCache()
+        return x
+    end)
+    return ok and type(xp) == "string" and xp or nil
 end
 
 ---------------------------------------------------------------- sessions
@@ -545,14 +561,9 @@ function Sync:endSession()
         endProgress = end_pct,
         progressDelta = round1(end_pct - s.start_pct),
     }
-    if self:canTalk() then
-        local ok, perr, code = self.api:postSession(body)
-        if ok then return end
-        Log.info("reading session queued:", tostring(perr))
-        -- no HTTP answer (timeout, dropped): Grimmory may have saved it anyway
-        if not code then body.gz_tries = 1 end
-    end
+    -- sent in the background (never on the screen's thread)
     self.plugin:queue("session", nil, body)
+    if self:canTalk() then self.plugin:flushPending() end
 end
 
 ---------------------------------------------------------------- events

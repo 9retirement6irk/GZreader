@@ -116,8 +116,25 @@ function Index.build(plugin, show, on_done)
         return
     end
     local api = plugin.api
-    local ok, err = api:ensureToken() -- refresh in the parent only (see gzreader_download)
-    if not ok then if on_done then on_done(nil, err) end return end
+    if not Index.token_ready then
+        -- a valid login first, refreshed in the background (never on the screen's thread)
+        Index.building = { waiters = {} }
+        return require("gzreader_async").ensureToken(api, function(ok, err)
+            local waiting = Index.building and Index.building.waiters or {}
+            Index.building = nil
+            if not ok then
+                if on_done then on_done(nil, err) end
+                for _i, w in ipairs(waiting) do pcall(w, nil, err) end
+                return
+            end
+            Index.token_ready = true
+            Index.build(plugin, show, on_done)
+            Index.token_ready = nil
+            for _i, w in ipairs(waiting) do
+                if Index.building then table.insert(Index.building.waiters, w) else pcall(w, nil, "busy") end
+            end
+        end)
+    end
     local store = plugin.store
     local out, prog = path() .. ".tmp", progressPath()
     os.remove(out); os.remove(prog)

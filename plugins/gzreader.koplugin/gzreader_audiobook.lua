@@ -283,17 +283,20 @@ end
 --- Download an audiobook (all tracks) in a background process, resuming
 --- interrupted transfers, then prepare M4B audio for the Kindle.
 --- on_done(book|nil, err).
-function Audiobook.download(plugin, summary, on_done, attempt)
+function Audiobook.download(plugin, summary, on_done, attempt, info)
     attempt = attempt or 1
     local api = plugin.api
-    local info, err = api:audiobookInfo(summary.id)
-    if not info then return on_done(nil, err) end
+    if not info then
+        -- the audiobook's details (and a fresh login) in the background
+        return require("gzreader_async").call(api, "audiobookInfo", { summary.id }, function(got, err)
+            if not got then return on_done(nil, err) end
+            Audiobook.download(plugin, summary, on_done, attempt, got)
+        end)
+    end
     local book = Audiobook.describe(summary.id, info, summary.primaryFileName)
     book.title = book.title or summary.title
     local dir = Audiobook.dir(plugin, summary.id)
     mkdirp(dir)
-    local ok, terr = api:ensureToken() -- refreshed here, in the main process
-    if not ok then return on_done(nil, terr) end
     local total = 0
     for _i, t in ipairs(book.tracks) do total = total + (t.size or 0) end
     Log.info("audiobook download start", summary.id, #book.tracks, "files", total, "bytes", "attempt", attempt)
@@ -362,7 +365,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             Log.warn("audiobook download failed", summary.id, res)
             if res:find("(resumable)", 1, true) and attempt < 4 then
                 -- e.g. the login expired during a long download: refresh it and carry on
-                return UIManager:scheduleIn(2, function() Audiobook.download(plugin, summary, on_done, attempt + 1) end)
+                return UIManager:scheduleIn(2, function() Audiobook.download(plugin, summary, on_done, attempt + 1) end) -- info again: refreshes the login
             end
             return on_done(nil, (res:match("^err (.*)$") or res):gsub(" %(resumable%)", ""))
         end
@@ -442,17 +445,22 @@ function Player:push()
     if not self.book.file_id or self.plugin.store.sync_disabled or not self.plugin.api:isPaired() then return end
     local body = self:progressBody()
     self.last_push = os.time()
-    if NetworkMgr:isConnected() then
-        local ok = self.plugin.api:putProgress(self.book.id, body)
-        if ok then Log.info("audiobook progress pushed", self.book.id, body.fileProgress.positionData, body.fileProgress.progressPercent .. "%"); return end
-    end
+    -- sent in the background (never on the screen's thread)
     self.plugin:queue("progress", self.book.id, body)
+    if NetworkMgr:isConnected() then self.plugin:flushPending() end
 end
 
 --- Offer Grimmory's position when it differs from ours by more than a minute.
 function Player:pull(on_done)
     if not (self.plugin.api:isPaired() and NetworkMgr:isConnected()) then return on_done() end
-    local remote = self.plugin.api:getBook(self.book.id)
+    if not self._pulled then
+        return require("gzreader_async").call(self.plugin.api, "getBook", { self.book.id }, function(remote)
+            self._pulled = remote or false
+            self:pull(on_done)
+        end)
+    end
+    local remote = self._pulled or nil
+    self._pulled = nil
     local ap = remote and remote.audiobookProgress
     local ms = ap and tonumber(ap.positionMs)
     if not ms then return on_done() end

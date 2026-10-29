@@ -391,8 +391,10 @@ end
 
 --- PUT /api/v1/app/books/{id}/progress with { fileProgress = {...} }.
 function Api:putProgress(book_id, body)
+    local clean = {}
+    for k, v in pairs(body) do if not tostring(k):match("^gz_") then clean[k] = v end end
     local code, _, err = self:call("PUT", "/api/v1/app/books/" .. tostring(book_id) .. "/progress",
-        { body = body, timeouts = { 8, 15 } })
+        { body = clean, timeouts = { 8, 15 } })
     if code == 200 or code == 204 then return true end
     return false, err or ("http_" .. tostring(code)), code
 end

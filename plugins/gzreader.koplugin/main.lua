@@ -838,8 +838,14 @@ function Grimmory:flushPending()
     end
     if #sessions > 0 then self:save() end
     require("gzreader_async").run(self.api, function(api)
-        local sent, dropped, n_sessions = {}, {}, 0
+        local sent, dropped, n_sessions, cfis = {}, {}, 0, {}
         for book_id, body in pairs(progress) do
+            -- the exact place (CFI) for the web reader, made here, off the screen's thread
+            local fp = body.fileProgress
+            if body.gz_xp and body.gz_file and type(fp) == "table" and not fp.positionData then
+                local cfi = require("gzreader_sync").cfiInFile(body.gz_file, body.gz_xp)
+                if cfi then fp.positionData = cfi; cfis[book_id] = cfi end
+            end
             local ok, _, code = api:putProgress(book_id, body)
             if ok then sent[#sent + 1] = book_id
             elseif code == 404 or code == 400 or code == 403 then dropped[#dropped + 1] = book_id -- the book is gone
@@ -856,7 +862,7 @@ function Grimmory:flushPending()
             end
             if ok or code == 400 or code == 404 then n_sessions = n_sessions + 1 else break end
         end
-        return { sent = sent, dropped = dropped, sessions = n_sessions }
+        return { sent = sent, dropped = dropped, sessions = n_sessions, cfis = cfis }
     end, function(res)
         self.flushing = nil
         if type(res) ~= "table" then return end
@@ -865,7 +871,13 @@ function Grimmory:flushPending()
             -- only clear it if nothing newer was queued meanwhile
             if pending.progress[book_id] == body then pending.progress[book_id] = nil end
             local entry = self.store.downloads[book_id]
-            if entry and body and body.fileProgress then entry.last_pushed_pct = body.fileProgress.progressPercent end
+            local fp = body and body.fileProgress
+            if entry and fp then
+                entry.last_pushed_pct = fp.progressPercent
+                entry.last_pushed_cfi = (res.cfis or {})[book_id] or fp.positionData
+            end
+            Log.info("sync push book", book_id, fp and (tostring(fp.progressPercent) .. "%") or "",
+                fp and fp.positionHref or "", "ok")
         end
         for _i, book_id in ipairs(res.dropped or {}) do
             if pending.progress[book_id] == progress[book_id] then pending.progress[book_id] = nil end
@@ -874,6 +886,11 @@ function Grimmory:flushPending()
             if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
         end
         self:save()
+        -- queued while this was being sent: send that too
+        local more = false
+        for book_id, body in pairs(pending.progress) do if progress[book_id] ~= body then more = true end end
+        if #pending.sessions > (#sessions - (tonumber(res.sessions) or 0)) then more = true end
+        if more and #(res.sent or {}) > 0 then UIManager:nextTick(function() self:flushPending() end) end
     end, "flush")
 end
 
@@ -976,9 +993,10 @@ function Grimmory:onReaderReady()
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
         -- Downloaded by an older version of this plugin: look up the file id once.
-        local book = self.api:getBook(book_id)
-        local pf = book and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
-        if pf then entry.file_id = pf; self:save(); self:writeManifest() end
+        require("gzreader_async").call(self.api, "getBook", { book_id }, function(book)
+            local pf = type(book) == "table" and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
+            if pf then entry.file_id = pf; self:save(); self:writeManifest() end
+        end)
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
     self.sync = Sync:new(self, self.ui, entry, book_id)

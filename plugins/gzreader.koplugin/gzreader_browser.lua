@@ -492,10 +492,14 @@ function Browser:promptSearch()
     dialog:onShowKeyboard()
 end
 
-function Browser:search(q)
-    local msg = busy(_("Searching…"))
-    local data, err = self.api:searchBooks(q, 0, 40)
-    UIManager:close(msg)
+function Browser:search(q, data, err)
+    if data == nil and err == nil then
+        local msg = busy(_("Searching…"))
+        return require("gzreader_async").call(self.api, "searchBooks", { q, 0, 40 }, function(d, e)
+            UIManager:close(msg)
+            self:search(q, d or false, e or "unreachable")
+        end)
+    end
     if not data then return self.plugin:showError(err) end
     local items = {}
     local list = type(data.content) == "table" and data.content or data

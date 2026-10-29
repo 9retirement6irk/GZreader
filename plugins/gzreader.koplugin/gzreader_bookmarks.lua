@@ -237,37 +237,78 @@ local function refreshDogear(ui)
     end
 end
 
-function BM:push(key, item)
-    local body = self:toRemote(item)
-    if not body then
-        Log.warn("bookmark: can't convert", tostring(key))
-        return
+--- Send bookmarks made here: bodies are made here (they need the book), the
+--- requests run in the background. keys = { key = item }.
+function BM:pushAll(items)
+    local bodies = {}
+    for key, item in pairs(items) do
+        local body = self:toRemote(item)
+        if body then bodies[key] = body else Log.warn("bookmark: can't convert", tostring(key)) end
     end
-    local made, err, code = self.api:createBookmark(body)
-    if made and made.id then
-        self.entry.bookmarks[key] = made.id
-        self.entry.bm_pending.add[key] = nil
-        Log.info("bookmark pushed", self.sync.book_id, body.cfi or body.pageNumber, "id", made.id)
-    elseif code == 409 or code == 400 then
-        self.entry.bm_pending.add[key] = nil -- already there; picked up on the next reconcile
-        Log.info("bookmark exists on server", tostring(key), tostring(code))
-    else
-        self.entry.bm_pending.add[key] = true
-        Log.warn("bookmark push failed", tostring(err))
-    end
+    if next(bodies) == nil then return end
+    for key in pairs(bodies) do self.entry.bm_pending.add[key] = true end
+    self.plugin:save()
+    require("gzreader_async").run(self.api, function(api)
+        local out = {}
+        for key, body in pairs(bodies) do
+            local made, err, code = api:createBookmark(body)
+            if made and made.id then out[key] = { id = made.id }
+            elseif code == 409 or code == 400 then out[key] = { exists = true } -- picked up on the next reconcile
+            else out[key] = { err = tostring(err) } end
+        end
+        return out
+    end, function(res)
+        for key, r in pairs(type(res) == "table" and res or {}) do
+            if r.id then
+                self.entry.bookmarks[key] = r.id
+                self.entry.bm_pending.add[key] = nil
+                Log.info("bookmark pushed", self.sync.book_id, tostring(key), "id", r.id)
+            elseif r.exists then
+                self.entry.bm_pending.add[key] = nil
+                Log.info("bookmark exists on server", tostring(key))
+            else
+                Log.warn("bookmark push failed", tostring(r.err))
+            end
+        end
+        self.plugin:save()
+    end, "bookmarks")
 end
 
+function BM:push(key, item) return self:pushAll({ [key] = item }) end
+
 --- Bring both sides together. Called when the book opens and on "Sync now".
+--- The requests run in the background; the bookmarks are changed here.
 function BM:reconcile()
     if not self:enabled() or not NetworkMgr:isConnected() then return end
-    local remote, err = self.api:listBookmarks(self.sync.book_id)
-    if not remote then Log.warn("bookmark list failed", tostring(err)); return end
-    -- deletes made offline
-    for id in pairs(self.entry.bm_pending.del) do -- string ids
-        if self.api:deleteBookmark(id) then self.entry.bm_pending.del[id] = nil end
-    end
+    if self.reconciling then self.again = true; return end
+    self.reconciling = true
+    local book_id = self.sync.book_id
+    local dels = {}
+    for id in pairs(self.entry.bm_pending.del) do dels[#dels + 1] = id end
+    require("gzreader_async").run(self.api, function(api)
+        local deleted = {}
+        for _i, id in ipairs(dels) do -- deletes made offline
+            if api:deleteBookmark(id) then deleted[#deleted + 1] = id end
+        end
+        local remote, err = api:listBookmarks(book_id)
+        return remote, err, deleted
+    end, function(remote, err, deleted)
+        self.reconciling = false
+        for _i, id in ipairs(type(deleted) == "table" and deleted or {}) do self.entry.bm_pending.del[id] = nil end
+        if self.ui.document and type(remote) == "table" then
+            local ok, e = pcall(self.apply, self, remote)
+            if not ok then Log.warn("bookmark reconcile failed:", tostring(e)) end
+        elseif type(remote) ~= "table" then
+            Log.warn("bookmark list failed", tostring(err))
+        end
+        self.plugin:save()
+        if self.again then self.again = false; self:reconcile() end
+    end, "bookmarks")
+end
+
+function BM:apply(remote)
     local locals = self:localBookmarks()
-    local remote_ids, added, removed, pushed = {}, 0, 0, 0
+    local remote_ids, added, removed = {}, 0, 0
     local key_of_id = {}
     for k, id in pairs(self.entry.bookmarks) do key_of_id[tostring(id)] = k end
     for _i, bm in ipairs(remote) do
@@ -293,15 +334,14 @@ function BM:reconcile()
         end
     end
     -- made on this Kindle and not on Grimmory yet (including offline ones)
+    local todo, pushed = {}, 0
     for key, item in pairs(locals) do
-        if type(item) == "table" and not self.entry.bookmarks[key] then
-            self:push(key, item); pushed = pushed + 1
-        end
+        if type(item) == "table" and not self.entry.bookmarks[key] then todo[key] = item; pushed = pushed + 1 end
     end
-    self.plugin:save()
     if added + removed > 0 then refreshDogear(self.ui) end
     Log.info("bookmarks reconciled", self.sync.book_id, "remote", #remote, "added", added,
         "removed", removed, "pushed", pushed)
+    if pushed > 0 then self:pushAll(todo) end
 end
 
 --- KOReader event: a bookmark was added (index > 0) or removed (index < 0).
@@ -319,10 +359,13 @@ function BM:onAnnotationsModified(items)
         self.entry.bm_pending.add[key] = nil
         if id then
             self.entry.bookmarks[key] = nil
-            if not (self:enabled() and NetworkMgr:isConnected() and self.api:deleteBookmark(id)) then
-                self.entry.bm_pending.del[tostring(id)] = true
-            end
+            self.entry.bm_pending.del[tostring(id)] = true
             Log.info("bookmark removed", self.sync.book_id, tostring(id))
+            if self:enabled() and NetworkMgr:isConnected() then
+                require("gzreader_async").call(self.api, "deleteBookmark", { id }, function(ok)
+                    if ok then self.entry.bm_pending.del[tostring(id)] = nil; self.plugin:save() end
+                end)
+            end
         end
     end
     self.plugin:save()

@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.3",
+        changes = {
+            "Much less freezing: GZreader no longer talks to Grimmory on the screen's thread. Closing a book, going to sleep, page sync, bookmarks, the login refresh, search, audiobook position and the first file lookup all ran there and froze the Kindle while they waited, for many seconds when Wi-Fi was weak (your reports showed 7 to 10 seconds when closing and opening books). They now run in the background, and positions and reading sessions are saved first and sent right after, so nothing is lost if the Kindle sleeps or restarts meanwhile.",
+            "Working out the exact page for Grimmory's web reader (reading the chapter's XHTML) also moved to the background; it took seconds on the screen's thread when a book closed.",
+        },
+    },
+    {
         version = "1.2.2",
         changes = {
             "Remote debugging: slow reports show 6 levels of code instead of 3, and GZreader warns when a book's layout is redone 6 or more times in a minute (margins, styles, fonts…), naming the code that asked each time: on a Kindle 3 every layout of a whole book takes seconds.",

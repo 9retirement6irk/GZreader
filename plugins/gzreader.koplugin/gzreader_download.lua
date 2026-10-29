@@ -60,13 +60,13 @@ end
 
 --- Start downloading `book` to `dest_path`.
 --- on_done(ok, err, opened_by_user) is called on the UI thread when finished.
-function Download.start(plugin, book, dest_path, on_done, from_queue)
-    if Download.isQueued(book.id) and not from_queue then
+function Download.start(plugin, book, dest_path, on_done, from_queue, token_ready)
+    if not token_ready and Download.isQueued(book.id) and not from_queue then
         UIManager:show(InfoMessage:new{ text = _("This book is already downloading or in the download queue."), timeout = 3 })
         return
     end
     pcall(require("gzreader_recovery").bookStarted, plugin, book, dest_path) -- picked up after a restart
-    if Download.active then
+    if Download.active and not token_ready then
         table.insert(Download.queue, { plugin = plugin, book = book, dest_path = dest_path, on_done = on_done })
         Log.info("download queued", "book=" .. tostring(book.id), "#" .. #Download.queue)
         pcall(function() require("gzreader_tasks").changed() end)
@@ -76,11 +76,18 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
         return "queued"
     end
     local api = plugin.api
-    local ok, err = api:ensureToken()
-    if not ok then
-        on_done(false, err, false, { queued = from_queue })
-        UIManager:nextTick(startNext)
-        return
+    if not token_ready then
+        -- refresh the login in the background if it's due (never on the screen's thread)
+        Download.active = { book_id = tostring(book.id), title = book.title, refreshing = true }
+        return require("gzreader_async").ensureToken(api, function(ok, err)
+            Download.active = nil
+            if not ok then
+                on_done(false, err, false, { queued = from_queue })
+                UIManager:nextTick(startNext)
+                return
+            end
+            Download.start(plugin, book, dest_path, on_done, from_queue, true)
+        end)
     end
 
     local title = type(book.title) == "string" and book.title or dest_path:match("[^/]+$")
