@@ -62,7 +62,7 @@ function ReadMenu.show(plugin)
         covers_fullscreen = true,
         title_bar_fm_style = true,
         onMenuChoice = function(_menu, item)
-            UIManager:close(menu)
+            UIManager:close(menu, "full")
             -- run after the menu is gone so dialogs open on the book page
             if item.callback then UIManager:nextTick(item.callback) end
             return true
@@ -71,7 +71,13 @@ function ReadMenu.show(plugin)
     -- The Menu key closes it again.
     menu.key_events = menu.key_events or {}
     menu.key_events.GzCloseReadMenu = { { "Menu" } }
-    menu.onGzCloseReadMenu = function() UIManager:close(menu); return true end
+    menu.onGzCloseReadMenu = function() UIManager:close(menu, "full"); return true end
+    -- Back key too: full e-ink refresh, no ghost of the menu on the page
+    menu.onCloseAllMenus = function(m)
+        UIManager:close(m, "full")
+        if m.close_callback then m.close_callback() end
+        return true
+    end
     UIManager:show(menu, "full") -- full e-ink refresh: no ghosting from the page behind
     return menu
 end

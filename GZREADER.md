@@ -110,7 +110,8 @@ on some installs), the web app's library list is used instead.
 
 The Grimmory folder (`documents/Grimmory`) is the home folder; the
 **Downloaded** tab shows it. Books download in a background process with a
-progress bar (press any key for Stop / Continue in background / Keep
+progress bar (percentage, MB received of the total; the Kindle stays awake
+until it's done) (press any key for Stop / Continue in background / Keep
 watching); a transfer that stalls for 90 s is stopped.
 
 A backup list of downloaded books (`.gzreader-library.json`) is kept in the

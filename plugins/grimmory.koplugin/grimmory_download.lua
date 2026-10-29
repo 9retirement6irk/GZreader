@@ -14,7 +14,8 @@ second to drive the progress bar, and can kill the child at any time.
 
 local ButtonDialog = require("ui/widget/buttondialog")
 local InfoMessage = require("ui/widget/infomessage")
-local ProgressbarDialog = require("ui/widget/progressbardialog")
+local Awake = require("grimmory_awake")
+local ProgressbarDialog = require("grimmory_progress")
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
@@ -68,6 +69,7 @@ function Download.start(plugin, book, dest_path, on_done)
         last_size = 0, last_change = os.time(), watching = true,
     }
     Download.active = job
+    Awake.hold(job) -- no sleeping (screensaver or autosuspend) mid-download
 
     local dialog
     local function closeDialog()
@@ -91,6 +93,7 @@ function Download.start(plugin, book, dest_path, on_done)
         if job.finished then return end
         job.finished = true
         Download.active = nil
+        Awake.release(job)
         UIManager:unschedule(job.poll)
         closeDialog()
         local secs = os.time() - job.started
@@ -141,7 +144,7 @@ function Download.start(plugin, book, dest_path, on_done)
 
     dialog = ProgressbarDialog:new{
         title = T(_("Downloading “%1”"), title),
-        subtitle = (expected and mb(expected) .. " · " or "") .. _("press any key for options"),
+        subtitle = _("Press any key for options. The Kindle stays awake until it's done."),
         progress_max = expected,
         refresh_time_seconds = 2,
     }
@@ -157,8 +160,8 @@ function Download.start(plugin, book, dest_path, on_done)
         if size ~= job.last_size then
             job.last_size, job.last_change = size, os.time()
         end
-        if dialog and expected then
-            dialog:reportProgress(math.min(size, expected))
+        if dialog then
+            dialog:reportProgress(expected and math.min(size, expected) or size)
         end
         if ffiutil.isSubProcessDone(job.pid) then
             local out = job.read_fd and ffiutil.readAllFromFD(job.read_fd) or ""

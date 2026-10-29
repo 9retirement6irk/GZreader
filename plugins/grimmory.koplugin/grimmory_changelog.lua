@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.18",
+        changes = {
+            "Downloads (books and audiobooks) keep the Kindle awake until they finish, even in the background: no screensaver, no sleep.",
+            "The download progress shows the percentage and how much has arrived out of the total, e.g. \"42% · 116.0 MB of 276.0 MB\".",
+            "The Reading menu and the GZreader menu also do a full screen refresh when they close (Back, Menu or picking an entry).",
+        },
+    },
+    {
         version = "1.0.17",
         changes = {
             "The Reading menu and the GZreader menu open with a full screen refresh, so the page behind no longer ghosts through.",

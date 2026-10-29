@@ -34,7 +34,8 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local JSON = require("json")
 local Menu = require("ui/widget/menu")
 local NetworkMgr = require("ui/network/manager")
-local ProgressbarDialog = require("ui/widget/progressbardialog")
+local Awake = require("grimmory_awake")
+local ProgressbarDialog = require("grimmory_progress")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -229,10 +230,12 @@ function Audiobook.download(plugin, summary, on_done, attempt)
         ffiutil.writeToFD(wfd, "ok", true)
     end, true)
     if not pid then return on_done(nil, "could not start the download") end
+    local awake_key = "audiobook-download-" .. tostring(summary.id)
+    Awake.hold(awake_key)
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading “%1”…"), book.title or ""),
-        subtitle = _("Press any key to hide; the download continues. Interrupted downloads resume."),
-        progress_max = total > 0 and total or 1, refresh_time_seconds = 2,
+        subtitle = _("Press any key to hide; the download continues and the Kindle stays awake."),
+        progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
     }
     dialog.dismiss_callback = function() dialog = nil end
     dialog:show()
@@ -244,13 +247,16 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             have = have + (lfs.attributes(p, "size") or lfs.attributes(p .. ".part", "size")
                 or (readChunks(dir, t) and (t.size or 0)) or 0)
         end
-        if dialog and total > 0 then dialog:reportProgress(math.min(have, total)) end
+        if dialog then dialog:reportProgress(total > 0 and math.min(have, total) or have) end
         if not converting_shown and lfs.attributes(dir .. "/.converting", "mode") then
             converting_shown = true
             Log.info("audiobook: preparing M4B audio for the Kindle", summary.id)
-            UIManager:show(InfoMessage:new{ text = _("Downloaded. Preparing the audio for the Kindle (a few minutes for a long book)…"), timeout = 6 })
+            if dialog then dialog:setStatus(_("Downloaded. Preparing the audio for the Kindle…")) else
+                UIManager:show(InfoMessage:new{ text = _("Downloaded. Preparing the audio for the Kindle (a few minutes for a long book)…"), timeout = 6 })
+            end
         end
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
+        Awake.release(awake_key)
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog) end
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
@@ -485,7 +491,7 @@ end
 function Player:keepAwake(on)
     if on == self.awake then return end
     self.awake = on
-    os.execute(string.format("lipc-set-prop -i com.lab126.powerd preventScreenSaver %d >/dev/null 2>&1 &", on and 1 or 0))
+    if on then Awake.hold(self) else Awake.release(self) end
 end
 
 function Player:schedule()

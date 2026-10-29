@@ -94,7 +94,7 @@ function HomeMenu.show(plugin)
         covers_fullscreen = true,
         title_bar_fm_style = true,
         onMenuChoice = function(_m, item)
-            UIManager:close(menu)
+            UIManager:close(menu, "full")
             if item.callback then UIManager:nextTick(item.callback) end
             return true
         end,
@@ -102,7 +102,13 @@ function HomeMenu.show(plugin)
     }
     menu.key_events = menu.key_events or {}
     menu.key_events.GzCloseHomeMenu = { { "Menu" } }
-    menu.onGzCloseHomeMenu = function() UIManager:close(menu); return true end
+    menu.onGzCloseHomeMenu = function() UIManager:close(menu, "full"); return true end
+    -- Back key too: full e-ink refresh, no ghost of the menu on the page
+    menu.onCloseAllMenus = function(m)
+        UIManager:close(m, "full")
+        if m.close_callback then m.close_callback() end
+        return true
+    end
     local orig_close = menu.onCloseWidget
     menu.onCloseWidget = function(m, ...)
         HomeMenu.open = nil
