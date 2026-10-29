@@ -1866,7 +1866,17 @@ end
 -- (installing upstream ZenOS would undo this build's changes). The menu,
 -- banner and background check below delegate to grimmory_update.
 -- ---------------------------------------------------------------------------
+-- While KOReader loads a plugin, only that plugin's folder is on
+-- package.path, so add GZreader's (grimmory.koplugin, next to this one).
+do
+    local plugins_dir = PLUGIN_ROOT:gsub("/+$", ""):match("^(.*)/[^/]+$")
+    local gz_dir = plugins_dir and (plugins_dir .. "/grimmory.koplugin")
+    if gz_dir and not package.path:find(gz_dir, 1, true) then
+        package.path = gz_dir .. "/?.lua;" .. package.path
+    end
+end
 local ok_gz, GZUpdate = pcall(require, "grimmory_update")
+if not ok_gz then logger.warn("GZreader updater not loaded:", tostring(GZUpdate)) end
 if ok_gz and type(GZUpdate) == "table" then
     local function sync_state()
         M._has_update = GZUpdate.state.has_update == true
@@ -1895,13 +1905,8 @@ if ok_gz and type(GZUpdate) == "table" then
     end
     M.run_update = function() GZUpdate.run() end
     M.build_update_now_item = function() return GZUpdate.menuItems()[1] end
-    M.build_changelog_item = function()
-        return { text = _("Release notes (on GitHub)"), keep_menu_open = true, callback = function()
-            local InfoMessage = require("ui/widget/infomessage")
-            require("ui/uimanager"):show(InfoMessage:new{ text = GZUpdate.pageUrl() })
-        end }
-    end
-    M.build_channel_item = function() return GZUpdate.menuItems()[3] end
+    M.build_changelog_item = function() return GZUpdate.menuItems()[3] end
+    M.build_channel_item = function() return GZUpdate.menuItems()[4] end
     M.build_auto_check_item = function() return GZUpdate.menuItems()[2] end
     M.get_channel = function() return "stable" end
 end

@@ -4,7 +4,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-on: [push, pull_request, workflow_dispatch]
+# GZreader: manual only (it builds KOReader for macOS, not the Kindle package).
+on: [workflow_dispatch]
 
 defaults:
   run:

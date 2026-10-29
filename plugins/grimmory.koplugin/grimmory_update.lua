@@ -3,11 +3,16 @@ GZreader updates from GitHub releases (replaces ZenOS's own updater, which
 would install upstream ZenOS over this build).
 
 Source: https://github.com/9retirement6irk/GZreader/releases
-  * the latest release's tag is the version (v1.2.0);
-  * its asset "gzreader-update.zip" holds a "koreader/" folder with only the
-    parts GZreader changes: frontend/, the kept plugins, reader.lua,
-    koreader.sh, gzreader-version (the native binaries, fonts and dictionary
-    stay as installed);
+  * the latest release's tag is the version (v1.2.0, also "v.1.2.0");
+  * if the release has an asset "gzreader-update.zip" (attached by the
+    repository's release workflow), it is used: a "koreader/" folder with
+    only the parts GZreader changes (frontend/, the kept plugins,
+    reader.lua, koreader.sh, gzreader-version);
+  * otherwise the release's own source code zip (which GitHub makes for
+    every release, nothing to upload) is used: only frontend/, reader.lua,
+    platform/kindle/koreader.sh and the plugins already installed are
+    taken from it. The native binaries, fonts and dictionary stay as
+    installed either way;
   * no hashing on the Kindle: the download comes over HTTPS straight from
     GitHub (which protects it in transit), its size must match the size
     GitHub lists for the asset, and the zip must open and contain a
@@ -83,6 +88,7 @@ local TRUSTED = {
     ["objects.githubusercontent.com"] = true,
     ["release-assets.githubusercontent.com"] = true,
     ["github-releases.githubusercontent.com"] = true,
+    ["codeload.github.com"] = true, -- source code zips
 }
 
 local function host(u) return tostring(u):match("^https://([^/:]+)") end
@@ -132,7 +138,8 @@ end
 function Update.parseRelease(body)
     local ok, rel = pcall(JSON.decode, body or "")
     if not ok or type(rel) ~= "table" or type(rel.tag_name) ~= "string" then return nil, "bad release data" end
-    local info = { version = rel.tag_name:gsub("^v", ""), notes = type(rel.body) == "string" and rel.body or "",
+    local version = rel.tag_name:gsub("^[vV]%.?", "")
+    local info = { version = version, tag = rel.tag_name, notes = type(rel.body) == "string" and rel.body or "",
         page = rel.html_url }
     for _i, a in ipairs(type(rel.assets) == "table" and rel.assets or {}) do
         if a.name == Update.ASSET and type(a.browser_download_url) == "string" then
@@ -140,7 +147,12 @@ function Update.parseRelease(body)
             info.size = tonumber(a.size)
         end
     end
-    if not info.url then return nil, "release " .. rel.tag_name .. " has no " .. Update.ASSET end
+    if not info.url and type(rel.zipball_url) == "string" then
+        -- no update package attached: GitHub's source code zip of the release
+        info.url = rel.zipball_url
+        info.source = true
+    end
+    if not info.url then return nil, "release " .. rel.tag_name .. " has nothing to download" end
     return info
 end
 
@@ -224,9 +236,28 @@ local function allowed(rel)
         or rel == "git-rev" or rel:match("^plugins/[%w_%-]+%.koplugin$") ~= nil
 end
 
+--- For a source code zip: where (relative to koreader/) a file of the
+--- repository goes, or nil to skip it. `rel` has the zip's top folder removed.
+local function sourceTarget(rel, base)
+    if rel == "reader.lua" then return "reader.lua" end
+    if rel == "platform/kindle/koreader.sh" then return "koreader.sh" end
+    if rel:match("^frontend/") then return rel end
+    local plugin, rest = rel:match("^plugins/([%w_%-]+%.koplugin)/(.+)$")
+    if plugin and isDir(base .. "/plugins/" .. plugin) then -- only plugins this install has
+        if plugin == "zenos.koplugin" and rest:match("^locales/.+%.po$") and not rest:match("/en%.po$") then
+            return nil -- English only, like the full package
+        end
+        return "plugins/" .. plugin .. "/" .. rest
+    end
+    return nil
+end
+
 --- Unpack `zip` and swap its parts into the koreader folder.
---- Returns true or nil, err (the installation is unchanged on failure).
-function Update.apply(zip)
+--- opts.source: the zip is GitHub's source code zip (opts.version is then
+--- written as the installed version). Returns true or nil, err (the
+--- installation is unchanged on failure).
+function Update.apply(zip, opts)
+    opts = opts or {}
     local Archiver = require("ffi/archiver")
     local base = root()
     local stage = base .. "/.gzreader-update"
@@ -239,14 +270,25 @@ function Update.apply(zip)
         local p = entry.path
         if p:find("%.%.") or p:sub(1, 1) == "/" then reader:close(); rmTree(stage); return nil, "unsafe path in package: " .. p end
         if entry.mode == "file" then
-            if not reader:extractToPath(p, stage .. "/" .. p) then
-                reader:close(); rmTree(stage); return nil, "could not unpack " .. p
+            local dest = p
+            if opts.source then
+                local target = sourceTarget(p:match("^[^/]+/(.+)$") or "", base)
+                dest = target and ("koreader/" .. target)
             end
-            n = n + 1
+            if dest then
+                if not reader:extractToPath(p, stage .. "/" .. dest) then
+                    reader:close(); rmTree(stage); return nil, "could not unpack " .. p
+                end
+                n = n + 1
+            end
         end
     end
     reader:close()
     local src = stage .. "/koreader"
+    if opts.source and opts.version and isDir(src) then
+        local vf = io.open(src .. "/gzreader-version", "wb")
+        if vf then vf:write(opts.version, "\n"); vf:close() end
+    end
     if n == 0 or not isDir(src .. "/frontend") or not exists(src .. "/plugins/grimmory.koplugin/main.lua")
             or not exists(src .. "/gzreader-version") then
         rmTree(stage)
@@ -327,12 +369,12 @@ function Update.download(info)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading GZreader %1…"), info.version),
-        progress_max = info.size or 1, refresh_time_seconds = 2,
+        progress_max = info.size or (12 * 1024 * 1024), refresh_time_seconds = 2, -- source zips: ~9 MB
     }
     dialog:show()
     local function poll()
         local size = lfs.attributes(zip, "size") or 0
-        if info.size then dialog:reportProgress(size) end
+        dialog:reportProgress(math.min(size, info.size or (12 * 1024 * 1024)))
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         UIManager:close(dialog)
         local res = ffiutil.readAllFromFD(fd)
@@ -349,7 +391,7 @@ function Update.download(info)
         local busy = InfoMessage:new{ text = _("Installing…"), timeout = 0 }
         UIManager:show(busy)
         UIManager:forceRePaint()
-        local ok, err = Update.apply(zip)
+        local ok, err = Update.apply(zip, { source = info.source, version = info.version })
         os.remove(zip)
         UIManager:close(busy)
         if not ok then
@@ -361,6 +403,20 @@ function Update.download(info)
         UIManager:scheduleIn(2, function() UIManager:restartKOReader() end)
     end
     UIManager:scheduleIn(1, poll)
+end
+
+--- GZreader's own changelog (grimmory_changelog.lua), newest first.
+function Update.showChangelog()
+    local ok, log = pcall(require, "grimmory_changelog")
+    local parts = {}
+    for _i, entry in ipairs(ok and log or {}) do
+        parts[#parts + 1] = "GZreader " .. entry.version .. (entry.date and ("  (" .. entry.date .. ")") or "")
+        for _j, line in ipairs(entry.changes or {}) do parts[#parts + 1] = "  • " .. line end
+        parts[#parts + 1] = ""
+    end
+    parts[#parts + 1] = T(_("Full release notes: %1"), Update.pageUrl())
+    local TextViewer = require("ui/widget/textviewer")
+    UIManager:show(TextViewer:new{ title = _("GZreader changelog"), text = table.concat(parts, "\n") })
 end
 
 --- Menu items (used for ZenOS's Settings → Updates section and the Grimmory menu).
@@ -380,6 +436,11 @@ function Update.menuItems()
             text = _("Check automatically once a day"),
             checked_func = function() return Update.autoCheckEnabled() end,
             callback = function() G_reader_settings:flipNilOrTrue("gzreader_update_auto") end,
+        },
+        {
+            text = _("Changelog"),
+            keep_menu_open = true,
+            callback = function() Update.showChangelog() end,
         },
         {
             text = T(_("Update source: %1"), "github.com/" .. Update.REPO),

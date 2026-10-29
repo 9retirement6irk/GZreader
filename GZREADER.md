@@ -40,22 +40,26 @@ view, keyboard, sync, sleep screen, clock and reading defaults.
 ## Updates
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
-once a day (Settings → Updates, or Grimmory menu → GZreader updates). An
-update is simply the latest GitHub release: the Kindle downloads its
-`gzreader-update.zip` over HTTPS, checks the size matches what GitHub lists
-(no hashing on the Kindle), checks the zip has a complete GZreader layout,
-then swaps in the new `frontend/`,
-plugins, `reader.lua`, `koreader.sh` and version, and restarts. Settings,
+once a day (Settings → General → Updates, or Grimmory menu → GZreader
+updates; the changelog is there too). Publishing an update is just making a
+GitHub release:
+
+1. Bump `GZREADER_VERSION` and add an entry to
+   `plugins/grimmory.koplugin/grimmory_changelog.lua`, push.
+2. On GitHub: Releases → Draft a new release → tag `v<version>` (for
+   example `v1.0.4`; `v.1.0.4` also works) → Publish.
+
+The "GZreader release packages" workflow then builds and attaches
+`gzreader-kindle-legacy-<version>.zip` (full install) and
+`gzreader-update.zip` (what Kindles download, ~5 MB). If a release has no
+attached files, Kindles use the release's source code zip instead (~9 MB),
+taking only `frontend/`, `reader.lua`, `koreader.sh` and the installed
+plugins from it.
+
+The download comes over HTTPS straight from GitHub (no hashing on the
+Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the Grimmory folder are never touched; if
-anything fails, the previous files are put back.
-
-Publishing a release:
-
-```sh
-echo 1.0.1 > GZREADER_VERSION
-tools/grimmory/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
-tools/grimmory/publish-github-release.sh out/      # needs gh, creates tag v1.0.1
-```
+anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Keyboard (Kindle 3)
 

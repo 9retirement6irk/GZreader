@@ -31,7 +31,7 @@ if ! git -C "$REPO" merge-base --is-ancestor "$BASE_REV" HEAD 2>/dev/null; then
     echo "warning: this branch is not based on $BASE_REV; frontend Lua may not match the release binaries" >&2
 fi
 
-GZ_VERSION=$(tr -d ' \n' < "$REPO/GZREADER_VERSION")
+GZ_VERSION=${GZ_VERSION:-$(tr -d ' \n' < "$REPO/GZREADER_VERSION")}
 
 # 1. Frontend and startup Lua: the branch's (menu order, OTA off, branding,
 #    keyboard, read aloud, sleep screen…).
