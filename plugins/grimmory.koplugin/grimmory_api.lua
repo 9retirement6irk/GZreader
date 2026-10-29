@@ -8,6 +8,7 @@ device; the account password is never written to disk.
 
 local JSON = require("json")
 local http = require("socket.http")
+local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local logger = require("logger")
 local Log = require("grimmory_log")
@@ -326,21 +327,51 @@ end
 
 --- Download one track of a folder-based audiobook (or, with track=nil, the
 --- whole single-file audiobook) to `path`.
+--- Download an audiobook file (track = Grimmory track index for folder
+--- audiobooks, nil for a single-file one) to `path`, resuming whatever is
+--- already there (HTTP Range on the audiobook stream endpoints).
+--- Returns true | false, err, retryable.
 function Api:downloadAudio(book_id, track, path)
     local ok, err = self:ensureToken()
-    if not ok then return false, err end
-    local fh, ferr = io.open(path, "wb")
+    if not ok then return false, err, true end
+    local have = lfs.attributes(path, "size") or 0
+    local fh, ferr = io.open(path, have > 0 and "ab" or "wb")
     if not fh then return false, ferr end
-    local full_url = track
-        and (self.store.server .. "/api/v1/audiobooks/" .. tostring(book_id) .. "/track/" .. tostring(track) .. "/stream")
-        or (self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download")
-    local code, _, _, status = rawRequest("GET", full_url, {
-        headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" },
-        sink = ltn12.sink.file(fh),
-        timeouts = { 30, -1 },
+    local base = self.store.server .. "/api/v1/audiobooks/" .. tostring(book_id)
+    local full_url = track and (base .. "/track/" .. tostring(track) .. "/stream") or (base .. "/stream")
+    local headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" }
+    if have > 0 then headers["Range"] = "bytes=" .. have .. "-" end
+    local code, _, resp_headers, status = rawRequest("GET", full_url, {
+        headers = headers,
+        sink = ltn12.sink.file(fh), -- closes fh
+        timeouts = { 60, -1 },
     })
-    if code == 200 or code == 206 then return true end
-    return false, code and ("http_" .. code) or tostring(status or "unreachable")
+    if code == 206 or (code == 200 and have == 0) then return true end
+    if code == 416 then return true end -- nothing left to fetch
+    if code == 200 and have > 0 then
+        -- the server ignored Range and sent the whole file after the part we had
+        local h = resp_headers and tonumber(resp_headers["content-length"])
+        local size = lfs.attributes(path, "size") or 0
+        if h and size == have + h then
+            local inp, out = io.open(path, "rb"), io.open(path .. ".full", "wb")
+            if inp and out then
+                inp:seek("set", have)
+                while true do
+                    local buf = inp:read(1048576)
+                    if not buf then break end
+                    out:write(buf)
+                end
+                inp:close(); out:close()
+                os.rename(path .. ".full", path)
+                return true
+            end
+        end
+        os.remove(path)
+        return false, "server ignored Range", true
+    end
+    if code == 401 then return false, "http_401", true end
+    if code and code >= 400 then return false, "http_" .. code, code >= 500 end
+    return false, tostring(status or "unreachable"), true -- network error: partial data kept, resume
 end
 
 --- Bookmarks (Grimmory's own: EPUB by CFI, PDF by page number).

@@ -46,6 +46,9 @@ a built-in connection to a self-hosted **Grimmory** book server.
 ### ⌨️ Made for the Kindle Keyboard
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
   aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
+- **GZreader menu** on the **Menu** key at Home: library, continue reading,
+  audiobooks, search, Wi‑Fi, night mode, settings, updates, sleep, restart — also
+  with letter keys.
 - **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloaded, Continue,
   Grimmory, Favorites).
 - **Back** returns from a link, otherwise goes Home (never back to the book's start).
@@ -62,8 +65,10 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **Chapters**, ±30 seconds, **sleep timer** (15/30/60 minutes or end of chapter),
   volume; playback continues while you browse.
 - Listening position **syncs with Grimmory's web player**.
-- The Kindle 3's built-in audio decoders vary by firmware: **Test audio playback**
-  finds which of its players can play MP3 and M4B audio.
+- Plays through the Kindle 3's own hardware MP3/AAC decoders. M4B files are
+  converted on the Kindle after download (no re-encoding) so they can start
+  anywhere; downloads resume after a dropped connection. **Test audio playback**
+  checks which player works on your firmware.
 
 ### 🌙 And more
 - **Sleep screen:** the book's cover while reading, a picture from the `screensavers`

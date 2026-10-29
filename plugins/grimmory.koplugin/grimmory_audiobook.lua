@@ -145,8 +145,43 @@ function Audiobook.describe(book_id, info, primary_name)
         tracks = tracks, chapters = chapters, files = files }
 end
 
---- Download an audiobook (all tracks) in a background process. on_done(book|nil, err).
-function Audiobook.download(plugin, summary, on_done)
+--- M4B/M4A tracks are converted once into ADTS AAC chunks (the Kindle 3
+--- can decode AAC but can't open MP4 files): <file>.chunks/c0.aac, c1.aac…
+--- plus index.json with each chunk's start time. Returns the chunk info
+--- or nil, err. Runs in the download subprocess (or on play for books
+--- downloaded before 1.0.13).
+function Audiobook.convertTrack(dir, t)
+    local Mp4 = require("grimmory_mp4")
+    local src = dir .. "/" .. t.file
+    local cdir = src .. ".chunks"
+    mkdirp(cdir)
+    local res, err = Mp4.convert(src, cdir)
+    if not res then return nil, err end
+    local info = { dir = t.file .. ".chunks", starts = res.starts, durationMs = res.durationMs, count = res.count }
+    local f = io.open(cdir .. "/index.json", "wb")
+    if not f then return nil, "cannot write index" end
+    f:write(JSON.encode(info))
+    f:close()
+    os.remove(src)
+    return info
+end
+
+local function readChunks(dir, t)
+    local f = io.open(dir .. "/" .. t.file .. ".chunks/index.json", "rb")
+    if not f then return nil end
+    local ok, data = pcall(JSON.decode, f:read("*a"))
+    f:close()
+    return ok and type(data) == "table" and data.starts and data or nil
+end
+Audiobook.readChunks = readChunks
+
+local function needsConversion(t) return Engine.format(t.file) == "m4a" end
+
+--- Download an audiobook (all tracks) in a background process, resuming
+--- interrupted transfers, then prepare M4B audio for the Kindle.
+--- on_done(book|nil, err).
+function Audiobook.download(plugin, summary, on_done, attempt)
+    attempt = attempt or 1
     local api = plugin.api
     local info, err = api:audiobookInfo(summary.id)
     if not info then return on_done(nil, err) end
@@ -154,23 +189,41 @@ function Audiobook.download(plugin, summary, on_done)
     book.title = book.title or summary.title
     local dir = Audiobook.dir(plugin, summary.id)
     mkdirp(dir)
-    local ok, terr = api:ensureToken()
+    local ok, terr = api:ensureToken() -- refreshed here, in the main process
     if not ok then return on_done(nil, terr) end
     local total = 0
     for _i, t in ipairs(book.tracks) do total = total + (t.size or 0) end
-    Log.info("audiobook download start", summary.id, #book.tracks, "files", total, "bytes")
+    Log.info("audiobook download start", summary.id, #book.tracks, "files", total, "bytes", "attempt", attempt)
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
         api.no_refresh = true
         for _i, t in ipairs(book.tracks) do
             local final = dir .. "/" .. t.file
-            if lfs.attributes(final, "mode") ~= "file" then
+            if lfs.attributes(final, "mode") ~= "file" and not readChunks(dir, t) then
                 local part = final .. ".part"
-                local dok, derr = api:downloadAudio(summary.id, book.folder and t.index or nil, part)
-                if not dok then
-                    ffiutil.writeToFD(wfd, "err " .. tostring(derr), true)
-                    return
+                local tries, last_size = 0, -1
+                while true do
+                    local dok, derr, retry = api:downloadAudio(summary.id, book.folder and t.index or nil, part)
+                    if dok then break end
+                    local size = lfs.attributes(part, "size") or 0
+                    if size > last_size then tries = 0 else tries = tries + 1 end -- count only tries with no progress
+                    last_size = size
+                    if not retry or derr == "http_401" or tries >= 5 then
+                        ffiutil.writeToFD(wfd, "err " .. tostring(derr) .. (retry and " (resumable)" or ""), true)
+                        return
+                    end
+                    ffiutil.sleep(math.min(30, 3 * (tries + 1)))
                 end
                 os.rename(part, final)
+            end
+            if needsConversion(t) and not readChunks(dir, t) then
+                local fh = io.open(dir .. "/.converting", "wb")
+                if fh then fh:write(t.file); fh:close() end
+                local cok, cerr = Audiobook.convertTrack(dir, t)
+                os.remove(dir .. "/.converting")
+                if not cok then
+                    ffiutil.writeToFD(wfd, "err could not prepare the audio: " .. tostring(cerr), true)
+                    return
+                end
             end
         end
         ffiutil.writeToFD(wfd, "ok", true)
@@ -178,25 +231,37 @@ function Audiobook.download(plugin, summary, on_done)
     if not pid then return on_done(nil, "could not start the download") end
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading “%1”…"), book.title or ""),
-        subtitle = _("Press any key to hide; the download continues."),
+        subtitle = _("Press any key to hide; the download continues. Interrupted downloads resume."),
         progress_max = total > 0 and total or 1, refresh_time_seconds = 2,
     }
     dialog.dismiss_callback = function() dialog = nil end
     dialog:show()
+    local converting_shown
     local function poll()
         local have = 0
         for _i, t in ipairs(book.tracks) do
             local p = dir .. "/" .. t.file
-            have = have + (lfs.attributes(p, "size") or lfs.attributes(p .. ".part", "size") or 0)
+            have = have + (lfs.attributes(p, "size") or lfs.attributes(p .. ".part", "size")
+                or (readChunks(dir, t) and (t.size or 0)) or 0)
         end
         if dialog and total > 0 then dialog:reportProgress(math.min(have, total)) end
+        if not converting_shown and lfs.attributes(dir .. "/.converting", "mode") then
+            converting_shown = true
+            Log.info("audiobook: preparing M4B audio for the Kindle", summary.id)
+            UIManager:show(InfoMessage:new{ text = _("Downloaded. Preparing the audio for the Kindle (a few minutes for a long book)…"), timeout = 6 })
+        end
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog) end
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
             Log.warn("audiobook download failed", summary.id, res)
-            return on_done(nil, res:match("^err (.*)$") or res)
+            if res:find("(resumable)", 1, true) and attempt < 4 then
+                -- e.g. the login expired during a long download: refresh it and carry on
+                return UIManager:scheduleIn(2, function() Audiobook.download(plugin, summary, on_done, attempt + 1) end)
+            end
+            return on_done(nil, (res:match("^err (.*)$") or res):gsub(" %(resumable%)", ""))
         end
+        Audiobook.finishLayout(dir, book)
         local f = io.open(dir .. "/audiobook.json", "wb")
         if f then f:write(JSON.encode(book)); f:close() end
         plugin.store.audiobooks = plugin.store.audiobooks or {}
@@ -206,6 +271,18 @@ function Audiobook.download(plugin, summary, on_done)
         on_done(Audiobook.load(plugin, summary.id))
     end
     UIManager:scheduleIn(1, poll)
+end
+
+--- Record converted tracks in the book description (files list -> chunk files).
+function Audiobook.finishLayout(dir, book)
+    for i, t in ipairs(book.tracks) do
+        local c = readChunks(dir, t)
+        if c then
+            t.chunks = { dir = c.dir, starts = c.starts }
+            if (t.durationMs or 0) == 0 then t.durationMs = c.durationMs end
+            book.files[i] = c.dir .. "/c0.aac"
+        end
+    end
 end
 
 ---------------------------------------------------------------- player
@@ -284,30 +361,54 @@ function Player:pull(on_done)
     })
 end
 
-function Player:engineFor(path)
-    return Engine.chosen(Engine.format(path))
+
+--- What the engine plays for track `t`, and its format family.
+function Player:source(t, in_track)
+    local dir = self.book.dir
+    if not t.chunks and needsConversion(t) then
+        -- downloaded before GZreader 1.0.13: convert now (once)
+        local c = readChunks(dir, t)
+        if not c and lfs.attributes(dir .. "/" .. t.file, "mode") == "file" then
+            UIManager:show(InfoMessage:new{ text = _("Preparing the audio for the Kindle (once)…"), timeout = 2 })
+            UIManager:forceRePaint()
+            local err
+            c, err = Audiobook.convertTrack(dir, t)
+            if not c then Log.warn("audiobook: M4B conversion failed:", tostring(err)) end
+        end
+        if c then
+            Audiobook.finishLayout(dir, self.book)
+            local f = io.open(dir .. "/audiobook.json", "wb")
+            if f then
+                local copy = {}
+                for k, v in pairs(self.book) do if k ~= "dir" then copy[k] = v end end
+                f:write(JSON.encode(copy)); f:close()
+            end
+        end
+    end
+    if t.chunks then
+        return { kind = "chunks", dir = dir .. "/" .. t.chunks.dir, starts = t.chunks.starts, offset_ms = in_track }, "aac"
+    end
+    local path = dir .. "/" .. t.file
+    return { kind = "file", path = path, offset_ms = in_track, size = t.size or lfs.attributes(path, "size"),
+        duration_ms = t.durationMs }, Engine.format(path)
 end
 
 function Player:play()
     local g = self.pos
     local track, in_track = Audiobook.locate(self.book, g)
     local t = self.book.tracks[track]
-    local path = self.book.dir .. "/" .. t.file
-    local p = self:engineFor(path)
+    local src, fmt = self:source(t, in_track)
+    local p = Engine.chosen(fmt)
     if not p then
         UIManager:show(ConfirmBox:new{
-            text = T(_("No player has been found yet for %1 audio on this Kindle. Run the audio test now?"), (Engine.format(path) or "?"):upper()),
+            text = T(_("No player has been found yet for %1 audio on this Kindle. Run the audio test now?"), (fmt or "?"):upper()),
             ok_text = _("Test audio"),
-            ok_callback = function() Engine.test(function() if self:engineFor(path) then self:play() end end) end,
+            ok_callback = function() Engine.test(function() if Engine.chosen(fmt) then self:play() end end) end,
         })
         return false
     end
-    if in_track > 1000 and not Engine.canSeek(p, path) then
-        Log.info("audiobook: this player can't start mid-file; starting the track/chapter from its beginning")
-        in_track = 0
-        self.pos = t.start
-    end
-    Engine.play(p, path, in_track, t.size or lfs.attributes(path, "size"), t.durationMs)
+    local started = select(2, Engine.play(p, src))
+    self.pos = t.start + (started or 0)
     self.track = track
     self.playing = true
     Audiobook.current = self
@@ -400,9 +501,21 @@ function Player:tick()
     if not self.playing then return end
     local t = self.book.tracks[self.track]
     local in_track = Engine.position()
-    local p = Engine.chosen(Engine.format(t.file))
     local ended = not Engine.running()
-        or (p and p.kind == "lipc" and t.durationMs and t.durationMs > 0 and in_track >= t.durationMs + 1500)
+        or (t.durationMs and t.durationMs > 0 and in_track >= t.durationMs + 5000)
+    if ended and in_track < 4000 and not Engine.isPaused() then
+        -- the player quit straight away: don't skip ahead or lose the position
+        local out = Engine.log()
+        Log.warn("audiobook: the player stopped at once:", out:sub(1, 400):gsub("\n", " / "))
+        self.pos = t.start + in_track
+        Engine.stop()
+        self.playing = false
+        self:keepAwake(false)
+        if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
+        UIManager:show(InfoMessage:new{ text = _("The audio didn't play. Run Test audio playback (Grimmory → Audiobooks), then send the diagnostic log if it still fails.") })
+        if self.screen then self.screen:refresh() end
+        return
+    end
     if ended then
         if self.track < #self.book.tracks then
             self.pos = self.book.tracks[self.track + 1].start

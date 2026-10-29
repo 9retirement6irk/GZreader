@@ -88,6 +88,29 @@ function Grimmory:init()
             end)
         end
     end
+    if not self.ui.document and self.ui.menu and not Device:isTouchDevice() and Device:hasKeyboard() then
+        -- Kindle Keyboard: the Menu key opens GZreader's Home menu (a list
+        -- with letter keys) instead of the touch quick-settings panel.
+        -- ZenOS's Home page, its lists and OPDS call onShowMenu() directly,
+        -- so that is the one replaced (HomeMenu.fullMenu() sets _gz_full to
+        -- reach the original).
+        local fm_menu = self.ui.menu
+        local orig_show = fm_menu.onShowMenu
+        local orig_key = fm_menu.onKeyPressShowMenu
+        local plugin = self
+        fm_menu.onShowMenu = function(m, ...)
+            if not m._gz_full and G_reader_settings:nilOrTrue("gzreader_home_menu") then
+                return require("grimmory_homemenu").show(plugin)
+            end
+            return orig_show and orig_show(m, ...)
+        end
+        fm_menu.onKeyPressShowMenu = function(m, a, k)
+            if G_reader_settings:nilOrTrue("gzreader_home_menu") then
+                return require("grimmory_homemenu").show(plugin)
+            end
+            return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
+        end
+    end
     if not self.ui.document and type(self.ui.active_widgets) == "table" then
         -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top
         -- window only; ZenOS's Home page sits above the file manager. Being an
@@ -171,6 +194,12 @@ function Grimmory:menuItems()
                 self:save()
             end,
             separator = true,
+        },
+        {
+            text = _("Menu key opens the GZreader menu"),
+            help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"All settings\" in it opens the full menu."),
+            checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
+            callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
         },
         {
             text = _("Sync bookmarks"),
@@ -848,6 +877,19 @@ function Grimmory:onGrimmorySyncNow()
         if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
     end)
     return true
+end
+
+function Grimmory:showAudiobookMenu()
+    local Menu = require("ui/widget/menu")
+    local menu
+    local items = self:audiobookItems()
+    for _i, it in ipairs(items) do
+        local cb = it.callback
+        it.callback = cb and function() UIManager:close(menu); cb() end
+    end
+    menu = Menu:new{ title = _("Audiobooks"), item_table = items, is_borderless = true, is_popout = false,
+        covers_fullscreen = true, title_bar_fm_style = true }
+    UIManager:show(menu)
 end
 
 function Grimmory:audiobookItems()

@@ -3412,6 +3412,10 @@ local function apply_navbar()
                 if is_menu_key then
                     local fm = FileManager.instance
                     local fm_menu = fm and fm.menu
+                    -- GZreader: same as the Menu key in the library (its Home menu)
+                    if fm_menu and type(fm_menu.onKeyPressShowMenu) == "function" then
+                        return fm_menu:onKeyPressShowMenu()
+                    end
                     if fm_menu and type(fm_menu.onShowMenu) == "function" then
                         return fm_menu:onShowMenu()
                     end

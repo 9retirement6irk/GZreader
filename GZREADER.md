@@ -68,6 +68,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
+| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, night mode, settings, updates, send log, sleep, restart, all settings (the full KOReader/ZenOS menu), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
@@ -163,8 +164,8 @@ settings → Slower / Faster). The diagnostic log records every step.
 ## Audiobooks (experimental)
 
 Grimmory tab → Audiobooks, or Settings → General → Grimmory → Audiobooks.
-Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file, or
-one file per track for folder audiobooks), then the player opens:
+Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
+converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
 
 | Key | Does |
 | --- | --- |
@@ -180,11 +181,19 @@ player: position in the track and track index), every minute while
 playing, on pause and on stop; offline updates are queued. The Kindle
 doesn't go to sleep while audio plays; pressing the power button pauses.
 
-Playback uses what the Kindle has: GStreamer 0.10 pipelines or Amazon's
-audio service. Which formats decode depends on the firmware, so **Test audio
-playback** plays a short MP3 and AAC (M4B) tune with each player, asks which
-you heard and remembers it. MP3 can start anywhere; with GStreamer an M4B
-starts from the beginning of the file (Amazon's player can seek, if it works).
+Playback uses what the Kindle 3 has: GStreamer 0.10 (`gst-launch-0.10`)
+with Freescale's hardware decoders `mfw_mp3decoder` and `mfw_aacdecoder`,
+into ALSA. MP3 starts anywhere (the file is fed from the right byte offset).
+There is no MP4 demuxer on the Kindle, so an M4B is converted once after
+download (`grimmory_mp4.lua`: each AAC frame gets an ADTS header; no
+re-encoding) into ~15-second pieces in `<file>.chunks/`; playback starts at
+the piece holding the position and feeds the following ones to the AAC
+decoder. **Test audio playback** tries the pipelines with a short MP3 and an
+AAC tune (converted from the bundled M4A, which also tests the converter),
+asks which you heard and remembers it.
+
+Downloads use Grimmory's audiobook stream endpoints and resume with HTTP
+Range after a dropped connection or timeout.
 
 ## Sleep screen
 

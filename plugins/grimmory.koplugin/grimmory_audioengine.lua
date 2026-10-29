@@ -1,29 +1,38 @@
 --[[--
 Audio playback for GZreader audiobooks on a Kindle Keyboard.
 
-The Kindle 3 has a speaker/headphone jack (ALSA, WM8960), GStreamer 0.10
-(gst-launch-0.10) and Amazon's audio service (com.lab126.audio over lipc,
-which plays MP3 and Audible books for the stock "Experimental → MP3 player"
-and audiobooks). What decodes which format differs between firmware builds,
-so "Test audio playback" plays two short test tunes (MP3, and AAC as used by
-M4B audiobooks) through each candidate player, logs what the Kindle says,
-asks which you heard, and remembers the player per format.
+What the Kindle 3 has (from its diagnostic log, firmware 3.4.3):
+- GStreamer 0.10 (gst-launch-0.10, which has no "-q" option) with Freescale
+  hardware decoders: mfw_mp3decoder and mfw_aacdecoder, plus decodebin,
+  playbin, typefind, filesrc/fdsrc and alsasink. No MP4 demuxer (qtdemux),
+  so M4B/M4A files are converted to ADTS AAC chunks after download
+  (grimmory_mp4.lua) and streamed to the AAC decoder.
+- Amazon's audioServer (com.lab126.audio over lipc): playbin-based, needs
+  absolute file paths.
 
-Players:
-  gst  gst-launch-0.10 pipelines (process in the background; pause/resume by
-       SIGSTOP/SIGCONT; starting mid-file for MP3 by skipping bytes, as MP3
-       frames can be decoded from anywhere);
-  lipc Amazon's com.lab126.audio player (URI + PlayerCreate/PlayerStart …).
-Position is timed on the Kindle (wall clock while playing).
+"Test audio playback" plays a short MP3 and an AAC tune (converted on the
+Kindle from the bundled M4A, which also tests the converter) through each
+candidate pipeline, logs what the Kindle says, asks which you heard and
+remembers the pipeline per format.
+
+Sources:
+  file    an MP3 file; starting mid-file by skipping bytes (MP3 decoders
+          resynchronise on the next frame);
+  chunks  ADTS chunk files c<N>.aac; starting at the chunk that holds the
+          position, then cat-ing the following chunks into the decoder.
+Pause/resume: SIGSTOP/SIGCONT of the gst-launch process. Position: timed on
+the Kindle while playing.
 ]]
 
 local UIManager = require("ui/uimanager")
+local lfs = require("libs/libkoreader-lfs")
 local Log = require("grimmory_log")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
 local PID_FILE = "/tmp/gzreader-audio.pid"
 local LOG_FILE = "/tmp/gzreader-audio.log"
+local SINK = "audioconvert ! audioresample ! alsasink"
 
 local Engine = {
     exec = nil,        -- injectable: function(cmd)
@@ -33,17 +42,16 @@ local Engine = {
     testing = false,
 }
 
+-- stream = true: the pipeline reads from stdin (fdsrc), so it can play from
+-- any position (MP3 byte skip, AAC chunks).
 Engine.PLAYERS = {
-    { id = "gst-decodebin", kind = "gst", seek_mp3 = true,
-      pipe = "decodebin ! audioconvert ! audioresample ! alsasink" },
-    { id = "gst-playbin", kind = "gst", playbin = true },
-    { id = "gst-mad", kind = "gst", formats = { mp3 = true }, seek_mp3 = true,
-      pipe = "mad ! audioconvert ! audioresample ! alsasink" },
-    { id = "gst-faad", kind = "gst", formats = { m4a = true },
-      pipe = "qtdemux ! faad ! audioconvert ! audioresample ! alsasink" },
-    { id = "gst-mixersink", kind = "gst", seek_mp3 = true,
-      pipe = "decodebin ! audioconvert ! audioresample ! mixersink" },
-    { id = "lipc-audio", kind = "lipc" },
+    { id = "mp3-mfw", formats = { mp3 = true }, stream = true, pipe = "mfw_mp3decoder ! " .. SINK },
+    { id = "mp3-typefind-mfw", formats = { mp3 = true }, stream = true, pipe = "typefind ! mfw_mp3decoder ! " .. SINK },
+    { id = "mp3-decodebin", formats = { mp3 = true }, stream = true, pipe = "decodebin ! " .. SINK },
+    { id = "aac-mfw", formats = { aac = true }, stream = true, pipe = "mfw_aacdecoder ! " .. SINK },
+    { id = "aac-typefind-mfw", formats = { aac = true }, stream = true, pipe = "typefind ! mfw_aacdecoder ! " .. SINK },
+    { id = "aac-decodebin", formats = { aac = true }, stream = true, pipe = "decodebin ! " .. SINK },
+    { id = "playbin", formats = { mp3 = true, aac = true }, playbin = true },
 }
 
 local function run(cmd)
@@ -59,12 +67,18 @@ local function readFile(p)
     return s
 end
 
---- Audio format family of a file: "mp3", "m4a" (AAC: m4a/m4b/mp4/aac) or nil.
+local function abs(path)
+    if tostring(path):sub(1, 1) == "/" then return path end
+    return (lfs.currentdir() or ".") .. "/" .. path
+end
+
+--- Audio format family of a file: "mp3", "m4a" (MP4 container) or "aac" (ADTS).
 function Engine.format(path)
     local ext = tostring(path):match("%.([%w]+)$")
     ext = ext and ext:lower()
     if ext == "mp3" then return "mp3" end
-    if ext == "m4a" or ext == "m4b" or ext == "mp4" or ext == "aac" then return "m4a" end
+    if ext == "m4a" or ext == "m4b" or ext == "mp4" then return "m4a" end
+    if ext == "aac" then return "aac" end
     return ext
 end
 
@@ -72,6 +86,7 @@ local function player(id)
     for _i, p in ipairs(Engine.PLAYERS) do if p.id == id then return p end end
 end
 
+--- The pipeline chosen by the audio test for "mp3" or "aac".
 function Engine.chosen(fmt)
     local saved = G_reader_settings:readSetting("gzreader_audio_players") or {}
     return saved[fmt] and player(saved[fmt]) or nil
@@ -79,36 +94,34 @@ end
 
 local function quote(path) return "'" .. tostring(path):gsub("'", "'\\''") .. "'" end
 
-local function lipcSet(prop, value, int)
-    run(string.format("lipc-set-prop %s com.lab126.audio %s %s >> %s 2>&1",
-        int and "-i" or "-s", prop, int and tostring(math.floor(value)) or quote(value), LOG_FILE))
-end
-
---- Build the shell command that plays `path` from `offset_ms` with player `p`.
---- size/duration_ms are used to start an MP3 mid-file by skipping bytes.
-function Engine.command(p, path, offset_ms, size, duration_ms)
-    local fmt = Engine.format(path)
+--- The shell command playing `src` with player `p`.
+--- src = { kind = "file", path, offset_ms, size, duration_ms }
+---     | { kind = "chunks", dir, starts = { ms… }, offset_ms }
+--- Returns command, position actually started at (ms).
+function Engine.command(p, src)
+    local offset = src.offset_ms or 0
+    if src.kind == "chunks" then
+        local k = 1
+        for i, st in ipairs(src.starts or { 0 }) do if st <= offset then k = i end end
+        local feed = string.format("i=%d; while [ -f %s/c$i.aac ]; do cat %s/c$i.aac; i=$((i+1)); done",
+            k - 1, quote(src.dir), quote(src.dir))
+        return feed .. " | gst-launch-0.10 fdsrc ! " .. p.pipe, (src.starts or { 0 })[k] or 0
+    end
+    local path = abs(src.path)
     if p.playbin then
-        return string.format("gst-launch-0.10 -q playbin uri=%s", quote("file://" .. path))
+        return string.format("gst-launch-0.10 playbin uri=%s", quote("file://" .. path)), 0
     end
     local skip = 0
-    if offset_ms and offset_ms > 0 and fmt == "mp3" and p.seek_mp3 and size and duration_ms and duration_ms > 0 then
-        skip = math.floor(size * offset_ms / duration_ms / 4096)
+    if offset > 0 and src.size and src.duration_ms and src.duration_ms > 0 then
+        skip = math.floor(src.size * offset / src.duration_ms / 4096)
     end
-    if skip > 0 then
-        return string.format("dd if=%s bs=4096 skip=%d 2>/dev/null | gst-launch-0.10 -q fdsrc ! %s", quote(path), skip, p.pipe)
-    end
-    return string.format("gst-launch-0.10 -q filesrc location=%s ! %s", quote(path), p.pipe)
-end
-
---- Can player `p` start `path` at `offset_ms`? (else it starts at 0)
-function Engine.canSeek(p, path)
-    return p.kind == "lipc" or (Engine.format(path) == "mp3" and p.seek_mp3 == true)
+    local started = skip > 0 and math.floor(skip * 4096 * src.duration_ms / src.size) or 0
+    return string.format("dd if=%s bs=4096 skip=%d 2>/dev/null | gst-launch-0.10 fdsrc ! %s", quote(path), skip, p.pipe), started
 end
 
 ---------------------------------------------------------------- playback
 
-local current -- { p, pid, path, started_at, offset_ms, paused_at }
+local current -- { p, src, pid, started_at, offset_ms, paused_at }
 
 function Engine.pid()
     local s = readFile(PID_FILE)
@@ -123,28 +136,17 @@ local function alive(pid)
     f:close()
     return not st:match("^%d+ %b() Z") -- not a zombie
 end
-
 Engine.alive = alive -- injectable for tests
 
---- Start playing. Returns true or nil, err.
-function Engine.play(p, path, offset_ms, size, duration_ms)
+--- Start playing `src` with `p`. Returns true, position started at (ms).
+function Engine.play(p, src)
     Engine.stop()
     os.remove(LOG_FILE)
-    local started_ms = offset_ms or 0
-    if p.kind == "gst" then
-        os.remove(PID_FILE)
-        local cmd = Engine.command(p, path, offset_ms, size, duration_ms)
-        if not Engine.canSeek(p, path) then started_ms = 0 end
-        run(string.format("(%s > %s 2>&1 & echo $! > %s) >/dev/null 2>&1", cmd, LOG_FILE, PID_FILE))
-    else
-        local uri = "file://" .. path
-        lipcSet("URI", uri)
-        lipcSet("PlayerCreate", uri)
-        lipcSet("PlayerStart", uri)
-        if offset_ms and offset_ms > 0 then lipcSet("Seek", offset_ms, true) end
-    end
-    current = { p = p, path = path, offset_ms = started_ms, started_at = Engine.clock(), pid = nil }
-    Log.info("audio play", p.id, path, "from", started_ms, "ms")
+    os.remove(PID_FILE)
+    local cmd, started_ms = Engine.command(p, src)
+    run(string.format("(%s > %s 2>&1 & echo $! > %s) >/dev/null 2>&1", cmd, LOG_FILE, PID_FILE))
+    current = { p = p, src = src, offset_ms = started_ms, started_at = Engine.clock() }
+    Log.info("audio play", p.id, src.path or src.dir, "from", started_ms, "ms")
     return true, started_ms
 end
 
@@ -154,51 +156,40 @@ function Engine.position()
     return current.offset_ms + (Engine.clock() - current.started_at) * 1000
 end
 
---- Is the current track still playing? (false when it reached its end)
+--- Is it still playing? (false once the stream ended or the player failed)
 function Engine.running()
     if not current then return false end
-    if current.p.kind == "gst" then
-        current.pid = current.pid or Engine.pid()
-        if not current.pid then return true end -- just started, pid not written yet
-        return current.paused_at ~= nil or Engine.alive(current.pid)
-    end
-    return true -- the lipc player doesn't tell us; the duration does
+    current.pid = current.pid or Engine.pid()
+    if not current.pid then return Engine.clock() - current.started_at < 5 end -- pid not written yet
+    return current.paused_at ~= nil or Engine.alive(current.pid)
+end
+
+function Engine.log() return readFile(LOG_FILE) or "" end
+
+local function signal(sig)
+    local pid = current and (current.pid or Engine.pid())
+    if pid then run(string.format("kill -%s %d >/dev/null 2>&1", sig, pid)) end
 end
 
 function Engine.pause()
     if not current or current.paused_at then return end
     current.offset_ms = Engine.position()
     current.paused_at = Engine.clock()
-    if current.p.kind == "gst" then
-        local pid = current.pid or Engine.pid()
-        if pid then run("kill -STOP " .. pid .. " >/dev/null 2>&1") end
-    else
-        lipcSet("PlayerPause", "file://" .. current.path)
-    end
+    signal("STOP")
 end
 
 function Engine.resume()
     if not current or not current.paused_at then return end
     current.paused_at = nil
     current.started_at = Engine.clock()
-    if current.p.kind == "gst" then
-        local pid = current.pid or Engine.pid()
-        if pid then run("kill -CONT " .. pid .. " >/dev/null 2>&1") end
-    else
-        lipcSet("PlayerResume", "file://" .. current.path)
-    end
+    signal("CONT")
 end
 
 function Engine.stop()
     if not current then return end
-    if current.p.kind == "gst" then
-        local pid = current.pid or Engine.pid()
-        if pid then run("kill -CONT " .. pid .. " >/dev/null 2>&1; kill " .. pid .. " >/dev/null 2>&1") end
-        os.remove(PID_FILE)
-    else
-        lipcSet("PlayerStop", "file://" .. current.path)
-        lipcSet("PlayerRelease", "file://" .. current.path)
-    end
+    signal("CONT")
+    signal("TERM")
+    os.remove(PID_FILE)
     current = nil
 end
 
@@ -216,68 +207,83 @@ end
 
 ---------------------------------------------------------------- test
 
---- Recent lines from the system log about audio (for the diagnostic log).
 local function audioSyslog()
     local s = readFile(Engine.syslog)
     if not s then return "" end
     local lines = {}
     for line in s:sub(-8192):gmatch("[^\n]+") do
         local l = line:lower()
-        if l:find("audio") or l:find("gst") or l:find("player") or l:find("alsa") then lines[#lines + 1] = line end
+        if l:find("audio") or l:find("gst") or l:find("mfw") or l:find("alsa") then lines[#lines + 1] = line end
     end
-    return table.concat(lines, "\n", math.max(1, #lines - 8))
+    return table.concat(lines, "\n", math.max(1, #lines - 6))
 end
 
-local function sample(fmt)
-    return (Engine.root or ".") .. "/audio/test." .. fmt
+--- Test sources: the bundled MP3, and the bundled M4A converted to ADTS chunks.
+function Engine.testSources()
+    local root = abs(Engine.root or ".")
+    local srcs = { mp3 = { kind = "file", path = root .. "/audio/test.mp3" } }
+    local dir = "/tmp/gzreader-audiotest"
+    lfs.mkdir(dir)
+    local ok, conv = pcall(function()
+        return require("grimmory_mp4").convert(root .. "/audio/test.m4a", dir)
+    end)
+    if ok and conv then
+        srcs.aac = { kind = "chunks", dir = dir, starts = conv.starts }
+        srcs.aac_file = { kind = "file", path = dir .. "/c0.aac" }
+        Log.info("audio test: M4A converted to ADTS", conv.count, "chunk(s),", conv.durationMs, "ms")
+    else
+        Log.warn("audio test: M4A conversion failed:", tostring(conv))
+    end
+    return srcs
 end
 
---- Try every player for MP3 and for AAC (M4B); ask which test tune was heard.
+--- Try the pipelines for MP3 and for AAC (M4B); ask which test tune was heard.
 function Engine.test(on_done)
     if Engine.testing then return end
     Engine.testing = true
     local InfoMessage = require("ui/widget/infomessage")
     local ConfirmBox = require("ui/widget/confirmbox")
-    local chosen = G_reader_settings:readSetting("gzreader_audio_players") or {}
+    local srcs = Engine.testSources()
     local plan = {}
-    for _i, fmt in ipairs({ "mp3", "m4a" }) do
+    for _i, fmt in ipairs({ "mp3", "aac" }) do
         for _j, p in ipairs(Engine.PLAYERS) do
-            if not p.formats or p.formats[fmt] then plan[#plan + 1] = { fmt = fmt, p = p } end
+            if p.formats[fmt] then
+                local src = srcs[fmt]
+                if p.playbin and fmt == "aac" then src = srcs.aac_file end
+                if src then plan[#plan + 1] = { fmt = fmt, p = p, src = src } end
+            end
         end
     end
-    local i = 0
-    local found = {}
+    local chosen, i = {}, 0
     local function finish()
         Engine.testing = false
         Engine.stop()
         G_reader_settings:saveSetting("gzreader_audio_players", chosen)
-        local summary = T(_("MP3: %1\nM4B / AAC: %2"),
-            chosen.mp3 or _("no working player found"), chosen.m4a or _("no working player found"))
-        Log.info("audio test result", chosen.mp3 or "-", chosen.m4a or "-")
-        UIManager:show(InfoMessage:new{ text = _("Audio test finished.") .. "\n\n" .. summary
-            .. ((chosen.mp3 and chosen.m4a) and "" or ("\n\n" .. _("Save the diagnostic log (Grimmory menu) and send it so missing players can be added."))) })
+        Log.info("audio test result", "mp3=" .. tostring(chosen.mp3), "aac=" .. tostring(chosen.aac))
+        UIManager:show(InfoMessage:new{ text = _("Audio test finished.") .. "\n\n"
+            .. T(_("MP3: %1\nM4B / AAC: %2"), chosen.mp3 or _("no working player found"), chosen.aac or _("no working player found"))
+            .. ((chosen.mp3 and chosen.aac) and "" or ("\n\n" .. _("Send the diagnostic log (Grimmory menu) so this can be fixed."))) })
         if on_done then on_done(chosen) end
     end
     local function step()
         i = i + 1
         local item = plan[i]
         if not item then return finish() end
-        if found[item.fmt] then return step() end -- already have one for this format
-        local path = sample(item.fmt)
-        Engine.play(item.p, path, 0)
+        if chosen[item.fmt] then return step() end
+        Engine.play(item.p, item.src)
         UIManager:scheduleIn(3.5, function()
-            local log = readFile(LOG_FILE) or ""
-            local ok_process = item.p.kind ~= "gst" or not (log:lower():find("error") or log:lower():find("no such element")
-                or log:lower():find("not found") or log:lower():find("could not"))
-            Log.info("audio test", item.fmt, item.p.id, ok_process and "ran" or "failed", "|", log:sub(1, 300):gsub("\n", " / "),
-                "| syslog:", audioSyslog():gsub("\n", " / "))
+            local out = Engine.log()
+            local lower = out:lower()
+            local failed = lower:find("error") or lower:find("no such element") or lower:find("could not")
+                or lower:find("unknown option") or lower:find("not found") or lower:find("erroneous")
+            Log.info("audio test", item.fmt, item.p.id, failed and "failed" or "ran", "|", out:sub(1, 300):gsub("\n", " / "),
+                "| syslog:", (audioSyslog():gsub("\n", " / ")))
             Engine.stop()
-            if not ok_process then return step() end
+            if failed then return step() end
             UIManager:show(ConfirmBox:new{
                 text = T(_("Did you just hear a short tune (%1 test)?"), item.fmt == "mp3" and "MP3" or "M4B / AAC"),
                 ok_text = _("Yes"), cancel_text = _("No"),
                 ok_callback = function()
-                    found[item.fmt] = true
                     chosen[item.fmt] = item.p.id
                     UIManager:scheduleIn(0.5, step)
                 end,
@@ -286,7 +292,6 @@ function Engine.test(on_done)
         end)
     end
     UIManager:show(InfoMessage:new{ text = _("Audio test: listen to the speaker or headphones. The Kindle plays a short tune with each player and asks whether you heard it."), timeout = 5 })
-    chosen = {}
     UIManager:scheduleIn(5.5, step)
 end
 
