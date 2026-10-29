@@ -8,10 +8,17 @@ cut off at the bottom of a page. GZreader recognizes such books when they
 open (nearly every chapter file is pictures with next to no text) and, once
 per book:
 - adds a book-specific style tweak that makes each picture as tall as the
-  page (100vh, keeping its shape, never wider than the screen) with no
-  margins or padding around it;
+  page area (height 100%, keeping its shape, never wider than the screen)
+  with no margins or padding around it. 100% is the space between the top
+  and bottom margins, so the title bar (ZenOS reserves a top margin for it)
+  and the footer stay clear. (1.0.28 used 100vh, the whole screen: pictures
+  ran under the title bar and the footer, and a narrow picture such as a
+  publisher's logo was stretched to the full height);
 - sets this book's page margins to 0 (the previous ones are kept and put
-  back when you turn it off).
+  back when you turn it off);
+- turns on smooth image scaling for the book: the pages are small scans
+  (about 385 x 625) enlarged to the screen, and smooth scaling makes the
+  enlarged handwriting look much less jagged.
 Reading menu → "Fit pictures to the screen" turns it on or off for the book.
 ]]
 
@@ -29,8 +36,8 @@ PB.CSS = MARK_BEGIN .. [[
 
 body, p, div, section { margin: 0 !important; padding: 0 !important; text-indent: 0 !important; }
 img { display: block !important; margin: 0 auto !important; padding: 0 !important;
-      height: 100vh !important; width: auto !important;
-      max-height: none !important; max-width: 100vw !important; }
+      height: 100% !important; width: auto !important;
+      max-height: 100% !important; max-width: 100% !important; }
 ]] .. MARK_END
 
 --- Is this a picture book? (EPUB whose chapter files are pictures, not text.)
@@ -83,6 +90,12 @@ local function margins(ui)
     return t and t.unscaled_margins
 end
 
+local function setSmooth(ui, on)
+    local cfg = ui.document and ui.document.configurable
+    if cfg then cfg.smooth_scaling = on and 1 or 0 end
+    if ui.document and ui.document.setImageScaling then pcall(ui.document.setImageScaling, ui.document, on) end
+end
+
 local function setMargins(ui, m)
     local cfg = ui.document and ui.document.configurable
     if cfg then
@@ -106,12 +119,20 @@ function PB.set(ui, on)
             ui.doc_settings:saveSetting("gzreader_pb_margins", { m[1], m[2], m[3], m[4] })
         end
         setMargins(ui, { 0, 0, 0, 0 })
+        local cfg = ui.document and ui.document.configurable
+        if cfg and ui.doc_settings:readSetting("gzreader_pb_smooth") == nil then
+            ui.doc_settings:saveSetting("gzreader_pb_smooth", cfg.smooth_scaling == 1)
+        end
+        setSmooth(ui, true)
     else
         st.book_style_tweak = rest
         if not rest then st.book_style_tweak_enabled = nil end
         local old = ui.doc_settings:readSetting("gzreader_pb_margins")
         if type(old) == "table" then setMargins(ui, old) end
         ui.doc_settings:delSetting("gzreader_pb_margins")
+        local smooth = ui.doc_settings:readSetting("gzreader_pb_smooth")
+        if smooth ~= nil then setSmooth(ui, smooth == true) end
+        ui.doc_settings:delSetting("gzreader_pb_smooth")
     end
     ui.doc_settings:saveSetting("gzreader_picture_book", on and true or false)
     st:updateCssText(true)
@@ -121,7 +142,17 @@ end
 
 --- On opening a book: recognize picture books once and fit them.
 function PB.onOpen(ui)
-    if not ui.doc_settings or ui.doc_settings:readSetting("gzreader_picture_book") ~= nil then return end
+    if not ui.doc_settings then return end
+    if ui.doc_settings:readSetting("gzreader_picture_book") ~= nil then
+        -- turned on by an older version: bring its style tweak up to date
+        local st = ui.styletweak
+        if PB.isOn(ui) and not st.book_style_tweak:find(PB.CSS, 1, true) then
+            UIManager:nextTick(function()
+                if ui.document then PB.set(ui, true); Log.info("picture book: style updated") end
+            end)
+        end
+        return
+    end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
     ui.doc_settings:saveSetting("gzreader_picture_book", yes)

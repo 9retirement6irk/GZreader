@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.30",
+        changes = {
+            "Picture books: each page now fills the space between the title bar and the footer instead of the whole screen, so the clock no longer sits on top of the page and the bottom line isn't cut off. Pictures keep their shape: a small or wide picture such as the publisher's logo is no longer stretched.",
+            "Picture books use smooth image scaling: the pages are small scans enlarged to the screen, and the handwriting now looks much less jagged. Turning “Fit pictures to the screen” off puts your previous setting back.",
+            "Books already fitted by 1.0.28 are updated the next time they open.",
+        },
+    },
+    {
         version = "1.0.29",
         changes = {
             "Highlights and notes sync with Grimmory: EPUB highlights and notes made on the Kindle appear in Grimmory's web reader and on your other devices, and theirs appear here, at the same words. New ones, colour and style changes, notes and deletions go both ways. A highlight changed in both places since the last sync is left as it is in each, so nothing is overwritten. Syncs a few seconds after a book opens, a few seconds after you highlight or write a note (with Wi-Fi on), with Sync now, and when you close the book. The work runs in the background at low priority, so the page doesn't wait. Settings → GZreader → Sync highlights and notes turns it off. (Conversion and merge from Grimmory-KOReader-Client, MIT.)",

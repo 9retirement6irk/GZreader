@@ -309,10 +309,20 @@ Kindle 3 out of memory in 1.0.21.
 EPUBs whose chapter files are pictures with next to no text (scanned pages,
 e.g. Diary of a Wimpy Kid: 385 x 625 JPEG per page) are recognized on
 opening (`grimmory_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only).
-GZreader then adds a book style tweak (`img { height: 100vh; width: auto;
-max-width: 100vw }`, no margins/padding) and sets the book's page margins to
-0, keeping the old ones for when it's turned off (Reading menu → Fit
-pictures to the screen). Checked with the Kindle's own crengine.
+GZreader then adds a book style tweak (`img { height: 100%; width: auto;
+max-width: 100% }`, no margins/padding), sets the book's page margins to 0
+and turns on smooth image scaling, keeping the old settings for when it's
+turned off (Reading menu → Fit pictures to the screen). Checked with the
+Kindle's own crengine.
+
+`100%` is the page area between the top and bottom margins (ZenOS adds its
+title-bar height to the top margin), so pictures stay clear of the title bar
+and footer. 1.0.28 used `100vh`, the whole screen: pages ran under the clock
+and the footer (crengine also split them, adding blank pages), and a wide
+picture capped at the screen width was stretched to full height. With `100%`
+crengine keeps each picture's shape. The scans are only ~385 x 625, so
+they're enlarged about 1.3x to fill 800 pixels; that's why they look softer
+than real text. Smooth scaling makes them much less jagged.
 
 ## Sleep screen
 
