@@ -250,16 +250,7 @@ end
 --- On opening a book: recognize picture books once and fit them.
 function PB.onOpen(ui)
     if not ui.doc_settings then return end
-    if ui.doc_settings:readSetting("gzreader_picture_book") ~= nil then
-        -- turned on by an older version: bring its style tweak up to date
-        local st = ui.styletweak
-        if PB.isOn(ui) and not st.book_style_tweak:find((PB.cssFor(ui, PB.layout(ui))), 1, true) then
-            UIManager:nextTick(function()
-                if ui.document then PB.set(ui, true); Log.info("picture book: style updated") end
-            end)
-        end
-        return
-    end
+    if ui.doc_settings:readSetting("gzreader_picture_book") ~= nil then return end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
     ui.doc_settings:saveSetting("gzreader_picture_book", yes)

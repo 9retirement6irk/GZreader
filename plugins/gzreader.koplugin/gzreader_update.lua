@@ -245,8 +245,7 @@ local function sourceTarget(rel, base)
     if rel == "platform/kindle/koreader.sh" then return "koreader.sh" end
     if rel:match("^frontend/") then return rel end
     local plugin, rest = rel:match("^plugins/([%w_%-]+%.koplugin)/(.+)$")
-    local renamed = plugin == "gzreader.koplugin" and isDir(base .. "/plugins/grimmory.koplugin") -- 1.2.0
-    if plugin and (isDir(base .. "/plugins/" .. plugin) or renamed) then -- only plugins this install has
+    if plugin and isDir(base .. "/plugins/" .. plugin) then -- only plugins this install has
         if plugin == "zenos.koplugin" and rest:match("^locales/.+%.po$") and not rest:match("/en%.po$") then
             return nil -- English only, like the full package
         end
@@ -301,8 +300,7 @@ function Update.apply(zip, opts)
             if gf then gf:write(rev_base, "-gzreader-", opts.version, "\n"); gf:close() end
         end
     end
-    if n == 0 or not isDir(src .. "/frontend") or not (exists(src .. "/plugins/gzreader.koplugin/main.lua")
-            or exists(src .. "/plugins/grimmory.koplugin/main.lua"))
+    if n == 0 or not isDir(src .. "/frontend") or not exists(src .. "/plugins/gzreader.koplugin/main.lua")
             or not exists(src .. "/gzreader-version") then
         rmTree(stage)
         return nil, "the package doesn't look like a GZreader update"
@@ -338,11 +336,6 @@ function Update.apply(zip, opts)
         done[#done + 1] = rel
     end
     for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
-    -- 1.2.0 renamed the plugin folder grimmory.koplugin -> gzreader.koplugin:
-    -- don't leave the old one behind to load as a second copy
-    if isDir(base .. "/plugins/gzreader.koplugin") and isDir(base .. "/plugins/grimmory.koplugin") then
-        rmTree(base .. "/plugins/grimmory.koplugin")
-    end
     rmTree(stage)
     Log.info("update installed", Update.currentVersion(), "items", #done)
     return true

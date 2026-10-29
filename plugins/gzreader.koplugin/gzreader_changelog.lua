@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.4",
+        changes = {
+            "Removed the one-time moves from older versions: renaming the old Grimmory books folder and GZreader's old files, the plugins/grimmory.koplugin placeholder in the packages, and restyling picture books fitted by older versions. Fresh installs only.",
+        },
+    },
+    {
         version = "1.2.3",
         changes = {
             "Much less freezing: GZreader no longer talks to Grimmory on the screen's thread. Closing a book, going to sleep, page sync, bookmarks, the login refresh, search, audiobook position and the first file lookup all ran there and froze the Kindle while they waited, for many seconds when Wi-Fi was weak (your reports showed 7 to 10 seconds when closing and opening books). They now run in the background, and positions and reading sessions are saved first and sent right after, so nothing is lost if the Kindle sleeps or restarts meanwhile.",

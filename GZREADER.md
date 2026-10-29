@@ -152,7 +152,7 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 
 ## Home folder and downloads
 
-The GZreader folder (`documents/GZreader`; `documents/Grimmory` before 1.2.0) is the home folder; the
+The GZreader folder (`documents/GZreader`) is the home folder; the
 **Downloaded** tab shows it. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
@@ -261,22 +261,6 @@ the clock jump after waking). Log lines are redacted (no passwords or
 tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued
 messages, the freeze alert with its snapshot, "responsive again", the crash
 report, and no crash report after a normal close.
-
-## 1.2.0: GZreader names
-
-The plugin folder is `plugins/gzreader.koplugin` (was `grimmory.koplugin`),
-its modules `gzreader_*.lua`, its settings `settings/gzreader.lua`, the log
-`gzreader.log`, the caches `cache/gzreader-*`, and the books folder
-`documents/GZreader`. On the first start, from Home with no book open,
-GZreader renames the old ones and moves everything that remembers paths in
-the books folder: its downloads list, KOReader's home folder, last book,
-history, collections, folder shortcuts and the cover browser's book info
-(the books' `.sdr` folders move with them). Updating from 1.1.0: that
-version's updater only accepts a package with
-`plugins/grimmory.koplugin/main.lua`, so packages ship a disabled placeholder
-there; it replaces the old plugin and GZreader deletes it on its next start.
-Internal names that are stored on the Kindle stay (the `ct_grimmory` tab, the
-`grimmory_library` action, highlights' `grimmory_id`).
 
 ## Unfinished downloads
 

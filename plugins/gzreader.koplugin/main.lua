@@ -57,38 +57,7 @@ local Grimmory = WidgetContainer:extend{
     is_doc_only = false,
 }
 
---- 1.2.0 renamed GZreader's own files from grimmory* to gzreader*: move
---- the ones an older version left (settings, library index, log, caches).
-function Grimmory.migrateFileNames(plugin_path)
-    if Grimmory.names_migrated then return end
-    Grimmory.names_migrated = true
-    local s, d = DataStorage:getSettingsDir(), DataStorage:getDataDir()
-    local moves = {
-        { s .. "/grimmory.lua", s .. "/gzreader.lua" },
-        { s .. "/grimmory.lua.old", s .. "/gzreader.lua.old" },
-        { s .. "/grimmory_index.json", s .. "/gzreader_index.json" },
-        { s .. "/grimmory_index.progress", s .. "/gzreader_index.progress" },
-        { d .. "/grimmory.log", d .. "/gzreader.log" },
-        { d .. "/grimmory.log.1", d .. "/gzreader.log.1" },
-        { d .. "/cache/grimmory-lists", d .. "/cache/gzreader-lists" },
-        { d .. "/cache/grimmory-thumbs", d .. "/cache/gzreader-thumbs" },
-    }
-    for _i, m in ipairs(moves) do
-        if lfs.attributes(m[1]) and not lfs.attributes(m[2]) then os.rename(m[1], m[2]) end
-    end
-    -- the placeholder an older updater needed (plugins/grimmory.koplugin, see
-    -- tools/gzreader/package-kindle-legacy.sh): remove it
-    local old_dir = plugin_path and plugin_path:gsub("gzreader%.koplugin$", "grimmory.koplugin")
-    if old_dir and old_dir ~= plugin_path and lfs.attributes(old_dir, "mode") == "directory" then
-        local f = io.open(old_dir .. "/main.lua", "rb")
-        local body = f and f:read("*a") or ""
-        if f then f:close() end
-        if body:find("GZreader placeholder", 1, true) then require("ffi/util").purgeDir(old_dir) end
-    end
-end
-
 function Grimmory:init()
-    pcall(Grimmory.migrateFileNames, self.path)
     -- One settings object for the whole run, shared by every instance: KOReader
     -- creates a new plugin instance for each FileManager/ReaderUI, and a
     -- background download or queued sync data must not be written to a stale copy.
@@ -109,7 +78,6 @@ function Grimmory:init()
     self.api = Api:new(self.store, function() self:save() end)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
-    if not self.ui.document then pcall(self.moveLibraryFolder, self) end
     -- remote debugging (off until a feed address is set)
     pcall(function() require("gzreader_remote").start(self) end)
     if not self.ui.document and not self.store.home_is_library then
@@ -992,7 +960,7 @@ function Grimmory:onReaderReady()
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
-        -- Downloaded by an older version of this plugin: look up the file id once.
+        -- the file id wasn't in the list the book was downloaded from: look it up once
         require("gzreader_async").call(self.api, "getBook", { book_id }, function(book)
             local pf = type(book) == "table" and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
             if pf then entry.file_id = pf; self:save(); self:writeManifest() end
@@ -1210,79 +1178,6 @@ function Grimmory:libraryDir()
 end
 Grimmory.downloadDir = Grimmory.libraryDir
 
---- Until 1.2.0 the books folder was "Grimmory": rename it to "GZreader" and
---- move everything that remembers paths in it (GZreader's downloads list,
---- KOReader's home folder, last book, history, collections, folder
---- shortcuts, the cover browser's book info). The books' reading positions,
---- bookmarks and highlights live next to them (.sdr folders) and move along.
---- Only from Home with no book open, once.
-function Grimmory:moveLibraryFolder()
-    local ok_r, ReaderUI = pcall(require, "apps/reader/readerui")
-    if ok_r and ReaderUI.instance then return end
-    local old = self.store.library_dir
-    if not old then
-        local home = G_reader_settings:readSetting("home_dir") or Device.home_dir
-        old = home and (home:match("^(.*)/Grimmory$") and home or (home .. "/Grimmory"))
-    end
-    if not old or not old:match("/Grimmory$") or lfs.attributes(old, "mode") ~= "directory" then return end
-    local new = old:gsub("/Grimmory$", "/" .. Grimmory.FOLDER)
-    if lfs.attributes(new) then
-        Log.warn("library folder: both", old, "and", new, "exist; leaving them as they are")
-        return
-    end
-    local done, err = os.rename(old, new)
-    if not done then
-        Log.warn("library folder: couldn't rename", old, "->", new, tostring(err))
-        return
-    end
-    Log.info("library folder renamed", old, "->", new)
-    local function moved(p)
-        if type(p) ~= "string" then return p end
-        if p == old then return new end
-        if p:sub(1, #old + 1) == old .. "/" then return new .. p:sub(#old + 1) end
-        return p
-    end
-    self.store.library_dir = new
-    for _id, e in pairs(self.store.downloads or {}) do
-        if type(e) == "table" then e.path = moved(e.path) end
-    end
-    for _k, rec in pairs(self.store.unfinished or {}) do
-        if type(rec) == "table" then rec.path = moved(rec.path) end
-    end
-    self:save()
-    for _i, key in ipairs({ "home_dir", "lastfile", "lastdir", "screensaver_dir", "screensaver_document_cover" }) do
-        local v = G_reader_settings:readSetting(key)
-        if type(v) == "string" and moved(v) ~= v then G_reader_settings:saveSetting(key, moved(v)) end
-    end
-    local shortcuts = G_reader_settings:readSetting("folder_shortcuts")
-    if type(shortcuts) == "table" then
-        local out, changed = {}, false
-        for path, v in pairs(shortcuts) do
-            local np = moved(path)
-            if np ~= path then changed = true end
-            out[np] = v
-        end
-        if changed then G_reader_settings:saveSetting("folder_shortcuts", out) end
-    end
-    pcall(function() require("readhistory"):updateItemsByPath(old, new) end)
-    pcall(function() require("readcollection"):updateItemsByPath(old, new) end)
-    pcall(function()
-        local BIM = require("bookinfomanager")
-        BIM:openDbConnection()
-        local stmt = BIM.db_conn:prepare(
-            "UPDATE bookinfo SET directory = ? || substr(directory, ?) WHERE substr(directory, 1, ?) = ?;")
-        stmt:bind(new .. "/", #old + 2, #old + 1, old .. "/")
-        stmt:step()
-        stmt:clearbind():reset()
-    end)
-    pcall(self.writeManifest, self)
-    if G_reader_settings.flush then G_reader_settings:flush() end
-    UIManager:nextTick(function() -- show the renamed folder
-        local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
-        local fm = ok and FileManager.instance
-        if fm and fm.file_chooser and fm.file_chooser.goHome then pcall(fm.file_chooser.goHome, fm.file_chooser) end
-    end)
-end
 
 --- Make the GZreader folder KOReader's home folder (no prompt).
 function Grimmory:useLibraryAsHome()

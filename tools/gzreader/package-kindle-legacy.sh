@@ -45,18 +45,6 @@ mkdir -p "$KO/plugins"
 for p in $KEEP_PLUGINS; do
     cp -r "$REPO/plugins/$p.koplugin" "$KO/plugins/"
 done
-# Until 1.2.0 the GZreader plugin was plugins/grimmory.koplugin, and the
-# updater of those versions only accepts a package that has
-# plugins/grimmory.koplugin/main.lua. Ship a disabled placeholder there: it
-# replaces the old plugin (so it doesn't load as a second copy) and GZreader
-# deletes it on its next start.
-mkdir -p "$KO/plugins/grimmory.koplugin"
-cat > "$KO/plugins/grimmory.koplugin/main.lua" <<'LUA'
--- Placeholder: GZreader now lives in plugins/gzreader.koplugin. Deleted by it on start.
-return { disabled = true, gz_placeholder = "GZreader placeholder" }
-LUA
-printf 'return { fullname = "GZreader (old folder)", description = "Placeholder" }\n' \
-    > "$KO/plugins/grimmory.koplugin/_meta.lua"
 # ZenOS ships an updater; drop its non-English catalogs to save space.
 find "$KO/plugins/zenos.koplugin/locales" -name '*.po' ! -name 'en.po' -delete
 
@@ -138,6 +126,6 @@ du -h "$OUT"
 UPD="$OUT_DIR/gzreader-update.zip"
 rm -f "$UPD"
 (cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh \
-    koreader/gzreader-version koreader/git-rev $(for p in $KEEP_PLUGINS grimmory; do echo "koreader/plugins/$p.koplugin"; done))
+    koreader/gzreader-version koreader/git-rev $(for p in $KEEP_PLUGINS; do echo "koreader/plugins/$p.koplugin"; done))
 echo "$UPD"
 du -h "$UPD"
