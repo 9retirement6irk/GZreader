@@ -58,6 +58,7 @@ local function writeProfile()
 end
 
 local function onSample(thread, samples, vmstate)
+    if not S.profiling then return end
     local stack = clean(prof.dumpstack(thread, "pl;", 6))
     local key = (VM[vmstate] or vmstate) .. ": " .. stack
     add(total, key, samples)
@@ -119,24 +120,28 @@ local function memory()
     return rss and string.format("%d MB", math.floor(rss / 1024)) or "?"
 end
 
+-- No pcall here: an error keeps its full traceback for crash.log (1.2.1–1.2.4
+-- caught and re-raised it, which cut the traceback off).
+local t0, w0
+local function done(what, ...)
+    depth = 0
+    local wall = os.time() - w0
+    if wall >= S.SLOW then
+        local cpu = os.clock() - t0
+        local where = top(event or {}, 4)
+        Log.warn(string.format("slow: %s took %d s (%.1f s CPU, memory %s)%s", what, wall, cpu, memory(),
+            where ~= "" and (": " .. where:gsub("\n", " | ")) or ""))
+    end
+    event = nil
+    return ...
+end
+
 local function timed(what, fn, ...)
     if depth > 0 then return fn(...) end
     depth = 1
-    local t0 = os.clock()
-    local w0 = os.time()
-    event = {}
-    local res = { pcall(fn, ...) }
-    depth = 0
-    local wall = os.time() - w0
-    local cpu = os.clock() - t0
-    if wall >= S.SLOW then
-        local where = top(event, 4)
-        Log.warn(string.format("slow: %s took %d s (%.1f s CPU, memory %s)%s", what, wall, cpu, memory(),
-            where ~= "" and (": " .. where:gsub("\n", " | ")) or " (no CPU used: waiting, e.g. for the network or storage)"))
-    end
-    event = nil
-    if not res[1] then error(res[2], 0) end
-    return unpack(res, 2, table.maxn(res))
+    t0, w0 = os.clock(), os.time()
+    event = S.profiling and {} or nil
+    return done(what, fn(...))
 end
 S.timed = timed
 
@@ -176,23 +181,84 @@ local function watchRelayouts()
     end
 end
 
-function S.install(dir)
+---------------------------------------------------------------- keys vs. screen
+
+--- Keys that reach GZreader and screen updates, so a "frozen" screen can be
+--- told apart: keys not arriving, keys arriving but the screen not changing,
+--- or GZreader busy.
+S.keys, S.last_key, S.last_paint = 0, nil, nil
+
+function S.windows()
+    local UIManager = require("ui/uimanager")
+    local out = {}
+    for i, w in ipairs(UIManager._window_stack or {}) do
+        local wd = w.widget or {}
+        local name = wd.name or wd.title or (type(wd.text) == "string" and wd.text:sub(1, 50)) or wd.id
+        out[#out + 1] = tostring(name or "?"):gsub("[\n\r]", " ") .. (wd.modal and " (modal)" or "")
+        if i > 8 then break end
+    end
+    return table.concat(out, " > ")
+end
+
+function S.uiState()
+    local t = os.time()
+    return string.format("%d keys, last key %s, screen last changed %s", S.keys,
+        S.last_key and ((t - S.last_key) .. " s ago") or "never",
+        S.last_paint and ((t - S.last_paint) .. " s ago") or "never")
+end
+
+local stuck_reported = 0
+--- Keys pressed for 45 s with no screen change at all: report what's on screen.
+function S.checkStuck(report)
+    local t = os.time()
+    if not (S.last_key and report) then return end
+    local unanswered = S.last_key_first_unanswered
+    if not unanswered or (S.last_paint and S.last_paint >= unanswered) then return end
+    if t - unanswered < 45 or t - stuck_reported < 600 then return end
+    stuck_reported = t
+    report(string.format("Keys were pressed for %d s but the screen didn't change (%s).\nOn screen: %s",
+        t - unanswered, S.uiState(), S.windows()))
+end
+
+function S.install(dir, opts)
     if S.installed then return end
     S.installed = true
+    opts = opts or {}
     S.file = dir and (dir .. "/profile")
-    if S.available then
+    -- The sampling profiler (SIGPROF timer signals) only when asked for:
+    -- Settings → GZreader → Remote debugging → Detailed timing.
+    if opts.profile and S.available then
         local okp, err = pcall(prof.start, "fi" .. S.INTERVAL, onSample)
-        if not okp then S.available = false; Log.warn("profiler unavailable:", tostring(err)) end
+        if okp then S.profiling = true else Log.warn("profiler unavailable:", tostring(err)) end
     end
     local UIManager = require("ui/uimanager")
     local orig_input = UIManager.handleInputEvent
-    UIManager.handleInputEvent = function(self, ev) return timed("a keypress", orig_input, self, ev) end
+    UIManager.handleInputEvent = function(self, ev)
+        local t = os.time()
+        if type(ev) == "table" and ev.handler == "onKeyPress" then
+            S.keys = S.keys + 1
+            S.last_key = t
+            if not S.last_key_first_unanswered or (S.last_paint and S.last_paint >= S.last_key_first_unanswered) then
+                S.last_key_first_unanswered = t
+            end
+        end
+        return timed("a keypress", orig_input, self, ev)
+    end
     local orig_tasks = UIManager._checkTasks
     UIManager._checkTasks = function(self) return timed("scheduled work", orig_tasks, self) end
     local orig_repaint = UIManager._repaint
     UIManager._repaint = function(self) return timed("a screen repaint", orig_repaint, self) end
+    local okd, Device = pcall(require, "device")
+    local Screen = okd and Device.screen
+    if Screen and Screen.afterPaint then
+        local orig_after = Screen.afterPaint
+        Screen.afterPaint = function(...)
+            S.last_paint = os.time()
+            return orig_after(...)
+        end
+    end
     pcall(watchRelayouts)
-    Log.info("slow-operation tracing on", S.available and "(with profiler)" or "(no profiler)")
+    Log.info("slow-operation tracing on", S.profiling and "(with profiler)" or "(no profiler)")
 end
 
 return S

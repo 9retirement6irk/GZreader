@@ -162,6 +162,52 @@ function Async.run(api, fn, on_done, name, opts)
     pump()
 end
 
+--- Local work (no network, no login) in its own background process, outside
+--- the request queue so a long job doesn't hold up syncing. Lowest priority.
+--- on_done(...) gets what fn() returned, or nil, "timeout"/"busy"/an error.
+Async.local_jobs = 0
+function Async.background(fn, on_done, name, opts)
+    on_done = on_done or function() end
+    opts = opts or {}
+    if Async.sync then
+        local res = protected(fn)
+        return on_done(unpack(res, 1, res.n))
+    end
+    if Async.local_jobs >= 1 then return on_done(nil, "busy") end -- one at a time: memory on a Kindle 3
+    local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
+        ffiutil.writeToFD(wfd, encode(protected(fn)), true)
+    end, true)
+    if not pid then
+        Log.warn("async: couldn't start a background process for", name or "?")
+        return on_done(nil, "busy")
+    end
+    Async.local_jobs = Async.local_jobs + 1
+    os.execute(string.format("renice -n 19 -p %d >/dev/null 2>&1 || renice 19 %d >/dev/null 2>&1", pid, pid))
+    local started = os.time()
+    local function done(...)
+        Async.local_jobs = Async.local_jobs - 1
+        local ok, err = pcall(on_done, ...)
+        if not ok then Log.warn("async callback failed:", tostring(err)) end
+    end
+    local function poll()
+        if not ffiutil.isSubProcessDone(pid) then
+            if os.time() - started > (opts.timeout or 600) then
+                Log.warn("background job took too long, stopped:", name or "?")
+                ffiutil.terminateSubProcess(pid)
+                local function reap()
+                    if ffiutil.isSubProcessDone(pid) then ffiutil.readAllFromFD(fd) else UIManager:scheduleIn(1, reap) end
+                end
+                UIManager:scheduleIn(1, reap)
+                return done(nil, "timeout")
+            end
+            return UIManager:scheduleIn(1, poll)
+        end
+        local res = decode(ffiutil.readAllFromFD(fd)) or pack(nil, "background job failed")
+        done(unpack(res, 1, res.n))
+    end
+    UIManager:scheduleIn(1, poll)
+end
+
 --- A valid login for a process forked outside this queue (downloads, the
 --- library index): refreshed in the background if needed, then cb(ok, err).
 function Async.ensureToken(api, cb)

@@ -53,6 +53,16 @@ end
 
 function M.start(plugin, ui, open_page_browser)
     local meta = plugin and plugin.config and plugin.config._meta
+    -- GZreader: the tour is coachmarks for touch gestures ("swipe up…") on
+    -- the touch menus. A Kindle Keyboard has neither (GZreader's Menu key
+    -- opens its own list), so the tour only opened the wrong menu or the page
+    -- browser over the book, and stayed "pending" for ever. Mark it done.
+    if type(meta) == "table" and meta.quickstart_reader_tour_pending == true
+            and not require("device"):isTouchDevice() then
+        meta.quickstart_reader_tour_pending = false
+        if type(plugin.saveConfig) == "function" then pcall(plugin.saveConfig, plugin) end
+        return false
+    end
     if type(meta) ~= "table" or meta.quickstart_reader_tour_pending ~= true
             or active or type(open_page_browser) ~= "function" then
         return false

@@ -19,6 +19,7 @@ local Input = Device.input
 local Screen = Device.screen
 
 local PairScreen = InputContainer:extend{
+    name = "QR code screen",
     modal = true,
     url = nil,
     on_cancel = nil,

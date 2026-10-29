@@ -172,7 +172,12 @@ end
 
 ---------------------------------------------------------------- diagnostics
 
-local function alive(pid) return io.open("/proc/" .. pid .. "/stat", "rb") ~= nil end
+local function alive(pid)
+    local f = io.open("/proc/" .. pid .. "/stat", "rb")
+    if not f then return false end
+    f:close() -- (1.2.0–1.2.4 left this open: a file handle every 5 s until garbage collection)
+    return true
+end
 
 local function heartbeat()
     local s = readFile(dir .. "/heartbeat") or ""

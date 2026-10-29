@@ -2,6 +2,17 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.5",
+        changes = {
+            "Fixed: after the setup guide, ZenOS started its tour of the touch menus. On a Kindle Keyboard it opened GZreader's Menu over the Home screen instead (and tried again at every start), and on the first book it opened the page browser with \"Swipe up to open the Page Browser\". Both tours are touch-only and are now skipped on keyboard Kindles.",
+            "Fixed: turning a picture book on made KOReader ask \"Styles have changed in such a way that fully reloading the document may be needed…\". Only Press or Back answer that box, so the page keys looked frozen. The book is now reloaded once, without asking.",
+            "Picture books: the picture sizes (used to find wide pictures such as a publisher's logo) are read in a low-priority background process. 1.2.0 read them on the screen's thread when the book opened, which took about a minute for Diary of a Wimpy Kid. That process is separate from syncing, so syncing doesn't wait for it.",
+            "Remote debugging is lighter. The CPU profiler (timer signals all the time) is off unless you turn on Settings → GZreader → Remote debugging → Detailed timing. Slow-operation timing no longer catches and re-raises errors, so crash.log keeps the full traceback again. The watchdog closes a file it left open every 5 seconds.",
+            "Remote debugging tells freezes apart. The heartbeat and the \"previous run ended unexpectedly\" report now say how many keys reached GZreader, when the last key arrived, when the screen last changed, and what's on screen. A \"Screen not answering keys\" report is sent when keys arrive for 45 seconds without any screen change.",
+            "New for development: tools/gzreader/emulator runs GZreader's real code as a Kindle 3 under qemu. It uses the Kindle's own binaries, scripted keys, and screenshots of what the e-ink panel shows, at about a Kindle 3's speed. The setup and picture-book problems above were found with it.",
+        },
+    },
+    {
         version = "1.2.4",
         changes = {
             "Removed the one-time moves from older versions: renaming the old Grimmory books folder and GZreader's old files, the plugins/grimmory.koplugin placeholder in the packages, and restyling picture books fitted by older versions. Fresh installs only.",

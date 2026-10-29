@@ -138,8 +138,9 @@ end
 function R.beat(status)
     if not R.on then return end
     local cpu = R.trace and R.trace.cpu
-    writeFile(R.dir() .. "/heartbeat", string.format("%d %s %s%s", os.time(), status or "run", R.activity(),
-        cpu and string.format(" (CPU %d%%)", cpu) or ""))
+    local ui = R.trace and R.trace.uiState and ("; " .. R.trace.uiState() .. "; on screen: " .. R.trace.windows()) or ""
+    writeFile(R.dir() .. "/heartbeat", string.format("%d %s %s%s%s", os.time(), status or "run", R.activity(),
+        cpu and string.format(" (CPU %d%%)", cpu) or "", (ui:gsub("[\n\r]", " "))))
 end
 
 ---------------------------------------------------------------- watchdog
@@ -223,11 +224,12 @@ function R.start(plugin)
     local okt, Trace = pcall(require, "gzreader_slowtrace")
     if okt then
         R.trace = Trace
-        pcall(Trace.install, dir)
+        pcall(Trace.install, dir, { profile = store.remote_profile == true })
     end
     local function tick()
         if R.trace then
             pcall(R.trace.tick, function(text) R.event("GZreader busy", text, { "busy" }, true) end)
+            pcall(R.trace.checkStuck, function(text) R.event("Screen not answering keys", text, { "freeze" }, false) end)
         end
         R.beat("run")
         UIManager:scheduleIn(R.HEARTBEAT, tick)
@@ -323,6 +325,16 @@ function R.menuItems(plugin)
                     }
                     UIManager:show(dlg)
                     dlg:onShowKeyboard()
+                end,
+            },
+            {
+                text = _("Detailed timing (slower)"),
+                help_text = _("Also samples where GZreader spends its CPU time (LuaJIT's profiler) and adds it to slow and freeze reports. Off by default: it uses timer signals all the time. Takes effect after a restart."),
+                enabled_func = function() return R.enabled(store) end,
+                checked_func = function() return store.remote_profile == true end,
+                callback = function()
+                    store.remote_profile = (store.remote_profile ~= true) or nil
+                    plugin:save()
                 end,
             },
             {

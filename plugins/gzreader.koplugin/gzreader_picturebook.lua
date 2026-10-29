@@ -79,22 +79,23 @@ function PB.imageSize(data)
 end
 
 --- File names of the book's pictures that are wider than w:h.
-function PB.widePictures(doc, w, h)
+--- read(path) -> the file's bytes inside the EPUB.
+function PB.widePictures(read, w, h)
     local out = {}
     local ok_s, Sync = pcall(require, "gzreader_sync")
-    if not ok_s or not doc or type(doc.getDocumentFileContent) ~= "function" then return out end
-    local ok, spine = pcall(Sync.parseSpine, function(p) return doc:getDocumentFileContent(p) end)
+    if not ok_s or type(read) ~= "function" then return out end
+    local ok, spine = pcall(Sync.parseSpine, read)
     if not ok or not spine then return out end
     local seen = {}
     for _i, href in ipairs(spine.frag) do
-        local html = doc:getDocumentFileContent(href)
+        local html = read(href)
         local base = href:match("^(.*/)") or ""
         for src in (html or ""):gmatch("<[%w:]*img[^>]-src%s*=%s*[\"']([^\"']+)[\"']") do
             local path = Sync.normalizeHref(base .. src)
             local name = src:match("([^/]+)$")
             if name and not seen[path] then
                 seen[path] = true
-                local iw, ih = PB.imageSize(doc:getDocumentFileContent(path))
+                local iw, ih = PB.imageSize(read(path))
                 if iw and ih and ih > 0 and iw / ih > w / h * 1.05 then out[#out + 1] = name end
             end
         end
@@ -129,12 +130,50 @@ function PB.layout(ui)
 end
 
 --- The style tweak for this book on this screen (wide pictures looked up once per book).
+--- Opening a book reads every picture's size to find the wide ones: that
+--- took about a minute for Diary of a Wimpy Kid (230 pictures) on a Kindle 3,
+--- and 1.2.0 did it on the screen's thread. Now in a background process,
+--- once per book; until it's done no picture is treated as wide.
+function PB.scanInBackground(ui, lay)
+    if PB.scanning or not (ui.document and ui.document.file and ui.doc_settings) then return end
+    PB.scanning = true
+    local file, w, h = ui.document.file, lay.avail_w, lay.avail_h
+    Log.info("picture book: reading picture sizes in the background")
+    require("gzreader_async").background(function()
+        local Archiver = require("ffi/archiver")
+        local r = Archiver.Reader:new()
+        if not r:open(file) then return nil end
+        for _e in r:iterate() do end
+        local list = PB.widePictures(function(p) return r:extractToMemory(p) end, w, h)
+        r:close()
+        return list
+    end, function(list, err)
+        PB.scanning = false
+        if type(list) ~= "table" then return Log.info("picture book: picture sizes not read:", tostring(err)) end
+        Log.info("picture book: wide pictures", #list)
+        -- the book may have been reloaded meanwhile (a new reader): use the open one
+        local okr, ReaderUI = pcall(require, "apps/reader/readerui")
+        local cur = okr and ReaderUI.instance or ui
+        if cur and cur.document and cur.document.file == file and cur.doc_settings then
+            cur.doc_settings:saveSetting("gzreader_pb_wide", list)
+            if #list > 0 and PB.isOn(cur) then PB.set(cur, true) end
+            return
+        end
+        -- closed meanwhile: keep the result for next time
+        local okd, DocSettings = pcall(require, "docsettings")
+        if okd then
+            local ds = DocSettings:open(file)
+            ds:saveSetting("gzreader_pb_wide", list)
+            ds:flush()
+        end
+    end, "picture sizes", { timeout = 900 })
+end
+
 function PB.cssFor(ui, lay)
     local wide = ui.doc_settings and ui.doc_settings:readSetting("gzreader_pb_wide")
     if type(wide) ~= "table" then
-        local ok, list = pcall(PB.widePictures, ui.document, lay.avail_w, lay.avail_h)
-        wide = ok and list or {}
-        if ui.doc_settings then ui.doc_settings:saveSetting("gzreader_pb_wide", wide) end
+        pcall(PB.scanInBackground, ui, lay)
+        wide = {}
     end
     return PB.css(lay.vh, wide), #wide
 end
@@ -205,6 +244,38 @@ local function setMargins(ui, m)
     ui:handleEvent(Event:new("SetPageMargins", m))
 end
 
+--- The picture book style makes pictures blocks (display: block), which
+--- changes how crengine builds the book's DOM. Turning it on or off in an
+--- open book made KOReader ask "Styles have changed in such a way that fully
+--- reloading the document may be needed…" — a box that only Press or Back
+--- answers, so on a Kindle Keyboard the page keys seemed frozen. Instead the
+--- book is reloaded once, without asking; afterwards the style is there from
+--- the start and nothing is stale.
+PB.reloaded = {}
+function PB.reloadIfNeeded(ui)
+    local rolling = ui.rolling
+    if not rolling or rolling._gz_pb_reload then return end
+    rolling._gz_pb_reload = true
+    local orig = rolling.onCheckDomStyleCoherence
+    rolling.onCheckDomStyleCoherence = function(r, ...)
+        local doc = r.ui and r.ui.document
+        local file = doc and doc.file
+        if doc and doc.isBuiltDomStale and doc:isBuiltDomStale() and not PB.reloaded[file] then
+            PB.reloaded[file] = true -- once per book and run: never a reload loop
+            Log.info("picture book: reloading the book once for the new layout")
+            UIManager:scheduleIn(0.3, function()
+                local d = r.ui.document
+                if not d or r.ui.tearing_down then return end
+                -- the saved layout cache still has the old DOM: build a new one
+                if d.invalidateCacheFile then pcall(d.invalidateCacheFile, d) end
+                r.ui:reloadDocument(nil, true)
+            end)
+            return true
+        end
+        if orig then return orig(r, ...) end
+    end
+end
+
 --- Turn it on or off for the open book.
 function PB.set(ui, on)
     local st = ui.styletweak
@@ -242,6 +313,7 @@ function PB.set(ui, on)
         ui.doc_settings:delSetting("gzreader_pb_smooth")
     end
     ui.doc_settings:saveSetting("gzreader_picture_book", on and true or false)
+    PB.reloadIfNeeded(ui)
     st:updateCssText(true)
     Log.info("picture book", on and "on" or "off")
     return true
@@ -250,7 +322,9 @@ end
 --- On opening a book: recognize picture books once and fit them.
 function PB.onOpen(ui)
     if not ui.doc_settings then return end
-    if ui.doc_settings:readSetting("gzreader_picture_book") ~= nil then return end
+    local known = ui.doc_settings:readSetting("gzreader_picture_book")
+    if known == true then pcall(PB.reloadIfNeeded, ui) end -- e.g. after KOReader's own background re-layout reload
+    if known ~= nil then return end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
     ui.doc_settings:saveSetting("gzreader_picture_book", yes)

@@ -67,6 +67,7 @@ local function finishReloadGuard()
 end
 
 local QuickstartScreen = InputContainer:extend{
+    name     = "setup guide",
     pages    = nil,
     on_close = nil,
 }
