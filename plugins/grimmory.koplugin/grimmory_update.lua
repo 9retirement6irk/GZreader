@@ -116,7 +116,9 @@ function Update.get(u, path)
         local ok, code, headers = pcall(function()
             return socket.skip(1, http.request{
                 url = u, method = "GET", sink = sink, redirect = false,
-                headers = { ["User-Agent"] = "GZreader", ["Accept"] = path and "application/octet-stream" or "application/vnd.github+json" },
+                -- downloads accept anything: GitHub's API answers 415 to
+                -- "application/octet-stream" for a release's source code zip
+                headers = { ["User-Agent"] = "GZreader", ["Accept"] = path and "*/*" or "application/vnd.github+json" },
             })
         end)
         socketutil:reset_timeout()

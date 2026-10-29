@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.7",
+        changes = {
+            "Updates: fixed \"Download failed: err 415\" when a release had no attached packages yet (GitHub refused the source code zip request).",
+        },
+    },
+    {
         version = "1.0.6",
         changes = {
             "Grimmory settings are in Settings → General → Grimmory (no more digging through KOReader → Tools).",
