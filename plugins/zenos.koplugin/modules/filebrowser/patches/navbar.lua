@@ -1906,7 +1906,7 @@ local function apply_navbar()
         return navbar_font_size_steps[#navbar_font_size_steps]
     end
 
-    local function createTabWidget(tab, label_max_w, is_active, font_size, is_focused)
+    local function createTabWidget(tab, label_max_w, is_active, font_size, is_focused, key_hint)
         local Accent = require("common/ui/accent")
         local styled = is_active and tab.dim ~= true
         local filled = styled and config.active_tab_filled == true
@@ -2008,6 +2008,15 @@ local function apply_navbar()
         end
         if show_label then
             table.insert(icon_label_children, label)
+        end
+        if key_hint then
+            -- GZreader: the key that opens this tab on a Kindle Keyboard
+            table.insert(icon_label_children, TextWidget:new{
+                text = key_hint,
+                face = library_font.getFace(math.max(10, math.floor((font_size or navbar_font_size_steps[1]) * 0.7))),
+                max_width = label_max_w,
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            })
         end
         if not config.underline_above then
             table.insert(icon_label_children, underline)
@@ -2248,8 +2257,12 @@ local function apply_navbar()
         -- Build tab content widgets and measure their natural widths
         local tab_widgets = {}
         local total_content_w = 0
+        local hints = Device:hasKeyboard() and not Device:isTouchDevice()
+            and G_reader_settings:nilOrTrue("gzreader_tab_key_hints")
+        local HINT_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
         for i, tab in ipairs(visible_tabs) do
-            local widget = createTabWidget(tab, label_max_w, tab.id == active_tab, shared_font_size, i == _navbar_focused_idx)
+            local widget = createTabWidget(tab, label_max_w, tab.id == active_tab, shared_font_size, i == _navbar_focused_idx,
+                hints and HINT_KEYS[i] and ("Alt+" .. HINT_KEYS[i]) or nil)
             tab_widgets[i] = widget
             total_content_w = total_content_w + widget:getSize().w
         end

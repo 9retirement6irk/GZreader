@@ -105,6 +105,10 @@ function TouchMenuItem:init()
     -- FrameContainer default paddings minus the checked widget width
     local text_max_width = self.dimen.w - 2*Size.padding.default - checked_widget:getSize().w
     local text = getMenuText(self.item)
+    if self.shortcut then
+        -- GZreader: the letter that picks this entry on a Kindle Keyboard
+        text = self.shortcut .. "  " .. text
+    end
     local face = self.face
     local forced_baseline, forced_height
     if self.item.font_func then
@@ -522,6 +526,17 @@ function TouchMenu:init()
     end
     self.key_events.NextPage = { { Input.group.PgFwd } }
     self.key_events.PrevPage = { { Input.group.PgBack } }
+    -- GZreader: letters pick entries, Alt + Q, W, E … (1-9) pick tabs.
+    if Device:hasKeyboard() and not Device:isTouchDevice() then
+        self.gz_shortcuts = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+            "A", "S", "D", "F", "G", "H", "J", "K", "L" }
+        self.key_events.GzSelectByShortcut = { { self.gz_shortcuts } }
+        self.key_events.GzTabByShortcut = {
+            { "Alt", { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" } },
+            { { "1", "2", "3", "4", "5", "6", "7", "8", "9" } },
+            { "Alt", { "1", "2", "3", "4", "5", "6", "7", "8", "9" } },
+        }
+    end
 
     local icons = {}
     for _, v in ipairs(self.tab_item_table) do
@@ -679,6 +694,7 @@ function TouchMenu:updateItems(target_page, target_item_id)
     table.insert(self.layout, self.bar.icon_widgets) -- for the focusmanager
 
     local idx_offset = (self.page - 1) * self.perpage
+    self._gz_items = {} -- entries shown with a letter on this page
     for c = 1, self.perpage do
         -- calculate index in item_table
         local i = idx_offset + c
@@ -688,6 +704,7 @@ function TouchMenu:updateItems(target_page, target_item_id)
             local item_tmp = TouchMenuItem:new{
                 item = item,
                 menu = self,
+                shortcut = self.gz_shortcuts and self.gz_shortcuts[c] or nil,
                 dimen = Geom:new{
                     w = self.item_width,
                     h = self.item_height,
@@ -695,6 +712,7 @@ function TouchMenu:updateItems(target_page, target_item_id)
                 show_parent = self.show_parent,
             }
             table.insert(self.item_group, item_tmp)
+            if item_tmp.shortcut then self._gz_items[item_tmp.shortcut] = item end
             if item_tmp:isEnabled() then
                 table.insert(self.layout, {[self.cur_tab] = item_tmp}) -- for the focusmanager
             end
@@ -849,6 +867,24 @@ function TouchMenu:onPan(arg, ges_ev)
         elseif ges_ev.direction == "south" then
             self:onPrevPage()
         end
+    end
+    return true
+end
+
+function TouchMenu:onGzSelectByShortcut(_args, key)
+    local item = key and self._gz_items and self._gz_items[key.key]
+    if not item then return end -- not a list page (e.g. a ZenOS panel): let others have the key
+    local enabled = item.enabled
+    if item.enabled_func then enabled = item.enabled_func() end
+    if enabled ~= false then self:onMenuSelect(item) end
+    return true
+end
+
+function TouchMenu:onGzTabByShortcut(_args, key)
+    local map = { Q = 1, W = 2, E = 3, R = 4, T = 5, Y = 6, U = 7, I = 8, O = 9 }
+    local n = key and (tonumber(key.key) or map[key.key])
+    if n and n >= 1 and n <= #self.tab_item_table then
+        self.bar:switchToTab(n)
     end
     return true
 end

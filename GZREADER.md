@@ -66,7 +66,8 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Where | Key | Does |
 | --- | --- | --- |
 | Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
-| Any list | Q, W, E, … | Pick the item with that letter (shown next to it). |
+| Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
+| KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |

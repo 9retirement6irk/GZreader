@@ -296,7 +296,9 @@ function ZenSettingsPage:init()
     self._resume_path = {}
     self._title_stack_depth = 0
     self._displayed_title = self.title
-    self.is_enable_shortcut = false
+    -- GZreader: on a Kindle Keyboard every entry gets its letter (Q, W, E …),
+    -- as in KOReader's lists and GZreader's Reading menu.
+    self.is_enable_shortcut = Device:hasKeyboard() and not Device:isTouchDevice()
 
     self.custom_title_bar = SettingsTitleBar:new{
         width = self.width,
@@ -322,7 +324,7 @@ function ZenSettingsPage:init()
     end
     Menu.init(self)
     self.key_events = self.key_events or {}
-    self.key_events.SelectByShortCut = nil
+    if not self.is_enable_shortcut then self.key_events.SelectByShortCut = nil end
     if Device.hasFewKeys and Device:hasFewKeys() then
         self.key_events.Close = { { "Back" } }
         self.key_events.Right = nil

@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.12",
+        changes = {
+            "Keyboard: every entry in the ZenOS settings and in KOReader's menus shows a letter (Q, W, E …); press it to pick the entry. In KOReader's menus, Alt + Q, W, E … switch the tabs.",
+            "The bottom tabs show their key (Alt+Q, Alt+W …) under the label on a Kindle Keyboard.",
+        },
+    },
+    {
         version = "1.0.11",
         changes = {
             "Read aloud: fixed skipped sections and a highlight that didn't match the voice. Sentences now go to the Kindle voice one request at a time, in order, all through its queue (1.0.8 sent two at once; the second could arrive first and was then thrown away).",
