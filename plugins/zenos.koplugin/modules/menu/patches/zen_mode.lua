@@ -238,7 +238,11 @@ local function apply_zen_mode()
 
     local orig_onShowConfigMenu = ReaderConfig.onShowConfigMenu
     ReaderConfig.onShowConfigMenu = function(self)
-        if is_enabled() then
+        -- GZreader: the block below is meant for the touch bottom-swipe; on a
+        -- Kindle Keyboard the AA key and the Reading menu are the only ways
+        -- to the font/layout menu, so never block it there.
+        local Device = require("device")
+        if is_enabled() and Device:isTouchDevice() then
             local features = zen_plugin and zen_plugin.config and zen_plugin.config.features
             if not (type(features) == "table" and features.reader_bottom_menu == true) then
                 return
