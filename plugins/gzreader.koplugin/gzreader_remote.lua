@@ -137,7 +137,9 @@ end
 
 function R.beat(status)
     if not R.on then return end
-    writeFile(R.dir() .. "/heartbeat", string.format("%d %s %s", os.time(), status or "run", R.activity()))
+    local cpu = R.trace and R.trace.cpu
+    writeFile(R.dir() .. "/heartbeat", string.format("%d %s %s%s", os.time(), status or "run", R.activity(),
+        cpu and string.format(" (CPU %d%%)", cpu) or ""))
 end
 
 ---------------------------------------------------------------- watchdog
@@ -217,7 +219,16 @@ function R.start(plugin)
     R.beat("run")
     R.startWatchdog(plugin.path)
     -- heartbeat (the watchdog's "is it still answering?")
+    -- where the time goes when GZreader is slow
+    local okt, Trace = pcall(require, "gzreader_slowtrace")
+    if okt then
+        R.trace = Trace
+        pcall(Trace.install, dir)
+    end
     local function tick()
+        if R.trace then
+            pcall(R.trace.tick, function(text) R.event("GZreader busy", text, { "busy" }, true) end)
+        end
         R.beat("run")
         UIManager:scheduleIn(R.HEARTBEAT, tick)
     end

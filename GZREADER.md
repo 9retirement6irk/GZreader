@@ -244,6 +244,18 @@ Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s:
 | GZreader crashed (important) | the process ended without closing: crash.log and log tail |
 | warnings / errors | GZreader's log warnings and errors, a minute at a time |
 
+| GZreader slow | no heartbeat for 45 s (once per 10 min): the same snapshot |
+| GZreader busy (important) | GZreader at 60% CPU or more for a minute (from the app) |
+| warning "slow: …" | a keypress, repaint or round of scheduled work took 3 s or more |
+
+Where the time goes (`gzreader_slowtrace.lua`, with remote debugging on):
+LuaJIT's sampling profiler (`jit.profile`, every 50 ms of CPU time, so
+nothing while idle) tallies the running code (3 frames) and whether it is
+Lua, JIT code, C (e.g. crengine), garbage collection or the JIT compiler. The
+tally is written to `gzreader-remote/profile` every ~5 s of CPU, also while
+GZreader is stuck in one long call, and goes into the watchdog's reports,
+with each GZreader process's state, CPU over 2 s, memory and wait channel.
+
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
 the clock jump after waking). Log lines are redacted (no passwords or
 tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued

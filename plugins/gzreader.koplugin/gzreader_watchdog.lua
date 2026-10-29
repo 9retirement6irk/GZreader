@@ -68,6 +68,21 @@ local function tail(p, n, max_chars)
     if max_chars and #out > max_chars then out = out:sub(-max_chars) end
     return out
 end
+local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+
+--- Names in a folder (without starting a shell when lfs is there).
+local function listDir(d)
+    local out = {}
+    if ok_lfs then
+        local okd, iter, obj = pcall(lfs.dir, d)
+        if okd then for name in iter, obj do if name ~= "." and name ~= ".." then out[#out + 1] = name end end end
+        return out
+    end
+    local p = io.popen('ls "' .. d .. '" 2>/dev/null')
+    if p then for line in p:lines() do out[#out + 1] = line end; p:close() end
+    return out
+end
+
 local function sh(cmd, max_chars)
     local p = io.popen(cmd .. " 2>/dev/null")
     if not p then return "" end
@@ -135,7 +150,7 @@ local function flush()
     local base = config()
     if not base then return end
     local names = {}
-    for line in io.popen('ls "' .. dir .. '/spool" 2>/dev/null'):lines() do
+    for _i, line in ipairs(listDir(dir .. "/spool")) do
         if line:match("%.json$") then names[#names + 1] = line end
     end
     table.sort(names)
@@ -165,17 +180,64 @@ local function heartbeat()
     return tonumber(t), status, what
 end
 
+--- /proc/<pid>/stat as { state, ppid, ticks (CPU), nice, name }
+local function procStat(pid)
+    local s = readFile("/proc/" .. pid .. "/stat")
+    if not s then return nil end
+    local name, rest = s:match("^%d+ %((.-)%) (.*)$")
+    if not rest then return nil end
+    local f = {}
+    for x in rest:gmatch("%S+") do f[#f + 1] = x end
+    return { state = f[1], ppid = tonumber(f[2]), ticks = (tonumber(f[12]) or 0) + (tonumber(f[13]) or 0),
+        nice = tonumber(f[17]), name = name }
+end
+
+--- GZreader and its helper processes: state, CPU over 2 s, memory, what it waits on.
+local function processes()
+    local pids = {}
+    for _i, line in ipairs(listDir("/proc")) do
+        local pid = tonumber(line)
+        if pid then
+            local st = procStat(pid)
+            local cmd = (readFile("/proc/" .. pid .. "/cmdline") or ""):gsub("%z", " ")
+            if st and (pid == ppid or st.ppid == ppid or cmd:find("reader.lua", 1, true) or cmd:find("gzreader_", 1, true)) then
+                pids[#pids + 1] = { pid = pid, st = st, cmd = cmd }
+            end
+        end
+    end
+    local before = {}
+    for _i, p in ipairs(pids) do before[p.pid] = p.st.ticks end
+    sleep(2)
+    local out, zombies = {}, 0
+    for _i, p in ipairs(pids) do
+        local st = procStat(p.pid) or p.st
+        if st.state == "Z" then
+            zombies = zombies + 1
+        else
+            local rss = (readFile("/proc/" .. p.pid .. "/status") or ""):match("VmRSS:%s+(%d+)")
+            local wchan = (readFile("/proc/" .. p.pid .. "/wchan") or ""):gsub("%s", "")
+            out[#out + 1] = string.format("%d%s %s nice %s, CPU %d%%, %s MB, waits in %s: %s", p.pid,
+                p.pid == ppid and " (GZreader)" or (st.ppid == ppid and " (child)" or ""),
+                st.state, tostring(st.nice), math.floor((st.ticks - (before[p.pid] or st.ticks)) / 2 + 0.5),
+                rss and tostring(math.floor(tonumber(rss) / 1024)) or "?", wchan ~= "" and wchan or "-",
+                p.cmd:sub(1, 80))
+        end
+    end
+    if zombies > 0 then out[#out + 1] = zombies .. " finished child process(es) not collected" end
+    return table.concat(out, "\n")
+end
+
 local function snapshot()
     local mem = sh("head -5 /proc/meminfo", 400)
     local load = sh("cat /proc/loadavg", 100)
-    local top = sh("top -b -n 1 | head -15", 1500)
-    if top == "" then top = sh("ps", 1500) end
-    local kr = sh("grep -E 'VmRSS|VmSize' /proc/" .. ppid .. "/status", 200)
-    local dmesg = sh("dmesg | tail -15", 1500)
+    local top = sh("top -b -n 1 | head -12", 1200)
+    if top == "" then top = sh("ps", 1200) end
+    local dmesg = sh("dmesg | tail -8", 800)
     return table.concat({
-        "Memory:\n" .. mem, "Load: " .. load, "GZreader process:\n" .. kr,
-        "Top:\n" .. top, "Kernel messages:\n" .. dmesg,
-        "End of gzreader.log:\n" .. tail(W.LOG, 25, 2500),
+        "GZreader's processes (state R = running, S = waiting, D = waiting for storage):\n" .. processes(),
+        "Where GZreader's CPU went:\n" .. (readFile(dir .. "/profile") or "(no profile)"),
+        "Memory:\n" .. mem, "Load: " .. load, "Top:\n" .. top, "Kernel messages:\n" .. dmesg,
+        "End of gzreader.log:\n" .. tail(W.LOG, 20, 2000),
     }, "\n")
 end
 
@@ -184,7 +246,8 @@ end
 local own_pid = (readFile("/proc/self/stat") or ""):match("^(%d+)")
 writeFile(dir .. "/watchdog.pid", tostring(own_pid or "") .. "\n")
 local device = select(2, config())
-local frozen_since, last_loop = nil, now()
+local frozen_since, last_loop, slow_reported = nil, now(), 0
+W.SLOW = tonumber(os.getenv("GZ_WD_SLOW")) or 45
 local function tagged(extra) local t = { "gzreader", device } for _i, x in ipairs(extra) do t[#t + 1] = x end return t end
 local state_id = "gzreader-frozen-" .. device:gsub("[^%w%-]", "-")
 
@@ -207,8 +270,7 @@ while true do
         -- send it (Wi-Fi may still be up for a moment), then stop
         for _i = 1, 12 do
             flush()
-            local left = io.popen('ls "' .. dir .. '/spool" 2>/dev/null'):read("*a")
-            if not left or left == "" then break end
+            if #listDir(dir .. "/spool") == 0 then break end
             sleep(5)
         end
         os.remove(dir .. "/watchdog.pid")
@@ -217,6 +279,13 @@ while true do
     local hb, status, what = heartbeat()
     if status == "run" and hb then
         local stale = t - hb
+        if stale > W.SLOW and stale <= W.STALL and not frozen_since and t - slow_reported > 600 then
+            slow_reported = t
+            spool("send", { eventName = "GZreader slow (" .. device .. ")", important = false, source = "gzreader",
+                tags = tagged({ "slow" }), eventContent = string.format(
+                    "GZreader hasn't updated its heartbeat for %d s (it should every 15 s). It was: %s\n\n%s",
+                    stale, tostring(what), snapshot()) })
+        end
         if stale > W.STALL and not frozen_since then
             frozen_since = hb
             local content = string.format("GZreader hasn't responded for %d s. It was: %s\n\n%s", stale, tostring(what), snapshot())

@@ -626,6 +626,19 @@ local function apply_reader_top_status_bar()
         if #orders.left == 0 and #orders.center == 0 and #orders.right == 0 then return 0 end
 
         local height = view.footer:getHeight()
+        if not height or height <= 0 then
+            -- GZreader: with the footer hidden its height is 0, and the header
+            -- (clock…) was drawn over the text. Use the header's own height.
+            if view._zen_header_dimen and view._zen_header_dimen.h > 0 then
+                height = view._zen_header_dimen.h
+            else
+                local ok_tw, tw = pcall(function()
+                    return TextWidget:new{ text = "0:00 100%", face = getHeaderFace(cfg) }
+                end)
+                height = (ok_tw and tw and tw:getSize().h or 0) + Size.padding.small
+                if ok_tw and tw and tw.free then tw:free() end
+            end
+        end
         if type(cfg) == "table" and cfg.show_bottom_border == true then
             height = height + Size.line.medium
         end

@@ -114,16 +114,9 @@ function PB.layout(ui)
         local ok, h = pcall(view.footer.getHeight, view.footer)
         footer_h = ok and tonumber(h) or 0
     end
-    -- ZenOS's title bar (clock etc.) over the top of the page, as tall as the footer
-    local header_h = 0
-    local zen = rawget(_G, "__ZEN_UI_PLUGIN")
-    local features = zen and zen.config and zen.config.features
-    if type(features) == "table" and features.reader_top_status_bar == true and view and view.footer then
-        local ok, h = pcall(view.footer.getHeight, view.footer)
-        header_h = ok and tonumber(h) or 0
-        local cfg = zen.config.reader_top_status_bar
-        if type(cfg) == "table" and cfg.show_bottom_border == true then header_h = header_h + 2 end
-    end
+    -- ZenOS's title bar (clock etc.) over the top of the page: its height as
+    -- last painted (ZenOS normally reserves it as a top margin itself)
+    local header_h = view and view._zen_header_dimen and tonumber(view._zen_header_dimen.h) or 0
     local scale = Screen:scaleBySize(1000) / 1000
     local top = header_h > 0 and math.ceil(header_h / scale) or 0
     local avail = H - math.ceil(top * scale) - footer_h
@@ -227,10 +220,10 @@ function PB.set(ui, on)
         if m and not ui.doc_settings:readSetting("gzreader_pb_margins") then
             ui.doc_settings:saveSetting("gzreader_pb_margins", { m[1], m[2], m[3], m[4] })
         end
-        setMargins(ui, { 0, lay.top, 0, 0 })
-        -- ZenOS can reserve the title bar itself (then it already moved the page down)
+        setMargins(ui, { 0, 0, 0, 0 })
+        -- ZenOS reserves the title bar as a top margin itself; if it didn't, do it here
         local reserved = ui.document and tonumber(ui.document._zen_top_status_bar_reserved_height) or 0
-        if reserved > 0 and lay.top > 0 then setMargins(ui, { 0, 0, 0, 0 }) end
+        if reserved == 0 and lay.top > 0 then setMargins(ui, { 0, lay.top, 0, 0 }) end
         Log.info("picture book layout: screen", lay.screen, "title bar", lay.header, "footer", lay.footer,
             "top margin", reserved > 0 and ("(ZenOS) " .. reserved) or lay.top, "pictures", lay.vh .. "vh", "wide ones kept as they are", lay.wide)
         local cfg = ui.document and ui.document.configurable

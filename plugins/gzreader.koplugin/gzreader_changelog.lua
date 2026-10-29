@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.1",
+        changes = {
+            "Remote debugging finds what makes the Kindle slow: GZreader now notes where its CPU time goes (a light sampling profiler) and reports a keypress, repaint or piece of work that takes more than 3 seconds, with the code that used the time. When it uses most of the CPU for a minute it sends a \"GZreader busy\" report, and the watchdog sends \"GZreader slow\" after 45 seconds without an answer (\"unresponsive\" after 2 minutes), each with GZreader's processes (running or waiting, CPU, memory) and that profile.",
+            "Fixed: the remote-debugging watchdog left a finished process behind every 5 seconds (89 after 8 minutes); it no longer starts any for its regular checks.",
+            "ZenOS's clock bar at the top of a book no longer covers the text when the footer is hidden (its space was taken from the footer's height, 0 when hidden). Picture books use it too, so the clock sits above the page.",
+        },
+    },
+    {
         version = "1.2.0",
         changes = {
             "Remote debugging: GZreader can report to your own feed when it starts, when the previous run ended without closing normally (hard reboot, battery ran out, freeze or crash, with what it was doing and the end of its log), when the Kindle stops responding for 2 minutes (with memory, load and running processes at that moment), when it responds again, when GZreader crashes, and its warnings and errors. A small separate watchdog process does the watching and sending, so it works while GZreader's screen is stuck; messages wait while Wi-Fi is off. Set the feed address in Settings → GZreader → Remote debugging, or put it on the first line of a file gzreader-remote.txt on the Kindle's USB drive.",
