@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.17",
+        changes = {
+            "The Reading menu and the GZreader menu open with a full screen refresh, so the page behind no longer ghosts through.",
+        },
+    },
+    {
         version = "1.0.16",
         changes = {
             "Reading: the AA key and Reading menu → Font, size and layout open the font and layout menu again. ZenOS's \"no bottom swipe\" setting was also blocking them on the Kindle Keyboard, which has no swipe.",

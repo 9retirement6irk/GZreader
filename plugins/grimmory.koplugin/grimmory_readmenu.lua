@@ -72,7 +72,7 @@ function ReadMenu.show(plugin)
     menu.key_events = menu.key_events or {}
     menu.key_events.GzCloseReadMenu = { { "Menu" } }
     menu.onGzCloseReadMenu = function() UIManager:close(menu); return true end
-    UIManager:show(menu)
+    UIManager:show(menu, "full") -- full e-ink refresh: no ghosting from the page behind
     return menu
 end
 

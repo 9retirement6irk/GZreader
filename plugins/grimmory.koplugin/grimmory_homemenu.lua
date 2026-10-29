@@ -109,7 +109,7 @@ function HomeMenu.show(plugin)
         if orig_close then return orig_close(m, ...) end
     end
     HomeMenu.open = menu
-    UIManager:show(menu)
+    UIManager:show(menu, "full") -- full e-ink refresh: no ghosting from the page behind
     return true
 end
 
