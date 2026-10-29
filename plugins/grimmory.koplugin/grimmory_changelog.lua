@@ -2,6 +2,17 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.1.0",
+        changes = {
+            "Unfinished downloads are picked up again: if a book download (or one waiting in the queue), an audiobook download or preparing an audiobook for the Kindle is cut short (the battery ran out, the Kindle went to sleep or restarted, GZreader crashed or was closed), GZreader asks a few seconds after it next starts: Continue, Delete what was downloaded, or Ignore. Books continue from where they stopped instead of starting over; audiobooks keep the tracks already downloaded or prepared.",
+            "Page sync with Grimmory's web reader is exact: the Kindle now sends the exact place on the page (an EPUB CFI), so the web reader opens on the same page instead of at the start of the chapter, and a place set in the web reader opens on the same page on the Kindle.",
+            "The percentage sent to Grimmory is counted the way its web reader counts it, so Grimmory shows the same figure on that page (the Kindle's own footer still counts its own way, so 11% on the Kindle can be 15% in Grimmory). Whether Grimmory is ahead of or behind the Kindle is now judged on the actual page, not by comparing the two kinds of percentage.",
+            "Sleep screen “Show custom image (book cover while reading)”: shows your image from Home and menus, and the cover of the book you're reading while a book is open (it used to show the image everywhere). Choosing a sleep screen in that menu, or a ZenOS sleep-screen preset, now always takes effect.",
+            "The Grimmory tab shows ZenOS's status bar (clock, battery, Wi-Fi, downloads) at the top and keeps the tab bar at the bottom with the Grimmory tab underlined, like the other tabs. In a list inside it, the title shows the list's name and a back arrow.",
+            "Menus: “ZenOS quick panel” is now “Quick panel”; in the Reading menu “All settings (full menu)” is now “Quick panel”, and there's a new “Settings” entry that opens the same Settings page as on Home.",
+        },
+    },
+    {
         version = "1.0.30",
         changes = {
             "Picture books: each page now fills the space between the title bar and the footer instead of the whole screen, so the clock no longer sits on top of the page and the bottom line isn't cut off. Pictures keep their shape: a small or wide picture such as the publisher's logo is no longer stretched.",

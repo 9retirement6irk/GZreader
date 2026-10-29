@@ -343,17 +343,41 @@ end
 
 --- Stream a book's primary file straight into `path` (used by the download
 --- subprocess, which writes the ".part" file). Returns true or false, err.
-function Api:downloadToFile(book_id, path)
+function Api:downloadToFile(book_id, path, resume)
     local ok, err = self:ensureToken()
     if not ok then return false, err end
-    local fh, ferr = io.open(path, "wb")
+    local have = resume and (lfs.attributes(path, "size") or 0) or 0
+    local fh, ferr = io.open(path, have > 0 and "ab" or "wb")
     if not fh then return false, ferr end
-    local code, _, _, status = rawRequest("GET", self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download", {
-        headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" },
+    local headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" }
+    if have > 0 then headers["Range"] = "bytes=" .. have .. "-" end
+    local code, _, resp_headers, status = rawRequest("GET", self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download", {
+        headers = headers,
         sink = ltn12.sink.file(fh), -- closes the file when the transfer ends
         timeouts = { 30, -1 },      -- 30 s per block; no overall cap (big books on slow Wi-Fi)
     })
-    if code == 200 then return true end
+    if code == 206 or (code == 200 and have == 0) or (code == 416 and have > 0) then return true end
+    if code == 200 and have > 0 then
+        -- the server ignored Range and sent the whole book after the part we had
+        local h = resp_headers and tonumber(resp_headers["content-length"])
+        local size = lfs.attributes(path, "size") or 0
+        if h and size == have + h then
+            local inp, out = io.open(path, "rb"), io.open(path .. ".full", "wb")
+            if inp and out then
+                inp:seek("set", have)
+                while true do
+                    local buf = inp:read(1048576)
+                    if not buf then break end
+                    out:write(buf)
+                end
+                inp:close(); out:close()
+                os.rename(path .. ".full", path)
+                return true
+            end
+        end
+        os.remove(path)
+        return false, "server ignored Range"
+    end
     return false, code and ("http_" .. code) or tostring(status or "unreachable")
 end
 

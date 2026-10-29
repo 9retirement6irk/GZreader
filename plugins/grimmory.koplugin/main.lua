@@ -91,6 +91,8 @@ function Grimmory:init()
             require("common/cover_disk_cache").on_new_size = function() Warm.schedule(self, 30) end
         end)
         pcall(self.restoreFromManifest, self)
+        -- downloads / audiobook preparing cut short last time: ask what to do
+        pcall(function() require("grimmory_recovery").schedule(self) end)
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end
@@ -248,7 +250,7 @@ function Grimmory:menuItems()
         },
         {
             text = _("Menu key opens the GZreader menu"),
-            help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"All settings\" in it opens the full menu."),
+            help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
             checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
             callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
         },
@@ -1100,6 +1102,7 @@ function Grimmory:onCloseDocument()
     end
     if self.sync then
         self.sync:onLeave()
+        pcall(self.sync.releaseCfi, self.sync)
         self.sync = nil
     end
     if self.api:isPaired() and self:hasPending() and not Net.connected() then

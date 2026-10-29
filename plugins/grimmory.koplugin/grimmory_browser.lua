@@ -78,7 +78,17 @@ function Browser:show()
         is_borderless = true,
         is_popout = false,
         title_bar_fm_style = true,
+        -- ZenOS: show its tab bar with the Grimmory tab underlined
+        _gz_navbar_tab_id = Browser.TAB_ID,
     }
+    -- ZenOS's status bar (clock, battery, Wi-Fi) in the title, like other tabs
+    pcall(self.decorate, self, _("Grimmory"))
+    local orig_switch = self.menu.switchItemTable
+    self.menu.switchItemTable = function(m, title, ...)
+        local r = orig_switch(m, title, ...)
+        if title then pcall(self.decorate, self, title) end
+        return r
+    end
     -- Wi-Fi only when needed: keep it up while the browser is open
     local Net = require("grimmory_net")
     local net_key = "browser-" .. tostring(self)
@@ -87,6 +97,7 @@ function Browser:show()
     self.menu.onCloseWidget = function(m, ...)
         self.closed = true
         Net.release(net_key)
+        pcall(function() require("common/clock_timer").unbind(m) end)
         if orig_close then return orig_close(m, ...) end
     end
     -- GZreader: Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the
@@ -106,6 +117,29 @@ function Browser:show()
         return true
     end
     UIManager:show(self.menu)
+end
+
+Browser.TAB_ID = "ct_grimmory"
+
+--- Put ZenOS's status row (clock, battery, Wi-Fi, downloads) in the title
+--- bar with `title` as its label, and a back arrow inside a sub-list.
+function Browser:decorate(title)
+    local menu = self.menu
+    local zen = rawget(_G, "__ZEN_UI_PLUGIN")
+    if not (menu and menu.title_bar and zen) then return end
+    local SharedState = require("common/shared_state")
+    local createStatusRow = SharedState.get(zen, "createStatusRow")
+    if type(createStatusRow) ~= "function" then return end -- status bar off
+    local StandalonePage = require("modules/filebrowser/patches/standalone_page")
+    local nested = #(menu.item_table_stack or {}) > 0
+    StandalonePage.apply_status_row(menu, {
+        createStatusRow = createStatusRow,
+        createStatusRowCustomBack = SharedState.get(zen, "createStatusRowCustomBack"),
+        repaintTitleBar = SharedState.get(zen, "repaintTitleBar"),
+        label = title,
+        back_callback = nested and function() menu:onReturn() end or nil,
+    })
+    menu._gz_status_title = title
 end
 
 function Browser:rootItems()

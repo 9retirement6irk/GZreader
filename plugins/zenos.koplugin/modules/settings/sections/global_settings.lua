@@ -245,6 +245,7 @@ function M.build(ctx)
         if type(preset) ~= "table" then return end
         if preset.screensaver_type then
             G_reader_settings:saveSetting("screensaver_type", preset.screensaver_type)
+            G_reader_settings:makeFalse("gzreader_sleep_auto") -- GZreader: the preset replaces the automatic one
         end
         if preset.screensaver_message ~= nil then
             G_reader_settings:saveSetting("screensaver_message", preset.screensaver_message)

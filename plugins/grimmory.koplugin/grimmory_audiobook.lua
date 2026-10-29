@@ -297,6 +297,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
     local total = 0
     for _i, t in ipairs(book.tracks) do total = total + (t.size or 0) end
     Log.info("audiobook download start", summary.id, #book.tracks, "files", total, "bytes", "attempt", attempt)
+    pcall(require("grimmory_recovery").audioStarted, plugin, summary, "download") -- picked up after a restart
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
         api.no_refresh = true
         for _i, t in ipairs(book.tracks) do
@@ -366,6 +367,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             return on_done(nil, (res:match("^err (.*)$") or res):gsub(" %(resumable%)", ""))
         end
         Log.info("audiobook downloaded", summary.id)
+        pcall(require("grimmory_recovery").audioStarted, plugin, summary, "prepare")
         Audiobook.prepare(dir, book.tracks, book.title, function(pok, perr)
             if not pok then return on_done(nil, T(_("Couldn't prepare the audio for the Kindle: %1"), tostring(perr))) end
             Audiobook.finishLayout(dir, book)
@@ -374,6 +376,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             plugin.store.audiobooks = plugin.store.audiobooks or {}
             plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
             plugin:save()
+            pcall(require("grimmory_recovery").audioDone, plugin, summary.id)
             on_done(Audiobook.load(plugin, summary.id))
         end)
     end

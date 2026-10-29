@@ -2459,6 +2459,10 @@ local function apply_navbar()
 
     local function getStandaloneNextTickTabId(menu)
         if Kindle.isLibraryView(menu) then return "kindle" end
+        -- GZreader: the Grimmory browser says which tab it belongs to
+        if type(menu._gz_navbar_tab_id) == "string" and tabs_by_id[menu._gz_navbar_tab_id] then
+            return menu._gz_navbar_tab_id
+        end
         local Rakuyomi = getRakuyomi()
         if type(Rakuyomi.getStandaloneTabId) == "function" then
             return Rakuyomi.getStandaloneTabId(menu)

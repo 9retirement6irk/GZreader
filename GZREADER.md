@@ -68,9 +68,9 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
-| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, ZenOS quick panel, exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
+| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, Quick panel (ZenOS), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
 | Home / Downloaded, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
-| Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
+| Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, Settings, Quick panel, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
@@ -116,6 +116,11 @@ straight away (its title ends in "· saved"), Wi‑Fi comes up quietly in the
 background, and the fresh list replaces it in place (same page) when it
 arrives, unless you've moved on. With no Wi‑Fi the saved copies are what you
 get. "Load more" and Search always ask Grimmory.
+
+The Grimmory tab is part of ZenOS's tab bar while it's open: the bar stays
+at the bottom with the Grimmory tab underlined, and the title shows ZenOS's
+status bar (clock, battery, Wi‑Fi, downloads) with the list's name and, in
+a sub-list, a back arrow.
 
 ## Subtitles
 
@@ -176,8 +181,22 @@ Native: Grimmory's own reading-progress API (the web reader's), not its
 KOReader-compatible endpoint.
 
 - Books downloaded through the Grimmory tab, matched by Grimmory book ID.
-- EPUB: chapter (spine file), position in the chapter and whole-book
-  percentage. PDFs/comics: page. FB2/MOBI/AZW3: percentage.
+- EPUB: the exact place as an EPUB CFI (`positionData`, made from the
+  page's crengine XPointer with `grimmory_cfi.lua`), plus the chapter (spine
+  file) and the position in it as a fallback. Grimmory's web reader
+  (foliate-js) resumes from the CFI; before 1.1.0 no CFI was sent and it
+  opened at the start of the chapter. PDFs/comics: page. FB2/MOBI/AZW3:
+  percentage.
+- Percentage: worked out like foliate-js does it (each spine file counts by
+  its uncompressed size, from the EPUB's zip directory; non-linear files
+  count 0), so Grimmory's figure matches its web reader on the same page.
+  KOReader's footer counts rendered height and still shows its own figure
+  (e.g. 11% on the Kindle where the web reader says 15%).
+- Pull: a CFI from the web reader is converted back to an XPointer and the
+  Kindle goes to that exact page; ahead / behind / same page is decided on
+  KOReader's positions for both, so the two percentage scales don't mix.
+  Every page of Diary of a Wimpy Kid (230 pages, all pictures) round-trips
+  through a CFI to the same page on the Kindle 3's crengine.
 - Pulled on open and wake; pushed every 10 page turns (or 3 minutes), on
   close and on sleep. Pulls, page-turn pushes and queued updates run in a
   short-lived background process one at a time (`grimmory_async.lua`), so
@@ -203,6 +222,21 @@ crengine makes a DocFragment for every spine item, image and SVG pages
 included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
 spine item. Until 1.0.29 GZreader counted only XHTML items; books with
 picture pages in the spine then fell back to percentages.
+
+## Unfinished downloads
+
+Every book download (running or queued) and every audiobook download and
+"preparing the audio" is noted when it starts and crossed off when it ends
+(`grimmory_recovery.lua`). If GZreader stops in between (battery ran out,
+the Kindle slept or restarted, a crash), it asks about each one a few
+seconds after the next start: **Continue** (books continue from the part
+already downloaded with an HTTP Range request; audiobooks continue
+downloading their tracks and preparing the ones not yet converted, after
+stopping any conversion still running from before), **Delete** (removes
+the part) or **Ignore** (stops asking, keeps the part: downloading it again
+later still continues from there). A stalled download now also keeps its
+part. Stopping a download yourself, taking it out of the queue, or a "not
+found" from Grimmory clears it.
 
 ## Highlight and note sync
 
@@ -329,7 +363,12 @@ than real text. Smooth scaling makes them much less jagged.
 While a book is open: its cover. From Home and menus: a random picture from
 the USB drive's `screensavers` folder (created by the setup guide), falling
 back to the Kindle's own sleep pictures. Chosen in the setup guide; picking
-another option there restores KOReader/ZenOS's own sleep-screen settings.
+another option there, choosing a wallpaper in the sleep-screen menu, or
+applying a ZenOS sleep-screen preset switches it off and uses that choice.
+
+"Show custom image (book cover while reading)" (KOReader's "custom image or
+cover"): the chosen image from Home and menus, the open book's cover while
+reading. In KOReader it showed the custom image everywhere.
 
 ## Wi-Fi only when needed
 

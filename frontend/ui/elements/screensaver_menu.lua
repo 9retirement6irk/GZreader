@@ -35,6 +35,8 @@ local function genMenuItem(text, setting, value, enabled_func, separator, help_t
         end,
         callback = function()
             G_reader_settings:saveSetting(setting, value)
+            -- GZreader: choosing a sleep screen here replaces GZreader's automatic one
+            if setting == "screensaver_type" then G_reader_settings:makeFalse("gzreader_sleep_auto") end
         end,
         radio = true,
         separator = separator,
@@ -48,7 +50,8 @@ local sub_item_table = {
         text = _("Wallpaper"),
         sub_item_table = {
             genMenuItem(_("Show book cover on sleep screen"), "screensaver_type", "cover", hasLastFile),
-            genMenuItem(_("Show custom image or cover on sleep screen"), "screensaver_type", "document_cover"),
+            genMenuItem(_("Show custom image (book cover while reading)"), "screensaver_type", "document_cover", nil, nil,
+                _("From Home and menus the sleep screen shows the image you choose. While a book is open it shows that book's cover.")),
             genMenuItem(_("Show random image from folder on sleep screen"), "screensaver_type", "random_image"),
             genMenuItem(_("Show reading progress on sleep screen"), "screensaver_type", "readingprogress", isReaderProgressEnabled),
             genMenuItem(_("Show book status on sleep screen"), "screensaver_type", "bookstatus", hasLastFile),

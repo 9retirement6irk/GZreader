@@ -377,6 +377,11 @@ function Screensaver:setup(event, event_message)
     -- Check lastfile and setup the requested mode's resources, or a fallback mode if the required resources are unavailable.
     local lastfile = G_reader_settings:readSetting("lastfile")
     local is_document_cover = false
+    -- GZreader: "custom image or cover" shows the open book's cover while
+    -- reading, and the custom image from Home and menus.
+    if self.screensaver_type == "document_cover" and self.ui.document then
+        self.screensaver_type = "cover"
+    end
     if self.screensaver_type == "document_cover" then
         -- Set lastfile to the document of which we want to show the cover.
         lastfile = G_reader_settings:readSetting("screensaver_document_cover")

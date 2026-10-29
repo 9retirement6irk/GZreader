@@ -183,7 +183,7 @@ function HomeMenu.items(plugin)
         { text = _("Send diagnostic log to my phone"), callback = function() plugin:shareLog() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },
         { text = _("Restart GZreader"), callback = function() dispatch("restart") end },
-        { text = _("ZenOS quick panel"), callback = function() HomeMenu.fullMenu() end },
+        { text = _("Quick panel"), callback = function() HomeMenu.fullMenu() end },
         { text = _("Exit to the Kindle"), callback = function() dispatch("exit") end },
     }
     local list = {}

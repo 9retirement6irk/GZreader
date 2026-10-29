@@ -37,9 +37,11 @@ a built-in connection to a self-hosted **Grimmory** book server.
 
 ### 🔄 Sync with Grimmory
 - **Reading position** syncs with Grimmory's own progress (the web reader's), not the
-  KOReader sync endpoint. Pick up on the Kindle where you left off on the web, and the
-  other way round.
+  KOReader sync endpoint, to the exact page (EPUB CFI). Pick up on the Kindle where you
+  left off on the web, and the other way round.
 - **Bookmarks** sync both ways, deletions included.
+- **Unfinished downloads** (dead battery, sleep, crash) are offered again at the next
+  start: continue where it stopped, delete, or ignore.
 - **Highlights and notes** in EPUBs sync both ways with Grimmory's web reader: new
   ones, colours, notes and deletions (conversion and merge from
   [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader-Client), MIT).

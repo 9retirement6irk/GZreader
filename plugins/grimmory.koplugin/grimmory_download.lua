@@ -65,6 +65,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
         UIManager:show(InfoMessage:new{ text = _("This book is already downloading or in the download queue."), timeout = 3 })
         return
     end
+    pcall(require("grimmory_recovery").bookStarted, plugin, book, dest_path) -- picked up after a restart
     if Download.active then
         table.insert(Download.queue, { plugin = plugin, book = book, dest_path = dest_path, on_done = on_done })
         Log.info("download queued", "book=" .. tostring(book.id), "#" .. #Download.queue)
@@ -84,16 +85,18 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
 
     local title = type(book.title) == "string" and book.title or dest_path:match("[^/]+$")
     local part = dest_path .. ".part"
-    os.remove(part)
+    -- a part left by an interrupted download is continued (Range request)
+    local resume_from = lfs.attributes(part, "size") or 0
     local expected = tonumber(book.fileSizeKb) and tonumber(book.fileSizeKb) * 1024 or nil
     if expected and expected <= 0 then expected = nil end
 
-    Log.info("download start", "book=" .. tostring(book.id), "expected=" .. tostring(expected), "->", dest_path)
+    Log.info("download start", "book=" .. tostring(book.id), "expected=" .. tostring(expected), "->", dest_path,
+        resume_from > 0 and ("continuing after " .. mb(resume_from)) or "")
 
     local pid, read_fd = ffiutil.runInSubProcess(function(_child_pid, write_fd)
         -- Child: never refresh or persist tokens here (see header).
         api.no_refresh = true
-        local dl_ok, dl_err = api:downloadToFile(book.id, part)
+        local dl_ok, dl_err = api:downloadToFile(book.id, part, true)
         local sub = ""
         if dl_ok then
             -- the subtitle ("Diary of a Wimpy Kid: Old School") isn't in the app API's lists
@@ -113,7 +116,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
     local job = {
         pid = pid, read_fd = read_fd, started = os.time(), book_id = tostring(book.id),
         title = title, expected = expected,
-        last_size = 0, last_change = os.time(),
+        last_size = resume_from, last_change = os.time(),
         watching = not from_queue and not Download.background,
         show_dialog = not Download.background,
     }
@@ -148,6 +151,9 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
         UIManager:unschedule(job.poll)
         closeDialog()
         local secs = os.time() - job.started
+        if result_ok or result_err == "cancelled" or tostring(result_err):match("^http_4") then
+            pcall(require("grimmory_recovery").bookDone, plugin, book.id) -- else: offered after a restart
+        end
         if result_ok then
             os.remove(dest_path)
             local renamed, rerr = os.rename(part, dest_path)
@@ -157,7 +163,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
             end
             Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
         else
-            os.remove(part)
+            if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
                 "received " .. mb(job.last_size))
         end
@@ -197,6 +203,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
                 #Download.queue > 0 and {{ text = T(_("Empty the queue (%1 waiting)"), #Download.queue), callback = function()
                     UIManager:close(options)
                     Log.info("download queue emptied:", #Download.queue)
+                    for _i, q in ipairs(Download.queue) do pcall(require("grimmory_recovery").bookDone, q.plugin, q.book.id) end
                     Download.queue = {}
                 end }} or nil,
             },
@@ -258,6 +265,7 @@ function Download.unqueue(book_id)
     for i, q in ipairs(Download.queue) do
         if tostring(q.book.id) == tostring(book_id) then
             table.remove(Download.queue, i)
+            pcall(require("grimmory_recovery").bookDone, q.plugin, book_id)
             Log.info("download unqueued", "book=" .. tostring(book_id))
             pcall(function() require("grimmory_tasks").changed() end)
             return true

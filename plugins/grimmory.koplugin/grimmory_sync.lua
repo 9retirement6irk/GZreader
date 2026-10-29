@@ -2,13 +2,20 @@
 Native Grimmory progress sync (no KOReader sync server involved).
 
 Books are identified by their Grimmory book/file IDs, recorded when the book
-is downloaded through this plugin. Positions are exchanged in the form
-Grimmory's own web reader understands without a CFI:
+is downloaded through this plugin.
 
-* EPUB: chapter `positionHref` (spine item path inside the EPUB) plus the
-  position within that chapter (`contentSourceProgressPercent`) and the
-  whole-book percentage. `positionData` (the web reader's CFI) is left empty
-  so the web reader restores by chapter + in-chapter position.
+* EPUB: the exact place as an EPUB CFI in `positionData` (what Grimmory's web
+  reader, foliate-js, resumes from), made from the page's crengine XPointer
+  with grimmory_cfi; plus the chapter `positionHref` and the position within
+  it (`contentSourceProgressPercent`) as a fallback. Until 1.1.0 no CFI was
+  sent and the web reader opened at the start of the chapter.
+  The percentage sent is worked out the way foliate-js does it (each spine
+  file counts by its size in bytes, non-linear ones not at all), so Grimmory
+  shows the same figure as its web reader on that page. KOReader's own
+  footer counts rendered height, so it differs (11% here, 15% there).
+  Pulling, a CFI from the web reader is turned back into an XPointer and the
+  Kindle goes to that exact place; decisions (ahead, behind, same page) use
+  KOReader's positions on both sides.
 * PDF / comics: page number in `positionData`.
 * Other reflowable formats (FB2, MOBI, AZW3): whole-book percentage.
 
@@ -111,7 +118,7 @@ function Sync.parseSpine(read)
         local mt = item:match("media%-type%s*=%s*[\"']([^\"']+)[\"']") or ""
         if id and href then manifest[id] = { href = Sync.normalizeHref(base .. href), media = mt } end
     end
-    local all, frag = {}, {}
+    local all, frag, linear = {}, {}, {}
     local spine = opf:match("<[%w:]*spine[^>]*>(.-)</[%w:]*spine>") or ""
     for ref in spine:gmatch("<[%w:]*itemref%s[^>]*>") do
         local idref = ref:match("idref%s*=%s*[\"']([^\"']+)[\"']")
@@ -119,10 +126,11 @@ function Sync.parseSpine(read)
         if item then
             all[#all + 1] = item.href
             frag[#frag + 1] = item.href
+            linear[#frag] = not ref:match("linear%s*=%s*[\"']no[\"']")
         end
     end
     if #frag == 0 then return nil end
-    return { all = all, frag = frag }
+    return { all = all, frag = frag, linear = linear }
 end
 
 function Sync:spine()
@@ -171,14 +179,128 @@ function Sync:localPosition()
     if frag and spine and spine.frag[frag] then
         local start, stop = self:fragmentRange(frag)
         p.href = spine.frag[frag]
-        p.chapter_pct = round1(math.max(0, math.min(100, (pos - start) / math.max(stop - start, 1) * 100)))
+        p.chapter_frac = math.max(0, math.min(1, (pos - start) / math.max(stop - start, 1)))
+        p.chapter_pct = round1(p.chapter_frac * 100)
     end
     if self.ui.rolling and self.ui.rolling.getLastPercent then
-        -- Use the reader's own figure in page mode so the footer and Grimmory agree.
         local ok, last = pcall(self.ui.rolling.getLastPercent, self.ui.rolling)
         if ok and type(last) == "number" then p.pct = round1(last * 100) end
     end
+    p.local_pct = p.pct -- KOReader's figure (the footer's)
+    p.pos = pos
+    if frag and p.chapter_frac then
+        local web = self:webPercent(frag, p.chapter_frac)
+        if web then p.pct = round1(web) end
+    end
     return p
+end
+
+---------------------------------------------------------------- web reader's percentage
+
+--- Uncompressed size of each spine item, from the EPUB's zip directory
+--- (cached per book file).
+function Sync:spineSizes()
+    if self._sizes ~= nil then return self._sizes or nil end
+    self._sizes = false
+    local spine = self:spine()
+    local file = self.ui.document.file
+    if not spine or not file then return nil end
+    local lfs = require("libs/libkoreader-lfs")
+    local attr = lfs.attributes(file) or {}
+    local sig = tostring(attr.size) .. ":" .. tostring(attr.modification)
+    local c = self.entry.spine_sizes
+    if type(c) == "table" and c.sig == sig and type(c.sizes) == "table" and #c.sizes == #spine.frag then
+        self._sizes = c.sizes
+        return c.sizes
+    end
+    local by_path = Sync.archiveSizes(file)
+    local sizes = {}
+    for i, href in ipairs(spine.frag) do
+        local n = by_path and by_path[href]
+        if not n then
+            local ok, content = pcall(self.ui.document.getDocumentFileContent, self.ui.document, href)
+            n = ok and type(content) == "string" and #content or 0
+        end
+        sizes[i] = (spine.linear and spine.linear[i] == false) and 0 or n
+    end
+    local total = 0
+    for _i, n in ipairs(sizes) do total = total + n end
+    if total <= 0 then return nil end
+    self.entry.spine_sizes = { sig = sig, sizes = sizes }
+    self._sizes = sizes
+    return sizes
+end
+
+--- { [path] = uncompressed size } of a zip, or nil.
+function Sync.archiveSizes(file)
+    local ok, out = pcall(function()
+        local Archiver = require("ffi/archiver")
+        local r = Archiver.Reader:new()
+        if not r:open(file) then return nil end
+        local t = {}
+        for e in r:iterate() do
+            if e.mode == "file" then t[e.path] = tonumber(e.size) end
+        end
+        r:close()
+        return t
+    end)
+    return ok and out or nil
+end
+
+--- Book percentage the way Grimmory's web reader (foliate-js) counts it:
+--- spine files by size, `frac` of the way through file `frag`.
+function Sync:webPercent(frag, frac)
+    local sizes = self:spineSizes()
+    if not sizes or not sizes[frag] then return nil end
+    local total, before = 0, 0
+    for i, n in ipairs(sizes) do
+        total = total + n
+        if i < frag then before = before + n end
+    end
+    if total <= 0 then return nil end
+    frac = math.max(0, math.min(1, frac or 0))
+    return (before + sizes[frag] * frac) / total * 100
+end
+
+---------------------------------------------------------------- CFI
+
+--- This book's own copy of grimmory_cfi (its state is per book).
+function Sync:cfiConverter()
+    if self._cfi ~= nil then return self._cfi or nil end
+    self._cfi = false
+    if not self:isEpub() then return nil end
+    local ok, conv = pcall(function()
+        local path = package.searchpath("grimmory_cfi", package.path)
+        local mod = assert(loadfile(path))()
+        assert(mod.initBook(self.ui.document.file, Sync.cfiReader and Sync.cfiReader(self.ui.document.file)))
+        return mod
+    end)
+    if ok then self._cfi = conv else Log.warn("sync: no CFI converter:", tostring(conv)) end
+    return self._cfi or nil
+end
+
+function Sync:releaseCfi()
+    if self._cfi then pcall(self._cfi.clearCache) end
+    self._cfi = nil
+end
+
+--- EPUB CFI of an XPointer, or nil.
+function Sync:cfiOf(xp)
+    local conv = xp and self:cfiConverter()
+    if not conv then return nil end
+    local ok, cfi = pcall(conv.xpointerToCFI, xp)
+    return ok and type(cfi) == "string" and cfi or nil
+end
+
+--- XPointer of a (point or range) CFI from the web reader, or nil.
+function Sync:xpOf(cfi)
+    local conv = cfi and self:cfiConverter()
+    if not conv then return nil end
+    local ok, xp = pcall(conv.cfiToXPointer, cfi)
+    if not ok or type(xp) ~= "string" then return nil end
+    local doc = self.ui.document
+    if doc.isXPointerInDocument and not doc:isXPointerInDocument(xp) then return nil end
+    return xp
 end
 
 ---------------------------------------------------------------- remote position
@@ -203,6 +325,11 @@ end
 function Sync:targetPos(r)
     local doc = self.ui.document
     local height = doc.info.doc_height
+    if r.cfi then
+        local xp = self:xpOf(r.cfi)
+        local pos = xp and doc:getPosFromXPointer(xp)
+        if pos then return pos, true end
+    end
     local by_pct = r.pct / 100 * height
     local spine = self:spine()
     local frag
@@ -295,24 +422,41 @@ function Sync:applyRemote(book, interactive, err)
         if interactive then UIManager:show(InfoMessage:new{ text = _("No reading progress on Grimmory yet."), timeout = 3 }) end
         return
     end
-    local diff = remote.pct - here.pct
-    Log.info("sync pull book", self.book_id, "remote", remote.pct .. "%", remote.href or remote.cfi or "",
-        "local", here.pct .. "%")
+    -- compare on KOReader's scale: where the remote place is in this book
+    local remote_local = remote.pct
+    local exact = false
+    if self:isRolling() and here.pos then
+        local target
+        target, exact = self:targetPos(remote)
+        local height = math.max(self.ui.document.info.doc_height or 1, 1)
+        if target then remote_local = round1(target / height * 100) end
+        remote.local_pct = remote_local
+        here.pct = round1(here.pos / height * 100)
+        local page_h = (self.ui.document.getPageHeight and pcall(self.ui.document.getPageHeight, self.ui.document)
+            and self.ui.document:getPageHeight()) or nil
+        if target and page_h and math.abs(target - here.pos) < page_h / 2 then
+            remote_local = here.pct -- same page
+        end
+    end
+    local diff = remote_local - here.pct
+    Log.info("sync pull book", self.book_id, "remote", remote.pct .. "%", "(here " .. remote_local .. "%" .. (exact and ", from its CFI)" or ")"),
+        remote.href or remote.cfi or "", "local", here.pct .. "%")
     if math.abs(diff) < SAME_POSITION_PCT then
         if interactive then UIManager:show(InfoMessage:new{ text = _("Already in sync with Grimmory."), timeout = 2 }) end
         return
     end
     local last = num(self.entry.last_pushed_pct)
-    local is_our_echo = last and math.abs(remote.pct - last) < SAME_POSITION_PCT
+    local is_our_echo = (remote.cfi and self.entry.last_pushed_cfi == remote.cfi)
+        or (last and math.abs(remote.pct - last) < SAME_POSITION_PCT)
     if diff > 0 and (not is_our_echo or interactive) then
         self:jumpTo(remote)
         self.entry.last_pushed_pct = remote.pct -- now in agreement
         self.plugin:save()
-        UIManager:show(InfoMessage:new{ text = T(_("Jumped to %1% from Grimmory."), round1(remote.pct)), timeout = 2 })
+        UIManager:show(InfoMessage:new{ text = T(_("Jumped to %1% from Grimmory."), round1(remote_local)), timeout = 2 })
     elseif diff < 0 and (not is_our_echo or interactive) then
         UIManager:show(ConfirmBox:new{
             text = T(_("Grimmory has an earlier position (%1%) than this Kindle (%2%), probably from another device. Go back to it?"),
-                round1(remote.pct), round1(here.pct)),
+                round1(remote_local), round1(here.pct)),
             ok_text = _("Go back"),
             cancel_text = _("Stay here"),
             ok_callback = function()
@@ -335,10 +479,8 @@ function Sync:progressBody(p)
     elseif p.href then
         fp.positionHref = p.href
         fp.contentSourceProgressPercent = p.chapter_pct
+        fp.positionData = p.cfi -- the exact place for the web reader (nil: href + %)
     end
-    -- positionData (web CFI) intentionally omitted for reflowable books: the
-    -- server then clears any stale CFI and the web reader resumes from
-    -- positionHref + contentSourceProgressPercent.
     return { fileProgress = fp }
 end
 
@@ -349,6 +491,7 @@ function Sync:push(force, background)
     if not force and last and math.abs(p.pct - last) < 0.05 and self.entry.last_pushed_href == p.href then
         return
     end
+    if p.xp and p.href then p.cfi = self:cfiOf(p.xp) end
     local body = self:progressBody(p)
     self.pages_since_push = 0
     self.last_push_time = os.time()
@@ -361,6 +504,7 @@ function Sync:push(force, background)
         if ok then
             self.entry.last_pushed_pct = p.pct
             self.entry.last_pushed_href = p.href
+            self.entry.last_pushed_cfi = p.cfi
             self.plugin:clearQueued("progress", self.book_id)
             -- we're evidently online: send anything queued while offline (the
             -- Kindle can bring Wi-Fi up without KOReader announcing it)

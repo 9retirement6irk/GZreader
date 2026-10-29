@@ -2,7 +2,8 @@
 GZreader "Reading menu": what the Menu key opens while reading on a Kindle
 Keyboard. A plain list, so every entry has a letter key (Q, W, E, …) shown
 next to it and the 5-way works too. Holding Menu still opens ZenOS's page
-browser; "All settings" opens the full reader menu.
+browser; "Quick panel" opens ZenOS's reader panel and "Settings" the
+settings page (the same one as on Home).
 ]]
 
 local Event = require("ui/event")
@@ -50,7 +51,10 @@ function ReadMenu.items(plugin)
     items[#items + 1] = { text = _("Page browser"), callback = send("ShowPageBrowser") }
     items[#items + 1] = { text = _("Book information"), callback = send("ShowBookInfo") }
     items[#items + 1] = { text = _("Read-aloud settings"), callback = function() plugin:showTtsSettings() end }
-    items[#items + 1] = { text = _("All settings (full menu)"), callback = function()
+    items[#items + 1] = { text = _("Settings"), callback = function()
+        require("grimmory_homemenu").settings()
+    end }
+    items[#items + 1] = { text = _("Quick panel"), callback = function()
         if ui.menu then ui.menu:onShowMenu() end
     end }
     items[#items + 1] = { text = _("Close book (Home)"), callback = send("Home") }
