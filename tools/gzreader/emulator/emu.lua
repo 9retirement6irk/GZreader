@@ -35,7 +35,7 @@ do
     end
 end
 
-local E = { queue = {}, log = {}, t0 = os.time() }
+local E = { queue = {}, log = {}, t0 = os.time(), out = OUT }
 _G.EMU = E
 local function say(...)
     local parts = {}
@@ -48,7 +48,8 @@ E.say = say
 
 -- input: scripted
 local KEYS = { Press = 28, Up = 103, Down = 108, Left = 105, Right = 106, Menu = 139, Back = 158, Home = 102,
-    RPgFwd = 191, RPgBack = 109, LPgFwd = 104, LPgBack = 193, Del = 14, AA = 190, Sym = 126, Space = 57 }
+    RPgFwd = 191, RPgBack = 109, LPgFwd = 104, LPgBack = 193, Del = 14, AA = 190, Sym = 126, Space = 57,
+    Enter = 28, Shift = 42, Alt = 56, Period = 52 }
 
 local letters = { Q = 16, W = 17, E = 18, R = 19, T = 20, Y = 21, U = 22, I = 23, O = 24, P = 25, A = 30, S = 31,
     D = 32, F = 33, G = 34, H = 35, J = 36, K = 37, L = 38, Z = 44, X = 45, C = 46, V = 47, B = 48, N = 49, M = 50 }
@@ -59,6 +60,11 @@ local function now_tv()
     local tv = ffi.new("struct emu_timeval")
     ffi.C.gettimeofday(tv, nil)
     return { sec = tonumber(tv.tv_sec), usec = tonumber(tv.tv_usec) }
+end
+
+function E.now()
+    local tv = now_tv()
+    return tv.sec + tv.usec / 1e6
 end
 
 function E.key(name)
@@ -134,7 +140,9 @@ function E.top()
     local out = {}
     for i, w in ipairs(UIManager._window_stack or {}) do
         local wd = w.widget
-        out[#out + 1] = i .. ":" .. tostring(wd.name or wd.title or (wd.text and wd.text:sub(1, 40)) or wd.id or "?")
+        local text = type(wd.text) == "string" and wd.text:sub(1, 40) or nil
+        local title = type(wd.title) == "string" and wd.title or nil
+        out[#out + 1] = i .. ":" .. tostring(wd.name or title or text or wd.id or "?"):gsub("%s+", " ")
             .. (wd.modal and "(modal)" or "")
     end
     return table.concat(out, " | ")
@@ -152,6 +160,7 @@ function E.installDisplay(Screen)
         E.display:blitFrom(self.bb, x, y, x, y, w, h)
         E.refreshes = E.refreshes + 1
         E.last_refresh = os.time()
+        E.last_refresh_t = E.now()
     end
 end
 

@@ -50,7 +50,15 @@ function Progress:init()
         max_width = Screen:getWidth() - Screen:scaleBySize(80),
     }
     local group = self[1][1]
-    table.insert(group, self.status_widget)
+    -- centred under the bar (the dialog's group lines things up on the right)
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local Geom = require("ui/geometry")
+    local w = 0
+    for _i, child in ipairs(group) do w = math.max(w, child:getSize().w) end
+    table.insert(group, CenterContainer:new{
+        dimen = Geom:new{ w = w, h = self.status_widget:getSize().h },
+        self.status_widget,
+    })
     group:resetLayout()
     self.done = 0
 end

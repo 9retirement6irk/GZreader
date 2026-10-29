@@ -26,7 +26,6 @@ Reading menu → "Fit pictures to the screen" turns it on or off for the book.
 
 local Notification = require("ui/widget/notification")
 local UIManager = require("ui/uimanager")
-local Event = require("ui/event")
 local Log = require("gzreader_log")
 local _ = require("gettext")
 
@@ -34,14 +33,14 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 3
+PB.VERSION = 4
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
 --- page's text area (inside the margins), and vh is honoured for pictures
 --- on the Kindle (1.0.30's height:100% was ignored there).
 function PB.css(vh, wide)
     local out = { MARK_BEGIN .. string.format([[ /* v%d */
-body, p, div, section { margin: 0 !important; padding: 0 !important; text-indent: 0 !important; }
+body, p, div, section, h1, h2, h3, h4, h5, h6, figure, blockquote, center { margin: 0 !important; padding: 0 !important; text-indent: 0 !important; }
 img { display: block !important; margin: 0 auto !important; padding: 0 !important;
       height: %.1fvh !important; width: auto !important;
       max-height: none !important; max-width: 100vw !important; }]], PB.VERSION, vh) }
@@ -106,27 +105,34 @@ end
 
 --- Screen space for a page, between the title bar and the footer:
 --- { top = margin (unscaled px) for the title bar, vh = picture height }.
+PB.VH = 99
 function PB.layout(ui)
     local Screen = require("device").screen
     local H = Screen:getHeight()
     local view = ui.view
+    local footer = view and view.footer
     local footer_h = 0
-    if view and view.footer and not view.footer.reclaim_height then
-        local ok, h = pcall(view.footer.getHeight, view.footer)
+    if footer then
+        local ok, h = pcall(footer.getHeight, footer)
         footer_h = ok and tonumber(h) or 0
     end
-    -- ZenOS's title bar (clock etc.) over the top of the page: its height as
-    -- last painted (ZenOS normally reserves it as a top margin itself)
-    local header_h = view and view._zen_header_dimen and tonumber(view._zen_header_dimen.h) or 0
     local scale = Screen:scaleBySize(1000) / 1000
-    local top = header_h > 0 and math.ceil(header_h / scale) or 0
-    local avail = H - math.ceil(top * scale) - footer_h
-    -- crengine's vh is the page's text area (between the margins), so this
-    -- fills the space under the title bar exactly; a hair under 100 so a
-    -- page never spills onto a second one
-    local vh = 99.5
-    return { top = top, vh = vh, header = header_h, footer = footer_h, screen = H,
-        avail_w = Screen:getWidth(), avail_h = avail }
+    -- ZenOS's title bar (clock…): ZenOS adds its height to the top margin
+    -- itself when the margins are applied; reserve it here only if it can't
+    local header_h = view and view._zen_header_dimen and tonumber(view._zen_header_dimen.h) or 0
+    local zen_reserves = ui.document and ui.document._zen_top_status_bar_reserved_height ~= nil
+    local top = (header_h > 0 and not zen_reserves) and math.ceil(header_h / scale) or 0
+    -- KOReader adds the status bar's height to the bottom margin, but only
+    -- its height when the margins are set: it grows when its text appears
+    -- ("16 min left in chapter"), and with "overlap status bar" it isn't
+    -- added at all. 1.2.5's pages ran under it. Keep a few pixels spare, and
+    -- the whole status bar when it overlaps.
+    local bottom = 4
+    if footer and (footer.reclaim_height or (footer.settings and footer.settings.reclaim_height)) then
+        bottom = bottom + math.ceil(footer_h / scale)
+    end
+    return { top = top, bottom = bottom, vh = PB.VH, header = header_h, footer = footer_h, screen = H,
+        avail_w = Screen:getWidth(), avail_h = H - math.ceil((top + bottom) * scale) - footer_h }
 end
 
 --- The style tweak for this book on this screen (wide pictures looked up once per book).
@@ -134,7 +140,9 @@ end
 --- took about a minute for Diary of a Wimpy Kid (230 pictures) on a Kindle 3,
 --- and 1.2.0 did it on the screen's thread. Now in a background process,
 --- once per book; until it's done no picture is treated as wide.
-function PB.scanInBackground(ui, lay)
+--- on_ready(ui) (optional): called with the open reader once the sizes are
+--- known (also when they couldn't be read: then no picture counts as wide).
+function PB.scanInBackground(ui, lay, on_ready)
     if PB.scanning or not (ui.document and ui.document.file and ui.doc_settings) then return end
     PB.scanning = true
     local file, w, h = ui.document.file, lay.avail_w, lay.avail_h
@@ -149,34 +157,29 @@ function PB.scanInBackground(ui, lay)
         return list
     end, function(list, err)
         PB.scanning = false
-        if type(list) ~= "table" then return Log.info("picture book: picture sizes not read:", tostring(err)) end
+        if type(list) ~= "table" then
+            Log.info("picture book: picture sizes not read:", tostring(err))
+            list = {}
+        end
         Log.info("picture book: wide pictures", #list)
         -- the book may have been reloaded meanwhile (a new reader): use the open one
         local okr, ReaderUI = pcall(require, "apps/reader/readerui")
-        local cur = okr and ReaderUI.instance or ui
+        local cur = okr and ReaderUI.instance or nil
         if cur and cur.document and cur.document.file == file and cur.doc_settings then
-            cur.doc_settings:saveSetting("gzreader_pb_wide", list)
-            if #list > 0 and PB.isOn(cur) then PB.set(cur, true) end
+            PB.saveWide(cur, cur.doc_settings, list)
+            if on_ready then on_ready(cur) end
             return
         end
-        -- closed meanwhile: keep the result for next time
+        -- closed meanwhile: into the book's saved settings
         local okd, DocSettings = pcall(require, "docsettings")
         if okd then
             local ds = DocSettings:open(file)
-            ds:saveSetting("gzreader_pb_wide", list)
+            PB.saveWide(nil, ds, list)
             ds:flush()
         end
     end, "picture sizes", { timeout = 900 })
 end
 
-function PB.cssFor(ui, lay)
-    local wide = ui.doc_settings and ui.doc_settings:readSetting("gzreader_pb_wide")
-    if type(wide) ~= "table" then
-        pcall(PB.scanInBackground, ui, lay)
-        wide = {}
-    end
-    return PB.css(lay.vh, wide), #wide
-end
 
 --- Is this a picture book? (EPUB whose chapter files are pictures, not text.)
 function PB.detect(doc)
@@ -223,107 +226,121 @@ function PB.isOn(ui)
         and st.book_style_tweak:find(MARK_BEGIN, 1, true) ~= nil
 end
 
-local function margins(ui)
-    local t = ui.typeset
-    return t and t.unscaled_margins
+
+
+
+--- Changing the layout of an open book made crengine lay the whole book out
+--- again for each change (two margin changes and the style: three layouts,
+--- several seconds each on a Kindle 3), then KOReader re-laid it out once
+--- more in the background and reloaded it (the "random refreshes"), and
+--- because pictures become blocks (display: block, a change to how the DOM
+--- is built) it asked "Styles have changed in such a way…", a box only Press
+--- or Back answer. Now the new layout is saved with the book, its layout
+--- cache dropped, and the book reopened once: crengine builds it with the
+--- picture-book style from the start. No relayouts, no prompt.
+function PB.reopen(ui)
+    PB.reopening = true
+    UIManager:nextTick(function()
+        PB.reopening = nil
+        local d = ui.document
+        if not d or ui.tearing_down then return end
+        if d.invalidateCacheFile then pcall(d.invalidateCacheFile, d) end
+        Log.info("picture book: reopening the book with its new layout")
+        ui:reloadDocument(nil, true)
+    end)
 end
 
-local function setSmooth(ui, on)
-    local cfg = ui.document and ui.document.configurable
-    if cfg then cfg.smooth_scaling = on and 1 or 0 end
-    if ui.document and ui.document.setImageScaling then pcall(ui.document.setImageScaling, ui.document, on) end
-end
-
-local function setMargins(ui, m)
-    local cfg = ui.document and ui.document.configurable
-    if cfg then
-        cfg.h_page_margins = { m[1], m[3] }
-        cfg.t_page_margin = m[2]
-        cfg.b_page_margin = m[4]
-    end
-    ui:handleEvent(Event:new("SetPageMargins", m))
-end
-
---- The picture book style makes pictures blocks (display: block), which
---- changes how crengine builds the book's DOM. Turning it on or off in an
---- open book made KOReader ask "Styles have changed in such a way that fully
---- reloading the document may be needed…" — a box that only Press or Back
---- answers, so on a Kindle Keyboard the page keys seemed frozen. Instead the
---- book is reloaded once, without asking; afterwards the style is there from
---- the start and nothing is stale.
-PB.reloaded = {}
-function PB.reloadIfNeeded(ui)
-    local rolling = ui.rolling
-    if not rolling or rolling._gz_pb_reload then return end
-    rolling._gz_pb_reload = true
-    local orig = rolling.onCheckDomStyleCoherence
-    rolling.onCheckDomStyleCoherence = function(r, ...)
-        local doc = r.ui and r.ui.document
-        local file = doc and doc.file
-        if doc and doc.isBuiltDomStale and doc:isBuiltDomStale() and not PB.reloaded[file] then
-            PB.reloaded[file] = true -- once per book and run: never a reload loop
-            Log.info("picture book: reloading the book once for the new layout")
-            UIManager:scheduleIn(0.3, function()
-                local d = r.ui.document
-                if not d or r.ui.tearing_down then return end
-                -- the saved layout cache still has the old DOM: build a new one
-                if d.invalidateCacheFile then pcall(d.invalidateCacheFile, d) end
-                r.ui:reloadDocument(nil, true)
-            end)
-            return true
-        end
-        if orig then return orig(r, ...) end
-    end
-end
-
---- Turn it on or off for the open book.
-function PB.set(ui, on)
+--- Turn it on or off for the open book (saved, then the book reopens).
+--- opts.reopen = false: only save it (applies the next time the book opens).
+function PB.set(ui, on, opts)
+    opts = opts or {}
     local st = ui.styletweak
-    if not st then return false end
+    local cfg = ui.document and ui.document.configurable
+    if not st or not cfg then return false end
     local rest = stripOurs(st.book_style_tweak)
-    local lay = on and PB.layout(ui)
     if on then
-        local css, nwide = PB.cssFor(ui, lay)
-        lay.wide = nwide
-        st.book_style_tweak = (rest and (rest .. "\n") or "") .. css
-        st.book_style_tweak_enabled = true
-        local m = margins(ui)
-        if m and not ui.doc_settings:readSetting("gzreader_pb_margins") then
-            ui.doc_settings:saveSetting("gzreader_pb_margins", { m[1], m[2], m[3], m[4] })
+        local lay = PB.layout(ui)
+        local wide = ui.doc_settings:readSetting("gzreader_pb_wide")
+        if type(wide) ~= "table" then
+            -- the picture sizes first (wide ones such as a logo or a blank
+            -- spacer would otherwise fill a page), then this again
+            if PB.scanning then return true end
+            local ok = pcall(PB.scanInBackground, ui, lay, function(cur) PB.set(cur, true, opts) end)
+            if ok and PB.scanning then return true end
+            wide = {}
         end
-        setMargins(ui, { 0, 0, 0, 0 })
-        -- ZenOS reserves the title bar as a top margin itself; if it didn't, do it here
-        local reserved = ui.document and tonumber(ui.document._zen_top_status_bar_reserved_height) or 0
-        if reserved == 0 and lay.top > 0 then setMargins(ui, { 0, lay.top, 0, 0 }) end
-        Log.info("picture book layout: screen", lay.screen, "title bar", lay.header, "footer", lay.footer,
-            "top margin", reserved > 0 and ("(ZenOS) " .. reserved) or lay.top, "pictures", lay.vh .. "vh", "wide ones kept as they are", lay.wide)
-        local cfg = ui.document and ui.document.configurable
-        if cfg and ui.doc_settings:readSetting("gzreader_pb_smooth") == nil then
+        st.book_style_tweak = (rest and (rest .. "\n") or "") .. PB.css(lay.vh, wide)
+        st.book_style_tweak_enabled = true
+        ui.doc_settings:saveSetting("gzreader_pb_vh", lay.vh)
+        if not ui.doc_settings:readSetting("gzreader_pb_margins") then
+            local h = cfg.h_page_margins or { 15, 15 }
+            ui.doc_settings:saveSetting("gzreader_pb_margins",
+                { h[1], cfg.t_page_margin, h[2], cfg.b_page_margin, cfg.sync_t_b_page_margins })
+        end
+        cfg.h_page_margins = { 0, 0 }
+        cfg.t_page_margin = lay.top
+        cfg.b_page_margin = lay.bottom
+        cfg.sync_t_b_page_margins = 0
+        if ui.doc_settings:readSetting("gzreader_pb_smooth") == nil then
             ui.doc_settings:saveSetting("gzreader_pb_smooth", cfg.smooth_scaling == 1)
         end
-        setSmooth(ui, true)
+        cfg.smooth_scaling = 1
+        Log.info("picture book layout: screen", lay.screen, "title bar", lay.header, "footer", lay.footer,
+            "margins top", lay.top, "bottom", lay.bottom, "pictures", lay.vh .. "vh", "wide ones kept as they are", #wide)
     else
         st.book_style_tweak = rest
         if not rest then st.book_style_tweak_enabled = nil end
         local old = ui.doc_settings:readSetting("gzreader_pb_margins")
-        if type(old) == "table" then setMargins(ui, old) end
+        if type(old) == "table" then
+            cfg.h_page_margins = { old[1] or 15, old[3] or 15 }
+            cfg.t_page_margin, cfg.b_page_margin = old[2] or 15, old[4] or 15
+            if old[5] ~= nil then cfg.sync_t_b_page_margins = old[5] end
+        end
         ui.doc_settings:delSetting("gzreader_pb_margins")
         local smooth = ui.doc_settings:readSetting("gzreader_pb_smooth")
-        if smooth ~= nil then setSmooth(ui, smooth == true) end
+        if smooth ~= nil then cfg.smooth_scaling = smooth and 1 or 0 end
         ui.doc_settings:delSetting("gzreader_pb_smooth")
     end
     ui.doc_settings:saveSetting("gzreader_picture_book", on and true or false)
-    PB.reloadIfNeeded(ui)
-    st:updateCssText(true)
     Log.info("picture book", on and "on" or "off")
+    if opts.reopen ~= false then PB.reopen(ui) end
     return true
+end
+
+--- The wide pictures found in the background: added to the saved style, so
+--- they keep their own size from the next time the book opens (not now: that
+--- would mean another reopen).
+function PB.saveWide(ui, ds, list)
+    ds:saveSetting("gzreader_pb_wide", list)
+    if #list == 0 then return end
+    local vh = tonumber(ds:readSetting("gzreader_pb_vh")) or PB.VH
+    if ui and ui.styletweak then
+        local st = ui.styletweak
+        if PB.isOn(ui) then st.book_style_tweak = (stripOurs(st.book_style_tweak) and (stripOurs(st.book_style_tweak) .. "\n") or "") .. PB.css(vh, list) end
+    else
+        local css = ds:readSetting("book_style_tweak")
+        if type(css) == "string" and css:find(MARK_BEGIN, 1, true) then
+            local rest = stripOurs(css)
+            ds:saveSetting("book_style_tweak", (rest and (rest .. "\n") or "") .. PB.css(vh, list))
+        end
+    end
 end
 
 --- On opening a book: recognize picture books once and fit them.
 function PB.onOpen(ui)
     if not ui.doc_settings then return end
     local known = ui.doc_settings:readSetting("gzreader_picture_book")
-    if known == true then pcall(PB.reloadIfNeeded, ui) end -- e.g. after KOReader's own background re-layout reload
+    if known == true and PB.isOn(ui) and not ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true) then
+        -- fitted by an older version (page under the status bar, the
+        -- "Styles have changed" box): fit it again, once
+        UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
+        return
+    end
+    if known == true and not PB.isOn(ui) then
+        -- recognized, but closed before it was fitted: finish now
+        UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
+        return
+    end
     if known ~= nil then return end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
@@ -331,7 +348,7 @@ function PB.onOpen(ui)
     if yes then
         UIManager:nextTick(function()
             if ui.document and PB.set(ui, true) then
-                UIManager:show(Notification:new{ text = _("Picture book: pages fill the screen. Reading menu to turn this off.") })
+                UIManager:show(Notification:new{ text = _("Picture book: the pages will be fitted to the screen in a moment…") })
             end
         end)
     end

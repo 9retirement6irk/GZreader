@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.6",
+        changes = {
+            "Picture books no longer refresh at random or ask \"Styles have changed…\". Fitting a book used to lay the open book out three times, and KOReader then laid it out again in the background and reloaded it. Now GZreader reads the picture sizes first, saves the layout with the book, and reopens it once. Books fitted by 1.2.x are fitted again once when you next open them.",
+            "Picture books: pages no longer run under the status bar at the bottom. There's now a small gap above it, and room for the whole bar when it's set to overlap the page. Pictures are slightly smaller (99% of the page instead of 99.5%).",
+            "Picture books: no more empty page after a picture inside a heading, such as Diary of a Wimpy Kid's title page.",
+            "The download progress line (percent, size, speed, time left) is centred under the bar.",
+            "Emulator: a live mode you can drive from a page in Claude (tools/gzreader/emulator/live.lua, relay.py).",
+        },
+    },
+    {
         version = "1.2.5",
         changes = {
             "Fixed: after the setup guide, ZenOS started its tour of the touch menus. On a Kindle Keyboard it opened GZreader's Menu over the Home screen instead (and tried again at every start), and on the first book it opened the page browser with \"Swipe up to open the Page Browser\". Both tours are touch-only and are now skipped on keyboard Kindles.",
