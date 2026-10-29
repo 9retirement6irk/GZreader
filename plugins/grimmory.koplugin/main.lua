@@ -60,6 +60,7 @@ function Grimmory:init()
             "device", tostring(Device.model))
     end
     self.settings = Grimmory.shared_settings
+    require("grimmory_audioengine").root = self.path
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
@@ -182,6 +183,10 @@ function Grimmory:menuItems()
         {
             text = _("Read aloud settings"),
             callback = function() self:showTtsSettings() end,
+        },
+        {
+            text = _("Audiobooks"),
+            sub_item_table_func = function() return self:audiobookItems() end,
             separator = true,
         },
         {
@@ -844,7 +849,54 @@ function Grimmory:onGrimmorySyncNow()
     return true
 end
 
+function Grimmory:audiobookItems()
+    local Audiobook = require("grimmory_audiobook")
+    local Engine = require("grimmory_audioengine")
+    local items = {}
+    local cur = Audiobook.current
+    if cur then
+        items[#items + 1] = {
+            text = T(_("Now playing: %1"), cur.book.title or "?"),
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                Audiobook.open(self, cur.book)
+            end,
+            separator = true,
+        }
+    end
+    for _i, e in ipairs(Audiobook.downloaded(self)) do
+        items[#items + 1] = {
+            text = e.book.title or "?",
+            mandatory = Audiobook.fmt(e.pos or 0),
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                Audiobook.open(self, e.book)
+            end,
+        }
+    end
+    items[#items + 1] = {
+        text = _("Browse Grimmory audiobooks"),
+        enabled_func = function() return self.api:isPaired() end,
+        callback = function(touchmenu)
+            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+            NetworkMgr:runWhenOnline(function() local b = Browser:new(self); b:show(); b:openAudiobooks() end)
+        end,
+        separator = true,
+    }
+    items[#items + 1] = {
+        text = _("Test audio playback"),
+        help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
+        callback = function(touchmenu)
+            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+            Engine.test()
+        end,
+    }
+    return items
+end
+
 function Grimmory:onSuspend()
+    local ok_ab, Audiobook = pcall(require, "grimmory_audiobook")
+    if ok_ab and Audiobook.current and Audiobook.current.playing then Audiobook.current:pause() end
     if self.tts then self.tts:stop() end
     if self.sync then self.sync:onLeave() end
 end

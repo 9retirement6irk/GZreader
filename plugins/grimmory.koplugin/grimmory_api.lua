@@ -316,6 +316,33 @@ function Api:putProgress(book_id, body)
     return false, err or ("http_" .. tostring(code)), code
 end
 
+--- Audiobooks: duration, chapters, tracks (folder-based books), codec.
+function Api:audiobookInfo(book_id)
+    local code, data, err = self:call("GET", "/api/v1/audiobooks/" .. tostring(book_id) .. "/info",
+        { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- Download one track of a folder-based audiobook (or, with track=nil, the
+--- whole single-file audiobook) to `path`.
+function Api:downloadAudio(book_id, track, path)
+    local ok, err = self:ensureToken()
+    if not ok then return false, err end
+    local fh, ferr = io.open(path, "wb")
+    if not fh then return false, ferr end
+    local full_url = track
+        and (self.store.server .. "/api/v1/audiobooks/" .. tostring(book_id) .. "/track/" .. tostring(track) .. "/stream")
+        or (self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download")
+    local code, _, _, status = rawRequest("GET", full_url, {
+        headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "*/*" },
+        sink = ltn12.sink.file(fh),
+        timeouts = { 30, -1 },
+    })
+    if code == 200 or code == 206 then return true end
+    return false, code and ("http_" .. code) or tostring(status or "unreachable")
+end
+
 --- Bookmarks (Grimmory's own: EPUB by CFI, PDF by page number).
 function Api:listBookmarks(book_id)
     local code, data, err = self:call("GET", "/api/v1/bookmarks/book/" .. tostring(book_id),

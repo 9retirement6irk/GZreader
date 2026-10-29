@@ -56,6 +56,15 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - The sentence being read is **highlighted** and **pages turn by themselves**.
 - Speed and volume controls; the Kindle's volume buttons work while reading.
 
+### 🎧 Audiobooks (experimental)
+- Browse Grimmory's **audiobooks**, download them (M4B or MP3 tracks) and listen
+  through the speaker or headphones.
+- **Chapters**, ±30 seconds, **sleep timer** (15/30/60 minutes or end of chapter),
+  volume; playback continues while you browse.
+- Listening position **syncs with Grimmory's web player**.
+- The Kindle 3's built-in audio decoders vary by firmware: **Test audio playback**
+  finds which of its players can play MP3 and M4B audio.
+
 ### 🌙 And more
 - **Sleep screen:** the book's cover while reading, a picture from the `screensavers`
   folder on Home and in menus.

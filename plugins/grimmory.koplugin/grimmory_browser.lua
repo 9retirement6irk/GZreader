@@ -106,6 +106,29 @@ function Browser:rootItems()
         { text = _("Series"), callback = function() self:openSeries() end },
         { text = _("Search…"), callback = function() self:promptSearch() end },
         { text = _("Downloaded books"), callback = function() self:openDownloaded() end },
+        { text = _("Audiobooks"), callback = function() self:openAudiobooks() end },
+    }
+end
+
+--- Grimmory's audiobooks (M4B / MP3), to download and listen to.
+function Browser:openAudiobooks()
+    local Audiobook = require("grimmory_audiobook")
+    self:openList{
+        title = _("Audiobooks"),
+        fetch = function(page)
+            return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
+        end,
+        to_item = function(book)
+            local t = type(book.primaryFileType) == "string" and book.primaryFileType:upper() or ""
+            if t ~= "AUDIOBOOK" then return nil end
+            local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
+            local here = Audiobook.load(self.plugin, book.id) ~= nil
+            return {
+                text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
+                mandatory = here and _("on Kindle") or nil,
+                callback = function() Audiobook.choose(self.plugin, book) end,
+            }
+        end,
     }
 end
 

@@ -127,6 +127,11 @@ Log.PROBE_COMMANDS = {
     -- GZreader read aloud: where the speech daemons live and what they log
     "ls -la /usr/bin/*tts* /usr/sbin/*tts* /usr/local/bin/*tts* 2>&1",
     "lipc-hash-prop 2>&1 | head -20",
+    -- audiobooks: which GStreamer elements exist, and Amazon's audio player
+    "ls /usr/lib/gstreamer-0.10 2>&1",
+    "gst-inspect-0.10 2>&1 | awk 'tolower($0) ~ /mad|mp3|mpeg|aac|faad|qtdemux|mp4|decodebin|playbin|alsa|mixer|sink|audioconvert|resample|typefind|fdsrc|filesrc|audible/' | head -80",
+    "strings /usr/bin/audioServer 2>/dev/null | awk 'tolower($0) ~ /player|uri|seek|play|mp3|aac|audible|gst|pipeline|sink|lipc/' | head -150",
+    "ps 2>/dev/null | awk 'tolower($0) ~ /audioserver|gst|aplay/' | grep -v awk",
     "strings /usr/sbin/ttsd 2>/dev/null | awk 'tolower($0) ~ /snippet|unable|read|voice|text|lipc|enqueue|play|speak|id$/' | head -200",
     "awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40",
 }

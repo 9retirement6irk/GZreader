@@ -159,6 +159,32 @@ service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
 settings → Slower / Faster). The diagnostic log records every step.
 
+## Audiobooks (experimental)
+
+Grimmory tab → Audiobooks, or Settings → General → Grimmory → Audiobooks.
+Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file, or
+one file per track for folder audiobooks), then the player opens:
+
+| Key | Does |
+| --- | --- |
+| 5-way press / Space | Play / pause |
+| Left / Right | Back / forward 30 s |
+| Up / Down | Previous / next chapter |
+| Menu | Chapters, sleep timer (15/30/60 min, end of chapter), volume, stop |
+| Back | Close the screen (keeps playing; reopen from Grimmory → Audiobooks → Now playing) |
+| Volume buttons | Volume |
+
+Position syncs with Grimmory's audiobook progress (same fields as its web
+player: position in the track and track index), every minute while
+playing, on pause and on stop; offline updates are queued. The Kindle
+doesn't go to sleep while audio plays; pressing the power button pauses.
+
+Playback uses what the Kindle has: GStreamer 0.10 pipelines or Amazon's
+audio service. Which formats decode depends on the firmware, so **Test audio
+playback** plays a short MP3 and AAC (M4B) tune with each player, asks which
+you heard and remembers it. MP3 can start anywhere; with GStreamer an M4B
+starts from the beginning of the file (Amazon's player can seek, if it works).
+
 ## Sleep screen
 
 While a book is open: its cover. From Home and menus: a random picture from
