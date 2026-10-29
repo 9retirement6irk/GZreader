@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.8",
+        changes = {
+            "Fixed: \"Wi-Fi only when needed\" never turned off Wi-Fi that was already on, for example when the Kindle connected at startup or reconnected after waking. GZreader only turned off Wi-Fi it had switched on itself, so on most Kindles Wi-Fi stayed on the whole time. Now Wi-Fi that's on goes off a minute after nothing uses it. Wi-Fi you turn on yourself from the menu or quick panel is still left on until you turn it off.",
+        },
+    },
+    {
         version = "1.2.7",
         changes = {
             "Picture books: the top of the page is no longer under the clock when the status bar is set to overlap the page. In that mode ZenOS doesn't make room for its title bar, and 1.2.6 assumed it did. Books fitted by 1.2.6 are fitted again once.",

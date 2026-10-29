@@ -10,8 +10,13 @@ GZreader turns Wi-Fi on by itself when it needs the network:
 and turns it off again once nothing has used it for IDLE_SECONDS and
 nothing needs it (an open Grimmory browser, a download or its queue, the
 library index, a QR screen). Page-turn syncs and bookmarks made while Wi-Fi
-is off wait and go with the next sync. Wi-Fi you turned on yourself is
-never turned off.
+is off wait and go with the next sync.
+
+Wi-Fi that was already on when GZreader started or woke up (the Kindle
+keeps it on by itself) counts as GZreader's too: up to 1.2.7 it didn't, so
+on a Kindle that connected at boot Wi-Fi was never turned off. Only Wi-Fi
+you turn on yourself (the Wi-Fi menu item or quick panel button) is left
+alone, until you turn it off again.
 ]]
 
 local UIManager = require("ui/uimanager")
@@ -116,6 +121,51 @@ function Net.run(fn, opts)
             if Net.ours and not busy() then Net.ours = false; NetworkMgr:disableWifi() end
         end
     end)
+end
+
+--- Wi-Fi switched on or off by the user (menu, quick panel, gesture).
+local function wrapToggles()
+    if NetworkMgr.toggleWifiOn ~= Net._toggle_on then
+        local orig = NetworkMgr.toggleWifiOn
+        Net._toggle_on = function(...)
+            Net.user_on, Net.ours = true, false
+            UIManager:unschedule(check)
+            Log.info("wifi: turned on by you; left on")
+            return orig(...)
+        end
+        NetworkMgr.toggleWifiOn = Net._toggle_on
+    end
+    if NetworkMgr.toggleWifiOff ~= Net._toggle_off then
+        local orig = NetworkMgr.toggleWifiOff
+        Net._toggle_off = function(...)
+            Net.user_on, Net.ours = nil, false
+            UIManager:unschedule(check)
+            return orig(...)
+        end
+        NetworkMgr.toggleWifiOff = Net._toggle_off
+    end
+end
+
+--- At start and after waking: Wi-Fi that's on and not turned on by the user
+--- is managed like Wi-Fi GZreader turned on (off after IDLE_SECONDS unused).
+function Net.adopt()
+    pcall(wrapToggles) -- (again: ZenOS replaces these functions after we load)
+    if not Net.enabled() or Net.user_on or Net.ours or Net.connecting then return end
+    if not NetworkMgr:isWifiOn() then return end
+    Net.ours = true
+    Net.last_use = Net.clock()
+    Log.info("wifi: on but not needed: off in", Net.IDLE_SECONDS, "s unless something uses it")
+    schedule()
+end
+
+function Net.start()
+    if Net.started then return end
+    Net.started = true
+    UIManager:scheduleIn(10, Net.adopt) -- after startup syncs, once ZenOS has loaded
+end
+
+function Net.onResume()
+    UIManager:scheduleIn(20, Net.adopt)
 end
 
 --- Before sleep: turn off Wi-Fi we turned on (the queued syncs wait).

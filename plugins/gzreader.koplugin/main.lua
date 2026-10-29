@@ -69,6 +69,7 @@ function Grimmory:init()
             "device", tostring(Device.model))
         pcall(function() require("gzreader_timezone").apply() end)
     end
+    pcall(Net.start)
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
     self.store = self.settings:readSetting("state", {})
@@ -1097,6 +1098,7 @@ Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after
 
 function Grimmory:onResume()
     pcall(function() require("gzreader_remote").onResume() end)
+    Net.onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)
     if self.sync then
         self.sync:startSession()
