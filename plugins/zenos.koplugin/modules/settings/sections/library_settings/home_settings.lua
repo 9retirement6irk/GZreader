@@ -31,7 +31,7 @@ local MAX_STATS_FONT_SIZE = 64
 local DEFAULT_DATETIME_FONT_SIZES = { time = 36, date = 12 }
 local DEFAULT_STRIP_CONTROL_TEXT_STYLE = {
     font_face = "default",
-    font_size = 10,
+    font_size = 14,
     bold = false,
 }
 local open_widget_settings
@@ -77,7 +77,7 @@ local FEATURED_TEXT_STYLE_DEFAULTS = {
     author = { font_face = "default", font_size = 15, bold = false },
     series = { font_face = "default", font_size = 13, bold = false },
     description = { font_face = "default", font_size = 16, bold = false },
-    progress = { font_face = "default", font_size = 7, bold = false },
+    progress = { font_face = "default", font_size = 13, bold = false },
 }
 
 local function normalize_order(order)

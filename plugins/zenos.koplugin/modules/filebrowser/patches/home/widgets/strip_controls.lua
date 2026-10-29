@@ -44,7 +44,7 @@ local function control_text_style(controls)
     local font_face = type(configured.font_face) == "string"
         and configured.font_face ~= "" and configured.font_face or "default"
     local font_size = math.max(6, math.min(24, math.floor(
-        (tonumber(configured.font_size) or 10) + 0.5)))
+        (tonumber(configured.font_size) or 14) + 0.5)))
     return {
         font_face = font_face,
         font_size = font_size,

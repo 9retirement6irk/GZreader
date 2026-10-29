@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.9",
+        changes = {
+            "The Downloaded tab is now called Downloads, and its icon's lines are thinner, to match the other tab icons.",
+            "Home is easier to read. Bigger text for the current book's author, series, progress percent and page count. The Pages today, Read today and Day streak labels are bigger, and so are the Recent, Search and Series buttons. Sizes you never changed are updated once.",
+            "Fixed: turning off remote debugging left its watchdog running. The next restart (an update, for example) was then reported as a crash, even though reporting was off. Now turning it off stops the watchdog and drops any reports still waiting to be sent.",
+        },
+    },
+    {
         version = "1.2.8",
         changes = {
             "Fixed: \"Wi-Fi only when needed\" never turned off Wi-Fi that was already on, for example when the Kindle connected at startup or reconnected after waking. GZreader only turned off Wi-Fi it had switched on itself, so on most Kindles Wi-Fi stayed on the whole time. Now Wi-Fi that's on goes off a minute after nothing uses it. Wi-Fi you turn on yourself from the menu or quick panel is still left on until you turn it off.",

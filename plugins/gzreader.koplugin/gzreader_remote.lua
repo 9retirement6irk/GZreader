@@ -266,6 +266,23 @@ function R.start(plugin)
     end
 end
 
+--- Remote debugging turned off: nothing more is sent, the queued messages
+--- are dropped and the watchdog stops (up to 1.2.8 it kept running, and
+--- reported the next restart as a crash).
+function R.stop()
+    if not R.on then return end
+    R.on = false
+    Log.on_line = nil
+    writeFile(R.dir() .. "/heartbeat", string.format("%d off", os.time()))
+    local spool = R.dir() .. "/spool"
+    pcall(function()
+        for name in lfs.dir(spool) do
+            if name:match("%.json$") then os.remove(spool .. "/" .. name) end
+        end
+    end)
+    Log.info("remote debugging: off")
+end
+
 --- Keep the previous run's log tail for the report above (called before the
 --- log is written to in a new run).
 function R.keepPreviousLog()
@@ -294,7 +311,7 @@ function R.menuItems(plugin)
                 callback = function()
                     store.remote_disabled = (store.remote_disabled ~= true) or nil
                     plugin:save()
-                    if R.enabled(store) then R.started = false; R.start(plugin) else R.on = false end
+                    if R.enabled(store) then R.started = false; R.start(plugin) else R.stop() end
                 end,
             },
             {

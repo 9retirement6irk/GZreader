@@ -246,7 +246,7 @@ local function apply_navbar()
     local function getBooksLabel()
         -- Grimmory build: this tab holds the books on the Kindle (downloaded
         -- from Grimmory); the Grimmory tab is the online library.
-        return config.books_label ~= "" and config.books_label or _("Downloaded")
+        return config.books_label ~= "" and config.books_label or _("Downloads")
     end
 
     local function getHomeLabel()

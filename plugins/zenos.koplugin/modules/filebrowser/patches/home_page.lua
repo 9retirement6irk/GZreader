@@ -632,7 +632,7 @@ local FEATURED_TEXT_STYLE_DEFAULTS = {
     author = { font_face = "default", font_size = 15, bold = false },
     series = { font_face = "default", font_size = 13, bold = false },
     description = { font_face = "default", font_size = 16, bold = false },
-    progress = { font_face = "default", font_size = 7, bold = false },
+    progress = { font_face = "default", font_size = 13, bold = false },
 }
 
 local function normalize_order(order)
@@ -840,6 +840,24 @@ local function ensure_home_cfg()
                 if ts.title.font_size == 11 then ts.title.font_size = 20; changed = true end
                 if ts.author.font_size == 9 then ts.author.font_size = 15; changed = true end
                 if type(ts.series) == "table" and ts.series.font_size == 7 then ts.series.font_size = 13; changed = true end
+            end
+            for _k, v in pairs(t) do if type(v) == "table" and v ~= ts then walk(v, depth + 1) end end
+        end
+        walk(dcfg, 0)
+        if changed then pcall(PresetStore.saveSettings, "home", dcfg) end
+    end
+
+    -- GZreader: the strip's Recent / Search / Series buttons (10) too
+    if G_reader_settings and not G_reader_settings:isTrue("gzreader_home_text_v2") then
+        G_reader_settings:makeTrue("gzreader_home_text_v2")
+        local changed = false
+        local function walk(t, depth)
+            if type(t) ~= "table" or depth > 6 then return end
+            local ts = t.text_style
+            if type(ts) == "table" and ts.font_size == 10 then ts.font_size = 14; changed = true end
+            local tss = t.text_styles
+            if type(tss) == "table" and type(tss.progress) == "table" and tss.progress.font_size == 7 then
+                tss.progress.font_size = 13; changed = true
             end
             for _k, v in pairs(t) do if type(v) == "table" and v ~= ts then walk(v, depth + 1) end end
         end

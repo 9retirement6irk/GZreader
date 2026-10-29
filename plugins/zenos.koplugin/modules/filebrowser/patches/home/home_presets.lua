@@ -12,7 +12,7 @@ local function featured_text_styles()
         author = { font_face = "default", font_size = 15, bold = false },
         series = { font_face = "default", font_size = 13, bold = false },
         description = { font_face = "default", font_size = 16, bold = false },
-        progress = { font_face = "default", font_size = 7, bold = false },
+        progress = { font_face = "default", font_size = 13, bold = false },
     }
 end
 
@@ -65,7 +65,7 @@ local function strip_defaults(opts)
             },
             text_style = {
                 font_face = "default",
-                font_size = 10,
+                font_size = 14,
                 bold = false,
             },
             custom_buttons = {},

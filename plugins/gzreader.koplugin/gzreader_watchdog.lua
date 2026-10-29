@@ -265,7 +265,7 @@ while true do
     last_loop = t
     if not alive(ppid) then
         local status, what = select(2, heartbeat())
-        if status ~= "exit" then
+        if status ~= "exit" and status ~= "off" then
             spool("send", { eventName = "GZreader crashed (" .. device .. ")", important = true, source = "gzreader",
                 tags = tagged({ "crash" }),
                 eventContent = "The GZreader process ended without closing normally. It was: " .. tostring(what) ..
@@ -282,6 +282,10 @@ while true do
         os.exit(0)
     end
     local hb, status, what = heartbeat()
+    if status == "off" then -- remote debugging turned off
+        os.remove(dir .. "/watchdog.pid")
+        os.exit(0)
+    end
     if status == "run" and hb then
         local stale = t - hb
         if stale > W.SLOW and stale <= W.STALL and not frozen_since and t - slow_reported > 600 then
