@@ -8,9 +8,9 @@ M.CUSTOM_PRESET_NAME = "Custom preset"
 
 local function featured_text_styles()
     return {
-        title = { font_face = "default", font_size = 11, bold = true },
-        author = { font_face = "default", font_size = 9, bold = false },
-        series = { font_face = "default", font_size = 7, bold = false },
+        title = { font_face = "default", font_size = 20, bold = true }, -- GZreader: 11/9/7 were tiny on a Kindle 3
+        author = { font_face = "default", font_size = 15, bold = false },
+        series = { font_face = "default", font_size = 13, bold = false },
         description = { font_face = "default", font_size = 16, bold = false },
         progress = { font_face = "default", font_size = 7, bold = false },
     }

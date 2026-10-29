@@ -63,9 +63,10 @@ local function time_unit(unit)
 end
 
 local DEFAULT_TEXT_STYLES = {
-    title = { font_face = "default", font_size = 11, bold = true },
-    author = { font_face = "default", font_size = 9, bold = false },
-    series = { font_face = "default", font_size = 7, bold = false },
+    -- GZreader: larger on the Kindle 3 (the title was smaller than the description)
+    title = { font_face = "default", font_size = 20, bold = true },
+    author = { font_face = "default", font_size = 15, bold = false },
+    series = { font_face = "default", font_size = 13, bold = false },
     description = { font_face = "default", font_size = 16, bold = false },
     progress = { font_face = "default", font_size = 7, bold = false },
     status = { font_face = "default", font_size = 9, bold = true },

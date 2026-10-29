@@ -7,6 +7,7 @@ local s = {
     { fn = function(E)
         os.execute("mkdir -p /mnt/us/GZreader && cp " .. (os.getenv("GZ_EMU_BOOK") or "book.epub") .. " /mnt/us/GZreader/book.epub")
         E.opened_at = os.time()
+        if os.getenv("GZ_EMU_RECLAIM") then local f = G_reader_settings:readSetting("footer") or {}; f.reclaim_height = true; G_reader_settings:saveSetting("footer", f) end
         require("apps/reader/readerui"):showReader("/mnt/us/GZreader/book.epub")
     end, after = 5 },
 }

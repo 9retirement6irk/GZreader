@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.7",
+        changes = {
+            "Picture books: the top of the page is no longer under the clock when the status bar is set to overlap the page. In that mode ZenOS doesn't make room for its title bar, and 1.2.6 assumed it did. Books fitted by 1.2.6 are fitted again once.",
+            "Home: the current book's title, author and series are bigger (20, 15 and 13 instead of 11, 9 and 7), so they're readable on a Kindle 3. Sizes you never changed are updated once.",
+        },
+    },
+    {
         version = "1.2.6",
         changes = {
             "Picture books no longer refresh at random or ask \"Styles have changed…\". Fitting a book used to lay the open book out three times, and KOReader then laid it out again in the background and reloaded it. Now GZreader reads the picture sizes first, saves the layout with the book, and reopens it once. Books fitted by 1.2.x are fitted again once when you next open them.",

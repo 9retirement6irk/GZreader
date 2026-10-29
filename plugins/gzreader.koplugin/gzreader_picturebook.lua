@@ -33,7 +33,7 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 4
+PB.VERSION = 5
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
 --- page's text area (inside the margins), and vh is honoured for pictures
@@ -120,8 +120,10 @@ function PB.layout(ui)
     -- ZenOS's title bar (clock…): ZenOS adds its height to the top margin
     -- itself when the margins are applied; reserve it here only if it can't
     local header_h = view and view._zen_header_dimen and tonumber(view._zen_header_dimen.h) or 0
-    local zen_reserves = ui.document and ui.document._zen_top_status_bar_reserved_height ~= nil
-    local top = (header_h > 0 and not zen_reserves) and math.ceil(header_h / scale) or 0
+    -- (it doesn't when the status bar overlaps the page: then 0 is reserved,
+    -- and 1.2.6 put the page under the clock)
+    local zen_reserved = ui.document and tonumber(ui.document._zen_top_status_bar_reserved_height) or 0
+    local top = (header_h > 0 and zen_reserved <= 0) and math.ceil(header_h / scale) + 2 or 0
     -- KOReader adds the status bar's height to the bottom margin, but only
     -- its height when the margins are set: it grows when its text appears
     -- ("16 min left in chapter"), and with "overlap status bar" it isn't
