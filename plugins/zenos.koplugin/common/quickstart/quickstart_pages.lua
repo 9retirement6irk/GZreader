@@ -796,7 +796,7 @@ function M.build_install_pages(ctx)
         -- 4. GZreader: keyboard (static)
         {
             title       = _("Your keyboard"),
-            description = _("Alt + Q, W, E, R, T: switch the bottom tabs, counted from the left (Home, Downloaded, Continue, Grimmory, Favorites).") .. "\n"
+            description = _("Alt + Q, W, E, R, T: switch the bottom tabs, counted from the left (Home, Downloads, Continue, Grimmory, Favorites).") .. "\n"
                 .. _("Q, W, E …: pick an item in a list (the letter is shown next to it).") .. "\n"
                 .. _("Menu while reading: the Reading menu (contents, bookmarks, go to page, search, read aloud, fonts, sync). Hold Menu for the page browser.") .. "\n"
                 .. _("Shift + Sym: read aloud / stop.") .. "\n"

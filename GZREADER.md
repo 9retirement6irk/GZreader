@@ -11,7 +11,7 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION
 
 | Kept | Why |
 | --- | --- |
-| `zenos.koplugin` | The interface (Home, Downloaded, navbar). English only. |
+| `zenos.koplugin` | The interface (Home, Downloads, navbar). English only. |
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
@@ -65,11 +65,11 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 | Where | Key | Does |
 | --- | --- | --- |
-| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
+| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloads, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, Quick panel (ZenOS), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
-| Home / Downloaded, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
+| Home / Downloads, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, Settings, Quick panel, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
@@ -127,7 +127,7 @@ a sub-list, a back arrow.
 Grimmory's subtitle is added to the title ("Diary of a Wimpy Kid: Old
 School") in the Grimmory lists and, for downloaded books, as KOReader custom
 metadata (`.sdr/custom_metadata.lua`, like Book information → edit title),
-so Home, Downloaded, history and the reader show it. The app API's lists have
+so Home, Downloads, history and the reader show it. The app API's lists have
 no subtitles, so they come from the library index (Grimmory's web book list,
 `/api/v1/books/page`) and from the book itself after a download. Titles you
 edited yourself are left alone.
@@ -153,7 +153,7 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 ## Home folder and downloads
 
 The GZreader folder (`documents/GZreader`) is the home folder; the
-**Downloaded** tab shows it. Books download in a background process with a
+**Downloads** tab shows it. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
 download one after another (lists show "queued"; the download options can

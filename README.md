@@ -39,7 +39,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/grimmory-tab.png" alt="The Grimmory tab" width="240"><br><sub>The Grimmory tab</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/grimmory-all-books.png" alt="All books, with reading progress" width="240"><br><sub>All books, with reading progress</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/download-confirm.png" alt="Download and open" width="240"><br><sub>Download and open</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/download-progress.png" alt="Downloading in the background" width="240"><br><sub>Downloading in the background</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/downloaded-tab.png" alt="The Downloaded tab" width="240"><br><sub>The Downloaded tab</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/reading.png" alt="Reading" width="240"><br><sub>Reading</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/download-progress.png" alt="Downloading in the background" width="240"><br><sub>Downloading in the background</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/downloads-tab.png" alt="The Downloads tab" width="240"><br><sub>The Downloads tab</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/reading.png" alt="Reading" width="240"><br><sub>Reading</sub></td></tr>
 </table>
 
 ### Reading menu and read aloud
@@ -58,7 +58,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **Browse** Continue reading, Recently added, All books, **Libraries**, **Authors**,
   **Series** (in reading order) and Search. Audiobooks are left out.
 - **Background downloads** with a progress bar; keep using the Kindle while a book
-  downloads. Books go to a `GZreader` folder, shown in the **Downloaded** tab.
+  downloads. Books go to a `GZreader` folder, shown in the **Downloads** tab.
 
 ### 🔄 Sync with Grimmory
 - **Reading position** syncs with Grimmory's own progress (the web reader's), not the
@@ -86,7 +86,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **GZreader menu** on the **Menu** key at Home: library, continue reading,
   audiobooks, search, Wi‑Fi, settings, updates, sleep, restart — also
   with letter keys.
-- **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloaded, Continue,
+- **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloads, Continue,
   Grimmory, Favorites).
 - **Back** returns from a link, otherwise goes Home (never back to the book's start).
 
