@@ -41,4 +41,4 @@ i18n
 /.cproject
 /.project
 .gitignore~
-tools/grimmory/cache/
+tools/gzreader/cache/

@@ -15,7 +15,7 @@ it was made; dropping a book's cached covers (new cover, metadata reset)
 deletes them.
 
 It also remembers the sizes ZenOS asks for (the boxes covers are fitted into,
-and exact crop sizes), so GZreader's background job (grimmory_coverwarm) can
+and exact crop sizes), so GZreader's background job (gzreader_coverwarm) can
 pre-size the covers of every downloaded book before they're shown.
 ]]
 

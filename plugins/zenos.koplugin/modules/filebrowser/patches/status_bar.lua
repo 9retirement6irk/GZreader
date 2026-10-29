@@ -153,7 +153,7 @@ local function apply_status_bar()
         config.left_order   = clean_order(config.left_order, "left_order")
         config.center_order = clean_order(config.center_order, "center_order")
         config.right_order  = clean_order(config.right_order, "right_order")
-        -- GZreader: show download status (plugins/grimmory.koplugin/grimmory_tasks.lua)
+        -- GZreader: show download status (plugins/gzreader.koplugin/gzreader_tasks.lua)
         -- next to the clock once; it's empty when nothing downloads, and can
         -- be moved or removed in the status bar settings like any item.
         if G_reader_settings and not G_reader_settings:isTrue("gzreader_status_dl_v1") then

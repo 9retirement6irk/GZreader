@@ -817,7 +817,7 @@ local function ensure_home_cfg()
     end
     -- GZreader: 1.0.20 turned the cover strip off on legacy Kindles (it
     -- scaled every cover on every Home paint). Covers are pre-sized on disk
-    -- now (common/cover_disk_cache, grimmory_coverwarm), so it's back on.
+    -- now (common/cover_disk_cache, gzreader_coverwarm), so it's back on.
     if G_reader_settings and not G_reader_settings:isTrue("gzreader_home_trim_v3") then
         G_reader_settings:makeTrue("gzreader_home_trim_v3")
         if G_reader_settings:isTrue("gzreader_home_trim_v2")

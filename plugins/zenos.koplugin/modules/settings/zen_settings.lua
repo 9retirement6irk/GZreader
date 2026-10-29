@@ -92,7 +92,7 @@ function M.build(plugin)
                 for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
                     local ok, cls = pcall(require, mod)
                     local inst = ok and type(cls) == "table" and cls.instance
-                    if not g and type(inst) == "table" and type(inst.grimmory) == "table" then g = inst.grimmory end
+                    if not g and type(inst) == "table" and type(inst.gzreader) == "table" then g = inst.gzreader end
                 end
                 if g and type(g.menuItems) == "function" then return g:menuItems() end
                 return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }

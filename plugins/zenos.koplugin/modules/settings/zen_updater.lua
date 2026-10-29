@@ -1864,18 +1864,18 @@ end
 -- ---------------------------------------------------------------------------
 -- GZreader: updates come from GZreader's GitHub releases, not upstream ZenOS
 -- (installing upstream ZenOS would undo this build's changes). The menu,
--- banner and background check below delegate to grimmory_update.
+-- banner and background check below delegate to gzreader_update.
 -- ---------------------------------------------------------------------------
 -- While KOReader loads a plugin, only that plugin's folder is on
--- package.path, so add GZreader's (grimmory.koplugin, next to this one).
+-- package.path, so add GZreader's (gzreader.koplugin, next to this one).
 do
     local plugins_dir = PLUGIN_ROOT:gsub("/+$", ""):match("^(.*)/[^/]+$")
-    local gz_dir = plugins_dir and (plugins_dir .. "/grimmory.koplugin")
+    local gz_dir = plugins_dir and (plugins_dir .. "/gzreader.koplugin")
     if gz_dir and not package.path:find(gz_dir, 1, true) then
         package.path = gz_dir .. "/?.lua;" .. package.path
     end
 end
-local ok_gz, GZUpdate = pcall(require, "grimmory_update")
+local ok_gz, GZUpdate = pcall(require, "gzreader_update")
 if not ok_gz then logger.warn("GZreader updater not loaded:", tostring(GZUpdate)) end
 if ok_gz and type(GZUpdate) == "table" then
     local function sync_state()

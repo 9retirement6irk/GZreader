@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/9retirement6irk/GZreader/releases/latest"><b>Download the latest release</b></a> ·
   <a href="GZREADER.md">Full guide</a> ·
-  <a href="plugins/grimmory.koplugin/grimmory_changelog.lua">Changelog</a>
+  <a href="plugins/gzreader.koplugin/gzreader_changelog.lua">Changelog</a>
 </p>
 
 ---
@@ -33,13 +33,15 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **Browse** Continue reading, Recently added, All books, **Libraries**, **Authors**,
   **Series** (in reading order) and Search. Audiobooks are left out.
 - **Background downloads** with a progress bar; keep using the Kindle while a book
-  downloads. Books go to a `Grimmory` folder, shown in the **Downloaded** tab.
+  downloads. Books go to a `GZreader` folder, shown in the **Downloaded** tab.
 
 ### 🔄 Sync with Grimmory
 - **Reading position** syncs with Grimmory's own progress (the web reader's), not the
   KOReader sync endpoint, to the exact page (EPUB CFI). Pick up on the Kindle where you
   left off on the web, and the other way round.
 - **Bookmarks** sync both ways, deletions included.
+- **Remote debugging** (optional): freezes, crashes and hard reboots are reported to
+  your own feed by a small watchdog process, with what the Kindle was doing.
 - **Unfinished downloads** (dead battery, sleep, crash) are offered again at the next
   start: continue where it stopped, delete, or ignore.
 - **Highlights and notes** in EPUBs sync both ways with Grimmory's web reader: new
@@ -116,7 +118,7 @@ needs no changes. All Grimmory options are in **Settings → GZreader**.
 ## Publishing a release
 
 1. Bump [`GZREADER_VERSION`](GZREADER_VERSION) and add an entry to
-   [`grimmory_changelog.lua`](plugins/grimmory.koplugin/grimmory_changelog.lua).
+   [`gzreader_changelog.lua`](plugins/gzreader.koplugin/gzreader_changelog.lua).
 2. Create a GitHub release tagged `v<version>` and publish it.
 
 The [release workflow](.github/workflows/gzreader-release.yml) builds and attaches the
@@ -125,7 +127,7 @@ install zip and the update package. Kindles check for new releases once a day.
 To build locally:
 
 ```sh
-tools/grimmory/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
+tools/gzreader/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
 ```
 
 The build reuses the native binaries of the official KOReader kindle-legacy release of
@@ -135,7 +137,7 @@ the same version and overlays GZreader's Lua code, plugins and dictionary.
 
 | Part | Role |
 | --- | --- |
-| [`plugins/grimmory.koplugin`](plugins/grimmory.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updater |
+| [`plugins/gzreader.koplugin`](plugins/gzreader.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updater |
 | [`plugins/zenos.koplugin`](plugins/zenos.koplugin) | ZenOS 4.2.0 interface, adapted for GZreader and the Kindle keyboard |
 | `frontend/`, `reader.lua` | KOReader v2026.07.1 with GZreader changes (branding, keyboard, sleep screen, speed fixes) |
 | [`tools/grimmory`](tools/grimmory) | Packaging, dictionary builder, release script |

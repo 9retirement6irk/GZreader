@@ -584,11 +584,11 @@ end
 -- of the guide and the guide continues once pairing finishes or is cancelled.
 local function grimmoryPlugin(ctx)
     local ui = ctx and ctx.plugin and ctx.plugin.ui
-    local g = ui and ui.grimmory
+    local g = ui and ui.gzreader
     if type(g) ~= "table" then
         local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
         local fm = ok and type(FileManager) == "table" and FileManager.instance
-        g = type(fm) == "table" and fm.grimmory or nil
+        g = type(fm) == "table" and fm.gzreader or nil
     end
     return type(g) == "table" and g or nil
 end
@@ -596,13 +596,13 @@ end
 local function grimmoryState(ctx)
     -- Pages are built during ZenOS's init, before FileManager.instance is set;
     -- the UI under construction (ctx.plugin.ui) already has grimmory registered
-    -- because plugins load in path order and "grimmory" sorts before "zenos".
+    -- because plugins load in path order and "gzreader" sorts before "zenos".
     local ui = ctx and ctx.plugin and ctx.plugin.ui
-    local g = ui and ui.grimmory
+    local g = ui and ui.gzreader
     if type(g) ~= "table" then
         local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
         local fm = ok and type(FileManager) == "table" and FileManager.instance
-        g = type(fm) == "table" and fm.grimmory or nil
+        g = type(fm) == "table" and fm.gzreader or nil
     end
     if type(g) ~= "table" or type(g.api) ~= "table" then return nil end
     if not g then return nil end

@@ -15,7 +15,7 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `grimmory.koplugin` | GZreader itself: QR sign-in, library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
+| `gzreader.koplugin` | GZreader itself: QR sign-in, library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
 
@@ -45,7 +45,7 @@ updates; the changelog is there too). Publishing an update is just making a
 GitHub release:
 
 1. Bump `GZREADER_VERSION` and add an entry to
-   `plugins/grimmory.koplugin/grimmory_changelog.lua`, push.
+   `plugins/gzreader.koplugin/gzreader_changelog.lua`, push.
 2. On GitHub: Releases → Draft a new release → tag `v<version>` (for
    example `v1.0.4`; `v.1.0.4` also works) → Publish.
 
@@ -58,7 +58,7 @@ plugins from it.
 
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
-books, `.sdr` folders, history and the Grimmory folder are never touched; if
+books, `.sdr` folders, history and the GZreader folder are never touched; if
 anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Keyboard (Kindle 3)
@@ -107,7 +107,7 @@ series with only audiobooks don't appear, and the lists open instantly.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
 
-Saved lists (`grimmory_listcache.lua`): the first page of every list fetched
+Saved lists (`gzreader_listcache.lua`): the first page of every list fetched
 (Continue reading, Recently added, All books, a library, shelf, author or
 series, the library and shelf lists, Audiobooks) is kept on the Kindle, per
 server and account (`cache/grimmory-lists`, newest 60). The Grimmory tab
@@ -136,7 +136,7 @@ edited yourself are left alone.
 
 While anything downloads, **Downloads (N)** is the first entry of the GZreader
 menu (Menu key on Home) and is in the Reading menu; it's always in Settings →
-GZreader (`grimmory_tasks.lua`). It lists the current book download, the
+GZreader (`gzreader_tasks.lua`). It lists the current book download, the
 queue, audiobook downloads and the audiobook preparing step: reopen a
 progress bar, stop the download, take a book out of the queue, empty the
 queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
@@ -152,7 +152,7 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 
 ## Home folder and downloads
 
-The Grimmory folder (`documents/Grimmory`) is the home folder; the
+The GZreader folder (`documents/GZreader`; `documents/Grimmory` before 1.2.0) is the home folder; the
 **Downloaded** tab shows it. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
@@ -161,7 +161,7 @@ empty the queue) (press any key for Stop / Continue in background / Keep
 watching); a transfer that stalls for 90 s is stopped.
 
 A backup list of downloaded books (`.gzreader-library.json`) is kept in the
-Grimmory folder. If KOReader's settings are lost (for example the `koreader`
+GZreader folder. If KOReader's settings are lost (for example the `koreader`
 folder was replaced), the books are re-linked to Grimmory from it, or by file
 name from the library index, so progress sync and "on Kindle" marks keep
 working.
@@ -182,7 +182,7 @@ KOReader-compatible endpoint.
 
 - Books downloaded through the Grimmory tab, matched by Grimmory book ID.
 - EPUB: the exact place as an EPUB CFI (`positionData`, made from the
-  page's crengine XPointer with `grimmory_cfi.lua`), plus the chapter (spine
+  page's crengine XPointer with `gzreader_cfi.lua`), plus the chapter (spine
   file) and the position in it as a fallback. Grimmory's web reader
   (foliate-js) resumes from the CFI; before 1.1.0 no CFI was sent and it
   opened at the start of the chapter. PDFs/comics: page. FB2/MOBI/AZW3:
@@ -199,7 +199,7 @@ KOReader-compatible endpoint.
   through a CFI to the same page on the Kindle 3's crengine.
 - Pulled on open and wake; pushed every 10 page turns (or 3 minutes), on
   close and on sleep. Pulls, page-turn pushes and queued updates run in a
-  short-lived background process one at a time (`grimmory_async.lua`), so
+  short-lived background process one at a time (`gzreader_async.lua`), so
   the page never waits for the network; JSON replies are gzip-compressed. Forward moves from other devices apply silently; going
   back asks. Offline updates are queued and sent when Wi‑Fi returns.
   Sync jumps are not added to the Back history.
@@ -223,11 +223,54 @@ included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
 spine item. Until 1.0.29 GZreader counted only XHTML items; books with
 picture pages in the spine then fell back to percentages.
 
+## Remote debugging
+
+For freezes and hard reboots, where the Kindle's own log may be lost:
+GZreader can report to a feed (Tianji-style `…/open/feed/<id>/send`,
+`/state/upsert`, `/state/resolve`), set in Settings → GZreader → Remote
+debugging or by a `gzreader-remote.txt` file on the USB drive with the feed
+address on its first line. The address is not in the code (the project is
+public). `gzreader_remote.lua` queues messages as JSON files in
+`koreader/gzreader-remote/spool`; `gzreader_watchdog.lua`, a separate
+low-priority LuaJIT process, sends them when Wi‑Fi is on (GZreader never turns
+Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s:
+
+| Report | When |
+| --- | --- |
+| GZreader started | every start: version, battery, memory, how the previous run ended |
+| Previous run ended unexpectedly (important) | the last heartbeat said "running": hard reboot, battery, freeze or crash; with what it was doing, the previous run's log tail and crash.log |
+| Kindle unresponsive (important) + state "GZreader unresponsive" | no heartbeat for 2 minutes while awake: memory, load, top processes, kernel messages and the log at that moment |
+| Kindle responsive again + state resolved | the heartbeat is back |
+| GZreader crashed (important) | the process ended without closing: crash.log and log tail |
+| warnings / errors | GZreader's log warnings and errors, a minute at a time |
+
+Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
+the clock jump after waking). Log lines are redacted (no passwords or
+tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued
+messages, the freeze alert with its snapshot, "responsive again", the crash
+report, and no crash report after a normal close.
+
+## 1.2.0: GZreader names
+
+The plugin folder is `plugins/gzreader.koplugin` (was `grimmory.koplugin`),
+its modules `gzreader_*.lua`, its settings `settings/gzreader.lua`, the log
+`gzreader.log`, the caches `cache/gzreader-*`, and the books folder
+`documents/GZreader`. On the first start, from Home with no book open,
+GZreader renames the old ones and moves everything that remembers paths in
+the books folder: its downloads list, KOReader's home folder, last book,
+history, collections, folder shortcuts and the cover browser's book info
+(the books' `.sdr` folders move with them). Updating from 1.1.0: that
+version's updater only accepts a package with
+`plugins/grimmory.koplugin/main.lua`, so packages ship a disabled placeholder
+there; it replaces the old plugin and GZreader deletes it on its next start.
+Internal names that are stored on the Kindle stay (the `ct_grimmory` tab, the
+`grimmory_library` action, highlights' `grimmory_id`).
+
 ## Unfinished downloads
 
 Every book download (running or queued) and every audiobook download and
 "preparing the audio" is noted when it starts and crossed off when it ends
-(`grimmory_recovery.lua`). If GZreader stops in between (battery ran out,
+(`gzreader_recovery.lua`). If GZreader stops in between (battery ran out,
 the Kindle slept or restarted, a crash), it asks about each one a few
 seconds after the next start: **Continue** (books continue from the part
 already downloaded with an HTTP Range request; audiobooks continue
@@ -244,9 +287,9 @@ EPUB highlights and notes are kept the same on the Kindle and in Grimmory's
 web reader (and other devices), both ways: new ones, colour and style
 changes, notes, deletions. The conversion and three-way merge are vendored
 from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader-Client)
-(MIT; `grimmory_cfi.lua`, `grimmory_annosync.lua`, `grimmory_slaxml.lua`, see
-`plugins/grimmory.koplugin/THIRD_PARTY_NOTICES.md`); the orchestration is
-`grimmory_annotations.lua`.
+(MIT; `gzreader_cfi.lua`, `gzreader_annosync.lua`, `gzreader_slaxml.lua`, see
+`plugins/gzreader.koplugin/THIRD_PARTY_NOTICES.md`); the orchestration is
+`gzreader_annotations.lua`.
 
 - A highlight is two crengine XPointers in KOReader and an EPUB CFI range with
   UTF-16 offsets in Grimmory (`epubcfi(/6/2[c1]!/4/6,/2/1:7,/3:4)`), converted
@@ -321,7 +364,7 @@ Playback uses what the Kindle 3 has: GStreamer 0.10 (`gst-launch-0.10`)
 with Freescale's hardware decoders `mfw_mp3decoder` and `mfw_aacdecoder`,
 into ALSA. MP3 starts anywhere (the file is fed from the right byte offset).
 There is no MP4 demuxer on the Kindle, so an M4B is converted once after
-download (`grimmory_mp4.lua`: each AAC frame gets an ADTS header; no
+download (`gzreader_mp4.lua`: each AAC frame gets an ADTS header; no
 re-encoding) into ~15-second pieces in `<file>.chunks/`; playback starts at
 the piece holding the position and feeds the following ones to the AAC
 decoder. **Test audio playback** tries the pipelines with a short MP3 and an
@@ -331,7 +374,7 @@ asks which you heard and remembers it.
 Downloads use Grimmory's audiobook stream endpoints and resume with HTTP
 Range after a dropped connection or timeout.
 
-The conversion runs as a separate `luajit grimmory_mp4.lua <in> <dir>
+The conversion runs as a separate `luajit gzreader_mp4.lua <in> <dir>
 <progress>` process at nice 19 (~8 MB for a long book; sample tables are
 read in 64 KB blocks), with a progress bar fed from its progress file. A
 fork of KOReader isn't used for it: the fork's copy of KOReader's heap gets
@@ -342,7 +385,7 @@ Kindle 3 out of memory in 1.0.21.
 
 EPUBs whose chapter files are pictures with next to no text (scanned pages,
 e.g. Diary of a Wimpy Kid: 385 x 625 JPEG per page) are recognized on
-opening (`grimmory_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only).
+opening (`gzreader_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only).
 GZreader then adds a book style tweak (`img { height: 100%; width: auto;
 max-width: 100% }`, no margins/padding), sets the book's page margins to 0
 and turns on smooth image scaling, keeping the old settings for when it's
@@ -400,7 +443,7 @@ Wi-Fi GZreader turned on.
   empty after every restart. GZreader keeps each final-size cover as a raw
   bitmap in `koreader/cache/gz-covers/` (used only while the book file is
   unchanged), learns the sizes ZenOS uses, and a low-priority background
-  process (`grimmory_coverwarm.lua`) makes them for every downloaded book a
+  process (`gzreader_coverwarm.lua`) makes them for every downloaded book a
   minute after start, after downloads and when a new size shows up. Books
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
@@ -425,7 +468,7 @@ to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
 the file wherever you need it.
 
 
-`koreader/grimmory.log` (rotates at 512 KB): requests with status and timing,
+`koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
 tokens are never written. Grimmory → Save diagnostic log copies it, the tail
 of `crash.log` and a read-only audio/speech survey next to the Grimmory
@@ -434,7 +477,7 @@ folder.
 ## Rebuild the package
 
 ```sh
-tools/grimmory/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
+tools/gzreader/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
 ```
 
 The branch changes only Lua and shell scripts, so the script overlays it onto

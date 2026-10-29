@@ -120,7 +120,7 @@ local order = {
         "menu_activate",
     },
     tools = {
-        "grimmory",
+        "gzreader",
         "read_timer",
         "calibre",
         "exporter",

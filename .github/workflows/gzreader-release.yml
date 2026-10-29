@@ -38,6 +38,6 @@ jobs:
       - name: Package
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
-          GZ_VERSION="$VERSION" tools/grimmory/package-kindle-legacy.sh dl/*kindle-legacy*.zip out
+          GZ_VERSION="$VERSION" tools/gzreader/package-kindle-legacy.sh dl/*kindle-legacy*.zip out
       - name: Attach to the release
         run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-update.zip --clobber

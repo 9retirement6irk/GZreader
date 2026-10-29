@@ -75,11 +75,11 @@ function M.build(ctx, extras_items)
     -- GZreader: the Kindle 3 has no time zone setting (its clock is UTC).
     table.insert(items, IconItem.decorate({
         text_func = function()
-            local ok, TZ = pcall(require, "grimmory_timezone")
+            local ok, TZ = pcall(require, "gzreader_timezone")
             return _("Time zone") .. (ok and (": " .. TZ.label()) or "")
         end,
         sub_item_table_func = function()
-            local ok, TZ = pcall(require, "grimmory_timezone")
+            local ok, TZ = pcall(require, "gzreader_timezone")
             return ok and TZ.menuItems() or {}
         end,
     }, icons.calendar))
