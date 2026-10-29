@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.5",
+        changes = {
+            "Read aloud speaks whole sentences at normal speed (it was sending one word at a time), and the last word of each sentence is no longer held back.",
+            "Read aloud volume: Quieter / Louder in Read-aloud settings, or the Kindle's volume buttons while reading.",
+            "Settings: the entry that opens KOReader's own settings is called KOReader again.",
+            "Downloaded tab: books show on the first visit (no more \"Set home folder\" until Home was opened).",
+        },
+    },
+    {
         version = "1.0.4",
         changes = {
             "Read aloud: \"Find the Kindle voice\" now learns the request the Kindle's speech service (ttsd) expects from its own error messages (it asked for an id), instead of guessing numbered variants.",

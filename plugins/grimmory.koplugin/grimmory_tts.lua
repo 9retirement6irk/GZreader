@@ -48,6 +48,7 @@ local TTS = {
         locale = { str = "en_US" }, model = { str = "full_155mrf22" },
     },
     MAX_ROUNDS = 10,
+    TEST_TEXT = "This is the Kindle voice test. ",
     BASE_WPM = 165,   -- words per minute at speed 100 (generous, so sentences aren't cut off)
     -- injectable for tests
     lipc = nil,       -- KOReader's libopenlipclua (doesn't load on the Kindle 3)
@@ -162,7 +163,9 @@ local function fieldsFor(template, text)
     local fields = {}
     for _i, f in ipairs(template.fields) do
         if f[1] == "text" then
-            fields[#fields + 1] = { "text", str = text }
+            -- ttsd holds back the last word until more text arrives; a
+            -- trailing space lets it see that the word is complete
+            fields[#fields + 1] = { "text", str = text .. " " }
         elseif f[1] == "id" and f.int ~= nil then
             fields[#fields + 1] = { "id", int = TTS.seq + 1 } -- a fresh id per snippet
         else
@@ -204,6 +207,23 @@ end
 
 function TTS.speed() return settings():readSetting("gzreader_tts_speed") or 100 end
 
+--- Speaker volume, 0-15 (com.lab126.audio CmdIVolume; the Kindle's own range).
+TTS.VOLUME_MAX = 15
+function TTS.volume() return settings():readSetting("gzreader_tts_volume") or 10 end
+
+function TTS.setVolume(v)
+    v = math.max(0, math.min(TTS.VOLUME_MAX, v))
+    settings():saveSetting("gzreader_tts_volume", v)
+    intProp("com.lab126.audio", "CmdIVolume", v)
+end
+
+function TTS.applySettings()
+    intProp("com.lab126.tts", "TtsISpeed", TTS.speed())
+    if settings():readSetting("gzreader_tts_volume") then
+        intProp("com.lab126.audio", "CmdIVolume", TTS.volume())
+    end
+end
+
 function TTS.setSpeed(v)
     settings():saveSetting("gzreader_tts_speed", v)
     intProp("com.lab126.tts", "TtsISpeed", v)
@@ -215,7 +235,7 @@ function TTS.duration(text)
     for _w in tostring(text):gmatch("%S+") do words = words + 1 end
     local pauses = select(2, tostring(text):gsub("[,;:%.!%?]", ""))
     local wpm = TTS.BASE_WPM * TTS.speed() / 100
-    return 0.8 + words * 60 / wpm + pauses * 0.25
+    return 0.4 + words * 60 / wpm + pauses * 0.2
 end
 
 ---------------------------------------------------------------- discovery
@@ -250,7 +270,7 @@ end
 --- Learn the request shape ttsd accepts. on_done(template_or_nil, why).
 function TTS.discover(on_done)
     local ti, rounds = 1, 0
-    local fields = { { "text", str = "Voice test." } }
+    local fields = { { "text", str = TTS.TEST_TEXT } }
     local tried = {}
     local last_err
     local function attempt()
@@ -298,7 +318,7 @@ function TTS.discover(on_done)
             else
                 -- nothing new to try here: next target, starting over
                 ti = ti + 1
-                fields = { { "text", str = "Voice test." } }
+                fields = { { "text", str = TTS.TEST_TEXT } }
                 tried = {}
             end
             UIManager:scheduleIn(0.5, attempt)
@@ -313,7 +333,7 @@ function TTS.findVoice(on_done)
     if TTS.testing then return end
     TTS.testing = true
     Log.info("tts backend", TTS.backend())
-    local busy = InfoMessage:new{ text = _("Finding the Kindle's voice… Listen for \"Voice test\"."), timeout = 0 }
+    local busy = InfoMessage:new{ text = _("Finding the Kindle's voice… Listen for \"This is the Kindle voice test\"."), timeout = 0 }
     UIManager:show(busy)
     TTS.discover(function(template, why)
         UIManager:close(busy)
@@ -326,7 +346,7 @@ function TTS.findVoice(on_done)
         end
         local ConfirmBox = require("ui/widget/confirmbox")
         UIManager:show(ConfirmBox:new{
-            text = _("The Kindle's speech service accepted the request. Did you hear \"Voice test\"?"),
+            text = _("The Kindle's speech service accepted the request. Did you hear \"This is the Kindle voice test\"?"),
             ok_text = _("Yes"),
             cancel_text = _("No"),
             ok_callback = function()
@@ -341,7 +361,7 @@ function TTS.findVoice(on_done)
             end,
         })
         -- say it once more while the question is up
-        TTS.say("Voice test.", template)
+        TTS.say(TTS.TEST_TEXT, template)
     end)
 end
 
@@ -363,21 +383,36 @@ end
 local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
 
 --- Sentence starting at (or after) xp: returns text, xp0, xp1 or nil at end.
+Reader.MAX_WORDS = 40
+
+--- Sentence starting at (or after) xp: returns text, xp0, xp1 or nil at end.
+--- Built word by word (crengine's own "sentence segment" helper returned
+--- single words on the Kindle 3, which made reading crawl word by word).
 function Reader:sentenceAt(xp)
     local doc = self.ui.document
-    for _try = 1, 20 do
-        if not xp then return nil end
-        local wend = doc:getNextVisibleWordEnd(xp)
-        if not wend then return nil end
-        local seg0, seg1 = doc:extendXPointersToSentenceSegment(xp, wend)
-        if type(seg0) == "table" then seg0, seg1 = seg0.pos0 or seg0[1], seg0.pos1 or seg0[2] end
-        seg0, seg1 = seg0 or xp, seg1 or wend
-        local text = trim(doc:getTextFromXPointers(seg0, seg1, false))
-        if text ~= "" then
-            return text, seg0, seg1
-        end
-        xp = doc:getNextVisibleWordStart(seg1)
+    if not xp then return nil end
+    local first_end = doc:getNextVisibleWordEnd(xp)
+    if not first_end then return nil end
+    local start = xp
+    local last_end = first_end
+    local cur_end = first_end
+    for _n = 1, Reader.MAX_WORDS do
+        last_end = cur_end
+        local word = trim(doc:getTextFromXPointers(doc:getPrevVisibleWordStart(cur_end) or start, cur_end, false))
+        if word:find("[%.!%?…]['\"”’%)%]]*$") then break end
+        local next_start = doc:getNextVisibleWordStart(cur_end)
+        if not next_start then break end
+        local next_end = doc:getNextVisibleWordEnd(next_start)
+        if not next_end or next_end == cur_end then break end
+        cur_end = next_end
     end
+    local text = trim(doc:getTextFromXPointers(start, last_end, false))
+    if text == "" then
+        local nxt = doc:getNextVisibleWordStart(last_end)
+        if not nxt or nxt == xp then return nil end
+        return self:sentenceAt(nxt)
+    end
+    return text, start, last_end
 end
 
 function Reader:highlight(xp0, xp1)
@@ -418,7 +453,7 @@ function Reader:start()
         return TTS.findVoice(function() self:start() end)
     end
     self.active, self.paused = true, false
-    intProp("com.lab126.tts", "TtsISpeed", TTS.speed())
+    TTS.applySettings()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
     UIManager:show(Notification:new{ text = _("Reading aloud. Shift + Sym to stop.") })

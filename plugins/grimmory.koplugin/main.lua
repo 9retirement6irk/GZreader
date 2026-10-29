@@ -657,8 +657,16 @@ function Grimmory:setupReader()
 end
 
 function Grimmory:onKeyPress(key)
-    if self.ui.document and self.tts and type(key) == "table" and key.key == "ShiftSym" then
+    if not (self.ui.document and self.tts and type(key) == "table") then return end
+    if key.key == "ShiftSym" then
         self.tts:toggle()
+        return true
+    end
+    -- The Kindle Keyboard's volume rocker sets the read-aloud volume.
+    if key.key == "VPlus" or key.key == "VMinus" then
+        TTS.setVolume(TTS.volume() + (key.key == "VPlus" and 1 or -1))
+        UIManager:show(require("ui/widget/notification"):new{
+            text = T(_("Read-aloud volume %1 / %2"), TTS.volume(), TTS.VOLUME_MAX) })
         return true
     end
 end
@@ -681,9 +689,21 @@ function Grimmory:showTtsSettings()
             end },
         }
     end
+    local function volumeRow()
+        local function set(v)
+            TTS.setVolume(v); UIManager:close(dialog); self:showTtsSettings()
+            TTS.say("Volume " .. TTS.volume() .. ".")
+        end
+        return {
+            { text = _("Quieter"), callback = function() set(TTS.volume() - 1) end },
+            { text = T(_("Volume %1 / %2"), TTS.volume(), TTS.VOLUME_MAX), enabled = false },
+            { text = _("Louder"), callback = function() set(TTS.volume() + 1) end },
+        }
+    end
     dialog = ButtonDialog:new{
         title = _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
         buttons = {
+            volumeRow(),
             speedRow(),
             { { text = _("Find the Kindle voice (test)"), callback = function()
                 UIManager:close(dialog); TTS.findVoice()

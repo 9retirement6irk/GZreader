@@ -47,8 +47,11 @@ local GetText_mt = {
 -- GZreader: brand the (English-only) UI. GZreader is Grimmory + ZenOS +
 -- KOReader; UI strings naming KOReader or ZenOS show GZreader (the About
 -- screen still credits both).
+-- Labels that open KOReader's own menus keep its name.
+local GZ_KEEP = { ["KOReader"] = true, ["KOReader menu"] = true, ["KOReader settings"] = true }
 GetText.wrapUntranslated_nowrap = function(text)
-    if type(text) == "string" and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
+    if type(text) == "string" and not GZ_KEEP[text]
+            and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
         return (text:gsub("KOReader", "GZreader"):gsub("ZenOS", "GZreader"))
     end
     return text

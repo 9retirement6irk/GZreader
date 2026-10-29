@@ -1119,6 +1119,20 @@ local function apply_navbar()
         if reveal_hidden_filemanager then
             UIManager:setDirty(fm_stack_widget or fm, "ui")
         end
+        -- GZreader: on a key-only Kindle the first visit to this tab could
+        -- find the deferred startup listing still empty ("No books found /
+        -- Set home folder") until Home was opened once. List it now.
+        if fc.path == home_dir then
+            local listed = false
+            for _i, item in ipairs(fc.item_table or {}) do
+                if not item.is_go_up then listed = true; break end
+            end
+            if not listed then
+                fc._zen_idle_materialized_library = nil
+                fc._zen_home_retained_library = nil
+                fc._zen_needs_full_listing = true
+            end
+        end
         local idle_materialized = fc._zen_idle_materialized_library
         if idle_materialized and _retained_library_valid(fc, idle_materialized, home_dir) then
             fc._zen_needs_full_listing = nil

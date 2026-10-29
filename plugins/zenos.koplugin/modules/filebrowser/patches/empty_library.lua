@@ -24,6 +24,27 @@ local function apply_empty_library()
                 if not item.is_go_up then empty = false; break end
             end
         end
+        if empty and self._gz_empty_recheck_path ~= self.path then
+            -- GZreader: an empty list here can be a listing that hasn't been
+            -- built yet. If the folder has books, list it again instead of
+            -- asking for a home folder.
+            local lfs = require("libs/libkoreader-lfs")
+            local has_files = false
+            local ok_dir, iter, dir_obj = pcall(lfs.dir, self.path)
+            if ok_dir then
+                for name in iter, dir_obj do
+                    if name:sub(1, 1) ~= "." then has_files = true; break end
+                end
+            end
+            if has_files then
+                self._gz_empty_recheck_path = self.path -- once per folder: no refresh loop
+                local UIManager = require("ui/uimanager")
+                UIManager:nextTick(function()
+                    if type(self.refreshPath) == "function" then self:refreshPath() end
+                end)
+                empty = false
+            end
+        end
         if empty then
             local width = self.inner_dimen and self.inner_dimen.w or self.width
             local button = Button:new{
