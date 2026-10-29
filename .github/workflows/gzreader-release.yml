@@ -25,7 +25,7 @@ jobs:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       KOREADER_TAG: v2026.07.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
       - name: Tools
