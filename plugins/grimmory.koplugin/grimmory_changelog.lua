@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.19",
+        changes = {
+            "Subtitles: books show their subtitle from Grimmory, e.g. \"Diary of a Wimpy Kid: Old School\", in the Grimmory lists, the Downloaded tab, Home and the reader. Books already on the Kindle get theirs after the next library index (a minute or so after starting with Wi-Fi). A title you changed yourself in Book information is left alone; resetting it there brings back the original.",
+            "Download queue: picking another book while one downloads adds it to the queue (\"Add to queue\") instead of refusing. Queued books download one after another; lists show \"queued\", a short notice says when each is done, and the download options can empty the queue. \"Continue in background\" keeps the rest of the queue in the background too.",
+        },
+    },
+    {
         version = "1.0.18",
         changes = {
             "Downloads (books and audiobooks) keep the Kindle awake until they finish, even in the background: no screensaver, no sleep.",

@@ -47,7 +47,7 @@ end
 
 function Browser:bookItem(book, with_series_number)
     local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
-    local title = type(book.title) == "string" and book.title or _("Untitled")
+    local title = require("grimmory_titles").forBook(self.plugin, book) or _("Untitled")
     local num = with_series_number and seriesNumber(book.seriesNumber)
     if num then title = "#" .. num .. "  " .. title end
     local local_path = self.plugin:localPathFor(book.id)
@@ -59,6 +59,8 @@ function Browser:bookItem(book, with_series_number)
     end
     if local_path then
         tag = tag .. " · " .. _("on Kindle")
+    elseif require("grimmory_download").isQueued(book.id) then
+        tag = tag .. " · " .. _("queued")
     end
     return {
         text = authors ~= "" and (title .. " — " .. authors) or title,
@@ -374,7 +376,8 @@ function Browser:openDownloaded()
     for id, entry in pairs(self.plugin.store.downloads or {}) do
         if type(entry) == "table" and entry.path and lfs.attributes(entry.path, "mode") == "file" then
             items[#items + 1] = {
-                text = entry.title or entry.path:match("[^/]+$"),
+                text = (entry.title and require("grimmory_titles").full(entry.title, require("grimmory_titles").subtitle(self.plugin, id)))
+                    or entry.path:match("[^/]+$"),
                 mandatory = entry.format,
                 callback = function() self.plugin:openBook(entry.path, self.menu) end,
                 id = id,
@@ -392,13 +395,34 @@ function Browser:onBook(book)
     end
     local size_kb = tonumber(book.fileSizeKb)
     local size = size_kb and (size_kb >= 1024 and T("%1 MB", string.format("%.1f", size_kb / 1024)) or T("%1 KB", size_kb)) or ""
+    local Download = require("grimmory_download")
+    local name = require("grimmory_titles").forBook(self.plugin, book) or ""
+    if Download.isQueued(book.id) then
+        UIManager:show(InfoMessage:new{ text = T(_("“%1” is already downloading or in the queue."), name), timeout = 3 })
+        return
+    end
+    local dl_busy = Download.active ~= nil
     UIManager:show(ConfirmBox:new{
-        text = T(_("Download “%1” to this Kindle?"), book.title or "") .. (size ~= "" and ("\n" .. size) or ""),
-        ok_text = _("Download & open"),
+        text = T(_("Download “%1” to this Kindle?"), name) .. (size ~= "" and ("\n" .. size) or "")
+            .. (dl_busy and ("\n\n" .. T(_("Another download is running; this one is queued (%1 waiting)."), #Download.queue)) or ""),
+        ok_text = dl_busy and _("Add to queue") or _("Download & open"),
         ok_callback = function()
             self.plugin:downloadAndOpen(book, self.menu)
+            if dl_busy then self:markQueued(book) end
         end,
     })
+end
+
+--- Show "queued" next to a book in the open list.
+function Browser:markQueued(book)
+    local menu = self.menu
+    if not menu or type(menu.item_table) ~= "table" then return end
+    for _i, item in ipairs(menu.item_table) do
+        if item.book and tostring(item.book.id) == tostring(book.id) and not tostring(item.mandatory or ""):find(_("queued"), 1, true) then
+            item.mandatory = (item.mandatory and item.mandatory ~= "" and (item.mandatory .. " · ") or "") .. _("queued")
+            if menu.updateItems then menu:updateItems() end
+        end
+    end
 end
 
 Browser.isReadable = isReadable

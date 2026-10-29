@@ -44,6 +44,7 @@ end
 function Index.isStale(data)
     return not data or type(data.built_at) ~= "number" or os.time() - data.built_at > MAX_AGE
         or data.built_at > os.time() + 3600 -- clock went backwards a lot
+        or data.subtitles == nil -- built before GZreader 1.0.19 (no subtitles yet)
 end
 
 --- Child process: page through readable books and aggregate.
@@ -88,7 +89,23 @@ local function collect(api, report)
         page = page + 1
         report(page, pages)
     end
-    return { authors = authors, series = series, libraries = libraries, files = files, total = total }
+    -- Subtitles: only Grimmory's web book list has them. Optional (older
+    -- servers may not have /books/page); failures just leave them out.
+    local subtitles = {}
+    local wpage, wpages = 0, 1
+    while wpage < wpages and wpage < 500 do
+        local data = api:listWebBooks(wpage, 100)
+        if not data or type(data.content) ~= "table" then break end
+        local meta = type(data.page) == "table" and data.page or data
+        wpages = tonumber(meta.totalPages) or 1
+        for _, b in ipairs(data.content) do
+            local m = type(b) == "table" and b.metadata
+            local sub = type(m) == "table" and m.subtitle
+            if type(sub) == "string" and sub ~= "" and b.id then subtitles[tostring(b.id)] = sub end
+        end
+        wpage = wpage + 1
+    end
+    return { authors = authors, series = series, libraries = libraries, files = files, total = total, subtitles = subtitles }
 end
 
 --- Build (or rebuild) the index. `show` = show a progress dialog.

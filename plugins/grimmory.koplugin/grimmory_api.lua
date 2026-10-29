@@ -245,6 +245,14 @@ function Api:listBooks(params)
     return nil, err or ("http_" .. tostring(code))
 end
 
+--- GET /api/v1/books/page (the web app's list: full metadata, incl. subtitle).
+function Api:listWebBooks(page, size)
+    local code, data, err = self:call("GET", "/api/v1/books/page" .. query{ page = page, size = size },
+        { timeouts = { 15, 60 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
 --- GET /api/v1/app/libraries -> list of { id, name, bookCount, ... }
 function Api:listLibraries()
     local code, data, err = self:call("GET", "/api/v1/app/libraries")

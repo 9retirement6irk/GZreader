@@ -106,12 +106,24 @@ series with only audiobooks don't appear, and the lists open instantly.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
 
+## Subtitles
+
+Grimmory's subtitle is added to the title ("Diary of a Wimpy Kid: Old
+School") in the Grimmory lists and, for downloaded books, as KOReader custom
+metadata (`.sdr/custom_metadata.lua`, like Book information → edit title),
+so Home, Downloaded, history and the reader show it. The app API's lists have
+no subtitles, so they come from the library index (Grimmory's web book list,
+`/api/v1/books/page`) and from the book itself after a download. Titles you
+edited yourself are left alone.
+
 ## Home folder and downloads
 
 The Grimmory folder (`documents/Grimmory`) is the home folder; the
 **Downloaded** tab shows it. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
-until it's done) (press any key for Stop / Continue in background / Keep
+until it's done). Picking more books while one downloads queues them; they
+download one after another (lists show "queued"; the download options can
+empty the queue) (press any key for Stop / Continue in background / Keep
 watching); a transfer that stalls for 90 s is stopped.
 
 A backup list of downloaded books (`.gzreader-library.json`) is kept in the

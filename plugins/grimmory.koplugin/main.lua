@@ -14,6 +14,7 @@ Grimmory for KOReader.
 local DataStorage = require("datastorage")
 local Device = require("device")
 local Dispatcher = require("dispatcher")
+local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local LuaSettings = require("luasettings")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
@@ -82,10 +83,16 @@ function Grimmory:init()
             UIManager:scheduleIn(8, function()
                 if not NetworkMgr:isConnected() then return end
                 local idx = Index.load(self.store)
-                if idx then pcall(self.relinkLibrary, self, idx) end
+                if idx then
+                    pcall(self.relinkLibrary, self, idx)
+                    pcall(require("grimmory_titles").backfill, self)
+                end
                 if Index.isStale(idx) then
                     Index.build(self, false, function(built)
-                        if built then pcall(self.relinkLibrary, self, built) end
+                        if built then
+                            pcall(self.relinkLibrary, self, built)
+                            pcall(require("grimmory_titles").backfill, self)
+                        end
                     end)
                 end
             end)
@@ -1130,24 +1137,48 @@ function Grimmory:downloadAndOpen(book, menu)
     name = util.getSafeFilename(name, dir)
     local path = dir .. "/" .. name
     local title = type(book.title) == "string" and book.title or name
-    Download.start(self, book, path, function(ok, err, watching)
+    Download.start(self, book, path, function(ok, err, watching, info)
+        info = info or {}
         if not ok then
-            if err ~= "cancelled" then self:showError(err) end
+            if err ~= "cancelled" then
+                if info.queued then
+                    UIManager:show(InfoMessage:new{ text = T(_("“%1” couldn't be downloaded: %2"), title, tostring(err)), timeout = 5 })
+                else
+                    self:showError(err)
+                end
+            end
             return
         end
-        self.store.downloads[tostring(book.id)] = {
+        local entry = {
             path = path,
             title = title,
+            subtitle = info.subtitle,
             format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
             file_id = tonumber(book.primaryFileId),
         }
+        self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()
+        local Titles = require("grimmory_titles")
+        local sub = info.subtitle or Titles.subtitle(self, book.id)
+        if sub then
+            entry.subtitle = sub
+            local okA, did = pcall(Titles.apply, path, title, sub, type(book.authors) == "table" and table.concat(book.authors, "\n") or nil)
+            if okA and did then
+                UIManager:broadcastEvent(Event:new("BookMetadataChanged"))
+            end
+        end
+        local shown = Titles.full(title, sub)
         if watching then
             self:openBook(path, menu)
+        elseif info.queued or (info.left or 0) > 0 then
+            UIManager:show(InfoMessage:new{
+                text = (info.left or 0) > 0 and T(_("Downloaded “%1”. %2 more in the queue."), shown, info.left)
+                    or T(_("Downloaded “%1”. The download queue is done."), shown),
+                timeout = 4 })
         else
             UIManager:show(ConfirmBox:new{
-                text = T(_("“%1” has finished downloading. Open it now?"), title),
+                text = T(_("“%1” has finished downloading. Open it now?"), shown),
                 ok_text = _("Open"),
                 cancel_text = _("Later"),
                 ok_callback = function() self:openBook(path, menu) end,
