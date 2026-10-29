@@ -199,7 +199,12 @@ Amazon never documented the request format. The speech daemon (`ttsd`)
 writes which field it's missing to the system log ("unable to read id"), so
 Reading menu → Read-aloud settings → Find the Kindle voice adds the missing
 fields one by one until `ttsd` accepts the request, plays "Voice test" and
-asks whether you heard it; the request shape is then saved. The speech
+asks whether you heard it; the request shape is then saved. Text goes to the voice a
+sentence at a time (split only when a sentence passes 30 words at a comma,
+semicolon, colon or dash, or 80 words; paragraph and heading ends always end
+a piece); web addresses are left out. When a sentence runs onto the next
+page, the page turns part-way through, at the share of the sentence's
+characters already said. The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
 settings → Slower / Faster). The diagnostic log records every step.

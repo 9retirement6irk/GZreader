@@ -485,7 +485,10 @@ local function apply_opening_banner()
     local function build_banner(cover)
         local plug = _plugin or rawget(_G, "__ZEN_UI_PLUGIN")
         local badge_scale = utils.getBadgeScale(plug and plug.config)
-        local banner_h = math.floor(Screen:scaleBySize(28) * badge_scale)
+        -- GZreader: on the Kindle Keyboard's low-resolution screen the strip
+        -- and its "Opening" text were tiny; make both about twice as big.
+        local big = Device:isKindle() and not Device:isTouchDevice()
+        local banner_h = math.floor(Screen:scaleBySize(big and 48 or 28) * badge_scale)
         local bx, by, bw
         if cover then
             local border = cover.is_list and 0 or cover.border or 0
@@ -517,7 +520,7 @@ local function apply_opening_banner()
         local dimen = Geom:new{ x = bx, y = by, w = bw, h = banner_h }
         return OpeningBanner:new{
             dimen                = dimen,
-            font_size            = math.ceil(Screen:scaleBySize(7) * badge_scale),
+            font_size            = math.ceil(Screen:scaleBySize(big and 16 or 7) * badge_scale),
             dark_banner          = dark_banner,
             round_bottom_corners = round_bottom and true or false,
             cover_border         = cover and cover.border or 0,

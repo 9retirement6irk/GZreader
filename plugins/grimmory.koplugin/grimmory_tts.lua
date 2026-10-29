@@ -456,12 +456,34 @@ end
 
 local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
 
---- Sentence starting at (or after) xp: returns text, xp0, xp1 or nil at end.
-Reader.MAX_WORDS = 40
+-- A sentence is spoken as one piece. Very long ones are split at a comma,
+-- semicolon, colon or dash once they reach CLAUSE_WORDS (never mid-clause
+-- before MAX_WORDS); paragraph ends always end a piece.
+Reader.CLAUSE_WORDS = 30
+Reader.MAX_WORDS = 80
 
---- Sentence starting at (or after) xp: returns text, xp0, xp1 or nil at end.
---- Built word by word (crengine's own "sentence segment" helper returned
---- single words on the Kindle 3, which made reading crawl word by word).
+local SENTENCE_END = "[%.!%?…]['\"”’%)%]]*$"
+local CLAUSE_END = "[,;:—–]['\"”’%)%]]*$"
+
+--- What the voice says for a piece of text: web addresses are left out.
+function TTS.speakable(text)
+    text = tostring(text or "")
+    text = text:gsub("[Hh][Tt][Tt][Pp][Ss]?://%S+", " ")
+    text = text:gsub("[Ww][Ww][Ww]%.%S+%.%S+", " ")
+    text = text:gsub("%s+", " ")
+    return trim(text)
+end
+
+local function pageOf(doc, xp)
+    if not xp or type(doc.getPageFromXPointer) ~= "function" then return nil end
+    local ok, p = pcall(doc.getPageFromXPointer, doc, xp)
+    return ok and p or nil
+end
+
+--- Sentence starting at (or after) xp: returns text, xp0, xp1, extra or nil
+--- at the end. extra.turn_xp / extra.turn_frac: where the sentence crosses
+--- onto the next page and how far into it (by characters), so the page can
+--- turn while it's being said.
 function Reader:sentenceAt(xp)
     local doc = self.ui.document
     if not xp then return nil end
@@ -470,14 +492,24 @@ function Reader:sentenceAt(xp)
     local start = xp
     local last_end = first_end
     local cur_end = first_end
-    for _n = 1, Reader.MAX_WORDS do
+    local start_page = pageOf(doc, start)
+    local turn_xp
+    for n = 1, Reader.MAX_WORDS do
         last_end = cur_end
         local word = trim(doc:getTextFromXPointers(doc:getPrevVisibleWordStart(cur_end) or start, cur_end, false))
-        if word:find("[%.!%?…]['\"”’%)%]]*$") then break end
+        if word:find(SENTENCE_END) then break end
+        if n >= Reader.CLAUSE_WORDS and word:find(CLAUSE_END) then break end
         local next_start = doc:getNextVisibleWordStart(cur_end)
         if not next_start then break end
+        -- a paragraph (or heading, list item) ends here
+        local gap = doc:getTextFromXPointers(cur_end, next_start, false) or ""
+        if gap:find("\n") then break end
         local next_end = doc:getNextVisibleWordEnd(next_start)
         if not next_end or next_end == cur_end then break end
+        if not turn_xp and start_page then
+            local p = pageOf(doc, next_start)
+            if p and p > start_page then turn_xp = next_start end
+        end
         cur_end = next_end
     end
     local text = trim(doc:getTextFromXPointers(start, last_end, false))
@@ -486,7 +518,12 @@ function Reader:sentenceAt(xp)
         if not nxt or nxt == xp then return nil end
         return self:sentenceAt(nxt)
     end
-    return text, start, last_end
+    local extra
+    if turn_xp then
+        local before = #trim(doc:getTextFromXPointers(start, turn_xp, false))
+        extra = { turn_xp = turn_xp, turn_frac = math.max(0, math.min(1, before / math.max(1, #text))) }
+    end
+    return text, start, last_end, extra
 end
 
 function Reader:highlight(xp0, xp1)
@@ -553,6 +590,7 @@ end
 --- Throw away what is queued and start from self.next_xp.
 function Reader:restartQueue()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
+    if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
     self.queue = {}
     self.outbox = {}
     self.no_more = false
@@ -568,12 +606,17 @@ end
 --- Keep Reader.AHEAD sentences handed to ttsd.
 function Reader:fill()
     while self.active and not self.no_more and #self.queue < Reader.AHEAD do
-        local text, xp0, xp1 = self:sentenceAt(self.next_xp)
+        local text, xp0, xp1, extra = self:sentenceAt(self.next_xp)
         if not text then self.no_more = true; break end
-        local item = { text = text, xp0 = xp0, xp1 = xp1 }
-        self.queue[#self.queue + 1] = item
-        self.outbox[#self.outbox + 1] = item
         self.next_xp = self.ui.document:getNextVisibleWordStart(xp1)
+        local spoken = TTS.speakable(text)
+        if spoken:find("%w") then -- a piece that was only a web link is skipped
+            local item = { text = spoken, xp0 = xp0, xp1 = xp1,
+                turn_xp = extra and extra.turn_xp, turn_frac = extra and extra.turn_frac }
+            self.queue[#self.queue + 1] = item
+            self.outbox[#self.outbox + 1] = item
+        end
+        if not self.next_xp then self.no_more = true; break end
     end
     self:sendNext()
     if self.active and #self.queue == 0 and self.no_more then
@@ -624,6 +667,18 @@ function Reader:playHead()
     self.cur = { head.xp0, head.xp1 }
     self:follow(head.xp0)
     self:highlight(head.xp0, head.xp1)
+    if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
+    if head.turn_xp then
+        -- the sentence goes on overleaf: turn when the voice gets there
+        self.turn_timer = function()
+            self.turn_timer = nil
+            if self.active and self.queue[1] == head then
+                self:follow(head.turn_xp)
+                self:highlight(head.xp0, head.xp1)
+            end
+        end
+        UIManager:scheduleIn(math.max(0.5, TTS.duration(head.text) * head.turn_frac), self.turn_timer)
+    end
     if self.events_ok == false then self:armTimer(head) end
 end
 
@@ -692,6 +747,7 @@ end
 
 function Reader:stop()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
+    if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
     if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end
     if self.active then Log.info("tts stop") end
     local was_active = self.active

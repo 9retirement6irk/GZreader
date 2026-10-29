@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.27",
+        changes = {
+            "Opening a book: the “Opening” strip and its text are about twice as big on the Kindle Keyboard.",
+            "Read aloud follows sentences: each piece is a whole sentence (it used to be cut every 40 words, so pieces started and stopped mid-sentence). Only very long sentences are split, at a comma, semicolon, colon or dash; a paragraph or heading always ends a piece.",
+            "Read aloud turns the page while a sentence that runs onto the next page is being said, at about the point the voice gets there, instead of after the whole sentence.",
+            "Read aloud skips web addresses (anything starting with http://, https:// or www.).",
+        },
+    },
+    {
         version = "1.0.26",
         changes = {
             "Managing downloaded books: highlight a book on Home or in the Downloaded tab (with the 5-way) and press Menu. The GZreader menu then starts with Open, Delete from this Kindle and More options for that book. Delete asks first; it removes the file with its reading position and bookmarks on the Kindle, and Grimmory keeps the book and your progress.",
