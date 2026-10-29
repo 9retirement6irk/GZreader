@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.29",
+        changes = {
+            "Highlights and notes sync with Grimmory: EPUB highlights and notes made on the Kindle appear in Grimmory's web reader and on your other devices, and theirs appear here, at the same words. New ones, colour and style changes, notes and deletions go both ways. A highlight changed in both places since the last sync is left as it is in each, so nothing is overwritten. Syncs a few seconds after a book opens, a few seconds after you highlight or write a note (with Wi-Fi on), with Sync now, and when you close the book. The work runs in the background at low priority, so the page doesn't wait. Settings → GZreader → Sync highlights and notes turns it off. (Conversion and merge from Grimmory-KOReader-Client, MIT.)",
+            "The Grimmory tab opens at once, also offline or while Wi-Fi is still connecting. Each list (Continue reading, Recently added, All books, libraries, shelves, an author's or a series' books, audiobooks) is kept on the Kindle when it's loaded, shown straight away next time with “· saved” in its title, and replaced by the fresh list when it arrives.",
+            "Reading sessions aren't counted twice: when Grimmory's reply to a reading session got lost, GZreader checks the book's session history on Grimmory before sending it again.",
+            "Books with picture or SVG pages in their spine: position, bookmark and highlight sync now find the right chapter (they fell back to percentages before).",
+        },
+    },
+    {
         version = "1.0.28",
         changes = {
             "Picture books (for example Diary of a Wimpy Kid, where every page is a picture of the printed page): recognized when they open, and each page then fills the screen top to bottom, keeping its shape, with no margins and nothing cut off. Done once per book; Reading menu → “Fit pictures to the screen” turns it on or off (your previous margins come back when off).",

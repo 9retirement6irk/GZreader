@@ -90,10 +90,13 @@ pump = function()
         -- couldn't fork (low memory?): do it here instead
         return finish(job, protected(job.fn, api))
     end
+    if job.nice then -- long CPU work: let the screen go first
+        os.execute(string.format("renice -n 10 -p %d >/dev/null 2>&1 || renice 10 %d >/dev/null 2>&1", pid, pid))
+    end
     local started = os.time()
     local function poll()
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > Async.TIMEOUT then
+            if os.time() - started > (job.timeout or Async.TIMEOUT) then
                 Log.warn("async request took too long, stopped:", job.name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
@@ -111,13 +114,15 @@ pump = function()
 end
 
 --- Run fn(api) in the background; on_done(...) gets what it returned.
-function Async.run(api, fn, on_done, name)
+--- opts.nice: lower the process's priority (long conversions); opts.timeout (s).
+function Async.run(api, fn, on_done, name, opts)
     on_done = on_done or function() end
     if Async.sync then
         local res = protected(fn, api)
         return on_done(unpack(res, 1, res.n))
     end
-    table.insert(Async.queue, { api = api, fn = fn, on_done = on_done, name = name })
+    table.insert(Async.queue, { api = api, fn = fn, on_done = on_done, name = name, nice = opts and opts.nice,
+        timeout = opts and opts.timeout })
     pump()
 end
 

@@ -2,7 +2,7 @@
 
 A trimmed KOReader for legacy Kindles (Kindle 2, DX, Kindle Keyboard / K3)
 that reads books, pulls them from a [Grimmory](https://grimmory.org) server
-and keeps reading position and bookmarks in sync with it. ZenOS is the
+and keeps reading position, bookmarks, highlights and notes in sync with it. ZenOS is the
 interface. Releases and updates: <https://github.com/9retirement6irk/GZreader>.
 
 Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION`.
@@ -15,7 +15,7 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `grimmory.koplugin` | GZreader itself: QR sign-in, library browser, downloads, progress + bookmark sync, Reading menu, read aloud, updates. |
+| `grimmory.koplugin` | GZreader itself: QR sign-in, library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
 
@@ -107,6 +107,16 @@ series with only audiobooks don't appear, and the lists open instantly.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
 
+Saved lists (`grimmory_listcache.lua`): the first page of every list fetched
+(Continue reading, Recently added, All books, a library, shelf, author or
+series, the library and shelf lists, Audiobooks) is kept on the Kindle, per
+server and account (`cache/grimmory-lists`, newest 60). The Grimmory tab
+opens at once, without waiting for Wi‑Fi; a list with a saved copy appears
+straight away (its title ends in "· saved"), Wi‑Fi comes up quietly in the
+background, and the fresh list replaces it in place (same page) when it
+arrives, unless you've moved on. With no Wi‑Fi the saved copies are what you
+get. "Load more" and Search always ask Grimmory.
+
 ## Subtitles
 
 Grimmory's subtitle is added to the title ("Diary of a Wimpy Kid: Old
@@ -175,6 +185,10 @@ KOReader-compatible endpoint.
   back asks. Offline updates are queued and sent when Wi‑Fi returns.
   Sync jumps are not added to the Back history.
 - Reading sessions (30 s or longer) go to Grimmory's reading statistics.
+  A session whose reply never came back (timeout, dropped connection) may
+  have been saved anyway; before sending it again, GZreader looks in the
+  book's session history on Grimmory for one with the same start time and
+  length, and doesn't send it twice.
 
 ## Bookmark sync
 
@@ -183,8 +197,48 @@ other devices), both ways, including deletions. EPUB bookmarks are converted
 between KOReader's XPointers and Grimmory's EPUB CFIs using the book's own
 XHTML (paragraph precision); PDF/comic bookmarks use the page number.
 Bookmarks made offline are sent later. Synced on open and with "Sync with
-Grimmory now". Highlights and notes are not synced. Switch: Grimmory menu →
-Sync bookmarks.
+Grimmory now". Switch: Grimmory menu → Sync bookmarks.
+
+crengine makes a DocFragment for every spine item, image and SVG pages
+included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
+spine item. Until 1.0.29 GZreader counted only XHTML items; books with
+picture pages in the spine then fell back to percentages.
+
+## Highlight and note sync
+
+EPUB highlights and notes are kept the same on the Kindle and in Grimmory's
+web reader (and other devices), both ways: new ones, colour and style
+changes, notes, deletions. The conversion and three-way merge are vendored
+from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader-Client)
+(MIT; `grimmory_cfi.lua`, `grimmory_annosync.lua`, `grimmory_slaxml.lua`, see
+`plugins/grimmory.koplugin/THIRD_PARTY_NOTICES.md`); the orchestration is
+`grimmory_annotations.lua`.
+
+- A highlight is two crengine XPointers in KOReader and an EPUB CFI range with
+  UTF-16 offsets in Grimmory (`epubcfi(/6/2[c1]!/4/6,/2/1:7,/3:4)`), converted
+  with the book's own XHTML. Checked against the Kindle 3's crengine: every
+  word range of a test book (nested inline tags, accents, an emoji, a `<br/>`,
+  a picture page in the spine, `%20` and `../` in hrefs) converts to a CFI and
+  back to the same text.
+- Each pass compares the Kindle's highlights, Grimmory's, and what both had
+  after the last clean pass (kept per book). A change on one side is copied
+  to the other. A highlight changed on both sides since then is a conflict:
+  each side keeps its own until they agree. Grimmory can't move a highlight's
+  range, so a moved range is not overwritten either.
+- When the reply to a new highlight is lost, the next pass finds it on
+  Grimmory by its range and links it, so it isn't made twice (a repeat send
+  gets 409 "already exists", which counts as sent).
+- Colours: yellow, green, cyan, pink, orange, red, purple, blue, gray, white ⇄
+  Grimmory's hex colours; styles: highlight, underline, strikeout, squiggly.
+- Runs a few seconds after a Grimmory EPUB opens, a few seconds after you add,
+  change or delete a highlight or note (when Wi‑Fi is on), with "Sync with
+  Grimmory now", and when the book closes with changes still waiting.
+- The chapter parsing, conversions and requests run in one low-priority
+  background process; only the merge into the open book happens on screen.
+  Highlights already linked keep their conversion, so only new ones parse
+  their chapters, and chapters are parsed once per pass.
+- Page bookmarks stay with bookmark sync. Switch: Grimmory menu → Sync
+  highlights and notes.
 
 ## Read aloud (Kindle 3 text-to-speech)
 
@@ -277,10 +331,10 @@ download or its queue, the library index, a QR screen, an update download).
 | When | Wi-Fi |
 | --- | --- |
 | Browsing Grimmory, downloading, connecting, sending the log, checking for / installing updates | turned on ("Connecting to Wi-Fi…") |
-| A Grimmory book opens | turned on quietly: pull the position, send queued changes, sync bookmarks |
-| A book closes with unsent changes | turned on quietly to send them |
+| A Grimmory book opens | turned on quietly: pull the position, send queued changes, sync bookmarks, highlights and notes |
+| A book closes with unsent changes (position, session, highlights) | turned on quietly to send them |
 | Wake after 15 min or more with a book open | turned on quietly to pull the position |
-| Page turns, bookmarks, sleep | not turned on: changes wait for the next sync |
+| Page turns, bookmarks, highlights, sleep | not turned on: changes wait for the next sync |
 | Daily update check, library index refresh | only if Wi-Fi is already on |
 
 Wi-Fi you turned on yourself is never turned off. Going to sleep turns off

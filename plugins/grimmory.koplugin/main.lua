@@ -32,7 +32,8 @@ local Api = require("grimmory_api")
 local Sync = require("grimmory_sync")
 -- Loaded on first use (pairing, browsing, downloading, read aloud), not at start.
 local LAZY = { Browser = "grimmory_browser", PairPage = "grimmory_pairpage", PairScreen = "grimmory_pairscreen",
-    PairServer = "grimmory_pairserver", Download = "grimmory_download", TTS = "grimmory_tts" }
+    PairServer = "grimmory_pairserver", Download = "grimmory_download", TTS = "grimmory_tts",
+    Annotations = "grimmory_annotations" }
 local Mod = setmetatable({}, { __index = function(t, k)
     local v = require(LAZY[k])
     rawset(t, k, v)
@@ -258,6 +259,16 @@ function Grimmory:menuItems()
             callback = function()
                 self.store.bookmark_sync_disabled = (self.store.bookmark_sync_disabled ~= true) or nil
                 self:save()
+            end,
+        },
+        {
+            text = _("Sync highlights and notes"),
+            help_text = _("Keep highlights and notes in EPUBs the same here and in Grimmory (its web reader and other devices). A highlight changed in both places since the last sync is left as it is in each."),
+            checked_func = function() return self.store.annotation_sync_disabled ~= true end,
+            callback = function()
+                self.store.annotation_sync_disabled = (self.store.annotation_sync_disabled ~= true) or nil
+                self:save()
+                if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
         {
@@ -781,7 +792,13 @@ function Grimmory:flushPending()
     self.flushing = true
     local progress, sessions = {}, {}
     for book_id, body in pairs(pending.progress) do progress[book_id] = body end
-    for i, body in ipairs(pending.sessions) do sessions[i] = body end
+    for i, body in ipairs(pending.sessions) do
+        sessions[i] = body
+        -- remembered before sending: if this attempt's reply is lost, the
+        -- next one first looks in Grimmory's history instead of re-posting
+        body.gz_tries = (body.gz_tries or 0) + 1
+    end
+    if #sessions > 0 then self:save() end
     require("grimmory_async").run(self.api, function(api)
         local sent, dropped, n_sessions = {}, {}, 0
         for book_id, body in pairs(progress) do
@@ -791,7 +808,14 @@ function Grimmory:flushPending()
             else break end -- still offline; try again later
         end
         for _i, body in ipairs(sessions) do
-            local ok, _, code = api:postSession(body)
+            local ok, code
+            if (body.gz_tries or 0) > 1 and api:hasSession(body) then
+                ok = true -- already saved by an earlier attempt whose reply was lost
+                require("grimmory_log").info("reading session already in Grimmory, not sent again", body.bookId, body.startTime)
+            else
+                local res = { api:postSession(body) }
+                ok, code = res[1], res[3]
+            end
             if ok or code == 400 or code == 404 then n_sessions = n_sessions + 1 else break end
         end
         return { sent = sent, dropped = dropped, sessions = n_sessions }
@@ -864,6 +888,7 @@ end
 
 function Grimmory:onAnnotationsModified(items)
     if self.bookmarks then self.bookmarks:onAnnotationsModified(items) end
+    if self.annotations then self.annotations:onAnnotationsModified(items) end
 end
 
 function Grimmory:showTtsSettings()
@@ -924,6 +949,11 @@ function Grimmory:onReaderReady()
     UIManager:scheduleIn(4, function()
         if self.bookmarks and self.sync and self.ui.document then pcall(self.bookmarks.reconcile, self.bookmarks) end
     end)
+    local anno = Mod.Annotations:new(self.sync)
+    self.annotations = anno
+    UIManager:scheduleIn(6, function()
+        if self.annotations == anno then pcall(anno.run, anno) end
+    end)
     if self:syncEnabled() and self.api:isPaired() and not Net.connected() then
         -- Wi-Fi only when needed: bring it up quietly to sync this book
         Net.run(function() self:syncOpenBook() end, { quiet = true, reason = "sync on open" })
@@ -936,6 +966,7 @@ function Grimmory:syncOpenBook()
     self:flushPending()
     self.sync:pull(false)
     if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+    if self.annotations then pcall(self.annotations.run, self.annotations) end
 end
 
 function Grimmory:hasPending()
@@ -965,6 +996,7 @@ function Grimmory:onGrimmorySyncNow()
         self.sync:push(true)
         self.sync:pull(true)
         if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+        if self.annotations then pcall(self.annotations.run, self.annotations) end
     end, { reason = "sync now" })
     return true
 end
@@ -1012,7 +1044,7 @@ function Grimmory:audiobookItems()
         enabled_func = function() return self.api:isPaired() end,
         callback = function(touchmenu)
             if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-            Net.run(function() local b = Mod.Browser:new(self); b:show(); b:openAudiobooks() end, { reason = "audiobooks" })
+            local b = Mod.Browser:new(self); b:show(); b:openAudiobooks()
         end,
         separator = true,
     }
@@ -1062,6 +1094,10 @@ end
 function Grimmory:onCloseDocument()
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
+    if self.annotations then
+        pcall(self.annotations.onClose, self.annotations)
+        self.annotations = nil
+    end
     if self.sync then
         self.sync:onLeave()
         self.sync = nil
@@ -1086,7 +1122,9 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
         })
         return true
     end
-    Net.run(function() Mod.Browser:new(self):show() end, { reason = "Grimmory library" })
+    -- open at once: lists come from their saved copies while Wi-Fi connects
+    Mod.Browser:new(self):show()
+    if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true
 end
 

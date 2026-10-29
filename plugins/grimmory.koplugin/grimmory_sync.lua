@@ -94,7 +94,9 @@ Sync.hrefsMatch = hrefsMatch
 
 --- Parse the EPUB's spine from inside the book (crengine reads zip members).
 --- Returns { all = {href,...}, frag = {href,...} } where `frag[i]` is the
---- source file of crengine's DocFragment[i] (XHTML spine items only), or nil.
+--- source file of crengine's DocFragment[i], or nil. crengine makes a
+--- fragment for every spine item (image and SVG pages too; checked on the
+--- Kindle 3's crengine), so the two lists are the same.
 function Sync.parseSpine(read)
     local container = read("META-INF/container.xml")
     local opf_path = container and container:match("<[%w:]*rootfile[^>]-full%-path%s*=%s*[\"']([^\"']+)[\"']")
@@ -116,7 +118,7 @@ function Sync.parseSpine(read)
         local item = idref and manifest[idref]
         if item then
             all[#all + 1] = item.href
-            if item.media:match("html") then frag[#frag + 1] = item.href end
+            frag[#frag + 1] = item.href
         end
     end
     if #frag == 0 then return nil end
@@ -135,7 +137,7 @@ function Sync:spine()
     if not doc:isXPointerInDocument(T("/body/DocFragment[%1]", n))
             or doc:isXPointerInDocument(T("/body/DocFragment[%1]", n + 1)) then
         logger.warn("Grimmory sync: spine/fragment mismatch, using percentages only")
-        Log.warn("sync: spine has", n, "xhtml items but crengine fragments differ; percentages only")
+        Log.warn("sync: spine has", n, "items but crengine fragments differ; percentages only")
         return nil
     end
     self._spine = spine
@@ -399,7 +401,13 @@ function Sync:endSession()
         endProgress = end_pct,
         progressDelta = round1(end_pct - s.start_pct),
     }
-    if self:canTalk() and self.api:postSession(body) then return end
+    if self:canTalk() then
+        local ok, perr, code = self.api:postSession(body)
+        if ok then return end
+        Log.info("reading session queued:", tostring(perr))
+        -- no HTTP answer (timeout, dropped): Grimmory may have saved it anyway
+        if not code then body.gz_tries = 1 end
+    end
     self.plugin:queue("session", nil, body)
 end
 

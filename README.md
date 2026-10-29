@@ -7,7 +7,7 @@
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for the Kindle Keyboard</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle 3: download books, read them,
-  and keep your place and bookmarks in sync.
+  and keep your place, bookmarks and highlights in sync.
 </p>
 
 <p align="center">
@@ -40,6 +40,11 @@ a built-in connection to a self-hosted **Grimmory** book server.
   KOReader sync endpoint. Pick up on the Kindle where you left off on the web, and the
   other way round.
 - **Bookmarks** sync both ways, deletions included.
+- **Highlights and notes** in EPUBs sync both ways with Grimmory's web reader: new
+  ones, colours, notes and deletions (conversion and merge from
+  [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader-Client), MIT).
+- **The Grimmory tab opens instantly**, even offline or while Wi‑Fi connects: lists
+  show their saved copy first and refresh in the background.
 - **Shelves**, and **auto-download a shelf**: put books on a Grimmory shelf and
   they land on the Kindle by themselves.
 - Syncing happens in the background: the page never waits for the network.
@@ -128,7 +133,7 @@ the same version and overlays GZreader's Lua code, plugins and dictionary.
 
 | Part | Role |
 | --- | --- |
-| [`plugins/grimmory.koplugin`](plugins/grimmory.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress and bookmark sync, Reading menu, read aloud, updater |
+| [`plugins/grimmory.koplugin`](plugins/grimmory.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updater |
 | [`plugins/zenos.koplugin`](plugins/zenos.koplugin) | ZenOS 4.2.0 interface, adapted for GZreader and the Kindle keyboard |
 | `frontend/`, `reader.lua` | KOReader v2026.07.1 with GZreader changes (branding, keyboard, sleep screen, speed fixes) |
 | [`tools/grimmory`](tools/grimmory) | Packaging, dictionary builder, release script |

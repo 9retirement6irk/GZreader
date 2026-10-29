@@ -450,11 +450,70 @@ function Api:deleteBookmark(id)
     return false, err or ("http_" .. tostring(code)), code
 end
 
+---------------------------------------------------------------- highlights and notes
+
+--- Grimmory's highlights and notes for a book (its web reader's annotations).
+function Api:listAnnotations(book_id)
+    local code, data, err = self:call("GET", "/api/v1/annotations/book/" .. tostring(book_id),
+        { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: bookId, cfi, text, color, style, note, chapterTitle. 409 = that range already exists.
+function Api:createAnnotation(body)
+    local code, data, err = self:call("POST", "/api/v1/annotations", { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: color, style, note (the range and text can't change).
+function Api:updateAnnotation(id, body)
+    local code, data, err = self:call("PUT", "/api/v1/annotations/" .. tostring(id), { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+function Api:deleteAnnotation(id)
+    local code, _, err = self:call("DELETE", "/api/v1/annotations/" .. tostring(id), { timeouts = { 8, 15 } })
+    if code == 204 or code == 200 or code == 404 then return true, nil, code end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
 --- POST /api/v1/reading-sessions (feeds Grimmory's reading statistics).
 function Api:postSession(body)
-    local code, _, err = self:call("POST", "/api/v1/reading-sessions", { body = body, timeouts = { 8, 15 } })
+    local clean = {}
+    for k, v in pairs(body) do if not tostring(k):match("^gz_") then clean[k] = v end end
+    local code, _, err = self:call("POST", "/api/v1/reading-sessions", { body = clean, timeouts = { 8, 15 } })
     if code and code >= 200 and code < 300 then return true end
     return false, err or ("http_" .. tostring(code)), code
+end
+
+local function isoKey(t)
+    -- "2026-10-29T13:00:00Z", "2026-10-29T13:00:00.123Z", "...+00:00" -> "2026-10-29T13:00:00"
+    return type(t) == "string" and t:match("^(%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d)") or nil
+end
+Api.isoKey = isoKey
+
+--- Is this reading session already in Grimmory's history? (A POST whose
+--- reply was lost may still have been saved.) true / false / nil (unknown).
+function Api:hasSession(body)
+    local want = isoKey(body.startTime)
+    if not want or not body.bookId then return nil end
+    for page = 0, 2 do
+        local code, data = self:call("GET", "/api/v1/reading-sessions/book/" .. tostring(body.bookId)
+            .. "?page=" .. page .. "&size=100", { timeouts = { 8, 15 } })
+        if code ~= 200 or type(data) ~= "table" then return nil end
+        local items = type(data.content) == "table" and data.content or data
+        for _i, r in ipairs(items) do
+            if type(r) == "table" and isoKey(r.startTime) == want
+                    and tonumber(r.durationSeconds) == tonumber(body.durationSeconds) then
+                return true
+            end
+        end
+        if #items < 100 then break end
+    end
+    return false
 end
 
 ---------------------------------------------------------------- single sign-on (OIDC)

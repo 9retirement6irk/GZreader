@@ -85,6 +85,7 @@ function Browser:show()
     Net.hold(net_key)
     local orig_close = self.menu.onCloseWidget
     self.menu.onCloseWidget = function(m, ...)
+        self.closed = true
         Net.release(net_key)
         if orig_close then return orig_close(m, ...) end
     end
@@ -127,6 +128,7 @@ function Browser:openAudiobooks()
     local Audiobook = require("grimmory_audiobook")
     self:openList{
         title = _("Audiobooks"),
+        key = "audiobooks",
         fetch = function(page)
             return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
         end,
@@ -158,15 +160,69 @@ function Browser:replace(title, items)
 end
 
 function Browser:openSimple(endpoint, title)
-    local msg = busy(_("Loading…"))
-    local list, err = self.api:simpleList(endpoint, 30)
-    UIManager:close(msg)
-    if not list then return self.plugin:showError(err) end
-    local items = {}
-    for _, book in ipairs(list) do
-        if type(book) == "table" and isReadable(book) then items[#items + 1] = self:bookItem(book) end
+    self:openCached{
+        key = "simple:" .. endpoint,
+        title = title,
+        fetch = function() return self.api:simpleList(endpoint, 30) end,
+        build = function(list)
+            local items = {}
+            for _, book in ipairs(type(list) == "table" and list or {}) do
+                if type(book) == "table" and isReadable(book) then items[#items + 1] = self:bookItem(book) end
+            end
+            return items
+        end,
+    }
+end
+
+--- Show a list from the saved copy at once (if there is one), and fetch a
+--- fresh one from Grimmory in the background to swap in.
+--- opts = { key, title, fetch = function() -> data, err end, build = function(data) -> items }
+--- Without a key nothing is saved (searches).
+function Browser:openCached(opts)
+    local Cache = require("grimmory_listcache")
+    local Net = require("grimmory_net")
+    local Async = require("grimmory_async")
+    if opts.key then -- per server and account
+        local store = self.plugin.store or {}
+        opts.key = tostring(store.server) .. "|" .. tostring(store.username) .. "|" .. opts.key
     end
-    self:push(title, items)
+    local cached = opts.key and Cache.get(opts.key)
+    local shown -- the item table on screen for this list
+    if cached ~= nil then
+        local ok, items = pcall(opts.build, cached)
+        if ok and items then
+            if #items == 0 then items = { { text = _("Nothing here yet."), select_enabled = false } } end
+            items.gz_key = opts.key
+            self:push(opts.title .. " · " .. _("saved"), items)
+            shown = items
+        end
+    end
+    local function apply(data, err)
+        if data == nil then
+            if not shown then return self.plugin:showError(err) end
+            return -- keep the saved list
+        end
+        if opts.key then Cache.put(opts.key, data) end
+        local items = opts.build(data)
+        if not shown then return self:push(opts.title, items) end
+        -- still looking at the saved copy? swap in the fresh one, same page
+        local menu = self.menu
+        if self.closed or not menu or menu.item_table ~= shown then return end
+        if #items == 0 then items = { { text = _("Nothing here yet."), select_enabled = false } } end
+        local per_page = menu.perpage or PAGE_SIZE
+        local first = ((menu.page or 1) - 1) * per_page + 1
+        menu:switchItemTable(opts.title, items, math.min(first, #items))
+    end
+    local function fetch()
+        local msg = not shown and busy(_("Loading…")) or nil
+        Async.run(self.api, function() return opts.fetch() end, function(data, err)
+            if msg then UIManager:close(msg) end
+            apply(data, err)
+        end, opts.key or "list")
+    end
+    if Net.connected() then return fetch() end
+    -- Wi-Fi off or still connecting: the saved copy now, fresh one once online
+    Net.run(fetch, { quiet = shown ~= nil, reason = "Grimmory library" })
 end
 
 ---------------------------------------------------------------- paged lists
@@ -192,13 +248,15 @@ function Browser:listItems(spec, page, data, prior)
     return items
 end
 
---- spec = { title, fetch = function(page) -> data, err end, to_item, header }
+--- spec = { title, fetch = function(page) -> data, err end, to_item, header, key }
+--- With a key, the first page is saved and shown at once next time.
 function Browser:openList(spec)
-    local msg = busy(_("Loading…"))
-    local data, err = spec.fetch(0)
-    UIManager:close(msg)
-    if not data then return self.plugin:showError(err) end
-    self:push(spec.title, self:listItems(spec, 0, data, {}))
+    self:openCached{
+        key = spec.key,
+        title = spec.title,
+        fetch = function() return spec.fetch(0) end,
+        build = function(data) return self:listItems(spec, 0, data, {}) end,
+    }
 end
 
 function Browser:loadMore(spec, page, existing)
@@ -219,6 +277,7 @@ end
 function Browser:openPaged(title, params, with_series_number)
     self:openList{
         title = title,
+        key = require("grimmory_listcache").key("paged", params),
         fetch = function(page)
             local p = { page = page, size = PAGE_SIZE, fileType = self.api.READABLE_TYPES }
             for k, v in pairs(params) do p[k] = v end
@@ -258,56 +317,62 @@ local function refreshItem(self, reopen)
 end
 
 function Browser:openLibraries()
-    local msg = busy(_("Loading…"))
-    local libs, err = self.api:listLibraries()
-    UIManager:close(msg)
-    if not libs then return self.plugin:showError(err) end
-    Index.get(self.plugin, function(index)
-        local counts = index and index.libraries or {}
-        local items = {}
-        for _, lib in ipairs(libs) do
-            if type(lib) == "table" and lib.id then
-                local n = counts[tostring(lib.id)]
-                if not index or (n and n > 0) then -- hide audiobook-only libraries
-                    local name = type(lib.name) == "string" and lib.name or T(_("Library %1"), lib.id)
-                    items[#items + 1] = {
-                        text = name,
-                        sort_key = name:lower(),
-                        mandatory = countText(n),
-                        callback = function()
-                            self:openPaged(name, { libraryId = lib.id, sort = "title", dir = "asc" })
-                        end,
-                    }
+    self:openCached{
+        key = "libraries",
+        title = _("Libraries"),
+        fetch = function() return self.api:listLibraries() end,
+        build = function(libs)
+            -- book counts from the saved library index (no network here)
+            local index = Index.load(self.plugin.store)
+            local counts = index and index.libraries or {}
+            local items = {}
+            for _, lib in ipairs(type(libs) == "table" and libs or {}) do
+                if type(lib) == "table" and lib.id then
+                    local n = counts[tostring(lib.id)]
+                    if not index or (n and n > 0) then -- hide audiobook-only libraries
+                        local name = type(lib.name) == "string" and lib.name or T(_("Library %1"), lib.id)
+                        items[#items + 1] = {
+                            text = name,
+                            sort_key = name:lower(),
+                            mandatory = countText(n),
+                            callback = function()
+                                self:openPaged(name, { libraryId = lib.id, sort = "title", dir = "asc" })
+                            end,
+                        }
+                    end
                 end
             end
-        end
-        self:push(_("Libraries"), sortedByName(items))
-    end)
+            return sortedByName(items)
+        end,
+    }
 end
 
 --- Shelves and magic shelves from Grimmory.
 function Browser:openShelves()
-    local msg = busy(_("Loading…"))
-    local shelves, err = self.api:listShelves()
-    UIManager:close(msg)
-    if not shelves then return self.plugin:showError(err) end
-    local items = {}
-    for _i, sh in ipairs(shelves) do
-        if sh.id then
-            local name = type(sh.name) == "string" and sh.name or T(_("Shelf %1"), sh.id)
-            items[#items + 1] = {
-                text = name,
-                sort_key = (sh.magic and "1" or "0") .. name:lower(),
-                mandatory = sh.magic and _("smart shelf") or countText(sh.bookCount),
-                callback = function()
-                    local params = { sort = "title", dir = "asc" }
-                    if sh.magic then params.magicShelfId = sh.id else params.shelfId = sh.id end
-                    self:openPaged(name, params)
-                end,
-            }
-        end
-    end
-    self:push(_("Shelves"), sortedByName(items))
+    self:openCached{
+        key = "shelves",
+        title = _("Shelves"),
+        fetch = function() return self.api:listShelves() end,
+        build = function(shelves)
+            local items = {}
+            for _i, sh in ipairs(type(shelves) == "table" and shelves or {}) do
+                if type(sh) == "table" and sh.id then
+                    local name = type(sh.name) == "string" and sh.name or T(_("Shelf %1"), sh.id)
+                    items[#items + 1] = {
+                        text = name,
+                        sort_key = (sh.magic and "1" or "0") .. name:lower(),
+                        mandatory = sh.magic and _("smart shelf") or countText(sh.bookCount),
+                        callback = function()
+                            local params = { sort = "title", dir = "asc" }
+                            if sh.magic then params.magicShelfId = sh.id else params.shelfId = sh.id end
+                            self:openPaged(name, params)
+                        end,
+                    }
+                end
+            end
+            return sortedByName(items)
+        end,
+    }
 end
 
 function Browser:openAuthors(search, replace)

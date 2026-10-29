@@ -8,8 +8,8 @@ EPUBs this converts between the two using the book's own XHTML (read from the
 EPUB): /body/DocFragment[N]/body/div[2]/p[5] <-> epubcfi(/6/2s!/4/4/10).
 Precision is the paragraph (element), which is what a page bookmark needs.
 
-Highlights and notes are not synced (Grimmory's annotation model is
-different); only bookmarks.
+Highlights and notes are synced separately (grimmory_annotations.lua),
+with character precision.
 
 State kept per book in the download entry:
   entry.bookmarks = { [tostring(xp_or_page)] = grimmory_id }   -- synced pairs
