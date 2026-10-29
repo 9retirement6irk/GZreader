@@ -216,7 +216,13 @@ end
 function Grimmory:exportLog()
     local lib = self:libraryDir()
     local dest_dir = lib:match("^(.+)/[^/]+$") or lib -- next to the library, not in it
+    -- On a Kindle, include a read-only audio / text-to-speech survey.
+    Log.probe_device = Device:isKindle()
+    local busy = InfoMessage:new{ text = _("Saving diagnostic log…"), timeout = 0 }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
     local dest, err = Log.exportTo(dest_dir, DataStorage:getDataDir() .. "/crash.log")
+    UIManager:close(busy)
     if dest then
         Log.info("log exported to", dest)
         UIManager:show(InfoMessage:new{
