@@ -260,6 +260,18 @@ function TTS.cancel()
     intProp("com.lab126.tts", "stop", 1)
 end
 
+--- Like TTS.cancel, but waits until ttsd has it (so a request sent right
+--- after can't be cancelled by it).
+function TTS.cancelNow()
+    local h = openLipc()
+    if h then
+        pcall(h.set_int_property, h, "com.lab126.ttsd", "cancelSnippetPlayback", 1)
+        pcall(h.close, h)
+        return
+    end
+    run("lipc-set-prop -i com.lab126.ttsd cancelSnippetPlayback 1 >/dev/null 2>&1")
+end
+
 --- Remove leftover result files of background calls.
 function TTS.cleanup()
     run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash >/dev/null 2>&1")
@@ -542,8 +554,13 @@ end
 function Reader:restartQueue()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     self.queue = {}
+    self.outbox = {}
     self.no_more = false
-    self.fresh = true -- the first snippet replaces whatever ttsd is still saying
+    self.generation = (self.generation or 0) + 1
+    -- Everything goes through ttsd's queue (enqueueSnippet). playSnippetNow
+    -- flushes that queue, and requests sent close together could reach ttsd
+    -- out of order, which dropped whole sentences (seen on a Kindle 3).
+    TTS.cancelNow()
     self:fill()
     self:playHead()
 end
@@ -553,39 +570,49 @@ function Reader:fill()
     while self.active and not self.no_more and #self.queue < Reader.AHEAD do
         local text, xp0, xp1 = self:sentenceAt(self.next_xp)
         if not text then self.no_more = true; break end
-        local handle, id = TTS.say(text, nil, { enqueue = not self.fresh })
-        self.fresh = false
-        if not handle then
-            Log.warn("tts say failed:", id)
-            self:stop()
-            UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), id) })
-            return
-        end
-        self:watchResult(handle)
-        self.queue[#self.queue + 1] = { id = id, text = text, xp0 = xp0, xp1 = xp1 }
+        local item = { text = text, xp0 = xp0, xp1 = xp1 }
+        self.queue[#self.queue + 1] = item
+        self.outbox[#self.outbox + 1] = item
         self.next_xp = self.ui.document:getNextVisibleWordStart(xp1)
     end
+    self:sendNext()
     if self.active and #self.queue == 0 and self.no_more then
         self:stop()
         UIManager:show(Notification:new{ text = _("End of book.") })
     end
 end
 
---- Shell backend: a rejection (without waiting) stops reading with its message.
-function Reader:watchResult(handle)
-    if type(handle) ~= "string" then return end
-    local tries = 0
+--- Send queued sentences to ttsd one at a time, each only after ttsd has
+--- answered the previous request, so they arrive in order.
+function Reader:sendNext()
+    if not self.active or self.sending or #self.outbox == 0 then return end
+    local item = table.remove(self.outbox, 1)
+    local handle, id = TTS.say(item.text, nil, { enqueue = true })
+    if not handle then
+        Log.warn("tts say failed:", id)
+        self:stop()
+        UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), id) })
+        return
+    end
+    item.id = id
+    if type(handle) ~= "string" then return self:sendNext() end -- answered already (lipc library)
+    self.sending = handle
+    local gen, tries = self.generation, 0
     local function check()
+        if not self.active or gen ~= self.generation then self.sending = nil; return end
         tries = tries + 1
         local r, detail = TTS.result(handle)
-        if r == nil and tries < 4 then return UIManager:scheduleIn(1.5, check) end
-        if r == false and self.active then
+        if r == nil and tries < 40 then return UIManager:scheduleIn(0.25, check) end
+        self.sending = nil
+        if r == false then
             Log.warn("tts rejected:", detail)
             self:stop()
             UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), detail) })
+            return
         end
+        self:sendNext()
     end
-    UIManager:scheduleIn(1.5, check)
+    UIManager:scheduleIn(0.25, check)
 end
 
 --- Show the sentence at the head of the queue (the one being spoken).
@@ -682,7 +709,6 @@ end
 --- A page turned by the reader (not by us): continue from the new page.
 function Reader:onManualPageTurn()
     if not self.active or self.turning then return end
-    TTS.cancel()
     self.next_xp = self.ui.document:getXPointer()
     UIManager:scheduleIn(0.3, function()
         if self.active then self:restartQueue() end

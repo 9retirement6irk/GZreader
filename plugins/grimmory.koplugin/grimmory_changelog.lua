@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.11",
+        changes = {
+            "Read aloud: fixed skipped sections and a highlight that didn't match the voice. Sentences now go to the Kindle voice one request at a time, in order, all through its queue (1.0.8 sent two at once; the second could arrive first and was then thrown away).",
+        },
+    },
+    {
         version = "1.0.10",
         changes = {
             "Time zone: Settings → General → Time zone (the Kindle 3 has none and keeps its clock in UTC, so clocks showed UTC).",
