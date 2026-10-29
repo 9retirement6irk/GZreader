@@ -56,6 +56,8 @@ function HomeMenu.items(plugin)
         { text = _("Exit to the Kindle"), callback = function() dispatch("exit") end },
     }
     local list = {}
+    local Tasks = require("grimmory_tasks")
+    if Tasks.count() > 0 then list[1] = Tasks.menuItem() end -- first while something downloads
     for i = 1, table.maxn(items) do if items[i] then list[#list + 1] = items[i] end end -- drop hidden entries
     return list
 end

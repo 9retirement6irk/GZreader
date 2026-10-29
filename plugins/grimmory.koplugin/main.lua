@@ -81,6 +81,8 @@ function Grimmory:init()
         pcall(self.useLibraryAsHome, self)
     end
     if not self.ui.document then
+        -- download status in ZenOS's title bar (after every plugin has loaded)
+        UIManager:nextTick(function() pcall(function() require("grimmory_tasks").installStatusBar() end) end)
         -- Pre-size downloaded books' covers in the background (fast Home/library)
         pcall(function()
             local Warm = require("grimmory_coverwarm")
@@ -178,6 +180,16 @@ end
 function Grimmory:menuItems()
     local paired = self.api:isPaired()
     local items = {
+        {
+            text_func = function()
+                local n = require("grimmory_tasks").count()
+                return n > 0 and T(_("Downloads (%1)"), n) or _("Downloads")
+            end,
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                require("grimmory_tasks").show()
+            end,
+        },
         {
             text_func = function()
                 if self.api:isPaired() then

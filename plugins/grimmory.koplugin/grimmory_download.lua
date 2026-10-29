@@ -44,6 +44,7 @@ function Download.isQueued(book_id) return queuedIds()[tostring(book_id)] == tru
 
 local function startNext()
     if Download.active then return end
+    pcall(function() require("grimmory_tasks").changed() end)
     local q = table.remove(Download.queue, 1)
     if not q then
         Download.background = false
@@ -67,6 +68,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
     if Download.active then
         table.insert(Download.queue, { plugin = plugin, book = book, dest_path = dest_path, on_done = on_done })
         Log.info("download queued", "book=" .. tostring(book.id), "#" .. #Download.queue)
+        pcall(function() require("grimmory_tasks").changed() end)
         UIManager:show(InfoMessage:new{
             text = T(_("Added to the download queue (%1 waiting). It starts when the current download finishes."), #Download.queue),
             timeout = 3 })
@@ -110,11 +112,13 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
 
     local job = {
         pid = pid, read_fd = read_fd, started = os.time(), book_id = tostring(book.id),
+        title = title, expected = expected,
         last_size = 0, last_change = os.time(),
         watching = not from_queue and not Download.background,
         show_dialog = not Download.background,
     }
     Download.active = job
+    pcall(function() require("grimmory_tasks").changed() end)
     Awake.hold(job) -- no sleeping (screensaver or autosuspend) mid-download
     require("grimmory_net").hold("download") -- keep Wi-Fi up until the queue is done
 
@@ -200,20 +204,25 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
         UIManager:show(options)
     end
 
-    local waiting = #Download.queue
-    dialog = job.show_dialog and ProgressbarDialog:new{
-        title = T(_("Downloading “%1”"), title) .. (waiting > 0 and T(_(" (+%1 queued)"), waiting) or ""),
-        subtitle = _("Press any key for options. The Kindle stays awake until it's done."),
-        progress_max = expected,
-        refresh_time_seconds = 2,
-    }
-    if dialog then
+    --- (Re)open the progress dialog (also from the Downloads screen).
+    local function openDialog()
+        if dialog or job.finished then return end
+        local waiting = #Download.queue
+        dialog = ProgressbarDialog:new{
+            title = T(_("Downloading “%1”"), title) .. (waiting > 0 and T(_(" (+%1 queued)"), waiting) or ""),
+            subtitle = _("Press any key for options. The Kindle stays awake until it's done."),
+            progress_max = expected,
+            refresh_time_seconds = 2,
+        }
         -- any key / tap opens our options instead of closing the dialog
         dialog.onDismiss = function() showOptions() return true end
         dialog.onAnyKeyPressed = dialog.onDismiss
         dialog.onTapClose = dialog.onDismiss
         dialog:show()
+        dialog:reportProgress(expected and math.min(job.last_size, expected) or job.last_size)
     end
+    job.open_dialog = openDialog
+    if job.show_dialog then openDialog() end
 
     job.poll = function()
         if job.finished then return end
@@ -242,6 +251,18 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
         UIManager:scheduleIn(POLL_SECONDS, job.poll)
     end
     UIManager:scheduleIn(POLL_SECONDS, job.poll)
+end
+
+--- Take a waiting book out of the queue.
+function Download.unqueue(book_id)
+    for i, q in ipairs(Download.queue) do
+        if tostring(q.book.id) == tostring(book_id) then
+            table.remove(Download.queue, i)
+            Log.info("download unqueued", "book=" .. tostring(book_id))
+            pcall(function() require("grimmory_tasks").changed() end)
+            return true
+        end
+    end
 end
 
 --- Stop any running download and empty the queue (e.g. on exit).

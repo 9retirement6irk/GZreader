@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.25",
+        changes = {
+            "Downloads screen: while anything downloads, “Downloads (N)” is the first entry of the GZreader menu (Menu key on Home) and is in the Reading menu; it's always in Settings → GZreader. It lists the current download with its progress, the books waiting in the queue, and audiobook downloads and preparing. Pick one to reopen its progress bar, stop it, or take it out of the queue; or empty the whole queue.",
+            "The title bar on Home and in the library shows a download icon with the current percentage and how many books are waiting (for example “42% +2”), updated every 10 seconds, and nothing when no download is running. It sits next to the clock and can be moved or removed in the status bar settings.",
+        },
+    },
+    {
         version = "1.0.24",
         changes = {
             "Choosing a book to download shows its cover from Grimmory (and its authors) in the Download question. The dialog opens at once and the cover appears a moment later; covers are kept on the Kindle, so next time it's there straight away.",

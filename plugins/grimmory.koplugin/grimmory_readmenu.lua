@@ -41,6 +41,8 @@ function ReadMenu.items(plugin)
     if plugin.sync then
         items[#items + 1] = { text = _("Sync with Grimmory now"), callback = function() plugin:onGrimmorySyncNow() end }
     end
+    local Tasks = require("grimmory_tasks")
+    if Tasks.count() > 0 then items[#items + 1] = Tasks.menuItem() end
     items[#items + 1] = { text = _("Look up a word"), callback = send("ShowDictionaryLookup") }
     items[#items + 1] = { text = _("Page browser"), callback = send("ShowPageBrowser") }
     items[#items + 1] = { text = _("Book information"), callback = send("ShowBookInfo") }

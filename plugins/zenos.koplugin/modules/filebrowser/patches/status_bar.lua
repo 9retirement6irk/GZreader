@@ -153,6 +153,16 @@ local function apply_status_bar()
         config.left_order   = clean_order(config.left_order, "left_order")
         config.center_order = clean_order(config.center_order, "center_order")
         config.right_order  = clean_order(config.right_order, "right_order")
+        -- GZreader: show download status (plugins/grimmory.koplugin/grimmory_tasks.lua)
+        -- next to the clock once; it's empty when nothing downloads, and can
+        -- be moved or removed in the status bar settings like any item.
+        if G_reader_settings and not G_reader_settings:isTrue("gzreader_status_dl_v1") then
+            G_reader_settings:makeTrue("gzreader_status_dl_v1")
+            if not seen["gz_downloads"] then
+                seen["gz_downloads"] = true
+                table.insert(config.left_order, "gz_downloads")
+            end
+        end
         logger.dbg("final: left_order=",
             _serializeOrder(config.left_order),
             "center_order=", _serializeOrder(config.center_order),
@@ -1519,6 +1529,7 @@ local function apply_status_bar()
         end
     end
 
+    chainHook("onGzDownloadsChanged", { "gz_downloads" }) -- GZreader: download status item
     chainHook("onNetworkConnected", { "wifi" })
     chainHook("onNetworkDisconnected", { "wifi" })
     chainHook("onNetworkStateChanged", { "wifi" })

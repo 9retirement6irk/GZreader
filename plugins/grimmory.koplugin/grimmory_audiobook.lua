@@ -213,18 +213,29 @@ function Audiobook.prepare(dir, tracks, title, on_done)
     if #todo == 0 then return on_done(true) end
     local awake_key = "audiobook-prepare-" .. dir
     Awake.hold(awake_key)
-    local dialog = ProgressbarDialog:new{
-        title = T(_("Preparing “%1” for the Kindle…"), title or ""),
-        subtitle = _("Done once per audiobook. Press any key to hide; it carries on."),
-        progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
-    }
-    dialog.dismiss_callback = function() dialog = nil end
-    dialog:show()
+    local dialog
+    local state = { kind = "prepare", title = title, total = total, done = 0 }
+    state.open_dialog = function()
+        if dialog then return end
+        dialog = ProgressbarDialog:new{
+            title = T(_("Preparing “%1” for the Kindle…"), title or ""),
+            subtitle = _("Done once per audiobook. Press any key to hide; it carries on."),
+            progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
+        }
+        dialog.dismiss_callback = function() dialog = nil end
+        dialog:show()
+        dialog:reportProgress(state.done)
+    end
+    Audiobook.active_prepare = state
+    pcall(function() require("grimmory_tasks").changed() end)
+    state.open_dialog()
     Log.info("audiobook: preparing", #todo, "file(s) for the Kindle,", total, "bytes")
     local started = os.time()
     local i, before, prog, last_change, last_text = 0, 0, nil, os.time(), nil
     local function finish(ok, err)
         Awake.release(awake_key)
+        Audiobook.active_prepare = nil
+        pcall(function() require("grimmory_tasks").changed() end)
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
         if ok then Log.info("audiobook: prepared in", (os.time() - started) .. "s")
         else Log.warn("audiobook: preparing failed:", tostring(err)) end
@@ -246,7 +257,8 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         if f then f:close() end
         if text and text ~= last_text then last_text, last_change = text, os.time() end
         local d = text and tonumber(text:match("^(%d+) %d+$"))
-        if d and dialog then dialog:reportProgress(math.min(total, before + d)) end
+        if d then state.done = math.min(total, before + d) end
+        if d and dialog then dialog:reportProgress(state.done) end
         local err = text and text:match("^error (.*)$")
         if err then return finish(false, err) end
         if text and text:match("^done") then
@@ -313,13 +325,22 @@ function Audiobook.download(plugin, summary, on_done, attempt)
     local awake_key = "audiobook-download-" .. tostring(summary.id)
     Awake.hold(awake_key)
     require("grimmory_net").hold(awake_key)
-    local dialog = ProgressbarDialog:new{
-        title = T(_("Downloading “%1”…"), book.title or ""),
-        subtitle = _("Press any key to hide; the download continues and the Kindle stays awake."),
-        progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
-    }
-    dialog.dismiss_callback = function() dialog = nil end
-    dialog:show()
+    local dialog
+    local state = { kind = "audiobook", title = book.title or summary.title, total = total, done = 0 }
+    state.open_dialog = function()
+        if dialog then return end
+        dialog = ProgressbarDialog:new{
+            title = T(_("Downloading “%1”…"), book.title or ""),
+            subtitle = _("Press any key to hide; the download continues and the Kindle stays awake."),
+            progress_max = total > 0 and total or nil, refresh_time_seconds = 2,
+        }
+        dialog.dismiss_callback = function() dialog = nil end
+        dialog:show()
+        dialog:reportProgress(state.done)
+    end
+    Audiobook.active_download = state
+    pcall(function() require("grimmory_tasks").changed() end)
+    state.open_dialog()
     local function poll()
         local have = 0
         for _i, t in ipairs(book.tracks) do
@@ -327,11 +348,14 @@ function Audiobook.download(plugin, summary, on_done, attempt)
             have = have + (lfs.attributes(p, "size") or lfs.attributes(p .. ".part", "size")
                 or (readChunks(dir, t) and (t.size or 0)) or 0)
         end
-        if dialog then dialog:reportProgress(total > 0 and math.min(have, total) or have) end
+        state.done = total > 0 and math.min(have, total) or have
+        if dialog then dialog:reportProgress(state.done) end
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         Awake.release(awake_key)
         require("grimmory_net").release(awake_key)
-        if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog) end
+        Audiobook.active_download = nil
+        pcall(function() require("grimmory_tasks").changed() end)
+        if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
             Log.warn("audiobook download failed", summary.id, res)

@@ -116,6 +116,17 @@ no subtitles, so they come from the library index (Grimmory's web book list,
 `/api/v1/books/page`) and from the book itself after a download. Titles you
 edited yourself are left alone.
 
+## Downloads screen and title bar
+
+While anything downloads, **Downloads (N)** is the first entry of the GZreader
+menu (Menu key on Home) and is in the Reading menu; it's always in Settings →
+GZreader (`grimmory_tasks.lua`). It lists the current book download, the
+queue, audiobook downloads and the audiobook preparing step: reopen a
+progress bar, stop the download, take a book out of the queue, empty the
+queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
+(added once; movable/removable in its settings): a download icon with the
+percentage and the number waiting, refreshed every 10 s while active.
+
 ## Book covers when downloading
 
 Picking a book in the Grimmory browser asks whether to download it and shows
