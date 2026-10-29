@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.28",
+        changes = {
+            "Picture books (for example Diary of a Wimpy Kid, where every page is a picture of the printed page): recognized when they open, and each page then fills the screen top to bottom, keeping its shape, with no margins and nothing cut off. Done once per book; Reading menu → “Fit pictures to the screen” turns it on or off (your previous margins come back when off).",
+        },
+    },
+    {
         version = "1.0.27",
         changes = {
             "Opening a book: the “Opening” strip and its text are about twice as big on the Kindle Keyboard.",

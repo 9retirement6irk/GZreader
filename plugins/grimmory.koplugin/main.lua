@@ -908,6 +908,7 @@ end
 function Grimmory:onReaderReady()
     if not self.ui.document then return end
     pcall(self.setupReader, self)
+    pcall(function() require("grimmory_picturebook").onOpen(self.ui) end)
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then

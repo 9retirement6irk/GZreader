@@ -38,6 +38,9 @@ function ReadMenu.items(plugin)
         }
     end
     items[#items + 1] = { text = _("Font, size and layout"), callback = send("ShowConfigMenu") }
+    if ui.document and not ui.document.info.has_pages and ui.styletweak then
+        items[#items + 1] = require("grimmory_picturebook").menuItem(ui)
+    end
     if plugin.sync then
         items[#items + 1] = { text = _("Sync with Grimmory now"), callback = function() plugin:onGrimmorySyncNow() end }
     end

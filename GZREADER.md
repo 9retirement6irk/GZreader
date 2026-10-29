@@ -250,6 +250,16 @@ fork of KOReader isn't used for it: the fork's copy of KOReader's heap gets
 duplicated page by page as its garbage collector runs, which ran the
 Kindle 3 out of memory in 1.0.21.
 
+## Picture books
+
+EPUBs whose chapter files are pictures with next to no text (scanned pages,
+e.g. Diary of a Wimpy Kid: 385 x 625 JPEG per page) are recognized on
+opening (`grimmory_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only).
+GZreader then adds a book style tweak (`img { height: 100vh; width: auto;
+max-width: 100vw }`, no margins/padding) and sets the book's page margins to
+0, keeping the old ones for when it's turned off (Reading menu → Fit
+pictures to the screen). Checked with the Kindle's own crengine.
+
 ## Sleep screen
 
 While a book is open: its cover. From Home and menus: a random picture from
