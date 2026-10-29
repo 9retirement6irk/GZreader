@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.14",
+        changes = {
+            "Night mode is switched off and can't be turned on on the Kindle 2, DX, Keyboard and 4: they can't invert the screen in hardware, and inverting in software made the Kindle unusably slow (and frozen at every start, because the setting was saved).",
+            "GZreader menu: Settings opens the Settings page (Home, Library, Reader, Interface, Extras, General, KOReader); new KOReader settings entry opens its KOReader section. \"All settings\" (which reopened ZenOS's quick panel) is now labelled ZenOS quick panel.",
+        },
+    },
+    {
         version = "1.0.13",
         changes = {
             "Kindle Keyboard: the Menu key on Home and in the lists now opens the GZreader menu, a list with letter keys like the Reading menu (Grimmory library, continue reading, audiobooks, search, history, Wi-Fi, night mode, settings, updates, send log, sleep, restart, all settings, exit), instead of ZenOS's touch quick-settings panel. Switch: Settings → General → Grimmory → Menu key opens the GZreader menu.",

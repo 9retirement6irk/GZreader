@@ -41,22 +41,37 @@ function HomeMenu.items(plugin)
         { text_func = function()
             return NetworkMgr:isWifiOn() and _("Turn Wi-Fi off") or _("Turn Wi-Fi on")
         end, callback = function() dispatch("toggle_wifi") end },
-        { text_func = function()
+        not require("grimmory_nightguard").applies() and { text_func = function()
             return G_reader_settings:isTrue("night_mode") and _("Night mode off") or _("Night mode on")
-        end, callback = function() dispatch("night_mode") end },
-        { text = _("Settings"), callback = function()
-            local ok, Page = pcall(require, "modules/settings/zen_settings_page")
-            local zen = rawget(_G, "__ZEN_UI_PLUGIN")
-            if ok and zen then Page.show(zen) else HomeMenu.fullMenu() end
+        end, callback = function() dispatch("night_mode") end } or nil,
+        { text = _("Settings"), callback = function() HomeMenu.settings() end },
+        { text = _("KOReader settings"), callback = function()
+            HomeMenu.settings({ path = { { key = "_zen_settings_root", value = "koreader" } } })
         end },
         { text = _("Check for GZreader updates"), callback = function() require("grimmory_update").run() end },
         { text = _("Send diagnostic log to my phone"), callback = function() plugin:shareLog() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },
         { text = _("Restart GZreader"), callback = function() dispatch("restart") end },
-        { text = _("All settings (full menu)"), callback = function() HomeMenu.fullMenu() end },
+        { text = _("ZenOS quick panel"), callback = function() HomeMenu.fullMenu() end },
         { text = _("Exit to the Kindle"), callback = function() dispatch("exit") end },
     }
-    return items
+    local list = {}
+    for i = 1, table.maxn(items) do if items[i] then list[#list + 1] = items[i] end end -- drop hidden entries
+    return list
+end
+
+--- ZenOS's Settings page (Home, Library, Reader, Interface, Extras, General,
+--- KOReader). opts.path opens a section.
+function HomeMenu.settings(opts)
+    local f = fm()
+    local zen = (f and f.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
+    if not zen then
+        local okp, PluginLoader = pcall(require, "pluginloader")
+        zen = okp and PluginLoader:getPluginInstance("zenos") or nil
+    end
+    local ok, Page = pcall(require, "modules/settings/zen_settings_page")
+    if ok and zen then return Page.show(zen, opts) end
+    HomeMenu.fullMenu()
 end
 
 function HomeMenu.fullMenu()

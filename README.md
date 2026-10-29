@@ -47,7 +47,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
   aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
 - **GZreader menu** on the **Menu** key at Home: library, continue reading,
-  audiobooks, search, Wi‑Fi, night mode, settings, updates, sleep, restart — also
+  audiobooks, search, Wi‑Fi, settings, updates, sleep, restart — also
   with letter keys.
 - **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloaded, Continue,
   Grimmory, Favorites).

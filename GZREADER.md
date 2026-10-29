@@ -68,7 +68,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
-| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, night mode, settings, updates, send log, sleep, restart, all settings (the full KOReader/ZenOS menu), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
+| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, ZenOS quick panel, exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
@@ -203,6 +203,10 @@ back to the Kindle's own sleep pictures. Chosen in the setup guide; picking
 another option there restores KOReader/ZenOS's own sleep-screen settings.
 
 ## Speed on the Kindle 3
+
+- Night mode is off and can't be switched on (Kindle 2, DX, Keyboard, 4):
+  these Kindles have no hardware screen inversion, and KOReader's software
+  inversion made the Kindle 3 unusably slow.
 
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in

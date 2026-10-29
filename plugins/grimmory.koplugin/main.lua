@@ -44,6 +44,9 @@ local PAIR_TIMEOUT_S = 10 * 60
 local PAIR_MAX_ATTEMPTS = 5
 local MAX_QUEUED_SESSIONS = 200
 
+-- Night mode makes legacy Kindles unusably slow (software inversion): keep it off.
+pcall(function() require("grimmory_nightguard").install() end)
+
 local Grimmory = WidgetContainer:extend{
     name = "grimmory",
     is_doc_only = false,
