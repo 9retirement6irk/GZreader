@@ -58,7 +58,7 @@ local function writeProfile()
 end
 
 local function onSample(thread, samples, vmstate)
-    local stack = clean(prof.dumpstack(thread, "pl;", 3))
+    local stack = clean(prof.dumpstack(thread, "pl;", 6))
     local key = (VM[vmstate] or vmstate) .. ": " .. stack
     add(total, key, samples)
     add(window, key, samples)
@@ -140,6 +140,42 @@ local function timed(what, fn, ...)
 end
 S.timed = timed
 
+---------------------------------------------------------------- re-layouts
+
+--- Book layout changes (margins, styles, fonts…) make crengine lay the whole
+--- book out again, which takes many seconds on a Kindle 3. Log who asks, and
+--- warn when it happens often (that would make every page turn slow).
+local relayouts = {}
+local function watchRelayouts()
+    local ok, CreDocument = pcall(require, "document/credocument")
+    if not ok then return end
+    for _i, name in ipairs({ "render", "setStyleSheet", "setPageMargins", "setFontSize", "setViewDimen",
+            "setRenderDPI", "setEmbeddedStyleSheet", "setBlockRenderingFlags" }) do
+        local orig = CreDocument[name]
+        if type(orig) == "function" then
+            CreDocument[name] = function(doc, ...)
+                if type(doc) ~= "table" or not doc.been_rendered then return orig(doc, ...) end -- opening: expected
+                local t = os.time()
+                local who = debug.traceback("", 2):gsub("^%s*stack traceback:%s*", "")
+                local lines = {}
+                for line in who:gmatch("[^\n]+") do
+                    line = line:gsub("^%s+", ""):gsub("^.-/plugins/", "plugins/"):gsub("^.-/frontend/", "frontend/")
+                    if not line:match("gzreader_slowtrace") then lines[#lines + 1] = line end
+                    if #lines >= 6 then break end
+                end
+                relayouts[#relayouts + 1] = { t = t, what = name, who = table.concat(lines, " <- ") }
+                while relayouts[1] and t - relayouts[1].t > 60 do table.remove(relayouts, 1) end
+                if #relayouts == 6 then -- many in a minute: say who
+                    local out = {}
+                    for _j, r in ipairs(relayouts) do out[#out + 1] = r.what .. " from " .. r.who end
+                    Log.warn("book layout redone " .. #relayouts .. " times in a minute: " .. table.concat(out, " || "))
+                end
+                return orig(doc, ...)
+            end
+        end
+    end
+end
+
 function S.install(dir)
     if S.installed then return end
     S.installed = true
@@ -155,6 +191,7 @@ function S.install(dir)
     UIManager._checkTasks = function(self) return timed("scheduled work", orig_tasks, self) end
     local orig_repaint = UIManager._repaint
     UIManager._repaint = function(self) return timed("a screen repaint", orig_repaint, self) end
+    pcall(watchRelayouts)
     Log.info("slow-operation tracing on", S.available and "(with profiler)" or "(no profiler)")
 end
 

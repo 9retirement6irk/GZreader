@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.2.2",
+        changes = {
+            "Remote debugging: slow reports show 6 levels of code instead of 3, and GZreader warns when a book's layout is redone 6 or more times in a minute (margins, styles, fonts…), naming the code that asked each time: on a Kindle 3 every layout of a whole book takes seconds.",
+        },
+    },
+    {
         version = "1.2.1",
         changes = {
             "Remote debugging finds what makes the Kindle slow: GZreader now notes where its CPU time goes (a light sampling profiler) and reports a keypress, repaint or piece of work that takes more than 3 seconds, with the code that used the time. When it uses most of the CPU for a minute it sends a \"GZreader busy\" report, and the watchdog sends \"GZreader slow\" after 45 seconds without an answer (\"unresponsive\" after 2 minutes), each with GZreader's processes (running or waiting, CPU, memory) and that profile.",
