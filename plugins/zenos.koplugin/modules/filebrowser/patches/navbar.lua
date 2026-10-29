@@ -1,15 +1,23 @@
--- GZreader: number keys 1-9 select the n-th visible navbar tab. Digits are
--- not used by KOReader's list shortcuts (Q-P, A-L, Z-M, ".", Sym), so they
--- never clash with picking an item in a menu such as the Grimmory browser.
+-- GZreader: Alt + Q, W, E, R, T, Y, U, I, O select the 1st-9th visible navbar
+-- tab. The Kindle Keyboard has no number row: Alt + the top letter row is how
+-- it types 1-9 (its kernel may send those as "1"-"9", so both forms count).
+-- Plain letters stay KOReader's list shortcuts (Q, W, E, … pick an item), and
+-- those don't match while Alt is held, so the two never clash.
+local GZ_ALT_ROW = { Q = 1, W = 2, E = 3, R = 4, T = 5, Y = 6, U = 7, I = 8, O = 9 }
 local function gzTabDigit(key)
     if type(key) ~= "table" or type(key.key) ~= "string" then return nil end
+    local alt = false
     if type(key.modifiers) == "table" then
-        for _mod, pressed in pairs(key.modifiers) do
-            if pressed then return nil end
+        for mod, pressed in pairs(key.modifiers) do
+            if pressed then
+                if mod == "Alt" then alt = true else return nil end
+            end
         end
     end
     local d = key.key:match("^([1-9])$")
-    return d and tonumber(d) or nil
+    if d then return tonumber(d) end
+    if alt then return GZ_ALT_ROW[key.key] end
+    return nil
 end
 
 local function apply_navbar()

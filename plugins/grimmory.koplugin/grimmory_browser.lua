@@ -77,10 +77,13 @@ function Browser:show()
         is_popout = false,
         title_bar_fm_style = true,
     }
-    -- GZreader: number keys switch bottom tabs everywhere, also from here.
-    -- (Letters stay the menu's item shortcuts Q, W, E, R, T, Y, U, I, ….)
+    -- GZreader: Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the
+    -- bottom tabs, also from here. Plain letters stay the menu's item
+    -- shortcuts (Q, W, E, R, T, Y, U, I, …).
+    local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
+    local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
     self.menu.key_events = self.menu.key_events or {}
-    self.menu.key_events.GzTabKey = { { { "1", "2", "3", "4", "5", "6", "7", "8", "9" } } }
+    self.menu.key_events.GzTabKey = { { digits }, { "Alt", digits }, { "Alt", row } }
     self.menu.onGzTabKey = function(menu, _args, key)
         UIManager:close(menu)
         UIManager:nextTick(function()

@@ -61,14 +61,13 @@ tools/grimmory/publish-github-release.sh out/      # needs gh, creates tag v1.0.
 
 | Where | Key | Does |
 | --- | --- | --- |
-| Home / lists | 1 – 9 | Switch the bottom tabs, counted from the left (Home, Downloaded, Continue, Grimmory, Favorites). Also works from the Grimmory browser. |
+| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloaded, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list | Q, W, E, … | Pick the item with that letter (shown next to it). |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |
-| Reading | 1 – 0 | Jump to 0 – 90 % (KOReader). |
 
 ## Connect to Grimmory
 
