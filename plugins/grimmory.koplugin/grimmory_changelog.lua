@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.21",
+        changes = {
+            "Covers are pre-sized: each downloaded book's cover is made once at the exact sizes Home, the cover strip and the library show it, kept on the Kindle, and just loaded after that. No scaling or unpacking while you wait, also after a restart. This runs in a low-priority background process a minute after start, after each download, and when a view shows covers at a new size. Switch: Settings → GZreader → Pre-size covers.",
+            "The Home cover strip is back on (1.0.20 turned it off because of the slow scaling).",
+        },
+    },
+    {
         version = "1.0.20",
         changes = {
             "Wi-Fi only when needed (on by default; Settings → GZreader): Wi-Fi turns on by itself for browsing Grimmory, downloads, connecting, sending the log, updates, and to sync when a book opens or closes (and on wake after 15 minutes or more), then off again after a minute unused. Changes in between wait for the next sync. Wi-Fi you turn on yourself stays on.",

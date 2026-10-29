@@ -236,8 +236,16 @@ Wi-Fi GZreader turned on.
 
 ## Speed on the Kindle 3
 
-- The Home cover strip is off (once; Settings → Home brings it back): each
-  Home paint spent ~4 s of CPU scaling covers in software.
+- Covers are pre-sized (Settings → GZreader → Pre-size covers). ZenOS scales
+  every cover to the exact size of where it's shown; on the Kindle 3 that took
+  ~4 s of CPU per Home screen (the cover strip), and its memory cache starts
+  empty after every restart. GZreader keeps each final-size cover as a raw
+  bitmap in `koreader/cache/gz-covers/` (used only while the book file is
+  unchanged), learns the sizes ZenOS uses, and a low-priority background
+  process (`grimmory_coverwarm.lua`) makes them for every downloaded book a
+  minute after start, after downloads and when a new size shows up. Books
+  whose cover hasn't been read yet go through KOReader's cover extraction
+  first.
 
 - Night mode is off and can't be switched on (Kindle 2, DX, Keyboard, 4):
   these Kindles have no hardware screen inversion, and KOReader's software

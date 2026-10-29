@@ -79,6 +79,12 @@ function Grimmory:init()
         pcall(self.useLibraryAsHome, self)
     end
     if not self.ui.document then
+        -- Pre-size downloaded books' covers in the background (fast Home/library)
+        pcall(function()
+            local Warm = require("grimmory_coverwarm")
+            Warm.schedule(self, Warm.START_DELAY)
+            require("common/cover_disk_cache").on_new_size = function() Warm.schedule(self, 30) end
+        end)
         pcall(self.restoreFromManifest, self)
         if self.api:isPaired() then
             UIManager:scheduleIn(8, function()
@@ -205,6 +211,17 @@ function Grimmory:menuItems()
                 self:save()
             end,
             separator = true,
+        },
+        {
+            text = _("Pre-size covers"),
+            help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
+            checked_func = function() return not G_reader_settings:isFalse("gzreader_presize_covers") end,
+            callback = function()
+                G_reader_settings:flipNilOrTrue("gzreader_presize_covers")
+                local Disk = require("common/cover_disk_cache")
+                Disk.enabled = not G_reader_settings:isFalse("gzreader_presize_covers")
+                if Disk.enabled then require("grimmory_coverwarm").schedule(self, 5) else Disk.clear() end
+            end,
         },
         {
             text = _("Wi-Fi only when needed"),
@@ -1204,6 +1221,7 @@ function Grimmory:downloadAndOpen(book, menu)
         self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()
+        pcall(function() require("grimmory_coverwarm").schedule(self, 15) end)
         local Titles = require("grimmory_titles")
         local sub = info.subtitle or Titles.subtitle(self, book.id)
         if sub then

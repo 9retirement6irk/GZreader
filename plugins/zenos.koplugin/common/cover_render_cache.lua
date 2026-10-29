@@ -1,6 +1,9 @@
 -- Shared LRU of final-size cover bitmaps used by mosaic, list, and Home.
 local Blitbuffer = require("ffi/blitbuffer")
 local RenderImage
+-- GZreader: final-size covers also kept on disk (common/cover_disk_cache)
+local ok_disk, Disk = pcall(require, "common/cover_disk_cache")
+if not ok_disk then Disk = nil end
 
 local M = {
     DEFAULT_BYTE_BUDGET = 24 * 1024 * 1024,
@@ -77,6 +80,7 @@ local function resize(source, width, height)
         return nil
     end
     if src_w == width and src_h == height then return source end
+    if Disk and not same_aspect(src_w, src_h, width, height) then pcall(Disk.recordExact, width, height) end
     local scale = math.max(width / src_w, height / src_h)
     local scaled_w = math.max(width, math.ceil(src_w * scale))
     local scaled_h = math.max(height, math.ceil(src_h * scale))
@@ -141,9 +145,29 @@ function M:_makeRoom(needed)
     return self._bytes + needed <= self._byte_budget
 end
 
+local function from_disk(self, path, width, height)
+    if not Disk then return nil end
+    local ok, bb = pcall(Disk.load, path, width, height)
+    if ok and bb then
+        self._disk_hits = (self._disk_hits or 0) + 1
+        return bb
+    end
+end
+
+local function to_disk(path, width, height, bb)
+    if Disk and bb then pcall(Disk.save, path, width, height, bb) end
+end
+M._resize = function(source, width, height) return resize(source, width, height) end
+
 function M:get(path, width, height)
     local entry, cache_key = find_reusable(self, path, width, height)
     if not is_reusable(entry, width, height) then
+        local bb = from_disk(self, path, width, height)
+        if bb then
+            self:put(path, width, height, bb)
+            self._hits = self._hits + 1
+            return bb
+        end
         self._misses = self._misses + 1
         return nil
     end
@@ -168,20 +192,37 @@ function M:get(path, width, height)
         -- Keep the first cross-layout resize so Home and Library can each hit
         -- their exact size on subsequent renders, within the same byte budget.
         self:put(path, width, height, resized)
+        to_disk(path, width, height, resized)
     end
     return resized
 end
 
+-- GZreader: bring a pre-sized cover in from disk (into the memory cache).
+function M:_fromDiskIntoMemory(path, width, height)
+    local bb = from_disk(self, path, width, height)
+    if not bb then return false end
+    local owned = select(2, self:putShared(path, width, height, bb))
+    if not owned then free(bb); return false end
+    local entry = self._entries[exact_key(path, width, height)]
+    if entry then entry.refs = 0 end -- not leased: just cached
+    return true
+end
+
 function M:hasReusable(path, width, height)
-    return find_reusable(self, path, width, height) ~= nil
+    if find_reusable(self, path, width, height) ~= nil then return true end
+    return self:_fromDiskIntoMemory(path, width, height)
 end
 
 function M:hasExact(path, width, height)
-    return self._entries[exact_key(path, width, height)] ~= nil
+    if self._entries[exact_key(path, width, height)] ~= nil then return true end
+    return self:_fromDiskIntoMemory(path, width, height)
 end
 
 function M:touchExact(path, width, height)
     local entry = self._entries[exact_key(path, width, height)]
+    if not entry and self:_fromDiskIntoMemory(path, width, height) then
+        entry = self._entries[exact_key(path, width, height)]
+    end
     if not entry then return false end
     self._clock = self._clock + 1
     entry.touch = self._clock
@@ -190,6 +231,9 @@ end
 
 function M:touchReusable(path, width, height)
     local entry = find_reusable(self, path, width, height)
+    if not is_reusable(entry, width, height) and self:_fromDiskIntoMemory(path, width, height) then
+        entry = find_reusable(self, path, width, height)
+    end
     if not is_reusable(entry, width, height) then return false end
     self._clock = self._clock + 1
     entry.touch = self._clock
@@ -200,6 +244,9 @@ end
 -- non-disposable, never modify it, and pair the lease with releaseShared().
 function M:getShared(path, width, height)
     local entry = self._entries[exact_key(path, width, height)]
+    if not entry and self:_fromDiskIntoMemory(path, width, height) then
+        entry = self._entries[exact_key(path, width, height)]
+    end
     if not entry then
         self._misses = self._misses + 1
         return nil
@@ -312,6 +359,7 @@ function M:renderShared(path, source, width, height)
     if not source or width < 1 or height < 1 then return nil, false end
     local out = resize(source, width, height)
     if not out then return nil, false end
+    to_disk(path, width, height, out)
     return self:putShared(path, width, height, out)
 end
 
@@ -325,6 +373,7 @@ function M:render(path, source, width, height)
     if not source or width < 1 or height < 1 then return nil end
     local out = resize(source, width, height)
     if not out then return nil end
+    to_disk(path, width, height, out)
     self:put(path, width, height, out)
     return out
 end
@@ -338,6 +387,7 @@ function M:setByteBudget(value)
 end
 
 function M:drop(path)
+    if Disk then pcall(Disk.drop, path) end
     local wanted_path = path_key(path)
     local keys = {}
     for cache_key, entry in pairs(self._entries) do

@@ -6,6 +6,7 @@ local function apply_cover_decode_cache()
 
     local cache = require("common/cover_decode_cache")
     local render_cache = require("common/cover_render_cache")
+    pcall(function() require("common/cover_disk_cache").install() end) -- GZreader: learn cover sizes
     local now = require("common/zen_logger").now
     local orig_getBookInfo = BookInfoManager.getBookInfo
     local VALIDATION_TTL_S = 30
@@ -144,6 +145,7 @@ local function apply_cover_decode_cache()
         function BookInfoManager:deleteDb(...)
             cache:clear()
             render_cache:clear()
+            pcall(function() require("common/cover_disk_cache").clear() end) -- GZreader
             invalidate_library_cache()
             return orig_deleteDb(self, ...)
         end
