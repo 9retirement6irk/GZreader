@@ -75,7 +75,9 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Connect to Grimmory
 
-Open the **Grimmory** tab (or Tools → Grimmory).
+Open the **Grimmory** tab. All Grimmory options (connection, sync, bookmarks,
+read aloud, diagnostic log, updates) are in **Settings → General → Grimmory**
+(also KOReader → Tools → Grimmory).
 
 - **Connect with QR code**: the Kindle shows a QR code. Scan it with your
   phone; a sign-in page opens, served by the Kindle itself over your Wi‑Fi.

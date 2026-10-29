@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.6",
+        changes = {
+            "Grimmory settings are in Settings → General → Grimmory (no more digging through KOReader → Tools).",
+        },
+    },
+    {
         version = "1.0.5",
         changes = {
             "Read aloud speaks whole sentences at normal speed (it was sending one word at a time), and the last word of each sentence is no longer held back.",

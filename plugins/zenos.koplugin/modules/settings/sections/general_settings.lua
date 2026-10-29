@@ -72,6 +72,22 @@ function M.build(ctx, extras_items)
         end
     end
 
+    -- GZreader: the Grimmory plugin's settings (connection, sync, read
+    -- aloud, log, updates), also under KOReader → Tools → Grimmory.
+    table.insert(items, IconItem.decorate({
+        text = "Grimmory",
+        sub_item_table_func = function()
+            local g
+            for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
+                local ok, cls = pcall(require, mod)
+                local inst = ok and type(cls) == "table" and cls.instance
+                if not g and type(inst) == "table" and type(inst.grimmory) == "table" then g = inst.grimmory end
+            end
+            if g and type(g.menuItems) == "function" then return g:menuItems() end
+            return { { text = _("Grimmory isn't loaded."), enabled = false } }
+        end,
+    }, icons.sync))
+
     table.insert(items, IconItem.decorate({
         text = _("Battery"),
         sub_item_table_func = require("modules/settings/battery_stats_menu").buildItems,

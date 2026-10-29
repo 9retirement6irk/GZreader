@@ -1,116 +1,123 @@
-# GZreader
+<p align="center">
+  <img src="docs/gzreader-logo.svg" alt="GZreader logo" width="120">
+</p>
 
-**Grimmory + ZenOS + KOReader for the Kindle Keyboard (Kindle 3) and other legacy Kindles.**
-Read, download books from a [Grimmory](https://grimmory.org) server, and keep reading
-position and bookmarks in sync. See **[GZREADER.md](GZREADER.md)** for features, install and
-updates; downloads are on the [Releases](https://github.com/9retirement6irk/GZreader/releases) page.
+<h1 align="center">GZreader</h1>
 
-GZreader is a fork of KOReader `v2026.07.1` with ZenOS `4.2.0` (AGPL-3.0). KOReader's original
-README follows.
+<p align="center">
+  <b>Grimmory + ZenOS + KOReader for the Kindle Keyboard</b><br>
+  Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle 3: download books, read them,
+  and keep your place and bookmarks in sync.
+</p>
+
+<p align="center">
+  <a href="https://github.com/9retirement6irk/GZreader/releases/latest"><b>Download the latest release</b></a> ·
+  <a href="GZREADER.md">Full guide</a> ·
+  <a href="plugins/grimmory.koplugin/grimmory_changelog.lua">Changelog</a>
+</p>
 
 ---
 
-[![KOReader](https://raw.githubusercontent.com/koreader/koreader.github.io/master/koreader-logo.png)](https://koreader.rocks)
+GZreader is a reading app for **legacy Kindles** (Kindle Keyboard / Kindle 3, also
+Kindle 2 and DX). It is [KOReader](https://github.com/koreader/koreader) trimmed down
+to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
+a built-in connection to a self-hosted **Grimmory** book server.
 
-#### KOReader is a document viewer primarily aimed at e-ink readers.
+## Features
 
-[![AGPL Licence][badge-license]](COPYING)
-[![Latest release][badge-release]][link-gh-releases]
-[![Gitter][badge-gitter]][link-gitter]
-[![Mobileread][badge-mobileread]][link-forum]
-[![Build Status][badge-circleci]][link-circleci]
-[![Coverage Status][badge-coverage]][link-coverage]
-[![Weblate Status][badge-weblate]][link-weblate]
+### 📚 Your Grimmory library
+- **Sign in with a QR code.** The Kindle shows a code, you scan it with your phone and
+  sign in there (no typing passwords on the Kindle keyboard). Single sign-on (OIDC:
+  Authentik, Pocket ID, Authelia, Keycloak…) works too. Only Grimmory's login tokens
+  are kept, never your password.
+- **Browse** Continue reading, Recently added, All books, **Libraries**, **Authors**,
+  **Series** (in reading order) and Search. Audiobooks are left out.
+- **Background downloads** with a progress bar; keep using the Kindle while a book
+  downloads. Books go to a `Grimmory` folder, shown in the **Downloaded** tab.
 
-[Download](https://github.com/koreader/koreader/releases) •
-[User guide](http://koreader.rocks/user_guide/) •
-[Wiki](https://github.com/koreader/koreader/wiki) •
-[Developer docs](http://koreader.rocks/doc/)
+### 🔄 Sync with Grimmory
+- **Reading position** syncs with Grimmory's own progress (the web reader's), not the
+  KOReader sync endpoint. Pick up on the Kindle where you left off on the web, and the
+  other way round.
+- **Bookmarks** sync both ways, deletions included.
+- **Works offline:** changes are saved on the Kindle and sent when Wi‑Fi is back.
+- Reading sessions feed Grimmory's reading statistics.
 
-## Main features
+### ⌨️ Made for the Kindle Keyboard
+- **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
+  aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
+- **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloaded, Continue,
+  Grimmory, Favorites).
+- **Back** returns from a link, otherwise goes Home (never back to the book's start).
 
-* **portable**: runs on embedded devices (Cervantes, Kindle, Kobo, PocketBook, reMarkable), Android and Linux computers. Developers can run a KOReader emulator in Linux and MacOS.
+### 🔊 Read aloud
+- Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
+  Kindle's Text-to-Speech.
+- The sentence being read is **highlighted** and **pages turn by themselves**.
+- Speed and volume controls; the Kindle's volume buttons work while reading.
 
-* **multi-format documents**: supports fixed page formats (PDF, DjVu, CBT, CBZ) and reflowable e-book formats (EPUB, FB2, Mobi, DOC, RTF, HTML, CHM, TXT). Scanned PDF/DjVu documents can also be reflowed with the built-in K2pdfopt library. [ZIP files][link-wiki-zip] are also supported for some formats.
+### 🌙 And more
+- **Sleep screen:** the book's cover while reading, a picture from the `screensavers`
+  folder on Home and in menus.
+- **English dictionary** built in (Open English WordNet, 128,000 words).
+- **Updates from GitHub releases**, installed from Settings → General → Updates.
+  Your books, settings and progress are kept.
+- **Faster on a Kindle 3:** unused plugins, fonts and translations removed, slow
+  Home widgets off by default.
+- **Diagnostic log** you can save and share (passwords and tokens are never written).
 
-* **full-featured reading**: multi-lingual user interface with a highly customizable reader view and many typesetting options. You can set arbitrary page margins, override line spacing and choose external fonts and styles. It has multi-lingual hyphenation dictionaries bundled into the application.
+## Install
 
-* **integrated** with *calibre* (search metadata, receive ebooks wirelessly, browse library via OPDS), *Wallabag*, *Wikipedia*, *Google Translate* and other content providers.
+1. Jailbreak the Kindle and install **KUAL** (see [kindlemodding.org](https://kindlemodding.org)).
+2. Download `gzreader-kindle-legacy-<version>.zip` from the
+   [latest release](https://github.com/9retirement6irk/GZreader/releases/latest).
+3. Unzip it and copy the `koreader`, `extensions` and `launchpad` folders to the root of
+   the Kindle's USB drive, merging with what's there.
+4. Eject, then open **KUAL → GZreader → Start GZreader**.
 
-* **optimized for e-ink devices**: custom UI without animation, with paginated menus, adjustable text contrast, and easy zoom to fit content or page in paged media.
+The setup guide starts by connecting to your Grimmory server. Later versions install
+from **Settings → General → Updates**.
 
-* **extensible**: via plugins
+## Connecting to Grimmory
 
-* **fast**: on some older devices, it has been measured to have less than half the page-turn delay as the built in reading software.
+Open the **Grimmory** tab and choose **Connect with QR code**. For single sign-on, add
+`http://<kindle-ip>:8642/oauth2-callback` as an extra redirect URI for Grimmory's client
+at your identity provider; the exact address is shown on the QR page. Grimmory itself
+needs no changes. All Grimmory options are in **Settings → General → Grimmory**.
 
-* **and much more**: look up words with StarDict dictionaries / Wikipedia, add your own online OPDS catalogs and RSS feeds, over-the-air software updates, an FTP client, an SSH server, …
+## Publishing a release
 
-Please check the [user guide](http://koreader.rocks/user_guide/) and the [wiki][link-wiki] to discover more features and to help us document them.
+1. Bump [`GZREADER_VERSION`](GZREADER_VERSION) and add an entry to
+   [`grimmory_changelog.lua`](plugins/grimmory.koplugin/grimmory_changelog.lua).
+2. Create a GitHub release tagged `v<version>` and publish it.
 
-## Screenshots
+The [release workflow](.github/workflows/gzreader-release.yml) builds and attaches the
+install zip and the update package. Kindles check for new releases once a day.
 
-<a href="https://github.com/koreader/koreader-artwork/raw/master/koreader-menu.png"><img src="https://github.com/koreader/koreader-artwork/raw/master/koreader-menu-thumbnail.png" alt="" width="200px"></a>
-<a href="https://github.com/koreader/koreader-artwork/raw/master/koreader-footnotes.png"><img src="https://github.com/koreader/koreader-artwork/raw/master/koreader-footnotes-thumbnail.png" alt="" width="200px"></a>
-<a href="https://github.com/koreader/koreader-artwork/raw/master/koreader-dictionary.png"><img src="https://github.com/koreader/koreader-artwork/raw/master/koreader-dictionary-thumbnail.png" alt="" width="200px"></a>
+To build locally:
 
-## Installation
+```sh
+tools/grimmory/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
+```
 
-Please follow the model specific steps for your device:
+The build reuses the native binaries of the official KOReader kindle-legacy release of
+the same version and overlays GZreader's Lua code, plugins and dictionary.
 
-[Android](https://github.com/koreader/koreader/wiki/Installation-on-Android-devices) •
-[Cervantes](https://github.com/koreader/koreader/wiki/Installation-on-BQ-devices) •
-[Kindle](https://github.com/koreader/koreader/wiki/Installation-on-Kindle-devices) •
-[Kobo](https://github.com/koreader/koreader/wiki/Installation-on-Kobo-devices) •
-[Linux](https://github.com/koreader/koreader/wiki/Installation-on-desktop-linux) •
-[Pocketbook](https://github.com/koreader/koreader/wiki/Installation-on-PocketBook-devices) •
-[reMarkable](https://github.com/koreader/koreader/wiki/Installation-on-Remarkable)
+## What's inside
 
+| Part | Role |
+| --- | --- |
+| [`plugins/grimmory.koplugin`](plugins/grimmory.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress and bookmark sync, Reading menu, read aloud, updater |
+| [`plugins/zenos.koplugin`](plugins/zenos.koplugin) | ZenOS 4.2.0 interface, adapted for GZreader and the Kindle keyboard |
+| `frontend/`, `reader.lua` | KOReader v2026.07.1 with GZreader changes (branding, keyboard, sleep screen, speed fixes) |
+| [`tools/grimmory`](tools/grimmory) | Packaging, dictionary builder, release script |
 
-## Development
+## Credits and license
 
-[Setting up a build environment](doc/Building.md) •
-[Collaborating with Git](doc/Collaborating_with_Git.md) •
-[Building targets](doc/Building_targets.md) •
-[Porting](doc/Porting.md) •
-[Developer docs](http://koreader.rocks/doc/)
+GZreader is built on **[KOReader](https://github.com/koreader/koreader)** (AGPL-3.0) and
+**[ZenOS](https://github.com/xZenLabs/zen-os)**, and connects to
+**[Grimmory](https://grimmory.org)**. The dictionary is
+[Open English WordNet](https://en-word.net) (CC BY 4.0).
 
-## Support
-
-KOReader is developed and supported by volunteers all around the world. There are many ways you can help:
-
-- [fix bugs][link-issues-bugs] and [implement new features][link-issues-features]
-- [translate the program into your language][link-weblate] or improve an existing translation
-- document lesser-known features on the [wiki][link-wiki]
-- help others with your knowledge on the [forum][link-forum]
-
-Right now we only support [liberapay](https://liberapay.com/KOReader) donations.
-
-## Contributors
-
-[![Last commit][badge-last-commit]][link-gh-commits]
-[![Commit activity][badge-commit-activity]][link-gh-insights]
-
-[badge-bountysource]:https://img.shields.io/bountysource/team/koreader/activity?color=red
-[badge-circleci]:https://circleci.com/gh/koreader/koreader.svg?style=shield
-[badge-coverage]:https://codecov.io/gh/koreader/koreader/branch/master/graph/badge.svg
-[badge-commit-activity]:https://img.shields.io/github/commit-activity/m/koreader/koreader
-[badge-gitter]:https://img.shields.io/gitter/room/koreader/koreader?color=red
-[badge-last-commit]:https://img.shields.io/github/last-commit/koreader/koreader?color=orange
-[badge-license]:https://img.shields.io/github/license/koreader/koreader
-[badge-release]:https://img.shields.io/github/release/koreader/koreader.svg
-[badge-mobileread]:https://img.shields.io/badge/forum-on_mobileread-lightgrey
-[badge-weblate]:https://hosted.weblate.org/widgets/koreader/-/koreader/svg-badge.svg
-
-[link-bountysource]:https://www.bountysource.com/teams/koreader
-[link-circleci]:https://circleci.com/gh/koreader/koreader
-[link-coverage]:https://codecov.io/gh/koreader/koreader
-[link-forum]:http://www.mobileread.com/forums/forumdisplay.php?f=276
-[link-gh-commits]:https://github.com/koreader/koreader/commits/master
-[link-gh-insights]:https://github.com/koreader/koreader/pulse
-[link-gh-releases]:https://github.com/koreader/koreader/releases
-[link-gitter]:https://gitter.im/koreader/koreader
-[link-issues-bugs]:https://github.com/koreader/koreader/issues?q=is%3Aopen+is%3Aissue+label%3Abug
-[link-issues-features]:https://github.com/koreader/koreader/issues?q=is%3Aopen+is%3Aissue+label%3Aenhancement
-[link-weblate]:https://hosted.weblate.org/engage/koreader/?utm_source=widget
-[link-wiki]:https://github.com/koreader/koreader/wiki
-[link-wiki-zip]:https://github.com/koreader/koreader/wiki/ZIP
+GZreader is free software under the [GNU Affero General Public License v3](COPYING).
+KOReader's original README is kept in [README.koreader.md](README.koreader.md).
