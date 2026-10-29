@@ -108,7 +108,8 @@ if _plugin_root then
                     local coll = FontList.fontinfo[path]
                     if coll then
                         -- Last-file startup initializes CRE before plugins load.
-                        if cre then pcall(cre.registerFont, path) end
+                        -- GZreader: the symbols font is UI-only; crengine rejects it (logged error).
+                        if cre and not path:find("SymbolsNerdFont", 1, true) then pcall(cre.registerFont, path) end
                         for _j, v in ipairs(coll) do
                             local nlist = names[v.name] or {}
                             names[v.name] = nlist

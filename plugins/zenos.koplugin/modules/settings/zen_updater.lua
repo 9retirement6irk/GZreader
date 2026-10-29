@@ -1861,4 +1861,49 @@ function M.build_auto_check_item()
     }
 end
 
+-- ---------------------------------------------------------------------------
+-- GZreader: updates come from GZreader's GitHub releases, not upstream ZenOS
+-- (installing upstream ZenOS would undo this build's changes). The menu,
+-- banner and background check below delegate to grimmory_update.
+-- ---------------------------------------------------------------------------
+local ok_gz, GZUpdate = pcall(require, "grimmory_update")
+if ok_gz and type(GZUpdate) == "table" then
+    local function sync_state()
+        M._has_update = GZUpdate.state.has_update == true
+        M._latest_ver = GZUpdate.state.latest
+    end
+    M.init_banner = function() M._banner_loaded = true; sync_state() end
+    M.check_for_update = function()
+        local info = GZUpdate.check()
+        sync_state()
+        return info and "ok" or "error"
+    end
+    M.schedule_wakeup_check = function()
+        local UIManager = require("ui/uimanager")
+        M.cancel_wakeup_check()
+        M._check_cancelled = false
+        M._wakeup_timer = function()
+            M._wakeup_timer = nil
+            if M._check_cancelled then return end
+            GZUpdate.backgroundCheck(function()
+                sync_state()
+                if type(M._on_update_found) == "function" then M._on_update_found() end
+            end)
+            sync_state()
+        end
+        UIManager:scheduleIn(20, M._wakeup_timer)
+    end
+    M.run_update = function() GZUpdate.run() end
+    M.build_update_now_item = function() return GZUpdate.menuItems()[1] end
+    M.build_changelog_item = function()
+        return { text = _("Release notes (on GitHub)"), keep_menu_open = true, callback = function()
+            local InfoMessage = require("ui/widget/infomessage")
+            require("ui/uimanager"):show(InfoMessage:new{ text = GZUpdate.pageUrl() })
+        end }
+    end
+    M.build_channel_item = function() return GZUpdate.menuItems()[3] end
+    M.build_auto_check_item = function() return GZUpdate.menuItems()[2] end
+    M.get_channel = function() return "stable" end
+end
+
 return M

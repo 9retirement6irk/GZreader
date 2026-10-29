@@ -128,6 +128,43 @@ local Font = {
     faces = {},
 }
 
+-- GZreader: the trimmed package drops some of these fonts (the 16 MB CJK one).
+-- A missing fallback is retried, and fails, every time a glyph is missing
+-- from the main font, which made menus slow on a Kindle 3. Keep only the
+-- fallbacks that exist.
+do
+    local lfs = require("libs/libkoreader-lfs")
+    -- Bundled fonts live in fontdir or one folder below it (noto/, freefont/…).
+    local dirs = { FontList.fontdir }
+    local ok_dir, iter, dir_obj = pcall(lfs.dir, FontList.fontdir)
+    if ok_dir then
+        for entry in iter, dir_obj do
+            if entry ~= "." and entry ~= ".." and lfs.attributes(FontList.fontdir .. "/" .. entry, "mode") == "directory" then
+                dirs[#dirs + 1] = FontList.fontdir .. "/" .. entry
+            end
+        end
+    end
+    local function exists(name)
+        for _, d in ipairs(dirs) do
+            if lfs.attributes(d .. "/" .. name, "mode") == "file" then return true end
+        end
+        return false
+    end
+    local kept = {}
+    local insert_at = Font.additional_fallback_insert_indice
+    for i, name in ipairs(Font.fallbacks) do
+        if exists(name) then
+            kept[#kept + 1] = name
+        elseif i < Font.additional_fallback_insert_indice then
+            insert_at = insert_at - 1
+        end
+    end
+    if #kept > 0 and #kept < #Font.fallbacks then
+        Font.fallbacks = kept
+        Font.additional_fallback_insert_indice = math.max(insert_at, 2)
+    end
+end
+
 if G_reader_settings and G_reader_settings:has("font_ui_fallbacks") then
     local additional_fallbacks = G_reader_settings:readSetting("font_ui_fallbacks")
     for i=#additional_fallbacks, 1, -1 do

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Build the trimmed "KOReader + ZenOS + Grimmory" package for legacy Kindles
+# Build GZreader (Grimmory + ZenOS + KOReader) for legacy Kindles
 # (Kindle 2, DX, Kindle Keyboard / K3).
+#
+# Outputs, in out-dir:
+#   gzreader-kindle-legacy-<version>.zip  full install (koreader, extensions, launchpad)
+#   gzreader-update.zip                   what the in-app updater installs
+#                                          (attach to a GitHub release, see
+#                                          tools/grimmory/publish-github-release.sh)
 #
 # The branch only changes Lua (frontend + plugins), so instead of rebuilding
 # the native toolchain we overlay this branch onto the official
@@ -25,8 +31,13 @@ if ! git -C "$REPO" merge-base --is-ancestor "$BASE_REV" HEAD 2>/dev/null; then
     echo "warning: this branch is not based on $BASE_REV; frontend Lua may not match the release binaries" >&2
 fi
 
-# 1. Frontend: take the branch's Lua (menu order, Kindle OTA off).
+GZ_VERSION=$(tr -d ' \n' < "$REPO/GZREADER_VERSION")
+
+# 1. Frontend and startup Lua: the branch's (menu order, OTA off, branding,
+#    keyboard, read aloud, sleep screen…).
 rsync -a --delete "$REPO/frontend/" "$KO/frontend/"
+cp "$REPO/reader.lua" "$KO/reader.lua"
+cp "$REPO/platform/kindle/koreader.sh" "$KO/koreader.sh"
 
 # 2. Plugins: only the keep-list, from the branch.
 rm -rf "$KO/plugins"
@@ -37,7 +48,7 @@ done
 # ZenOS ships an updater; drop its non-English catalogs to save space.
 find "$KO/plugins/zenos.koplugin/locales" -name '*.po' ! -name 'en.po' -delete
 
-# 3. Launchers: KUAL menu and launchpad shortcuts say "Grimmory".
+# 3. Launchers: KUAL menu and launchpad shortcuts say "GZreader".
 cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
    "$REPO/platform/kindle/extensions/koreader/config.xml" "$STAGE/extensions/koreader/"
 cp "$REPO/platform/kindle/launchpad/koreader.ini" "$STAGE/launchpad/"
@@ -67,10 +78,19 @@ rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
 rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font
 find "$KO/l10n" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +   # UI translations (English UI)
 
-echo "${BASE_REV}-grimmory" > "$KO/git-rev"
+echo "${BASE_REV}-gzreader-${GZ_VERSION}" > "$KO/git-rev"
+echo "$GZ_VERSION" > "$KO/gzreader-version"
 
-OUT="$OUT_DIR/koreader-grimmory-kindle-legacy-${BASE_REV}.zip"
+OUT="$OUT_DIR/gzreader-kindle-legacy-${GZ_VERSION}.zip"
 rm -f "$OUT"
 (cd "$STAGE" && zip -qr -9 "$OUT" koreader extensions launchpad)
 echo "$OUT"
 du -h "$OUT"
+
+# Update package: only what the updater may replace (see grimmory_update.lua).
+UPD="$OUT_DIR/gzreader-update.zip"
+rm -f "$UPD"
+(cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh \
+    koreader/gzreader-version koreader/git-rev $(for p in $KEEP_PLUGINS; do echo "koreader/plugins/$p.koplugin"; done))
+echo "$UPD"
+du -h "$UPD"

@@ -1,3 +1,17 @@
+-- GZreader: number keys 1-9 select the n-th visible navbar tab. Digits are
+-- not used by KOReader's list shortcuts (Q-P, A-L, Z-M, ".", Sym), so they
+-- never clash with picking an item in a menu such as the Grimmory browser.
+local function gzTabDigit(key)
+    if type(key) ~= "table" or type(key.key) ~= "string" then return nil end
+    if type(key.modifiers) == "table" then
+        for _mod, pressed in pairs(key.modifiers) do
+            if pressed then return nil end
+        end
+    end
+    local d = key.key:match("^([1-9])$")
+    return d and tonumber(d) or nil
+end
+
 local function apply_navbar()
     -- Bottom nav bar for the KOReader File Manager.
 
@@ -2743,6 +2757,12 @@ local function apply_navbar()
         file_chooser.onKeyPress = function(fc, key)
             local vis_tabs = getVisibleTabs()
             local n = #vis_tabs
+            local digit = gzTabDigit(key)
+            if digit and digit <= n then
+                _back_btn_focused = false
+                _navbar_focused_idx = digit
+                activateNavbarTab(); return true
+            end
             if n > 0 then
                 if _navbar_focused_idx then
                     -- === Navbar focused ===
@@ -3344,6 +3364,11 @@ local function apply_navbar()
 
             local cls_skp = menu.onKeyPress
             menu.onKeyPress = function(m, key)
+                local digit = gzTabDigit(key)
+                if digit and digit <= #getVisibleTabs() then
+                    _navbar_focused_idx = digit
+                    activateStandaloneTab(); return true
+                end
                 local is_menu_key = key == "Menu"
                 if not is_menu_key and type(key) == "table"
                         and type(key.match) == "function" then

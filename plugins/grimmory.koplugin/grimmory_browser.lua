@@ -14,6 +14,7 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local PAGE_SIZE = 25
+local Index = require("grimmory_index")
 
 local Browser = {}
 Browser.__index = Browser
@@ -76,6 +77,19 @@ function Browser:show()
         is_popout = false,
         title_bar_fm_style = true,
     }
+    -- GZreader: number keys switch bottom tabs everywhere, also from here.
+    -- (Letters stay the menu's item shortcuts Q, W, E, R, T, Y, U, I, ….)
+    self.menu.key_events = self.menu.key_events or {}
+    self.menu.key_events.GzTabKey = { { { "1", "2", "3", "4", "5", "6", "7", "8", "9" } } }
+    self.menu.onGzTabKey = function(menu, _args, key)
+        UIManager:close(menu)
+        UIManager:nextTick(function()
+            local FileManager = require("apps/filemanager/filemanager")
+            local fc = FileManager.instance and FileManager.instance.file_chooser
+            if fc and fc.onKeyPress then fc:onKeyPress(key) end
+        end)
+        return true
+    end
     UIManager:show(self.menu)
 end
 
@@ -184,50 +198,79 @@ local function countText(n)
     return n == 1 and _("1 book") or T(_("%1 books"), n)
 end
 
+local function sortedByName(list)
+    table.sort(list, function(x, y) return x.sort_key < y.sort_key end)
+    return list
+end
+
+local function refreshItem(self, reopen)
+    return {
+        text = _("Refresh list from Grimmory"),
+        callback = function()
+            Index.build(self.plugin, true, function(data, err)
+                if data then
+                    table.remove(self.menu.item_table_stack) -- replace, don't stack
+                    reopen()
+                else
+                    self.plugin:showError(err)
+                end
+            end)
+        end,
+    }
+end
+
 function Browser:openLibraries()
     local msg = busy(_("Loading…"))
     local libs, err = self.api:listLibraries()
     UIManager:close(msg)
     if not libs then return self.plugin:showError(err) end
-    local items = {}
-    for _, lib in ipairs(libs) do
-        if type(lib) == "table" and lib.id then
-            local name = type(lib.name) == "string" and lib.name or T(_("Library %1"), lib.id)
-            items[#items + 1] = {
-                text = name,
-                mandatory = countText(lib.bookCount),
-                callback = function()
-                    self:openPaged(name, { libraryId = lib.id, sort = "title", dir = "asc" })
-                end,
-            }
+    Index.get(self.plugin, function(index)
+        local counts = index and index.libraries or {}
+        local items = {}
+        for _, lib in ipairs(libs) do
+            if type(lib) == "table" and lib.id then
+                local n = counts[tostring(lib.id)]
+                if not index or (n and n > 0) then -- hide audiobook-only libraries
+                    local name = type(lib.name) == "string" and lib.name or T(_("Library %1"), lib.id)
+                    items[#items + 1] = {
+                        text = name,
+                        sort_key = name:lower(),
+                        mandatory = countText(n),
+                        callback = function()
+                            self:openPaged(name, { libraryId = lib.id, sort = "title", dir = "asc" })
+                        end,
+                    }
+                end
+            end
         end
-    end
-    table.sort(items, function(x, y) return x.text:lower() < y.text:lower() end)
-    self:push(_("Libraries"), items)
+        self:push(_("Libraries"), sortedByName(items))
+    end)
 end
 
-function Browser:openAuthors(search)
-    local title = search and T(_("Authors: %1"), search) or _("Authors")
-    self:openList{
-        title = title,
-        header = not search and {
-            { text = _("Search authors…"), callback = function() self:promptAuthorSearch() end },
-        } or nil,
-        fetch = function(page)
-            return self.api:listAuthors{ page = page, size = 50, sort = "name", dir = "asc", search = search }
-        end,
-        to_item = function(author)
-            local name = type(author.name) == "string" and author.name or nil
-            if not name then return nil end
-            return {
-                text = name,
-                mandatory = countText(author.bookCount),
-                callback = function()
-                    self:openPaged(name, { authors = name, sort = "title", dir = "asc" })
-                end,
-            }
-        end,
-    }
+function Browser:openAuthors(search, replace)
+    Index.get(self.plugin, function(index)
+        local items = {}
+        local needle = search and search:lower()
+        for name, n in pairs(index.authors or {}) do
+            if not needle or name:lower():find(needle, 1, true) then
+                items[#items + 1] = {
+                    text = name,
+                    sort_key = name:lower(),
+                    mandatory = countText(n),
+                    callback = function()
+                        self:openPaged(name, { authors = name, sort = "title", dir = "asc" })
+                    end,
+                }
+            end
+        end
+        sortedByName(items)
+        if not search then
+            table.insert(items, 1, { text = _("Search authors…"), callback = function() self:promptAuthorSearch() end })
+            table.insert(items, 2, refreshItem(self, function() self:openAuthors() end))
+        end
+        local title = search and T(_("Authors: %1"), search) or _("Authors")
+        if replace then self:replace(title, items) else self:push(title, items) end
+    end)
 end
 
 function Browser:promptAuthorSearch()
@@ -249,28 +292,24 @@ function Browser:promptAuthorSearch()
 end
 
 function Browser:openSeries()
-    self:openList{
-        title = _("Series"),
-        fetch = function(page)
-            return self.api:listSeries{ page = page, size = 50, sort = "name", dir = "asc" }
-        end,
-        to_item = function(series)
-            local name = type(series.seriesName) == "string" and series.seriesName or nil
-            if not name then return nil end
-            local count = tonumber(series.bookCount)
-            local total = tonumber(series.seriesTotal)
-            local info = count and (total and total > count and T(_("%1 of %2"), count, total) or countText(count)) or nil
-            local authors = type(series.authors) == "table" and table.concat(series.authors, ", ") or ""
-            return {
+    Index.get(self.plugin, function(index)
+        local items = {}
+        for name, s in pairs(index.series or {}) do
+            local authors = type(s.authors) == "table" and table.concat(s.authors, ", ") or ""
+            items[#items + 1] = {
                 text = authors ~= "" and (name .. " — " .. authors) or name,
-                mandatory = info,
+                sort_key = name:lower(),
+                mandatory = countText(s.count),
                 callback = function()
                     -- filter rather than /series/{name}/books: names can contain "/"
                     self:openPaged(name, { series = name, sort = "seriesNumber", dir = "asc" }, true)
                 end,
             }
-        end,
-    }
+        end
+        sortedByName(items)
+        table.insert(items, 1, refreshItem(self, function() self:openSeries() end))
+        self:push(_("Series"), items)
+    end)
 end
 
 function Browser:promptSearch()

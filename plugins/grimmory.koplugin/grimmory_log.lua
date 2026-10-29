@@ -113,17 +113,21 @@ Log.PROBE_COMMANDS = {
     "cat /proc/asound/cards 2>&1; cat /proc/asound/devices 2>&1",
     "ls -la /dev/snd /dev/dsp* /dev/audio* /dev/mixer* 2>&1",
     "for b in aplay amixer arecord gst-launch gst-launch-0.10 gst-inspect-0.10 mplayer madplay mpg123 espeak flite tts lipc-probe lipc-get-prop lipc-set-prop lipc-send-event; do p=$(which $b 2>/dev/null); echo \"$b: ${p:-missing}\"; done",
-    "ls /usr/bin /usr/sbin /bin /sbin /usr/local/bin 2>/dev/null | grep -i -E 'tts|speak|speech|vocal|nuance|audio|gst|play|mp3|alsa|sound'",
-    "ls -la /usr/lib 2>/dev/null | grep -i -E 'tts|speak|speech|vocal|nuance|vauto|asound|gst|audio'",
-    "ls -la /opt/amazon/ebook/lib 2>/dev/null | grep -i -E 'tts|speak|speech|vocal|nuance|audio|sound'",
+    "ls /usr/bin /usr/sbin /bin /sbin /usr/local/bin 2>/dev/null | awk 'tolower($0) ~ /tts|speak|speech|vocal|nuance|audio|gst|play|mp3|alsa|sound/'",
+    "ls -la /usr/lib 2>/dev/null | awk 'tolower($0) ~ /tts|speak|speech|vocal|nuance|vauto|asound|gst|audio/'",
+    "ls -la /opt/amazon/ebook/lib 2>/dev/null | awk 'tolower($0) ~ /tts|speak|speech|vocal|nuance|audio|sound/'",
     "for d in /usr/share/tts /opt/tts /opt/amazon/tts /usr/local/tts /mnt/us/tts /mnt/us/usertts /var/local/tts; do [ -e $d ] && { echo \"== $d\"; ls -la $d; }; done",
-    "ls -R /usr/share 2>/dev/null | grep -i -E 'tts|vocal|nuance|vauto' | head -40",
-    "ls -R /opt 2>/dev/null | grep -i -E 'tts|vocal|nuance|vauto|speech' | head -40",
+    "ls -R /usr/share 2>/dev/null | awk 'tolower($0) ~ /tts|vocal|nuance|vauto/' | head -40",
+    "ls -R /opt 2>/dev/null | awk 'tolower($0) ~ /tts|vocal|nuance|vauto|speech/' | head -40",
     "lipc-probe -a 2>&1 | head -80",
     "lipc-probe -v com.lab126.tts 2>&1 | head -40",
     "lipc-probe -v com.lab126.audio 2>&1 | head -40",
     "lipc-probe -v com.lab126.audioMgr 2>&1 | head -40",
-    "ps 2>/dev/null | grep -i -E 'tts|audio|cvm|speech|java' | grep -v grep",
+    "ps 2>/dev/null | awk 'tolower($0) ~ /tts|audio|cvm|speech|java/' | grep -v grep",
+    -- GZreader read aloud: where the speech daemons live and what they log
+    "ls -la /usr/bin/*tts* /usr/sbin/*tts* /usr/local/bin/*tts* 2>&1",
+    "lipc-hash-prop 2>&1 | head -20",
+    "awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40",
 }
 
 function Log.deviceProbe()

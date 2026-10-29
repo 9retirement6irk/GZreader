@@ -231,9 +231,8 @@ function Sync:targetPos(r)
 end
 
 function Sync:jumpTo(r)
-    if self.ui.link and self.ui.link.addCurrentLocationToStack then
-        pcall(self.ui.link.addCurrentLocationToStack, self.ui.link)
-    end
+    -- Not added to the "go back" location history: when a book opened at its
+    -- first page and sync moved it, Back then jumped to the start of the book.
     if not self:isRolling() then
         local count = self.ui.document:getPageCount()
         local page = r.page or math.floor(r.pct / 100 * count + 0.5)

@@ -44,7 +44,15 @@ local GetText_mt = {
 -- wrapUntranslated() will be overridden by bidi.lua when UI language is RTL,
 -- to wrap untranslated english strings as LTR-isolated segments.
 -- It should do nothing when the UI language is LTR.
-GetText.wrapUntranslated_nowrap = function(text) return text end
+-- GZreader: brand the (English-only) UI. GZreader is Grimmory + ZenOS +
+-- KOReader; UI strings naming KOReader or ZenOS show GZreader (the About
+-- screen still credits both).
+GetText.wrapUntranslated_nowrap = function(text)
+    if type(text) == "string" and (text:find("KOReader", 1, true) or text:find("ZenOS", 1, true)) then
+        return (text:gsub("KOReader", "GZreader"):gsub("ZenOS", "GZreader"))
+    end
+    return text
+end
 GetText.wrapUntranslated = GetText.wrapUntranslated_nowrap
 -- Note: this won't be possible if we switch from our Lua GetText to
 -- GetText through FFI (but hopefully, RTL languages will be fully

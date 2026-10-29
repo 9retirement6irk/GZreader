@@ -248,6 +248,13 @@ end
 function Api:listLibraries()
     local code, data, err = self:call("GET", "/api/v1/app/libraries")
     if code == 200 and type(data) == "table" then return data end
+    if code and code >= 500 then
+        -- Some Grimmory versions fail here (library paths mapped outside a DB
+        -- transaction). The web app's endpoint lists the same libraries.
+        local c2, d2, e2 = self:call("GET", "/api/v1/libraries")
+        if c2 == 200 and type(d2) == "table" then return d2 end
+        return nil, e2 or ("http_" .. tostring(c2))
+    end
     return nil, err or ("http_" .. tostring(code))
 end
 
@@ -306,6 +313,26 @@ function Api:putProgress(book_id, body)
     local code, _, err = self:call("PUT", "/api/v1/app/books/" .. tostring(book_id) .. "/progress",
         { body = body, timeouts = { 8, 15 } })
     if code == 200 or code == 204 then return true end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
+--- Bookmarks (Grimmory's own: EPUB by CFI, PDF by page number).
+function Api:listBookmarks(book_id)
+    local code, data, err = self:call("GET", "/api/v1/bookmarks/book/" .. tostring(book_id),
+        { timeouts = { 8, 15 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+function Api:createBookmark(body)
+    local code, data, err = self:call("POST", "/api/v1/bookmarks", { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+function Api:deleteBookmark(id)
+    local code, _, err = self:call("DELETE", "/api/v1/bookmarks/" .. tostring(id), { timeouts = { 8, 15 } })
+    if code == 204 or code == 200 or code == 404 then return true end
     return false, err or ("http_" .. tostring(code)), code
 end
 

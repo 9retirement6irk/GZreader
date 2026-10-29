@@ -1,54 +1,54 @@
 {
 	"items": [
 		{
-			"name": "Grimmory",
+			"name": "GZreader",
 			"priority": 0,
 			"items": [
 				{
-					"name": "Start Grimmory",
+					"name": "Start GZreader",
 					"if": "\"KindleVoyage\" -m!",
 					"priority": 2,
 					"action": "/mnt/us/koreader/koreader.sh",
 					"params": "--kual",
 					"status": false,
-					"internal": "status Start Grimmory"
+					"internal": "status Start GZreader"
 				},
 				{
-					"name": "Start Grimmory",
+					"name": "Start GZreader",
 					"if": "\"KindleVoyage\" -m",
 					"priority": 2,
 					"action": "/mnt/us/koreader/koreader.sh",
 					"params": "--kual",
 					"exitmenu": false,
 					"status": false,
-					"internal": "status Start Grimmory"
+					"internal": "status Start GZreader"
 				},
 				{
-					"name": "Start Grimmory (no framework)",
+					"name": "Start GZreader (no framework)",
 					"priority": 4,
 					"action": "/mnt/us/koreader/koreader.sh",
 					"params": "--kual --framework_stop",
 					"status": false,
-					"internal": "status Kill the framework and start Grimmory"
+					"internal": "status Kill the framework and start GZreader"
 				},
 				{
-					"name": "Start Grimmory (ASAP)",
+					"name": "Start GZreader (ASAP)",
 					"if": "\"KindleVoyage\" -m!",
 					"priority": 6,
 					"action": "/mnt/us/koreader/koreader.sh",
 					"params": "--kual --asap",
 					"status": false,
-					"internal": "status Start Grimmory ASAP"
+					"internal": "status Start GZreader ASAP"
 				},
 				{
-					"name": "Start Grimmory (ASAP)",
+					"name": "Start GZreader (ASAP)",
 					"if": "\"KindleVoyage\" -m",
 					"priority": 6,
 					"action": "/mnt/us/koreader/koreader.sh",
 					"params": "--kual --asap",
 					"exitmenu": false,
 					"status": false,
-					"internal": "status Start Grimmory ASAP"
+					"internal": "status Start GZreader ASAP"
 				}
 			]
 		}

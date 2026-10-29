@@ -2,7 +2,14 @@ local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local ui = require("apps/reader/readerui").instance
+-- GZreader: resolve the reader lazily. This file can be loaded (by a menu
+-- rebuild, e.g. ZenOS's menu tour) before ReaderUI.instance is set, which
+-- crashed with "attempt to index local 'ui' (a nil value)".
+local ReaderUI = require("apps/reader/readerui")
+local ui = setmetatable({}, { __index = function(_, k)
+    local inst = ReaderUI.instance
+    return inst and inst[k]
+end })
 
 local PageOverlap = {
     text = _("Page overlap"),
@@ -69,7 +76,7 @@ You can set how many lines are shown.]]),
     },
 }
 
-local styles, style_texts = ui.view.getOverlapStyles()
+local styles, style_texts = require("apps/reader/modules/readerview").getOverlapStyles()
 for i, style in ipairs(styles) do
     table.insert(PageOverlap.sub_item_table, {
         text_func = function()

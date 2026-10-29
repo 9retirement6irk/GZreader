@@ -617,7 +617,7 @@ local DEFAULT_ROW_ORDER = {
 
 local DEFAULT_ROW_ENABLED = {
     featured = true,
-    quotes = true,
+    quotes = false, -- GZreader: slow to lay out on a Kindle 3
     stats_triplet = true,
     strip = true,
 }
@@ -805,6 +805,16 @@ local function ensure_home_cfg()
     end
 
     dcfg.rows = Registry.normalizeRows(dcfg.rows, DEFAULT_ROW_ORDER, DEFAULT_ROW_ENABLED)
+    -- GZreader: turn the quotes row off once for existing setups (it took
+    -- ~0.5 s of every Home rebuild on a Kindle 3); it can be turned back on.
+    if G_reader_settings and not G_reader_settings:isTrue("gzreader_home_trim_v1") then
+        G_reader_settings:makeTrue("gzreader_home_trim_v1")
+        if type(dcfg.rows) == "table" and type(dcfg.rows.enabled) == "table"
+                and dcfg.rows.enabled.quotes then
+            dcfg.rows.enabled.quotes = false
+            pcall(PresetStore.saveSettings, "home", dcfg)
+        end
+    end
 
     if dcfg.show_status_bar == nil then dcfg.show_status_bar = true end
     dcfg.edit_mode = dcfg.edit_mode ~= false

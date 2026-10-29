@@ -89,7 +89,9 @@ function M.start(plugin)
     local menu = plugin.ui and plugin.ui.menu
     if not (menu and type(menu.onShowMenu) == "function") then return false end
     if type(menu.tab_item_table) ~= "table" and type(menu.setUpdateItemTable) == "function" then
-        menu:setUpdateItemTable()
+        -- GZreader: a menu rebuild can fail while the reader is still
+        -- initialising (seen as a crash in page_overlap); try again later.
+        if not pcall(menu.setUpdateItemTable, menu) then return false end
     end
     local quicksettings_index = tab_index(menu.tab_item_table, "quicksettings")
     if not quicksettings_index then return false end

@@ -256,8 +256,8 @@ else
 
     local QuickStart = require("ui/quickstart")
     if not QuickStart:isShown() then
-        start_with = "last"
-        last_file = QuickStart:getQuickStart()
+        -- GZreader: ZenOS's setup guide replaces KOReader's quickstart document.
+        G_reader_settings:saveSetting("quickstart_shown_version", QuickStart.quickstart_force_show_version)
     end
 
     if start_with == "last" and last_file and lfs.attributes(last_file, "mode") ~= "file" then

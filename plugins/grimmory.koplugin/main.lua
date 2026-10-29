@@ -34,6 +34,11 @@ local PairServer = require("grimmory_pairserver")
 local Sync = require("grimmory_sync")
 local Download = require("grimmory_download")
 local Log = require("grimmory_log")
+local Index = require("grimmory_index")
+local JSON = require("json")
+local TTS = require("grimmory_tts")
+local ReadMenu = require("grimmory_readmenu")
+local Bookmarks = require("grimmory_bookmarks")
 
 local PAIR_TIMEOUT_S = 10 * 60
 local PAIR_MAX_ATTEMPTS = 5
@@ -65,6 +70,21 @@ function Grimmory:init()
     if not self.ui.document and not self.store.home_is_library then
         -- Grimmory build: the home folder is the Grimmory folder (no setup question)
         pcall(self.useLibraryAsHome, self)
+    end
+    if not self.ui.document then
+        pcall(self.restoreFromManifest, self)
+        if self.api:isPaired() then
+            UIManager:scheduleIn(8, function()
+                if not NetworkMgr:isConnected() then return end
+                local idx = Index.load(self.store)
+                if idx then pcall(self.relinkLibrary, self, idx) end
+                if Index.isStale(idx) then
+                    Index.build(self, false, function(built)
+                        if built then pcall(self.relinkLibrary, self, built) end
+                    end)
+                end
+            end)
+        end
     end
     if not self.ui.document and type(self.ui.active_widgets) == "table" then
         -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top
@@ -151,6 +171,20 @@ function Grimmory:menuItems()
             separator = true,
         },
         {
+            text = _("Sync bookmarks"),
+            help_text = _("Keep page bookmarks the same here and in Grimmory (its web reader and other devices)."),
+            checked_func = function() return self.store.bookmark_sync_disabled ~= true end,
+            callback = function()
+                self.store.bookmark_sync_disabled = (self.store.bookmark_sync_disabled ~= true) or nil
+                self:save()
+            end,
+        },
+        {
+            text = _("Read aloud settings"),
+            callback = function() self:showTtsSettings() end,
+            separator = true,
+        },
+        {
             text = paired and _("Reconnect with QR code") or _("Connect with QR code"),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
         },
@@ -182,6 +216,11 @@ function Grimmory:menuItems()
         {
             text = _("Save diagnostic log"),
             callback = function() self:exportLog() end,
+            separator = true,
+        },
+        {
+            text = "GZreader updates",
+            sub_item_table_func = function() return require("grimmory_update").menuItems() end,
         },
     }
     for _, item in ipairs(more) do table.insert(items, item) end
@@ -601,23 +640,83 @@ function Grimmory:entryForPath(path)
     end
 end
 
+function Grimmory:setupReader()
+    -- Read aloud (any reflowable book) and the keyboard Reading menu.
+    self.tts = TTS.Reader:new(self.ui)
+    local menu = self.ui.menu
+    if menu and not Device:isTouchDevice() and Device:hasKeyboard() then
+        local orig = menu.onKeyPressShowMenu
+        menu.onKeyPressShowMenu = function(m, a, k)
+            if G_reader_settings:nilOrTrue("gzreader_reading_menu") then
+                ReadMenu.show(self)
+                return true
+            end
+            return orig(m, a, k)
+        end
+    end
+end
+
+function Grimmory:onKeyPress(key)
+    if self.ui.document and self.tts and type(key) == "table" and key.key == "ShiftSym" then
+        self.tts:toggle()
+        return true
+    end
+end
+
+function Grimmory:onAnnotationsModified(items)
+    if self.bookmarks then self.bookmarks:onAnnotationsModified(items) end
+end
+
+function Grimmory:showTtsSettings()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    local function speedRow()
+        return {
+            { text = _("Slower"), callback = function()
+                TTS.setSpeed(math.max(50, TTS.speed() - 10)); UIManager:close(dialog); self:showTtsSettings()
+            end },
+            { text = T(_("Speed %1"), TTS.speed()), enabled = false },
+            { text = _("Faster"), callback = function()
+                TTS.setSpeed(math.min(200, TTS.speed() + 10)); UIManager:close(dialog); self:showTtsSettings()
+            end },
+        }
+    end
+    dialog = ButtonDialog:new{
+        title = _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
+        buttons = {
+            speedRow(),
+            { { text = _("Find the Kindle voice (test)"), callback = function()
+                UIManager:close(dialog); TTS.findVoice()
+            end } },
+            { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
+        },
+    }
+    UIManager:show(dialog)
+end
+
 function Grimmory:onReaderReady()
     if not self.ui.document then return end
+    pcall(self.setupReader, self)
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
         -- Downloaded by an older version of this plugin: look up the file id once.
         local book = self.api:getBook(book_id)
         local pf = book and type(book.primaryFile) == "table" and tonumber(book.primaryFile.id)
-        if pf then entry.file_id = pf; self:save() end
+        if pf then entry.file_id = pf; self:save(); self:writeManifest() end
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady()
+    self.bookmarks = Bookmarks:new(self.sync)
+    UIManager:scheduleIn(4, function()
+        if self.bookmarks and self.sync and self.ui.document then pcall(self.bookmarks.reconcile, self.bookmarks) end
+    end)
 end
 
 function Grimmory:onPageUpdate()
     if self.sync then self.sync:onPageTurned() end
+    if self.tts then self.tts:onManualPageTurn() end
 end
 
 function Grimmory:onPosUpdate()
@@ -635,11 +734,13 @@ function Grimmory:onGrimmorySyncNow()
     NetworkMgr:runWhenOnline(function()
         self.sync:push(true)
         self.sync:pull(true)
+        if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
     end)
     return true
 end
 
 function Grimmory:onSuspend()
+    if self.tts then self.tts:stop() end
     if self.sync then self.sync:onLeave() end
 end
 
@@ -658,6 +759,8 @@ function Grimmory:onEndOfBook()
 end
 
 function Grimmory:onCloseDocument()
+    if self.tts then self.tts:stop(); self.tts = nil end
+    self.bookmarks = nil
     if self.sync then
         self.sync:onLeave()
         self.sync = nil
@@ -727,6 +830,85 @@ function Grimmory:useLibraryAsHome()
     return dir
 end
 
+---------------------------------------------------------------- downloads list backup
+
+-- The list of downloaded Grimmory books also lives in the books folder
+-- (hidden file), so replacing the koreader folder (and its settings) on an
+-- update doesn't forget which local files are Grimmory books.
+local MANIFEST = ".gzreader-library.json"
+
+function Grimmory:writeManifest()
+    local dir = self.store.library_dir
+    if not dir then return end
+    local list = {}
+    for id, e in pairs(self.store.downloads) do
+        if type(e) == "table" and e.path then
+            list[#list + 1] = { id = id, file = e.path:match("[^/]+$"), title = e.title,
+                format = e.format, file_id = e.file_id, last_pushed_pct = e.last_pushed_pct }
+        end
+    end
+    local f = io.open(dir .. "/" .. MANIFEST, "wb")
+    if f then f:write(JSON.encode({ version = 1, books = list })); f:close() end
+end
+
+--- Merge the backup list into the settings (after an update wiped them).
+function Grimmory:restoreFromManifest()
+    local dir = self.store.library_dir
+    local f = dir and io.open(dir .. "/" .. MANIFEST, "rb")
+    if not f then return 0 end
+    local ok, data = pcall(JSON.decode, f:read("*a"))
+    f:close()
+    local restored = 0
+    if ok and type(data) == "table" and type(data.books) == "table" then
+        for _, b in ipairs(data.books) do
+            local id = b.id and tostring(b.id)
+            local path = type(b.file) == "string" and (dir .. "/" .. b.file)
+            if id and path and not self.store.downloads[id] and lfs.attributes(path, "mode") == "file" then
+                self.store.downloads[id] = { path = path, title = b.title, format = b.format,
+                    file_id = tonumber(b.file_id), last_pushed_pct = tonumber(b.last_pushed_pct) }
+                restored = restored + 1
+            end
+        end
+    end
+    if restored > 0 then
+        Log.info("restored", restored, "downloaded books from", MANIFEST)
+        self:save()
+    end
+    return restored
+end
+
+--- Match books in the folder that aren't linked yet to Grimmory books by
+--- file name, using the library index. Returns the number linked.
+function Grimmory:relinkLibrary(index)
+    local dir = self.store.library_dir
+    if not dir or not index or type(index.files) ~= "table" then return 0 end
+    local linked_paths = {}
+    for _, e in pairs(self.store.downloads) do if type(e) == "table" and e.path then linked_paths[e.path] = true end end
+    local by_safe_name = {}
+    for name, info in pairs(index.files) do
+        by_safe_name[util.getSafeFilename(name, dir)] = info
+        by_safe_name[name] = info
+    end
+    local linked = 0
+    for name in lfs.dir(dir) do
+        local path = dir .. "/" .. name
+        local info = by_safe_name[name]
+        if info and not linked_paths[path] and lfs.attributes(path, "mode") == "file" then
+            local id = tostring(info[1])
+            if not self.store.downloads[id] then
+                self.store.downloads[id] = { path = path, title = info[4], format = info[3], file_id = tonumber(info[2]) }
+                linked = linked + 1
+            end
+        end
+    end
+    if linked > 0 then
+        Log.info("relinked", linked, "books already on the Kindle")
+        self:save()
+        self:writeManifest()
+    end
+    return linked
+end
+
 function Grimmory:localPathFor(book_id)
     local entry = book_id and self.store.downloads[tostring(book_id)]
     if type(entry) == "table" and entry.path and lfs.attributes(entry.path, "mode") == "file" then
@@ -757,6 +939,7 @@ function Grimmory:downloadAndOpen(book, menu)
             file_id = tonumber(book.primaryFileId),
         }
         self:save()
+        self:writeManifest()
         if watching then
             self:openBook(path, menu)
         else

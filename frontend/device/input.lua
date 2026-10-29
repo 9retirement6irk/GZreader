@@ -885,6 +885,12 @@ function Input:handleKeyBoardEv(ev)
     if self.modifiers[keycode] ~= nil then
         if ev.value == KEY_PRESS then
             self.modifiers[keycode] = true
+            -- GZreader: Shift + Sym (the Kindle 3's own read-aloud play/stop
+            -- shortcut) is two modifiers, so it would never reach a widget.
+            -- Surface it as its own key, "ShiftSym".
+            if keycode == "Sym" and self.modifiers.Shift then
+                return Event:new("KeyPress", Key:new("ShiftSym", {}))
+            end
         elseif ev.value == KEY_RELEASE then
             self.modifiers[keycode] = false
             if self.keyboard_toggle_tapped == keycode then

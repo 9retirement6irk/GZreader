@@ -352,6 +352,11 @@ function Screensaver:setup(event, event_message)
 
     self.show_message = G_reader_settings:isTrue("screensaver_show_message")
     self.screensaver_type = G_reader_settings:readSetting("screensaver_type")
+    -- GZreader sleep screen (on by default): the book's cover while a book is
+    -- open, a picture from the screensavers folder from Home and menus.
+    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then
+        self.screensaver_type = self.ui.document and "cover" or "random_image"
+    end
     local screensaver_img_background = G_reader_settings:readSetting("screensaver_img_background")
     local screensaver_msg_background = G_reader_settings:readSetting("screensaver_msg_background")
 
@@ -436,7 +441,16 @@ function Screensaver:setup(event, event_message)
     if self.screensaver_type == "random_image" then
         local screensaver_dir = G_reader_settings:readSetting(self.prefix .. "screensaver_dir")
                              or G_reader_settings:readSetting("screensaver_dir")
-        self.image_file = _getRandomImage(screensaver_dir) or "resources/koreader.png" -- Fallback image
+        self.image_file = _getRandomImage(screensaver_dir)
+        -- GZreader: then the USB drive's "screensavers" folder, then the
+        -- Kindle's own sleep pictures.
+        for _, dir in ipairs(Device:isKindle() and { "/mnt/us/screensavers", "/opt/amazon/screen_saver/600x800" } or {}) do
+            if self.image_file then break end
+            if dir ~= screensaver_dir and lfs.attributes(dir, "mode") == "directory" then
+                self.image_file = _getRandomImage(dir)
+            end
+        end
+        self.image_file = self.image_file or "resources/koreader.png" -- Fallback image
     end
 
     -- Use the right background setting depending on the effective mode, now that fallbacks have kicked in.

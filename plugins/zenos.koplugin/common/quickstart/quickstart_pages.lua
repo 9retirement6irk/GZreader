@@ -742,9 +742,10 @@ function M.build_install_pages(ctx)
     local pages = {
         -- 1. Welcome (static)
         {
-            title       = _("Welcome to ZenOS"),
+            title       = "Welcome to GZreader",
             icon        = "_zen_quickstart",
-            description = _("A clean, minimal experience for your e-reader.\n\nSwipe or tap Next to continue."),
+            description = "Grimmory + ZenOS + KOReader.\n\n" .. _("Your Grimmory library on your Kindle: download books, read them, and keep your place and bookmarks in sync.") .. "\n\n"
+                .. _("Use the 5-way to choose and press it to continue."),
         },
 
         -- 2. Library View (INTERACTIVE — radio)
@@ -760,11 +761,6 @@ function M.build_install_pages(ctx)
                 elseif sel["list"]   then apply_display_mode("list_image_meta")
                 end
             end,
-        },
-
-        {
-            title       = _("Context Menu"),
-            description = _("Tap and hold any book or folder in your library to reveal details."),
         },
 
         -- 3. Navbar Tabs (INTERACTIVE — checkbox)
@@ -797,11 +793,21 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- 4. Quick Settings (static)
+        -- 4. GZreader: keyboard (static)
         {
-            title       = _("Quick Settings"),
-            description = _("Swipe down from the top to reach quick settings like brightness, Wi-Fi, night mode, zen mode and more.") .. "\n\n"
-                .. _("Add custom buttons for other plugins or actions."),
+            title       = _("Your keyboard"),
+            description = _("1 – 9: switch the bottom tabs, counted from the left (Home, Downloaded, Continue, Grimmory, …).") .. "\n"
+                .. _("Q, W, E …: pick an item in a list (the letter is shown next to it).") .. "\n"
+                .. _("Menu while reading: the Reading menu (contents, bookmarks, go to page, search, read aloud, fonts, sync). Hold Menu for the page browser.") .. "\n"
+                .. _("Shift + Sym: read aloud / stop.") .. "\n"
+                .. _("Back: return from a link, or go to the Home screen."),
+        },
+
+        -- 4b. GZreader: sync (static)
+        {
+            title       = _("Synced with Grimmory"),
+            description = _("Books you download from the Grimmory tab keep your reading position and bookmarks in sync with Grimmory's web reader and your other devices.") .. "\n\n"
+                .. _("No Wi-Fi? Your progress is saved on the Kindle and sent when you're back online."),
         },
 
         -- 5. Zen Mode (static)
@@ -818,13 +824,25 @@ function M.build_install_pages(ctx)
             description = _("What should your device show when it goes to sleep?"),
             choice_type = "radio",
             choices     = {
+                { id = "gz_auto",       text = _("Book cover while reading; a picture from the \"screensavers\" folder on Home and menus"), checked = not quickstart_completed },
                 { id = "keep",          text = _("Keep existing settings"),         checked = quickstart_completed },
-                { id = "cover_black",   text = _("Show Book cover"), checked = not quickstart_completed },
+                { id = "cover_black",   text = _("Always the last book's cover"), checked = false },
                 { id = "zen_white",     text = _("Show Zen icon - white background"),   checked = false },
                 { id = "zen_black",     text = _("Show Zen icon - black background"),   checked = false },
             },
             on_apply = function(sel)
                 if sel["keep"] then return end
+                if sel["gz_auto"] then
+                    G_reader_settings:makeTrue("gzreader_sleep_auto")
+                    pcall(function()
+                        local lfs = require("libs/libkoreader-lfs")
+                        if require("device"):isKindle() and not lfs.attributes("/mnt/us/screensavers", "mode") then
+                            lfs.mkdir("/mnt/us/screensavers")
+                        end
+                    end)
+                    return
+                end
+                G_reader_settings:makeFalse("gzreader_sleep_auto")
                 local preset
                 if     sel["cover_black"] then preset = builtin_presets[1]
                 elseif sel["zen_white"]   then preset = builtin_presets[2]
@@ -884,11 +902,12 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- 9. Page Browser (static)
+        -- 9. Reading (static)
         {
-            title       = _("Page Browser"),
-            description = _("Swipe up from the bottom while reading to open the Page Browser.\n\nSkim through pages or skip chapters, browse the table of contents, manage bookmarks, adjust fonts and more.") .. "\n\n"
-                .. _("The default KOReader reader menu is inside the Aa icon."),
+            title       = _("While reading"),
+            description = _("Press Menu for the Reading menu. Every entry has a letter key next to it.") .. "\n\n"
+                .. _("Read aloud: press Shift + Sym. The sentence being read is highlighted and pages turn by themselves. The first time, GZreader finds the Kindle's voice with a short test.") .. "\n\n"
+                .. _("Press AA for fonts and layout. Hold Menu for the page browser."),
         },
 
         -- 10. Settings & Updates (static)
@@ -896,7 +915,8 @@ function M.build_install_pages(ctx)
             title       = _("Settings & Updates"),
             icon        = "_zen_quickstart_update",
             icon_size   = 120,
-            description = _("All settings are in one unified tab. This icon with the dot indicates an update is available.\n\nInstall ZenOS updates directly from your device."),
+            description = _("All settings are in one unified tab. This icon with the dot indicates an update is available.") .. "\n\n"
+                .. _("GZreader checks for updates once a day (github.com/9retirement6irk/GZreader). Updating keeps your books, settings and reading progress."),
         },
 
         -- 11. Finale

@@ -158,17 +158,14 @@ function ReaderBack:onBack()
             self.ui.link:onGoBackLink(true) -- show_notification_if_empty=true
             return true
         end
-        if self.back_resist then
-            -- Notification "Location history is empty" previously shown by ReaderLink
-            self.back_resist = nil
-        elseif self.ui.link:onGoBackLink(true) then -- show_notification_if_empty=true
+        -- GZreader: Back returns from a followed link / TOC jump; with nothing
+        -- to go back to it goes to the Home screen (instead of "Location
+        -- history is empty" and then "Exit KOReader?").
+        if self.ui.link:onGoBackLink(false) then
             return true -- some location restored
-        else
-            -- ReaderLink has shown its notification that location stack is empty.
-            -- On next "Back" only, proceed with the default behaviour
-            self.back_resist = true
-            return true
         end
+        self.ui:handleEvent(Event:new("Home"))
+        return true
     elseif back_in_reader == "filebrowser" then
         self.ui:handleEvent(Event:new("Home"))
         -- Filebrowser will handle next "Back" and ensure back_to_exit
