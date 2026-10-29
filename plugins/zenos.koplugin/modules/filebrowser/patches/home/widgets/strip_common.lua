@@ -1182,6 +1182,7 @@ function M.build_strip(ctx, source_key)
                         .. tostring(book.group_label or path),
                     subrow = row_num or 1,
                     col = idx,
+                    path = book.is_group ~= true and path or nil, -- GZreader: for the GZreader menu
                     width = item_w,
                     height = item.h,
                     activate = function()

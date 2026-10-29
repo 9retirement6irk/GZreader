@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.26",
+        changes = {
+            "Managing downloaded books: highlight a book on Home or in the Downloaded tab (with the 5-way) and press Menu. The GZreader menu then starts with Open, Delete from this Kindle and More options for that book. Delete asks first; it removes the file with its reading position and bookmarks on the Kindle, and Grimmory keeps the book and your progress.",
+            "Sort books… in the GZreader menu: last read, title, author, series, date downloaded, reading progress, file size or file name, and reverse order. It sorts the Downloaded tab and the other book lists.",
+        },
+    },
+    {
         version = "1.0.25",
         changes = {
             "Downloads screen: while anything downloads, “Downloads (N)” is the first entry of the GZreader menu (Menu key on Home) and is in the Reading menu; it's always in Settings → GZreader. It lists the current download with its progress, the books waiting in the queue, and audiobook downloads and preparing. Pick one to reopen its progress bar, stop it, or take it out of the queue; or empty the whole queue.",

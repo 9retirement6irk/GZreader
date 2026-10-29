@@ -69,6 +69,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, ZenOS quick panel, exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
+| Home / Downloaded, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
 | Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, all settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |

@@ -3431,6 +3431,7 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                 content_bounds = content_bounds,
                 activate = row_focus_actions.activate,
                 context = row_focus_actions.context,
+                path = row_focus_actions.path, -- GZreader: the book, for the GZreader menu
             }, final_widget)
             table.insert(children, FrameContainer:new{
                 width = content_w,

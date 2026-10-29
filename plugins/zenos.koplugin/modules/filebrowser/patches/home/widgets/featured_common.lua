@@ -256,6 +256,7 @@ function M.build(ctx, source_key)
                 if ctx.showBookMenu then return ctx.showBookMenu(book.path, source) end
                 return false
             end,
+            path = book.path, -- GZreader: for the GZreader menu
         }
     end
 
