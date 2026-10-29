@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.10",
+        changes = {
+            "Time zone: Settings → General → Time zone (the Kindle 3 has none and keeps its clock in UTC, so clocks showed UTC).",
+        },
+    },
+    {
         version = "1.0.9",
         changes = {
             "Audiobooks (experimental): browse Grimmory's audiobooks, download them (M4B or MP3 tracks) and listen with chapters, ±30 s, a sleep timer and volume; listening position syncs with Grimmory's web player.",

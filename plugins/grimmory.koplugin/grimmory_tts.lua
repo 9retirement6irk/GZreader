@@ -302,7 +302,9 @@ end
 
 local function stamp()
     if TTS.now then return TTS.now() end
-    return os.date("%y%m%d:%H%M%S", os.time() - 2) -- a little slack
+    -- the Kindle writes its system log in its own (UTC) clock, whatever time
+    -- zone GZreader shows
+    return os.date("!%y%m%d:%H%M%S", os.time() - 2) -- a little slack
 end
 
 --- The newest ttsd complaint in the system log written at or after `since`.

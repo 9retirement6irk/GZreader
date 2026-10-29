@@ -58,6 +58,7 @@ function Grimmory:init()
         Log.init(DataStorage:getDataDir())
         Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
             "device", tostring(Device.model))
+        pcall(function() require("grimmory_timezone").apply() end)
     end
     self.settings = Grimmory.shared_settings
     require("grimmory_audioengine").root = self.path

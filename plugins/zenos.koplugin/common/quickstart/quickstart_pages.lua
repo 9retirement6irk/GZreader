@@ -860,7 +860,8 @@ function M.build_install_pages(ctx)
         -- 7. Time Format (INTERACTIVE — radio)
         {
             title       = _("Time Format"),
-            description = _("Which time format do you prefer?"),
+            description = _("Which time format do you prefer?") .. "\n"
+                .. _("The Kindle 3 keeps its clock in UTC: set your time zone in Settings → General → Time zone."),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },
