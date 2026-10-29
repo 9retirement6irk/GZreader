@@ -148,13 +148,14 @@ Shift + Sym (or Reading menu → Read aloud) starts and stops. The sentence
 being read is highlighted and pages turn by themselves. EPUB/FB2/MOBI/AZW3
 and text only.
 
-Amazon never documented how its speech service is called, so the first time
-GZreader plays "Voice test 1, 2, …" through each candidate way and you pick
-the number you heard (Reading menu → Read-aloud settings → Find the Kindle
-voice). Ways the speech service rejects are left out of the question. The speech service doesn't report when a sentence ends, so the next
-sentence starts after a time computed from its length and the speed setting
-(Read-aloud settings → Slower / Faster). The diagnostic log records what the
-speech service answered.
+Amazon never documented the request format. The speech daemon (`ttsd`)
+writes which field it's missing to the system log ("unable to read id"), so
+Reading menu → Read-aloud settings → Find the Kindle voice adds the missing
+fields one by one until `ttsd` accepts the request, plays "Voice test" and
+asks whether you heard it; the request shape is then saved. The speech
+service doesn't report when a sentence ends, so the next sentence starts
+after a time computed from its length and the speed setting (Read-aloud
+settings → Slower / Faster). The diagnostic log records every step.
 
 ## Sleep screen
 

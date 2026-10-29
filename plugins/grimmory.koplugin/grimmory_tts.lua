@@ -2,23 +2,24 @@
 Read aloud for GZreader on the Kindle Keyboard, using the Kindle's own
 text-to-speech voice (the one behind Amazon's "Experimental → Text-to-Speech").
 
-What the diagnostic log showed on a Kindle 3 (firmware 3.4.3):
-- No espeak/flite/mplayer; ALSA (WM8960) with aplay and GStreamer 0.10.
-- Amazon's speech services are running and reachable over lipc:
+What the diagnostic logs showed on a Kindle 3 (firmware 3.4.3):
+- Amazon's speech daemon /usr/sbin/ttsd is running and reachable over lipc:
   com.lab126.ttsd  playSnippetNow / enqueueSnippet (hash properties),
                    cancelSnippetPlayback, pause2, unpause2
   com.lab126.tts   playFile (hash), stop, pause, unpause, TtsISpeed [100],
                    TtsSVoice [Tom]
-- Amazon never documented the fields of those hash properties. So the
-  first time, "Find the Kindle voice" plays a short numbered test through
-  each plausible way of calling them; you pick the number you heard and it is
-  remembered (Read aloud → Find the Kindle voice).
+- KOReader's lipc library doesn't load there, so requests go through the
+  Kindle's lipc-hash-prop tool: {key = "string", key2 = (int)} on stdin.
+- Amazon never documented the fields. ttsd says in /var/log/messages which
+  one it is missing ("enqueueSnippet unable to read id", "… unable to read
+  text"), so "Find the Kindle voice" learns the request shape from those
+  messages: it adds the missing field, retries, and stops when ttsd accepts
+  it; then it asks whether you heard the test sentence. The shape is saved.
 
 Reading: one sentence at a time (crengine sentence boundaries). The sentence
 being spoken is highlighted, pages turn by themselves, Shift + Sym plays and
-stops (like the stock Kindle). The Kindle's speech service does not report
-when a sentence ends, so the next one starts after a time worked out from
-the sentence length and the speed setting.
+stops (like the stock Kindle). The next sentence starts after a time worked
+out from the sentence length and the speed setting.
 
 Reflowable books only (EPUB, FB2, MOBI, AZW3, TXT, HTML); not PDF or comics.
 ]]
@@ -31,31 +32,30 @@ local Log = require("grimmory_log")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local TEXT_FILE = "/tmp/gzreader-tts.txt"
 local OUT_PREFIX = "/tmp/gzreader-tts."
 
 local TTS = {
-    -- Candidate ways to make the Kindle speak `text`. The test speaks
-    -- "Voice test <n>" with each; the working one is saved by index.
-    METHODS = {
-        { label = "ttsd playSnippetNow {text}", pub = "com.lab126.ttsd", prop = "playSnippetNow", key = "text" },
-        { label = "ttsd playSnippetNow {snippet}", pub = "com.lab126.ttsd", prop = "playSnippetNow", key = "snippet" },
-        { label = "ttsd playSnippetNow {Text}", pub = "com.lab126.ttsd", prop = "playSnippetNow", key = "Text" },
-        { label = "ttsd playSnippetNow {content}", pub = "com.lab126.ttsd", prop = "playSnippetNow", key = "content" },
-        { label = "ttsd playSnippetNow {string}", pub = "com.lab126.ttsd", prop = "playSnippetNow", key = "string" },
-        { label = "ttsd enqueueSnippet {text}", pub = "com.lab126.ttsd", prop = "enqueueSnippet", key = "text" },
-        { label = "tts playFile {file}", pub = "com.lab126.tts", prop = "playFile", key = "file", file = true },
-        { label = "tts playFile {path}", pub = "com.lab126.tts", prop = "playFile", key = "path", file = true },
-        { label = "tts playFile {filename}", pub = "com.lab126.tts", prop = "playFile", key = "filename", file = true },
-        { label = "tts playFile {fileName}", pub = "com.lab126.tts", prop = "playFile", key = "fileName", file = true },
-        { label = "tts playFile {uri}", pub = "com.lab126.tts", prop = "playFile", key = "uri", file = true, uri = true },
+    -- Where to send speech requests, tried in this order by the discovery.
+    TARGETS = {
+        { pub = "com.lab126.ttsd", prop = "playSnippetNow" },
+        { pub = "com.lab126.ttsd", prop = "enqueueSnippet" },
     },
+    -- First guesses for fields ttsd asks for (by name); anything else is
+    -- tried as a number, then as a string.
+    GUESSES = {
+        id = { int = 1 }, priority = { int = 0 }, speed = { int = 100 },
+        voice = { str = "Tom" }, lang = { str = "en-US" }, language = { str = "en-US" },
+        locale = { str = "en_US" }, model = { str = "full_155mrf22" },
+    },
+    MAX_ROUNDS = 10,
     BASE_WPM = 165,   -- words per minute at speed 100 (generous, so sentences aren't cut off)
-    -- Backends (injectable for tests):
-    lipc = nil,       -- KOReader's libopenlipclua; on the Kindle 3 it doesn't load
-                      -- (its liblipc lacks LipcGetServiceName), so we fall back to:
+    -- injectable for tests
+    lipc = nil,       -- KOReader's libopenlipclua (doesn't load on the Kindle 3)
     exec = nil,       -- function(cmd) running a shell command (default os.execute)
+    syslog = "/var/log/messages",
+    now = nil,        -- function() -> "yymmdd:HHMMSS" (syslog timestamp format)
     seq = 0,
+    testing = false,
 }
 
 local function settings() return G_reader_settings end
@@ -77,11 +77,29 @@ local function run(cmd)
     return os.execute(cmd)
 end
 
---- lipc-hash-prop's input: {key="value"}. Quotes and backslashes can't be
---- escaped there, so they're replaced; line breaks become spaces.
-function TTS.hashText(key, value)
-    value = tostring(value):gsub("[\r\n\t]+", " "):gsub('"', "'"):gsub("\\", "/")
-    return string.format('{%s="%s"}', key, value)
+function TTS.backend()
+    local h = openLipc()
+    if h then pcall(h.close, h); return "lib" end
+    return "shell"
+end
+
+--- Make text safe inside lipc-hash-prop's quotes.
+local function clean(value)
+    return (tostring(value):gsub("[\r\n\t]+", " "):gsub('"', "'"):gsub("\\", "/"))
+end
+
+--- fields: ordered list of { name, int = n } / { name, str = "s" }.
+--- Returns the lipc-hash-prop input, e.g. {text = "Hi", id = (1)}.
+function TTS.hashText(fields)
+    local parts = {}
+    for _i, f in ipairs(fields) do
+        if f.int ~= nil then
+            parts[#parts + 1] = string.format("%s = (%d)", f[1], f.int)
+        else
+            parts[#parts + 1] = string.format('%s = "%s"', f[1], clean(f.str))
+        end
+    end
+    return "{" .. table.concat(parts, ", ") .. "}"
 end
 
 --- Run a lipc-hash-prop in the background (the UI never waits on it).
@@ -95,7 +113,7 @@ local function hashPropAsync(pub, prop, hash)
     if not f then return nil, "cannot write " .. hash_file end
     f:write(hash, "\n"); f:close()
     os.remove(out)
-    -- pub/prop are constants from METHODS; the text only goes in the file.
+    -- pub/prop are constants from TARGETS; the text only goes in the file.
     run(string.format("(lipc-hash-prop %s %s < %s > %s 2>&1; echo \"rc=$?\" >> %s; rm -f %s) &",
         pub, prop, hash_file, out, out, hash_file))
     return out
@@ -103,6 +121,7 @@ end
 
 --- Result of a background call: true (ok), false, details (failed), nil (still running).
 function TTS.result(out)
+    if out == true then return true, "" end
     local f = out and io.open(out, "rb")
     if not f then return nil end
     local text = f:read("*a") or ""
@@ -117,39 +136,50 @@ function TTS.result(out)
     return true, body
 end
 
-function TTS.backend()
-    local h = openLipc()
-    if h then pcall(h.close, h); return "lib" end
-    return "shell"
-end
-
---- Speak `text` with method `m`. Returns true (or the shell call's output
---- file, see TTS.result) or nil, err. Never waits for the speech.
-function TTS.say(text, m)
-    m = m or TTS.METHODS[settings():readSetting("gzreader_tts_method") or 1]
-    if not m then return nil, "no method" end
-    local value = text
-    if m.file then
-        local f = io.open(TEXT_FILE, "wb")
-        if not f then return nil, "cannot write " .. TEXT_FILE end
-        f:write(text); f:close()
-        value = m.uri and ("file://" .. TEXT_FILE) or TEXT_FILE
-    end
+--- Send one request. Returns a result handle for TTS.result, or nil, err.
+function TTS.send(target, fields)
     local h = openLipc()
     if not h then
-        return hashPropAsync(m.pub, m.prop, TTS.hashText(m.key, value))
+        return hashPropAsync(target.pub, target.prop, TTS.hashText(fields))
     end
     local ok, res = pcall(function()
         local ha = h:new_hasharray()
         ha:add_hash()
-        ha:put_string(0, m.key, value)
-        local out = h:access_hash_property(m.pub, m.prop, ha)
+        for _i, f in ipairs(fields) do
+            if f.int ~= nil then ha:put_int(0, f[1], f.int) else ha:put_string(0, f[1], tostring(f.str)) end
+        end
+        local out = h:access_hash_property(target.pub, target.prop, ha)
         if out then out:destroy() end
         ha:destroy()
     end)
     pcall(h.close, h)
     if not ok then return nil, tostring(res) end
     return true
+end
+
+--- The saved request shape, filled in for `text`.
+local function fieldsFor(template, text)
+    local fields = {}
+    for _i, f in ipairs(template.fields) do
+        if f[1] == "text" then
+            fields[#fields + 1] = { "text", str = text }
+        elseif f[1] == "id" and f.int ~= nil then
+            fields[#fields + 1] = { "id", int = TTS.seq + 1 } -- a fresh id per snippet
+        else
+            fields[#fields + 1] = { f[1], int = f.int, str = f.str }
+        end
+    end
+    return fields
+end
+
+function TTS.template() return settings():readSetting("gzreader_tts_template") end
+
+--- Speak `text` with the saved request shape. Returns a result handle
+--- (see TTS.result) or nil, err. Never waits for the speech.
+function TTS.say(text, template)
+    template = template or TTS.template()
+    if not template then return nil, "no voice set up" end
+    return TTS.send(template.target, fieldsFor(template, text))
 end
 
 local function intProp(pub, prop, value)
@@ -188,89 +218,131 @@ function TTS.duration(text)
     return 0.8 + words * 60 / wpm + pauses * 0.25
 end
 
----------------------------------------------------------------- voice test
+---------------------------------------------------------------- discovery
 
---- Speak a numbered phrase with every method, then ask which was heard.
---- Ways the speech service rejects outright are left out of the question.
-function TTS.findVoice(on_done)
-    Log.info("tts backend", TTS.backend())
-    UIManager:show(InfoMessage:new{
-        text = T(_("Listen: the Kindle will now say \"Voice test\" and a number, up to %1 times, a few seconds apart. Then choose the number you heard."), #TTS.METHODS),
-        timeout = 6,
-    })
-    local i = 0
-    local pending, rejected, errors = {}, {}, {}
-    local function collect()
-        for n, out in pairs(pending) do
-            if out == true then
-                pending[n] = nil
-            else
-                local ok, detail = TTS.result(out)
-                if ok ~= nil then
-                    pending[n] = nil
-                    if not ok then rejected[n] = true; errors[#errors + 1] = n .. ": " .. tostring(detail) end
-                    Log.info("tts test", n, TTS.METHODS[n].label, ok and "accepted" or ("rejected: " .. tostring(detail)))
-                end
-            end
-        end
-    end
-    local function step()
-        collect()
-        i = i + 1
-        if i > #TTS.METHODS then
-            local waited = 0
-            local function finish()
-                collect()
-                waited = waited + 1
-                if next(pending) and waited < 5 then return UIManager:scheduleIn(1, finish) end
-                TTS.cancel()
-                return TTS.askHeard(on_done, rejected, errors)
-            end
-            return finish()
-        end
-        local m = TTS.METHODS[i]
-        local res, serr = TTS.say(T("Voice test %1.", i), m)
-        if res then pending[i] = res
-        else rejected[i] = true; errors[#errors + 1] = i .. ": " .. tostring(serr); Log.info("tts test", i, m.label, "error: " .. tostring(serr)) end
-        UIManager:scheduleIn(res and 3.5 or 0.2, step)
-    end
-    UIManager:scheduleIn(6.5, step)
+local function stamp()
+    if TTS.now then return TTS.now() end
+    return os.date("%y%m%d:%H%M%S", os.time() - 2) -- a little slack
 end
 
-function TTS.askHeard(on_done, rejected, errors)
-    rejected = rejected or {}
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dialog
-    local rows, row = {}, {}
-    for n = 1, #TTS.METHODS do
-        if not rejected[n] then
-            row[#row + 1] = { text = tostring(n), callback = function()
-                UIManager:close(dialog)
-                settings():saveSetting("gzreader_tts_method", n)
-                Log.info("tts method chosen", n, TTS.METHODS[n].label)
-                UIManager:show(InfoMessage:new{ text = T(_("Kindle voice set (method %1). Press Shift + Sym while reading to start or stop."), n) })
-                if on_done then on_done(n) end
-            end }
-            if #row == 4 then rows[#rows + 1] = row; row = {} end
+--- The newest ttsd complaint in the system log written at or after `since`.
+function TTS.ttsdComplaint(since)
+    local f = io.open(TTS.syslog, "rb")
+    if not f then return nil end
+    local size = f:seek("end") or 0
+    f:seek("set", math.max(0, size - 16384))
+    local tail = f:read("*a") or ""
+    f:close()
+    local found
+    for line in tail:gmatch("[^\n]+") do
+        local ts = line:match("^(%d%d%d%d%d%d:%d%d%d%d%d%d)")
+        if ts and ts >= since and line:find("ttsd%[") and line:find("lipc_handling") then found = line end
+    end
+    return found
+end
+
+--- What ttsd wants, from a complaint line: "unable to read id" -> "id".
+function TTS.missingField(line)
+    if not line then return nil end
+    return line:match("unable to read ([%w_]+)") or line:match("bad_([%w_]+):")
+end
+
+--- Learn the request shape ttsd accepts. on_done(template_or_nil, why).
+function TTS.discover(on_done)
+    local ti, rounds = 1, 0
+    local fields = { { "text", str = "Voice test." } }
+    local tried = {}
+    local last_err
+    local function attempt()
+        rounds = rounds + 1
+        local target = TTS.TARGETS[ti]
+        if not target or rounds > TTS.MAX_ROUNDS * #TTS.TARGETS then
+            return on_done(nil, last_err or "no answer from ttsd")
         end
+        local since = stamp()
+        local handle, err = TTS.send(target, fields)
+        local function wait(n)
+            local ok, detail = TTS.result(handle)
+            if handle and ok == nil and n < 8 then return UIManager:scheduleIn(0.5, function() wait(n + 1) end) end
+            if not handle then ok, detail = false, err end
+            local desc = target.prop .. " " .. TTS.hashText(fields)
+            if ok then
+                Log.info("tts discover: accepted", desc)
+                return on_done({ target = target, fields = fields })
+            end
+            local complaint = TTS.ttsdComplaint(since)
+            last_err = complaint or detail
+            Log.info("tts discover: rejected", desc, "|", tostring(detail), "|", tostring(complaint))
+            local name = TTS.missingField(complaint)
+            local next_fields
+            if name then
+                local key = name
+                local existing
+                for _i, f in ipairs(fields) do if f[1] == name then existing = f end end
+                local guess = TTS.GUESSES[name] or {}
+                if not existing and not tried[key .. ":int"] and not (guess.str and not guess.int) then
+                    tried[key .. ":int"] = true
+                    next_fields = {}
+                    for _i, f in ipairs(fields) do next_fields[#next_fields + 1] = f end
+                    next_fields[#next_fields + 1] = { name, int = guess.int or 1 }
+                elseif not tried[key .. ":str"] then
+                    -- added as a number already (or a string is the better guess)
+                    tried[key .. ":str"] = true
+                    next_fields = {}
+                    for _i, f in ipairs(fields) do if f[1] ~= name then next_fields[#next_fields + 1] = f end end
+                    next_fields[#next_fields + 1] = { name, str = guess.str or "1" }
+                end
+            end
+            if next_fields then
+                fields = next_fields
+            else
+                -- nothing new to try here: next target, starting over
+                ti = ti + 1
+                fields = { { "text", str = "Voice test." } }
+                tried = {}
+            end
+            UIManager:scheduleIn(0.5, attempt)
+        end
+        UIManager:scheduleIn(1, function() wait(0) end)
     end
-    if #row > 0 then rows[#rows + 1] = row end
-    if #rows == 0 then
-        Log.warn("tts: every method was rejected:", table.concat(errors or {}, " | "))
-        UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service rejected every way of asking it to speak:\n%1\n\nSave the diagnostic log (Grimmory menu) and send it so this can be fixed."),
-            table.concat(errors or {}, "\n"):sub(1, 400)) })
-        return
-    end
-    rows[#rows + 1] = {
-        { text = _("I heard nothing"), callback = function()
-            UIManager:close(dialog)
-            Log.warn("tts: nothing heard; rejected:", table.concat(errors or {}, " | "))
-            UIManager:show(InfoMessage:new{ text = _("None of the ways worked on this Kindle. Save the diagnostic log (Grimmory menu) and send it so this can be fixed; it records what the speech service answered.") })
-        end },
-        { text = _("Test again"), callback = function() UIManager:close(dialog); TTS.findVoice(on_done) end },
-    }
-    dialog = ButtonDialog:new{ title = _("Which number did you hear?"), buttons = rows }
-    UIManager:show(dialog)
+    attempt()
+end
+
+--- Menu action: find the request shape, then check it was heard.
+function TTS.findVoice(on_done)
+    if TTS.testing then return end
+    TTS.testing = true
+    Log.info("tts backend", TTS.backend())
+    local busy = InfoMessage:new{ text = _("Finding the Kindle's voice… Listen for \"Voice test\"."), timeout = 0 }
+    UIManager:show(busy)
+    TTS.discover(function(template, why)
+        UIManager:close(busy)
+        TTS.testing = false
+        if not template then
+            Log.warn("tts: discovery failed:", tostring(why))
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service didn't accept any request:\n%1\n\nSave the diagnostic log (Grimmory menu) and send it so this can be fixed."),
+                tostring(why):sub(1, 300)) })
+            return
+        end
+        local ConfirmBox = require("ui/widget/confirmbox")
+        UIManager:show(ConfirmBox:new{
+            text = _("The Kindle's speech service accepted the request. Did you hear \"Voice test\"?"),
+            ok_text = _("Yes"),
+            cancel_text = _("No"),
+            ok_callback = function()
+                settings():saveSetting("gzreader_tts_template", template)
+                Log.info("tts template saved", template.target.prop, TTS.hashText(template.fields))
+                UIManager:show(InfoMessage:new{ text = _("Kindle voice set. Press Shift + Sym while reading to start or stop."), timeout = 4 })
+                if on_done then on_done(template) end
+            end,
+            cancel_callback = function()
+                Log.warn("tts: accepted but not heard", template.target.prop, TTS.hashText(template.fields))
+                UIManager:show(InfoMessage:new{ text = _("Check the volume (the Kindle's speaker or headphones), then try again. If it stays silent, save the diagnostic log (Grimmory menu) and send it.") })
+            end,
+        })
+        -- say it once more while the question is up
+        TTS.say("Voice test.", template)
+    end)
 end
 
 ---------------------------------------------------------------- reader
@@ -342,7 +414,7 @@ function Reader:start()
         UIManager:show(InfoMessage:new{ text = _("Read aloud works with EPUB, FB2, MOBI, AZW3 and text books, not PDFs or comics.") })
         return
     end
-    if not settings():readSetting("gzreader_tts_method") then
+    if not TTS.template() then
         return TTS.findVoice(function() self:start() end)
     end
     self.active, self.paused = true, false

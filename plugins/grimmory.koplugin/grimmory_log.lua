@@ -127,6 +127,7 @@ Log.PROBE_COMMANDS = {
     -- GZreader read aloud: where the speech daemons live and what they log
     "ls -la /usr/bin/*tts* /usr/sbin/*tts* /usr/local/bin/*tts* 2>&1",
     "lipc-hash-prop 2>&1 | head -20",
+    "strings /usr/sbin/ttsd 2>/dev/null | awk 'tolower($0) ~ /snippet|unable|read|voice|text|lipc|enqueue|play|speak|id$/' | head -200",
     "awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40",
 }
 

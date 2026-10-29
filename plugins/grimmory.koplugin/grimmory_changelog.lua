@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.4",
+        changes = {
+            "Read aloud: \"Find the Kindle voice\" now learns the request the Kindle's speech service (ttsd) expects from its own error messages (it asked for an id), instead of guessing numbered variants.",
+            "Starting the voice test twice no longer runs two tests at once.",
+            "Diagnostic log: lists the speech service's request fields.",
+        },
+    },
+    {
         version = "1.0.3",
         changes = {
             "Updates work with any GitHub release: the Kindle uses the attached gzreader-update.zip, or else the release's source code zip (nothing to upload). Tags like v.1.0.2 are understood.",
