@@ -67,6 +67,16 @@ function E.now()
     return tv.sec + tv.usec / 1e6
 end
 
+--- A key pressed while another is held (Alt + R, Shift + Sym).
+function E.combo(mod, name)
+    local mc, kc = KEYS[mod] or error("no key " .. mod), KEYS[name] or error("no key " .. name)
+    local function ev(code, v)
+        local t = now_tv()
+        table.insert(E.queue, { { type = 1, code = code, value = v, time = t }, { type = 0, code = 0, value = 0, time = t } })
+    end
+    ev(mc, 1); ev(kc, 1); ev(kc, 0); ev(mc, 0)
+end
+
 function E.key(name)
     local code = KEYS[name] or error("no key " .. name)
     local t = now_tv()
@@ -188,6 +198,9 @@ local function runScript()
         if s.key then
             say("key", s.key)
             E.key(s.key)
+        elseif s.combo then
+            say("keys", s.combo[1] .. "+" .. s.combo[2])
+            E.combo(s.combo[1], s.combo[2])
         elseif s.shot then
             E.shot(s.shot)
         elseif s.fn then
@@ -221,6 +234,32 @@ table.insert(package.loaders, 2, function(name)
             say(string.format("HomeMenu.show took %.2f s CPU", os.clock() - c))
             return unpack(r)
         end
+        return m
+    end
+end)
+
+table.insert(package.loaders, 2, function(name)
+    if name ~= "gzreader_tts" then return nil end
+    return function()
+        local m = dofile(package.searchpath(name, package.path))
+        local function handle()
+            local h = {}
+            function h:new_hasharray()
+                local ha = {}
+                function ha:add_hash() end
+                function ha:put_string() end
+                function ha:put_int() end
+                function ha:destroy() end
+                return ha
+            end
+            function h:access_hash_property() return { destroy = function() end } end
+            function h:set_int_property() end
+            function h:get_string_property() return "" end
+            function h:close() end
+            return h
+        end
+        m.lipc = { open_no_name = handle }
+        m.exec = function() return 0 end
         return m
     end
 end)

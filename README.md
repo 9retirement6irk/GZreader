@@ -23,6 +23,31 @@ Kindle 2 and DX). It is [KOReader](https://github.com/koreader/koreader) trimmed
 to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
 a built-in connection to a self-hosted **Grimmory** book server.
 
+## Screenshots
+
+<sub>Taken on GZreader's Kindle 3 emulator (the Kindle's own software, 600 × 800,
+16 grey levels) with a demo library of public-domain books.</sub>
+
+### Setup
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-connect.png" alt="Connect to Grimmory first" width="240"><br><sub>Connect to Grimmory first</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-qr.png" alt="Sign in on your phone with the QR code" width="240"><br><sub>Sign in on your phone with the QR code</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-welcome.png" alt="Welcome" width="240"><br><sub>Welcome</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading" width="240"><br><sub>Home: the book you're reading</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/home-menu.png" alt="Menu key at Home: every entry has a letter key" width="240"><br><sub>Menu key at Home: every entry has a letter key</sub></td></tr>
+</table>
+
+### Your Grimmory library and downloads
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/grimmory-tab.png" alt="The Grimmory tab" width="240"><br><sub>The Grimmory tab</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/grimmory-all-books.png" alt="All books, with reading progress" width="240"><br><sub>All books, with reading progress</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/download-confirm.png" alt="Download and open" width="240"><br><sub>Download and open</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/download-progress.png" alt="Downloading in the background" width="240"><br><sub>Downloading in the background</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/downloaded-tab.png" alt="The Downloaded tab" width="240"><br><sub>The Downloaded tab</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/reading.png" alt="Reading" width="240"><br><sub>Reading</sub></td></tr>
+</table>
+
+### Reading menu and read aloud
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/reading-menu.png" alt="Menu key while reading" width="240"><br><sub>Menu key while reading</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/read-aloud.png" alt="Read aloud (Shift + Sym): the sentence being read is highlighted" width="240"><br><sub>Read aloud (Shift + Sym): the sentence being read is highlighted</sub></td></tr>
+</table>
+
 ## Features
 
 ### 📚 Your Grimmory library

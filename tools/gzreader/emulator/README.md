@@ -45,3 +45,19 @@ GZ_EMU_BOOK=/path/wimpy.epub EMU_TIMEOUT=900 tools/gzreader/emulator/run.sh tool
 
 Each step logs the window stack and the panel's refresh count; a key that
 leaves the refresh count unchanged changed nothing on screen.
+
+## README screenshots
+
+`readme_shots.lua` walks through setup (QR sign-in), the Grimmory tab, a
+download, reading, the Reading menu, read aloud, Home and its Menu. It needs the
+demo library server instead of the test mock:
+
+```
+python3 tools/gzreader/emulator/demo/make_library.py <nltk gutenberg dir> <koreader>/fonts/noto /tmp/demo-lib
+DEMO_DL_DELAY=0.7 python3 tools/gzreader/emulator/demo/demo_grimmory.py <test>/mock_grimmory.py /tmp/demo-lib 18080 &
+tools/gzreader/emulator/run.sh tools/gzreader/emulator/readme_shots.lua /tmp/emu/readme
+```
+
+The books are Project Gutenberg texts (NLTK's `gutenberg` corpus) with plain
+generated covers. Read aloud is stubbed (no speech daemon in the emulator), so
+the highlight stays on the first sentence.
