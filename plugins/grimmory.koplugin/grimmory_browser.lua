@@ -437,15 +437,63 @@ function Browser:onBook(book)
         return
     end
     local dl_busy = Download.active ~= nil
-    UIManager:show(ConfirmBox:new{
-        text = T(_("Download “%1” to this Kindle?"), name) .. (size ~= "" and ("\n" .. size) or "")
+    local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
+    local box = ConfirmBox:new{
+        text = T(_("Download “%1” to this Kindle?"), name) .. (authors ~= "" and ("\n" .. authors) or "")
+            .. (size ~= "" and ("\n" .. size) or "")
             .. (dl_busy and ("\n\n" .. T(_("Another download is running; this one is queued (%1 waiting)."), #Download.queue)) or ""),
         ok_text = dl_busy and _("Add to queue") or _("Download & open"),
         ok_callback = function()
             self.plugin:downloadAndOpen(book, self.menu)
             if dl_busy then self:markQueued(book) end
         end,
-    })
+    }
+    self:showWithCover(box, book)
+end
+
+--- Grimmory's cover, cached on the Kindle (cache/grimmory-thumbs).
+function Browser.thumbPath(book)
+    local DataStorage = require("datastorage")
+    local dir = DataStorage:getDataDir() .. "/cache/grimmory-thumbs"
+    if lfs.attributes(dir, "mode") ~= "directory" then
+        lfs.mkdir(DataStorage:getDataDir() .. "/cache")
+        lfs.mkdir(dir)
+    end
+    local stamp = tostring(book.coverUpdatedOn or ""):gsub("[^%w]", "")
+    return string.format("%s/%s-%s.jpg", dir, tostring(book.id), stamp ~= "" and stamp or "0")
+end
+
+--- Show the box now; add the book's cover to it as soon as it's here
+--- (from the cache at once, otherwise fetched in the background).
+function Browser:showWithCover(box, book)
+    local path = Browser.thumbPath(book)
+    local closed = false
+    local orig_close = box.onCloseWidget
+    box.onCloseWidget = function(b, ...)
+        closed = true
+        if orig_close then return orig_close(b, ...) end
+    end
+    local function addCover()
+        return pcall(function()
+            local ImageWidget = require("ui/widget/imagewidget")
+            local Screen = require("device").screen
+            local want = Screen:scaleBySize(180)
+            if type(want) ~= "number" then want = 180 end
+            local w = math.min(box:getAddedWidgetAvailableWidth(), want)
+            box:addWidget(ImageWidget:new{
+                file = path, width = w, height = math.floor(w * 1.4), scale_factor = 0, file_do_cache = false,
+            })
+        end)
+    end
+    if lfs.attributes(path, "size") and addCover() then
+        return UIManager:show(box)
+    end
+    UIManager:show(box)
+    if not book.id then return end
+    require("grimmory_async").call(self.api, "downloadThumbnail", { book.id, path }, function(ok)
+        if not ok or closed then return end
+        if addCover() then UIManager:setDirty("all", "ui") end
+    end)
 end
 
 --- Show "queued" next to a book in the open list.

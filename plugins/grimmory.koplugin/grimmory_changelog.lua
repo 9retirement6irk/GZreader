@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.24",
+        changes = {
+            "Choosing a book to download shows its cover from Grimmory (and its authors) in the Download question. The dialog opens at once and the cover appears a moment later; covers are kept on the Kindle, so next time it's there straight away.",
+        },
+    },
+    {
         version = "1.0.23",
         changes = {
             "Audiobooks: fixed the Kindle restarting while preparing an M4B. The conversion now runs as its own small, lowest-priority process (about 8 MB of memory for a long book) instead of a copy of GZreader, and reads the book's sample tables bit by bit instead of all at once.",

@@ -116,6 +116,13 @@ no subtitles, so they come from the library index (Grimmory's web book list,
 `/api/v1/books/page`) and from the book itself after a download. Titles you
 edited yourself are left alone.
 
+## Book covers when downloading
+
+Picking a book in the Grimmory browser asks whether to download it and shows
+Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
+fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
+(renewed when the cover changes in Grimmory).
+
 ## Home folder and downloads
 
 The Grimmory folder (`documents/Grimmory`) is the home folder; the

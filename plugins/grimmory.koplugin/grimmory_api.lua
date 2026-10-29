@@ -320,6 +320,27 @@ function Api:simpleList(endpoint, limit)
     return nil, err or ("http_" .. tostring(code))
 end
 
+--- Grimmory's cover thumbnail (250 x 350 JPEG) for a book, saved to `path`.
+function Api:downloadThumbnail(book_id, path)
+    local ok, err = self:ensureToken()
+    if not ok then return false, err end
+    local part = path .. ".part"
+    local fh, ferr = io.open(part, "wb")
+    if not fh then return false, ferr end
+    local code, _, headers = rawRequest("GET", self.store.server .. "/api/v1/media/book/" .. tostring(book_id) .. "/thumbnail", {
+        headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "image/*" },
+        sink = ltn12.sink.file(fh),
+        timeouts = { 10, 30 },
+    })
+    local ctype = type(headers) == "table" and (headers["content-type"] or headers["Content-Type"]) or ""
+    if code == 200 and (lfs.attributes(part, "size") or 0) > 0 and tostring(ctype):find("image", 1, true) then
+        os.rename(part, path)
+        return true
+    end
+    os.remove(part)
+    return false, code and ("http_" .. code) or "unreachable", code
+end
+
 --- Stream a book's primary file straight into `path` (used by the download
 --- subprocess, which writes the ".part" file). Returns true or false, err.
 function Api:downloadToFile(book_id, path)
