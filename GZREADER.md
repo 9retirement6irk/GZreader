@@ -137,7 +137,9 @@ Sync bookmarks.
 
 ## Read aloud (Kindle 3 text-to-speech)
 
-Uses the Kindle's own voice (Amazon's speech service, reached over lipc).
+Uses the Kindle's own voice (Amazon's speech service, reached over lipc
+with the Kindle's `lipc-hash-prop` tool, run in the background so the screen
+never waits; KOReader's lipc library doesn't load on the Kindle 3).
 Shift + Sym (or Reading menu → Read aloud) starts and stops. The sentence
 being read is highlighted and pages turn by themselves. EPUB/FB2/MOBI/AZW3
 and text only.
@@ -145,7 +147,7 @@ and text only.
 Amazon never documented how its speech service is called, so the first time
 GZreader plays "Voice test 1, 2, …" through each candidate way and you pick
 the number you heard (Reading menu → Read-aloud settings → Find the Kindle
-voice). The speech service doesn't report when a sentence ends, so the next
+voice). Ways the speech service rejects are left out of the question. The speech service doesn't report when a sentence ends, so the next
 sentence starts after a time computed from its length and the speed setting
 (Read-aloud settings → Slower / Faster). The diagnostic log records what the
 speech service answered.

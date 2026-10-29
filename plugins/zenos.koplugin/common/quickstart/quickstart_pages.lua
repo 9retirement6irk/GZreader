@@ -821,10 +821,11 @@ function M.build_install_pages(ctx)
         -- 6. Sleep Screen (INTERACTIVE — radio)
         {
             title       = _("Sleep Screen"),
-            description = _("What should your device show when it goes to sleep?"),
+            description = _("What should your device show when it goes to sleep?") .. "\n"
+                .. _("Book cover / screensavers folder: the book's cover while reading, a picture from the \"screensavers\" folder on Home and in menus."),
             choice_type = "radio",
             choices     = {
-                { id = "gz_auto",       text = _("Book cover while reading; a picture from the \"screensavers\" folder on Home and menus"), checked = not quickstart_completed },
+                { id = "gz_auto",       text = _("Book cover / screensavers folder"), checked = not quickstart_completed },
                 { id = "keep",          text = _("Keep existing settings"),         checked = quickstart_completed },
                 { id = "cover_black",   text = _("Always the last book's cover"), checked = false },
                 { id = "zen_white",     text = _("Show Zen icon - white background"),   checked = false },

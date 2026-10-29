@@ -32,6 +32,7 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local TEXT_FILE = "/tmp/gzreader-tts.txt"
+local OUT_PREFIX = "/tmp/gzreader-tts."
 
 local TTS = {
     -- Candidate ways to make the Kindle speak `text`. The test speaks
@@ -50,7 +51,11 @@ local TTS = {
         { label = "tts playFile {uri}", pub = "com.lab126.tts", prop = "playFile", key = "uri", file = true, uri = true },
     },
     BASE_WPM = 165,   -- words per minute at speed 100 (generous, so sentences aren't cut off)
-    lipc = nil,       -- injectable for tests: { open_no_name = function() ... end }
+    -- Backends (injectable for tests):
+    lipc = nil,       -- KOReader's libopenlipclua; on the Kindle 3 it doesn't load
+                      -- (its liblipc lacks LipcGetServiceName), so we fall back to:
+    exec = nil,       -- function(cmd) running a shell command (default os.execute)
+    seq = 0,
 }
 
 local function settings() return G_reader_settings end
@@ -67,13 +72,59 @@ local function openLipc()
     return handle
 end
 
-function TTS.available()
-    local h = openLipc()
-    if h then pcall(h.close, h); return true end
-    return false
+local function run(cmd)
+    if TTS.exec then return TTS.exec(cmd) end
+    return os.execute(cmd)
 end
 
---- Speak `text` with method `m`. Returns true or nil, err. Does not wait.
+--- lipc-hash-prop's input: {key="value"}. Quotes and backslashes can't be
+--- escaped there, so they're replaced; line breaks become spaces.
+function TTS.hashText(key, value)
+    value = tostring(value):gsub("[\r\n\t]+", " "):gsub('"', "'"):gsub("\\", "/")
+    return string.format('{%s="%s"}', key, value)
+end
+
+--- Run a lipc-hash-prop in the background (the UI never waits on it).
+--- Returns the path of its output file: "rc=<n>" is appended when it ends.
+local function hashPropAsync(pub, prop, hash)
+    TTS.seq = TTS.seq + 1
+    -- one input file per call: an earlier call may not have read its own yet
+    local hash_file = OUT_PREFIX .. TTS.seq .. ".hash"
+    local out = OUT_PREFIX .. TTS.seq .. ".out"
+    local f = io.open(hash_file, "wb")
+    if not f then return nil, "cannot write " .. hash_file end
+    f:write(hash, "\n"); f:close()
+    os.remove(out)
+    -- pub/prop are constants from METHODS; the text only goes in the file.
+    run(string.format("(lipc-hash-prop %s %s < %s > %s 2>&1; echo \"rc=$?\" >> %s; rm -f %s) &",
+        pub, prop, hash_file, out, out, hash_file))
+    return out
+end
+
+--- Result of a background call: true (ok), false, details (failed), nil (still running).
+function TTS.result(out)
+    local f = out and io.open(out, "rb")
+    if not f then return nil end
+    local text = f:read("*a") or ""
+    f:close()
+    local rc = tonumber(text:match("rc=(%d+)"))
+    if not rc then return nil end
+    os.remove(out)
+    local body = text:gsub("rc=%d+%s*$", "")
+    if rc ~= 0 or body:lower():find("fail") or body:lower():find("error") or body:lower():find("usage") then
+        return false, (body ~= "" and body or ("exit code " .. rc))
+    end
+    return true, body
+end
+
+function TTS.backend()
+    local h = openLipc()
+    if h then pcall(h.close, h); return "lib" end
+    return "shell"
+end
+
+--- Speak `text` with method `m`. Returns true (or the shell call's output
+--- file, see TTS.result) or nil, err. Never waits for the speech.
 function TTS.say(text, m)
     m = m or TTS.METHODS[settings():readSetting("gzreader_tts_method") or 1]
     if not m then return nil, "no method" end
@@ -84,8 +135,10 @@ function TTS.say(text, m)
         f:write(text); f:close()
         value = m.uri and ("file://" .. TEXT_FILE) or TEXT_FILE
     end
-    local h, err = openLipc()
-    if not h then return nil, err end
+    local h = openLipc()
+    if not h then
+        return hashPropAsync(m.pub, m.prop, TTS.hashText(m.key, value))
+    end
     local ok, res = pcall(function()
         local ha = h:new_hasharray()
         ha:add_hash()
@@ -101,7 +154,10 @@ end
 
 local function intProp(pub, prop, value)
     local h = openLipc()
-    if not h then return end
+    if not h then
+        run(string.format("lipc-set-prop -i %s %s %d >/dev/null 2>&1 &", pub, prop, value))
+        return
+    end
     pcall(h.set_int_property, h, pub, prop, value)
     pcall(h.close, h)
 end
@@ -109,6 +165,11 @@ end
 function TTS.cancel()
     intProp("com.lab126.ttsd", "cancelSnippetPlayback", 1)
     intProp("com.lab126.tts", "stop", 1)
+end
+
+--- Remove leftover result files of background calls.
+function TTS.cleanup()
+    run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash >/dev/null 2>&1")
 end
 
 function TTS.speed() return settings():readSetting("gzreader_tts_speed") or 100 end
@@ -130,51 +191,80 @@ end
 ---------------------------------------------------------------- voice test
 
 --- Speak a numbered phrase with every method, then ask which was heard.
+--- Ways the speech service rejects outright are left out of the question.
 function TTS.findVoice(on_done)
-    local h, err = openLipc()
-    if not h then
-        UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service can't be reached:\n%1"), err) })
-        return
-    end
-    pcall(h.close, h)
+    Log.info("tts backend", TTS.backend())
     UIManager:show(InfoMessage:new{
         text = T(_("Listen: the Kindle will now say \"Voice test\" and a number, up to %1 times, a few seconds apart. Then choose the number you heard."), #TTS.METHODS),
         timeout = 6,
     })
     local i = 0
+    local pending, rejected, errors = {}, {}, {}
+    local function collect()
+        for n, out in pairs(pending) do
+            if out == true then
+                pending[n] = nil
+            else
+                local ok, detail = TTS.result(out)
+                if ok ~= nil then
+                    pending[n] = nil
+                    if not ok then rejected[n] = true; errors[#errors + 1] = n .. ": " .. tostring(detail) end
+                    Log.info("tts test", n, TTS.METHODS[n].label, ok and "accepted" or ("rejected: " .. tostring(detail)))
+                end
+            end
+        end
+    end
     local function step()
+        collect()
         i = i + 1
         if i > #TTS.METHODS then
-            TTS.cancel()
-            return TTS.askHeard(on_done)
+            local waited = 0
+            local function finish()
+                collect()
+                waited = waited + 1
+                if next(pending) and waited < 5 then return UIManager:scheduleIn(1, finish) end
+                TTS.cancel()
+                return TTS.askHeard(on_done, rejected, errors)
+            end
+            return finish()
         end
         local m = TTS.METHODS[i]
-        local ok, serr = TTS.say(T("Voice test %1.", i), m)
-        Log.info("tts test", i, m.label, ok and "sent" or ("error: " .. tostring(serr)))
-        UIManager:scheduleIn(ok and 3.5 or 0.2, step)
+        local res, serr = TTS.say(T("Voice test %1.", i), m)
+        if res then pending[i] = res
+        else rejected[i] = true; errors[#errors + 1] = i .. ": " .. tostring(serr); Log.info("tts test", i, m.label, "error: " .. tostring(serr)) end
+        UIManager:scheduleIn(res and 3.5 or 0.2, step)
     end
     UIManager:scheduleIn(6.5, step)
 end
 
-function TTS.askHeard(on_done)
+function TTS.askHeard(on_done, rejected, errors)
+    rejected = rejected or {}
     local ButtonDialog = require("ui/widget/buttondialog")
     local dialog
     local rows, row = {}, {}
     for n = 1, #TTS.METHODS do
-        row[#row + 1] = { text = tostring(n), callback = function()
-            UIManager:close(dialog)
-            settings():saveSetting("gzreader_tts_method", n)
-            Log.info("tts method chosen", n, TTS.METHODS[n].label)
-            UIManager:show(InfoMessage:new{ text = T(_("Kindle voice set (method %1). Press Shift + Sym while reading to start or stop."), n) })
-            if on_done then on_done(n) end
-        end }
-        if #row == 4 then rows[#rows + 1] = row; row = {} end
+        if not rejected[n] then
+            row[#row + 1] = { text = tostring(n), callback = function()
+                UIManager:close(dialog)
+                settings():saveSetting("gzreader_tts_method", n)
+                Log.info("tts method chosen", n, TTS.METHODS[n].label)
+                UIManager:show(InfoMessage:new{ text = T(_("Kindle voice set (method %1). Press Shift + Sym while reading to start or stop."), n) })
+                if on_done then on_done(n) end
+            end }
+            if #row == 4 then rows[#rows + 1] = row; row = {} end
+        end
     end
     if #row > 0 then rows[#rows + 1] = row end
+    if #rows == 0 then
+        Log.warn("tts: every method was rejected:", table.concat(errors or {}, " | "))
+        UIManager:show(InfoMessage:new{ text = T(_("The Kindle's speech service rejected every way of asking it to speak:\n%1\n\nSave the diagnostic log (Grimmory menu) and send it so this can be fixed."),
+            table.concat(errors or {}, "\n"):sub(1, 400)) })
+        return
+    end
     rows[#rows + 1] = {
         { text = _("I heard nothing"), callback = function()
             UIManager:close(dialog)
-            Log.warn("tts: no method worked")
+            Log.warn("tts: nothing heard; rejected:", table.concat(errors or {}, " | "))
             UIManager:show(InfoMessage:new{ text = _("None of the ways worked on this Kindle. Save the diagnostic log (Grimmory menu) and send it so this can be fixed; it records what the speech service answered.") })
         end },
         { text = _("Test again"), callback = function() UIManager:close(dialog); TTS.findVoice(on_done) end },
@@ -281,6 +371,22 @@ function Reader:speakNext()
         UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), err) })
         return
     end
+    if type(ok) == "string" then
+        -- shell backend: find out (without waiting) whether the speech
+        -- service accepted it; a rejection stops reading with its message
+        local out, tries = ok, 0
+        local function check()
+            tries = tries + 1
+            local r, detail = TTS.result(out)
+            if r == nil and tries < 4 then return UIManager:scheduleIn(1.5, check) end
+            if r == false and self.active then
+                Log.warn("tts rejected:", detail)
+                self:stop()
+                UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), detail) })
+            end
+        end
+        UIManager:scheduleIn(1.5, check)
+    end
     self.next_xp = self.ui.document:getNextVisibleWordStart(xp1)
     self.timer = function() self.timer = nil; self:speakNext() end
     UIManager:scheduleIn(TTS.duration(text), self.timer)
@@ -289,8 +395,10 @@ end
 function Reader:stop()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     if self.active then Log.info("tts stop") end
+    local was_active = self.active
     self.active, self.paused = false, false
     TTS.cancel()
+    if was_active then TTS.cleanup() end
     self:clearHighlight()
 end
 
