@@ -290,6 +290,15 @@ function Update.apply(zip, opts)
     if opts.source and opts.version and isDir(src) then
         local vf = io.open(src .. "/gzreader-version", "wb")
         if vf then vf:write(opts.version, "\n"); vf:close() end
+        -- the source zip has no git-rev: keep KOReader's version label current
+        -- (About, crash.log) as "<base>-gzreader-<version>"
+        local cur = io.open(root() .. "/git-rev", "rb")
+        local rev_base = cur and (cur:read("*l") or ""):match("^(.-)%-gzreader%-") or nil
+        if cur then cur:close() end
+        if rev_base and rev_base ~= "" then
+            local gf = io.open(src .. "/git-rev", "wb")
+            if gf then gf:write(rev_base, "-gzreader-", opts.version, "\n"); gf:close() end
+        end
     end
     if n == 0 or not isDir(src .. "/frontend") or not exists(src .. "/plugins/grimmory.koplugin/main.lua")
             or not exists(src .. "/gzreader-version") then
@@ -334,8 +343,7 @@ end
 
 --- Full flow from the menu: check, confirm, download (background), install, restart.
 function Update.run()
-    local NetworkMgr = require("ui/network/manager")
-    NetworkMgr:runWhenOnline(function()
+    require("grimmory_net").run(function()
         local busy = InfoMessage:new{ text = _("Checking for GZreader updates…"), timeout = 0 }
         UIManager:show(busy)
         UIManager:forceRePaint()
@@ -354,13 +362,17 @@ function Update.run()
             text = T(_("GZreader %1 is available (installed: %2).%3\n\nYour settings, books and reading progress are kept."),
                 info.version, Update.currentVersion(), notes),
             ok_text = _("Update"),
-            ok_callback = function() Update.download(info) end,
+            ok_callback = function()
+                -- Wi-Fi may have gone idle while the question was open
+                require("grimmory_net").run(function() Update.download(info) end, { reason = "update" })
+            end,
         })
     end)
 end
 
 function Update.download(info)
-    local ProgressbarDialog = require("ui/widget/progressbardialog")
+    local ProgressbarDialog = require("grimmory_progress")
+    local Net = require("grimmory_net")
     local zip = DataStorage:getDataDir() .. "/cache/gzreader-update.zip"
     lfs.mkdir(DataStorage:getDataDir() .. "/cache")
     os.remove(zip)
@@ -369,6 +381,7 @@ function Update.download(info)
         ffiutil.writeToFD(wfd, code == 200 and "ok" or ("err " .. tostring(code or err)), true)
     end, true)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
+    Net.hold("update")
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading GZreader %1…"), info.version),
         progress_max = info.size or (12 * 1024 * 1024), refresh_time_seconds = 2, -- source zips: ~9 MB
@@ -379,6 +392,7 @@ function Update.download(info)
         dialog:reportProgress(math.min(size, info.size or (12 * 1024 * 1024)))
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         UIManager:close(dialog)
+        Net.release("update")
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
             os.remove(zip)

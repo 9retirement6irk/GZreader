@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.20",
+        changes = {
+            "Wi-Fi only when needed (on by default; Settings → GZreader): Wi-Fi turns on by itself for browsing Grimmory, downloads, connecting, sending the log, updates, and to sync when a book opens or closes (and on wake after 15 minutes or more), then off again after a minute unused. Changes in between wait for the next sync. Wi-Fi you turn on yourself stays on.",
+            "Speed: the Home cover strip is turned off on the Kindle Keyboard. Each Home screen spent about 4 seconds of CPU drawing it, which is what made Home feel frozen. Settings → Home brings it back.",
+            "KOReader's version label (About, crash log) is now correct after updating from a release's source zip.",
+        },
+    },
+    {
         version = "1.0.19",
         changes = {
             "Subtitles: books show their subtitle from Grimmory, e.g. \"Diary of a Wimpy Kid: Old School\", in the Grimmory lists, the Downloaded tab, Home and the reader. Books already on the Kindle get theirs after the next library index (a minute or so after starting with Wi-Fi). A title you changed yourself in Book information is left alone; resetting it there brings back the original.",

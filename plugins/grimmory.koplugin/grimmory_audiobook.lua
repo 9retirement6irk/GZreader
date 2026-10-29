@@ -232,6 +232,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
     if not pid then return on_done(nil, "could not start the download") end
     local awake_key = "audiobook-download-" .. tostring(summary.id)
     Awake.hold(awake_key)
+    require("grimmory_net").hold(awake_key)
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading “%1”…"), book.title or ""),
         subtitle = _("Press any key to hide; the download continues and the Kindle stays awake."),
@@ -257,6 +258,7 @@ function Audiobook.download(plugin, summary, on_done, attempt)
         end
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
         Awake.release(awake_key)
+        require("grimmory_net").release(awake_key)
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog) end
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then

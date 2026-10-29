@@ -55,6 +55,7 @@ function PairServer:start()
     server:settimeout(0)
     self.server = server
     firewall("-A", self.port)
+    pcall(function() require("grimmory_net").hold("pairserver") end) -- keep Wi-Fi up while the QR page is open
     logger.dbg("Grimmory pairing server listening on", self.port)
     return true
 end
@@ -64,6 +65,7 @@ function PairServer:stop()
         self.server:close()
         self.server = nil
         firewall("-D", self.port)
+        pcall(function() require("grimmory_net").release("pairserver") end)
         logger.dbg("Grimmory pairing server stopped")
     end
 end

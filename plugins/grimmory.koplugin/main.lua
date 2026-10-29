@@ -20,6 +20,7 @@ local LuaSettings = require("luasettings")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local NetworkMgr = require("ui/network/manager")
+local Net = require("grimmory_net")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local lfs = require("libs/libkoreader-lfs")
@@ -206,6 +207,12 @@ function Grimmory:menuItems()
             separator = true,
         },
         {
+            text = _("Wi-Fi only when needed"),
+            help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
+            checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
+            callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
+        },
+        {
             text = _("Menu key opens the GZreader menu"),
             help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"All settings\" in it opens the full menu."),
             checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
@@ -329,6 +336,9 @@ end
 --- The phone saves the file, which can then be attached anywhere.
 function Grimmory:shareLog()
     if self.pairing then return end
+    if not Net.connected() and Net.enabled() then
+        return Net.run(function() self:shareLog() end, { reason = "sending the log" })
+    end
     local lib = self:libraryDir()
     local dest_dir = lib:match("^(.+)/[^/]+$") or lib
     Log.probe_device = Device:isKindle()
@@ -439,7 +449,7 @@ end
 
 function Grimmory:onGrimmoryPair(touchmenu)
     closeTouchMenu(touchmenu)
-    NetworkMgr:runWhenOnline(function() self:startQrPairing() end)
+    Net.run(function() self:startQrPairing() end, { reason = "connecting to Grimmory" })
     return true
 end
 
@@ -679,7 +689,7 @@ function Grimmory:keyboardLogin()
             { text = _("Connect"), is_enter_default = true, callback = function()
                 local f = dialog:getFields()
                 UIManager:close(dialog)
-                NetworkMgr:runWhenOnline(function()
+                Net.run(function()
                     local msg = InfoMessage:new{ text = _("Connecting…"), timeout = 0 }
                     UIManager:show(msg)
                     UIManager:forceRePaint()
@@ -862,6 +872,23 @@ function Grimmory:onReaderReady()
     UIManager:scheduleIn(4, function()
         if self.bookmarks and self.sync and self.ui.document then pcall(self.bookmarks.reconcile, self.bookmarks) end
     end)
+    if self:syncEnabled() and self.api:isPaired() and not Net.connected() then
+        -- Wi-Fi only when needed: bring it up quietly to sync this book
+        Net.run(function() self:syncOpenBook() end, { quiet = true, reason = "sync on open" })
+    end
+end
+
+--- Pull position, send queued updates and bookmarks for the open book.
+function Grimmory:syncOpenBook()
+    if not (self.sync and self.ui.document) then return end
+    self:flushPending()
+    self.sync:pull(false)
+    if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+end
+
+function Grimmory:hasPending()
+    local p = self.store.pending
+    return p and (next(p.progress or {}) ~= nil or #(p.sessions or {}) > 0)
 end
 
 function Grimmory:onPageUpdate()
@@ -881,11 +908,12 @@ function Grimmory:onGrimmorySyncNow()
         UIManager:show(InfoMessage:new{ text = _("This book wasn't downloaded from Grimmory, so it can't be synced."), timeout = 3 })
         return true
     end
-    NetworkMgr:runWhenOnline(function()
+    Net.run(function()
+        if not self.sync then return end
         self.sync:push(true)
         self.sync:pull(true)
         if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
-    end)
+    end, { reason = "sync now" })
     return true
 end
 
@@ -932,7 +960,7 @@ function Grimmory:audiobookItems()
         enabled_func = function() return self.api:isPaired() end,
         callback = function(touchmenu)
             if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-            NetworkMgr:runWhenOnline(function() local b = Browser:new(self); b:show(); b:openAudiobooks() end)
+            Net.run(function() local b = Browser:new(self); b:show(); b:openAudiobooks() end, { reason = "audiobooks" })
         end,
         separator = true,
     }
@@ -952,7 +980,11 @@ function Grimmory:onSuspend()
     if ok_ab and Audiobook.current and Audiobook.current.playing then Audiobook.current:pause() end
     if self.tts then self.tts:stop() end
     if self.sync then self.sync:onLeave() end
+    self.suspended_at = os.time()
+    Net.onSuspend()
 end
+
+Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after a long sleep
 
 function Grimmory:onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)
@@ -960,6 +992,13 @@ function Grimmory:onResume()
         self.sync:startSession()
         if self:syncEnabled() then
             UIManager:scheduleIn(3, function() if self.sync then self.sync:pull(false) end end)
+            local slept = self.suspended_at and os.time() - self.suspended_at or 0
+            if slept >= Grimmory.WAKE_SYNC_AFTER and self.api:isPaired() and not Net.connected() then
+                -- maybe read elsewhere meanwhile
+                UIManager:scheduleIn(4, function()
+                    Net.run(function() self:syncOpenBook() end, { quiet = true, reason = "sync on wake" })
+                end)
+            end
         end
     end
 end
@@ -975,6 +1014,12 @@ function Grimmory:onCloseDocument()
         self.sync:onLeave()
         self.sync = nil
     end
+    if self.api:isPaired() and self:hasPending() and not Net.connected() then
+        -- Wi-Fi only when needed: send where you stopped reading
+        UIManager:scheduleIn(1, function()
+            Net.run(function() self:flushPending() end, { quiet = true, reason = "sync on close" })
+        end)
+    end
 end
 
 ---------------------------------------------------------------- library
@@ -989,7 +1034,7 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
         })
         return true
     end
-    NetworkMgr:runWhenOnline(function() Browser:new(self):show() end)
+    Net.run(function() Browser:new(self):show() end, { reason = "Grimmory library" })
     return true
 end
 

@@ -76,6 +76,7 @@ local function rawRequest(method, full_url, opts)
         sink = sink,
     }
     logger.dbg("Grimmory:", method, full_url)
+    pcall(function() require("grimmory_net").touch() end)
     local t0 = socket.gettime()
     -- LuaSocket/LuaSec raise (rather than return) on some failures, e.g. a TLS
     -- handshake error; treat those like any other network error.
@@ -83,6 +84,7 @@ local function rawRequest(method, full_url, opts)
         return socket.skip(1, http.request(request))
     end)
     socketutil:reset_timeout()
+    pcall(function() require("grimmory_net").touch() end)
     local ms = math.floor((socket.gettime() - t0) * 1000)
     if not pcall_ok then
         logger.warn("Grimmory: request failed", method, full_url, code)

@@ -215,7 +215,29 @@ the USB drive's `screensavers` folder (created by the setup guide), falling
 back to the Kindle's own sleep pictures. Chosen in the setup guide; picking
 another option there restores KOReader/ZenOS's own sleep-screen settings.
 
+## Wi-Fi only when needed
+
+On by default (Settings → GZreader → Wi-Fi only when needed). GZreader turns
+Wi-Fi on by itself when it needs the network and off again after a minute
+unused, as long as nothing still needs it (an open Grimmory browser, a
+download or its queue, the library index, a QR screen, an update download).
+
+| When | Wi-Fi |
+| --- | --- |
+| Browsing Grimmory, downloading, connecting, sending the log, checking for / installing updates | turned on ("Connecting to Wi-Fi…") |
+| A Grimmory book opens | turned on quietly: pull the position, send queued changes, sync bookmarks |
+| A book closes with unsent changes | turned on quietly to send them |
+| Wake after 15 min or more with a book open | turned on quietly to pull the position |
+| Page turns, bookmarks, sleep | not turned on: changes wait for the next sync |
+| Daily update check, library index refresh | only if Wi-Fi is already on |
+
+Wi-Fi you turned on yourself is never turned off. Going to sleep turns off
+Wi-Fi GZreader turned on.
+
 ## Speed on the Kindle 3
+
+- The Home cover strip is off (once; Settings → Home brings it back): each
+  Home paint spent ~4 s of CPU scaling covers in software.
 
 - Night mode is off and can't be switched on (Kindle 2, DX, Keyboard, 4):
   these Kindles have no hardware screen inversion, and KOReader's software

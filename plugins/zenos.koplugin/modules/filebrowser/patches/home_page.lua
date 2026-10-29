@@ -815,6 +815,19 @@ local function ensure_home_cfg()
             pcall(PresetStore.saveSettings, "home", dcfg)
         end
     end
+    -- GZreader: on legacy Kindles the cover strip took ~4 s of CPU per Home
+    -- paint (scaling covers in software) and kept prewarming the next pages,
+    -- so Home felt frozen. Turned off once; Settings → Home → rows brings it back.
+    if G_reader_settings and not G_reader_settings:isTrue("gzreader_home_trim_v2") then
+        G_reader_settings:makeTrue("gzreader_home_trim_v2")
+        local Device = require("device")
+        if Device:isKindle() and not Device:isTouchDevice()
+                and type(dcfg.rows) == "table" and type(dcfg.rows.enabled) == "table"
+                and dcfg.rows.enabled.strip then
+            dcfg.rows.enabled.strip = false
+            pcall(PresetStore.saveSettings, "home", dcfg)
+        end
+    end
 
     if dcfg.show_status_bar == nil then dcfg.show_status_bar = true end
     dcfg.edit_mode = dcfg.edit_mode ~= false

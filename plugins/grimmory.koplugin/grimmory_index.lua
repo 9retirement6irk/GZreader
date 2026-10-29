@@ -145,6 +145,7 @@ function Index.build(plugin, show, on_done)
 
     local job = { waiters = { on_done } }
     Index.building = job
+    require("grimmory_net").hold("index")
     local dialog
     if show then
         dialog = ProgressbarDialog:new{
@@ -159,6 +160,7 @@ function Index.build(plugin, show, on_done)
 
     local function finish(data, ferr)
         Index.building = nil
+        require("grimmory_net").release("index")
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
         os.remove(prog)
         Log.info("index build", data and "done" or ("failed: " .. tostring(ferr)),

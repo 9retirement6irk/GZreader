@@ -45,7 +45,11 @@ function Download.isQueued(book_id) return queuedIds()[tostring(book_id)] == tru
 local function startNext()
     if Download.active then return end
     local q = table.remove(Download.queue, 1)
-    if not q then Download.background = false; return end
+    if not q then
+        Download.background = false
+        require("grimmory_net").release("download")
+        return
+    end
     Download.start(q.plugin, q.book, q.dest_path, q.on_done, true)
 end
 
@@ -112,6 +116,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue)
     }
     Download.active = job
     Awake.hold(job) -- no sleeping (screensaver or autosuspend) mid-download
+    require("grimmory_net").hold("download") -- keep Wi-Fi up until the queue is done
 
     local dialog
     local function closeDialog()

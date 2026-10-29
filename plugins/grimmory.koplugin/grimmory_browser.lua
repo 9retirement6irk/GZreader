@@ -79,6 +79,15 @@ function Browser:show()
         is_popout = false,
         title_bar_fm_style = true,
     }
+    -- Wi-Fi only when needed: keep it up while the browser is open
+    local Net = require("grimmory_net")
+    local net_key = "browser-" .. tostring(self)
+    Net.hold(net_key)
+    local orig_close = self.menu.onCloseWidget
+    self.menu.onCloseWidget = function(m, ...)
+        Net.release(net_key)
+        if orig_close then return orig_close(m, ...) end
+    end
     -- GZreader: Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the
     -- bottom tabs, also from here. Plain letters stay the menu's item
     -- shortcuts (Q, W, E, R, T, Y, U, I, …).

@@ -70,6 +70,10 @@ a built-in connection to a self-hosted **Grimmory** book server.
   anywhere; downloads resume after a dropped connection. **Test audio playback**
   checks which player works on your firmware.
 
+### 🔋 Battery
+- **Wi‑Fi only when needed:** turned on by itself for browsing, downloads,
+  updates and syncing when a book opens or closes, and off again after a minute.
+
 ### 🌙 And more
 - **Sleep screen:** the book's cover while reading, a picture from the `screensavers`
   folder on Home and in menus.
