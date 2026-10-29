@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.0.8",
+        changes = {
+            "Read aloud no longer skips words or sentences: the next sentence is queued behind the one being spoken instead of replacing it, and reading follows the Kindle voice's own start/finish signals (estimates only as a fallback).",
+            "Send the diagnostic log to your phone over Wi-Fi: Settings → General → Grimmory → Send diagnostic log to my phone (QR code).",
+        },
+    },
+    {
         version = "1.0.7",
         changes = {
             "Updates: fixed \"Download failed: err 415\" when a release had no attached packages yet (GitHub refused the source code zip request).",

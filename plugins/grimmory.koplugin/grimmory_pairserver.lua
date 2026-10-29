@@ -70,9 +70,14 @@ end
 
 local REASONS = { [200] = "OK", [302] = "Found", [400] = "Bad Request", [404] = "Not Found", [405] = "Method Not Allowed", [413] = "Payload Too Large" }
 
-local function respond(client, code, content_type, body)
+local function respond(client, code, content_type, body, extra_headers)
     body = body or ""
     local lines = { string.format("HTTP/1.0 %d %s", code, REASONS[code] or "OK") }
+    for k, v in pairs(type(extra_headers) == "table" and extra_headers or {}) do
+        if tostring(k):match("^[%w%-]+$") and not tostring(v):find("[\r\n]") then
+            lines[#lines + 1] = k .. ": " .. tostring(v)
+        end
+    end
     if code == 302 then
         -- the handler returns the redirect target as the body
         lines[#lines + 1] = "Location: " .. body
@@ -121,12 +126,13 @@ function PairServer:waitEvent()
         body = client:receive(length) or ""
     end
 
-    local ok, code, ctype, resp = pcall(self.handler, method, path, headers, body)
+    local ok, code, ctype, resp, extra = pcall(self.handler, method, path, headers, body)
     if not ok then
         logger.err("Grimmory pairing handler error:", code)
         respond(client, 400, "text/plain", "Something went wrong on the Kindle.")
     else
-        respond(client, code or 200, ctype, resp)
+        client:settimeout(30) -- big responses (the diagnostic log) on slow Wi-Fi
+        respond(client, code or 200, ctype, resp, extra)
     end
     return nil
 end

@@ -159,7 +159,7 @@ function TTS.send(target, fields)
 end
 
 --- The saved request shape, filled in for `text`.
-local function fieldsFor(template, text)
+local function fieldsFor(template, text, id)
     local fields = {}
     for _i, f in ipairs(template.fields) do
         if f[1] == "text" then
@@ -167,7 +167,7 @@ local function fieldsFor(template, text)
             -- trailing space lets it see that the word is complete
             fields[#fields + 1] = { "text", str = text .. " " }
         elseif f[1] == "id" and f.int ~= nil then
-            fields[#fields + 1] = { "id", int = TTS.seq + 1 } -- a fresh id per snippet
+            fields[#fields + 1] = { "id", int = id or (TTS.seq + 1) } -- a fresh id per snippet
         else
             fields[#fields + 1] = { f[1], int = f.int, str = f.str }
         end
@@ -177,12 +177,72 @@ end
 
 function TTS.template() return settings():readSetting("gzreader_tts_template") end
 
---- Speak `text` with the saved request shape. Returns a result handle
---- (see TTS.result) or nil, err. Never waits for the speech.
-function TTS.say(text, template)
+TTS.next_id = 100
+
+--- Speak `text` with the saved request shape. opts.enqueue: queue it after
+--- what is playing (ttsd's enqueueSnippet) instead of replacing it.
+--- Returns a result handle (see TTS.result) and the snippet id, or nil, err.
+--- Never waits for the speech.
+function TTS.say(text, template, opts)
     template = template or TTS.template()
     if not template then return nil, "no voice set up" end
-    return TTS.send(template.target, fieldsFor(template, text))
+    opts = opts or {}
+    TTS.next_id = TTS.next_id + 1
+    local id = TTS.next_id
+    local target = template.target
+    if opts.enqueue and target.pub == "com.lab126.ttsd" then
+        target = { pub = target.pub, prop = "enqueueSnippet" }
+    end
+    local handle, err = TTS.send(target, fieldsFor(template, text, id))
+    if not handle then return nil, err end
+    return handle, id
+end
+
+---------------------------------------------------------------- ttsd events
+
+-- ttsd announces snippetStarted / snippetFinished (with the snippet id) over
+-- lipc; lipc-wait-event writes them to a file we read. That paces reading by
+-- the real speech instead of an estimate (estimates are the fallback).
+TTS.EVENTS_FILE = OUT_PREFIX .. "events"
+local events_offset = 0
+
+function TTS.startEvents()
+    TTS.stopEvents()
+    os.remove(TTS.EVENTS_FILE)
+    events_offset = 0
+    run(string.format("(lipc-wait-event -m com.lab126.ttsd snippetStarted,snippetFinished > %s 2>&1 & echo $! > %s.pid) >/dev/null 2>&1",
+        TTS.EVENTS_FILE, TTS.EVENTS_FILE))
+end
+
+function TTS.stopEvents()
+    local f = io.open(TTS.EVENTS_FILE .. ".pid", "rb")
+    local pid = f and tonumber(f:read("*a"))
+    if f then f:close() end
+    if pid then run("kill " .. pid .. " >/dev/null 2>&1") end
+    os.remove(TTS.EVENTS_FILE .. ".pid")
+end
+
+--- New events since the last call: list of { name = "started"|"finished", id = n }.
+function TTS.readEvents()
+    local f = io.open(TTS.EVENTS_FILE, "rb")
+    if not f then return {} end
+    f:seek("set", events_offset)
+    local chunk = f:read("*a") or ""
+    f:close()
+    -- only whole lines
+    local last_nl = chunk:match(".*()\n")
+    if not last_nl then return {} end
+    chunk = chunk:sub(1, last_nl)
+    events_offset = events_offset + #chunk
+    local out = {}
+    for line in chunk:gmatch("[^\n]+") do
+        local kind = line:match("snippet(%a+)")
+        local id = tonumber(line:match("(%d+)%s*$"))
+        if kind and id then
+            out[#out + 1] = { name = kind:lower(), id = id }
+        end
+    end
+    return out
 end
 
 local function intProp(pub, prop, value)
@@ -443,6 +503,10 @@ function Reader:follow(xp)
     return true
 end
 
+Reader.AHEAD = 2       -- sentences handed to ttsd ahead of what is being spoken
+Reader.POLL = 0.4
+Reader.EVENTS_GRACE = 4 -- seconds to wait for a first ttsd event before using estimates
+
 function Reader:start()
     if self.active then return end
     if not self:supported() then
@@ -454,58 +518,158 @@ function Reader:start()
     end
     self.active, self.paused = true, false
     TTS.applySettings()
+    TTS.startEvents()
+    self.events_ok = nil
+    self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
     UIManager:show(Notification:new{ text = _("Reading aloud. Shift + Sym to stop.") })
-    self:speakNext()
+    self:restartQueue()
+    self.poller = function() self.poller_scheduled = false; self:poll() end
+    self:schedulePoll()
 end
 
-function Reader:speakNext()
-    if not self.active or self.paused then return end
-    local text, xp0, xp1 = self:sentenceAt(self.next_xp)
-    if not text then
+function Reader:schedulePoll()
+    if self.active and not self.poller_scheduled then
+        self.poller_scheduled = true
+        UIManager:scheduleIn(Reader.POLL, self.poller)
+    end
+end
+
+--- Throw away what is queued and start from self.next_xp.
+function Reader:restartQueue()
+    if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
+    self.queue = {}
+    self.no_more = false
+    self.fresh = true -- the first snippet replaces whatever ttsd is still saying
+    self:fill()
+    self:playHead()
+end
+
+--- Keep Reader.AHEAD sentences handed to ttsd.
+function Reader:fill()
+    while self.active and not self.no_more and #self.queue < Reader.AHEAD do
+        local text, xp0, xp1 = self:sentenceAt(self.next_xp)
+        if not text then self.no_more = true; break end
+        local handle, id = TTS.say(text, nil, { enqueue = not self.fresh })
+        self.fresh = false
+        if not handle then
+            Log.warn("tts say failed:", id)
+            self:stop()
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), id) })
+            return
+        end
+        self:watchResult(handle)
+        self.queue[#self.queue + 1] = { id = id, text = text, xp0 = xp0, xp1 = xp1 }
+        self.next_xp = self.ui.document:getNextVisibleWordStart(xp1)
+    end
+    if self.active and #self.queue == 0 and self.no_more then
         self:stop()
         UIManager:show(Notification:new{ text = _("End of book.") })
-        return
     end
-    self.cur = { xp0, xp1 }
-    self:follow(xp0)
-    self:highlight(xp0, xp1)
-    local ok, err = TTS.say(text)
-    if not ok then
-        Log.warn("tts say failed:", err)
-        self:stop()
-        UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), err) })
-        return
+end
+
+--- Shell backend: a rejection (without waiting) stops reading with its message.
+function Reader:watchResult(handle)
+    if type(handle) ~= "string" then return end
+    local tries = 0
+    local function check()
+        tries = tries + 1
+        local r, detail = TTS.result(handle)
+        if r == nil and tries < 4 then return UIManager:scheduleIn(1.5, check) end
+        if r == false and self.active then
+            Log.warn("tts rejected:", detail)
+            self:stop()
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), detail) })
+        end
     end
-    if type(ok) == "string" then
-        -- shell backend: find out (without waiting) whether the speech
-        -- service accepted it; a rejection stops reading with its message
-        local out, tries = ok, 0
-        local function check()
-            tries = tries + 1
-            local r, detail = TTS.result(out)
-            if r == nil and tries < 4 then return UIManager:scheduleIn(1.5, check) end
-            if r == false and self.active then
-                Log.warn("tts rejected:", detail)
-                self:stop()
-                UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), detail) })
+    UIManager:scheduleIn(1.5, check)
+end
+
+--- Show the sentence at the head of the queue (the one being spoken).
+function Reader:playHead()
+    local head = self.queue and self.queue[1]
+    if not self.active or not head or head.shown then return end
+    head.shown = true
+    head.shown_at = os.time()
+    self.cur = { head.xp0, head.xp1 }
+    self:follow(head.xp0)
+    self:highlight(head.xp0, head.xp1)
+    if self.events_ok == false then self:armTimer(head) end
+end
+
+--- Estimate mode: move on when the head should be done.
+function Reader:armTimer(head)
+    if self.timer then UIManager:unschedule(self.timer) end
+    self.timer = function()
+        self.timer = nil
+        if self.queue[1] == head then self:advance(head.id) end
+    end
+    UIManager:scheduleIn(TTS.duration(head.text), self.timer)
+end
+
+--- Snippet `id` is done: drop it (and anything before it), refill, show the next.
+function Reader:advance(id)
+    local idx
+    for i, q in ipairs(self.queue) do if q.id == id then idx = i; break end end
+    if not idx then return end
+    for _i = 1, idx do table.remove(self.queue, 1) end
+    self:fill()
+    self:playHead()
+end
+
+function Reader:poll()
+    if not self.active then return end
+    for _i, ev in ipairs(TTS.readEvents()) do
+        self.logged_events = (self.logged_events or 0) + 1
+        if self.logged_events <= 12 then Log.info("tts event", ev.name, ev.id, "queue head", self.queue[1] and self.queue[1].id) end
+        if self.events_ok ~= true then
+            self.events_ok = true
+            if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
+        end
+        if ev.name == "started" then
+            -- ttsd moved on to this one: everything before it is done
+            local idx
+            for i, q in ipairs(self.queue) do if q.id == ev.id then idx = i; break end end
+            if idx and idx > 1 then
+                for _j = 1, idx - 1 do table.remove(self.queue, 1) end
+                self:fill()
+            end
+            self:playHead()
+        elseif ev.name == "finished" then
+            -- If ttsd reports "finished" when it has *rendered* the snippet
+            -- rather than said it, don't race ahead (and pile the book into
+            -- its queue): move on no sooner than ~60% of the estimate.
+            local head = self.queue[1]
+            local early = head and head.id == ev.id and head.shown_at
+                and (TTS.duration(head.text) * 0.6 - (os.time() - head.shown_at))
+            if early and early > 0.5 then
+                local id = ev.id
+                UIManager:scheduleIn(early, function() if self.active then self:advance(id) end end)
+            else
+                self:advance(ev.id)
             end
         end
-        UIManager:scheduleIn(1.5, check)
+        if not self.active then return end
     end
-    self.next_xp = self.ui.document:getNextVisibleWordStart(xp1)
-    self.timer = function() self.timer = nil; self:speakNext() end
-    UIManager:scheduleIn(TTS.duration(text), self.timer)
+    if self.events_ok == nil and os.time() - self.started_at >= Reader.EVENTS_GRACE then
+        self.events_ok = false
+        Log.info("tts: no ttsd events, pacing by estimate")
+        local head = self.queue[1]
+        if head then self:armTimer(head) end
+    end
+    self:schedulePoll()
 end
 
 function Reader:stop()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
+    if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end
     if self.active then Log.info("tts stop") end
     local was_active = self.active
     self.active, self.paused = false, false
+    self.queue = {}
     TTS.cancel()
-    if was_active then TTS.cleanup() end
+    if was_active then TTS.stopEvents(); TTS.cleanup() end
     self:clearHighlight()
 end
 
@@ -516,10 +680,11 @@ end
 --- A page turned by the reader (not by us): continue from the new page.
 function Reader:onManualPageTurn()
     if not self.active or self.turning then return end
-    if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     TTS.cancel()
     self.next_xp = self.ui.document:getXPointer()
-    UIManager:scheduleIn(0.3, function() self:speakNext() end)
+    UIManager:scheduleIn(0.3, function()
+        if self.active then self:restartQueue() end
+    end)
 end
 
 return TTS

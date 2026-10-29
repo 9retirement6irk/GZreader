@@ -214,7 +214,14 @@ function Grimmory:menuItems()
             end,
         },
         {
-            text = _("Save diagnostic log"),
+            text = _("Send diagnostic log to my phone (QR code)"),
+            callback = function(touchmenu)
+                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+                self:shareLog()
+            end,
+        },
+        {
+            text = _("Save diagnostic log (USB)"),
             callback = function() self:exportLog() end,
             separator = true,
         },
@@ -270,6 +277,84 @@ function Grimmory:exportLog()
     else
         UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log: %1"), tostring(err)) })
     end
+end
+
+--- Send the diagnostic log to a phone over Wi-Fi: the Kindle serves it on a
+--- one-off address shown as a QR code (same mini web server as QR sign-in).
+--- The phone saves the file, which can then be attached anywhere.
+function Grimmory:shareLog()
+    if self.pairing then return end
+    local lib = self:libraryDir()
+    local dest_dir = lib:match("^(.+)/[^/]+$") or lib
+    Log.probe_device = Device:isKindle()
+    local busy = InfoMessage:new{ text = _("Preparing the diagnostic log…"), timeout = 0 }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    local dest, err = Log.exportTo(dest_dir, DataStorage:getDataDir() .. "/crash.log")
+    UIManager:close(busy)
+    local f = dest and io.open(dest, "rb")
+    if not f then
+        return UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log: %1"), tostring(err)) })
+    end
+    local content = f:read("*a")
+    f:close()
+    local filename = dest:match("[^/]+$")
+    local token = PairServer.randomToken(16)
+    local base = "/log/" .. token
+    local server, screen, timeout_task, done
+    local function finish()
+        if done then return end
+        done = true
+        if timeout_task then UIManager:unschedule(timeout_task) end
+        if server then UIManager:removeZMQ(server); server:stop() end
+        if screen then UIManager:close(screen) end
+        self.pairing = nil
+    end
+    local page = string.format([[<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GZreader diagnostic log</title><style>body{font-family:system-ui,sans-serif;max-width:32em;margin:2em auto;padding:0 1em;line-height:1.5}
+a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-radius:.5em;text-decoration:none;font-weight:600}</style></head>
+<body><h1>GZreader diagnostic log</h1><p>%s (%d KB). Passwords and tokens are never in it.</p>
+<p><a class="b" href="%s/%s" download="%s">Download the log</a></p>
+<p>Then attach the downloaded file wherever you need it, for example in your chat with Claude.</p></body></html>]],
+        filename, math.ceil(#content / 1024), base, filename, filename)
+    server = PairServer:new{
+        handler = function(method, path)
+            if method ~= "GET" then return 405, "text/plain", "Method not allowed" end
+            if path == base then return 200, "text/html", page end
+            if path == base .. "/" .. filename then
+                Log.info("log sent to phone", filename, #content, "bytes")
+                return 200, "text/plain", content,
+                    { ["Content-Disposition"] = 'attachment; filename="' .. filename .. '"' }
+            end
+            return 404, "text/plain", "Not found"
+        end,
+    }
+    local ok, serr = server:start()
+    if not ok then
+        return UIManager:show(InfoMessage:new{ text = T(_("Couldn't start sharing: %1"), tostring(serr)) })
+    end
+    local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
+    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
+    local ip, why = PairServer.localIp(hint_host, iface)
+    if not ip then
+        server:stop()
+        return UIManager:show(InfoMessage:new{
+            text = _("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") .. "\n\n" .. tostring(why) })
+    end
+    self.pairing = true
+    UIManager:insertZMQ(server)
+    local url = T("http://%1:%2%3", ip, server.port, base)
+    Log.info("sharing log on", T("http://%1:%2", ip, server.port))
+    screen = PairScreen:new{
+        url = url,
+        title = _("Send the diagnostic log"),
+        instructions = T(_("Scan this code with your phone's camera and tap \"Download the log\". Your phone must be on the same Wi-Fi as this Kindle.\n\nThe log was also saved as %1."), dest),
+        footer = _("Press Back when you're done."),
+        on_cancel = function() screen = nil; finish() end,
+    }
+    UIManager:show(screen)
+    timeout_task = function() finish() end
+    UIManager:scheduleIn(PAIR_TIMEOUT_S, timeout_task)
 end
 
 function Grimmory:showError(err)

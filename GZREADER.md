@@ -179,6 +179,11 @@ another option there restores KOReader/ZenOS's own sleep-screen settings.
 
 ## Diagnostic log
 
+**Send it to your phone:** Settings → General → Grimmory → Send diagnostic log
+to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
+the file wherever you need it.
+
+
 `koreader/grimmory.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
 tokens are never written. Grimmory → Save diagnostic log copies it, the tail

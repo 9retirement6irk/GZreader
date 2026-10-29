@@ -37,14 +37,14 @@ function PairScreen:init()
     local group = VerticalGroup:new{
         align = "center",
         TextBoxWidget:new{
-            text = _("Connect to Grimmory"),
+            text = self.title or _("Connect to Grimmory"),
             face = Font:getFace("tfont", 26),
             width = text_w,
             alignment = "center",
         },
         gap,
         TextBoxWidget:new{
-            text = _("Scan this code with your phone's camera, then sign in on the page that opens. Your phone must be on the same Wi-Fi as this Kindle."),
+            text = self.instructions or _("Scan this code with your phone's camera, then sign in on the page that opens. Your phone must be on the same Wi-Fi as this Kindle."),
             face = Font:getFace("cfont", 18),
             width = text_w,
             alignment = "center",
@@ -68,7 +68,7 @@ function PairScreen:init()
         })
     else
         table.insert(group, TextBoxWidget:new{
-            text = _("Press Back to cancel."),
+            text = self.footer or _("Press Back to cancel."),
             face = Font:getFace("smallinfofont", 16),
             width = text_w,
             alignment = "center",
