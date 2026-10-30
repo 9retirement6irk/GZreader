@@ -640,18 +640,27 @@ function Player:tick()
     if not self.playing then return end
     local t = self.book.tracks[self.track]
     local in_track = Engine.position()
-    local ended = not Engine.running()
+    local stopped = not Engine.running()
+    local ended = stopped
         or (t.durationMs and t.durationMs > 0 and in_track >= t.durationMs + 5000)
-    if ended and in_track < 4000 and not Engine.isPaused() then
-        -- the player quit straight away: don't skip ahead or lose the position
+    -- The player quit on its own: straight away (it couldn't play), or well
+    -- before the end of the track. Not the end of the book: keep the position.
+    local played = Engine.played()
+    local early = stopped and not Engine.isPaused() and (played < 4000
+        or (t.durationMs and t.durationMs > 0 and in_track < t.durationMs - 30000))
+    if early then
         local out = Engine.log()
-        Log.warn("audiobook: the player stopped at once:", out:sub(1, 400):gsub("\n", " / "))
+        Log.warn("audiobook: the player stopped after", math.floor(played), "ms at", math.floor(in_track),
+            "of", tostring(t.durationMs), "ms:", out:sub(1, 400):gsub("\n", " / "))
         self.pos = t.start + in_track
         Engine.stop()
         self.playing = false
         self:keepAwake(false)
         if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
-        UIManager:show(InfoMessage:new{ text = _("The audio didn't play. Run Test audiobook playback (Settings → Reader), then send the diagnostic log if it still fails.") })
+        self:save()
+        UIManager:show(InfoMessage:new{ text = played < 4000
+            and _("The audio didn't play. Run Test audiobook playback (Settings → Reader), then send the log (Menu → Diagnostics) if it still fails.")
+            or _("The audio stopped unexpectedly. Your place is kept. If it keeps happening, send the log (Menu → Diagnostics).") })
         if self.screen then self.screen:refresh() end
         return
     end

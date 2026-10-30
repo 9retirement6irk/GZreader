@@ -145,7 +145,7 @@ function Engine.play(p, src)
     os.remove(PID_FILE)
     local cmd, started_ms = Engine.command(p, src)
     run(string.format("(%s > %s 2>&1 & echo $! > %s) >/dev/null 2>&1", cmd, LOG_FILE, PID_FILE))
-    current = { p = p, src = src, offset_ms = started_ms, started_at = Engine.clock() }
+    current = { p = p, src = src, offset_ms = started_ms, first_offset_ms = started_ms, started_at = Engine.clock() }
     Log.info("audio play", p.id, src.path or src.dir, "from", started_ms, "ms")
     return true, started_ms
 end
@@ -154,6 +154,12 @@ function Engine.position()
     if not current then return 0 end
     if current.paused_at then return current.offset_ms end
     return current.offset_ms + (Engine.clock() - current.started_at) * 1000
+end
+
+--- Milliseconds actually played since this play() (not the book position).
+function Engine.played()
+    if not current then return 0 end
+    return Engine.position() - (current.first_offset_ms or current.offset_ms)
 end
 
 --- Is it still playing? (false once the stream ended or the player failed)

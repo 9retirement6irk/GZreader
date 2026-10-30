@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.8",
+        changes = {
+            "Fixed: when the audio player quit as soon as it started, an audiobook resumed partway through showed \"The end of the audiobook\" and its listening position went back to the start. Now GZreader says the audio didn't play, keeps your place and writes what the player said to the diagnostic log.",
+            "If the player stops on its own well before the end of a track, GZreader keeps your place and says it stopped unexpectedly, instead of treating it as the end of the book.",
+        },
+    },
+    {
         version = "1.3.7",
         changes = {
             "\"Send diagnostic log to my phone\" in the Home menu is now \"Diagnostics\". It asks whether to send the log to your phone (QR code) or save it on the Kindle to copy over USB. The choices have letter keys (Q, W, E).",
