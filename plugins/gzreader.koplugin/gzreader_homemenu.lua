@@ -168,19 +168,7 @@ end
 
 function HomeMenu.items(plugin)
     local items = {
-        { text = _("Grimmory library"), callback = function() plugin:onShowGrimmoryLibrary() end },
         { text = _("Continue reading (last book)"), callback = function() dispatch("open_previous_document") end },
-        { text_func = function()
-            local ok, Audiobook = pcall(require, "gzreader_audiobook")
-            local cur = ok and Audiobook.current
-            return cur and (_("Audiobook: ") .. (cur.book.title or "?")) or _("Audiobooks")
-        end, callback = function()
-            local ok, Audiobook = pcall(require, "gzreader_audiobook")
-            if ok and Audiobook.current then return Audiobook.open(plugin, Audiobook.current.book) end
-            local list = ok and Audiobook.downloaded(plugin) or {}
-            if #list == 1 then return Audiobook.open(plugin, list[1].book) end
-            plugin:showAudiobookMenu()
-        end },
         { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
         { text = _("History"), callback = function() dispatch("history") end },
         { text = _("Sort books…"), callback = function() HomeMenu.showSort() end },

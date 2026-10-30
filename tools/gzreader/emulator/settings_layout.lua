@@ -7,8 +7,18 @@ local function section(letter, name)
     key(letter, 4); shot(name); key("RPgFwd", 3); shot(name .. "-2"); key("Back", 3)
 end
 key("Menu", 4); shot("homemenu")
-key("I", 6); shot("settings")
-section("E", "reader")
+key("Y", 6); shot("settings")
+-- Reader, page 2: T = Test audiobook playback, which must stay over Settings
+key("E", 4); shot("reader"); key("RPgFwd", 3); shot("reader-2")
+key("T", 8)
+s[#s + 1] = { fn = function(E) print("[emu] during audio test: " .. E.top()) end, after = 1 }
+shot("audio-test")
+s[#s + 1] = { wait = 40 }
+s[#s + 1] = { fn = function(E) print("[emu] audio test result: " .. E.top()) end, after = 1 }
+shot("audio-test-2")
+key("Back", 3)
+s[#s + 1] = { fn = function(E) print("[emu] after closing it: " .. E.top()) end, after = 1 }
+key("Back", 3)
 section("R", "interface")
 section("Y", "general")
 section("U", "grimmory")

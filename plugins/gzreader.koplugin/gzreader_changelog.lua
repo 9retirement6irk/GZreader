@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.4",
+        changes = {
+            "Settings pages show each entry's letter key in a box, like the Home and Reading menus, so you can see which letter opens what.",
+            "General → Updates is now the first entry in General.",
+            "Test audiobook playback (Settings → Reader) runs over the Settings page, and you're back in Settings when it's done. Before, it closed Settings and went back to Home.",
+            "Shorter Home menu: Grimmory library and Audiobooks are gone (both are in the Grimmory tab, Alt+R). The Audiobooks entry in Settings → Grimmory is gone too. Grimmory tab → Audiobooks lists them, and a downloaded or playing audiobook opens straight away from there.",
+        },
+    },
+    {
         version = "1.3.3",
         changes = {
             "Fixed: in Read aloud settings, pressing Louder (or Faster) more than once went the wrong way. The dialog reopened after each press with the 5-way back on Quieter (or Slower). Now the number changes in place and the selection stays where it was.",

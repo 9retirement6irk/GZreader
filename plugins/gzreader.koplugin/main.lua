@@ -248,11 +248,6 @@ function Grimmory:menuItems()
             end,
         },
         {
-            text = _("Audiobooks"),
-            sub_item_table_func = function() return self:audiobookItems() end,
-            separator = true,
-        },
-        {
             text = paired and _("Reconnect with QR code") or _("Connect with QR code"),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
         },
@@ -332,10 +327,8 @@ function Grimmory:sectionItems(section)
             icon("check", {
                 text = _("Test audiobook playback"),
                 help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
-                callback = function(touchmenu)
-                    closeTouchMenu(touchmenu)
-                    require("gzreader_audioengine").test()
-                end,
+                keep_menu_open = true, -- the test's messages show over Settings
+                callback = function() require("gzreader_audioengine").test() end,
             }),
         }
     elseif section == "interface" then
@@ -1052,54 +1045,6 @@ function Grimmory:onGrimmorySyncNow()
         if self.annotations then pcall(self.annotations.run, self.annotations) end
     end, { reason = "sync now" })
     return true
-end
-
-function Grimmory:showAudiobookMenu()
-    local Menu = require("ui/widget/menu")
-    local menu
-    local items = self:audiobookItems()
-    for _i, it in ipairs(items) do
-        local cb = it.callback
-        it.callback = cb and function() UIManager:close(menu); cb() end
-    end
-    menu = Menu:new{ title = _("Audiobooks"), item_table = items, is_borderless = true, is_popout = false,
-        covers_fullscreen = true, title_bar_fm_style = true }
-    UIManager:show(menu)
-end
-
-function Grimmory:audiobookItems()
-    local Audiobook = require("gzreader_audiobook")
-    local items = {}
-    local cur = Audiobook.current
-    if cur then
-        items[#items + 1] = {
-            text = T(_("Now playing: %1"), cur.book.title or "?"),
-            callback = function(touchmenu)
-                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-                Audiobook.open(self, cur.book)
-            end,
-            separator = true,
-        }
-    end
-    for _i, e in ipairs(Audiobook.downloaded(self)) do
-        items[#items + 1] = {
-            text = e.book.title or "?",
-            mandatory = Audiobook.fmt(e.pos or 0),
-            callback = function(touchmenu)
-                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-                Audiobook.open(self, e.book)
-            end,
-        }
-    end
-    items[#items + 1] = {
-        text = _("Browse Grimmory audiobooks"),
-        enabled_func = function() return self.api:isPaired() end,
-        callback = function(touchmenu)
-            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-            local b = Mod.Browser:new(self); b:show(); b:openAudiobooks()
-        end,
-    }
-    return items
 end
 
 function Grimmory:onSuspend()

@@ -321,8 +321,16 @@ local function rebuild_settings_menu_item(row)
     else
         item._zen_settings_control_bounds = nil
     end
+    -- GZreader: the row's letter key (Kindle Keyboard), in a square in front
+    local shortcut_widget, shortcut_w
+    if row.shortcut and not item._zen_settings_content_func then
+        local side = Screen:scaleBySize(30)
+        shortcut_widget = require("ui/widget/menu").getItemShortCutIcon(nil,
+            Geom:new{ w = side, h = side }, row.shortcut, row.shortcut_style)
+        shortcut_w = side + Size.padding.default
+    end
     local text_w = math.max(1, row.dimen.w - left_padding - left_icon_w
-        - right_controls_w - icon_gap)
+        - right_controls_w - icon_gap - (shortcut_w or 0))
     local text = item._zen_display_text
         or (type(item.text_func) == "function" and item.text_func() or item.text)
         or ""
@@ -366,6 +374,10 @@ local function rebuild_settings_menu_item(row)
         align = "center",
         HorizontalSpan:new{ width = left_padding },
     }
+    if shortcut_widget then
+        table.insert(left_items, shortcut_widget)
+        table.insert(left_items, HorizontalSpan:new{ width = Size.padding.default })
+    end
     table.insert(left_items, icon_widget or HorizontalSpan:new{ width = M.SETTINGS_ICON_WIDTH })
     table.insert(left_items, HorizontalSpan:new{ width = icon_gap })
     table.insert(left_items, text_group)

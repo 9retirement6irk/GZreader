@@ -93,7 +93,8 @@ function M.build(ctx, extras_items)
         text = _("Advanced"),
         sub_item_table = advanced_section.build(ctx),
     }, icons.settings_advanced))
-    table.insert(items, IconItem.decorate({
+    -- GZreader: Updates first
+    table.insert(items, 1, IconItem.decorate({
         text = _("Updates"),
         sub_item_table = updates_section.build(ctx),
     }, icons.upgrade))
