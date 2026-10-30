@@ -264,8 +264,98 @@ local function timegm(f)
 end
 CalDAV.timegm = timegm
 
---- An iCalendar date or date-time: epoch seconds, all_day.
-function CalDAV.parseTime(value, params)
+---------------------------------------------------------------- time zones (VTIMEZONE)
+
+local function tzOffset(s) -- "+0100", "-0430", "+053000" → seconds
+    local sign, h, m, sec = (s or ""):match("^([+-])(%d%d)(%d%d)(%d*)$")
+    if not sign then return nil end
+    local v = tonumber(h) * 3600 + tonumber(m) * 60 + (tonumber(sec) or 0)
+    return sign == "-" and -v or v
+end
+
+local DAYS = { SU = 1, MO = 2, TU = 3, WE = 4, TH = 5, FR = 6, SA = 7 }
+
+--- Wall-clock fields as if they were UTC (so arithmetic ignores the Kindle's zone).
+local function wallTime(f) return timegm(f) end
+
+--- When a yearly transition rule (BYMONTH + BYDAY like 2SU / -1SU) happens in `year`, in wall time.
+local function transitionIn(year, rule, at)
+    local month = tonumber(rule.BYMONTH)
+    local nth, code = (rule.BYDAY or ""):match("^([+-]?%d*)(%a%a)$")
+    if not (month and code and DAYS[code:upper()]) then return nil end
+    local wd = DAYS[code:upper()]
+    local list = {}
+    for d = 1, 31 do
+        local t = wallTime{ year = year, month = month, day = d, hour = 12 }
+        local f = os.date("!*t", t)
+        if f.month ~= month then break end
+        if f.wday == wd then list[#list + 1] = d end
+    end
+    local k = tonumber(nth) or 1
+    local day = k > 0 and list[k] or list[#list + k + 1]
+    if not day then return nil end
+    return wallTime{ year = year, month = month, day = day, hour = at.hour, min = at.min, sec = at.sec }
+end
+
+--- The UTC offset (s) in force at `wall` (wall-clock time as UTC epoch) in a VTIMEZONE.
+function CalDAV.zoneOffset(zone, wall)
+    local best_t, best_off
+    local year = tonumber(os.date("!%Y", wall))
+    for _i, c in ipairs(zone) do
+        local cands = {}
+        if c.rule and (c.rule.FREQ or ""):upper() == "YEARLY" and c.rule.BYMONTH then
+            local untilt = c.rule.UNTIL and CalDAV.parseTime(c.rule.UNTIL)
+            for y = year - 1, year do
+                local t = transitionIn(y, c.rule, os.date("!*t", c.start))
+                if t and t >= c.start and not (untilt and t - (c.from or 0) > untilt) then cands[#cands + 1] = t end
+            end
+        else
+            cands[1] = c.start
+        end
+        for _j, t in ipairs(cands) do
+            if t <= wall and (not best_t or t > best_t) then best_t, best_off = t, c.to end
+        end
+    end
+    if best_off then return best_off end
+    local first
+    for _i, c in ipairs(zone) do if not first or c.start < first.start then first = c end end
+    return first and (first.from or first.to) or 0
+end
+
+--- The VTIMEZONEs in iCalendar lines: { [TZID] = { {start, from, to, rule} } }.
+function CalDAV.parseZones(lines)
+    local zones, zone, comp = {}, nil, nil
+    for _i, l in ipairs(lines) do
+        local v = l.value:upper()
+        if l.name == "BEGIN" and v == "VTIMEZONE" then zone = { id = nil, comps = {} }
+        elseif zone and l.name == "END" and v == "VTIMEZONE" then
+            if zone.id and #zone.comps > 0 then zones[zone.id] = zone.comps end
+            zone = nil
+        elseif zone and l.name == "BEGIN" and (v == "STANDARD" or v == "DAYLIGHT") then comp = {}
+        elseif zone and comp and l.name == "END" and (v == "STANDARD" or v == "DAYLIGHT") then
+            if comp.start and comp.to then zone.comps[#zone.comps + 1] = comp end
+            comp = nil
+        elseif zone and not comp and l.name == "TZID" then zone.id = l.value
+        elseif comp then
+            if l.name == "DTSTART" then
+                local Y, M, D, h, mi, sec = l.value:match("^(%d%d%d%d)(%d%d)(%d%d)T(%d%d)(%d%d)(%d%d)")
+                if Y then comp.start = wallTime{ year = tonumber(Y), month = tonumber(M), day = tonumber(D),
+                    hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec) } end
+            elseif l.name == "TZOFFSETTO" then comp.to = tzOffset(l.value)
+            elseif l.name == "TZOFFSETFROM" then comp.from = tzOffset(l.value)
+            elseif l.name == "RRULE" then
+                comp.rule = {}
+                for k, val in l.value:gmatch("([^=;]+)=([^;]+)") do comp.rule[k:upper()] = val end
+            end
+        end
+    end
+    return zones
+end
+
+--- An iCalendar date or date-time: epoch seconds, all_day. `zones`: the
+--- VTIMEZONEs of the same data (a TZID time is converted with its zone;
+--- a TZID without one, or a floating time, is read in the Kindle's zone).
+function CalDAV.parseTime(value, params, zones)
     params = params or {}
     if value:match("^%d%d%d%d%d%d%d%d$") or params.VALUE == "DATE" then
         local y, m, d = value:match("^(%d%d%d%d)(%d%d)(%d%d)")
@@ -276,8 +366,13 @@ function CalDAV.parseTime(value, params)
     if not Y then return nil end
     local f = { year = tonumber(Y), month = tonumber(M), day = tonumber(D), hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec) }
     if z == "Z" then return timegm(f), false end
+    local zone = params.TZID and zones and zones[params.TZID]
+    if zone then
+        local wall = wallTime(f)
+        return wall - CalDAV.zoneOffset(zone, wall), false
+    end
     f.isdst = nil
-    return os.time(f), false -- floating or TZID: the Kindle's time zone
+    return os.time(f), false -- floating, or a TZID without its VTIMEZONE: the Kindle's time zone
 end
 
 --- An iCalendar DURATION in seconds.
@@ -298,7 +393,9 @@ end
 function CalDAV.parseEvents(data)
     local events, ev = {}, nil
     local depth = 0
-    for _i, l in ipairs(CalDAV.icalLines(data)) do
+    local lines = CalDAV.icalLines(data)
+    local zones = CalDAV.parseZones(lines)
+    for _i, l in ipairs(lines) do
         if l.name == "BEGIN" then
             if l.value:upper() == "VEVENT" and depth == 0 then ev = { exdates = {} } end
             if ev and l.value:upper() ~= "VEVENT" then depth = depth + 1 end -- VALARM inside
@@ -321,14 +418,14 @@ function CalDAV.parseEvents(data)
             elseif n == "LOCATION" then ev.location = unescape(v)
             elseif n == "DESCRIPTION" then ev.notes = unescape(v):sub(1, 2000)
             elseif n == "STATUS" then ev.status = v:upper()
-            elseif n == "DTSTART" then ev.start, ev.all_day = CalDAV.parseTime(v, l.params)
-            elseif n == "DTEND" then ev.finish = CalDAV.parseTime(v, l.params)
+            elseif n == "DTSTART" then ev.start, ev.all_day = CalDAV.parseTime(v, l.params, zones)
+            elseif n == "DTEND" then ev.finish = CalDAV.parseTime(v, l.params, zones)
             elseif n == "DURATION" then ev.duration = CalDAV.parseDuration(v)
             elseif n == "RRULE" then ev.rrule = v
-            elseif n == "RECURRENCE-ID" then ev.recurrence_id = CalDAV.parseTime(v, l.params)
+            elseif n == "RECURRENCE-ID" then ev.recurrence_id = CalDAV.parseTime(v, l.params, zones)
             elseif n == "EXDATE" then
                 for part in v:gmatch("[^,]+") do
-                    local t = CalDAV.parseTime(part, l.params)
+                    local t = CalDAV.parseTime(part, l.params, zones)
                     if t then ev.exdates[t] = true end
                 end
             end
@@ -512,6 +609,86 @@ function CalDAV:sync(calendars, from, to)
         return (a.title or "") < (b.title or "")
     end)
     return { events = all, failed = failed }
+end
+
+---------------------------------------------------------------- calendar links (webcal / ICS)
+
+--- A calendar link as typed or pasted: webcal:// becomes https://. nil if it isn't one.
+function CalDAV.normalizeFeed(s)
+    if type(s) ~= "string" then return nil end
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    if s == "" then return nil end
+    s = s:gsub("^[Ww][Ee][Bb][Cc][Aa][Ll][Ss]?://", "https://")
+    if not s:match("^https?://") then s = "https://" .. s end
+    if not s:match("^https?://[^/%s]+") or s:match("%s") then return nil end
+    return s
+end
+
+--- How a link shows in the log: its server only (calendar links are secret:
+--- Proton's carries the keys to the calendar in it).
+function CalDAV.feedLabel(url)
+    return ((url or ""):match("^(https?://[^/?#]+)") or "?") .. "/\u{2026} (calendar link)"
+end
+
+--- Fetch a calendar link: { events = occurrences between from and to,
+--- name = the calendar's own name or nil, count = events in the file } or nil, err.
+function CalDAV.fetchFeed(url, from, to)
+    local Api = require("gzreader_api")
+    local code, body = Api.rawRequest("GET", url, {
+        headers = { ["Accept"] = "text/calendar, */*", ["Accept-Encoding"] = "gzip" },
+        want_raw = true, timeouts = { 20, 120 }, log_url = CalDAV.feedLabel(url),
+    })
+    if not code then return nil, "unreachable" end
+    if code == 401 or code == 403 then return nil, "unauthorized" end
+    if code == 404 or code == 410 then return nil, "gone" end
+    if code >= 400 then return nil, "http_" .. code end
+    if type(body) ~= "string" or not body:find("BEGIN:VCALENDAR", 1, true) then return nil, "not a calendar" end
+    local name = body:match("\nX%-WR%-CALNAME[^:\r\n]*:([^\r\n]*)")
+    local evs = CalDAV.parseEvents(body)
+    return { events = CalDAV.occurrences(evs, from, to), name = name and unescape(name) or nil, count = #evs }
+end
+
+--- Everything for the Calendar tab: the CalDAV account's chosen calendars
+--- (if any) and the calendar links. Events get `cal`, their place in
+--- CalDAV calendars followed by links. { events, failed = { names },
+--- names = { {index = link, name = its own name} } } or nil, err.
+function CalDAV.syncAll(caldav_store, feeds, from, to)
+    local all, failed, names, first_err, ok_any = {}, {}, {}, nil, false
+    local cals = caldav_store and caldav_store.calendars or {}
+    local n = #cals
+    local c = CalDAV:new(caldav_store or {})
+    if c:isConnected() and n > 0 then
+        local res, err = c:sync(cals, from, to)
+        if res then
+            ok_any = true
+            for _i, ev in ipairs(res.events) do all[#all + 1] = ev end
+            for _i, f in ipairs(res.failed) do failed[#failed + 1] = f end
+        else
+            first_err = err
+            failed[#failed + 1] = caldav_store.server or "CalDAV"
+        end
+    end
+    for j, feed in ipairs(feeds or {}) do
+        if feed.enabled ~= false then
+            local res, err = CalDAV.fetchFeed(feed.url, from, to)
+            if res then
+                ok_any = true
+                if res.name then names[#names + 1] = { index = j, name = res.name } end
+                for _i, ev in ipairs(res.events) do ev.cal = n + j; all[#all + 1] = ev end
+            else
+                Log.warn("calendar: link", j, "failed:", tostring(err))
+                failed[#failed + 1] = feed.name or ("link " .. j)
+                first_err = first_err or err
+            end
+        end
+    end
+    if not ok_any and first_err then return nil, first_err end
+    table.sort(all, function(a, b)
+        if a.start ~= b.start then return a.start < b.start end
+        if (a.all_day and 1 or 0) ~= (b.all_day and 1 or 0) then return a.all_day == true end
+        return (a.title or "") < (b.title or "")
+    end)
+    return { events = all, failed = failed, names = names }
 end
 
 ---------------------------------------------------------------- the cache

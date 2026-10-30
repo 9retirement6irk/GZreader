@@ -50,8 +50,12 @@ function Api:new(store, on_change)
     return setmetatable({ store = store, on_change = on_change or function() end }, self)
 end
 
+--- opts.log_url: what the log shows instead of the address (a secret link,
+--- e.g. a calendar link with its keys in it). opts.want_raw: the body as
+--- text (gzip unpacked) instead of decoded JSON.
 local function rawRequest(method, full_url, opts)
     opts = opts or {}
+    local shown_url = opts.log_url or full_url
     local headers = { ["Accept"] = "application/json", ["Accept-Encoding"] = "identity" }
     for k, v in pairs(opts.headers or {}) do headers[k] = v end
     local body = opts.body or opts.raw_body
@@ -79,7 +83,7 @@ local function rawRequest(method, full_url, opts)
         source = body and ltn12.source.string(body) or nil,
         sink = sink,
     }
-    logger.dbg("Grimmory:", method, full_url)
+    logger.dbg("Grimmory:", method, shown_url)
     pcall(function() require("gzreader_net").touch() end)
     local t0 = socket.gettime()
     -- LuaSocket/LuaSec raise (rather than return) on some failures, e.g. a TLS
@@ -91,30 +95,32 @@ local function rawRequest(method, full_url, opts)
     pcall(function() require("gzreader_net").touch() end)
     local ms = math.floor((socket.gettime() - t0) * 1000)
     if not pcall_ok then
-        logger.warn("Grimmory: request failed", method, full_url, code)
-        Log.err("HTTP", method, full_url, "raised:", code, ms .. "ms")
+        logger.warn("Grimmory: request failed", method, shown_url, code)
+        Log.err("HTTP", method, shown_url, "raised:", code, ms .. "ms")
         return nil, nil, nil, code
     end
     local raw = table.concat(chunks)
     local enc = type(resp_headers) == "table" and (resp_headers["content-encoding"] or resp_headers["Content-Encoding"])
     if gzip and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
         local plain, zerr = Gzip.inflate(raw)
-        if plain then raw = plain else Log.warn("HTTP", method, full_url, "gzip:", tostring(zerr)) end
+        if plain then raw = plain else Log.warn("HTTP", method, shown_url, "gzip:", tostring(zerr)) end
     end
     local data
-    if raw ~= "" and not opts.sink then
+    if opts.want_raw then
+        data = raw
+    elseif raw ~= "" and not opts.sink then
         local ok, decoded = pcall(JSON.decode, raw)
         if ok then data = decoded end
     end
     if type(code) ~= "number" then
-        logger.warn("Grimmory: network error", method, full_url, code)
-        Log.warn("HTTP", method, full_url, "network error:", code, ms .. "ms")
+        logger.warn("Grimmory: network error", method, shown_url, code)
+        Log.warn("HTTP", method, shown_url, "network error:", code, ms .. "ms")
         return nil, data, resp_headers, code
     end
     if code >= 400 then
-        Log.warn("HTTP", method, full_url, code, ms .. "ms", raw ~= "" and raw:sub(1, 300) or "")
+        Log.warn("HTTP", method, shown_url, code, ms .. "ms", raw ~= "" and raw:sub(1, 300) or "")
     else
-        Log.info("HTTP", method, full_url, code, ms .. "ms")
+        Log.info("HTTP", method, shown_url, code, ms .. "ms")
     end
     return code, data, resp_headers, status
 end

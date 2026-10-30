@@ -155,8 +155,38 @@ function Calendar.when(ev)
         .. (same and clock(ev.finish) or (dayLabel(dayStart(ev.finish), dayStart()) .. " " .. clock(ev.finish)))
 end
 
+--- Calendar links (webcal / ICS): { {url, name, own_name, enabled} }.
+function Calendar.feeds(plugin)
+    plugin.store.calendar_feeds = plugin.store.calendar_feeds or {}
+    return plugin.store.calendar_feeds
+end
+
+function Calendar.feedName(feed)
+    if feed.name and feed.name ~= "" then return feed.name end
+    if feed.own_name and feed.own_name ~= "" then return feed.own_name end
+    return (feed.url or ""):match("^https?://([^/?#]+)") or _("Calendar link")
+end
+
+--- Anything to show: a CalDAV account or calendar links.
+function Calendar.hasSources(plugin)
+    return Calendar.client(plugin):isConnected() or #Calendar.feeds(plugin) > 0
+end
+
+--- All calendars, as events number them: the CalDAV account's, then the links.
+--- { {name, enabled, kind = "caldav" | "link", ref = the stored entry} }
+function Calendar.calendars(plugin)
+    local out = {}
+    for _i, c in ipairs((plugin.store.caldav or {}).calendars or {}) do
+        out[#out + 1] = { name = c.name, kind = "caldav", ref = c }
+    end
+    for _i, f in ipairs(Calendar.feeds(plugin)) do
+        out[#out + 1] = { name = Calendar.feedName(f), kind = "link", ref = f }
+    end
+    return out
+end
+
 function Calendar.calName(plugin, ev)
-    local cal = ((plugin.store.caldav or {}).calendars or {})[ev.cal or 0]
+    local cal = Calendar.calendars(plugin)[ev.cal or 0]
     return cal and cal.name or ""
 end
 
@@ -177,15 +207,17 @@ end
 
 --- Fetch the chosen calendars' events for the sync range. on_done(ok, err).
 function Calendar.refresh(plugin, on_done)
-    local client = Calendar.client(plugin)
-    if not client:isConnected() then return on_done and on_done(false, "not_connected") end
+    if not Calendar.hasSources(plugin) then return on_done and on_done(false, "not_connected") end
     if Calendar.refreshing then return end
     Calendar.refreshing = true
     local prefs = Calendar.prefs(plugin)
     local today = dayStart()
     local from, to = addDays(today, -prefs.days_back), addDays(today, prefs.days_ahead + 1)
-    local cals = plugin.store.caldav.calendars or {}
-    require("gzreader_async").run(client, function(c) return c:sync(cals, from, to) end, function(res, err)
+    local caldav_store = plugin.store.caldav or {}
+    local feeds = Calendar.feeds(plugin)
+    require("gzreader_async").run({}, function()
+        return CalDAV.syncAll(caldav_store, feeds, from, to)
+    end, function(res, err)
         Calendar.refreshing = false
         if type(res) ~= "table" then
             Log.warn("calendar: sync failed:", tostring(err))
@@ -193,6 +225,12 @@ function Calendar.refresh(plugin, on_done)
             return on_done and on_done(false, err)
         end
         Calendar.last_error = nil
+        local renamed = false
+        for _i, n in ipairs(res.names or {}) do
+            local f = feeds[tonumber(n.index) or 0]
+            if f and f.own_name ~= n.name then f.own_name = n.name; renamed = true end
+        end
+        if renamed then plugin:save() end
         Calendar.events = res.events or {}
         Calendar.range = { from = from, to = to }
         Calendar.cached_at = os.time()
@@ -208,6 +246,8 @@ local function describe(err)
     if err == "unreachable" then return _("Couldn't reach the calendar server. Check Wi-Fi and the address.") end
     if err == "timeout" then return _("The calendar server took too long to answer.") end
     if err == "not_connected" then return _("Not connected to a calendar.") end
+    if err == "gone" then return _("A calendar link no longer works (the calendar was unshared or the link changed).") end
+    if err == "not a calendar" then return _("That link doesn't lead to a calendar (.ics).") end
     return T(_("The calendar server answered: %1"), tostring(err))
 end
 Calendar.describe = describe
@@ -804,18 +844,26 @@ function Calendar.showOptions(plugin)
     dialog = Calendar.keyedDialog(_("Calendar") .. "\n" .. synced, rows)
 end
 
---- Settings → Connections → Calendar, from the tab.
+--- Settings → Connections → Calendar, from the tab (M → Calendar settings).
+--- Built like KOReader's file manager menu: one tab (it needs an icon) in a
+--- centered container.
 function Calendar.showSettings(plugin)
     local TouchMenu = require("ui/widget/touchmenu")
-    local menu
-    menu = TouchMenu:new{
+    local container = CenterContainer:new{ ignore = "height", dimen = Screen:getSize() }
+    local items = Calendar.settingsItems(plugin)
+    items.icon = "appbar.settings"
+    local menu = TouchMenu:new{
         width = Screen:getWidth(),
-        tab_item_table = { { text = _("Calendar"), Calendar.settingsItems(plugin) } },
-        show_parent = nil,
+        last_index = 1,
+        tab_item_table = { items },
+        show_parent = container,
     }
-    menu.show_parent = menu
-    menu.close_callback = function() UIManager:close(menu); Calendar.redraw() end
-    UIManager:show(menu)
+    container[1] = menu
+    menu.close_callback = function()
+        UIManager:close(container)
+        Calendar.redraw()
+    end
+    UIManager:show(container)
 end
 
 --- The Calendar tab (the tab bar's Calendar button).
@@ -825,7 +873,7 @@ function Calendar.show(plugin)
         Calendar.redraw()
         return Calendar.board
     end
-    if not Calendar.client(plugin):isConnected() then return Calendar.showConnect(plugin) end
+    if not Calendar.hasSources(plugin) then return Calendar.showConnect(plugin) end
     if not Calendar.events then Calendar.loadCache() end
     Calendar.layout = Calendar.layout or Calendar.prefs(plugin).layout
     if not Calendar.cursor then
@@ -902,18 +950,245 @@ local function connected(plugin)
     Calendar.show(plugin)
 end
 
+---------------------------------------------------------------- calendar links
+
+--- "Name | link" or "link" lines (blank lines and # comments skipped): { {url, name} }.
+function Calendar.parseLinkLines(text)
+    local out = {}
+    for line in ((text or "") .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+        if line ~= "" and not line:match("^#") then
+            local name, url = line:match("^(.-)%s*|%s*(%S+)$")
+            if not url then url = line end
+            out[#out + 1] = { url = url, name = (name and name ~= "") and name or nil }
+        end
+    end
+    return out
+end
+
+--- Add calendar links, checking each by fetching it (on the screen's
+--- thread: from the phone page, typing or calendars.txt).
+--- Returns results { {label, ok, name, count, err} }.
+function Calendar.addFeeds(plugin, entries)
+    local feeds = Calendar.feeds(plugin)
+    local results = {}
+    local today = dayStart()
+    for _i, e in ipairs(entries) do
+        local url = CalDAV.normalizeFeed(e.url)
+        if not url then
+            results[#results + 1] = { label = e.name or _("(not a link)"), ok = false, err = _("not a link") }
+        else
+            local dup
+            for _j, f in ipairs(feeds) do if f.url == url then dup = f end end
+            if dup then
+                results[#results + 1] = { label = Calendar.feedName(dup), ok = true, note = _("already added") }
+            else
+                local res, err = CalDAV.fetchFeed(url, today, addDays(today, 31))
+                if not res and err == "unreachable" and tostring(e.url):match("^%s*[Ww][Ee][Bb][Cc][Aa][Ll]://") then
+                    -- webcal:// is plain HTTP on some (older) servers
+                    local plain = url:gsub("^https://", "http://")
+                    local r2, e2 = CalDAV.fetchFeed(plain, today, addDays(today, 31))
+                    if r2 or e2 ~= "unreachable" then res, err, url = r2, e2, plain end
+                end
+                if res then
+                    local f = { url = url, name = e.name, own_name = res.name, enabled = true }
+                    feeds[#feeds + 1] = f
+                    results[#results + 1] = { label = Calendar.feedName(f), ok = true, count = res.count }
+                    Log.info("calendar: added", CalDAV.feedLabel(url), res.count, "events")
+                else
+                    results[#results + 1] = { label = e.name or (url:match("^https?://([^/?#]+)") or "?"), ok = false,
+                        err = describe(err) }
+                    Log.warn("calendar: link not added:", CalDAV.feedLabel(url), tostring(err))
+                end
+            end
+        end
+    end
+    plugin:save()
+    Calendar.cached_at = nil
+    return results
+end
+
+function Calendar.resultsText(results)
+    local lines = {}
+    for _i, r in ipairs(results) do
+        if r.ok then
+            lines[#lines + 1] = "\u{2713} " .. r.label .. (r.note and (" (" .. r.note .. ")")
+                or (r.count and (" (" .. T(_("%1 events"), r.count) .. ")") or ""))
+        else
+            lines[#lines + 1] = "\u{2717} " .. r.label .. ": " .. tostring(r.err)
+        end
+    end
+    return table.concat(lines, "\n")
+end
+
+local function added(plugin, results)
+    local any = false
+    for _i, r in ipairs(results) do if r.ok then any = true end end
+    UIManager:show(InfoMessage:new{ text = Calendar.resultsText(results), timeout = any and 5 or nil })
+    if not any then return end
+    if Calendar.connect_menu then UIManager:close(Calendar.connect_menu); Calendar.connect_menu = nil end
+    if Calendar.board then UIManager:close(Calendar.board) end
+    Calendar.events, Calendar.cached_at = nil, nil
+    os.remove(CalDAV.cachePath())
+    Calendar.show(plugin)
+end
+Calendar.afterAdd = added
+
+--- Where calendars.txt is looked for: the GZreader folder, then the USB drive's top.
+function Calendar.linkFiles(plugin)
+    local out = {}
+    local ok, dir = pcall(plugin.libraryDir, plugin)
+    if ok and dir then
+        out[#out + 1] = dir .. "/calendars.txt"
+        out[#out + 1] = (dir:gsub("/[^/]+/?$", "")) .. "/calendars.txt"
+    end
+    out[#out + 1] = "/mnt/us/calendars.txt"
+    return out
+end
+
+--- Add the links in calendars.txt (one per line, "Name | link" for a name).
+function Calendar.importFile(plugin)
+    for _i, path in ipairs(Calendar.linkFiles(plugin)) do
+        local f = io.open(path, "rb")
+        if f then
+            local text = f:read("*a")
+            f:close()
+            local entries = Calendar.parseLinkLines(text)
+            if #entries == 0 then return nil, T(_("%1 has no links in it."), path) end
+            return Calendar.addFeeds(plugin, entries), path
+        end
+    end
+    return nil, _("No calendars.txt found. Put one in the GZreader folder or at the top of the Kindle's USB drive: one calendar link per line (\"Name | link\" to give it a name).")
+end
+
+local function checking(n)
+    local m = InfoMessage:new{ text = n > 1 and T(_("Checking %1 calendar links…"), n) or _("Checking the calendar link…") }
+    UIManager:show(m)
+    UIManager:forceRePaint()
+    return m
+end
+
+function Calendar.importFileUI(plugin)
+    require("gzreader_net").run(function()
+        local m = checking(1)
+        local results, where = Calendar.importFile(plugin)
+        UIManager:close(m)
+        if not results then return info(where) end
+        added(plugin, results)
+    end, { reason = "calendar links" })
+end
+
+function Calendar.typeAddLink(plugin)
+    local MultiInputDialog = require("ui/widget/multiinputdialog")
+    local d
+    d = MultiInputDialog:new{
+        title = _("Add a calendar link"),
+        fields = {
+            { description = _("Link (webcal:// or https://…ics)"), text = "", hint = "webcal://calendar.example.com/…" },
+            { description = _("Name (optional)"), text = "" },
+        },
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Add"), is_enter_default = true, callback = function()
+                local f = d:getFields()
+                UIManager:close(d)
+                require("gzreader_net").run(function()
+                    local m = checking(1)
+                    local results = Calendar.addFeeds(plugin, { { url = f[1], name = f[2] ~= "" and f[2] or nil } })
+                    UIManager:close(m)
+                    added(plugin, results)
+                end, { reason = "calendar links" })
+            end },
+        } },
+    }
+    UIManager:show(d)
+    d:onShowKeyboard()
+end
+
+--- The phone pastes one or more links (one per line) on a one-off page.
+function Calendar.qrAddLinks(plugin)
+    local PairServer = require("gzreader_pairserver")
+    local PairPage = require("gzreader_pairpage")
+    local NetworkMgr = require("ui/network/manager")
+    local token = PairServer.randomToken(16)
+    local base = "/calendar-links/" .. token
+    local server, screen, timeout_task, done
+    local results_all = {}
+    local function finish()
+        if done then return end
+        done = true
+        if timeout_task then UIManager:unschedule(timeout_task) end
+        if server then UIManager:removeZMQ(server); server:stop() end
+        if screen then UIManager:close(screen) end
+    end
+    server = PairServer:new{
+        handler = function(method, path, _headers, body)
+            if path ~= base then return 404, "text/plain", "Not found" end
+            if method == "GET" then return 200, "text/html", PairPage.feedsForm{ count = #Calendar.feeds(plugin) } end
+            if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
+            local form = PairServer.parseForm(body)
+            local entries = Calendar.parseLinkLines(form.links)
+            if #entries == 0 then
+                return 200, "text/html", PairPage.feedsForm{ count = #Calendar.feeds(plugin), error = "Paste at least one calendar link." }
+            end
+            local results = Calendar.addFeeds(plugin, entries)
+            for _i, r in ipairs(results) do results_all[#results_all + 1] = r end
+            return 200, "text/html", PairPage.feedsResult(results, #Calendar.feeds(plugin))
+        end,
+    }
+    local ok, serr = server:start()
+    if not ok then return info(T(_("Couldn't start: %1"), tostring(serr))) end
+    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
+    local ip, why = PairServer.localIp(nil, iface)
+    if not ip then
+        server:stop()
+        return info(_("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") .. "\n\n" .. tostring(why))
+    end
+    UIManager:insertZMQ(server)
+    screen = require("gzreader_pairscreen"):new{
+        url = T("http://%1:%2%3", ip, server.port, base),
+        title = _("Add calendar links"),
+        instructions = _("Scan this code with your phone's camera and paste your calendar links (webcal:// or https://…ics, e.g. Proton Calendar's share links), one per line. You can add more than once. Your phone must be on the same Wi-Fi as this Kindle."),
+        footer = _("Press Back when you're done."),
+        on_cancel = function()
+            screen = nil
+            finish()
+            if #results_all > 0 then added(plugin, results_all) end
+        end,
+    }
+    UIManager:show(screen)
+    timeout_task = function() finish(); if #results_all > 0 then added(plugin, results_all) end end
+    UIManager:scheduleIn(600, timeout_task)
+end
+
+--- Remove a calendar link (its events go at the next sync).
+function Calendar.removeFeed(plugin, index)
+    local feeds = Calendar.feeds(plugin)
+    local f = table.remove(feeds, index)
+    plugin:save()
+    if f then Log.info("calendar: removed", CalDAV.feedLabel(f.url)) end
+    -- events are numbered by calendar: the kept ones are fetched again
+    os.remove(CalDAV.cachePath())
+    Calendar.events, Calendar.cached_at, Calendar.range = {}, nil, nil
+end
+
 function Calendar.showConnect(plugin)
     local items = {
-        { text = _("Connect with QR code (enter it on your phone)"), callback = function()
+        { text = _("Add calendar links with QR code (webcal / ICS, e.g. Proton)"), callback = function()
+            require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
+        end },
+        { text = _("Add a calendar link by typing"), callback = function() Calendar.typeAddLink(plugin) end },
+        { text = _("Add links from calendars.txt (USB drive)"), callback = function() Calendar.importFileUI(plugin) end },
+        { text = _("Connect a CalDAV account with QR code"), callback = function()
             require("gzreader_net").run(function() Calendar.qrConnect(plugin) end, { reason = "connecting a calendar" })
         end },
-        { text = _("Connect by typing"), callback = function() Calendar.typeConnect(plugin) end },
-        { text = _("You need your calendar server's CalDAV address, your user name and a password. Use an app password where your server has them (iCloud, Fastmail, Google, Nextcloud…)."),
+        { text = _("Connect a CalDAV account by typing"), callback = function() Calendar.typeConnect(plugin) end },
+        { text = _("Calendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password."),
           select_enabled = false },
     }
     local menu
     menu = Menu:new{
-        title = _("Calendar: connect"), item_table = items, covers_fullscreen = true, is_borderless = true,
+        title = _("Calendar: add calendars"), item_table = items, covers_fullscreen = true, is_borderless = true,
         is_popout = false, title_bar_fm_style = true, _gz_navbar_tab_id = Calendar.TAB_ID,
         onMenuSelect = function(_m, item) if item.callback then item.callback() end return true end,
     }
@@ -1050,11 +1325,67 @@ function Calendar.settingsItems(plugin)
         if Calendar.board and not Calendar.board._gz_closed then Calendar.syncOnOpen(plugin) end
     end
     return {
+        icon("download", {
+            text_func = function() return T(_("Calendar links: %1"), #Calendar.feeds(plugin)) end,
+            help_text = _("Subscription links calendars share (webcal:// or https://…ics), e.g. Proton Calendar: Settings → Calendars → Share → Share with anyone. Several can be added; each is fetched when the Calendar tab syncs. Links are secret: they're kept in GZreader's settings and never written to the log."),
+            sub_item_table_func = function()
+                local items = {}
+                for i, f in ipairs(Calendar.feeds(plugin)) do
+                    items[#items + 1] = {
+                        text_func = function() return Calendar.feedName(f) .. (f.enabled == false and ("  " .. _("(hidden)")) or "") end,
+                        sub_item_table_func = function()
+                            return {
+                                { text = ((f.url or ""):match("^https?://([^/?#]+)") or "?") .. "/\u{2026}", enabled = false, separator = true },
+                                { text = _("Show its events"), checked_func = function() return f.enabled ~= false end,
+                                    callback = function() f.enabled = f.enabled == false; plugin:save(); resync() end },
+                                { text = _("Rename"), keep_menu_open = true, callback = function()
+                                    local InputDialog = require("ui/widget/inputdialog")
+                                    local d
+                                    d = InputDialog:new{ title = _("Calendar name"), input = Calendar.feedName(f),
+                                        buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+                                            { text = _("Save"), is_enter_default = true, callback = function()
+                                                local v = d:getInputText():gsub("^%s+", ""):gsub("%s+$", "")
+                                                UIManager:close(d)
+                                                f.name = v ~= "" and v or nil
+                                                plugin:save()
+                                                Calendar.redraw()
+                                            end } } } }
+                                    UIManager:show(d)
+                                    d:onShowKeyboard()
+                                end },
+                                { text = _("Remove"), callback = function(tm)
+                                    confirm(T(_("Remove the calendar link “%1”?\n\nIts events are removed from the Kindle. The calendar itself stays as it is."),
+                                        Calendar.feedName(f)), _("Remove"), function()
+                                            for j, x in ipairs(Calendar.feeds(plugin)) do if x == f then Calendar.removeFeed(plugin, j) end end
+                                            if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
+                                            Calendar.redraw()
+                                        end)
+                                end },
+                            }
+                        end,
+                    }
+                    if i == #Calendar.feeds(plugin) then items[#items].separator = true end
+                end
+                items[#items + 1] = { text = _("Add links with QR code"), callback = function(tm)
+                    if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
+                    require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
+                end }
+                items[#items + 1] = { text = _("Add a link by typing"), callback = function(tm)
+                    if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
+                    Calendar.typeAddLink(plugin)
+                end }
+                items[#items + 1] = { text = _("Add links from calendars.txt (USB drive)"), callback = function(tm)
+                    if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
+                    Calendar.importFileUI(plugin)
+                end }
+                return items
+            end,
+        }),
         icon("connect", {
             text_func = function()
-                if not connected_() then return _("Calendar: not connected") end
+                if not connected_() then return _("CalDAV account: none") end
                 local s = store()
-                return T(_("Calendar: %1 · %2"), s.username or "?", ((s.server or ""):gsub("^https?://", ""):gsub("/.*$", "")))
+                return T(_("CalDAV account: %1 · %2"), s.username or "?", ((s.server or ""):gsub("^https?://", ""):gsub("/.*$", "")))
             end,
             sub_item_table_func = function()
                 local s = store()
@@ -1076,7 +1407,7 @@ function Calendar.settingsItems(plugin)
                 if connected_() then
                     items[#items].separator = true
                     items[#items + 1] = { text = _("Disconnect"), callback = function(tm)
-                        confirm(_("Disconnect the calendar?\n\nThe events kept on this Kindle and the saved password are removed. Your calendars on the server stay as they are."),
+                        confirm(_("Disconnect the CalDAV account?\n\nIts saved password and the events kept on this Kindle are removed (calendar links stay). Your calendars on the server stay as they are."),
                             _("Disconnect"), function()
                                 Calendar.disconnect(plugin)
                                 if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
@@ -1089,29 +1420,31 @@ function Calendar.settingsItems(plugin)
         icon("calendar", {
             text_func = function()
                 local on, all = 0, 0
-                for _i, c in ipairs(store().calendars or {}) do all = all + 1; if c.enabled ~= false then on = on + 1 end end
+                for _i, c in ipairs(Calendar.calendars(plugin)) do all = all + 1; if c.ref.enabled ~= false then on = on + 1 end end
                 return T(_("Calendars shown: %1 of %2"), on, all)
             end,
-            enabled_func = connected_,
+            enabled_func = function() return Calendar.hasSources(plugin) end,
             sub_item_table_func = function()
                 local items = {}
-                for _i, c in ipairs(store().calendars or {}) do
-                    items[#items + 1] = { text = c.name,
-                        checked_func = function() return c.enabled ~= false end,
+                for _i, c in ipairs(Calendar.calendars(plugin)) do
+                    items[#items + 1] = { text = c.name .. (c.kind == "link" and ("  \u{00B7} " .. _("link")) or ""),
+                        checked_func = function() return c.ref.enabled ~= false end,
                         callback = function()
-                            c.enabled = c.enabled == false
+                            c.ref.enabled = c.ref.enabled == false
                             plugin:save()
                             resync()
                         end }
                 end
-                if #items > 0 then items[#items].separator = true end
-                items[#items + 1] = { text = _("Look for calendars again"), keep_menu_open = true, callback = function()
-                    local s = store()
-                    require("gzreader_net").run(function()
-                        local ok, err = Calendar.connect(plugin, s.server, s.username, s.password)
-                        info(ok and T(_("%1 calendars."), #(store().calendars or {})) or err, 3)
-                    end, { reason = "calendar" })
-                end }
+                if connected_() then
+                    if #items > 0 then items[#items].separator = true end
+                    items[#items + 1] = { text = _("Look for CalDAV calendars again"), keep_menu_open = true, callback = function()
+                        local s = store()
+                        require("gzreader_net").run(function()
+                            local ok, err = Calendar.connect(plugin, s.server, s.username, s.password)
+                            info(ok and T(_("%1 calendars."), #(store().calendars or {})) or err, 3)
+                        end, { reason = "calendar" })
+                    end }
+                end
                 return items
             end,
         }),

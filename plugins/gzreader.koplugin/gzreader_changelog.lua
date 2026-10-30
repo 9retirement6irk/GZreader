@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.1",
+        changes = {
+            "Calendar links: the Calendar tab now shows calendars from their shared links (webcal:// or https://….ics), such as Proton Calendar's (Settings → Calendars → Share → Share with anyone), Google's secret iCal address or an Outlook published calendar. Add as many as you like; they sync together, and with a CalDAV account if you also have one (neither is needed for the other).",
+            "Adding links: open the Calendar tab (or Settings → Connections → Calendar → Calendar links) and choose Add calendar links with QR code: paste one or more links on your phone, one per line (\"Work | link\" gives one a name). Or type a link, or put them in calendars.txt in the GZreader folder or at the top of the Kindle's USB drive and choose Add links from calendars.txt. Each link is checked when it's added and named after its calendar. Each can be hidden, renamed or removed.",
+            "Calendar links are secret (Proton's carries the keys to the calendar), so they're never written to the log: it shows the server only. Request addresses in the log can now be hidden this way for anything secret.",
+            "Times in other time zones are now exact: an event at 4 PM in Berlin shows at the right New York time on both sides of each daylight-saving change, using the time zone rules in the calendar itself. Repeating events from links (which servers don't expand) are expanded on the Kindle, with cancelled and moved occurrences.",
+            "Fixed: M → Calendar settings in the Calendar tab closed GZreader.",
+        },
+    },
+    {
         version = "1.6.0",
         changes = {
             "New: the Calendar tab, for CalDAV calendars (Nextcloud, iCloud, Fastmail, Google, Radicale, Baïkal…), read-only. Four layouts: Agenda (the coming days' events), Day (a timeline), Week (seven columns) and Month (a grid). Letters open an event (or a day in Week); the 5-way and Press work too, and a day in Week or Month opens in Day. The page keys go to the next or previous day, week or month. N goes to today; M has the layouts, Refresh and the calendar settings. Repeating events, moved and cancelled occurrences, all-day and multi-day events are shown. Calendars are told apart by shade.",

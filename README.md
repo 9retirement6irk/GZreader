@@ -96,8 +96,9 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - Works offline: notes are kept on the Kindle and changes are sent when Wi‑Fi is back.
 
 ### 📅 Calendar (CalDAV)
-- The **Calendar tab** shows your CalDAV calendars (Nextcloud, iCloud, Fastmail,
-  Google, Radicale…) as an agenda, a day timeline, a week or a month.
+- The **Calendar tab** shows calendars from their shared links (webcal / ICS, e.g.
+  Proton Calendar) and CalDAV accounts (Nextcloud, iCloud, Fastmail…) as an agenda,
+  a day timeline, a week or a month. Paste several links at once from your phone.
 - Works offline; Wi‑Fi only to sync. Connect with a QR code from your phone.
 
 ### ⌨️ Made for the Kindle Keyboard

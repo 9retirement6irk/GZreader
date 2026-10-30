@@ -156,4 +156,43 @@ function PairPage.caldavSuccess(count)
     }))
 end
 
+--- Adding calendar links (webcal / ICS). opts: count (links so far), error.
+function PairPage.feedsForm(opts)
+    opts = opts or {}
+    local err = opts.error and ('<p class="err">' .. esc(opts.error) .. "</p>") or ""
+    local have = (opts.count or 0) > 0 and ('<p class="note">' .. esc(opts.count) .. " calendar links on the Kindle already.</p>") or ""
+    return shell("Add calendar links", table.concat({
+        "<h1>Add calendar links</h1>",
+        '<p class="sub">Paste one or more calendar links, one per line: webcal://… or https://….ics. To give one a name, write it first: <code>Work | webcal://…</code></p>',
+        '<form method="post" autocomplete="off" onsubmit="var b=event.submitter;if(b){setTimeout(function(){b.disabled=true;b.textContent=\'Checking…\'},0)}">',
+        err, have,
+        '<label for="links">Calendar links</label>',
+        '<textarea id="links" name="links" rows="6" autocapitalize="off" autocorrect="off" spellcheck="false" required ',
+        'style="width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 14px" ',
+        'placeholder="webcal://calendar.example.com/…"></textarea>',
+        '<button type="submit">Add to Kindle</button>',
+        '<details><summary>Proton Calendar</summary><p class="note">In Proton Calendar on the web: Settings → Calendars → pick a calendar → Share → Share with anyone → Create link (Full view shows event details; Limited view only shows busy times). Copy the link and paste it here. Do this for each calendar you want on the Kindle.</p></details>',
+        '<details><summary>Other calendars</summary><p class="note">Google Calendar: Settings → your calendar → Secret address in iCal format. Outlook: Settings → Calendar → Shared calendars → Publish a calendar → ICS. Apple iCloud: share a calendar as a Public Calendar. Any https://….ics link works.</p></details>',
+        '<p class="note">These links are secret (anyone with one can read the calendar). The Kindle keeps them to sync and never writes them to its log. Your phone and Kindle must be on the same Wi‑Fi; this page works until you press Back on the Kindle.</p>',
+        "</form>",
+    }))
+end
+
+function PairPage.feedsResult(results, total)
+    local rows = {}
+    for _i, r in ipairs(results or {}) do
+        if r.ok then
+            rows[#rows + 1] = '<p class="ok">✓ ' .. esc(r.label) .. (r.note and (" (" .. esc(r.note) .. ")")
+                or (r.count and (" (" .. esc(r.count) .. " events)") or "")) .. "</p>"
+        else
+            rows[#rows + 1] = '<p class="err">✗ ' .. esc(r.label) .. ": " .. esc(r.err) .. "</p>"
+        end
+    end
+    return shell("Calendar links", table.concat({
+        '<h1>Calendar links</h1><div class="card">', table.concat(rows),
+        "<p>", esc(total or 0), " calendar links on the Kindle now. Add more below, or press Back on the Kindle when you're done.</p></div>",
+        '<p class="note"><a href="">Add more links</a></p>',
+    }))
+end
+
 return PairPage

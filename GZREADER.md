@@ -180,9 +180,22 @@ API to `/api` are found too.
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
   Wi‑Fi up while it's open (Wi‑Fi only when needed).
 
-## Calendar (CalDAV)
+## Calendar (calendar links and CalDAV)
 
-The Calendar tab (B) shows your CalDAV calendars, read-only: Nextcloud
+The Calendar tab (B) shows calendars from their **shared links** (webcal:// or
+https://….ics: Proton Calendar's Share → Share with anyone, Google's secret
+iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only.
+
+- **Calendar links:** add several at once with the QR code page (one per line,
+  `Name | link` to name one), by typing, or from `calendars.txt` (GZreader
+  folder or the top of the USB drive). Each is fetched when added (named after
+  its `X-WR-CALNAME`) and at every sync; `webcal://` is fetched over HTTPS,
+  falling back to HTTP. Links are secret: kept in GZreader's settings, never
+  logged (requests show the server only, `rawRequest`'s `log_url`). Times use
+  the file's own VTIMEZONE rules; repeating events are expanded on the Kindle.
+  Settings → Connections → Calendar → Calendar links: show / rename / remove.
+
+The CalDAV account: Nextcloud
 (`https://your.server/remote.php/dav`), iCloud (`https://caldav.icloud.com`),
 Fastmail (`https://caldav.fastmail.com`), Google
 (`https://apidata.googleusercontent.com/caldav/v2/`), Radicale, Baïkal…
