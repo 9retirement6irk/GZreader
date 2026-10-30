@@ -857,6 +857,30 @@ function M.build_install_pages(ctx)
             end,
         },
 
+        -- GZreader: usage statistics (on by default at Basic; can be turned off)
+        {
+            title       = _("Usage Statistics"),
+            description = _("Help improve GZreader by sending anonymous usage statistics to its developer. They're sent only while Wi-Fi is already on, never book titles, file names, your account or anything you type.") .. "\n"
+                .. _("Basic: GZreader's version, the Kindle model and firmware, downloads that worked or failed, slow moments, and restarts after a freeze.") .. "\n"
+                .. _("Full: also time on each screen, menus used, reading sessions, read aloud, sync and Wi-Fi times. Change it later in Settings → GZreader."),
+            choice_type = "radio",
+            choices     = (function()
+                local cur = G_reader_settings:readSetting("gzreader_usage")
+                cur = (cur == "off" or cur == "full") and cur or "basic"
+                return {
+                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
+                    { id = "full",  text = _("Full"),                checked = cur == "full" },
+                    { id = "off",   text = _("Off: send nothing"),   checked = cur == "off" },
+                }
+            end)(),
+            on_apply = function(sel)
+                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
+                if not v then return end
+                local ok, U = pcall(require, "gzreader_usage")
+                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
+            end,
+        },
+
         -- 7. Time Format (INTERACTIVE — radio)
         {
             title       = _("Time Format"),

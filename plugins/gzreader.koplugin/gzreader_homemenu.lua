@@ -243,6 +243,7 @@ function HomeMenu.show(plugin)
         covers_fullscreen = true,
         title_bar_fm_style = true,
         onMenuChoice = function(_m, item)
+            pcall(function() require("gzreader_usage").menu("home", item.text or (item.text_func and item.text_func())) end)
             UIManager:close(menu, "full")
             if item.callback then UIManager:nextTick(item.callback) end
             return true

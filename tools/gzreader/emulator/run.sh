@@ -10,7 +10,7 @@ OUT=$(mkdir -p "$2" && cd "$2" && pwd)
 cd "$TREE" || exit 1
 # a fresh install every time (LuaSettings also restores from *.old)
 rm -rf "$OUT"/* settings.reader.lua settings.reader.lua.old settings defaults.persistent.lua* history.lua* \
-    gzreader-remote cache history docsettings gzreader.log /mnt/us/GZreader
+    gzreader-remote gzreader-usage cache history docsettings gzreader.log /mnt/us/GZreader
 mkdir -p /mnt/us/documents
 cp "$TREE/koreader.sh" /var/tmp/koreader.sh # else: "startup script has been updated"
 if [ -n "${3:-}" ]; then

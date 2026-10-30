@@ -127,6 +127,7 @@ local function done(what, ...)
     depth = 0
     local wall = os.time() - w0
     if wall >= S.SLOW then
+        pcall(function() require("gzreader_usage").slow(what, wall) end)
         local cpu = os.clock() - t0
         local where = top(event or {}, 4)
         Log.warn(string.format("slow: %s took %d s (%.1f s CPU, memory %s)%s", what, wall, cpu, memory(),
@@ -216,6 +217,7 @@ function S.checkStuck(report)
     if not unanswered or (S.last_paint and S.last_paint >= unanswered) then return end
     if t - unanswered < 45 or t - stuck_reported < 600 then return end
     stuck_reported = t
+    pcall(function() require("gzreader_usage").stuck(t - unanswered, S.windows()) end)
     report(string.format("Keys were pressed for %d s but the screen didn't change (%s).\nOn screen: %s",
         t - unanswered, S.uiState(), S.windows()))
 end

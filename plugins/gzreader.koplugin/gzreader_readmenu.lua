@@ -71,6 +71,7 @@ function ReadMenu.show(plugin)
         covers_fullscreen = true,
         title_bar_fm_style = true,
         onMenuChoice = function(_menu, item)
+            pcall(function() require("gzreader_usage").menu("reading", item.text or (item.text_func and item.text_func())) end)
             UIManager:close(menu, "full")
             -- run after the menu is gone so dialogs open on the book page
             if item.callback then UIManager:nextTick(item.callback) end

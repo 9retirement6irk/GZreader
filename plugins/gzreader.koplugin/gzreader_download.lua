@@ -174,6 +174,10 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
                 "received " .. mb(job.last_size))
         end
+        pcall(function()
+            require("gzreader_usage").download({ ok = result_ok == true, error = result_err, seconds = secs,
+                bytes = result_ok and lfs.attributes(dest_path, "size") or job.last_size, resumed = resume_from > 0 })
+        end)
         if job.watching and #Download.queue > 0 then
             Download.background = true -- the book opens now; the rest download quietly
         end

@@ -19,7 +19,7 @@ pcall(ffi.cdef, "struct emu_timeval { long tv_sec; long tv_usec; }; int gettimeo
 -- /proc/usid: a Kindle 3 (Wi-Fi) serial
 local real_open = io.open
 local usid = OUT .. "/usid"
-do local f = real_open(usid, "w"); f:write("B00812345678ABCD\n"); f:close() end
+do local f = real_open(usid, "w"); f:write((os.getenv("GZ_EMU_SERIAL") or "B00812345678ABCD") .. "\n"); f:close() end
 io.open = function(p, m)
     if p == "/proc/usid" then return real_open(usid, m) end
     return real_open(p, m)
@@ -260,6 +260,19 @@ table.insert(package.loaders, 2, function(name)
         end
         m.lipc = { open_no_name = handle }
         m.exec = function() return 0 end
+        return m
+    end
+end)
+
+table.insert(package.loaders, 2, function(name)
+    if name ~= "gzreader_usage" then return nil end
+    return function()
+        local m = dofile(package.searchpath(name, package.path))
+        if os.getenv("GZ_EMU_TIANJI") then m.SERVER = os.getenv("GZ_EMU_TIANJI") end
+        m.SEND_EVERY = tonumber(os.getenv("GZ_EMU_USAGE_EVERY") or "") or m.SEND_EVERY
+        if os.getenv("GZ_EMU_USAGE_LEVEL") then G_reader_settings:saveSetting("gzreader_usage", os.getenv("GZ_EMU_USAGE_LEVEL")) end
+        m.TICK = tonumber(os.getenv("GZ_EMU_USAGE_TICK") or "") or m.TICK
+        m.SUMMARY_EVERY = tonumber(os.getenv("GZ_EMU_USAGE_SUMMARY") or "") or m.SUMMARY_EVERY
         return m
     end
 end)

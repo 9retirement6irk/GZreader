@@ -121,6 +121,24 @@ a built-in connection to a self-hosted **Grimmory** book server.
   Home widgets off by default.
 - **Diagnostic log** you can save and share (passwords and tokens are never written).
 
+## Usage statistics
+
+GZreader sends anonymous usage statistics to its developer's
+[Tianji](https://tianji.dev) server, so problems on real Kindles can be found
+and fixed. You choose the level in the setup guide or in
+**Settings → GZreader → Usage statistics**:
+
+| Level | What's sent |
+| --- | --- |
+| **Basic** (default) | GZreader's version, the Kindle model and firmware at each start; whether the previous run ended without closing normally; downloads that worked or failed; slow operations; keys the screen didn't answer |
+| **Full** | Basic, plus time on Home, Downloads, Grimmory, in books and menus; menu entries used; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size, speed and resumes; sync results and Grimmory's answer times; Wi‑Fi on-time |
+| **Off** | Nothing is recorded or sent |
+
+Never sent: book titles, authors, file names, your Grimmory address or account,
+or anything you type. Each Kindle is counted by a random ID, not its serial
+number. Statistics wait in a small file and go out in one batch at most every 15
+minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for them.
+
 ## Install
 
 1. Jailbreak the Kindle and install **KUAL** (see [kindlemodding.org](https://kindlemodding.org)).

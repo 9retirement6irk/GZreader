@@ -72,6 +72,10 @@ end
 
 local function finish(job, res)
     Async.busy = false
+    pcall(function()
+        require("gzreader_usage").request(job.name, res[1] ~= nil and res[1] ~= false,
+            job.t0 and math.floor((require("socket").gettime() - job.t0) * 1000) or nil)
+    end)
     netHold(false)
     if res.tokens and job.api and job.api.store then
         -- the login was refreshed in the background process: keep the new tokens
@@ -93,6 +97,7 @@ pump = function()
     local job = table.remove(Async.queue, 1)
     if not job then return end
     Async.busy = true
+    job.t0 = require("socket").gettime()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
     local api = job.api
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)

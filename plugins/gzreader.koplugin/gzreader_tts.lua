@@ -574,6 +574,7 @@ function Reader:start()
     self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
+    pcall(function() require("gzreader_usage").ttsStart() end)
     UIManager:show(Notification:new{ text = _("Reading aloud. Shift + Sym to stop.") })
     self:restartQueue()
     self.poller = function() self.poller_scheduled = false; self:poll() end
@@ -749,7 +750,10 @@ function Reader:stop()
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
     if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end
-    if self.active then Log.info("tts stop") end
+    if self.active then
+        Log.info("tts stop")
+        pcall(function() require("gzreader_usage").ttsStop() end)
+    end
     local was_active = self.active
     self.active, self.paused = false, false
     self.queue = {}

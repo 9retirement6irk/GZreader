@@ -70,6 +70,10 @@ function Grimmory:init()
         pcall(function() require("gzreader_timezone").apply() end)
     end
     pcall(Net.start)
+    if not Grimmory.usage_scheduled then
+        Grimmory.usage_scheduled = true
+        UIManager:scheduleIn(15, function() pcall(function() require("gzreader_usage").start() end) end)
+    end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
     self.store = self.settings:readSetting("state", {})
@@ -316,6 +320,7 @@ function Grimmory:menuItems()
             end,
         },
         require("gzreader_remote").menuItems(self),
+        require("gzreader_usage").menuItems(),
         {
             text = _("Send diagnostic log to my phone (QR code)"),
             callback = function(touchmenu)
@@ -958,6 +963,7 @@ function Grimmory:onReaderReady()
     if not self.ui.document then return end
     pcall(self.setupReader, self)
     pcall(function() require("gzreader_picturebook").onOpen(self.ui) end)
+    pcall(function() require("gzreader_usage").readStart(self.ui) end)
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
@@ -1001,6 +1007,7 @@ end
 
 function Grimmory:onPageUpdate()
     if self.sync then self.sync:onPageTurned() end
+    pcall(function() require("gzreader_usage").pageTurned() end)
     if self.tts then self.tts:onManualPageTurn() end
 end
 
@@ -1092,12 +1099,14 @@ function Grimmory:onSuspend()
     self.suspended_at = os.time()
     pcall(function() require("gzreader_remote").onSuspend() end)
     Net.onSuspend()
+    pcall(function() require("gzreader_usage").onSuspend() end)
 end
 
 Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after a long sleep
 
 function Grimmory:onResume()
     pcall(function() require("gzreader_remote").onResume() end)
+    pcall(function() require("gzreader_usage").onResume() end)
     Net.onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)
     if self.sync then
@@ -1121,6 +1130,7 @@ end
 
 function Grimmory:onCloseDocument()
     if self.tts then self.tts:stop(); self.tts = nil end
+    pcall(function() require("gzreader_usage").readEnd("closed book") end)
     self.bookmarks = nil
     if self.annotations then
         pcall(self.annotations.onClose, self.annotations)

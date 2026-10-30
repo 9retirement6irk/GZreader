@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.0",
+        changes = {
+            "Usage statistics, sent to the developer's Tianji server to find problems on real Kindles. Basic is on by default: version, Kindle model and firmware at start, restarts after a freeze or crash, downloads that worked or failed, slow operations, and keys the screen didn't answer. Full also sends time on each screen, menu entries used, reading sessions (minutes, pages, pages per minute, battery use per hour), read aloud, download speed, sync results and Wi-Fi on-time. Off sends nothing.",
+            "Change the level in the setup guide or in Settings → GZreader → Usage statistics. No book titles, file names, account or anything you type is ever sent. Statistics go out in one batch at most every 15 minutes, only while Wi-Fi is already on.",
+        },
+    },
+    {
         version = "1.2.9",
         changes = {
             "The Downloaded tab is now called Downloads, and its icon's lines are thinner, to match the other tab icons.",

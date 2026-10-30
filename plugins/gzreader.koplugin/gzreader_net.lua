@@ -63,6 +63,7 @@ Net._check = function() return check() end -- tests
 --- Something just used the network.
 function Net.touch()
     Net.last_use = Net.clock()
+    pcall(function() require("gzreader_usage").networkUsed() end)
     if Net.ours then schedule() end
 end
 
