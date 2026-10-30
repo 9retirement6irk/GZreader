@@ -231,9 +231,17 @@ function Folder.fetchCover(plugin, id)
     if not (ok_net and Net.connected()) then return end
     Folder.fetching = true
     local path = storeDir(plugin, id) .. "/cover.jpg"
-    require("gzreader_async").call(plugin.api, "downloadThumbnail", { id, path }, function(got)
-        Folder.fetching = nil
-        if got then Folder.writeStub(plugin, id) end
+    local Async = require("gzreader_async")
+    -- Grimmory's square audiobook cover, else the book's cover
+    Async.call(plugin.api, "downloadThumbnail", { id, path, "audiobook" }, function(got)
+        if got then
+            Folder.fetching = nil
+            return Folder.writeStub(plugin, id)
+        end
+        Async.call(plugin.api, "downloadThumbnail", { id, path }, function(got2)
+            Folder.fetching = nil
+            if got2 then Folder.writeStub(plugin, id) end
+        end)
     end)
 end
 

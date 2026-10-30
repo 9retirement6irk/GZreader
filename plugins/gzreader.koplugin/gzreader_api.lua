@@ -320,14 +320,17 @@ function Api:simpleList(endpoint, limit)
     return nil, err or ("http_" .. tostring(code))
 end
 
---- Grimmory's cover thumbnail (250 x 350 JPEG) for a book, saved to `path`.
-function Api:downloadThumbnail(book_id, path)
+--- Grimmory's cover thumbnail for a book, saved to `path`: 250 x 350 JPEG, or
+--- with kind = "audiobook" the square audiobook cover (250 x 250). Grimmory
+--- has no smaller size; GZreader keeps and shrinks them on the Kindle.
+function Api:downloadThumbnail(book_id, path, kind)
     local ok, err = self:ensureToken()
     if not ok then return false, err end
     local part = path .. ".part"
     local fh, ferr = io.open(part, "wb")
     if not fh then return false, ferr end
-    local code, _, headers = rawRequest("GET", self.store.server .. "/api/v1/media/book/" .. tostring(book_id) .. "/thumbnail", {
+    local code, _, headers = rawRequest("GET", self.store.server .. "/api/v1/media/book/" .. tostring(book_id)
+            .. (kind == "audiobook" and "/audiobook-thumbnail" or "/thumbnail"), {
         headers = { ["Authorization"] = "Bearer " .. self.store.access_token, ["Accept"] = "image/*" },
         sink = ltn12.sink.file(fh),
         timeouts = { 10, 30 },
@@ -339,6 +342,24 @@ function Api:downloadThumbnail(book_id, path)
     end
     os.remove(part)
     return false, code and ("http_" .. code) or "unreachable", code
+end
+
+--- Several thumbnails in one go (a page of the Grimmory tab), in the
+--- background process. items = { { id, path, kind } }. Returns
+--- { got = n, none = { id… } } (none: Grimmory has no cover for it).
+function Api:downloadThumbnails(items)
+    local got, none = 0, {}
+    for _i, it in ipairs(items or {}) do
+        local ok, err, code = self:downloadThumbnail(it.id, it.path, it.kind)
+        if ok then
+            got = got + 1
+        elseif code == 404 then
+            none[#none + 1] = it.id
+        elseif err == "unreachable" or err == "expired" or err == "not_paired" then
+            break
+        end
+    end
+    return { got = got, none = none }
 end
 
 --- Stream a book's primary file straight into `path` (used by the download

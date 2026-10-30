@@ -64,6 +64,7 @@ function Browser:bookItem(book, with_series_number)
     end
     return {
         text = authors ~= "" and (title .. " — " .. authors) or title,
+        gz_title = title, -- the cover views show title and authors on their own lines
         mandatory = tag,
         book = book,
         callback = function() self:onBook(book) end,
@@ -83,6 +84,8 @@ function Browser:show()
     }
     -- ZenOS's status bar (clock, battery, Wi-Fi) in the title, like other tabs
     pcall(self.decorate, self, _("Grimmory"))
+    -- book lists with covers (Menu → Display, as in Downloads)
+    pcall(function() require("gzreader_covermenu").apply(self.menu, self.plugin) end)
     local orig_switch = self.menu.switchItemTable
     self.menu.switchItemTable = function(m, title, ...)
         local r = orig_switch(m, title, ...)
@@ -107,6 +110,7 @@ function Browser:show()
     local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
     self.menu.key_events = self.menu.key_events or {}
     self.menu.key_events.GzTabKey = { { digits }, { "Alt", digits }, { "Alt", row } }
+
     self.menu.onGzTabKey = function(menu, _args, key)
         UIManager:close(menu)
         UIManager:nextTick(function()
@@ -173,6 +177,7 @@ function Browser:openAudiobooks()
             local here = Audiobook.load(self.plugin, book.id) ~= nil
             return {
                 text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
+                book = book, cover_kind = "audiobook", -- the square audiobook cover in the cover views
                 mandatory = here and _("on Kindle") or nil,
                 callback = function() Audiobook.choose(self.plugin, book) end,
             }

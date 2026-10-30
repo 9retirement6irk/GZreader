@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.4.1",
+        changes = {
+            "The Grimmory tab shows covers. Book lists (All books, Continue reading, Recently added, a library, author, series or shelf, search results, Audiobooks) follow the same Menu → Display choice as Downloads: List with details (cover, title, author, format and progress), Tiles (3 × 3 covers) or Simple list. Letter keys work in all three.",
+            "Covers stay fast on a Kindle 3. Only the page you're looking at is fetched, in the background, and the list shows straight away with placeholders. Each cover is downloaded once and kept on the Kindle, so pages you've seen before appear immediately, even offline. Grimmory has no smaller size than its standard thumbnail (10–20 KB), so GZreader shrinks them on the Kindle and keeps the result while you browse. Covers are only fetched when Wi-Fi is already on.",
+            "Audiobooks use Grimmory's square audiobook cover, in the Grimmory tab and on their tiles.",
+        },
+    },
+    {
         version = "1.4.0",
         changes = {
             "Audiobooks show like books: each downloaded audiobook gets a tile in Downloads → Audiobooks with its Grimmory cover, title, author, length and narrator. Opening the tile starts the player.",

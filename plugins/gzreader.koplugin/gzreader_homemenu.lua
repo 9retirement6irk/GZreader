@@ -216,8 +216,9 @@ function HomeMenu.setDisplayMode(mode)
     require("gzreader_log").info("display mode", mode)
 end
 
---- Tiles or a list, for Downloads and the other book folders.
-function HomeMenu.showDisplay()
+--- Tiles or a list, for Downloads, the other book folders and the Grimmory
+--- tab. on_changed() runs after a change (the Grimmory tab redraws).
+function HomeMenu.showDisplay(on_changed)
     local ButtonDialog = require("ui/widget/buttondialog")
     local okc, icons = pcall(require, "common/inline_icon_map")
     local cur = HomeMenu.displayMode()
@@ -230,7 +231,15 @@ function HomeMenu.showDisplay()
             align = "left",
             callback = function()
                 UIManager:close(dialog)
-                if d.mode ~= cur then UIManager:nextTick(function() HomeMenu.setDisplayMode(d.mode) end) end
+                if d.mode ~= cur then
+                    UIManager:nextTick(function()
+                        HomeMenu.setDisplayMode(d.mode)
+                        -- the Grimmory tab follows the same choice
+                        local cm = package.loaded["gzreader_covermenu"]
+                        if cm then pcall(cm.refresh) end
+                        if on_changed then pcall(on_changed, d.mode) end
+                    end)
+                end
             end,
         } }
     end
