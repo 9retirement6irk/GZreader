@@ -191,9 +191,6 @@ function HomeMenu.items(plugin)
             return G_reader_settings:isTrue("night_mode") and _("Night mode off") or _("Night mode on")
         end, callback = function() dispatch("night_mode") end } or nil,
         { text = _("Settings"), callback = function() HomeMenu.settings() end },
-        { text = _("KOReader settings"), callback = function()
-            HomeMenu.settings({ path = { { key = "_zen_settings_root", value = "koreader" } } })
-        end },
         { text = _("Check for GZreader updates"), callback = function() require("gzreader_update").run() end },
         { text = _("Send diagnostic log to my phone"), callback = function() plugin:shareLog() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },

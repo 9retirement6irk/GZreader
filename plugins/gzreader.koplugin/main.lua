@@ -188,19 +188,13 @@ function Grimmory:addToMainMenu(menu_items)
     }
 end
 
+local function closeTouchMenu(touchmenu)
+    if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+end
+
 function Grimmory:menuItems()
     local paired = self.api:isPaired()
     local items = {
-        {
-            text_func = function()
-                local n = require("gzreader_tasks").count()
-                return n > 0 and T(_("Downloads (%1)"), n) or _("Downloads")
-            end,
-            callback = function(touchmenu)
-                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-                require("gzreader_tasks").show()
-            end,
-        },
         {
             text_func = function()
                 if self.api:isPaired() then
@@ -210,11 +204,6 @@ function Grimmory:menuItems()
             end,
             enabled = false,
             separator = true,
-        },
-        {
-            text = _("Browse library"),
-            enabled_func = function() return self.api:isPaired() end,
-            callback = function(touchmenu) self:onShowGrimmoryLibrary(touchmenu) end,
         },
     }
     if self.sync then
@@ -240,29 +229,6 @@ function Grimmory:menuItems()
         },
         require("gzreader_shelfsync").menuItems(self),
         {
-            text = _("Pre-size covers"),
-            help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
-            checked_func = function() return not G_reader_settings:isFalse("gzreader_presize_covers") end,
-            callback = function()
-                G_reader_settings:flipNilOrTrue("gzreader_presize_covers")
-                local Disk = require("common/cover_disk_cache")
-                Disk.enabled = not G_reader_settings:isFalse("gzreader_presize_covers")
-                if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
-            end,
-        },
-        {
-            text = _("Wi-Fi only when needed"),
-            help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
-            checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
-            callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
-        },
-        {
-            text = _("Menu key opens the GZreader menu"),
-            help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
-            checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
-            callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
-        },
-        {
             text = _("Sync bookmarks"),
             help_text = _("Keep page bookmarks the same here and in Grimmory (its web reader and other devices)."),
             checked_func = function() return self.store.bookmark_sync_disabled ~= true end,
@@ -280,10 +246,6 @@ function Grimmory:menuItems()
                 self:save()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
-        },
-        {
-            text = _("Read aloud settings"),
-            callback = function() self:showTtsSettings() end,
         },
         {
             text = _("Audiobooks"),
@@ -307,43 +269,97 @@ function Grimmory:menuItems()
             text = _("Disconnect"),
             enabled_func = function() return self.api:isPaired() end,
             callback = function() self:confirmDisconnect() end,
-            separator = true,
-        },
-        {
-            text = _("Diagnostic logging"),
-            help_text = _("Keep a log of Grimmory activity in koreader/gzreader.log (passwords and tokens are never written)."),
-            checked_func = function() return self.store.logging_disabled ~= true end,
-            callback = function()
-                self.store.logging_disabled = (self.store.logging_disabled ~= true) or nil
-                Log.enabled = self.store.logging_disabled ~= true
-                self:save()
-            end,
-        },
-        require("gzreader_remote").menuItems(self),
-        require("gzreader_usage").menuItems(),
-        {
-            text = _("Send diagnostic log to my phone (QR code)"),
-            callback = function(touchmenu)
-                if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-                self:shareLog()
-            end,
-        },
-        {
-            text = _("Save diagnostic log (USB)"),
-            callback = function() self:exportLog() end,
-            separator = true,
-        },
-        {
-            text = "GZreader updates",
-            sub_item_table_func = function() return require("gzreader_update").menuItems() end,
         },
     }
     for _, item in ipairs(more) do table.insert(items, item) end
     return items
 end
 
-local function closeTouchMenu(touchmenu)
-    if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+--- GZreader's settings that live in ZenOS's other Settings sections
+--- (zenos modules/settings/zen_settings.lua puts them there):
+---   "general"   { wifi = item, diagnostics = { items } }
+---   "reader"    { items }
+---   "interface" { items }
+function Grimmory:sectionItems(section)
+    local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
+    local okc, icons = pcall(require, "common/inline_icon_map")
+    local function icon(name, item)
+        if okI and okc and icons[name] then return IconItem.decorate(item, icons[name]) end
+        return item
+    end
+    if section == "general" then
+        return {
+            wifi = icon("wifi_off", {
+                text = _("Wi-Fi only when needed"),
+                help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
+                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
+                callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
+            }),
+            diagnostics = {
+                icon("settings_bug", {
+                    text = _("Diagnostic logging"),
+                    help_text = _("Keep a log of Grimmory activity in koreader/gzreader.log (passwords and tokens are never written)."),
+                    checked_func = function() return self.store.logging_disabled ~= true end,
+                    callback = function()
+                        self.store.logging_disabled = (self.store.logging_disabled ~= true) or nil
+                        Log.enabled = self.store.logging_disabled ~= true
+                        self:save()
+                    end,
+                }),
+                icon("connect", require("gzreader_remote").menuItems(self)),
+                icon("settings_stats", require("gzreader_usage").menuItems()),
+                icon("send", {
+                    text = _("Send diagnostic log to my phone (QR code)"),
+                    callback = function(touchmenu)
+                        closeTouchMenu(touchmenu)
+                        self:shareLog()
+                    end,
+                }),
+                icon("save", {
+                    text = _("Save diagnostic log (USB)"),
+                    callback = function() self:exportLog() end,
+                }),
+            },
+        }
+    elseif section == "reader" then
+        return {
+            icon("vocabulary", {
+                text = _("Read aloud"),
+                help_text = _("Volume, speed and the Kindle voice for reading aloud (Shift + Sym while reading)."),
+                keep_menu_open = true,
+                callback = function() self:showTtsSettings() end,
+            }),
+            icon("check", {
+                text = _("Test audiobook playback"),
+                help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
+                callback = function(touchmenu)
+                    closeTouchMenu(touchmenu)
+                    require("gzreader_audioengine").test()
+                end,
+            }),
+        }
+    elseif section == "interface" then
+        return {
+            icon("settings_covers", {
+                text = _("Pre-size covers"),
+                help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
+                checked_func = function() return not G_reader_settings:isFalse("gzreader_presize_covers") end,
+                callback = function()
+                    G_reader_settings:flipNilOrTrue("gzreader_presize_covers")
+                    local Disk = require("common/cover_disk_cache")
+                    Disk.enabled = not G_reader_settings:isFalse("gzreader_presize_covers")
+                    if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
+                end,
+            }),
+            icon("keyboard", {
+                text = _("Menu key opens the GZreader menu"),
+                help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
+                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
+                callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
+            }),
+        }
+    end
+    return {}
 end
 
 ---------------------------------------------------------------- errors
@@ -923,33 +939,38 @@ end
 function Grimmory:showTtsSettings()
     local ButtonDialog = require("ui/widget/buttondialog")
     local dialog
-    local function speedRow()
-        return {
-            { text = _("Slower"), callback = function()
-                Mod.TTS.setSpeed(math.max(50, Mod.TTS.speed() - 10)); UIManager:close(dialog); self:showTtsSettings()
-            end },
-            { text = T(_("Speed %1"), Mod.TTS.speed()), enabled = false },
-            { text = _("Faster"), callback = function()
-                Mod.TTS.setSpeed(math.min(200, Mod.TTS.speed() + 10)); UIManager:close(dialog); self:showTtsSettings()
-            end },
-        }
+    -- Changes update the label in place: reopening the dialog would put the
+    -- 5-way focus back on the first button (Quieter / Slower) every time.
+    local function relabel(id, text)
+        local btn = dialog and dialog.buttontable and dialog.buttontable:getButtonById(id)
+        if not btn then return end
+        btn:setText(text, btn.width)
+        UIManager:setDirty(dialog, "ui", btn.dimen)
     end
-    local function volumeRow()
-        local function set(v)
-            Mod.TTS.setVolume(v); UIManager:close(dialog); self:showTtsSettings()
-            Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
-        end
-        return {
-            { text = _("Quieter"), callback = function() set(Mod.TTS.volume() - 1) end },
-            { text = T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX), enabled = false },
-            { text = _("Louder"), callback = function() set(Mod.TTS.volume() + 1) end },
-        }
+    local function speedText() return T(_("Speed %1"), Mod.TTS.speed()) end
+    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) end
+    local function setSpeed(v)
+        Mod.TTS.setSpeed(math.max(50, math.min(200, v)))
+        relabel("speed", speedText())
+    end
+    local function setVolume(v)
+        Mod.TTS.setVolume(v)
+        relabel("volume", volumeText())
+        Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
     end
     dialog = ButtonDialog:new{
         title = _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
         buttons = {
-            volumeRow(),
-            speedRow(),
+            {
+                { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
+                { id = "volume", text = volumeText(), enabled = false },
+                { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
+            },
+            {
+                { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
+                { id = "speed", text = speedText(), enabled = false },
+                { text = _("Faster"), callback = function() setSpeed(Mod.TTS.speed() + 10) end },
+            },
             { { text = _("Find the Kindle voice (test)"), callback = function()
                 UIManager:close(dialog); Mod.TTS.findVoice()
             end } },
@@ -1048,7 +1069,6 @@ end
 
 function Grimmory:audiobookItems()
     local Audiobook = require("gzreader_audiobook")
-    local Engine = require("gzreader_audioengine")
     local items = {}
     local cur = Audiobook.current
     if cur then
@@ -1077,15 +1097,6 @@ function Grimmory:audiobookItems()
         callback = function(touchmenu)
             if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
             local b = Mod.Browser:new(self); b:show(); b:openAudiobooks()
-        end,
-        separator = true,
-    }
-    items[#items + 1] = {
-        text = _("Test audio playback"),
-        help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
-        callback = function(touchmenu)
-            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-            Engine.test()
         end,
     }
     return items

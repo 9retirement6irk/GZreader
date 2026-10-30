@@ -4,7 +4,7 @@ Downloads screen and download status in the Home title bar.
 Everything GZreader is fetching or preparing in one place: the book being
 downloaded and the ones waiting in the queue, audiobook downloads and the
 audiobook "preparing" step. From the GZreader menu (Menu key on Home),
-Settings → GZreader or the Reading menu → Downloads: reopen a progress
+the Home or Reading menu → Downloads (while something downloads): reopen a progress
 bar, stop the current download, take a book out of the queue, empty the
 queue.
 

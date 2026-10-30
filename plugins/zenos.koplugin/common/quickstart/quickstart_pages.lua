@@ -862,7 +862,7 @@ function M.build_install_pages(ctx)
             title       = _("Usage Statistics"),
             description = _("Help improve GZreader by sending anonymous usage statistics to its developer. They're sent only while Wi-Fi is already on, never book titles, file names, your account or anything you type.") .. "\n"
                 .. _("Basic: GZreader's version, the Kindle model and firmware, downloads that worked or failed, slow moments, and restarts after a freeze.") .. "\n"
-                .. _("Full: also time on each screen, menus used, reading sessions, read aloud, sync and Wi-Fi times. Change it later in Settings → GZreader."),
+                .. _("Full: also time on each screen, menus used, reading sessions, read aloud, sync and Wi-Fi times. Change it later in Settings → General → Usage statistics."),
             choice_type = "radio",
             choices     = (function()
                 local cur = G_reader_settings:readSetting("gzreader_usage")

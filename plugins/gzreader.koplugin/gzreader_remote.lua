@@ -3,7 +3,7 @@ Remote debugging: GZreader reports to a feed (Tianji-style
 /open/feed/<id>/send and /state/upsert) so problems are visible even when
 the Kindle can't be reached afterwards.
 
-Off until a feed address is set: Settings → GZreader → Remote debugging, or
+Off until a feed address is set: Settings → General → Remote debugging, or
 a file `gzreader-remote.txt` on the Kindle's USB drive with the address on
 its first line (read when GZreader starts). The address isn't in GZreader's
 code: the project is public and anyone with it could post to the feed.

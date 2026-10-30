@@ -1,5 +1,5 @@
 --[[--
-Wi-Fi only when needed (Settings → GZreader → Wi-Fi only when needed).
+Wi-Fi only when needed (Settings → General → Wi-Fi only when needed).
 
 The Kindle 3's Wi-Fi is one of its biggest battery drains. With this on,
 GZreader turns Wi-Fi on by itself when it needs the network:

@@ -228,7 +228,7 @@ function S.install(dir, opts)
     opts = opts or {}
     S.file = dir and (dir .. "/profile")
     -- The sampling profiler (SIGPROF timer signals) only when asked for:
-    -- Settings → GZreader → Remote debugging → Detailed timing.
+    -- Settings → General → Remote debugging → Detailed timing.
     if opts.profile and S.available then
         local okp, err = pcall(prof.start, "fi" .. S.INTERVAL, onSample)
         if okp then S.profiling = true else Log.warn("profiler unavailable:", tostring(err)) end

@@ -2,7 +2,7 @@
 Usage statistics, sent to GZreader's Tianji server (application tracking,
 tianji.dev/docs/application/tracking: POST /api/application/batch).
 
-Settings → GZreader → Usage statistics:
+Settings → General → Usage statistics:
 - Basic (default): GZreader starts (version, device, firmware), whether the
   previous run ended without closing normally, downloads (done or failed),
   slow operations and keys the screen didn't answer.

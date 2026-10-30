@@ -10,7 +10,7 @@ What the Kindle 3 has (from its diagnostic log, firmware 3.4.3):
 - Amazon's audioServer (com.lab126.audio over lipc): playbin-based, needs
   absolute file paths.
 
-"Test audio playback" plays a short MP3 and an AAC tune (converted on the
+"Test audiobook playback" (Settings → Reader) plays a short MP3 and an AAC tune (converted on the
 Kindle from the bundled M4A, which also tests the converter) through each
 candidate pipeline, logs what the Kindle says, asks which you heard and
 remembers the pipeline per format.
@@ -262,7 +262,7 @@ function Engine.test(on_done)
         Log.info("audio test result", "mp3=" .. tostring(chosen.mp3), "aac=" .. tostring(chosen.aac))
         UIManager:show(InfoMessage:new{ text = _("Audio test finished.") .. "\n\n"
             .. T(_("MP3: %1\nM4B / AAC: %2"), chosen.mp3 or _("no working player found"), chosen.aac or _("no working player found"))
-            .. ((chosen.mp3 and chosen.aac) and "" or ("\n\n" .. _("Send the diagnostic log (Settings → GZreader) so this can be fixed."))) })
+            .. ((chosen.mp3 and chosen.aac) and "" or ("\n\n" .. _("Send the diagnostic log (Settings → General) so this can be fixed."))) })
         if on_done then on_done(chosen) end
     end
     local function step()

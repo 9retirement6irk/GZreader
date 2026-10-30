@@ -126,7 +126,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
 GZreader sends anonymous usage statistics to its developer's
 [Tianji](https://tianji.dev) server, so problems on real Kindles can be found
 and fixed. You choose the level in the setup guide or in
-**Settings → GZreader → Usage statistics**:
+**Settings → General → Usage statistics**:
 
 | Level | What's sent |
 | --- | --- |
@@ -156,7 +156,9 @@ from **Settings → General → Updates**.
 Open the **Grimmory** tab and choose **Connect with QR code**. For single sign-on, add
 `http://<kindle-ip>:8642/oauth2-callback` as an extra redirect URI for Grimmory's client
 at your identity provider; the exact address is shown on the QR page. Grimmory itself
-needs no changes. All Grimmory options are in **Settings → GZreader**.
+needs no changes. Connection and sync options are in **Settings → Grimmory**;
+read aloud is in **Settings → Reader**, and Wi‑Fi saving and the diagnostic log are in
+**Settings → General**.
 
 ## Publishing a release
 

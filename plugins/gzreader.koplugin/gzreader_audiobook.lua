@@ -643,7 +643,7 @@ function Player:tick()
         self.playing = false
         self:keepAwake(false)
         if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
-        UIManager:show(InfoMessage:new{ text = _("The audio didn't play. Run Test audio playback (Settings → GZreader → Audiobooks), then send the diagnostic log if it still fails.") })
+        UIManager:show(InfoMessage:new{ text = _("The audio didn't play. Run Test audiobook playback (Settings → Reader), then send the diagnostic log if it still fails.") })
         if self.screen then self.screen:refresh() end
         return
     end

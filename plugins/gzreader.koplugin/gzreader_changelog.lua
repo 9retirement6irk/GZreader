@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.3",
+        changes = {
+            "Fixed: in Read aloud settings, pressing Louder (or Faster) more than once went the wrong way. The dialog reopened after each press with the 5-way back on Quieter (or Slower). Now the number changes in place and the selection stays where it was.",
+            "Settings are where you'd look for them. The GZreader section is now called Grimmory and holds the connection, sync and audiobook options. General has Wi-Fi only when needed (under Wi-Fi), Diagnostic logging, Remote debugging, Usage statistics, and sending or saving the diagnostic log. Reader has Read aloud and Test audiobook playback (from the Audiobooks menu). Interface has Pre-size covers and Menu key opens the GZreader menu.",
+            "Removed duplicates: Browse library and Downloads from the Grimmory settings (the library is on Home, and Downloads shows in the Menu while something downloads), GZreader updates (in General → Updates) and KOReader settings from the Home menu (in Settings).",
+        },
+    },
+    {
         version = "1.3.2",
         changes = {
             "Highlighting a book and pressing Menu now shows one entry, Manage \"book title\", instead of separate Open, Delete and More options entries. It opens the book's options with Open and Delete from this Kindle added at the top.",

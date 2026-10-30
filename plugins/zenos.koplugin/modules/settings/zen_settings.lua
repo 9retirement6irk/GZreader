@@ -21,6 +21,29 @@ local M = {}
 
 IconItem.installMenuPatch()
 
+-- GZreader: its Grimmory plugin instance (reader or file manager), or nil.
+local function gzreader()
+    for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
+        local ok, cls = pcall(require, mod)
+        local inst = ok and type(cls) == "table" and cls.instance
+        if type(inst) == "table" and type(inst.gzreader) == "table" then return inst.gzreader end
+    end
+end
+
+-- GZreader: its settings for a section ("general", "reader", "interface").
+local function gz_section(name)
+    local g = gzreader()
+    if not (g and type(g.sectionItems) == "function") then return {} end
+    local ok, items = pcall(g.sectionItems, g, name)
+    return ok and type(items) == "table" and items or {}
+end
+
+local function index_of(items, text)
+    for i, item in ipairs(items) do
+        if item.text == text then return i end
+    end
+end
+
 function M.build(plugin)
     -- Initialize updater banner state; release metadata stays live-only.
     updater.init_banner()
@@ -55,6 +78,27 @@ function M.build(plugin)
     local about_items     = about_section.build(ctx)
     local general_items   = general_section.build(ctx, extras_items)
 
+    -- GZreader: Wi-Fi only when needed under Wi-Fi; diagnostics (logging,
+    -- remote debugging, usage statistics, sending the log) before Advanced;
+    -- read aloud and the audiobook test at the end of Reader.
+    local gz_general = gz_section("general")
+    if gz_general.wifi then
+        table.insert(general_items, (index_of(general_items, _("Wi-Fi")) or 0) + 1, gz_general.wifi)
+    end
+    if type(gz_general.diagnostics) == "table" and #gz_general.diagnostics > 0 then
+        local at = index_of(general_items, _("Advanced")) or (#general_items + 1)
+        general_items[at - 1].separator = true
+        for i, item in ipairs(gz_general.diagnostics) do
+            table.insert(general_items, at + i - 1, item)
+        end
+        gz_general.diagnostics[#gz_general.diagnostics].separator = true
+    end
+    local gz_reader = gz_section("reader")
+    if #gz_reader > 0 then
+        reader_items[#reader_items].separator = true
+        for _i, item in ipairs(gz_reader) do reader_items[#reader_items + 1] = item end
+    end
+
     extras_items = utils.order_items_by_text(extras_items, {
         _("Install ZenPM"),
         _("Open ZenPM"),
@@ -68,6 +112,12 @@ function M.build(plugin)
     home_item.text = _("Home")
     IconItem.decorate(home_item, icons.settings_home)
     local interface_item = interface_section.build(ctx, extras_items)
+    local gz_interface = gz_section("interface")
+    if #gz_interface > 0 and type(interface_item.sub_item_table) == "table" then
+        local list = interface_item.sub_item_table
+        list[#list].separator = true
+        for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
+    end
 
     local library_item = IconItem.decorate({
         text = _("Library"),
@@ -82,18 +132,13 @@ function M.build(plugin)
         interface_item,
         IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
-        -- GZreader: the Grimmory plugin's settings (connection, sync, read
-        -- aloud, audiobooks, log, updates), also under KOReader → Tools → Grimmory.
+        -- GZreader: the Grimmory plugin's settings (connection, sync,
+        -- audiobooks), also under KOReader → Tools → Grimmory.
         IconItem.decorate({
-            text = "GZreader",
+            text = _("Grimmory"),
             _zen_settings_root = "gzreader",
             sub_item_table_func = function()
-                local g
-                for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
-                    local ok, cls = pcall(require, mod)
-                    local inst = ok and type(cls) == "table" and cls.instance
-                    if not g and type(inst) == "table" and type(inst.gzreader) == "table" then g = inst.gzreader end
-                end
+                local g = gzreader()
                 if g and type(g.menuItems) == "function" then return g:menuItems() end
                 return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
             end,
