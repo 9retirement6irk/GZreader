@@ -255,7 +255,7 @@ function HomeMenu.items(plugin)
         { text = _("Continue reading (last book)"), callback = function() dispatch("open_previous_document") end },
         { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
         { text = _("History"), callback = function() dispatch("history") end },
-        { text = _("Sort books…"), callback = function() HomeMenu.showSort() end },
+        { text = _("Sort"), callback = function() HomeMenu.showSort() end },
         { text_func = function()
             return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
         end, callback = function() HomeMenu.showDisplay() end },
@@ -266,7 +266,7 @@ function HomeMenu.items(plugin)
             return G_reader_settings:isTrue("night_mode") and _("Night mode off") or _("Night mode on")
         end, callback = function() dispatch("night_mode") end } or nil,
         { text = _("Settings"), callback = function() HomeMenu.settings() end },
-        { text = _("Check for GZreader updates"), callback = function() require("gzreader_update").run() end },
+        { text = _("Check for updates"), callback = function() require("gzreader_update").run() end },
         { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },
         { text = _("Restart GZreader"), callback = function() dispatch("restart") end },
@@ -351,6 +351,9 @@ function HomeMenu.show(plugin)
         close_callback = function() HomeMenu.open = nil end,
     }
     menu.key_events = menu.key_events or {}
+    -- The Menu key closes it again (KOReader's Menu also maps the Menu key to
+    -- an unused "left button" action, and either could win)
+    menu.key_events.LeftButtonTap = nil
     menu.key_events.GzCloseHomeMenu = { { "Menu" } }
     menu.onGzCloseHomeMenu = function() UIManager:close(menu, "full"); return true end
     -- Back key too: full e-ink refresh, no ghost of the menu on the page

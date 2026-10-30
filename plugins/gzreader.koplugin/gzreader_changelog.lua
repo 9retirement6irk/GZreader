@@ -2,6 +2,17 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.4.2",
+        changes = {
+            "New audiobook player. It shows the cover, title and author, the chapter playing (\"Chapter 4: On the Trail · 4 of 12\"), a progress bar for the chapter with time in it, and the time and percent through the whole book. Controls are on screen with letter keys: Q Chapters, W Sleep timer (15, 30, 45 or 60 minutes, or the end of the chapter), E Stop, and A / S for quieter and louder, with the current volume between them. The Kindle's volume buttons work too. ◀ ▶ skip 30 s, ▲ ▼ change chapter, Press plays or pauses.",
+            "The chapter list marks the chapter playing and shows each chapter's start time and length.",
+            "Fixed: Stop and Close in the audiobook player didn't bring back the screen behind it, so the player stayed on screen.",
+            "Audiobook covers: Grimmory's square audiobook cover is fetched once and kept with the audiobook. It's shown in the player and on the audiobook's tile on Home, in Recent and in Downloads. A cover already seen in the Grimmory tab is reused without downloading it again.",
+            "Menu wording: \"Sort books…\" is now \"Sort\", and \"Check for GZreader updates\" is now \"Check for updates\".",
+            "Fixed: pressing Menu while the Home menu, the Reading menu or the chapter list was open sometimes did nothing. It now closes the menu.",
+        },
+    },
+    {
         version = "1.4.1",
         changes = {
             "The Grimmory tab shows covers. Book lists (All books, Continue reading, Recently added, a library, author, series or shelf, search results, Audiobooks) follow the same Menu → Display choice as Downloads: List with details (cover, title, author, format and progress), Tiles (3 × 3 covers) or Simple list. Letter keys work in all three.",

@@ -723,10 +723,35 @@ end
 
 ---------------------------------------------------------------- screen
 
-local Screen = InputContainer:extend{ player = nil }
+-- widgets only the screen needs: loaded when it is drawn
+local HorizontalGroup, HorizontalSpan, Size, TextWidget
+local function screenWidgets()
+    HorizontalGroup = HorizontalGroup or require("ui/widget/horizontalgroup")
+    HorizontalSpan = HorizontalSpan or require("ui/widget/horizontalspan")
+    Size = Size or require("ui/size")
+    TextWidget = TextWidget or require("ui/widget/textwidget")
+end
+
+local Screen = InputContainer:extend{ player = nil, covers_fullscreen = true }
 Audiobook.Screen = Screen
 
+--[[ The player screen (Kindle Keyboard first):
+
+    cover
+    title / author
+    Chapter n of N · chapter title
+    ───────────── book progress
+    0:12:30 of 0:25:00 in this chapter        1:23:45 / 9:52:00 · 14%
+    ▶ Playing · Sleep in 25:00
+
+    [Q Chapters] [W Sleep: off]  [E Stop]
+    [A Quieter]  Volume 10 / 15  [S Louder]
+
+    ◀ ▶ 30 s · ▲ ▼ chapter · Press: play / pause · Back: close (keeps playing)
+]]
+
 function Screen:init()
+    screenWidgets()
     local sw, sh = Device.screen:getWidth(), Device.screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.key_events = {
@@ -735,46 +760,138 @@ function Screen:init()
         Fwd30 = { { "Right" } },
         PrevChapter = { { "Up" } },
         NextChapter = { { "Down" } },
+        Chapters = { { "Q" } },
+        Sleep = { { "W" } },
+        StopClose = { { "E" } },
+        VolDown = { { "A" }, { "VMinus" } },
+        VolUp = { { "S" }, { "VPlus" } },
         Options = { { "Menu" } },
         Close = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
-        VolUp = { { "VPlus" } },
-        VolDown = { { "VMinus" } },
     }
     self.player.screen = self
+    self:loadCover()
     self:build()
 end
 
-function Screen:text()
-    local p, book = self.player, self.player.book
-    local g = p:globalPos()
-    local total = Audiobook.total(book)
-    local ch = select(2, Audiobook.chapterAt(book, g))
-    local lines = {
-        book.author and (book.title .. "\n" .. book.author) or book.title,
-        "",
-        ch and ch.title or "",
-        T("%1 / %2  (%3%)", Audiobook.fmt(g), Audiobook.fmt(total), total > 0 and math.floor(g / total * 100) or 0),
-        p.playing and _("▶ Playing") or _("❚❚ Paused"),
-        p:sleepText() or "",
-        "",
-        _("Press: play / pause   ◀ ▶: 30 s   ▲ ▼: chapter"),
-        _("Menu: chapters, sleep timer, volume   Back: close (keeps playing)"),
+--- The audiobook's cover (Grimmory's), shrunk to fit the top of the screen.
+function Screen:loadCover()
+    local book = self.player.book
+    local path = book.dir and (book.dir .. "/cover.jpg")
+    local f = path and io.open(path, "rb")
+    if not f then
+        -- not here yet: fetch it (when Wi-Fi is up) and redraw
+        pcall(Folder.fetchCover, self.player.plugin, book.id, function()
+            if self.player.screen == self then self:loadCover(); self:refresh() end
+        end)
+        return
+    end
+    local data = f:read("*a")
+    f:close()
+    local RenderImage = require("ui/renderimage")
+    local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
+    if not ok or not bb then return end
+    local sw, sh = self.dimen.w, self.dimen.h
+    local max_w, max_h = math.floor(sw * 0.66), math.floor(sh * 0.40)
+    local scale = math.min(max_w / bb:getWidth(), max_h / bb:getHeight())
+    if self.cover_bb then self.cover_bb:free() end
+    self.cover_bb = RenderImage:scaleBlitBuffer(bb, math.floor(bb:getWidth() * scale), math.floor(bb:getHeight() * scale), true)
+end
+
+local function face(size, bold) return Font:getFace(bold and "smalltfont" or "cfont", size) end
+
+--- A control: its letter key in a square, and the label in a box (tap works too).
+function Screen:control(key, label, callback, width)
+    local Button = require("ui/widget/button")
+    local side = Device.screen:scaleBySize(26)
+    local sc = Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, key, "square")
+    local btn = Button:new{
+        text = label, callback = callback, width = width - side - Size.padding.default,
+        bordersize = Size.border.thin, radius = Size.radius.button, text_font_size = 16,
+        text_font_bold = false, show_parent = self,
     }
-    return table.concat(lines, "\n")
+    return HorizontalGroup:new{ align = "center", sc, HorizontalSpan:new{ width = Size.padding.default }, btn }
 end
 
 function Screen:build()
+    local p, book = self.player, self.player.book
     local sw, sh = self.dimen.w, self.dimen.h
-    self.textbox = TextBoxWidget:new{
-        text = self:text(),
-        face = Font:getFace("cfont", 22),
-        width = math.floor(sw * 0.88),
-        alignment = "center",
-    }
+    local inner = math.floor(sw * 0.88)
+    local g = p:globalPos()
+    local total = Audiobook.total(book)
+    local ch_idx, ch = Audiobook.chapterAt(book, g)
+    local chapters = book.chapters or {}
+    local group = VerticalGroup:new{ align = "center" }
+    local function add(w) group[#group + 1] = w end
+    local function gap(px) add(VerticalSpan:new{ width = Device.screen:scaleBySize(px) }) end
+
+    if self.cover_bb then
+        add(FrameContainer:new{ padding = 0, bordersize = Size.border.thin,
+            require("ui/widget/imagewidget"):new{ image = self.cover_bb, image_disposable = false } })
+    else
+        local side = math.floor(sh * 0.36)
+        add(FrameContainer:new{ width = side, height = side, padding = 0, bordersize = Size.border.thin,
+            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            CenterContainer:new{ dimen = Geom:new{ w = side, h = side },
+                TextBoxWidget:new{ text = book.title or "", face = face(18, true), width = side - 20, alignment = "center" } } })
+    end
+    gap(12)
+    add(TextBoxWidget:new{ text = book.title or "", face = face(22, true), width = inner, alignment = "center",
+        height = Device.screen:scaleBySize(60), height_adjust = true, height_overflow_show_ellipsis = true })
+    if book.author then add(TextWidget:new{ text = book.author, face = face(17), max_width = inner }) end
+    gap(10)
+    if ch then
+        -- "Chapter 4: On the Trail · 4 of 12" (titles often say "Chapter" already)
+        local count = #chapters > 1 and T(_("%1 of %2"), ch_idx, #chapters) or nil
+        local title = ch.title and ch.title ~= "" and ch.title or (count and T(_("Chapter %1"), ch_idx))
+        add(TextWidget:new{ text = (count and title) and (title .. "  ·  " .. count) or (title or ""),
+            face = face(17, true), max_width = inner })
+    end
+    gap(8)
+    local ProgressWidget = require("ui/widget/progresswidget")
+    local ch_start = ch and (ch.startTimeMs or 0) or 0
+    local nxt = chapters[ch_idx + 1]
+    local ch_end = nxt and nxt.startTimeMs or total
+    local ch_len = math.max(1, ch_end - ch_start)
+    add(ProgressWidget:new{ width = inner, height = Device.screen:scaleBySize(10),
+        percentage = math.min(1, math.max(0, (g - ch_start) / ch_len)), ticks = nil })
+    gap(4)
+    local left = TextWidget:new{ text = T(_("%1 of %2"), Audiobook.fmt(g - ch_start), Audiobook.fmt(ch_len)), face = face(14) }
+    local right = TextWidget:new{ text = T("%1 / %2 · %3%", Audiobook.fmt(g), Audiobook.fmt(total),
+        total > 0 and math.floor(g / total * 100) or 0), face = face(14) }
+    add(HorizontalGroup:new{ left, HorizontalSpan:new{ width = math.max(0, inner - left:getSize().w - right:getSize().w) }, right })
+    gap(10)
+    local status = { p.playing and _("▶ Playing") or _("❚❚ Paused") }
+    local sleep = p:sleepText()
+    if sleep then status[#status + 1] = sleep end
+    add(TextWidget:new{ text = table.concat(status, "  ·  "), face = face(17, true), max_width = inner })
+    gap(18)
+    -- controls
+    local col = math.floor((inner - 2 * Size.padding.large) / 3)
+    local function row(a, b, c)
+        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = Size.padding.large }, b,
+            HorizontalSpan:new{ width = Size.padding.large }, c }
+    end
+    local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
+        or (p.sleep_at and T(_("Sleep: %1 min"), math.max(1, math.ceil((p.sleep_at - os.time()) / 60))))
+        or _("Sleep: off")
+    add(row(
+        self:control("Q", _("Chapters"), function() self:onChapters() end, col),
+        self:control("W", sleep_label, function() self:onSleep() end, col),
+        self:control("E", _("Stop"), function() self:onStopClose() end, col)))
+    gap(8)
+    local vol = CenterContainer:new{ dimen = Geom:new{ w = col, h = Device.screen:scaleBySize(36) },
+        TextWidget:new{ text = T(_("Volume %1 / %2"), Engine.volume(), 15), face = face(16, true) } }
+    add(row(
+        self:control("A", _("Quieter"), function() self:onVolDown() end, col),
+        vol,
+        self:control("S", _("Louder"), function() self:onVolUp() end, col)))
+    gap(12)
+    add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nBack: close (keeps playing)"),
+        face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+    self.content = group
     self[1] = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE, bordersize = 0, padding = 0, width = sw, height = sh,
-        CenterContainer:new{ dimen = Geom:new{ w = sw, h = sh },
-            VerticalGroup:new{ align = "center", self.textbox, VerticalSpan:new{ width = 1 } } },
+        CenterContainer:new{ dimen = Geom:new{ w = sw, h = sh }, group },
     }
 end
 
@@ -797,53 +914,102 @@ function Screen:onBack30() self.player:skip(-Audiobook.SKIP_MS); self:refresh();
 function Screen:onFwd30() self.player:skip(Audiobook.SKIP_MS); self:refresh(); return true end
 function Screen:onPrevChapter() self.player:chapterStep(-1); self:refresh(); return true end
 function Screen:onNextChapter() self.player:chapterStep(1); self:refresh(); return true end
-function Screen:onVolUp() Engine.setVolume(Engine.volume() + 1); return true end
-function Screen:onVolDown() Engine.setVolume(Engine.volume() - 1); return true end
-function Screen:onClose() UIManager:close(self); return true end
-function Screen:onCloseWidget() if self.player.screen == self then self.player.screen = nil end end
+function Screen:onVolUp() Engine.setVolume(Engine.volume() + 1); self:refresh(); return true end
+function Screen:onVolDown() Engine.setVolume(Engine.volume() - 1); self:refresh(); return true end
 
-function Screen:onOptions()
-    local p = self.player
-    local dialog
-    local function close() UIManager:close(dialog) end
-    dialog = ButtonDialog:new{
-        title = p.book.title,
-        buttons = {
-            { { text = _("Chapters"), callback = function() close(); self:showChapters() end } },
-            { { text = _("Sleep 15 min"), callback = function() close(); p:setSleep(15); self:refresh() end },
-              { text = _("30 min"), callback = function() close(); p:setSleep(30); self:refresh() end },
-              { text = _("60 min"), callback = function() close(); p:setSleep(60); self:refresh() end } },
-            { { text = _("Sleep at end of chapter"), callback = function() close(); p:setSleep("chapter"); self:refresh() end },
-              { text = _("Sleep off"), callback = function() close(); p:cancelSleep(); self:refresh() end } },
-            { { text = _("Quieter"), callback = function() Engine.setVolume(Engine.volume() - 1) end },
-              { text = _("Louder"), callback = function() Engine.setVolume(Engine.volume() + 1) end } },
-            { { text = _("Stop and close"), callback = function() close(); p:stop(); UIManager:close(self) end } },
-        },
-    }
-    UIManager:show(dialog)
+--- Close: back to where the player was opened from (Home…), fully redrawn.
+function Screen:onClose()
+    UIManager:close(self, "full")
+    pcall(Folder.refreshHome, Folder.stubPath(self.player.plugin, self.player.book.id))
     return true
 end
 
-function Screen:showChapters()
+function Screen:onStopClose()
+    self.player:stop()
+    return self:onClose()
+end
+
+function Screen:onCloseWidget()
+    if self.player.screen == self then self.player.screen = nil end
+    if self.cover_bb then self.cover_bb:free(); self.cover_bb = nil end
+end
+
+--- A dialog with Q, W, E… keys, as in the book menus.
+local function keyedDialog(title, rows)
+    local dialog = ButtonDialog:new{ title = title, buttons = rows }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
+end
+
+function Screen:onSleep()
     local p = self.player
+    local dialog
+    local function pick(v)
+        return function()
+            UIManager:close(dialog)
+            if v == "off" then p:cancelSleep() else p:setSleep(v) end
+            self:refresh()
+        end
+    end
+    dialog = keyedDialog(_("Sleep timer"), {
+        { { text = _("15 minutes"), align = "left", callback = pick(15) } },
+        { { text = _("30 minutes"), align = "left", callback = pick(30) } },
+        { { text = _("45 minutes"), align = "left", callback = pick(45) } },
+        { { text = _("60 minutes"), align = "left", callback = pick(60) } },
+        { { text = _("At the end of this chapter"), align = "left", callback = pick("chapter") } },
+        { { text = _("Off"), align = "left", callback = pick("off") } },
+    })
+    return true
+end
+
+function Screen:onOptions()
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    dialog = keyedDialog(self.player.book.title, {
+        { { text = _("Chapters"), align = "left", callback = run(function() self:onChapters() end) } },
+        { { text = _("Sleep timer"), align = "left", callback = run(function() self:onSleep() end) } },
+        { { text = _("Stop and close"), align = "left", callback = run(function() self:onStopClose() end) } },
+        { { text = _("Close (keeps playing)"), align = "left", callback = run(function() self:onClose() end) } },
+    })
+    return true
+end
+
+--- Chapter list: the current one marked, its start time and length.
+function Screen:onChapters()
+    local p = self.player
+    local chapters = p.book.chapters or {}
     local items = {}
     local cur = Audiobook.chapterAt(p.book, p:globalPos())
-    for i, c in ipairs(p.book.chapters or {}) do
+    local total = Audiobook.total(p.book)
+    for i, c in ipairs(chapters) do
+        local nxt = chapters[i + 1]
+        local len = (nxt and nxt.startTimeMs or total) - (c.startTimeMs or 0)
         items[#items + 1] = {
             text = (i == cur and "▶ " or "") .. (c.title or T(_("Chapter %1"), i)),
-            mandatory = Audiobook.fmt(c.startTimeMs),
+            bold = i == cur,
+            mandatory = Audiobook.fmt(c.startTimeMs) .. " · " .. Audiobook.fmt(len),
             callback = function() p:seekTo(c.startTimeMs or 0); self:refresh() end,
         }
     end
     if #items == 0 then items[1] = { text = _("This audiobook has no chapters."), select_enabled = false } end
     local menu
     menu = Menu:new{
-        title = _("Chapters"), item_table = items, is_borderless = true, is_popout = false,
+        title = T(_("Chapters · %1"), p.book.title or ""), item_table = items, is_borderless = true, is_popout = false,
         covers_fullscreen = true, title_bar_fm_style = true,
-        onMenuChoice = function(_m, item) UIManager:close(menu); if item.callback then item.callback() end return true end,
+        onMenuChoice = function(_m, item)
+            UIManager:close(menu, "ui")
+            if item.callback then item.callback() end
+            return true
+        end,
     }
+    menu.key_events.LeftButtonTap = nil -- the Menu key closes it
+    menu.key_events.GzClose = { { "Menu" } }
+    menu.onGzClose = function() UIManager:close(menu, "ui"); return true end
     menu:onGotoPage(menu:getPageNumber(cur))
     UIManager:show(menu)
+    return true
 end
 
 --- Open (or bring back) the player for a downloaded audiobook.

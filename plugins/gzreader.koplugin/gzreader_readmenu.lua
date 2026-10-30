@@ -81,6 +81,7 @@ function ReadMenu.show(plugin)
     }
     -- The Menu key closes it again.
     menu.key_events = menu.key_events or {}
+    menu.key_events.LeftButtonTap = nil -- (also mapped to the Menu key by KOReader's Menu)
     menu.key_events.GzCloseReadMenu = { { "Menu" } }
     menu.onGzCloseReadMenu = function() UIManager:close(menu, "full"); return true end
     -- Back key too: full e-ink refresh, no ghost of the menu on the page

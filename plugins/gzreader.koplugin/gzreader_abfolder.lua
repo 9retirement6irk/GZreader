@@ -221,26 +221,48 @@ function Folder.stubPath(plugin, id)
     return type(e) == "table" and e.stub and (Folder.entryDir(plugin) .. "/" .. e.stub) or nil
 end
 
---- Get Grimmory's cover for audiobook `id` in the background (only when
---- Wi-Fi is already up), then rewrite the stand-in with it.
-function Folder.fetchCover(plugin, id)
+--- Get Grimmory's cover for audiobook `id` (its square audiobook cover, else
+--- the book's), keep it with the audio, rewrite the stand-in with it, then
+--- on_done(). Uses a cover the Grimmory tab already downloaded; otherwise
+--- fetches in the background, only when Wi-Fi is already up.
+function Folder.fetchCover(plugin, id, on_done)
     local e = plugin.store.audiobooks and plugin.store.audiobooks[id]
-    if type(e) ~= "table" or e.stub_cover or Folder.fetching then return end
+    if type(e) ~= "table" then return end
+    local path = storeDir(plugin, id) .. "/cover.jpg"
+    if lfs.attributes(path, "mode") == "file" then
+        if not e.stub_cover then Folder.writeStub(plugin, id) end
+        if on_done then pcall(on_done) end
+        return
+    end
+    local function done()
+        Folder.fetching = nil
+        Folder.writeStub(plugin, id)
+        if on_done then pcall(on_done) end
+    end
+    -- the Grimmory tab's cover cache
+    local ok_c, Covers = pcall(require, "gzreader_covers")
+    if ok_c then
+        for _i, kind in ipairs({ "audiobook", "book" }) do
+            local src = io.open(Covers.path(id, kind ~= "book" and kind or nil), "rb")
+            if src then
+                local data = src:read("*a"); src:close()
+                local dst = io.open(path, "wb")
+                if dst and data and #data > 0 then dst:write(data); dst:close(); return done() end
+                if dst then dst:close() end
+            end
+        end
+    end
+    if Folder.fetching then return end
     if not (plugin.api and plugin.api:isPaired()) then return end
     local ok_net, Net = pcall(require, "gzreader_net")
     if not (ok_net and Net.connected()) then return end
     Folder.fetching = true
-    local path = storeDir(plugin, id) .. "/cover.jpg"
     local Async = require("gzreader_async")
-    -- Grimmory's square audiobook cover, else the book's cover
     Async.call(plugin.api, "downloadThumbnail", { id, path, "audiobook" }, function(got)
-        if got then
-            Folder.fetching = nil
-            return Folder.writeStub(plugin, id)
-        end
+        if got then return done() end
         Async.call(plugin.api, "downloadThumbnail", { id, path }, function(got2)
+            if got2 then return done() end
             Folder.fetching = nil
-            if got2 then Folder.writeStub(plugin, id) end
         end)
     end)
 end
