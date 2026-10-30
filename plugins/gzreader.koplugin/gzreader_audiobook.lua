@@ -52,7 +52,10 @@ local _ = require("gettext")
 local T = ffiutil.template
 
 local Audiobook = {
-    PUSH_EVERY = 60,       -- seconds between progress pushes while playing
+    SAVE_EVERY = 60,       -- seconds between saving the position on the Kindle while playing
+    PUSH_EVERY = 300,      -- …and sending it to Grimmory (each send is an HTTPS request in
+                           -- a helper process: seconds of a Kindle 3's CPU; pause, stop and
+                           -- closing the player send it too)
     SKIP_MS = 30000,
     TICK_SECONDS = 2,      -- player housekeeping (track end, sleep timer); each wake-up costs battery
     current = nil,         -- the Player that is playing or paused
@@ -694,7 +697,11 @@ function Player:tick()
             UIManager:show(InfoMessage:new{ text = _("Sleep timer: paused at the end of the chapter."), timeout = 4 })
         end
     end
-    if os.time() - self.last_push >= Audiobook.PUSH_EVERY then self:save(); self:push() end
+    if os.time() - (self.last_save or 0) >= Audiobook.SAVE_EVERY then
+        self.last_save = os.time()
+        self:save()
+    end
+    if os.time() - self.last_push >= Audiobook.PUSH_EVERY then self:push() end
     -- KOReader's autosuspend counts input; playing audio counts as activity
     if os.time() - (self.last_activity or 0) >= 50 then
         self.last_activity = os.time()
@@ -918,15 +925,21 @@ function Screen:onVolUp() Engine.setVolume(Engine.volume() + 1); self:refresh();
 function Screen:onVolDown() Engine.setVolume(Engine.volume() - 1); self:refresh(); return true end
 
 --- Close: back to where the player was opened from (Home…), fully redrawn.
-function Screen:onClose()
+local function closeScreen(self)
     UIManager:close(self, "full")
     pcall(Folder.refreshHome, Folder.stubPath(self.player.plugin, self.player.book.id))
     return true
 end
 
+function Screen:onClose()
+    pcall(self.player.save, self.player) -- Home shows where you are
+    pcall(self.player.push, self.player) -- and so does Grimmory
+    return closeScreen(self)
+end
+
 function Screen:onStopClose()
-    self.player:stop()
-    return self:onClose()
+    self.player:stop() -- saves and sends the position
+    return closeScreen(self)
 end
 
 function Screen:onCloseWidget()

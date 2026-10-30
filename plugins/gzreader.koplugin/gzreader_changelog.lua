@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.4.3",
+        changes = {
+            "Fixed: read aloud said \"The Kindle voice didn't respond\" after an audiobook had been paused or left playing. A paused audiobook's player still holds the Kindle's only sound device. Opening a book now stops the audiobook (its place is saved), and starting read aloud also stops any audio player GZreader left running.",
+            "The audiobook's percentage and progress bar on Home now update as you listen: each time the position is saved (every minute while playing) and when you close the player.",
+            "Smoother screen while an audiobook plays: the listening position goes to Grimmory every 5 minutes instead of every minute, and when you pause, stop or close the player. Each send is an HTTPS request that keeps a Kindle 3's processor busy for several seconds. Your place is still saved on the Kindle every minute.",
+        },
+    },
+    {
         version = "1.4.2",
         changes = {
             "New audiobook player. It shows the cover, title and author, the chapter playing (\"Chapter 4: On the Trail · 4 of 12\"), a progress bar for the chapter with time in it, and the time and percent through the whole book. Controls are on screen with letter keys: Q Chapters, W Sleep timer (15, 30, 45 or 60 minutes, or the end of the chapter), E Stop, and A / S for quieter and louder, with the current volume between them. The Kindle's volume buttons work too. ◀ ▶ skip 30 s, ▲ ▼ change chapter, Press plays or pauses.",

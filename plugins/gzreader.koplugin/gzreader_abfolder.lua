@@ -290,6 +290,11 @@ function Folder.saveProgress(plugin, id, pos_ms, total_ms)
         ds:saveSetting("percent_finished", math.max(0, math.min(1, (pos_ms or 0) / total_ms)))
         ds:flush()
     end)
+    -- Home keeps books' progress in a cache: let it read the new one
+    pcall(function()
+        local home = zenHome()
+        if home and home.invalidateBookCache then home.invalidateBookCache(path, false) end
+    end)
 end
 
 --- When played: into Recent / history (like opening a book), with progress.
@@ -349,8 +354,25 @@ function Folder.install(plugin)
             Folder.open(p, id)
             return
         end
+        -- a book: the Kindle has one sound device, and read aloud needs it
+        Folder.releaseAudio("a book opened")
         return orig(self, file, ...)
     end
+end
+
+--- Stop the audiobook (its place is saved) and any audio player left from
+--- before: a paused or leftover player keeps the Kindle's only sound device,
+--- and the Kindle voice (read aloud) then can't speak. `thorough` also looks
+--- for players GZreader lost track of (a shell command; read aloud start).
+function Folder.releaseAudio(why, thorough)
+    local AB = package.loaded["gzreader_audiobook"]
+    if AB and AB.current then
+        Log.info("audiobook stopped:", why)
+        pcall(AB.current.stop, AB.current)
+    end
+    local ok, Engine = pcall(require, "gzreader_audioengine")
+    if not ok then return end
+    if thorough then pcall(Engine.stopStray) else pcall(Engine.stopStrayAtStart) end
 end
 
 function Folder.open(plugin, id)

@@ -567,6 +567,8 @@ function Reader:start()
     if not TTS.template() then
         return TTS.findVoice(function() self:start() end)
     end
+    -- the Kindle voice needs the sound device: no audiobook player holding it
+    pcall(function() require("gzreader_abfolder").releaseAudio("read aloud", true) end)
     self.active, self.paused = true, false
     TTS.applySettings()
     TTS.startEvents()
