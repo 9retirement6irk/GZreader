@@ -205,6 +205,15 @@ function HomeMenu.items(plugin)
             list[#list + 1] = { text = T(_("Delete “%1” from this Kindle"), title), callback = delete, separator = true }
         end
     end
+    -- while an audiobook plays (or is paused): the way back to its player
+    local okA, Audiobook = pcall(require, "gzreader_audiobook")
+    local cur = okA and Audiobook.current
+    if cur and cur.book then
+        list[#list + 1] = {
+            text = T(cur.playing and _("Now playing: %1") or _("Audiobook paused: %1"), cur.book.title or "?"),
+            callback = function() Audiobook.open(plugin, cur.book) end,
+        }
+    end
     local Tasks = require("gzreader_tasks")
     if Tasks.count() > 0 then list[#list + 1] = Tasks.menuItem() end -- near the top while something downloads
     for i = 1, table.maxn(items) do if items[i] then list[#list + 1] = items[i] end end -- drop hidden entries

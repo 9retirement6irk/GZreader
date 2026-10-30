@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.5",
+        changes = {
+            "While an audiobook is playing or paused, the Home menu shows \"Now playing: title\" (or \"Audiobook paused: title\"). It brings back the player, so you can pause or stop it without going through the Grimmory tab.",
+        },
+    },
+    {
         version = "1.3.4",
         changes = {
             "Settings pages show each entry's letter key in a box, like the Home and Reading menus, so you can see which letter opens what.",
