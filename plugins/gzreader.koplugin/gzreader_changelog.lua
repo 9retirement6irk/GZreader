@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.1",
+        changes = {
+            "The update download can't be closed any more. Keys and taps are ignored until it's installed and GZreader restarts, so an update can't be left half done.",
+            "Leaner ZenOS for Kindle. Bluetooth support is gone: the Kindle 3 has no Bluetooth, but ZenOS still started a lipc-get-prop process each time it checked the status. Also removed: the Kobo Bluetooth fix, Kobo and PocketBook adapters, the OPDS and cloud-storage add-ons (and the Dropbox, FTP and WebDAV code they loaded), and the Zen OPDS setting. Warmth and brightness schedules only load on Kindles with a front light.",
+            "The download is smaller: device code for Kobo, PocketBook, reMarkable, Android and other e-readers is no longer included.",
+        },
+    },
+    {
         version = "1.3.0",
         changes = {
             "Usage statistics, sent to the developer's Tianji server to find problems on real Kindles. Basic is on by default: version, Kindle model and firmware at start, restarts after a freeze or crash, downloads that worked or failed, slow operations, and keys the screen didn't answer. Full also sends time on each screen, menu entries used, reading sessions (minutes, pages, pages per minute, battery use per hour), read aloud, download speed, sync results and Wi-Fi on-time. Off sends nothing.",

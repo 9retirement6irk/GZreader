@@ -382,10 +382,22 @@ function Update.download(info)
     end, true)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
     Net.hold("update")
+    -- Can't be closed (unlike book downloads): the update installs and
+    -- restarts GZreader as soon as it's downloaded. Modal: keys don't reach
+    -- the screens behind it either.
     local dialog = ProgressbarDialog:new{
         title = T(_("Downloading GZreader %1…"), info.version),
+        subtitle = _("GZreader restarts when it's installed. Please wait."),
         progress_max = info.size or (12 * 1024 * 1024), refresh_time_seconds = 2, -- source zips: ~9 MB
+        dismissable = false,
+        modal = true,
     }
+    -- swallow every key and tap, so shortcuts can't act behind it either
+    local Input = require("device").input
+    local GestureRange = require("ui/gesturerange")
+    dialog.key_events = { Swallow = { { Input.group.Any } } }
+    dialog.ges_events = { Swallow = { GestureRange:new{ ges = "tap", range = dialog.dimen } } }
+    dialog.onSwallow = function() return true end
     dialog:show()
     local function poll()
         local size = lfs.attributes(zip, "size") or 0
@@ -404,7 +416,7 @@ function Update.download(info)
             Log.warn("update download size", final_size, "expected", info.size)
             return UIManager:show(InfoMessage:new{ text = _("The download was incomplete. Try again.") })
         end
-        local busy = InfoMessage:new{ text = _("Installing…"), timeout = 0 }
+        local busy = InfoMessage:new{ text = _("Installing… Please wait."), timeout = 0, dismissable = false, modal = true }
         UIManager:show(busy)
         UIManager:forceRePaint()
         local ok, err = Update.apply(zip, { source = info.source, version = info.version })

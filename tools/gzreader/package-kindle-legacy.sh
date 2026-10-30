@@ -77,6 +77,11 @@ rm -rf "$KO/ota" "$KO/zsync2" "$KO/spinning_zsync"        # OTA (disabled; would
 rm -f  "$KO/dropbear" "$KO/scp" "$KO/sftp-server"        # SSH server
 rm -f  "$KO"/fonts/noto/NotoSansCJK*                      # 16 MB CJK fallback font
 find "$KO/l10n" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +   # UI translations (English UI)
+# Other e-readers' device code: frontend/device.lua only loads one of these
+# after detecting that device, so a Kindle never needs them.
+for d in android cervantes kobo pocketbook remarkable sony-prstux sdl; do
+    rm -rf "$KO/frontend/device/$d"
+done
 
 # 6. Precompile Lua to LuaJIT bytecode with the Kindle's own LuaJIT (run
 #    through qemu-arm), keeping the .lua names and debug info (line numbers,

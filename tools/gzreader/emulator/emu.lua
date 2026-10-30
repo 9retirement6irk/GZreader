@@ -189,6 +189,11 @@ local function runScript()
         local s = steps[i]
         if not s then
             say("script done; windows:", E.top())
+            if E.requires then
+                local rf = real_open(os.getenv("GZ_EMU_REQUIRES"), "w")
+                rf:write(table.concat(E.requires, "\n"), "\n")
+                rf:close()
+            end
             E.done = true
             return UIManager:quit()
         end
@@ -291,8 +296,32 @@ table.insert(package.loaders, 2, function(name)
     end
 end)
 
+-- GZ_EMU_REQUIRES=<file>: every module loaded, with the time it took (self, not children)
+if os.getenv("GZ_EMU_REQUIRES") then
+    local orig_require = require
+    local loaded_log, depth_t = {}, {}
+    local clock = os.clock
+    E.requires = loaded_log
+    require = function(name) -- luacheck: ignore
+        if package.loaded[name] ~= nil then return package.loaded[name] end
+        local t0 = clock()
+        depth_t[#depth_t + 1] = 0
+        local r = orig_require(name)
+        local child = table.remove(depth_t)
+        local total = clock() - t0
+        if #depth_t > 0 then depth_t[#depth_t] = depth_t[#depth_t] + total end
+        loaded_log[#loaded_log + 1] = string.format("%.4f %.4f %s", total - child, total, name)
+        return r
+    end
+end
+
 local ok, err = xpcall(function() dofile("reader.lua") end, debug.traceback)
 say("reader.lua returned", ok, err and tostring(err):sub(1, 2000) or "")
+if E.requires then
+    local rf = real_open(os.getenv("GZ_EMU_REQUIRES"), "w")
+    rf:write(table.concat(E.requires, "\n"), "\n")
+    rf:close()
+end
 local f = real_open(OUT .. "/emu.log", "w")
 f:write(table.concat(E.log, "\n"), "\n")
 f:close()
