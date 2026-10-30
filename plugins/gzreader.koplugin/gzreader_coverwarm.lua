@@ -156,9 +156,11 @@ function Warm.run(plugin, on_done)
     end, true)
     if not pid then Warm.running = false; return end
     renice(pid)
+    local out = require("gzreader_async").reader(fd) -- (the list of books can be over a pipe's 64 KB)
     local function poll()
+        out:drain()
         if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(2, poll) end
-        local res = ffiutil.readAllFromFD(fd) or ""
+        local res = out:finish() or ""
         Warm.running = false
         local head, rest = res:match("^([^\n]*)\n?(.*)$")
         local made, wanted, files, bytes = (head or ""):match("^(%d+) (%d+) (%d+) (%d+)$")

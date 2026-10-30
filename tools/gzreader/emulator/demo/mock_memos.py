@@ -11,7 +11,7 @@ Sign-in: "Authorization: Bearer <token>" (TOKEN below).
   python3 -I mock_memos.py PORT [--sample] [--prefix /api]
 
 --sample fills it with a few notes (with a picture and a PDF), as in the
-mockup. --prefix /api serves the newer layout (no /api/v1) instead.
+mockup. --many N adds N long notes (a big account: replies over 64 KB). --prefix /api serves the newer layout (no /api/v1) instead.
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
 import json, re, sys, time, threading, zlib, struct
@@ -305,6 +305,10 @@ class H(BaseHTTPRequestHandler):
 
 if SAMPLE:
     sample()
+if "--many" in sys.argv:
+    for i in range(int(sys.argv[sys.argv.index("--many") + 1])):
+        add(("Journal entry %d. " % (i + 1)) + "Walked the ridge trail and wrote it all down. " * 40
+            + "\n\n- [ ] follow up\n\n#journal", ago=timedelta(days=10 + i))
 srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
 print("mock memos on", srv.server_address[1], flush=True)
 srv.serve_forever()

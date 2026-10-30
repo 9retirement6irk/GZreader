@@ -147,7 +147,7 @@ local defaults = {
             news = false,
             continue = true,
             history = false,
-            favorites = false, -- GZreader: the Notes tab (Memos) took its place
+            favorites = false, -- GZreader: off; the Notes tab (Memos) took its place in the bar
             collections = false,
             authors = false,
             series = false,
@@ -181,7 +181,13 @@ local defaults = {
         },
         tab_order = {
             "home", "books", "continue", "ct_grimmory", "ct_notes",
+            "favorites", -- listed (off) so it can be turned back on in Settings
         },
+        -- the tab list format the tab bar expects: tab_order lists every tab
+        -- in Settings → Navbar → Tabs, show_tabs says which are on. Without
+        -- it the bar took this for an old layout and dropped the tabs that
+        -- are off (Favorites) from the list.
+        layout_version = 2,
         show_icons = true,
         show_labels = true,
         icon_size = 34,

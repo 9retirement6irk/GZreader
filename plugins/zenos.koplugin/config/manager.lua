@@ -1105,12 +1105,33 @@ local function migrate_changed_defaults(cfg)
                     if id == "ct_notes" then seen = true end
                 end
                 if not seen then
-                    if at then nb.tab_order[at] = "ct_notes"
-                    else table.insert(nb.tab_order, "ct_notes") end
+                    -- Notes where Favorites was; Favorites stays listed (off)
+                    table.insert(nb.tab_order, at or (#nb.tab_order + 1), "ct_notes")
                 end
             end
         end
         cfg._meta.gz_notes_tab_migrated = true
+        cfg._meta.gz_favorites_listed_migrated = true
+        changed = true
+    end
+
+    -- GZreader 1.5.1: 1.5.0 took Favorites out of the tab list; put it back,
+    -- off, after Notes, so it can be turned on again in Settings → Navbar → Tabs.
+    if cfg._meta.gz_favorites_listed_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb and type(nb.tab_order) == "table" then
+            local notes_at, has_fav
+            for i, id in ipairs(nb.tab_order) do
+                if id == "ct_notes" then notes_at = i end
+                if id == "favorites" then has_fav = true end
+            end
+            if not has_fav then
+                table.insert(nb.tab_order, notes_at and (notes_at + 1) or (#nb.tab_order + 1), "favorites")
+                nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+                nb.show_tabs.favorites = false
+            end
+        end
+        cfg._meta.gz_favorites_listed_migrated = true
         changed = true
     end
 

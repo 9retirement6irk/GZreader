@@ -34,6 +34,37 @@ local Async = {
 
 local function pack(...) return { n = select("#", ...), ... } end
 
+--- What a background process writes to its pipe, read as it comes. A pipe
+--- holds ~64 KB: a process writing more blocks until it's read, so waiting
+--- for the process to end before reading would wait forever (1.5.1: a
+--- Memos account with a lot of notes never loaded). Call :drain() on every
+--- poll and :finish() once the process has ended.
+function Async.reader(fd)
+    local ffi = require("ffi")
+    pcall(require, "ffi/posix_h")
+    local chunks = {}
+    local r = {}
+    function r:drain()
+        if not fd then return end
+        for _i = 1, 64 do -- up to 64 chunks a poll; the rest next time
+            local n = ffiutil.getNonBlockingReadSize(fd)
+            if not n or n <= 0 then return end
+            n = math.min(n, 65536)
+            local buf = ffi.new("char[?]", n)
+            local got = tonumber(ffi.C.read(fd, buf, n))
+            if not got or got <= 0 then return end
+            chunks[#chunks + 1] = ffi.string(buf, got)
+        end
+    end
+    function r:finish()
+        if not fd then return table.concat(chunks) end
+        chunks[#chunks + 1] = ffiutil.readAllFromFD(fd) or ""
+        fd = nil
+        return table.concat(chunks)
+    end
+    return r
+end
+
 --- fn(api) under pcall, as packed results (an error becomes nil, message).
 local function protected(fn, api)
     local res = pack(pcall(fn, api))
@@ -131,20 +162,22 @@ pump = function()
         os.execute(string.format("renice -n 10 -p %d >/dev/null 2>&1 || renice 10 %d >/dev/null 2>&1", pid, pid))
     end
     local started = os.time()
+    local out = Async.reader(fd)
     local function poll()
+        out:drain()
         if not ffiutil.isSubProcessDone(pid) then
             if os.time() - started > (job.timeout or Async.TIMEOUT) then
                 Log.warn("async request took too long, stopped:", job.name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
-                    if ffiutil.isSubProcessDone(pid) then ffiutil.readAllFromFD(fd) else UIManager:scheduleIn(1, reap) end
+                    if ffiutil.isSubProcessDone(pid) then out:finish() else out:drain(); UIManager:scheduleIn(1, reap) end
                 end
                 UIManager:scheduleIn(1, reap)
                 return finish(job, pack(nil, "timeout"))
             end
             return UIManager:scheduleIn(Async.POLL, poll)
         end
-        local res = decode(ffiutil.readAllFromFD(fd)) or pack(nil, "background request failed")
+        local res = decode(out:finish()) or pack(nil, "background request failed")
         finish(job, res)
     end
     UIManager:scheduleIn(Async.POLL, poll)
@@ -194,20 +227,22 @@ function Async.background(fn, on_done, name, opts)
         local ok, err = pcall(on_done, ...)
         if not ok then Log.warn("async callback failed:", tostring(err)) end
     end
+    local out = Async.reader(fd)
     local function poll()
+        out:drain()
         if not ffiutil.isSubProcessDone(pid) then
             if os.time() - started > (opts.timeout or 600) then
                 Log.warn("background job took too long, stopped:", name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
-                    if ffiutil.isSubProcessDone(pid) then ffiutil.readAllFromFD(fd) else UIManager:scheduleIn(1, reap) end
+                    if ffiutil.isSubProcessDone(pid) then out:finish() else out:drain(); UIManager:scheduleIn(1, reap) end
                 end
                 UIManager:scheduleIn(1, reap)
                 return done(nil, "timeout")
             end
             return UIManager:scheduleIn(1, poll)
         end
-        local res = decode(ffiutil.readAllFromFD(fd)) or pack(nil, "background job failed")
+        local res = decode(out:finish()) or pack(nil, "background job failed")
         done(unpack(res, 1, res.n))
     end
     UIManager:scheduleIn(1, poll)

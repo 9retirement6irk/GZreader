@@ -768,10 +768,22 @@ function M.build_install_pages(ctx)
             title          = _("Navbar Tabs"),
             description    = _("Choose which tabs appear in your navigation bar.\nYou can rearrange or adjust these anytime in Settings."),
             choice_type    = "checkbox",
-            max_selections = 7,
+            -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
+            max_selections = (function()
+                local listed = { home = true, continue = true, ct_notes = true, history = true, favorites = true,
+                    collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
+                local others = 0
+                local order = type(config.navbar) == "table" and config.navbar.tab_order
+                for _i, id in ipairs(type(order) == "table" and order or {}) do
+                    if not listed[id] and show_tabs[id] == true then others = others + 1 end
+                end
+                return math.max(1, 7 - others)
+            end)(),
             choices        = {
                 { id = "home",        text = _("Home"),        checked = show_tabs["home"]        ~= false },
                 { id = "continue",    text = _("Continue"),    checked = show_tabs["continue"]    == true },
+                -- GZreader: Notes (Memos) is on by default; Favorites is off but still offered
+                { id = "ct_notes",    text = _("Notes (Memos)"), checked = show_tabs["ct_notes"]  ~= false },
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -784,10 +796,18 @@ function M.build_install_pages(ctx)
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true
+                end
+                -- a tab turned on here must be in the tab list to show
+                if type(config.navbar.tab_order) == "table" then
+                    local listed = {}
+                    for _i, id in ipairs(config.navbar.tab_order) do listed[id] = true end
+                    for _i, id in ipairs(tabs) do
+                        if sel[id] == true and not listed[id] then table.insert(config.navbar.tab_order, id) end
+                    end
                 end
                 save_and_apply("navbar")
             end,
@@ -796,7 +816,7 @@ function M.build_install_pages(ctx)
         -- 4. GZreader: keyboard (static)
         {
             title       = _("Your keyboard"),
-            description = _("Alt + Q, W, E, R, T: switch the bottom tabs, counted from the left (Home, Downloads, Continue, Grimmory, Favorites).") .. "\n"
+            description = _("Alt + Q, W, E, R, T: switch the bottom tabs, counted from the left (Home, Downloads, Continue, Grimmory, Notes).") .. "\n"
                 .. _("Q, W, E …: pick an item in a list (the letter is shown next to it).") .. "\n"
                 .. _("Menu while reading: the Reading menu (contents, bookmarks, go to page, search, read aloud, fonts, sync). Hold Menu for the page browser.") .. "\n"
                 .. _("Shift + Sym: read aloud / stop.") .. "\n"

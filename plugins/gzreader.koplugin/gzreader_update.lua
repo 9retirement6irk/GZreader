@@ -194,10 +194,12 @@ function Update.backgroundCheck(on_found)
     end, true)
     if not pid then return end
     local tries = 0
+    local out = require("gzreader_async").reader(fd) -- (GitHub's release JSON can be over a pipe's 64 KB)
     local function poll()
         tries = tries + 1
+        out:drain()
         if ffiutil.isSubProcessDone(pid) then
-            local body = ffiutil.readAllFromFD(fd)
+            local body = out:finish()
             local info = body ~= "" and Update.parseRelease(body)
             G_reader_settings:saveSetting("gzreader_update_last_check", os.time())
             if info then

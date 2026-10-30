@@ -124,11 +124,14 @@ a sub-list, a back arrow.
 
 ## Notes (Memos)
 
-The Notes tab (it replaced Favorites in the tab bar, Alt+T) shows your
+The Notes tab (it took Favorites' place in the tab bar, Alt+T) shows your
 [Memos](https://usememos.com) notes as sticky notes, six to a page, pinned
 first. Written against Memos v0.31 (`/api/v1`); newer servers that moved the
 API to `/api` are found too.
 
+- **Favorites** is still in Settings → Interface → Navbar → Tabs, turned
+  off; turn it on there (or on the setup guide's Navbar Tabs page, which also
+  offers Notes) to have both.
 - **Connect:** the first time, the tab offers *Connect with QR code* (your
   phone enters the Memos address and an access token on a one-off page served
   by the Kindle, like Grimmory pairing) or *Connect by typing*. Create the

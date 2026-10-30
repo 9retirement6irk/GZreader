@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.5.1",
+        changes = {
+            "Fixed: the Notes tab stayed empty for a Memos account with more than a few notes. Memos answered within seconds, but the notes were handed back from GZreader's background process through a pipe that holds about 64 KB, and a bigger list got stuck until it timed out after two minutes. Big results are now read as they arrive (this also covers the update check and cover pre-sizing, which could hit the same limit).",
+            "When the notes can't load, the Notes tab now says why (and that Menu → Refresh tries again) instead of \"No notes yet\", and shows \"Loading your notes…\" the first time.",
+            "Favorites is back in Settings → Interface → Navbar → Tabs, turned off, so you can turn it on again next to Notes (or instead of it). 1.5.0 had taken it out of the list.",
+            "The setup guide's Navbar Tabs page now offers Notes (on) and Favorites (off). A tab you turn on there is added to the bar even if it wasn't in it before (History, Authors…), and the page leaves room for Downloads and Grimmory so the bar never goes over 7 tabs.",
+        },
+    },
+    {
         version = "1.5.0",
         changes = {
             "New: the Notes tab, for your Memos notes (usememos.com, version 0.31 or newer). It takes the place of Favorites in the tab bar (Alt+T). Your notes show as sticky notes in a handwriting font (Patrick Hand), six to a page, each at a slight angle, pinned notes first. Q–Y open a note; ◀ ▶ turn pages.",

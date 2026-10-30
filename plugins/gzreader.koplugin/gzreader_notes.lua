@@ -175,8 +175,10 @@ function Notes.refresh(plugin, on_done)
             Notes.refreshing = false
             if not res then
                 Log.warn("notes: refresh failed:", tostring(err))
+                Notes.last_error = err
                 return on_done and on_done(false, err)
             end
+            Notes.last_error = nil
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
@@ -208,6 +210,7 @@ local function describe(err)
     if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (Menu → Connect to Memos).") end
     if err == "unreachable" then return _("Couldn't reach Memos. Check Wi-Fi and the address.") end
     if err == "not_connected" then return _("Not connected to Memos.") end
+    if err == "timeout" then return _("Memos took too long to answer.") end
     return T(_("Memos answered: %1"), tostring(err))
 end
 Notes.describe = describe
@@ -356,8 +359,14 @@ local function boardItems()
         items[#items + 1] = { memo = m, text = Sticky.preview(m.content) }
     end
     if #items == 0 then
-        items[1] = { text = Notes.filter.kind == "all" and _("No notes yet. Press N to write one.")
-            or _("No notes match. Press F to change the filter.") }
+        if Notes.last_error then -- not "no notes": say why they didn't load
+            items[1] = { text = T(_("Couldn't load your notes. %1\n\nMenu → Refresh to try again."), describe(Notes.last_error)) }
+        elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
+            items[1] = { text = _("Loading your notes…") }
+        else
+            items[1] = { text = Notes.filter.kind == "all" and _("No notes yet. Press N to write one.")
+                or _("No notes match. Press F to change the filter.") }
+        end
     end
     return items
 end
@@ -495,9 +504,9 @@ function Notes.show(plugin)
     local Net = require("gzreader_net")
     Net.hold("notes")
     Net.run(function()
-        Notes.refresh(plugin, function(ok, err)
-            if ok then Notes.reloadBoard(true)
-            elseif err == "unauthorized" then info(describe(err)) end
+        Notes.refresh(plugin, function(_ok, err)
+            Notes.reloadBoard(true) -- the notes, or why they didn't load
+            if err == "unauthorized" then info(describe(err)) end
         end)
     end, { quiet = true, reason = "notes" })
     return menu
