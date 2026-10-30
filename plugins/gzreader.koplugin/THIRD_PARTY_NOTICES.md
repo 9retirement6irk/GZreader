@@ -39,3 +39,11 @@ SOFTWARE.
 `8a3e0c90325aa6d84ad23a7c13bf77247cb7f94e`. MIT License:
 "v0.8 Copyright © 2013-2018 Gavin Kistner; MIT Licensed". The MIT terms are the
 same as above.
+
+## Patrick Hand (font)
+
+`fonts/PatrickHand-Regular.ttf` is [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand)
+by Patrick Wagesreiter, used for the Notes tab's sticky notes. It's a subset
+(Latin, Latin-1, Latin Extended-A, punctuation, arrows) made with fonttools'
+`pyftsubset`; the glyphs are unchanged. Licensed under the SIL Open Font
+License 1.1: see `fonts/PatrickHand-OFL.txt`.

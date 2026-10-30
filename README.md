@@ -48,6 +48,12 @@ a built-in connection to a self-hosted **Grimmory** book server.
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/reading-menu.png" alt="Menu key while reading" width="240"><br><sub>Menu key while reading</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/read-aloud.png" alt="Read aloud (Shift + Sym): the sentence being read is highlighted" width="240"><br><sub>Read aloud (Shift + Sym): the sentence being read is highlighted</sub></td></tr>
 </table>
 
+### Notes (Memos)
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-board.png" alt="The Notes tab: Memos notes as sticky notes" width="240"><br><sub>The Notes tab: Memos notes as sticky notes</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-note.png" alt="A note: tick checklist items with their letter key" width="240"><br><sub>A note: tick checklist items with their letter key</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-editor.png" alt="Writing a note, with the Markdown toolbar" width="240"><br><sub>Writing a note, with the Markdown toolbar</sub></td></tr>
+</table>
+
 ## Features
 
 ### 📚 Your Grimmory library
@@ -80,6 +86,15 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - **Works offline:** changes are saved on the Kindle and sent when Wi‑Fi is back.
 - Reading sessions feed Grimmory's reading statistics.
 
+### 📝 Notes (Memos)
+- The **Notes tab** shows your [Memos](https://usememos.com) notes as sticky notes in
+  a handwriting font, six to a page. Open one with its letter key.
+- **Tick checklist items**, see pictures, tags, places and attachments (PDFs open in
+  the reader). Filter by tag, date, place, attachments, pinned or text.
+- **Write and edit notes** on a full-page editor with a Markdown toolbar (lists,
+  checklists, headings, italic, bold, tags). New notes are private.
+- Works offline: notes are kept on the Kindle and changes are sent when Wi‑Fi is back.
+
 ### ⌨️ Made for the Kindle Keyboard
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
   aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
@@ -87,7 +102,7 @@ a built-in connection to a self-hosted **Grimmory** book server.
   audiobooks, search, Wi‑Fi, settings, updates, sleep, restart — also
   with letter keys.
 - **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloads, Continue,
-  Grimmory, Favorites).
+  Grimmory, Notes).
 - **Back** returns from a link, otherwise goes Home (never back to the book's start).
 
 ### 🔊 Read aloud

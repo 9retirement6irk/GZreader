@@ -100,4 +100,31 @@ function PairPage.gone()
     return shell("Link expired", '<h1>This link has expired</h1><div class="card"><p>Open Grimmory on your Kindle and choose “Connect with QR code” to get a new one.</p></div>')
 end
 
+--- Connecting the Notes tab to Memos. opts: server, error.
+function PairPage.memosForm(opts)
+    opts = opts or {}
+    local err = opts.error and ('<p class="err">' .. esc(opts.error) .. "</p>") or ""
+    return shell("Connect Kindle to Memos", table.concat({
+        "<h1>Connect Notes to Memos</h1>",
+        '<p class="sub">Your Kindle\'s Notes tab shows your Memos notes as sticky notes. It needs your Memos address and an access token.</p>',
+        '<form method="post" autocomplete="off" onsubmit="var b=event.submitter;if(b){setTimeout(function(){b.disabled=true;b.textContent=\'Connecting…\'},0)}">',
+        err,
+        '<label for="server">Memos address</label>',
+        '<input id="server" name="server" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://memos.example.com" value="', esc(opts.server), '">',
+        '<label for="token">Access token</label>',
+        '<input id="token" name="token" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" required>',
+        '<button type="submit">Connect Kindle</button>',
+        '<details><summary>Where do I get an access token?</summary><p class="note">In Memos, open Settings → My account → Access Tokens, create a token (no expiry, or a long one) and paste it here. The Kindle keeps the token, never your password.</p></details>',
+        '<p class="note">Your phone and Kindle must be on the same Wi‑Fi. This page works once and closes on the Kindle when you finish or press Back. New notes are private unless you choose otherwise on the Kindle.</p>',
+        "</form>",
+    }))
+end
+
+function PairPage.memosSuccess(user)
+    return shell("Kindle connected", table.concat({
+        '<h1>Notes connected</h1><div class="card"><p class="ok">Connected to Memos as ', esc(user), ".</p>",
+        "<p>Your notes are on the Kindle's Notes tab. You can close this page.</p></div>",
+    }))
+end
+
 return PairPage

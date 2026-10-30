@@ -2,6 +2,17 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.5.0",
+        changes = {
+            "New: the Notes tab, for your Memos notes (usememos.com, version 0.31 or newer). It takes the place of Favorites in the tab bar (Alt+T). Your notes show as sticky notes in a handwriting font (Patrick Hand), six to a page, each at a slight angle, pinned notes first. Q–Y open a note; ◀ ▶ turn pages.",
+            "Connecting: the first time you open the Notes tab, choose Connect with QR code (enter your Memos address and an access token on your phone) or Connect by typing. Create the token in Memos → Settings → Access Tokens. The Kindle keeps the token, never your password, and never writes it to the log.",
+            "A note shows its whole text, its pictures, tags, place and attachments. Tick or untick checklist items with their letter key; the change is saved to Memos. PDFs and other attachments open in the reader, pictures in the image viewer. Alt+E edits the note, Alt+P pins it.",
+            "Writing notes: N on the board opens a full-page editor. The toolbar at the bottom adds Markdown for you: bulleted list, checklist, numbered list, heading, italic, bold, and # Tag (pick one of your tags or type a new one; the keyboard has no # key). ▼ from the last line moves to the toolbar, ◀ ▶ choose, Press applies, ▲ goes back. Shortcuts: Alt+L, Alt+C, Alt+N, Alt+H, Alt+K, Alt+B, Alt+G and Alt+S to save. New notes are private; Alt+V changes who can see one. Alt + the top row types numbers in the editor.",
+            "Filters (F): tag, date, place, with attachments, pinned, or search the text.",
+            "Works offline: the notes you last saw stay on the Kindle, and new notes, edits and ticks made without Wi-Fi are sent the next time the Notes tab reaches Memos.",
+        },
+    },
+    {
         version = "1.4.3",
         changes = {
             "Fixed: read aloud said \"The Kindle voice didn't respond\" after an audiobook had been paused or left playing. A paused audiobook's player still holds the Kindle's only sound device. Opening a book now stops the audiobook (its place is saved), and starting read aloud also stops any audio player GZreader left running.",

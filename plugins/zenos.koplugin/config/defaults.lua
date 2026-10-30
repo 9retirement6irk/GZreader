@@ -147,7 +147,7 @@ local defaults = {
             news = false,
             continue = true,
             history = false,
-            favorites = true,
+            favorites = false, -- GZreader: the Notes tab (Memos) took its place
             collections = false,
             authors = false,
             series = false,
@@ -159,6 +159,7 @@ local defaults = {
             page_right = false,
             menu = false,
             ct_grimmory = true,
+            ct_notes = true,
         },
         -- Grimmory build: a navbar tab that opens the Grimmory library.
         custom_tabs = {
@@ -169,9 +170,17 @@ local defaults = {
                 label = "Grimmory",
                 icon = "library",
             },
+            -- GZreader: notes from Memos as sticky notes (replaces Favorites)
+            {
+                id = "ct_notes",
+                type = "action",
+                action = { gzreader_notes = true },
+                label = "Notes",
+                icon = "notes",
+            },
         },
         tab_order = {
-            "home", "books", "continue", "ct_grimmory", "favorites",
+            "home", "books", "continue", "ct_grimmory", "ct_notes",
         },
         show_icons = true,
         show_labels = true,

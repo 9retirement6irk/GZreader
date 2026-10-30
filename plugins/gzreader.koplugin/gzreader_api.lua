@@ -647,4 +647,7 @@ function Api:oidcExchange(base, params, origin)
     return false, msg or (code and ("http_" .. code) or "unreachable")
 end
 
+--- The plain request helper (logging, gzip, timeouts), for other clients (Memos).
+Api.rawRequest = rawRequest
+
 return Api

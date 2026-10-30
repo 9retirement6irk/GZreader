@@ -65,7 +65,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 | Where | Key | Does |
 | --- | --- | --- |
-| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloads, Alt+E Continue, Alt+R Grimmory, Alt+T Favorites (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
+| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloads, Alt+E Continue, Alt+R Grimmory, Alt+T Notes (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, Quick panel (ZenOS), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
@@ -121,6 +121,45 @@ The Grimmory tab is part of ZenOS's tab bar while it's open: the bar stays
 at the bottom with the Grimmory tab underlined, and the title shows ZenOS's
 status bar (clock, battery, Wi‑Fi, downloads) with the list's name and, in
 a sub-list, a back arrow.
+
+## Notes (Memos)
+
+The Notes tab (it replaced Favorites in the tab bar, Alt+T) shows your
+[Memos](https://usememos.com) notes as sticky notes, six to a page, pinned
+first. Written against Memos v0.31 (`/api/v1`); newer servers that moved the
+API to `/api` are found too.
+
+- **Connect:** the first time, the tab offers *Connect with QR code* (your
+  phone enters the Memos address and an access token on a one-off page served
+  by the Kindle, like Grimmory pairing) or *Connect by typing*. Create the
+  token in Memos → Settings → My account → Access Tokens. The Kindle keeps
+  the token (never your password) in GZreader's settings; it's never written
+  to the log. An address without `https://` falls back to `http://` for a
+  Memos on your home network.
+- **Board:** Q–Y open a note, ◀ ▶ (or the page keys) turn pages, the 5-way
+  moves around the notes. **N** new note, **F** filter, **Menu** for refresh,
+  connect again and disconnect.
+- **A note:** the text in Patrick Hand, checklist items with letter keys
+  (press one to tick or untick it; the change goes to Memos), pictures from
+  the note shown inline, its tags and place, and its attachments (PDFs and
+  other documents open in the reader, pictures in the image viewer; each is
+  downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
+  pins, page keys scroll a long note.
+- **Editor:** a full page with a toolbar at the bottom: List, Check, Num,
+  Head, *I*, **B**, # Tag and Save. ▼ from the last line moves to the
+  toolbar, ◀ ▶ choose, Press applies, ▲ goes back to the text. Shortcuts:
+  Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
+  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it. Alt + the top
+  row types 1–0 here. New notes are **private** unless you change it. Back
+  asks whether to save.
+- **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
+  are Memos filters; place and "with attachments" are picked out on the
+  Kindle (Memos v0.31 can't filter by them).
+- **Offline:** the last list of notes is kept on the Kindle
+  (`settings/gzreader-notes.json`); new notes, edits, ticks and pins made
+  without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
+  reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
+  Wi‑Fi up while it's open (Wi‑Fi only when needed).
 
 ## Subtitles
 

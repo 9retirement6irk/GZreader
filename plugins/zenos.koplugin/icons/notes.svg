@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800px" height="800px" viewBox="0 0 36 36" fill="none" stroke="#000000" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <title>notes</title>
+    <path d="M7.5 6.75h21a1.25 1.25 0 0 1 1.25 1.25v14.5l-7.25 7.25H7.5a1.25 1.25 0 0 1-1.25-1.25V8a1.25 1.25 0 0 1 1.25-1.25z" transform="rotate(-4 18 18)"/>
+    <path d="M29.75 22.5h-6a1.25 1.25 0 0 0-1.25 1.25v6" transform="rotate(-4 18 18)"/>
+    <path d="M11 13.5h14M11 18h14M11 22.5h8" transform="rotate(-4 18 18)"/>
+    <path d="M14.5 4.5h7v4h-7z" transform="rotate(-4 18 18)"/>
+</svg>

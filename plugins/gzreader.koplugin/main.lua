@@ -186,6 +186,10 @@ function Grimmory:onDispatcherRegisterActions()
         category = "none", event = "ShowGrimmoryLibrary", title = _("Grimmory library"),
         general = true,
     })
+    Dispatcher:registerAction("gzreader_notes", {
+        category = "none", event = "ShowGzNotes", title = _("Notes (Memos)"),
+        general = true,
+    })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true,
@@ -1165,6 +1169,13 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     -- open at once: lists come from their saved copies while Wi-Fi connects
     Mod.Browser:new(self):show()
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
+    return true
+end
+
+--- The Notes tab (ZenOS's tab bar): Memos notes as sticky notes.
+function Grimmory:onShowGzNotes(touchmenu)
+    closeTouchMenu(touchmenu)
+    require("gzreader_notes").show(self)
     return true
 end
 
