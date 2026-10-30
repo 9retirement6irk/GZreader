@@ -76,6 +76,10 @@ function Grimmory:init()
     end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
+    if not Grimmory.audio_checked then
+        Grimmory.audio_checked = true
+        pcall(function() require("gzreader_audioengine").stopStrayAtStart() end)
+    end
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }

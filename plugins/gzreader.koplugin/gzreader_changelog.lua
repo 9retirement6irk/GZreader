@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.9",
+        changes = {
+            "Fixed: after GZreader restarted (for example to install an update) while an audiobook was playing or paused, its audio player kept running in the background. The Kindle 3 can only play one thing at a time, so audiobooks and Test audiobook playback then failed with \"no working player found\". GZreader now stops a leftover player when it starts, and again before playing or testing.",
+            "Test audiobook playback no longer erases a player that worked before when it can't find one this time.",
+        },
+    },
+    {
         version = "1.3.8",
         changes = {
             "Fixed: when the audio player quit as soon as it started, an audiobook resumed partway through showed \"The end of the audiobook\" and its listening position went back to the start. Now GZreader says the audio didn't play, keeps your place and writes what the player said to the diagnostic log.",

@@ -138,9 +138,38 @@ local function alive(pid)
 end
 Engine.alive = alive -- injectable for tests
 
+--- Stop players left from an earlier run: GZreader restarted (an update, for
+--- example) while one was playing or paused, so `current` forgot it. The
+--- Kindle 3's sound device takes one player at a time, so a leftover one
+--- makes every later play fail. Only GZreader runs gst-launch (Amazon's own
+--- player is audioServer).
+function Engine.stopStray()
+    if current then return end
+    local pid = Engine.pid()
+    if pid and Engine.alive(pid) then
+        Log.warn("audio: stopping a player left from before", pid)
+        run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
+    end
+    os.remove(PID_FILE)
+    run("for p in $(pidof gst-launch-0.10 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1")
+end
+
+--- At GZreader's start: only the player it started itself (cheap, no shell
+--- unless there is one).
+function Engine.stopStrayAtStart()
+    if current then return end
+    local pid = Engine.pid()
+    if pid and Engine.alive(pid) then
+        Log.warn("audio: stopping a player left running before the restart", pid)
+        run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
+    end
+    if pid then os.remove(PID_FILE) end
+end
+
 --- Start playing `src` with `p`. Returns true, position started at (ms).
 function Engine.play(p, src)
     Engine.stop()
+    Engine.stopStray()
     os.remove(LOG_FILE)
     os.remove(PID_FILE)
     local cmd, started_ms = Engine.command(p, src)
@@ -247,6 +276,8 @@ end
 function Engine.test(on_done)
     if Engine.testing then return end
     Engine.testing = true
+    Engine.stop()
+    Engine.stopStray()
     local InfoMessage = require("ui/widget/infomessage")
     local ConfirmBox = require("ui/widget/confirmbox")
     local srcs = Engine.testSources()
@@ -264,7 +295,12 @@ function Engine.test(on_done)
     local function finish()
         Engine.testing = false
         Engine.stop()
-        G_reader_settings:saveSetting("gzreader_audio_players", chosen)
+        -- Keep an earlier working choice for a format nothing worked for this
+        -- time (a busy sound device shouldn't undo a setup that worked).
+        local saved = {}
+        for k, v in pairs(G_reader_settings:readSetting("gzreader_audio_players") or {}) do saved[k] = v end
+        for k, v in pairs(chosen) do saved[k] = v end
+        G_reader_settings:saveSetting("gzreader_audio_players", saved)
         Log.info("audio test result", "mp3=" .. tostring(chosen.mp3), "aac=" .. tostring(chosen.aac))
         UIManager:show(InfoMessage:new{ text = _("Audio test finished.") .. "\n\n"
             .. T(_("MP3: %1\nM4B / AAC: %2"), chosen.mp3 or _("no working player found"), chosen.aac or _("no working player found"))
