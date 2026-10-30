@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.6",
+        changes = {
+            "Downloads → Audiobooks now lists your downloaded audiobooks by title, with how far you've listened. Choose one to open the player. Before, it showed GZreader's storage instead: a folder named after the book's number holding thousands of 15-second audio pieces, which froze the Kindle when opened.",
+            "Audiobooks are now kept in a hidden folder, so file lists, folder covers and Search books on this Kindle no longer go through those audio pieces. Audiobooks you've already downloaded are moved there once when GZreader starts. Nothing is downloaded again and your listening position is kept.",
+            "You can now delete a downloaded audiobook: Downloads → Audiobooks → Delete an audiobook from this Kindle. Grimmory keeps it and your listening position.",
+            "Fixed: deleting an unfinished audiobook (after a restart) didn't stop its conversion still running in the background.",
+        },
+    },
+    {
         version = "1.3.5",
         changes = {
             "While an audiobook is playing or paused, the Home menu shows \"Now playing: title\" (or \"Audiobook paused: title\"). It brings back the player, so you can pause or stop it without going through the Grimmory tab.",

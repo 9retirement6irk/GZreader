@@ -2,8 +2,12 @@
 Grimmory audiobooks on the Kindle: download, listen, chapters, sleep timer,
 progress synced with Grimmory's own audiobook progress (the web player's).
 
-Storage: <GZreader folder>/Audiobooks/<book id>/ with the audio file(s) and
-audiobook.json (Grimmory's info: duration, chapters, tracks).
+Storage: <GZreader folder>/.audiobooks/<book id>/ with the audio file(s) and
+audiobook.json (Grimmory's info: duration, chapters, tracks). Hidden: a long
+book is thousands of 15-second chunk files, which file lists, folder covers
+and file search would otherwise walk through. The visible
+<GZreader folder>/Audiobooks folder stays empty; opening it in a file list
+shows the downloaded audiobooks instead (gzreader_abfolder.lua).
 
 Grimmory progress for audiobooks (PUT /api/v1/app/books/{id}/progress):
   fileProgress = { bookFileId, positionData = "<ms>", positionHref = "<track>",
@@ -71,8 +75,11 @@ local function mkdirp(path)
     end
 end
 
+local Folder = require("gzreader_abfolder")
+Audiobook.STORE = Folder.STORE -- hidden; see the note at the top
+
 function Audiobook.dir(plugin, book_id)
-    return plugin:libraryDir() .. "/Audiobooks/" .. tostring(book_id)
+    return plugin:libraryDir() .. "/" .. Audiobook.STORE .. "/" .. tostring(book_id)
 end
 
 local function extOf(name, fallback)
@@ -264,9 +271,9 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         if text and text:match("^done") then
             local c = readChunks(dir, t)
             if not c then return finish(false, "no index") end
+            before = before + (t.size or lfs.attributes(dir .. "/" .. t.file, "size") or 0)
             os.remove(dir .. "/" .. t.file) -- the M4B itself isn't needed any more
             os.remove(prog); os.remove(prog .. ".exit")
-            before = before + (t.size or lfs.attributes(dir .. "/" .. t.file, "size") or 0)
             return nextTrack()
         end
         local ef = io.open(prog .. ".exit", "rb")
@@ -379,6 +386,7 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
             plugin.store.audiobooks = plugin.store.audiobooks or {}
             plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
             plugin:save()
+            pcall(Folder.ensureEntry, plugin)
             pcall(require("gzreader_recovery").audioDone, plugin, summary.id)
             on_done(Audiobook.load(plugin, summary.id))
         end)
@@ -869,6 +877,84 @@ function Audiobook.downloaded(plugin)
     end
     table.sort(list, function(a, b) return a.updated > b.updated end)
     return list
+end
+
+--- Delete a downloaded audiobook from the Kindle (Grimmory keeps it and
+--- the listening position).
+function Audiobook.delete(plugin, book_id)
+    local cur = Audiobook.current
+    if cur and tostring(cur.book.id) == tostring(book_id) then cur:stop() end
+    local dir = Audiobook.dir(plugin, book_id)
+    pcall(function() require("gzreader_recovery").stopConversions(dir) end)
+    if lfs.attributes(dir, "mode") == "directory" then
+        ffiutil.purgeDir(dir)
+    end
+    if plugin.store.audiobooks then
+        plugin.store.audiobooks[book_id] = nil
+        plugin.store.audiobooks[tonumber(book_id) or book_id] = nil
+        plugin.store.audiobooks[tostring(book_id)] = nil
+    end
+    plugin:save()
+    Log.info("audiobook deleted", book_id)
+end
+
+--- The downloaded audiobooks: pick one to listen to (Downloads → Audiobooks).
+function Audiobook.showDownloaded(plugin)
+    local menu
+    local function build()
+        local items = {}
+        local list = Audiobook.downloaded(plugin)
+        for _i, e in ipairs(list) do
+            local playing = Audiobook.current and Audiobook.current.book.id == e.book.id
+            items[#items + 1] = {
+                text = (playing and "▶ " or "") .. (e.book.title or "?"),
+                mandatory = (e.pos and e.pos > 0) and (Audiobook.fmt(e.pos) .. " / " .. Audiobook.fmt(Audiobook.total(e.book)))
+                    or Audiobook.fmt(Audiobook.total(e.book)),
+                callback = function()
+                    UIManager:close(menu)
+                    Audiobook.open(plugin, e.book)
+                end,
+            }
+        end
+        if #items == 0 then
+            items[1] = { text = _("No audiobooks on this Kindle yet. Download them from the Grimmory tab → Audiobooks."),
+                select_enabled = false }
+        else
+            items[#items].separator = true
+            items[#items + 1] = { text = _("Delete an audiobook from this Kindle…"), callback = function()
+                local buttons = {}
+                local dialog
+                for _i, e in ipairs(list) do
+                    buttons[#buttons + 1] = { { text = e.book.title or "?", align = "left", callback = function()
+                        UIManager:close(dialog)
+                        UIManager:show(ConfirmBox:new{
+                            text = T(_("Delete the audiobook “%1” from this Kindle?\n\nGrimmory keeps it and your listening position."),
+                                e.book.title or "?"),
+                            ok_text = _("Delete"),
+                            ok_callback = function()
+                                Audiobook.delete(plugin, e.book.id)
+                                menu:switchItemTable(nil, build())
+                            end,
+                        })
+                    end } }
+                end
+                buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
+                dialog = ButtonDialog:new{ title = _("Delete which audiobook?"), buttons = buttons }
+                UIManager:show(dialog)
+            end }
+        end
+        return items
+    end
+    menu = Menu:new{
+        title = _("Audiobooks"),
+        item_table = build(),
+        covers_fullscreen = true,
+        is_borderless = true,
+        is_popout = false,
+        title_bar_fm_style = true,
+    }
+    UIManager:show(menu)
+    return menu
 end
 
 return Audiobook

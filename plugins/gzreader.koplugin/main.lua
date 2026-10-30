@@ -99,6 +99,8 @@ function Grimmory:init()
             require("common/cover_disk_cache").on_new_size = function() Warm.schedule(self, 30) end
         end)
         pcall(self.restoreFromManifest, self)
+        -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
+        pcall(function() require("gzreader_abfolder").start(self) end)
         -- downloads / audiobook preparing cut short last time: ask what to do
         pcall(function() require("gzreader_recovery").schedule(self) end)
         if self.api:isPaired() then

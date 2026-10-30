@@ -76,7 +76,7 @@ function R.audioDone(plugin, book_id) R.done(plugin, "audio:" .. tostring(book_i
 function R.stopConversions(dir)
     if not dir then return end
     os.execute(string.format(
-        "for p in $(ps w 2>/dev/null | grep '[g]rimmory_mp4.lua' | grep -F %q | awk '{print $1}'); do kill $p; done >/dev/null 2>&1",
+        "for p in $(ps w 2>/dev/null | grep '[g]zreader_mp4.lua' | grep -F %q | awk '{print $1}'); do kill $p; done >/dev/null 2>&1",
         dir))
 end
 
