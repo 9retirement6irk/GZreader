@@ -39,9 +39,16 @@ local ICONS = { pin = "\u{F04CE}", place = "\u{F124}", attach = "\u{F0224}", pdf
 -- handwriting (Patrick Hand, SIL Open Font License) for the notes themselves;
 -- it has one weight, so "bold" is KOReader's synthetic bold (TextWidget bold)
 local HAND = "./fonts/handwriting/PatrickHand-Regular.ttf"
-local function hand(size)
-    local ok, face = pcall(Font.getFace, Font, HAND, size)
+local HAND_BOLD = nil -- a real bold file; nil: KOReader's synthetic bold
+local function hand(size, bold)
+    local ok, face = pcall(Font.getFace, Font, (bold and HAND_BOLD) or HAND, size)
     return ok and face or Font:getFace("cfont", size)
+end
+local function fakeBold() return HAND_BOLD == nil end
+
+--- Choose the handwriting files (font comparison screenshots).
+function M.useFont(regular, bold)
+    HAND, HAND_BOLD = regular, bold
 end
 
 local function icon(name, size)
@@ -230,7 +237,7 @@ function Board:note(m, key, w, h, look)
             VerticalSpan:new{ width = S(6) },
             body,
             VerticalSpan:new{ width = S(4) },
-            TextWidget:new{ text = tagLine(m), face = hand(16), bold = true, max_width = inner_w },
+            TextWidget:new{ text = tagLine(m), face = hand(16, true), bold = fakeBold(), max_width = inner_w },
             footerRow(m, 13),
         },
     }
@@ -291,6 +298,38 @@ function Board:build()
             footer,
         },
     }
+end
+
+--- A sheet of handwriting fonts and weights at the sizes the notes use.
+local Sheet = InputContainer:extend{ covers_fullscreen = true }
+function Sheet:init()
+    local sw, sh = Screen:getWidth(), Screen:getHeight()
+    self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    local g = VerticalGroup:new{ align = "left" }
+    local function face(path, size) local ok, f = pcall(Font.getFace, Font, path, size); return ok and f end
+    local rows = {
+        { "Patrick Hand (one weight)", "./fonts/handwriting/PatrickHand-Regular.ttf" },
+        { "Patrick Hand, synthetic bold", "./fonts/handwriting/PatrickHand-Regular.ttf", true },
+        { "Kalam Light", "./fonts/handwriting/Kalam-Light.ttf" },
+        { "Kalam Regular", "./fonts/handwriting/Kalam-Regular.ttf" },
+        { "Kalam Bold", "./fonts/handwriting/Kalam-Bold.ttf" },
+    }
+    g[#g + 1] = VerticalSpan:new{ width = S(10) }
+    for _i, r in ipairs(rows) do
+        g[#g + 1] = TextWidget:new{ text = r[1], face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+        for _j, size in ipairs({ 16, 19, 25 }) do
+            g[#g + 1] = TextWidget:new{ text = size == 16 and "#travel #hiking  ☐ wool socks  Oct 25" or
+                (size == 19 and "Trail plan for the Georgia section." or "Permit is booked."),
+                face = face(r[2], size) or Font:getFace("cfont", size), bold = r[3], max_width = sw - S(30) }
+        end
+        g[#g + 1] = VerticalSpan:new{ width = S(14) }
+    end
+    self[1] = FrameContainer:new{ width = sw, height = sh, bordersize = 0, padding = S(15), background = Blitbuffer.COLOR_WHITE, g }
+end
+function M.showSheet()
+    local w = Sheet:new{}
+    UIManager:show(w, "full")
+    return w
 end
 
 function M.showBoard(opts)
@@ -366,7 +405,7 @@ function Note:init()
     end
     flush()
     add(VerticalSpan:new{ width = S(14) })
-    add(iconText("tag", tagLine(m), 17, { face = hand(20), bold = true }))
+    add(iconText("tag", tagLine(m), 17, { face = hand(20, true), bold = fakeBold() }))
     if m.place then
         add(VerticalSpan:new{ width = S(6) })
         add(iconText("place", m.place, 17))
