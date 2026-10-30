@@ -88,14 +88,41 @@ local function apply_context_menu()
         return text:sub(1, char_len), suffix:sub(3)
     end
 
+    -- GZreader: letter shortcuts (Q, W, E…) on keyboard Kindles, shown in a
+    -- square in front of each button like the Home and Reading menus.
+    local SHORTCUT_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+        "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M" }
+    local SHORTCUT_SIZE = Device.screen:scaleBySize(22)
+    local SHORTCUT_GAP = Device.screen:scaleBySize(6)
+    local function shortcuts_enabled()
+        return Device:hasKeyboard() and not Device:isTouchDevice()
+    end
+
+    local function add_key_shortcuts(dialog, keyed)
+        if #keyed == 0 then return end
+        dialog.key_events = dialog.key_events or {}
+        for i, button in ipairs(keyed) do
+            local name = "GzShortcut" .. i
+            dialog.key_events[name] = { { SHORTCUT_KEYS[i] } }
+            dialog["on" .. name] = function()
+                if button.enabled ~= false and button.onTapSelectButton then button:onTapSelectButton() end
+                return true
+            end
+        end
+    end
+
     local function align_button_dialog_icons(dialog)
         local button_rows = dialog and dialog.buttontable and dialog.buttontable.buttons_layout
         if type(button_rows) ~= "table" then return dialog end
+        local keyed = {}
+        local with_keys = shortcuts_enabled()
 
         for _i, row in ipairs(button_rows) do
             for _j, button in ipairs(row) do
                 local old_label = button.label_widget
                 local label_container = button.label_container
+                local key = with_keys and button.text and SHORTCUT_KEYS[#keyed + 1]
+                if key then keyed[#keyed + 1] = button end
                 if button.text and old_label and label_container and label_container.dimen then
                     local display_text = button.checked_func and button:getDisplayText() or button.text
                     local glyph, label = split_inline_icon(display_text)
@@ -103,7 +130,8 @@ local function apply_context_menu()
                     local fgcolor = old_label.fgcolor
                     local bold = old_label.bold
                     local label_width = math.max(1, label_container.dimen.w
-                        - CONTEXT_ICON_COLUMN_WIDTH - CONTEXT_ICON_GAP)
+                        - CONTEXT_ICON_COLUMN_WIDTH - CONTEXT_ICON_GAP
+                        - (key and (SHORTCUT_SIZE + SHORTCUT_GAP) or 0))
                     local icon_widget = glyph and TextWidget:new{
                         text = glyph,
                         face = face,
@@ -133,14 +161,40 @@ local function apply_context_menu()
                         HorizontalSpan:new{ width = CONTEXT_ICON_GAP },
                         text_widget,
                     }
+                    if key then
+                        local Menu = require("ui/widget/menu")
+                        table.insert(label_container[1], 1, HorizontalSpan:new{ width = SHORTCUT_GAP })
+                        table.insert(label_container[1], 1, Menu.getItemShortCutIcon(nil,
+                            Geom:new{ w = SHORTCUT_SIZE, h = SHORTCUT_SIZE }, key, "square"))
+                    end
                 end
             end
         end
+        add_key_shortcuts(dialog, keyed)
         return dialog
     end
 
     local function new_context_menu_dialog(options)
-        local dialog = align_button_dialog_icons(ButtonDialog:new(options))
+        -- GZreader's "Manage <book>" (Home menu): Open and Delete go at the
+        -- top of the next book menu. One-shot; GZreader clears it a tick later.
+        local prepend = rawget(_G, "__GZ_CONTEXT_PREPEND")
+        local dialog
+        if type(prepend) == "table" and type(options.buttons) == "table" then
+            rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+            for i = #prepend, 1, -1 do
+                local spec = prepend[i]
+                table.insert(options.buttons, 1, {{
+                    text = spec.text,
+                    align = "left",
+                    callback = function()
+                        UIManager:close(dialog)
+                        UIManager:nextTick(spec.callback)
+                    end,
+                }})
+            end
+            apply_button_group_font(options.buttons)
+        end
+        dialog = align_button_dialog_icons(ButtonDialog:new(options))
         local cover = options._zen_cover_widget
         if cover then
             local orig_onShow = dialog.onShow

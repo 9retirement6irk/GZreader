@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.2",
+        changes = {
+            "Highlighting a book and pressing Menu now shows one entry, Manage \"book title\", instead of separate Open, Delete and More options entries. It opens the book's options with Open and Delete from this Kindle added at the top.",
+            "Book option menus have letter shortcuts on the Kindle Keyboard: Q, W, E and so on, shown in a box in front of each option, like the Home and Reading menus. This includes their sub-menus, such as Add to collection, Read status and Edit.",
+        },
+    },
+    {
         version = "1.3.1",
         changes = {
             "The update download can't be closed any more. Keys and taps are ignored until it's installed and GZreader restarts, so an update can't be left half done.",

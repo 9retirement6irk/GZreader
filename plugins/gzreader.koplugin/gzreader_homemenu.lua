@@ -7,6 +7,7 @@ A plain list like the Reading menu: every entry has its letter key.
 local Menu = require("ui/widget/menu")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
+local Log = require("gzreader_log")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 local T = require("ffi/util").template
@@ -151,6 +152,20 @@ function HomeMenu.showSort()
     UIManager:show(dialog)
 end
 
+--- ZenOS's menu for the highlighted book, with Open and Delete at the top.
+function HomeMenu.manage(book, open, delete)
+    local ok, icons = pcall(require, "common/inline_icon_map")
+    local function label(icon, text) return (ok and icon) and (icon .. "  " .. text) or text end
+    rawset(_G, "__GZ_CONTEXT_PREPEND", {
+        { text = label(icons and icons.reading, _("Open")), callback = open },
+        { text = label(icons and icons.delete, _("Delete from this Kindle")), callback = delete },
+    })
+    local okc, err = pcall(book.context)
+    if not okc then Log.warn("book menu:", err) end
+    -- not picked up (the menu didn't open): don't leak into the next one
+    UIManager:nextTick(function() rawset(_G, "__GZ_CONTEXT_PREPEND", nil) end)
+end
+
 function HomeMenu.items(plugin)
     local items = {
         { text = _("Grimmory library"), callback = function() plugin:onShowGrimmoryLibrary() end },
@@ -190,15 +205,19 @@ function HomeMenu.items(plugin)
     local book = HomeMenu.context
     if book then
         local title = bookTitle(book.path)
-        list[#list + 1] = { text = T(_("Open “%1”"), title), callback = function()
+        local function open()
             local ReaderUI = require("apps/reader/readerui")
             ReaderUI:showReader(book.path)
-        end }
-        list[#list + 1] = { text = T(_("Delete “%1” from this Kindle"), title), callback = function()
-            HomeMenu.deleteBook(plugin, book.path)
-        end }
+        end
+        local function delete() HomeMenu.deleteBook(plugin, book.path) end
         if book.context then
-            list[#list + 1] = { text = _("More options for this book"), callback = book.context, separator = true }
+            -- one entry: ZenOS's book menu, with Open and Delete added at the top
+            list[#list + 1] = { text = T(_("Manage “%1”"), title), separator = true, callback = function()
+                HomeMenu.manage(book, open, delete)
+            end }
+        else
+            list[#list + 1] = { text = T(_("Open “%1”"), title), callback = open }
+            list[#list + 1] = { text = T(_("Delete “%1” from this Kindle"), title), callback = delete, separator = true }
         end
     end
     local Tasks = require("gzreader_tasks")
