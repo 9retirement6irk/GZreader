@@ -101,6 +101,38 @@ function Memos:list(filter, page_token, page_size)
     return { memos = out, next = data.nextPageToken ~= "" and data.nextPageToken or nil }
 end
 
+--- Up to `max` notes, fetched a page at a time (Memos sends at most 1000
+--- per page), with your tags and how many notes have each:
+--- { memos = {…}, tags = { tag = count } } or nil, err.
+function Memos:listAll(filter, max)
+    max = max or 100
+    local out, token = {}, nil
+    repeat
+        local page, err = self:list(filter, token, math.min(200, max - #out))
+        if not page then return nil, err end
+        for _i, m in ipairs(page.memos) do out[#out + 1] = m end
+        token = page.next
+    until not token or #out >= max
+    local res = { memos = out }
+    res.tags = self:tagCounts() -- nil if this Memos doesn't say
+    return res
+end
+
+--- { tag = number of notes } for all your tags (Memos' user stats), or nil.
+function Memos:tagCounts()
+    local name = self.store.user_name
+    if not name then
+        local user = self:me()
+        name = user and user.name
+        if not name then return nil end
+    end
+    local _, data, err = self:request("GET", "/" .. name .. ":getStats")
+    if err or type(data) ~= "table" or type(data.tagCount) ~= "table" then return nil end
+    local t = {}
+    for tag, n in pairs(data.tagCount) do t[tag] = tonumber(n) or 0 end
+    return t
+end
+
 --- Only what the Notes tab uses (the cache stays small).
 function Memos.slim(m)
     local atts = {}

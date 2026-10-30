@@ -78,9 +78,12 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Connect to Grimmory
 
-Open the **Grimmory** tab. All Grimmory options (connection, sync, bookmarks,
-read aloud, diagnostic log, updates) are in **Settings → GZreader**
-(also KOReader → Tools → Grimmory).
+Open the **Grimmory** tab. Grimmory's options (connection, sync, bookmarks,
+highlights, auto-download shelf) are in **Settings → Connections → Grimmory**
+(also KOReader → Tools → Grimmory); Memos (the Notes tab) is in **Settings →
+Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi only
+when needed and the diagnostic log in Settings → General; updates in Settings
+→ General → Updates.
 
 - **Connect with QR code**: the Kindle shows a QR code. Scan it with your
   phone; a sign-in page opens, served by the Kindle itself over your Wi‑Fi.
@@ -158,6 +161,14 @@ API to `/api` are found too.
 - **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).
+- **Settings → Connections → Memos (Notes):** the Memos connection (connect again, disconnect);
+  **Sync** all notes or only notes with chosen tags (Memos has no spaces or
+  notebooks, so tags are the way to pick; the list comes from Memos' tag
+  counts, `users/<id>:getStats`, and the filter is `tag in [...]`);
+  **Storage used** with *Free up space* (downloaded attachments, kept
+  notes); **Notes kept on the Kindle** (50–500, fetched a page at a time);
+  **Attachment storage limit** (10–100 MB or none; the attachments used
+  longest ago go first).
 - **Offline:** the last list of notes is kept on the Kindle
   (`settings/gzreader-notes.json`); new notes, edits, ticks and pins made
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
@@ -211,7 +222,7 @@ working.
 ## Shelves and auto-download
 
 Grimmory tab → **Shelves** lists your shelves and smart (magic) shelves.
-Settings → GZreader → **Auto-download shelf** picks one: books on it that
+Settings → Connections → Grimmory → **Auto-download shelf** picks one: books on it that
 aren't on the Kindle download in the background through the download queue
 when Wi-Fi connects (at most every 30 minutes) and with "Download new books
 from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
@@ -269,7 +280,7 @@ picture pages in the spine then fell back to percentages.
 
 For freezes and hard reboots, where the Kindle's own log may be lost:
 GZreader can report to a feed (Tianji-style `…/open/feed/<id>/send`,
-`/state/upsert`, `/state/resolve`), set in Settings → GZreader → Remote
+`/state/upsert`, `/state/resolve`), set in Settings → General → Remote
 debugging or by a `gzreader-remote.txt` file on the USB drive with the feed
 address on its first line. The address is not in the code (the project is
 public). `gzreader_remote.lua` queues messages as JSON files in
@@ -380,7 +391,7 @@ settings → Slower / Faster). The diagnostic log records every step.
 
 ## Audiobooks (experimental)
 
-Grimmory tab → Audiobooks, or Settings → GZreader → Audiobooks.
+Grimmory tab → Audiobooks.
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
 
@@ -453,7 +464,7 @@ reading. In KOReader it showed the custom image everywhere.
 
 ## Wi-Fi only when needed
 
-On by default (Settings → GZreader → Wi-Fi only when needed). GZreader turns
+On by default (Settings → General → Wi-Fi only when needed). GZreader turns
 Wi-Fi on by itself when it needs the network and off again after a minute
 unused, as long as nothing still needs it (an open Grimmory browser, a
 download or its queue, the library index, a QR screen, an update download).
@@ -475,7 +486,7 @@ Wi-Fi GZreader turned on.
 - Lua is shipped as precompiled bytecode (see Rebuild the package): no parsing
   at start (~4x faster loading overall, up to 15x for big files).
 
-- Covers are pre-sized (Settings → GZreader → Pre-size covers). ZenOS scales
+- Covers are pre-sized (Settings → Interface → Pre-size covers). ZenOS scales
   every cover to the exact size of where it's shown; on the Kindle 3 that took
   ~4 s of CPU per Home screen (the cover strip), and its memory cache starts
   empty after every restart. GZreader keeps each final-size cover as a raw
@@ -501,8 +512,8 @@ Wi-Fi GZreader turned on.
 
 ## Diagnostic log
 
-**Send it to your phone:** Settings → GZreader → Send diagnostic log
-to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
+**Send it to your phone:** Diagnostics in the Home or Reading menu, or Settings →
+General → Send diagnostic log to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
 the file wherever you need it.
 
 

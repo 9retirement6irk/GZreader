@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.5.2",
+        changes = {
+            "Settings: Grimmory is now Settings → Connections, with Grimmory and Memos (Notes) in it.",
+            "New: Settings → Connections → Memos (Notes). Memos connection (who and which server; connect again with a QR code or by typing; disconnect), Sync (all notes, or only notes with the tags you choose), Storage used (notes and attachments kept on the Kindle, with Free up space to remove downloaded attachments or the kept notes), Notes kept on the Kindle (50, 100, 200 or 500) and Attachment storage limit (10, 25, 50 or 100 MB, or no limit; past it, the attachments used longest ago are removed).",
+            "Memos has no spaces or notebooks: tags are how it groups notes, so choosing tags under Sync is how to keep part of your notes on the Kindle. The tag list shows all your tags with how many notes have each, including notes that aren't on the Kindle.",
+            "The Grimmory and Notes tabs now have ZenOS's status bar at the top (clock, Wi-Fi, battery) like Home and Downloads, and no close button.",
+            "Fixed: on Home, pressing ▼ on the 5-way from the reading stats framed the whole Recent section before reaching the books. It now goes to the Recent / Search / Series tabs, then the books, the same way ▲ comes back.",
+        },
+    },
+    {
         version = "1.5.1",
         changes = {
             "Fixed: the Notes tab stayed empty for a Memos account with more than a few notes. Memos answered within seconds, but the notes were handed back from GZreader's background process through a pipe that holds about 64 KB, and a bigger list got stuck until it timed out after two minutes. Big results are now read as they arrive (this also covers the update check and cover pre-sizing, which could hit the same limit).",

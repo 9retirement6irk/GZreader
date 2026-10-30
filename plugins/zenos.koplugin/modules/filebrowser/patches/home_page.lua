@@ -3367,6 +3367,9 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
         local module_cfg = type(dcfg.modules) == "table" and dcfg.modules[comp.id] or nil
         local row_focus_base = i * 10
         local row_focus_actions = {}
+        -- GZreader: set when the row gives the 5-way its own stops (the
+        -- Recent / Series strip: its tabs and books)
+        local own_focus_targets = false
         local content_h = h
         if content_h < 1 then content_h = 1 end
         local row_ctx = {
@@ -3422,6 +3425,7 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
             end,
             registerHomeFocusTarget = function(target, widget)
                 if not target then return widget end
+                own_focus_targets = true
                 target.component_id = comp.id
                 target.row_order = tonumber(target.row_order) or row_focus_base + (tonumber(target.subrow) or 1)
                 target.col = tonumber(target.col) or 1
@@ -3429,9 +3433,11 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                 return wrap_home_focus_target(menu, target, widget)
             end,
             prepareHomeFocusTarget = function(target, widget)
+                if target then own_focus_targets = true end
                 return prepare_home_focus_target(target, widget, comp.id, row_focus_base)
             end,
             activateStripFocusTargets = function(targets)
+                if type(targets) == "table" and #targets > 0 then own_focus_targets = true end
                 activate_strip_focus_targets(comp.id, targets)
             end,
             clearStripFocusTargets = clear_strip_focus_targets,
@@ -3459,7 +3465,12 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                     and comp.id ~= "quotes" and comp.id ~= "reading_goals" then
                 final_widget = add_widget_settings_hold(final_widget, comp.id, content_w, h)
             end
-            final_widget = wrap_home_focus_target(menu, {
+            -- The whole row is one 5-way stop, unless the row has its own
+            -- stops and nothing to do as a whole: then that stop only sat
+            -- between the row above and the strip's tabs, framing the whole
+            -- strip on the way down (GZreader 1.5.2).
+            local row_stop = not (own_focus_targets and not row_focus_actions.activate)
+            final_widget = not row_stop and final_widget or wrap_home_focus_target(menu, {
                 key = "widget:" .. tostring(comp.id),
                 row_order = row_focus_base,
                 col = 0,

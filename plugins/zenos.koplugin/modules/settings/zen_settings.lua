@@ -132,17 +132,31 @@ function M.build(plugin)
         interface_item,
         IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
-        -- GZreader: the Grimmory plugin's settings (connection, sync,
-        -- audiobooks), also under KOReader → Tools → Grimmory.
+        -- GZreader: Connections: the Grimmory plugin's settings (connection,
+        -- sync, audiobooks; also under KOReader → Tools → Grimmory) and
+        -- Memos (the Notes tab: connection, synced tags, storage, limits).
         IconItem.decorate({
-            text = _("Grimmory"),
+            text = _("Connections"),
             _zen_settings_root = "gzreader",
-            sub_item_table_func = function()
-                local g = gzreader()
-                if g and type(g.menuItems) == "function" then return g:menuItems() end
-                return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
-            end,
-        }, icons.sync),
+            sub_item_table = {
+                IconItem.decorate({
+                    text = _("Grimmory"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.menuItems) == "function" then return g:menuItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.sync),
+                IconItem.decorate({
+                    text = _("Memos (Notes)"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.notesSettingsItems) == "function" then return g:notesSettingsItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.edit),
+            },
+        }, icons.connect),
         {
             text = _("KOReader"),
             icon_file = plugin_root .. "/icons/koreader.png",

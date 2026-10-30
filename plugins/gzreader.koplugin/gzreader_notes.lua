@@ -49,7 +49,8 @@ local S = function(px) return Screen:scaleBySize(px) end
 local Notes = {
     TAB_ID = "ct_notes",
     COLS = 2, ROWS = 3,
-    FETCH = 100,          -- notes fetched per refresh (newest, pinned first)
+    KEEP = 100,           -- notes fetched and kept (newest, pinned first); Settings → Notes
+    FILES_MB = 25,        -- attachments kept on the Kindle; Settings → Notes
     filter = { kind = "all" },
     notes = nil,          -- the list shown (cache, then fresh from Memos)
 }
@@ -59,6 +60,39 @@ local KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }
 function Notes.client(plugin)
     plugin.store.memos = plugin.store.memos or {}
     return Memos:new(plugin.store.memos)
+end
+
+--- Settings → Notes (kept when you disconnect).
+function Notes.prefs(plugin)
+    plugin.store.notes_prefs = plugin.store.notes_prefs or {}
+    local p = plugin.store.notes_prefs
+    p.keep = tonumber(p.keep) or Notes.KEEP
+    p.files_mb = tonumber(p.files_mb) or Notes.FILES_MB -- 0: no limit
+    return p
+end
+
+--- The tags chosen in Settings → Notes → Sync only these tags, or nil (all notes).
+function Notes.syncTags(plugin)
+    local t = plugin.store.memos and plugin.store.memos.sync_tags
+    return (type(t) == "table" and #t > 0) and t or nil
+end
+
+local function quote(v) return '"' .. tostring(v):gsub('[\\"]', "\\%0") .. '"' end
+
+--- The whole Memos filter: the synced tags (if chosen) and the board's filter.
+function Notes.query(plugin, f)
+    local parts = {}
+    local tags = Notes.syncTags(plugin)
+    if tags then
+        local q = {}
+        for _i, t in ipairs(tags) do q[#q + 1] = quote(t) end
+        parts[#parts + 1] = "tag in [" .. table.concat(q, ", ") .. "]"
+    end
+    local cel = Notes.cel(f)
+    if cel then parts[#parts + 1] = cel end
+    if #parts == 0 then return nil end
+    if #parts == 1 then return parts[1] end
+    return "(" .. table.concat(parts, ") && (") .. ")"
 end
 
 local function closeTop(w, mode) if w then UIManager:close(w, mode or "ui") end end
@@ -170,8 +204,9 @@ function Notes.refresh(plugin, on_done)
     local Async = require("gzreader_async")
     local store = plugin.store.memos
     local function fetch()
-        local cel = Notes.cel()
-        Async.run(client, function(c) return c:list(cel, nil, Notes.FETCH) end, function(res, err)
+        local query = Notes.query(plugin)
+        local keep = Notes.prefs(plugin).keep
+        Async.run(client, function(c) return c:listAll(query, keep) end, function(res, err)
             Notes.refreshing = false
             if not res then
                 Log.warn("notes: refresh failed:", tostring(err))
@@ -179,6 +214,7 @@ function Notes.refresh(plugin, on_done)
                 return on_done and on_done(false, err)
             end
             Notes.last_error = nil
+            if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
@@ -339,6 +375,49 @@ end
 
 Notes.fetching = {}
 
+--- What the Notes tab keeps on the Kindle: notes (bytes), attachments (bytes, files).
+function Notes.storage()
+    local notes = lfs.attributes(Memos.cachePath(), "size") or 0
+    local bytes, files = 0, 0
+    local dir = Memos.filesDir()
+    for name in lfs.dir(dir) do
+        if name ~= "." and name ~= ".." then
+            local size = lfs.attributes(dir .. "/" .. name, "size")
+            if size then bytes, files = bytes + size, files + 1 end
+        end
+    end
+    return notes, bytes, files
+end
+
+--- Keep downloaded attachments under Settings → Notes → limit: the ones
+--- used longest ago go first (never `keep`, the one just downloaded).
+function Notes.pruneFiles(plugin, keep)
+    local limit = Notes.prefs(plugin).files_mb * 1024 * 1024
+    if limit <= 0 then return 0 end
+    local dir = Memos.filesDir()
+    local list, total = {}, 0
+    for name in lfs.dir(dir) do
+        local path = dir .. "/" .. name
+        local a = name ~= "." and name ~= ".." and lfs.attributes(path)
+        if a and a.mode == "file" then
+            list[#list + 1] = { path = path, size = a.size, t = math.max(a.modification or 0, a.access or 0) }
+            total = total + a.size
+        end
+    end
+    table.sort(list, function(x, y) return x.t < y.t end)
+    local removed = 0
+    for _i, f in ipairs(list) do
+        if total <= limit then break end
+        if f.path ~= keep then
+            os.remove(f.path)
+            total = total - f.size
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then Log.info("notes: removed", removed, "old attachments (limit", Notes.prefs(plugin).files_mb, "MB)") end
+    return removed
+end
+
 --- Download an attachment in the background (only while Wi-Fi is up), then on_done().
 function Notes.fetchFile(plugin, att, on_done)
     local path = Memos.filePath(att)
@@ -349,6 +428,7 @@ function Notes.fetchFile(plugin, att, on_done)
     require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
         Notes.fetching[path] = nil
         if not got then Log.warn("notes: attachment not downloaded:", tostring(err)) end
+        if got then Notes.pruneFiles(plugin, path) end
         if got and on_done then on_done() end
     end, "notes: attachment")
 end
@@ -442,8 +522,12 @@ function Notes.reloadBoard(keep_page)
 end
 
 --- ZenOS's status row (clock, battery, Wi-Fi) in the title, like other tabs.
-function Notes.decorate(menu)
-    local zen = rawget(_G, "__ZEN_UI_PLUGIN")
+function Notes.decorate(menu, label)
+    -- ZenOS: __ZEN_UI_PLUGIN is only set while ZenOS sets itself up, so
+    -- after that the file manager's reference is the one to use (1.5.2: the
+    -- status row never showed and the title kept KOReader's close button).
+    local FileManager = require("apps/filemanager/filemanager")
+    local zen = (FileManager.instance and FileManager.instance.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
     if not (menu and menu.title_bar and zen) then return end
     local SharedState = require("common/shared_state")
     local createStatusRow = SharedState.get(zen, "createStatusRow")
@@ -453,12 +537,26 @@ function Notes.decorate(menu)
         createStatusRow = createStatusRow,
         createStatusRowCustomBack = SharedState.get(zen, "createStatusRowCustomBack"),
         repaintTitleBar = SharedState.get(zen, "repaintTitleBar"),
-        label = Notes.title(),
+        label = label or Notes.title(),
     })
+end
+
+--- Close GZreader's other tab views (the Grimmory tab, or the Notes tab
+--- itself when `keep` is Grimmory's): ZenOS opens an action tab on top of the
+--- one open, so switching between them stacked full-screen views (1.5.2).
+function Notes.closeOtherTabs(keep_id)
+    local stack = UIManager._window_stack or {}
+    local close = {}
+    for _i, w in ipairs(stack) do
+        local id = w.widget and w.widget._gz_navbar_tab_id
+        if id and id ~= keep_id and (id == Notes.TAB_ID or id == "ct_grimmory") then close[#close + 1] = w.widget end
+    end
+    for _i, widget in ipairs(close) do UIManager:close(widget) end
 end
 
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
+    Notes.closeOtherTabs(Notes.TAB_ID)
     if Notes.board and not Notes.board._gz_closed then
         Notes.reloadBoard(true)
         return Notes.board
@@ -736,6 +834,7 @@ function Notes.openAttachment(plugin, att)
     if att.link then return info(T(_("This attachment is a link:\n%1"), att.link)) end
     local path = Memos.filePath(att)
     local function open()
+        pcall(lfs.touch, path) -- used now: kept longest when space runs short
         if tostring(att.type):match("^image/") then
             local ImageViewer = require("ui/widget/imageviewer")
             local RenderImage = require("ui/renderimage")
@@ -755,7 +854,7 @@ function Notes.openAttachment(plugin, att)
     require("gzreader_net").run(function()
         require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
             UIManager:close(busy)
-            if got then open() else info(describe(err)) end
+            if got then Notes.pruneFiles(plugin, path); open() else info(describe(err)) end
         end, "notes: attachment")
     end, { reason = "a note's attachment" })
 end
@@ -1006,9 +1105,10 @@ function Notes.connect(plugin, server_input, token)
         return false, T(_("That doesn't look like a Memos server (%1)."), tostring(err))
     end
     local old = plugin.store.memos or {}
+    local same = old.server == server
     plugin.store.memos = { server = server, token = token, prefix = trial.store.prefix,
-        user = user.displayName ~= "" and user.displayName or user.username,
-        queue = old.server == server and old.queue or nil }
+        user = user.displayName ~= "" and user.displayName or user.username, user_name = user.name,
+        queue = same and old.queue or nil, sync_tags = same and old.sync_tags or nil }
     plugin:save()
     if old.server ~= server then os.remove(Memos.cachePath()); Notes.notes = nil end
     return true
@@ -1031,6 +1131,7 @@ function Notes.showConnect(plugin, again)
         onMenuSelect = function(_m, item) if item.callback then item.callback() end return true end,
     }
     menu.key_events.LeftButtonTap = nil
+    if not again then pcall(Notes.decorate, menu, _("Notes")) end
     Notes.connect_menu = menu
     UIManager:show(menu)
     return menu

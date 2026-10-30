@@ -133,6 +133,13 @@ def matcher(f):
         return lambda m: True
     tests = []
     for part in [p.strip() for p in f.split("&&")]:
+        while part.startswith("(") and part.endswith(")"):
+            part = part[1:-1].strip()
+        mm = re.fullmatch(r'tag in \[(.*)\]', part)
+        if mm:
+            wanted = json.loads("[" + mm.group(1) + "]")
+            tests.append(lambda m, wanted=wanted: any(t in m["tags"] for t in wanted))
+            continue
         mm = re.fullmatch(r'"((?:[^"\\]|\\.)*)" in tags', part)
         if mm:
             tag = json.loads('"%s"' % mm.group(1))
@@ -225,6 +232,12 @@ class H(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if p == "/auth/me":
             return self.send(200, {"user": {"name": "users/1", "username": "will", "displayName": "Will", "role": "HOST"}})
+        if p == "/users/1:getStats":
+            counts = {}
+            for m in STATE["memos"]:
+                for t in m["tags"]:
+                    counts[t] = counts.get(t, 0) + 1
+            return self.send(200, {"name": "users/1", "tagCount": counts, "totalMemoCount": len(STATE["memos"])})
         if p == "/memos":
             ok = matcher(q.get("filter"))
             if ok is None:

@@ -21,7 +21,7 @@ s[#s + 1] = { fn = function(E) print("[emu] after closing it: " .. E.top()) end,
 key("Back", 3)
 section("R", "interface")
 section("Y", "general")
-section("U", "grimmory")
+section("U", "connections") -- Grimmory and Memos (Notes)
 key("Back", 3)
 s[#s + 1] = { fn = function(E)
     G_reader_settings:saveSetting("gzreader_tts_volume", 10)

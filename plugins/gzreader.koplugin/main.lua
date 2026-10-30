@@ -1172,6 +1172,11 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     return true
 end
 
+--- Settings → Notes (ZenOS settings): connection, storage, synced tags, limits.
+function Grimmory:notesSettingsItems()
+    return require("gzreader_notesettings").items(self)
+end
+
 --- The Notes tab (ZenOS's tab bar): Memos notes as sticky notes.
 function Grimmory:onShowGzNotes(touchmenu)
     closeTouchMenu(touchmenu)

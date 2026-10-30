@@ -1,7 +1,7 @@
 --[[--
 Auto-download a Grimmory shelf ("Send to Kindle").
 
-Pick one of your Grimmory shelves (or smart shelves) in Settings → Grimmory.
+Pick one of your Grimmory shelves (or smart shelves) in Settings → Connections → Grimmory.
 Books added to it there download to this Kindle by themselves: when Wi-Fi
 connects (at most every 30 minutes) and with "Download new books from the
 shelf now". They go through the download queue in the background. Books

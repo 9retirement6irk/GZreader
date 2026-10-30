@@ -72,6 +72,9 @@ function Browser:bookItem(book, with_series_number)
 end
 
 function Browser:show()
+    -- the Notes tab, if it's open underneath (ZenOS opens action tabs on top)
+    local Notes = package.loaded["gzreader_notes"] -- (never opened: nothing to close)
+    if type(Notes) == "table" and Notes.closeOtherTabs then pcall(Notes.closeOtherTabs, Browser.TAB_ID) end
     self.menu = Menu:new{
         title = _("Grimmory"),
         item_table = self:rootItems(),
@@ -129,7 +132,11 @@ Browser.TAB_ID = "ct_grimmory"
 --- bar with `title` as its label, and a back arrow inside a sub-list.
 function Browser:decorate(title)
     local menu = self.menu
-    local zen = rawget(_G, "__ZEN_UI_PLUGIN")
+    -- ZenOS: __ZEN_UI_PLUGIN is only set while ZenOS sets itself up, so
+    -- after that the file manager's reference is the one to use (1.5.2: the
+    -- status row never showed and the title kept KOReader's close button).
+    local FileManager = require("apps/filemanager/filemanager")
+    local zen = (FileManager.instance and FileManager.instance.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
     if not (menu and menu.title_bar and zen) then return end
     local SharedState = require("common/shared_state")
     local createStatusRow = SharedState.get(zen, "createStatusRow")

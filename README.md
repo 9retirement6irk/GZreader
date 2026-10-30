@@ -171,7 +171,7 @@ from **Settings → General → Updates**.
 Open the **Grimmory** tab and choose **Connect with QR code**. For single sign-on, add
 `http://<kindle-ip>:8642/oauth2-callback` as an extra redirect URI for Grimmory's client
 at your identity provider; the exact address is shown on the QR page. Grimmory itself
-needs no changes. Connection and sync options are in **Settings → Grimmory**;
+needs no changes. Connection and sync options are in **Settings → Connections** (Grimmory, and Memos for the Notes tab);
 read aloud is in **Settings → Reader**, and Wi‑Fi saving and the diagnostic log are in
 **Settings → General**.
 
