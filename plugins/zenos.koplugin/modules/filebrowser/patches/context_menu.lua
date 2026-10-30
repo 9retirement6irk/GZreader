@@ -174,6 +174,9 @@ local function apply_context_menu()
         return dialog
     end
 
+    -- GZreader: the same icon column and letter keys for its own ButtonDialogs
+    rawset(_G, "__ZEN_DIALOG_SHORTCUTS", align_button_dialog_icons)
+
     local function new_context_menu_dialog(options)
         -- GZreader's "Manage <book>" (Home menu): Open and Delete go at the
         -- top of the next book menu. One-shot; GZreader clears it a tick later.

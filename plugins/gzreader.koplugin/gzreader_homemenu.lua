@@ -180,7 +180,7 @@ function HomeMenu.items(plugin)
         end, callback = function() dispatch("night_mode") end } or nil,
         { text = _("Settings"), callback = function() HomeMenu.settings() end },
         { text = _("Check for GZreader updates"), callback = function() require("gzreader_update").run() end },
-        { text = _("Send diagnostic log to my phone"), callback = function() plugin:shareLog() end },
+        { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },
         { text = _("Restart GZreader"), callback = function() dispatch("restart") end },
         { text = _("Quick panel"), callback = function() HomeMenu.fullMenu() end },

@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.3.7",
+        changes = {
+            "\"Send diagnostic log to my phone\" in the Home menu is now \"Diagnostics\". It asks whether to send the log to your phone (QR code) or save it on the Kindle to copy over USB. The choices have letter keys (Q, W, E).",
+            "Diagnostics is in the Reading menu too, so you can send or save the log without closing the book.",
+        },
+    },
+    {
         version = "1.3.6",
         changes = {
             "Downloads → Audiobooks now lists your downloaded audiobooks by title, with how far you've listened. Choose one to open the player. Before, it showed GZreader's storage instead: a folder named after the book's number holding thousands of 15-second audio pieces, which froze the Kindle when opened.",

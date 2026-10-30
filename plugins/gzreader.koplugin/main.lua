@@ -398,6 +398,34 @@ function Grimmory:exportLog()
     end
 end
 
+--- "Diagnostics" (Home and Reading menus): send the log to a phone or save
+--- it on the Kindle for USB.
+function Grimmory:showDiagnostics()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local okc, icons = pcall(require, "common/inline_icon_map")
+    local function label(icon, text) return (okc and icons[icon]) and (icons[icon] .. "  " .. text) or text end
+    local dialog
+    dialog = ButtonDialog:new{
+        title = _("Diagnostics\nThe log helps find problems. Passwords and tokens are never in it."),
+        buttons = {
+            { { text = label("send", _("Send to my phone (QR code)")), align = "left", callback = function()
+                UIManager:close(dialog)
+                UIManager:nextTick(function() self:shareLog() end)
+            end } },
+            { { text = label("save", _("Save to the Kindle (copy over USB)")), align = "left", callback = function()
+                UIManager:close(dialog)
+                UIManager:nextTick(function() self:exportLog() end)
+            end } },
+            { { text = label("remove", _("Cancel")), align = "left", callback = function() UIManager:close(dialog) end } },
+        },
+    }
+    -- ZenOS's look: icon column, and Q, W, E keys on a Kindle Keyboard
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
+end
+
 --- Send the diagnostic log to a phone over Wi-Fi: the Kindle serves it on a
 --- one-off address shown as a QR code (same mini web server as QR sign-in).
 --- The phone saves the file, which can then be attached anywhere.
