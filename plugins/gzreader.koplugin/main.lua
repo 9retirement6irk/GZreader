@@ -105,6 +105,17 @@ function Grimmory:init()
         pcall(self.restoreFromManifest, self)
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
         pcall(function() require("gzreader_abfolder").start(self) end)
+        -- Downloads: a list with covers, titles, authors and letter keys
+        -- (Kindle Keyboard) instead of tiles, once; Menu → Display changes it
+        if not G_reader_settings:isTrue("gzreader_downloads_list_v1") then
+            G_reader_settings:makeTrue("gzreader_downloads_list_v1")
+            UIManager:nextTick(function()
+                pcall(function()
+                    local HM = require("gzreader_homemenu")
+                    if HM.displayMode() == "mosaic_image" then HM.setDisplayMode("list_image_meta") end
+                end)
+            end)
+        end
         -- downloads / audiobook preparing cut short last time: ask what to do
         pcall(function() require("gzreader_recovery").schedule(self) end)
         if self.api:isPaired() then

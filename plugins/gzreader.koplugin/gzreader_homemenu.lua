@@ -80,6 +80,21 @@ end
 function HomeMenu.deleteBook(plugin, path)
     local ConfirmBox = require("ui/widget/confirmbox")
     local InfoMessage = require("ui/widget/infomessage")
+    -- an audiobook's tile: delete the audiobook itself
+    local ok_f, Folder = pcall(require, "gzreader_abfolder")
+    local ab_id = ok_f and Folder.idForPath(plugin, path)
+    if ab_id then
+        local e = plugin.store.audiobooks[ab_id] or {}
+        return UIManager:show(ConfirmBox:new{
+            text = T(_("Delete the audiobook “%1” from this Kindle?\n\nGrimmory keeps it and your listening position."), e.title or bookTitle(path)),
+            ok_text = _("Delete"),
+            ok_callback = function()
+                require("gzreader_audiobook").delete(plugin, ab_id)
+                refreshViews(path)
+                UIManager:show(InfoMessage:new{ text = T(_("Deleted “%1”."), e.title or bookTitle(path)), timeout = 2 })
+            end,
+        })
+    end
     local title = bookTitle(path)
     UIManager:show(ConfirmBox:new{
         text = T(_("Delete “%1” from this Kindle?\n\nIts reading position and bookmarks on this Kindle go too. Grimmory keeps the book and your progress, so you can download it again any time."), title),
@@ -149,6 +164,8 @@ function HomeMenu.showSort()
     end
     buttons[#buttons + 1] = {{ text = (reverse and "✓ " or "") .. _("Reverse order"), callback = function() apply(cur, not reverse) end }}
     dialog = ButtonDialog:new{ title = _("Sort books by"), buttons = buttons }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS") -- Q, W, E… keys
+    if add then pcall(add, dialog) end
     UIManager:show(dialog)
 end
 
@@ -166,12 +183,73 @@ function HomeMenu.manage(book, open, delete)
     UIManager:nextTick(function() rawset(_G, "__GZ_CONTEXT_PREPEND", nil) end)
 end
 
+---------------------------------------------------------------- display mode
+
+HomeMenu.DISPLAY_MODES = {
+    { mode = "list_image_meta", label = _("List with details"), icon = "view_list" },
+    { mode = "list_image_filename", label = _("Simple list"), icon = "view_basic" },
+    { mode = "mosaic_image", label = _("Tiles"), icon = "view_mosaic" },
+}
+
+--- How Downloads and the other book folders show books (CoverBrowser's mode).
+function HomeMenu.displayMode()
+    local ok, BIM = pcall(require, "bookinfomanager")
+    local mode = ok and BIM.getSetting and BIM:getSetting("filemanager_display_mode")
+    return mode or "classic"
+end
+
+function HomeMenu.displayLabel(mode)
+    for _i, d in ipairs(HomeMenu.DISPLAY_MODES) do
+        if d.mode == mode then return d.label end
+    end
+    return _("Plain list")
+end
+
+function HomeMenu.setDisplayMode(mode)
+    local f = fm()
+    if f and f.onSetDisplayMode then
+        pcall(f.onSetDisplayMode, f, mode)
+    else
+        local ok, BIM = pcall(require, "bookinfomanager")
+        if ok and BIM.saveSetting then BIM:saveSetting("filemanager_display_mode", mode) end
+    end
+    require("gzreader_log").info("display mode", mode)
+end
+
+--- Tiles or a list, for Downloads and the other book folders.
+function HomeMenu.showDisplay()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local okc, icons = pcall(require, "common/inline_icon_map")
+    local cur = HomeMenu.displayMode()
+    local dialog
+    local buttons = {}
+    for _i, d in ipairs(HomeMenu.DISPLAY_MODES) do
+        local glyph = okc and icons[d.icon]
+        buttons[#buttons + 1] = { {
+            text = (glyph and (glyph .. "  ") or "") .. d.label .. (d.mode == cur and "  \u{2713}" or ""),
+            align = "left",
+            callback = function()
+                UIManager:close(dialog)
+                if d.mode ~= cur then UIManager:nextTick(function() HomeMenu.setDisplayMode(d.mode) end) end
+            end,
+        } }
+    end
+    dialog = ButtonDialog:new{ title = _("Show books as"), buttons = buttons }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
+end
+
 function HomeMenu.items(plugin)
     local items = {
         { text = _("Continue reading (last book)"), callback = function() dispatch("open_previous_document") end },
         { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
         { text = _("History"), callback = function() dispatch("history") end },
         { text = _("Sort books…"), callback = function() HomeMenu.showSort() end },
+        { text_func = function()
+            return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
+        end, callback = function() HomeMenu.showDisplay() end },
         { text_func = function()
             return NetworkMgr:isWifiOn() and _("Turn Wi-Fi off") or _("Turn Wi-Fi on")
         end, callback = function() dispatch("toggle_wifi") end },

@@ -5,7 +5,7 @@ return {
     { key = "Back", after = 4 },
     { key = "Menu", after = 4 },
     { shot = "homemenu" },
-    { key = "I", after = 4 },
+    { key = "O", after = 4 }, -- Diagnostics
     { shot = "diagnostics" },
     { key = "W", after = 12 },
     { fn = function(E) print("[emu] after W: " .. E.top()) end, after = 1 },

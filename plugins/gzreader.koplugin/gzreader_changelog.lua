@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.4.0",
+        changes = {
+            "Audiobooks show like books: each downloaded audiobook gets a tile in Downloads → Audiobooks with its Grimmory cover, title, author, length and narrator. Opening the tile starts the player.",
+            "Played audiobooks go into Recent and History, and onto Home as the current book, with how far you've listened. Opening one from there starts the player too.",
+            "To delete an audiobook, highlight its tile, press Menu and choose Manage → Delete from this Kindle. Grimmory keeps it and your listening position.",
+            "New: Menu → Display chooses how Downloads and the other book folders show books: List with details, Simple list or Tiles. Downloads switches to List with details once, which shows covers, titles, authors and a letter key for each book. The Sort books dialog has letter keys too.",
+        },
+    },
+    {
         version = "1.3.9",
         changes = {
             "Fixed: after GZreader restarted (for example to install an update) while an audiobook was playing or paused, its audio player kept running in the background. The Kindle 3 can only play one thing at a time, so audiobooks and Test audiobook playback then failed with \"no working player found\". GZreader now stops a leftover player when it starts, and again before playing or testing.",

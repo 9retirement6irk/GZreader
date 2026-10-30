@@ -6,8 +6,8 @@ Storage: <GZreader folder>/.audiobooks/<book id>/ with the audio file(s) and
 audiobook.json (Grimmory's info: duration, chapters, tracks). Hidden: a long
 book is thousands of 15-second chunk files, which file lists, folder covers
 and file search would otherwise walk through. The visible
-<GZreader folder>/Audiobooks folder stays empty; opening it in a file list
-shows the downloaded audiobooks instead (gzreader_abfolder.lua).
+<GZreader folder>/Audiobooks folder holds a small stand-in book file per
+audiobook, shown as a tile and in Recent (gzreader_abfolder.lua).
 
 Grimmory progress for audiobooks (PUT /api/v1/app/books/{id}/progress):
   fileProgress = { bookFileId, positionData = "<ms>", positionHref = "<track>",
@@ -386,7 +386,9 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
             plugin.store.audiobooks = plugin.store.audiobooks or {}
             plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
             plugin:save()
-            pcall(Folder.ensureEntry, plugin)
+            -- its tile in Downloads → Audiobooks, then Grimmory's cover for it
+            pcall(Folder.writeStub, plugin, book.id)
+            pcall(Folder.fetchCover, plugin, book.id)
             pcall(require("gzreader_recovery").audioDone, plugin, summary.id)
             on_done(Audiobook.load(plugin, summary.id))
         end)
@@ -433,6 +435,7 @@ function Player:save()
     entry.updated = os.time()
     self.plugin.store.audiobooks[self.book.id] = entry
     self.plugin:save()
+    pcall(Folder.saveProgress, self.plugin, self.book.id, entry.pos_ms, Audiobook.total(self.book))
 end
 
 --- Grimmory progress body (same fields as Grimmory's web player).
@@ -850,6 +853,8 @@ function Audiobook.open(plugin, book)
         if p then p:stop() end
         p = Player:new(plugin, book)
     end
+    -- into Recent / history like a book, with its progress on the tile
+    pcall(Folder.recordPlay, plugin, book.id, p.pos, Audiobook.total(book))
     local screen = Screen:new{ player = p }
     UIManager:show(screen)
     if not p.playing and not Engine.isPaused() then
@@ -894,6 +899,7 @@ function Audiobook.delete(plugin, book_id)
     local cur = Audiobook.current
     if cur and tostring(cur.book.id) == tostring(book_id) then cur:stop() end
     local dir = Audiobook.dir(plugin, book_id)
+    pcall(Folder.removeStub, plugin, book_id)
     pcall(function() require("gzreader_recovery").stopConversions(dir) end)
     if lfs.attributes(dir, "mode") == "directory" then
         ffiutil.purgeDir(dir)
@@ -905,65 +911,6 @@ function Audiobook.delete(plugin, book_id)
     end
     plugin:save()
     Log.info("audiobook deleted", book_id)
-end
-
---- The downloaded audiobooks: pick one to listen to (Downloads → Audiobooks).
-function Audiobook.showDownloaded(plugin)
-    local menu
-    local function build()
-        local items = {}
-        local list = Audiobook.downloaded(plugin)
-        for _i, e in ipairs(list) do
-            local playing = Audiobook.current and Audiobook.current.book.id == e.book.id
-            items[#items + 1] = {
-                text = (playing and "▶ " or "") .. (e.book.title or "?"),
-                mandatory = (e.pos and e.pos > 0) and (Audiobook.fmt(e.pos) .. " / " .. Audiobook.fmt(Audiobook.total(e.book)))
-                    or Audiobook.fmt(Audiobook.total(e.book)),
-                callback = function()
-                    UIManager:close(menu)
-                    Audiobook.open(plugin, e.book)
-                end,
-            }
-        end
-        if #items == 0 then
-            items[1] = { text = _("No audiobooks on this Kindle yet. Download them from the Grimmory tab → Audiobooks."),
-                select_enabled = false }
-        else
-            items[#items].separator = true
-            items[#items + 1] = { text = _("Delete an audiobook from this Kindle…"), callback = function()
-                local buttons = {}
-                local dialog
-                for _i, e in ipairs(list) do
-                    buttons[#buttons + 1] = { { text = e.book.title or "?", align = "left", callback = function()
-                        UIManager:close(dialog)
-                        UIManager:show(ConfirmBox:new{
-                            text = T(_("Delete the audiobook “%1” from this Kindle?\n\nGrimmory keeps it and your listening position."),
-                                e.book.title or "?"),
-                            ok_text = _("Delete"),
-                            ok_callback = function()
-                                Audiobook.delete(plugin, e.book.id)
-                                menu:switchItemTable(nil, build())
-                            end,
-                        })
-                    end } }
-                end
-                buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
-                dialog = ButtonDialog:new{ title = _("Delete which audiobook?"), buttons = buttons }
-                UIManager:show(dialog)
-            end }
-        end
-        return items
-    end
-    menu = Menu:new{
-        title = _("Audiobooks"),
-        item_table = build(),
-        covers_fullscreen = true,
-        is_borderless = true,
-        is_popout = false,
-        title_bar_fm_style = true,
-    }
-    UIManager:show(menu)
-    return menu
 end
 
 return Audiobook

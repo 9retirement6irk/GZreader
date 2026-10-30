@@ -7,7 +7,7 @@ local function section(letter, name)
     key(letter, 4); shot(name); key("RPgFwd", 3); shot(name .. "-2"); key("Back", 3)
 end
 key("Menu", 4); shot("homemenu")
-key("Y", 6); shot("settings")
+key("U", 6); shot("settings")
 -- Reader, page 2: T = Test audiobook playback, which must stay over Settings
 key("E", 4); shot("reader"); key("RPgFwd", 3); shot("reader-2")
 key("T", 8)
