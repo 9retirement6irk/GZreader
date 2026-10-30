@@ -2751,6 +2751,50 @@ local function sort_home_focus_targets(menu)
     for i, target in ipairs(targets) do
         target.index = i
     end
+    -- GZreader: letter keys (shown as small squares on keyboard Kindles).
+    -- Q the book you're reading, W-P the books in the strip, A, S, D… the
+    -- strip's tabs and then anything else that does something. Not Z, X, C,
+    -- V, B: those switch the bottom tabs.
+    local top = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" }
+    local middle = { "A", "S", "D", "F", "G", "H", "J", "K", "L" }
+    local ti, mi = 1, 1
+    for _i, target in ipairs(targets) do target.shortcut = nil end
+    for _i, target in ipairs(targets) do
+        local key = tostring(target.key or "")
+        if type(target.activate) == "function" and (key == "widget:featured" or key:match("^book:")) and top[ti] then
+            target.shortcut = top[ti]; ti = ti + 1
+        end
+    end
+    for _i, target in ipairs(targets) do
+        local key = tostring(target.key or "")
+        if not target.shortcut and type(target.activate) == "function"
+                and not key:match("page_left$") and not key:match("page_right$") and middle[mi] then
+            target.shortcut = middle[mi]; mi = mi + 1
+        end
+    end
+end
+
+local function home_key_hints()
+    local Device = require("device")
+    return Device:hasKeyboard() and not Device:isTouchDevice()
+        and G_reader_settings:nilOrTrue("gzreader_tab_key_hints")
+end
+
+-- A letter key's square in the corner of what it opens.
+local function paint_shortcut_badge(bb, x, y, w, h, letter)
+    if not (letter and w > 12 and h > 12) then return end
+    local Device = require("device")
+    local Geom = require("ui/geometry")
+    local side = math.min(Device.screen:scaleBySize(24), h - 4, w - 4)
+    if side < 12 then return end
+    local ok, icon = pcall(function()
+        return require("ui/widget/menu").getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
+    end)
+    if not (ok and icon) then return end
+    local pad = math.min(Device.screen:scaleBySize(4), math.floor((h - side) / 2))
+    bb:paintRect(x + pad, y + pad, side, side, Blitbuffer.COLOR_WHITE)
+    icon:paintTo(bb, x + pad, y + pad)
+    if icon.free then icon:free() end
 end
 
 local function register_home_focus_target(menu, target)
@@ -2787,6 +2831,13 @@ local function wrap_home_focus_target(menu, target, widget, defer_registration)
     local orig_paintTo = frame.paintTo
     frame.paintTo = function(self, bb, x, y)
         orig_paintTo(self, bb, x, y)
+        if target.shortcut and home_key_hints() then
+            local fs = self:getSize()
+            local bounds = target.content_bounds
+            local shift = bounds and bounds.shift or 0
+            local top = bounds and math.max(0, (bounds.top or 0) + shift) or 0
+            paint_shortcut_badge(bb, x, y + top, fs.w, fs.h - top, target.shortcut)
+        end
         if menu._zen_home_focus_id == target.id then
             local frame_size = self:getSize()
             local bounds = target.content_bounds
@@ -3072,6 +3123,22 @@ local function install_home_key_handlers(menu)
 
     local orig_key_press = menu.onKeyPress
     menu.onKeyPress = function(m, key)
+        -- GZreader: a letter opens what it's on (Q the current book, W… the strip)
+        if type(key) == "table" and type(key.key) == "string" and #key.key == 1 then
+            local plain = true
+            for _mod, pressed in pairs(type(key.modifiers) == "table" and key.modifiers or {}) do
+                if pressed then plain = false end
+            end
+            if plain then
+                for i, target in ipairs(m._zen_home_focus_targets or {}) do
+                    if target.shortcut == key.key then
+                        set_home_focus(m, i)
+                        activate_home_focus(m)
+                        return true
+                    end
+                end
+            end
+        end
         if m._zen_home_focus_suspended and home_key_matches(key, "Up") then
             local handled = orig_key_press and orig_key_press(m, key)
             if handled then

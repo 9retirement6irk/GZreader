@@ -1,9 +1,16 @@
--- GZreader: Alt + Q, W, E, R, T, Y, U, I, O select the 1st-9th visible navbar
--- tab. The Kindle Keyboard has no number row: Alt + the top letter row is how
--- it types 1-9 (its kernel may send those as "1"-"9", so both forms count).
--- Plain letters stay KOReader's list shortcuts (Q, W, E, … pick an item), and
--- those don't match while Alt is held, so the two never clash.
+-- GZreader: the bottom tabs have keys.
+-- - Z, X, C, V, B: the 1st-5th visible tab (1.6.0). The bottom keyboard row,
+--   under the tab bar. Nothing in a view with the tab bar uses them: list
+--   letters are Q-P then A-L (items 1-20; ZenOS's list and cover modes show
+--   at most 12, the Grimmory tab 14, Notes 6 + N/F/M, Home its own letters
+--   from Q-P and A-L). Only KOReader's classic list mode set to more than
+--   20 items per page had items 21-25 on these letters.
+-- - Alt + Q, W, E, R, T, Y, U, I, O: the 1st-9th tab (the Kindle Keyboard's
+--   1-9; its kernel may send those as "1"-"9", so both forms count). Plain
+--   Q, W, E… stay the list shortcuts: they don't match while Alt is held.
 local GZ_ALT_ROW = { Q = 1, W = 2, E = 3, R = 4, T = 5, Y = 6, U = 7, I = 8, O = 9 }
+local GZ_TAB_ROW = { Z = 1, X = 2, C = 3, V = 4, B = 5 }
+local GZ_TAB_ROW_KEYS = { "Z", "X", "C", "V", "B" }
 local function gzTabDigit(key)
     if type(key) ~= "table" or type(key.key) ~= "string" then return nil end
     local alt = false
@@ -17,7 +24,7 @@ local function gzTabDigit(key)
     local d = key.key:match("^([1-9])$")
     if d then return tonumber(d) end
     if alt then return GZ_ALT_ROW[key.key] end
-    return nil
+    return GZ_TAB_ROW[key.key]
 end
 
 local function apply_navbar()
@@ -2261,8 +2268,10 @@ local function apply_navbar()
             and G_reader_settings:nilOrTrue("gzreader_tab_key_hints")
         local HINT_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
         for i, tab in ipairs(visible_tabs) do
+            -- GZreader: Z, X, C, V, B for the first five; Alt + the top row for more
+            local hint = hints and (GZ_TAB_ROW_KEYS[i] or (HINT_KEYS[i] and ("Alt+" .. HINT_KEYS[i]))) or nil
             local widget = createTabWidget(tab, label_max_w, tab.id == active_tab, shared_font_size, i == _navbar_focused_idx,
-                hints and HINT_KEYS[i] and ("Alt+" .. HINT_KEYS[i]) or nil)
+                hint)
             tab_widgets[i] = widget
             total_content_w = total_content_w + widget:getSize().w
         end

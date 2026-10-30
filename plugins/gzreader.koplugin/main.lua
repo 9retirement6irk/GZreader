@@ -190,6 +190,10 @@ function Grimmory:onDispatcherRegisterActions()
         category = "none", event = "ShowGzNotes", title = _("Notes (Memos)"),
         general = true,
     })
+    Dispatcher:registerAction("gzreader_calendar", {
+        category = "none", event = "ShowGzCalendar", title = _("Calendar (CalDAV)"),
+        general = true,
+    })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true,
@@ -1170,6 +1174,18 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     Mod.Browser:new(self):show()
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true
+end
+
+--- The Calendar tab (ZenOS's tab bar): CalDAV calendars.
+function Grimmory:onShowGzCalendar(touchmenu)
+    closeTouchMenu(touchmenu)
+    require("gzreader_calendar").show(self)
+    return true
+end
+
+--- Settings → Connections → Calendar (CalDAV).
+function Grimmory:calendarSettingsItems()
+    return require("gzreader_calendar").settingsItems(self)
 end
 
 --- Settings → Notes (ZenOS settings): connection, storage, synced tags, limits.

@@ -65,7 +65,8 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 | Where | Key | Does |
 | --- | --- | --- |
-| Home / lists | Alt + Q, W, E, R, T | Switch the bottom tabs, counted from the left: Alt+Q Home, Alt+W Downloads, Alt+E Continue, Alt+R Grimmory, Alt+T Notes (Alt + the top row is how the Kindle Keyboard types 1–9). Also works from the Grimmory browser. |
+| Home / lists | Z, X, C, V, B | Switch the bottom tabs, counted from the left: Z Home, X Downloads, C Grimmory, V Notes, B Calendar (also Alt + Q, W, E, R, T…: Alt + the top row is how the Kindle Keyboard types 1–9). Shown under each tab. |
+| Home | Q, W…; A, S, D… | Q the book you're reading, W, E, R… the books in the strip, A, S, D… the strip's tabs (shown in squares). |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, Quick panel (ZenOS), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
@@ -127,7 +128,7 @@ a sub-list, a back arrow.
 
 ## Notes (Memos)
 
-The Notes tab (it took Favorites' place in the tab bar, Alt+T) shows your
+The Notes tab (it took Favorites' place in the tab bar, V) shows your
 [Memos](https://usememos.com) notes as sticky notes, six to a page, pinned
 first. Written against Memos v0.31 (`/api/v1`); newer servers that moved the
 API to `/api` are found too.
@@ -143,8 +144,8 @@ API to `/api` are found too.
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
 - **Board:** Q–Y open a note, ◀ ▶ (or the page keys) turn pages, the 5-way
-  moves around the notes. **N** new note, **F** filter, **Menu** for refresh,
-  connect again and disconnect.
+  moves around the notes. **N** new note, **F** filter, **M** for refresh,
+  connect again and disconnect (the Menu key opens the Home menu in tab views).
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
@@ -169,11 +170,45 @@ API to `/api` are found too.
   notes); **Notes kept on the Kindle** (50–500, fetched a page at a time);
   **Attachment storage limit** (10–100 MB or none; the attachments used
   longest ago go first).
+- **Wi‑Fi:** only to sync (when the tab opens, at most every 5 minutes, or with
+  changes waiting; M → Refresh any time), to send a change, and to open an
+  attachment not on the Kindle yet. Pictures in notes are downloaded while
+  syncing (up to 2 MB each, within the attachment limit).
 - **Offline:** the last list of notes is kept on the Kindle
   (`settings/gzreader-notes.json`); new notes, edits, ticks and pins made
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
   Wi‑Fi up while it's open (Wi‑Fi only when needed).
+
+## Calendar (CalDAV)
+
+The Calendar tab (B) shows your CalDAV calendars, read-only: Nextcloud
+(`https://your.server/remote.php/dav`), iCloud (`https://caldav.icloud.com`),
+Fastmail (`https://caldav.fastmail.com`), Google
+(`https://apidata.googleusercontent.com/caldav/v2/`), Radicale, Baïkal…
+
+- **Connect:** Connect with QR code (the phone enters the address, user name
+  and password) or Connect by typing. Use an app password where the server
+  has them; it's kept in GZreader's settings like the Memos token and never
+  logged (the log has addresses only, and passwords are redacted from it).
+  Discovery follows RFC 6764: the address → `current-user-principal` →
+  `calendar-home-set` → the VEVENT calendars in it (`/.well-known/caldav` is
+  tried for a bare host; a calendar's own address works too).
+- **Layouts:** Agenda, Day (timeline, overlapping events side by side),
+  Week (seven columns), Month (grid). Letters open an event (a day in Week);
+  Press opens what the 5-way is on; a day in Week or Month opens in Day. Page
+  keys (or ‹ ›): next / previous day, week, month (Agenda: the next days).
+  **N** today, **M** layouts, Refresh, settings.
+- **Sync:** one `calendar-query` REPORT per calendar for the sync range
+  (default 14 days back, 90 ahead), asking the server to expand repeating
+  events (`<C:expand>`, times in UTC). Servers that don't expand send the
+  RRULE, expanded on the Kindle (DAILY / WEEKLY / MONTHLY / YEARLY with
+  INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY; EXDATE; RECURRENCE-ID). TZID times
+  that aren't expanded are read in GZreader's time zone.
+- **Wi‑Fi:** only to sync, when the tab opens (at most every 15 minutes) and
+  with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
+- **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,
+  the layout it opens in, week start (Sunday / Monday), sync range, storage.
 
 ## Subtitles
 
@@ -481,6 +516,12 @@ download or its queue, the library index, a QR screen, an update download).
 Wi-Fi you turned on yourself is never turned off. Going to sleep turns off
 Wi-Fi GZreader turned on.
 
+
+Wi‑Fi you turn off yourself (Wi‑Fi menu, quick panel, Home menu: KOReader's
+interactive switch) stays off for background work (syncs when a book opens
+or closes, after waking, Notes, Calendar, the auto-download shelf) until you
+turn it on again, also after a restart (`gzreader_wifi_kept_off`). Things you
+ask for still connect.
 ## Speed on the Kindle 3
 
 - Lua is shipped as precompiled bytecode (see Rebuild the package): no parsing

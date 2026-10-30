@@ -12,6 +12,13 @@ nothing needs it (an open Grimmory browser, a download or its queue, the
 library index, a QR screen). Page-turn syncs and bookmarks made while Wi-Fi
 is off wait and go with the next sync.
 
+Wi-Fi you turn off yourself (Wi-Fi menu item or quick panel) stays off
+for background work (syncing when a book opens or closes, after waking,
+Notes, the auto-download shelf): that waits until you turn Wi-Fi on again,
+also after a restart (1.6.0; before, the next sync turned it back on).
+Things you ask for (browsing Grimmory, a download, opening an attachment,
+checking for updates, connecting) still turn it on, then off after a minute.
+
 Wi-Fi that was already on when GZreader started or woke up (the Kindle
 keeps it on by itself) counts as GZreader's too: up to 1.2.7 it didn't, so
 on a Kindle that connected at boot Wi-Fi was never turned off. Only Wi-Fi
@@ -33,6 +40,16 @@ local Net = {
 
 function Net.enabled()
     return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand")
+end
+
+--- You turned Wi-Fi off yourself: background work leaves it off.
+function Net.keptOff()
+    return G_reader_settings:isTrue("gzreader_wifi_kept_off")
+end
+
+local function setKeptOff(on)
+    if on then G_reader_settings:makeTrue("gzreader_wifi_kept_off")
+    else G_reader_settings:delSetting("gzreader_wifi_kept_off") end
 end
 
 function Net.connected()
@@ -86,6 +103,7 @@ function Net.run(fn, opts)
     opts = opts or {}
     local function go() Net.touch(); fn() end
     if Net.connected() then return go() end
+    if opts.quiet and Net.keptOff() then return end -- you turned it off: background work waits
     if not Net.enabled() then
         if opts.quiet then return end
         return NetworkMgr:runWhenOnline(go)
@@ -130,6 +148,7 @@ local function wrapToggles()
         local orig = NetworkMgr.toggleWifiOn
         Net._toggle_on = function(...)
             Net.user_on, Net.ours = true, false
+            setKeptOff(false)
             UIManager:unschedule(check)
             Log.info("wifi: turned on by you; left on")
             return orig(...)
@@ -141,9 +160,39 @@ local function wrapToggles()
         Net._toggle_off = function(...)
             Net.user_on, Net.ours = nil, false
             UIManager:unschedule(check)
+            if not Net.keptOff() then Log.info("wifi: turned off by you; background work waits until you turn it on") end
+            setKeptOff(true)
             return orig(...)
         end
         NetworkMgr.toggleWifiOff = Net._toggle_off
+    end
+    -- the quick panel and Wi-Fi menu turn it off with disableWifi(cb, interactive = true);
+    -- GZreader's own calls aren't interactive
+    if NetworkMgr.disableWifi ~= Net._disable then
+        local orig = NetworkMgr.disableWifi
+        Net._disable = function(self, cb, interactive, ...)
+            if interactive == true then
+                Net.user_on, Net.ours = nil, false
+                UIManager:unschedule(check)
+                if not Net.keptOff() then Log.info("wifi: turned off by you; background work waits until you turn it on") end
+                setKeptOff(true)
+            end
+            return orig(self, cb, interactive, ...)
+        end
+        NetworkMgr.disableWifi = Net._disable
+    end
+    -- and on again (the Home menu's "Turn Wi-Fi on": enableWifi(cb, interactive = true))
+    if NetworkMgr.enableWifi ~= Net._enable then
+        local orig = NetworkMgr.enableWifi
+        Net._enable = function(self, cb, interactive, ...)
+            if interactive == true then
+                Net.user_on, Net.ours = true, false
+                UIManager:unschedule(check)
+                setKeptOff(false)
+            end
+            return orig(self, cb, interactive, ...)
+        end
+        NetworkMgr.enableWifi = Net._enable
     end
 end
 

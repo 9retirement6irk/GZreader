@@ -25,7 +25,7 @@ for _i, step in ipairs(readme) do
         add({ fn = function(E) tabs(E, "tabs before the setup page:") end, after = 1 })
         shot("tabs-1-setup-page")
         if FAV_IN_SETUP then
-            for _j = 1, 5 do key("Down", 1.5) end -- Home, Continue, Notes, History, Favorites
+            for _j = 1, 6 do key("Down", 1.5) end -- Home, Continue, Notes, Calendar, History, Favorites
             key("Press", 2)
             shot("tabs-2-setup-favorites-on")
         end
@@ -43,8 +43,9 @@ shot("tabs-4-navbar-settings")
 key("Q", 5)
 shot("tabs-5-tabs-list")
 if not FAV_IN_SETUP then
-    -- Favorites is the 6th row: ▶ moves to its switch, Press turns it on
-    for _j = 1, 5 do key("Down", 1.5) end
+    -- Favorites is the 7th row (Home, Downloads, Grimmory, Notes, Calendar,
+    -- Continue, Favorites): ▶ moves to its switch, Press turns it on
+    for _j = 1, 6 do key("Down", 1.5) end
     key("Right", 1.5)
     key("Press", 3)
     shot("tabs-6-favorites-turned-on")
@@ -61,6 +62,11 @@ add({ fn = function(E)
     local base = M.load()
     local function try(label, setup)
         local old = utils.deepcopy(base)
+        old._meta.gz_calendar_tab_migrated = nil -- (configs from before 1.6.0)
+        old.navbar.show_tabs.ct_calendar = nil
+        local keep = {}
+        for _i, ct in ipairs(old.navbar.custom_tabs or {}) do if ct.id ~= "ct_calendar" then keep[#keep + 1] = ct end end
+        old.navbar.custom_tabs = keep
         setup(old)
         M.save(old)
         local new = M.load()
@@ -68,9 +74,12 @@ add({ fn = function(E)
         for _i, id in ipairs(new.navbar.tab_order) do
             on[#on + 1] = id .. (new.navbar.show_tabs[id] == true and "+" or "-")
         end
-        local n = 0
-        for _i, ct in ipairs(new.navbar.custom_tabs) do if ct.id == "ct_notes" then n = n + 1 end end
-        E.say(label, table.concat(on, " "), "| notes tabs defined:", n)
+        local n, c = 0, 0
+        for _i, ct in ipairs(new.navbar.custom_tabs) do
+            if ct.id == "ct_notes" then n = n + 1 end
+            if ct.id == "ct_calendar" then c = c + 1 end
+        end
+        E.say(label, table.concat(on, " "), "| notes / calendar tabs defined:", n, c)
         local again = M.load()
         E.say(label .. " (loaded again)", #again.navbar.tab_order == #new.navbar.tab_order and "same" or "changed")
     end
@@ -86,6 +95,7 @@ add({ fn = function(E)
         c._meta.gz_notes_tab_migrated = true
         c._meta.gz_favorites_listed_migrated = nil
         c.navbar.tab_order = { "home", "books", "continue", "ct_grimmory", "ct_notes" }
+        c.navbar.show_tabs.continue = true
         c.navbar.show_tabs.favorites = false
         c.navbar.show_tabs.ct_notes = true
     end)

@@ -770,7 +770,7 @@ function M.build_install_pages(ctx)
             choice_type    = "checkbox",
             -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
             max_selections = (function()
-                local listed = { home = true, continue = true, ct_notes = true, history = true, favorites = true,
+                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, history = true, favorites = true,
                     collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
                 local others = 0
                 local order = type(config.navbar) == "table" and config.navbar.tab_order
@@ -782,8 +782,9 @@ function M.build_install_pages(ctx)
             choices        = {
                 { id = "home",        text = _("Home"),        checked = show_tabs["home"]        ~= false },
                 { id = "continue",    text = _("Continue"),    checked = show_tabs["continue"]    == true },
-                -- GZreader: Notes (Memos) is on by default; Favorites is off but still offered
+                -- GZreader: Notes (Memos) and Calendar are on by default; Favorites is off but still offered
                 { id = "ct_notes",    text = _("Notes (Memos)"), checked = show_tabs["ct_notes"]  ~= false },
+                { id = "ct_calendar", text = _("Calendar"),    checked = show_tabs["ct_calendar"] ~= false },
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -796,7 +797,7 @@ function M.build_install_pages(ctx)
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "ct_notes", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true
@@ -816,7 +817,7 @@ function M.build_install_pages(ctx)
         -- 4. GZreader: keyboard (static)
         {
             title       = _("Your keyboard"),
-            description = _("Alt + Q, W, E, R, T: switch the bottom tabs, counted from the left (Home, Downloads, Continue, Grimmory, Notes).") .. "\n"
+            description = _("Z, X, C, V, B: switch the bottom tabs, counted from the left (Home, Downloads, Grimmory, Notes, Calendar). Alt + Q, W, E… work too.") .. "\n"
                 .. _("Q, W, E …: pick an item in a list (the letter is shown next to it).") .. "\n"
                 .. _("Menu while reading: the Reading menu (contents, bookmarks, go to page, search, read aloud, fonts, sync). Hold Menu for the page browser.") .. "\n"
                 .. _("Shift + Sym: read aloud / stop.") .. "\n"

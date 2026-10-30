@@ -2,7 +2,12 @@
 The Notes tab: your Memos notes as sticky notes.
 
 - Board: six sticky notes per page (Q–Y open one; ◀ ▶ pages), pinned first.
-  N new note, F filter, Menu more (refresh, connect, disconnect).
+  N new note, F filter, M more (refresh, connect, disconnect). (Not the Menu
+  key: ZenOS sends it from tab views to the Home menu.)
+- Wi-Fi: only to sync (when the tab opens, at most every 5 minutes, or with
+  changes waiting; M → Refresh any time), to send what you change, and to
+  open an attachment not on the Kindle yet. Browsing never needs it:
+  notes, and the pictures in them, are kept on the Kindle.
 - A note: the whole text, checklist items you tick with their letter key
   (saved to Memos), pictures, tags, place, attachments (PDFs open in the
   reader, pictures in the image viewer). Alt+E edit, Alt+P pin.
@@ -220,6 +225,8 @@ function Notes.refresh(plugin, on_done)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
             Notes.cached_at = os.time()
             Log.info("notes: refreshed", #res.memos)
+            Notes.last_sync = os.time()
+            Notes.prefetchPictures(plugin)
             if on_done then on_done(true) end
         end, "notes: list")
     end
@@ -243,7 +250,7 @@ function Notes.refresh(plugin, on_done)
 end
 
 local function describe(err)
-    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (Menu → Connect to Memos).") end
+    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (M → Connect to Memos again).") end
     if err == "unreachable" then return _("Couldn't reach Memos. Check Wi-Fi and the address.") end
     if err == "not_connected" then return _("Not connected to Memos.") end
     if err == "timeout" then return _("Memos took too long to answer.") end
@@ -418,6 +425,28 @@ function Notes.pruneFiles(plugin, keep)
     return removed
 end
 
+--- While Wi-Fi is up for a sync: download the pictures in the kept notes
+--- (small ones, within the attachment limit), so they show offline.
+Notes.PREFETCH_MAX = 2 * 1024 * 1024 -- bytes: bigger pictures wait until opened
+function Notes.prefetchPictures(plugin)
+    local limit = Notes.prefs(plugin).files_mb * 1024 * 1024
+    local _, used = Notes.storage()
+    local budget = limit > 0 and math.floor(limit * 0.8) - used or math.huge
+    local todo = {}
+    for _i, m in ipairs(Notes.notes or {}) do
+        for _j, a in ipairs(m.attachments or {}) do
+            if tostring(a.type):match("^image/") and not a.link and (a.size or 0) <= Notes.PREFETCH_MAX
+                    and lfs.attributes(Memos.filePath(a), "mode") ~= "file" and budget - (a.size or 0) > 0 then
+                budget = budget - (a.size or 0)
+                todo[#todo + 1] = a
+            end
+        end
+    end
+    if #todo == 0 then return end
+    Log.info("notes: fetching", #todo, "pictures for offline")
+    for _i, a in ipairs(todo) do Notes.fetchFile(plugin, a) end
+end
+
 --- Download an attachment in the background (only while Wi-Fi is up), then on_done().
 function Notes.fetchFile(plugin, att, on_done)
     local path = Memos.filePath(att)
@@ -440,7 +469,7 @@ local function boardItems()
     end
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
-            items[1] = { text = T(_("Couldn't load your notes. %1\n\nMenu → Refresh to try again."), describe(Notes.last_error)) }
+            items[1] = { text = T(_("Couldn't load your notes. %1\n\nM → Refresh to try again."), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
@@ -505,6 +534,7 @@ function Notes.Board:onSelectByShortCut(arg, keyevent)
     local k = keyevent and keyevent.key
     if k == "N" then Notes.edit(self.plugin); return true end
     if k == "F" then Notes.showFilter(self.plugin); return true end
+    if k == "M" then Notes.showOptions(self.plugin); return true end
     return Menu.onSelectByShortCut(self, arg, keyevent)
 end
 
@@ -523,36 +553,11 @@ end
 
 --- ZenOS's status row (clock, battery, Wi-Fi) in the title, like other tabs.
 function Notes.decorate(menu, label)
-    -- ZenOS: __ZEN_UI_PLUGIN is only set while ZenOS sets itself up, so
-    -- after that the file manager's reference is the one to use (1.5.2: the
-    -- status row never showed and the title kept KOReader's close button).
-    local FileManager = require("apps/filemanager/filemanager")
-    local zen = (FileManager.instance and FileManager.instance.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
-    if not (menu and menu.title_bar and zen) then return end
-    local SharedState = require("common/shared_state")
-    local createStatusRow = SharedState.get(zen, "createStatusRow")
-    if type(createStatusRow) ~= "function" then return end
-    local StandalonePage = require("modules/filebrowser/patches/standalone_page")
-    StandalonePage.apply_status_row(menu, {
-        createStatusRow = createStatusRow,
-        createStatusRowCustomBack = SharedState.get(zen, "createStatusRowCustomBack"),
-        repaintTitleBar = SharedState.get(zen, "repaintTitleBar"),
-        label = label or Notes.title(),
-    })
+    return require("gzreader_tabs").decorate(menu, label or Notes.title())
 end
 
---- Close GZreader's other tab views (the Grimmory tab, or the Notes tab
---- itself when `keep` is Grimmory's): ZenOS opens an action tab on top of the
---- one open, so switching between them stacked full-screen views (1.5.2).
-function Notes.closeOtherTabs(keep_id)
-    local stack = UIManager._window_stack or {}
-    local close = {}
-    for _i, w in ipairs(stack) do
-        local id = w.widget and w.widget._gz_navbar_tab_id
-        if id and id ~= keep_id and (id == Notes.TAB_ID or id == "ct_grimmory") then close[#close + 1] = w.widget end
-    end
-    for _i, widget in ipairs(close) do UIManager:close(widget) end
-end
+--- (kept for callers from 1.5.2) see gzreader_tabs
+function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthers(keep_id) end
 
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
@@ -565,7 +570,7 @@ function Notes.show(plugin)
     if not Notes.notes then Notes.loadCache(plugin) end
     local menu = Notes.Board:new{
         title = Notes.title(),
-        subtitle = _("N new note  \u{00B7}  F filter  \u{00B7}  Menu more"),
+        subtitle = _("N new note  \u{00B7}  F filter  \u{00B7}  M more"),
         item_table = boardItems(),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
         _gz_navbar_tab_id = Notes.TAB_ID,
@@ -585,28 +590,16 @@ function Notes.show(plugin)
         end)
         return true
     end
-    menu.key_events.GzNotesMenu = { { "Menu" } }
-    menu.onGzNotesMenu = function() Notes.showOptions(plugin); return true end
     local orig_close = menu.onCloseWidget
     menu.onCloseWidget = function(m, ...)
         m._gz_closed = true
         if Notes.board == m then Notes.board = nil end
-        local Net = package.loaded["gzreader_net"]
-        if Net then Net.release("notes") end
         if orig_close then return orig_close(m, ...) end
     end
     Notes.board = menu
     pcall(Notes.decorate, menu)
     UIManager:show(menu)
-    -- fresh notes (Wi-Fi only when needed: brought up quietly, kept while open)
-    local Net = require("gzreader_net")
-    Net.hold("notes")
-    Net.run(function()
-        Notes.refresh(plugin, function(_ok, err)
-            Notes.reloadBoard(true) -- the notes, or why they didn't load
-            if err == "unauthorized" then info(describe(err)) end
-        end)
-    end, { quiet = true, reason = "notes" })
+    Notes.syncOnOpen(plugin)
     return menu
 end
 
@@ -623,7 +616,7 @@ function NoteView:init()
         -- Alt + E / P: the Kindle Keyboard's kernel may send these as 3 / 0
         Edit = { { "Alt", "E" }, { "Alt", "3" }, { "3" } },
         Pin = { { "Alt", "P" }, { "Alt", "0" }, { "0" } },
-        Options = { { "Menu" } },
+        Options = { { "M" }, { "Menu" } },
         PageDown = { { { "RPgFwd", "LPgFwd" } } },
         PageUp = { { { "RPgBack", "LPgBack" } } },
     }
@@ -719,7 +712,7 @@ function NoteView:build()
     end
     local hint = (#self.picks > 0 and (KEYS[1] .. (#self.picks > 1 and ("\u{2013}" .. KEYS[math.min(#self.picks, #KEYS)]) or "") .. "  "
         .. (n_check > 0 and _("tick / open") or _("open")) .. "     ") or "")
-        .. _("Alt+E edit     Alt+P pin     Menu more     Back board")
+        .. _("Alt+E edit     Alt+P pin     M more     Back board")
     local title_h, footer_h = S(46), S(34)
     local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
     local content_h = sh - title_h - footer_h
@@ -888,16 +881,33 @@ function Notes.saveContent(plugin, memo, visibility)
     Notes.sendSoon(plugin)
 end
 
---- Send queued changes when Wi-Fi is up (never turns it on just for this,
---- unless the Notes tab is open, which holds it).
+Notes.SYNC_EVERY = 300 -- s: opening the tab syncs at most this often (changes waiting: always)
+
+--- Sync when the tab opens: quietly (Wi-Fi only when needed turns it on and
+--- off again after a minute unused), unless it synced in the last 5 minutes
+--- and nothing is waiting to be sent. Browsing itself never needs Wi-Fi.
+function Notes.syncOnOpen(plugin)
+    local queued = #((plugin.store.memos or {}).queue or {})
+    if queued == 0 and Notes.last_sync and os.time() - Notes.last_sync < Notes.SYNC_EVERY then return end
+    require("gzreader_net").run(function()
+        Notes.refresh(plugin, function(_ok, err)
+            Notes.reloadBoard(true) -- the notes, or why they didn't load
+            if err == "unauthorized" then info(describe(err)) end
+        end)
+    end, { quiet = true, reason = "notes" })
+end
+
+--- Send a change (new note, edit, tick, pin) a moment after it's made:
+--- turns Wi-Fi on for it (quietly) when Wi-Fi only when needed is on. Without
+--- a connection it waits in the queue for the next sync.
 function Notes.sendSoon(plugin)
     if Notes.send_scheduled then return end
     Notes.send_scheduled = true
     UIManager:scheduleIn(2, function()
         Notes.send_scheduled = false
-        local Net = require("gzreader_net")
-        if not Net.connected() then return end
-        Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end)
+        require("gzreader_net").run(function()
+            Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end)
+        end, { quiet = true, reason = "a note changed" })
     end)
 end
 

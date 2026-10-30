@@ -95,14 +95,19 @@ a built-in connection to a self-hosted **Grimmory** book server.
   checklists, headings, italic, bold, tags). New notes are private.
 - Works offline: notes are kept on the Kindle and changes are sent when Wi‑Fi is back.
 
+### 📅 Calendar (CalDAV)
+- The **Calendar tab** shows your CalDAV calendars (Nextcloud, iCloud, Fastmail,
+  Google, Radicale…) as an agenda, a day timeline, a week or a month.
+- Works offline; Wi‑Fi only to sync. Connect with a QR code from your phone.
+
 ### ⌨️ Made for the Kindle Keyboard
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
   aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
 - **GZreader menu** on the **Menu** key at Home: library, continue reading,
   audiobooks, search, Wi‑Fi, settings, updates, sleep, restart — also
   with letter keys.
-- **Alt + Q, W, E, R, T** switch the bottom tabs (Home, Downloads, Continue,
-  Grimmory, Notes).
+- **Z, X, C, V, B** switch the bottom tabs (Home, Downloads, Grimmory, Notes,
+  Calendar); **Q, W, E…** and **A, S, D…** open the books and tabs on Home.
 - **Back** returns from a link, otherwise goes Home (never back to the book's start).
 
 ### 🔊 Read aloud

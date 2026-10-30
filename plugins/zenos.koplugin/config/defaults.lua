@@ -145,7 +145,7 @@ local defaults = {
             kindle = false,
             manga = false,
             news = false,
-            continue = true,
+            continue = false, -- GZreader 1.6.0: listed, off (the bar: Home, Downloads, Grimmory, Notes, Calendar)
             history = false,
             favorites = false, -- GZreader: off; the Notes tab (Memos) took its place in the bar
             collections = false,
@@ -160,6 +160,7 @@ local defaults = {
             menu = false,
             ct_grimmory = true,
             ct_notes = true,
+            ct_calendar = true,
         },
         -- Grimmory build: a navbar tab that opens the Grimmory library.
         custom_tabs = {
@@ -178,10 +179,18 @@ local defaults = {
                 label = "Notes",
                 icon = "notes",
             },
+            -- GZreader: CalDAV calendars
+            {
+                id = "ct_calendar",
+                type = "action",
+                action = { gzreader_calendar = true },
+                label = "Calendar",
+                icon = "tab_calendar",
+            },
         },
         tab_order = {
-            "home", "books", "continue", "ct_grimmory", "ct_notes",
-            "favorites", -- listed (off) so it can be turned back on in Settings
+            "home", "books", "ct_grimmory", "ct_notes", "ct_calendar",
+            "continue", "favorites", -- listed (off) so they can be turned on in Settings
         },
         -- the tab list format the tab bar expects: tab_order lists every tab
         -- in Settings → Navbar → Tabs, show_tabs says which are on. Without

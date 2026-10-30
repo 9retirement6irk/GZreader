@@ -1135,6 +1135,42 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.6.0: the Calendar tab; the bar is Home, Downloads, Grimmory,
+    -- Notes, Calendar (Continue stays in the list, off).
+    if cfg._meta.gz_calendar_tab_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb then
+            nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+            local has = false
+            for _i, t in ipairs(nb.custom_tabs) do
+                if type(t) == "table" and t.id == "ct_calendar" then has = true end
+            end
+            if not has then
+                table.insert(nb.custom_tabs, { id = "ct_calendar", type = "action",
+                    action = { gzreader_calendar = true }, label = "Calendar", icon = "tab_calendar" })
+            end
+            nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+            nb.show_tabs.ct_calendar = true
+            nb.show_tabs.continue = false
+            if type(nb.tab_order) == "table" then
+                local front = { "home", "books", "ct_grimmory", "ct_notes", "ct_calendar" }
+                local is_front = {}
+                for _i, id in ipairs(front) do is_front[id] = true end
+                local order = {}
+                for _i, id in ipairs(front) do order[#order + 1] = id end
+                for _i, id in ipairs(nb.tab_order) do
+                    if not is_front[id] then order[#order + 1] = id end
+                end
+                local listed = {}
+                for _i, id in ipairs(order) do listed[id] = true end
+                if not listed.continue then order[#order + 1] = "continue" end
+                nb.tab_order = order
+            end
+        end
+        cfg._meta.gz_calendar_tab_migrated = true
+        changed = true
+    end
+
     if cfg._meta.reader_footer_hide_cbz_default_migrated ~= true then
         if type(cfg.reader_footer) ~= "table" then
             cfg.reader_footer = {}

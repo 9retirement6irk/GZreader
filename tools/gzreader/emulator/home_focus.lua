@@ -47,10 +47,35 @@ for i = 1, 4 do
     add({ fn = function(E) where(E, "up " .. i .. ":") end, after = 1 })
     shot("home-up-" .. i)
 end
--- the Grimmory and Notes tabs: ZenOS's status row in the title, no close button
+-- letter keys on Home (shown as squares), then the tab keys Z, X, C, V, B
+add({ wait = 3 })
+shot("keys-0-home")
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
+    for _i, w in ipairs(UIManager._window_stack) do
+        local t = w.widget and w.widget._zen_home_focus_targets
+        if t then
+            local out = {}
+            for _j, x in ipairs(t) do out[#out + 1] = tostring(x.shortcut or "-") .. "=" .. tostring(x.key) end
+            E.say("home keys:", table.concat(out, " "))
+        end
+    end
+end, after = 1 })
+key("D", 5) -- the strip's third tab (Series)
+shot("keys-1-series")
+key("A", 5) -- back to Recent
+shot("keys-2-recent")
+key("E", 14) -- the second book in the strip: opens it
+add({ fn = function(E)
+    local R = require("apps/reader/readerui").instance
+    E.say("E opened:", tostring(R and R.document and R.document.file))
+end, after = 1 })
+key("Back", 10)
+key("X", 6) -- Downloads
+shot("keys-3-X-downloads")
+key("C", 6) -- the 3rd tab: Grimmory (not connected here: it asks)
+shot("keys-4-C")
 key("Back", 3)
-add({ combo = { "Alt", "R" }, after = 8 })
-shot("grimmory-tab")
-add({ combo = { "Alt", "T" }, after = 8 })
-shot("notes-tab")
+key("Z", 6) -- Home
+shot("keys-5-Z-home")
 return s

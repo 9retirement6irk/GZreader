@@ -127,4 +127,33 @@ function PairPage.memosSuccess(user)
     }))
 end
 
+--- Connecting the Calendar tab (CalDAV). opts: server, username, error.
+function PairPage.caldavForm(opts)
+    opts = opts or {}
+    local err = opts.error and ('<p class="err">' .. esc(opts.error) .. "</p>") or ""
+    return shell("Connect Kindle to your calendar", table.concat({
+        "<h1>Connect your calendar</h1>",
+        '<p class="sub">The Kindle\'s Calendar tab shows your CalDAV calendars (Nextcloud, iCloud, Fastmail, Google, Radicale…), read-only.</p>',
+        '<form method="post" autocomplete="off" onsubmit="var b=event.submitter;if(b){setTimeout(function(){b.disabled=true;b.textContent=\'Connecting…\'},0)}">',
+        err,
+        '<label for="server">CalDAV address</label>',
+        '<input id="server" name="server" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="https://cloud.example.com/remote.php/dav" value="', esc(opts.server), '">',
+        '<label for="username">User name</label>',
+        '<input id="username" name="username" autocapitalize="off" autocorrect="off" spellcheck="false" required value="', esc(opts.username), '">',
+        '<label for="password">Password</label>',
+        '<input id="password" name="password" type="password" required>',
+        '<button type="submit">Connect Kindle</button>',
+        '<details><summary>Which address and password?</summary><p class="note">Nextcloud: https://your.server/remote.php/dav · iCloud: https://caldav.icloud.com · Fastmail: https://caldav.fastmail.com · Google: https://apidata.googleusercontent.com/caldav/v2/ · Radicale or Baïkal: the server address. Use an app password where your server has them (iCloud, Fastmail and Google need one): the Kindle keeps it to sync, and you can revoke it any time.</p></details>',
+        '<p class="note">Your phone and Kindle must be on the same Wi‑Fi. This page works once and closes on the Kindle when you finish or press Back.</p>',
+        "</form>",
+    }))
+end
+
+function PairPage.caldavSuccess(count)
+    return shell("Kindle connected", table.concat({
+        '<h1>Calendar connected</h1><div class="card"><p class="ok">Found ', esc(count), " calendars.</p>",
+        "<p>They're on the Kindle's Calendar tab. You can close this page.</p></div>",
+    }))
+end
+
 return PairPage

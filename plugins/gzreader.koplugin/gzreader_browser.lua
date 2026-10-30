@@ -73,8 +73,8 @@ end
 
 function Browser:show()
     -- the Notes tab, if it's open underneath (ZenOS opens action tabs on top)
-    local Notes = package.loaded["gzreader_notes"] -- (never opened: nothing to close)
-    if type(Notes) == "table" and Notes.closeOtherTabs then pcall(Notes.closeOtherTabs, Browser.TAB_ID) end
+    -- the Notes or Calendar tab, if it's open underneath (ZenOS opens action tabs on top)
+    pcall(function() require("gzreader_tabs").closeOthers(Browser.TAB_ID) end)
     self.menu = Menu:new{
         title = _("Grimmory"),
         item_table = self:rootItems(),

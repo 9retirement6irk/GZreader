@@ -155,6 +155,14 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.edit),
+                IconItem.decorate({
+                    text = _("Calendar (CalDAV)"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.calendarSettingsItems) == "function" then return g:calendarSettingsItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.calendar),
             },
         }, icons.connect),
         {

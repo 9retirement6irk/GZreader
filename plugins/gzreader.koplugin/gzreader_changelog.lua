@@ -2,6 +2,19 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.0",
+        changes = {
+            "New: the Calendar tab, for CalDAV calendars (Nextcloud, iCloud, Fastmail, Google, Radicale, Baïkal…), read-only. Four layouts: Agenda (the coming days' events), Day (a timeline), Week (seven columns) and Month (a grid). Letters open an event (or a day in Week); the 5-way and Press work too, and a day in Week or Month opens in Day. The page keys go to the next or previous day, week or month. N goes to today; M has the layouts, Refresh and the calendar settings. Repeating events, moved and cancelled occurrences, all-day and multi-day events are shown. Calendars are told apart by shade.",
+            "Connecting a calendar: open the Calendar tab and choose Connect with QR code (enter the address, user name and password on your phone) or Connect by typing. Use an app password where your server has them: the Kindle keeps it to sync (like the Memos token) and never writes it to the log. Settings → Connections → Calendar (CalDAV): which calendars to show, the layout it opens in, the first day of the week, how far ahead and back to sync, storage, disconnect.",
+            "The tab bar is now Home, Downloads, Grimmory, Notes and Calendar. Continue is still in Settings → Interface → Navbar → Tabs (turned off), with Favorites. The setup guide's Navbar Tabs page offers Calendar too.",
+            "The bottom tabs have their own keys: Z, X, C, V and B, the keyboard's bottom row, shown under each tab. Alt + Q, W, E… still work. No list or tab used those keys (only KOReader's classic list mode with more than 20 items per page had letters for items 21–25).",
+            "Home has letter keys, shown in small squares: Q opens the book you're reading, W, E, R… the books in the strip, and A, S, D… the strip's tabs (Recent, Search, Series).",
+            "Notes: M opens the Notes menu (Refresh, Filter, connect, disconnect). The Menu key opened the Home menu there. In a note, M works too.",
+            "Notes don't need Wi-Fi to browse: Wi-Fi is turned on only to sync (when the tab opens, at most every 5 minutes, or with changes waiting; M → Refresh any time), to send a new note, edit, tick or pin right away, and to open an attachment that isn't on the Kindle yet. Before, the Notes tab kept Wi-Fi on the whole time it was open, and changes waited for Wi-Fi to be on already. Pictures in your notes are downloaded while syncing, so they show offline.",
+            "Wi-Fi you turn off yourself (the Wi-Fi menu, the quick panel or the Home menu) now stays off: background work (syncing when a book opens or closes, after waking, Notes, Calendar, the auto-download shelf) waits until you turn Wi-Fi on again, also after a restart. Things you ask for (browsing Grimmory, a download, opening an attachment, checking for updates, connecting) still turn it on, and it goes off again after a minute.",
+        },
+    },
+    {
         version = "1.5.2",
         changes = {
             "Settings: Grimmory is now Settings → Connections, with Grimmory and Memos (Notes) in it.",
