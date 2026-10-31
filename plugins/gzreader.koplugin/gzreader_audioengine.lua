@@ -24,6 +24,7 @@ Pause/resume: SIGSTOP/SIGCONT of the gst-launch process. Position: timed on
 the Kindle while playing.
 ]]
 
+local bit = require("bit")
 local UIManager = require("ui/uimanager")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
@@ -94,6 +95,33 @@ end
 
 local function quote(path) return "'" .. tostring(path):gsub("'", "'\\''") .. "'" end
 
+local ADTS_RATES = { [0] = 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350 }
+
+--- Where `ms` falls in an ADTS file: the byte offset of the frame playing
+--- then, and the time that frame starts at. (0, 0) if the file can't be read.
+--- Lets a paused AAC audiobook carry on within its 15-second chunk.
+function Engine.adtsSkip(path, ms)
+    if not ms or ms <= 0 then return 0, 0 end
+    local f = io.open(path, "rb")
+    if not f then return 0, 0 end
+    local data = f:read("*a")
+    f:close()
+    local pos, t, n = 1, 0, #data
+    while pos + 6 <= n do
+        local b1, b2, b3, b4, b5, b6, b7 = data:byte(pos, pos + 6)
+        if b1 ~= 0xFF or bit.band(b2, 0xF6) ~= 0xF0 then return 0, 0 end -- not ADTS (or lost sync)
+        local rate = ADTS_RATES[bit.band(bit.rshift(b3, 2), 0x0F)]
+        local len = bit.bor(bit.lshift(bit.band(b4, 3), 11), bit.lshift(b5, 3), bit.rshift(b6, 5))
+        if not rate or len < 7 then return 0, 0 end
+        local dur = 1024 * (bit.band(b7, 3) + 1) * 1000 / rate
+        if t + dur > ms then break end
+        t = t + dur
+        pos = pos + len
+    end
+    if pos > n then return 0, 0 end -- (past the end: from the start of the chunk)
+    return pos - 1, t
+end
+
 --- The shell command playing `src` with player `p`.
 --- src = { kind = "file", path, offset_ms, size, duration_ms }
 ---     | { kind = "chunks", dir, starts = { ms… }, offset_ms }
@@ -103,9 +131,19 @@ function Engine.command(p, src)
     if src.kind == "chunks" then
         local k = 1
         for i, st in ipairs(src.starts or { 0 }) do if st <= offset then k = i end end
-        local feed = string.format("i=%d; while [ -f %s/c$i.aac ]; do cat %s/c$i.aac; i=$((i+1)); done",
-            k - 1, quote(src.dir), quote(src.dir))
-        return feed .. " | gst-launch-0.10 fdsrc ! " .. p.pipe, (src.starts or { 0 })[k] or 0
+        local start = (src.starts or { 0 })[k] or 0
+        -- into the chunk, from the ADTS frame playing at `offset`
+        local skip, skipped = Engine.adtsSkip(src.dir .. "/c" .. (k - 1) .. ".aac", offset - start)
+        local loop = string.format("while [ -f %s/c$i.aac ]; do cat %s/c$i.aac; i=$((i+1)); done",
+            quote(src.dir), quote(src.dir))
+        local feed
+        if skip > 0 then
+            feed = string.format("i=%d; { dd if=%s/c%d.aac bs=%d skip=1 2>/dev/null; %s; }",
+                k, quote(src.dir), k - 1, skip, loop)
+        else
+            feed = string.format("i=%d; %s", k - 1, loop)
+        end
+        return feed .. " | gst-launch-0.10 fdsrc ! " .. p.pipe, start + math.floor(skipped)
     end
     local path = abs(src.path)
     if p.playbin then

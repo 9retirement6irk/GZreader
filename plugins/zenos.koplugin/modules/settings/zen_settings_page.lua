@@ -331,7 +331,26 @@ function ZenSettingsPage:init()
         self.key_events.ZenSettingsFocusLeft = { { "Left" } }
         self.key_events.ZenSettingsFocusRight = { { "Right" } }
     end
+    -- the Home key: leave Settings for Home (the default tab)
+    if Device:hasKeys() then
+        self.key_events.ZenSettingsHome = { { "Home" } }
+    end
     _G.__ZEN_UI_SETTINGS_PAGE = self
+end
+
+function ZenSettingsPage:onZenSettingsHome()
+    self:closeMenu()
+    -- at once, so closing Settings and showing Home make one screen refresh
+    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
+    local fm = ok_fm and FileManager.instance
+    if fm and fm.onHome then
+        fm:onHome()
+        return true
+    end
+    local ok_r, ReaderUI = pcall(require, "apps/reader/readerui")
+    local reader = ok_r and ReaderUI.instance
+    if reader and reader.onHome then reader:onHome() end
+    return true
 end
 
 function ZenSettingsPage:updateItems(...)

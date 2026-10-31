@@ -544,6 +544,13 @@ function Kindle:openInputDevices()
     local dev_count = ffi.new("size_t[1]")
     -- We care about: the touchscreen, a properly scaled stylus, pagination buttons, a home button, a fiveway; and the fancy "tap on frame" stuff.
     local match_mask = bit.bor(C.INPUT_TOUCHSCREEN, C.INPUT_SCALED_TABLET, C.INPUT_PAGINATION_BUTTONS, C.INPUT_HOME_BUTTON, C.INPUT_DPAD, C.INPUT_KINDLE_FRAME_TAP)
+    -- GZreader: the Kindle 3's volume rocker is an input device of its own
+    -- (event2). Opened (and so grabbed), its presses reach KOReader instead of
+    -- the paused Kindle framework.
+    if self.hasVolumeKeys and self:hasVolumeKeys() then
+        local vol_ok, vol_bit = pcall(function() return C.INPUT_VOLUME_BUTTONS end)
+        if vol_ok and vol_bit then match_mask = bit.bor(match_mask, vol_bit) end
+    end
     local devices = FBInkInput.fbink_input_scan(match_mask, 0, 0, dev_count)
     if devices ~= nil then
         for i = 0, tonumber(dev_count[0]) - 1 do
@@ -586,6 +593,11 @@ function Kindle:openInputDevices()
             end
             C.free(devices)
         end
+    end
+
+    if self.hasVolumeKeys and self:hasVolumeKeys() and self.volume_dev and not self.input.opened_devices[self.volume_dev] then
+        local vol_ok, err = pcall(self.input.open, self.input, self.volume_dev)
+        if not vol_ok then logger.warn("Volume keys: couldn't open", self.volume_dev, err) end
     end
 
     self.input:open("fake_events")
@@ -956,6 +968,8 @@ local Kindle3 = Kindle:extend{
     canModifyFBInfo = no,
     canUseCBB = no, -- 4bpp
     isSpecialOffers = hasSpecialOffers(),
+    hasVolumeKeys = yes, -- GZreader: VPlus / VMinus (audiobooks, read aloud)
+    volume_dev = "/dev/input/event2",
 }
 
 local Kindle4 = Kindle:extend{
@@ -1273,6 +1287,9 @@ function Kindle3:init()
         device = self,
         event_map = dofile("frontend/device/kindle/event_map_kindle4.lua"),
     }
+    -- the volume rocker (same codes as the Kindle 2 / DX)
+    self.input.event_map[114] = "VMinus"
+    self.input.event_map[115] = "VPlus"
     self.keyboard_layout = dofile("frontend/device/kindle/keyboard_layout.lua")
     self.k3_alt_plus_key_kernel_translated = dofile("frontend/device/kindle/k3_alt_and_top_row.lua")
     Kindle.init(self)

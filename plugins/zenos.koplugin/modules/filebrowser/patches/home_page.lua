@@ -2838,14 +2838,18 @@ local function wrap_home_focus_target(menu, target, widget, defer_registration)
             local top = bounds and math.max(0, (bounds.top or 0) + shift) or 0
             paint_shortcut_badge(bb, x, y + top, fs.w, fs.h - top, target.shortcut)
         end
-        if menu._zen_home_focus_id == target.id then
+        do
             local frame_size = self:getSize()
             local bounds = target.content_bounds
             local shift = bounds and bounds.shift or 0
             local top = bounds and math.min(0, bounds.top + shift - 2) or 0
             local bottom = bounds and math.max(frame_size.h, bounds.bottom + shift + 2) or frame_size.h
-            paint_focus_rect(
-                bb, x, y + top, frame_size.w, bottom - top, target.focus_color)
+            -- GZreader: where its focus box goes (moving the focus refreshes only the two boxes)
+            target._focus_rect = { x = x, y = y + top, w = frame_size.w, h = bottom - top }
+            if menu._zen_home_focus_id == target.id then
+                paint_focus_rect(
+                    bb, x, y + top, frame_size.w, bottom - top, target.focus_color)
+            end
         end
     end
     target.widget = frame
@@ -2866,10 +2870,30 @@ local function set_home_focus(menu, index)
     if index > #targets then index = #targets end
     local target = targets[index]
     if not target then return false end
+    local prev_i = menu._zen_home_focus_index
+    local prev = not menu._zen_home_focus_suspended and prev_i and targets[prev_i] or nil
     menu._zen_home_focus_suspended = false
     menu._zen_home_focus_index = index
     menu._zen_home_focus_id = target.id
     menu._zen_home_focus_key = target.key
+    -- GZreader: from one Home item to another, only the old and the new focus
+    -- boxes are refreshed, with the quick e-ink mode (like KOReader's menus);
+    -- a whole-screen refresh made every 5-way press slow on a Kindle 3. If
+    -- anything moved (the layout changed), the whole screen as before.
+    local function rect(t) local r = t and t._focus_rect; return r and { x = r.x, y = r.y, w = r.w, h = r.h } end
+    local function same(a, b) return a and b and a.x == b.x and a.y == b.y and a.w == b.w and a.h == b.h end
+    local before_prev, before_new = rect(prev), rect(target)
+    if prev and prev ~= target and before_prev and before_new then
+        require("ui/uimanager"):setDirty(menu, function()
+            local now_prev, now_new = rect(prev), rect(target)
+            if not (same(before_prev, now_prev) and same(before_new, now_new)) then return "ui" end
+            local Geom = require("ui/geometry")
+            -- (the quick mode is black and white: over a background picture, "ui")
+            local bg = type(Background.library_path) == "function" and Background.library_path(_zen_plugin) or ""
+            return (bg == "" or bg == nil) and "fast" or "ui", Geom:new(now_prev):combine(Geom:new(now_new))
+        end)
+        return true
+    end
     require("ui/uimanager"):setDirty(menu, "ui")
     return true
 end

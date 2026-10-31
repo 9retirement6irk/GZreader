@@ -430,7 +430,13 @@ end
 function Api:audiobookInfo(book_id)
     local code, data, err = self:call("GET", "/api/v1/audiobooks/" .. tostring(book_id) .. "/info",
         { timeouts = { 10, 30 } })
-    if code == 200 and type(data) == "table" then return data end
+    if code == 200 and type(data) == "table" then
+        -- the description is in the book's metadata (not in the audio info)
+        local ok, full = pcall(self.getBook, self, book_id)
+        local m = ok and type(full) == "table" and full.metadata
+        if type(m) == "table" and type(m.description) == "string" then data.gz_description = m.description end
+        return data
+    end
     return nil, err or ("http_" .. tostring(code))
 end
 

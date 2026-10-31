@@ -43,4 +43,24 @@ function Tabs.decorate(menu, label)
     })
 end
 
+--- The Home key from a full-screen view of ours (the audiobook player,
+--- Settings): close everything above the file manager and open the default
+--- tab (Home), like the Home key does in the file manager. `widget` is closed
+--- first (its own close handling runs). In a book (no file manager), the
+--- reader's Home.
+function Tabs.goHome(widget)
+    if widget then UIManager:close(widget) end
+    -- at once (not on the next tick): closing and Home make one screen refresh
+    local FileManager = require("apps/filemanager/filemanager")
+    local fm = FileManager.instance
+    if fm and fm.onHome then
+        fm:onHome()
+        return true
+    end
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    local reader = ok and ReaderUI.instance
+    if reader and reader.onHome then reader:onHome() end
+    return true
+end
+
 return Tabs

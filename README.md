@@ -115,13 +115,15 @@ a built-in connection to a self-hosted **Grimmory** book server.
 - Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
   Kindle's Text-to-Speech.
 - The sentence being read is **highlighted** and **pages turn by themselves**.
-- Speed and volume controls; the Kindle's volume buttons work while reading.
+- Speed and volume controls; the Kindle's volume buttons work while reading
+  (and everywhere else in GZreader).
 
 ### 🎧 Audiobooks (experimental)
 - Browse Grimmory's **audiobooks**, download them (M4B or MP3 tracks) and listen
   through the speaker or headphones.
 - **Chapters**, ±30 seconds, **sleep timer** (15/30/60 minutes or end of chapter),
-  volume; playback continues while you browse.
+  volume (also the Kindle's volume buttons), the book's **description**;
+  playback continues while you browse. The Home key goes Home from the player.
 - Listening position **syncs with Grimmory's web player**.
 - Plays through the Kindle 3's own hardware MP3/AAC decoders. M4B files are
   converted on the Kindle after download (no re-encoding) so they can start

@@ -140,6 +140,9 @@ function Folder.writeStub(plugin, id)
     end
     if type(info.narrator) == "string" and info.narrator ~= "" then desc[#desc + 1] = "read by " .. info.narrator end
     local description = table.concat(desc, " · ")
+    -- Grimmory's description of the book after that (Home's featured book shows it)
+    local about = type(info.description) == "string" and info.description ~= "" and info.description or nil
+    if about then description = description .. ". " .. about:gsub("%s*\n%s*", " ") end
 
     local Archiver = require("ffi/archiver")
     local epub = Archiver.Writer:new{}
@@ -180,8 +183,9 @@ function Folder.writeStub(plugin, id)
         xmlEsc(id), xmlEsc(title), xmlEsc(title)), mtime)
     epub:addFileFromMemory("OEBPS/page.xhtml", string.format([[<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>%s</title></head><body>
-<h1>%s</h1>%s<p>This is an audiobook. Open it from Home or Downloads → Audiobooks to listen.</p></body></html>]],
-        xmlEsc(title), xmlEsc(title), author and ("<p>" .. xmlEsc(author) .. "</p>") or ""), mtime)
+<h1>%s</h1>%s%s<p>This is an audiobook. Open it from Home or Downloads → Audiobooks to listen.</p></body></html>]],
+        xmlEsc(title), xmlEsc(title), author and ("<p>" .. xmlEsc(author) .. "</p>") or "",
+        about and ("<p>" .. xmlEsc(about):gsub("\n+", "</p><p>") .. "</p>") or ""), mtime)
     epub:close()
     os.rename(tmp, path)
     e.stub_version = Folder.STUB_VERSION

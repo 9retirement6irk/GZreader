@@ -4,9 +4,11 @@ Markdown; a toolbar at the bottom of the page adds it for you:
 
   • List   ☐ Check   1. Num   H Head   I   B   # Tag   |  Save
 
-- ▼ from the last line moves to the toolbar; ◀ ▶ choose; Press applies to
+- Menu jumps to the toolbar from anywhere in the text, the cursor staying
+  where it is (on the tool used last); Menu again (or ▲) goes back to the
+  text. ▼ from the last line also reaches it. ◀ ▶ choose; Press applies to
   the line the cursor is on (lists, checklists, headings) or adds the markers
-  at the cursor (italic, bold); ▲ goes back to the text.
+  at the cursor (italic, bold).
 - Shortcuts from anywhere: Alt+L list, Alt+C checklist, Alt+N numbered,
   Alt+H heading, Alt+K italic, Alt+B bold, Alt+G tag, Alt+S save,
   Alt+V who can see it. (Alt + the top row types 1–0 on the Kindle Keyboard,
@@ -185,7 +187,7 @@ function Editor:init()
         ToolUp = { { "Up" } },
         ToolDown = { { "Down" } },
         ToolPress = { { "Press" } },
-        Options = { { "Menu" } },
+        ToolbarToggle = { { "Menu" } },
         CloseDialog = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
     }
     local margin = S(12)
@@ -265,11 +267,11 @@ function Editor:drawChrome()
     local hint
     if t then
         hint = t.help .. "  (Alt+" .. t.key .. ")   \u{00B7}   \u{25C0} \u{25B6} " .. _("choose") .. "   " .. _("Press apply")
-            .. "   \u{25B2} " .. _("text")
+            .. "   Menu " .. _("text")
     elseif self.focus_tool then
-        hint = _("Save to Memos") .. "  (Alt+S)   \u{00B7}   \u{25B2} " .. _("back to the text")
+        hint = _("Save to Memos") .. "  (Alt+S)   \u{00B7}   Menu " .. _("back to the text")
     else
-        hint = "\u{25BC} " .. _("toolbar") .. "   \u{00B7}   Alt+G " .. _("tag") .. "   Alt+C " .. _("check") .. "   Alt+B "
+        hint = "Menu " .. _("toolbar") .. "   \u{00B7}   Alt+G " .. _("tag") .. "   Alt+C " .. _("check") .. "   Alt+B "
             .. _("bold") .. "   Alt+S " .. _("save")
     end
     self.hint_slot:clear()
@@ -295,6 +297,7 @@ function Editor:useTool(i)
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
     local pos = self.input.charpos or (#self.input.charlist + 1)
+    self.last_tool = i
     if t.prefix then
         self:apply(NoteEditor.applyPrefix(self:text(), pos, t))
     elseif t.wrap then
@@ -305,9 +308,19 @@ function Editor:useTool(i)
     self:backToText()
 end
 
+--- The text box loses / gets back the keys without being rebuilt (InputText's
+--- unfocus / focus redo the text box: its cursor would vanish and a long
+--- note would scroll), so the cursor stays where it is, visible.
+function Editor:textKeys(on)
+    self.input.focused = on
+    if self.input._frame_textwidget then
+        self.input._frame_textwidget.color = on and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY
+    end
+end
+
 function Editor:backToText()
     self.focus_tool = nil
-    self.input:focus()
+    self:textKeys(true)
     self:redraw()
 end
 
@@ -362,9 +375,19 @@ end
 function Editor:onToolDown()
     -- the text box passes ▼ on from its last line
     if not self.focus_tool then
-        self.focus_tool = 1
-        self.input:unfocus()
+        self.focus_tool = self.last_tool or 1
+        self:textKeys(false)
         self:redraw()
+    end
+    return true
+end
+
+--- Menu: to the toolbar and back; the cursor stays where it is in the text.
+function Editor:onToolbarToggle()
+    if self.focus_tool then
+        self:backToText()
+    else
+        self:onToolDown()
     end
     return true
 end
@@ -419,23 +442,6 @@ function Editor:save()
     self.saved = true
     UIManager:close(self, "full")
     if self.on_save then self.on_save(text, self.visibility, self.visibility ~= self.original_vis) end
-end
-
-function Editor:onOptions()
-    local dialog
-    dialog = ButtonDialog:new{ title = self.memo and _("Edit note") or _("New note"), buttons = {
-        { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
-        { { text = _("Who can see it: ") .. NoteEditor.VIS_LABEL[self.visibility], align = "left", callback = function()
-            UIManager:close(dialog); self:onShortcut("V")
-        end } },
-        { { text = _("Discard changes"), align = "left", callback = function()
-            UIManager:close(dialog); UIManager:close(self, "full")
-        end } },
-    } }
-    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
-    if add then pcall(add, dialog) end
-    UIManager:show(dialog)
-    return true
 end
 
 --- Back (from the text box or the toolbar).

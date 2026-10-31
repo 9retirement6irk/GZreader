@@ -2,6 +2,18 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.2",
+        changes = {
+            "Fixed: an audiobook wouldn't play again after being paused. Pausing used to freeze the player, which the Kindle 3's sound system doesn't come back from; now pausing stops it and remembers the place, and play starts again from there (MP3 to within a fraction of a second; M4B from the exact AAC frame, instead of the start of its 15-second piece). A paused audiobook no longer holds the sound device, so read aloud can speak.",
+            "The Kindle's volume buttons now work everywhere in GZreader: in the audiobook player, while reading aloud, on Home and in lists (a note shows the level, 0–15). On the Kindle 3 they were never passed to KOReader, which left them to the paused Kindle software; the audiobook player could stop when they were pressed.",
+            "Leaving GZreader (Exit to the Kindle's menu, or a restart) now stops the audiobook and read aloud, with the place saved (sent to Grimmory at the next start). The player used to go on playing on the Kindle's own home screen. Sleep (the power switch) pauses it, as before, and now also frees the sound device.",
+            "Audiobook descriptions: Grimmory's description of the book is downloaded with the audiobook. D in the player (or Menu → About this book) shows it with the narrator, length and number of chapters, and Home's featured book shows it like an ebook's. Audiobooks downloaded before get it the next time the player opens with Wi-Fi on.",
+            "The Home key now works in the audiobook player (Home; the audio keeps playing) and in Settings (Home).",
+            "Note editor: the Menu key jumps to the formatting toolbar from anywhere in the text, on the tool used last, with the cursor kept where it is (and visible), so the tool applies there; Menu again goes back to the text. ▼ from the last line still works. Moving to the toolbar and back no longer redraws the text box (a long note jumped back to its top).",
+            "Faster on Home: moving the 5-way between books and tabs now refreshes only the old and the new focus box, with the quick e-ink mode KOReader's own menus use, instead of the whole screen.",
+        },
+    },
+    {
         version = "1.6.1",
         changes = {
             "Calendar links: the Calendar tab now shows calendars from their shared links (webcal:// or https://….ics), such as Proton Calendar's (Settings → Calendars → Share → Share with anyone), Google's secret iCal address or an Outlook published calendar. Add as many as you like; they sync together, and with a CalDAV account if you also have one (neither is needed for the other).",

@@ -37,6 +37,16 @@ Press/Back answer), and the order things happen in on a first start.
   on Home.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
+- `audio_keys.lua` — the audiobook player: pause / play again, the volume
+  rocker (VPlus / VMinus) in the player and on Home, D (the description), the
+  Home key from the player and Settings, sleep and closing GZreader. Needs a
+  stand-in `gst-launch-0.10` (see the script).
+- `note_toolbar.lua` — the note editor's Menu key: to the toolbar and back,
+  the cursor kept in place.
+- `speed.lua` — CPU time, screen refreshes (mode, share of the screen),
+  forks and files opened for everyday keys on Home, the tabs, the Home menu
+  and Settings, twice; a sampling profiler shows where the CPU went. Needs
+  the demo library server on 18080.
 
 ```
 tools/gzreader/emulator/run.sh tools/gzreader/emulator/setup_qr.lua /tmp/emu/setup 20

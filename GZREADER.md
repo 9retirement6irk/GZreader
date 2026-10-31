@@ -76,6 +76,9 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |
+| Settings, audiobook player, tab views | Home | Home (the default tab). The audiobook keeps playing. |
+| Anywhere | Volume buttons | Speaker volume for audiobooks and read aloud (a note shows the level). |
+| Note editor | Menu | To the formatting toolbar and back; the cursor stays where it is. |
 
 ## Connect to Grimmory
 
@@ -153,8 +156,10 @@ API to `/api` are found too.
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
 - **Editor:** a full page with a toolbar at the bottom: List, Check, Num,
-  Head, *I*, **B**, # Tag and Save. ▼ from the last line moves to the
-  toolbar, ◀ ▶ choose, Press applies, ▲ goes back to the text. Shortcuts:
+  Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
+  anywhere in the text (on the tool used last) and the cursor stays where it
+  is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼
+  from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
   Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it. Alt + the top
   row types 1–0 here. New notes are **private** unless you change it. Back
@@ -448,14 +453,28 @@ converted for the Kindle, or one file per track for folder audiobooks), then the
 | 5-way press / Space | Play / pause |
 | Left / Right | Back / forward 30 s |
 | Up / Down | Previous / next chapter |
-| Menu | Chapters, sleep timer (15/30/60 min, end of chapter), volume, stop |
-| Back | Close the screen (keeps playing; reopen from Grimmory → Audiobooks → Now playing) |
-| Volume buttons | Volume |
+| Q / W / E | Chapters / sleep timer (15–60 min, end of chapter) / stop |
+| A / S | Quieter / louder |
+| D | About this book: Grimmory's description, narrator, length |
+| Menu | About, chapters, sleep timer, stop |
+| Back | Close the screen (keeps playing; reopen from Home or Downloads → Audiobooks) |
+| Home | Home (keeps playing) |
+| Volume buttons | Volume, here and anywhere in GZreader (a note shows the level) |
+
+Pause stops the player process and remembers the place; play starts it
+again from there (MP3: to the nearest 4 KB; M4B: from the AAC frame playing
+when paused). The Kindle 3's sound pipeline doesn't come back from a
+suspended process, and a stopped one also frees the sound device for read
+aloud. Sleep (the power switch) pauses; leaving GZreader (Exit to the
+Kindle's menu, a restart) stops the audiobook and read aloud.
 
 Position syncs with Grimmory's audiobook progress (same fields as its web
 player: position in the track and track index), every minute while
 playing, on pause and on stop; offline updates are queued. The Kindle
 doesn't go to sleep while audio plays; pressing the power button pauses.
+The book's description comes from Grimmory with the download (and, for
+audiobooks downloaded before 1.6.2, the next time the player opens online);
+Home's featured book shows it too.
 
 Playback uses what the Kindle 3 has: GStreamer 0.10 (`gst-launch-0.10`)
 with Freescale's hardware decoders `mfw_mp3decoder` and `mfw_aacdecoder`,

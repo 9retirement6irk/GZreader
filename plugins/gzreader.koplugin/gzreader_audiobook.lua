@@ -129,6 +129,38 @@ end
 
 ---------------------------------------------------------------- download
 
+local ENTITIES = { amp = "&", lt = "<", gt = ">", quot = '"', apos = "'", nbsp = " ", mdash = "\u{2014}",
+    ndash = "\u{2013}", hellip = "\u{2026}", rsquo = "\u{2019}", lsquo = "\u{2018}", rdquo = "\u{201D}", ldquo = "\u{201C}" }
+
+local function utf8char(n)
+    n = tonumber(n)
+    if not n or n < 32 or n > 0x10FFFF then return "" end
+    if n < 0x80 then return string.char(n) end
+    if n < 0x800 then return string.char(0xC0 + math.floor(n / 64), 0x80 + n % 64) end
+    if n < 0x10000 then
+        return string.char(0xE0 + math.floor(n / 4096), 0x80 + math.floor(n / 64) % 64, 0x80 + n % 64)
+    end
+    return string.char(0xF0 + math.floor(n / 262144), 0x80 + math.floor(n / 4096) % 64, 0x80 + math.floor(n / 64) % 64, 0x80 + n % 64)
+end
+
+--- Grimmory's description (HTML) as plain text, or nil when there is none.
+function Audiobook.plainText(html)
+    if type(html) ~= "string" or html:match("^%s*$") then return nil end
+    local text = html:gsub("\r", "")
+    if text:find("<%a") or text:find("</%a") then
+        text = text:gsub("%s*\n%s*", " ")
+            :gsub("<[Bb][Rr]%s*/?>", "\n")
+            :gsub("</[Pp]>", "\n\n"):gsub("</[Dd][Ii][Vv]>", "\n")
+            :gsub("<[Ll][Ii][^>]*>", "\n\u{2022} ")
+            :gsub("<[^>]*>", "")
+    end
+    text = text:gsub("&#[xX](%x+);", function(h) return utf8char(tonumber(h, 16)) end)
+        :gsub("&#(%d+);", utf8char)
+        :gsub("&(%a+);", function(name) return ENTITIES[name] end)
+    text = text:gsub("[ \t]+\n", "\n"):gsub("\n[ \t]+", "\n"):gsub("\n\n\n+", "\n\n"):gsub("^%s+", ""):gsub("%s+$", "")
+    return text ~= "" and text or nil
+end
+
 --- Turn Grimmory's info into our local book description.
 function Audiobook.describe(book_id, info, primary_name)
     local tracks, files = {}, {}
@@ -153,6 +185,7 @@ function Audiobook.describe(book_id, info, primary_name)
         for i, t in ipairs(tracks) do chapters[i] = { title = t.title or T(_("Track %1"), i), startTimeMs = t.start } end
     end
     return { id = tostring(book_id), title = info.title, author = info.author, narrator = info.narrator,
+        description = Audiobook.plainText(info.gz_description),
         file_id = tonumber(info.bookFileId), folder = info.folderBased == true, durationMs = tonumber(info.durationMs),
         tracks = tracks, chapters = chapters, files = files }
 end
@@ -425,7 +458,7 @@ function Player:new(plugin, book)
 end
 
 function Player:globalPos()
-    if self.playing or Engine.isPaused() then
+    if self.playing then
         local t = self.book.tracks[self.track or 1]
         return (t and t.start or 0) + Engine.position()
     end
@@ -461,7 +494,8 @@ function Player:push()
     self.last_push = os.time()
     -- sent in the background (never on the screen's thread)
     self.plugin:queue("progress", self.book.id, body)
-    if NetworkMgr:isConnected() then self.plugin:flushPending() end
+    -- (GZreader closing: sent at the next start)
+    if NetworkMgr:isConnected() and not Audiobook.quitting then self.plugin:flushPending() end
 end
 
 --- Offer Grimmory's position when it differs from ours by more than a minute.
@@ -475,6 +509,7 @@ function Player:pull(on_done)
     end
     local remote = self._pulled or nil
     self._pulled = nil
+    if remote then self:noteDetails(remote) end
     local ap = remote and remote.audiobookProgress
     local ms = ap and tonumber(ap.positionMs)
     if not ms then return on_done() end
@@ -493,6 +528,18 @@ function Player:pull(on_done)
     })
 end
 
+
+--- Keep Grimmory's description of the book (audiobooks downloaded before
+--- GZreader 1.6.2 don't have it; it can also change on the server).
+function Player:noteDetails(remote)
+    local m = type(remote) == "table" and remote.metadata
+    local desc = type(m) == "table" and Audiobook.plainText(m.description)
+    if not desc or desc == self.book.description then return end
+    self.book.description = desc
+    pcall(self.saveLayout, self)
+    pcall(Folder.writeStub, self.plugin, self.book.id) -- Home shows it
+    if self.screen then self.screen:refresh() end
+end
 
 --- Record converted tracks in audiobook.json.
 function Player:saveLayout()
@@ -556,32 +603,32 @@ function Player:play()
     self.pos = t.start + (started or 0)
     self.track = track
     self.playing = true
+    self.paused = nil
     Audiobook.current = self
     self:keepAwake(true)
     self:schedule()
     return true
 end
 
+--- Pause: the player is stopped (its place kept) rather than suspended. The
+--- Kindle 3's sound pipeline doesn't come back from a suspended player, and a
+--- stopped one frees the sound device (read aloud can speak).
 function Player:pause()
     if not self.playing then return end
-    Engine.pause()
     self.pos = self:globalPos()
+    Engine.stop()
     self.playing = false
+    self.paused = true
+    if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
     self:keepAwake(false)
     self:save()
     self:push()
 end
 
+--- Play again from where it was paused.
 function Player:resume()
     if self.playing then return end
-    if Engine.isPaused() then
-        Engine.resume()
-        self.playing = true
-        self:keepAwake(true)
-        self:schedule()
-    else
-        self:play()
-    end
+    self:play()
 end
 
 function Player:toggle()
@@ -589,9 +636,10 @@ function Player:toggle()
 end
 
 function Player:stop()
-    if self.playing or Engine.isPaused() then self.pos = self:globalPos() end
+    if self.playing then self.pos = self:globalPos() end
     Engine.stop()
     self.playing = false
+    self.paused = nil
     self:keepAwake(false)
     self:cancelSleep()
     if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
@@ -652,7 +700,7 @@ function Player:tick()
     -- The player quit on its own: straight away (it couldn't play), or well
     -- before the end of the track. Not the end of the book: keep the position.
     local played = Engine.played()
-    local early = stopped and not Engine.isPaused() and (played < 4000
+    local early = stopped and (played < 4000
         or (t.durationMs and t.durationMs > 0 and in_track < t.durationMs - 30000))
     if early then
         local out = Engine.log()
@@ -770,9 +818,11 @@ function Screen:init()
         Chapters = { { "Q" } },
         Sleep = { { "W" } },
         StopClose = { { "E" } },
-        VolDown = { { "A" }, { "VMinus" } },
-        VolUp = { { "S" }, { "VPlus" } },
+        VolDown = { { "A" } },
+        VolUp = { { "S" } },
         Options = { { "Menu" } },
+        Home = { { "Home" } },
+        Description = { { "D" } },
         Close = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
     }
     self.player.screen = self
@@ -893,7 +943,7 @@ function Screen:build()
         vol,
         self:control("S", _("Louder"), function() self:onVolUp() end, col)))
     gap(12)
-    add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nBack: close (keeps playing)"),
+    add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
         face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
     self.content = group
     self[1] = FrameContainer:new{
@@ -921,8 +971,15 @@ function Screen:onBack30() self.player:skip(-Audiobook.SKIP_MS); self:refresh();
 function Screen:onFwd30() self.player:skip(Audiobook.SKIP_MS); self:refresh(); return true end
 function Screen:onPrevChapter() self.player:chapterStep(-1); self:refresh(); return true end
 function Screen:onNextChapter() self.player:chapterStep(1); self:refresh(); return true end
-function Screen:onVolUp() Engine.setVolume(Engine.volume() + 1); self:refresh(); return true end
-function Screen:onVolDown() Engine.setVolume(Engine.volume() - 1); self:refresh(); return true end
+-- (the volume rocker: gzreader_audioctl, everywhere)
+function Screen:onVolUp() Engine.setVolume(Engine.volume() + 1); self:refreshVolume(); return true end
+function Screen:onVolDown() Engine.setVolume(Engine.volume() - 1); self:refreshVolume(); return true end
+
+--- After a volume change: a quick redraw (no flash).
+function Screen:refreshVolume()
+    self:build()
+    UIManager:setDirty(self, "fast")
+end
 
 --- Close: back to where the player was opened from (Home…), fully redrawn.
 local function closeScreen(self)
@@ -935,6 +992,13 @@ function Screen:onClose()
     pcall(self.player.save, self.player) -- Home shows where you are
     pcall(self.player.push, self.player) -- and so does Grimmory
     return closeScreen(self)
+end
+
+--- The Home key: Home (the audio keeps playing).
+function Screen:onHome()
+    pcall(self.player.save, self.player)
+    pcall(self.player.push, self.player)
+    return require("gzreader_tabs").goHome(self)
 end
 
 function Screen:onStopClose()
@@ -977,10 +1041,28 @@ function Screen:onSleep()
     return true
 end
 
+--- What the book is about (Grimmory's description), its narrator and length.
+function Screen:onDescription()
+    local book = self.player.book
+    local facts = {}
+    if book.author then facts[#facts + 1] = book.author end
+    if book.narrator and book.narrator ~= "" then facts[#facts + 1] = T(_("Read by %1"), book.narrator) end
+    local total = Audiobook.total(book)
+    if total > 0 then facts[#facts + 1] = T(_("Length %1"), Audiobook.fmt(total)) end
+    local n = #(book.chapters or {})
+    if n > 1 then facts[#facts + 1] = T(_("%1 chapters"), n) end
+    local text = table.concat(facts, "\n")
+    text = text .. (text ~= "" and "\n\n" or "") .. (book.description
+        or _("Grimmory has no description of this book (or it hasn't been fetched yet: it is, the next time the player opens with Wi-Fi on)."))
+    UIManager:show(require("ui/widget/textviewer"):new{ title = book.title or _("Audiobook"), text = text })
+    return true
+end
+
 function Screen:onOptions()
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
     dialog = keyedDialog(self.player.book.title, {
+        { { text = _("About this book"), align = "left", callback = run(function() self:onDescription() end) } },
         { { text = _("Chapters"), align = "left", callback = run(function() self:onChapters() end) } },
         { { text = _("Sleep timer"), align = "left", callback = run(function() self:onSleep() end) } },
         { { text = _("Stop and close"), align = "left", callback = run(function() self:onStopClose() end) } },
@@ -1036,7 +1118,7 @@ function Audiobook.open(plugin, book)
     pcall(Folder.recordPlay, plugin, book.id, p.pos, Audiobook.total(book))
     local screen = Screen:new{ player = p }
     UIManager:show(screen)
-    if not p.playing and not Engine.isPaused() then
+    if not p.playing and not p.paused then
         p:pull(function() p:play(); screen:refresh() end)
     end
     return screen

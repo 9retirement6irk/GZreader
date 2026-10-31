@@ -79,6 +79,8 @@ function Grimmory:init()
     if not Grimmory.audio_checked then
         Grimmory.audio_checked = true
         pcall(function() require("gzreader_audioengine").stopStrayAtStart() end)
+        -- the volume rocker, and stopping the audio when GZreader closes
+        pcall(function() require("gzreader_audioctl").install() end)
     end
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
@@ -968,13 +970,7 @@ function Grimmory:onKeyPress(key)
         self.tts:toggle()
         return true
     end
-    -- The Kindle Keyboard's volume rocker sets the read-aloud volume.
-    if key.key == "VPlus" or key.key == "VMinus" then
-        Mod.TTS.setVolume(Mod.TTS.volume() + (key.key == "VPlus" and 1 or -1))
-        UIManager:show(require("ui/widget/notification"):new{
-            text = T(_("Read-aloud volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) })
-        return true
-    end
+    -- (the volume rocker: gzreader_audioctl, everywhere)
 end
 
 function Grimmory:onAnnotationsModified(items)

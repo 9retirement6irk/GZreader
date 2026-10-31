@@ -49,7 +49,7 @@ E.say = say
 -- input: scripted
 local KEYS = { Press = 28, Up = 103, Down = 108, Left = 105, Right = 106, Menu = 139, Back = 158, Home = 102,
     RPgFwd = 191, RPgBack = 109, LPgFwd = 104, LPgBack = 193, Del = 14, AA = 190, Sym = 126, Space = 57,
-    Enter = 28, Shift = 42, Alt = 56, Period = 52 }
+    Enter = 28, Shift = 42, Alt = 56, Period = 52, VPlus = 115, VMinus = 114 }
 
 local letters = { Q = 16, W = 17, E = 18, R = 19, T = 20, Y = 21, U = 22, I = 23, O = 24, P = 25, A = 30, S = 31,
     D = 32, F = 33, G = 34, H = 35, J = 36, K = 37, L = 38, Z = 44, X = 45, C = 46, V = 47, B = 48, N = 49, M = 50 }
