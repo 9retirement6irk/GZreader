@@ -23,6 +23,15 @@ local _ = require("gettext")
 
 local DEFAULT_PLUGIN_PATH = "plugins"
 
+-- GZreader: plugins' main.lua through the bytecode cache too (gzbytecode.lua)
+local function gzDofile(path)
+    local BC = package.loaded["gzbytecode"]
+    if not (BC and BC.installed) then return dofile(path) end
+    local fn, err = BC.load(path)
+    if not fn then error(err, 0) end
+    return fn()
+end
+
 local BUILTIN_PLUGINS = {
     ["archiveviewer"] = true,
     ["autodim"] = true,
@@ -241,7 +250,7 @@ function PluginLoader:_load(t)
         disabled = v.disabled
         package.path = string.format("%s/?.lua;%s", plugin_root, package_path)
         package.cpath = string.format("%s/lib/?.so;%s", plugin_root, package_cpath)
-        local ok, plugin_module = pcall(dofile, mainfile)
+        local ok, plugin_module = pcall(gzDofile, mainfile)
         if not ok or not plugin_module then
             logger.warn("Error when loading", mainfile, plugin_module)
         elseif type(plugin_module.disabled) ~= "boolean" or not plugin_module.disabled then

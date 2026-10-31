@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.3",
+        changes = {
+            "Faster everywhere on the Kindle 3 (and Kindle 2 / DX): KOReader's fast drawing code couldn't draw on these Kindles' 16-shade (4-bit) screen, so every letter, icon and cover was drawn one pixel at a time in slow script code, which was most of the work behind every key press. GZreader now draws into an ordinary screen buffer with the fast code and copies just the changed area to the e-ink screen before each refresh. What you see is exactly the same, pixel for pixel; in testing, everyday keys (moving around Home, opening tabs, Settings and menus) took about a third less processor time, and GZreader starts faster.",
+            "Night mode works again on the Kindle 3, Kindle 2 and DX, and costs nothing: the screen is inverted while it's copied, instead of inverting every drawing (which made these Kindles unusably slow, so it had been switched off). Pictures are inverted as before.",
+            "If anything looks wrong on the screen after this update, connect the Kindle to a computer and put an empty file named gz-no-shadow-screen in the koreader folder, then restart GZreader: it goes back to the old way of drawing (and please send the log).",
+            "Installs from source (an update from GitHub's source archive, or a development copy) now keep a compiled copy of each code file the first time it's used, so later starts and screens load about four times faster. Release packages are already compiled, so nothing changes there.",
+        },
+    },
+    {
         version = "1.6.2",
         changes = {
             "Fixed: an audiobook wouldn't play again after being paused. Pausing used to freeze the player, which the Kindle 3's sound system doesn't come back from; now pausing stops it and remembers the place, and play starts again from there (MP3 to within a fraction of a second; M4B from the exact AAC frame, instead of the start of its 15-second piece). A paused audiobook no longer holds the sound device, so read aloud can speak.",

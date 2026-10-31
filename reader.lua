@@ -21,6 +21,9 @@ io.write([[
 -- Set up Lua and ffi search paths
 require("setupkoenv")
 
+-- GZreader: load Lua modules from compiled bytecode (cached on first use)
+pcall(function() require("gzbytecode").install() end)
+
 -- Apply startup user patches and execute startup user scripts
 local userpatch = require("userpatch")
 userpatch.applyPatches(userpatch.early_once)

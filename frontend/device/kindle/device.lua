@@ -1249,8 +1249,21 @@ local KindleScribeColorSoft = Kindle:extend{
     hasColorScreen = yes,
 }
 
+-- GZreader: on the 4-bit e-ink Kindles (2, DX, 3), draw into an 8-bit shadow
+-- screen packed into the framebuffer at each refresh, so KOReader's C
+-- blitter can be used (drawing in Lua was most of the CPU time of every key
+-- press), and night mode costs nothing (inverted while packing).
+local function useShadowScreen(device)
+    local ok, on = pcall(function() return require("device/kindle/shadowfb").install(device.screen) end)
+    if ok and on then
+        device.canUseCBB = yes
+        device.canHWInvert = yes -- night mode: inverted when packed (shadowfb.lua)
+    end
+end
+
 function Kindle2:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
+    useShadowScreen(self)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         is_charging_file = "/sys/devices/platform/charger/charging",
@@ -1264,6 +1277,7 @@ end
 
 function KindleDXG:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
+    useShadowScreen(self)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         is_charging_file = "/sys/devices/platform/charger/charging",
@@ -1278,6 +1292,7 @@ end
 
 function Kindle3:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
+    useShadowScreen(self)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         batt_capacity_file = "/sys/devices/system/luigi_battery/luigi_battery0/battery_capacity",

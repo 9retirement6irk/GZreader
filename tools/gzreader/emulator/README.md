@@ -43,6 +43,15 @@ Press/Back answer), and the order things happen in on a first start.
   stand-in `gst-launch-0.10` (see the script).
 - `note_toolbar.lua` — the note editor's Menu key: to the toolbar and back,
   the cursor kept in place.
+- `screen_check.lua` — what the panel shows (the emulator's framebuffer is
+  4-bit and inverted like the Kindle 3's; `GZ_EMU_FB8=1` for a plain 8-bit
+  one) on Home, Settings, a book page, rotated and in night mode.
+- `setup_books.lua`, then `run_keep.sh startup.lua <out>` (keeps the
+  install) a few times — start-up time to Home, CPU, Lua memory, modules.
+- `shadow_test.lua`, `bytecode_test.lua` — run with the tree's own luajit
+  (`qemu-arm-static -L /usr/arm-linux-gnueabi ./luajit <test>` in the tree):
+  the shadow screen gives the same framebuffer bytes as drawing in Lua; the
+  bytecode cache.
 - `speed.lua` — CPU time, screen refreshes (mode, share of the screen),
   forks and files opened for everyday keys on Home, the tabs, the Home menu
   and Settings, twice; a sampling profiler shows where the CPU went. Needs

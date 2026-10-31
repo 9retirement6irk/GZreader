@@ -556,6 +556,29 @@ turn it on again, also after a restart (`gzreader_wifi_kept_off`). Things you
 ask for still connect.
 ## Speed on the Kindle 3
 
+- **Drawing with the C blitter** (`frontend/device/kindle/shadowfb.lua`).
+  KOReader's fast C blitter doesn't handle the Kindle 2 / DX / 3's 4-bit
+  framebuffer, so every glyph, icon and cover was drawn pixel by pixel in
+  Lua: most of the CPU time of each key press. KOReader now draws into an
+  8-bit shadow screen with the C blitter, and just before each e-ink refresh
+  the refreshed rectangle is packed into the framebuffer (two pixels per
+  byte, the panel's inverted levels, physical coordinates so rotation works).
+  The result is byte-for-byte what drawing into the framebuffer gave
+  (`tools/gzreader/emulator/shadow_test.lua`); in the emulator everyday keys
+  take about a third less CPU and start-up is faster. Off: a file named
+  `gz-no-shadow-screen` in the `koreader` folder.
+- **Night mode works again**, at no cost: it's done while packing (the device
+  reports hardware inversion), so drawing is the same as by day.
+- **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when
+  the Lua files are source (an update from GitHub's source archive, a
+  development copy), each module's bytecode is kept in
+  `cache/gz-bytecode/<LuaJIT, version>/` the first time it loads (about 4x
+  faster to load after that). Release packages are precompiled already, and
+  then it does nothing. Off: a file named `gz-no-bytecode` in the `koreader`
+  folder.
+- **5-way focus on Home** refreshes only the old and the new focus boxes
+  (quick mode), and the Home key from Settings or the audiobook player makes
+  one refresh.
 - Lua is shipped as precompiled bytecode (see Rebuild the package): no parsing
   at start (~4x faster loading overall, up to 15x for big files).
 
@@ -570,9 +593,10 @@ ask for still connect.
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
 
-- Night mode is off and can't be switched on (Kindle 2, DX, Keyboard, 4):
-  these Kindles have no hardware screen inversion, and KOReader's software
-  inversion made the Kindle 3 unusably slow.
+- Night mode on the Kindle 2, DX and Keyboard is done while packing the
+  shadow screen (above). On the Kindle 4 (no shadow screen) it stays off and
+  can't be switched on: it has no hardware screen inversion, and KOReader's
+  software inversion is too slow there.
 
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in

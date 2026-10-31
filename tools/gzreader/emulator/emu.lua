@@ -36,6 +36,7 @@ do
 end
 
 local E = { queue = {}, log = {}, t0 = os.time(), out = OUT }
+E.clock0 = os.clock() -- (CPU time at start)
 _G.EMU = E
 local function say(...)
     local parts = {}
@@ -66,6 +67,7 @@ function E.now()
     local tv = now_tv()
     return tv.sec + tv.usec / 1e6
 end
+E.start = E.now() -- (wall time at start: for startup timings)
 
 --- A key pressed while another is held (Alt + R, Shift + Sym).
 function E.combo(mod, name)
@@ -108,7 +110,17 @@ package.preload["libs/libkoreader-input"] = function()
 end
 package.preload["ffi/framebuffer_einkfb"] = function()
     local FB = require("ffi/framebuffer_dummy")
-    return FB
+    if os.getenv("GZ_EMU_FB8") == "1" then return FB end
+    -- like the Kindle 3's: a 4-bit framebuffer with inverted grey levels (0xF = black)
+    local BB = require("ffi/blitbuffer")
+    local K3 = FB:extend{}
+    function K3:init()
+        self.bb = BB.new(600, 800, BB.TYPE_BB4)
+        self.bb:invert()
+        self.bb:fill(BB.COLOR_WHITE)
+        require("ffi/framebuffer").init(self)
+    end
+    return K3
 end
 
 -- the device: patch networking once it exists
@@ -164,10 +176,22 @@ function E.installDisplay(Screen)
     E.display = BB.new(Screen.bb:getWidth(), Screen.bb:getHeight(), BB.TYPE_BBRGB32)
     E.display:fill(BB.COLOR_WHITE)
     E.refreshes = 0
-    Screen.refreshFullImp = function(self, x, y, w, h)
+    local prev = Screen.refreshFullImp
+    Screen.refreshFullImp = function(self, x, y, w, h, ...)
+        if prev then prev(self, x, y, w, h, ...) end -- (the shadow screen packs into the framebuffer here)
+        if E.no_display then return end -- (timings: the copy to the emulator's display isn't the Kindle's cost)
         x, y = x or 0, y or 0
         w, h = w or self.bb:getWidth(), h or self.bb:getHeight()
-        E.display:blitFrom(self.bb, x, y, x, y, w, h)
+        -- what the panel shows: the framebuffer itself (not the shadow screen),
+        -- physical pixels (a rotated screen looks sideways, as on the Kindle)
+        local real = self._gz_fb_bb
+        if real then
+            local px, py, pw, ph = self.bb:getPhysicalRect(self.bb:getBoundedRect(x, y, w, h))
+            real:setRotation(0)
+            E.display:blitFrom(real, px, py, px, py, pw, ph)
+        else
+            E.display:blitFrom(self.bb, x, y, x, y, w, h)
+        end
         E.refreshes = E.refreshes + 1
         E.last_refresh = os.time()
         E.last_refresh_t = E.now()
