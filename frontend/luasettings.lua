@@ -269,8 +269,17 @@ end
 --- Writes settings to disk.
 function LuaSettings:flush()
     if not self.file then return end
+    local data = dump(self.data, nil, true)
+    -- GZreader: nothing changed since this object last wrote the file: no
+    -- write (each is a write, a sync and a directory sync: slow on a Kindle 3;
+    -- closing the file manager to open a book flushed the same settings twice)
+    if data == self._gz_flushed and self._gz_flushed_file == self.file
+            and lfs.attributes(self.file, "mode") == "file" then
+        return self
+    end
     local directory_updated = self:backup()
-    util.writeToFile(dump(self.data, nil, true), self.file, true, true, directory_updated)
+    util.writeToFile(data, self.file, true, true, directory_updated)
+    self._gz_flushed, self._gz_flushed_file = data, self.file
     return self
 end
 

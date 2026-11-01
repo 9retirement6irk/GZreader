@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.4",
+        changes = {
+            "Opening a book: a book that has been opened before should open faster. KOReader keeps each book's laid-out pages so it doesn't lay the book out again, but kept at most 64 MB of them and dropped the oldest; a dropped book was laid out again from scratch when opened (10–30 seconds for a big book on a Kindle 3). Now up to 256 MB are kept.",
+            "Opening a book wrote the same settings file twice (each write waits for the Kindle's storage); now once. Settings files are no longer rewritten when nothing in them changed.",
+            "The log now has a line for each book opened, showing where the time went: closing Home, loading the book, laying it out, each part of GZreader and KOReader getting ready, screen refreshes, and free memory. On the emulator a book opens in about a second, so most of the 10 seconds on a Kindle 3 is waiting (on storage, memory or the screen); after opening a few books, send the log (Menu → Diagnostics) and the cause will show.",
+        },
+    },
+    {
         version = "1.6.3",
         changes = {
             "Faster everywhere on the Kindle 3 (and Kindle 2 / DX): KOReader's fast drawing code couldn't draw on these Kindles' 16-shade (4-bit) screen, so every letter, icon and cover was drawn one pixel at a time in slow script code, which was most of the work behind every key press. GZreader now draws into an ordinary screen buffer with the fast code and copies just the changed area to the e-ink screen before each refresh. What you see is exactly the same, pixel for pixel; in testing, everyday keys (moving around Home, opening tabs, Settings and menus) took about a third less processor time, and GZreader starts faster.",

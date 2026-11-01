@@ -179,7 +179,11 @@ function E.installDisplay(Screen)
     local prev = Screen.refreshFullImp
     Screen.refreshFullImp = function(self, x, y, w, h, ...)
         if prev then prev(self, x, y, w, h, ...) end -- (the shadow screen packs into the framebuffer here)
-        if E.no_display then return end -- (timings: the copy to the emulator's display isn't the Kindle's cost)
+        if E.no_display then -- (timings: the copy to the emulator's display isn't the Kindle's cost)
+            E.refreshes = E.refreshes + 1
+            E.last_refresh, E.last_refresh_t = os.time(), E.now()
+            return
+        end
         x, y = x or 0, y or 0
         w, h = w or self.bb:getWidth(), h or self.bb:getHeight()
         -- what the panel shows: the framebuffer itself (not the shadow screen),

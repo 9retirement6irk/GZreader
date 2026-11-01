@@ -81,6 +81,8 @@ function Grimmory:init()
         pcall(function() require("gzreader_audioengine").stopStrayAtStart() end)
         -- the volume rocker, and stopping the audio when GZreader closes
         pcall(function() require("gzreader_audioctl").install() end)
+        -- a log line per book opened: where the time went
+        pcall(function() require("gzreader_opentiming").install() end)
     end
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}

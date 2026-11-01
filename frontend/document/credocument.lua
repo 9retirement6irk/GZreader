@@ -84,7 +84,11 @@ function CreDocument.cacheInit()
     end
     -- crengine saves caches on disk for faster re-openings, and cleans
     -- the less recently used ones when this limit is reached
-    local default_cre_disk_cache_max_size = 64 -- in MB units
+    -- GZreader: 256 MB (KOReader: 64). When the cache is full, the oldest
+    -- books' layouts are dropped and they're laid out again when opened:
+    -- on a Kindle 3 that's 10-30 s for a big book. The Kindle's storage has
+    -- room for it.
+    local default_cre_disk_cache_max_size = 256 -- in MB units
     -- crengine various in-memory caches max-sizes are rather small
     -- (2.5 / 4.5 / 4.5 / 1 MB), and we can avoid some bugs if we
     -- increase them. Let's multiply them by 40 (each cache would

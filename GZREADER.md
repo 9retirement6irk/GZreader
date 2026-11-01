@@ -576,6 +576,12 @@ ask for still connect.
   faster to load after that). Release packages are precompiled already, and
   then it does nothing. Off: a file named `gz-no-bytecode` in the `koreader`
   folder.
+- **Opening books**: each open logs a timing line (`gzreader_opentiming.lua`:
+  closing the file manager, opening and laying out the document, each
+  module's ReaderReady, screen refreshes, free memory). The crengine layout
+  cache is 256 MB instead of 64 (a dropped layout means a full re-layout on
+  the next open), and `LuaSettings:flush` skips writing a file whose content
+  hasn't changed (opening a book wrote `settings.reader.lua` twice).
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
