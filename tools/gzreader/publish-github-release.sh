@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publish a GZreader release on GitHub so Kindles can update themselves.
 #
-#   tools/gzreader/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
+#   tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/
 #   tools/gzreader/publish-github-release.sh out/
 #
 # Needs the GitHub CLI (gh) logged in with write access to the repository.
@@ -15,6 +15,6 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 VERSION=$(tr -d ' \n' < "$ROOT/GZREADER_VERSION")
 FULL="$OUT_DIR/gzreader-kindle-legacy-$VERSION.zip"
 UPD="$OUT_DIR/gzreader-update.zip"
-for f in "$FULL" "$UPD"; do [ -f "$f" ] || { echo "missing $f (run package-kindle-legacy.sh first)" >&2; exit 1; }; done
+for f in "$FULL" "$UPD"; do [ -f "$f" ] || { echo "missing $f (run package-kindle.sh first)" >&2; exit 1; }; done
 NOTES=${NOTES:-"GZreader $VERSION. Install: unzip gzreader-kindle-legacy-$VERSION.zip to the Kindle's USB drive. Existing installs update from Settings → Updates."}
 gh release create "v$VERSION" "$FULL" "$UPD" --repo "$REPO_SLUG" --title "GZreader $VERSION" --notes "$NOTES"

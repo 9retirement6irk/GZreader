@@ -42,6 +42,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local Log = require("gzreader_log")
+local Touch = require("gzreader_touch")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
@@ -324,7 +325,7 @@ function CalItem:onTapSelect()
 end
 
 local function badge(letter, side)
-    if not letter then return nil end
+    if not letter or not Touch.keys() then return nil end -- (touch: no letter keys, a tap opens it)
     return Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
 end
 
@@ -583,7 +584,7 @@ local function dayCell(plugin, day, w, h, opts)
         local num = opts.week and (WDAY[d.wday] .. " " .. d.day) or tostring(d.day)
         local is_today = day == today
         local head = HorizontalGroup:new{ align = "center" }
-        if key then
+        if key and Touch.keys() then
             head[#head + 1] = badge(key, S(20))
             head[#head + 1] = HorizontalSpan:new{ width = S(4) }
         end
@@ -897,6 +898,12 @@ function Calendar.show(plugin)
     Calendar.board = menu
     menu:updateItems()
     pcall(require("gzreader_tabs").decorate, menu, _("Calendar"))
+    Touch.actionRow(menu, {
+        { "\u{25C0}", function() Calendar.move(plugin, -1) end },
+        { _("Today"), function() Calendar.today(plugin) end },
+        { "\u{25B6}", function() Calendar.move(plugin, 1) end },
+        { _("More"), function() Calendar.showOptions(plugin) end },
+    })
     UIManager:show(menu)
     Calendar.syncOnOpen(plugin)
     return menu

@@ -45,6 +45,7 @@ local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 local Memos = require("gzreader_memos")
 local Sticky = require("gzreader_sticky")
+local Touch = require("gzreader_touch")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
@@ -471,12 +472,13 @@ local function boardItems()
     end
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
-            items[1] = { text = T(_("Couldn't load your notes. %1\n\nM → Refresh to try again."), describe(Notes.last_error)) }
+            items[1] = { text = T(Touch.text(_("Couldn't load your notes. %1\n\nM → Refresh to try again."),
+                _("Couldn't load your notes. %1\n\nMore → Refresh to try again.")), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
-            items[1] = { text = Notes.filter.kind == "all" and _("No notes yet. Press N to write one.")
-                or _("No notes match. Press F to change the filter.") }
+            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."), _("No notes yet. Tap New note to write one."))
+                or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Tap Filter to change it.")) }
         end
     end
     return items
@@ -509,7 +511,7 @@ local function drawBoard(m, select_number)
             table.insert(m.layout, layout_row)
         end
         local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
-            shortcut = e.memo and KEYS[i] or nil,
+            shortcut = e.memo and Touch.letter(KEYS[i]) or nil,
             dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
         table.insert(row, item)
         table.insert(layout_row, item)
@@ -600,6 +602,11 @@ function Notes.show(plugin)
     end
     Notes.board = menu
     pcall(Notes.decorate, menu)
+    Touch.actionRow(menu, {
+        { _("New note"), function() Notes.edit(plugin) end },
+        { _("Filter"), function() Notes.showFilter(plugin) end },
+        { _("More"), function() Notes.showOptions(plugin) end },
+    })
     UIManager:show(menu)
     Notes.syncOnOpen(plugin)
     return menu
@@ -653,16 +660,16 @@ function NoteView:build()
         if l.kind == "check" then
             flush()
             n_check = n_check + 1
-            local key = KEYS[#self.picks + 1]
+            local key = Touch.letter(KEYS[#self.picks + 1])
             self.picks[#self.picks + 1] = { check = n_check }
             local focused = self.focus == #self.picks
             local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(26), h = S(26) }, key, "square")
-            add(FrameContainer:new{ padding = S(3), margin = 0, bordersize = focused and Size.border.thick or 0, width = inner,
-                HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = S(26) }, HorizontalSpan:new{ width = S(10) },
+            add(self:tappable(#self.picks, FrameContainer:new{ padding = S(3), margin = 0, bordersize = focused and Size.border.thick or 0, width = inner,
+                HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                     TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
                     HorizontalSpan:new{ width = S(8) },
                     TextWidget:new{ text = Sticky.plain(l.text), face = Sticky.hand(24), max_width = inner - S(90),
-                        fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } })
+                        fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
         elseif l.kind == "heading" then
             flush()
             add(VerticalSpan:new{ width = S(6) })
@@ -694,28 +701,43 @@ function NoteView:build()
         add(TextWidget:new{ text = _("Attachments"), face = Font:getFace("smalltfont", 17), bold = true })
         add(VerticalSpan:new{ width = S(6) })
         for _i, a in ipairs(m.attachments) do
-            local key = KEYS[#self.picks + 1]
+            local key = Touch.letter(KEYS[#self.picks + 1])
             self.picks[#self.picks + 1] = { att = a }
             local focused = self.focus == #self.picks
             local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(26), h = S(26) }, key, "square")
             local here = lfs.attributes(Memos.filePath(a), "mode") == "file"
             local size = a.size and (a.size >= 1048576 and string.format("%.1f MB", a.size / 1048576)
                 or string.format("%d KB", math.max(1, math.floor(a.size / 1024)))) or ""
-            add(FrameContainer:new{ padding = S(8), bordersize = focused and Size.border.thick or Size.border.thin,
+            add(self:tappable(#self.picks, FrameContainer:new{ padding = S(8), bordersize = focused and Size.border.thick or Size.border.thin,
                 radius = S(4), width = inner,
-                HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = S(26) }, HorizontalSpan:new{ width = S(10) },
+                HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                     TextWidget:new{ text = (tostring(a.type):match("^image/") and Sticky.ICONS.image or Sticky.ICONS.pdf) .. "  ",
                         face = Sticky.iconFace(18) },
                     TextWidget:new{ text = a.filename or "?", face = Font:getFace("cfont", 18), max_width = inner - S(170) },
                     HorizontalSpan:new{ width = S(10) },
                     TextWidget:new{ text = size .. (here and "" or (" \u{00B7} " .. _("download"))), face = Font:getFace("cfont", 14),
-                        fgcolor = Blitbuffer.COLOR_DARK_GRAY } } })
+                        fgcolor = Blitbuffer.COLOR_DARK_GRAY } } }))
         end
     end
     local hint = (#self.picks > 0 and (KEYS[1] .. (#self.picks > 1 and ("\u{2013}" .. KEYS[math.min(#self.picks, #KEYS)]) or "") .. "  "
         .. (n_check > 0 and _("tick / open") or _("open")) .. "     ") or "")
         .. _("Alt+E edit     Alt+P pin     M more     Back board")
     local title_h, footer_h = S(46), S(34)
+    local footer
+    if Touch.keys() then
+        footer = CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h },
+            TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = sw - S(20) } }
+    else
+        -- touch: buttons; ticking an item or opening an attachment is a tap on it
+        local chips = Touch.chips(math.floor(sw * 0.94), {
+            { _("Edit"), function() self:onEdit() end },
+            { m.pinned and _("Unpin") or _("Pin"), function() self:onPin() end },
+            { _("More"), function() self:onOptions() end },
+            { _("Close"), function() self:onClose() end },
+        }, self)
+        footer_h = chips:getSize().h + S(24)
+        footer = CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h }, chips }
+    end
     local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
     local content_h = sh - title_h - footer_h
     self.scroller = ScrollableContainer:new{
@@ -728,10 +750,19 @@ function NoteView:build()
             CenterContainer:new{ dimen = Geom:new{ w = sw, h = title_h },
                 TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true } },
             self.scroller,
-            CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h },
-                TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = sw - S(20) } },
+            footer,
         },
     }
+end
+
+--- A checklist item or attachment row that a tap picks (as its letter key does).
+function NoteView:tappable(idx, widget)
+    if not Touch.on() then return widget end
+    local view = self
+    local box = InputContainer:new{ dimen = Geom:new{ w = widget:getSize().w, h = widget:getSize().h }, widget }
+    box.ges_events = { TapPick = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+    function box:onTapPick() return view:pickIndex(idx) end
+    return box
 end
 
 function NoteView:refresh()
@@ -754,6 +785,10 @@ end
 function NoteView:onPick(_arg, key)
     local idx
     for i, k in ipairs(KEYS) do if key and key.key == k then idx = i end end
+    return self:pickIndex(idx)
+end
+
+function NoteView:pickIndex(idx)
     local pick = idx and self.picks[idx]
     if not pick then return true end
     if pick.check then

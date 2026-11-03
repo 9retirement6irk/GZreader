@@ -41,6 +41,8 @@ function Tabs.decorate(menu, label)
         repaintTitleBar = SharedState.get(zen, "repaintTitleBar"),
         label = label,
     })
+    -- touch Kindles: the buttons in place of the key hints (a new title bar loses them)
+    if menu._gz_actions then pcall(require("gzreader_touch").actionRow, menu) end
 end
 
 --- The Home key from a full-screen view of ours (the audiobook player,

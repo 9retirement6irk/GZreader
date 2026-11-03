@@ -63,7 +63,7 @@ function PairScreen:init()
     }
     if Device:isTouchDevice() then
         table.insert(group, Button:new{
-            text = _("Cancel"),
+            text = self.button_text or _("Cancel"),
             width = math.floor(sw * 0.4),
             callback = function() self:onCancel() end,
         })

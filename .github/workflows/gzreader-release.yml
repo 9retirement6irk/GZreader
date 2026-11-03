@@ -1,6 +1,11 @@
 # Builds GZreader for every published release and attaches the packages:
-#   gzreader-kindle-legacy-<version>.zip   full install (copy to the Kindle)
-#   gzreader-update.zip                    what Kindles download to update
+#   gzreader-kindle-legacy-<version>.zip   full install: Kindle 2, DX, Kindle Keyboard
+#   gzreader-kindlehf-<version>.zip        full install: touch Kindles on firmware
+#                                          5.16.3+ (Paperwhite 3 / 7th gen and later)
+#   gzreader-kindlepw2-<version>.zip       full install: touch Kindles on firmware
+#                                          5.6.1 – 5.16.2
+#   gzreader-update.zip                    what Kindles download to update (Lua only,
+#                                          the same for all of them)
 # Kindles also update from a release without these (they fall back to the
 # release's source code zip); attaching them keeps the download small.
 name: GZreader release packages
@@ -30,14 +35,19 @@ jobs:
           ref: ${{ env.TAG }}
       - name: Tools
         # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
-      - name: Official KOReader kindle-legacy release (native binaries)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
+      - name: Official KOReader Kindle releases (native binaries)
         run: |
-          gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern '*kindle-legacy*.zip' --dir dl
+          for p in kindle-legacy kindlehf kindlepw2; do
+            gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-$p-*.zip" --dir dl
+          done
           ls -la dl
       - name: Package
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
-          GZ_VERSION="$VERSION" tools/gzreader/package-kindle-legacy.sh dl/*kindle-legacy*.zip out
+          # (the update package is the same from each: keep the legacy one's)
+          for p in kindlehf kindlepw2 kindle-legacy; do
+            GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-$p-*.zip out
+          done
       - name: Attach to the release
-        run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-update.zip --clobber
+        run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber

@@ -167,7 +167,8 @@ function Index.build(plugin, show, on_done)
     if show then
         dialog = ProgressbarDialog:new{
             title = _("Indexing your Grimmory library…"),
-            subtitle = _("Only needed once a day. Press any key to hide."),
+            subtitle = require("gzreader_touch").text(_("Only needed once a day. Press any key to hide."),
+                _("Only needed once a day. Tap to hide.")),
             progress_max = 100,
             refresh_time_seconds = 2,
         }

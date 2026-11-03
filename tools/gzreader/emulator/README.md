@@ -14,6 +14,16 @@ binaries (LuaJIT, crengine, SQLite…) under `qemu-arm`, headless:
 - optionally a CPU quota (cgroup) so it runs about as slowly as a Kindle 3
   (20 % ≈ a Kindle 3 here).
 
+`GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3** instead: its serial
+(so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
+8-bit 1072 × 1448 framebuffer, and scripted touches sent as the panel's
+multitouch frames through KOReader's own gesture detection:
+`{ tap = { x, y } }`, `{ tap = "Save" }` (the innermost tappable widget
+showing that text), `{ hold = … }`, `{ swipe = { x1, y1, x2, y2 } }`. Text
+painted straight onto the screen (ZenOS's setup guide) isn't found by text:
+tap its coordinates. Same tree and binaries as the Kindle 3 (the Lua is what
+differs).
+
 It caught what the Lua tests can't: the setup's touch tours opening the
 Menu, KOReader's "Styles have changed…" box over picture books (which only
 Press/Back answer), and the order things happen in on a first start.
@@ -23,7 +33,7 @@ Press/Back answer), and the order things happen in on a first start.
 1. A tree: the official kindle-legacy release's `koreader/` folder, with this
    branch's `frontend/`, `reader.lua`, `platform/kindle/koreader.sh` (as
    `koreader.sh`), `GZREADER_VERSION` (as `gzreader-version`) and the five
-   kept plugins copied over (what `package-kindle-legacy.sh` does). Point
+   kept plugins copied over (what `package-kindle.sh` does). Point
    `GZ_EMU_TREE` at it.
 2. `qemu-arm-static` and the ARM loader in `/usr/arm-linux-gnueabi`.
 3. The mock Grimmory: `python3 mock_grimmory.py 18080` (test suite).
@@ -35,6 +45,11 @@ Press/Back answer), and the order things happen in on a first start.
 - `setup_qr.lua` — first start: setup guide, the phone page connects
   Grimmory (the phone's GET and POST are sent straight to the Kindle's page
   server), Back, the rest of the guide, keys on Home.
+- `pw3_tour.lua` (with `GZ_EMU_MODEL=pw3` and `phone_drive.js`, servers as
+  for `phone_shots.lua`) — a Paperwhite's first start by touch: the phone
+  page, the setup guide, ZenOS's touch tips, every tab, the launcher
+  (GZreader menu, Send books), a note ticked by tapping, the note editor,
+  the calendar's buttons and an event, a book read by tapping.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume

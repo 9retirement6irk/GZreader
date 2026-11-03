@@ -228,7 +228,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         local waiting = #Download.queue
         dialog = ProgressbarDialog:new{
             title = T(_("Downloading “%1”"), title) .. (waiting > 0 and T(_(" (+%1 queued)"), waiting) or ""),
-            subtitle = _("Press any key for options. The Kindle stays awake until it's done."),
+            subtitle = require("gzreader_touch").text(_("Press any key for options. The Kindle stays awake until it's done."),
+                _("Tap for options. The Kindle stays awake until it's done.")),
             progress_max = expected,
             refresh_time_seconds = 2,
         }

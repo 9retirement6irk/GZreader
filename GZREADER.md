@@ -1,7 +1,8 @@
 # GZreader — Grimmory + ZenOS + KOReader for the Kindle Keyboard
 
 A trimmed KOReader for legacy Kindles (Kindle 2, DX, Kindle Keyboard / K3)
-that reads books, pulls them from a [Grimmory](https://grimmory.org) server
+and the Kindle Paperwhite 3 (7th generation, and other touch Kindles on
+firmware 5) that reads books, pulls them from a [Grimmory](https://grimmory.org) server
 and keeps reading position, bookmarks, highlights and notes in sync with it. ZenOS is the
 interface. Releases and updates: <https://github.com/9retirement6irk/GZreader>.
 
@@ -27,10 +28,19 @@ KOReader's first-run quickstart document (ZenOS's setup guide replaces it).
 ## Install
 
 1. Jailbreak the Kindle and install KUAL (see kindlemodding.org).
-2. Unzip `gzreader-kindle-legacy-<version>.zip` and copy the `koreader`,
-   `extensions` and `launchpad` folders to the root of the Kindle's USB
-   drive, merging with anything already there.
-3. Eject, open KUAL → GZreader → Start GZreader. Or the launchpad shortcuts:
+2. Unzip the package for your Kindle and copy its folders (`koreader`,
+   `extensions`, and `launchpad` on a Kindle 3) to the root of the Kindle's
+   USB drive, merging with anything already there:
+
+   | Kindle | Package |
+   | --- | --- |
+   | Kindle 2, DX, Kindle Keyboard (3) | `gzreader-kindle-legacy-<version>.zip` |
+   | Paperwhite 3 (7th gen) and other touch Kindles, firmware 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` |
+   | The same on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
+
+   The firmware version: Settings → Device Options → Device Info (on the
+   Kindle's own home screen).
+3. Eject, open KUAL → GZreader → Start GZreader. On a Kindle 3, also the launchpad shortcuts:
    Shift, G, G (last book), Shift, G, L (library), Shift, G, N (without the
    Kindle framework, more memory). The old Shift, P, … shortcuts still work.
 
@@ -49,9 +59,11 @@ GitHub release:
 2. On GitHub: Releases → Draft a new release → tag `v<version>` (for
    example `v1.0.4`; `v.1.0.4` also works) → Publish.
 
-The "GZreader release packages" workflow then builds and attaches
-`gzreader-kindle-legacy-<version>.zip` (full install) and
-`gzreader-update.zip` (what Kindles download, ~5 MB). If a release has no
+The "GZreader release packages" workflow then builds and attaches the full
+installs (`gzreader-kindle-legacy-<version>.zip`,
+`gzreader-kindlehf-<version>.zip`, `gzreader-kindlepw2-<version>.zip`) and
+`gzreader-update.zip` (what every Kindle downloads, ~6 MB: Lua only, the same
+for all of them). If a release has no
 attached files, Kindles use the release's source code zip instead (~9 MB),
 taking only `frontend/`, `reader.lua`, `koreader.sh` and the installed
 plugins from it.
@@ -60,6 +72,36 @@ The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
 anything fails, the previous files are put back. Then GZreader restarts.
+
+## Kindle Paperwhite 3 (touch)
+
+The Paperwhite 3 (7th generation, 2015) and the other touch Kindles on
+firmware 5 run the same GZreader with ZenOS's touch interface:
+
+- **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
+- **Swipe down from the top** for quick settings (Wi‑Fi, night mode,
+  brightness, sleep, restart) and the **launcher**, which starts with
+  **GZreader** (the GZreader menu: continue reading, history, sort, display,
+  Wi‑Fi, settings, updates, diagnostics, sleep, restart), **Phone** (the
+  phone page) and **Send books** (the phone page at Send books).
+- **Notes:** New note, Filter and More are buttons under the title; a note
+  opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
+  Close are buttons at the bottom. The editor shows the on-screen keyboard;
+  its toolbar (lists, checklists, headings, italic, bold, tags) and Save are
+  above the text, and the visibility (Private, Signed-in users, Public) is a
+  button in the title.
+- **Calendar:** ◀, Today, ▶ and More under the title (or swipe left and
+  right); tap an event for its details, a day in Week or Month to open it.
+- **The phone page:** tap Done on the Kindle when you're done (instead of
+  Back).
+- **Reading:** tap the right side for the next page, the left side for the
+  previous one, the top for the menu (contents, bookmarks, search, fonts…);
+  swipe up for the page browser. ZenOS shows a few tips the first time.
+- **No audio:** the Paperwhites have no speaker or headphone jack, so read
+  aloud and audiobooks aren't offered there.
+- The screen is 1072 × 1448 at 300 dpi; everything is sized for it. The
+  Kindle's own time zone is used (the time zone setting is for the Kindle 3,
+  which has none).
 
 ## Keyboard (Kindle 3)
 
@@ -661,7 +703,9 @@ folder.
 ## Rebuild the package
 
 ```sh
-tools/gzreader/package-kindle-legacy.sh koreader-kindle-legacy-v2026.07.1.zip out/
+tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # Kindle 2, DX, 3
+tools/gzreader/package-kindle.sh koreader-kindlehf-v2026.07.1.zip out/        # touch, firmware 5.16.3+
+tools/gzreader/package-kindle.sh koreader-kindlepw2-v2026.07.1.zip out/       # touch, firmware 5.6.1–5.16.2
 ```
 
 The branch changes only Lua and shell scripts, so the script overlays it onto
@@ -671,6 +715,8 @@ native toolchain.
 It then precompiles every Lua file under `frontend/`, `plugins/` and
 `common/` to LuaJIT bytecode with the release's own `luajit` (run through
 `qemu-arm-static`; needs `qemu-user-static`, `libc6-armel-cross` and
-`libgcc-s1-armel-cross`), keeping the `.lua` names and debug info (line
+`libgcc-s1-armel-cross`, or `libc6-armhf-cross` for the `kindlehf`
+package; `GZ_LUAJIT` can name another package's `luajit` of the same
+version instead: the bytecode is the same), keeping the `.lua` names and debug info (line
 numbers, upvalue names, source paths), so loading skips parsing. Without
 qemu it warns and ships source. `GZ_BYTECODE=0` turns it off.

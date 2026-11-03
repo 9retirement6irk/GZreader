@@ -2,12 +2,16 @@
 --[[
 Run GZreader (the real KOReader + ZenOS + GZreader Lua) as a Kindle 3 under
 qemu-arm, headless: fake framebuffer, scripted keys, real everything else.
+GZ_EMU_MODEL=pw3: a Kindle Paperwhite 3 instead (touch screen, no keys,
+1072 × 1448 at 300 dpi, 8-bit framebuffer), with scripted taps and swipes.
 
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
 
 The script returns a list of steps: { wait = s } | { key = "Press" } |
 { shot = "name" } | { fn = function(E) ... end } |
-{ wait_for = function(E) return done end, timeout = s }.
+{ wait_for = function(E) return done end, timeout = s } |
+{ tap = { x, y } } | { tap = "text on screen" } | { hold = { x, y } | "text" } |
+{ swipe = { x1, y1, x2, y2 } } (touch models).
 ]]
 local SCRIPT, OUT = arg[1], arg[2]
 arg = { [0] = "reader.lua" }
@@ -17,10 +21,12 @@ local ffi = require("ffi")
 pcall(ffi.cdef, "int usleep(unsigned int usec);")
 pcall(ffi.cdef, "struct emu_timeval { long tv_sec; long tv_usec; }; int gettimeofday(struct emu_timeval *tv, void *tz);")
 
--- /proc/usid: a Kindle 3 (Wi-Fi) serial
+-- /proc/usid: a Kindle 3 (Wi-Fi) serial, or a Paperwhite 3's
+local MODEL = os.getenv("GZ_EMU_MODEL") or "k3"
+local SERIALS = { k3 = "B00812345678ABCD", pw3 = "G090G1000000000A" }
 local real_open = io.open
 local usid = OUT .. "/usid"
-do local f = real_open(usid, "w"); f:write((os.getenv("GZ_EMU_SERIAL") or "B00812345678ABCD") .. "\n"); f:close() end
+do local f = real_open(usid, "w"); f:write((os.getenv("GZ_EMU_SERIAL") or SERIALS[MODEL] or SERIALS.k3) .. "\n"); f:close() end
 io.open = function(p, m)
     if p == "/proc/usid" then return real_open(usid, m) end
     return real_open(p, m)
@@ -36,7 +42,7 @@ do
     end
 end
 
-local E = { queue = {}, log = {}, t0 = os.time(), out = OUT }
+local E = { queue = {}, log = {}, t0 = os.time(), out = OUT, model = MODEL }
 E.clock0 = os.clock() -- (CPU time at start)
 _G.EMU = E
 local function say(...)
@@ -88,6 +94,95 @@ function E.key(name)
     table.insert(E.queue, { { type = 1, code = code, value = 0, time = t2 }, { type = 0, code = 0, value = 0, time = t2 } })
 end
 
+-- touch (Paperwhite): multitouch protocol B frames, as the panel sends them
+local EV_SYN, EV_ABS = 0, 3
+local ABS_MT_SLOT, ABS_MT_X, ABS_MT_Y, ABS_MT_TRACKING_ID = 0x2f, 0x35, 0x36, 0x39
+local touch_id = 0
+-- a frame at `dt` seconds after now (queued at once: the gesture detector goes by the event times)
+local function frame(evs, dt)
+    local t = now_tv()
+    if dt and dt > 0 then
+        local us = t.usec + math.floor(dt * 1e6)
+        t = { sec = t.sec + math.floor(us / 1e6), usec = us % 1000000 }
+    end
+    local out = {}
+    for _i, e in ipairs(evs) do out[#out + 1] = { type = EV_ABS, code = e[1], value = e[2], time = t } end
+    out[#out + 1] = { type = EV_SYN, code = 0, value = 0, time = t }
+    table.insert(E.queue, out)
+end
+local function down(x, y, dt)
+    touch_id = touch_id + 1
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, touch_id }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt)
+end
+local function move(x, y, dt) frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
+local function up(dt) frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, dt) end
+local function later(sec, fn)
+    require("ui/uimanager"):scheduleIn(sec, fn)
+end
+
+--- Where `what` is: { x, y }, or the centre of the topmost widget showing that text.
+function E.where(what)
+    if type(what) == "table" then return what[1], what[2] end
+    local hit = E.findText(what)
+    if hit then return hit.x + hit.w / 2, hit.y + hit.h / 2 end
+end
+
+--- The topmost shown widget whose text contains `text` (plain): the dimen of
+--- the innermost widget around it that takes taps (a button, a menu item).
+local function validDimen(d) return type(d) == "table" and d.w and d.w > 0 and d.h and d.h > 0 and d.x and d.y end
+function E.findText(text)
+    local UIManager = require("ui/uimanager")
+    local seen = {}
+    local SKIP = { parent = true, show_parent = true, ui = true, dialog = true, _parent = true, menu = true,
+        document = true, plugin = true, view = true, key_events = true, ges_events = true }
+    local function search(w, depth, ctx)
+        if type(w) ~= "table" or seen[w] or depth > 60 then return nil end
+        seen[w] = true
+        -- (only what takes taps: containers' own dimen often keeps x = y = 0)
+        local d = rawget(w, "dimen")
+        if validDimen(d) and type(w.onGesture) == "function" then ctx = d end
+        local t = rawget(w, "text")
+        -- (a widget, not the table describing one: ButtonTable's button specs have text too)
+        if type(t) == "string" and t:find(text, 1, true) and ctx and type(w.paintTo) == "function" then return ctx end
+        for k, v in pairs(w) do
+            if type(v) == "table" and not SKIP[k] then
+                local r = search(v, depth + 1, ctx)
+                if r then return r end
+            end
+        end
+    end
+    local stack = UIManager._window_stack or {}
+    for i = #stack, 1, -1 do
+        local r = search(stack[i].widget, 0, nil)
+        if r then return r end
+    end
+end
+
+function E.tap(what)
+    local x, y = E.where(what)
+    if not x then return say("tap: not on screen:", tostring(what)) end
+    say("tap", type(what) == "string" and ("\"" .. what .. "\"") or "", math.floor(x), math.floor(y))
+    down(x, y)
+    up(0.05)
+end
+
+function E.hold(what, sec)
+    local x, y = E.where(what)
+    if not x then return say("hold: not on screen:", tostring(what)) end
+    say("hold", math.floor(x), math.floor(y))
+    down(x, y)
+    later(sec or 1.2, up)
+end
+
+function E.swipe(x1, y1, x2, y2, sec)
+    say("swipe", x1, y1, "->", x2, y2)
+    sec = sec or 0.25
+    down(x1, y1)
+    local n = 5
+    for i = 1, n do move(x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n, sec * i / (n + 1)) end
+    up(sec)
+end
+
 package.preload["libs/libkoreader-input"] = function()
     require("ffi/posix_h")
     local C = ffi.C
@@ -97,6 +192,7 @@ package.preload["libs/libkoreader-input"] = function()
     function I.fdopen() end
     function I.close() return true end
     function I.closeAll() end
+    function I.fakeTapInput() end
     function I.waitForEvent(sec, usec)
         if #E.queue > 0 then
             E.key_sent_at = os.time()
@@ -122,6 +218,19 @@ package.preload["ffi/framebuffer_einkfb"] = function()
         require("ffi/framebuffer").init(self)
     end
     return K3
+end
+
+-- the Paperwhite 3's framebuffer: 8-bit, 1072 × 1448
+package.preload["ffi/framebuffer_mxcfb"] = function()
+    local FB = require("ffi/framebuffer_dummy")
+    local BB = require("ffi/blitbuffer")
+    local PW = FB:extend{}
+    function PW:init()
+        self.bb = BB.new(1072, 1448, BB.TYPE_BB8)
+        self.bb:fill(BB.COLOR_WHITE)
+        require("ffi/framebuffer").init(self)
+    end
+    return PW
 end
 
 -- the device: patch networking once it exists
@@ -248,6 +357,12 @@ local function runScript()
         elseif s.combo then
             say("keys", s.combo[1] .. "+" .. s.combo[2])
             E.combo(s.combo[1], s.combo[2])
+        elseif s.tap then
+            E.tap(s.tap)
+        elseif s.hold then
+            E.hold(s.hold, s.sec)
+        elseif s.swipe then
+            E.swipe(unpack(s.swipe))
         elseif s.shot then
             E.shot(s.shot)
         elseif s.fn then

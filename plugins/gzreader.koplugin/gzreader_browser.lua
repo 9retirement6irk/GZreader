@@ -164,7 +164,8 @@ function Browser:rootItems()
         { text = _("Series"), callback = function() self:openSeries() end },
         { text = _("Search…"), callback = function() self:promptSearch() end },
         { text = _("Downloaded books"), callback = function() self:openDownloaded() end },
-        { text = _("Audiobooks"), callback = function() self:openAudiobooks() end },
+        -- (only on Kindles with a speaker: the Paperwhites have no audio)
+        require("gzreader_touch").audio() and { text = _("Audiobooks"), callback = function() self:openAudiobooks() end } or nil,
     }
 end
 

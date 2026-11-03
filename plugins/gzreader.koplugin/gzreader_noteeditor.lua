@@ -25,6 +25,7 @@ local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
+local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
@@ -37,6 +38,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local util = require("util")
+local Touch = require("gzreader_touch")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -195,27 +197,71 @@ function Editor:init()
     self.inner = sw - 2 * margin
     self.title_h, self.tool_h, self.footer_h = S(44), S(40), S(30)
     local text_h = sh - self.title_h - self.tool_h - self.footer_h - S(28)
-    self.input = makeInput(self, {
-        text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = text_h, scroll = true,
-        face = Font:getFace("cfont", 20), parent = self, focused = true,
-        padding = S(8), margin = 0, bordersize = Size.border.thin,
-        hint = _("Write a note. #words become tags."),
-    })
+    self.touch = Touch.on() and not Touch.keys()
+    -- (taps reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
+    if self.touch then self.is_always_active = true end
+    local function box(h)
+        return makeInput(self, {
+            text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
+            face = Font:getFace("cfont", 20), parent = self, focused = true,
+            padding = S(8), margin = 0, bordersize = Size.border.thin,
+            hint = _("Write a note. #words become tags."),
+        })
+    end
+    self.input = box(text_h)
+    if self.touch then
+        -- touch: the toolbar under the title, the text box above the on-screen keyboard
+        self.footer_h = 0
+        local kb = self.input.keyboard
+        local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
+        if self.input.free then pcall(self.input.free, self.input) end
+        self.input = box(sh - self.title_h - self.tool_h - kb_h - S(24))
+    end
     self.title_slot = VerticalGroup:new{}
     self.bar_slot = VerticalGroup:new{}
     self.hint_slot = VerticalGroup:new{}
-    self[1] = FrameContainer:new{
-        width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
-        VerticalGroup:new{ align = "center",
+    local column
+    if self.touch then
+        column = VerticalGroup:new{ align = "center",
+            self.title_slot,
+            self.bar_slot,
+            VerticalSpan:new{ width = S(8) },
+            self.input,
+        }
+    else
+        column = VerticalGroup:new{ align = "center",
             self.title_slot,
             self.input,
             VerticalSpan:new{ width = S(10) },
             self.bar_slot, -- at the bottom: ▼ from the last line reaches it, ▲ goes back
             VerticalSpan:new{ width = S(8) },
             self.hint_slot,
-        },
+        }
+    end
+    self[1] = FrameContainer:new{
+        width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+        column,
     }
     self:drawChrome()
+end
+
+--- Touch: `widget`, tapped, runs `fn`.
+local function tapTarget(widget, fn)
+    if not Touch.on() then return widget end
+    local size = widget:getSize()
+    local box = InputContainer:new{ dimen = Geom:new{ w = size.w, h = size.h }, widget }
+    box.ges_events = { TapIt = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+    function box:onTapIt() fn(); return true end
+    return box
+end
+
+function Editor:onCloseWidget()
+    if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+end
+
+function Editor:onShow()
+    -- touch: the on-screen keyboard, at once
+    if self.touch then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
 end
 
 function Editor:drawChrome()
@@ -226,9 +272,16 @@ function Editor:drawChrome()
         dimen = Geom:new{ w = sw, h = self.title_h },
         LeftContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
+                self.touch and tapTarget(FrameContainer:new{ padding = S(6), bordersize = 0,
+                    TextWidget:new{ text = "\u{2715}", face = Font:getFace("cfont", 22) } }, function() self:onCloseDialog() end)
+                    or HorizontalSpan:new{ width = 0 },
+                self.touch and HorizontalSpan:new{ width = S(8) } or HorizontalSpan:new{ width = 0 },
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
-            HorizontalGroup:new{ TextWidget:new{ text = NoteEditor.VIS_LABEL[self.visibility] .. "  (Alt+V)", face = Font:getFace("cfont", 15) },
+            HorizontalGroup:new{
+                tapTarget(FrameContainer:new{ padding = S(6), bordersize = self.touch and Size.border.thin or 0, radius = S(6),
+                    TextWidget:new{ text = NoteEditor.VIS_LABEL[self.visibility] .. (self.touch and "  \u{25BE}" or "  (Alt+V)"),
+                        face = Font:getFace("cfont", 15) } }, function() self:onShortcut("V") end),
                 HorizontalSpan:new{ width = margin } } },
     }
     local bar = HorizontalGroup:new{ align = "center" }
@@ -246,23 +299,24 @@ function Editor:drawChrome()
             txt = TextWidget:new{ text = t.label, face = Font:getFace("cfont", 15), bold = t.id == "bold" or focused, fgcolor = fg,
                 max_width = tool_w - S(4) }
         end
-        bar[#bar + 1] = FrameContainer:new{
+        bar[#bar + 1] = tapTarget(FrameContainer:new{
             width = tool_w, height = self.tool_h, padding = 0, margin = 0, bordersize = Size.border.thin,
             background = focused and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
             CenterContainer:new{ dimen = Geom:new{ w = tool_w - 2, h = self.tool_h - 2 }, txt },
-        }
+        }, function() self:useTool(i) end)
     end
     bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }
     local save_focused = self.focus_tool == #tools + 1
-    bar[#bar + 1] = FrameContainer:new{
+    bar[#bar + 1] = tapTarget(FrameContainer:new{
         width = save_w, height = self.tool_h, padding = 0, bordersize = Size.border.thick, radius = S(6),
         background = save_focused and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
         CenterContainer:new{ dimen = Geom:new{ w = save_w - 4, h = self.tool_h - 4 },
             TextWidget:new{ text = _("Save"), face = Font:getFace("cfont", 18), bold = true,
                 fgcolor = save_focused and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
-    }
+    }, function() self:save() end)
     self.bar_slot:clear()
     self.bar_slot[1] = bar
+    if self.touch then return end -- (no key hints)
     local t = self.focus_tool and tools[self.focus_tool]
     local hint
     if t then

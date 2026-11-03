@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.8.0",
+        changes = {
+            "GZreader now runs on the Kindle Paperwhite 3 (7th generation) and other touch Kindles on firmware 5. Install gzreader-kindlehf-1.8.0.zip on firmware 5.16.3 or newer, or gzreader-kindlepw2-1.8.0.zip on firmware 5.6.1 to 5.16.2 (with KUAL, like the Kindle 3). Updates afterwards come from Settings → Updates as usual.",
+            "On a touch Kindle, ZenOS's touch interface: tabs at the bottom, tap to turn pages, swipe down from the top for quick settings and the launcher. The launcher starts with GZreader (the GZreader menu), Phone (the phone page) and Send books.",
+            "GZreader's own screens have buttons there: New note, Filter and More in Notes; tap a checklist item to tick it; Edit, Pin, More and Close on a note; the note editor with the on-screen keyboard and its toolbar on top; ◀, Today, ▶ and More in the Calendar; Done on the phone page's QR code screen.",
+            "The setup guide explains the touch screen instead of the keyboard on a touch Kindle. Read aloud and audiobooks aren't offered on the Paperwhites (they have no speaker or headphone jack).",
+        },
+    },
+    {
         version = "1.7.0",
         changes = {
             "One phone page for everything: scan the QR code and a page on your phone connects (or disconnects) Grimmory, Notes (your Memos server) and Calendar (a CalDAV account, or webcal / ICS links such as Proton Calendar's), all from the same page. It stays open while you set things up, shows what happened after each step, and the Kindle shows a short note each time. Press Back on the Kindle when you're done: a summary shows what changed.",

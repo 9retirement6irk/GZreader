@@ -32,7 +32,7 @@ local Api = require("gzreader_api")
 local Sync = require("gzreader_sync")
 -- Loaded on first use (pairing, browsing, downloading, read aloud), not at start.
 local LAZY = { Browser = "gzreader_browser", PairPage = "gzreader_pairpage", PairScreen = "gzreader_pairscreen",
-    PairServer = "gzreader_pairserver", Download = "gzreader_download", TTS = "gzreader_tts",
+    PairServer = "gzreader_pairserver", Download = "gzreader_download", TTS = "gzreader_tts", Touch = "gzreader_touch",
     Annotations = "gzreader_annotations" }
 local Mod = setmetatable({}, { __index = function(t, k)
     local v = require(LAZY[k])
@@ -99,6 +99,8 @@ function Grimmory:init()
     if not self.ui.document then
         -- download status in ZenOS's title bar (after every plugin has loaded)
         UIManager:nextTick(function() pcall(function() require("gzreader_tasks").installStatusBar() end) end)
+        -- touch Kindles: GZreader's menu, the phone page and Send books in ZenOS's launcher
+        UIManager:nextTick(function() pcall(self.addLauncherEntries, self) end)
         -- Pre-size downloaded books' covers in the background (fast Home/library)
         pcall(function()
             local Warm = require("gzreader_coverwarm")
@@ -107,7 +109,7 @@ function Grimmory:init()
         end)
         pcall(self.restoreFromManifest, self)
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
-        pcall(function() require("gzreader_abfolder").start(self) end)
+        if Mod.Touch.audio() then pcall(function() require("gzreader_abfolder").start(self) end) end
         -- Downloads: a list with covers, titles, authors and letter keys
         -- (Kindle Keyboard) instead of tiles, once; Menu → Display changes it
         if not G_reader_settings:isTrue("gzreader_downloads_list_v1") then
@@ -346,6 +348,7 @@ function Grimmory:sectionItems(section)
             },
         }
     elseif section == "reader" then
+        if not Mod.Touch.audio() then return {} end -- (no speaker: no read aloud, no audiobooks)
         return {
             icon("vocabulary", {
                 text = _("Read aloud"),
@@ -373,12 +376,13 @@ function Grimmory:sectionItems(section)
                     if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
                 end,
             }),
-            icon("keyboard", {
+            -- (Kindles with a Menu key)
+            Mod.Touch.keys() and icon("keyboard", {
                 text = _("Menu key opens the GZreader menu"),
                 help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
                 checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
                 callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
-            }),
+            }) or nil,
         }
     end
     return {}
@@ -527,6 +531,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
         title = _("Send the diagnostic log"),
         instructions = T(_("Scan this code with your phone's camera and tap \"Download the log\". Your phone must be on the same Wi-Fi as this Kindle.\n\nThe log was also saved as %1."), dest),
         footer = _("Press Back when you're done."),
+        button_text = _("Done"),
         on_cancel = function() screen = nil; finish() end,
     }
     UIManager:show(screen)
@@ -587,6 +592,55 @@ function Grimmory:startQrPairing()
 end
 
 --- The phone page at "books" (Home menu → Send books from your phone).
+--- Touch Kindles have no Menu key for GZreader's menu (Kindle Keyboard): it,
+--- the phone page and Send books go in ZenOS's launcher (swipe down from the
+--- top, the launcher icon), once; they can be moved or removed there.
+function Grimmory:addLauncherEntries()
+    if not Mod.Touch.on() or G_reader_settings:isTrue("gzreader_launcher_v1") then return end
+    local ok, Model = pcall(require, "modules/menu/app_launcher/model")
+    if not ok then return end
+    local cfg = Model.ensure()
+    local function add(label, icon, method)
+        for _i, e in ipairs(cfg.entries) do
+            if e.type == "plugin" and type(e.plugin) == "table" and e.plugin.method == method then return end
+        end
+        cfg.entries[#cfg.entries + 1] = { id = Model.next_id(cfg), type = "plugin", label = label, icon = icon,
+            plugin = { key = "gzreader", method = method } }
+    end
+    add(_("GZreader"), "app_menu", "onGzLauncherMenu")
+    add(_("Phone"), "quick_connections", "onGzLauncherPhone")
+    add(_("Send books"), "quick_localsend", "onGzLauncherBooks")
+    Model.save(cfg)
+    G_reader_settings:makeTrue("gzreader_launcher_v1")
+    Log.info("launcher: GZreader entries added")
+end
+
+--- The GZreader instance of the screen that's open (the launcher may call
+--- these on the plugin's class).
+local function liveInstance(self)
+    if self.ui then return self end
+    local FileManager = require("apps/filemanager/filemanager")
+    local fm = FileManager.instance and FileManager.instance.gzreader
+    if fm then return fm end
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    return ok and ReaderUI.instance and ReaderUI.instance.gzreader or nil
+end
+
+function Grimmory:onGzLauncherMenu()
+    local p = liveInstance(self)
+    if p then require("gzreader_homemenu").show(p) end
+end
+
+function Grimmory:onGzLauncherPhone()
+    local p = liveInstance(self)
+    if p then p:openPhonePage(nil) end
+end
+
+function Grimmory:onGzLauncherBooks()
+    local p = liveInstance(self)
+    if p then p:openPhonePage("books") end
+end
+
 function Grimmory:openPhonePage(section)
     if self.pairing then return end
     Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "phone page" })
@@ -766,7 +820,7 @@ end
 
 function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
-    self.tts = Mod.TTS.Reader:new(self.ui)
+    if Mod.Touch.audio() then self.tts = Mod.TTS.Reader:new(self.ui) end
     local menu = self.ui.menu
     if menu and not Device:isTouchDevice() and Device:hasKeyboard() then
         local orig = menu.onKeyPressShowMenu

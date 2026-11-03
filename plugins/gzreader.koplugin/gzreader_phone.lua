@@ -485,6 +485,7 @@ function Phone.open(plugin, opts)
         title = opts.title or _("Set up from your phone"),
         instructions = opts.instructions or _("Scan this code with your phone's camera. The page that opens connects Grimmory, Notes (Memos) and your calendars (a CalDAV account, or webcal / ICS links such as Proton Calendar's), lets you edit the calendars you've added, and sends books from your phone to this Kindle. Your phone must be on the same Wi-Fi as this Kindle."),
         footer = _("Press Back when you're done."),
+        button_text = _("Done"),
         on_cancel = function() screen = nil; finish("back") end,
     }
     UIManager:show(screen)

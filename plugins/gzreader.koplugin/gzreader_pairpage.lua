@@ -44,7 +44,7 @@ local function shell(title, inner)
 end
 
 function PairPage.gone()
-    return shell("Link expired", '<h1>This page has closed</h1><div class="card"><p>The page works while its QR code is on the Kindle\'s screen. To open it again: Home menu → Send books from your phone, or Connect with QR code in the Grimmory, Notes or Calendar tab.</p></div>')
+    return shell("Link expired", '<h1>This page has closed</h1><div class="card"><p>The page works while its QR code is on the Kindle\'s screen. To open it again: Send books from your phone in the Home menu (on a touch Kindle: Phone in the launcher), or Connect with QR code in the Grimmory, Notes or Calendar tab.</p></div>')
 end
 
 ---------------------------------------------------------------- the phone page
@@ -274,7 +274,7 @@ function PairPage.hub(st)
         flash,
         '<nav><a href="#grimmory">Grimmory</a><a href="#notes">Notes</a><a href="#calendar">Calendar</a><a href="#books">Send books</a></nav>',
         grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), booksSection(st, base),
-        '<p class="note">This page works while the code is on the Kindle\'s screen; press Back on the Kindle when you\'re done. Your phone and Kindle must be on the same Wi‑Fi.</p>',
+        '<p class="note">This page works while the code is on the Kindle\'s screen; when you\'re done, press Back (or tap Done) on the Kindle. Your phone and Kindle must be on the same Wi‑Fi.</p>',
     }))
 end
 
