@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.6.5",
+        changes = {
+            "Fixed: Notes stopped loading (\"Memos answered HTTP 410\") after updating Memos to 26.10 or newer. Those versions moved Memos' API from /api/v1 to /api and answer the old address with 410 Gone; GZreader remembered the old address from when you connected. It now switches to the new one by itself (and back, for a server on an older version), and reads tag counts in the new format.",
+            "Memos 26.10 also stopped accepting access tokens made before the update. If Notes then says the access token doesn't work, make a new one in Memos (Settings → Access Tokens) and connect again (Settings → Connections → Memos).",
+        },
+    },
+    {
         version = "1.6.4",
         changes = {
             "Opening a book: a book that has been opened before should open faster. KOReader keeps each book's laid-out pages so it doesn't lay the book out again, but kept at most 64 MB of them and dropped the oldest; a dropped book was laid out again from scratch when opened (10–30 seconds for a big book on a Kindle 3). Now up to 256 MB are kept.",

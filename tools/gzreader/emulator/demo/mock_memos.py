@@ -8,10 +8,11 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /file/attachments/<uid>/<filename>
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
-  python3 -I mock_memos.py PORT [--sample] [--prefix /api]
+  python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26]
 
 --sample fills it with a few notes (with a picture and a PDF), as in the
-mockup. --many N adds N long notes (a big account: replies over 64 KB). --prefix /api serves the newer layout (no /api/v1) instead.
+mockup. --many N adds N long notes (a big account: replies over 64 KB). --prefix /api serves the newer layout (no /api/v1) instead. --memos26 is
+Memos 26.10+: /api, with /api/v1 answering 410 Gone, and user stats' tagCounts.
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
 import json, re, sys, time, threading, zlib, struct
@@ -25,6 +26,11 @@ SAMPLE = "--sample" in sys.argv
 PREFIX = "/api/v1"
 if "--prefix" in sys.argv:
     PREFIX = sys.argv[sys.argv.index("--prefix") + 1]
+MEMOS26 = "--memos26" in sys.argv
+if MEMOS26:
+    PREFIX = "/api"
+GONE_MESSAGE = ("API v1 has been removed. Use /api/... for REST and /memos.api.<Service>/<Method> for Connect. "
+                "See https://github.com/usememos/memos/blob/main/proto/api/CHANGELOG.md")
 
 LOCK = threading.Lock()
 STATE = {"memos": [], "next": 1, "log": [], "offline": False, "files": {}}
@@ -201,6 +207,12 @@ class H(BaseHTTPRequestHandler):
             return rest
         return None
 
+    def missing(self, u):
+        """No such API address: 410 Gone for /api/v1 on Memos 26.10+, else 404."""
+        if MEMOS26 and u.path.startswith("/api/v1/"):
+            return self.send(410, {"code": 12, "message": GONE_MESSAGE})
+        return self.send(404, raw=b"404 page not found", ctype="text/plain")
+
     def note(self, u):
         STATE["log"].append(self.command + " " + u.path + ("?" + u.query if u.query else ""))
         if self.headers.get("Authorization"):
@@ -226,7 +238,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, ctype=typ, raw=data)
         p = self.api(u.path)
         if p is None:
-            return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            return self.missing(u)
         if not self.authed():
             return
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
@@ -237,7 +249,8 @@ class H(BaseHTTPRequestHandler):
             for m in STATE["memos"]:
                 for t in m["tags"]:
                     counts[t] = counts.get(t, 0) + 1
-            return self.send(200, {"name": "users/1", "tagCount": counts, "totalMemoCount": len(STATE["memos"])})
+            return self.send(200, {"name": "users/1", ("tagCounts" if MEMOS26 else "tagCount"): counts,
+                                   "totalMemoCount": len(STATE["memos"])})
         if p == "/memos":
             ok = matcher(q.get("filter"))
             if ok is None:
@@ -267,7 +280,7 @@ class H(BaseHTTPRequestHandler):
             return
         p = self.api(u.path)
         if p is None:
-            return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            return self.missing(u)
         if not self.authed():
             return
         if p == "/memos":
@@ -286,7 +299,7 @@ class H(BaseHTTPRequestHandler):
             return
         p = self.api(u.path)
         if p is None:
-            return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            return self.missing(u)
         if not self.authed():
             return
         mm = re.fullmatch(r"/(memos/[\w\-]+)", p)

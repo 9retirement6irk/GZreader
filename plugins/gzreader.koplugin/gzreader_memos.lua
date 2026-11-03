@@ -1,7 +1,9 @@
 --[[--
 Memos (https://usememos.com) client for the Notes tab: notes, tags, checklist
-ticks, attachments. Written against Memos v0.31 (REST under /api/v1); newer
-servers moved it to /api, which is tried when /api/v1 isn't there.
+ticks, attachments. Written against Memos v0.31 (REST under /api/v1). Memos
+26.10 moved it to /api (and answers /api/v1 with 410 Gone; later releases
+with 404): the address that works is remembered, and the other one is tried
+when it stops working (a server updated either way).
 
 Sign-in: a personal access token (Memos → Settings → Access Tokens), sent as
 "Authorization: Bearer". It's kept in GZreader's settings like the Grimmory
@@ -58,8 +60,14 @@ function Memos:request(method, path, body, params, opts)
     opts = opts or {}
     if not self:isConnected() then return nil, nil, "not_connected" end
     local Api = require("gzreader_api")
-    local prefixes = self.store.prefix and { self.store.prefix } or Memos.PREFIXES
+    -- the remembered API address first, then the other
+    local prefixes = {}
+    if self.store.prefix then prefixes[1] = self.store.prefix end
+    for _i, p in ipairs(Memos.PREFIXES) do
+        if p ~= self.store.prefix then prefixes[#prefixes + 1] = p end
+    end
     local code, data
+    local gone -- a 404 / 410 answer, kept in case no address works
     for _i, prefix in ipairs(prefixes) do
         code, data = Api.rawRequest(method, self.store.server .. prefix .. path .. query(params), {
             headers = { ["Authorization"] = "Bearer " .. self.store.token },
@@ -67,11 +75,19 @@ function Memos:request(method, path, body, params, opts)
             timeouts = opts.timeouts or { 10, 30 },
             sink = opts.sink,
         })
-        if code ~= 404 or self.store.prefix then
-            if code and code < 400 and not self.store.prefix then self.store.prefix = prefix end
+        if code ~= 404 and code ~= 410 then
+            if code and code < 400 and prefix ~= self.store.prefix then
+                if self.store.prefix then require("gzreader_log").info("memos: the API moved to", prefix) end
+                self.store.prefix = prefix
+            end
+            gone = nil
             break
         end
+        -- 410: "this API address was removed"; 404: no such address (or a
+        -- real "not found": then the other address answers 404 / 410 too)
+        if not gone or (gone.code == 410 and code == 404) then gone = { code = code, data = data } end
     end
+    if gone then code, data = gone.code, gone.data end
     if not code then return nil, nil, "unreachable" end
     if code == 401 or code == 403 then return code, data, "unauthorized" end
     if code >= 400 then return code, data, "http_" .. code end
@@ -115,6 +131,8 @@ function Memos:listAll(filter, max)
     until not token or #out >= max
     local res = { memos = out }
     res.tags = self:tagCounts() -- nil if this Memos doesn't say
+    -- (run in a background process: the API address it found goes back with the notes)
+    res.prefix = self.store.prefix
     return res
 end
 
@@ -127,9 +145,11 @@ function Memos:tagCounts()
         if not name then return nil end
     end
     local _, data, err = self:request("GET", "/" .. name .. ":getStats")
-    if err or type(data) ~= "table" or type(data.tagCount) ~= "table" then return nil end
+    -- (tagCount up to Memos 0.x; tagCounts from 26.10)
+    local counts = type(data) == "table" and (data.tagCounts or data.tagCount)
+    if err or type(counts) ~= "table" then return nil end
     local t = {}
-    for tag, n in pairs(data.tagCount) do t[tag] = tonumber(n) or 0 end
+    for tag, n in pairs(counts) do t[tag] = tonumber(n) or 0 end
     return t
 end
 
@@ -209,7 +229,7 @@ function Memos:flush(queue)
             if err and err:match("^http_4") then done[#done + 1] = q.id end -- refused for good: drop it
         end
     end
-    return { done = done, err = first_err }
+    return { done = done, err = first_err, prefix = self.store.prefix }
 end
 
 ---------------------------------------------------------------- the cache

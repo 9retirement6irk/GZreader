@@ -219,6 +219,7 @@ function Notes.refresh(plugin, on_done)
                 return on_done and on_done(false, err)
             end
             Notes.last_error = nil
+            if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix; plugin:save() end
             if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
@@ -234,6 +235,7 @@ function Notes.refresh(plugin, on_done)
         local queue = store.queue
         Async.run(client, function(c) return c:flush(queue) end, function(res)
             if type(res) == "table" then
+                if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix end
                 local gone = {}
                 for _i, id in ipairs(res.done or {}) do gone[id] = true end
                 local left = {}
