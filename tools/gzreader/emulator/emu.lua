@@ -6,7 +6,8 @@ qemu-arm, headless: fake framebuffer, scripted keys, real everything else.
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
 
 The script returns a list of steps: { wait = s } | { key = "Press" } |
-{ shot = "name" } | { fn = function(E) ... end }.
+{ shot = "name" } | { fn = function(E) ... end } |
+{ wait_for = function(E) return done end, timeout = s }.
 ]]
 local SCRIPT, OUT = arg[1], arg[2]
 arg = { [0] = "reader.lua" }
@@ -227,6 +228,19 @@ local function runScript()
         end
         if s.wait then
             return UIManager:scheduleIn(s.wait, step)
+        end
+        -- wait (the UI keeps running) until wait_for(E) is true, e.g. a phone driven from outside
+        if s.wait_for then
+            local deadline = os.time() + (s.timeout or 180)
+            local function poll()
+                local ok, done = pcall(s.wait_for, E)
+                if (ok and done) or os.time() > deadline then
+                    say("wait_for", (ok and done) and "done" or "timed out", s.label or "")
+                    return UIManager:scheduleIn(s.after or 1, step)
+                end
+                UIManager:scheduleIn(1, poll)
+            end
+            return poll()
         end
         if s.key then
             say("key", s.key)

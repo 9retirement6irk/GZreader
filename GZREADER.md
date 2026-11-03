@@ -15,7 +15,7 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `gzreader.koplugin` | GZreader itself: QR sign-in, library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
+| `gzreader.koplugin` | GZreader itself: the phone page (QR code: connections, sending books), library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
 
@@ -80,6 +80,36 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Anywhere | Volume buttons | Speaker volume for audiobooks and read aloud (a note shows the level). |
 | Note editor | Menu | To the formatting toolbar and back; the cursor stays where it is. |
 
+## The phone page (QR code)
+
+One page on your phone sets up everything: the Kindle shows a QR code, you
+scan it, and the page that opens (served by the Kindle itself over your Wi‑Fi;
+phone and Kindle on the same network) has a section for each connection:
+
+- **Grimmory**: connect with a password or single sign-on, or disconnect.
+- **Notes (Memos)**: the Memos address and an access token, or disconnect.
+- **Calendar**: your calendars, each with *Show its events*; calendar links
+  can be renamed, given a new link (Proton's links change when you reshare)
+  or removed; add new links (several at once); connect or disconnect a CalDAV
+  account.
+- **Send books**: pick books on the phone (EPUB, PDF, MOBI, AZW3, FB2, CBZ,
+  TXT, DOCX…, up to 1 GB each) and they go straight into the GZreader folder
+  (the Downloads tab). No Grimmory needed. A name already there gets
+  "(2)"; a book is written to a temporary file first, so a dropped Wi‑Fi
+  leaves nothing half-copied; it is refused when the Kindle is short of
+  space.
+
+Each change shows a short note on the Kindle, and the page shows what
+happened and stays open for the next thing. Press **Back** on the Kindle when
+you're done (or leave it 10 minutes): a summary shows what changed, and the
+page stops working. The page's address has a random code in it; passwords
+and tokens are sent once to the Kindle and only Grimmory's login tokens,
+the Memos token and the CalDAV password are kept (never logged).
+
+Where to open it: the setup guide's first page (**Connect your phone**), Home
+menu → **Send books from your phone**, the Grimmory, Notes and Calendar tabs'
+*Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
+
 ## Connect to Grimmory
 
 Open the **Grimmory** tab. Grimmory's options (connection, sync, bookmarks,
@@ -89,15 +119,14 @@ Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi o
 when needed and the diagnostic log in Settings → General; updates in Settings
 → General → Updates.
 
-- **Connect with QR code**: the Kindle shows a QR code. Scan it with your
-  phone; a sign-in page opens, served by the Kindle itself over your Wi‑Fi.
-  The Kindle keeps only Grimmory's login tokens (never the password). The
-  page works once, expires after 10 minutes, and stops when you press Back.
+- **Connect with QR code**: opens the phone page (above) at its Grimmory
+  section. The Kindle keeps only Grimmory's login tokens (never the
+  password).
 - **Connect by typing**: the same, using the Kindle's keyboard.
 
 ### Single sign-on (SSO / OIDC)
 
-If Grimmory has SSO turned on, the QR page shows **Sign in with <provider>**.
+If Grimmory has SSO turned on, the phone page shows **Sign in with <provider>**.
 One-time setup: add `http://<kindle-ip>:8642/oauth2-callback` as an extra
 redirect URI on Grimmory's client at your identity provider (shown on the QR
 page and under Grimmory → Single sign-on (SSO) setup). Reserve the Kindle's
@@ -139,9 +168,9 @@ API to `/api` are found too.
 - **Favorites** is still in Settings → Interface → Navbar → Tabs, turned
   off; turn it on there (or on the setup guide's Navbar Tabs page, which also
   offers Notes) to have both.
-- **Connect:** the first time, the tab offers *Connect with QR code* (your
-  phone enters the Memos address and an access token on a one-off page served
-  by the Kindle, like Grimmory pairing) or *Connect by typing*. Create the
+- **Connect:** the first time, the tab offers *Connect with QR code* (the
+  phone page, at its Notes section: the Memos address and an access token) or
+  *Connect by typing*. Create the
   token in Memos → Settings → My account → Access Tokens. The Kindle keeps
   the token (never your password) in GZreader's settings; it's never written
   to the log. An address without `https://` falls back to `http://` for a
@@ -191,22 +220,24 @@ The Calendar tab (B) shows calendars from their **shared links** (webcal:// or
 https://….ics: Proton Calendar's Share → Share with anyone, Google's secret
 iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only.
 
-- **Calendar links:** add several at once with the QR code page (one per line,
+- **Calendar links:** add several at once on the phone page (one per line,
   `Name | link` to name one), by typing, or from `calendars.txt` (GZreader
   folder or the top of the USB drive). Each is fetched when added (named after
   its `X-WR-CALNAME`) and at every sync; `webcal://` is fetched over HTTPS,
   falling back to HTTP. Links are secret: kept in GZreader's settings, never
   logged (requests show the server only, `rawRequest`'s `log_url`). Times use
   the file's own VTIMEZONE rules; repeating events are expanded on the Kindle.
-  Settings → Connections → Calendar → Calendar links: show / rename / remove.
+  Settings → Connections → Calendar → Calendar links: show / rename / remove,
+  or the same on the phone page (*Add or edit links with QR code*), which
+  also replaces a link that changed.
 
 The CalDAV account: Nextcloud
 (`https://your.server/remote.php/dav`), iCloud (`https://caldav.icloud.com`),
 Fastmail (`https://caldav.fastmail.com`), Google
 (`https://apidata.googleusercontent.com/caldav/v2/`), Radicale, Baïkal…
 
-- **Connect:** Connect with QR code (the phone enters the address, user name
-  and password) or Connect by typing. Use an app password where the server
+- **Connect:** Connect with QR code (the phone page: address, user name and
+  password; it also shows or hides each calendar) or Connect by typing. Use an app password where the server
   has them; it's kept in GZreader's settings like the Memos token and never
   logged (the log has addresses only, and passwords are redacted from it).
   Discovery follows RFC 6764: the address → `current-user-principal` →
@@ -259,7 +290,8 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 ## Home folder and downloads
 
 The GZreader folder (`documents/GZreader`) is the home folder; the
-**Downloads** tab shows it. Books download in a background process with a
+**Downloads** tab shows it. Books sent from your phone (Home menu → Send
+books from your phone) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
 download one after another (lists show "queued"; the download options can

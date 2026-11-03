@@ -1182,57 +1182,17 @@ function Notes.typeConnect(plugin)
     d:onShowKeyboard()
 end
 
---- The phone enters the address and token (the Kindle Keyboard is slow for a
---- long token): same one-off page as connecting to Grimmory.
+--- Connect with QR code: the phone page (gzreader_phone.lua), at Notes.
+--- Back in the Notes tab afterwards when it was connected there.
 function Notes.qrConnect(plugin)
-    local PairServer = require("gzreader_pairserver")
-    local PairPage = require("gzreader_pairpage")
-    local NetworkMgr = require("ui/network/manager")
-    local token = PairServer.randomToken(16)
-    local base = "/notes/" .. token
-    local server, screen, timeout_task, done
-    local function finish()
-        if done then return end
-        done = true
-        if timeout_task then UIManager:unschedule(timeout_task) end
-        if server then UIManager:removeZMQ(server); server:stop() end
-        if screen then UIManager:close(screen) end
-    end
-    server = PairServer:new{
-        handler = function(method, path, _headers, body)
-            if path ~= base then return 404, "text/plain", "Not found" end
-            if method == "GET" then
-                return 200, "text/html", PairPage.memosForm{ server = (plugin.store.memos or {}).server }
-            end
-            if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
-            local form = PairServer.parseForm(body)
-            local ok, err = Notes.connect(plugin, form.server, form.token)
-            if not ok then
-                return 200, "text/html", PairPage.memosForm{ server = form.server, error = err }
-            end
-            UIManager:nextTick(function() finish(); connected(plugin) end)
-            return 200, "text/html", PairPage.memosSuccess(plugin.store.memos.user)
-        end,
-    }
-    local ok, serr = server:start()
-    if not ok then return info(T(_("Couldn't start: %1"), tostring(serr))) end
-    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = PairServer.localIp(nil, iface)
-    if not ip then
-        server:stop()
-        return info(_("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") .. "\n\n" .. tostring(why))
-    end
-    UIManager:insertZMQ(server)
-    screen = require("gzreader_pairscreen"):new{
-        url = T("http://%1:%2%3", ip, server.port, base),
-        title = _("Connect to Memos"),
-        instructions = _("Scan this code with your phone's camera, then enter your Memos address and an access token (Memos → Settings → Access Tokens). Your phone must be on the same Wi-Fi as this Kindle."),
-        footer = _("Press Back to cancel."),
-        on_cancel = function() screen = nil; finish() end,
-    }
-    UIManager:show(screen)
-    timeout_task = function() finish() end
-    UIManager:scheduleIn(600, timeout_task)
+    require("gzreader_phone").open(plugin, { section = "notes", on_close = function(changes)
+        if not (changes.notes and Notes.client(plugin):isConnected()) then return end
+        if not (Notes.connect_menu or Notes.board) then return end
+        if Notes.connect_menu then closeTop(Notes.connect_menu); Notes.connect_menu = nil end
+        if Notes.board then closeTop(Notes.board) end
+        Notes.notes = nil
+        Notes.show(plugin)
+    end })
 end
 
 return Notes

@@ -46,7 +46,6 @@ local ReadMenu = require("gzreader_readmenu")
 local Bookmarks = require("gzreader_bookmarks")
 
 local PAIR_TIMEOUT_S = 10 * 60
-local PAIR_MAX_ATTEMPTS = 5
 local MAX_QUEUED_SESSIONS = 200
 
 -- Night mode makes legacy Kindles unusably slow (software inversion): keep it off.
@@ -277,7 +276,8 @@ function Grimmory:menuItems()
             end,
         },
         {
-            text = paired and _("Reconnect with QR code") or _("Connect with QR code"),
+            text = paired and _("Reconnect with QR code (phone page)") or _("Connect with QR code (phone page)"),
+            help_text = _("Shows a QR code: the page it opens on your phone connects Grimmory, Notes and calendars, and sends books to this Kindle."),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
         },
         {
@@ -580,202 +580,16 @@ function Grimmory:onGrimmoryKeyboardLogin()
     return true
 end
 
+--- Connect with QR code: the phone page (gzreader_phone.lua), at Grimmory.
 function Grimmory:startQrPairing()
     if self.pairing then return end
-    local token = Mod.PairServer.randomToken(16)
-    local attempts = 0
-    local done = false
-    local server, screen, timeout_task
-    local base_path = "/pair/" .. token
+    require("gzreader_phone").open(self, { section = "grimmory" })
+end
 
-    local function finish()
-        if done then return end
-        done = true
-        if timeout_task then UIManager:unschedule(timeout_task) end
-        if server then
-            UIManager:removeZMQ(server)
-            server:stop()
-        end
-        if screen then UIManager:close(screen) end
-        self.pairing = nil
-    end
-
-    local origin            -- http://<kindle-ip>:<port>, set once the server is up
-    local sso_session       -- pending single sign-on: state, verifier, nonce, base
-    local sso_info_cache = {}
-
-    -- What the form should offer for SSO, for a known server address.
-    local function ssoInfo(server_input)
-        if not server_input or server_input == "" then return nil end
-        local cached = sso_info_cache[server_input]
-        if cached ~= nil then return cached end
-        local srv = Api.normalizeServer(server_input)
-        if not srv then return nil end
-        local base, settings = self.api:publicSettings(srv)
-        if not base or type(settings) ~= "table" then return nil end -- unknown: offer generic SSO
-        local info = false
-        if settings.oidcEnabled == true then
-            local pd = type(settings.oidcProviderDetails) == "table" and settings.oidcProviderDetails or {}
-            info = { name = Api.str(pd.providerName), only = settings.oidcForceOnlyMode == true }
-        end
-        sso_info_cache[server_input] = info
-        return info
-    end
-
-    local function formPage(opts)
-        opts.redirect_uri = origin .. "/oauth2-callback"
-        if opts.sso == nil then opts.sso = ssoInfo(opts.server) end
-        return 200, "text/html", Mod.PairPage.form(opts)
-    end
-
-    local function succeeded()
-        UIManager:nextTick(function()
-            finish()
-            self:announceConnected()
-        end)
-        return 200, "text/html", Mod.PairPage.success(self.store.username)
-    end
-
-    local function failed(form, err)
-        if attempts >= PAIR_MAX_ATTEMPTS then
-            UIManager:nextTick(function()
-                finish()
-                UIManager:show(InfoMessage:new{ text = _("Pairing stopped after too many failed attempts.") })
-            end)
-            return 200, "text/html", Mod.PairPage.gone()
-        end
-        return formPage{ server = form.server, username = form.username, error = err }
-    end
-
-    -- Phone pressed "Sign in with SSO": send it to the identity provider.
-    local function startSso(form)
-        local srv = Api.normalizeServer(form.server or "")
-        if not srv then return failed(form, _("Enter your Grimmory address first.")) end
-        self.api.explicit_https = (form.server or ""):match("^%s*https://") ~= nil
-        local base, settings = self.api:publicSettings(srv)
-        if not base then return failed(form, self:describeError(settings)) end
-        local pd = type(settings.oidcProviderDetails) == "table" and settings.oidcProviderDetails or {}
-        if settings.oidcEnabled ~= true or not Api.str(pd.clientId) or not Api.str(pd.issuerUri) then
-            return failed(form, _("Single sign-on isn't turned on for this Grimmory server."))
-        end
-        local auth_ep = Api.discoverAuthorizationEndpoint(pd.issuerUri)
-        if not auth_ep then
-            return failed(form, _("Couldn't reach your identity provider from the Kindle."))
-        end
-        local state = Api.oidcState(base)
-        if not state then return failed(form, _("Grimmory didn't start single sign-on. Try again.")) end
-        sso_session = {
-            base = base,
-            state = state,
-            verifier = Mod.PairServer.randomToken(32), -- 64 hex chars, valid PKCE verifier
-            nonce = Mod.PairServer.randomToken(16),
-            redirect_uri = origin .. "/oauth2-callback",
-        }
-        local q = Api.query{
-            response_type = "code",
-            client_id = pd.clientId,
-            redirect_uri = sso_session.redirect_uri,
-            scope = Api.str(pd.scopes) or "openid profile email offline_access",
-            code_challenge = Api.pkceChallenge(sso_session.verifier),
-            code_challenge_method = "S256",
-            state = state,
-            nonce = sso_session.nonce,
-        }
-        Log.info("sso: redirecting phone to", auth_ep, "redirect_uri", sso_session.redirect_uri)
-        local sep = auth_ep:find("?", 1, true) and "&" or "?"
-        return 302, nil, auth_ep .. sep .. q:sub(2)
-    end
-
-    -- Identity provider sent the phone back here.
-    local function finishSso(query)
-        local params = Mod.PairServer.parseForm(query)
-        local session = sso_session
-        if params.error then
-            sso_session = nil
-            return failed({ server = session and session.base }, T(_("Sign-in didn't complete: %1"),
-                params.error_description or params.error))
-        end
-        if not session or not params.code or params.state ~= session.state then
-            return 200, "text/html", Mod.PairPage.gone()
-        end
-        sso_session = nil -- single use
-        attempts = attempts + 1
-        local previous = { self.store.server, self.store.username }
-        local ok, err = self.api:oidcExchange(session.base, {
-            code = params.code,
-            code_verifier = session.verifier,
-            redirect_uri = session.redirect_uri,
-            nonce = session.nonce,
-            state = session.state,
-        }, origin)
-        if ok then
-            Log.info("sso: signed in as", tostring(self.store.username))
-            self:afterLogin(previous)
-            return succeeded()
-        end
-        Log.warn("sso: exchange failed:", tostring(err))
-        return failed({ server = session.base }, T(_("Grimmory rejected the sign-in: %1"), self:describeError(err)))
-    end
-
-    server = Mod.PairServer:new{
-        handler = function(method, full_path, _headers, body)
-            local path, query = full_path:match("^([^?]*)%??(.*)$")
-            if path == "/oauth2-callback" and method == "GET" and not done then
-                return finishSso(query)
-            end
-            if path ~= base_path then
-                return 404, "text/plain", "Not found"
-            end
-            if done then
-                return 200, "text/html", Mod.PairPage.gone()
-            end
-            if method == "GET" then
-                return formPage{ server = self.store.server, username = self.store.username }
-            elseif method ~= "POST" then
-                return 405, "text/plain", "Method not allowed"
-            end
-            local form = Mod.PairServer.parseForm(body)
-            if form.action == "sso" then
-                return startSso(form)
-            end
-            attempts = attempts + 1
-            local ok, err = self:connect(form.server or "", form.username or "", form.password or "")
-            form.password = nil
-            if ok then return succeeded() end
-            return failed(form, err)
-        end,
-    }
-
-    local ok, err = server:start()
-    if not ok then
-        return UIManager:show(InfoMessage:new{ text = T(_("Couldn't start pairing: %1"), tostring(err)) })
-    end
-    local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
-    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = Mod.PairServer.localIp(hint_host, iface)
-    if not ip then
-        Log.err("pairing: no local IP;", tostring(why))
-        server:stop()
-        return UIManager:show(InfoMessage:new{
-            text = _("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.")
-                .. "\n\n" .. _("Details:") .. "\n" .. tostring(why),
-        })
-    end
-
-    origin = T("http://%1:%2", ip, server.port)
-    Log.info("pairing started on", origin)
-    self.pairing = true
-    UIManager:insertZMQ(server)
-    screen = Mod.PairScreen:new{
-        url = T("http://%1:%2%3", ip, server.port, base_path),
-        on_cancel = function() screen = nil; finish() end,
-    }
-    UIManager:show(screen)
-    timeout_task = function()
-        finish()
-        UIManager:show(InfoMessage:new{ text = _("The pairing code expired. Start again when you're ready.") })
-    end
-    UIManager:scheduleIn(PAIR_TIMEOUT_S, timeout_task)
+--- The phone page at "books" (Home menu → Send books from your phone).
+function Grimmory:openPhonePage(section)
+    if self.pairing then return end
+    Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "phone page" })
 end
 
 function Grimmory:showSsoSetup()

@@ -16,16 +16,16 @@ s[#s + 1] = { fn = function(E)
     local f = io.open(dir .. "/audiobook.m4b.chunks/index.json", "wb")
     f:write(require("json").encode({ starts = starts, durationMs = 600000, count = 40 })); f:close()
     local chapters = {}
-    for i = 1, 12 do chapters[i] = { title = "Chapter " .. i .. ": On the Trail", startTimeMs = (i - 1) * 50000 } end
-    chapters[1].title = "Prologue"
+    for i = 1, 12 do chapters[i] = { title = "Chapter " .. i, startTimeMs = (i - 1) * 50000 } end
+    chapters[1].title = "The River Bank"; chapters[2].title = "The Open Road"; chapters[3].title = "The Wild Wood"; chapters[4].title = "Mr. Badger"
     f = io.open(dir .. "/audiobook.json", "wb")
-    f:write(require("json").encode({ id = "10", title = "A Walk in the Woods", author = "Bill Bryson", durationMs = 600000,
+    f:write(require("json").encode({ id = "10", title = "The Wind in the Willows", author = "Kenneth Grahame", durationMs = 600000,
         chapters = chapters, files = { "audiobook.m4b.chunks/c0.aac" },
         tracks = { { file = "audiobook.m4b", start = 0, durationMs = 600000,
             chunks = { dir = "audiobook.m4b.chunks", starts = starts } } } }))
     f:close()
     os.execute("cp " .. (os.getenv("GZ_EMU_COVER") or "cover.jpg") .. " '" .. dir .. "/cover.jpg'")
-    plugin.store.audiobooks = { ["10"] = { title = "A Walk in the Woods", author = "Bill Bryson", pos_ms = 160000 } }
+    plugin.store.audiobooks = { ["10"] = { title = "The Wind in the Willows", author = "Kenneth Grahame", pos_ms = 160000 } }
     G_reader_settings:saveSetting("gzreader_audio_players", { aac = "aac-mfw", mp3 = "mp3-mfw" })
     G_reader_settings:saveSetting("gzreader_tts_volume", 10)
     require("gzreader_abfolder").start(plugin)

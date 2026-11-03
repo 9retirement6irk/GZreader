@@ -7,7 +7,8 @@
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for the Kindle Keyboard</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle 3: download books, read them,
-  and keep your place, bookmarks and highlights in sync.
+  and keep your place, bookmarks and highlights in sync. Notes, calendars, and books
+  sent from your phone too.
 </p>
 
 <p align="center">
@@ -26,13 +27,21 @@ a built-in connection to a self-hosted **Grimmory** book server.
 ## Screenshots
 
 <sub>Taken on GZreader's Kindle 3 emulator (the Kindle's own software, 600 × 800,
-16 grey levels) with a demo library of public-domain books.</sub>
+16 grey levels) with a demo library of public-domain books; the phone page in a phone-sized
+browser talking to the emulated Kindle.</sub>
 
 ### Setup
 
 <table>
-<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-connect.png" alt="Connect to Grimmory first" width="240"><br><sub>Connect to Grimmory first</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-qr.png" alt="Sign in on your phone with the QR code" width="240"><br><sub>Sign in on your phone with the QR code</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-welcome.png" alt="Welcome" width="240"><br><sub>Welcome</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-connect.png" alt="First start: Connect your phone" width="240"><br><sub>First start: Connect your phone</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-qr.png" alt="The QR code opens the phone page" width="240"><br><sub>The QR code opens the phone page</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-summary.png" alt="Back on the Kindle: what changed" width="240"><br><sub>Back on the Kindle: what changed</sub></td></tr>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading" width="240"><br><sub>Home: the book you're reading</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/home-menu.png" alt="Menu key at Home: every entry has a letter key" width="240"><br><sub>Menu key at Home: every entry has a letter key</sub></td></tr>
+</table>
+
+### Your phone page
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/phone-start.png" alt="Grimmory, Notes, Calendar and books on one page" width="240"><br><sub>Grimmory, Notes, Calendar and books on one page</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/phone-connected.png" alt="Connected: disconnect or switch accounts there" width="240"><br><sub>Connected: disconnect or switch accounts there</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/phone-calendar.png" alt="Show or hide calendars; rename, replace or remove links" width="240"><br><sub>Show or hide calendars; rename, replace or remove links</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/phone-books.png" alt="Send books from your phone, no Grimmory needed" width="240"><br><sub>Send books from your phone, no Grimmory needed</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/book-received.png" alt="The Kindle notes each change and each book" width="240"><br><sub>The Kindle notes each change and each book</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/downloads-received.png" alt="The books are in the Downloads tab" width="240"><br><sub>The books are in the Downloads tab</sub></td></tr>
 </table>
 
 ### Your Grimmory library and downloads
@@ -54,13 +63,28 @@ a built-in connection to a self-hosted **Grimmory** book server.
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-board.png" alt="The Notes tab: Memos notes as sticky notes" width="240"><br><sub>The Notes tab: Memos notes as sticky notes</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-note.png" alt="A note: tick checklist items with their letter key" width="240"><br><sub>A note: tick checklist items with their letter key</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/notes-editor.png" alt="Writing a note, with the Markdown toolbar" width="240"><br><sub>Writing a note, with the Markdown toolbar</sub></td></tr>
 </table>
 
+### Calendar and audiobooks
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/calendar-agenda.png" alt="The Calendar tab: CalDAV calendars and calendar links" width="240"><br><sub>The Calendar tab: CalDAV calendars and calendar links</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/calendar-week.png" alt="Week view" width="240"><br><sub>Week view</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/audiobook-player.png" alt="The audiobook player: chapters, sleep timer, volume keys" width="240"><br><sub>The audiobook player: chapters, sleep timer, volume keys</sub></td></tr>
+</table>
+
 ## Features
 
+### 📱 Set up from your phone
+- **One QR code for everything.** The Kindle shows a code, you scan it with your
+  phone, and a page served by the Kindle itself (over your Wi‑Fi) connects
+  **Grimmory**, **Notes** (your Memos server) and **Calendar** (a CalDAV account or
+  webcal / ICS links such as Proton Calendar's). No typing passwords on the Kindle
+  keyboard. Single sign-on (OIDC: Authentik, Pocket ID, Authelia, Keycloak…) works too.
+- **Manage it all there later:** disconnect or switch accounts, show or hide
+  calendars, rename a calendar link or give it a new one, remove it.
+- **Send books from your phone** (no Grimmory needed): pick EPUB, PDF, MOBI, AZW3,
+  FB2, CBZ, TXT, DOCX… files and they go straight onto the Kindle.
+- Only Grimmory's login tokens, the Memos token and the CalDAV app password are
+  kept on the Kindle, never written to its log.
+
 ### 📚 Your Grimmory library
-- **Sign in with a QR code.** The Kindle shows a code, you scan it with your phone and
-  sign in there (no typing passwords on the Kindle keyboard). Single sign-on (OIDC:
-  Authentik, Pocket ID, Authelia, Keycloak…) works too. Only Grimmory's login tokens
-  are kept, never your password.
 - **Browse** Continue reading, Recently added, All books, **Libraries**, **Authors**,
   **Series** (in reading order) and Search. Audiobooks are left out.
 - **Background downloads** with a progress bar; keep using the Kindle while a book
@@ -98,8 +122,9 @@ a built-in connection to a self-hosted **Grimmory** book server.
 ### 📅 Calendar (CalDAV)
 - The **Calendar tab** shows calendars from their shared links (webcal / ICS, e.g.
   Proton Calendar) and CalDAV accounts (Nextcloud, iCloud, Fastmail…) as an agenda,
-  a day timeline, a week or a month. Paste several links at once from your phone.
-- Works offline; Wi‑Fi only to sync. Connect with a QR code from your phone.
+  a day timeline, a week or a month. Paste several links at once from your phone,
+  and rename, replace or hide them there later.
+- Works offline; Wi‑Fi only to sync.
 
 ### ⌨️ Made for the Kindle Keyboard
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
@@ -171,14 +196,18 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
    the Kindle's USB drive, merging with what's there.
 4. Eject, then open **KUAL → GZreader → Start GZreader**.
 
-The setup guide starts by connecting to your Grimmory server. Later versions install
-from **Settings → General → Updates**.
+The setup guide starts with **Connect your phone**: scan the QR code to connect
+Grimmory, Notes and Calendar, or send books (all optional; you can come back to it
+from the Home menu). Later versions install from **Settings → General → Updates**.
 
-## Connecting to Grimmory
+## Connecting Grimmory, Notes and Calendar
 
-Open the **Grimmory** tab and choose **Connect with QR code**. For single sign-on, add
+Scan the setup guide's QR code, or open it later: **Home menu → Send books from
+your phone**, or **Connect with QR code** in the Grimmory, Notes or Calendar tab. The
+phone page has a section for each; your phone and Kindle must be on the same Wi‑Fi,
+and the page stops when you press Back on the Kindle. For single sign-on, add
 `http://<kindle-ip>:8642/oauth2-callback` as an extra redirect URI for Grimmory's client
-at your identity provider; the exact address is shown on the QR page. Grimmory itself
+at your identity provider; the exact address is shown on the phone page. Grimmory itself
 needs no changes. Connection and sync options are in **Settings → Connections** (Grimmory, and Memos for the Notes tab);
 read aloud is in **Settings → Reader**, and Wi‑Fi saving and the diagnostic log are in
 **Settings → General**.

@@ -32,9 +32,9 @@ Press/Back answer), and the order things happen in on a first start.
 
 ## Scripts
 
-- `setup_qr.lua` — first start: setup guide, QR login (the phone's GET and
-  POST are sent straight to the pairing server), the rest of the guide, keys
-  on Home.
+- `setup_qr.lua` — first start: setup guide, the phone page connects
+  Grimmory (the phone's GET and POST are sent straight to the Kindle's page
+  server), Back, the rest of the guide, keys on Home.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume
@@ -76,6 +76,24 @@ python3 tools/gzreader/emulator/demo/make_library.py <nltk gutenberg dir> <korea
 DEMO_DL_DELAY=0.7 python3 tools/gzreader/emulator/demo/demo_grimmory.py <test>/mock_grimmory.py /tmp/demo-lib 18080 &
 tools/gzreader/emulator/run.sh tools/gzreader/emulator/readme_shots.lua /tmp/emu/readme
 ```
+
+`phone_shots.lua` with `phone_drive.js` is the phone page, driven by a real
+browser (Playwright's Chromium at a phone's size) talking to the emulated
+Kindle: Grimmory, Notes, a CalDAV account, two calendar links, editing a
+calendar, sending two books, then Back (the summary), Downloads, Calendar and
+Notes. It also checks the log never has the token, passwords or the links'
+keys. Servers: the demo library (18080), `demo/mock_memos.py 18097 --sample
+--prefix /api --memos26`, `demo/demo_caldav.py 18095 <dir>` and `demo/` served
+on 18096 (`python3 -m http.server 18096 --bind 127.0.0.1`). Start both:
+
+```
+tools/gzreader/emulator/run.sh tools/gzreader/emulator/phone_shots.lua /tmp/emu/phone &
+node tools/gzreader/emulator/phone_drive.js /tmp/emu/phone book1.epub book2.epub
+```
+
+A step `{ wait_for = function(E) ... end, timeout = s }` waits (the Kindle's
+UI keeps running) until the function returns true; here, files the browser
+writes as it goes.
 
 The books are Project Gutenberg texts (NLTK's `gutenberg` corpus) with plain
 generated covers. Read aloud is stubbed (no speech daemon in the emulator), so

@@ -19,21 +19,22 @@ local function phonePost(E, form)
     local UIManager = require("ui/uimanager")
     local url
     for _i, w in ipairs(UIManager._window_stack) do if w.widget.url then url = w.widget.url end end
-    local path = url and url:match("^https?://[^/]+(/.*)$")
+    local base = url and url:match("^https?://[^/]+(/[^#]*)")
     local server
     for _i, z in ipairs(UIManager._zeromqs or {}) do if z.handler then server = z end end
-    if not (path and server) then return E.say("no QR page") end
-    local code, _, page = server.handler("GET", path, {}, "")
-    E.say("phone opens the page ->", code, tostring(page):find("Paste one or more calendar links", 1, true) and "form" or "?")
+    if not (base and server) then return E.say("no QR page") end
+    local code, _, page = server.handler("GET", base, {}, "")
+    E.say("phone opens the page ->", code, tostring(page):find('name="links"', 1, true) and "form" or "?")
     local enc = form:gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end)
-    code, _, page = server.handler("POST", path, {}, "links=" .. enc)
-    local ok = select(2, tostring(page):gsub("✓", ""))
+    local location = select(3, server.handler("POST", base .. "/links", {}, "links=" .. enc))
+    code, _, page = server.handler("GET", tostring(location):gsub("#.*$", ""), {}, "")
+    local ok = select(2, tostring(page):gsub('<p class="ok">✓', ""))
     E.say("phone adds links ->", code, ok .. " added")
 end
 
 key("B", 6)
 shot("links-1-add-screen")
-key("Q", 8) -- Add calendar links with QR code
+key("Q", 8) -- Add calendars with QR code (the phone page)
 shot("links-2-qr")
 add({ fn = function(E)
     phonePost(E, "http://127.0.0.1:18096/proton_sample.ics?" .. SECRET .. "\nHolidays | webcal://127.0.0.1:18096/holidays_sample.ics")

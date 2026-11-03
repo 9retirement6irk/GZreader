@@ -626,11 +626,11 @@ local function buildGrimmoryPage(ctx)
         choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
     end
     choices[#choices + 1] = { id = "qr",   text = _("Scan a QR code with my phone"), checked = not state.paired }
-    choices[#choices + 1] = { id = "type", text = _("Type my login on this Kindle"),   checked = false }
+    choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login on this Kindle"), checked = false }
     choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
     return {
-        title       = _("Connect to Grimmory"),
-        description = _("Sign in to your Grimmory library to download books and keep your reading progress in sync.\nYou can do this later from the Grimmory tab."),
+        title       = _("Connect your phone"),
+        description = _("Scan the QR code with your phone: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from your phone (no Grimmory needed)\nCome back to it any time: Home menu → Send books from your phone."),
         choice_type = "radio",
         choices     = choices,
         on_apply    = function(sel)

@@ -966,13 +966,46 @@ function Calendar.parseLinkLines(text)
     return out
 end
 
+--- Fetch a calendar link to check it. Returns url (normalized; http when a
+--- webcal:// server has no HTTPS), { name, count } or nil, err (to show).
+function Calendar.checkFeed(raw)
+    local url = CalDAV.normalizeFeed(raw)
+    if not url then return nil, _("not a link") end
+    local today = dayStart()
+    local res, err = CalDAV.fetchFeed(url, today, addDays(today, 31))
+    if not res and err == "unreachable" and tostring(raw):match("^%s*[Ww][Ee][Bb][Cc][Aa][Ll]://") then
+        -- webcal:// is plain HTTP on some (older) servers
+        local plain = url:gsub("^https://", "http://")
+        local r2, e2 = CalDAV.fetchFeed(plain, today, addDays(today, 31))
+        if r2 or e2 ~= "unreachable" then res, err, url = r2, e2, plain end
+    end
+    if not res then
+        Log.warn("calendar: link not usable:", CalDAV.feedLabel(url), tostring(err))
+        return nil, describe(err), url
+    end
+    return url, res
+end
+
+--- A short id for a calendar link (the phone page edits links by it).
+function Calendar.feedId(f)
+    if not f.id then
+        f.id = require("gzreader_pairserver").randomToken(4)
+    end
+    return f.id
+end
+
+--- The events are numbered by calendar: after a change in the list, all are fetched again.
+function Calendar.calendarsChanged()
+    os.remove(CalDAV.cachePath())
+    Calendar.events, Calendar.cached_at, Calendar.range = nil, nil, nil
+end
+
 --- Add calendar links, checking each by fetching it (on the screen's
 --- thread: from the phone page, typing or calendars.txt).
 --- Returns results { {label, ok, name, count, err} }.
 function Calendar.addFeeds(plugin, entries)
     local feeds = Calendar.feeds(plugin)
     local results = {}
-    local today = dayStart()
     for _i, e in ipairs(entries) do
         local url = CalDAV.normalizeFeed(e.url)
         if not url then
@@ -983,22 +1016,16 @@ function Calendar.addFeeds(plugin, entries)
             if dup then
                 results[#results + 1] = { label = Calendar.feedName(dup), ok = true, note = _("already added") }
             else
-                local res, err = CalDAV.fetchFeed(url, today, addDays(today, 31))
-                if not res and err == "unreachable" and tostring(e.url):match("^%s*[Ww][Ee][Bb][Cc][Aa][Ll]://") then
-                    -- webcal:// is plain HTTP on some (older) servers
-                    local plain = url:gsub("^https://", "http://")
-                    local r2, e2 = CalDAV.fetchFeed(plain, today, addDays(today, 31))
-                    if r2 or e2 ~= "unreachable" then res, err, url = r2, e2, plain end
-                end
-                if res then
-                    local f = { url = url, name = e.name, own_name = res.name, enabled = true }
+                local got, res, failed_url = Calendar.checkFeed(e.url)
+                if got then
+                    local f = { url = got, name = e.name, own_name = res.name, enabled = true }
                     feeds[#feeds + 1] = f
                     results[#results + 1] = { label = Calendar.feedName(f), ok = true, count = res.count }
-                    Log.info("calendar: added", CalDAV.feedLabel(url), res.count, "events")
+                    Log.info("calendar: added", CalDAV.feedLabel(got), res.count, "events")
                 else
-                    results[#results + 1] = { label = e.name or (url:match("^https?://([^/?#]+)") or "?"), ok = false,
-                        err = describe(err) }
-                    Log.warn("calendar: link not added:", CalDAV.feedLabel(url), tostring(err))
+                    local where = failed_url or url
+                    results[#results + 1] = { label = e.name or (where:match("^https?://([^/?#]+)") or "?"), ok = false,
+                        err = res }
                 end
             end
         end
@@ -1105,61 +1132,20 @@ function Calendar.typeAddLink(plugin)
     d:onShowKeyboard()
 end
 
---- The phone pastes one or more links (one per line) on a one-off page.
-function Calendar.qrAddLinks(plugin)
-    local PairServer = require("gzreader_pairserver")
-    local PairPage = require("gzreader_pairpage")
-    local NetworkMgr = require("ui/network/manager")
-    local token = PairServer.randomToken(16)
-    local base = "/calendar-links/" .. token
-    local server, screen, timeout_task, done
-    local results_all = {}
-    local function finish()
-        if done then return end
-        done = true
-        if timeout_task then UIManager:unschedule(timeout_task) end
-        if server then UIManager:removeZMQ(server); server:stop() end
-        if screen then UIManager:close(screen) end
-    end
-    server = PairServer:new{
-        handler = function(method, path, _headers, body)
-            if path ~= base then return 404, "text/plain", "Not found" end
-            if method == "GET" then return 200, "text/html", PairPage.feedsForm{ count = #Calendar.feeds(plugin) } end
-            if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
-            local form = PairServer.parseForm(body)
-            local entries = Calendar.parseLinkLines(form.links)
-            if #entries == 0 then
-                return 200, "text/html", PairPage.feedsForm{ count = #Calendar.feeds(plugin), error = "Paste at least one calendar link." }
-            end
-            local results = Calendar.addFeeds(plugin, entries)
-            for _i, r in ipairs(results) do results_all[#results_all + 1] = r end
-            return 200, "text/html", PairPage.feedsResult(results, #Calendar.feeds(plugin))
-        end,
-    }
-    local ok, serr = server:start()
-    if not ok then return info(T(_("Couldn't start: %1"), tostring(serr))) end
-    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = PairServer.localIp(nil, iface)
-    if not ip then
-        server:stop()
-        return info(_("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") .. "\n\n" .. tostring(why))
-    end
-    UIManager:insertZMQ(server)
-    screen = require("gzreader_pairscreen"):new{
-        url = T("http://%1:%2%3", ip, server.port, base),
-        title = _("Add calendar links"),
-        instructions = _("Scan this code with your phone's camera and paste your calendar links (webcal:// or https://…ics, e.g. Proton Calendar's share links), one per line. You can add more than once. Your phone must be on the same Wi-Fi as this Kindle."),
-        footer = _("Press Back when you're done."),
-        on_cancel = function()
-            screen = nil
-            finish()
-            if #results_all > 0 then added(plugin, results_all) end
-        end,
-    }
-    UIManager:show(screen)
-    timeout_task = function() finish(); if #results_all > 0 then added(plugin, results_all) end end
-    UIManager:scheduleIn(600, timeout_task)
+--- The phone page (gzreader_phone.lua), at Calendar: links, the CalDAV
+--- account, editing the calendars there are. Back in the Calendar tab
+--- afterwards when it was opened there.
+local function phonePage(plugin)
+    require("gzreader_phone").open(plugin, { section = "calendar", on_close = function(changes)
+        if not changes.calendar then return end
+        Calendar.calendarsChanged()
+        if not (Calendar.connect_menu or Calendar.board) then return end
+        if Calendar.connect_menu then UIManager:close(Calendar.connect_menu); Calendar.connect_menu = nil end
+        if Calendar.board then UIManager:close(Calendar.board) end
+        if Calendar.hasSources(plugin) then Calendar.show(plugin) end
+    end })
 end
+Calendar.qrAddLinks = phonePage
 
 --- Remove a calendar link (its events go at the next sync).
 function Calendar.removeFeed(plugin, index)
@@ -1174,14 +1160,11 @@ end
 
 function Calendar.showConnect(plugin)
     local items = {
-        { text = _("Add calendar links with QR code (webcal / ICS, e.g. Proton)"), callback = function()
+        { text = _("Add calendars with QR code: links (webcal / ICS, e.g. Proton) or a CalDAV account"), callback = function()
             require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
         end },
         { text = _("Add a calendar link by typing"), callback = function() Calendar.typeAddLink(plugin) end },
         { text = _("Add links from calendars.txt (USB drive)"), callback = function() Calendar.importFileUI(plugin) end },
-        { text = _("Connect a CalDAV account with QR code"), callback = function()
-            require("gzreader_net").run(function() Calendar.qrConnect(plugin) end, { reason = "connecting a calendar" })
-        end },
         { text = _("Connect a CalDAV account by typing"), callback = function() Calendar.typeConnect(plugin) end },
         { text = _("Calendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password."),
           select_enabled = false },
@@ -1226,59 +1209,7 @@ function Calendar.typeConnect(plugin)
     d:onShowKeyboard()
 end
 
---- The phone enters the address, user name and password (a one-off page
---- served by the Kindle, as for Grimmory and Memos).
-function Calendar.qrConnect(plugin)
-    local PairServer = require("gzreader_pairserver")
-    local PairPage = require("gzreader_pairpage")
-    local NetworkMgr = require("ui/network/manager")
-    local token = PairServer.randomToken(16)
-    local base = "/calendar/" .. token
-    local server, screen, timeout_task, done
-    local function finish()
-        if done then return end
-        done = true
-        if timeout_task then UIManager:unschedule(timeout_task) end
-        if server then UIManager:removeZMQ(server); server:stop() end
-        if screen then UIManager:close(screen) end
-    end
-    server = PairServer:new{
-        handler = function(method, path, _headers, body)
-            if path ~= base then return 404, "text/plain", "Not found" end
-            local s = plugin.store.caldav or {}
-            if method == "GET" then
-                return 200, "text/html", PairPage.caldavForm{ server = s.server, username = s.username }
-            end
-            if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
-            local form = PairServer.parseForm(body)
-            local ok, err = Calendar.connect(plugin, form.server, form.username, form.password)
-            if not ok then
-                return 200, "text/html", PairPage.caldavForm{ server = form.server, username = form.username, error = err }
-            end
-            UIManager:nextTick(function() finish(); connected(plugin) end)
-            return 200, "text/html", PairPage.caldavSuccess(#((plugin.store.caldav or {}).calendars or {}))
-        end,
-    }
-    local ok, serr = server:start()
-    if not ok then return info(T(_("Couldn't start: %1"), tostring(serr))) end
-    local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
-    local ip, why = PairServer.localIp(nil, iface)
-    if not ip then
-        server:stop()
-        return info(_("Couldn't find this Kindle's Wi-Fi address. Make sure Wi-Fi is connected.") .. "\n\n" .. tostring(why))
-    end
-    UIManager:insertZMQ(server)
-    screen = require("gzreader_pairscreen"):new{
-        url = T("http://%1:%2%3", ip, server.port, base),
-        title = _("Connect a calendar"),
-        instructions = _("Scan this code with your phone's camera, then enter your calendar server's address, your user name and a password (an app password where your server has them). Your phone must be on the same Wi-Fi as this Kindle."),
-        footer = _("Press Back to cancel."),
-        on_cancel = function() screen = nil; finish() end,
-    }
-    UIManager:show(screen)
-    timeout_task = function() finish() end
-    UIManager:scheduleIn(600, timeout_task)
-end
+Calendar.qrConnect = phonePage
 
 function Calendar.disconnect(plugin)
     plugin.store.caldav = {}
@@ -1366,7 +1297,7 @@ function Calendar.settingsItems(plugin)
                     }
                     if i == #Calendar.feeds(plugin) then items[#items].separator = true end
                 end
-                items[#items + 1] = { text = _("Add links with QR code"), callback = function(tm)
+                items[#items + 1] = { text = _("Add or edit links with QR code"), callback = function(tm)
                     if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
                     require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
                 end }

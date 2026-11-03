@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.7.0",
+        changes = {
+            "One phone page for everything: scan the QR code and a page on your phone connects (or disconnects) Grimmory, Notes (your Memos server) and Calendar (a CalDAV account, or webcal / ICS links such as Proton Calendar's), all from the same page. It stays open while you set things up, shows what happened after each step, and the Kindle shows a short note each time. Press Back on the Kindle when you're done: a summary shows what changed.",
+            "Edit your calendars from your phone: show or hide each CalDAV calendar, rename a calendar link, give it a new link (Proton's links change when you share again) or remove it (Calendar → Settings → Calendar links → Add or edit links with QR code).",
+            "Send books from your phone, no Grimmory needed: Home menu → Send books from your phone (also on the phone page from the setup guide). Pick EPUB, PDF, MOBI, AZW3, FB2, CBZ, TXT, DOCX… files on your phone and they go into the GZreader folder (the Downloads tab). Each book is saved under a new name if one is already there, nothing half-copied is left if the Wi-Fi drops, and a book that doesn't fit is refused.",
+            "The setup guide's first page is now \"Connect your phone\" and says what the QR code sets up: Grimmory, Notes (Memos), Calendar (CalDAV or webcal / ICS links) and sending books.",
+            "As before, passwords stay on your phone's page: the Kindle keeps only Grimmory's login tokens, the Memos access token and the CalDAV app password, and never writes them, or calendar links, to the log.",
+        },
+    },
+    {
         version = "1.6.5",
         changes = {
             "Fixed: Notes stopped loading (\"Memos answered HTTP 410\") after updating Memos to 26.10 or newer. Those versions moved Memos' API from /api/v1 to /api and answer the old address with 410 Gone; GZreader remembered the old address from when you connected. It now switches to the new one by itself (and back, for a server on an older version), and reads tag counts in the new format.",

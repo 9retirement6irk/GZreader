@@ -9,18 +9,27 @@ request body so credentials travel in a POST body rather than in the URL.
 
 It is polled by UIManager (insertZMQ), lives only while the QR screen is up,
 and only answers requests carrying the random per-session token.
+
+Uploads (books sent from the phone): the `upload` hook may take a POST whose
+body is a raw file; it's written to disk as it arrives, a piece on every
+poll, so the Kindle stays responsive and the file never sits in memory.
 ]]
 
 local Device = require("device")
 local logger = require("logger")
 local socket = require("socket")
 
-local MAX_BODY = 8192
+local MAX_BODY = 65536 -- forms (calendar links pasted on the phone)
 local MAX_HEADER_LINES = 64
+local UPLOAD_STALL_S = 60 -- an upload with no data for this long is dropped
+local UPLOAD_READ_PER_POLL = 1048576
 
 local PairServer = {
     port = 8642,
     handler = nil, -- function(method, path, headers, body) -> code, content_type, body
+    -- upload = function(method, path, headers, length) -> nil (not an upload) |
+    --   { error = code, message } | { file = path to write, done = function(ok, err) -> code, ctype, body }
+    upload = nil,
 }
 
 function PairServer:new(o)
@@ -61,6 +70,12 @@ function PairServer:start()
 end
 
 function PairServer:stop()
+    for _i, up in ipairs(self.uploads or {}) do
+        pcall(up.fh.close, up.fh)
+        os.remove(up.file)
+        pcall(up.client.close, up.client)
+    end
+    self.uploads = nil
     if self.server then
         self.server:close()
         self.server = nil
@@ -70,7 +85,9 @@ function PairServer:stop()
     end
 end
 
-local REASONS = { [200] = "OK", [302] = "Found", [400] = "Bad Request", [404] = "Not Found", [405] = "Method Not Allowed", [413] = "Payload Too Large" }
+local REASONS = { [200] = "OK", [302] = "Found", [303] = "See Other", [400] = "Bad Request", [404] = "Not Found",
+    [405] = "Method Not Allowed", [409] = "Conflict", [411] = "Length Required", [413] = "Payload Too Large",
+    [415] = "Unsupported Media Type", [507] = "Insufficient Storage" }
 
 local function respond(client, code, content_type, body, extra_headers)
     body = body or ""
@@ -80,7 +97,7 @@ local function respond(client, code, content_type, body, extra_headers)
             lines[#lines + 1] = k .. ": " .. tostring(v)
         end
     end
-    if code == 302 then
+    if code == 302 or code == 303 then
         -- the handler returns the redirect target as the body
         lines[#lines + 1] = "Location: " .. body
         body, content_type = "", "text/plain"
@@ -95,10 +112,53 @@ local function respond(client, code, content_type, body, extra_headers)
     client:close()
 end
 
+--- Uploads in progress: read what has arrived, write it, finish the done ones.
+function PairServer:pumpUploads()
+    if not self.uploads then return end
+    local now = socket.gettime()
+    for i = #self.uploads, 1, -1 do
+        local up = self.uploads[i]
+        local got_any, failed = false, nil
+        local budget = UPLOAD_READ_PER_POLL
+        while up.remaining > 0 and budget > 0 do
+            local want = math.min(up.remaining, 65536, budget)
+            local data, err, partial = up.client:receive(want)
+            data = data or partial
+            if data and #data > 0 then
+                local okw = up.fh:write(data)
+                if not okw then failed = "write"; break end
+                up.remaining = up.remaining - #data
+                up.received = up.received + #data
+                budget = budget - #data
+                got_any = true
+            end
+            if err == "closed" then failed = "closed"; break end
+            if err == "timeout" or not data or #data == 0 then break end
+        end
+        if got_any then up.last = now end
+        if not failed and up.remaining > 0 and now - up.last > UPLOAD_STALL_S then failed = "stalled" end
+        if failed or up.remaining == 0 then
+            table.remove(self.uploads, i)
+            up.fh:close()
+            local ok_done, code, ctype, body = pcall(up.done, not failed, failed)
+            if not ok_done then
+                logger.err("pairing upload handler error:", code)
+                code, ctype, body = 400, "text/plain", "Something went wrong on the Kindle."
+            end
+            if failed then os.remove(up.file) end
+            up.client:settimeout(10)
+            if failed ~= "closed" then respond(up.client, code or 200, ctype, body) else up.client:close() end
+        end
+    end
+end
+
+function PairServer:uploading() return self.uploads ~= nil and #self.uploads > 0 end
+
 -- Called by UIManager:processZMQs() as an iterator; we handle at most one
 -- connection per pass and always end the iteration by returning nil.
 function PairServer:waitEvent()
     if not self.server then return nil end
+    self:pumpUploads()
     local client = self.server:accept()
     if not client then return nil end
     client:settimeout(3)
@@ -121,6 +181,25 @@ function PairServer:waitEvent()
 
     local body = ""
     local length = tonumber(headers["content-length"] or "0") or 0
+    local up = self.upload and self.upload(method, path, headers, length)
+    if up then
+        if up.error then
+            respond(client, up.error, up.ctype or "text/plain", up.message or "")
+            return nil
+        end
+        local fh = io.open(up.file, "wb")
+        if not fh then
+            respond(client, 507, "text/plain", "The Kindle couldn't save the file.")
+            return nil
+        end
+        if (headers["expect"] or ""):lower() == "100-continue" then client:send("HTTP/1.1 100 Continue\r\n\r\n") end
+        client:settimeout(0)
+        self.uploads = self.uploads or {}
+        table.insert(self.uploads, { client = client, fh = fh, file = up.file, done = up.done,
+            remaining = length, received = 0, last = socket.gettime() })
+        self:pumpUploads()
+        return nil
+    end
     if length > MAX_BODY then
         respond(client, 413, "text/plain", "Too large")
         return nil

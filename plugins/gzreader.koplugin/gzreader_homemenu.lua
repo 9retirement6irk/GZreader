@@ -256,6 +256,7 @@ function HomeMenu.items(plugin)
         { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
         { text = _("History"), callback = function() dispatch("history") end },
         { text = _("Sort"), callback = function() HomeMenu.showSort() end },
+        { text = _("Send books from your phone (QR code)"), callback = function() plugin:openPhonePage("books") end },
         { text_func = function()
             return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
         end, callback = function() HomeMenu.showDisplay() end },
