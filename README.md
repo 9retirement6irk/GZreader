@@ -372,6 +372,28 @@ tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # 
 The build reuses the native binaries of the official KOReader kindle-legacy release of
 the same version and overlays GZreader's Lua code, plugins and dictionary.
 
+## Tests and keeping up with KOReader and ZenOS
+
+- **Tests** ([workflow](.github/workflows/gzreader-tests.yml), on every push and pull
+  request): luacheck, the plugin's tests against mock Grimmory, Memos and CalDAV servers,
+  the setup guide, the Nooks' screen commands, and GZreader started in the emulator on a
+  Kindle 3, a Nook 1st Edition and a Nook Simple Touch (setup guide, Home, a book, a page
+  turn, Home). Locally: `tools/gzreader/ci-test.sh koreader-kindle-legacy-vX.zip out/`
+  (Linux, with qemu), or just the tests: `tools/gzreader/tests/run.sh <unzipped koreader/>`.
+- **Upstream check** ([workflow](.github/workflows/gzreader-upstream.yml), Mondays, or by
+  hand from the Actions tab): compares [`tools/gzreader/UPSTREAM`](tools/gzreader/UPSTREAM)
+  with KOReader's newest release that has Kindle packages and ZenOS's newest release. For
+  each newer one it merges what changed upstream into GZreader
+  ([`upstream.sh`](tools/gzreader/upstream.sh): three-way, keeping GZreader's changes;
+  what GZreader removed stays removed) and runs the tests on the result. A clean merge
+  becomes a **pull request** (a draft if a test failed) with the report and test results;
+  conflicts become an **issue** listing them, with the merge as a patch. Run by hand it can
+  include ZenOS pre-releases, or preview a KOReader branch such as `master` (report only).
+  It needs *Settings → Actions → General → Allow GitHub Actions to create and approve pull
+  requests*.
+- Locally: `tools/gzreader/upstream.sh latest zenos --pre`,
+  `tools/gzreader/upstream.sh merge zenos v4.3.0` (then resolve any `<<<<<<<`, test).
+
 ## What's inside
 
 | Part | Role |

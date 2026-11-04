@@ -1,0 +1,49 @@
+name: GZreader tests
+
+# luacheck, the plugin tests against mock servers, and GZreader started in
+# the emulator on a Kindle 3, a Nook 1st Edition and a Nook Simple Touch
+# (tools/gzreader/ci-test.sh), on every push to main and every pull request.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq luajit lua-socket lua-check python3 curl rsync unzip \
+            qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
+      - name: KOReader's Kindle 2/3/DX package (the binaries GZreader runs on)
+        run: |
+          TAG=$(tools/gzreader/upstream.sh current koreader)
+          gh release download "$TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-$TAG.zip" --dir dl
+      - name: Test
+        run: tools/gzreader/ci-test.sh dl/koreader-kindle-legacy-*.zip ci-out
+      - name: Summary
+        if: always()
+        run: cat ci-out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - name: Screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gzreader-test-output
+          path: |
+            ci-out/*.txt
+            ci-out/summary.md
+            ci-out/smoke-*/*.png
+            ci-out/smoke-*/smoke.txt
+          retention-days: 14

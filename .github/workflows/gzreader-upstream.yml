@@ -1,0 +1,177 @@
+name: GZreader upstream check
+
+# Every Monday (or by hand): is there a newer KOReader release (with Kindle
+# packages) or ZenOS release than the ones in tools/gzreader/UPSTREAM?
+# For each, merge it into GZreader (tools/gzreader/upstream.sh: three-way,
+# keeping GZreader's changes) and run the tests against the new code (and,
+# for KOReader, its new binaries):
+#   - merged cleanly → a pull request (draft if a test failed) with the merge
+#     report and the test results; nothing is merged without you;
+#   - conflicts → an issue listing them, and the merge with conflict markers
+#     as a patch to download.
+# By hand you can also include ZenOS pre-releases (alpha / beta), or preview a
+# KOReader branch (e.g. master): a preview only reports, it opens nothing.
+#
+# Pull requests need Settings → Actions → General → "Allow GitHub Actions to
+# create and approve pull requests". (Tests don't run again on them by
+# themselves: GitHub doesn't start workflows for pull requests opened by a
+# workflow. Close and reopen one to run "GZreader tests" on it.)
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      zenos_prerelease:
+        description: "Also consider ZenOS pre-releases (alpha / beta)"
+        type: boolean
+        default: false
+      koreader_preview:
+        description: "Preview a KOReader branch or tag instead (e.g. master): report only"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      koreader_current: ${{ steps.v.outputs.koreader_current }}
+      koreader_latest: ${{ steps.v.outputs.koreader_latest }}
+      zenos_current: ${{ steps.v.outputs.zenos_current }}
+      zenos_latest: ${{ steps.v.outputs.zenos_latest }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          {
+            echo "koreader_current=$(tools/gzreader/upstream.sh current koreader)"
+            if [ -n "${{ inputs.koreader_preview }}" ]; then
+              echo "koreader_latest=${{ inputs.koreader_preview }}"
+            else
+              echo "koreader_latest=$(tools/gzreader/upstream.sh latest koreader)"
+            fi
+            echo "zenos_current=$(tools/gzreader/upstream.sh current zenos)"
+            echo "zenos_latest=$(tools/gzreader/upstream.sh latest zenos ${{ inputs.zenos_prerelease && '--pre' || '' }})"
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: Summary
+        run: |
+          {
+            echo "| | GZreader is on | Newest |"
+            echo "| --- | --- | --- |"
+            echo "| KOReader | ${{ steps.v.outputs.koreader_current }} | ${{ steps.v.outputs.koreader_latest }} |"
+            echo "| ZenOS | ${{ steps.v.outputs.zenos_current }} | ${{ steps.v.outputs.zenos_latest }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  merge:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [koreader, zenos]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMP: ${{ matrix.component }}
+      CURRENT: ${{ matrix.component == 'koreader' && needs.check.outputs.koreader_current || needs.check.outputs.zenos_current }}
+      LATEST: ${{ matrix.component == 'koreader' && needs.check.outputs.koreader_latest || needs.check.outputs.zenos_latest }}
+      PREVIEW: ${{ matrix.component == 'koreader' && inputs.koreader_preview != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: env.LATEST != '' && env.LATEST != env.CURRENT
+        with:
+          fetch-depth: 0
+      - name: Up to date
+        if: env.LATEST == '' || env.LATEST == env.CURRENT
+        run: |
+          echo "$COMP: GZreader is on the newest ($CURRENT)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tools
+        if: env.LATEST != '' && env.LATEST != env.CURRENT
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq luajit lua-socket lua-check python3 curl rsync unzip \
+            qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Merge
+        id: merge
+        if: env.LATEST != '' && env.LATEST != env.CURRENT
+        run: |
+          echo "# GZreader: $COMP $CURRENT → $LATEST" > report.md
+          echo >> report.md
+          if UPSTREAM_REPORT="$PWD/report.md" tools/gzreader/upstream.sh merge "$COMP" "$LATEST"; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+          # (the merge as a patch, new files included)
+          git add -N -- . ':!report.md'
+          git diff --binary -- . ':!report.md' > "$RUNNER_TEMP/merge.patch" && mv "$RUNNER_TEMP/merge.patch" merge.patch
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Test the merged code
+        id: test
+        if: steps.merge.outputs.clean == 'true'
+        run: |
+          # KOReader: its new binaries with the merged Lua; ZenOS: the current ones
+          TAG=$(tools/gzreader/upstream.sh current koreader)
+          if ! gh release download "$TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-$TAG.zip" --dir dl; then
+            TAG=$(git show HEAD:tools/gzreader/UPSTREAM | awk '$1 == "koreader" { print $2 }')
+            gh release download "$TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-$TAG.zip" --dir dl
+            echo "(KOReader $LATEST has no Kindle packages: tested with $TAG's binaries)" >> report.md
+          fi
+          if tools/gzreader/ci-test.sh dl/koreader-kindle-legacy-*.zip ci-out; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+          { echo; echo "## Tests"; echo; cat ci-out/summary.md; } >> report.md
+          cat ci-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Pull request
+        if: steps.merge.outputs.clean == 'true' && env.PREVIEW != 'true'
+        run: |
+          BRANCH="upstream/$COMP-$LATEST"
+          git checkout -B "$BRANCH"
+          git add -A -- . ':!report.md' ':!merge.patch' ':!dl' ':!ci-out'
+          git commit -q -m "Upstream: $COMP $LATEST (from $CURRENT)" -m "Merged by .github/workflows/gzreader-upstream.yml; see the pull request for the report."
+          git push -q -f origin "$BRANCH"
+          {
+            cat report.md
+            echo
+            echo "Before merging: bump GZREADER_VERSION and add a changelog entry as for any release, and look over the diff (and the screenshots in this run's artifacts)."
+          } > body.md
+          DRAFT=$([ "${{ steps.test.outputs.passed }}" = true ] || echo --draft)
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --body-file body.md
+          else
+            gh pr create --head "$BRANCH" --base main --title "Upstream: $COMP $LATEST" --body-file body.md $DRAFT
+          fi
+      - name: Issue (conflicts)
+        if: steps.merge.outputs.clean == 'false' && env.PREVIEW != 'true'
+        run: |
+          TITLE="Upstream: $COMP $LATEST needs a hand merge"
+          {
+            cat report.md
+            echo
+            echo "The merge, with conflict markers, is \`merge.patch\` in the artifacts of [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo "To do it locally: \`tools/gzreader/upstream.sh merge $COMP $LATEST\`, resolve the conflicts, run \`tools/gzreader/tests/run.sh\`."
+          } > body.md
+          N=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$N" ]; then gh issue comment "$N" --body-file body.md; else gh issue create --title "$TITLE" --body-file body.md; fi
+      - name: Keep the merge and test output
+        if: always() && env.LATEST != '' && env.LATEST != env.CURRENT
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-${{ matrix.component }}
+          path: |
+            report.md
+            merge.patch
+            ci-out/*.txt
+            ci-out/summary.md
+            ci-out/smoke-*/*.png
+          retention-days: 30
