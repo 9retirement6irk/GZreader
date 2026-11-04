@@ -267,8 +267,11 @@ end
 
 ---------------------------------------------------------------- drawing helpers
 
---- Widgets at fixed places (for the Day timeline and the grids).
-local Canvas = WidgetContainer:extend{ width = 0, height = 0 }
+local function Paper() return require("gzreader_paper") end
+local function hand(size) return require("gzreader_sticky").hand(size) end
+
+--- Widgets at fixed places (the desk, a sheet's contents, the grids).
+local Canvas = WidgetContainer:extend{ width = 0, height = 0, bg = nil }
 
 function Canvas:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
@@ -285,7 +288,7 @@ function Canvas:getSize() return self.dimen end
 
 function Canvas:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
-    bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
+    if type(self.bg) ~= "boolean" then bb:paintRect(x, y, self.dimen.w, self.dimen.h, self.bg or Blitbuffer.COLOR_WHITE) end
     for i, w in ipairs(self) do
         local p = self.pos[i]
         w:paintTo(bb, x + p.x, y + p.y)
@@ -296,6 +299,14 @@ end
 local Line = WidgetContainer:extend{ w = 1, h = 1, color = nil }
 function Line:getSize() return Geom:new{ w = self.w, h = self.h } end
 function Line:paintTo(bb, x, y) bb:paintRect(x, y, self.w, self.h, self.color or Blitbuffer.COLOR_DARK_GRAY) end
+
+--- `self[1]` with a thick frame when the 5-way is on it.
+local Outline = WidgetContainer:extend{ w = 0, h = 0, on = false }
+function Outline:getSize() return Geom:new{ w = self.w, h = self.h } end
+function Outline:paintTo(bb, x, y)
+    self[1]:paintTo(bb, x, y)
+    if self.on then bb:paintBorder(x, y, self.w, self.h, Size.border.thick + 1, Blitbuffer.COLOR_BLACK) end
+end
 
 --- Something the 5-way can stop on and Press / a letter opens.
 local CalItem = InputContainer:extend{ w = 0, h = 0, build = nil, callback = nil, shortcut = nil, focused = false }
@@ -329,73 +340,221 @@ local function badge(letter, side)
     return Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
 end
 
---- Event details (title, when, calendar, place, notes).
-function Calendar.showEvent(plugin, ev)
-    local lines = { Calendar.when(ev) }
+--- The shade marker of an event's calendar (black, greys).
+local function marker(ev, h)
+    return FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(3), height = h,
+        VerticalSpan:new{ width = 1 } }
+end
+
+local function allDayOn(ev, day)
+    return ev.all_day or (ev.start <= day and ev.finish >= addDays(day, 1))
+end
+
+---------------------------------------------------------------- an event: an index card
+
+local EventCard = InputContainer:extend{ name = "calendar event", modal = true, covers_fullscreen = true }
+
+--- The card (title, when, where, calendar, notes) as a widget, w x h; and
+--- whether the notes were cut short.
+local function cardWidget(plugin, ev, w, h, foot)
+    local pad = S(22)
+    local top = S(40) -- (room for the paper clip)
+    local tw = w - 2 * pad
+    local g = VerticalGroup:new{ align = "left" }
+    g[#g + 1] = TextBoxWidget:new{ text = ev.title or _("(no title)"), face = hand(30), width = tw }
+    g[#g + 1] = VerticalSpan:new{ width = S(6) }
+    g[#g + 1] = Line:new{ w = tw, h = math.max(2, S(2)), color = Blitbuffer.COLOR_BLACK }
+    g[#g + 1] = VerticalSpan:new{ width = S(8) }
+    local Sticky = require("gzreader_sticky")
+    local function row(icon, text)
+        local hg = HorizontalGroup:new{ align = "center" }
+        hg[#hg + 1] = icon and TextWidget:new{ text = icon, face = Sticky.iconFace(16) } or HorizontalSpan:new{ width = S(18) }
+        hg[#hg + 1] = HorizontalSpan:new{ width = S(10) }
+        hg[#hg + 1] = TextBoxWidget:new{ text = text, face = hand(20), width = tw - S(28) }
+        g[#g + 1] = hg
+        g[#g + 1] = VerticalSpan:new{ width = S(4) }
+    end
+    row(Sticky.ICONS.date, Calendar.when(ev))
+    if ev.location and ev.location ~= "" then row(Sticky.ICONS.place, ev.location) end
     local cal = Calendar.calName(plugin, ev)
-    if cal ~= "" then lines[#lines + 1] = T(_("Calendar: %1"), cal) end
-    if ev.location and ev.location ~= "" then lines[#lines + 1] = T(_("Where: %1"), ev.location) end
-    if ev.repeats then lines[#lines + 1] = _("Repeats") end
-    if ev.notes and ev.notes ~= "" then lines[#lines + 1] = "\n" .. ev.notes end
+    if cal ~= "" then row(nil, T(_("Calendar: %1"), cal)) end
+    if ev.repeats then row(nil, _("Repeats")) end
+    local cut = false
+    if ev.notes and ev.notes ~= "" then
+        g[#g + 1] = VerticalSpan:new{ width = S(6) }
+        local used = g:getSize().h
+        local room = h - used - top - pad - S(28)
+        if room > S(30) then
+            local full = TextBoxWidget:new{ text = ev.notes, face = hand(19), width = tw }
+            cut = full:getSize().h > room
+            full:free()
+            g[#g + 1] = TextBoxWidget:new{ text = ev.notes, face = hand(19), width = tw, height = room,
+                height_adjust = false, height_overflow_show_ellipsis = true }
+        else
+            cut = true
+        end
+    end
+    local canvas = Canvas:new{ width = w, height = h }
+    canvas:place(require("gzreader_paper").Ruled:new{ w = w, h = h - pad - S(24), pitch = S(32),
+        first = top + g:getSize().h + S(30) }, 0, 0)
+    canvas:place(g, pad, top)
+    canvas:place(TextWidget:new{ text = foot, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+        max_width = tw }, pad, h - pad - S(4))
+    canvas:place(Line:new{ w = 1, h = h, color = Paper().EDGE }, 0, 0)
+    canvas:place(Line:new{ w = 1, h = h, color = Paper().EDGE }, w - 1, 0)
+    canvas:place(Line:new{ w = w, h = 1, color = Paper().EDGE }, 0, 0)
+    canvas:place(Line:new{ w = w, h = 1, color = Paper().EDGE }, 0, h - 1)
+    return canvas, cut
+end
+
+function EventCard:init()
+    local sw, sh = Screen:getWidth(), Screen:getHeight()
+    self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    if Device:hasKeys() then
+        local I = Device.input.group
+        self.key_events = {
+            Close = { { I.Back } },
+            Next = { { I.PgFwd } }, Prev = { { I.PgBack } },
+            NextR = { { "Right" } }, PrevL = { { "Left" } },
+            Full = { { "Press" } },
+        }
+    end
+    self.ges_events = {
+        Tap = { GestureRange:new{ ges = "tap", range = self.dimen } },
+        Hold = { GestureRange:new{ ges = "hold", range = self.dimen } },
+        Swipe = { GestureRange:new{ ges = "swipe", range = self.dimen } },
+    }
+    self:build()
+end
+
+function EventCard:build()
+    if self.img then self.img:free(); self.img = nil end
+    local sw, sh = Screen:getWidth(), Screen:getHeight()
+    local ev = self.list[self.at]
+    local w, h = math.floor(sw * 0.82), math.floor(sh * 0.56)
+    local keys = Touch.keys() or Touch.dpad()
+    local foot = WDAY[os.date("*t", self.day).wday] .. " " .. os.date("*t", self.day).day
+        .. (#self.list > 1 and (" \u{00B7} " .. T(_("%1 of %2"), self.at, #self.list)) or "")
+    local card, cut = cardWidget(self.plugin, ev, w, h, foot)
+    self.cut = cut
+    self.img = require("gzreader_sticky").image(card, w, h, { angle = -1.3, shade = 0 }, false)
+    card:free()
+    local hints = {}
+    if #self.list > 1 then hints[#hints + 1] = keys and _("\u{25C0} \u{25B6} the other events that day") or _("Swipe: the other events that day") end
+    if cut then hints[#hints + 1] = keys and _("Press: all the notes") or _("Hold: all the notes") end
+    hints[#hints + 1] = keys and _("Back closes") or _("Tap to close")
+    self.hint = table.concat(hints, "  \u{00B7}  ")
+end
+
+function EventCard:paintTo(bb, x, y)
+    local sw, sh = self.dimen.w, self.dimen.h
+    bb:paintRect(x, y, sw, sh, Blitbuffer.COLOR_WHITE)
+    local iw, ih = self.img:getWidth(), self.img:getHeight()
+    local cx, cy = x + math.floor((sw - iw) / 2), y + math.floor((sh - ih) / 2) - S(20)
+    bb:blitFrom(self.img, cx, cy, 0, 0, iw, ih)
+    local clip = Paper().Clip:new{}
+    clip:paintTo(bb, cx + S(40), cy - S(30))
+    local hint = TextBoxWidget:new{ text = self.hint, face = Font:getFace("cfont", 15), width = sw - S(60), alignment = "center" }
+    hint:paintTo(bb, x + S(30), cy + ih + S(18))
+    hint:free()
+end
+
+function EventCard:step(dir)
+    if #self.list < 2 then return true end
+    self.at = (self.at - 1 + dir) % #self.list + 1
+    self:build()
+    UIManager:setDirty(self, "ui")
+    return true
+end
+
+function EventCard:full()
+    local ev = self.list[self.at]
     local TextViewer = require("ui/widget/textviewer")
-    UIManager:show(TextViewer:new{
-        title = ev.title or _("(no title)"),
-        text = table.concat(lines, "\n"),
-        justified = false,
-    })
+    UIManager:show(TextViewer:new{ title = ev.title or _("(no title)"),
+        text = Calendar.when(ev) .. ((ev.notes and ev.notes ~= "") and ("\n\n" .. ev.notes) or ""), justified = false })
+    return true
+end
+
+function EventCard:onClose() UIManager:close(self); return true end
+function EventCard:onNext() return self:step(1) end
+function EventCard:onPrev() return self:step(-1) end
+function EventCard:onNextR() return self:step(1) end
+function EventCard:onPrevL() return self:step(-1) end
+function EventCard:onFull() if self.cut then return self:full() end return true end
+function EventCard:onTap() return self:onClose() end
+function EventCard:onHold() return self:full() end
+function EventCard:onSwipe(_arg, ges)
+    local d = ges and ges.direction
+    if d == "west" then return self:step(1) elseif d == "east" then return self:step(-1) end
+    if d == "south" or d == "north" then return self:onClose() end
+    return true
+end
+function EventCard:onShow() UIManager:setDirty(self, "full"); return true end
+function EventCard:onCloseWidget()
+    if self.img then self.img:free(); self.img = nil end
+    UIManager:setDirty(nil, "full")
+end
+
+--- An event on an index card. `day`: the day it was opened from (◀ ▶ go
+--- through that day's events).
+function Calendar.showEvent(plugin, ev, day)
+    day = day or dayStart(ev.start)
+    local list = Calendar.eventsOn(day)
+    local at = 1
+    for i, e in ipairs(list) do if e == ev then at = i end end
+    if #list == 0 then list = { ev } end
+    local card = EventCard:new{ plugin = plugin, list = list, at = at, day = day }
+    UIManager:show(card)
+    return card
 end
 
 ---------------------------------------------------------------- layouts
 
---- One line of an event in a list: [letter] time · marker · title / place.
+--- One line of an event on the paper: [letter] time · marker · title / place.
 local function eventRow(plugin, ev, day, w, h, key)
-    local time_w = S(92)
+    local time_w = S(78)
     local build = function(focused)
         local timeText, endText
-        if ev.all_day or (ev.start < day and ev.finish > addDays(day, 1)) then timeText = _("All day")
+        if allDayOn(ev, day) then timeText = _("All day")
         else
             timeText = ev.start < day and ("\u{2192} " .. clock(ev.finish)) or clock(ev.start)
             endText = (ev.start >= day and dayStart(ev.finish) == day and ev.finish > ev.start) and clock(ev.finish) or nil
         end
-        local bsize = S(24)
+        local bsize = S(22)
         local b = badge(key, bsize)
-        local inner = w - 2 * Size.border.thick
-        local text_w = inner - bsize - S(8) - time_w - S(18)
+        local text_w = w - bsize - S(8) - time_w - S(22)
         local title = VerticalGroup:new{ align = "left",
-            TextWidget:new{ text = ev.title or _("(no title)"), face = Font:getFace("cfont", 18), bold = true, max_width = text_w } }
-        if ev.location and ev.location ~= "" then
-            title[#title + 1] = TextWidget:new{ text = ev.location, face = Font:getFace("cfont", 13),
+            TextWidget:new{ text = ev.title or _("(no title)"), face = hand(19), max_width = text_w } }
+        if ev.location and ev.location ~= "" and h >= S(40) then
+            title[#title + 1] = TextWidget:new{ text = ev.location, face = hand(14),
                 fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = text_w }
         end
         local times = VerticalGroup:new{ align = "left",
-            TextWidget:new{ text = timeText, face = Font:getFace("cfont", 15), max_width = time_w } }
+            TextWidget:new{ text = timeText, face = hand(15), max_width = time_w } }
         if endText then
-            times[#times + 1] = TextWidget:new{ text = endText, face = Font:getFace("cfont", 12),
+            times[#times + 1] = TextWidget:new{ text = endText, face = hand(12),
                 fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = time_w }
         end
-        return FrameContainer:new{
-            width = w, height = h, padding = 0, margin = 0,
-            bordersize = focused and Size.border.thick or 0,
-            LeftContainer:new{ dimen = Geom:new{ w = inner, h = h - 2 * (focused and Size.border.thick or 0) },
-                HorizontalGroup:new{ align = "center",
-                    HorizontalSpan:new{ width = S(4) },
-                    b or HorizontalSpan:new{ width = bsize },
-                    HorizontalSpan:new{ width = S(8) },
-                    LeftContainer:new{ dimen = Geom:new{ w = time_w, h = h - S(6) }, times },
-                    FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(6), height = h - S(16),
-                        VerticalSpan:new{ width = 1 } },
-                    HorizontalSpan:new{ width = S(12) },
-                    title,
-                } },
-        }
+        local c = Canvas:new{ width = w, height = h, bg = false }
+        c:place(LeftContainer:new{ dimen = Geom:new{ w = w, h = h },
+            HorizontalGroup:new{ align = "center",
+                HorizontalSpan:new{ width = S(4) },
+                b or HorizontalSpan:new{ width = bsize },
+                HorizontalSpan:new{ width = S(8) },
+                LeftContainer:new{ dimen = Geom:new{ w = time_w, h = h - S(4) }, times },
+                marker(ev, h - S(14)),
+                HorizontalSpan:new{ width = S(10) },
+                title,
+            } }, 0, 0)
+        return Outline:new{ w = w, h = h, on = focused, c }
     end
     return CalItem:new{ w = w, h = h, build = build, shortcut = key,
-        callback = function() Calendar.showEvent(plugin, ev) end }
+        callback = function() Calendar.showEvent(plugin, ev, day) end }
 end
 
-local function message(canvas, w, text)
+local function message(canvas, x, y, w, text)
     canvas:place(CenterContainer:new{ dimen = Geom:new{ w = w, h = S(160) },
-        TextBoxWidget:new{ text = text, face = Font:getFace("cfont", 18), width = w - S(60), alignment = "center" } }, 0, S(40))
+        TextBoxWidget:new{ text = text, face = hand(20), width = w - S(60), alignment = "center" } }, x, y)
 end
 
 local function inRange(day)
@@ -407,48 +566,117 @@ local function outOfRangeText()
     return _("Not synced this far.\n\nSettings → Connections → Calendar → Sync range sets how far ahead and back events are kept.")
 end
 
---- Agenda: days with events from the cursor on, as many as fit.
+--- The desk, and a planner sheet bound on the left: the desk canvas and the
+--- sheet's writing area (x, y, w, h on the desk).
+local function plannerSheet(w, h)
+    local P = Paper()
+    local desk = Canvas:new{ width = w, height = h, bg = P.DESK }
+    local sx, sy = S(30), S(6)
+    local sw, sh = w - sx - S(14), h - sy - S(10)
+    desk:place(P.Sheet:new{ w = sw, h = sh, shadow = 0, bg = Blitbuffer.gray(0.03) }, sx + S(4), sy + S(4))
+    desk:place(P.Sheet:new{ w = sw, h = sh, shadow = S(5) }, sx, sy)
+    desk:place(P.Coil:new{ side = "left", h = sh - S(12) }, sx - S(22), sy + S(6))
+    return desk, sx + S(30), sy + S(8), sw - S(30) - S(12), sh - S(14)
+end
+
+--- A planner header: big handwritten label, a small one on the right, a rule.
+local function plannerHead(desk, x, y, w, big, small)
+    desk:place(TextWidget:new{ text = big, face = hand(32), max_width = w - S(110) }, x, y)
+    if small then
+        local t = TextWidget:new{ text = small, face = hand(18), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+        desk:place(t, x + w - t:getSize().w, y + S(12))
+    end
+    desk:place(Line:new{ w = w, h = math.max(2, S(2)), color = Blitbuffer.COLOR_BLACK }, x, y + S(42))
+    return y + S(46)
+end
+
+--- Agenda: a tear-off day pad. The day on top in big, its events beside it;
+--- then the next days with events, as many as fit.
 local function renderAgenda(plugin, w, h)
-    local canvas = Canvas:new{ width = w, height = h }
+    local P = Paper()
+    local desk = Canvas:new{ width = w, height = h, bg = P.DESK }
     local layout, items = {}, {}
     local today = dayStart()
-    local y, k = S(4), 0
-    local head_h, row_h = S(30), S(52)
+    local px, py = S(20), S(18)
+    local pw, ph = w - 2 * px, h - py - S(18)
+    desk:place(P.Sheet:new{ w = pw - S(8), h = ph, shadow = 0, bg = Blitbuffer.gray(0.03) }, px + S(4), py + S(8))
+    desk:place(P.Sheet:new{ w = pw - S(4), h = ph, shadow = 0 }, px + S(2), py + S(4))
+    desk:place(P.Sheet:new{ w = pw, h = ph, shadow = S(3) }, px, py)
+    desk:place(P.Binding:new{ w = w - 2 * S(14), h = S(28) }, S(14), S(4))
+    desk:place(P.Torn:new{ w = pw - 2, h = S(10) }, px + 1, S(32))
+    local ix, iw = px + S(14), pw - 2 * S(14)
+    local y = S(52)
+    local bottom = py + ph - S(6)
+    local row_h = S(46)
+    local k = 0
     local day = Calendar.cursor
-    local last = day
     local stop = Calendar.range and Calendar.range.to or addDays(day, 60)
+    local function addRow(ev, d, x, rw)
+        k = k + 1
+        local item = eventRow(plugin, ev, d, rw, row_h, KEYS[k])
+        desk:place(P.Ruled:new{ w = rw, h = row_h + 1, pitch = row_h, first = row_h }, x, y)
+        desk:place(item, x, y)
+        layout[#layout + 1] = { item }
+        items[#items + 1] = item
+        y = y + row_h
+    end
+    -- the page on top: this day
+    local d = os.date("*t", day)
+    local evs = inRange(day) and Calendar.eventsOn(day) or {}
+    local block_w = S(136)
+    local block = VerticalGroup:new{ align = "center",
+        TextWidget:new{ text = WEEKDAY[d.wday]:upper(), face = Font:getFace("smalltfont", 14), bold = true },
+        TextWidget:new{ text = tostring(d.day), face = hand(96) },
+        TextWidget:new{ text = MONTHS[d.month], face = hand(21) },
+    }
+    if day == today then
+        block[#block + 1] = VerticalSpan:new{ width = S(4) }
+        block[#block + 1] = FrameContainer:new{ bordersize = 1, radius = S(10), padding = 0, padding_left = S(8), padding_right = S(8),
+            TextWidget:new{ text = _("Today"), face = Font:getFace("cfont", 12) } }
+    end
+    local block_h = math.max(block:getSize().h + S(8), S(4) + #evs * row_h)
+    desk:place(CenterContainer:new{ dimen = Geom:new{ w = block_w, h = block:getSize().h }, block }, ix, y)
+    desk:place(Line:new{ w = 1, h = block_h, color = P.EDGE }, ix + block_w + S(4), y)
+    local ey = y
+    local rx, rw = ix + block_w + S(12), iw - block_w - S(12)
+    if not inRange(day) then
+        message(desk, rx, y, rw, outOfRangeText())
+    elseif #evs == 0 then
+        desk:place(TextWidget:new{ text = _("Nothing planned"), face = hand(20), fgcolor = Blitbuffer.COLOR_DARK_GRAY }, rx + S(10), y + S(40))
+    end
     local shown = 0
-    while day < stop and y + head_h + row_h <= h do
-        local evs = Calendar.eventsOn(day)
-        if #evs > 0 then
-            local head = dayLabel(day, today)
-            canvas:place(FrameContainer:new{ width = w, height = head_h, padding = 0, bordersize = 0,
-                background = day == today and Blitbuffer.COLOR_LIGHT_GRAY or nil,
-                LeftContainer:new{ dimen = Geom:new{ w = w, h = head_h },
-                    HorizontalGroup:new{ HorizontalSpan:new{ width = S(8) },
-                        TextWidget:new{ text = head, face = Font:getFace("smalltfont", 17), bold = true } } } }, 0, y)
-            y = y + head_h
-            for _i, ev in ipairs(evs) do
-                if y + row_h > h then break end
-                k = k + 1
-                local item = eventRow(plugin, ev, day, w, row_h, KEYS[k])
-                canvas:place(item, 0, y)
-                layout[#layout + 1] = { item }
-                items[#items + 1] = item
-                y = y + row_h
+    for _i, ev in ipairs(evs) do
+        if y + row_h > bottom then break end
+        addRow(ev, day, rx, rw)
+        shown = shown + 1
+    end
+    y = math.max(ey + block_h, y) + S(10)
+    desk:place(P.Dashed:new{ w = iw, h = 1 }, ix, y)
+    y = y + S(8)
+    -- the next days
+    local last = day
+    local nd = addDays(day, 1)
+    while nd < stop and y + S(34) + row_h <= bottom do
+        local devs = Calendar.eventsOn(nd)
+        if #devs > 0 then
+            desk:place(TextWidget:new{ text = dayLabel(nd, today), face = hand(21), max_width = iw }, ix, y)
+            desk:place(Line:new{ w = iw, h = 1, color = P.EDGE }, ix, y + S(28))
+            y = y + S(30)
+            for _i, ev in ipairs(devs) do
+                if y + row_h > bottom then break end
+                addRow(ev, nd, ix, iw)
                 shown = shown + 1
             end
-            canvas:place(Line:new{ w = w - S(16), h = 1, color = Blitbuffer.COLOR_LIGHT_GRAY }, S(8), y + S(3))
-            y = y + S(8)
+            y = y + S(6)
         end
-        last = day
-        day = addDays(day, 1)
+        last = nd
+        nd = addDays(nd, 1)
     end
     Calendar.agenda_next = addDays(last, 1)
-    if shown == 0 then
-        message(canvas, w, inRange(Calendar.cursor) and _("No events in the days ahead.\n\nM → Refresh to sync again.") or outOfRangeText())
+    if shown == 0 and inRange(day) and #evs == 0 and nd >= stop then
+        message(desk, ix, y, iw, _("No events in the days ahead.\n\nM → Refresh to sync again."))
     end
-    return canvas, layout, items
+    return desk, layout, items
 end
 
 --- Columns for overlapping events (greedy).
@@ -473,25 +701,32 @@ local function columns(evs)
     return cols, groups
 end
 
---- Day: all-day events on top, then a timeline.
+--- Day: a planner page: all-day events on top, then the hours.
 local function renderDay(plugin, w, h)
-    local canvas = Canvas:new{ width = w, height = h }
+    local desk, ax, ay, aw, ah = plannerSheet(w, h)
     local layout, items = {}, {}
     local day = Calendar.cursor
-    if not inRange(day) then message(canvas, w, outOfRangeText()); return canvas, layout, items end
+    local d = os.date("*t", day)
+    local y0 = plannerHead(desk, ax, ay, aw, WEEKDAY[d.wday] .. ", " .. MONTHS[d.month] .. " " .. d.day,
+        day == dayStart() and _("today") or nil)
+    if not inRange(day) then message(desk, ax, y0 + S(20), aw, outOfRangeText()); return desk, layout, items end
+    local canvas = Canvas:new{ width = aw, height = ay + ah - y0, bg = false }
+    desk:place(canvas, ax, y0)
+    h = ay + ah - y0
+    w = aw
     local evs = Calendar.eventsOn(day)
     local allday, timed = {}, {}
     for _i, ev in ipairs(evs) do
-        if ev.all_day or (ev.start <= day and ev.finish >= addDays(day, 1)) then allday[#allday + 1] = ev else timed[#timed + 1] = ev end
+        if allDayOn(ev, day) then allday[#allday + 1] = ev else timed[#timed + 1] = ev end
     end
     local k, y = 0, S(4)
     for _i, ev in ipairs(allday) do
         k = k + 1
-        local item = eventRow(plugin, ev, day, w, S(40), KEYS[k])
+        local item = eventRow(plugin, ev, day, w, S(36), KEYS[k])
         canvas:place(item, 0, y)
         layout[#layout + 1] = { item }
         items[#items + 1] = item
-        y = y + S(42)
+        y = y + S(38)
     end
     -- the hours shown: 7 AM to 9 PM, wider if events need it
     local h0, h1 = 7, 21
@@ -502,15 +737,15 @@ local function renderDay(plugin, w, h)
         h1 = math.max(h1, e.hour + (e.min > 0 and 1 or 0))
     end
     local top = y + S(6)
-    local label_w = S(54)
+    local label_w = S(50)
     local px = (h - top - S(6)) / math.max(1, h1 - h0)
     for hr = h0, h1 do
         local ly = top + math.floor((hr - h0) * px)
-        canvas:place(Line:new{ w = w - label_w, h = 1, color = Blitbuffer.COLOR_LIGHT_GRAY }, label_w, ly)
+        canvas:place(Line:new{ w = w - label_w, h = 1, color = Paper().RULE }, label_w, ly)
         if hr < h1 then
             local lab = (hr % 12 == 0 and 12 or hr % 12) .. (hr < 12 and " AM" or " PM")
-            canvas:place(TextWidget:new{ text = lab, face = Font:getFace("cfont", 12), fgcolor = Blitbuffer.COLOR_DARK_GRAY },
-                S(4), ly + S(2))
+            canvas:place(TextWidget:new{ text = lab, face = hand(14), fgcolor = Blitbuffer.COLOR_DARK_GRAY },
+                0, ly + S(1))
         end
     end
     -- now
@@ -542,90 +777,68 @@ local function renderDay(plugin, w, h)
             local bsize = math.min(S(22), bh - S(6))
             local b = bsize >= S(14) and badge(key, bsize) or nil
             local inner_w = bw - S(12) - (b and (bsize + S(4)) or 0)
-            local label = clock(ev.start) .. "  " .. (ev.title or "")
+            local label = shortClock(ev.start) .. "  " .. (ev.title or "")
             return FrameContainer:new{
                 width = bw, height = bh, padding = S(3), margin = 0,
                 bordersize = focused and Size.border.thick or Size.border.thin,
                 background = Blitbuffer.COLOR_WHITE,
                 HorizontalGroup:new{ align = "top",
-                    FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(5),
-                        height = bh - S(8) - 2 * Size.border.thick, VerticalSpan:new{ width = 1 } },
+                    marker(ev, bh - S(8) - 2 * Size.border.thick),
                     HorizontalSpan:new{ width = S(4) },
                     b or HorizontalSpan:new{ width = 0 },
                     HorizontalSpan:new{ width = b and S(4) or 0 },
-                    TextBoxWidget:new{ text = label, face = Font:getFace("cfont", 14), width = math.max(S(20), inner_w),
-                        height = math.max(S(16), bh - S(10)), height_adjust = false, height_overflow_show_ellipsis = true,
-                        bold = false },
+                    TextBoxWidget:new{ text = label, face = hand(16), width = math.max(S(20), inner_w),
+                        height = math.max(S(16), bh - S(10)), height_adjust = false, height_overflow_show_ellipsis = true },
                 },
             }
         end
         local item = CalItem:new{ w = bw, h = bh, build = build, shortcut = key,
-            callback = function() Calendar.showEvent(plugin, ev) end }
+            callback = function() Calendar.showEvent(plugin, ev, day) end }
         canvas:place(item, bx, by)
         layout[#layout + 1] = { item }
         items[#items + 1] = item
     end
     if #evs == 0 then
         canvas:place(CenterContainer:new{ dimen = Geom:new{ w = w - label_w, h = S(40) },
-            TextWidget:new{ text = _("Nothing planned"), face = Font:getFace("cfont", 16), fgcolor = Blitbuffer.COLOR_DARK_GRAY } },
+            TextWidget:new{ text = _("Nothing planned"), face = hand(20), fgcolor = Blitbuffer.COLOR_DARK_GRAY } },
             label_w, top + math.floor((12 - h0) * px) - S(20))
     end
-    return canvas, layout, items
+    return desk, layout, items
 end
 
---- A cell with a day's events as short lines (Week, Month).
-local function dayCell(plugin, day, w, h, opts)
+--- Week: a planner page, a ruled row per day (a letter opens the day).
+local function weekRow(plugin, day, w, h, key)
     local today = dayStart()
-    local key = opts.key
     local build = function(focused)
-        local evs = Calendar.eventsOn(day)
+        local P = Paper()
+        local c = Canvas:new{ width = w, height = h }
         local d = os.date("*t", day)
-        local g = VerticalGroup:new{ align = "left" }
-        local num = opts.week and (WDAY[d.wday] .. " " .. d.day) or tostring(d.day)
-        local is_today = day == today
-        local head = HorizontalGroup:new{ align = "center" }
-        if key and Touch.keys() then
-            head[#head + 1] = badge(key, S(20))
-            head[#head + 1] = HorizontalSpan:new{ width = S(4) }
-        end
-        head[#head + 1] = FrameContainer:new{ padding = S(1), padding_left = S(3), padding_right = S(3), bordersize = 0,
-            background = is_today and Blitbuffer.COLOR_BLACK or nil,
-            TextWidget:new{ text = num, face = Font:getFace("cfont", opts.week and 14 or 15), bold = true,
-                fgcolor = is_today and Blitbuffer.COLOR_WHITE or (opts.dim and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK) } }
-        g[1] = head
-        g[2] = VerticalSpan:new{ width = S(2) }
-        local line_h = S(opts.week and 34 or 16)
-        local room = math.max(0, math.floor((h - S(28)) / line_h))
-        local fsize = opts.week and 12 or 11
+        local lab_w = S(86)
+        if day == today then c:place(Line:new{ w = lab_w - S(2), h = h - S(14), color = P.HIGHLIGHT }, 0, S(7)) end
+        local b = badge(key, S(22))
+        local bx = S(2)
+        if b then c:place(b, bx, S(7)); bx = bx + S(28) end
+        c:place(TextWidget:new{ text = WDAY[d.wday], face = hand(16), fgcolor = Blitbuffer.COLOR_DARK_GRAY }, bx, S(4))
+        c:place(TextWidget:new{ text = tostring(d.day), face = hand(30) }, bx, S(22))
+        c:place(Line:new{ w = 1, h = h, color = P.EDGE }, lab_w, 0)
+        local lx, lw = lab_w + S(10), w - lab_w - S(12)
+        local pitch = S(22)
+        c:place(P.Ruled:new{ w = w - lab_w - 1, h = h, pitch = pitch, first = pitch + S(3) }, lab_w + 1, 0)
+        local evs = Calendar.eventsOn(day)
+        local room = math.max(1, math.floor((h - S(4)) / pitch))
         for i, ev in ipairs(evs) do
+            local ly = S(2) + (i - 1) * pitch
             if i > room or (i == room and #evs > room) then
-                g[#g + 1] = TextWidget:new{ text = T(_("+%1 more"), #evs - i + 1), face = Font:getFace("cfont", fsize),
-                    fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = w - S(6) }
+                c:place(TextWidget:new{ text = T(_("+%1 more"), #evs - i + 1), face = hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY }, lx, ly)
                 break
             end
-            local t = (ev.all_day or ev.start < day) and "" or (shortClock(ev.start) .. " ")
-            if opts.week then
-                g[#g + 1] = HorizontalGroup:new{ align = "top",
-                    FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(3), height = line_h - S(4),
-                        VerticalSpan:new{ width = 1 } },
-                    HorizontalSpan:new{ width = S(2) },
-                    TextBoxWidget:new{ text = t .. (ev.title or ""), face = Font:getFace("cfont", fsize), width = w - S(12),
-                        height = line_h - S(2), height_adjust = false, height_overflow_show_ellipsis = true } }
-            else
-                g[#g + 1] = HorizontalGroup:new{ align = "center",
-                    FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(3), height = line_h - S(4),
-                        VerticalSpan:new{ width = 1 } },
-                    HorizontalSpan:new{ width = S(2) },
-                    TextWidget:new{ text = t .. (ev.title or ""), face = Font:getFace("cfont", fsize), max_width = w - S(10) } }
-            end
+            local t = allDayOn(ev, day) and _("all day") or (ev.start < day and "\u{2192}" or shortClock(ev.start))
+            c:place(marker(ev, pitch - S(8)), lx, ly + S(4))
+            c:place(TextWidget:new{ text = t, face = hand(14), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = S(56) }, lx + S(7), ly + S(2))
+            c:place(TextWidget:new{ text = ev.title or "", face = hand(17), max_width = lw - S(70) }, lx + S(66), ly)
         end
-        return FrameContainer:new{
-            width = w, height = h, padding = S(2), margin = 0,
-            bordersize = focused and Size.border.thick or Size.border.thin,
-            color = focused and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_LIGHT_GRAY,
-            background = Blitbuffer.COLOR_WHITE,
-            g,
-        }
+        c:place(Line:new{ w = w, h = 1, color = P.EDGE }, 0, h - 1)
+        return Outline:new{ w = w, h = h, on = focused, c }
     end
     return CalItem:new{ w = w, h = h, build = build, shortcut = key, callback = function()
         Calendar.cursor = day
@@ -633,56 +846,113 @@ local function dayCell(plugin, day, w, h, opts)
     end }
 end
 
---- Week: seven columns.
-local function renderWeek(plugin, w, h)
-    local canvas = Canvas:new{ width = w, height = h }
-    local layout, items = { {} }, {}
-    local first = weekStart(Calendar.cursor, Calendar.prefs(plugin).week_start)
-    if not inRange(first) and not inRange(addDays(first, 6)) then message(canvas, w, outOfRangeText()); return canvas, {}, items end
-    local cw = math.floor(w / 7)
-    for i = 0, 6 do
-        local day = addDays(first, i)
-        local cell = dayCell(plugin, day, cw, h - S(4), { week = true, key = KEYS[i + 1] })
-        canvas:place(cell, i * cw, S(2))
-        table.insert(layout[1], cell)
-        items[#items + 1] = cell
-    end
-    return canvas, layout, items
+local function weekNumber(t)
+    local ok, n = pcall(os.date, "%V", t)
+    return ok and tonumber(n) or nil
 end
 
---- Month: a grid of the weeks in the month.
+local function renderWeek(plugin, w, h)
+    local desk, ax, ay, aw, ah = plannerSheet(w, h)
+    local layout, items = {}, {}
+    local first = weekStart(Calendar.cursor, Calendar.prefs(plugin).week_start)
+    local wn = weekNumber(addDays(first, 3))
+    local y = plannerHead(desk, ax, ay, aw, Calendar.periodLabel(plugin), wn and T(_("week %1"), wn) or nil)
+    if not inRange(first) and not inRange(addDays(first, 6)) then message(desk, ax, y + S(20), aw, outOfRangeText()); return desk, {}, items end
+    local rh = math.floor((ay + ah - y) / 7)
+    for i = 0, 6 do
+        local row = weekRow(plugin, addDays(first, i), aw, rh, KEYS[i + 1])
+        desk:place(row, ax, y + i * rh)
+        layout[#layout + 1] = { row }
+        items[#items + 1] = row
+    end
+    return desk, layout, items
+end
+
+--- Month: a wall calendar on its hook.
+local function monthCell(plugin, day, w, h, dim)
+    local today = dayStart()
+    local build = function(focused)
+        local c = Canvas:new{ width = w, height = h, bg = false }
+        local d = os.date("*t", day)
+        local num = TextWidget:new{ text = tostring(d.day), face = hand(19),
+            fgcolor = dim and Blitbuffer.gray(0.45) or Blitbuffer.COLOR_BLACK }
+        if day == today then
+            c:place(FrameContainer:new{ bordersize = math.max(2, S(2)), radius = S(12), padding = 0, padding_left = S(4), padding_right = S(4), num }, S(1), S(1))
+        else
+            c:place(num, S(4), S(2))
+        end
+        local evs = dim and {} or Calendar.eventsOn(day)
+        local line_h = S(16)
+        local top = S(26)
+        local room = math.max(0, math.floor((h - top - S(2)) / line_h))
+        for i, ev in ipairs(evs) do
+            local ly = top + (i - 1) * line_h
+            if i > room or (i == room and #evs > room) then
+                c:place(TextWidget:new{ text = T(_("+%1 more"), #evs - i + 1), face = hand(13), fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+                    max_width = w - S(6) }, S(4), ly)
+                break
+            end
+            local t = (allDayOn(ev, day) or ev.start < day) and "" or (shortClock(ev.start) .. " ")
+            c:place(marker(ev, line_h - S(4)), S(2), ly + S(2))
+            c:place(TextWidget:new{ text = t .. (ev.title or ""), face = hand(14), max_width = w - S(9) }, S(7), ly - S(1))
+        end
+        return Outline:new{ w = w, h = h, on = focused, c }
+    end
+    return CalItem:new{ w = w, h = h, build = build, callback = function()
+        Calendar.cursor = day
+        Calendar.setLayout(plugin, "day", true)
+    end }
+end
+
 local function renderMonth(plugin, w, h)
-    local canvas = Canvas:new{ width = w, height = h }
+    local P = Paper()
+    local desk = Canvas:new{ width = w, height = h, bg = P.DESK }
     local layout, items = {}, {}
     local first_day = addMonths(Calendar.cursor, 0)
     local start = weekStart(first_day, Calendar.prefs(plugin).week_start)
-    local month = os.date("*t", first_day).month
-    local weeks = math.ceil((((os.date("*t", first_day).wday - Calendar.prefs(plugin).week_start) % 7)
+    local fd = os.date("*t", first_day)
+    local weeks = math.ceil((((fd.wday - Calendar.prefs(plugin).week_start) % 7)
         + os.date("*t", addDays(addMonths(first_day, 1), -1)).day) / 7)
-    local cw = math.floor(w / 7)
-    local head_h = S(22)
+    local sx, sy = S(16), S(30)
+    local sw, sh = w - 2 * sx - S(4), h - sy - S(12)
+    local hook = P.Hook:new{}
+    desk:place(hook, math.floor((w - hook.w) / 2) - S(2), S(6))
+    desk:place(P.Sheet:new{ w = sw, h = sh, shadow = S(5) }, sx, sy)
+    desk:place(P.Coil:new{ side = "top", w = sw - S(24), gap = S(46) }, sx + S(12), sy - S(16))
+    local ix, iw = sx + S(12), sw - S(24)
+    local y = sy + S(26)
+    desk:place(TextWidget:new{ text = MONTHS[fd.month], face = hand(42) }, ix + S(4), y)
+    local yr = TextWidget:new{ text = tostring(fd.year), face = hand(24), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    desk:place(yr, ix + iw - yr:getSize().w - S(4), y + S(14))
+    y = y + S(50)
+    local cw = math.floor(iw / 7)
     for i = 0, 6 do
         local wd = (Calendar.prefs(plugin).week_start - 1 + i) % 7 + 1
-        canvas:place(CenterContainer:new{ dimen = Geom:new{ w = cw, h = head_h },
-            TextWidget:new{ text = WDAY[wd], face = Font:getFace("cfont", 13), bold = true } }, i * cw, 0)
+        desk:place(TextWidget:new{ text = WDAY[wd]:upper(), face = Font:getFace("cfont", 12), bold = true,
+            fgcolor = Blitbuffer.COLOR_DARK_GRAY }, ix + i * cw + S(4), y)
     end
-    local ch = math.floor((h - head_h - S(2)) / weeks)
+    y = y + S(20)
+    desk:place(Line:new{ w = cw * 7, h = math.max(2, S(2)), color = Blitbuffer.COLOR_BLACK }, ix, y)
+    y = y + S(2)
+    local ch = math.floor((sy + sh - S(8) - y) / weeks)
     for r = 0, weeks - 1 do
         local row = {}
         for c = 0, 6 do
             local day = addDays(start, r * 7 + c)
-            local cell = dayCell(plugin, day, cw, ch, { dim = os.date("*t", day).month ~= month })
-            canvas:place(cell, c * cw, head_h + r * ch)
+            local cell = monthCell(plugin, day, cw, ch, os.date("*t", day).month ~= fd.month)
+            desk:place(cell, ix + c * cw, y + r * ch)
             row[#row + 1] = cell
             items[#items + 1] = cell
         end
         layout[#layout + 1] = row
+        desk:place(Line:new{ w = cw * 7, h = 1, color = P.EDGE }, ix, y + (r + 1) * ch - 1)
     end
+    for c = 1, 6 do desk:place(Line:new{ w = 1, h = ch * weeks, color = P.EDGE }, ix + c * cw, y) end
     if not inRange(first_day) and not inRange(addDays(addMonths(first_day, 1), -1)) then
-        canvas:place(FrameContainer:new{ padding = S(10), bordersize = Size.border.thin, background = Blitbuffer.COLOR_WHITE,
-            TextBoxWidget:new{ text = outOfRangeText(), face = Font:getFace("cfont", 15), width = w - S(100) } }, S(40), S(120))
+        desk:place(FrameContainer:new{ padding = S(10), bordersize = Size.border.thin, background = Blitbuffer.COLOR_WHITE,
+            TextBoxWidget:new{ text = outOfRangeText(), face = hand(18), width = w - S(100) } }, S(40), S(160))
     end
-    return canvas, layout, items
+    return desk, layout, items
 end
 
 local RENDER = { agenda = renderAgenda, day = renderDay, week = renderWeek, month = renderMonth }
@@ -716,21 +986,10 @@ local function drawBoard(m)
     m:_recalculateDimen(false)
     local w, h = m.item_dimen.w, m.available_height
     local layout = Calendar.layout or Calendar.prefs(m.plugin).layout
-    -- what's shown (ZenOS hides KOReader's page bar on single-page tab views)
-    local head_h = S(34)
-    local head = FrameContainer:new{ width = w, height = head_h, padding = 0, bordersize = 0,
-        background = Blitbuffer.COLOR_WHITE,
-        CenterContainer:new{ dimen = Geom:new{ w = w, h = head_h },
-            HorizontalGroup:new{ align = "center",
-                TextWidget:new{ text = "\u{25C0}", face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY },
-                HorizontalSpan:new{ width = S(16) },
-                TextWidget:new{ text = Calendar.periodLabel(m.plugin), face = Font:getFace("smalltfont", 19), bold = true,
-                    max_width = w - S(90) },
-                HorizontalSpan:new{ width = S(16) },
-                TextWidget:new{ text = "\u{25B6}", face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY },
-            } } }
-    local canvas, focus, items = RENDER[layout](m.plugin, w, h - head_h)
-    m.item_group[1] = VerticalGroup:new{ align = "left", head, canvas }
+    -- the paper draws what's shown (the month's name, the week, the day);
+    -- ZenOS hides KOReader's page bar on single-page tab views
+    local canvas, focus, items = RENDER[layout](m.plugin, w, h)
+    m.item_group[1] = canvas
     m.layout = focus
     m.cal_items = items
     m.page, m.page_num = 1, 1

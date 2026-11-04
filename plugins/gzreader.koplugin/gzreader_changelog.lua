@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.15.0",
+        changes = {
+            "The Calendar tab looks like paper, like the Notes tab, in the same handwriting: Month is a wall calendar on its hook with a spiral binding and today circled; Week and Day are pages of a spiral planner (a ruled row per day, today highlighted); Agenda is a tear-off day pad, the day in big with its events beside it, the next days below.",
+            "An event opens on an index card with a paper clip: when, where, which calendar, the notes. \u{25C0} \u{25B6} (or a swipe) go through the other events that day; if the notes don't fit, Press (or hold) shows all of them.",
+        },
+    },
+    {
         version = "1.14.3",
         changes = {
             "Copying connections: after one copy the sending GZreader shows a new PIN and keeps waiting, so you can copy Notes after the calendars (or to another device) without starting again. Before, it stopped answering, and typing its address on the other one then froze that one for a minute.",
