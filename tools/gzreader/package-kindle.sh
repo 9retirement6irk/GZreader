@@ -2,6 +2,7 @@
 # Build GZreader (Grimmory + ZenOS + KOReader) for a Kindle, from one of
 # KOReader's official Kindle packages of the same tag:
 #   koreader-kindle-legacy-vX.zip  Kindle 2, DX, Kindle Keyboard (K3)
+#   koreader-kindle-vX.zip         Kindle 4 and Kindle Touch
 #   koreader-kindlehf-vX.zip       touch Kindles on firmware 5.16.3 or newer
 #                                  (Paperwhite 3 / 7th gen and later)
 #   koreader-kindlepw2-vX.zip      touch Kindles on firmware 5.6.1 – 5.16.2

@@ -1,5 +1,6 @@
 # Builds GZreader for every published release and attaches the packages:
 #   gzreader-kindle-legacy-<version>.zip   full install: Kindle 2, DX, Kindle Keyboard
+#   gzreader-kindle-<version>.zip          full install: Kindle 4, Kindle Touch
 #   gzreader-kindlehf-<version>.zip        full install: touch Kindles on firmware
 #                                          5.16.3+ (Paperwhite 3 / 7th gen and later)
 #   gzreader-kindlepw2-<version>.zip       full install: touch Kindles on firmware
@@ -38,16 +39,16 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
       - name: Official KOReader Kindle releases (native binaries)
         run: |
-          for p in kindle-legacy kindlehf kindlepw2; do
-            gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-$p-*.zip" --dir dl
+          for p in kindle-legacy kindle kindlehf kindlepw2; do
+            gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-$p-v*.zip" --dir dl
           done
           ls -la dl
       - name: Package
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
           # (the update package is the same from each: keep the legacy one's)
-          for p in kindlehf kindlepw2 kindle-legacy; do
-            GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-$p-*.zip out
+          for p in kindlehf kindlepw2 kindle kindle-legacy; do
+            GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-$p-v*.zip out
           done
       - name: Attach to the release
-        run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber
+        run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindle-[0-9]*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber

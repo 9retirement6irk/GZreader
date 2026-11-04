@@ -1312,6 +1312,7 @@ end
 
 function Kindle4:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
+    useShadowScreen(self) -- (8-bit, but inverted: the C blitter can't draw on it either)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         batt_capacity_file = "/sys/devices/system/yoshi_battery/yoshi_battery0/battery_capacity",

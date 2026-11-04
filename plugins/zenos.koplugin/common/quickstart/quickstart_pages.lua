@@ -631,7 +631,7 @@ local function buildGrimmoryPage(ctx)
     return {
         title       = _("Connect your phone"),
         description = _("Scan the QR code with your phone: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from your phone (no Grimmory needed)") .. "\n"
-            .. (require("device"):hasKeyboard() and _("Come back to it any time: Home menu → Send books from your phone.")
+            .. (not require("device"):isTouchDevice() and _("Come back to it any time: Home menu → Send books from your phone.")
                 or _("Come back to it any time: swipe down from the top, open the launcher and tap Phone.")),
         choice_type = "radio",
         choices     = choices,
@@ -741,9 +741,13 @@ function M.build_install_pages(ctx)
     -- Page table
     -- -----------------------------------------------------------------------
 
-    -- GZreader: a Kindle with a keyboard (Kindle 3) or a touch screen (Paperwhite)
-    local has_keys = require("device"):hasKeyboard()
-    local legacy_clock = has_keys -- (the Kindle 2, DX and 3 keep their clock in UTC)
+    -- GZreader: a Kindle with a keyboard (Kindle 2, DX, 3), a 5-way and no
+    -- keyboard (Kindle 4) or a touch screen (Kindle Touch, Paperwhite)
+    local Dev = require("device")
+    local has_keys = Dev:hasKeyboard()
+    local touch = Dev:isTouchDevice()
+    local dpad = not touch and not has_keys
+    local legacy_clock = not touch -- (the Kindle 2, DX, 3 and 4 keep their clock in UTC)
 
     local pages = {
         -- 1. Welcome (static)
@@ -751,8 +755,8 @@ function M.build_install_pages(ctx)
             title       = "Welcome to GZreader",
             icon        = "_zen_quickstart",
             description = "Grimmory + ZenOS + KOReader.\n\n" .. _("Your Grimmory library on your Kindle: download books, read them, and keep your place and bookmarks in sync.") .. "\n\n"
-                .. (has_keys and _("Use the 5-way to choose and press it to continue.")
-                    or _("Tap to choose; tap Next to continue.")),
+                .. (touch and _("Tap to choose; tap Next to continue.")
+                    or _("Use the 5-way to choose and press it to continue.")),
         },
 
         -- 2. Library View (INTERACTIVE — radio)
@@ -821,8 +825,14 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- 4. GZreader: keyboard (static) / touch
-        not has_keys and {
+        -- 4. GZreader: keyboard (static) / 5-way / touch
+        dpad and {
+            title       = _("Your 5-way and buttons"),
+            description = _("The 5-way moves; press its centre to pick. Down from the bottom of Home reaches the tabs (Home, Downloads, Grimmory, Notes, Calendar): Left and Right choose one.") .. "\n"
+                .. _("Menu: the GZreader menu at Home, the Reading menu in a book, the options in Notes and Calendar.") .. "\n"
+                .. _("Back: return from a link, or go to the Home screen. The page keys turn pages.") .. "\n"
+                .. _("The keyboard key shows the on-screen keyboard for typing."),
+        } or not has_keys and {
             title       = _("Using GZreader"),
             description = _("The tabs at the bottom: Home, Downloads, Grimmory, Notes, Calendar.") .. "\n\n"
                 .. _("Swipe down from the top of the screen for quick settings (Wi-Fi, brightness, sleep) and the launcher: the GZreader menu, the phone page and Send books.") .. "\n\n"
@@ -918,7 +928,7 @@ function M.build_install_pages(ctx)
         {
             title       = _("Time Format"),
             description = _("Which time format do you prefer?") .. (legacy_clock and ("\n"
-                .. _("The Kindle 3 keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
+                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },
@@ -962,7 +972,12 @@ function M.build_install_pages(ctx)
         },
 
         -- 9. Reading (static)
-        not has_keys and {
+        dpad and {
+            title       = _("While reading"),
+            description = _("Press Menu for the Reading menu: contents, bookmarks, go to page, search, fonts and layout, sync. Hold Menu for the page browser.") .. "\n\n"
+                .. _("Your place, bookmarks and highlights sync with Grimmory when the book opens and closes.") .. "\n\n"
+                .. _("The page keys on both sides turn pages."),
+        } or not has_keys and {
             title       = _("While reading"),
             description = _("Tap the top of the page for the menu: contents, bookmarks, search, fonts and layout.") .. "\n\n"
                 .. _("Your place, bookmarks and highlights sync with Grimmory when the book opens and closes.") .. "\n\n"

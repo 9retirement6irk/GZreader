@@ -1,8 +1,8 @@
 # GZreader — Grimmory + ZenOS + KOReader for the Kindle Keyboard
 
-A trimmed KOReader for legacy Kindles (Kindle 2, DX, Kindle Keyboard / K3)
-and the Kindle Paperwhite 3 (7th generation, and other touch Kindles on
-firmware 5) that reads books, pulls them from a [Grimmory](https://grimmory.org) server
+A trimmed KOReader for older Kindles: the Kindle 2, Kindle Keyboard (3) and
+DX (keyboard), the Kindle 4 (5-way, no keyboard), the Kindle Touch and the
+Paperwhite 3 (touch), that reads books, pulls them from a [Grimmory](https://grimmory.org) server
 and keeps reading position, bookmarks, highlights and notes in sync with it. ZenOS is the
 interface. Releases and updates: <https://github.com/9retirement6irk/GZreader>.
 
@@ -35,8 +35,9 @@ KOReader's first-run quickstart document (ZenOS's setup guide replaces it).
    | Kindle | Package |
    | --- | --- |
    | Kindle 2, DX, Kindle Keyboard (3) | `gzreader-kindle-legacy-<version>.zip` |
-   | Paperwhite 3 (7th gen) and other touch Kindles, firmware 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` |
-   | The same on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
+   | Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
+   | Paperwhite 3 (7th gen), firmware 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` |
+   | Paperwhite 3 on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
 
    The firmware version: Settings → Device Options → Device Info (on the
    Kindle's own home screen).
@@ -61,7 +62,7 @@ GitHub release:
 
 The "GZreader release packages" workflow then builds and attaches the full
 installs (`gzreader-kindle-legacy-<version>.zip`,
-`gzreader-kindlehf-<version>.zip`, `gzreader-kindlepw2-<version>.zip`) and
+`gzreader-kindle-<version>.zip`, `gzreader-kindlehf-<version>.zip`, `gzreader-kindlepw2-<version>.zip`) and
 `gzreader-update.zip` (what every Kindle downloads, ~6 MB: Lua only, the same
 for all of them). If a release has no
 attached files, Kindles use the release's source code zip instead (~9 MB),
@@ -73,10 +74,49 @@ Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
 anything fails, the previous files are put back. Then GZreader restarts.
 
-## Kindle Paperwhite 3 (touch)
+## Which Kindle does what
 
-The Paperwhite 3 (7th generation, 2015) and the other touch Kindles on
-firmware 5 run the same GZreader with ZenOS's touch interface:
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 |
+| --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) |
+| Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | — | — |
+| Volume buttons | yes | — | — | — |
+| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own |
+
+KOReader's own device code decides the model from the serial number (the DX
+runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts
+each screen to keys, the 5-way or touch.
+
+## Kindle 4 (5-way)
+
+No keyboard and no touch screen: the 5-way, its centre button (Press),
+Menu, Back, Home, the keyboard key and the page keys on both sides.
+
+- **Tabs:** Down from the bottom of Home reaches the tab bar; Left and Right
+  choose a tab, Press opens it.
+- **Menu:** the GZreader menu at Home (continue reading, history, sort,
+  display, Send books from your phone, Wi‑Fi, settings, updates,
+  diagnostics, sleep, restart, ZenOS's quick panel); the Reading menu in a
+  book; in Notes and Calendar their options (new note, filter, refresh;
+  today, Agenda / Day / Week / Month, refresh, settings).
+- **Notes:** the 5-way moves between the sticky notes, Press opens one; in a
+  note ▲ ▼ choose a checklist item or attachment and Press ticks or opens
+  it; Menu: edit, pin. The editor shows the on-screen keyboard (the 5-way
+  types on it); Menu goes to the toolbar (lists, checklists, headings,
+  italic, bold, tags, Save, and who can see the note) and back.
+- **Calendar:** the page keys go back and forth; the 5-way picks an event.
+- The 8-bit screen has inverted grey levels, which KOReader's fast drawing
+  code can't handle (like the Kindle 3's 4-bit one): GZreader draws into an
+  ordinary buffer and copies it to the screen, about a sixth less processor
+  time per key press in testing, and night mode costs nothing.
+
+## Touch Kindles (Kindle Touch, Paperwhite 3)
+
+The Kindle Touch (4th generation) and the Paperwhite 3 (7th generation)
+run the same GZreader with ZenOS's touch interface:
 
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for quick settings (Wi‑Fi, night mode,
@@ -97,13 +137,19 @@ firmware 5 run the same GZreader with ZenOS's touch interface:
 - **Reading:** tap the right side for the next page, the left side for the
   previous one, the top for the menu (contents, bookmarks, search, fonts…);
   swipe up for the page browser. ZenOS shows a few tips the first time.
-- **No audio:** the Paperwhites have no speaker or headphone jack, so read
-  aloud and audiobooks aren't offered there.
-- The screen is 1072 × 1448 at 300 dpi; everything is sized for it. The
-  Kindle's own time zone is used (the time zone setting is for the Kindle 3,
-  which has none).
+- **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
+  chapters, ±30 s, play / pause, sleep timer, volume, the description and
+  close (Settings → Reader → Test audiobook playback finds what works on
+  its firmware). The Paperwhite has no speaker or headphone jack, so
+  audiobooks aren't offered there. Read aloud needs the keyboard Kindles'
+  Shift + Sym and their speech service.
+- Everything is sized for the screen (the Paperwhite's 1072 × 1448 at 300
+  dpi). The Kindle's own time zone is used (the time zone setting is for the
+  Kindles without one).
 
-## Keyboard (Kindle 3)
+## Keyboard (Kindle 2, 3, DX)
+
+The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 
 | Where | Key | Does |
 | --- | --- | --- |
@@ -704,6 +750,7 @@ folder.
 
 ```sh
 tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # Kindle 2, DX, 3
+tools/gzreader/package-kindle.sh koreader-kindle-v2026.07.1.zip out/          # Kindle 4, Kindle Touch
 tools/gzreader/package-kindle.sh koreader-kindlehf-v2026.07.1.zip out/        # touch, firmware 5.16.3+
 tools/gzreader/package-kindle.sh koreader-kindlepw2-v2026.07.1.zip out/       # touch, firmware 5.6.1–5.16.2
 ```

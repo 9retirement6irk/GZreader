@@ -14,7 +14,14 @@ binaries (LuaJIT, crengine, SQLite…) under `qemu-arm`, headless:
 - optionally a CPU quota (cgroup) so it runs about as slowly as a Kindle 3
   (20 % ≈ a Kindle 3 here).
 
-`GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3** instead: its serial
+`GZ_EMU_MODEL` picks the Kindle (default `k3`): `k2` (Kindle 2), `dx` (the
+DX: KOReader's Kindle 2 class at 824 × 1200), `dxg` (DX Graphite), `k4`
+(Kindle 4: 5-way, no keyboard, an 8-bit framebuffer with inverted levels),
+`kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates) or
+`pw3`, each with its serial, framebuffer and key codes (the model's own
+event map, so a key it doesn't have fails the step).
+
+`GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
 8-bit 1072 × 1448 framebuffer, and scripted touches sent as the panel's
 multitouch frames through KOReader's own gesture detection:
@@ -45,7 +52,7 @@ Press/Back answer), and the order things happen in on a first start.
 - `setup_qr.lua` — first start: setup guide, the phone page connects
   Grimmory (the phone's GET and POST are sent straight to the Kindle's page
   server), Back, the rest of the guide, keys on Home.
-- `pw3_tour.lua` (with `GZ_EMU_MODEL=pw3` and `phone_drive.js`, servers as
+- `pw3_tour.lua` (with `GZ_EMU_MODEL=pw3` or `kt` and `phone_drive.js`, servers as
   for `phone_shots.lua`) — a Paperwhite's first start by touch: the phone
   page, the setup guide, ZenOS's touch tips, every tab, the launcher
   (GZreader menu, Send books), a note ticked by tapping, the note editor,

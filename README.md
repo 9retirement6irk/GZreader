@@ -5,7 +5,7 @@
 <h1 align="center">GZreader</h1>
 
 <p align="center">
-  <b>Grimmory + ZenOS + KOReader for the Kindle Keyboard and Paperwhite 3</b><br>
+  <b>Grimmory + ZenOS + KOReader for the Kindle 2, Keyboard, DX, Kindle 4, Touch and Paperwhite 3</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle: download books, read them,
   and keep your place, bookmarks and highlights in sync. Notes, calendars, and books
   sent from your phone too.
@@ -19,9 +19,17 @@
 
 ---
 
-GZreader is a reading app for **legacy Kindles** (Kindle Keyboard / Kindle 3, also
-Kindle 2 and DX) and the **Kindle Paperwhite 3** (7th generation, and other touch
-Kindles on firmware 5). It is [KOReader](https://github.com/koreader/koreader) trimmed down
+GZreader is a reading app for older Kindles, with a keyboard or without:
+
+| Kindle | How you use it |
+| --- | --- |
+| **Kindle 2**, **Kindle Keyboard (3)**, **DX** / DX Graphite | the keyboard and 5-way: letter keys for everything |
+| **Kindle 4** (non-touch) | the 5-way and Menu |
+| **Kindle Touch** (4th gen), **Paperwhite 3** (7th gen) | touch |
+
+It is [KOReader](https://github.com/koreader/koreader) trimmed down
+to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
+a built-in connection to a self-hosted **Grimmory** book server. It is [KOReader](https://github.com/koreader/koreader) trimmed down
 to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
 a built-in connection to a self-hosted **Grimmory** book server.
 
@@ -71,6 +79,12 @@ browser talking to the emulated Kindle.</sub>
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-launcher.png" alt="Swipe down: quick settings and the launcher (GZreader menu, Phone, Send books)" width="240"><br><sub>Swipe down: quick settings and the launcher (GZreader menu, Phone, Send books)</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-grimmory.png" alt="The Grimmory tab by touch" width="240"><br><sub>The Grimmory tab by touch</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-notes.png" alt="Notes: New note, Filter and More buttons" width="240"><br><sub>Notes: New note, Filter and More buttons</sub></td></tr>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-note.png" alt="A note: tap a checklist item to tick it" width="240"><br><sub>A note: tap a checklist item to tick it</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-note-editor.png" alt="The note editor with the on-screen keyboard" width="240"><br><sub>The note editor with the on-screen keyboard</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/pw-calendar.png" alt="Calendar: ◀ Today ▶ and More, or swipe" width="240"><br><sub>Calendar: ◀ Today ▶ and More, or swipe</sub></td></tr>
+</table>
+
+### Kindle 4 (5-way) and Kindle Touch
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/k4-notes.png" alt="Kindle 4: Notes, with the Menu key for new note, filter…" width="240"><br><sub>Kindle 4: Notes, with the Menu key for new note, filter…</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/k4-note-editor.png" alt="Kindle 4: typing with the 5-way on the on-screen keyboard" width="240"><br><sub>Kindle 4: typing with the 5-way on the on-screen keyboard</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/kt-audiobook.png" alt="Kindle Touch: the audiobook player by touch" width="240"><br><sub>Kindle Touch: the audiobook player by touch</sub></td></tr>
 </table>
 
 ### Calendar and audiobooks
@@ -136,7 +150,7 @@ browser talking to the emulated Kindle.</sub>
   and rename, replace or hide them there later.
 - Works offline; Wi‑Fi only to sync.
 
-### ⌨️ Made for the Kindle Keyboard
+### ⌨️ Made for the keyboard (Kindle 2, 3, DX)
 - **Reading menu** on the **Menu** key: contents, bookmarks, go to page, search, read
   aloud, fonts, sync, dictionary, book info. Every entry has a letter key.
 - **GZreader menu** on the **Menu** key at Home: library, continue reading,
@@ -146,24 +160,32 @@ browser talking to the emulated Kindle.</sub>
   Calendar); **Q, W, E…** and **A, S, D…** open the books and tabs on Home.
 - **Back** returns from a link, otherwise goes Home (never back to the book's start).
 
-### 👆 And by touch on the Paperwhite 3
+### 🕹️ The Kindle 4: 5-way and Menu
+- The 5-way moves and Press picks everywhere; **Down** from the bottom of Home
+  reaches the tabs. **Menu** opens the GZreader menu at Home, the Reading menu in a
+  book, and the options (new note, filter, today, layouts…) in Notes and Calendar.
+- Notes: choose a checklist item with ▲ ▼ and Press to tick it; the note editor types
+  with the 5-way on the on-screen keyboard, and Menu goes to its toolbar.
+- The 8-bit screen gets the same faster drawing as the Kindle 3's.
+
+### 👆 And by touch on the Kindle Touch and Paperwhite 3
 - ZenOS's **touch interface**: tabs at the bottom, tap to turn pages, swipe down from
   the top for quick settings (Wi‑Fi, brightness, sleep) and the **launcher** with the
   GZreader menu, the phone page and Send books.
 - GZreader's own screens have **buttons** where the Kindle 3 has keys: New note,
   Filter and More in Notes; ◀ Today ▶ and More in Calendar; tap a checklist item to
   tick it; the note editor with the on-screen keyboard.
-- Sized for its 300 dpi screen. No read aloud or audiobooks: the Paperwhite has no
-  audio.
+- Sized for each screen (the Paperwhite's 300 dpi). The Kindle Touch plays
+  audiobooks with the player's buttons; the Paperwhite has no audio.
 
-### 🔊 Read aloud (Kindle 3)
+### 🔊 Read aloud (Kindle 2, 3, DX)
 - Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
   Kindle's Text-to-Speech.
 - The sentence being read is **highlighted** and **pages turn by themselves**.
 - Speed and volume controls; the Kindle's volume buttons work while reading
   (and everywhere else in GZreader).
 
-### 🎧 Audiobooks (experimental, Kindle 3)
+### 🎧 Audiobooks (experimental: Kindle 2, 3, DX, Touch)
 - Browse Grimmory's **audiobooks**, download them (M4B or MP3 tracks) and listen
   through the speaker or headphones.
 - **Chapters**, ±30 seconds, **sleep timer** (15/30/60 minutes or end of chapter),
@@ -216,17 +238,18 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
    | Kindle | Package |
    | --- | --- |
    | Kindle Keyboard (3), Kindle 2, DX | `gzreader-kindle-legacy-<version>.zip` |
-   | Paperwhite 3 (7th gen) or another touch Kindle, firmware **5.16.3 or newer** | `gzreader-kindlehf-<version>.zip` |
-   | The same on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
+   | Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
+   | Paperwhite 3 (7th gen), firmware **5.16.3 or newer** | `gzreader-kindlehf-<version>.zip` |
+   | Paperwhite 3 on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
 
-   (The firmware version is in the Kindle's Settings → Device Options → Device Info.)
+   (The Paperwhite's firmware version is in its Settings → Device Options → Device Info.)
 3. Unzip it and copy its folders (`koreader`, `extensions`, and `launchpad` for the
    Kindle 3) to the root of the Kindle's USB drive, merging with what's there.
 4. Eject, then open **KUAL → GZreader → Start GZreader**.
 
 The setup guide starts with **Connect your phone**: scan the QR code to connect
 Grimmory, Notes and Calendar, or send books (all optional; you can come back to it
-from the Home menu, or the launcher on a Paperwhite). Later versions install from **Settings → General → Updates**.
+from the Home menu, or the launcher on a touch Kindle). Later versions install from **Settings → General → Updates**.
 
 ## Connecting Grimmory, Notes and Calendar
 
@@ -252,7 +275,7 @@ install zip and the update package. Kindles check for new releases once a day.
 To build locally:
 
 ```sh
-tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # or koreader-kindlehf-…, koreader-kindlepw2-…
+tools/gzreader/package-kindle.sh koreader-kindle-legacy-v2026.07.1.zip out/   # or koreader-kindle-…, koreader-kindlehf-…, koreader-kindlepw2-…
 ```
 
 The build reuses the native binaries of the official KOReader kindle-legacy release of

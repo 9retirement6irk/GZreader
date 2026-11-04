@@ -882,13 +882,19 @@ function Calendar.show(plugin)
     end
     local menu = Calendar.Board:new{
         title = _("Calendar"),
-        subtitle = _("N today  \u{00B7}  M more  \u{00B7}  \u{25C0} \u{25B6} page keys"),
+        subtitle = Touch.text(_("N today  \u{00B7}  M more  \u{00B7}  \u{25C0} \u{25B6} page keys"), _("N today  \u{00B7}  M more  \u{00B7}  \u{25C0} \u{25B6} page keys"),
+            _("Menu: today, layouts, refresh  \u{00B7}  \u{25C0} \u{25B6} page keys")),
         item_table = { { text = "" } },
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
         _gz_navbar_tab_id = Calendar.TAB_ID,
         plugin = plugin,
     }
     menu.key_events.LeftButtonTap = nil
+    if Touch.dpad() then
+        -- Kindle 4: no letter keys; Menu opens the options (today, layouts…)
+        menu.key_events.GzOptions = { { "Menu" } }
+        menu.onGzOptions = function() Calendar.showOptions(plugin); return true end
+    end
     local orig_close = menu.onCloseWidget
     menu.onCloseWidget = function(m, ...)
         m._gz_closed = true

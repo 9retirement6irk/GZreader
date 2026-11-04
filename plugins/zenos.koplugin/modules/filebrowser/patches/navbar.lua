@@ -3423,6 +3423,8 @@ local function apply_navbar()
                     is_menu_key = key:match({ "Menu" })
                 end
                 if is_menu_key then
+                    -- GZreader: a tab view with options of its own (Notes, Calendar on the Kindle 4)
+                    if type(m.onGzOptions) == "function" then return m:onGzOptions() end
                     local fm = FileManager.instance
                     local fm_menu = fm and fm.menu
                     -- GZreader: same as the Menu key in the library (its Home menu)

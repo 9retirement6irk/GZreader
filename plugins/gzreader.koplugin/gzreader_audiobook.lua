@@ -48,6 +48,7 @@ local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local Engine = require("gzreader_audioengine")
 local Log = require("gzreader_log")
+local Touch = require("gzreader_touch")
 local _ = require("gettext")
 local T = ffiutil.template
 
@@ -859,13 +860,15 @@ local function face(size, bold) return Font:getFace(bold and "smalltfont" or "cf
 --- A control: its letter key in a square, and the label in a box (tap works too).
 function Screen:control(key, label, callback, width)
     local Button = require("ui/widget/button")
-    local side = Device.screen:scaleBySize(26)
-    local sc = Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, key, "square")
+    -- (the letter only where there's a keyboard; on the Kindle Touch: just the button)
+    local side = Touch.keys() and Device.screen:scaleBySize(26) or 0
     local btn = Button:new{
-        text = label, callback = callback, width = width - side - Size.padding.default,
+        text = label, callback = callback, width = width - side - (side > 0 and Size.padding.default or 0),
         bordersize = Size.border.thin, radius = Size.radius.button, text_font_size = 16,
         text_font_bold = false, show_parent = self,
     }
+    if side == 0 then return btn end
+    local sc = Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, key, "square")
     return HorizontalGroup:new{ align = "center", sc, HorizontalSpan:new{ width = Size.padding.default }, btn }
 end
 
@@ -922,6 +925,17 @@ function Screen:build()
     if sleep then status[#status + 1] = sleep end
     add(TextWidget:new{ text = table.concat(status, "  ·  "), face = face(17, true), max_width = inner })
     gap(18)
+    if Touch.on() then
+        -- touch: what the 5-way does on the Kindle 3
+        add(Touch.chips(inner, {
+            { "\u{23EE}", function() self:onPrevChapter() end },
+            { "\u{2212}30 s", function() self:onBack30() end },
+            { p.playing and "\u{275A}\u{275A}" or "\u{25B6}", function() self:onToggle() end },
+            { "+30 s", function() self:onFwd30() end },
+            { "\u{23ED}", function() self:onNextChapter() end },
+        }, self))
+        gap(10)
+    end
     -- controls
     local col = math.floor((inner - 2 * Size.padding.large) / 3)
     local function row(a, b, c)
@@ -943,8 +957,15 @@ function Screen:build()
         vol,
         self:control("S", _("Louder"), function() self:onVolUp() end, col)))
     gap(12)
-    add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
-        face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+    if Touch.on() then
+        add(Touch.chips(inner, {
+            { _("About this book"), function() self:onDescription() end },
+            { _("Close (keeps playing)"), function() self:onClose() end },
+        }, self))
+    else
+        add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
+            face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+    end
     self.content = group
     self[1] = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE, bordersize = 0, padding = 0, width = sw, height = sh,

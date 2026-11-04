@@ -1,7 +1,11 @@
 --[[--
-What differs between Kindles with a keyboard (Kindle 2, DX, Kindle 3) and
-touch Kindles (Paperwhite…): letter keys and key hints only where there are
-keys; buttons to tap where there aren't; audio only where there is a speaker.
+What differs between GZreader's Kindles, three kinds:
+- a keyboard (Kindle 2, DX, Kindle 3): letter keys (shown in squares next
+  to items) and key hints;
+- a 5-way and no keyboard (Kindle 4): the 5-way moves, Press picks, Menu
+  opens each screen's options;
+- a touch screen (Kindle Touch, Paperwhite 3): buttons to tap.
+And audio only where there is a speaker.
 ]]
 
 local Device = require("device")
@@ -9,24 +13,39 @@ local UIManager = require("ui/uimanager")
 
 local Touch = {}
 
---- A touch screen (Paperwhite, Kindle Touch, Oasis…).
+--- A touch screen (Kindle Touch, Paperwhite…).
 function Touch.on() return Device:isTouchDevice() == true end
 
 --- A keyboard: letter keys (shown in squares next to items) and key hints.
 function Touch.keys() return Device:hasKeyboard() == true end
 
---- A speaker or headphone jack GZreader can play through (audiobooks, read
---- aloud): the Kindle 2, DX and Kindle 3. The Paperwhites have no audio.
+--- Keys but no keyboard and no touch screen (the Kindle 4): the 5-way,
+--- Press, Menu, Back, Home and the page keys.
+function Touch.dpad()
+    return not Touch.on() and not Touch.keys() and Device.hasKeys ~= nil and Device:hasKeys() == true
+end
+
+--- A speaker or headphone jack GZreader can play audiobooks through: the
+--- Kindle 2, DX, Kindle 3 and Kindle Touch. The Kindle 4 and the
+--- Paperwhites have no audio.
 function Touch.audio()
     local m = Device.model or ""
-    return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3"
+    return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3" or m == "KindleTouch"
 end
+
+--- Read aloud (the Kindle's voice, Shift + Sym): the Kindles with a keyboard.
+function Touch.tts() return Touch.audio() and Touch.keys() end
 
 --- The letter for a list item only when there are keys to press it.
 function Touch.letter(key) if Touch.keys() then return key end end
 
---- `with_keys` on a Kindle with a keyboard, `touch` otherwise.
-function Touch.text(with_keys, touch) if Touch.keys() then return with_keys end return touch end
+--- `with_keys` on a Kindle with a keyboard, `touch` on a touch screen,
+--- `dpad` (or `with_keys`) on a Kindle 4.
+function Touch.text(with_keys, touch, dpad)
+    if Touch.keys() then return with_keys end
+    if Touch.on() then return touch end
+    return dpad or with_keys
+end
 
 --- A row of buttons (touch): actions = { { text, callback }, … }.
 function Touch.buttonRow(width, actions, opts)

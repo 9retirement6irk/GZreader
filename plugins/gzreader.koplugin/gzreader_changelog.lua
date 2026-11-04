@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.9.0",
+        changes = {
+            "GZreader now runs on the Kindle 4 and the Kindle Touch too: install gzreader-kindle-1.9.0.zip (the Kindle 2, Keyboard and DX keep gzreader-kindle-legacy, the Paperwhite 3 gzreader-kindlehf or -kindlepw2).",
+            "Kindle 4 (5-way, no keyboard): Down from the bottom of Home reaches the tabs; Menu opens the GZreader menu at Home, the Reading menu in a book, and the options in Notes (new note, filter, refresh) and Calendar (today, layouts, refresh). In a note, ▲ ▼ choose a checklist item and Press ticks it. The note editor types with the 5-way on the on-screen keyboard; Menu goes to its toolbar, which also sets who can see the note. The setup guide explains the 5-way instead of the keyboard.",
+            "Kindle 4: its screen gets the same faster drawing as the Kindle 3's (KOReader's fast drawing code can't draw on its inverted screen either), about a sixth less processor time per key press, and night mode costs nothing.",
+            "Kindle Touch: the touch interface as on the Paperwhite 3, and audiobooks, with buttons in the player for chapters, ±30 seconds, play / pause and close.",
+            "Read aloud and its settings only appear on the Kindles with a keyboard (Shift + Sym); audiobooks only on the Kindles with a speaker (Kindle 2, 3, DX, Touch).",
+        },
+    },
+    {
         version = "1.8.0",
         changes = {
             "GZreader now runs on the Kindle Paperwhite 3 (7th generation) and other touch Kindles on firmware 5. Install gzreader-kindlehf-1.8.0.zip on firmware 5.16.3 or newer, or gzreader-kindlepw2-1.8.0.zip on firmware 5.6.1 to 5.16.2 (with KUAL, like the Kindle 3). Updates afterwards come from Settings → Updates as usual.",

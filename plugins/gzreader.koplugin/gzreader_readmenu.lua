@@ -50,7 +50,7 @@ function ReadMenu.items(plugin)
     items[#items + 1] = { text = _("Look up a word"), callback = send("ShowDictionaryLookup") }
     items[#items + 1] = { text = _("Page browser"), callback = send("ShowPageBrowser") }
     items[#items + 1] = { text = _("Book information"), callback = send("ShowBookInfo") }
-    items[#items + 1] = { text = _("Read-aloud settings"), callback = function() plugin:showTtsSettings() end }
+    if tts then items[#items + 1] = { text = _("Read-aloud settings"), callback = function() plugin:showTtsSettings() end } end
     items[#items + 1] = { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end }
     items[#items + 1] = { text = _("Settings"), callback = function()
         require("gzreader_homemenu").settings()

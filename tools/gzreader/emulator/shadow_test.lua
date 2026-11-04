@@ -1,6 +1,7 @@
 -- frontend/device/kindle/shadowfb.lua: drawing into the 8-bit shadow screen with the C
--- blitter and packing gives the same 4-bit framebuffer bytes as drawing into it in Lua
--- (as before), rotated and in night mode. Run from a KOReader tree with its luajit.
+-- blitter and packing gives the same framebuffer bytes as drawing into it in Lua (as
+-- before), rotated and in night mode: the 4-bit framebuffer (Kindle 2, DX, 3) and the
+-- Kindle 4's 8-bit one with inverted levels. Run from a KOReader tree with its luajit.
 require("setupkoenv")
 package.path = "frontend/?.lua;" .. package.path
 local BB = require("ffi/blitbuffer")
@@ -10,8 +11,9 @@ local ffi = require("ffi")
 local fails = 0
 local function check(ok, msg) if not ok then fails = fails + 1 end print((ok and "ok   " or "FAIL ") .. msg) end
 local W, H = 600, 800
+local FB_TYPE
 local function mkscreen()
-    local fb = BB.new(W, H, BB.TYPE_BB4); fb:invert(); fb:fill(BB.COLOR_WHITE)
+    local fb = BB.new(W, H, FB_TYPE); fb:invert(); fb:fill(BB.COLOR_WHITE)
     local scr = { bb = fb, calls = {} }
     function scr:refreshPartialImp(x, y, w, h) self.calls[#self.calls + 1] = { x, y, w, h } end
     function scr:refreshFullImp(x, y, w, h) self.calls[#self.calls + 1] = { x, y, w, h } end
@@ -32,9 +34,12 @@ local function draw(bb)
     bb:blitFrom(img, 123, 77, 0, 0, 37, 53)
     bb:blitFrom(img, 0, 700, 3, 5, 30, 40)
 end
+for _j, fb_type in ipairs({ BB.TYPE_BB4, BB.TYPE_BB8 }) do
+FB_TYPE = fb_type
+print(fb_type == BB.TYPE_BB4 and "4-bit (Kindle 2, DX, 3)" or "8-bit inverted (Kindle 4)")
 for _i, case in ipairs({ { rot = 0 }, { rot = 1 }, { rot = 2 }, { rot = 3 }, { rot = 0, night = true }, { rot = 1, night = true } }) do
-    -- reference: straight into the inverted BB4 (as without the shadow)
-    local ref = BB.new(W, H, BB.TYPE_BB4); ref:invert()
+    -- reference: straight into the inverted framebuffer BB (as without the shadow)
+    local ref = BB.new(W, H, fb_type); ref:invert()
     ref:setRotation(case.rot)
     if case.night then ref:invert() end
     BB:setUseCBB(false) -- (as before: no C blitter on the Kindle 3)
@@ -53,6 +58,7 @@ for _i, case in ipairs({ { rot = 0 }, { rot = 1 }, { rot = 2 }, { rot = 3 }, { r
     BB:setUseCBB(false); ref:paintRect(5, 5, 3, 3, BB.COLOR_BLACK); BB:setUseCBB(true)
     scr:refreshFullImp(4, 4, 6, 6)
     check(eq(ref, scr._gz_fb_bb), string.format("rotation %d%s: odd-sized region", case.rot, case.night and " night" or ""))
+end
 end
 print("C blitter in the shadow:", BB:getUseCBB())
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))

@@ -473,12 +473,15 @@ local function boardItems()
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
             items[1] = { text = T(Touch.text(_("Couldn't load your notes. %1\n\nM → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMore → Refresh to try again.")), describe(Notes.last_error)) }
+                _("Couldn't load your notes. %1\n\nMore → Refresh to try again."),
+                _("Couldn't load your notes. %1\n\nMenu → Refresh to try again.")), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
-            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."), _("No notes yet. Tap New note to write one."))
-                or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Tap Filter to change it.")) }
+            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."), _("No notes yet. Tap New note to write one."),
+                _("No notes yet. Menu → New note to write one."))
+                or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Tap Filter to change it."),
+                _("No notes match. Menu → Filter to change it.")) }
         end
     end
     return items
@@ -574,13 +577,19 @@ function Notes.show(plugin)
     if not Notes.notes then Notes.loadCache(plugin) end
     local menu = Notes.Board:new{
         title = Notes.title(),
-        subtitle = _("N new note  \u{00B7}  F filter  \u{00B7}  M more"),
+        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  M more"), _("N new note  \u{00B7}  F filter  \u{00B7}  M more"),
+            _("Menu: new note, filter, refresh  \u{00B7}  Press opens a note")),
         item_table = boardItems(),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
         _gz_navbar_tab_id = Notes.TAB_ID,
         plugin = plugin,
     }
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
+    if Touch.dpad() then
+        -- Kindle 4: no letter keys; Menu opens the options (new note, filter…)
+        menu.key_events.GzOptions = { { "Menu" } }
+        menu.onGzOptions = function() Notes.showOptions(plugin); return true end
+    end
     -- Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the bottom tabs, as in the Grimmory tab
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
     local row = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O" }
@@ -628,8 +637,27 @@ function NoteView:init()
         Options = { { "M" }, { "Menu" } },
         PageDown = { { { "RPgFwd", "LPgFwd" } } },
         PageUp = { { { "RPgBack", "LPgBack" } } },
+        -- the 5-way: choose a checklist item or attachment, Press ticks / opens it
+        FocusUp = { { "Up" } },
+        FocusDown = { { "Down" } },
+        PickFocused = { { "Press" } },
     }
     self:build()
+end
+
+function NoteView:moveFocus(dir)
+    local n = #(self.picks or {})
+    if n == 0 then return dir > 0 and self:onPageDown() or self:onPageUp() end
+    self.focus = math.max(1, math.min(n, (self.focus or (dir > 0 and 0 or n + 1)) + dir))
+    self:refresh()
+    return true
+end
+
+function NoteView:onFocusUp() return self:moveFocus(-1) end
+function NoteView:onFocusDown() return self:moveFocus(1) end
+function NoteView:onPickFocused()
+    if self.focus and self.picks and self.picks[self.focus] then return self:pickIndex(self.focus) end
+    return true
 end
 
 function NoteView:build()
@@ -724,7 +752,11 @@ function NoteView:build()
         .. _("Alt+E edit     Alt+P pin     M more     Back board")
     local title_h, footer_h = S(46), S(34)
     local footer
-    if Touch.keys() then
+    if not Touch.on() then
+        if not Touch.keys() then -- (Kindle 4: the 5-way and Menu)
+            hint = (#self.picks > 0 and ("\u{25B2} \u{25BC} " .. _("choose") .. "   Press " .. (n_check > 0 and _("tick / open") or _("open")) .. "     ") or "")
+                .. _("Menu: edit, pin     Back: board")
+        end
         footer = CenterContainer:new{ dimen = Geom:new{ w = sw, h = footer_h },
             TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = sw - S(20) } }
     else

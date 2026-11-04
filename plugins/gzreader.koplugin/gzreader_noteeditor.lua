@@ -198,8 +198,12 @@ function Editor:init()
     self.title_h, self.tool_h, self.footer_h = S(44), S(40), S(30)
     local text_h = sh - self.title_h - self.tool_h - self.footer_h - S(28)
     self.touch = Touch.on() and not Touch.keys()
-    -- (taps reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
-    if self.touch then self.is_always_active = true end
+    -- Kindle 4: the on-screen keyboard too (the 5-way types on it); Menu goes
+    -- to the toolbar (the keyboard hides) and back
+    self.dpad = Touch.dpad()
+    self.vk = self.touch or self.dpad
+    -- (taps and keys reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
+    if self.vk then self.is_always_active = true end
     local function box(h)
         return makeInput(self, {
             text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
@@ -209,22 +213,23 @@ function Editor:init()
         })
     end
     self.input = box(text_h)
-    if self.touch then
+    if self.vk then
         -- touch: the toolbar under the title, the text box above the on-screen keyboard
-        self.footer_h = 0
+        self.footer_h = self.dpad and S(26) or 0
         local kb = self.input.keyboard
         local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
         if self.input.free then pcall(self.input.free, self.input) end
-        self.input = box(sh - self.title_h - self.tool_h - kb_h - S(24))
+        self.input = box(sh - self.title_h - self.tool_h - kb_h - S(24) - (self.dpad and S(26) or 0))
     end
     self.title_slot = VerticalGroup:new{}
     self.bar_slot = VerticalGroup:new{}
     self.hint_slot = VerticalGroup:new{}
     local column
-    if self.touch then
+    if self.vk then
         column = VerticalGroup:new{ align = "center",
             self.title_slot,
             self.bar_slot,
+            self.hint_slot, -- (Kindle 4: what the keys do)
             VerticalSpan:new{ width = S(8) },
             self.input,
         }
@@ -261,7 +266,7 @@ end
 
 function Editor:onShow()
     -- touch: the on-screen keyboard, at once
-    if self.touch then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
 end
 
 function Editor:drawChrome()
@@ -279,8 +284,10 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
-                tapTarget(FrameContainer:new{ padding = S(6), bordersize = self.touch and Size.border.thin or 0, radius = S(6),
-                    TextWidget:new{ text = NoteEditor.VIS_LABEL[self.visibility] .. (self.touch and "  \u{25BE}" or "  (Alt+V)"),
+                tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
+                    bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 2)) and Size.border.thick
+                        or (self.dpad and Size.border.thin) or 0,
+                    TextWidget:new{ text = NoteEditor.VIS_LABEL[self.visibility] .. ((self.touch or self.dpad) and "  \u{25BE}" or "  (Alt+V)"),
                         face = Font:getFace("cfont", 15) } }, function() self:onShortcut("V") end),
                 HorizontalSpan:new{ width = margin } } },
     }
@@ -319,7 +326,10 @@ function Editor:drawChrome()
     if self.touch then return end -- (no key hints)
     local t = self.focus_tool and tools[self.focus_tool]
     local hint
-    if t then
+    if self.dpad then
+        hint = self.focus_tool and (_("\u{25C0} \u{25B6} choose   Press apply   Menu: back to the text"))
+            or _("Menu: toolbar, visibility, save     Back: close")
+    elseif t then
         hint = t.help .. "  (Alt+" .. t.key .. ")   \u{00B7}   \u{25C0} \u{25B6} " .. _("choose") .. "   " .. _("Press apply")
             .. "   Menu " .. _("text")
     elseif self.focus_tool then
@@ -376,6 +386,7 @@ function Editor:backToText()
     self.focus_tool = nil
     self:textKeys(true)
     self:redraw()
+    if self.dpad and self.input then self.input:onShowKeyboard() end
 end
 
 function Editor:pickTag(pos)
@@ -441,10 +452,15 @@ function Editor:onToolbarToggle()
     if self.focus_tool then
         self:backToText()
     else
+        -- (Kindle 4: the keyboard steps aside while on the toolbar)
+        if self.dpad and self.input then self.input:onCloseKeyboard() end
         self:onToolDown()
     end
     return true
 end
+
+--- The toolbar's last cell: Save, then (Kindle 4) who can see the note.
+function Editor:lastTool() return #NoteEditor.TOOLS + (self.dpad and 2 or 1) end
 
 function Editor:onToolUp()
     if self.focus_tool then self:backToText() end
@@ -453,20 +469,21 @@ end
 
 function Editor:onToolLeft()
     if not self.focus_tool then return false end
-    self.focus_tool = self.focus_tool > 1 and self.focus_tool - 1 or #NoteEditor.TOOLS + 1
+    self.focus_tool = self.focus_tool > 1 and self.focus_tool - 1 or self:lastTool()
     self:redraw()
     return true
 end
 
 function Editor:onToolRight()
     if not self.focus_tool then return false end
-    self.focus_tool = self.focus_tool <= #NoteEditor.TOOLS and self.focus_tool + 1 or 1
+    self.focus_tool = self.focus_tool < self:lastTool() and self.focus_tool + 1 or 1
     self:redraw()
     return true
 end
 
 function Editor:onToolPress()
     if not self.focus_tool then return false end
+    if self.focus_tool == #NoteEditor.TOOLS + 2 then self:onShortcut("V"); return true end
     self:useTool(self.focus_tool)
     return true
 end

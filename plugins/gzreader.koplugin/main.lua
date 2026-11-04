@@ -143,9 +143,10 @@ function Grimmory:init()
             end)
         end
     end
-    if not self.ui.document and self.ui.menu and not Device:isTouchDevice() and Device:hasKeyboard() then
-        -- Kindle Keyboard: the Menu key opens GZreader's Home menu (a list
-        -- with letter keys) instead of the touch quick-settings panel.
+    if not self.ui.document and self.ui.menu and not Device:isTouchDevice() and Device:hasKeys() then
+        -- Kindle Keyboard and Kindle 4: the Menu key opens GZreader's Home
+        -- menu (a list: letter keys, or the 5-way) instead of the touch
+        -- quick-settings panel.
         -- ZenOS's Home page, its lists and OPDS call onShowMenu() directly,
         -- so that is the one replaced (HomeMenu.fullMenu() sets _gz_full to
         -- reach the original).
@@ -349,20 +350,23 @@ function Grimmory:sectionItems(section)
         }
     elseif section == "reader" then
         if not Mod.Touch.audio() then return {} end -- (no speaker: no read aloud, no audiobooks)
-        return {
-            icon("vocabulary", {
+        local items = {}
+        -- (read aloud: Shift + Sym, the Kindles with a keyboard)
+        if Mod.Touch.tts() then
+            items[#items + 1] = icon("vocabulary", {
                 text = _("Read aloud"),
                 help_text = _("Volume, speed and the Kindle voice for reading aloud (Shift + Sym while reading)."),
                 keep_menu_open = true,
                 callback = function() self:showTtsSettings() end,
-            }),
-            icon("check", {
-                text = _("Test audiobook playback"),
-                help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
-                keep_menu_open = true, -- the test's messages show over Settings
-                callback = function() require("gzreader_audioengine").test() end,
-            }),
-        }
+            })
+        end
+        items[#items + 1] = icon("check", {
+            text = _("Test audiobook playback"),
+            help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
+            keep_menu_open = true, -- the test's messages show over Settings
+            callback = function() require("gzreader_audioengine").test() end,
+        })
+        return items
     elseif section == "interface" then
         return {
             icon("settings_covers", {
@@ -377,7 +381,7 @@ function Grimmory:sectionItems(section)
                 end,
             }),
             -- (Kindles with a Menu key)
-            Mod.Touch.keys() and icon("keyboard", {
+            (Mod.Touch.keys() or Mod.Touch.dpad()) and icon("keyboard", {
                 text = _("Menu key opens the GZreader menu"),
                 help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
                 checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
@@ -820,9 +824,10 @@ end
 
 function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
-    if Mod.Touch.audio() then self.tts = Mod.TTS.Reader:new(self.ui) end
+    if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
     local menu = self.ui.menu
-    if menu and not Device:isTouchDevice() and Device:hasKeyboard() then
+    -- (the Kindles with a Menu key: keyboard or 5-way)
+    if menu and not Device:isTouchDevice() and Device:hasKeys() then
         local orig = menu.onKeyPressShowMenu
         menu.onKeyPressShowMenu = function(m, a, k)
             if G_reader_settings:nilOrTrue("gzreader_reading_menu") then

@@ -1,12 +1,15 @@
 --[[--
-GZreader: an 8-bit shadow screen for the Kindle 3's 4-bit e-ink framebuffer.
+GZreader: an 8-bit shadow screen for the Kindle 2/3/DX's 4-bit e-ink
+framebuffer (and the Kindle 4's 8-bit one with inverted grey levels).
 
 KOReader's fast C blitter doesn't handle 4-bit buffers, so on the Kindle 3
 every glyph, icon and cover was drawn pixel by pixel in Lua (canUseCBB = no).
 That drawing was most of the CPU time of every key press. Here KOReader
 draws into an ordinary 8-bit buffer instead, where the C blitter works, and
 just before each e-ink refresh the refreshed rectangle is packed into the
-framebuffer (two pixels per byte, in the panel's inverted grey levels).
+framebuffer (two pixels per byte, in the panel's inverted grey levels; on
+the Kindle 4, one byte per pixel, inverted: the C blitter can't draw
+inverted either).
 
 The packing loop works in physical coordinates (rotation is the shadow
 buffer's, as it was the framebuffer's). Night mode becomes a "hardware"
@@ -25,8 +28,32 @@ local band, bor, rshift = bit.band, bit.bor, bit.rshift
 
 local ShadowFB = {}
 
+--- Copy the physical rectangle (x, y, w, h) of `shadow` (8 bit) into an
+--- 8-bit `fb`, grey levels flipped when `invert`.
+local function copy8(shadow, fb, x, y, w, h, invert)
+    local fw, fh = fb.w, fb.h
+    if x < 0 then w = w + x; x = 0 end
+    if y < 0 then h = h + y; y = 0 end
+    if x + w > fw then w = fw - x end
+    if y + h > fh then h = fh - y end
+    if w <= 0 or h <= 0 then return end
+    local sp = ffi.cast("uint8_t *", shadow.data)
+    local dp = ffi.cast("uint8_t *", fb.data)
+    local sstride, dstride = tonumber(shadow.stride), tonumber(fb.stride)
+    if not invert then
+        for row = y, y + h - 1 do ffi.copy(dp + row * dstride + x, sp + row * sstride + x, w) end
+        return
+    end
+    for row = y, y + h - 1 do
+        local s = sp + row * sstride + x
+        local d = dp + row * dstride + x
+        for i = 0, w - 1 do d[i] = bit.bxor(s[i], 0xFF) end
+    end
+end
+
 --- Pack the physical rectangle (x, y, w, h) of `shadow` (8 bit) into `fb` (4 bit).
 function ShadowFB.pack(shadow, fb, x, y, w, h, invert)
+    if fb:getType() == BB.TYPE_BB8 then return copy8(shadow, fb, x, y, w, h, invert) end
     local fw, fh = fb.w, fb.h
     if x < 0 then w = w + x; x = 0 end
     if y < 0 then h = h + y; y = 0 end
@@ -63,6 +90,13 @@ local function unpackScreen(fb, shadow, invert)
     local dp = ffi.cast("uint8_t *", fb.data)
     local sstride, dstride = tonumber(shadow.stride), tonumber(fb.stride)
     local flip = invert and 0xFF or 0x00
+    if fb:getType() == BB.TYPE_BB8 then
+        for row = 0, fb.h - 1 do
+            local s, d = sp + row * sstride, dp + row * dstride
+            for col = 0, fb.w - 1 do s[col] = bit.bxor(d[col], flip) end
+        end
+        return
+    end
     for row = 0, fb.h - 1 do
         local s = sp + row * sstride
         local d = dp + row * dstride
@@ -77,7 +111,10 @@ end
 --- A new shadow buffer for the screen's current framebuffer BB.
 local function setup(screen)
     local fb = screen.bb
-    if not fb or fb:getType() ~= BB.TYPE_BB4 or screen.full_bb then return false end
+    if not fb or screen.full_bb then return false end
+    local t = fb:getType()
+    -- 4-bit, or 8-bit with inverted levels (the Kindle 4): what the C blitter can't draw on
+    if not (t == BB.TYPE_BB4 or (t == BB.TYPE_BB8 and fb:getInverse() == 1)) then return false end
     local shadow = BB.new(fb.w, fb.h, BB.TYPE_BB8)
     -- the panel's 4-bit levels are inverted (0xF = black): its BB says so
     local invert = fb:getInverse() == 1
@@ -131,11 +168,11 @@ function ShadowFB.install(screen)
     if orig_reinit then
         screen.reinit = function(self, ...)
             local r = { orig_reinit(self, ...) }
-            if self.bb and self.bb:getType() == BB.TYPE_BB4 then setup(self) end
+            if self.bb and (self.bb:getType() == BB.TYPE_BB4 or self.bb:getType() == BB.TYPE_BB8) then setup(self) end
             return unpack(r)
         end
     end
-    logger.info("GZreader: 8-bit shadow screen in front of the 4-bit framebuffer (C blitter on)")
+    logger.info("GZreader: 8-bit shadow screen in front of the framebuffer (C blitter on)")
     return true
 end
 

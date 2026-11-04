@@ -2,15 +2,18 @@
 --[[
 Run GZreader (the real KOReader + ZenOS + GZreader Lua) as a Kindle 3 under
 qemu-arm, headless: fake framebuffer, scripted keys, real everything else.
-GZ_EMU_MODEL=pw3: a Kindle Paperwhite 3 instead (touch screen, no keys,
-1072 × 1448 at 300 dpi, 8-bit framebuffer), with scripted taps and swipes.
+GZ_EMU_MODEL: k3 (default), k2 (Kindle 2), dx (DX: KOReader's Kindle 2
+class at 824 × 1200), dxg (DX Graphite), k4 (Kindle 4: 5-way, no keyboard,
+8-bit inverted framebuffer), kt (Kindle Touch: touch, Home button) or pw3
+(Paperwhite 3: touch, 1072 × 1448 at 300 dpi), with that model's serial,
+framebuffer and key codes; scripted taps and swipes on the touch models.
 
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
 
 The script returns a list of steps: { wait = s } | { key = "Press" } |
 { shot = "name" } | { fn = function(E) ... end } |
 { wait_for = function(E) return done end, timeout = s } |
-{ tap = { x, y } } | { tap = "text on screen" } | { hold = { x, y } | "text" } |
+{ tap = { x, y } } | { tap = "text on screen" } | { tap = function() return x, y end } | { hold = { x, y } | "text" } |
 { swipe = { x1, y1, x2, y2 } } (touch models).
 ]]
 local SCRIPT, OUT = arg[1], arg[2]
@@ -23,7 +26,12 @@ pcall(ffi.cdef, "struct emu_timeval { long tv_sec; long tv_usec; }; int gettimeo
 
 -- /proc/usid: a Kindle 3 (Wi-Fi) serial, or a Paperwhite 3's
 local MODEL = os.getenv("GZ_EMU_MODEL") or "k3"
-local SERIALS = { k3 = "B00812345678ABCD", pw3 = "G090G1000000000A" }
+local SERIALS = { k3 = "B00812345678ABCD", k2 = "B00212345678ABCD", dx = "B00412345678ABCD", dxg = "B00912345678ABCD",
+    k4 = "B00E12345678ABCD", kt = "B00F12345678ABCD", pw3 = "G090G1000000000A" }
+-- framebuffer: einkfb (Kindle 2, DX, 3, 4) or mxcfb (touch), size, bits, inverted grey levels
+local SCREENS = { k3 = { 600, 800, 4 }, k2 = { 600, 800, 4 }, dx = { 824, 1200, 4 }, dxg = { 824, 1200, 4 },
+    k4 = { 600, 800, 8 }, kt = { 600, 800, 8, mxcfb = true }, pw3 = { 1072, 1448, 8, mxcfb = true } }
+local SCREEN = SCREENS[MODEL] or SCREENS.k3
 local real_open = io.open
 local usid = OUT .. "/usid"
 do local f = real_open(usid, "w"); f:write((os.getenv("GZ_EMU_SERIAL") or SERIALS[MODEL] or SERIALS.k3) .. "\n"); f:close() end
@@ -76,22 +84,39 @@ function E.now()
 end
 E.start = E.now() -- (wall time at start: for startup timings)
 
+-- the key codes of this model: its event map, the other way round (Kindle 3: KEYS)
+local model_codes
+local function code(name)
+    if MODEL ~= "k3" and not model_codes then
+        local ok, Device = pcall(require, "device")
+        local map = ok and Device.input and Device.input.event_map
+        if type(map) == "table" then
+            model_codes = {}
+            for c, n in pairs(map) do
+                if type(n) == "string" and (not model_codes[n] or c < model_codes[n]) then model_codes[n] = c end
+            end
+        end
+    end
+    return (model_codes and model_codes[name]) or (MODEL == "k3" and KEYS[name]) or error("no key " .. name .. " on " .. MODEL)
+end
+E.code = code
+
 --- A key pressed while another is held (Alt + R, Shift + Sym).
 function E.combo(mod, name)
-    local mc, kc = KEYS[mod] or error("no key " .. mod), KEYS[name] or error("no key " .. name)
-    local function ev(code, v)
+    local mc, kc = code(mod), code(name)
+    local function ev(c, v)
         local t = now_tv()
-        table.insert(E.queue, { { type = 1, code = code, value = v, time = t }, { type = 0, code = 0, value = 0, time = t } })
+        table.insert(E.queue, { { type = 1, code = c, value = v, time = t }, { type = 0, code = 0, value = 0, time = t } })
     end
     ev(mc, 1); ev(kc, 1); ev(kc, 0); ev(mc, 0)
 end
 
 function E.key(name)
-    local code = KEYS[name] or error("no key " .. name)
+    local c = code(name)
     local t = now_tv()
-    table.insert(E.queue, { { type = 1, code = code, value = 1, time = t }, { type = 0, code = 0, value = 0, time = t } })
+    table.insert(E.queue, { { type = 1, code = c, value = 1, time = t }, { type = 0, code = 0, value = 0, time = t } })
     local t2 = now_tv()
-    table.insert(E.queue, { { type = 1, code = code, value = 0, time = t2 }, { type = 0, code = 0, value = 0, time = t2 } })
+    table.insert(E.queue, { { type = 1, code = c, value = 0, time = t2 }, { type = 0, code = 0, value = 0, time = t2 } })
 end
 
 -- touch (Paperwhite): multitouch protocol B frames, as the panel sends them
@@ -110,11 +135,14 @@ local function frame(evs, dt)
     out[#out + 1] = { type = EV_SYN, code = 0, value = 0, time = t }
     table.insert(E.queue, out)
 end
+-- the Kindle Touch's panel counts 0–4095 each way (KOReader scales it back)
+local TOUCH_SCALE = MODEL == "kt" and { 4095 / 600, 4095 / 800 } or { 1, 1 }
 local function down(x, y, dt)
+    x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]
     touch_id = touch_id + 1
     frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, touch_id }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt)
 end
-local function move(x, y, dt) frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
+local function move(x, y, dt) x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]; frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
 local function up(dt) frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, dt) end
 local function later(sec, fn)
     require("ui/uimanager"):scheduleIn(sec, fn)
@@ -122,6 +150,7 @@ end
 
 --- Where `what` is: { x, y }, or the centre of the topmost widget showing that text.
 function E.where(what)
+    if type(what) == "function" then return what() end
     if type(what) == "table" then return what[1], what[2] end
     local hit = E.findText(what)
     if hit then return hit.x + hit.w / 2, hit.y + hit.h / 2 end
@@ -208,11 +237,11 @@ end
 package.preload["ffi/framebuffer_einkfb"] = function()
     local FB = require("ffi/framebuffer_dummy")
     if os.getenv("GZ_EMU_FB8") == "1" then return FB end
-    -- like the Kindle 3's: a 4-bit framebuffer with inverted grey levels (0xF = black)
+    -- like the Kindle 2/3/4's and DX's: 4-bit (8-bit on the Kindle 4) with inverted grey levels (0xF = black)
     local BB = require("ffi/blitbuffer")
     local K3 = FB:extend{}
     function K3:init()
-        self.bb = BB.new(600, 800, BB.TYPE_BB4)
+        self.bb = BB.new(SCREEN[1], SCREEN[2], SCREEN[3] == 8 and BB.TYPE_BB8 or BB.TYPE_BB4)
         self.bb:invert()
         self.bb:fill(BB.COLOR_WHITE)
         require("ffi/framebuffer").init(self)
@@ -220,13 +249,13 @@ package.preload["ffi/framebuffer_einkfb"] = function()
     return K3
 end
 
--- the Paperwhite 3's framebuffer: 8-bit, 1072 × 1448
+-- the touch Kindles' framebuffer: 8-bit (Paperwhite 3: 1072 × 1448, Touch: 600 × 800)
 package.preload["ffi/framebuffer_mxcfb"] = function()
     local FB = require("ffi/framebuffer_dummy")
     local BB = require("ffi/blitbuffer")
     local PW = FB:extend{}
     function PW:init()
-        self.bb = BB.new(1072, 1448, BB.TYPE_BB8)
+        self.bb = BB.new(SCREEN[1], SCREEN[2], BB.TYPE_BB8)
         self.bb:fill(BB.COLOR_WHITE)
         require("ffi/framebuffer").init(self)
     end
@@ -353,10 +382,12 @@ local function runScript()
         end
         if s.key then
             say("key", s.key)
-            E.key(s.key)
+            local ok, err = pcall(E.key, s.key)
+            if not ok then say("step error:", tostring(err)) end
         elseif s.combo then
             say("keys", s.combo[1] .. "+" .. s.combo[2])
-            E.combo(s.combo[1], s.combo[2])
+            local ok, err = pcall(E.combo, s.combo[1], s.combo[2])
+            if not ok then say("step error:", tostring(err)) end
         elseif s.tap then
             E.tap(s.tap)
         elseif s.hold then
