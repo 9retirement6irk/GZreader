@@ -17,6 +17,8 @@ PORT=${2:-18080}
 WORK=$(mktemp -d)
 trap 'kill $(cat "$WORK/mock.pid" 2>/dev/null) 2>/dev/null; [ -f "$WORK/work/memos.pid" ] && kill $(cat "$WORK/work/memos.pid") 2>/dev/null; rm -rf "$WORK"' EXIT
 failed=0
+# (the calendar tests' expected times are New York's, around its clock change)
+export TZ=America/New_York
 
 echo "== luacheck"
 (cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || failed=$((failed + 1))
