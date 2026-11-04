@@ -7,7 +7,7 @@
 #
 # <koreader base dir>: an unzipped official KOReader package's koreader/
 # folder (its ffi/ Lua is used; e.g. koreader-kindle-legacy-vX.zip).
-# Needs: luajit, lua-socket, luacheck, python3, curl. Ports port … port+15.
+# Needs: luajit, lua-socket, luacheck, python3 with radicale (pip), curl. Ports port … port+15.
 # Exit status: the number of failed suites.
 set -u
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
