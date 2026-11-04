@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.11.0",
+        changes = {
+            "Single sign-on works for readers on other networks: the identity provider now sends the phone to GZreader's sign-in page (https://9retirement6irk.github.io/GZreader/oauth2-callback), which hands the sign-in to the Kindle. Register that one address at your identity provider for every Kindle, instead of each Kindle's IP; Grimmory and the provider can be on the internet (e.g. through Cloudflare). The phone still needs to be on the Kindle's Wi-Fi while signing in.",
+            "Settings → Connections → Grimmory → Single sign-on (SSO): how to set it up, and where the provider sends the phone back: GZreader's page, your own copy of it (e.g. next to Grimmory), or this Kindle's own address as before. Kindles that signed in with their own address keep it; if you set SSO up before 1.11 and haven't signed in yet, add the new address at your provider or pick \"this Kindle's own address\".",
+        },
+    },
+    {
         version = "1.10.0",
         changes = {
             "Read aloud on the Kindle Touch: in a book, swipe down from the top and tap Listen in the quick panel (again to stop). The first time, a short test finds the Kindle's voice. The keyboard Kindles get the same button besides Shift + Sym.",

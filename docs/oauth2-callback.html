@@ -1,0 +1,116 @@
+<!doctype html>
+<!--
+GZreader: single sign-on hand-off page. The Kindle (its phone page) sends the
+phone here with #back=<the Kindle's own callback>&go=<the identity
+provider's sign-in>. This page remembers where to go back, opens the
+provider, and when the provider sends the phone back here (?code&state),
+forwards that to the Kindle, which finishes signing in with Grimmory.
+
+So the identity provider needs only this one redirect address for every
+Kindle, wherever it is, instead of each Kindle's own address. Nothing is
+sent anywhere but the provider and the Kindle; the sign-in code is useless
+without the secret the Kindle keeps (PKCE). The page only ever forwards to
+a Kindle on a private network (192.168.x, 10.x, 172.16-31.x, a phone's
+hotspot), port 8642, path /oauth2-callback.
+
+Host it yourself anywhere on HTTPS as long as the address ends in
+/oauth2-callback (e.g. https://books.example.com/gzreader/oauth2-callback),
+and set that address on the Kindle (Settings → Connections → Grimmory →
+Single sign-on redirect).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>GZreader sign-in</title>
+<style>
+  body { font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 24px; background: #f6f5f1; color: #1c1b19; }
+  main { max-width: 34rem; margin: 10vh auto; background: #fff; border: 1px solid #ddd9cf; border-radius: 14px; padding: 22px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { margin: 8px 0; color: #4a4741; }
+  .bad { color: #9b2c1e; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #161513; color: #ecebe6; } main { background: #1f1e1b; border-color: #3a3833; } p { color: #bdbab2; } .bad { color: #e8806f; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Signing in…</h1>
+  <p id="msg">One moment.</p>
+</main>
+<script>
+(function () {
+  var KEY = "gzreader-sso:";
+  function show(title, msg, bad) {
+    document.getElementById("title").textContent = title;
+    var p = document.getElementById("msg");
+    p.textContent = msg;
+    p.className = bad ? "bad" : "";
+  }
+  function params(s) {
+    var out = {};
+    (s || "").replace(/^[#?]/, "").split("&").forEach(function (kv) {
+      if (!kv) return;
+      var i = kv.indexOf("=");
+      var k = decodeURIComponent((i < 0 ? kv : kv.slice(0, i)).replace(/\+/g, " "));
+      out[k] = i < 0 ? "" : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " "));
+    });
+    return out;
+  }
+  // Only a Kindle's own page on a private network: http://<private address>:8642/oauth2-callback
+  function kindleCallback(u) {
+    var a;
+    try { a = new URL(u); } catch (e) { return false; }
+    if (a.protocol !== "http:" || a.port !== "8642" || a.pathname !== "/oauth2-callback" || a.search || a.username) return false;
+    var m = a.hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (!m) return false;
+    var o = m.slice(1).map(Number);
+    return o[0] === 10 || (o[0] === 192 && o[1] === 168) || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)
+      || (o[0] === 169 && o[1] === 254) || (o[0] === 100 && o[1] >= 64 && o[1] <= 127);
+  }
+  function store(k, v) {
+    try { sessionStorage.setItem(k, v); } catch (e) {}
+    try { localStorage.setItem(k, v); } catch (e) {}
+  }
+  function take(k) {
+    var v = null;
+    try { v = sessionStorage.getItem(k); sessionStorage.removeItem(k); } catch (e) {}
+    try { v = v || localStorage.getItem(k); localStorage.removeItem(k); } catch (e) {}
+    return v;
+  }
+  var h = params(location.hash);
+  if (h.back && h.go) {
+    // 1. from the Kindle: remember the way back (by the sign-in's state), go to the provider
+    var go, state;
+    try { go = new URL(h.go); state = go.searchParams.get("state"); } catch (e) {}
+    if (!go || go.protocol !== "https:" && go.hostname !== "localhost" && go.hostname !== "127.0.0.1" || !state) {
+      return show("Can't sign in", "The link from the Kindle is incomplete. Start again from the QR code on the Kindle.", true);
+    }
+    if (!kindleCallback(h.back)) {
+      return show("Can't sign in", "This page only returns to a Kindle on your own network.", true);
+    }
+    store(KEY + state, JSON.stringify({ back: h.back, at: Date.now() }));
+    history.replaceState(null, "", location.pathname);
+    show("Opening your sign-in…", "");
+    location.replace(go.href);
+    return;
+  }
+  var q = params(location.search);
+  if (q.state && (q.code || q.error)) {
+    // 2. from the provider: back to the Kindle with the result
+    var saved = null;
+    try { saved = JSON.parse(take(KEY + q.state) || "null"); } catch (e) {}
+    if (!saved || !kindleCallback(saved.back) || Date.now() - saved.at > 30 * 60 * 1000) {
+      return show("Can't finish signing in", "Open this from the QR code page on the Kindle, in the same browser, and try again.", true);
+    }
+    show("Back to the Kindle…", "Your phone must be on the same Wi‑Fi as the Kindle.");
+    location.replace(saved.back + location.search);
+    return;
+  }
+  show("GZreader sign-in", "This page finishes signing in to Grimmory on a Kindle running GZreader. Start from the QR code on the Kindle.");
+})();
+</script>
+</body>
+</html>

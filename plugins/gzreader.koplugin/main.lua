@@ -288,8 +288,8 @@ function Grimmory:menuItems()
             callback = function() self:keyboardLogin() end,
         },
         {
-            text = _("Single sign-on (SSO) setup"),
-            callback = function() self:showSsoSetup() end,
+            text = _("Single sign-on (SSO)"),
+            sub_item_table_func = function() return self:ssoMenu() end,
             separator = true,
         },
         {
@@ -651,16 +651,100 @@ function Grimmory:openPhonePage(section)
     Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "phone page" })
 end
 
+--- Settings → Connections → Grimmory → Single sign-on (SSO): where the
+--- identity provider sends the phone back (see gzreader_phone.ssoRedirect).
+function Grimmory:ssoMenu()
+    local Phone = require("gzreader_phone")
+    local function current()
+        local _, relay = Phone.ssoRedirect(self, "http://kindle")
+        local v = G_reader_settings:readSetting("gzreader_sso_redirect")
+        if not relay then return "kindle" end
+        if type(v) == "string" and v ~= "relay" and v ~= "kindle" and v:match("^https://") then return "own" end
+        return "relay"
+    end
+    local function set(v)
+        G_reader_settings:saveSetting("gzreader_sso_redirect", v)
+        if v ~= "kindle" then self.store.sso_direct_ok = nil end
+    end
+    return {
+        {
+            text = _("How to set it up"),
+            keep_menu_open = true,
+            callback = function() self:showSsoSetup() end,
+            separator = true,
+        },
+        {
+            text = _("Redirect: GZreader's sign-in page"),
+            help_text = _("One redirect address for every Kindle, on any network. Recommended."),
+            radio = true,
+            checked_func = function() return current() == "relay" end,
+            callback = function() set("relay") end,
+        },
+        {
+            text = _("Redirect: your own copy of the page"),
+            help_text = _("The same page (oauth2-callback.html from GZreader's docs folder), hosted on your own HTTPS address, e.g. next to Grimmory behind Cloudflare."),
+            radio = true,
+            checked_func = function() return current() == "own" end,
+            callback = function(touchmenu) self:askSsoRedirect(touchmenu) end,
+        },
+        {
+            text = _("Redirect: this Kindle's own address"),
+            help_text = _("The Kindle's address on your Wi-Fi (http://<its IP>:8642/oauth2-callback): each Kindle needs its own entry at the identity provider, and its IP must not change."),
+            radio = true,
+            checked_func = function() return current() == "kindle" end,
+            callback = function() set("kindle") end,
+        },
+    }
+end
+
+function Grimmory:askSsoRedirect(touchmenu)
+    local InputDialog = require("ui/widget/inputdialog")
+    local v = G_reader_settings:readSetting("gzreader_sso_redirect")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Your sign-in page"),
+        input = (type(v) == "string" and v:match("^https://")) and v or "https://",
+        input_hint = "https://books.example.com/gzreader/oauth2-callback",
+        description = _("The HTTPS address of your copy of GZreader's oauth2-callback page. It must end in /oauth2-callback."),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local u = (dialog:getInputText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if not u:match("^https://[^/]+/.*oauth2%-callback$") then
+                    UIManager:show(InfoMessage:new{ text = _("The address must start with https:// and end in /oauth2-callback.") })
+                    return
+                end
+                UIManager:close(dialog)
+                G_reader_settings:saveSetting("gzreader_sso_redirect", u)
+                self.store.sso_direct_ok = nil
+                if touchmenu then touchmenu:updateItems() end
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
 function Grimmory:showSsoSetup()
+    local Phone = require("gzreader_phone")
     local iface = NetworkMgr.getNetworkInterfaceName and NetworkMgr:getNetworkInterfaceName() or nil
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
     local ip = Mod.PairServer.localIp(hint_host, iface)
-    local uri = ip and T("http://%1:%2/oauth2-callback", ip, Mod.PairServer.port) or _("(connect to Wi-Fi to see it)")
-    UIManager:show(InfoMessage:new{
+    local origin = ip and T("http://%1:%2", ip, Mod.PairServer.port)
+    local uri, relay = Phone.ssoRedirect(self, origin or "http://<this Kindle's IP>:8642")
+    local text
+    if relay then
         text = _("To sign in with SSO from the QR code page, add this redirect URI to Grimmory's client in your identity provider (Authentik, Pocket ID, Authelia, Keycloak…), next to the existing …/oauth2-callback one:")
             .. "\n\n" .. uri .. "\n\n"
-            .. _("Reserve this Kindle's IP address in your router so the address doesn't change. If your Grimmory admin restricted ALLOWED_ORIGINS, add the same address without /oauth2-callback there too."),
-    })
+            .. _("It's the same for every Kindle, wherever it is. If your Grimmory admin restricted ALLOWED_ORIGINS, add the start of it there too:")
+            .. "\n" .. Phone.originOf(uri) .. "\n\n"
+            .. _("The Kindle must reach Grimmory and the identity provider (e.g. through Cloudflare), and the phone must be on the Kindle's Wi-Fi (or the Kindle on the phone's hotspot) while signing in.")
+    else
+        text = _("To sign in with SSO from the QR code page, add this redirect URI to Grimmory's client in your identity provider (Authentik, Pocket ID, Authelia, Keycloak…), next to the existing …/oauth2-callback one:")
+            .. "\n\n" .. (origin and uri or _("(connect to Wi-Fi to see it)")) .. "\n\n"
+            .. _("Reserve this Kindle's IP address in your router so the address doesn't change. If your Grimmory admin restricted ALLOWED_ORIGINS, add the same address without /oauth2-callback there too.")
+    end
+    UIManager:show(InfoMessage:new{ text = text })
 end
 
 function Grimmory:announceConnected()

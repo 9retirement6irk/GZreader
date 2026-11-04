@@ -45,6 +45,27 @@ end
 
 local function host(url) return tostring(url or ""):gsub("^https?://", ""):gsub("/.*$", "") end
 
+--- GZreader's single sign-on hand-off page (docs/oauth2-callback.html, on the
+--- repository's GitHub Pages): one redirect address for every Kindle.
+Phone.SSO_RELAY = "https://9retirement6irk.github.io/GZreader/oauth2-callback"
+
+--- Where the identity provider sends the phone after signing in, and
+--- whether it's a hand-off page (true) or the Kindle itself (false).
+--- Settings → Connections → Grimmory → Single sign-on redirect: "relay"
+--- (GZreader's page, the default), "kindle" (this Kindle's own address, as
+--- before 1.11: kept for Kindles that signed in that way), or the address
+--- of the same page hosted elsewhere (https://…/oauth2-callback).
+function Phone.ssoRedirect(plugin, origin)
+    local v = G_reader_settings:readSetting("gzreader_sso_redirect")
+    if v == nil and plugin.store.sso_direct_ok then v = "kindle" end
+    if v == "kindle" then return origin .. "/oauth2-callback", false end
+    if type(v) == "string" and v:match("^https://[^/]+/.*oauth2%-callback$") then return v, true end
+    return Phone.SSO_RELAY, true
+end
+
+--- scheme://host[:port] of an address (what Grimmory compares the Origin with).
+function Phone.originOf(u) return tostring(u):match("^(https?://[^/?#]+)") end
+
 -- The Notes and Calendar tabs' modules (their connect, disconnect, links…),
 -- loaded when an action needs them; the page itself is drawn from the stored
 -- settings only.
@@ -71,7 +92,8 @@ local function state(S, flash)
     -- Grimmory
     local store = plugin.store
     local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username,
-        host = host(store.server), redirect_uri = S.origin .. "/oauth2-callback" }
+        host = host(store.server) }
+    g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
     g.form = sec == "grimmory" and flash.form or { server = store.server, username = store.username }
     if sec == "grimmory" then g.error = flash.error end
     -- single sign-on: asked from Grimmory when the form is in view (not
@@ -252,8 +274,9 @@ function Phone.open(plugin, opts)
         if not auth_ep then return grimmoryFailed(form, _("Couldn't reach your identity provider from the Kindle.")) end
         local st = Api.oidcState(base)
         if not st then return grimmoryFailed(form, _("Grimmory didn't start single sign-on. Try again.")) end
+        local redirect_uri, relay = Phone.ssoRedirect(plugin, S.origin)
         S.sso = { base = base, state = st, verifier = PairServer.randomToken(32), nonce = PairServer.randomToken(16),
-            redirect_uri = S.origin .. "/oauth2-callback" }
+            redirect_uri = redirect_uri, relay = relay }
         local q = Api.query{
             response_type = "code", client_id = pd.clientId, redirect_uri = S.sso.redirect_uri,
             scope = Api.str(pd.scopes) or "openid profile email offline_access",
@@ -262,7 +285,11 @@ function Phone.open(plugin, opts)
         }
         Log.info("sso: redirecting phone to", auth_ep, "redirect_uri", S.sso.redirect_uri)
         local sep = auth_ep:find("?", 1, true) and "&" or "?"
-        return 302, nil, auth_ep .. sep .. q:sub(2)
+        local auth_url = auth_ep .. sep .. q:sub(2)
+        if not relay then return 302, nil, auth_url end
+        -- the hand-off page remembers the way back to this Kindle, then opens the provider
+        local esc = require("socket.url").escape
+        return 302, nil, redirect_uri .. "#back=" .. esc(S.origin .. "/oauth2-callback") .. "&go=" .. esc(auth_url)
     end
 
     local function finishSso(query)
@@ -281,9 +308,10 @@ function Phone.open(plugin, opts)
         local ok, err = plugin.api:oidcExchange(session.base, {
             code = params.code, code_verifier = session.verifier, redirect_uri = session.redirect_uri,
             nonce = session.nonce, state = session.state,
-        }, S.origin)
+        }, Phone.originOf(session.redirect_uri))
         if ok then
-            Log.info("sso: signed in as", tostring(plugin.store.username))
+            Log.info("sso: signed in as", tostring(plugin.store.username), session.relay and "(hand-off page)" or "(this Kindle's address)")
+            if not session.relay then plugin.store.sso_direct_ok = true end
             plugin:afterLogin(previous)
             return grimmoryOk()
         end

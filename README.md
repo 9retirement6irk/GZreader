@@ -331,9 +331,9 @@ Scan the setup guide's QR code, or open it later: **Home menu → Send books fro
 your phone**, or **Connect with QR code** in the Grimmory, Notes or Calendar tab. The
 phone page has a section for each; your phone and Kindle must be on the same Wi‑Fi,
 and the page stops when you press Back on the Kindle. For single sign-on, add
-`http://<kindle-ip>:8642/oauth2-callback` as an extra redirect URI for Grimmory's client
-at your identity provider; the exact address is shown on the phone page. Grimmory itself
-needs no changes. Connection and sync options are in **Settings → Connections** (Grimmory, and Memos for the Notes tab);
+`https://9retirement6irk.github.io/GZreader/oauth2-callback` as an extra redirect URI
+for Grimmory's client at your identity provider, once, for every Kindle (see
+[Single sign-on](GZREADER.md#single-sign-on-sso--oidc)). Grimmory itself needs no changes. Connection and sync options are in **Settings → Connections** (Grimmory, and Memos for the Notes tab);
 read aloud is in **Settings → Reader**, and Wi‑Fi saving and the diagnostic log are in
 **Settings → General**.
 

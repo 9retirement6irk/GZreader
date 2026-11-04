@@ -219,11 +219,42 @@ when needed and the diagnostic log in Settings → General; updates in Settings
 ### Single sign-on (SSO / OIDC)
 
 If Grimmory has SSO turned on, the phone page shows **Sign in with <provider>**.
-One-time setup: add `http://<kindle-ip>:8642/oauth2-callback` as an extra
-redirect URI on Grimmory's client at your identity provider (shown on the QR
-page and under Grimmory → Single sign-on (SSO) setup). Reserve the Kindle's
-IP in your router. If `ALLOWED_ORIGINS` is set in Grimmory, add
-`http://<kindle-ip>:8642` too.
+One-time setup, the same for every Kindle: add
+
+    https://9retirement6irk.github.io/GZreader/oauth2-callback
+
+as an extra redirect URI on Grimmory's client at your identity provider
+(Authentik, Pocket ID, Authelia, Keycloak…), next to Grimmory's own
+`…/oauth2-callback`. If `ALLOWED_ORIGINS` is set in Grimmory, add
+`https://9retirement6irk.github.io` there too. The address is also shown on the
+phone page and under **Settings → Connections → Grimmory → Single sign-on (SSO)
+→ How to set it up**.
+
+How it works: the identity provider sends the phone back to that page
+([docs/oauth2-callback.html](docs/oauth2-callback.html), a few lines of
+JavaScript with no server behind it), which hands the sign-in code straight
+to the Kindle; the Kindle then finishes signing in with Grimmory. The code is
+useless without a secret only the Kindle has (PKCE), and the page only
+forwards to a Kindle's address on a private network (port 8642). So:
+
+- Grimmory and the identity provider can be anywhere the Kindle can reach,
+  e.g. on the internet through Cloudflare. Nothing has to point at a Kindle's
+  IP, and readers can sign in from their own homes.
+- While signing in, the phone has to be on the same Wi‑Fi as the Kindle
+  (any Wi‑Fi: the reader's own, or the Kindle on the phone's hotspot), like
+  the rest of the phone page.
+
+Under **Single sign-on (SSO)** you can also choose:
+
+- **Redirect: your own copy of the page**: host `oauth2-callback.html` yourself
+  on HTTPS at an address ending in `/oauth2-callback` (e.g.
+  `https://books.example.com/gzreader/oauth2-callback`, served next to Grimmory
+  behind Cloudflare), type that address on the Kindle, and register it at the
+  identity provider instead.
+- **Redirect: this Kindle's own address**: `http://<kindle-ip>:8642/oauth2-callback`,
+  as before 1.11 (one entry per Kindle; reserve its IP in your router; add
+  `http://<kindle-ip>:8642` to `ALLOWED_ORIGINS` if it's set). Kindles that
+  already signed in this way keep using it.
 
 ## Browsing Grimmory
 

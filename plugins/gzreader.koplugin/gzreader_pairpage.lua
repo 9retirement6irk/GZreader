@@ -121,7 +121,9 @@ local function grimmorySection(st, base)
         sso_block = '<button class="' .. ((type(sso) == "table" and sso.only) and "" or "alt")
             .. '" type="submit" name="action" value="sso" formnovalidate>' .. esc(label) .. "</button>"
             .. '<p class="note">For single sign-on, your identity provider must allow this redirect address: <code>'
-            .. esc(g.redirect_uri or "") .. "</code></p>"
+            .. esc(g.redirect_uri or "") .. "</code>"
+            .. (g.sso_relay and " (the same for every Kindle; the phone just needs to be on the Kindle's Wi-Fi to finish)" or "")
+            .. "</p>"
     end
     local pw = input("g_username", "username", "Username", (g.form or {}).username, 'autocomplete="username" ' .. NAME_ATTRS)
         .. '<label for="g_password">Password</label><input id="g_password" name="password" type="password" autocomplete="current-password">'
