@@ -465,7 +465,13 @@ function M.getBadgeScale(config)
 end
 
 function M.getBadgeFontSize(config, size, ratio, minimum)
-    return math.max(math.ceil(minimum * M.getBadgeScale(config)), math.floor(size * ratio))
+    -- GZreader: `size` is in pixels, and Font:getFace scales a font size by the
+    -- screen again: divide it back (no change at 600 pixels wide, the Kindle 3;
+    -- badges were 1.8 times too big on the Paperwhite 3)
+    local scale = 1
+    local ok, Device = pcall(require, "device")
+    if ok and Device.screen and Device.screen.scaleBySize then scale = Device.screen:scaleBySize(1000) / 1000 end
+    return math.max(math.ceil(minimum * M.getBadgeScale(config)), math.floor(size * ratio / scale))
 end
 
 local function get_badge_rgb(config)

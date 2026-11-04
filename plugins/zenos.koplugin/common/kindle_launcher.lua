@@ -80,7 +80,7 @@ local function record_installed(path, installed_version, destination)
             WHERE installed_packages.version <> excluded.version
                 OR installed_packages.install_path <> excluded.install_path
         ]]))
-        stmt:bind("zen-reader", "ZenOS Launcher", installed_version, "ZenLabs",
+        stmt:bind("zen-reader", "GZreader launcher", installed_version, "GZreader",
             destination, os.date("!%Y-%m-%dT%H:%M:%SZ")):step()
     end)
     if stmt then pcall(stmt.close, stmt) end
@@ -88,15 +88,30 @@ local function record_installed(path, installed_version, destination)
     return ok, failure
 end
 
+--- GZreader: ZenOS's own launcher (documents/ZenReader.sh, "ZenOS" on the
+--- Kindle's home screen) is replaced by GZreader.sh ("GZreader", its logo).
+local function removeZenLauncher(destination)
+    local old = destination:gsub("[^/]+$", "ZenReader.sh")
+    if old == destination then return end
+    local contents = read_file(old)
+    if contents and contents:find("# Name: ZenOS", 1, true) and contents:find("koreader.sh", 1, true) then
+        local ok, err = os.remove(old)
+        if ok then logger.info("Replaced the ZenOS launcher with GZreader's:", old)
+        else logger.warn("Could not remove the ZenOS launcher:", old, err) end
+    end
+end
+
 function M.install(plugin_root, destination)
     local ConfigManager = require("config/manager")
     local config = ConfigManager.get() or ConfigManager.load()
-    local launcher_added = config._meta.kindle_launcher_added == true
+    pcall(removeZenLauncher, destination)
+    -- (GZreader's own flag: ZenOS's kindle_launcher_added was for ZenReader.sh)
+    local launcher_added = config._meta.gz_launcher_added == true
     if launcher_added and not lfs.attributes(destination, "mode") then return true end
     local legacy_launcher = destination:gsub("[^/]+$", "ZenKOReader.sh")
     if lfs.attributes(legacy_launcher, "mode") == "file" then return true end
 
-    local bundled = read_file(plugin_root .. "/kindle-launcher/ZenReader.sh")
+    local bundled = read_file(plugin_root .. "/kindle-launcher/GZreader.sh")
     if not bundled then return true end
     local bundled_version = version(bundled)
     if not bundled_version then return false, "Bundled launcher is missing or has no version" end
@@ -127,7 +142,7 @@ function M.install(plugin_root, destination)
         if not ok then logger.warn("Could not mark ZenOS Launcher installed in ZenPM:", path, err) end
     end
     if launcher_added then return true end
-    config._meta.kindle_launcher_added = true
+    config._meta.gz_launcher_added = true
     return ConfigManager.save(config)
 end
 

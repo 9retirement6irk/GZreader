@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.10.0",
+        changes = {
+            "Read aloud on the Kindle Touch: in a book, swipe down from the top and tap Listen in the quick panel (again to stop). The first time, a short test finds the Kindle's voice. The keyboard Kindles get the same button besides Shift + Sym.",
+            "Paperwhite 3: Home's text was nearly twice the size it is on a Kindle 3 (the reading stats, the strip's tabs, the \"start reading a book\" lines, the badges on covers, the clock and quote widgets): ZenOS scaled those fonts for the bigger screen twice. They're now the size they are on a Kindle 3. Nothing changes on the 600 × 800 Kindles.",
+            "On the Kindle's own home screen (firmware 5: Kindle Touch, Paperwhite), GZreader showed up as \"ZenOS\". It is now \"GZreader\" with GZreader's logo; the old ZenOS entry is removed.",
+        },
+    },
+    {
         version = "1.9.0",
         changes = {
             "GZreader now runs on the Kindle 4 and the Kindle Touch too: install gzreader-kindle-1.9.0.zip (the Kindle 2, Keyboard and DX keep gzreader-kindle-legacy, the Paperwhite 3 gzreader-kindlehf or -kindlepw2).",

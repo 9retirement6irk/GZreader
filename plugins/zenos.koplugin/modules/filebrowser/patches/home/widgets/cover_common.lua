@@ -353,7 +353,7 @@ end
 function M.make_empty_cover_widget(source, max_w, max_h, opts)
     local message = TextBoxWidget:new{
         text = M.get_empty_message(source),
-        face = Font:getFace("smallinfofont", Screen:scaleBySize(10)),
+        face = Font:getFace("smallinfofont", 10),
         width = max_w,
         alignment = "center",
         alignment_strict = true,

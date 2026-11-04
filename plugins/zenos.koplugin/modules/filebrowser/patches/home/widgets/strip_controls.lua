@@ -58,8 +58,9 @@ local function get_control_face(style, size)
 end
 
 local function fit_face(labels, width, style, maximum, minimum)
-    local size = maximum or Device.screen:scaleBySize(10)
-    minimum = minimum or Device.screen:scaleBySize(7)
+    -- GZreader: font sizes as Font:getFace takes them (it scales by the screen itself)
+    local size = maximum or 10
+    minimum = minimum or 7
     while size > minimum do
         local face = get_control_face(style, size)
         local fits = true
@@ -157,7 +158,7 @@ function M.build(opts)
     local fit_width = flexible_count > 0
         and math.floor(flexible_width / flexible_count) or 1
     local face = fit_face(labels, math.max(1, fit_width), text_style,
-        Device.screen:scaleBySize(text_style.font_size))
+        text_style.font_size)
     local flexible_cell_width = flexible_count > 0
         and math.floor(flexible_width / flexible_count) or 0
     local flexible_remainder = flexible_width - flexible_cell_width * flexible_count
@@ -185,7 +186,7 @@ function M.build(opts)
                 dimen = Geom:new{ w = cell_width, h = inner_height },
                 TextWidget:new{
                     text = icon,
-                    face = Font:getFace("smallinfofont", Device.screen:scaleBySize(14)),
+                    face = Font:getFace("smallinfofont", 14),
                     padding = 0,
                 },
             }
@@ -194,9 +195,9 @@ function M.build(opts)
                 or labels[label_index]
             local label_face = face
             if entry.id == opts.active_id and opts.active_group then
-                local base_size = face.orig_size or face.size or Device.screen:scaleBySize(10)
+                local base_size = face.orig_size or 10
                 label_face = fit_face({ label }, cell_width, text_style, base_size,
-                    math.max(Device.screen:scaleBySize(7), base_size - 1))
+                    math.max(7, base_size - 1))
             end
             content = FrameContainer:new{
                 width = cell_width,

@@ -176,11 +176,13 @@ browser talking to the emulated Kindle.</sub>
   Filter and More in Notes; ◀ Today ▶ and More in Calendar; tap a checklist item to
   tick it; the note editor with the on-screen keyboard.
 - Sized for each screen (the Paperwhite's 300 dpi). The Kindle Touch plays
-  audiobooks with the player's buttons; the Paperwhite has no audio.
+  audiobooks with the player's buttons and reads aloud from the quick panel; the
+  Paperwhite has no audio.
 
-### 🔊 Read aloud (Kindle 2, 3, DX)
+### 🔊 Read aloud (Kindle 2, 3, DX, Touch)
 - Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
-  Kindle's Text-to-Speech.
+  Kindle's Text-to-Speech; on the Kindle Touch, **Listen** in the quick panel (swipe
+  down from the top while reading).
 - The sentence being read is **highlighted** and **pages turn by themselves**.
 - Speed and volume controls; the Kindle's volume buttons work while reading
   (and everywhere else in GZreader).

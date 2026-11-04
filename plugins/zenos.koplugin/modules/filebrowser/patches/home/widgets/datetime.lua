@@ -47,12 +47,12 @@ local function new_clock_widgets(Screen, time_font_name, date_font_name,
     date_px = date_px or math.max(8, math.floor(time_px * 0.36))
     local tw = TextWidget:new{
         text = time_str,
-        face = Font:getFace(time_font_name, Screen:scaleBySize(time_px)),
+        face = Font:getFace(time_font_name, time_px),
         bold = true,
     }
     local dw = TextWidget:new{
         text = date_str,
-        face = Font:getFace(date_font_name, Screen:scaleBySize(date_px)),
+        face = Font:getFace(date_font_name, date_px),
         fgcolor = Blitbuffer.COLOR_GRAY_3,
     }
     local ts = tw:getSize()

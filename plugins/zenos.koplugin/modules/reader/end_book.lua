@@ -429,7 +429,7 @@ function EndBook:rebuild()
                     and require("modules/filebrowser/patches/library_font").getFontName() or style.font_face
                 stats_label = TextWidget:new{
                     text = (label or "") ~= "" and label or _("Statistics"),
-                    face = require("ui/font"):getFace(font, Screen:scaleBySize(style.font_size)),
+                    face = require("ui/font"):getFace(font, style.font_size),
                     bold = style.bold == true, padding = 0, max_width = content_w,
                 }
                 stats_label_h = stats_label:getSize().h + Screen:scaleBySize(4)

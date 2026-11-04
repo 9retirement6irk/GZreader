@@ -107,7 +107,7 @@ local function preferred_height(ctx)
     local padding = Screen:scaleBySize(8)
     local vertical_padding = automatic_font_size and 0 or Screen:scaleBySize(4)
     local content_w = math.max(30, (tonumber(ctx.width) or Screen:getWidth()) - padding * 2)
-    local quote_face = Font:getFace("smallinfofont", Screen:scaleBySize(quote_font_size))
+    local quote_face = Font:getFace("smallinfofont", quote_font_size)
     local quote_probe = TextBoxWidget:new{
         text = "A\nA",
         width = content_w,
@@ -120,7 +120,7 @@ local function preferred_height(ctx)
     if quotes.show_author ~= false or quotes.show_title ~= false then
         local author_face = Font:getFace(
             "smallinfofont",
-            Screen:scaleBySize(math.max(6, math.floor(quote_font_size * 9 / 10)))
+            math.max(6, math.floor(quote_font_size * 9 / 10))
         )
         local author_probe = TextBoxWidget:new{
             text = "\226\128\148 A",
@@ -181,13 +181,13 @@ return {
                 local measured = font_measurements[candidate]
                 if measured then return measured.fits end
                 local candidate_face = Font:getFace(
-                    "smallinfofont", Screen:scaleBySize(candidate)
+                    "smallinfofont", candidate
                 )
                 local author_h = 0
                 if attribution ~= "" then
                     local candidate_author_face = Font:getFace(
                         "smallinfofont",
-                        Screen:scaleBySize(math.max(6, math.floor(candidate * 9 / 10)))
+                        math.max(6, math.floor(candidate * 9 / 10))
                     )
                     author_h = measure_height{
                         text = "\226\128\148 " .. attribution,
@@ -230,10 +230,10 @@ return {
                 min_line_height_step, 11, line_height_fits) / 20
         end
 
-        local quote_face = Font:getFace("smallinfofont", Screen:scaleBySize(quote_font_size))
+        local quote_face = Font:getFace("smallinfofont", quote_font_size)
         local author_face = Font:getFace(
             "smallinfofont",
-            Screen:scaleBySize(math.max(6, math.floor(quote_font_size * 9 / 10)))
+            math.max(6, math.floor(quote_font_size * 9 / 10))
         )
         local two_quote_lines_h
         local three_quote_lines_h

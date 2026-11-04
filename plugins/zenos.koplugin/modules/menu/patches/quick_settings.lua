@@ -95,9 +95,10 @@ local function apply_quick_settings()
     -- ============================================================
 
     local config_default = {
-        button_order = { "wifi", "night", "rotate", "restart", "sleep" },
+        button_order = { "wifi", "night", "read_aloud", "rotate", "restart", "sleep" },
         show_buttons = {
             wifi = true,
+            read_aloud = true, -- GZreader: shown only in a book, on a Kindle with audio
             bluetooth = false,
             night = true,
             frontlight = false,
@@ -241,6 +242,18 @@ local function apply_quick_settings()
                 end
             end
             config.button_order = deduped
+        end
+        -- GZreader: Read aloud once into an older saved order (after Night)
+        if not config.gz_read_aloud_added then
+            config.gz_read_aloud_added = true
+            local has = false
+            for _i, id in ipairs(config.button_order) do if id == "read_aloud" then has = true end end
+            if not has then
+                local at = #config.button_order + 1
+                for i, id in ipairs(config.button_order) do if id == "night" then at = i + 1 end end
+                table.insert(config.button_order, at, "read_aloud")
+                config.show_buttons.read_aloud = true
+            end
         end
         -- Sync custom button IDs into button_order and show_buttons
         if type(config.custom_buttons) ~= "table" then config.custom_buttons = {} end
@@ -613,6 +626,28 @@ local function apply_quick_settings()
                 G_reader_settings:saveSetting("night_mode", not night_mode)
                 touch_menu:updateItems(1)
                 UIManager:setDirty("all", getFullRefreshMode())
+            end,
+        },
+        -- GZreader: read aloud (the Kindle's voice), in a book on a Kindle with audio
+        read_aloud = {
+            icon = "quick_read_aloud",
+            label = _("Listen"), -- (short: "Read aloud" doesn't fit under the icon)
+            reader_action = true,
+            visible_func = function()
+                local ok, R = pcall(require, "apps/reader/readerui")
+                local gz = ok and R.instance and R.instance.gzreader
+                return gz and gz.tts and gz.tts.supported and gz.tts:supported() and true or false
+            end,
+            active_func = function()
+                local ok, R = pcall(require, "apps/reader/readerui")
+                local gz = ok and R.instance and R.instance.gzreader
+                return gz and gz.tts and gz.tts.active and true or false
+            end,
+            callback = function(touch_menu)
+                local ok, R = pcall(require, "apps/reader/readerui")
+                local gz = ok and R.instance and R.instance.gzreader
+                if touch_menu and touch_menu.closeMenu then touch_menu:closeMenu() end
+                if gz and gz.tts then UIManager:nextTick(function() gz.tts:toggle() end) end
             end,
         },
         frontlight = {

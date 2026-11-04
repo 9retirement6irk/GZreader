@@ -39,9 +39,8 @@ local function showIconPickerDialog(icons_list, current_icon, on_select)
 
     local sw, sh   = Screen:getWidth(), Screen:getHeight()
     local icon_sz  = Screen:scaleBySize(42)
-    local label_size = math.max(Screen:scaleBySize(8),
-        (Font.sizemap and Font.sizemap["xx_smallinfofont"] or Screen:scaleBySize(18))
-        - Screen:scaleBySize(2))
+    local label_size = math.max(8, -- (Font:getFace scales it)
+        (Font.sizemap and Font.sizemap["xx_smallinfofont"] or 18) - 2)
     local label_face = Font:getFace("smallinfofont", label_size)
     local label_probe = TW:new{ text = "Wg", face = label_face, padding = 0 }
     local label_h  = label_probe:getSize().h

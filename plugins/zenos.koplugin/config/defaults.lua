@@ -26,6 +26,7 @@ local defaults = {
         lookup_plugin_items_default_migrated = false,
         tbr_collection_migrated = false,
         kindle_launcher_added = false,
+        gz_launcher_added = false, -- GZreader: documents/GZreader.sh (common/kindle_launcher.lua)
     },
     updater = {
         just_updated_version = "",

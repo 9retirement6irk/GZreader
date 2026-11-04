@@ -82,7 +82,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi |
 | Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) |
 | Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | — | — |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — |
 | Volume buttons | yes | — | — | — |
 | Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own |
 
@@ -134,17 +134,21 @@ run the same GZreader with ZenOS's touch interface:
   right); tap an event for its details, a day in Week or Month to open it.
 - **The phone page:** tap Done on the Kindle when you're done (instead of
   Back).
+- **On the Kindle's own home screen** (firmware 5), GZreader shows as a
+  "GZreader" book with its logo (`documents/GZreader.sh`); tapping it starts
+  GZreader. It replaces ZenOS's "ZenOS" one from earlier versions.
 - **Reading:** tap the right side for the next page, the left side for the
   previous one, the top for the menu (contents, bookmarks, search, fonts…);
   swipe up for the page browser. ZenOS shows a few tips the first time.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
   close (Settings → Reader → Test audiobook playback finds what works on
-  its firmware). The Paperwhite has no speaker or headphone jack, so
-  audiobooks aren't offered there. Read aloud needs the keyboard Kindles'
-  Shift + Sym and their speech service.
+  its firmware). It also reads aloud with the Kindle's voice: in a book,
+  swipe down from the top and tap **Listen** in the quick panel (again to
+  stop); the first time, a short test finds the Kindle's voice. The
+  Paperwhite has no speaker or headphone jack, so neither is offered there.
 - Everything is sized for the screen (the Paperwhite's 1072 × 1448 at 300
-  dpi). The Kindle's own time zone is used (the time zone setting is for the
+  dpi): Home's text is the same size as on a Kindle 3. The Kindle's own time zone is used (the time zone setting is for the
   Kindles without one).
 
 ## Keyboard (Kindle 2, 3, DX)

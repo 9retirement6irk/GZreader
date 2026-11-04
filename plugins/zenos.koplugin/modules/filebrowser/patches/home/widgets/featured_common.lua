@@ -292,7 +292,7 @@ function M.build(ctx, source_key)
         end
         local title_probe = TextWidget:new{
             text = book.title or "", bold = title_style.bold,
-            face = get_text_face(title_style, Screen:scaleBySize(math.floor(title_style.font_size * detail_scale + 0.5))),
+            face = get_text_face(title_style, math.floor(title_style.font_size * detail_scale + 0.5)),
         }
         if title_probe:getSize().w <= text_w then fitting_lines = fitting_lines - 1 end
         WidgetResources.free(title_probe)
@@ -314,7 +314,7 @@ function M.build(ctx, source_key)
             { progress_style, scale, 1, module_cfg.show_progress ~= false and book.status ~= "new" and book.status ~= "tbr", "smallinfofont" },
         }) do
             if entry[4] then
-                local face = get_text_face(entry[1], Screen:scaleBySize(math.floor(entry[1].font_size * entry[2] + 0.5)), entry[5])
+                local face = get_text_face(entry[1], math.floor(entry[1].font_size * entry[2] + 0.5), entry[5])
                 text_budget = math.max(text_budget, math.ceil(line_height(entry[1], face) / entry[3]))
             end
         end
@@ -339,13 +339,13 @@ function M.build(ctx, source_key)
         end
         return face
     end
-    local title_face = fitting_face(title_style, Screen:scaleBySize(math.floor(title_style.font_size * detail_scale + 0.5)))
-    local meta_face = fitting_face(author_style, Screen:scaleBySize(math.floor(author_style.font_size * detail_scale + 0.5)))
-    local series_face = fitting_face(series_style, Screen:scaleBySize(math.floor(series_style.font_size * scale + 0.5)))
+    local title_face = fitting_face(title_style, math.floor(title_style.font_size * detail_scale + 0.5))
+    local meta_face = fitting_face(author_style, math.floor(author_style.font_size * detail_scale + 0.5))
+    local series_face = fitting_face(series_style, math.floor(series_style.font_size * scale + 0.5))
     local stats_face = fitting_face(progress_style,
-        Screen:scaleBySize(math.floor(progress_style.font_size * scale + 0.5)), "smallinfofont")
+        math.floor(progress_style.font_size * scale + 0.5), "smallinfofont")
     local status_face = ctx.showBookStatus and fitting_face(status_style,
-        Screen:scaleBySize(math.floor(status_style.font_size * scale + 0.5)), "smallinfofont")
+        math.floor(status_style.font_size * scale + 0.5), "smallinfofont")
     local desc_face = fitting_face(description_style, description_style.font_size)
     if ctx.fitToBounds then description_style.font_size = desc_face.orig_size or description_style.font_size end
     local raw_description = type(book.description) == "string" and book.description or ""

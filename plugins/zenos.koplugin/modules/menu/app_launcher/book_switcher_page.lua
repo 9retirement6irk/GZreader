@@ -253,7 +253,7 @@ function M.build(opts)
     if #books == 0 then
         local message = TextBoxWidget:new{
             text = _("No books to switch to"),
-            face = Font:getFace("smallinfofont", Screen:scaleBySize(18)),
+            face = Font:getFace("smallinfofont", 18),
             width = math.max(1, inner_w - padding * 2),
             alignment = "center",
             alignment_strict = true,

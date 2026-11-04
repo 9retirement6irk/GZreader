@@ -265,7 +265,7 @@ function ZenUI:init()
         if _plugin_root and require("device"):isKindle() then
             local ok, installed, err = pcall(function()
                 return require("common/kindle_launcher").install(
-                    _plugin_root, "/mnt/us/documents/ZenReader.sh")
+                    _plugin_root, "/mnt/us/documents/GZreader.sh")
             end)
             if not ok or not installed then
                 logger.warn("Kindle launcher install failed:", err or installed)

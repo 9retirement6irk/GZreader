@@ -520,7 +520,7 @@ local function apply_opening_banner()
         local dimen = Geom:new{ x = bx, y = by, w = bw, h = banner_h }
         return OpeningBanner:new{
             dimen                = dimen,
-            font_size            = math.ceil(Screen:scaleBySize(big and 16 or 7) * badge_scale),
+            font_size            = math.ceil((big and 16 or 7) * badge_scale), -- (Font:getFace scales it)
             dark_banner          = dark_banner,
             round_bottom_corners = round_bottom and true or false,
             cover_border         = cover and cover.border or 0,

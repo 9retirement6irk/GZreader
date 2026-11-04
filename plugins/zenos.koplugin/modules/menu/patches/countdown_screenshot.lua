@@ -56,7 +56,7 @@ function CountdownBar:init()
             dimen = Geom:new{ w = screen_w, h = bar_h },
             TextWidget:new{
                 text    = self.count,
-                face    = Font:getFace("infofont", Screen:scaleBySize(13)),
+                face    = Font:getFace("infofont", 13),
                 fgcolor = Blitbuffer.COLOR_WHITE,
             },
         },

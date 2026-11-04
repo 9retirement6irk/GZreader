@@ -412,7 +412,7 @@ local function createDayBookCard(width, title_text, minutes, pages, stat_style)
     stat_style = normalizeStatStyle(stat_style)
     local title = TextWidget:new{
         text = tostring(title_text or ""),
-        face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10)),
+        face = Font:getFace("smallinfofontbold", 10),
         max_width = inner_w,
     }
     local gap = Screen:scaleBySize(stat_style == "divider" and 8 or stat_style == "outline" and 9 or 6)
@@ -467,7 +467,7 @@ local function makeBlockPanel(page_w, content_w, title, body, height)
             dimen = Geom:new{ w = inner_w, h = title_h },
             TextWidget:new{
                 text = title,
-                face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10)),
+                face = Font:getFace("smallinfofontbold", 10),
                 max_width = inner_w,
             },
         }
@@ -493,7 +493,7 @@ end
 local function createFallbackCalendarWidget(width, height)
     local text = TextWidget:new{
         text = _("Statistics calendar is unavailable"),
-        face = Font:getFace("smallinfofont", Screen:scaleBySize(14)),
+        face = Font:getFace("smallinfofont", 14),
         fgcolor = Blitbuffer.COLOR_DARK_GRAY,
         max_width = width - Screen:scaleBySize(16),
     }
@@ -546,7 +546,7 @@ local function showCalendarDaySummary(stats_plugin, visible_day_ts, stat_style)
         width = width,
         align = "left",
         title = title_text,
-        title_face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10)),
+        title_face = Font:getFace("smallinfofontbold", 10),
         show_parent = dialog,
     }
     local close_button = ZenModalClose.installTitleBar(
@@ -560,7 +560,7 @@ local function showCalendarDaySummary(stats_plugin, visible_day_ts, stat_style)
         items[#items + 1] = VerticalSpan:new{ width = Screen:scaleBySize(8) }
         items[#items + 1] = TextWidget:new{
             text = _("No reading data"),
-            face = Font:getFace("smallinfofont", Screen:scaleBySize(14)),
+            face = Font:getFace("smallinfofont", 14),
             fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             max_width = scroll_w,
         }
@@ -714,7 +714,7 @@ local function tuneEmbeddedCalendar(calendar, populate)
         calendar.title_bar.right_icon = nil
         calendar.title_bar.has_right_icon = false
         calendar.title_bar.right_button = nil
-        calendar.title_bar.title_face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10))
+        calendar.title_bar.title_face = Font:getFace("smallinfofontbold", 10)
         calendar.title_bar.title_top_padding = 0
         calendar.title_bar.bottom_v_padding = 0
         calendar.title_bar:clear()

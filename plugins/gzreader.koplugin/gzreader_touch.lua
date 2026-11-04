@@ -33,8 +33,9 @@ function Touch.audio()
     return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3" or m == "KindleTouch"
 end
 
---- Read aloud (the Kindle's voice, Shift + Sym): the Kindles with a keyboard.
-function Touch.tts() return Touch.audio() and Touch.keys() end
+--- Read aloud (the Kindle's voice): every Kindle with audio. Shift + Sym on
+--- a keyboard; the quick panel's Read aloud button on a touch screen.
+function Touch.tts() return Touch.audio() end
 
 --- The letter for a list item only when there are keys to press it.
 function Touch.letter(key) if Touch.keys() then return key end end

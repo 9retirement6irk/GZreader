@@ -124,7 +124,7 @@ function M.build(opts)
     if not book then
         local message = TextBoxWidget:new{
             text = _("Book details"),
-            face = Font:getFace("smallinfofont", Screen:scaleBySize(18)),
+            face = Font:getFace("smallinfofont", 18),
             width = math.max(1, inner_w - padding * 2),
             alignment = "center",
             alignment_strict = true,

@@ -93,10 +93,10 @@ local function create_goal_summary_card(width, row)
     local inner_w = math.max(1, width - padding * 2)
     local title = TextWidget:new{
         text = row.summary_label,
-        face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10)),
+        face = Font:getFace("smallinfofontbold", 10),
         max_width = inner_w,
     }
-    local value_face = Font:getFace("smallinfofont", Screen:scaleBySize(12))
+    local value_face = Font:getFace("smallinfofont", 12)
     local values = { align = "center" }
     local stats = {
         tostring(row.pages_current) .. " / " .. tostring(row.pages_target) .. " " .. _("pages"),
@@ -164,7 +164,7 @@ local function show_goals_summary(rows)
         width = width,
         align = "left",
         title = _("Reading goals"),
-        title_face = Font:getFace("smallinfofontbold", Screen:scaleBySize(10)),
+        title_face = Font:getFace("smallinfofontbold", 10),
         show_parent = dialog,
     }
     local close_button = ZenModalClose.installTitleBar(
@@ -317,7 +317,7 @@ return {
         local row_h = math.max(1, math.floor(height / #goal_rows))
 
         for px = max_px, min_px, -1 do
-            local face = Font:getFace("smallinfofont", Screen:scaleBySize(px))
+            local face = Font:getFace("smallinfofont", px)
             local lw, rw = 0, 0
             local candidate_ink_top
             local candidate_ink_bottom
@@ -358,7 +358,7 @@ return {
             end
         end
         if not chosen_face then
-            chosen_face = Font:getFace("smallinfofont", Screen:scaleBySize(min_px))
+            chosen_face = Font:getFace("smallinfofont", min_px)
             for _i, row in ipairs(goal_rows) do
                 local left_probe = TextWidget:new{ text = row.label, face = chosen_face }
                 local right_probe = TextWidget:new{

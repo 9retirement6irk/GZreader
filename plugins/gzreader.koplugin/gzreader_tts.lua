@@ -426,7 +426,8 @@ function TTS.findVoice(on_done)
             ok_callback = function()
                 settings():saveSetting("gzreader_tts_template", template)
                 Log.info("tts template saved", template.target.prop, TTS.hashText(template.fields))
-                UIManager:show(InfoMessage:new{ text = _("Kindle voice set. Press Shift + Sym while reading to start or stop."), timeout = 4 })
+                UIManager:show(InfoMessage:new{ text = require("gzreader_touch").text(_("Kindle voice set. Press Shift + Sym while reading to start or stop."),
+                    _("Kindle voice set. In a book, Read aloud in the quick panel (swipe down from the top) starts and stops it.")), timeout = 4 })
                 if on_done then on_done(template) end
             end,
             cancel_callback = function()
@@ -577,7 +578,8 @@ function Reader:start()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
     pcall(function() require("gzreader_usage").ttsStart() end)
-    UIManager:show(Notification:new{ text = _("Reading aloud. Shift + Sym to stop.") })
+    UIManager:show(Notification:new{ text = require("gzreader_touch").text(_("Reading aloud. Shift + Sym to stop."),
+        _("Reading aloud. Quick panel → Read aloud to stop.")) })
     self:restartQueue()
     self.poller = function() self.poller_scheduled = false; self:poll() end
     self:schedulePoll()

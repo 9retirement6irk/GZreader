@@ -355,7 +355,8 @@ function Grimmory:sectionItems(section)
         if Mod.Touch.tts() then
             items[#items + 1] = icon("vocabulary", {
                 text = _("Read aloud"),
-                help_text = _("Volume, speed and the Kindle voice for reading aloud (Shift + Sym while reading)."),
+                help_text = Mod.Touch.text(_("Volume, speed and the Kindle voice for reading aloud (Shift + Sym while reading)."),
+                    _("Volume, speed and the Kindle voice for reading aloud (in a book: Read aloud in the quick panel).")),
                 keep_menu_open = true,
                 callback = function() self:showTtsSettings() end,
             })
