@@ -105,6 +105,10 @@ browser talking to the emulated Kindle.</sub>
   calendars, rename a calendar link or give it a new one, remove it.
 - **Send books from your phone** (no Grimmory needed): pick EPUB, PDF, MOBI, AZW3,
   FB2, CBZ, TXT, DOCX… files and they go straight onto the Kindle.
+- **Copy connections from another GZreader** over the Wi‑Fi: one shows a PIN, the
+  other finds it (mDNS) and copies Notes, the CalDAV account and calendar links,
+  plus Grimmory's address and account (it then signs in itself). In the setup
+  guide, Settings → Connections, and the Notes and Calendar tabs.
 - Only Grimmory's login tokens, the Memos token and the CalDAV app password are
   kept on the Kindle, never written to its log.
 

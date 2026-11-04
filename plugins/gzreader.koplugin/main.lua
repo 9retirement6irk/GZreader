@@ -304,6 +304,11 @@ function Grimmory:menuItems()
             callback = function() self:keyboardLogin() end,
         },
         {
+            text = _("Copy from another GZreader"),
+            help_text = _("The address and account from another GZreader on this Wi-Fi (it shows a PIN); then sign in here."),
+            callback = function() require("gzreader_copy").receive(self, { only = "grimmory" }) end,
+        },
+        {
             text = _("Single sign-on (SSO)"),
             sub_item_table_func = function() return self:ssoMenu() end,
             separator = true,
@@ -626,6 +631,33 @@ function Grimmory:onGrimmoryKeyboardLogin()
     return true
 end
 
+--- Copy connections from / send them to another GZreader (setup guide, Settings).
+function Grimmory:onGzCopyReceive()
+    require("gzreader_copy").receive(self)
+    return true
+end
+
+function Grimmory:onGzCopySend()
+    require("gzreader_copy").send(self)
+    return true
+end
+
+--- Settings → Connections → Copy to or from another GZreader.
+function Grimmory:copyItems()
+    return {
+        {
+            text = _("Copy from another GZreader"),
+            help_text = _("Connections (Grimmory, Notes, calendars) from another GZreader on this Wi-Fi. On that one choose Send connections: it shows a PIN to enter here."),
+            callback = function(touchmenu) closeTouchMenu(touchmenu); self:onGzCopyReceive() end,
+        },
+        {
+            text = _("Send connections to another GZreader"),
+            help_text = _("Shows a PIN for the other GZreader, which finds this one on the Wi-Fi and copies what you pick there."),
+            callback = function(touchmenu) closeTouchMenu(touchmenu); self:onGzCopySend() end,
+        },
+    }
+end
+
 --- Connect with QR code: the phone page (gzreader_phone.lua), at Grimmory.
 function Grimmory:startQrPairing()
     if self.pairing then return end
@@ -867,13 +899,15 @@ function Grimmory:announceConnected()
     })
 end
 
-function Grimmory:keyboardLogin()
+--- prefill = { server, username } (copied from another GZreader), or the saved ones.
+function Grimmory:keyboardLogin(prefill)
+    prefill = type(prefill) == "table" and prefill or {}
     local dialog
     dialog = MultiInputDialog:new{
         title = _("Connect to Grimmory"),
         fields = {
-            { text = self.store.server or "", hint = _("Server, e.g. https://books.example.com") },
-            { text = self.store.username or "", hint = _("Username") },
+            { text = prefill.server or self.store.server or "", hint = _("Server, e.g. https://books.example.com") },
+            { text = prefill.username or self.store.username or "", hint = _("Username") },
             { text = "", hint = _("Password"), text_type = "password" },
         },
         buttons = {{

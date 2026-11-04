@@ -37,6 +37,8 @@ MUST = [
     ("plugins/zenos.koplugin/modules/menu/patches/app_launcher.lua", "gz_context"),
     ("plugins/zenos.koplugin/common/ui/icon_menu_item.lua", "items_per_page_default"),
     ("frontend/device/kindle/device.lua", "physicalSize"),
+    ("plugins/zenos.koplugin/modules/settings/zen_settings.lua", "copyItems"),
+    ("plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua", "GzCopyReceive"),
 ]
 
 

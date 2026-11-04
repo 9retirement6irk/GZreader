@@ -84,6 +84,12 @@ Press/Back answer), and the order things happen in on a first start.
   books with Load more (`GZ_MEM_LOADS`, default 16), the tiles, the title's
   back arrow, Authors and Series (the library index) and a search; writes
   `memory.txt`.
+- `copy_send.lua` + `copy_receive.lua` — copying connections between two
+  emulators at once (e.g. `GZ_EMU_MODEL=pw3` sending, `k3` receiving, each
+  with its own `GZ_EMU_TREE`, the same `GZ_COPY_PIN` file; servers: the mock
+  Grimmory on 18080, `demo/mock_memos.py 18082 --sample`,
+  `demo/demo_caldav.py 18083 <dir>`): found by mDNS, the PIN, what's copied,
+  Grimmory's sign-in filled in. The receiver writes `copy.txt`.
 
 ```
 tools/gzreader/emulator/run.sh tools/gzreader/emulator/setup_qr.lua /tmp/emu/setup 20

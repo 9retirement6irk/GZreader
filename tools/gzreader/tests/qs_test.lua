@@ -43,13 +43,15 @@ check(sleep and sleep.choices[1].id == "gz_auto" and sleep.choices[1].checked, "
 local SAVED = {} G_reader_settings.makeTrue = function(_, k) SAVED[k] = true end G_reader_settings.makeFalse = function(_, k) SAVED[k] = false end
 sleep.on_apply({ gz_auto = true }) check(SAVED.gzreader_sleep_auto == true, "choosing it turns GZreader sleep mode on")
 local ids = {} for _, c in ipairs(pages[1].choices) do ids[#ids + 1] = c.id .. (c.checked and "*" or "") end
-check(table.concat(ids, ",") == "qr*,type,skip", "not connected: QR (default), type, skip")
+check(table.concat(ids, ",") == "qr*,type,gz_copy,skip", "not connected: QR (default), type, copy from another GZreader, skip")
 BROADCAST = nil; pages[1].on_apply({ qr = true });   check(BROADCAST == "GrimmoryPair", "QR choice -> GrimmoryPair event")
 BROADCAST = nil; pages[1].on_apply({ type = true }); check(BROADCAST == "GrimmoryKeyboardLogin", "type choice -> keyboard login event")
 BROADCAST = nil; pages[1].on_apply({ skip = true }); check(BROADCAST == nil, "skip -> nothing")
+BROADCAST = nil; pages[1].on_apply({ gz_copy = true }); check(BROADCAST == "GzCopyReceive", "copy choice -> GzCopyReceive event")
 pages = build(true)
 ids = {} for _, c in ipairs(pages[1].choices) do ids[#ids + 1] = c.id .. (c.checked and "*" or "") end
-check(table.concat(ids, ",") == "keep*,qr,type,skip" and pages[1].choices[1].text:match("will"), "already connected: keep (default) shows account")
+check(table.concat(ids, ",") == "keep*,qr,type,gz_copy,gz_send,skip" and pages[1].choices[1].text:match("will"), "already connected: keep (default) shows account; send to another GZreader offered")
+BROADCAST = nil; pages[1].on_apply({ gz_send = true }); check(BROADCAST == "GzCopySend", "send choice -> GzCopySend event")
 BROADCAST = nil; pages[1].on_apply({ keep = true }); check(BROADCAST == nil, "keep -> nothing")
 local np = M.build_install_pages({ plugin = { ui = {} }, config = { navbar = { show_tabs = {} }, _meta = {}, features = {} } })
 check(np[1].title == "Welcome to GZreader", "no Grimmory plugin -> starts with the welcome")

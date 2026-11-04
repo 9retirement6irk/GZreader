@@ -1200,6 +1200,7 @@ function Notes.showConnect(plugin, again)
             require("gzreader_net").run(function() Notes.qrConnect(plugin) end, { reason = "connecting to Memos" })
         end },
         { text = _("Connect by typing"), callback = function() Notes.typeConnect(plugin) end },
+        { text = _("Copy from another GZreader"), callback = function() Notes.copyConnect(plugin) end },
         { text = _("You need your Memos address and an access token: in Memos, open Settings → Access Tokens and create one."),
           select_enabled = false },
     }
@@ -1247,6 +1248,19 @@ function Notes.typeConnect(plugin)
     }
     UIManager:show(d)
     d:onShowKeyboard()
+end
+
+--- Copy Memos from another GZreader on the Wi-Fi (gzreader_copy.lua); back
+--- in the Notes tab, connected, when it worked.
+function Notes.copyConnect(plugin)
+    require("gzreader_copy").receive(plugin, { only = "notes", on_done = function(res)
+        if not (res.notes and Notes.client(plugin):isConnected()) then return end
+        if not (Notes.connect_menu or Notes.board) then return end
+        if Notes.connect_menu then closeTop(Notes.connect_menu); Notes.connect_menu = nil end
+        if Notes.board then closeTop(Notes.board) end
+        Notes.notes = nil
+        Notes.show(plugin)
+    end })
 end
 
 --- Connect with QR code: the phone page (gzreader_phone.lua), at Notes.

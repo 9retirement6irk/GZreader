@@ -163,6 +163,15 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.calendar),
+                -- GZreader: copy connections between two GZreader devices
+                IconItem.decorate({
+                    text = _("Copy to or from another GZreader"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.copyItems) == "function" then return g:copyItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.connect),
             },
         }, icons.connect),
         {

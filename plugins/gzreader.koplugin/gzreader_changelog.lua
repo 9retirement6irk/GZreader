@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.13.0",
+        changes = {
+            "Copy connections from another GZreader over the Wi-Fi: on the one that has them choose Send connections (Settings → Connections → Copy to or from another GZreader, or its setup guide); it shows a PIN. On the new one choose Copy from another GZreader (its setup guide, the same place in Settings, or the Notes or Calendar tab), pick the other from the list and enter the PIN, then tick what to copy: Notes (Memos), the CalDAV account, calendar links, Grimmory.",
+            "Grimmory gives each device its own sign-in, so for Grimmory the address and account are copied and the new one then signs in (the password, or the phone page for single sign-on), with everything else filled in.",
+            "The devices find each other with mDNS; if a router blocks it, type the address shown on the sending one. The PIN protects the copy (SPAKE2 and AES-256-GCM: nothing readable crosses the Wi-Fi, and wrong PINs can't be tried offline; 5 tries); it's good for one copy.",
+        },
+    },
+    {
         version = "1.12.3",
         changes = {
             "Kindle Touch and Paperwhite: tapping the back arrow at the top of the Grimmory tab inside a list (All books, a library, Authors…) made GZreader crash and restart, which looked like the Kindle rebooting. It now goes back one list.",

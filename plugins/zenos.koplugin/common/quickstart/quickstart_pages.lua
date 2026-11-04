@@ -607,7 +607,11 @@ local function grimmoryState(ctx)
     if type(g) ~= "table" or type(g.api) ~= "table" then return nil end
     if not g then return nil end
     local paired = g.api and g.api:isPaired()
-    return { paired = paired, username = g.store and g.store.username }
+    -- GZreader: anything this Kindle could send to another GZreader
+    local st = g.store or {}
+    local connected_any = paired or (st.memos or {}).token ~= nil or (st.caldav or {}).password ~= nil
+        or #(st.calendar_feeds or {}) > 0
+    return { paired = paired, username = g.store and g.store.username, connected_any = connected_any }
 end
 
 local function sendGrimmoryEvent(name)
@@ -627,10 +631,17 @@ local function buildGrimmoryPage(ctx)
     end
     choices[#choices + 1] = { id = "qr",   text = _("Scan a QR code with my phone"), checked = not state.paired }
     choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login on this Kindle"), checked = false }
+    -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
+    choices[#choices + 1] = { id = "gz_copy", text = _("Copy them from another GZreader (it shows a PIN)"), checked = false }
+    if state.connected_any then
+        choices[#choices + 1] = { id = "gz_send", text = _("Send this Kindle's connections to another GZreader"), checked = false }
+    end
     choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
     return {
         title       = _("Connect your phone"),
         description = _("Scan the QR code with your phone: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from your phone (no Grimmory needed)") .. "\n"
+            -- GZreader: or from another GZreader
+            .. _("Already set up on another GZreader? Copy its connections over the Wi-Fi.") .. "\n"
             .. (not require("device"):isTouchDevice() and _("Come back to it any time: Home menu → Send books from your phone.")
                 or _("Come back to it any time: swipe down from the top, open the launcher and tap Phone.")),
         choice_type = "radio",
@@ -640,6 +651,10 @@ local function buildGrimmoryPage(ctx)
                 sendGrimmoryEvent("GrimmoryPair")
             elseif sel["type"] then
                 sendGrimmoryEvent("GrimmoryKeyboardLogin")
+            elseif sel["gz_copy"] then
+                sendGrimmoryEvent("GzCopyReceive")
+            elseif sel["gz_send"] then
+                sendGrimmoryEvent("GzCopySend")
             end
         end,
     }

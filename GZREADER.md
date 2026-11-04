@@ -355,6 +355,44 @@ Where to open it: the setup guide's first page (**Connect your phone**), Home
 menu → **Send books from your phone**, the Grimmory, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
 
+## Copy connections from another GZreader
+
+Set one GZreader up and copy its connections to the others over the Wi‑Fi,
+instead of scanning the QR code on each:
+
+1. On the one that has them: **Send connections to another GZreader**
+   (Settings → Connections → Copy to or from another GZreader, or its setup
+   guide's first page). It shows its name ("Kindle Paperwhite 3 · 3F2A"), a
+   6-digit PIN and what it has.
+2. On the new one: **Copy from another GZreader** (the setup guide's first
+   page, Settings → Connections → Copy to or from another GZreader, the Notes
+   or Calendar tab while not connected, Settings → Connections → Grimmory). It
+   lists the GZreader devices sending on the Wi‑Fi; pick it and enter the PIN.
+3. Tick what to copy (everything this one doesn't have yet; from the Notes tab
+   only Notes, from the Calendar tab only calendars) and **Copy**.
+
+What's copied:
+- **Notes:** the Memos address and access token.
+- **Calendar:** the CalDAV account (address, user name, app password, which of
+  its calendars are hidden) and each calendar link (its name, shown or hidden).
+- **Grimmory:** the address and user name. Grimmory gives every device its own
+  sign-in (a refresh token used on two devices signs both out) and GZreader
+  never keeps your password, so the new one then signs in: type the password
+  (address and user name filled in), or the phone page for single sign-on.
+
+Each copy is checked by connecting with it, as when typed in. Both must be on
+the same Wi‑Fi. Finding each other is mDNS / DNS‑SD (`_gzreader._tcp`, what
+AirPrint and Chromecast use); some routers block it (client isolation, guest
+networks): then **Type its address…** and enter the address at the bottom of
+the send screen.
+
+Security: the PIN is used in a SPAKE2 key exchange (RFC 3526's 2048-bit group,
+the device's libcrypto), and everything after it is AES-256-GCM. Someone else
+on the Wi‑Fi sees nothing they can read, and can't test PIN guesses offline;
+each guess is a try on the sending device, which allows 5. A PIN is good for
+one copy; the send screen closes after 10 minutes. Tokens and passwords are
+never logged. (`gzreader_copy.lua`, `gzreader_spake.lua`, `gzreader_mdns.lua`.)
+
 ## Connect to Grimmory
 
 Open the **Grimmory** tab. Grimmory's options (connection, sync, bookmarks,

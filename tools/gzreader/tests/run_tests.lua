@@ -3077,6 +3077,94 @@ print("Calendar tab")
     check(leftovers == 0, "books: no partial files left")
     c, b = phone("'" .. P .. "'")
     check(b:match("✓ My Book.epub") and b:match("✓ My Book %(2%).epub"), "books received are listed on the page")
+    -- copying connections to another GZreader (gzreader_copy.lua)
+    do
+        local Copy = require("gzreader_copy")
+        local Spake = require("gzreader_spake")
+        Cal.addFeeds(plugin, { { url = link, name = "Family" } })
+        Cal.feeds(plugin)[1].enabled = false
+        local S = { plugin = plugin, pin = "246810", tries = 0 }
+        local sent
+        S.on_sent = function(x) sent = x end
+        local orig_req = Copy.request
+        Copy.request = function(_dev, method, path, tbl)
+            local code, _ct, body = Copy.serve(S, method, path, tbl and json.encode(tbl))
+            return code, json.decode(body)
+        end
+        local saves = 0
+        local other = { store = {}, save = function() saves = saves + 1 end,
+            api = { isPaired = function() return false end } }
+        local dev = { ip = "127.0.0.1", port = 8650, name = "Sender" }
+        local code, hello = Copy.request(dev, "GET", "/gzcopy/hello")
+        check(code == 200 and hello.app == "GZreader" and hello.name:match("^Kindle Keyboard · %x%x%x%x$"), "copy: the sender says its name " .. tostring(hello.name))
+        -- a wrong PIN: found out before anything is asked for
+        local ch, why = Copy.open(other, dev, "111111")
+        check(ch == nil and why == "pin" and S.tries == 1, "copy: a wrong PIN is refused (and counts as a try)")
+        ch = Copy.open(other, dev, "246810")
+        local o = ch and ch.offer
+        check(o and o.grimmory and o.grimmory.username == "will" and o.memos and o.memos.user == "Will" and o.caldav
+            and o.caldav.calendars == 2 and #o.links == 1 and o.links[1].name == "Family", "copy: the right PIN shows what the sender has")
+        local otxt = json.encode(o or {})
+        check(not otxt:find("memos-test-token", 1, true) and not otxt:find("demo-app-password", 1, true) and not otxt:find("abc123", 1, true),
+            "copy: what's shown has no token, password or link in it")
+        -- the whole exchange as it goes over the Wi-Fi: nothing secret in the clear
+        local wire = {}
+        local inner = Copy.request
+        Copy.request = function(d, m, p, t)
+            local c2, r = inner(d, m, p, t)
+            wire[#wire + 1] = json.encode(t or {}) .. json.encode(r or {})
+            return c2, r
+        end
+        local data = Copy.fetch(ch, { grimmory = true, memos = true, caldav = true, links = { 1 } })
+        Copy.request = inner
+        local wtxt = table.concat(wire)
+        check(data and data.memos.token == "memos-test-token" and data.caldav.password == "demo-app-password"
+            and data.caldav.hidden[1] == href and data.links[1].enabled == false, "copy: the chosen connections arrive")
+        check(not wtxt:find("memos-test-token", 1, true) and not wtxt:find("demo-app-password", 1, true) and not wtxt:find("abc123", 1, true)
+            and #wtxt > 0, "copy: tokens, passwords and links travel encrypted")
+        check(data and data.grimmory and data.grimmory.username == "will" and data.grimmory.refresh_token == nil
+            and not json.encode(data):find(plugin.store.refresh_token, 1, true), "copy: Grimmory's address and account only, never its sign-in")
+        check(sent and sent.to == "Kindle Keyboard · " .. Copy.deviceId(other):sub(1, 4):upper() and sent.what:match("Notes"), "copy: the sender shows who got what")
+        check(Copy.fetch(ch, { memos = true }) == nil, "copy: the PIN is for one copy only")
+        -- the receiving side connects with each
+        local res = Copy.apply(other, data)
+        check(other.store.memos and other.store.memos.token == "memos-test-token" and res.notes, "copy: Notes connected on the other device")
+        check(other.store.caldav and #other.store.caldav.calendars == 2 and res.calendar, "copy: CalDAV account connected on the other device")
+        local hidden_ok = false
+        for _i, cal in ipairs(other.store.caldav.calendars) do if cal.href == href then hidden_ok = cal.enabled == false end end
+        check(hidden_ok, "copy: the calendar hidden on the sender is hidden here too")
+        local of = (other.store.calendar_feeds or {})[1]
+        check(of and of.name == "Family" and of.enabled == false and of.url == Cal.feeds(plugin)[1].url, "copy: the calendar link, its name and shown or hidden")
+        check(res.grimmory and res.grimmory.server == plugin.store.server and table.concat(res.lines, "\n"):match("Notes: connected"),
+            "copy: Grimmory left to sign in, the rest listed")
+        -- a payload that doesn't check out: said so, nothing kept
+        local bad = { store = {}, save = function() end, api = { isPaired = function() return false end } }
+        local r2 = Copy.apply(bad, { memos = { server = "127.0.0.1:" .. MP, token = "not-it" } })
+        check(bad.store.memos == nil and r2.lines[1]:match("^✗ Notes"), "copy: a connection that fails is reported, not kept")
+        -- 5 tries, then no more
+        local S2 = { plugin = plugin, pin = "000001", tries = 0 }
+        Copy.request = function(_dev, method, path, tbl)
+            local c3, _ct, body = Copy.serve(S2, method, path, tbl and json.encode(tbl))
+            return c3, json.decode(body)
+        end
+        for _i = 1, 5 do Copy.open(other, dev, "999999") end
+        local ch3, why3 = Copy.open(other, dev, "000001")
+        check(ch3 == nil and why3 == "tries", "copy: after 5 tries even the right PIN is refused")
+        -- what's ticked to begin with: what this device doesn't have, or the tab's own
+        local fresh = { store = {}, api = { isPaired = function() return false end } }
+        local o2 = { grimmory = {}, memos = {}, caldav = {}, links = { { n = 1, name = "Family" } } }
+        check(Copy.defaults(fresh, o2, nil).memos and Copy.defaults(fresh, o2, nil).links[1] and Copy.defaults(fresh, o2, nil).grimmory,
+            "copy: a new device: everything ticked")
+        local d2 = Copy.defaults(fresh, o2, "notes")
+        check(d2.memos and not d2.caldav and not d2.grimmory and not d2.links[1], "copy from the Notes tab: Notes only")
+        local d3 = Copy.defaults(other, o2, nil)
+        check(not d3.memos and not d3.caldav and not d3.links[1] and d3.grimmory, "copy: what this device already has isn't ticked")
+        Copy.request = orig_req
+        -- PINs: 6 digits
+        local p1, p2 = Spake.pin(), Spake.pin()
+        check(p1:match("^%d%d%d%d%d%d$") and p2:match("^%d%d%d%d%d%d$"), "copy: 6-digit PINs")
+        while #Cal.feeds(plugin) > 0 do Cal.removeFeed(plugin, 1) end
+    end
     -- disconnecting from the phone
     c, b = post("/memos/disconnect", {})
     check(c == 200 and not (plugin.store.memos or {}).token, "Notes: disconnected from the phone")
@@ -3093,6 +3181,42 @@ print("Calendar tab")
     os.execute("kill $(cat " .. WORK .. "/memos3.pid) 2>/dev/null")
     os.execute("kill $(cat " .. WORK .. "/feeds.pid) 2>/dev/null")
     os.execute("kill $(cat " .. WORK .. "/caldav2.pid) 2>/dev/null")
+end)()
+
+print("Copying connections: the PIN exchange and mDNS")
+;(function()
+    local Spake = require("gzreader_spake")
+    check(Spake.available(), "libcrypto found")
+    local a, b = Spake.new("A", "123456"), Spake.new("B", "123456")
+    check(a:finish(b:message()) and b:finish(a:message()) and a.key == b.key and a:checkConfirmation(b:confirmation())
+        and b:checkConfirmation(a:confirmation()), "SPAKE2: the same PIN, the same keys, each confirmed")
+    local c, d = Spake.new("A", "123456"), Spake.new("B", "123457")
+    c:finish(d:message()); d:finish(c:message())
+    check(c.key ~= d.key and not c:checkConfirmation(d:confirmation()) and not d:checkConfirmation(c:confirmation()), "SPAKE2: a different PIN, different keys")
+    check(a:message() ~= Spake.new("A", "123456"):message(), "SPAKE2: a new message every time")
+    local x = Spake.new("A", "1")
+    check(x:finish(string.rep("00", 255) .. "01") == nil and x:finish(Spake.hex(string.rep("\255", 256))) == nil
+        and x:finish("abcd") == nil, "SPAKE2: 1, p - 1 or more, and short messages refused")
+    local sealed = Spake.seal(a.key, "secret", "to receiver")
+    check(Spake.open(b.key, sealed, "to receiver") == "secret" and Spake.open(b.key, sealed, "to sender") == nil
+        and Spake.open(c.key, sealed, "to receiver") == nil, "AES-GCM: opens with its key and label only")
+    local flip = sealed:sub(1, 30) .. (sealed:sub(31, 31) == "a" and "b" or "a") .. sealed:sub(32)
+    check(Spake.open(b.key, flip, "to receiver") == nil, "AES-GCM: a changed message is refused")
+    -- mDNS: answers as DNS-SD has them; found by asking (over loopback, unicast)
+    local Mdns = require("gzreader_mdns")
+    local MP = PORT + 9
+    local r = Mdns.advertise({ name = "Kindle Keyboard · 3F2A", id = "3f2a91", port = 8650, ip = "127.0.0.1", version = "9.9" },
+        { bind = "127.0.0.1", port = MP, no_multicast = true })
+    local br = Mdns.browse({ to = "127.0.0.1", port = MP, duration = 1.5 })
+    local t0 = socket.gettime()
+    while socket.gettime() - t0 < 1.6 do r:poll(); br:poll(); socket.sleep(0.05) end
+    local devs = br:devices()
+    check(r and #devs == 1 and devs[1].name == "Kindle Keyboard · 3F2A" and devs[1].port == 8650 and devs[1].ip == "127.0.0.1"
+        and devs[1].id == "3f2a91" and devs[1].version == "9.9", "mDNS: the sending device is found, with its name, address and port")
+    r:close(); br:close()
+    local q = Mdns.parse(string.char(0, 7, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0) .. Mdns.encodeName("other._tcp.local") .. string.char(0, 12, 0, 1))
+    check(q and Mdns.answer({ name = "x", id = "1", port = 1, ip = "1.2.3.4" }, q, true) == nil, "mDNS: other services' questions aren't answered")
+    check(Mdns.parse("short") == nil and Mdns.parse(string.rep("\255", 40)) ~= false, "mDNS: junk doesn't break it")
 end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))

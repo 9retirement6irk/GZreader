@@ -94,7 +94,10 @@ local function state(S, flash)
     local g = { connected = plugin.api and plugin.api:isPaired() or false, username = store.username,
         host = host(store.server) }
     g.redirect_uri, g.sso_relay = Phone.ssoRedirect(plugin, S.origin)
-    g.form = sec == "grimmory" and flash.form or { server = store.server, username = store.username }
+    g.form = sec == "grimmory" and flash.form
+        -- (copied from another GZreader: its address and account, to sign in with)
+        or (not g.connected and type(S.opts.grimmory_form) == "table" and S.opts.grimmory_form)
+        or { server = store.server, username = store.username }
     if sec == "grimmory" then g.error = flash.error end
     -- single sign-on: asked from Grimmory when the form is in view (not
     -- connected, or a sign-in just tried); otherwise what was learnt before

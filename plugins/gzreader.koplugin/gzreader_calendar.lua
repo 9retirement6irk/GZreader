@@ -1179,6 +1179,7 @@ function Calendar.showConnect(plugin)
         { text = _("Add a calendar link by typing"), callback = function() Calendar.typeAddLink(plugin) end },
         { text = _("Add links from calendars.txt (USB drive)"), callback = function() Calendar.importFileUI(plugin) end },
         { text = _("Connect a CalDAV account by typing"), callback = function() Calendar.typeConnect(plugin) end },
+        { text = _("Copy from another GZreader"), callback = function() Calendar.copyConnect(plugin) end },
         { text = _("Calendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password."),
           select_enabled = false },
     }
@@ -1193,6 +1194,18 @@ function Calendar.showConnect(plugin)
     Calendar.connect_menu = menu
     UIManager:show(menu)
     return menu
+end
+
+--- Copy the CalDAV account and calendar links from another GZreader on the
+--- Wi-Fi (gzreader_copy.lua); then the Calendar tab shows them.
+function Calendar.copyConnect(plugin)
+    require("gzreader_copy").receive(plugin, { only = "calendar", on_done = function(res)
+        if not res.calendar then return end
+        if Calendar.connect_menu then UIManager:close(Calendar.connect_menu); Calendar.connect_menu = nil end
+        if Calendar.board then UIManager:close(Calendar.board) end
+        Calendar.events, Calendar.cached_at = nil, nil
+        Calendar.show(plugin)
+    end })
 end
 
 function Calendar.typeConnect(plugin)
