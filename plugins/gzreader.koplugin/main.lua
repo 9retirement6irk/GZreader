@@ -595,7 +595,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
     screen = Mod.PairScreen:new{
         url = url,
         title = _("Send the diagnostic log"),
-        instructions = T(_("Scan this code with your phone's camera and tap \"Download the log\". Your phone must be on the same Wi-Fi as this Kindle.\n\nThe log was also saved as %1."), dest),
+        instructions = T(_("Scan this code with your phone and tap \"Download the log\".\n\nIt's also saved as %1."), dest),
         footer = _("Press Back when you're done."),
         button_text = _("Done"),
         on_cancel = function() screen = nil; finish() end,

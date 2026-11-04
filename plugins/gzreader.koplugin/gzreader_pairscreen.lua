@@ -45,7 +45,7 @@ function PairScreen:init()
         },
         gap,
         TextBoxWidget:new{
-            text = self.instructions or _("Scan this code with your phone's camera, then sign in on the page that opens. Your phone must be on the same Wi-Fi as this Kindle."),
+            text = self.instructions or _("Scan this code with your phone, then sign in on the page that opens."),
             face = Font:getFace("cfont", 18),
             width = text_w,
             alignment = "center",
@@ -54,7 +54,7 @@ function PairScreen:init()
         QRWidget:new{ text = self.url, width = qr_size, height = qr_size },
         gap,
         TextBoxWidget:new{
-            text = _("No camera? Type this address into your phone's browser:") .. "\n" .. self.url,
+            text = _("Same Wi-Fi as this Kindle. No camera? Open this address:") .. "\n" .. self.url,
             face = Font:getFace("smallinfofont", 16),
             width = text_w,
             alignment = "center",

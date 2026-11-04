@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.14.2",
+        changes = {
+            "The QR code screens say less: \"Scan this code with your phone to set up GZreader connections and send books.\", with the address underneath for a phone without a camera.",
+        },
+    },
+    {
         version = "1.14.1",
         changes = {
             "Kindle Touch and Paperwhite: when GZreader turns the Wi-Fi on by itself (syncing, checking for updates…) it no longer shows \"Scanning for networks…\" and \"Connecting to network…\" messages; it connects in the background like on the Kindle 3. Turning the Wi-Fi on yourself still shows them.",
