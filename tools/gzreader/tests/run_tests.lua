@@ -3132,6 +3132,14 @@ print("Calendar tab")
             and not json.encode(data):find(plugin.store.refresh_token, 1, true), "copy: Grimmory's address and account only, never its sign-in")
         check(sent and sent.to == "Kindle Keyboard · " .. Copy.deviceId(other):sub(1, 4):upper() and sent.what:match("Notes"), "copy: the sender shows who got what")
         check(Copy.fetch(ch, { memos = true }) == nil, "copy: the PIN is for one copy only")
+        check(sent and sent.pin and sent.pin ~= "246810" and S.pin == sent.pin and S.tries == 0,
+            "copy: after a copy the sender has a new PIN (and its tries back)")
+        local chx = Copy.open(other, dev, "246810")
+        check(chx == nil, "copy: the old PIN no longer works")
+        local ch2 = Copy.open(other, dev, S.pin)
+        local data2 = ch2 and Copy.fetch(ch2, { memos = true })
+        check(data2 and data2.memos and data2.memos.token == "memos-test-token" and data2.caldav == nil,
+            "copy: a second copy (Notes after the calendars) with the new PIN")
         -- the receiving side connects with each
         local res = Copy.apply(other, data)
         check(other.store.memos and other.store.memos.token == "memos-test-token" and res.notes, "copy: Notes connected on the other device")
@@ -3166,6 +3174,15 @@ print("Calendar tab")
         local d3 = Copy.defaults(other, o2, nil)
         check(not d3.memos and not d3.caldav and not d3.links[1] and d3.grimmory, "copy: what this device already has isn't ticked")
         Copy.request = orig_req
+        -- a device that never answers: given up on in its time (not LuaSocket's 60 s)
+        local mute = socket.bind("127.0.0.1", 0)
+        local _mip, mport = mute:getsockname()
+        local t0 = socket.gettime()
+        local mc, mwhy = Copy.request({ ip = "127.0.0.1", port = mport }, "GET", "/gzcopy/hello", nil, 1)
+        local took = socket.gettime() - t0
+        mute:close()
+        check(mc == nil and mwhy == "unreachable" and took < 4 and require("socket.http").TIMEOUT == 60,
+            string.format("copy: a device that never answers: unreachable after %.1f s, http's own timeout put back", took))
         -- PINs: 6 digits
         local p1, p2 = Spake.pin(), Spake.pin()
         check(p1:match("^%d%d%d%d%d%d$") and p2:match("^%d%d%d%d%d%d$"), "copy: 6-digit PINs")
@@ -3389,6 +3406,28 @@ print("Music (Plex): the server, downloads, the player")
     Engine.exec, Engine.alive = saved_exec, saved_alive
     Music.delete(plugin, Music.find(plugin, "album", "202"))
     check(Music.find(plugin, "album", "202") == nil and #Music.downloaded(plugin) == 2, "Music: a download deleted")
+    -- Settings → Connections → Plex (Music)
+    local function texts(list)
+        local out = {}
+        for _i, it in ipairs(list) do out[#out + 1] = it.text or (it.text_func and it.text_func()) or "" end
+        return table.concat(out, " | ")
+    end
+    local si = Tab.settingsItems(plugin)
+    local st = texts(si)
+    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+        "Settings → Connections → Plex: account, server, quality, downloads, sign out: " .. st)
+    local q = si[3].sub_item_table_func()
+    q[3].callback()
+    check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
+        "Settings → Plex: the conversion quality")
+    plugin.store.plex.bitrate = nil
+    local servers = si[2].sub_item_table_func()
+    check(#servers == 2 and servers[1].text == "Home Server" and servers[1].checked_func() and not servers[2].checked_func(), "Settings → Plex: the account's servers, this one ticked")
+    local saved_plex = plugin.store.plex
+    plugin.store.plex = { client_id = saved_plex.client_id }
+    st = texts(Tab.settingsItems(plugin))
+    check(st:match("^Sign in to Plex with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
+    plugin.store.plex = saved_plex
     -- no token in an address (the mock refuses those) or the log
     local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/log"); local lg = json.decode(pp:read("*a")); pp:close()
     local in_url = false

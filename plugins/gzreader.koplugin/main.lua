@@ -662,6 +662,11 @@ function Grimmory:onGzCopySend()
     return true
 end
 
+--- Settings → Connections → Plex (Music), on the Kindles with audio.
+function Grimmory:plexSettingsItems()
+    return require("gzreader_musictab").settingsItems(self)
+end
+
 --- Settings → Connections → Copy to or from another GZreader.
 function Grimmory:copyItems()
     return {

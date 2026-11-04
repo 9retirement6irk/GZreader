@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.14.3",
+        changes = {
+            "Copying connections: after one copy the sending GZreader shows a new PIN and keeps waiting, so you can copy Notes after the calendars (or to another device) without starting again. Before, it stopped answering, and typing its address on the other one then froze that one for a minute.",
+            "Typing the other GZreader's address shows \"Connecting…\" and gives up after a few seconds if nothing answers.",
+            "Settings → Connections → Plex (Music), on the Kindles with audio: sign in, the Plex server, the quality when converting, downloaded music (and removing it), sign out.",
+        },
+    },
+    {
         version = "1.14.2",
         changes = {
             "The QR code screens say less: \"Scan this code with your phone to set up GZreader connections and send books.\", with the address underneath for a phone without a camera.",

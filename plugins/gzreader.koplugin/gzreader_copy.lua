@@ -43,6 +43,8 @@ local Copy = {
     PORT = 8650,
     MAX_TRIES = 5,
     TIMEOUT = 10 * 60, -- the send screen closes after this long
+    REQUEST_TIMEOUT = 30, -- s for an answer (the PIN exchange on a Kindle 3 takes a few)
+    HELLO_TIMEOUT = 6,    -- s for "is a GZreader sending there?"
     session = nil,     -- the sending side, while its screen is up
 }
 
@@ -193,7 +195,9 @@ function Copy.serve(S, method, path, body)
         if not okw or type(want) ~= "table" then return json(400, { error = "bad request" }) end
         local payload = Copy.payload(plugin, want)
         S.pending = nil
-        S.sent = { to = p.name, what = Copy.describe(payload) }
+        -- one PIN, one copy: a new PIN for the next one (the screen shows it)
+        S.pin, S.tries = Spake().pin(), 0
+        S.sent = { to = p.name, what = Copy.describe(payload), pin = S.pin }
         Log.info("copy: sent to " .. p.name .. ": " .. S.sent.what)
         if S.on_sent then UIManager:nextTick(function() pcall(S.on_sent, S.sent) end) end
         return json(200, { data = Spake().seal(p.b.key, JSON.encode(payload), "payload") })
@@ -331,16 +335,18 @@ function Copy.startSending(plugin, opts, offer)
         Log.info("copy: send screen closed", sent and "(sent)" or "")
         if opts.on_done then pcall(opts.on_done, sent) end
     end
-    screen = sendScreen{
+    local sopts = {
         name = name, pin = S.pin, what = offerText(offer), address = ip .. (server.port ~= Copy.PORT and (":" .. server.port) or ""),
         on_cancel = function() finish(S.sent) end,
     }
+    screen = sendScreen(sopts)
     S.on_status = function(text) screen:setStatus(text) end
     S.on_sent = function(sent)
-        -- the PIN was for one copy: stop answering, leave the result on screen
-        UIManager:removeZMQ(server); server:stop()
-        if responder then UIManager:removeZMQ(responder); responder:close(); responder = nil end
-        screen:setStatus(T(_("Sent to %1: %2."), sent.to, sent.what), true)
+        -- the PIN was for that copy: the next one takes the new PIN (copying
+        -- Notes after the calendars, or to a third device), for 10 more minutes
+        sopts.pin = sent.pin or S.pin
+        if timer then UIManager:unschedule(timer); UIManager:scheduleIn(Copy.TIMEOUT, timer) end
+        screen:setStatus(T(_("Sent to %1: %2.\nTo copy more, use the new PIN."), sent.to, sent.what), true)
     end
     S.on_tries = function()
         screen:setStatus(_("That was the last try with this PIN. To try again, close this and send again (a new PIN)."))
@@ -361,20 +367,26 @@ end
 ---------------------------------------------------------------- receiving
 
 --- One request to the other device: code, decoded JSON (or nil, "unreachable").
-function Copy.request(dev, method, path, tbl)
+function Copy.request(dev, method, path, tbl, timeout)
     local http = require("socket.http")
     local ltn12 = require("ltn12")
     local socket = require("socket")
     local body = tbl and JSON.encode(tbl) or nil
     local out = {}
+    -- (http.open sets http.TIMEOUT on the socket after `create`, so set that:
+    -- a device that has stopped sending, behind the Kindle's firewall, never
+    -- answers, and 60 s with the screen stuck looks like a freeze)
+    local old_timeout = http.TIMEOUT
+    http.TIMEOUT = timeout or Copy.REQUEST_TIMEOUT
     local ok, one, code = pcall(http.request, {
         url = string.format("http://%s:%d%s", dev.ip, tonumber(dev.port) or Copy.PORT, path),
         method = method,
         headers = body and { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#body) } or nil,
         source = body and ltn12.source.string(body) or nil,
         sink = ltn12.sink.table(out),
-        create = function() local s = socket.tcp(); s:settimeout(15); return s end,
+        create = function() local s = socket.tcp(); s:settimeout(http.TIMEOUT); return s end,
     })
+    http.TIMEOUT = old_timeout
     if not ok or one ~= 1 or type(code) ~= "number" then return nil, "unreachable" end
     local okj, data = pcall(JSON.decode, table.concat(out))
     return code, okj and type(data) == "table" and data or {}
@@ -495,7 +507,7 @@ end
 local WHY = {
     pin = _("That PIN didn't match the one on the other GZreader. Check it and try again."),
     tries = _("Too many tries with that PIN. On the other GZreader, close the screen and send again: it shows a new PIN."),
-    unreachable = _("Couldn't reach the other GZreader. Is its send screen still up, and is it on the same Wi-Fi?"),
+    unreachable = _("Couldn't reach the other GZreader. Is its send screen up (Send connections), and is it on the same Wi-Fi?"),
     bad = _("The other GZreader answered something unexpected. Are both on the same GZreader version?"),
 }
 
@@ -658,7 +670,9 @@ function Copy.typeAddress(plugin, opts)
                     return UIManager:show(InfoMessage:new{ text = _("That doesn't look like an address (four numbers with dots, e.g. 192.168.1.5)."), timeout = 4 })
                 end
                 local dev = { ip = ip, port = tonumber(port) or Copy.PORT }
-                local code, hello = Copy.request(dev, "GET", "/gzcopy/hello")
+                local msg = busy(T(_("Connecting to %1…"), text))
+                local code, hello = Copy.request(dev, "GET", "/gzcopy/hello", nil, Copy.HELLO_TIMEOUT)
+                UIManager:close(msg)
                 if code ~= 200 or hello.app ~= "GZreader" then
                     return UIManager:show(InfoMessage:new{ text = WHY.unreachable })
                 end

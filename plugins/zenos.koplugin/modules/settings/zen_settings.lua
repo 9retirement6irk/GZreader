@@ -30,6 +30,13 @@ local function gzreader()
     end
 end
 
+-- GZreader: a list from `n` entries some of which may be nil (left out).
+local function compact(t, n)
+    local out = {}
+    for i = 1, n do if t[i] ~= nil then out[#out + 1] = t[i] end end
+    return out
+end
+
 -- GZreader: its settings for a section ("general", "reader", "interface").
 local function gz_section(name)
     local g = gzreader()
@@ -138,7 +145,7 @@ function M.build(plugin)
         IconItem.decorate({
             text = _("Connections"),
             _zen_settings_root = "gzreader",
-            sub_item_table = {
+            sub_item_table = compact({
                 IconItem.decorate({
                     text = _("Grimmory"),
                     sub_item_table_func = function()
@@ -163,6 +170,20 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.calendar),
+                -- GZreader: Plex (the Music tab), on the Kindles with a speaker or jack
+                (function()
+                    local okt, Touch = pcall(require, "gzreader_touch")
+                    if not (okt and Touch.audio and Touch.audio()) then return nil end
+                    return {
+                        text = _("Plex (Music)"),
+                        icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_music"),
+                        sub_item_table_func = function()
+                            local g = gzreader()
+                            if g and type(g.plexSettingsItems) == "function" then return g:plexSettingsItems() end
+                            return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                        end,
+                    }
+                end)(),
                 -- GZreader: copy connections between two GZreader devices
                 IconItem.decorate({
                     text = _("Copy to or from another GZreader"),
@@ -172,7 +193,7 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.connect),
-            },
+            }, 5),
         }, icons.connect),
         {
             text = _("KOReader"),

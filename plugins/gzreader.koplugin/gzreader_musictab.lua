@@ -553,6 +553,99 @@ function Tab:openAccount()
     self:push(_("Plex"), items)
 end
 
+---------------------------------------------------------------- Settings
+
+local function closeTouchMenu(touchmenu)
+    if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+end
+
+--- Settings → Connections → Plex (Music): the account, the server, the
+--- quality, downloaded music, signing in or out.
+function Tab.settingsItems(plugin)
+    local function st() return plugin.store.plex or {} end
+    if not st().token then
+        local items = {}
+        for _i, it in ipairs(Tab.signInItems(plugin)) do
+            local cb = it.callback
+            items[#items + 1] = { text = it.text, enabled = cb ~= nil,
+                callback = cb and function(touchmenu) closeTouchMenu(touchmenu); cb() end or nil }
+        end
+        items[#items + 1] = { text = _("Then turn the Music tab on: Settings → Navbar → Tabs."), enabled = false }
+        return items
+    end
+    local items = {
+        { text_func = function() return T(_("Signed in as %1"), st().username or "?") end, enabled = false },
+        { text_func = function() return T(_("Plex server: %1"), (st().server or {}).name or "?") end,
+          sub_item_table_func = function()
+              local list = {}
+              for _i, srv in ipairs(st().servers or {}) do
+                  list[#list + 1] = { text = srv.name or "?", radio = true,
+                      checked_func = function() return (st().server or {}).id == srv.id end,
+                      callback = function(touchmenu)
+                          if (st().server or {}).id == srv.id then return end
+                          closeTouchMenu(touchmenu)
+                          require("gzreader_net").run(function()
+                              local msg = busy(_("Connecting…"))
+                              Async().run(nil, function()
+                                  local p = Music().plex(plugin)
+                                  local ok, err = p:connect(st().token, srv.id)
+                                  return ok and p.store or nil, err
+                              end, function(store, err)
+                                  UIManager:close(msg)
+                                  if not store then return UIManager:show(InfoMessage:new{ text = why(err) }) end
+                                  Tab.signedIn(plugin, store)
+                              end, "plex connect")
+                          end, { reason = "connecting to Plex" })
+                      end }
+              end
+              if #list == 0 then list[1] = { text = _("No other Plex servers on this account."), enabled = false } end
+              return list
+          end },
+        { text_func = function() return T(_("Quality when converting: %1 kbps"), st().bitrate or 192) end,
+          help_text = _("For music the Kindle can't play as it is (FLAC and others), Plex converts it to MP3 at this quality. MP3 and AAC download as they are."),
+          sub_item_table_func = function()
+              local list = {}
+              for _i, b in ipairs(Music().BITRATES) do
+                  list[#list + 1] = { text = T(_("%1 kbps"), b), radio = true,
+                      checked_func = function() return (st().bitrate or 192) == b end,
+                      callback = function() st().bitrate = b; plugin:save() end }
+              end
+              return list
+          end },
+        { text_func = function()
+              local n = #Music().downloaded(plugin)
+              local mb = Music().dirSize(Music().root(plugin)) / 1048576
+              return T(_("Downloaded music: %1 (%2 MB)"), n, string.format("%.0f", mb))
+          end,
+          sub_item_table_func = function()
+              return { { text = _("Remove all downloaded music"), callback = function(touchmenu)
+                  UIManager:show(require("ui/widget/confirmbox"):new{
+                      text = _("Remove all the music downloaded on this Kindle? It stays on your Plex server."),
+                      ok_text = _("Remove"),
+                      ok_callback = function()
+                          for _i, c in ipairs(Music().downloaded(plugin)) do Music().delete(plugin, c) end
+                          closeTouchMenu(touchmenu)
+                          UIManager:show(InfoMessage:new{ text = _("Downloaded music removed."), timeout = 3 })
+                      end,
+                  })
+              end } }
+          end },
+        { text = _("Sign out of Plex"), callback = function(touchmenu)
+            UIManager:show(require("ui/widget/confirmbox"):new{
+                text = _("Sign out of Plex on this Kindle? Downloaded music stays."),
+                ok_text = _("Sign out"),
+                ok_callback = function()
+                    Music().plex(plugin):signOut()
+                    plugin:save()
+                    closeTouchMenu(touchmenu)
+                end,
+            })
+        end },
+        { text = _("The Music tab: Settings → Navbar → Tabs. Headphones: Settings → Reader."), enabled = false },
+    }
+    return items
+end
+
 ---------------------------------------------------------------- now playing
 
 --- What the controls do (the Now playing screen, the Home and Reading
