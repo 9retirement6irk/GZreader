@@ -33,7 +33,7 @@ details{margin-top:14px}summary{cursor:pointer;font-size:14px;color:var(--muted)
 ]]
 
 local function shell(title, inner)
-    return table.concat({
+    local page = table.concat({
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         '<meta name="robots" content="noindex">',
@@ -41,6 +41,10 @@ local function shell(title, inner)
         inner,
         "</main></body></html>",
     })
+    -- (on a Nook the page talks about the Nook)
+    local okd, Device = pcall(require, "device")
+    if okd and Device.isNook and Device:isNook() then page = page:gsub("Kindle", "Nook") end
+    return page
 end
 
 function PairPage.gone()

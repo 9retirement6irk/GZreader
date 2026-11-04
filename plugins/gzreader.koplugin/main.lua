@@ -735,7 +735,7 @@ function Grimmory:showSsoSetup()
     local hint_host = self.store.server and self.store.server:match("^https?://([^/:]+)")
     local ip = Mod.PairServer.localIp(hint_host, iface)
     local origin = ip and T("http://%1:%2", ip, Mod.PairServer.port)
-    local uri, relay = Phone.ssoRedirect(self, origin or "http://<this Kindle's IP>:8642")
+    local uri, relay = Phone.ssoRedirect(self, origin or ("http://<" .. _("this Kindle's IP") .. ">:8642"))
     local text
     if relay then
         text = _("To sign in with SSO from the QR code page, add this redirect URI to Grimmory's client in your identity provider (Authentik, Pocket ID, Authelia, Keycloak…), next to the existing …/oauth2-callback one:")

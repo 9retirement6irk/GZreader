@@ -5,7 +5,7 @@ return {
         version = "1.12.0",
         changes = {
             "Kindles without a touch screen: Menu now always opens the GZreader menu (at Home) or the Reading menu (in a book), never ZenOS's quick panel, which is made for touch. Its \"Quick panel\" entries and the setting to switch back are gone; everything the quick panel did there is in the GZreader menu or Settings.",
-            "New, as a test build: GZreader on the Barnes & Noble Nook 1st Edition (gzreader-nook-1.12.0.zip; needs a rooted Nook, installed with adb: see GZREADER.md). The colour touchscreen under the page has the arrows, OK, Back, Menu, Home and page buttons; while reading it shows the title, chapter, page and progress or the cover, elsewhere a clock, and a keyboard for typing so the page stays uncovered. What it shows when, how long it stays lit and its brightness are in Settings → Interface → Colour screen. Not yet: audiobooks and read aloud. Tried in the emulator only so far: reports welcome.",
+            "New, as a test build: GZreader on the Barnes & Noble Nook 1st Edition (gzreader-nook-1.12.0.zip; needs a rooted Nook, installed with adb: see GZREADER.md). The colour touchscreen under the page has the arrows, OK, Back, Menu, Home and page buttons; while reading it shows the title, chapter, page and progress or the cover, elsewhere a clock, and a keyboard for typing so the page stays uncovered. What it shows when, how long it stays lit and its brightness are in Settings → Interface → Colour screen. Not yet: audiobooks and read aloud. Tried in the emulator only so far: reports welcome. On a Nook, GZreader and the phone page say "Nook" wherever they'd say "Kindle".",
         },
     },
     {
