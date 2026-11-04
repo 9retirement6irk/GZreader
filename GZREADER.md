@@ -381,7 +381,7 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 
 ## Home folder and downloads
 
-The GZreader folder (`documents/GZreader`) is the home folder; the
+The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
 **Downloads** tab shows it. Books sent from your phone (Home menu → Send
 books from your phone) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake

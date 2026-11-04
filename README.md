@@ -233,25 +233,97 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 
 ## Install
 
-1. Jailbreak the Kindle and install **KUAL** (see [kindlemodding.org](https://kindlemodding.org)).
-2. Download the package for your Kindle from the
-   [latest release](https://github.com/9retirement6irk/GZreader/releases/latest):
+You need a **jailbroken** Kindle with **KUAL** (the Kindle Unified Application
+Launcher), a computer with a USB cable, and about 100 MB free on the Kindle.
 
-   | Kindle | Package |
-   | --- | --- |
-   | Kindle Keyboard (3), Kindle 2, DX | `gzreader-kindle-legacy-<version>.zip` |
-   | Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
-   | Paperwhite 3 (7th gen), firmware **5.16.3 or newer** | `gzreader-kindlehf-<version>.zip` |
-   | Paperwhite 3 on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
+### 1. Jailbreak the Kindle and install KUAL
 
-   (The Paperwhite's firmware version is in its Settings → Device Options → Device Info.)
-3. Unzip it and copy its folders (`koreader`, `extensions`, and `launchpad` for the
-   Kindle 3) to the root of the Kindle's USB drive, merging with what's there.
-4. Eject, then open **KUAL → GZreader → Start GZreader**.
+Turn on **airplane mode** first, so the Kindle doesn't update itself to a firmware the
+jailbreak can't handle.
 
-The setup guide starts with **Connect your phone**: scan the QR code to connect
-Grimmory, Notes and Calendar, or send books (all optional; you can come back to it
-from the Home menu, or the launcher on a touch Kindle). Later versions install from **Settings → General → Updates**.
+| Kindle | Jailbreak | KUAL file |
+| --- | --- | --- |
+| Kindle 2, Kindle Keyboard (3), DX | the legacy jailbreak for its firmware ([MobileRead Kindle Developer's Corner](https://www.mobileread.com/forums/forumdisplay.php?f=150)) | `KUAL-KDK-1.0.azw` → `documents` folder |
+| Kindle 4, Kindle Touch | the legacy jailbreak for its firmware (same forum) | `KUAL-KDK-1.0.azw2` → `documents` folder (Kindle Touch: or the KUAL booklet with MRPI) |
+| Paperwhite 3 (7th gen) | [kindlemodding.org](https://kindlemodding.org/jailbreaking/): LanguageBreak for firmware 5.14.3 – 5.16.2.1.1, older methods for older firmware | `Update_KUALBooklet_HDRepack.bin` installed with MRPI |
+
+On the Paperwhite, see your firmware in **Settings → Device Options → Device Info**.
+There is no software jailbreak for firmware **5.16.3 or newer**: a Paperwhite already on
+it can only be used if it was jailbroken before updating. After jailbreaking, follow
+kindlemodding.org's steps to install KUAL and MRPI
+([guide](https://kindlemodding.org/jailbreaking/post-jailbreak/installing-kual-mrpi/))
+and its hotfix, so a firmware update doesn't undo the jailbreak.
+
+When it works, a **KUAL** book appears in the Kindle's library.
+
+### 2. Download GZreader
+
+From the [latest release](https://github.com/9retirement6irk/GZreader/releases/latest),
+take the package for your Kindle (the others won't start on it):
+
+| Kindle | Package |
+| --- | --- |
+| Kindle 2, Kindle Keyboard (3), DX / DX Graphite | `gzreader-kindle-legacy-<version>.zip` |
+| Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
+| Paperwhite 3, firmware **5.16.3 or newer** | `gzreader-kindlehf-<version>.zip` |
+| Paperwhite 3, firmware 5.6.1 – 5.16.2.x | `gzreader-kindlepw2-<version>.zip` |
+
+### 3. Copy it to the Kindle
+
+1. Connect the Kindle to the computer with USB; it shows up as a drive.
+2. Unzip the package on the computer. Inside are the folders `koreader`, `extensions`
+   and, in the Kindle 2/3/DX package, `launchpad`.
+3. Copy those folders to the **top of the Kindle's drive** (next to `documents`),
+   merging with any folders of the same name already there (KUAL's own
+   `extensions` folder stays; GZreader adds `extensions/koreader`). If an old
+   KOReader is installed, its `koreader` folder is replaced.
+4. **Eject** the Kindle safely and unplug it.
+
+### 4. Start GZreader
+
+- **Any Kindle:** open the **KUAL** book, then **GZreader → Start GZreader**. (*Start
+  GZreader (no framework)* stops the Kindle's own software while GZreader runs: more
+  free memory, and the Kindle restarts its home screen when you exit.)
+- **Kindle 2, 3, DX** also: press **Shift, G, G** (the last book), **Shift, G, L** (the
+  library) or **Shift, G, N** (without the Kindle's framework).
+- **Kindle Touch and Paperwhite:** after the first start, a **GZreader** book with
+  GZreader's logo appears on the Kindle's own home screen; tapping it starts GZreader.
+
+### 5. The first start
+
+A setup guide runs. Its first page, **Connect your phone**, shows a QR code: scan it
+with your phone (same Wi‑Fi as the Kindle) to connect Grimmory, Notes (Memos) and
+Calendar, or to send books, or pick *Skip for now*. You can come back to it any time:
+Home menu → **Send books from your phone** (on a touch Kindle: swipe down from the top
+→ launcher → **Phone**). The guide then asks about the library view, tabs, sleep
+screen, usage statistics, clock and reading defaults.
+
+Books you download or send go to the **GZreader** folder at the top of the Kindle's
+drive; the **Downloads** tab shows them.
+
+### Updating
+
+GZreader checks for a new release once a day and offers it; or open **Settings →
+General → Updates**. Updating keeps your books, settings, connections and reading
+progress. (Installing a newer package over USB the same way also works.)
+
+### Uninstalling
+
+Delete the `koreader` folder, `extensions/koreader`, `launchpad/koreader.ini` (Kindle
+2/3/DX) and `documents/GZreader.sh` (Kindle Touch, Paperwhite). The **GZreader** folder
+with your books stays until you delete it.
+
+### If something goes wrong
+
+- **GZreader isn't in KUAL:** check that `extensions/koreader` is on the drive (not
+  `extensions/extensions/koreader` or inside another folder).
+- **It flashes and returns to the Kindle's home screen:** most likely the package for
+  another Kindle or firmware; take the one from the table above. `koreader/crash.log`
+  on the drive says why.
+- **The phone page doesn't open:** the phone must be on the same Wi‑Fi as the Kindle,
+  and the Kindle's Wi‑Fi must be on.
+- **Something else:** Settings → General → **Send diagnostic log to my phone** (or
+  *Save diagnostic log*, which puts it on the drive) and attach it to an issue.
 
 ## Connecting Grimmory, Notes and Calendar
 
