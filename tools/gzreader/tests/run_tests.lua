@@ -3397,6 +3397,50 @@ print("Music (Plex): the server, downloads, the player")
     os.execute("kill $(cat " .. WORK .. "/plex.pid) 2>/dev/null")
 end)()
 
+print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
+;(function()
+    local Net = require("gzreader_net")
+    local NM = require("ui/network/manager")
+    local saved = { NM.enableWifi, NM.turnOnWifiAndWaitForConnection, NM.reconnectOrShowNetworkMenu, NM.isWifiOn, NM.isConnected,
+        Net.connected, Net.enabled, Net.keptOff }
+    local shown = {}
+    local orig_show = UI.show
+    local UIM = require("ui/uimanager")
+    local real_show = UIM.show
+    UIM.show = function(um, w, ...) shown[#shown + 1] = w and w.text or "?"; return real_show and real_show(um, w, ...) end
+    NM.reconnectOrShowNetworkMenu = function(self, cb, interactive)
+        UIM:show({ text = "Scanning for networks…" })
+        UIM:show({ text = "Connecting to network Home…", timeout = 3 })
+        if cb then cb() end
+        return true
+    end
+    NM.enableWifi = function(self, cb, interactive) return self:reconnectOrShowNetworkMenu(cb, interactive) end
+    NM.turnOnWifiAndWaitForConnection = function(self, cb)
+        UIM:show({ text = "Connecting to Wi-Fi…" })
+        return self:reconnectOrShowNetworkMenu(cb)
+    end
+    NM.isWifiOn = function() return false end
+    Net.connected = function() return false end
+    Net.enabled = function() return true end
+    Net.keptOff = function() return false end
+    Net.connecting = nil
+    local ran = 0
+    Net.run(function() ran = ran + 1 end, { quiet = true, reason = "test" })
+    check(ran == 1 and #shown == 0, "a background sync turns Wi-Fi on without a message (" .. table.concat(shown, ", ") .. ")")
+    Net.connecting = nil
+    Net.run(function() ran = ran + 1 end, { reason = "browsing" })
+    check(ran == 2 and #shown == 1 and shown[1] == "Connecting to Wi-Fi…", "something you asked for: only \"Connecting to Wi-Fi…\", as on the Kindle 3 (" .. table.concat(shown, ", ") .. ")")
+    shown = {}
+    NM:reconnectOrShowNetworkMenu(nil, true)
+    check(#shown == 2, "the Wi-Fi menu (you): its messages as usual")
+    UIM.show = real_show
+    NM.enableWifi, NM.turnOnWifiAndWaitForConnection, NM.reconnectOrShowNetworkMenu, NM.isWifiOn, NM.isConnected,
+        Net.connected, Net.enabled, Net.keptOff = unpack(saved, 1, 8)
+    Net.connecting = nil
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+    local _unused = orig_show
+end)()
+
 print("Headphones")
 ;(function()
     local Jack = require("gzreader_jack")

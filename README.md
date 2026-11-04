@@ -6,9 +6,9 @@
 
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for older Kindles</b><br>
-  Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle: download books, read them,
-  and keep your place, bookmarks and highlights in sync. Notes, calendars, and books
-  sent from your phone too.
+  Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle: download books, read them
+  or have them read aloud, and keep your place, bookmarks and highlights in sync.
+  Notes, calendars, and books sent from your phone too.
 </p>
 
 <p align="center">
@@ -49,8 +49,10 @@ built-in connection to your self-hosted **Grimmory** book server.
   day, week, month.
 - 🎵 **Music** *(new, Kindles with audio)*: albums and playlists from **Plex**, played
   while you read. Turn the Music tab on in Settings → Navbar → Tabs.
-- 🎧 **Audiobooks** from Grimmory and 🔊 **read aloud** with the Kindle's voice
-  (Kindle 2, 3, DX, Touch).
+- 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
+  read to you in the Kindle's own voice, the sentence being spoken highlighted and the
+  pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.
+- 🎧 **Audiobooks** from Grimmory, with your place kept.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
 All the details: **[the full guide](GZREADER.md)**.

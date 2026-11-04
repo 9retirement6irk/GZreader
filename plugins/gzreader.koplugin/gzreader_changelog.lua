@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.14.1",
+        changes = {
+            "Kindle Touch and Paperwhite: when GZreader turns the Wi-Fi on by itself (syncing, checking for updates…) it no longer shows \"Scanning for networks…\" and \"Connecting to network…\" messages; it connects in the background like on the Kindle 3. Turning the Wi-Fi on yourself still shows them.",
+            "The README mentions read aloud.",
+        },
+    },
+    {
         version = "1.14.0",
         changes = {
             "Music from Plex (Kindle 2, 3, DX and Touch): a Music tab (off until you turn it on: Settings → Navbar → Tabs → Music) with your Plex server's artists, albums, playlists and search. Download albums and playlists for offline, or press Play: it downloads in order and starts with the first track. It keeps playing while you read; Now playing has pause, next, previous, shuffle and repeat.",

@@ -96,6 +96,8 @@ function Net.release(key)
     end
 end
 
+local wrapScan
+
 --- Run fn once online. opts.quiet: no "Connecting…" message and no prompt
 --- (background syncs); without "Wi-Fi only when needed", quiet calls only run
 --- when already connected.
@@ -123,11 +125,15 @@ function Net.run(fn, opts)
         if Net.ours then schedule() end
     end
     local r
-    if opts.quiet then
-        r = NetworkMgr:enableWifi(done)
-    else
-        r = NetworkMgr:turnOnWifiAndWaitForConnection(done)
-    end
+    pcall(wrapScan)
+    Net.automatic = true -- (no scan popups: see wrapScan)
+    local ok, res = pcall(function()
+        if opts.quiet then return NetworkMgr:enableWifi(done) end
+        return NetworkMgr:turnOnWifiAndWaitForConnection(done)
+    end)
+    Net.automatic = false
+    r = ok and res
+    if not ok then Log.warn("wifi: turning on failed:", tostring(res)) end
     if r == false then
         Net.connecting = nil
         Log.warn("wifi: couldn't connect for", opts.reason or "?")
@@ -140,6 +146,34 @@ function Net.run(fn, opts)
             if Net.ours and not busy() then Net.ours = false; NetworkMgr:disableWifi() end
         end
     end)
+end
+
+--- Touch Kindles (Paperwhite, Touch) turn Wi-Fi on through KOReader's scan
+--- ("Scanning for networks…", then "Connecting to network …"); the Kindle 3
+--- doesn't. When GZreader turns Wi-Fi on by itself those stay in the
+--- background, as on the Kindle 3 (errors are still logged).
+wrapScan = function()
+    if NetworkMgr.reconnectOrShowNetworkMenu == Net._scan then return end
+    local orig = NetworkMgr.reconnectOrShowNetworkMenu
+    if type(orig) ~= "function" then return end
+    Net._scan = function(self, cb, interactive, ...)
+        if not Net.automatic or interactive then return orig(self, cb, interactive, ...) end
+        local show, repaint = UIManager.show, UIManager.forceRePaint
+        UIManager.show = function(um, w, ...)
+            -- (only messages are shown here when it isn't interactive)
+            if type(w) == "table" and type(w.text) == "string" and not w.buttons then
+                Log.info("wifi (quiet):", tostring(w.text):gsub("\n", " "))
+                return
+            end
+            return show(um, w, ...)
+        end
+        UIManager.forceRePaint = function() end
+        local res = { pcall(orig, self, cb, interactive, ...) }
+        UIManager.show, UIManager.forceRePaint = show, repaint
+        if not res[1] then error(res[2]) end
+        return unpack(res, 2)
+    end
+    NetworkMgr.reconnectOrShowNetworkMenu = Net._scan
 end
 
 --- Wi-Fi switched on or off by the user (menu, quick panel, gesture).
