@@ -69,7 +69,7 @@ snap("audiobook paused, then a book opened")
 add({ key = "Back", after = 8 })
 -- Grimmory tab with covers
 add({ combo = { "Alt", "R" }, after = 8 })
-add({ key = "E", after = 15 })            -- All books
+add({ key = "R", after = 15 })            -- All books (Q is Search)
 add({ key = "RPgFwd", after = 12 })
 add({ key = "Back", after = 3 })
 add({ key = "Back", after = 3 })

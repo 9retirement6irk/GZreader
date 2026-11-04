@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.12.3",
+        changes = {
+            "Kindle Touch and Paperwhite: tapping the back arrow at the top of the Grimmory tab inside a list (All books, a library, Authors…) made GZreader crash and restart, which looked like the Kindle rebooting. It now goes back one list.",
+            "Search is now first in the Grimmory tab: books whose title, author or series has the words, A–Z, with \"Load more\" like All books (it showed only the first 40 before). A library, shelf or author's books have \"Search in …\" at the top to search only there, and Series has its own search like Authors.",
+            "Big libraries use less memory: a book list keeps up to 200 books (\"Load more\" past that lets the first ones go, and \"Earlier books\" at the top brings them back), keeps only what GZreader uses of each book, and \"Load more\" no longer freezes the screen while it loads. A cover still on the screen is never let go of (with covers drawn quickly, that could also crash GZreader).",
+        },
+    },
+    {
         version = "1.12.2",
         changes = {
             "Touch Kindles and the Nook Simple Touch: GZreader in the launcher (swipe down from the top) opens the Reading menu while you're reading, instead of always the Home menu.",

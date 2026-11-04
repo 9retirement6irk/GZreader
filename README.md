@@ -109,8 +109,10 @@ browser talking to the emulated Kindle.</sub>
   kept on the Kindle, never written to its log.
 
 ### 📚 Your Grimmory library
-- **Browse** Continue reading, Recently added, All books, **Libraries**, **Authors**,
-  **Series** (in reading order) and Search. Audiobooks are left out.
+- **Search** first in the tab (title, author or series, A–Z), and inside any
+  library, shelf or author's books; **browse** Continue reading, Recently added,
+  All books, **Libraries**, **Authors**, **Series** (in reading order), each
+  with its own search. Audiobooks are left out.
 - **Background downloads** with a progress bar; keep using the Kindle while a book
   downloads. Books go to a `GZreader` folder, shown in the **Downloads** tab.
 

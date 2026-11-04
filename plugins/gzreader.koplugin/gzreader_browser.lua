@@ -1,6 +1,10 @@
 --[[--
-Keyboard-friendly Grimmory library browser built on KOReader's Menu widget.
-Text-only (no cover thumbnails) to stay light on the Kindle Keyboard's RAM.
+Keyboard-friendly Grimmory library browser built on KOReader's Menu widget
+(covers in book lists: gzreader_covermenu.lua).
+
+Big libraries: a book list keeps at most MAX_PAGES pages of Grimmory's
+results in memory ("Load more" drops the earliest, "Earlier books" brings
+them back), and keeps only the fields GZreader uses of each book.
 ]]
 
 local ConfirmBox = require("ui/widget/confirmbox")
@@ -16,8 +20,19 @@ local T = require("ffi/util").template
 local PAGE_SIZE = 25
 local Index = require("gzreader_index")
 
-local Browser = {}
+local Browser = {
+    MAX_PAGES = 8, -- pages of a book list kept (8 x 25 = 200 books)
+}
 Browser.__index = Browser
+
+-- what GZreader uses of a book (Grimmory sends ~40 fields: ratings, tags…)
+local BOOK_FIELDS = { "id", "title", "authors", "primaryFileType", "primaryFileName", "primaryFileId",
+    "fileSizeKb", "readProgress", "seriesName", "seriesNumber", "coverUpdatedOn", "libraryId", "isPhysical" }
+local function slim(book)
+    local out = {}
+    for _i, k in ipairs(BOOK_FIELDS) do out[k] = book[k] end
+    return out
+end
 
 function Browser:new(plugin)
     return setmetatable({ plugin = plugin, api = plugin.api }, self)
@@ -46,6 +61,7 @@ local function seriesNumber(n)
 end
 
 function Browser:bookItem(book, with_series_number)
+    book = slim(book)
     local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
     local title = require("gzreader_titles").forBook(self.plugin, book) or _("Untitled")
     local num = with_series_number and seriesNumber(book.seriesNumber)
@@ -148,13 +164,16 @@ function Browser:decorate(title)
         createStatusRowCustomBack = SharedState.get(zen, "createStatusRowCustomBack"),
         repaintTitleBar = SharedState.get(zen, "repaintTitleBar"),
         label = title,
-        back_callback = nested and function() menu:onReturn() end or nil,
+        -- (Menu:onClose goes back one list; KOReader's Menu has no onReturn:
+        -- 1.12.2 and older crashed here on touch Kindles)
+        back_callback = nested and function() menu:onClose() end or nil,
     })
     menu._gz_status_title = title
 end
 
 function Browser:rootItems()
     return {
+        { text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
         { text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
         { text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
         { text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
@@ -162,7 +181,6 @@ function Browser:rootItems()
         { text = _("Shelves"), callback = function() self:openShelves() end },
         { text = _("Authors"), callback = function() self:openAuthors() end },
         { text = _("Series"), callback = function() self:openSeries() end },
-        { text = _("Search…"), callback = function() self:promptSearch() end },
         { text = _("Downloaded books"), callback = function() self:openDownloaded() end },
         -- (only on Kindles with a speaker: the Paperwhites have no audio)
         require("gzreader_touch").audio() and { text = _("Audiobooks"), callback = function() self:openAudiobooks() end } or nil,
@@ -274,61 +292,150 @@ end
 
 ---------------------------------------------------------------- paged lists
 
---- Build menu items for one page of an AppPageResponse, appending to `prior`.
---- to_item(entry) returns a menu item or nil (skip). `header` items go first.
-function Browser:listItems(spec, page, data, prior)
-    local items = {}
-    for i = 1, #prior do items[i] = prior[i] end
-    if page == 0 then
-        for _, h in ipairs(spec.header or {}) do items[#items + 1] = h end
-    end
+--- One page of Grimmory's results as menu items (to_item(entry) -> item or nil).
+local function pageItems(spec, data)
+    local list = {}
     for _, entry in ipairs(type(data.content) == "table" and data.content or {}) do
         local item = type(entry) == "table" and spec.to_item(entry) or nil
-        if item then items[#items + 1] = item end
+        if item then list[#list + 1] = item end
     end
-    if data.hasNext == true then
+    return list
+end
+
+--- A paged list as it's shown: its header, "Earlier books" when its first
+--- pages were let go, the loaded pages' books, "Load more" while Grimmory has
+--- more. st = { spec, pages = { [n] = items }, first, last, next_of, total }
+function Browser:pagedItems(st)
+    local spec, items = st.spec, {}
+    for _, h in ipairs(spec.header or {}) do items[#items + 1] = h end
+    local n_header = #items
+    if st.first > 0 then
         items[#items + 1] = {
-            text = T(_("Load more (page %1 of %2)…"), page + 2, tonumber(data.totalPages) or "?"),
-            callback = function() self:loadMore(spec, page + 1, items) end,
+            text = T(_("Earlier books (page %1 of %2)…"), st.first, st.total or "?"),
+            callback = function() self:loadPage(st, st.first - 1) end,
         }
+    end
+    for p = st.first, st.last do
+        for _, it in ipairs(st.pages[p] or {}) do items[#items + 1] = it end
+    end
+    if st.next_of[st.last] then
+        items[#items + 1] = {
+            text = T(_("Load more (page %1 of %2)…"), st.last + 2, st.total or "?"),
+            callback = function() self:loadPage(st, st.last + 1) end,
+        }
+    end
+    if #items == n_header and n_header > 0 then
+        items[#items + 1] = { text = spec.empty_text or _("Nothing here yet."), select_enabled = false }
     end
     return items
 end
 
---- spec = { title, fetch = function(page) -> data, err end, to_item, header, key }
+--- A new list state from Grimmory's first page.
+function Browser:pagedState(spec, data)
+    return { spec = spec, pages = { [0] = pageItems(spec, data) }, first = 0, last = 0,
+        next_of = { [0] = data.hasNext == true }, total = tonumber(data.totalPages) }
+end
+
+--- spec = { title, fetch = function(page) -> data, err end, to_item, header, key, empty_text }
 --- With a key, the first page is saved and shown at once next time.
 function Browser:openList(spec)
     self:openCached{
         key = spec.key,
         title = spec.title,
         fetch = function() return spec.fetch(0) end,
-        build = function(data) return self:listItems(spec, 0, data, {}) end,
+        build = function(data) return self:pagedItems(self:pagedState(spec, data)) end,
     }
 end
 
-function Browser:loadMore(spec, page, existing)
+--- Load page `page` of a paged list (the one after the last, or before the
+--- first) in the background, and show it. At most MAX_PAGES are kept: the
+--- farthest one is let go (a Kindle's memory; 1.12.2 kept every page).
+function Browser:loadPage(st, page)
     local msg = busy(_("Loading…"))
-    local data, err = spec.fetch(page)
-    UIManager:close(msg)
-    if not data then return self.plugin:showError(err) end
-    local prior = {}
-    for i = 1, #existing - 1 do prior[i] = existing[i] end -- drop old "Load more"
-    local first_new = #existing
-    self:replace(spec.title, self:listItems(spec, page, data, prior))
-    -- jump to the page that holds the first newly loaded entry
-    local per_page = self.menu.perpage or PAGE_SIZE
-    self.menu:onGotoPage(math.floor((first_new - 1) / per_page) + 1)
+    require("gzreader_async").run(self.api, function() return st.spec.fetch(page) end, function(data, err)
+        UIManager:close(msg)
+        if self.closed or not self.menu then return end
+        if not data then return self.plugin:showError(err) end
+        local list = pageItems(st.spec, data)
+        st.pages[page] = list
+        st.next_of[page] = data.hasNext == true
+        st.total = tonumber(data.totalPages) or st.total
+        if page > st.last then
+            st.last = page
+            if st.last - st.first + 1 > Browser.MAX_PAGES then
+                st.pages[st.first] = nil
+                st.first = st.first + 1
+            end
+        else
+            st.first = page
+            if st.last - st.first + 1 > Browser.MAX_PAGES then
+                st.pages[st.last] = nil
+                st.last = st.last - 1
+            end
+        end
+        local items = self:pagedItems(st)
+        local at = #items
+        for i, it in ipairs(items) do
+            if it == list[1] then at = i; break end
+        end
+        self:replace(st.spec.title, items)
+        -- go to the menu page holding the first book of the page just loaded
+        local per_page = self.menu.perpage or PAGE_SIZE
+        self.menu:onGotoPage(math.floor((at - 1) / per_page) + 1)
+    end, "list")
 end
 
+--- Does Grimmory's answer look like a search for q: do most of the books
+--- have it in their title, series or an author? (Not all: Grimmory also
+--- lowercases letters like É, which Lua doesn't.)
+local function matchesSearch(data, q)
+    local list = type(data) == "table" and type(data.content) == "table" and data.content or {}
+    if #list == 0 then return true end
+    q = q:lower()
+    local n = 0
+    for _i, b in ipairs(list) do
+        local hit = false
+        if type(b) == "table" then
+            hit = tostring(b.title or ""):lower():find(q, 1, true) or tostring(b.seriesName or ""):lower():find(q, 1, true)
+            for _j, a in ipairs(type(b.authors) == "table" and b.authors or {}) do
+                hit = hit or tostring(a):lower():find(q, 1, true)
+            end
+        end
+        if hit then n = n + 1 end
+    end
+    return n * 2 >= #list
+end
+Browser.matchesSearch = matchesSearch
+
 --- Books matching app-list filters (readable formats only).
-function Browser:openPaged(title, params, with_series_number)
+--- opts = { search = q, header = items, empty_text }: a search's results.
+function Browser:openPaged(title, params, with_series_number, opts)
+    opts = opts or {}
+    local header = opts.header
+    if not header and not with_series_number then
+        -- search this list (a library, a shelf, an author's books…) or everything
+        local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors
+        local scope = scoped and { title = title, params = params } or nil
+        header = { {
+            text = scope and T(_("Search in %1…"), title) or _("Search Grimmory…"),
+            callback = function() self:promptSearch(scope) end,
+        } }
+    end
     self:openList{
         title = title,
-        key = require("gzreader_listcache").key("paged", params),
+        key = not opts.search and require("gzreader_listcache").key("paged", params) or nil,
+        header = header,
+        empty_text = opts.empty_text,
         fetch = function(page)
             local p = { page = page, size = PAGE_SIZE, fileType = self.api.READABLE_TYPES }
             for k, v in pairs(params) do p[k] = v end
-            return self.api:listBooks(p)
+            local data, err = self.api:listBooks(p)
+            if data and opts.search and not matchesSearch(data, opts.search) then
+                -- an older Grimmory that ignores search= in its book list:
+                -- its own search instead (the whole library, newest first)
+                return self.api:searchBooks(opts.search, page, PAGE_SIZE)
+            end
+            return data, err
         end,
         to_item = function(book)
             if isReadable(book) then return self:bookItem(book, with_series_number) end
@@ -466,38 +573,46 @@ function Browser:promptAuthorSearch()
     dialog:onShowKeyboard()
 end
 
-function Browser:openSeries()
+function Browser:openSeries(search)
     Index.get(self.plugin, function(index)
         local items = {}
+        local needle = search and search:lower()
         for name, s in pairs(index.series or {}) do
             local authors = type(s.authors) == "table" and table.concat(s.authors, ", ") or ""
-            items[#items + 1] = {
-                text = authors ~= "" and (name .. " — " .. authors) or name,
-                sort_key = name:lower(),
-                mandatory = countText(s.count),
-                callback = function()
-                    -- filter rather than /series/{name}/books: names can contain "/"
-                    self:openPaged(name, { series = name, sort = "seriesNumber", dir = "asc" }, true)
-                end,
-            }
+            if not needle or name:lower():find(needle, 1, true) or authors:lower():find(needle, 1, true) then
+                items[#items + 1] = {
+                    text = authors ~= "" and (name .. " — " .. authors) or name,
+                    sort_key = name:lower(),
+                    mandatory = countText(s.count),
+                    callback = function()
+                        -- filter rather than /series/{name}/books: names can contain "/"
+                        self:openPaged(name, { series = name, sort = "seriesNumber", dir = "asc" }, true)
+                    end,
+                }
+            end
         end
         sortedByName(items)
-        table.insert(items, 1, refreshItem(self, function() self:openSeries() end))
-        self:push(_("Series"), items)
+        if search then
+            self:push(T(_("Series: %1"), search), items)
+        else
+            table.insert(items, 1, { text = _("Search series…"), callback = function() self:promptSeriesSearch() end })
+            table.insert(items, 2, refreshItem(self, function() self:openSeries() end))
+            self:push(_("Series"), items)
+        end
     end)
 end
 
-function Browser:promptSearch()
+function Browser:promptSeriesSearch()
     local dialog
     dialog = InputDialog:new{
-        title = _("Search Grimmory"),
-        input_hint = _("Title, author, series…"),
+        title = _("Search series"),
+        input_hint = _("Series or author name"),
         buttons = {{
             { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
             { text = _("Search"), is_enter_default = true, callback = function()
                 local q = dialog:getInputText()
                 UIManager:close(dialog)
-                if q and q:match("%S") then self:search(q) end
+                if q and q:match("%S") then self:openSeries(util.trim(q)) end
             end },
         }},
     }
@@ -505,21 +620,40 @@ function Browser:promptSearch()
     dialog:onShowKeyboard()
 end
 
-function Browser:search(q, data, err)
-    if data == nil and err == nil then
-        local msg = busy(_("Searching…"))
-        return require("gzreader_async").call(self.api, "searchBooks", { q, 0, 40 }, function(d, e)
-            UIManager:close(msg)
-            self:search(q, d or false, e or "unreachable")
-        end)
+--- Ask what to search for: in the whole library, or in `scope` = { title,
+--- params } (a library, shelf or author's books). `text`: start with it.
+function Browser:promptSearch(scope, text)
+    local dialog
+    dialog = InputDialog:new{
+        title = scope and T(_("Search in %1"), scope.title) or _("Search Grimmory"),
+        input = text,
+        input_hint = _("Title, author or series"),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Search"), is_enter_default = true, callback = function()
+                local q = dialog:getInputText()
+                UIManager:close(dialog)
+                if q and q:match("%S") then self:search(util.trim(q), scope) end
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- Grimmory's books whose title, series or an author contains q (readable
+--- formats, A–Z, paged like All books), in the whole library or in `scope`.
+function Browser:search(q, scope)
+    local params = { search = q, sort = "title", dir = "asc" }
+    for k, v in pairs(scope and scope.params or {}) do
+        if k ~= "sort" and k ~= "dir" then params[k] = v end
     end
-    if not data then return self.plugin:showError(err) end
-    local items = {}
-    local list = type(data.content) == "table" and data.content or data
-    for _, book in ipairs(type(list) == "table" and list or {}) do
-        if type(book) == "table" and isReadable(book) then items[#items + 1] = self:bookItem(book) end
-    end
-    self:push(T(_("Search: %1"), q), items)
+    local title = scope and T(_("%1: “%2”"), scope.title, q) or T(_("Search: %1"), q)
+    self:openPaged(title, params, false, {
+        search = q,
+        header = { { text = _("Search again…"), callback = function() self:promptSearch(scope, q) end } },
+        empty_text = T(_("No books match “%1”."), q),
+    })
 end
 
 function Browser:openDownloaded()

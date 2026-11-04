@@ -387,9 +387,105 @@ local items = b.menu.item_table
 local audiobooks = 0
 for _, it in ipairs(items) do if it.book and it.book.primaryFileType == "AUDIOBOOK" then audiobooks = audiobooks + 1 end end
 check(audiobooks == 0, "audiobooks filtered out")
-check(#items == 26 and items[26].text:match("Load more"), "first page + 'Load more'")
-items[26].callback()
-check(#b.menu.item_table == 32 and not b.menu.item_table[32].text:match("Load more"), "second page appended, no more pages")
+check(#items == 27 and items[1].text == "Search Grimmory…" and items[27].text:match("Load more"), "search, first page + 'Load more'")
+items[27].callback()
+check(#b.menu.item_table == 33 and not b.menu.item_table[33].text:match("Load more"), "second page appended, no more pages")
+check(b.menu.page == 2, "Load more: on the page with the first new book")
+do -- a big library: only MAX_PAGES pages kept, "Earlier books" brings the first back
+    local saved = Browser.MAX_PAGES
+    Browser.MAX_PAGES = 1
+    b = Browser:new(plugin); b:show()
+    b:openPaged("All books", { sort = "title", dir = "asc" })
+    b.menu.item_table[27].callback()
+    local t = b.menu.item_table
+    check(#t == 9 and t[2].text:match("^Earlier books %(page 1 of 2%)") and t[3].book and t[3].book.title == "Book 26",
+        "Load more past MAX_PAGES: the first page let go, 'Earlier books' instead " .. tostring(t[2] and t[2].text))
+    t[2].callback()
+    t = b.menu.item_table
+    check(#t == 27 and t[2].book and t[2].book.title == "Book 01" and t[27].text:match("Load more %(page 2 of 2%)"),
+        "Earlier books: the first page back, the second let go")
+    Browser.MAX_PAGES = saved
+    local slimmed = b.menu.item_table[2].book
+    check(slimmed.id == 1 and slimmed.title == "Book 01" and slimmed.primaryFileType == "EPUB" and slimmed.fileSizeKb == 300
+        and slimmed.authors and slimmed.libraryId and slimmed.thumbnailUrl == nil,
+        "book items keep only what GZreader uses")
+end
+
+print("Grimmory tab search")
+do
+    b = Browser:new(plugin); b:show()
+    local root = b:rootItems()
+    check(root[1].text == "Search Grimmory…", "search is first in the Grimmory tab")
+    b:search("book 1")
+    local t = b.menu.item_table
+    local titles = {}
+    for _i, it in ipairs(t) do if it.book then titles[#titles + 1] = it.book.title end end
+    check(b.menu.title == "Search: book 1" and t[1].text == "Search again…" and table.concat(titles, ",")
+        == "Book 10,Book 11,Book 12,Book 13,Book 14,Book 15,Book 16,Book 17,Book 18,Book 19", "search: readable matches A–Z " .. table.concat(titles, ","))
+    local last
+    for _, e in ipairs(json.decode(ctl("/state")).log) do if e[2]:match("^/api/v1/app/books%?") then last = e[2] end end
+    check(last and last:match("search=book") and last:match("fileType=EPUB"), "search: Grimmory's book list (readable formats, paged) " .. tostring(last))
+    b:search("author 2")
+    local n = 0
+    for _i, it in ipairs(b.menu.item_table) do if it.book then n = n + 1 end end
+    check(n > 0, "search finds authors too")
+    b:search("nothing like this")
+    t = b.menu.item_table
+    check(#t == 2 and t[2].text == "No books match “nothing like this”." and t[2].select_enabled == false, "search: nothing found")
+    -- in a library: the library's own search
+    b:openPaged("fiction", { libraryId = 2, sort = "title", dir = "asc" })
+    t = b.menu.item_table
+    check(t[1].text == "Search in fiction…", "a library's list: search in it")
+    b:search("book", { title = "fiction", params = { libraryId = 2, sort = "title", dir = "asc" } })
+    local ok_lib, m = true, 0
+    for _i, it in ipairs(b.menu.item_table) do if it.book then m = m + 1; ok_lib = ok_lib and it.book.libraryId == 2 end end
+    check(b.menu.title == "fiction: “book”" and m > 0 and ok_lib, "search in a library: its books only")
+    -- an older Grimmory that ignores search= in its book list: its own search endpoint
+    ctl("/set?old_search=true")
+    b:search("book 2")
+    titles = {}
+    for _i, it in ipairs(b.menu.item_table) do if it.book then titles[#titles + 1] = it.book.title end end
+    check(#titles > 0 and not table.concat(titles, ","):match("Book 1"), "older Grimmory: falls back to its search endpoint " .. table.concat(titles, ","))
+    ctl("/set?old_search=false")
+end
+
+print("Grimmory tab back arrow (touch)")
+do
+    -- the title's back arrow calls a method KOReader's Menu really has
+    -- (1.12.2: menu:onReturn(), gone from KOReader; touch Kindles crashed)
+    local src = io.open(PLUGIN .. "/gzreader_browser.lua"):read("*a")
+    local method = src:match("back_callback = nested and function%(%) menu:([%w_]+)%(%)")
+    local menu_src = io.open(PLUGIN .. "/../../frontend/ui/widget/menu.lua"):read("*a")
+    check(method and menu_src:find("function Menu:" .. method .. "(", 1, true), "back arrow: Menu:" .. tostring(method) .. " exists")
+end
+
+print("Covers kept in memory")
+do
+    local Covers = require("gzreader_covers")
+    local frees = 0
+    local function fake(key) Covers.memory[key] = { bb = { free = function() frees = frees + 1 end }, used = 0 } end
+    Covers.release(); Covers.tick = 0; Covers.page_start = 0
+    local saved = Covers.MEMORY
+    Covers.MEMORY = 3
+    -- the page being drawn: three covers already used on it
+    Covers.beginPage()
+    for i = 1, 3 do fake("p" .. i); Covers.tick = Covers.tick + 1; Covers.memory["p" .. i].used = Covers.tick end
+    local dir = Covers.dir()
+    local jpg = io.open(dir .. "/77.jpg", "wb"); jpg:write("x"); jpg:close()
+    package.loaded["ui/renderimage"] = { renderImageData = function() return { getWidth = function() return 10 end,
+        getHeight = function() return 10 end, free = function() end } end, scaleBlitBuffer = function(_, bb) return bb end }
+    check(Covers.image(77, nil, 10, 10) ~= nil and frees == 0 and Covers.memory.p1 and Covers.memory.p2 and Covers.memory.p3,
+        "a cover on the page being drawn is never let go")
+    Covers.beginPage()
+    Covers.image(78, nil, 10, 10) -- (not on the Kindle: nil)
+    jpg = io.open(dir .. "/79.jpg", "wb"); jpg:write("x"); jpg:close()
+    Covers.image(79, nil, 10, 10)
+    check(frees == 1 and Covers.memory.p1 == nil and Covers.memory.p2, "next page: the least recently used goes")
+    Covers.MEMORY = saved
+    package.loaded["ui/renderimage"] = nil
+    os.remove(dir .. "/77.jpg"); os.remove(dir .. "/79.jpg")
+    Covers.release()
+end
 b:openSimple("continue-reading", "Continue reading")
 check(#b.menu.item_table == 5, "continue reading list (audiobook dropped)")
 check(b.menu.item_table[1].mandatory:match("13%%"), "progress shown")
@@ -399,7 +495,7 @@ local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
-check(table.concat(names, "|"):match("All books.-|Libraries|Shelves|Authors|Series|Search"), "root menu: ... All books, Libraries, Shelves, Authors, Series, Search ...")
+check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Downloaded"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Downloaded")
 local function find(list, pat) for _, it in ipairs(list) do if it.text:match(pat) then return it end end end
 local function texts(list) local t = {} for _, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
 
@@ -438,13 +534,17 @@ check(b.menu.title == "Authors: author 1" and #b.menu.item_table == 1 and b.menu
 b = Browser:new(plugin); b:show()
 b:openSeries()
 local sl = b.menu.item_table
-check(sl[1].text:match("Refresh") and sl[2].text == "Saga / Part One — Author 2, Author 0, Author 1", "series A–Z (refresh first), with its authors")
+check(sl[1].text == "Search series…" and sl[2].text:match("Refresh") and sl[3].text == "Saga / Part One — Author 2, Author 0, Author 1", "series: search, refresh, then A–Z, with its authors")
 check(not texts(sl):match("Audio Only Saga"), "audiobook-only series left out")
-check(sl[2].mandatory == "3 books", "series counts readable books only")
-sl[2].callback()
+check(sl[3].mandatory == "3 books", "series counts readable books only")
+sl[3].callback()
 local st = {}
 for _, it in ipairs(b.menu.item_table) do st[#st + 1] = it.text:match("^(#[%d%.]+)") or "?" end
 check(table.concat(st, ",") == "#1,#2,#2.5", "series books in order with numbers; audiobook left out; '/' in name works")
+check(b.menu.item_table[1].book ~= nil, "a series' books: no search line above them")
+b = Browser:new(plugin); b:show()
+b:openSeries("author 2")
+check(b.menu.title == "Series: author 2" and #b.menu.item_table == 1 and b.menu.item_table[1].text:match("^Saga"), "series search: by name or author")
 
 ctl("/set?lib500=true")
 b = Browser:new(plugin); b:show()
@@ -483,7 +583,7 @@ do
     b = Browser:new(plugin); b:show()
     b:openPaged("All books", { sort = "title", dir = "asc" })
     check(captured.wifi[1] == "on-quiet", "Wi-Fi turned on quietly in the background")
-    check(b.menu.title == "All books" and #b.menu.item_table == 26, "then the fresh list replaces the saved copy")
+    check(b.menu.title == "All books" and #b.menu.item_table == 27, "then the fresh list replaces the saved copy")
     -- moved on to another list before the fresh one arrived: not overwritten
     local AsyncMod = require("gzreader_async")
     local pending

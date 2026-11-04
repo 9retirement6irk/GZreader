@@ -78,6 +78,12 @@ Press/Back answer), and the order things happen in on a first start.
   forks and files opened for everyday keys on Home, the tabs, the Home menu
   and Settings, twice; a sampling profiler shows where the CPU went. Needs
   the demo library server on 18080.
+- `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
+  `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
+  books with real covers) — Lua memory and RSS while paging through All
+  books with Load more (`GZ_MEM_LOADS`, default 16), the tiles, the title's
+  back arrow, Authors and Series (the library index) and a search; writes
+  `memory.txt`.
 
 ```
 tools/gzreader/emulator/run.sh tools/gzreader/emulator/setup_qr.lua /tmp/emu/setup 20

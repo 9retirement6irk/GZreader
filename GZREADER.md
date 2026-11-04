@@ -411,9 +411,9 @@ Under **Single sign-on (SSO)** you can also choose:
 
 ## Browsing Grimmory
 
-Continue reading, Recently added, All books (A–Z), **Libraries**, **Authors**
-(with search), **Series** (in series order) and Search. Audiobooks are left
-out everywhere: Authors, Series and Libraries come from a local index of the
+**Search Grimmory…** (first in the tab), Continue reading, Recently added,
+All books (A–Z), **Libraries**, **Authors** (with search), **Series** (in
+series order, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
 readable books (built in the background, refreshed daily), so authors or
 series with only audiobooks don't appear, and the lists open instantly.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
@@ -428,6 +428,19 @@ straight away (its title ends in "· saved"), Wi‑Fi comes up quietly in the
 background, and the fresh list replaces it in place (same page) when it
 arrives, unless you've moved on. With no Wi‑Fi the saved copies are what you
 get. "Load more" and Search always ask Grimmory.
+
+Search looks for the words in a book's title, series or authors (Grimmory's
+book list with `search=`, readable formats only, A–Z, paged like All books).
+All books has "Search Grimmory…" at the top; a library, shelf or author's
+books have "Search in <name>…", which searches only there. Older Grimmory
+servers whose book list ignores `search=` get their own search endpoint
+instead (the whole library, newest first).
+
+Big libraries: a book list keeps at most 8 pages (200 books) of Grimmory's
+results. "Load more" past that lets the earliest page go, and "Earlier books"
+at the top brings it back. Each book keeps only the dozen fields GZreader
+uses (Grimmory sends about forty). Covers shown on the page being drawn are
+never freed (1.12.2 and older could free one still on screen).
 
 The Grimmory tab is part of ZenOS's tab bar while it's open: the bar stays
 at the bottom with the Grimmory tab underlined, and the title shows ZenOS's

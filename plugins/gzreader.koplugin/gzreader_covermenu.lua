@@ -114,7 +114,38 @@ function Item:init()
         Geom:new{ w = sc_side, h = sc_side }, self.shortcut, self.shortcut_style)
     local entry = self.entry
     local content
-    if self.mosaic then
+    if self.mosaic and not coverOf(entry) then
+        -- a line that isn't a book (Search…, Load more…): a framed label
+        -- where a cover would be, cover-sized
+        local title_h = Screen:scaleBySize(20)
+        local fh = h - title_h - 3 * pad
+        local fw = math.min(w - 2 * pad, math.floor(fh * 0.714))
+        content = CenterContainer:new{
+            dimen = Geom:new{ w = w, h = h - Size.line.thick },
+            VerticalGroup:new{ align = "center", FrameContainer:new{
+                width = fw, height = fh, padding = 0, margin = 0,
+                bordersize = Size.border.thin, color = Blitbuffer.COLOR_DARK_GRAY,
+                CenterContainer:new{
+                    dimen = Geom:new{ w = fw - 2 * Size.border.thin, h = fh - 2 * Size.border.thin },
+                    TextBoxWidget:new{
+                        text = entry.text or "", face = Font:getFace("cfont", 16), bold = true,
+                        width = fw - 2 * pad, alignment = "center",
+                        fgcolor = entry.select_enabled == false and Blitbuffer.COLOR_DARK_GRAY or nil,
+                    },
+                },
+            }, VerticalSpan:new{ width = title_h + pad } },
+        }
+        if shortcut then
+            content = OverlapGroup:new{
+                dimen = Geom:new{ w = w, h = h - Size.line.thick },
+                content,
+                LeftContainer:new{
+                    dimen = Geom:new{ w = sc_side + pad, h = sc_side + pad },
+                    HorizontalGroup:new{ HorizontalSpan:new{ width = pad }, shortcut },
+                },
+            }
+        end
+    elseif self.mosaic then
         local title_h = Screen:scaleBySize(20)
         local cw, ch = w - 2 * pad, h - title_h - 3 * pad
         local cover = coverOf(entry) and coverWidget(entry, cw, ch) or placeholder(cw, ch, entry.text)
@@ -220,6 +251,7 @@ function CoverMenu.build(m, plugin, mode, select_number, no_recalculate_dimen)
     m:_recalculateDimen(no_recalculate_dimen)
     local per = m.perpage
     local offset = (m.page - 1) * per
+    Covers.beginPage()
     local entries = {}
     for i = 1, per do
         local e = m.item_table[offset + i]

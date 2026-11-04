@@ -9,7 +9,10 @@ Grimmory has no small cover size: its thumbnail is 250 x 350 (audiobooks
 - only the covers of the page on screen are fetched, in the background
   process, one page at a time;
 - each is decoded and shrunk once per size, and the result kept in memory
-  for the session (a few dozen small images).
+  for the session (a few dozen small images). Never one on the page being
+  drawn: beginPage() marks where a page starts (1.12.2 could free a cover
+  still on screen when several were drawn in the same second, and the
+  next screen refresh then read freed memory).
 ]]
 
 local DataStorage = require("datastorage")
@@ -19,6 +22,8 @@ local Log = require("gzreader_log")
 local Covers = {
     MEMORY = 60,           -- shrunk covers kept in memory
     memory = {},           -- key -> { bb, used }
+    tick = 0,              -- (each use counts one up: the least recently used is the lowest)
+    page_start = 0,        -- the tick at which the page being drawn began
     pending = nil,         -- the request waiting for the running fetch
     running = false,
 }
@@ -50,9 +55,10 @@ end
 --- The cover shrunk to fit w x h (keeping its shape), or nil if not here.
 function Covers.image(id, kind, w, h)
     local key = tostring(id) .. (kind or "") .. "@" .. w .. "x" .. h
+    Covers.tick = Covers.tick + 1
     local m = Covers.memory[key]
     if m then
-        m.used = os.time()
+        m.used = Covers.tick
         return m.bb
     end
     local path = Covers.path(id, kind)
@@ -73,18 +79,25 @@ function Covers.image(id, kind, w, h)
     if tw ~= bw or th ~= bh then
         bb = RenderImage:scaleBlitBuffer(bb, tw, th, true)
     end
-    -- keep the memory bounded: drop the least recently used
+    -- keep the memory bounded: drop the least recently used, never one
+    -- already drawn on this page
     local n, oldest_key, oldest = 0, nil, math.huge
     for k, v in pairs(Covers.memory) do
         n = n + 1
-        if v.used < oldest then oldest_key, oldest = k, v.used end
+        if v.used < oldest and v.used < Covers.page_start then oldest_key, oldest = k, v.used end
     end
     if n >= Covers.MEMORY and oldest_key then
         Covers.memory[oldest_key].bb:free()
         Covers.memory[oldest_key] = nil
     end
-    Covers.memory[key] = { bb = bb, used = os.time() }
+    Covers.memory[key] = { bb = bb, used = Covers.tick }
     return bb
+end
+
+--- A new page of covers is about to be drawn: the ones drawn from now on
+--- stay in memory until the next page.
+function Covers.beginPage()
+    Covers.page_start = Covers.tick + 1
 end
 
 --- Fetch the missing covers among `wanted` ({ { id, kind } }) in the

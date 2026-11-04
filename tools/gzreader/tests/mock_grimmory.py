@@ -31,6 +31,7 @@ STATE = {
     "dl_stall": False,     # send part of the body, then hang
     "refresh_calls": 0,
     "lib500": False,
+    "old_search": False,   # an older Grimmory whose book list ignores search=
     "bookmarks": {},       # id -> BookMark dto
     "bm_next": 500,
     "annotations": {},     # id -> AnnotationResponse
@@ -403,6 +404,12 @@ class H(BaseHTTPRequestHandler):
                 books = [b for b in books if b["id"] in SHELVES.get(int(q["shelfId"][0]), [])]
             if q.get("magicShelfId"):
                 books = [b for b in books if b["id"] in (21, 22)]
+            if q.get("search") and not STATE["old_search"]:   # title, series or an author (any case)
+                ql = q["search"][0].lower().strip()
+                books = [b for b in books if ql in b["title"].lower() or ql in b.get("seriesName", "").lower()
+                         or any(ql in a.lower() for a in b["authors"])]
+            if q.get("sort") == ["title"]:
+                books = sorted(books, key=lambda b: b["title"].lower(), reverse=q.get("dir") == ["desc"])
             if q.get("sort") == ["seriesNumber"]:
                 books = sorted(books, key=lambda b: b.get("seriesNumber") or 0)
             page, size = int(q.get("page", ["0"])[0]), int(q.get("size", ["20"])[0])

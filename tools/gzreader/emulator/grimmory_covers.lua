@@ -11,7 +11,7 @@ end
 local function add(t) s[#s + 1] = t end
 add({ fn = function() require("gzreader_homemenu").setDisplayMode("list_image_meta") end, after = 1 })
 add({ combo = { "Alt", "R" }, after = 8 })
-add({ key = "E", after = 6 }) -- All books
+add({ key = "R", after = 6 }) -- All books (Q is Search)
 add({ shot = "list-0" })
 add({ wait = 12 })
 add({ fn = function(E)
