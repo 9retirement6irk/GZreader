@@ -76,15 +76,15 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Which Kindle does what
 
-| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 |
-| --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch |
-| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi |
-| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) |
-| Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — |
-| Volume buttons | yes | — | — | — |
-| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own |
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) |
+| --- | --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | the colour touchscreen's buttons and keyboard |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) |
+| Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — |
+| Volume buttons | yes | — | — | — | — |
+| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own |
 
 KOReader's own device code decides the model from the serial number (the DX
 runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts
@@ -99,7 +99,7 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
   choose a tab, Press opens it.
 - **Menu:** the GZreader menu at Home (continue reading, history, sort,
   display, Send books from your phone, Wi‑Fi, settings, updates,
-  diagnostics, sleep, restart, ZenOS's quick panel); the Reading menu in a
+  diagnostics, sleep, restart; never ZenOS's touch quick panel); the Reading menu in a
   book; in Notes and Calendar their options (new note, filter, refresh;
   today, Agenda / Day / Week / Month, refresh, settings).
 - **Notes:** the 5-way moves between the sticky notes, Press opens one; in a
@@ -112,6 +112,113 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
   code can't handle (like the Kindle 3's 4-bit one): GZreader draws into an
   ordinary buffer and copies it to the screen, about a sixth less processor
   time per key press in testing, and night mode costs nothing.
+
+## Nook 1st Edition (test build)
+
+GZreader also runs on Barnes & Noble's first Nook (2009): a 6" e-ink page
+with a small colour touchscreen under it. **This is a test build:** it has
+been checked in GZreader's emulator only, not yet on a real Nook. Try it on
+a Nook you're prepared to restore, and send back what happens (below).
+
+How it works: the Nook's processor runs the same programs as a Kindle 3, so
+GZreader uses the Kindle 2/3/DX build plus what the Nook's Android 1.5 lacks
+(a Linux C library and BusyBox, from Debian 7). A start script pauses the
+Nook's own software while GZreader runs (Wi‑Fi stays connected) and resumes
+it when you exit. Nothing on the Nook's system is changed for good: the
+script's changes are undone by exiting or restarting the Nook.
+
+### Both screens
+
+- **The e-ink page** shows GZreader as on a Kindle 4. GZreader sends each
+  update straight to the e-ink controller with a waveform suited to it: fast
+  black-and-white for highlights, grey without a flash for page turns, a
+  flashing full refresh now and then (like the Kindles).
+- **The colour touchscreen** is what you drive it with, and it changes with
+  what you're doing:
+  - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
+    5-way), **Back**, **Menu** (the GZreader menu; in a book the Reading
+    menu), **Home**, ◀◀ ▶▶ (page back / forward) and **•••** (the next
+    panel).
+  - **Reading info** (in a book): title, chapter, page, a progress bar, the
+    time, battery and Wi‑Fi. Or **Cover**: the book's cover with its title,
+    author and progress. Touch it to get the controls for a while.
+  - **Keyboard** (typing: search, Notes, connecting): letters, numbers and
+    symbols on the colour screen, so the page isn't covered by an e-ink
+    keyboard. **Done** swaps it for the controls (▲ ▼ to reach the dialog's
+    buttons), the ⌨ button brings it back.
+  - Swipe left or right on it to turn pages; up or down for its next panel.
+- **The page buttons** on both sides turn pages; **n** (under the colour
+  screen) is Home; **power** puts the Nook to sleep and wakes it.
+
+**Settings → Interface → Colour screen** chooses what shows when: while
+reading (reading info, cover, controls or nothing), elsewhere (controls,
+clock or nothing), when typing (colour keyboard, or the e-ink keyboard with
+the arrows), whether a touch brings up the controls and for how long, swipe
+to turn pages, how long until it goes dark (a touch lights it again; the
+first touch only lights it), its brightness, and a **touch test** with
+mirror / swap switches in case the touch is the wrong way round on your
+Nook.
+
+Not in the test build: audiobooks and read aloud (the Nook has a speaker,
+but GZreader plays audio with the Kindle's player), turning Wi‑Fi on and off
+(Android's Wi‑Fi stays as it was: connect before starting GZreader), and a
+launcher icon (start it with adb or a terminal app, below).
+
+### Root the Nook
+
+GZreader needs root (to pause the Nook's software and reach the screens),
+which on this Nook means a community rooting method. Read the guide for
+yours in full first, charge the battery, and back up your books.
+
+1. Find the serial number (Settings → About your nook, or under the back
+   cover). **It decides the method:** methods for older Nooks can brick
+   newer hardware.
+2. Serial **below 1003**: nookDevs' [Softroot](https://nookdevs.com/Softroot)
+   (an update file on a microSD card; adds ADB over USB).
+3. Serial **1003 or above** (firmware 1.4.1 and later): nookDevs'
+   [Rooting New Hardware](https://nookdevs.com/Rooting_New_Hardware), or the
+   newer browser-based method in [Rooting the Barnes & Noble Nook 1st
+   Generation](https://letsdecentralize.org/tutorials/root-nook.html) (ADB
+   over Wi‑Fi).
+4. Install [Android's platform tools](https://developer.android.com/tools/releases/platform-tools)
+   (adb) on your computer and check that `adb shell id` says `uid=0(root)`.
+
+### Install
+
+1. Download `gzreader-nook-<version>.zip` from the
+   [releases](https://github.com/9retirement6irk/GZreader/releases) and
+   unzip it on your computer: you get a folder, `gzreader`.
+2. Check there's room (about 75 MB) in the Nook's app storage:
+   `adb shell df /data`.
+3. Copy it there (the Nook's USB storage can't run programs):
+
+   ```
+   adb push gzreader /data/gzreader
+   ```
+
+4. Copy books to the Nook as usual (USB: the **nook** drive): GZreader keeps
+   its folder, `GZreader`, next to B&N's `my documents`.
+
+### Start and exit
+
+- From the computer: `adb shell sh /data/gzreader/gzreader.sh`
+- On the Nook, with a terminal app (Android Terminal Emulator 1.0.x runs on
+  Android 1.5): `su -c "sh /data/gzreader/gzreader.sh"`
+
+GZreader starts with its setup guide, as on a Kindle. To go back to the
+Nook's own software, choose **Exit** in the GZreader menu (Menu on the
+colour screen). If anything goes wrong, holding power to restart the Nook
+always brings back its own software.
+
+If the e-ink page doesn't update properly, try the Nook's own way of
+refreshing it (every update a full refresh, slower but safe):
+`adb shell GZ_NOOK_EPD=kernel sh /data/gzreader/gzreader.sh`.
+
+### What to send back
+
+`/data/gzreader/gzreader-start.log`, `/data/gzreader/koreader/crash.log`
+and `/data/gzreader/koreader/gzreader.log` (`adb pull` each), with what you
+saw on both screens. And the touch test's numbers if the touch was off.
 
 ## Touch Kindles (Kindle Touch, Paperwhite 3)
 
@@ -161,9 +268,9 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Home | Q, W…; A, S, D… | Q the book you're reading, W, E, R… the books in the strip, A, S, D… the strip's tabs (shown in squares). |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
-| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, Quick panel (ZenOS), exit. Replaces ZenOS's touch quick-settings panel (switch: Grimmory → Menu key opens the GZreader menu). |
+| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, exit. On every Kindle without a touch screen (and the Nook) it replaces ZenOS's quick-settings panel, which is made for touch. |
 | Home / Downloads, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
-| Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, Settings, Quick panel, close book. |
+| Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, Settings, close book. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |

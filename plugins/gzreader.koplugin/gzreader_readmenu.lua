@@ -1,9 +1,10 @@
 --[[--
 GZreader "Reading menu": what the Menu key opens while reading on a Kindle
-Keyboard. A plain list, so every entry has a letter key (Q, W, E, …) shown
-next to it and the 5-way works too. Holding Menu still opens ZenOS's page
-browser; "Quick panel" opens ZenOS's reader panel and "Settings" the
-settings page (the same one as on Home).
+without a touch screen (and the Nook). A plain list, so every entry has a
+letter key (Q, W, E, …) shown next to it and the 5-way works too. Holding
+Menu still opens ZenOS's page browser; "Settings" opens the settings page
+(the same one as on Home). ZenOS's quick panel, made for touch, isn't
+offered.
 ]]
 
 local Event = require("ui/event")
@@ -54,9 +55,6 @@ function ReadMenu.items(plugin)
     items[#items + 1] = { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end }
     items[#items + 1] = { text = _("Settings"), callback = function()
         require("gzreader_homemenu").settings()
-    end }
-    items[#items + 1] = { text = _("Quick panel"), callback = function()
-        if ui.menu then ui.menu:onShowMenu() end
     end }
     items[#items + 1] = { text = _("Close book (Home)"), callback = send("Home") }
     return items

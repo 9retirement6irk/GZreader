@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.12.0",
+        changes = {
+            "Kindles without a touch screen: Menu now always opens the GZreader menu (at Home) or the Reading menu (in a book), never ZenOS's quick panel, which is made for touch. Its \"Quick panel\" entries and the setting to switch back are gone; everything the quick panel did there is in the GZreader menu or Settings.",
+            "New, as a test build: GZreader on the Barnes & Noble Nook 1st Edition (gzreader-nook-1.12.0.zip; needs a rooted Nook, installed with adb: see GZREADER.md). The colour touchscreen under the page has the arrows, OK, Back, Menu, Home and page buttons; while reading it shows the title, chapter, page and progress or the cover, elsewhere a clock, and a keyboard for typing so the page stays uncovered. What it shows when, how long it stays lit and its brightness are in Settings → Interface → Colour screen. Not yet: audiobooks and read aloud. Tried in the emulator only so far: reports welcome.",
+        },
+    },
+    {
         version = "1.11.0",
         changes = {
             "Single sign-on works for readers on other networks: the identity provider now sends the phone to GZreader's sign-in page (https://9retirement6irk.github.io/GZreader/oauth2-callback), which hands the sign-in to the Kindle. Register that one address at your identity provider for every Kindle, instead of each Kindle's IP; Grimmory and the provider can be on the internet (e.g. through Cloudflare). The phone still needs to be on the Kindle's Wi-Fi while signing in.",

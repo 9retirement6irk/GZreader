@@ -7,6 +7,12 @@ local function probeDevice()
         return require("device/android/device")
     end
 
+    -- GZreader: the Nook 1st Edition (Android 1.5 underneath, but GZreader runs
+    -- as a Linux program there, like on a Kindle; platform/nook/gzreader.sh)
+    if os.getenv("GZ_DEVICE") == "nook1" or lfs.attributes("/sys/devices/platform/bravo-vfb", "mode") then
+        return require("device/nook/device")
+    end
+
     local kindle_test_stat = lfs.attributes("/proc/usid")
     if kindle_test_stat then
         return require("device/kindle/device")

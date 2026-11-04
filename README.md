@@ -26,10 +26,9 @@ GZreader is a reading app for older Kindles, with a keyboard or without:
 | **Kindle 2**, **Kindle Keyboard (3)**, **DX** / DX Graphite | the keyboard and 5-way: letter keys for everything |
 | **Kindle 4** (non-touch) | the 5-way and Menu |
 | **Kindle Touch** (4th gen), **Paperwhite 3** (7th gen) | touch |
+| **Nook 1st Edition** (B&N, 2009) — *test build* | the colour touchscreen under the page: arrows, OK, Menu, a keyboard, reading info |
 
 It is [KOReader](https://github.com/koreader/koreader) trimmed down
-to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
-a built-in connection to a self-hosted **Grimmory** book server. It is [KOReader](https://github.com/koreader/koreader) trimmed down
 to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
 a built-in connection to a self-hosted **Grimmory** book server.
 
@@ -179,6 +178,17 @@ browser talking to the emulated Kindle.</sub>
   audiobooks with the player's buttons and reads aloud from the quick panel; the
   Paperwhite has no audio.
 
+### 📟 The Nook 1st Edition: both screens (test build)
+- The **colour touchscreen** under the e-ink page drives GZreader: ▲ ▼ ◀ ▶ and OK,
+  Back, Menu (the GZreader menu, never ZenOS's touch panel), Home and page buttons;
+  while reading it shows the **title, chapter, page and progress** or the **cover**,
+  elsewhere a clock; when typing, a **keyboard** so the page stays uncovered.
+- What it shows when, how long it stays lit and its brightness are settings
+  (Settings → Interface → Colour screen); swipe on it to turn pages.
+- Needs a rooted Nook; installed with adb. Checked in the emulator only so far:
+  see [the Nook section](GZREADER.md#nook-1st-edition-test-build) for rooting,
+  installing and what to report.
+
 ### 🔊 Read aloud (Kindle 2, 3, DX, Touch)
 - Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
   Kindle's Text-to-Speech; on the Kindle Touch, **Listen** in the quick panel (swipe
@@ -235,6 +245,7 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 
 You need a **jailbroken** Kindle with **KUAL** (the Kindle Unified Application
 Launcher), a computer with a USB cable, and about 100 MB free on the Kindle.
+(Nook 1st Edition, test build: see [its own steps](GZREADER.md#nook-1st-edition-test-build).)
 
 ### 1. Jailbreak the Kindle and install KUAL
 

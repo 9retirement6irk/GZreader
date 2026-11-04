@@ -45,6 +45,11 @@ do
     local lfs = require("libs/libkoreader-lfs")
     local orig = lfs.attributes
     lfs.attributes = function(p, ...)
+        if MODEL == "nook" then
+            -- the Nook 1st Edition: no Kindle serial; its screen's platform device
+            if p == "/proc/usid" then return nil end
+            if p == "/sys/devices/platform/bravo-vfb" then return orig(OUT, ...) end
+        end
         if p == "/proc/usid" then return orig(usid, ...) end
         return orig(p, ...)
     end
@@ -203,6 +208,49 @@ function E.hold(what, sec)
     later(sec or 1.2, up)
 end
 
+-- the Nook's colour touchscreen: single-touch ABS_X / ABS_Y / pressure +
+-- BTN_TOUCH, in the panel's raw range (0–4095 here)
+local function lcdFrame(evs, dt)
+    local t = now_tv()
+    if dt and dt > 0 then
+        local us = t.usec + math.floor(dt * 1e6)
+        t = { sec = t.sec + math.floor(us / 1e6), usec = us % 1000000 }
+    end
+    local out = {}
+    for _i, e in ipairs(evs) do out[#out + 1] = { type = e[1], code = e[2], value = e[3], time = t } end
+    out[#out + 1] = { type = 0, code = 0, value = 0, time = t }
+    table.insert(E.queue, out)
+end
+local function lcdRaw(x, y)
+    return math.floor(x * 4095 / 479 + 0.5), math.floor(y * 4095 / 143 + 0.5)
+end
+--- `what`: { x, y } on the colour screen, or a button's label there.
+function E.lcdWhere(what)
+    if type(what) == "table" then return what[1], what[2] end
+    local ok, NS = pcall(require, "gzreader_nook")
+    for _i, b in ipairs(ok and NS.buttons or {}) do
+        if b.label == what then return b.x + b.w / 2, b.y + b.h / 2 end
+    end
+end
+function E.lcdTap(what, hold_s)
+    local x, y = E.lcdWhere(what)
+    if not x then return say("lcd: no button", tostring(what)) end
+    say(hold_s and "lcd hold" or "lcd tap", type(what) == "string" and ("\"" .. what .. "\"") or "", math.floor(x), math.floor(y))
+    local rx, ry = lcdRaw(x, y)
+    lcdFrame({ { 3, 0, rx }, { 3, 1, ry }, { 3, 24, 100 }, { 1, 330, 1 } }, 0)
+    lcdFrame({ { 3, 24, 0 }, { 1, 330, 0 } }, hold_s or 0.08)
+end
+function E.lcdSwipe(x1, y1, x2, y2)
+    say("lcd swipe", x1, y1, "->", x2, y2)
+    local rx, ry = lcdRaw(x1, y1)
+    lcdFrame({ { 3, 0, rx }, { 3, 1, ry }, { 3, 24, 100 }, { 1, 330, 1 } }, 0)
+    for i = 1, 4 do
+        local mx, my = lcdRaw(x1 + (x2 - x1) * i / 4, y1 + (y2 - y1) * i / 4)
+        lcdFrame({ { 3, 0, mx }, { 3, 1, my } }, 0.04 * i)
+    end
+    lcdFrame({ { 3, 24, 0 }, { 1, 330, 0 } }, 0.2)
+end
+
 function E.swipe(x1, y1, x2, y2, sec)
     say("swipe", x1, y1, "->", x2, y2)
     sec = sec or 0.25
@@ -262,6 +310,42 @@ package.preload["ffi/framebuffer_mxcfb"] = function()
     return PW
 end
 
+-- the Nook 1st Edition's two screens: the e-ink page on top, the colour
+-- touchscreen under it (in a dark bezel), as one picture
+local NOOK = { lcd_x = 60, lcd_y = 800 + 24, w = 600, h = 800 + 24 + 144 + 24 }
+E.NOOK = NOOK
+package.preload["device/nook/display_hw"] = function()
+    local BB = require("ffi/blitbuffer")
+    local HW = { EINK_W = 600, EINK_H = 800, LCD_W = 480, LCD_H = 144, VFB_H = 944, direct = true }
+    function HW:open()
+        E.display = BB.new(NOOK.w, NOOK.h, BB.TYPE_BBRGB32)
+        E.display:paintRectRGB32(0, 0, NOOK.w, NOOK.h, BB.ColorRGB32(0x3b, 0x3d, 0x40, 0xFF))
+        E.display:paintRect(0, 0, 600, 800, BB.COLOR_WHITE)
+        E.display:paintRectRGB32(NOOK.lcd_x, NOOK.lcd_y, 480, 144, BB.ColorRGB32(0, 0, 0, 0xFF))
+        E.refreshes, E.lcd_presents, E.waveforms = 0, 0, {}
+        return self
+    end
+    function HW:eink(bb, x, y, w, h, waveform)
+        if not E.no_display then E.display:blitFrom(bb, x, y, x, y, w, h) end
+        E.refreshes = E.refreshes + 1
+        E.waveforms[waveform] = (E.waveforms[waveform] or 0) + 1
+        E.last_refresh, E.last_refresh_t = os.time(), E.now()
+    end
+    function HW:lcd(bb)
+        E.display:blitFrom(bb, NOOK.lcd_x, NOOK.lcd_y, 0, 0, 480, 144)
+        E.lcd_presents = (E.lcd_presents or 0) + 1
+    end
+    function HW:backlight(on)
+        E.lcd_lit = on
+        if not on then
+            E.display:paintRectRGB32(NOOK.lcd_x, NOOK.lcd_y, 480, 144, BB.ColorRGB32(0, 0, 0, 0xFF))
+        end
+    end
+    function HW:backlightLevel() return 64 end
+    function HW:close() end
+    return HW
+end
+
 -- the device: patch networking once it exists
 table.insert(package.loaders, 2, function(name)
     if name ~= "device" then return nil end
@@ -276,8 +360,10 @@ table.insert(package.loaders, 2, function(name)
             NM.getNetworkInterfaceName = function() return "eth0" end
             NM.restoreWifiAsync = function() end
         end
-        dev.isKindle = function() return true end
-        E.installDisplay(dev.screen)
+        if MODEL ~= "nook" then
+            dev.isKindle = function() return true end
+            E.installDisplay(dev.screen)
+        end
         return dev
     end
 end)
@@ -394,6 +480,22 @@ local function runScript()
             E.hold(s.hold, s.sec)
         elseif s.swipe then
             E.swipe(unpack(s.swipe))
+        elseif s.lcd then
+            E.lcdTap(s.lcd, s.sec)
+        elseif s.lcd_swipe then
+            E.lcdSwipe(unpack(s.lcd_swipe))
+        elseif s.lcd_type then
+            -- type on the colour screen's keyboard, a key at a time
+            local k = 0
+            local str = s.lcd_type
+            local function nextKey()
+                k = k + 1
+                local ch = str:sub(k, k)
+                if ch == "" then return end
+                E.lcdTap(ch == " " and "space" or ch)
+                require("ui/uimanager"):scheduleIn(0.4, nextKey)
+            end
+            nextKey()
         elseif s.shot then
             E.shot(s.shot)
         elseif s.fn then

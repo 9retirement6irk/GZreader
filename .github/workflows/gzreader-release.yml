@@ -52,3 +52,13 @@ jobs:
           done
       - name: Attach to the release
         run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindle-[0-9]*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber
+      - name: Nook 1st Edition (test build)
+        # the Kindle 2/3/DX package + Debian wheezy's glibc and BusyBox (the
+        # Nook's Android has no glibc) + the Nook's start script; a failure
+        # here doesn't hold up the Kindle packages above
+        continue-on-error: true
+        run: |
+          VERSION="${TAG#v}"; VERSION="${VERSION#.}"
+          tools/gzreader/nook-runtime.sh nook-runtime
+          GZ_VERSION="$VERSION" tools/gzreader/package-nook.sh out/gzreader-kindle-legacy-"$VERSION".zip nook-runtime out
+          gh release upload "$TAG" out/gzreader-nook-*.zip --clobber

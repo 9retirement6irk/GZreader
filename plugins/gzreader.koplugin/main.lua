@@ -75,6 +75,11 @@ function Grimmory:init()
     end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
+    if Device.lcd and not Grimmory.nook_screen then
+        -- Nook 1st Edition: GZreader's panels on the colour touchscreen
+        Grimmory.nook_screen = true
+        UIManager:nextTick(function() pcall(function() require("gzreader_nook").install() end) end)
+    end
     if not Grimmory.audio_checked then
         Grimmory.audio_checked = true
         pcall(function() require("gzreader_audioengine").stopStrayAtStart() end)
@@ -144,9 +149,10 @@ function Grimmory:init()
         end
     end
     if not self.ui.document and self.ui.menu and not Device:isTouchDevice() and Device:hasKeys() then
-        -- Kindle Keyboard and Kindle 4: the Menu key opens GZreader's Home
-        -- menu (a list: letter keys, or the 5-way) instead of the touch
-        -- quick-settings panel.
+        -- Kindle Keyboard, Kindle 4, Nook: the Menu key (and anything else
+        -- that opens "the menu") opens GZreader's Home menu (a list: letter
+        -- keys, or the 5-way) instead of ZenOS's quick panel, which is made
+        -- for a touch screen.
         -- ZenOS's Home page, its lists and OPDS call onShowMenu() directly,
         -- so that is the one replaced (HomeMenu.fullMenu() sets _gz_full to
         -- reach the original).
@@ -155,15 +161,11 @@ function Grimmory:init()
         local orig_key = fm_menu.onKeyPressShowMenu
         local plugin = self
         fm_menu.onShowMenu = function(m, ...)
-            if not m._gz_full and G_reader_settings:nilOrTrue("gzreader_home_menu") then
-                return require("gzreader_homemenu").show(plugin)
-            end
+            if not m._gz_full then return require("gzreader_homemenu").show(plugin) end
             return orig_show and orig_show(m, ...)
         end
         fm_menu.onKeyPressShowMenu = function(m, a, k)
-            if G_reader_settings:nilOrTrue("gzreader_home_menu") then
-                return require("gzreader_homemenu").show(plugin)
-            end
+            if not m._gz_full then return require("gzreader_homemenu").show(plugin) end
             return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
         end
     end
@@ -369,7 +371,7 @@ function Grimmory:sectionItems(section)
         })
         return items
     elseif section == "interface" then
-        return {
+        local items = {
             icon("settings_covers", {
                 text = _("Pre-size covers"),
                 help_text = _("In the background, makes each downloaded book's cover at the exact sizes Home and the library show it, and keeps them, so covers appear without the Kindle scaling them every time."),
@@ -381,14 +383,16 @@ function Grimmory:sectionItems(section)
                     if Disk.enabled then require("gzreader_coverwarm").schedule(self, 5) else Disk.clear() end
                 end,
             }),
-            -- (Kindles with a Menu key)
-            (Mod.Touch.keys() or Mod.Touch.dpad()) and icon("keyboard", {
-                text = _("Menu key opens the GZreader menu"),
-                help_text = _("On the Home screen and in lists, the Menu key opens a list with letter shortcuts (like the Reading menu) instead of ZenOS's quick-settings panel. \"Quick panel\" in it opens ZenOS's panel."),
-                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_home_menu") end,
-                callback = function() G_reader_settings:flipNilOrTrue("gzreader_home_menu") end,
-            }) or nil,
         }
+        if Device.lcd then
+            -- (Nook 1st Edition)
+            table.insert(items, 1, icon("settings_background", {
+                text = _("Colour screen"),
+                help_text = _("What the Nook's colour touchscreen shows while reading, elsewhere and when typing, how long it stays lit, and its brightness."),
+                sub_item_table_func = function() return require("gzreader_nook").menuItems() end,
+            }))
+        end
+        return items
     end
     return {}
 end
@@ -911,15 +915,16 @@ function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
     if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
     local menu = self.ui.menu
-    -- (the Kindles with a Menu key: keyboard or 5-way)
+    -- (no touch screen: keyboard, 5-way or the Nook's colour screen) the
+    -- Reading menu, never ZenOS's touch quick panel
     if menu and not Device:isTouchDevice() and Device:hasKeys() then
-        local orig = menu.onKeyPressShowMenu
-        menu.onKeyPressShowMenu = function(m, a, k)
-            if G_reader_settings:nilOrTrue("gzreader_reading_menu") then
-                ReadMenu.show(self)
-                return true
-            end
-            return orig(m, a, k)
+        menu.onKeyPressShowMenu = function()
+            ReadMenu.show(self)
+            return true
+        end
+        menu.onShowMenu = function()
+            ReadMenu.show(self)
+            return true
         end
     end
 end
@@ -982,8 +987,13 @@ function Grimmory:showTtsSettings()
     UIManager:show(dialog)
 end
 
+local function nookChange()
+    if Device.lcd then pcall(function() require("gzreader_nook").onReaderChange() end) end
+end
+
 function Grimmory:onReaderReady()
     if not self.ui.document then return end
+    nookChange()
     pcall(self.setupReader, self)
     pcall(function() require("gzreader_picturebook").onOpen(self.ui) end)
     pcall(function() require("gzreader_usage").readStart(self.ui) end)
@@ -1029,12 +1039,14 @@ function Grimmory:hasPending()
 end
 
 function Grimmory:onPageUpdate()
+    nookChange()
     if self.sync then self.sync:onPageTurned() end
     pcall(function() require("gzreader_usage").pageTurned() end)
     if self.tts then self.tts:onManualPageTurn() end
 end
 
 function Grimmory:onPosUpdate()
+    nookChange()
     if self.sync and self.ui.view and self.ui.view.view_mode ~= "page" then
         -- scroll mode fires this continuously; count roughly a screen per call
         self.sync:onPageTurned()
@@ -1094,6 +1106,7 @@ function Grimmory:onEndOfBook()
 end
 
 function Grimmory:onCloseDocument()
+    nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end
     pcall(function() require("gzreader_usage").readEnd("closed book") end)
     self.bookmarks = nil
