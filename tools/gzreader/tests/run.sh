@@ -15,7 +15,8 @@ T="$REPO/tools/gzreader/tests"
 KOBASE=$(cd "${1:?koreader base dir (ffi/ etc.)}" && pwd)
 PORT=${2:-18080}
 WORK=$(mktemp -d)
-trap 'kill $(cat "$WORK/mock.pid" 2>/dev/null) 2>/dev/null; [ -f "$WORK/work/memos.pid" ] && kill $(cat "$WORK/work/memos.pid") 2>/dev/null; rm -rf "$WORK"' EXIT
+# (every test server the suites started: their pid files)
+trap 'for f in "$WORK"/mock.pid "$WORK"/*.pid "$WORK"/work/*.pid; do [ -f "$f" ] && kill $(cat "$f") 2>/dev/null; done; rm -rf "$WORK"' EXIT
 failed=0
 # (the calendar tests' expected times are New York's, around its clock change)
 export TZ=America/New_York

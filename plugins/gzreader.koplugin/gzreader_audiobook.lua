@@ -600,12 +600,21 @@ function Player:play()
         })
         return false
     end
+    -- (one thing at a time: music pauses)
+    local Music = package.loaded["gzreader_music"]
+    if Music then pcall(Music.pauseAll) end
     local started = select(2, Engine.play(p, src))
     self.pos = t.start + (started or 0)
     self.track = track
     self.playing = true
     self.paused = nil
     Audiobook.current = self
+    -- headphones unplugged: pause rather than play out loud
+    pcall(function() require("gzreader_jack").watch("audiobook", function()
+        self:pause()
+        UIManager:show(InfoMessage:new{ text = _("Headphones unplugged: audiobook paused."), timeout = 3 })
+        if self.screen then self.screen:refresh() end
+    end) end)
     self:keepAwake(true)
     self:schedule()
     return true
@@ -616,6 +625,7 @@ end
 --- stopped one frees the sound device (read aloud can speak).
 function Player:pause()
     if not self.playing then return end
+    pcall(function() require("gzreader_jack").unwatch("audiobook") end)
     self.pos = self:globalPos()
     Engine.stop()
     self.playing = false
@@ -637,8 +647,12 @@ function Player:toggle()
 end
 
 function Player:stop()
-    if self.playing then self.pos = self:globalPos() end
-    Engine.stop()
+    pcall(function() require("gzreader_jack").unwatch("audiobook") end)
+    -- (only its own player: a paused audiobook mustn't stop music playing)
+    if self.playing then
+        self.pos = self:globalPos()
+        Engine.stop()
+    end
     self.playing = false
     self.paused = nil
     self:keepAwake(false)

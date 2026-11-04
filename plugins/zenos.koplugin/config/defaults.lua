@@ -162,6 +162,7 @@ local defaults = {
             ct_grimmory = true,
             ct_notes = true,
             ct_calendar = true,
+            ct_music = false, -- GZreader: Music (Plex), off until turned on
         },
         -- Grimmory build: a navbar tab that opens the Grimmory library.
         custom_tabs = {
@@ -188,10 +189,18 @@ local defaults = {
                 label = "Calendar",
                 icon = "tab_calendar",
             },
+            -- GZreader: music from Plex (Kindles with audio)
+            {
+                id = "ct_music",
+                type = "action",
+                action = { gzreader_music = true },
+                label = "Music",
+                icon = "tab_music",
+            },
         },
         tab_order = {
             "home", "books", "ct_grimmory", "ct_notes", "ct_calendar",
-            "continue", "favorites", -- listed (off) so they can be turned on in Settings
+            "continue", "favorites", "ct_music", -- listed (off) so they can be turned on in Settings
         },
         -- the tab list format the tab bar expects: tab_order lists every tab
         -- in Settings → Navbar → Tabs, show_tabs says which are on. Without

@@ -583,6 +583,11 @@ function Reader:start()
     self:restartQueue()
     self.poller = function() self.poller_scheduled = false; self:poll() end
     self:schedulePoll()
+    -- headphones unplugged: stop rather than read out loud
+    pcall(function() require("gzreader_jack").watch("tts", function()
+        self:stop()
+        UIManager:show(InfoMessage:new{ text = _("Headphones unplugged: read aloud stopped."), timeout = 3 })
+    end) end)
 end
 
 function Reader:schedulePoll()
@@ -751,6 +756,7 @@ function Reader:poll()
 end
 
 function Reader:stop()
+    pcall(function() require("gzreader_jack").unwatch("tts") end)
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
     if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end

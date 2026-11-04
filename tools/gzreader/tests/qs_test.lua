@@ -76,7 +76,7 @@ do
     local order = table.concat(cfg.navbar.tab_order, ",")
     check(cfg.navbar.show_tabs.favorites == true and cfg.navbar.show_tabs.ct_notes == false and cfg.navbar.show_tabs.ct_grimmory == true,
         "setup tabs: Favorites on, Notes off, Grimmory untouched")
-    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
     check(cfg.navbar.show_tabs.ct_calendar == false and cfg.navbar.show_tabs.continue == true, "setup tabs: Calendar off and Continue on when chosen so")
 end
 print(ok_count .. " passed, " .. fail .. " failed")

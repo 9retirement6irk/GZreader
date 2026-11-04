@@ -126,6 +126,27 @@ local function state(S, flash)
             own_name = f.own_name, host = host(f.url), shown = f.enabled ~= false }
     end
     st.links = { list = links, error = sec == "links" and flash.error or nil, results = flash.links_html }
+    -- music (Plex): Kindles with audio
+    if require("gzreader_touch").audio() then
+        local ps = store.plex or {}
+        local servers = {}
+        for _i, sv in ipairs(ps.servers or {}) do
+            servers[#servers + 1] = { id = sv.id, name = sv.name, current = sv.id == (ps.server or {}).id }
+        end
+        st.plex = { connected = ps.token ~= nil and ps.server ~= nil, username = ps.username, server = (ps.server or {}).name,
+            servers = servers, error = sec == "music" and flash.error or nil }
+    end
+    -- access (Cloudflare)
+    local Access = require("gzreader_access")
+    local ac = store.access or {}
+    local extra = {}
+    for h in tostring(ac.hosts or ""):gmatch("[^%s,;]+") do extra[h:lower()] = true end
+    local auto = {}
+    for _i, h in ipairs(Access.hosts(plugin)) do if not extra[h] then auto[#auto + 1] = h end end
+    st.access = { enabled = ac.enabled == true, key = ac.key, hosts = ac.hosts, auto = auto, cf_id = ac.cf_id,
+        cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
+        error = sec == "access" and flash.error or nil }
+    st.start = S.opts.section or "grimmory"
     -- books
     local dir = plugin:libraryDir()
     local free = Phone.freeBytes(dir)
@@ -338,6 +359,76 @@ function Phone.open(plugin, opts)
         toast(_("Disconnected from Grimmory."))
         return back({ ok = true, text = _("Disconnected from Grimmory. Downloaded books stay on the Kindle."), section = "grimmory" })
     end
+    -- Plex: its own sign-in page (a "strong" PIN), then back here
+    local function Music() return require("gzreader_music") end
+    routes["/plex/oauth"] = function()
+        local plex = Music().plex(plugin)
+        local pin, err = plex:newPin(true)
+        plugin:save()
+        if not pin then return back({ section = "music", error = T(_("Couldn't reach Plex: %1"), tostring(err)) }) end
+        S.plex_pin = pin
+        Log.info("plex: sending the phone to Plex's sign-in")
+        return 302, nil, plex:authUrl(pin, S.origin .. S.base .. "/plex/done")
+    end
+    local function plexDone()
+        local pin = S.plex_pin
+        if not pin then return back({ section = "music", error = _("That Plex sign-in has expired: sign in again.") }) end
+        local plex = Music().plex(plugin)
+        local token
+        for _try = 1, 6 do -- (Plex may take a moment to mark the PIN signed in)
+            token = plex:checkPin(pin)
+            if token then break end
+            require("socket").sleep(1)
+        end
+        if not token then return back({ section = "music", error = _("Plex didn't finish the sign-in. Try again.") }) end
+        S.plex_pin = nil
+        local ok, err = plex:connect(token)
+        if not ok then
+            local msgs = { no_server = _("This Plex account has no Plex Media Server."),
+                server_unreachable = _("Couldn't reach your Plex Media Server from the Kindle's Wi-Fi.") }
+            return back({ section = "music", error = msgs[err] or tostring(err) })
+        end
+        plugin:save()
+        S.changes.music = true
+        toast(T(_("Signed in to Plex as %1."), plugin.store.plex.username or "?"))
+        return back({ ok = true, text = T(_("Signed in to Plex as %1 (%2)."), plugin.store.plex.username or "?",
+            (plugin.store.plex.server or {}).name or "?"), section = "music" })
+    end
+    routes["/plex/server"] = function(form)
+        local plex = Music().plex(plugin)
+        local ok, err = plex:connect(plugin.store.plex.token, form.id)
+        plugin:save()
+        if not ok then return back({ section = "music", error = tostring(err) }) end
+        S.changes.music = true
+        return back({ ok = true, text = T(_("Using the Plex server “%1”."), (plugin.store.plex.server or {}).name or "?"), section = "music" })
+    end
+    routes["/plex/disconnect"] = function()
+        Music().plex(plugin):signOut()
+        plugin:save()
+        S.changes.music = true
+        return back({ ok = true, text = _("Signed out of Plex. Downloaded music stays on the Kindle."), section = "music" })
+    end
+    -- the Access key / Cloudflare service token
+    routes["/access"] = function(form)
+        local Access = require("gzreader_access")
+        local ac = plugin.store.access or {}
+        plugin.store.access = ac
+        ac.enabled = form.enabled == "1"
+        if ac.enabled and (not ac.key or form.new_key == "1") then Access.newKey(plugin) end
+        ac.hosts = (form.hosts or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if form.cf_clear == "1" then
+            ac.cf_id, ac.cf_secret = nil, nil
+        else
+            local id = (form.cf_id or ""):gsub("%s", "")
+            if id ~= "" then ac.cf_id = id end
+            local secret = (form.cf_secret or ""):gsub("%s", "")
+            if secret ~= "" then ac.cf_secret = secret end
+            if id == "" then ac.cf_id, ac.cf_secret = nil, nil end
+        end
+        plugin:save()
+        Log.info("access: key", ac.enabled and "on" or "off", "service token", ac.cf_id and "set" or "none")
+        return back({ ok = true, text = _("Saved."), section = "access" })
+    end
     routes["/memos"] = function(form)
         local ok, err = Notes().connect(plugin, form.server, form.token)
         if not ok then
@@ -442,6 +533,7 @@ function Phone.open(plugin, opts)
                 local f = m and S.flashes[m]
                 return 200, "text/html", PairPage.hub(state(S, f))
             end
+            if sub == "/plex/done" and method == "GET" then return plexDone() end
             local route = routes[sub]
             if not route then return 404, "text/plain", "Not found" end
             if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
@@ -538,6 +630,10 @@ function Phone.afterClose(S)
         lines[#lines + 1] = m.token and T(_("Notes: connected to Memos as %1."), m.user or "?") or _("Notes: disconnected.")
     end
     if ch.calendar then lines[#lines + 1] = _("Calendar: updated.") end
+    if ch.music then
+        local ps = plugin.store.plex or {}
+        lines[#lines + 1] = ps.token and T(_("Music: signed in to Plex as %1."), ps.username or "?") or _("Music: signed out of Plex.")
+    end
     if ch.books then
         lines[#lines + 1] = T(_("%1 books received (the Downloads tab shows them)."), ch.books)
         pcall(function()

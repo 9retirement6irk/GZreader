@@ -2,6 +2,18 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.14.0",
+        changes = {
+            "Music from Plex (Kindle 2, 3, DX and Touch): a Music tab (off until you turn it on: Settings → Navbar → Tabs → Music) with your Plex server's artists, albums, playlists and search. Download albums and playlists for offline, or press Play: it downloads in order and starts with the first track. It keeps playing while you read; Now playing has pause, next, previous, shuffle and repeat.",
+            "Sign in to Plex on the Kindle with a code (enter it at plex.tv/link on your phone or computer), or on the phone page with Plex's own sign-in.",
+            "Music is also in the Home menu and the Reading menu (what's playing), and on the Kindle Touch in the quick panel's launcher (Music, Play / pause). The Kindle plays MP3 and AAC; Plex converts FLAC and others to MP3.",
+            "Headphones: music, audiobooks and read aloud pause when headphones are unplugged (Settings → Reader). If your Kindle doesn't say where it shows the jack, Settings → Reader → Find the headphone jack finds it.",
+            "The phone page has tabs (Grimmory, Notes, Calendar, Music, Send books, Access) instead of one long page.",
+            "Access (phone page): GZreader can send a secret key to your own servers, for a Cloudflare rule that lets the Kindle past bot checks (the page shows the rule to paste); and a Cloudflare Access service token.",
+            "A shorter README; the details are in the full guide.",
+        },
+    },
+    {
         version = "1.13.0",
         changes = {
             "Copy connections from another GZreader over the Wi-Fi: on the one that has them choose Send connections (Settings → Connections → Copy to or from another GZreader, or its setup guide); it shows a PIN. On the new one choose Copy from another GZreader (its setup guide, the same place in Settings, or the Notes or Calendar tab), pick the other from the list and enter the PIN, then tick what to copy: Notes (Memos), the CalDAV account, calendar links, Grimmory.",

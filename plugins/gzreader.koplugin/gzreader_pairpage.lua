@@ -55,9 +55,15 @@ end
 
 local HUB_STYLE = [[
 a{color:inherit;text-underline-offset:2px}
-nav{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
-nav a{font-size:14px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--card)}
-section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:0 0 16px;scroll-margin-top:12px}
+nav{display:flex;gap:4px;margin:0 -16px 16px;padding:8px 16px;overflow-x:auto;position:sticky;top:0;background:var(--bg);z-index:2;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav a{flex:none;font-size:14px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:6px 13px;background:var(--card);white-space:nowrap}
+nav a.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+nav a .d{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-left:6px;vertical-align:middle}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:0 0 16px;scroll-margin-top:60px}
+.js section.tab{display:none}.js section.tab.on{display:block}
+details.box{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+details.box>summary{font-size:15px;font-weight:600;color:var(--ink)}
 section h2{font-size:18px;margin:0 0 2px}
 section .what{color:var(--muted);font-size:14px;margin:0 0 14px}
 .status{display:flex;align-items:center;gap:8px;font-size:15px;margin:0 0 14px}
@@ -106,7 +112,7 @@ end
 
 local function grimmorySection(st, base)
     local g = st.grimmory or {}
-    local parts = { '<section id="grimmory"><h2>Grimmory</h2>',
+    local parts = { '<section id="grimmory" class="tab"><h2>Grimmory</h2>',
         '<p class="what">Your book library: browse and download books on the Kindle, reading progress kept in sync.</p>' }
     if g.connected then
         parts[#parts + 1] = status(true, "Connected as <b>" .. esc(g.username) .. "</b> · " .. esc(g.host))
@@ -150,7 +156,7 @@ end
 
 local function memosSection(st, base)
     local m = st.memos or {}
-    local parts = { '<section id="notes"><h2>Notes (Memos)</h2>',
+    local parts = { '<section id="notes" class="tab"><h2>Notes (Memos)</h2>',
         '<p class="what">The Notes tab shows your <a href="https://usememos.com">Memos</a> notes as sticky notes; write, edit and tick checklists on the Kindle.</p>' }
     if m.connected then
         parts[#parts + 1] = status(true, "Connected as <b>" .. esc(m.user) .. "</b> · " .. esc(m.host))
@@ -176,7 +182,7 @@ end
 local function calendarSection(st, base)
     local c = st.caldav or {}
     local links = st.links or {}
-    local parts = { '<section id="calendar"><h2>Calendar</h2>',
+    local parts = { '<section id="calendar" class="tab"><h2>Calendar</h2>',
         '<p class="what">The Calendar tab shows calendars from a CalDAV account (Nextcloud, iCloud, Fastmail, Google, Radicale…) and from calendar links (webcal:// or https://….ics, such as Proton Calendar\'s share links). Read-only.</p>' }
     if links.error then parts[#parts + 1] = '<p class="err">' .. esc(links.error) .. "</p>" end
     if links.results then parts[#parts + 1] = '<div class="results">' .. links.results .. "</div>" end
@@ -204,7 +210,7 @@ local function calendarSection(st, base)
         parts[#parts + 1] = "<h3 style=\"font-size:15px;margin:4px 0 10px\">Your calendars</h3>" .. table.concat(cals)
     end
     -- calendar links
-    parts[#parts + 1] = '<h3 style="font-size:15px;margin:18px 0 6px">Add calendar links</h3>'
+    parts[#parts + 1] = '<details class="box"' .. ((#cals == 0 or links.error) and " open" or "") .. '><summary>Add calendar links</summary><div style="margin-top:10px">'
     parts[#parts + 1] = form(base .. "/links",
         '<textarea name="links" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="webcal://calendar.example.com/…&#10;Work | https://…/calendar.ics"></textarea>'
         .. '<button type="submit">Add links</button>'
@@ -212,8 +218,9 @@ local function calendarSection(st, base)
         .. '<details><summary>Proton Calendar</summary><p class="note">Proton Calendar on the web: Settings → Calendars → a calendar → Share → Share with anyone → Create link (Full view shows event details). Do this for each calendar.</p></details>'
         .. '<details><summary>Google, Outlook, iCloud</summary><p class="note">Google: Settings → your calendar → Secret address in iCal format. Outlook: Settings → Calendar → Shared calendars → Publish → ICS. iCloud: share a calendar as a Public Calendar.</p></details>',
         "Checking…")
+    parts[#parts + 1] = "</div></details>"
     -- CalDAV account
-    parts[#parts + 1] = '<h3 style="font-size:15px;margin:18px 0 6px">CalDAV account</h3>'
+    parts[#parts + 1] = '<details class="box"' .. ((not c.connected and #cals == 0 or c.error) and " open" or "") .. '><summary>CalDAV account</summary><div style="margin-top:10px">'
     if c.connected then
         parts[#parts + 1] = status(true, "<b>" .. esc(c.username) .. "</b> · " .. esc(c.host) .. " · " .. esc(#(c.calendars or {})) .. " calendars")
         parts[#parts + 1] = form(base .. "/caldav/disconnect",
@@ -232,6 +239,58 @@ local function calendarSection(st, base)
         .. '<details><summary>Which address?</summary><p class="note">Nextcloud: https://your.server/remote.php/dav · iCloud: https://caldav.icloud.com · Fastmail: https://caldav.fastmail.com · Google: https://apidata.googleusercontent.com/caldav/v2/ · Radicale or Baïkal: the server address.</p></details>',
         "Connecting…")
     if c.connected then parts[#parts + 1] = "</div></details>" end
+    parts[#parts + 1] = "</div></details></section>"
+    return table.concat(parts)
+end
+
+local function musicSection(st, base)
+    local m = st.plex
+    if not m then return "" end
+    local parts = { '<section id="music" class="tab"><h2>Music (Plex)</h2>',
+        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Navbar → Tabs).</p>' }
+    if m.error then parts[#parts + 1] = '<p class="err">' .. esc(m.error) .. "</p>" end
+    if m.connected then
+        parts[#parts + 1] = status(true, "Signed in as <b>" .. esc(m.username) .. "</b> · " .. esc(m.server))
+        if #(m.servers or {}) > 1 then
+            local opts = {}
+            for _i, sv in ipairs(m.servers) do
+                opts[#opts + 1] = '<option value="' .. esc(sv.id) .. '"' .. (sv.current and " selected" or "") .. ">" .. esc(sv.name) .. "</option>"
+            end
+            parts[#parts + 1] = form(base .. "/plex/server", '<label for="p_server">Plex server</label><select id="p_server" name="id" style="width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 12px">'
+                .. table.concat(opts) .. '</select><button class="alt small" type="submit">Use this server</button>', "Connecting…")
+        end
+        parts[#parts + 1] = form(base .. "/plex/disconnect",
+            '<button class="danger" type="submit" style="margin-top:12px"' .. confirmJs("Sign out of Plex on the Kindle? Downloaded music stays.") .. ">Sign out</button>", "Signing out…")
+    else
+        parts[#parts + 1] = status(false, "Not signed in")
+        parts[#parts + 1] = form(base .. "/plex/oauth", '<button type="submit">Sign in with Plex</button>', "Opening Plex…")
+        parts[#parts + 1] = '<p class="note">Plex\'s own sign-in page opens, then brings you back here. Or on the Kindle: Music tab → Sign in with a code (plex.tv/link).</p>'
+    end
+    parts[#parts + 1] = "</section>"
+    return table.concat(parts)
+end
+
+local function accessSection(st, base)
+    local a = st.access or {}
+    local parts = { '<section id="access" class="tab"><h2>Access</h2>',
+        '<p class="what">If Cloudflare (or another proxy) blocks the Kindle with bot checks, GZreader can send a secret key to your servers for a rule that lets it through. Only to these servers, never anywhere else.</p>' }
+    if a.error then parts[#parts + 1] = '<p class="err">' .. esc(a.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/access",
+        '<label class="check"><input type="checkbox" name="enabled" value="1"' .. (a.enabled and " checked" or "") .. "> Send the key (header <code>X-GZreader-Key</code>)</label>"
+        .. '<p style="font-size:14px;margin:0 0 6px">The key: <code>' .. esc(a.key or "") .. "</code></p>"
+        .. '<label class="check"><input type="checkbox" name="new_key" value="1"> Make a new key</label>'
+        .. input("a_hosts", "hosts", "Other servers (host names; each covers its subdomains)", a.hosts or "", 'placeholder="photos.example.com" ' .. NAME_ATTRS)
+        .. '<p class="note" style="margin:-8px 0 14px">Already included: ' .. esc(table.concat(a.auto or {}, ", ")) .. "</p>"
+        .. '<details><summary>Cloudflare Access (Zero Trust) service token</summary><div style="margin-top:10px">'
+        .. input("a_cfid", "cf_id", "Client ID", a.cf_id or "", NAME_ATTRS)
+        .. '<label for="a_cfsecret">Client Secret' .. (a.cf_secret_set and " (saved; leave empty to keep it)" or "") .. '</label><input id="a_cfsecret" name="cf_secret" type="password" ' .. NAME_ATTRS .. ">"
+        .. '<label class="check"><input type="checkbox" name="cf_clear" value="1"> Remove the service token</label></div></details>'
+        .. '<button type="submit" style="margin-top:12px">Save</button>', "Saving…")
+    if a.enabled and a.rule then
+        parts[#parts + 1] = '<details class="box" open><summary>The Cloudflare rule</summary>'
+            .. '<p class="note">Cloudflare → your domain → Security → WAF → Custom rules → Create rule → Edit expression, paste this, Action: <b>Skip</b>, tick All remaining custom rules, All rate limiting rules, All managed rules, All Super Bot Fight Mode rules and (under More) Browser Integrity Check and Security Level. Put it first. Bot Fight Mode (Security → Bots) can\'t be skipped: turn it off if it blocks the Kindle.</p>'
+            .. '<textarea rows="4" readonly onclick="this.select()">' .. esc(a.rule) .. "</textarea></details>"
+    end
     parts[#parts + 1] = "</section>"
     return table.concat(parts)
 end
@@ -241,7 +300,7 @@ local function booksSection(st, base)
     local received = {}
     for _i, name in ipairs(b.received or {}) do received[#received + 1] = '<p class="ok">✓ ' .. esc(name) .. "</p>" end
     return table.concat({
-        '<section id="books"><h2>Send books</h2>',
+        '<section id="books" class="tab"><h2>Send books</h2>',
         '<p class="what">Books from your phone go straight onto the Kindle (into the ', esc(b.folder or "GZreader"),
         ' folder; the Downloads tab shows them). No Grimmory needed.</p>',
         '<div class="drop"><label for="files" style="margin:0">EPUB, PDF, MOBI, AZW3, FB2, CBZ, TXT…</label>',
@@ -273,14 +332,33 @@ function PairPage.hub(st)
         flash = '<div class="flash ' .. (st.flash.ok and "ok" or "bad") .. '">' .. (st.flash.ok and "✓ " or "")
             .. esc(st.flash.text) .. "</div>"
     end
+    -- one tab at a time (all of them, one under the other, without JavaScript)
+    local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
+        { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
+    if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
+    tabs[#tabs + 1] = { "books", "Send books" }
+    tabs[#tabs + 1] = { "access", "Access", (st.access or {}).enabled }
+    local nav = {}
+    for _i, t in ipairs(tabs) do
+        nav[#nav + 1] = '<a href="#' .. t[1] .. '" data-tab="' .. t[1] .. '">' .. t[2] .. (t[3] and '<span class="d"></span>' or "") .. "</a>"
+    end
+    local alias = '{"caldav":"calendar","links":"calendar"}'
     return shell("Kindle setup", table.concat({
         "<style>", HUB_STYLE, "</style>",
+        "<script>document.documentElement.className='js'</script>",
         "<h1>Set up your Kindle</h1>",
-        '<p class="sub">Connect GZreader to your services and send it books. Everything on this page goes straight to your Kindle over your Wi‑Fi.</p>',
+        '<p class="sub">Everything here goes straight to your Kindle over your Wi‑Fi.</p>',
         flash,
-        '<nav><a href="#grimmory">Grimmory</a><a href="#notes">Notes</a><a href="#calendar">Calendar</a><a href="#books">Send books</a></nav>',
-        grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), booksSection(st, base),
-        '<p class="note">This page works while the code is on the Kindle\'s screen; when you\'re done, press Back (or tap Done) on the Kindle. Your phone and Kindle must be on the same Wi‑Fi.</p>',
+        "<nav>", table.concat(nav), "</nav>",
+        grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), musicSection(st, base),
+        booksSection(st, base), accessSection(st, base),
+        '<p class="note">This page works while its code is on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
+        '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
+        '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',
+        '[].forEach.call(document.querySelectorAll("nav a"),function(a){a.className=a.getAttribute("data-tab")==id?"on":""});',
+        'var on=document.querySelector("nav a.on");if(on&&on.scrollIntoView)try{on.scrollIntoView({inline:"center",block:"nearest"})}catch(e){}}',
+        '[].forEach.call(document.querySelectorAll("nav a"),function(a){a.onclick=function(e){e.preventDefault();var id=a.getAttribute("data-tab");show(id);history.replaceState(null,"","#"+id);window.scrollTo(0,0)}});',
+        'show(location.hash.slice(1));window.onhashchange=function(){show(location.hash.slice(1))}})();</script>',
     }))
 end
 

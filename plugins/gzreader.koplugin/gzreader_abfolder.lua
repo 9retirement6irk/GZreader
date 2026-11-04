@@ -369,6 +369,10 @@ end
 --- and the Kindle voice (read aloud) then can't speak. `thorough` also looks
 --- for players GZreader lost track of (a shell command; read aloud start).
 function Folder.releaseAudio(why, thorough)
+    -- (read aloud needs the sound device: music pauses; opening a book
+    -- doesn't stop music, that's the point of it)
+    local Music = package.loaded["gzreader_music"]
+    if Music and why ~= "a book opened" then pcall(Music.pauseAll) end
     local AB = package.loaded["gzreader_audiobook"]
     if AB and AB.current then
         Log.info("audiobook stopped:", why)

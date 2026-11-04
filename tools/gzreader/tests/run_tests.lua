@@ -347,7 +347,7 @@ screen.on_cancel()
 plugin.api:clearTokens()
 sso_url = startPairing()
 code, body = phone("'" .. sso_url .. "'")
-check(not body:match("Sign in with"), "server without SSO -> no SSO button")
+check(not (body:match('<section id="grimmory".-</section>') or ""):match("Sign in with"), "server without SSO -> no SSO button")
 screen.on_cancel()
 ctl("/set?oidc_enabled=true&oidc_force_only=true")
 sso_url = startPairing()
@@ -896,7 +896,8 @@ do
     local d = texts(gen.diagnostics)
     check(d:match("|Diagnostic logging|Remote debugging|Usage statistics|Send diagnostic log to my phone %(QR code%)|Save diagnostic log %(USB%)|"),
         "General: logging, remote debugging, usage statistics, send and save the log " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|", "Reader: Read aloud, Test audiobook playback")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Reader: Read aloud, Test audiobook playback, the headphones")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
@@ -938,14 +939,18 @@ do
         { id = "al_b", type = "plugin", label = "My phone", plugin = { key = "gzreader", method = "onGzLauncherPhone" } },
     }
     G_reader_settings:delSetting("gzreader_launcher_v2")
+    G_reader_settings:delSetting("gzreader_launcher_v3")
     plugin:addLauncherEntries()
     plugin:addLauncherEntries()
+    local n_audio = 0
+    for _i, d in ipairs(Grimmory.LAUNCHER) do if d[5] == "audio" then n_audio = n_audio + 1 end end
     local labels, ctx = {}, {}
     for _i, e in ipairs(cfg.entries) do
         labels[#labels + 1] = e.label
         ctx[e.label] = e.gz_context or "both"
     end
-    check(#cfg.entries == #Grimmory.LAUNCHER, "launcher: every GZreader entry once (" .. table.concat(labels, ",") .. ")")
+    check(#cfg.entries == #Grimmory.LAUNCHER - (require("gzreader_touch").audio() and 0 or n_audio),
+        "launcher: every GZreader entry once (Music ones on Kindles with audio) (" .. table.concat(labels, ",") .. ")")
     check(labels[2] == "My phone" and ctx["My phone"] == "library", "launcher: an existing entry keeps your name, now Home-only")
     check(ctx.GZreader == "both" and ctx.Continue == "library" and ctx["Send books"] == "library"
         and ctx.Contents == "reader" and ctx.Bookmarks == "reader" and ctx["Fit pictures"] == "reader",
@@ -964,7 +969,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|", "Kindle Touch: Read aloud and the audiobook test")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -3165,14 +3171,72 @@ print("Calendar tab")
         check(p1:match("^%d%d%d%d%d%d$") and p2:match("^%d%d%d%d%d%d$"), "copy: 6-digit PINs")
         while #Cal.feeds(plugin) > 0 do Cal.removeFeed(plugin, 1) end
     end
+    -- the page's tabs; Plex (its own sign-in page, then back); Access
+    do
+        local PXP = PORT + 11
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/tests/mock_plex.py " .. PXP .. " > " .. WORK .. "/plex.log 2>&1 & echo $! > " .. WORK .. "/plex.pid")
+        -- (not runLoop: it would run the page's idle timer too)
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. PXP .. "/ctl/log"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+        local Plex = require("gzreader_plex")
+        Plex.TV = "http://127.0.0.1:" .. PXP
+        c, b = phone("'" .. P .. "'")
+        check(c == 200 and b:find('data-tab="grimmory"', 1, true) and b:find('data-tab="music"', 1, true) and b:find('data-tab="access"', 1, true)
+            and b:find('<section id="music" class="tab">', 1, true) and b:find('<section id="books" class="tab">', 1, true)
+            and b:find('"calendar";', 1, true), "phone page: tabs (Grimmory, Notes, Calendar, Music, Send books, Access), opening at Calendar")
+        local hdr = WORK .. "/plex_hdr.txt"
+        c = phone("-d '' -D '" .. hdr .. "' '" .. P .. "/plex/oauth'")
+        local hf = io.open(hdr); local htxt = hf and hf:read("*a") or ""; if hf then hf:close() end
+        local loc = htxt:match("[Ll]ocation: ([^\r\n]+)") or ""
+        local S0 = Phone.session
+        check(c == 302 and loc:match("^https://app%.plex%.tv/auth#%?") and loc:find("clientID=gzreader-", 1, true) and loc:find("code=strongcode", 1, true)
+            and loc:find("forwardUrl=http%3A%2F%2F", 1, true) and loc:find("%2Fplex%2Fdone", 1, true)
+            and loc:find("context%5Bdevice%5D%5Bproduct%5D=GZreader", 1, true), "Plex on the phone: off to Plex's own sign-in page, back to /plex/done " .. tostring(c) .. " " .. loc)
+        os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/claim?id=" .. S0.plex_pin.id .. "' >/dev/null")
+        c, b = phone("-L '" .. P .. "/plex/done'")
+        local ps = plugin.store.plex or {}
+        check(c == 200 and b:match("Signed in to Plex as will %(Home Server%)") and ps.token == "plex-token" and ps.username == "will"
+            and ps.server.uri == "http://127.0.0.1:" .. PXP and ps.server.token == "srv-token" and #ps.servers == 2,
+            "Plex: back from its sign-in: signed in, the owned server, the address that answers")
+        check(not json.encode(ps):find("secret@example.com", 1, true), "Plex: the account's e-mail isn't kept")
+        c, b = phone("'" .. P .. "#music'")
+        check(b:find("Signed in as <b>will</b> · Home Server", 1, true) and b:find('name="id"', 1, true), "phone page: Plex signed in, the servers to choose from")
+        -- Access: the key for a Cloudflare rule
+        c, b = post("/access", { "enabled=1", "hosts=photos.example.com" })
+        local ac = plugin.store.access or {}
+        local Access = require("gzreader_access")
+        check(c == 200 and ac.enabled and type(ac.key) == "string" and #ac.key == 32 and b:find(ac.key, 1, true)
+            and b:find("http.host in {", 1, true) and b:find('x-gzreader-key', 1, true), "Access: a key made, the Cloudflare rule shown")
+        local h1, h2, h3 = Access.headersFor("https://photos.example.com/a"), Access.headersFor("https://x.photos.example.com/"),
+            Access.headersFor("https://plex.tv/api")
+        check(h1 and h1["X-GZreader-Key"] == ac.key and h2 and h3 == nil and Access.headersFor("https://example.com") == nil
+            and Access.headersFor(plugin.store.server .. "/api/v1/x") ~= nil, "Access: the key goes to your servers only (and their subdomains)")
+        c, b = post("/access", { "enabled=1", "hosts=photos.example.com", "cf_id=abc.access", "cf_secret=s3cr3t" })
+        h1 = Access.headersFor("https://photos.example.com/a")
+        check(h1 and h1["CF-Access-Client-Id"] == "abc.access" and h1["CF-Access-Client-Secret"] == "s3cr3t" and not b:find("s3cr3t", 1, true),
+            "Access: a Cloudflare Access service token (the secret not shown back)")
+        local key_before = ac.key
+        post("/access", { "hosts=", "cf_id=abc.access" })
+        local hs = Access.headersFor(plugin.store.server .. "/x")
+        check(not plugin.store.access.enabled and hs and hs["X-GZreader-Key"] == nil and hs["CF-Access-Client-Id"] == "abc.access"
+            and plugin.store.access.key == key_before, "Access: the key off (kept for later), the token still sent")
+        post("/access", { "hosts=", "cf_clear=1" })
+        check(Access.headersFor(plugin.store.server .. "/x") == nil, "Access: everything off")
+        _G.__gz_access_key = key_before
+    end
     -- disconnecting from the phone
     c, b = post("/memos/disconnect", {})
     check(c == 200 and not (plugin.store.memos or {}).token, "Notes: disconnected from the phone")
     c, b = post("/caldav/disconnect", {})
     check(c == 200 and not Cal.client(plugin):isConnected(), "Calendar: CalDAV account disconnected from the phone")
     local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
-    check(not ltxt:find("demo-app-password", 1, true) and not ltxt:find("memos-test-token", 1, true) and not ltxt:find("abc123", 1, true),
-        "no password, token or calendar link in the log")
+    check(not ltxt:find("demo-app-password", 1, true) and not ltxt:find("memos-test-token", 1, true) and not ltxt:find("abc123", 1, true)
+        and not ltxt:find("plex-token", 1, true) and not ltxt:find("srv-token", 1, true) and not ltxt:find("s3cr3t", 1, true)
+        and not ltxt:find(_G.__gz_access_key or "nokey", 1, true),
+        "no password, token, key or calendar link in the log")
     scr.on_cancel()
     check(closed and closed.notes and closed.calendar and closed.books == 3 and #UI.zmqs == 0 and Phone.session == nil,
         "Back on the Kindle: the page closes, the caller hears what changed")
@@ -3181,6 +3245,197 @@ print("Calendar tab")
     os.execute("kill $(cat " .. WORK .. "/memos3.pid) 2>/dev/null")
     os.execute("kill $(cat " .. WORK .. "/feeds.pid) 2>/dev/null")
     os.execute("kill $(cat " .. WORK .. "/caldav2.pid) 2>/dev/null")
+end)()
+
+print("Music (Plex): the server, downloads, the player")
+;(function()
+    local Plex = require("gzreader_plex")
+    local Music = require("gzreader_music")
+    local Engine = require("gzreader_audioengine")
+    local PXP = PORT + 11
+    local plex = Music.plex(plugin)
+    plugin.store.plex.token = nil
+    -- sign-in on the Kindle: a code for plex.tv/link
+    local pin = plex:newPin(false)
+    check(pin and #pin.code == 4 and plex:checkPin(pin) == nil, "Plex: a 4-character code, not signed in yet")
+    os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/claim?id=" .. pin.id .. "' >/dev/null")
+    local token = plex:checkPin(pin)
+    check(token == "plex-token" and plex:connect(token) and plex:isConnected(), "Plex: signed in with the code")
+    check(plex:connect("wrong") == nil, "Plex: a bad token is refused")
+    plex:connect(token)
+    local secs = plex:musicSections()
+    check(secs and #secs == 1 and secs[1].key == "1", "Plex: the music library (not the films)")
+    local artists, total = plex:list("1", "artists", 0)
+    local albums = plex:list("1", "albums", 0)
+    check(artists and total == 1 and artists[1].title == "The Tones" and albums and #albums == 3 and albums[1].artist == "The Tones", "Plex: artists and albums")
+    local tracks = plex:children("201")
+    check(tracks and #tracks == 2 and tracks[1].part.container == "mp3" and tracks[1].duration == 3000 and tracks[1].artist == "The Tones", "Plex: an album's tracks")
+    local pls = plex:playlists()
+    check(pls and pls[1].title == "Mix" and #plex:playlistItems("401", 0) == 2, "Plex: playlists")
+    local res = plex:search("tone")
+    check(res and #res.tracks == 4 and #res.artists == 1, "Plex: search")
+    check(Plex.how(tracks[1]) == "file" and Plex.how(plex:children("202")[1]) == "m4a" and Plex.how(plex:children("203")[1]) == "transcode",
+        "Plex: MP3 as it is, AAC converted on the Kindle, FLAC converted by the server")
+    -- downloads
+    Engine.root = PLUGIN
+    local album = { kind = "album", key = "201", title = "MP3 Album", artist = "The Tones", thumb = "/t", tracks = tracks }
+    local arrived = {}
+    local done
+    Music.download(plugin, album, { on_track = function(i) arrived[#arrived + 1] = i end, on_done = function(ok, err) done = { ok, err } end })
+    runLoop(function() return done ~= nil end, 30)
+    local c = Music.find(plugin, "album", "201")
+    local mp3 = io.open(PLUGIN .. "/../../tools/gzreader/tests/media/tone.mp3", "rb"):read("*a")
+    local got = c and io.open(c.dir .. "/" .. c.tracks[1].file, "rb")
+    local gotdata = got and got:read("*a"); if got then got:close() end
+    check(done and done[1] and c and c.have == 2 and table.concat(arrived, ",") == "1,2" and gotdata == mp3, "Music: an MP3 album downloaded, in order")
+    local flac = { kind = "album", key = "203", title = "FLAC Album", tracks = plex:children("203") }
+    done = nil
+    Music.download(plugin, flac, { on_done = function(ok, err) done = { ok, err } end })
+    runLoop(function() return done ~= nil end, 30)
+    local fc = Music.find(plugin, "album", "203")
+    local f3 = fc and io.open(fc.dir .. "/" .. (fc.tracks[1].file or "x"), "rb")
+    local d3 = f3 and f3:read("*a"); if f3 then f3:close() end
+    local b1, b2 = (d3 or ""):byte(1, 2)
+    check(done and done[1] and fc.have == 1 and fc.tracks[1].file:match("%.mp3$") and b1 == 0xFF and bit.band(b2 or 0, 0xE0) == 0xE0 and #d3 > 8000,
+        "Music: FLAC made into MP3 by the server (HLS segments joined, MPEG-TS unpacked) " .. tostring(done and done[2]))
+    local aac = { kind = "album", key = "202", title = "AAC Album", tracks = plex:children("202") }
+    done = nil
+    Music.download(plugin, aac, { on_done = function(ok, err) done = { ok, err } end })
+    runLoop(function() return done ~= nil end, 60)
+    local ac = Music.find(plugin, "album", "202")
+    check(done and done[1] and ac and ac.have == 1 and ac.tracks[1].chunks and #ac.tracks[1].chunks.starts > 0,
+        "Music: AAC in M4A made into ADTS chunks on the Kindle " .. tostring(done and done[2]))
+    local list = Music.downloaded(plugin)
+    check(#list == 3, "Music: three albums downloaded")
+    -- the player
+    local cmds = {}
+    local saved_exec, saved_alive, saved_clock = Engine.exec, Engine.alive, Engine.clock
+    Engine.exec = function(cmd) cmds[#cmds + 1] = cmd; return 0 end
+    local now_t = 1000
+    Engine.clock = function() return now_t end
+    Engine.alive = function() return true end
+    G_reader_settings:saveSetting("gzreader_audio_players", { mp3 = "mp3-mfw", aac = "aac-mfw" })
+    local p = Music.play(plugin, c, 1, false)
+    check(p and p.playing and cmds[#cmds]:find("01.mp3", 1, true) and cmds[#cmds]:find("mfw_mp3decoder", 1, true) and Music.nowText() == "Tone A — The Tones",
+        "player: the first track through the MP3 player")
+    p:step(1)
+    check(p.at == 2 and cmds[#cmds]:find("02.mp3", 1, true), "player: next track")
+    now_t = now_t + 10
+    p:step(-1)
+    check(p.at == 2, "player: previous after 3 s restarts the track")
+    p:step(-1); p:step(-1)
+    check(p.at == 1, "player: previous at the start goes back")
+    p:setShuffle(true)
+    check(p.order[p.at] == 1 and #p.order == 2, "player: shuffle keeps the track playing")
+    p:setShuffle(false)
+    p:jump(2)
+    p:step(1)
+    check(not p.playing and Music.current == nil, "player: the end of the album stops (repeat off)")
+    p = Music.play(plugin, c, 2, false)
+    p["repeat"] = "all"
+    p:step(1)
+    check(p.at == 1 and p.playing, "player: repeat all goes round")
+    -- an audiobook or read aloud: music pauses
+    Music.pauseAll()
+    check(p.paused and not p.playing, "player: paused (sleep, read aloud, an audiobook)")
+    p:resume()
+    check(p.playing, "player: on again")
+    local Folder = require("gzreader_abfolder")
+    Folder.releaseAudio("a book opened")
+    check(p.playing, "player: opening a book doesn't stop the music")
+    Folder.releaseAudio("read aloud", true)
+    check(p.paused and not p.playing, "player: read aloud pauses it")
+    p:resume()
+    -- a track still downloading: waits for it, then plays
+    local waiting = { kind = "album", key = "w", title = "W", dir = c.dir, tracks = { { title = "Later", file = "nothere.mp3" } } }
+    local pw = Music.play(plugin, waiting, 1, false)
+    check(pw and pw.waiting, "player: waits for a track still downloading")
+    pw:stop()
+    -- …and plays it when it comes (the download writes music.json, not the player's copy)
+    local wdir = Music.dirFor(plugin, "album", "w2")
+    os.execute("mkdir -p '" .. wdir .. "'")
+    local w2 = { kind = "album", key = "w2", title = "W2", dir = wdir, tracks = { { key = "t1", title = "Later", base = "01" } } }
+    Music.save(w2)
+    pw = Music.play(plugin, Music.load(wdir), 1, false)
+    local disk = Music.load(wdir)
+    os.execute("cp '" .. PLUGIN .. "/../../tools/gzreader/tests/media/tone.mp3' '" .. wdir .. "/01.mp3'")
+    disk.tracks[1].file = "01.mp3"
+    Music.save(disk)
+    Music.downloads[wdir] = { listeners = {} }
+    pw:tick()
+    Music.downloads[wdir] = nil
+    check(pw.playing and not pw.waiting and cmds[#cmds]:find("w2/01.mp3", 1, true), "player: the track plays once it's downloaded")
+    pw:stop()
+    Music.delete(plugin, Music.load(wdir))
+    Engine.exec, Engine.alive, Engine.clock = saved_exec, saved_alive, saved_clock
+    -- the Music tab's menus
+    local Tab = require("gzreader_musictab")
+    local items = Tab.controlItems(plugin)
+    check(items[1].text == "Shuffle all downloaded" and items[2].text == "Open the Music tab", "menus: Music without anything playing")
+    Engine.exec = function() return 0 end
+    Engine.alive = function() return true end
+    Music.play(plugin, c, 1, false)
+    items = Tab.controlItems(plugin)
+    check(items[1].text == "Pause" and items[2].text == "Next track", "menus: Music while playing")
+    local mi = Tab.menuItem(plugin)
+    check(mi.text_func() == "Music: Tone A — The Tones", "Home / Reading menu: what's playing")
+    local RM = require("gzreader_readmenu")
+    local found = false
+    for _i, it in ipairs(RM.items({ ui = { view = {}, document = { info = {} } } })) do
+        if it.text_func and tostring(it.text_func()):match("^Music") then found = true end
+    end
+    check(found, "Reading menu: a Music line (Kindles with audio)")
+    Music.current:stop()
+    Engine.exec, Engine.alive = saved_exec, saved_alive
+    Music.delete(plugin, Music.find(plugin, "album", "202"))
+    check(Music.find(plugin, "album", "202") == nil and #Music.downloaded(plugin) == 2, "Music: a download deleted")
+    -- no token in an address (the mock refuses those) or the log
+    local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/log"); local lg = json.decode(pp:read("*a")); pp:close()
+    local in_url = false
+    for _i, e in ipairs(lg) do if tostring(e[2]):lower():find("token", 1, true) then in_url = true end end
+    check(not in_url, "Plex: the token only ever in a header")
+    os.execute("kill $(cat " .. WORK .. "/plex.pid) 2>/dev/null")
+end)()
+
+print("Headphones")
+;(function()
+    local Jack = require("gzreader_jack")
+    local files = {
+        ["/proc/bus/input/devices"] = 'I: Bus=0000\nN: Name="mxc_ts"\nH: Handlers=event0\nB: EV=b\n\nI: Bus=0019\nN: Name="headphones"\nH: Handlers=kbd event2\nB: EV=21\nB: SW=4\n',
+        ["/dev/input/event2#sw"] = "4",
+    }
+    Jack.read = function(p) return files[p] end
+    G_reader_settings:delSetting(Jack.SETTING)
+    local devs = Jack.switchDevices()
+    check(#devs == 1 and devs[1].event == "/dev/input/event2" and Jack.plugged() == true, "an input device with a headphone switch: plugged in")
+    files["/dev/input/event2#sw"] = "0"
+    check(Jack.plugged() == false, "and unplugged")
+    -- watching while playing
+    files["/dev/input/event2#sw"] = "4"
+    local paused = 0
+    Jack.watch("music", function() paused = paused + 1 end)
+    local tick = Jack.ticker
+    tick()
+    check(paused == 0, "headphones in: nothing happens")
+    files["/dev/input/event2#sw"] = "0"
+    Jack.ticker()
+    check(paused == 1 and next(Jack.watchers) == nil, "unplugged while playing: paused")
+    -- nowhere to tell: the test finds a file that changed
+    files["/proc/bus/input/devices"] = ""
+    files["#files"] = "/sys/devices/platform/codec/hp_det /sys/devices/platform/codec/other"
+    files["/sys/devices/platform/codec/hp_det"] = "1"
+    files["/sys/devices/platform/codec/other"] = "7"
+    check(Jack.detector() == nil and Jack.plugged() == nil, "no switch: can't tell (nothing is paused)")
+    local with = Jack.snapshot()
+    files["/sys/devices/platform/codec/hp_det"] = "0"
+    local det = Jack.compare(with, Jack.snapshot())
+    check(det and det.kind == "file" and det.path == "/sys/devices/platform/codec/hp_det" and det.on == "1", "Find the headphone jack: the place that changed")
+    G_reader_settings:saveSetting(Jack.SETTING, det)
+    check(Jack.plugged() == false, "and it's used")
+    files["/sys/devices/platform/codec/hp_det"] = "1"
+    check(Jack.plugged() == true, "and plugged in again")
+    G_reader_settings:delSetting(Jack.SETTING)
+    Jack.read = nil
 end)()
 
 print("Copying connections: the PIN exchange and mDNS")

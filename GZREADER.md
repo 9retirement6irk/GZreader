@@ -27,26 +27,116 @@ KOReader's first-run quickstart document (ZenOS's setup guide replaces it).
 
 ## Install
 
-1. Jailbreak the Kindle and install KUAL (see kindlemodding.org).
-2. Unzip the package for your Kindle and copy its folders (`koreader`,
-   `extensions`, and `launchpad` on a Kindle 3) to the root of the Kindle's
-   USB drive, merging with anything already there:
+You need a **jailbroken** Kindle with **KUAL** (the Kindle Unified Application
+Launcher), a computer with a USB cable, and about 100 MB free on the Kindle.
+(Nooks, test build: see the steps for the [1st Edition](GZREADER.md#nook-1st-edition-test-build) and the [Simple Touch](GZREADER.md#nook-simple-touch-test-build).)
 
-   | Kindle | Package |
-   | --- | --- |
-   | Kindle 2, DX, Kindle Keyboard (3) | `gzreader-kindle-legacy-<version>.zip` |
-   | Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
-   | Paperwhite 3 (7th gen), firmware 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` |
-   | Paperwhite 3 on firmware 5.6.1 – 5.16.2 | `gzreader-kindlepw2-<version>.zip` |
+### 1. Jailbreak the Kindle and install KUAL
 
-   The firmware version: Settings → Device Options → Device Info (on the
-   Kindle's own home screen).
-3. Eject, open KUAL → GZreader → Start GZreader. On a Kindle 3, also the launchpad shortcuts:
-   Shift, G, G (last book), Shift, G, L (library), Shift, G, N (without the
-   Kindle framework, more memory). The old Shift, P, … shortcuts still work.
+Turn on **airplane mode** first, so the Kindle doesn't update itself to a firmware the
+jailbreak can't handle.
 
-The first start runs the setup guide: connect to Grimmory, then the library
-view, keyboard, sync, sleep screen, clock and reading defaults.
+| Kindle | Jailbreak | KUAL file |
+| --- | --- | --- |
+| Kindle 2, Kindle Keyboard (3), DX | the legacy jailbreak for its firmware ([MobileRead Kindle Developer's Corner](https://www.mobileread.com/forums/forumdisplay.php?f=150)) | `KUAL-KDK-1.0.azw` → `documents` folder |
+| Kindle 4, Kindle Touch | the legacy jailbreak for its firmware (same forum) | `KUAL-KDK-1.0.azw2` → `documents` folder (Kindle Touch: or the KUAL booklet with MRPI) |
+| Paperwhite 3 (7th gen) | [kindlemodding.org](https://kindlemodding.org/jailbreaking/): LanguageBreak for firmware 5.14.3 – 5.16.2.1.1, older methods for older firmware | `Update_KUALBooklet_HDRepack.bin` installed with MRPI |
+
+On the Paperwhite, see your firmware in **Settings → Device Options → Device Info**.
+There is no software jailbreak for firmware **5.16.3 or newer**: a Paperwhite already on
+it can only be used if it was jailbroken before updating. After jailbreaking, follow
+kindlemodding.org's steps to install KUAL and MRPI
+([guide](https://kindlemodding.org/jailbreaking/post-jailbreak/installing-kual-mrpi/))
+and its hotfix, so a firmware update doesn't undo the jailbreak.
+
+When it works, a **KUAL** book appears in the Kindle's library.
+
+### 2. Download GZreader
+
+From the [latest release](https://github.com/9retirement6irk/GZreader/releases/latest),
+take the package for your Kindle (the others won't start on it):
+
+| Kindle | Package |
+| --- | --- |
+| Kindle 2, Kindle Keyboard (3), DX / DX Graphite | `gzreader-kindle-legacy-<version>.zip` |
+| Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
+| Paperwhite 3, firmware **5.16.3 or newer** | `gzreader-kindlehf-<version>.zip` |
+| Paperwhite 3, firmware 5.6.1 – 5.16.2.x | `gzreader-kindlepw2-<version>.zip` |
+
+### 3. Copy it to the Kindle
+
+1. Connect the Kindle to the computer with USB; it shows up as a drive.
+2. Unzip the package on the computer. Inside are the folders `koreader`, `extensions`
+   and, in the Kindle 2/3/DX package, `launchpad`.
+3. Copy those folders to the **top of the Kindle's drive** (next to `documents`),
+   merging with any folders of the same name already there (KUAL's own
+   `extensions` folder stays; GZreader adds `extensions/koreader`). If an old
+   KOReader is installed, its `koreader` folder is replaced.
+4. **Eject** the Kindle safely and unplug it.
+
+### 4. Start GZreader
+
+- **Any Kindle:** open the **KUAL** book, then **GZreader → Start GZreader**. (*Start
+  GZreader (no framework)* stops the Kindle's own software while GZreader runs: more
+  free memory, and the Kindle restarts its home screen when you exit.)
+- **Kindle 2, 3, DX** also: press **Shift, G, G** (the last book), **Shift, G, L** (the
+  library) or **Shift, G, N** (without the Kindle's framework).
+- **Kindle Touch and Paperwhite:** after the first start, a **GZreader** book with
+  GZreader's logo appears on the Kindle's own home screen; tapping it starts GZreader.
+
+### 5. The first start
+
+A setup guide runs. Its first page, **Connect your phone**, shows a QR code: scan it
+with your phone (same Wi‑Fi as the Kindle) to connect Grimmory, Notes (Memos) and
+Calendar, or to send books, or pick *Skip for now*. You can come back to it any time:
+Home menu → **Send books from your phone** (on a touch Kindle: swipe down from the top
+→ launcher → **Phone**). The guide then asks about the library view, tabs, sleep
+screen, usage statistics, clock and reading defaults.
+
+Books you download or send go to the **GZreader** folder at the top of the Kindle's
+drive; the **Downloads** tab shows them.
+
+### Updating
+
+GZreader checks for a new release once a day and offers it; or open **Settings →
+General → Updates**. Updating keeps your books, settings, connections and reading
+progress. (Installing a newer package over USB the same way also works.)
+
+### Uninstalling
+
+Delete the `koreader` folder, `extensions/koreader`, `launchpad/koreader.ini` (Kindle
+2/3/DX) and `documents/GZreader.sh` (Kindle Touch, Paperwhite). The **GZreader** folder
+with your books stays until you delete it.
+
+### If something goes wrong
+
+- **GZreader isn't in KUAL:** check that `extensions/koreader` is on the drive (not
+  `extensions/extensions/koreader` or inside another folder).
+- **It flashes and returns to the Kindle's home screen:** most likely the package for
+  another Kindle or firmware; take the one from the table above. `koreader/crash.log`
+  on the drive says why.
+- **The phone page doesn't open:** the phone must be on the same Wi‑Fi as the Kindle,
+  and the Kindle's Wi‑Fi must be on.
+- **Something else:** Settings → General → **Send diagnostic log to my phone** (or
+  *Save diagnostic log*, which puts it on the drive) and attach it to an issue.
+
+## Usage statistics
+
+GZreader sends anonymous usage statistics to its developer's
+[Tianji](https://tianji.dev) server, so problems on real Kindles can be found
+and fixed. You choose the level in the setup guide or in
+**Settings → General → Usage statistics**:
+
+| Level | What's sent |
+| --- | --- |
+| **Basic** (default) | GZreader's version, the Kindle model and firmware at each start; whether the previous run ended without closing normally; downloads that worked or failed; slow operations; keys the screen didn't answer |
+| **Full** | Basic, plus time on Home, Downloads, Grimmory, in books and menus; menu entries used; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size, speed and resumes; sync results and Grimmory's answer times; Wi‑Fi on-time |
+| **Off** | Nothing is recorded or sent |
+
+Never sent: book titles, authors, file names, your Grimmory address or account,
+or anything you type. Each Kindle is counted by a random ID, not its serial
+number. Statistics wait in a small file and go out in one batch at most every 15
+minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for them.
 
 ## Updates
 
@@ -329,7 +419,8 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 
 One page on your phone sets up everything: the Kindle shows a QR code, you
 scan it, and the page that opens (served by the Kindle itself over your Wi‑Fi;
-phone and Kindle on the same network) has a section for each connection:
+phone and Kindle on the same network) has a tab for each connection (it opens
+at the one you came from; without JavaScript they're one under the other):
 
 - **Grimmory**: connect with a password or single sign-on, or disconnect.
 - **Notes (Memos)**: the Memos address and an access token, or disconnect.
@@ -337,12 +428,15 @@ phone and Kindle on the same network) has a section for each connection:
   can be renamed, given a new link (Proton's links change when you reshare)
   or removed; add new links (several at once); connect or disconnect a CalDAV
   account.
+- **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
+  page, which comes back to the phone page), the Plex server to use, sign out.
 - **Send books**: pick books on the phone (EPUB, PDF, MOBI, AZW3, FB2, CBZ,
   TXT, DOCX…, up to 1 GB each) and they go straight into the GZreader folder
   (the Downloads tab). No Grimmory needed. A name already there gets
   "(2)"; a book is written to a temporary file first, so a dropped Wi‑Fi
   leaves nothing half-copied; it is refused when the Kindle is short of
   space.
+- **Access**: the key for a Cloudflare rule (below).
 
 Each change shows a short note on the Kindle, and the page shows what
 happened and stays open for the next thing. Press **Back** on the Kindle when
@@ -585,6 +679,77 @@ Fastmail (`https://caldav.fastmail.com`), Google
   with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
 - **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,
   the layout it opens in, week start (Sunday / Monday), sync range, storage.
+
+## Music (Plex)
+
+Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
+playlists from your Plex Media Server, played while you read.
+
+The **Music tab** is off until you turn it on: Settings → Navbar → Tabs →
+Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
+is also in the Home menu and the Reading menu (what's playing, or *Music*),
+and, on the Kindle Touch, in the quick panel's launcher (*Music*, *Play /
+pause*).
+
+Sign in, either way:
+- on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
+  phone or computer and enter the 4 letters shown;
+- on the phone page: Music → *Sign in with Plex*.
+
+GZreader then uses your own Plex server (the one on the same Wi‑Fi first, or
+another you choose). Browse **Artists**, **Albums**, **Playlists**, or
+**Search**. An album or playlist: *Play*, *Shuffle*, *Download for offline*
+(or *Delete the download*), and its tracks. *Play* on one that isn't
+downloaded downloads it in order and starts as soon as the first track is in;
+Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
+(`.music` in the GZreader folder); *Shuffle all downloaded* plays it all.
+
+Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
+is downloaded and repacked on the Kindle (like audiobooks), anything else
+(FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or
+320 kbps: *Plex: you · server* in the Music tab). Converting uses Plex's
+transcoder; if your server refuses it, those tracks say so.
+
+*Now playing*: pause, next, previous, shuffle, repeat (off, all, this track),
+the queue. Music, audiobooks and read aloud play one at a time: starting one
+pauses the others, and sleep pauses music. The Kindle's volume keys work
+everywhere. The Plex token is kept like the other sign-ins and never logged
+(it's sent as a header, never in an address).
+
+## Headphones
+
+When headphones are unplugged while music, an audiobook or read aloud plays,
+GZreader pauses it (Settings → Reader → *Pause when headphones are
+unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
+where they show the jack: GZreader looks for a headphone switch the way Linux
+reports one; if this Kindle doesn't have that, **Settings → Reader → Find the
+headphone jack** asks you to plug in and unplug headphones and keeps the
+place that changed. If nothing changes, the Kindle doesn't tell, and nothing
+is paused (send the log: it lists what was looked at).
+
+## Access (Cloudflare)
+
+If your servers are behind Cloudflare and its bot checks block the Kindle,
+GZreader can send a secret key with each request to them, for a rule that lets
+it through. Phone page → **Access**: tick *Send the key*, add other host names
+if needed (your Grimmory, Memos and CalDAV servers are included; each name
+covers its subdomains), Save. The page then shows the rule to paste:
+
+1. Cloudflare → your domain → **Security → WAF → Custom rules → Create rule**.
+2. *Edit expression*, paste the rule (it checks the host names and the
+   `X-GZreader-Key` header).
+3. Action **Skip**: All remaining custom rules, All rate limiting rules, All
+   managed rules, All Super Bot Fight Mode rules, and under *More*: Browser
+   Integrity Check and Security Level. Deploy, and move it to the top.
+4. **Bot Fight Mode** (Security → Bots) can't be skipped by a rule: if it blocks
+   the Kindle, turn it off.
+
+Behind **Cloudflare Access** (Zero Trust login)? Make a service token there
+(Access → Service auth), allow it in the application's policy (action
+*Service Auth*), and enter its Client ID and Secret on the Access tab.
+
+The key and token go only to those servers (never to calendar links on other
+sites, plex.tv or GitHub) and are never written to the log.
 
 ## Subtitles
 

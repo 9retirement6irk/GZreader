@@ -93,6 +93,14 @@ add({ fn = function()
     end
     check(#tabs == 0, "Home's tabs: Home, Downloads, Grimmory, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
 end, after = 1 })
+add({ fn = function()
+    -- the Music tab: in Settings → Navbar → Tabs' list, off until turned on
+    local cfg = require("apps/filemanager/filemanager").instance.zenos.config.navbar
+    local listed = false
+    for _i, id in ipairs(cfg.tab_order) do if id == "ct_music" then listed = true end end
+    check(listed and cfg.show_tabs.ct_music ~= true and not shownText():find("Music", 1, true),
+        "the Music tab: listed in Settings, off by default")
+end, after = 1 })
 add({ shot = "keeps-home" })
 
 -- 2. the GZreader menu (by the Menu key where there's one)

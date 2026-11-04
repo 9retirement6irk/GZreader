@@ -84,6 +84,10 @@ Press/Back answer), and the order things happen in on a first start.
   books with Load more (`GZ_MEM_LOADS`, default 16), the tiles, the title's
   back arrow, Authors and Series (the library index) and a search; writes
   `memory.txt`.
+- `music_tour.lua` (with `tests/mock_plex.py 18090`) — the tab bar with 5, 6
+  and 7 tabs; the Music tab: signing in with a code, Artists → an album → Play
+  (downloads, plays; the player stubbed), Now playing, the Home and Reading
+  menus' Music line. Writes `music.txt`.
 - `copy_send.lua` + `copy_receive.lua` — copying connections between two
   emulators at once (e.g. `GZ_EMU_MODEL=pw3` sending, `k3` receiving, each
   with its own `GZ_EMU_TREE`, the same `GZ_COPY_PIN` file; servers: the mock

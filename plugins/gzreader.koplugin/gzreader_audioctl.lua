@@ -58,6 +58,8 @@ function AudioCtl.stopAll(why)
         Log.info("audiobook stopped:", why)
         pcall(AB.current.stop, AB.current)
     end
+    local Music = package.loaded["gzreader_music"]
+    if Music and Music.current then pcall(Music.current.stop, Music.current) end
     local Engine = package.loaded["gzreader_audioengine"]
     if Engine then pcall(Engine.stop) end
     local ok_r, ReaderUI = pcall(require, "apps/reader/readerui")

@@ -257,6 +257,7 @@ function HomeMenu.items(plugin)
         { text = _("History"), callback = function() dispatch("history") end },
         { text = _("Sort"), callback = function() HomeMenu.showSort() end },
         { text = _("Send books from your phone (QR code)"), callback = function() plugin:openPhonePage("books") end },
+        require("gzreader_touch").audio() and require("gzreader_musictab").menuItem(plugin) or nil,
         { text_func = function()
             return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
         end, callback = function() HomeMenu.showDisplay() end },

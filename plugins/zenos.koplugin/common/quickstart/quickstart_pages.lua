@@ -582,6 +582,19 @@ end
 -- Grimmory build: first setup page connects the Kindle to Grimmory.
 -- The choice runs when the user presses Next; the pairing screen opens on top
 -- of the guide and the guide continues once pairing finishes or is cancelled.
+-- GZreader: a Kindle with a speaker or headphone jack (music, audiobooks)
+local function gz_audio()
+    local ok, Touch = pcall(require, "gzreader_touch")
+    return ok and Touch.audio() or false
+end
+
+-- GZreader: a list without the entries left out (false)
+local function gz_compact(t)
+    local out = {}
+    for i = 1, table.maxn(t) do if t[i] then out[#out + 1] = t[i] end end
+    return out
+end
+
 local function grimmoryPlugin(ctx)
     local ui = ctx and ctx.plugin and ctx.plugin.ui
     local g = ui and ui.gzreader
@@ -796,7 +809,7 @@ function M.build_install_pages(ctx)
             choice_type    = "checkbox",
             -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
             max_selections = (function()
-                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, history = true, favorites = true,
+                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, history = true, favorites = true,
                     collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
                 local others = 0
                 local order = type(config.navbar) == "table" and config.navbar.tab_order
@@ -805,12 +818,14 @@ function M.build_install_pages(ctx)
                 end
                 return math.max(1, 7 - others)
             end)(),
-            choices        = {
+            choices        = gz_compact({
                 { id = "home",        text = _("Home"),        checked = show_tabs["home"]        ~= false },
                 { id = "continue",    text = _("Continue"),    checked = show_tabs["continue"]    == true },
                 -- GZreader: Notes (Memos) and Calendar are on by default; Favorites is off but still offered
                 { id = "ct_notes",    text = _("Notes (Memos)"), checked = show_tabs["ct_notes"]  ~= false },
                 { id = "ct_calendar", text = _("Calendar"),    checked = show_tabs["ct_calendar"] ~= false },
+                -- GZreader: Music (Plex), off by default; Kindles with audio only
+                gz_audio() and { id = "ct_music", text = _("Music (Plex)"), checked = show_tabs["ct_music"] == true } or false,
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -819,11 +834,11 @@ function M.build_install_pages(ctx)
                 { id = "to_be_read",  text = _("To Be Read"),  checked = show_tabs["to_be_read"]  == true },
                 { id = "search",      text = _("Search"),      checked = show_tabs["search"]      == true },
                 { id = "stats",       text = _("Stats"),       checked = show_tabs["stats"]       == true },
-            },
+            }),
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true

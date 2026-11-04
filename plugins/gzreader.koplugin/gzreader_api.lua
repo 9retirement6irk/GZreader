@@ -57,6 +57,11 @@ local function rawRequest(method, full_url, opts)
     opts = opts or {}
     local shown_url = opts.log_url or full_url
     local headers = { ["Accept"] = "application/json", ["Accept-Encoding"] = "identity" }
+    -- (your own servers: the Access key / Cloudflare token, gzreader_access.lua)
+    if Api.extra_headers then
+        local ok, extra = pcall(Api.extra_headers, full_url)
+        for k, v in pairs(ok and type(extra) == "table" and extra or {}) do headers[k] = v end
+    end
     for k, v in pairs(opts.headers or {}) do headers[k] = v end
     local body = opts.body or opts.raw_body
     if type(body) == "table" then

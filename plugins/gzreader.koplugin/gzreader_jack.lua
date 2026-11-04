@@ -1,0 +1,277 @@
+--[[--
+Headphones: are they plugged in? Pauses music, audiobooks and read aloud
+when they're unplugged while playing (so the speaker doesn't suddenly play
+out loud), if the Kindle says so.
+
+How a Kindle says so isn't the same everywhere (and isn't documented), so
+GZreader looks in the places Linux uses for it:
+- an input device with a headphone switch (EV_SW, SW_HEADPHONE_INSERT: the
+  state comes from the EVIOCGSW ioctl, without taking its events);
+- a switch in sysfs (/sys/class/switch/*/state, as Android kernels have);
+- what "Find the headphone jack" (Settings → Reader) found on this Kindle:
+  it asks you to plug in and unplug headphones and keeps the one place that
+  changed (a sysfs file, an input switch or an lipc property of
+  com.lab126.audio). Until something is found, nothing is paused.
+]]
+
+local ffi = require("ffi")
+local Log = require("gzreader_log")
+local UIManager = require("ui/uimanager")
+local lfs = require("libs/libkoreader-lfs")
+
+pcall(ffi.cdef, "int open(const char *pathname, int flags, ...);")
+pcall(ffi.cdef, "int close(int fd);")
+pcall(ffi.cdef, "int ioctl(int fd, unsigned long request, ...);")
+
+local Jack = {
+    INTERVAL = 1,
+    SW_HEADPHONE_INSERT = 2,
+    SETTING = "gzreader_jack",
+    watchers = {},
+    -- injectable (tests)
+    read = nil,
+    devices_file = "/proc/bus/input/devices",
+}
+
+local function readFile(p)
+    if Jack.read then return Jack.read(p) end
+    local f = io.open(p, "rb")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+
+--- Input devices with a headphone switch: { { event = "/dev/input/eventN", name } }.
+function Jack.switchDevices()
+    local text = readFile(Jack.devices_file) or ""
+    local out = {}
+    for block in (text .. "\n\n"):gmatch("(.-)\n\n") do
+        local name = block:match('N: Name="([^"]*)"')
+        local ev = block:match("H: Handlers=[^\n]-(event%d+)")
+        local sw = block:match("B: SW=(%x+)")
+        if ev and sw then
+            local bits = tonumber(sw:sub(-8), 16) or 0
+            if bit.band(bits, bit.lshift(1, Jack.SW_HEADPHONE_INSERT)) ~= 0 then
+                out[#out + 1] = { event = "/dev/input/" .. ev, name = name }
+            end
+        end
+    end
+    return out
+end
+
+--- EVIOCGSW: the switch bits of an input device, or nil.
+function Jack.switchBits(path)
+    if Jack.read then
+        local s = Jack.read(path .. "#sw")
+        return s and tonumber(s)
+    end
+    local fd = ffi.C.open(path, 0x800) -- O_RDONLY | O_NONBLOCK
+    if fd < 0 then return nil end
+    local buf = ffi.new("uint8_t[8]")
+    local req = bit.bor(bit.lshift(2, 30), bit.lshift(8, 16), bit.lshift(0x45, 8), 0x1b) -- _IOC(READ, 'E', 0x1b, 8)
+    local r = ffi.C.ioctl(fd, ffi.cast("unsigned long", bit.tobit(req)), buf)
+    ffi.C.close(fd)
+    if r < 0 then return nil end
+    return buf[0] + buf[1] * 256
+end
+
+local function sysfsSwitches()
+    local out = {}
+    local base = "/sys/class/switch"
+    if not Jack.read and lfs.attributes(base, "mode") ~= "directory" then return out end
+    local names = {}
+    if Jack.read then
+        for n in (Jack.read(base .. "#list") or ""):gmatch("%S+") do names[#names + 1] = n end
+    else
+        for n in lfs.dir(base) do if n ~= "." and n ~= ".." then names[#names + 1] = n end end
+    end
+    for _i, n in ipairs(names) do
+        local l = n:lower()
+        if l:find("h2w") or l:find("head") or l:find("jack") or l:find("phone") then out[#out + 1] = base .. "/" .. n .. "/state" end
+    end
+    return out
+end
+
+--- How to tell, on this Kindle: { kind = "switch", path } | { kind = "file",
+--- path, on } | { kind = "lipc", prop, on }, or nil.
+function Jack.detector()
+    local saved = G_reader_settings:readSetting(Jack.SETTING)
+    if type(saved) == "table" and saved.kind then return saved end
+    local devs = Jack.switchDevices()
+    if devs[1] then return { kind = "switch", path = devs[1].event } end
+    local sw = sysfsSwitches()
+    if sw[1] then return { kind = "file", path = sw[1], on = "nonzero" } end
+    return nil
+end
+
+local function lipcGet(prop)
+    if Jack.read then return Jack.read("lipc:" .. prop) end
+    local p = io.popen("lipc-get-prop com.lab126.audio " .. prop .. " 2>/dev/null")
+    if not p then return nil end
+    local s = p:read("*a")
+    p:close()
+    return trim(s)
+end
+
+--- true: headphones in; false: out; nil: can't tell on this Kindle.
+function Jack.plugged(det)
+    det = det or Jack.detector()
+    if not det then return nil end
+    if det.kind == "switch" then
+        local bits = Jack.switchBits(det.path)
+        if not bits then return nil end
+        return bit.band(bits, bit.lshift(1, Jack.SW_HEADPHONE_INSERT)) ~= 0
+    end
+    local v
+    if det.kind == "file" then v = readFile(det.path) elseif det.kind == "lipc" then v = lipcGet(det.prop) end
+    if v == nil then return nil end
+    v = trim(v)
+    if det.on == "nonzero" then return v ~= "" and v ~= "0" end
+    return v == det.on
+end
+
+---------------------------------------------------------------- watching
+
+--- While something plays: call on_unplug() when the headphones come out.
+--- key: "music", "audiobook", "tts".
+function Jack.watch(key, on_unplug)
+    if G_reader_settings:readSetting("gzreader_jack_pause") == false then return end
+    local det = Jack.detector()
+    if not det then return end
+    Jack.watchers[key] = on_unplug
+    if Jack.ticker then return end
+    Jack.last = Jack.plugged(det)
+    Jack.ticker = function()
+        Jack.ticker = nil
+        if not next(Jack.watchers) then return end
+        local now = Jack.plugged(det)
+        if Jack.last == true and now == false then
+            Log.info("headphones unplugged: pausing")
+            local list = Jack.watchers
+            Jack.watchers = {}
+            for _k, fn in pairs(list) do pcall(fn) end
+        end
+        Jack.last = now
+        if next(Jack.watchers) then
+            Jack.ticker = Jack.tick_fn
+            UIManager:scheduleIn(Jack.INTERVAL, Jack.ticker)
+        end
+    end
+    Jack.tick_fn = Jack.ticker
+    UIManager:scheduleIn(Jack.INTERVAL, Jack.ticker)
+end
+
+function Jack.unwatch(key)
+    Jack.watchers[key] = nil
+    if not next(Jack.watchers) and Jack.ticker then
+        UIManager:unschedule(Jack.ticker)
+        Jack.ticker = nil
+    end
+end
+
+---------------------------------------------------------------- finding it
+
+--- Everything that could say "headphones": name -> value.
+function Jack.snapshot()
+    local snap = {}
+    for _i, d in ipairs(Jack.switchDevices()) do snap["switch:" .. d.event] = tostring(Jack.switchBits(d.event)) end
+    -- every input device's switches, even without the headphone bit
+    local text = readFile(Jack.devices_file) or ""
+    for ev in text:gmatch("H: Handlers=[^\n]-(event%d+)") do
+        local p = "/dev/input/" .. ev
+        if not snap["switch:" .. p] then snap["anyswitch:" .. p] = tostring(Jack.switchBits(p)) end
+    end
+    for _i, p in ipairs(sysfsSwitches()) do snap["file:" .. p] = trim(readFile(p)) end
+    if not Jack.read then
+        -- sysfs files named like a jack (a shallow look: the sound and platform devices)
+        local h = io.popen("find /sys/devices/platform /sys/class/sound /sys/devices/virtual -maxdepth 4 \\( -iname '*headphone*' -o -iname '*hp_det*' -o -iname '*hpdet*' -o -iname '*jack*' -o -iname '*headset*' \\) -type f 2>/dev/null | head -40")
+        if h then
+            for p in h:lines() do snap["file:" .. p] = trim(readFile(p)) end
+            h:close()
+        end
+        -- com.lab126.audio's properties (Amazon's audio service)
+        local lp = io.popen("lipc-probe -v com.lab126.audio 2>/dev/null")
+        if lp then
+            for line in lp:lines() do
+                local prop = line:match("^%s+%a+%s+%a+%s+([%w_]+)%s*$") or line:match("^%s*([%w_]+)%s*$")
+                if prop and #prop > 2 then snap["lipc:" .. prop] = lipcGet(prop) end
+            end
+            lp:close()
+        end
+    else
+        for p in (Jack.read("#files") or ""):gmatch("%S+") do snap["file:" .. p] = trim(readFile(p)) end
+        for prop in (Jack.read("#lipc") or ""):gmatch("%S+") do snap["lipc:" .. prop] = lipcGet(prop) end
+    end
+    return snap
+end
+
+--- Compare plugged-in and unplugged: the detector, or nil, and what changed.
+function Jack.compare(with, without)
+    local changed = {}
+    for k, v in pairs(with) do
+        if without[k] ~= nil and without[k] ~= v then changed[#changed + 1] = k end
+    end
+    table.sort(changed, function(a, b)
+        local rank = function(k) return k:match("^switch:") and 0 or k:match("^file:") and 1 or k:match("^lipc:") and 2 or 3 end
+        return rank(a) < rank(b) or (rank(a) == rank(b) and a < b)
+    end)
+    local k = changed[1]
+    if not k then return nil, changed end
+    local kind, where = k:match("^(%w+):(.*)$")
+    if kind == "switch" then return { kind = "switch", path = where }, changed end
+    if kind == "anyswitch" then return { kind = "bits", path = where, on_bits = tonumber(with[k]) }, changed end
+    if kind == "file" then return { kind = "file", path = where, on = with[k] }, changed end
+    if kind == "lipc" then return { kind = "lipc", prop = where, on = with[k] }, changed end
+    return nil, changed
+end
+
+--- The guided test: plug in, unplug; keeps what changed.
+function Jack.test(on_done)
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local InfoMessage = require("ui/widget/infomessage")
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    UIManager:show(ConfirmBox:new{
+        text = _("Plug headphones into the Kindle, then press Next."),
+        ok_text = _("Next"),
+        ok_callback = function()
+            local with = Jack.snapshot()
+            UIManager:show(ConfirmBox:new{
+                text = _("Now unplug them, then press Next."),
+                ok_text = _("Next"),
+                ok_callback = function()
+                    local without = Jack.snapshot()
+                    local det, changed = Jack.compare(with, without)
+                    local n = 0
+                    for _k in pairs(with) do n = n + 1 end
+                    Log.info("headphone test: looked at", n, "places; changed:", table.concat(changed, ", "))
+                    if det then
+                        G_reader_settings:saveSetting(Jack.SETTING, det)
+                        UIManager:show(InfoMessage:new{ text = T(_("Found it (%1). Music, audiobooks and read aloud now pause when headphones are unplugged."),
+                            det.path or det.prop) })
+                    else
+                        UIManager:show(InfoMessage:new{ text = _("Nothing on this Kindle changed when the headphones were plugged in or out, so GZreader can't tell. Saving the diagnostic log (Settings → General) and sending it helps find another way.") })
+                    end
+                    if on_done then on_done(det) end
+                end,
+            })
+        end,
+    })
+end
+
+-- (a found input switch without the headphone bit: compare the whole bits)
+local plugged = Jack.plugged
+function Jack.plugged(det)
+    det = det or Jack.detector()
+    if det and det.kind == "bits" then
+        local b = Jack.switchBits(det.path)
+        if not b then return nil end
+        return b == det.on_bits
+    end
+    return plugged(det)
+end
+
+return Jack

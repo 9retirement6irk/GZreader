@@ -7,7 +7,7 @@ Wi-Fi, battery) as their title.
 local UIManager = require("ui/uimanager")
 
 local Tabs = {
-    IDS = { ct_grimmory = true, ct_notes = true, ct_calendar = true },
+    IDS = { ct_grimmory = true, ct_notes = true, ct_calendar = true, ct_music = true },
 }
 
 --- Close GZreader's other tab views. ZenOS opens an action tab on top of the

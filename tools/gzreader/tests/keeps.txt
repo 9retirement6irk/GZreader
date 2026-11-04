@@ -31,13 +31,13 @@
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 3 plugins/zenos.koplugin/common/quickstart/menu_tour.lua
-68 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
+76 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
 2 plugins/zenos.koplugin/common/quickstart/quickstart_screen.lua
 2 plugins/zenos.koplugin/common/quickstart/reader_tour.lua
 2 plugins/zenos.koplugin/common/ui/icon_menu_item.lua
 1 plugins/zenos.koplugin/common/utils.lua
-14 plugins/zenos.koplugin/config/defaults.lua
-13 plugins/zenos.koplugin/config/manager.lua
+17 plugins/zenos.koplugin/config/defaults.lua
+17 plugins/zenos.koplugin/config/manager.lua
 2 plugins/zenos.koplugin/kindle-launcher/GZreader.sh
 2 plugins/zenos.koplugin/main.lua
 5 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua

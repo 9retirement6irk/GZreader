@@ -107,6 +107,8 @@ function Grimmory:init()
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
+    -- the Access key / Cloudflare token on requests to your own servers
+    pcall(function() require("gzreader_access").install(self) end)
     self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- remote debugging (off until a feed address is set)
@@ -214,6 +216,10 @@ function Grimmory:onDispatcherRegisterActions()
     })
     Dispatcher:registerAction("gzreader_calendar", {
         category = "none", event = "ShowGzCalendar", title = _("Calendar (CalDAV)"),
+        general = true,
+    })
+    Dispatcher:registerAction("gzreader_music", {
+        category = "none", event = "ShowGzMusic", title = _("Music (Plex)"),
         general = true,
     })
     Dispatcher:registerAction("grimmory_pair", {
@@ -387,6 +393,20 @@ function Grimmory:sectionItems(section)
             help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
             keep_menu_open = true, -- the test's messages show over Settings
             callback = function() require("gzreader_audioengine").test() end,
+        })
+        items[#items + 1] = icon("check", {
+            text = _("Pause when headphones are unplugged"),
+            help_text = _("Music, audiobooks and read aloud pause instead of carrying on out of the speaker. Needs to know where this Kindle says the headphones are plugged in: Find the headphone jack."),
+            checked_func = function() return G_reader_settings:readSetting("gzreader_jack_pause") ~= false end,
+            callback = function()
+                G_reader_settings:saveSetting("gzreader_jack_pause", G_reader_settings:readSetting("gzreader_jack_pause") == false)
+            end,
+        })
+        items[#items + 1] = icon("check", {
+            text = _("Find the headphone jack"),
+            help_text = _("Asks you to plug in and unplug headphones, and keeps where this Kindle shows it."),
+            keep_menu_open = true,
+            callback = function() require("gzreader_jack").test() end,
         })
         return items
     elseif section == "interface" then
@@ -688,11 +708,15 @@ local LAUNCHER = {
     { _("Search book"), "lookup_search", "onGzLauncherSearchBook", "reader" },
     { _("Sync"), "quick_sync", "onGzLauncherSync", "reader" },
     { _("Fit pictures"), "coverflow", "onGzLauncherPictures", "reader" },
+    -- (Kindles with audio: the Kindle Touch)
+    { _("Music"), "tab_music", "onGzLauncherMusic", nil, "audio" },
+    { _("Play / pause"), "quick_read_aloud", "onGzLauncherMusicToggle", nil, "audio" },
 }
 Grimmory.LAUNCHER = LAUNCHER
 
 function Grimmory:addLauncherEntries()
-    if not Mod.Touch.on() or G_reader_settings:isTrue("gzreader_launcher_v2") then return end
+    -- (v3, 1.14.0: Music and Play / pause, on the Kindles with audio)
+    if not Mod.Touch.on() or G_reader_settings:isTrue("gzreader_launcher_v3") then return end
     local ok, Model = pcall(require, "modules/menu/app_launcher/model")
     if not ok then return end
     local cfg = Model.ensure()
@@ -707,15 +731,17 @@ function Grimmory:addLauncherEntries()
     end
     for _i, def in ipairs(LAUNCHER) do
         local e = find(cfg.entries, def[3])
+        local skip = def[5] == "audio" and not Mod.Touch.audio() -- (no speaker: not added)
         if e then
             e.gz_context = def[4] -- (1.12.2: Phone and Send books are Home's)
-        else
+        elseif not skip then
             cfg.entries[#cfg.entries + 1] = { id = Model.next_id(cfg), type = "plugin", label = def[1], icon = def[2],
                 plugin = { key = "gzreader", method = def[3] }, gz_context = def[4] }
         end
     end
     Model.save(cfg)
     G_reader_settings:makeTrue("gzreader_launcher_v2")
+    G_reader_settings:makeTrue("gzreader_launcher_v3")
     Log.info("launcher: GZreader entries added or updated")
 end
 
@@ -761,6 +787,24 @@ end
 function Grimmory:onGzLauncherBooks()
     local p = liveInstance(self)
     if p then p:openPhonePage("books") end
+end
+
+function Grimmory:onGzLauncherMusic()
+    local p = liveInstance(self)
+    if p then require("gzreader_musictab").open(p) end
+end
+function Grimmory:onGzLauncherMusicToggle()
+    local p = liveInstance(self)
+    local Music = require("gzreader_music")
+    if Music.current then Music.current:toggle()
+    elseif p then require("gzreader_musictab").open(p) end
+end
+
+--- The Music tab (ZenOS's tab bar: Settings → Navbar → Tabs → Music).
+function Grimmory:onShowGzMusic()
+    if self.ui and self.ui.document then return end -- (file manager's instance)
+    require("gzreader_musictab").show(self)
+    return true
 end
 
 function Grimmory:onGzLauncherContinue() dispatch("open_previous_document") end
@@ -1212,6 +1256,8 @@ function Grimmory:onGrimmorySyncNow()
 end
 
 function Grimmory:onSuspend()
+    local Music = package.loaded["gzreader_music"]
+    if Music then pcall(Music.pauseAll) end
     local ok_ab, Audiobook = pcall(require, "gzreader_audiobook")
     if ok_ab and Audiobook.current and Audiobook.current.playing then Audiobook.current:pause() end
     if self.tts then self.tts:stop() end

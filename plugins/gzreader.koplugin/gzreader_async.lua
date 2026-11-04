@@ -130,7 +130,7 @@ pump = function()
     Async.busy = true
     job.t0 = require("socket").gettime()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
-    local api = job.api
+    local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
         local store = api.store or {}
         local before = {}

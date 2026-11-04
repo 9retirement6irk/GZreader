@@ -1171,6 +1171,32 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.14.0: the Music tab (Plex): listed in Settings → Navbar →
+    -- Tabs, off.
+    if cfg._meta.gz_music_tab_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb then
+            nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+            local has = false
+            for _i, t in ipairs(nb.custom_tabs) do
+                if type(t) == "table" and t.id == "ct_music" then has = true end
+            end
+            if not has then
+                table.insert(nb.custom_tabs, { id = "ct_music", type = "action",
+                    action = { gzreader_music = true }, label = "Music", icon = "tab_music" })
+            end
+            nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+            if nb.show_tabs.ct_music == nil then nb.show_tabs.ct_music = false end
+            if type(nb.tab_order) == "table" then
+                local seen = false
+                for _i, id in ipairs(nb.tab_order) do if id == "ct_music" then seen = true end end
+                if not seen then table.insert(nb.tab_order, "ct_music") end
+            end
+        end
+        cfg._meta.gz_music_tab_migrated = true
+        changed = true
+    end
+
     if cfg._meta.reader_footer_hide_cbz_default_migrated ~= true then
         if type(cfg.reader_footer) ~= "table" then
             cfg.reader_footer = {}
