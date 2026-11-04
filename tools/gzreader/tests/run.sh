@@ -23,6 +23,9 @@ export TZ=America/New_York
 echo "== luacheck"
 (cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || failed=$((failed + 1))
 
+echo "== GZreader's changes to upstream files kept"
+python3 "$T/keeps.py" || failed=$((failed + 1))
+
 echo "== plugin (mock servers)"
 mkdir -p "$WORK/work"
 export GZ_TEST_M4A="$REPO/plugins/gzreader.koplugin/audio/test.m4a"

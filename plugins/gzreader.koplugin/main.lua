@@ -75,6 +75,20 @@ function Grimmory:init()
     end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
+    if Device.gz_menu_perpage and not Grimmory.dx_lists then
+        -- (the DX: more to a list's page, the text as big as 14 to a page on a 6" Kindle)
+        Grimmory.dx_lists = true
+        local Menu = require("ui/widget/menu")
+        Menu.items_per_page_default = Device.gz_menu_perpage
+        local item_font = Menu.getItemFontSize
+        Menu.getItemFontSize = function(perpage)
+            return item_font(math.max(6, math.floor(perpage * 14 / Device.gz_menu_perpage + 0.5)))
+        end
+        local mandatory = Menu.getItemMandatoryFontSize
+        Menu.getItemMandatoryFontSize = function(perpage)
+            return mandatory(math.max(6, math.floor(perpage * 14 / Device.gz_menu_perpage + 0.5)))
+        end
+    end
     if Device.lcd and not Grimmory.nook_screen then
         -- Nook 1st Edition: GZreader's panels on the colour touchscreen
         Grimmory.nook_screen = true
@@ -622,40 +636,89 @@ end
 --- Touch Kindles have no Menu key for GZreader's menu (Kindle Keyboard): it,
 --- the phone page and Send books go in ZenOS's launcher (swipe down from the
 --- top, the launcher icon), once; they can be moved or removed there.
+--- Touch Kindles: GZreader's entries in ZenOS's launcher (swipe down, the
+--- launcher tab). "GZreader" opens the GZreader menu at Home and the Reading
+--- menu in a book; the others show only where they make sense: at Home /
+--- in the library, or in a book (ZenOS's app_launcher: gz_context).
+local LAUNCHER = {
+    { _("GZreader"), "app_menu", "onGzLauncherMenu" },
+    { _("Continue"), "tab_continue", "onGzLauncherContinue", "library" },
+    { _("Grimmory"), "library", "onGzLauncherGrimmory", "library" },
+    { _("Search"), "quick_search", "onGzLauncherSearch", "library" },
+    { _("History"), "tab_history", "onGzLauncherHistory", "library" },
+    { _("Phone"), "quick_connections", "onGzLauncherPhone", "library" },
+    { _("Send books"), "quick_localsend", "onGzLauncherBooks", "library" },
+    { _("Updates"), "zen_ui_update", "onGzLauncherUpdates", "library" },
+    { _("Contents"), "toc", "onGzLauncherToc", "reader" },
+    { _("Bookmark"), "bookmark", "onGzLauncherBookmark", "reader" },
+    { _("Bookmarks"), "book_open", "onGzLauncherBookmarks", "reader" },
+    { _("Go to page"), "skip_right", "onGzLauncherGoto", "reader" },
+    { _("Search book"), "lookup_search", "onGzLauncherSearchBook", "reader" },
+    { _("Sync"), "quick_sync", "onGzLauncherSync", "reader" },
+    { _("Fit pictures"), "coverflow", "onGzLauncherPictures", "reader" },
+}
+Grimmory.LAUNCHER = LAUNCHER
+
 function Grimmory:addLauncherEntries()
-    if not Mod.Touch.on() or G_reader_settings:isTrue("gzreader_launcher_v1") then return end
+    if not Mod.Touch.on() or G_reader_settings:isTrue("gzreader_launcher_v2") then return end
     local ok, Model = pcall(require, "modules/menu/app_launcher/model")
     if not ok then return end
     local cfg = Model.ensure()
-    local function add(label, icon, method)
-        for _i, e in ipairs(cfg.entries) do
-            if e.type == "plugin" and type(e.plugin) == "table" and e.plugin.method == method then return end
+    local function find(entries, method)
+        for _i, e in ipairs(entries or {}) do
+            if e.type == "plugin" and type(e.plugin) == "table" and e.plugin.key == "gzreader" and e.plugin.method == method then return e end
+            if e.type == "folder" then
+                local f = find(e.children, method)
+                if f then return f end
+            end
         end
-        cfg.entries[#cfg.entries + 1] = { id = Model.next_id(cfg), type = "plugin", label = label, icon = icon,
-            plugin = { key = "gzreader", method = method } }
     end
-    add(_("GZreader"), "app_menu", "onGzLauncherMenu")
-    add(_("Phone"), "quick_connections", "onGzLauncherPhone")
-    add(_("Send books"), "quick_localsend", "onGzLauncherBooks")
+    for _i, def in ipairs(LAUNCHER) do
+        local e = find(cfg.entries, def[3])
+        if e then
+            e.gz_context = def[4] -- (1.12.2: Phone and Send books are Home's)
+        else
+            cfg.entries[#cfg.entries + 1] = { id = Model.next_id(cfg), type = "plugin", label = def[1], icon = def[2],
+                plugin = { key = "gzreader", method = def[3] }, gz_context = def[4] }
+        end
+    end
     Model.save(cfg)
-    G_reader_settings:makeTrue("gzreader_launcher_v1")
-    Log.info("launcher: GZreader entries added")
+    G_reader_settings:makeTrue("gzreader_launcher_v2")
+    Log.info("launcher: GZreader entries added or updated")
 end
 
 --- The GZreader instance of the screen that's open (the launcher may call
---- these on the plugin's class).
+--- these on the plugin's class): the book's while one is open.
 local function liveInstance(self)
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    local r = ok and ReaderUI.instance
+    if r and r.document and r.gzreader then return r.gzreader end
     if self.ui then return self end
     local FileManager = require("apps/filemanager/filemanager")
-    local fm = FileManager.instance and FileManager.instance.gzreader
-    if fm then return fm end
+    return FileManager.instance and FileManager.instance.gzreader or nil
+end
+
+--- The open book's ReaderUI, if any.
+local function reader()
     local ok, ReaderUI = pcall(require, "apps/reader/readerui")
-    return ok and ReaderUI.instance and ReaderUI.instance.gzreader or nil
+    local r = ok and ReaderUI.instance
+    if r and r.document then return r end
+end
+
+local function dispatch(action)
+    if Dispatcher.execute then Dispatcher:execute({ [action] = true }) end
+end
+
+--- In a book: an event to the reader.
+local function readerEvent(name)
+    local r = reader()
+    if r then r:handleEvent(Event:new(name)) end
 end
 
 function Grimmory:onGzLauncherMenu()
     local p = liveInstance(self)
-    if p then require("gzreader_homemenu").show(p) end
+    if not p then return end
+    if reader() then ReadMenu.show(p) else require("gzreader_homemenu").show(p) end
 end
 
 function Grimmory:onGzLauncherPhone()
@@ -666,6 +729,34 @@ end
 function Grimmory:onGzLauncherBooks()
     local p = liveInstance(self)
     if p then p:openPhonePage("books") end
+end
+
+function Grimmory:onGzLauncherContinue() dispatch("open_previous_document") end
+function Grimmory:onGzLauncherSearch() dispatch("file_search") end
+function Grimmory:onGzLauncherHistory() dispatch("history") end
+function Grimmory:onGzLauncherUpdates() require("gzreader_update").run() end
+function Grimmory:onGzLauncherGrimmory()
+    local p = liveInstance(self)
+    if p then p:onShowGrimmoryLibrary() end
+end
+
+function Grimmory:onGzLauncherToc()
+    local r = reader()
+    if r and not r:handleEvent(Event:new("ShowZenUIToc")) then r:handleEvent(Event:new("ShowToc")) end
+end
+function Grimmory:onGzLauncherBookmark() readerEvent("ToggleBookmark") end
+function Grimmory:onGzLauncherBookmarks() readerEvent("ShowBookmark") end
+function Grimmory:onGzLauncherGoto() readerEvent("ShowGotoDialog") end
+function Grimmory:onGzLauncherSearchBook() readerEvent("ShowFulltextSearchInput") end
+function Grimmory:onGzLauncherSync()
+    local p = liveInstance(self)
+    if p then p:onGrimmorySyncNow() end
+end
+function Grimmory:onGzLauncherPictures()
+    local r = reader()
+    if not r then return end
+    local PB = require("gzreader_picturebook")
+    PB.set(r, not PB.isOn(r))
 end
 
 function Grimmory:openPhonePage(section)

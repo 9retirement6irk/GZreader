@@ -266,10 +266,17 @@ run the same GZreader with ZenOS's touch interface:
 
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for quick settings (Wi‑Fi, night mode,
-  brightness, sleep, restart) and the **launcher**, which starts with
-  **GZreader** (the GZreader menu: continue reading, history, sort, display,
-  Wi‑Fi, settings, updates, diagnostics, sleep, restart), **Phone** (the
-  phone page) and **Send books** (the phone page at Send books).
+  brightness, sleep, restart) and the **launcher**, whose GZreader entries
+  change with where you are:
+  - everywhere: **GZreader**, the GZreader menu at Home (continue reading,
+    history, sort, display, Wi‑Fi, settings, updates, diagnostics, sleep,
+    restart) and the **Reading menu** in a book;
+  - at Home and in the library: **Continue** (the last book), **Grimmory**
+    (your library), **Search**, **History**, **Phone** (the phone page),
+    **Send books** and **Updates**;
+  - in a book: **Contents**, **Bookmark** (this page), **Bookmarks**, **Go to
+    page**, **Search book**, **Sync** (with Grimmory, now) and **Fit
+    pictures** (picture books).
 - **Notes:** New note, Filter and More are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;

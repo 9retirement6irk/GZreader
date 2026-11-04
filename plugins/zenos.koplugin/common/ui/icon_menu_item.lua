@@ -40,7 +40,8 @@ M.SETTINGS_TITLE_FONT_SIZE = 18
 
 function M.getSettingsFontSize()
     local settings = rawget(_G, "G_reader_settings")
-    local perpage = 14
+    -- GZreader: lists' default (22 on the DX, which sizes by dpi), not a fixed 14
+    local perpage = require("ui/widget/menu").items_per_page_default or 14
     if settings and type(settings.readSetting) == "function" then
         perpage = tonumber(settings:readSetting("items_per_page")) or perpage
         local configured = tonumber(settings:readSetting("items_font_size"))

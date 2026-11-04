@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.12.2",
+        changes = {
+            "Touch Kindles and the Nook Simple Touch: GZreader in the launcher (swipe down from the top) opens the Reading menu while you're reading, instead of always the Home menu.",
+            "The launcher has more of the GZreader menu, and shows what fits where you are: at Home and in the library Continue, Grimmory, Search, History, Phone, Send books and Updates; in a book Contents, Bookmark, Bookmarks, Go to page, Search book, Sync and Fit pictures. GZreader is in both.",
+            "Kindle DX and DX Graphite: text, menus and buttons are now the same size on the screen as on the 6\" Kindles (they were half as big again: KOReader sized them by the screen's width, not its sharpness), with more on each page (22 to a list's page). Not if you've set your own screen DPI.",
+        },
+    },
+    {
         version = "1.12.1",
         changes = {
             "New, as a test build: the Nook Simple Touch and Simple Touch with GlowLight, in the same gzreader-nook package as the 1st Edition (1.12.0's package was built just before it). By touch like the Kindle Touch, with the page buttons, n for Home, the frontlight in quick settings and each refresh's waveform chosen by GZreader. Settings → Interface → Touch orientation if the touch lands on the wrong side.",

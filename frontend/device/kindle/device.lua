@@ -1261,9 +1261,27 @@ local function useShadowScreen(device)
     end
 end
 
+--- GZreader: the DX and DX Graphite (9.7", 824 × 1200 at 150 dpi). KOReader
+--- sizes text, icons and bars by the screen's width (1.37× a 6" Kindle's),
+--- so on the DX everything came out half as tall again as on the other
+--- Kindles (menus about 4.6 mm against 2.9 mm). Size by the screen's dpi
+--- instead, like the 6" Kindles and the Paperwhite (300 dpi ≈ 1.8×): the same
+--- size in millimetres, with more on each screen (lists: 22 to a page, the
+--- text as big as with 14 on a 6" Kindle; gzreader main.lua). Not when you've
+--- set your own dpi (Settings → Screen → DPI).
+local function physicalSize(device)
+    local screen = device.screen
+    if math.min(screen:getWidth(), screen:getHeight()) <= 600 then return end
+    if G_reader_settings and G_reader_settings:has("screen_dpi") then return end
+    local factor = 150 / 167
+    screen.scaleBySize = function(_self, px) return math.ceil(px * factor) end
+    device.gz_menu_perpage = 22
+end
+
 function Kindle2:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
     useShadowScreen(self)
+    physicalSize(self) -- (the DX)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         is_charging_file = "/sys/devices/platform/charger/charging",
@@ -1278,6 +1296,7 @@ end
 function KindleDXG:init()
     self.screen = require("ffi/framebuffer_einkfb"):new{device = self, debug = logger.dbg}
     useShadowScreen(self)
+    physicalSize(self)
     self.powerd = require("device/kindle/powerd"):new{
         device = self,
         is_charging_file = "/sys/devices/platform/charger/charging",

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Everything CI checks, on Linux x86-64 (GitHub's ubuntu runners):
 # luacheck and the tests (tools/gzreader/tests/run.sh), then GZreader started
-# in the emulator (qemu) on a Kindle 3, a Nook 1st Edition and a Nook Simple
-# Touch with KOReader's official Kindle 2/3/DX binaries: guide, Home, a book,
-# a page turn, Home (tools/gzreader/emulator/smoke.lua).
+# in the emulator (qemu) on a Kindle 3, Kindle 4, Kindle Touch, Paperwhite 3,
+# Nook 1st Edition and Nook Simple Touch (GZ_CI_MODELS), with KOReader's
+# official Kindle 2/3/DX binaries, checking what makes it GZreader: menus,
+# names, the Menu key, Settings, launcher, picture books, the Nook's colour
+# screen, menu text size (tools/gzreader/emulator/keeps.lua).
 #
 #   tools/gzreader/ci-test.sh <koreader-kindle-legacy-vX.zip> <out dir>
 #
@@ -29,18 +31,23 @@ else
     echo '```' >> "$SUM"; grep -E "FAIL|^ +[^ ]+:[0-9]+:[0-9]+: |suite\(s\) failed" "$OUT/tests.txt" | head -40 >> "$SUM"; echo '```' >> "$SUM"
 fi
 
-echo "### Starting GZreader (emulator)" >> "$SUM"
-python3 "$REPO/tools/gzreader/tests/make_epub.py" "$OUT/smoke.epub"
+echo "### GZreader in the emulator: what makes it GZreader" >> "$SUM"
+python3 "$REPO/tools/gzreader/tests/make_epub.py" "$OUT/book.epub"
+python3 "$REPO/tools/gzreader/tests/make_epub.py" --pictures "$OUT/pictures.epub"
 mkdir -p "$OUT/nook-home"
-for model in k3 nook nst; do
-    GZ_NOOK_HOME="$OUT/nook-home" GZ_EMU_BOOK="$OUT/smoke.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=300 \
-        bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/smoke.lua" "$OUT/smoke-$model" > /dev/null 2>&1
-    result=$(cat "$OUT/smoke-$model/smoke.txt" 2>/dev/null || echo "didn't finish (see smoke-$model.txt)")
-    if [ "$result" = ok ]; then
-        echo "- ✅ $model" >> "$SUM"
+for model in ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst}; do
+    rm -rf "$OUT/nook-home/GZreader"
+    GZ_NOOK_HOME="$OUT/nook-home" GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_PICTURES="$OUT/pictures.epub" \
+        GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
+        bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/keeps.lua" "$OUT/keeps-$model" > /dev/null 2>&1
+    k="$OUT/keeps-$model/keeps.txt"
+    if [ ! -s "$k" ]; then
+        failed=$((failed + 1)); echo "- ❌ $model: didn't finish (see keeps-$model.txt)" >> "$SUM"
+    elif grep -q '^FAIL' "$k"; then
+        failed=$((failed + 1)); echo "- ❌ $model: $(grep -c '^ok' "$k") ok, $(grep -c '^FAIL' "$k") failed" >> "$SUM"
+        sed 's/^/  - /' "$k" | grep FAIL >> "$SUM"
     else
-        failed=$((failed + 1))
-        echo "- ❌ $model: $result" >> "$SUM"
+        echo "- ✅ $model: $(grep -c '^ok' "$k") checks" >> "$SUM"
     fi
 done
 cat "$SUM"

@@ -255,6 +255,14 @@
     end
 
     local function entry_hidden_in_context(entry, touch_menu, cfg)
+        -- GZreader: entries for Home and the library only ("library") or
+        -- for a book only ("reader"), e.g. GZreader's Continue / Contents
+        if type(entry) == "table" and entry.gz_context then
+            local library = is_library_launcher(touch_menu) == true
+            if (entry.gz_context == "reader" and library) or (entry.gz_context == "library" and not library) then
+                return true
+            end
+        end
         return type(entry) == "table"
             and cfg.hide_reader_actions_in_library == true
             and is_library_launcher(touch_menu)

@@ -70,7 +70,7 @@ jobs:
   merge:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -174,5 +174,5 @@ jobs:
             merge.patch
             ci-out/*.txt
             ci-out/summary.md
-            ci-out/smoke-*/*.png
+            ci-out/keeps-*/*.png
           retention-days: 30

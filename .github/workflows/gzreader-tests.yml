@@ -16,7 +16,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -45,6 +45,6 @@ jobs:
           path: |
             ci-out/*.txt
             ci-out/summary.md
-            ci-out/smoke-*/*.png
-            ci-out/smoke-*/smoke.txt
+            ci-out/keeps-*/*.png
+            ci-out/keeps-*/keeps.txt
           retention-days: 14

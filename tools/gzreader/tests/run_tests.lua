@@ -832,13 +832,24 @@ do
         next_id = function(c) c.next_id = c.next_id + 1; return "al_" .. c.next_id end,
         save = function(c) cfg = c end,
     }
-    G_reader_settings:delSetting("gzreader_launcher_v1")
+    -- (an install from before 1.12.2: its three entries, no context)
+    cfg.entries = {
+        { id = "al_a", type = "plugin", label = "GZreader", plugin = { key = "gzreader", method = "onGzLauncherMenu" } },
+        { id = "al_b", type = "plugin", label = "My phone", plugin = { key = "gzreader", method = "onGzLauncherPhone" } },
+    }
+    G_reader_settings:delSetting("gzreader_launcher_v2")
     plugin:addLauncherEntries()
     plugin:addLauncherEntries()
-    local labels = {}
-    for _i, e in ipairs(cfg.entries) do labels[#labels + 1] = e.label .. ":" .. e.plugin.method end
-    check(table.concat(labels, ",") == "GZreader:onGzLauncherMenu,Phone:onGzLauncherPhone,Send books:onGzLauncherBooks",
-        "Paperwhite: GZreader menu, Phone and Send books in the launcher, once " .. table.concat(labels, ","))
+    local labels, ctx = {}, {}
+    for _i, e in ipairs(cfg.entries) do
+        labels[#labels + 1] = e.label
+        ctx[e.label] = e.gz_context or "both"
+    end
+    check(#cfg.entries == #Grimmory.LAUNCHER, "launcher: every GZreader entry once (" .. table.concat(labels, ",") .. ")")
+    check(labels[2] == "My phone" and ctx["My phone"] == "library", "launcher: an existing entry keeps your name, now Home-only")
+    check(ctx.GZreader == "both" and ctx.Continue == "library" and ctx["Send books"] == "library"
+        and ctx.Contents == "reader" and ctx.Bookmarks == "reader" and ctx["Fit pictures"] == "reader",
+        "launcher: GZreader everywhere, Continue / Send books at Home, Contents / Bookmarks / Fit pictures in a book")
     local opened
     local orig_open = plugin.openPhonePage
     plugin.openPhonePage = function(_self, section) opened = section or "all" end
