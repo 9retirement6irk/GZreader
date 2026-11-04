@@ -384,6 +384,24 @@ function Grimmory:sectionItems(section)
                 end,
             }),
         }
+        if Device.model == "NookTouch" then
+            -- (Nook Simple Touch: in case its touch is the wrong way round)
+            local function flip(key, label)
+                return {
+                    text = label,
+                    help_text = _("For a Nook whose touch lands on the wrong side. Takes effect after Restart GZreader."),
+                    checked_func = function() return G_reader_settings:isTrue(key) end,
+                    callback = function() G_reader_settings:flipNilOrFalse(key) end,
+                }
+            end
+            table.insert(items, 1, icon("settings_background", {
+                text = _("Touch orientation"),
+                sub_item_table = {
+                    flip("gzreader_nst_flip_x", _("Mirror left and right")),
+                    flip("gzreader_nst_flip_y", _("Mirror top and bottom")),
+                },
+            }))
+        end
         if Device.lcd then
             -- (Nook 1st Edition)
             table.insert(items, 1, icon("settings_background", {

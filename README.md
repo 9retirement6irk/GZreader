@@ -27,6 +27,7 @@ GZreader is a reading app for older Kindles, with a keyboard or without:
 | **Kindle 4** (non-touch) | the 5-way and Menu |
 | **Kindle Touch** (4th gen), **Paperwhite 3** (7th gen) | touch |
 | **Nook 1st Edition** (B&N, 2009) — *test build* | the colour touchscreen under the page: arrows, OK, Menu, a keyboard, reading info |
+| **Nook Simple Touch** / with GlowLight (B&N, 2011–12) — *test build* | touch, like the Kindle Touch |
 
 It is [KOReader](https://github.com/koreader/koreader) trimmed down
 to reading, with the clean [ZenOS](https://github.com/xZenLabs/zen-os) interface, and
@@ -189,6 +190,11 @@ browser talking to the emulated Kindle.</sub>
   see [the Nook section](GZREADER.md#nook-1st-edition-test-build) for rooting,
   installing and what to report.
 
+### 📖 And the Nook Simple Touch (test build)
+- The same package as the 1st Edition; on the Simple Touch (and GlowLight) GZreader
+  works by touch like on the Kindle Touch, with the page buttons, **n** for Home and the
+  frontlight in quick settings. See [its steps](GZREADER.md#nook-simple-touch-test-build).
+
 ### 🔊 Read aloud (Kindle 2, 3, DX, Touch)
 - Uses the **Kindle's own voice**. **Shift + Sym** starts and stops, like the stock
   Kindle's Text-to-Speech; on the Kindle Touch, **Listen** in the quick panel (swipe
@@ -245,7 +251,7 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 
 You need a **jailbroken** Kindle with **KUAL** (the Kindle Unified Application
 Launcher), a computer with a USB cable, and about 100 MB free on the Kindle.
-(Nook 1st Edition, test build: see [its own steps](GZREADER.md#nook-1st-edition-test-build).)
+(Nooks, test build: see the steps for the [1st Edition](GZREADER.md#nook-1st-edition-test-build) and the [Simple Touch](GZREADER.md#nook-simple-touch-test-build).)
 
 ### 1. Jailbreak the Kindle and install KUAL
 

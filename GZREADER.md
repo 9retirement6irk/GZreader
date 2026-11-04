@@ -76,15 +76,15 @@ anything fails, the previous files are put back. Then GZreader restarts.
 
 ## Which Kindle does what
 
-| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) |
-| --- | --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch | the colour touchscreen's buttons and keyboard |
-| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen |
-| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) |
-| Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — |
-| Volume buttons | yes | — | — | — | — |
-| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own |
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) | Nook Simple Touch (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | the colour touchscreen's buttons and keyboard | touch |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) |
+| Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) | — (no audio) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — | — |
+| Volume buttons | yes | — | — | — | — | — |
+| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
 
 KOReader's own device code decides the model from the serial number (the DX
 runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts
@@ -219,6 +219,45 @@ refreshing it (every update a full refresh, slower but safe):
 `/data/gzreader/gzreader-start.log`, `/data/gzreader/koreader/crash.log`
 and `/data/gzreader/koreader/gzreader.log` (`adb pull` each), with what you
 saw on both screens. And the touch test's numbers if the touch was off.
+
+## Nook Simple Touch (test build)
+
+The same package runs on the Nook Simple Touch and the Simple Touch with
+GlowLight (2011–2012): GZreader tells the Nooks apart by their screens.
+Like the 1st Edition build, it has only been tried in GZreader's emulator so
+far.
+
+On the Simple Touch GZreader works **by touch, like on a Kindle Touch**:
+ZenOS's tabs at the bottom, tap to turn pages, swipe down from the top for
+quick settings and the launcher (GZreader's menu, the phone page, Send
+books). The page buttons on both sides turn pages, **n** is Home and power
+sleeps and wakes. On the GlowLight model the frontlight is in the quick
+settings. Each refresh goes to the e-ink driver with its own waveform
+(grey without a flash for pages and menus, a flash now and then, fast black
+and white where KOReader asks for it). If the touch lands on the wrong side,
+**Settings → Interface → Touch orientation** mirrors it.
+
+Not in the test build: audiobooks and read aloud (it has no speaker),
+turning Wi‑Fi on and off (connect before starting GZreader).
+
+### Root, install, start
+
+1. Root it with **NookManager** (a bootable microSD card image; firmware
+   1.2.x): back up the Nook with it first, then root. Guides:
+   [NookManager on XDA](https://forum.xda-developers.com/t/root-nookmanager-graphical-rooter-for-1-2-x-and-beyond.2040351/),
+   [a 2023 walkthrough](https://storiesofmaria.blogspot.com/2023/03/root-nook-simple-touch-with-updated.html).
+2. Connect adb (over USB, or Wi‑Fi: `adb connect <the Nook's IP>`) and
+   check that `adb shell id` says root (or that `su` works).
+3. Install as for the 1st Edition: `adb push gzreader /data/gzreader`.
+   GZreader's folder, `GZreader`, goes on the Nook's own storage (the
+   **NOOK** drive over USB).
+4. Start: `adb shell sh /data/gzreader/gzreader.sh`, or
+   `su -c "sh /data/gzreader/gzreader.sh"` in a terminal app. Exit in the
+   GZreader menu brings back the Nook's own software (press **n** if its
+   screen doesn't redraw by itself).
+
+Send back the same logs as for the 1st Edition, and a photo if the screen
+looks wrong.
 
 ## Touch Kindles (Kindle Touch, Paperwhite 3)
 

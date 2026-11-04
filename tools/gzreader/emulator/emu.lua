@@ -49,6 +49,10 @@ do
             -- the Nook 1st Edition: no Kindle serial; its screen's platform device
             if p == "/proc/usid" then return nil end
             if p == "/sys/devices/platform/bravo-vfb" then return orig(OUT, ...) end
+        elseif MODEL == "nst" then
+            -- the Nook Simple Touch: its e-ink driver's sysfs setting
+            if p == "/proc/usid" then return nil end
+            if p == "/sys/class/graphics/fb0/pgflip_refresh" then return orig(usid, ...) end
         end
         if p == "/proc/usid" then return orig(usid, ...) end
         return orig(p, ...)
@@ -142,13 +146,37 @@ local function frame(evs, dt)
 end
 -- the Kindle Touch's panel counts 0–4095 each way (KOReader scales it back)
 local TOUCH_SCALE = MODEL == "kt" and { 4095 / 600, 4095 / 800 } or { 1, 1 }
+-- the Nook Simple Touch's zForce panel: single touch, ABS_X / ABS_Y + BTN_TOUCH
+local function stFrame(evs, dt)
+    local t = now_tv()
+    if dt and dt > 0 then
+        local us = t.usec + math.floor(dt * 1e6)
+        t = { sec = t.sec + math.floor(us / 1e6), usec = us % 1000000 }
+    end
+    local out = {}
+    for _i, e in ipairs(evs) do out[#out + 1] = { type = e[1], code = e[2], value = e[3], time = t } end
+    out[#out + 1] = { type = 0, code = 0, value = 0, time = t }
+    table.insert(E.queue, out)
+end
+local st_last = { 0, 0 }
 local function down(x, y, dt)
+    if MODEL == "nst" then
+        st_last = { math.floor(x), math.floor(y) }
+        return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] }, { 1, 330, 1 } }, dt)
+    end
     x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]
     touch_id = touch_id + 1
     frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, touch_id }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt)
 end
-local function move(x, y, dt) x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]; frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
-local function up(dt) frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, dt) end
+local function move(x, y, dt)
+    if MODEL == "nst" then
+        st_last = { math.floor(x), math.floor(y) }
+        return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] } }, dt)
+    end
+    x, y = x * TOUCH_SCALE[1], y * TOUCH_SCALE[2]; frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, math.floor(x) }, { ABS_MT_Y, math.floor(y) } }, dt) end
+local function up(dt)
+    if MODEL == "nst" then return stFrame({ { 3, 0, st_last[1] }, { 3, 1, st_last[2] }, { 1, 330, 0 } }, dt) end
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, dt) end
 local function later(sec, fn)
     require("ui/uimanager"):scheduleIn(sec, fn)
 end
@@ -346,6 +374,20 @@ package.preload["device/nook/display_hw"] = function()
     return HW
 end
 
+-- the Nook Simple Touch's screen: an 8-bit page here (the real driver's
+-- refresh ioctls are tested in nook_test.lua)
+package.preload["device/nook/framebuffer_nst"] = function()
+    local FB = require("ffi/framebuffer_dummy")
+    local BB = require("ffi/blitbuffer")
+    local NST = FB:extend{}
+    function NST:init()
+        self.bb = BB.new(600, 800, BB.TYPE_BB8)
+        self.bb:fill(BB.COLOR_WHITE)
+        require("ffi/framebuffer").init(self)
+    end
+    return NST
+end
+
 -- the device: patch networking once it exists
 table.insert(package.loaders, 2, function(name)
     if name ~= "device" then return nil end
@@ -361,7 +403,7 @@ table.insert(package.loaders, 2, function(name)
             NM.restoreWifiAsync = function() end
         end
         if MODEL ~= "nook" then
-            dev.isKindle = function() return true end
+            if MODEL ~= "nst" then dev.isKindle = function() return true end end
             E.installDisplay(dev.screen)
         end
         return dev

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GZreader for the Nook 1st Edition (TEST BUILD), from the Kindle 2/3/DX
+# GZreader for the Nook 1st Edition and Nook Simple Touch (TEST BUILD), from the Kindle 2/3/DX
 # package (same processor family, ARMv6: its binaries run on the Nook too)
 # plus the Linux basics the Nook lacks (tools/gzreader/nook-runtime.sh) and
 # the Nook's start script.
@@ -33,7 +33,7 @@ cp "$RUNTIME/SOURCES.txt" "$G/runtime-SOURCES.txt" 2>/dev/null || true
 cp "$REPO/platform/nook/gzreader.sh" "$G/gzreader.sh"
 chmod 755 "$G/gzreader.sh" "$KO/luajit"
 cat > "$G/README-NOOK.txt" <<TXT
-GZreader $GZ_VERSION for the Nook 1st Edition - TEST BUILD
+GZreader $GZ_VERSION for the Nook 1st Edition and Nook Simple Touch - TEST BUILD
 
 Copy this folder to /data/gzreader on a rooted Nook, then start it as root:
     adb push gzreader /data/gzreader
@@ -42,6 +42,7 @@ Choose Exit in GZreader to go back to the Nook's own software.
 
 Full steps (rooting, installing, what to try, what to send back):
 https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-1st-edition-test-build
+https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-simple-touch-test-build
 TXT
 
 OUT="$OUT_DIR/gzreader-nook-${GZ_VERSION}.zip"

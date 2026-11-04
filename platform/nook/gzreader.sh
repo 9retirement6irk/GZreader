@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# GZreader on the Nook 1st Edition (TEST BUILD).
+# GZreader on the Nook 1st Edition and the Nook Simple Touch (TEST BUILD).
 #
 # Run as root, e.g. from a computer:   adb shell sh /data/gzreader/gzreader.sh
 # or in a terminal app on the Nook:    su -c "sh /data/gzreader/gzreader.sh"
@@ -102,8 +102,15 @@ trap 'resume_android; exit 1' INT TERM HUP
 
 # --- 3. GZreader -----------------------------------------------------------
 cd "$GZ/koreader" || exit 1
-export GZ_DEVICE=nook1
-export GZ_NOOK_HOME=${GZ_NOOK_HOME:-/system/media/sdcard}
+# (GZreader tells the two Nooks apart by their screens; their own storage:
+# the 1st Edition's /system/media/sdcard, the Simple Touch's /media)
+if [ -z "$GZ_NOOK_HOME" ]; then
+    if [ -d /sys/devices/platform/bravo-vfb ]; then GZ_NOOK_HOME=/system/media/sdcard
+    elif [ -d /media ]; then GZ_NOOK_HOME=/media
+    else GZ_NOOK_HOME=/sdcard
+    fi
+fi
+export GZ_NOOK_HOME
 export PATH=/bin:$PATH
 export LC_ALL=en_US.UTF-8
 export STARDICT_DATA_DIR=data/dict

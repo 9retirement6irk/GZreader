@@ -40,20 +40,34 @@ local function readLine(path)
     return s
 end
 
+--- Battery: the first power supply with a capacity (Nook 1st Edition: the
+--- bq27200 gauge; Simple Touch: its own), and its status.
+local function battery()
+    for _i, d in ipairs({ "bq27200-0", "battery", "max17042_battery", "bq27510-0", "bq27520-0", "wm8350-battery" }) do
+        local dir = "/sys/class/power_supply/" .. d
+        if lfs.attributes(dir .. "/capacity", "mode") then return dir end
+    end
+    local ok, iter, obj = pcall(lfs.dir, "/sys/class/power_supply")
+    if not ok then return nil end
+    for d in iter, obj do
+        local dir = "/sys/class/power_supply/" .. d
+        if d:sub(1, 1) ~= "." and lfs.attributes(dir .. "/capacity", "mode") then return dir end
+    end
+end
+local function batteryStatus()
+    local dir = battery()
+    local s = dir and readLine(dir .. "/status")
+    return s or readLine("/sys/class/power_supply/battery/status") or readLine("/sys/class/power_supply/wm8350-battery/status")
+end
+
 local NookPowerD = require("device/generic/powerd"):new{}
 function NookPowerD:init() end
 function NookPowerD:getCapacityHW()
-    return tonumber(readLine("/sys/class/power_supply/bq27200-0/capacity") or "")
-        or tonumber(readLine("/sys/class/power_supply/battery/capacity") or "") or 0
+    local dir = battery()
+    return dir and tonumber(readLine(dir .. "/capacity") or "") or 0
 end
-function NookPowerD:isChargingHW()
-    local s = readLine("/sys/class/power_supply/battery/status") or readLine("/sys/class/power_supply/wm8350-battery/status")
-    return s == "Charging"
-end
-function NookPowerD:isChargedHW()
-    local s = readLine("/sys/class/power_supply/battery/status") or readLine("/sys/class/power_supply/wm8350-battery/status")
-    return s == "Full"
-end
+function NookPowerD:isChargingHW() return batteryStatus() == "Charging" end
+function NookPowerD:isChargedHW() return batteryStatus() == "Full" end
 
 local Nook = Generic:extend{
     model = "Nook1",
@@ -87,7 +101,8 @@ local EXACT = {
     ["The 5-way moves; press its centre to pick. Down from the bottom of Home reaches the tabs (Home, Downloads, Grimmory, Notes, Calendar): Left and Right choose one."] =
         "The arrows on the colour screen move; OK picks. Down from the bottom of Home reaches the tabs (Home, Downloads, Grimmory, Notes, Calendar): Left and Right choose one. Touch the colour screen when it shows something else to get the arrows back.",
 }
-function Nook.nookStrings()
+function Nook.nookStrings(exact)
+    exact = exact or EXACT
     local gettext = require("gettext")
     local mt = getmetatable(gettext)
     if not (mt and mt.__call) or mt._gz_nook then return end
@@ -95,7 +110,7 @@ function Nook.nookStrings()
     mt.__call = function(self, msgid)
         local r = orig(self, msgid)
         if type(r) ~= "string" then return r end
-        if EXACT[msgid] then return EXACT[msgid] end
+        if exact[msgid] then return exact[msgid] end
         if r:find("Kindle", 1, true) then r = r:gsub("Kindle", "Nook") end
         return r
     end
@@ -253,5 +268,8 @@ function Nook:initNetworkManager(NetworkMgr)
 end
 
 function Nook:supportsScreensaver() return true end
+
+Nook.PowerD = NookPowerD
+Nook.readLine = readLine
 
 return Nook

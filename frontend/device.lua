@@ -12,6 +12,10 @@ local function probeDevice()
     if os.getenv("GZ_DEVICE") == "nook1" or lfs.attributes("/sys/devices/platform/bravo-vfb", "mode") then
         return require("device/nook/device")
     end
+    -- and the Nook Simple Touch (its e-ink driver's page flip setting)
+    if os.getenv("GZ_DEVICE") == "nooktouch" or lfs.attributes("/sys/class/graphics/fb0/pgflip_refresh", "mode") then
+        return require("device/nook/touch")
+    end
 
     local kindle_test_stat = lfs.attributes("/proc/usid")
     if kindle_test_stat then
