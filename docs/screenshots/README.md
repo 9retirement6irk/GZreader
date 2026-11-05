@@ -8,7 +8,7 @@ browser talking to the emulated Kindle.</sub>
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="setup-connect.png" alt="First start: Connect your phone" width="240"><br><sub>First start: Connect your phone</sub></td><td align="center" valign="top" width="33%"><img src="setup-qr.png" alt="The QR code opens the phone page" width="240"><br><sub>The QR code opens the phone page</sub></td><td align="center" valign="top" width="33%"><img src="setup-summary.png" alt="Back on the Kindle: what changed" width="240"><br><sub>Back on the Kindle: what changed</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="home.png" alt="Home: the book you're reading" width="240"><br><sub>Home: the book you're reading</sub></td><td align="center" valign="top" width="33%"><img src="home-menu.png" alt="Menu key at Home: every entry has a letter key" width="240"><br><sub>Menu key at Home: every entry has a letter key</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="home.png" alt="Home: the book you're reading" width="240"><br><sub>Home: the book you're reading</sub></td><td align="center" valign="top" width="33%"><img src="home-menu.png" alt="The quick panel at Home: every tile has a letter key" width="240"><br><sub>The quick panel at Home: every tile has a letter key</sub></td></tr>
 </table>
 
 ## Your phone page
@@ -28,7 +28,7 @@ browser talking to the emulated Kindle.</sub>
 ## Reading menu and read aloud
 
 <table>
-<tr><td align="center" valign="top" width="33%"><img src="reading-menu.png" alt="Menu key while reading" width="240"><br><sub>Menu key while reading</sub></td><td align="center" valign="top" width="33%"><img src="read-aloud.png" alt="Read aloud (Shift + Sym): the sentence being read is highlighted" width="240"><br><sub>Read aloud (Shift + Sym): the sentence being read is highlighted</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="reading-menu.png" alt="The quick panel while reading" width="240"><br><sub>The quick panel while reading</sub></td><td align="center" valign="top" width="33%"><img src="read-aloud.png" alt="Read aloud (Shift + Sym): the sentence being read is highlighted" width="240"><br><sub>Read aloud (Shift + Sym): the sentence being read is highlighted</sub></td></tr>
 </table>
 
 ## Notes (Memos)

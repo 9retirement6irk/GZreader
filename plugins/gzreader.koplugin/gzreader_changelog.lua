@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.17.0",
+        changes = {
+            "One quick panel on every Kindle and Nook: square tiles for Wi-Fi, night mode, rotate, restart, sleep, Home, updates, Settings, diagnostics and Exit, then Home's (manage the highlighted book, continue, send books, search, history, view, sort, music) or, in a book, the book's (sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music). Menu opens it (on a touch Kindle, swipe down from the top); every tile has a letter. It replaces the GZreader menu and ZenOS's quick settings; More in it has the full menus.",
+            "Touch Kindles: the panel has a light slider, a tap below it closes it, and holding a book at Home opens its options (Open, Delete, More options).",
+        },
+    },
+    {
         version = "1.16.2",
         changes = {
             "Settings: opening the end-of-book page's settings could make GZreader crash and restart (1.16.0 gave that page the bookshelf by mistake). It has its own look back.",

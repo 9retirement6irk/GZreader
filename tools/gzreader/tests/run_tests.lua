@@ -803,40 +803,66 @@ do
     local hui = { menu = { registerToMainMenu = function() end, onShowMenu = function() full_shown = full_shown + 1; return true end }, active_widgets = {} }
     local hplug = Grimmory:new{ ui = hui }
 
+    -- (the panel's tiles only: its widgets stay stubs here)
+    local widget_mods = { "ui/widget/focusmanager", "ui/widget/iconwidget", "ui/widget/menu", "ui/widget/textboxwidget",
+        "ui/widget/textwidget", "ui/widget/container/inputcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    local kept = {}
+    for _i, m in ipairs(widget_mods) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Panel = require("gzreader_panel")
+    for _i, m in ipairs(widget_mods) do package.loaded[m] = kept[m] end
+    local panel_shown, panel_show = 0, Panel.show
+    Panel.show = function() panel_shown = panel_shown + 1; return true end
     hui.menu:onShowMenu() -- what ZenOS's Home page calls for the Menu key
+    hui.menu:onKeyPressShowMenu()
+    check(full_shown == 0 and panel_shown == 2, "Menu key on Home: the quick panel instead of ZenOS's or the GZreader menu")
     local HomeMenu = require("gzreader_homemenu")
-    check(full_shown == 0 and HomeMenu.open ~= nil, "Menu key on Home: GZreader menu instead of the quick-settings panel")
-    local hk = HomeMenu.open and HomeMenu.open.key_events or {}
-    check(hk.LeftButtonTap == nil and hk.GzCloseHomeMenu ~= nil, "the Menu key only closes the Home menu (no other Menu-key action)")
     local NM = require("ui/network/manager"); NM.isWifiOn = NM.isWifiOn or function() return true end
     local NG = require("gzreader_nightguard"); local ng_applies = NG.applies; NG.applies = function() return true end
-    local items = HomeMenu.items(hplug)
+    local function labels(list)
+        local out = {}
+        for _i, t in ipairs(list) do out[#out + 1] = t.label end
+        return "|" .. table.concat(out, "|") .. "|"
+    end
+    local controls = labels(Panel.controls(hplug))
     NG.applies = ng_applies
-    local labels = {}
-    for _i, it in ipairs(items) do labels[#labels + 1] = it.text or it.text_func() end
-    local all = table.concat(labels, "|")
-    check(all:match("Continue reading") and all:match("Wi%-Fi") and all:match("|Settings|") and not all:match("KOReader settings")
-        and not all:match("Grimmory library") and not all:match("Audiobook") and not all:match("Night mode"),
-        "menu lists Continue reading, Wi-Fi, Settings (no library, audiobooks or KOReader settings); no night mode on a Kindle 3… " .. all)
+    check(controls:match("|Wi%-Fi|") and controls:match("|Restart|") and controls:match("|Sleep|") and controls:match("|Settings|")
+        and controls:match("|Exit to Kindle|") and not controls:match("Night mode"),
+        "panel controls: Wi-Fi, Restart, Sleep, Settings, Exit; no night mode on a Kindle 3… " .. controls)
+    local saved_ld = hplug.store.logging_disabled
+    hplug.store.logging_disabled = true
+    local no_diag = labels(Panel.controls(hplug))
+    hplug.store.logging_disabled = nil
+    check(not no_diag:match("Diagnostics") and labels(Panel.controls(hplug)):match("|Diagnostics|"), "Diagnostics tile only while diagnostics is on")
+    hplug.store.logging_disabled = saved_ld
+    local home = labels(Panel.homeTiles(hplug, nil))
+    check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and home:match("|More|")
+        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort, More; Manage only with a book… " .. home)
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }
     package.loaded["apps/filemanager/filemanager"] = { instance = { zenos = "ZEN", menu = hui.menu } }
-    for _i, it in ipairs(items) do
-        if it.text == "Settings" then it.callback() end
+    for _i, t in ipairs(Panel.controls(hplug)) do
+        if t.label == "Settings" then t.run() end
     end
-    check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings -> Settings page")
+    check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings tile -> Settings page")
     package.loaded["modules/settings/zen_settings_page"] = nil; package.loaded["apps/filemanager/filemanager"] = nil
+    -- More: the full Home menu, still without KOReader settings or night mode
+    NG.applies = function() return true end
+    local items = HomeMenu.items(hplug)
+    NG.applies = ng_applies
+    local all = {}
+    for _i, it in ipairs(items) do all[#all + 1] = it.text or it.text_func() end
+    all = table.concat(all, "|")
+    check(all:match("Continue reading") and not all:match("KOReader settings") and not all:match("Night mode"),
+        "More (the Home menu): no KOReader settings, no night mode on a Kindle 3… " .. all)
     HomeMenu.open = nil
 
     hui.menu._gz_full = true; hui.menu:onShowMenu(); hui.menu._gz_full = nil
-    check(full_shown == 1, "All settings reaches the original full menu")
-    gsettings.gzreader_home_menu = false -- (the old setting no longer brings the quick panel back)
-    hui.menu:onShowMenu()
-    check(full_shown == 1 and HomeMenu.open ~= nil, "no touch screen: always the GZreader menu, never the quick panel")
-    HomeMenu.open = nil
-    gsettings.gzreader_home_menu = nil
-    check(not all:match("Quick panel"), "and no Quick panel entry in it")
+    check(full_shown == 1 and panel_shown == 2, "All settings reaches the original full menu")
+    Panel.show = panel_show
 
 end
 

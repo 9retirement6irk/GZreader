@@ -169,6 +169,24 @@ function HomeMenu.showSort()
     UIManager:show(dialog)
 end
 
+--- Manage a book (the quick panel's Manage tile, a long press on Home):
+--- ZenOS's menu for it with Open and Delete at the top.
+function HomeMenu.manageBook(plugin, book)
+    local function open()
+        local ReaderUI = require("apps/reader/readerui")
+        ReaderUI:showReader(book.path)
+    end
+    local function delete() HomeMenu.deleteBook(plugin, book.path) end
+    if book.context then return HomeMenu.manage(book, open, delete) end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    d = ButtonDialog:new{ title = bookTitle(book.path), buttons = {
+        { { text = _("Open"), callback = function() UIManager:close(d); open() end } },
+        { { text = _("Delete from this Kindle"), callback = function() UIManager:close(d); delete() end } },
+    } }
+    UIManager:show(d)
+end
+
 --- ZenOS's menu for the highlighted book, with Open and Delete at the top.
 function HomeMenu.manage(book, open, delete)
     local ok, icons = pcall(require, "common/inline_icon_map")

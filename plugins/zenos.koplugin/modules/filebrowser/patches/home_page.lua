@@ -3487,6 +3487,11 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
             data = data_provider,
             openBook = open_book,
             showBookMenu = function(path, source)
+                -- GZreader: Manage (Open, Delete, then this menu)
+                local manage = rawget(_G, "__GZ_MANAGE_BOOK")
+                if type(manage) == "function" then
+                    return manage(path, function() return show_book_context_menu(path, source, comp.id) end)
+                end
                 return show_book_context_menu(path, source, comp.id)
             end,
             showStripGroupMenu = function(book)

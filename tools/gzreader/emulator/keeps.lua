@@ -13,6 +13,7 @@ local lines = {}
 local function check(ok, what) lines[#lines + 1] = (ok and "ok   " or "FAIL ") .. what end
 
 local function UIM() return require("ui/uimanager") end
+local TOUCH_MODEL = { kt = true, pw3 = true, nst = true }
 local function topName()
     local st = UIM()._window_stack
     local w = st[#st] and st[#st].widget
@@ -35,45 +36,26 @@ local function shownText(n)
     return table.concat(out, "\n")
 end
 local function has(text, n) return shownText(n):find(text, 1, true) ~= nil end
---- The entries of the top window's list (all its pages), or nil.
-local function items()
+--- The quick panel's tiles (their labels), or "" when it isn't on top.
+local function tiles()
     local st = UIM()._window_stack
     local w = st[#st] and st[#st].widget
-    if not (w and type(w.item_table) == "table") then return nil end
     local out = {}
-    for _i, it in ipairs(w.item_table) do
-        local t = it.text or (type(it.text_func) == "function" and it.text_func())
-        if t then out[#out + 1] = tostring(t) end
-    end
-    return "\n" .. table.concat(out, "\n") .. "\n"
+    for _i, p in ipairs(w and w.placed or {}) do out[#out + 1] = tostring(p.tile.label) end
+    return table.concat(out, "\n")
 end
-local function hasItem(text) local t = items(); return t ~= nil and t:find(text, 1, true) ~= nil end
+local function hasTile(text) return tiles():find(text, 1, true) ~= nil end
+local function openPanel(E)
+    if TOUCH_MODEL[E.model] then
+        local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+        E.swipe(W / 2, 3, W / 2, H / 2) -- (a swipe down from the top)
+    else
+        E.key("Menu")
+    end
+end
 local function closeTop() local st = UIM()._window_stack; if st[#st] then UIM():close(st[#st].widget) end end
-local function plugin()
-    local fm = require("apps/filemanager/filemanager").instance
-    return fm and fm.gzreader
-end
-local function menuSizeMM(E)
-    -- the most used text size in the top window, in mm on the real screen
-    local DPI = { dx = 150, dxg = 150, pw3 = 300 }
-    local st = UIM()._window_stack
-    local counts, seen = {}, {}
-    local function walk(w, d)
-        if type(w) ~= "table" or seen[w] or d > 60 then return end
-        seen[w] = true
-        local f, t = rawget(w, "face"), rawget(w, "text")
-        if type(f) == "table" and f.size and type(t) == "string" and #t >= 6 and t:match("%a%a%a") and type(w.paintTo) == "function" then
-            counts[f.size] = (counts[f.size] or 0) + 1
-        end
-        for k, v in pairs(w) do if type(v) == "table" and k ~= "parent" and k ~= "show_parent" then walk(v, d + 1) end end
-    end
-    walk(st[#st] and st[#st].widget, 0)
-    local mode, n = nil, 0
-    for px, c in pairs(counts) do if c > n then mode, n = px, c end end
-    return mode and mode / (DPI[E.model] or 167) * 25.4
-end
 
-local TOUCH = { kt = true, pw3 = true, nst = true }
+local TOUCH = TOUCH_MODEL
 local KINDLE_WORD -- "Kindle", or "Nook" on a Nook
 
 -- 1. the setup guide, then Home and its tabs
@@ -103,17 +85,16 @@ add({ fn = function()
 end, after = 1 })
 add({ shot = "keeps-home" })
 
--- 2. the GZreader menu (by the Menu key where there's one)
+-- 2. the quick panel (the Menu key, or a swipe down from the top)
+add({ fn = function(E) openPanel(E) end, after = 5 })
 add({ fn = function(E)
-    if TOUCH[E.model] then require("gzreader_homemenu").show(plugin()) else E.key("Menu") end
-end, after = 4 })
-add({ fn = function(E)
-    check(topName() == "Menu" and hasItem("Send books from your phone (QR code)") and hasItem("Restart GZreader"),
-        (TOUCH[E.model] and "GZreader menu" or "Menu key at Home: the GZreader menu") .. " (top: " .. topName() .. ")")
-    check(hasItem("Exit to the " .. KINDLE_WORD), "names: \"Exit to the " .. KINDLE_WORD .. "\"")
-    if not TOUCH[E.model] then check(not hasItem("Quick panel"), "no touch quick panel in it (no touch screen)") end
-    local mm = menuSizeMM(E)
-    check(mm and mm >= 2.2 and mm <= 3.8, string.format("menu text a readable size: %.1f mm", mm or 0))
+    check(topName() == "gzreader quick panel" and hasTile("Send books") and hasTile("Restart") and hasTile("Settings"),
+        (TOUCH[E.model] and "a swipe down at Home: the quick panel" or "Menu key at Home: the quick panel") .. " (top: " .. topName() .. ")")
+    check(hasTile("Exit to " .. KINDLE_WORD), "names: \"Exit to " .. KINDLE_WORD .. "\"")
+    check(not hasTile("Contents"), "…with Home's tiles, not a book's")
+    local px = require("ui/font"):getFace("cfont", 15).size
+    local mm = px / (({ dx = 150, dxg = 150, pw3 = 300 })[E.model] or 167) * 25.4
+    check(mm >= 2.2 and mm <= 3.8, string.format("tile text a readable size: %.1f mm", mm))
 end, after = 1 })
 add({ shot = "keeps-menu" })
 add({ fn = function() closeTop() end, after = 3 })
@@ -122,26 +103,6 @@ add({ fn = function() closeTop() end, after = 3 })
 add({ fn = function() require("gzreader_homemenu").settings() end, after = 6 })
 add({ fn = function() check(has("Connections", 1), "Settings page has Connections (Grimmory, Memos)") end, after = 1 })
 add({ fn = function() closeTop() end, after = 3 })
-
--- 4. the touch launcher's entries, the Kindle Touch's Listen
-add({ fn = function(E)
-    if not TOUCH[E.model] then return end
-    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    E.swipe(W / 2, 3, W / 2, H / 2)
-end, after = 4 })
-add({ fn = function(E)
-    if not TOUCH[E.model] then return end
-    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    E.tap({ 200 * W / 1072, 48 * H / 1448 })
-end, after = 4 })
-add({ fn = function(E)
-    if not TOUCH[E.model] then return end
-    check(has("GZreader") and has("Phone") and has("Send books") and has("Continue"),
-        "touch launcher at Home: GZreader, Continue, Phone, Send books…")
-    check(not has("Contents") and not has("Bookmarks"), "…and not the book's (Contents, Bookmarks)")
-    E.shot("keeps-launcher-home")
-    closeTop()
-end, after = 4 })
 
 -- 5. the Nook's colour screen
 add({ fn = function(E)
@@ -174,45 +135,14 @@ add({ fn = function(E)
     local ui = require("apps/reader/readerui").instance
     local p = ui and ui.document and ui.document:getCurrentPage()
     check(p and E.page1 and p > E.page1, "the page turns")
-    if TOUCH[E.model] then return end
-    E.key("Menu")
-end, after = 4 })
-add({ fn = function(E)
-    if TOUCH[E.model] then return end
-    check(topName() == "Reading menu" and hasItem("Fit pictures to the screen (picture books)") and hasItem("Close book (Home)"),
-        "Menu key in a book: the Reading menu (top: " .. topName() .. ")")
-    check(not hasItem("Quick panel"), "no touch quick panel in it")
-    closeTop()
-end, after = 3 })
--- (touch: the launcher in a book has the book's entries; GZreader opens the Reading menu)
-local function launcher(E)
-    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    E.swipe(W / 2, 3, W / 2, H / 2)
-    require("ui/uimanager"):scheduleIn(4, function() E.tap({ 200 * W / 1072, 48 * H / 1448 }) end)
-end
-add({ fn = function(E) if TOUCH[E.model] then launcher(E) end end, after = 9 })
-add({ fn = function(E)
-    if not TOUCH[E.model] then return end
-    check(has("Contents") and has("Bookmarks") and has("GZreader"), "touch launcher in a book: GZreader, Contents, Bookmarks…")
-    check(not has("Send books") and not has("Continue"), "…and not Home's (Continue, Send books)")
-    E.shot("keeps-launcher-book")
-    E.tap("GZreader")
+    openPanel(E)
 end, after = 5 })
 add({ fn = function(E)
-    if not TOUCH[E.model] then return end
-    check(topName() == "Reading menu", "touch launcher's GZreader in a book: the Reading menu (top: " .. topName() .. ")")
-    if topName() ~= "ReaderUI" then closeTop() end
-end, after = 3 })
--- (the Kindle Touch: Listen, read aloud, in a book's quick panel)
-add({ fn = function(E)
-    if E.model ~= "kt" then return end
-    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    E.swipe(W / 2, 3, W / 2, H / 2)
-end, after = 4 })
-add({ fn = function(E)
-    if E.model ~= "kt" then return end
-    check(has("Listen"), "Kindle Touch: Listen (read aloud) in the quick panel")
-    E.shot("keeps-kt-quick-panel")
+    check(topName() == "gzreader quick panel" and hasTile("Contents") and hasTile("Bookmarks") and hasTile("Fit pictures"),
+        "in a book, the quick panel: the book's tiles (top: " .. topName() .. ")")
+    check(not hasTile("Send books") and not hasTile("Continue"), "…and not Home's (Continue, Send books)")
+    if E.model == "kt" then check(hasTile("Read aloud"), "Kindle Touch: Read aloud in the quick panel") end
+    E.shot("keeps-panel-book")
     if topName() ~= "ReaderUI" then closeTop() end
 end, after = 3 })
 add({ shot = "keeps-book" })

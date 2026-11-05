@@ -655,8 +655,8 @@ local function buildGrimmoryPage(ctx)
         description = _("Scan the QR code with your phone: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from your phone (no Grimmory needed)") .. "\n"
             -- GZreader: or from another GZreader
             .. _("Already set up on another GZreader? Copy its connections over the Wi-Fi.") .. "\n"
-            .. (not require("device"):isTouchDevice() and _("Come back to it any time: Home menu → Send books from your phone.")
-                or _("Come back to it any time: swipe down from the top, open the launcher and tap Phone.")),
+            .. (not require("device"):isTouchDevice() and _("Come back to it any time: Menu → Send books.")
+                or _("Come back to it any time: swipe down from the top and tap Send books.")),
         choice_type = "radio",
         choices     = choices,
         on_apply    = function(sel)
@@ -859,13 +859,13 @@ function M.build_install_pages(ctx)
         dpad and {
             title       = _("Your 5-way and buttons"),
             description = _("The 5-way moves; press its centre to pick. Down from the bottom of Home reaches the tabs (Home, Downloads, Grimmory, Notes, Calendar): Left and Right choose one.") .. "\n"
-                .. _("Menu: the GZreader menu at Home, the Reading menu in a book, the options in Notes and Calendar.") .. "\n"
+                .. _("Menu: the quick panel (at Home and in a book), the options in Notes and Calendar.") .. "\n"
                 .. _("Back: return from a link, or go to the Home screen. The page keys turn pages.") .. "\n"
                 .. _("The keyboard key shows the on-screen keyboard for typing."),
         } or not has_keys and {
             title       = _("Using GZreader"),
             description = _("The tabs at the bottom: Home, Downloads, Grimmory, Notes, Calendar.") .. "\n\n"
-                .. _("Swipe down from the top of the screen for quick settings (Wi-Fi, brightness, sleep) and the launcher: the GZreader menu, the phone page and Send books.") .. "\n\n"
+                .. _("Swipe down from the top of the screen for the quick panel: Wi-Fi, light, sleep, Send books and more. Hold a book for its options.") .. "\n\n"
                 .. _("While reading: tap the right side for the next page, the left side for the previous one, the top for the menu. Swipe up for the page browser."),
         } or {
             title       = _("Your keyboard"),

@@ -89,8 +89,8 @@ take the package for your Kindle (the others won't start on it):
 A setup guide runs. Its first page, **Connect your phone**, shows a QR code: scan it
 with your phone (same Wi‑Fi as the Kindle) to connect Grimmory, Notes (Memos) and
 Calendar, or to send books, or pick *Skip for now*. You can come back to it any time:
-Home menu → **Send books from your phone** (on a touch Kindle: swipe down from the top
-→ launcher → **Phone**). The guide then asks about the library view, tabs, sleep
+the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the
+top). The guide then asks about the library view, tabs, sleep
 screen, usage statistics, clock and reading defaults.
 
 Books you download or send go to the **GZreader** folder at the top of the Kindle's
@@ -187,10 +187,8 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 
 - **Tabs:** Down from the bottom of Home reaches the tab bar; Left and Right
   choose a tab, Press opens it.
-- **Menu:** the GZreader menu at Home (continue reading, history, sort,
-  display, Send books from your phone, Wi‑Fi, settings, updates,
-  diagnostics, sleep, restart; never ZenOS's touch quick panel); the Reading menu in a
-  book; in Notes and Calendar their options (new note, filter, refresh;
+- **Menu:** the quick panel at Home and in a book (see *The quick panel*
+  below); in Notes and Calendar their options (new note, filter, refresh;
   today, Agenda / Day / Week / Month, refresh, settings).
 - **Notes:** the 5-way moves between the sticky notes, Press opens one; in a
   note ▲ ▼ choose a checklist item or attachment and Press ticks or opens
@@ -226,8 +224,7 @@ script's changes are undone by exiting or restarting the Nook.
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
-    5-way), **Back**, **Menu** (the GZreader menu; in a book the Reading
-    menu), **Home**, ◀◀ ▶▶ (page back / forward) and **•••** (the next
+    5-way), **Back**, **Menu** (the quick panel), **Home**, ◀◀ ▶▶ (page back / forward) and **•••** (the next
     panel).
   - **Reading info** (in a book): title, chapter, page, a progress bar, the
     time, battery and Wi‑Fi. Or **Cover**: the book's cover with its title,
@@ -296,7 +293,7 @@ yours in full first, charge the battery, and back up your books.
   Android 1.5): `su -c "sh /data/gzreader/gzreader.sh"`
 
 GZreader starts with its setup guide, as on a Kindle. To go back to the
-Nook's own software, choose **Exit** in the GZreader menu (Menu on the
+Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
 colour screen). If anything goes wrong, holding power to restart the Nook
 always brings back its own software.
 
@@ -319,8 +316,7 @@ far.
 
 On the Simple Touch GZreader works **by touch, like on a Kindle Touch**:
 ZenOS's tabs at the bottom, tap to turn pages, swipe down from the top for
-quick settings and the launcher (GZreader's menu, the phone page, Send
-books). The page buttons on both sides turn pages, **n** is Home and power
+the quick panel (Wi‑Fi, light, sleep, Send books and more). The page buttons on both sides turn pages, **n** is Home and power
 sleeps and wakes. On the GlowLight model the frontlight is in the quick
 settings. Each refresh goes to the e-ink driver with its own waveform
 (grey without a flash for pages and menus, a flash now and then, fast black
@@ -342,8 +338,8 @@ turning Wi‑Fi on and off (connect before starting GZreader).
    GZreader's folder, `GZreader`, goes on the Nook's own storage (the
    **NOOK** drive over USB).
 4. Start: `adb shell sh /data/gzreader/gzreader.sh`, or
-   `su -c "sh /data/gzreader/gzreader.sh"` in a terminal app. Exit in the
-   GZreader menu brings back the Nook's own software (press **n** if its
+   `su -c "sh /data/gzreader/gzreader.sh"` in a terminal app. Exit to Nook in the
+   quick panel brings back the Nook's own software (press **n** if its
    screen doesn't redraw by itself).
 
 Send back the same logs as for the 1st Edition, and a photo if the screen
@@ -355,18 +351,10 @@ The Kindle Touch (4th generation) and the Paperwhite 3 (7th generation)
 run the same GZreader with ZenOS's touch interface:
 
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
-- **Swipe down from the top** for quick settings (Wi‑Fi, night mode,
-  brightness, sleep, restart) and the **launcher**, whose GZreader entries
-  change with where you are:
-  - everywhere: **GZreader**, the GZreader menu at Home (continue reading,
-    history, sort, display, Wi‑Fi, settings, updates, diagnostics, sleep,
-    restart) and the **Reading menu** in a book;
-  - at Home and in the library: **Continue** (the last book), **Grimmory**
-    (your library), **Search**, **History**, **Phone** (the phone page),
-    **Send books** and **Updates**;
-  - in a book: **Contents**, **Bookmark** (this page), **Bookmarks**, **Go to
-    page**, **Search book**, **Sync** (with Grimmory, now) and **Fit
-    pictures** (picture books).
+- **Swipe down from the top** for the quick panel (below), with a light
+  slider on Kindles with a frontlight. A tap below it closes it.
+- **Hold a book** at Home or in Downloads for its options (Open, Delete,
+  More options).
 - **Notes:** New note, Filter and More are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
@@ -394,6 +382,27 @@ run the same GZreader with ZenOS's touch interface:
   dpi): Home's text is the same size as on a Kindle 3. The Kindle's own time zone is used (the time zone setting is for the
   Kindles without one).
 
+## The quick panel
+
+One panel of square tiles, on every Kindle and Nook: **Menu** opens it (on a
+touch Kindle, swipe down from the top). Each tile has a letter for the
+keyboard; the 5-way moves between them too. A highlighted tile shows white on
+black when it's on (Wi‑Fi, night mode, a bookmark on this page).
+
+- **Controls:** Wi‑Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
+  Settings, Diagnostics (when diagnostics is on in Settings) and Exit to Kindle
+  (Exit to Nook).
+- **Home:** Manage book (the highlighted book), Continue, Send books, Search,
+  History, View, Sort, Music, and More (the full Home menu).
+- **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
+  Bookmarks, Go to page, Search book, Fit pictures, Read aloud, Music, and More
+  (the full Reading menu).
+
+On a touch Kindle with a frontlight the panel also has a light slider, and
+holding a book at Home or in Downloads opens Manage book.
+
+![The quick panel at Home](docs/screenshots/home-menu.png)
+
 ## Keyboard (Kindle 2, 3, DX)
 
 The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
@@ -404,9 +413,9 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Home | Q, W…; A, S, D… | Q the book you're reading, W, E, R… the books in the strip, A, S, D… the strip's tabs (shown in squares). |
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
-| Home / lists | Menu | GZreader menu: Grimmory library, continue reading, audiobooks, search, history, Wi‑Fi, Settings (the Settings page), KOReader settings, updates, send log, sleep, restart, exit. On every Kindle without a touch screen (and the Nook) it replaces ZenOS's quick-settings panel, which is made for touch. |
-| Home / Downloads, book highlighted | Menu | The GZreader menu starts with that book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). **Sort books…** is always in it. |
-| Reading | Menu | Reading menu: contents, bookmarks, bookmark this page, go to page, search, read aloud, fonts, sync, dictionary, page browser, book info, Settings, close book. |
+| Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
+| Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). |
+| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music. **More** opens the full Reading menu (fonts, dictionary, page browser, book info, close book). |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
@@ -688,8 +697,7 @@ playlists from your Plex Media Server, played while you read.
 The **Music tab** is off until you turn it on: Settings → Navbar → Tabs →
 Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
 is also in the Home menu and the Reading menu (what's playing, or *Music*),
-and, on the Kindle Touch, in the quick panel's launcher (*Music*, *Play /
-pause*).
+and in the quick panel (*Music*).
 
 Sign in, either way:
 - on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
@@ -782,8 +790,8 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
-**Downloads** tab shows it. Books sent from your phone (Home menu → Send
-books from your phone) go there too. Books download in a background process with a
+**Downloads** tab shows it. Books sent from your phone (quick panel → Send
+books) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
 download one after another (lists show "queued"; the download options can

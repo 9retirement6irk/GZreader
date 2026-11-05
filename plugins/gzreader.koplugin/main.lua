@@ -42,7 +42,6 @@ end })
 local Log = require("gzreader_log")
 local Index = require("gzreader_index")
 local JSON = require("json")
-local ReadMenu = require("gzreader_readmenu")
 local Bookmarks = require("gzreader_bookmarks")
 
 local PAIR_TIMEOUT_S = 10 * 60
@@ -164,11 +163,11 @@ function Grimmory:init()
             end)
         end
     end
-    if not self.ui.document and self.ui.menu and not Device:isTouchDevice() and Device:hasKeys() then
-        -- Kindle Keyboard, Kindle 4, Nook: the Menu key (and anything else
-        -- that opens "the menu") opens GZreader's Home menu (a list: letter
-        -- keys, or the 5-way) instead of ZenOS's quick panel, which is made
-        -- for a touch screen.
+    if not self.ui.document and self.ui.menu then
+        -- Every Kindle (and the Nook): the Menu key, a tap at the top or a
+        -- swipe down (anything that opens "the menu") opens GZreader's quick
+        -- panel (gzreader_panel.lua: square tiles, letter keys or the 5-way
+        -- or a tap) instead of ZenOS's / KOReader's menu.
         -- ZenOS's Home page, its lists and OPDS call onShowMenu() directly,
         -- so that is the one replaced (HomeMenu.fullMenu() sets _gz_full to
         -- reach the original).
@@ -177,13 +176,19 @@ function Grimmory:init()
         local orig_key = fm_menu.onKeyPressShowMenu
         local plugin = self
         fm_menu.onShowMenu = function(m, ...)
-            if not m._gz_full then return require("gzreader_homemenu").show(plugin) end
+            if not m._gz_full then return require("gzreader_panel").show(plugin) end
             return orig_show and orig_show(m, ...)
         end
         fm_menu.onKeyPressShowMenu = function(m, a, k)
-            if not m._gz_full then return require("gzreader_homemenu").show(plugin) end
+            if not m._gz_full then return require("gzreader_panel").show(plugin) end
             return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
         end
+        -- a long press on a book on Home: Manage it (Open and Delete, then
+        -- ZenOS's own book menu), as the panel's Manage tile does
+        rawset(_G, "__GZ_MANAGE_BOOK", function(path, context)
+            require("gzreader_homemenu").manageBook(plugin, { path = path, context = context })
+            return true
+        end)
     end
     if not self.ui.document and type(self.ui.active_widgets) == "table" then
         -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top
@@ -781,7 +786,7 @@ end
 function Grimmory:onGzLauncherMenu()
     local p = liveInstance(self)
     if not p then return end
-    if reader() then ReadMenu.show(p) else require("gzreader_homemenu").show(p) end
+    require("gzreader_panel").show(p)
 end
 
 function Grimmory:onGzLauncherPhone()
@@ -1107,15 +1112,18 @@ function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
     if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
     local menu = self.ui.menu
-    -- (no touch screen: keyboard, 5-way or the Nook's colour screen) the
-    -- Reading menu, never ZenOS's touch quick panel
-    if menu and not Device:isTouchDevice() and Device:hasKeys() then
+    -- every Kindle: the quick panel (gzreader_panel.lua; More there is the
+    -- old Reading menu list)
+    if menu then
+        local plugin = self
+        local orig_show = menu.onShowMenu
         menu.onKeyPressShowMenu = function()
-            ReadMenu.show(self)
+            require("gzreader_panel").show(plugin)
             return true
         end
-        menu.onShowMenu = function()
-            ReadMenu.show(self)
+        menu.onShowMenu = function(m, ...)
+            if m._gz_full then return orig_show and orig_show(m, ...) end
+            require("gzreader_panel").show(plugin)
             return true
         end
     end
