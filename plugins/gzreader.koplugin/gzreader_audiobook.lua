@@ -667,6 +667,7 @@ function Player:pause()
     self.paused = true
     if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
     self:keepAwake(false)
+    Log.info("audiobook: paused at", Audiobook.fmt(self.pos))
     self:save()
     self:push()
 end

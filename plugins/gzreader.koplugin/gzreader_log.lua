@@ -105,6 +105,7 @@ function Log.exportTo(dir, crash_log_path)
         out:write("\n\n===== tail of KOReader crash.log =====\n", Log.redact(cf:read("*a")))
         cf:close()
     end
+    out:write("\n\n===== staying awake =====\n", Log.awakeReport())
     if Log.probe_device then
         out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi) =====\n", Log.deviceProbe())
     end
@@ -152,6 +153,30 @@ Log.PROBE_COMMANDS = {
     "lipc-probe com.lab126.cmd 2>&1 | head -40",
     "for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done",
 }
+
+--- What keeps the Kindle from sleeping, as the log is sent: GZreader's
+--- holders, what's playing, and the Kindle's own screensaver block.
+function Log.awakeReport()
+    local lines = {}
+    local A = package.loaded["gzreader_awake"]
+    lines[#lines + 1] = "GZreader keeps it awake for: " .. (A and A.count > 0 and A.who() or "nothing")
+    local AB = package.loaded["gzreader_audiobook"]
+    local cur = AB and AB.current
+    lines[#lines + 1] = "audiobook: " .. (cur and (cur.playing and "playing" or (cur.paused and "paused" or "stopped")) or "none")
+    local M = package.loaded["gzreader_music"]
+    local mc = M and M.current
+    lines[#lines + 1] = "music: " .. (mc and (mc.waiting and "waiting for a track" or (mc.playing and "playing" or "paused")) or "none")
+    local ok, Device = pcall(require, "device")
+    if ok and Device.isKindle and Device:isKindle() then
+        for _i, prop in ipairs({ "preventScreenSaver", "status", "state" }) do
+            local f = io.popen("lipc-get-prop com.lab126.powerd " .. prop .. " 2>&1")
+            local v = f and f:read("*a") or ""
+            if f then f:close() end
+            lines[#lines + 1] = "powerd " .. prop .. ": " .. v:gsub("%s+$", ""):gsub("\n", " / ")
+        end
+    end
+    return table.concat(lines, "\n") .. "\n"
+end
 
 function Log.deviceProbe()
     local parts = {}

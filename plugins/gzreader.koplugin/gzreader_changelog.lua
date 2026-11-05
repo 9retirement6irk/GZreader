@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.9",
+        changes = {
+            "Diagnostic log: a sent log ends with what keeps the Kindle from sleeping right then (a download, the audiobook or music playing, the Kindle's own screensaver block), and the log notes when the audiobook is paused.",
+        },
+    },
+    {
         version = "1.23.8",
         changes = {
             "The Kindle sleeps again when nothing is going on. What keeps it awake (a download, the audiobook or music playing, the phone page) is now checked every minute, and anything that has ended is let go of: a player that couldn't start again after a skip or a track change kept a Kindle 3 awake for good. GZreader also lifts the Kindle's screensaver block when it starts, in case an earlier run left it on (closed or crashed mid-download). The diagnostic log says what keeps the Kindle awake, and for how long.",
