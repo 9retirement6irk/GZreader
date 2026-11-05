@@ -2498,7 +2498,7 @@ do
 local aacp
 for _i, p in ipairs(AEngine.PLAYERS) do if p.id == "aac-mfw" then aacp = p end end
 local acmd, ast = AEngine.command(aacp, { kind = "chunks", dir = "/b/x.m4b.chunks", starts = { 0, 15000, 30000, 45000 }, offset_ms = 40000 })
-check(acmd:match("^i=2; while %[ %-f '/b/x%.m4b%.chunks'/c%$i%.aac %]; do cat '/b/x%.m4b%.chunks'/c%$i%.aac; i=%$%(%(i%+1%)%); done | gst%-launch%-0%.10 fdsrc ! mfw_aacdecoder ! ") and ast == 30000, "M4B: plays the converted chunks from the one holding 0:40 (starts 0:30)")
+check(acmd:match("^i=2; while %[ %-f '/b/x%.m4b%.chunks'/c%$i%.aac %]; do cat '/b/x%.m4b%.chunks'/c%$i%.aac || break; i=%$%(%(i%+1%)%); done | gst%-launch%-0%.10 fdsrc ! mfw_aacdecoder ! ") and ast == 30000, "M4B: plays the converted chunks from the one holding 0:40 (starts 0:30)")
 local pb = AEngine.command(AEngine.PLAYERS[#AEngine.PLAYERS], { kind = "file", path = "rel/x.mp3" })
 check(pb:match("^gst%-launch%-0%.10 playbin uri='file:///"), "playbin gets an absolute file URI")
 for _i, p in ipairs(AEngine.PLAYERS) do
@@ -3975,15 +3975,39 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
     package.path = saved_path
 end)()
 
+print("Audiobook player: go to a time, skips gathered, the cassette")
+;(function()
+    local AB = require("gzreader_audiobook")
+    local H = 3600000
+    check(AB.parseTime("1:23:45") == (3600 + 23 * 60 + 45) * 1000 and AB.parseTime("23:45") == (23 * 60 + 45) * 1000
+        and AB.parseTime("90") == 90 * 60000 and AB.parseTime(" 50% ", 10 * H) == 5 * H and AB.parseTime("abc") == nil
+        and AB.parseTime("12%") == nil, "go to: 1:23:45, 23:45, minutes, a percentage of the book")
+    check(AB.runtime(10 * H + 28 * 60000) == "10 h 28 min" and AB.runtime(25 * 60000) == "25 min", "the cassette's running time")
+    -- three presses of 30 s on: the player started once, 90 s on
+    local seeks = {}
+    local fake = { player = { globalPos = function() return 60000 end, seekTo = function(_p, g) seeks[#seeks + 1] = g end },
+        build = function() end, refresh = function() end }
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+    for _i = 1, 3 do AB.Screen.queueSkip(fake, AB.SKIP_MS) end
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil; f() end
+    check(#seeks == 1 and seeks[1] == 60000 + 3 * AB.SKIP_MS, "skips pressed close together: the player is started once, where they end")
+    local Deck = require("gzreader_deck")
+    check(Deck.Cassette and Deck.Cassette.RATIO == 0.63, "the player shows the audiobook as a cassette (100 × 63)")
+    -- the chunk feeder ends with the player
+    local Engine = require("gzreader_audioengine")
+    local cmd = Engine.command({ pipe = "fakesink" }, { kind = "chunks", dir = "/x", starts = { 0, 15000 }, offset_ms = 0 })
+    check(cmd:find("|| break", 1, true), "the chunks' feeder stops when the player does (it went on through every chunk)")
+end)()
+
 print("Audiobook player: the 5-way goes from key to key (Kindle 3)")
 ;(function()
     local S = require("gzreader_audiobook").Screen
     local function m(f, ...) for _i, d in ipairs({ ... }) do f = S.move(f, d) end return f[1] .. "," .. f[2] end
     check(m({ 1, 3 }, "Right", "Right", "Right") == "1,5" and m({ 1, 3 }, "Left", "Left", "Left") == "1,1",
         "along a row, stopping at its ends")
-    check(m({ 1, 3 }, "Down") == "2,2" and m({ 1, 5 }, "Down") == "2,3" and m({ 1, 1 }, "Down") == "2,1" and m({ 2, 3 }, "Down") == "3,2"
-        and m({ 3, 1 }, "Up") == "2,1" and m({ 1, 3 }, "Up") == "1,3" and m({ 3, 2 }, "Down") == "3,2",
-        "up and down keep to the same part of the screen (play → Sleep → volume +)")
+    check(m({ 1, 3 }, "Down") == "2,3" and m({ 1, 5 }, "Down") == "2,4" and m({ 1, 1 }, "Down") == "2,1" and m({ 2, 3 }, "Down") == "3,2"
+        and m({ 3, 1 }, "Up") == "2,2" and m({ 1, 3 }, "Up") == "1,3" and m({ 3, 2 }, "Down") == "3,2",
+        "up and down keep to the same part of the screen (play → Stop → volume +)")
 end)()
 
 print("Kindles without REAGL: flash when the screen changes")

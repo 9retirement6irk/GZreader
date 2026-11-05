@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.6",
+        changes = {
+            "Audiobook player: skipping no longer freezes the Kindle. Each start of the player left the old feeder of audio running through every chunk left in the book (thousands, each a small program), so every skip made the Kindle slower (up to 12 s a press). The feeder now stops with the player, and ones left by earlier versions are stopped once. 30 s presses close together are added up and the player started once.",
+            "Audiobook player: the audiobook is a cassette tape with its title, author and running time on the label (and the cover); the tape winds from reel to reel through the book. The walkman stays on the shelf.",
+            "Audiobook player: every control has a letter: Z previous chapter, X back 30 s, C play / pause, V on 30 s, B next chapter, Q chapters, W sleep, E stop, R go to, A / S volume, D about the book.",
+            "Audiobook player: Go to (R): a time (1:23:45 or 23:45), minutes (90) or a percentage (50%).",
+        },
+    },
+    {
         version = "1.23.5",
         changes = {
             "Music: tracks Plex has to convert (anything not MP3 or AAC: FLAC, ALAC, Opus…) failed to download, every one (\"transcode http_400\": 92 of your playlist's 93 tracks). Plex picks how to convert by the kind of app asking, and didn't know \"Kindle\"; GZreader now asks as Plex's web app does (and falls back to other ways if a server refuses, keeping AAC as it comes).",

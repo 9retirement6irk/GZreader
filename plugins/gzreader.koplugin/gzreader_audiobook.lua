@@ -64,6 +64,31 @@ local Audiobook = {
 
 ---------------------------------------------------------------- helpers
 
+--- "10 h 28 min" (a running time)
+function Audiobook.runtime(ms)
+    local mins = math.floor((ms or 0) / 60000 + 0.5)
+    local h, m = math.floor(mins / 60), mins % 60
+    if h > 0 then return T(_("%1 h %2 min"), h, m) end
+    return T(_("%1 min"), m)
+end
+
+--- A time typed in: "1:23:45", "23:45", "90" (minutes) or "50%" (of `total`).
+--- Milliseconds, or nil (pure: run_tests.lua).
+function Audiobook.parseTime(text, total)
+    text = tostring(text or ""):gsub("%s", "")
+    local pct = text:match("^(%d+%.?%d*)%%$")
+    if pct then
+        return total and total > 0 and math.floor(math.min(100, tonumber(pct)) * total / 100) or nil
+    end
+    local a, b, c = text:match("^(%d+):(%d%d?):(%d%d?)$")
+    if a then return ((tonumber(a) * 60 + tonumber(b)) * 60 + tonumber(c)) * 1000 end
+    a, b = text:match("^(%d+):(%d%d?)$")
+    if a then return (tonumber(a) * 60 + tonumber(b)) * 1000 end
+    a = text:match("^(%d+%.?%d*)$")
+    if a then return math.floor(tonumber(a) * 60000) end
+    return nil
+end
+
 function Audiobook.fmt(ms)
     local s = math.max(0, math.floor((ms or 0) / 1000))
     local h, m = math.floor(s / 3600), math.floor(s / 60) % 60
@@ -829,7 +854,7 @@ Audiobook.Screen = Screen
 
 --- The 5-way moves between the keys (Kindle 2, 3, 4, DX: no touch screen).
 local function fiveWay() return Device:hasDPad() and not Device:isTouchDevice() end
-Screen.ROWS = { 5, 3, 2 }   -- transport · chapters / sleep / stop · volume − +
+Screen.ROWS = { 5, 4, 2 }   -- transport · chapters / sleep / stop / go to · volume − +
 
 --- The focus after an arrow (pure: run_tests.lua): rows of different
 --- lengths keep it where it was across the screen.
@@ -859,6 +884,12 @@ function Screen:init()
         PrevChapter = { { "Up" } },
         NextChapter = { { "Down" } },
         Chapters = { { "Q" } },
+        PrevChapterKey = { { "Z" } },
+        Back30Key = { { "X" } },
+        ToggleKey = { { "C" } },
+        Fwd30Key = { { "V" } },
+        NextChapterKey = { { "B" } },
+        GoTo = { { "R" } },
         Sleep = { { "W" } },
         StopClose = { { "E" } },
         VolDown = { { "A" } },
@@ -926,7 +957,7 @@ function Screen:build()
     local p, book = self.player, self.player.book
     local sw, sh = self.dimen.w, self.dimen.h
     local inner = math.floor(sw * 0.88)
-    local g = p:globalPos()
+    local g = self.skip_target or p:globalPos()   -- (skips still being gathered: where they'll land)
     local total = Audiobook.total(book)
     local ch_idx, ch = Audiobook.chapterAt(book, g)
     local chapters = book.chapters or {}
@@ -934,25 +965,19 @@ function Screen:build()
     local function add(w) group[#group + 1] = w end
     local function gap(px) add(VerticalSpan:new{ width = Device.screen:scaleBySize(px) }) end
 
-    -- a cassette walkman with headphones: the book on the cassette's label,
-    -- the tape moving from reel to reel through the chapter (gzreader_deck.lua)
-    local ch_start0 = ch and (ch.startTimeMs or 0) or 0
-    local nxt0 = chapters[ch_idx + 1]
-    local ch_len0 = math.max(1, (nxt0 and nxt0.startTimeMs or total) - ch_start0)
-    local deck_w = math.min(math.floor(sw * 0.92), math.floor(sh * 0.36 * 320 / 300))
-    add(require("gzreader_deck").Walkman:new{ w = deck_w, state = {
+    -- the audiobook as a cassette tape: its title, author and running time
+    -- on the label, the tape going from reel to reel through the book
+    -- (gzreader_deck.lua; 1.23.6: was the walkman, which stays on the shelf)
+    local Deck = require("gzreader_deck")
+    local tape_w = math.min(inner, math.floor(sh * 0.36 / Deck.Cassette.RATIO))
+    add(Deck.Cassette:new{ w = tape_w, state = {
         title = book.title,
-        line2 = ch and (ch.title and ch.title ~= "" and ch.title or T(_("Chapter %1"), ch_idx)) or book.author,
-        progress = (g - ch_start0) / ch_len0,
-        playing = p.playing,
+        author = book.author,
+        runtime = total > 0 and Audiobook.runtime(total) or nil,
+        progress = total > 0 and g / total or 0,
         cover_bb = self.cover_bb,
-        counter = string.format("%04d", math.floor(g / 60000) % 10000),
     } })
-    gap(8)
-    add(TextBoxWidget:new{ text = book.title or "", face = face(20, true), width = inner, alignment = "center",
-        height = Device.screen:scaleBySize(52), height_adjust = true, height_overflow_show_ellipsis = true })
-    if book.author then add(TextWidget:new{ text = book.author, face = face(16), max_width = inner }) end
-    gap(8)
+    gap(10)
     if ch then
         -- "Chapter 4: On the Trail · 4 of 12" (titles often say "Chapter" already)
         local count = #chapters > 1 and T(_("%1 of %2"), ch_idx, #chapters) or nil
@@ -998,12 +1023,13 @@ function Screen:build()
     end
     local kh = Device.screen:scaleBySize(50)
     self.actions = {}
+    -- (letters: the keyboard's bottom row, Z to B, as the keys are laid out)
     add(keys({
-        { "", nil, function() self:onPrevChapter() end, icon = "prev", row = 1 },
-        { "30 s", nil, function() self:onBack30() end, false, 14, icon = "rew", row = 1 },
-        { "", nil, function() self:onToggle() end, p.playing, icon = p.playing and "pause" or "play", row = 1 },
-        { "30 s", nil, function() self:onFwd30() end, false, 14, icon = "ffwd", after = true, row = 1 },
-        { "", nil, function() self:onNextChapter() end, icon = "next", row = 1 },
+        { "", "Z", function() self:onPrevChapter() end, icon = "prev", row = 1 },
+        { "30 s", "X", function() self:onBack30() end, false, 14, icon = "rew", row = 1 },
+        { "", "C", function() self:onToggle() end, p.playing, icon = p.playing and "pause" or "play", row = 1 },
+        { "30 s", "V", function() self:onFwd30() end, false, 14, icon = "ffwd", after = true, row = 1 },
+        { "", "B", function() self:onNextChapter() end, icon = "next", row = 1 },
     }, kh))
     gap(10)
     local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
@@ -1013,6 +1039,7 @@ function Screen:build()
         { _("Chapters"), "Q", function() self:onChapters() end, row = 2 },
         { sleep_label, "W", function() self:onSleep() end, p.sleep_at ~= nil or p.sleep_end_of_chapter, row = 2 },
         { _("Stop"), "E", function() self:onStopClose() end, icon = "stop", row = 2 },
+        { _("Go to"), "R", function() self:onGoTo() end, row = 2 },
     }, kh))
     self.actions[3] = { function() self:onVolDown() end, function() self:onVolUp() end }
     gap(10)
@@ -1028,7 +1055,7 @@ function Screen:build()
             { _("Close (keeps playing)"), function() self:onClose() end },
         }, self))
     else
-        add(TextBoxWidget:new{ text = fiveWay() and _("5-way: choose a key   Press: use it\nD: about this book   Back: close (keeps playing)")
+        add(TextBoxWidget:new{ text = fiveWay() and _("5-way: choose a key   Press: use it   (or its letter)\nD: about this book   Back: close (keeps playing)")
             or _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
             face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
     end
@@ -1075,8 +1102,65 @@ function Screen:onFocusPress()
     if act then act() else self:onToggle() end
     return true
 end
-function Screen:onBack30() self.player:skip(-Audiobook.SKIP_MS); self:refresh(); return true end
-function Screen:onFwd30() self.player:skip(Audiobook.SKIP_MS); self:refresh(); return true end
+--- 30 s back or on: presses close together are added up and the player is
+--- started once, where they end (each start of the player costs the Kindle 3
+--- a second or two; several presses started it several times).
+Screen.SKIP_GATHER = 0.8
+function Screen:queueSkip(delta)
+    local p = self.player
+    self.skip_target = math.max(0, (self.skip_target or p:globalPos()) + delta)
+    if self.skip_apply then UIManager:unschedule(self.skip_apply) end
+    self.skip_apply = function()
+        self.skip_apply = nil
+        local target = self.skip_target
+        self.skip_target = nil
+        if target then p:seekTo(target) end
+        if not self.closed then self:refresh() end
+    end
+    UIManager:scheduleIn(Screen.SKIP_GATHER, self.skip_apply)
+    -- (the time shown moves at once)
+    self:build()
+    UIManager:setDirty(self, "fast")
+    return true
+end
+function Screen:onBack30() return self:queueSkip(-Audiobook.SKIP_MS) end
+function Screen:onFwd30() return self:queueSkip(Audiobook.SKIP_MS) end
+function Screen:onPrevChapterKey() return self:onPrevChapter() end
+function Screen:onNextChapterKey() return self:onNextChapter() end
+function Screen:onBack30Key() return self:onBack30() end
+function Screen:onFwd30Key() return self:onFwd30() end
+function Screen:onToggleKey() return self:onToggle() end
+
+--- Go to a time: "1:23:45", "23:45", minutes, or a percentage.
+function Screen:onGoTo()
+    local InputDialog = require("ui/widget/inputdialog")
+    local p = self.player
+    local total = Audiobook.total(p.book)
+    local dialog
+    local function go()
+        local ms = Audiobook.parseTime(dialog:getInputText(), total)
+        if not ms then
+            UIManager:show(InfoMessage:new{ text = _("Type a time as 1:23:45 or 23:45, minutes (90), or a percentage (50%)."), timeout = 4 })
+            return
+        end
+        UIManager:close(dialog)
+        p:seekTo(ms)
+        self:refresh()
+    end
+    dialog = InputDialog:new{
+        title = _("Go to"),
+        description = T(_("Now at %1 of %2. A time (1:23:45 or 23:45), minutes (90) or a percentage (50%)."),
+            Audiobook.fmt(p:globalPos()), Audiobook.fmt(total)),
+        input = "", input_hint = Audiobook.fmt(p:globalPos()),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Go"), is_enter_default = true, callback = go },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+    return true
+end
 function Screen:onPrevChapter() self.player:chapterStep(-1); self:refresh(); return true end
 function Screen:onNextChapter() self.player:chapterStep(1); self:refresh(); return true end
 -- (the volume rocker: gzreader_audioctl, everywhere)
@@ -1115,6 +1199,14 @@ function Screen:onStopClose()
 end
 
 function Screen:onCloseWidget()
+    -- skips still being gathered: done now
+    if self.skip_apply then
+        local f = self.skip_apply
+        UIManager:unschedule(f)
+        self.closed = true
+        pcall(f)
+    end
+    self.closed = true
     if self.player.screen == self then self.player.screen = nil end
     if self.cover_bb then self.cover_bb:free(); self.cover_bb = nil end
 end

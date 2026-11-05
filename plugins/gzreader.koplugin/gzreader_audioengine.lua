@@ -134,7 +134,10 @@ function Engine.command(p, src)
         local start = (src.starts or { 0 })[k] or 0
         -- into the chunk, from the ADTS frame playing at `offset`
         local skip, skipped = Engine.adtsSkip(src.dir .. "/c" .. (k - 1) .. ".aac", offset - start)
-        local loop = string.format("while [ -f %s/c$i.aac ]; do cat %s/c$i.aac; i=$((i+1)); done",
+        -- (|| break: once the player is gone, cat fails and the loop ends; it
+        -- went on through every chunk left, starting a cat for each: hundreds
+        -- of them after each skip, slowing the Kindle 3 more at every press)
+        local loop = string.format("while [ -f %s/c$i.aac ]; do cat %s/c$i.aac || break; i=$((i+1)); done",
             quote(src.dir), quote(src.dir))
         local feed
         if skip > 0 then
@@ -181,6 +184,11 @@ Engine.alive = alive -- injectable for tests
 --- Kindle 3's sound device takes one player at a time, so a leftover one
 --- makes every later play fail. Only GZreader runs gst-launch (Amazon's own
 --- player is audioServer).
+-- The chunk feeders of before 1.23.6 (no "|| break"), still going through
+-- their chunks: found by their command line ("c$i.aac" in it; this command's
+-- own line has a backslash there, so it doesn't match itself).
+Engine.KILL_FEEDERS = "for p in $(ps 2>/dev/null | awk '/c\\$i\\.aac; i=/ {print $1}'); do kill $p; done >/dev/null 2>&1"
+
 function Engine.stopStray()
     if current then return end
     local pid = Engine.pid()
@@ -189,7 +197,7 @@ function Engine.stopStray()
         run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
     end
     os.remove(PID_FILE)
-    run("for p in $(pidof gst-launch-0.10 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1")
+    run("for p in $(pidof gst-launch-0.10 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1; " .. Engine.KILL_FEEDERS)
 end
 
 --- At GZreader's start: only the player it started itself (cheap, no shell
@@ -202,12 +210,19 @@ function Engine.stopStrayAtStart()
         run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
     end
     if pid then os.remove(PID_FILE) end
+    -- once: feeders 1.23.5 and before left going (they slowed everything)
+    if not G_reader_settings:isTrue("gzreader_feeders_cleared") then
+        G_reader_settings:saveSetting("gzreader_feeders_cleared", true)
+        run(Engine.KILL_FEEDERS)
+    end
 end
 
 --- Start playing `src` with `p`. Returns true, position started at (ms).
 function Engine.play(p, src)
+    -- (a skip: just our own player to stop, one shell fewer)
+    local had = current ~= nil
     Engine.stop()
-    Engine.stopStray()
+    if not had then Engine.stopStray() end
     os.remove(LOG_FILE)
     os.remove(PID_FILE)
     local cmd, started_ms = Engine.command(p, src)
@@ -268,8 +283,8 @@ end
 
 function Engine.stop()
     if not current then return end
-    signal("CONT")
-    signal("TERM")
+    local pid = current.pid or Engine.pid()
+    if pid then run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid)) end
     os.remove(PID_FILE)
     current = nil
 end
