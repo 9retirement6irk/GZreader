@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.8",
+        changes = {
+            "The Kindle sleeps again when nothing is going on. What keeps it awake (a download, the audiobook or music playing, the phone page) is now checked every minute, and anything that has ended is let go of: a player that couldn't start again after a skip or a track change kept a Kindle 3 awake for good. GZreader also lifts the Kindle's screensaver block when it starts, in case an earlier run left it on (closed or crashed mid-download). The diagnostic log says what keeps the Kindle awake, and for how long.",
+            "Audiobook player, Go to: type the time without colons, as on a clock: 5000 is 50:00, 13000 is 1:30:00 (colons still work, and so do percentages). A plain number was minutes before.",
+        },
+    },
+    {
         version = "1.23.7",
         changes = {
             "Grimmory: a slow request right after GZreader renewed your login no longer signs you out. When such a request was stopped (it took too long), the new login it got was thrown away, and Grimmory had already cancelled the old one; it is now kept.",

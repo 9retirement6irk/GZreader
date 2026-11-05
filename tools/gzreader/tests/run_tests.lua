@@ -1125,6 +1125,17 @@ do
     check(#cmds == 1 and cmds[1]:match("preventScreenSaver 1"), "download + audiobook: screensaver blocked once, still blocked after the download ends")
     Awake.release("audio")
     check(#cmds == 2 and cmds[2]:match("preventScreenSaver 0"), "released when nothing needs it")
+    -- a holder that ended without letting go (a player that couldn't start
+    -- again after a skip): let go of at the next check, the Kindle sleeps
+    local player = { playing = true }
+    Awake.hold(player, { what = "audiobook", still = function() return player.playing end })
+    Awake.hold("other", { what = "download", still = function() return true end })
+    player.playing = false
+    Awake.prune()
+    check(not Awake.held(player) and Awake.held("other") and Awake.who() == "download",
+        "staying awake: a holder that has ended is let go of, the others kept")
+    Awake.release("other")
+    check(cmds[#cmds]:match("preventScreenSaver 0"), "…and the Kindle may sleep again")
     Awake.exec = exec
 end
 
@@ -4005,8 +4016,12 @@ print("Audiobook player: go to a time, skips gathered, the cassette")
     local AB = require("gzreader_audiobook")
     local H = 3600000
     check(AB.parseTime("1:23:45") == (3600 + 23 * 60 + 45) * 1000 and AB.parseTime("23:45") == (23 * 60 + 45) * 1000
-        and AB.parseTime("90") == 90 * 60000 and AB.parseTime(" 50% ", 10 * H) == 5 * H and AB.parseTime("abc") == nil
-        and AB.parseTime("12%") == nil, "go to: 1:23:45, 23:45, minutes, a percentage of the book")
+        and AB.parseTime(" 50% ", 10 * H) == 5 * H and AB.parseTime("abc") == nil
+        and AB.parseTime("12%") == nil, "go to: 1:23:45, 23:45, a percentage of the book")
+    check(AB.parseTime("5000") == 50 * 60000 and AB.parseTime("13000") == (3600 + 30 * 60) * 1000
+        and AB.parseTime("12345") == (3600 + 23 * 60 + 45) * 1000 and AB.parseTime("45") == 45000
+        and AB.parseTime("130") == 90000 and AB.parseTime("1.5") == nil,
+        "go to: digits without colons read like a clock (5000 is 50:00, 13000 is 1:30:00)")
     check(AB.runtime(10 * H + 28 * 60000) == "10 h 28 min" and AB.runtime(25 * 60000) == "25 min", "the cassette's running time")
     -- three presses of 30 s on: the player started once, 90 s on
     local seeks = {}

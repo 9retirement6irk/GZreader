@@ -84,8 +84,15 @@ function Audiobook.parseTime(text, total)
     if a then return ((tonumber(a) * 60 + tonumber(b)) * 60 + tonumber(c)) * 1000 end
     a, b = text:match("^(%d+):(%d%d?)$")
     if a then return (tonumber(a) * 60 + tonumber(b)) * 1000 end
-    a = text:match("^(%d+%.?%d*)$")
-    if a then return math.floor(tonumber(a) * 60000) end
+    -- digits alone, read like a clock from the right (no colons needed):
+    -- 5000 is 50:00, 13000 1:30:00, 45 0:45. (Until 1.23.8 they were minutes.)
+    local digits = text:match("^(%d+)$")
+    if digits and #digits <= 7 then
+        local secs = tonumber(digits:sub(-2))
+        local mins = #digits > 2 and tonumber(digits:sub(-4, -3)) or 0
+        local hours = #digits > 4 and tonumber(digits:sub(1, -5)) or 0
+        return ((hours * 60 + mins) * 60 + secs) * 1000
+    end
     return nil
 end
 
@@ -281,9 +288,9 @@ function Audiobook.prepare(dir, tracks, title, on_done)
     end
     if #todo == 0 then return on_done(true) end
     local awake_key = "audiobook-prepare-" .. dir
-    Awake.hold(awake_key)
     local dialog
     local state = { kind = "prepare", title = title, total = total, done = 0 }
+    Awake.hold(awake_key, { what = "audiobook preparing", still = function() return Audiobook.active_prepare == state end })
     state.open_dialog = function()
         if dialog then return end
         dialog = ProgressbarDialog:new{
@@ -396,10 +403,10 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
     end, true)
     if not pid then return on_done(nil, "could not start the download") end
     local awake_key = "audiobook-download-" .. tostring(summary.id)
-    Awake.hold(awake_key)
-    require("gzreader_net").hold(awake_key)
     local dialog
     local state = { kind = "audiobook", title = book.title or summary.title, total = total, done = 0 }
+    Awake.hold(awake_key, { what = "audiobook download", still = function() return Audiobook.active_download == state end })
+    require("gzreader_net").hold(awake_key)
     state.open_dialog = function()
         if dialog then return end
         dialog = ProgressbarDialog:new{
@@ -698,7 +705,7 @@ function Player:seekTo(g)
     Engine.stop()
     self.playing = false
     self.pos = g
-    if was_playing then self:play() end
+    if was_playing and not self:play() then self:keepAwake(false) end
     self:save()
 end
 
@@ -719,9 +726,10 @@ end
 --- Stop the Kindle from sleeping while audio plays (KOReader's autosuspend
 --- and the Kindle's own screensaver).
 function Player:keepAwake(on)
-    if on == self.awake then return end
-    self.awake = on
-    if on then Awake.hold(self) else Awake.release(self) end
+    -- (still: playing. Until 1.23.8 a skip whose playing didn't start again
+    -- kept the Kindle awake for good)
+    if on then Awake.hold(self, { what = "audiobook", still = function() return self.playing == true end })
+    else Awake.release(self) end
 end
 
 function Player:schedule()
@@ -1131,7 +1139,8 @@ function Screen:onBack30Key() return self:onBack30() end
 function Screen:onFwd30Key() return self:onFwd30() end
 function Screen:onToggleKey() return self:onToggle() end
 
---- Go to a time: "1:23:45", "23:45", minutes, or a percentage.
+--- Go to a time: "1:23:45", "23:45", the same digits without colons
+--- ("12345", "2345"), or a percentage.
 function Screen:onGoTo()
     local InputDialog = require("ui/widget/inputdialog")
     local p = self.player
@@ -1140,7 +1149,7 @@ function Screen:onGoTo()
     local function go()
         local ms = Audiobook.parseTime(dialog:getInputText(), total)
         if not ms then
-            UIManager:show(InfoMessage:new{ text = _("Type a time as 1:23:45 or 23:45, minutes (90), or a percentage (50%)."), timeout = 4 })
+            UIManager:show(InfoMessage:new{ text = _("Type a time with or without colons (5000 or 50:00, 13000 or 1:30:00), or a percentage (50%)."), timeout = 4 })
             return
         end
         UIManager:close(dialog)
@@ -1149,7 +1158,7 @@ function Screen:onGoTo()
     end
     dialog = InputDialog:new{
         title = _("Go to"),
-        description = T(_("Now at %1 of %2. A time (1:23:45 or 23:45), minutes (90) or a percentage (50%)."),
+        description = T(_("Now at %1 of %2. Type a time, colons optional (5000 = 50:00, 13000 = 1:30:00), or a percentage (50%)."),
             Audiobook.fmt(p:globalPos()), Audiobook.fmt(total)),
         input = "", input_hint = Audiobook.fmt(p:globalPos()),
         buttons = { {

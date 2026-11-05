@@ -680,7 +680,7 @@ function Phone.open(plugin, opts)
             server80 = nil
         end
     end
-    pcall(function() require("gzreader_awake").hold("phone") end) -- (uploads take a while)
+    pcall(function() require("gzreader_awake").hold("phone", { what = "phone page", still = function() return Phone.session == S end }) end) -- (uploads take a while)
     Log.info("phone page open on", S.origin, "section", tostring(opts.section))
     local url = S.origin .. S.base .. (opts.section and ("#" .. opts.section) or "")
     screen = require("gzreader_pairscreen"):new{

@@ -358,7 +358,7 @@ function Copy.startSending(plugin, opts, offer)
     UIManager:scheduleIn(Copy.TIMEOUT, timer)
     UIManager:insertZMQ(server)
     if responder then UIManager:insertZMQ(responder) end
-    pcall(function() require("gzreader_awake").hold("copy") end)
+    pcall(function() require("gzreader_awake").hold("copy", { what = "copying", still = function() return Copy.session == S end }) end)
     Log.info("copy: sending as " .. name .. " on port " .. server.port)
     UIManager:show(screen)
     return S

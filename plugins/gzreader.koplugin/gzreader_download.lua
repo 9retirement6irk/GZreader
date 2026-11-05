@@ -130,7 +130,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
     }
     Download.active = job
     pcall(function() require("gzreader_tasks").changed() end)
-    Awake.hold(job) -- no sleeping (screensaver or autosuspend) mid-download
+    Awake.hold(job, { what = "download", still = function() return not job.finished end }) -- no sleeping (screensaver or autosuspend) mid-download
     require("gzreader_net").hold("download") -- keep Wi-Fi up until the queue is done
 
     local dialog

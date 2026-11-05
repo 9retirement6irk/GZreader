@@ -98,6 +98,9 @@ function Grimmory:init()
     if not Grimmory.audio_checked then
         Grimmory.audio_checked = true
         pcall(function() require("gzreader_audioengine").stopStrayAtStart() end)
+        -- the Kindle's screensaver block an earlier run left on (closed or
+        -- crashed mid-download): lifted, nothing of ours holds it yet
+        pcall(function() require("gzreader_awake").reset() end)
         -- the volume rocker, and stopping the audio when GZreader closes
         pcall(function() require("gzreader_audioctl").install() end)
         -- a log line per book opened: where the time went

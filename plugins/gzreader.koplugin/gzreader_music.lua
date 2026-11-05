@@ -324,7 +324,7 @@ function Music.download(plugin, c, opts)
     end
     state.pid = pid
     local key = "music-" .. dir
-    Awake.hold(key)
+    Awake.hold(key, { what = "music download", still = function() return Music.downloads[dir] == state end })
     require("gzreader_net").hold(key)
     pcall(function() require("gzreader_tasks").changed() end)
     local seen, errors = 0, {}
@@ -572,14 +572,16 @@ function Player:step(dir)
     local was = self.playing or self.paused
     Engine.stop()
     self.playing = false
-    if was then self:play() else self:changed() end
+    if was then
+        if not self:play() then self:keepAwake(false) end
+    else self:changed() end
 end
 
 function Player:jump(n)
     self.at, self.pos = math.max(1, math.min(#self.order, n)), 0
     Engine.stop()
     self.playing = false
-    self:play()
+    if not self:play() then self:keepAwake(false) end
 end
 
 function Player:setShuffle(on)
@@ -609,9 +611,10 @@ function Player:finish()
 end
 
 function Player:keepAwake(on)
-    if on == self.awake then return end
-    self.awake = on
-    if on then Awake.hold(self) else Awake.release(self) end
+    -- (still: playing, or waiting for its track. Until 1.23.8 a player that
+    -- couldn't start after a skip kept the Kindle awake for good)
+    if on then Awake.hold(self, { what = "music", still = function() return self.playing == true end })
+    else Awake.release(self) end
 end
 
 function Player:schedule()
