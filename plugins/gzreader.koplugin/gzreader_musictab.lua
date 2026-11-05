@@ -311,8 +311,10 @@ function Tab.codeScreen(code, on_cancel)
         self:build()
         UIManager:setDirty(self, function() return "ui", self.dimen end)
     end
-    function W:onShow() UIManager:setDirty(self, function() return "full", self.dimen end) end
-    function W:onCloseWidget() UIManager:setDirty(nil, "full") end
+    -- (a flash, but not inside the music player: only its own opening and closing flash)
+    local function flash() return require("gzreader_eink").inPlayer(UIManager._window_stack) and "ui" or "full" end
+    function W:onShow() UIManager:setDirty(self, function() return flash(), self.dimen end) end
+    function W:onCloseWidget() UIManager:setDirty(nil, flash()) end
     function W:onCancel()
         UIManager:close(self)
         if self.on_cancel then self.on_cancel() end

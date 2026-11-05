@@ -3915,7 +3915,7 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 end)()
 
 print("Kindles without REAGL: flash when the screen changes")
-do
+;(function()
     local Eink = require("gzreader_eink")
     local W, H = 600, 800
     local function m(mode, region, pending) return (Eink.promote(mode, region, W, H, pending)) end
@@ -3927,7 +3927,13 @@ do
     check(Eink.promote("ui", nil, W, H, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, true) == "ui",
         "the 5-way's arrows (along the tab bar, around the quick panel) don't flash, however much they redraw")
     check(Eink.promote("ui", nil, W, H, true, true) == "full", "unless a full-screen window just opened or closed")
-end
+    local player = { covers_fullscreen = true, gz_player = true }
+    local chapters = { covers_fullscreen = true }
+    local stack = { { widget = { name = "home" } }, { widget = player } }
+    check(Eink.inPlayer(stack) and not Eink.inPlayer({ { widget = { name = "home" } } }), "a player is open: one marked gz_player is on the stack")
+    check(Eink.flashesFor(player, stack) and not Eink.flashesFor(chapters, stack) and Eink.flashesFor(chapters, { { widget = {} } }),
+        "inside a player only its own opening and closing flash (not its chapter list)")
+end)()
 
 print("Headphones")
 ;(function()

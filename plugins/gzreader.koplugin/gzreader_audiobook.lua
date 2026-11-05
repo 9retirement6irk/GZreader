@@ -805,7 +805,8 @@ local function screenWidgets()
     TextWidget = TextWidget or require("ui/widget/textwidget")
 end
 
-local Screen = InputContainer:extend{ player = nil, covers_fullscreen = true }
+local Screen = InputContainer:extend{ player = nil, covers_fullscreen = true,
+    gz_player = true } -- (no flashes inside it on a Kindle 3, gzreader_eink)
 Audiobook.Screen = Screen
 
 --[[ The player screen (Kindle Keyboard first):

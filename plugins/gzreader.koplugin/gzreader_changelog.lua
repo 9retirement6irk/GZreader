@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.2",
+        changes = {
+            "Kindle 3: the audiobook and music players no longer flash at every change inside them (the library, the lists, a download, the chapter list); the screen flashes only when a player opens and when it closes.",
+        },
+    },
+    {
         version = "1.23.1",
         changes = {
             "Kindle 3: moving the 5-way along the tab bar or around the quick panel no longer flashes the screen at every step (1.23.0 did, because those moves redraw the whole screen). Opening and closing things still flashes.",

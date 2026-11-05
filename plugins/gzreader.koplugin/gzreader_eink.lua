@@ -17,7 +17,8 @@ on by default):
   full-screen menu) flashes, page or not.
 Small updates (the clock, typing) don't, nor does anything the 5-way's arrows
 do (moving along the tab bar, around the quick panel or a list: those redraw
-the whole screen but flashing at every step is too much). Page turns flash
+the whole screen but flashing at every step is too much). Inside the audiobook and music players (gz_player windows) nothing flashes
+but opening and closing the player itself. Page turns flash
 every page, as the Kindle's own reader does, unless a rate was chosen in the
 book's menu (Screen → E-ink settings → Full refresh rate; KOReader's default
 is every 6 pages, which left a grey trace of the last pages on the page).
@@ -70,6 +71,21 @@ function Eink.promote(mode, region, screen_w, screen_h, pending, arrow)
     return region and "flashui" or "full", true
 end
 
+--- The audiobook or music player is open (a window marked gz_player).
+function Eink.inPlayer(stack)
+    for _i, w in ipairs(stack or {}) do
+        if type(w.widget) == "table" and w.widget.gz_player then return true end
+    end
+    return false
+end
+
+--- Does opening or closing `widget` call for a flash? A full-screen window,
+--- but inside a player only the player itself.
+function Eink.flashesFor(widget, stack)
+    if type(widget) ~= "table" or not widget.covers_fullscreen then return false end
+    return widget.gz_player == true or not Eink.inPlayer(stack)
+end
+
 function Eink.install()
     if Eink.installed or not Eink.applies() then return end
     Eink.installed = true
@@ -81,6 +97,7 @@ function Eink.install()
         if mode and not self.currently_scrolling and Eink.enabled() then
             local pending = Eink.pending and os.time() - Eink.pending <= 3   -- (an opened window's own update)
             local arrow = Eink.arrow_at and time.to_s(time.now() - Eink.arrow_at) < Eink.ARROW_S
+                or Eink.inPlayer(self._window_stack)   -- (in a player: only its own opening flashes)
             local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow)
             if flashed then Eink.pending = nil end
             mode = promoted
@@ -99,11 +116,11 @@ function Eink.install()
     end
     local orig_show, orig_close = UIManager.show, UIManager.close
     UIManager.show = function(self, widget, ...)
-        if type(widget) == "table" and widget.covers_fullscreen then Eink.pending = os.time() end
+        if Eink.flashesFor(widget, self._window_stack) then Eink.pending = os.time() end
         return orig_show(self, widget, ...)
     end
     UIManager.close = function(self, widget, ...)
-        if type(widget) == "table" and widget.covers_fullscreen then Eink.pending = os.time() end
+        if Eink.flashesFor(widget, self._window_stack) then Eink.pending = os.time() end
         return orig_close(self, widget, ...)
     end
 end

@@ -39,7 +39,8 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local Touch = require("gzreader_touch")
 local _ = require("gettext")
 
-local CDScreen = InputContainer:extend{ name = "gzreader cd player", plugin = nil, covers_fullscreen = true, library = false }
+local CDScreen = InputContainer:extend{ name = "gzreader cd player", plugin = nil, covers_fullscreen = true, library = false,
+    gz_player = true } -- (gz_player: no flashes inside it on a Kindle 3, gzreader_eink)
 
 local function Music() return require("gzreader_music") end
 local function fmtTime(ms)
