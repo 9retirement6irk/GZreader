@@ -136,7 +136,11 @@ function Grimmory:init()
             Warm.schedule(self, Warm.START_DELAY)
             require("common/cover_disk_cache").on_new_size = function() Warm.schedule(self, 30) end
         end)
-        pcall(self.restoreFromManifest, self)
+        -- (once a run: KOReader starts the plugin again each time a book closes)
+        if not Grimmory.manifest_checked then
+            Grimmory.manifest_checked = true
+            pcall(self.restoreFromManifest, self)
+        end
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
         if Mod.Touch.audio() then
             pcall(function() require("gzreader_abfolder").start(self) end)
@@ -171,16 +175,10 @@ function Grimmory:init()
                 if not NetworkMgr:isConnected() then return end
                 pcall(require("gzreader_shelfsync").run, self)
                 local idx = Index.load(self.store)
-                if idx then
-                    pcall(self.relinkLibrary, self, idx)
-                    pcall(require("gzreader_titles").backfill, self)
-                end
+                if idx then self:libraryUpkeep(idx) end
                 if Index.isStale(idx) then
                     Index.build(self, false, function(built)
-                        if built then
-                            pcall(self.relinkLibrary, self, built)
-                            pcall(require("gzreader_titles").backfill, self)
-                        end
+                        if built then self:libraryUpkeep(built, true) end
                     end)
                 end
             end)
@@ -223,8 +221,38 @@ function Grimmory:init()
 end
 
 function Grimmory:save()
+    if Grimmory.save_soon then UIManager:unschedule(Grimmory.save_soon); Grimmory.save_soon = nil end
     self.settings:saveSetting("state", self.store)
     self.settings:flush()
+end
+
+--- Save within a few seconds (once, however many changes come meanwhile):
+--- for what changes while you read (the position queued every 10 pages,
+--- what was sent). Writing the whole settings file each time stalled page
+--- turns on a Kindle 3 as it grew. Written at once on sleep, when a book or
+--- GZreader closes (FlushSettings), and by any plain save().
+Grimmory.SAVE_SOON_SECONDS = 15
+function Grimmory:saveSoon()
+    if Grimmory.save_soon then return end
+    Grimmory.save_soon = function()
+        Grimmory.save_soon = nil
+        self:save()
+    end
+    UIManager:scheduleIn(Grimmory.SAVE_SOON_SECONDS, Grimmory.save_soon)
+end
+
+function Grimmory:onFlushSettings()
+    if Grimmory.save_soon then self:save() end
+end
+
+-- leaving GZreader (exit, restart, update): a save still waiting is written first
+do
+    local orig_quit = UIManager.quit
+    UIManager.quit = function(um, ...)
+        local pending = Grimmory.save_soon
+        if pending then pcall(pending) end
+        return orig_quit(um, ...)
+    end
 end
 
 function Grimmory:syncEnabled()
@@ -1064,15 +1092,18 @@ end
 ---------------------------------------------------------------- offline queue
 
 --- Remember a progress update (latest per book) or a reading session to send later.
+Grimmory.gone_books = {} -- book ids Grimmory answered "not found" for (this run)
+
 function Grimmory:queue(kind, book_id, body)
     local pending = self.store.pending
+    if kind == "progress" and Grimmory.gone_books[tostring(book_id)] then return end
     if kind == "progress" then
         pending.progress[tostring(book_id)] = body
     else
         table.insert(pending.sessions, body)
         while #pending.sessions > MAX_QUEUED_SESSIONS do table.remove(pending.sessions, 1) end
     end
-    self:save()
+    self:saveSoon()
 end
 
 function Grimmory:clearQueued(kind, book_id)
@@ -1147,6 +1178,12 @@ function Grimmory:flushPending()
         end
         for _i, book_id in ipairs(res.dropped or {}) do
             if pending.progress[book_id] == progress[book_id] then pending.progress[book_id] = nil end
+            -- not in Grimmory (any more): not sent again this run (an audiobook
+            -- playing kept sending it, every minute)
+            if not Grimmory.gone_books[book_id] then
+                Log.info("sync: book", book_id, "isn't in Grimmory; its position stays on the Kindle")
+            end
+            Grimmory.gone_books[book_id] = true
         end
         for _i = 1, tonumber(res.sessions) or 0 do
             if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
@@ -1159,7 +1196,7 @@ function Grimmory:flushPending()
             if entry and how == "ok" then entry.rating_synced = ratings[book_id] end
             Log.info("rating sent to Grimmory", book_id, ratings[book_id], "stars", how)
         end
-        self:save()
+        self:saveSoon()
         -- queued while this was being sent: send that too
         local more = false
         for book_id, body in pairs(pending.progress) do if progress[book_id] ~= body then more = true end end
@@ -1353,6 +1390,7 @@ function Grimmory:onGrimmorySyncNow()
 end
 
 function Grimmory:onSuspend()
+    if Grimmory.save_soon then pcall(self.save, self) end
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
     local ok_ab, Audiobook = pcall(require, "gzreader_audiobook")
@@ -1560,6 +1598,19 @@ function Grimmory:restoreFromManifest()
     return restored
 end
 
+--- Link books in the GZreader folder to Grimmory's and give them their
+--- subtitles: when the index or the folder changed since it was last done
+--- (it ran 8 s after every book closed: KOReader starts the plugin again
+--- then; on a big library that was seconds of work each time).
+function Grimmory:libraryUpkeep(index, force)
+    local dir = self.store.library_dir
+    local sig = tostring(index and index.built_at) .. "|" .. tostring(dir and lfs.attributes(dir, "modification"))
+    if not force and Grimmory.upkeep_sig == sig then return end
+    Grimmory.upkeep_sig = sig
+    pcall(self.relinkLibrary, self, index)
+    pcall(require("gzreader_titles").backfill, self)
+end
+
 --- Match books in the folder that aren't linked yet to Grimmory books by
 --- file name, using the library index. Returns the number linked.
 function Grimmory:relinkLibrary(index)
@@ -1568,10 +1619,21 @@ function Grimmory:relinkLibrary(index)
     local linked_paths = {}
     for _, e in pairs(self.store.downloads) do if type(e) == "table" and e.path then linked_paths[e.path] = true end end
     local by_safe_name = {}
-    for name, info in pairs(index.files) do
-        by_safe_name[util.getSafeFilename(name, dir)] = info
-        by_safe_name[name] = info
+    -- (the folder's file system, read once: getSafeFilename read /proc/mounts
+    -- again for every book in the library)
+    local orig_fstype = util.getFilesystemType
+    if orig_fstype then
+        local fstype = orig_fstype(dir)
+        util.getFilesystemType = function(p) if p == dir then return fstype end return orig_fstype(p) end
     end
+    local ok_names, err_names = pcall(function()
+        for name, info in pairs(index.files) do
+            by_safe_name[util.getSafeFilename(name, dir)] = info
+            by_safe_name[name] = info
+        end
+    end)
+    util.getFilesystemType = orig_fstype
+    if not ok_names then Log.warn("relink: file names:", tostring(err_names)) end
     local linked = 0
     for name in lfs.dir(dir) do
         local path = dir .. "/" .. name

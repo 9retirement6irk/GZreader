@@ -15,7 +15,7 @@ local JSON = require("json")
 local lfs = require("libs/libkoreader-lfs")
 local md5 = require("ffi/sha2").md5
 
-local Cache = { MAX_FILES = 60 }
+local Cache = { MAX_FILES = 60, PRUNE_SECONDS = 600 }
 
 local dir_ready
 function Cache.dir()
@@ -64,7 +64,12 @@ function Cache.put(key, data)
     f:write(s)
     f:close()
     local done = os.rename(name .. ".tmp", name) and true or false
-    pcall(prune, Cache.dir())
+    -- (tidied every 10 minutes at most: it listed and checked the whole
+    -- folder after every list saved)
+    if os.time() - (Cache.pruned_at or 0) >= Cache.PRUNE_SECONDS then
+        Cache.pruned_at = os.time()
+        pcall(prune, Cache.dir())
+    end
     return done
 end
 

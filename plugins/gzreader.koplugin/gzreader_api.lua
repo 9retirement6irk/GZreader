@@ -496,6 +496,12 @@ function Api:downloadToFile(book_id, path, resume)
         local size = lfs.attributes(path, "size") or 0
         if h and size == have + h then
             local inp, out = io.open(path, "rb"), io.open(path .. ".full", "wb")
+            if not (inp and out) then
+                -- (only one opened: closed, not left open)
+                if inp then inp:close() end
+                if out then out:close() end
+                inp, out = nil, nil
+            end
             if inp and out then
                 inp:seek("set", have)
                 while true do
@@ -591,6 +597,12 @@ function Api:downloadAudio(book_id, track, path)
         local size = lfs.attributes(path, "size") or 0
         if h and size == have + h then
             local inp, out = io.open(path, "rb"), io.open(path .. ".full", "wb")
+            if not (inp and out) then
+                -- (only one opened: closed, not left open)
+                if inp then inp:close() end
+                if out then out:close() end
+                inp, out = nil, nil
+            end
             if inp and out then
                 inp:seek("set", have)
                 while true do

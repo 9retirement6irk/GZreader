@@ -2,6 +2,18 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.7",
+        changes = {
+            "Grimmory: a slow request right after GZreader renewed your login no longer signs you out. When such a request was stopped (it took too long), the new login it got was thrown away, and Grimmory had already cancelled the old one; it is now kept.",
+            "Downloads: a book that couldn't be saved under its name (a full or read-only folder) no longer stops the rest of the queue, or keeps Wi-Fi on.",
+            "Wi-Fi: turning Wi-Fi on a second time soon after a failed try is no longer given up on early by the first try's 90-second limit.",
+            "Sync: a book that isn't in Grimmory any more (deleted there) has its position sent once, not every minute (an audiobook playing kept sending it).",
+            "Faster: returning to the file browser (after every book you close) no longer redoes the music folder, the library's links and subtitles, and the backup check; they're done when something changed. The settings file is written once every few seconds while you read, not at every queued change (and always on sleep and when closing a book or GZreader).",
+            "Faster on the Kindle 3: moving along the shelves with the 5-way updates only the shelves that changed, not the whole screen, and a book's title and author on the spine are read once, not at every move. The shop's front page, the saved lists' tidying and background work's lower priority cost less too.",
+            "Diagnostic log: a slow moment caused by scheduled work names the task that took the longest.",
+        },
+    },
+    {
         version = "1.23.6",
         changes = {
             "Audiobook player: skipping no longer freezes the Kindle. Each start of the player left the old feeder of audio running through every chunk left in the book (thousands, each a small program), so every skip made the Kindle slower (up to 12 s a press). The feeder now stops with the player, and ones left by earlier versions are stopped once. 30 s presses close together are added up and the player started once.",

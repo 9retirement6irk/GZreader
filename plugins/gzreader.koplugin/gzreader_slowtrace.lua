@@ -130,6 +130,13 @@ local function done(what, ...)
         pcall(function() require("gzreader_usage").slow(what, wall) end)
         local cpu = os.clock() - t0
         local where = top(event or {}, 4)
+        if what == "scheduled work" and S.slowest_task and where == "" then
+            -- (no profiler: at least the task that took the longest)
+            local fn, took = S.slowest_task[1], S.slowest_task[2]
+            local info = type(fn) == "function" and debug.getinfo(fn, "S") or {}
+            where = string.format("slowest task %s:%s (%.1f s)", clean(tostring(info.short_src or "?")),
+                tostring(info.linedefined or "?"), require("ui/time").to_s(took))
+        end
         Log.warn(string.format("slow: %s took %d s (%.1f s CPU, memory %s)%s", what, wall, cpu, memory(),
             where ~= "" and (": " .. where:gsub("\n", " | ")) or ""))
     end
@@ -247,7 +254,34 @@ function S.install(dir, opts)
         return timed("a keypress", orig_input, self, ev)
     end
     local orig_tasks = UIManager._checkTasks
-    UIManager._checkTasks = function(self) return timed("scheduled work", orig_tasks, self) end
+    local time = require("ui/time")
+    -- KOReader's own loop over due tasks, each one timed, so a slow round of
+    -- scheduled work says which task it was ("no profiler" logs said only
+    -- how long). The same steps as UIManager:_checkTasks.
+    local function checkTasks(self)
+        if type(self._task_queue) ~= "table" then return orig_tasks(self) end
+        self._now = time.now()
+        local wait_until
+        self._task_queue_dirty = false
+        while self._task_queue[1] do
+            local task_time = self._task_queue[#self._task_queue].time
+            if task_time <= self._now then
+                local task = table.remove(self._task_queue)
+                local w = time.now()
+                task.action(unpack(task.args, 1, task.args.n))
+                local took = time.now() - w
+                if not S.slowest_task or took > S.slowest_task[2] then S.slowest_task = { task.action, took } end
+            else
+                wait_until = task_time
+                break
+            end
+        end
+        return wait_until, self._now
+    end
+    UIManager._checkTasks = function(self)
+        S.slowest_task = nil
+        return timed("scheduled work", checkTasks, self)
+    end
     local orig_repaint = UIManager._repaint
     UIManager._repaint = function(self) return timed("a screen repaint", orig_repaint, self) end
     local okd, Device = pcall(require, "device")

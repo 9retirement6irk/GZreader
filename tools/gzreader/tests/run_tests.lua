@@ -444,6 +444,31 @@ do
     os.remove(path)
 end
 
+print("A stopped background request keeps the login it renewed")
+;(function()
+    local Api = require("gzreader_api")
+    local Async = require("gzreader_async")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local saved_flag = 0
+    local fake = { store = { refresh_token = "R1", access_token = "A1" }, writePending = Api.writePending,
+        recoverPending = Api.recoverPending, dropPending = Api.dropPending,
+        on_change = function() saved_flag = saved_flag + 1 end }
+    os.remove(require("datastorage"):getSettingsDir() .. "/gzreader_tokens.pending")
+    local result
+    Async.run(fake, function(api)
+        -- (the background process renews the login, keeps it on disk, then hangs)
+        api.store.refresh_token, api.store.access_token = "R2", "A2"
+        api.writePending(api.store, "R1")
+        require("socket").sleep(6)
+        return true
+    end, function(...) result = { ... } end, "slow", { timeout = 1 })
+    runLoop(function() return result ~= nil end, 15)
+    check(result and result[2] == "timeout" and fake.store.refresh_token == "R2" and saved_flag == 1,
+        "stopped after renewing: the new login is kept, not lost (" .. tostring(fake.store.refresh_token) .. ")")
+    Async.sync = saved_sync
+end)()
+
 print("Library browsing")
 local Browser = require("gzreader_browser")
 local b = Browser:new(plugin)
@@ -4106,6 +4131,130 @@ print("Copying connections: the PIN exchange and mDNS")
     local q = Mdns.parse(string.char(0, 7, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0) .. Mdns.encodeName("other._tcp.local") .. string.char(0, 12, 0, 1))
     check(q and Mdns.answer({ name = "x", id = "1", port = 1, ip = "1.2.3.4" }, q, true) == nil, "mDNS: other services' questions aren't answered")
     check(Mdns.parse("short") == nil and Mdns.parse(string.rep("\255", 40)) ~= false, "mDNS: junk doesn't break it")
+end)()
+
+print("1.23.7 fixes and speed-ups")
+;(function()
+    -- Wi-Fi: an older attempt's 90 s give-up leaves a later attempt alone
+    local Net = require("gzreader_net")
+    local NM = require("ui/network/manager")
+    local saved = { NM.enableWifi, NM.isWifiOn, Net.connected, Net.enabled, Net.keptOff }
+    NM.enableWifi = function() return nil end -- (still connecting)
+    NM.isWifiOn = function() return false end
+    Net.connected = function() return false end
+    Net.enabled = function() return true end
+    Net.keptOff = function() return false end
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+    Net.connecting = nil
+    Net.run(function() end, { quiet = true, reason = "first" })
+    local first_timer
+    for f, t in pairs(UI.scheduled) do if t == 90 then first_timer = f end end
+    Net.connecting = nil -- (that one ended: Wi-Fi off again)
+    Net.run(function() end, { quiet = true, reason = "second" })
+    local second = Net.connecting
+    if first_timer then first_timer() end
+    check(first_timer and second and Net.connecting == second, "Wi-Fi: the first attempt's 90 s timer doesn't drop a later attempt")
+    for f, t in pairs(UI.scheduled) do if t == 90 and f ~= first_timer then f() end end
+    check(Net.connecting == nil, "…its own timer still gives up on it")
+    NM.enableWifi, NM.isWifiOn, Net.connected, Net.enabled, Net.keptOff = unpack(saved, 1, 5)
+    Net.connecting, Net.ours = nil, false
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+
+    -- positions for a book Grimmory doesn't have: not queued again this run
+    local G = Grimmory
+    local lfs = require("libs/libkoreader-lfs")
+    G.gone_books["98765"] = true
+    plugin:queue("progress", 98765, { fileProgress = {} })
+    check(plugin.store.pending.progress["98765"] == nil, "a book Grimmory said is gone: its position isn't queued again")
+    G.gone_books["98765"] = nil
+
+    -- queued changes: saved once, a little later (or at once when flushed)
+    local saves = 0
+    local orig_save = plugin.save
+    plugin.save = function(self) saves = saves + 1; return orig_save(self) end
+    if G.save_soon then G.save_soon() end
+    saves = 0
+    plugin:queue("progress", 4242, { fileProgress = { progressPercent = 1 } })
+    plugin:queue("progress", 4242, { fileProgress = { progressPercent = 2 } })
+    check(saves == 0 and G.save_soon ~= nil, "queued positions: not written at once")
+    plugin:onFlushSettings()
+    check(saves == 1, "…written when KOReader flushes settings (sleep, closing a book)")
+    plugin:clearQueued("progress", 4242)
+    if G.save_soon then G.save_soon() end
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+
+    -- the music folder: nothing changed, nothing written
+    local MF = require("gzreader_musicfolder")
+    saves = 0
+    pcall(MF.sync, plugin)
+    check(saves == 0, "music folder check: settings not written when nothing changed")
+    plugin.save = orig_save
+
+    -- subtitles: each book's looked at once
+    local Titles = require("gzreader_titles")
+    local s_sub, s_apply = Titles.subtitle, Titles.apply
+    local applied, fsaves = 0, 0
+    Titles.subtitle = function() return "Old School" end
+    Titles.apply = function() applied = applied + 1; return true end
+    local fake = { store = { downloads = { ["1"] = { path = "/x.epub", title = "T" } } }, save = function() fsaves = fsaves + 1 end }
+    Titles.backfill(fake); Titles.backfill(fake)
+    check(applied == 1 and fsaves == 1, "subtitles: a book's file is looked at once, not at every start")
+    Titles.subtitle, Titles.apply = s_sub, s_apply
+
+    -- library upkeep: only when the index or the folder changed
+    local relinks = 0
+    local lib = { store = { library_dir = WORK, downloads = {} }, relinkLibrary = function() relinks = relinks + 1 end }
+    G.upkeep_sig = nil
+    G.libraryUpkeep(lib, { built_at = 1 }); G.libraryUpkeep(lib, { built_at = 1 })
+    check(relinks == 1, "library upkeep: not again when nothing changed")
+    G.libraryUpkeep(lib, { built_at = 2 })
+    G.libraryUpkeep(lib, { built_at = 2 }, true)
+    check(relinks == 3, "…again after a new index, or when asked")
+    G.upkeep_sig = nil
+
+    -- saved lists: the folder tidied every 10 minutes at most
+    local Cache = require("gzreader_listcache")
+    local max = Cache.MAX_FILES
+    local function count()
+        local n = 0
+        for name in lfs.dir(Cache.dir()) do if name:match("%.json$") then n = n + 1 end end
+        return n
+    end
+    Cache.MAX_FILES = 1
+    Cache.pruned_at = os.time()
+    Cache.put("t-a", { 1 }); Cache.put("t-b", { 2 })
+    local kept = count()
+    Cache.pruned_at = 0
+    Cache.put("t-c", { 3 })
+    check(kept >= 2 and count() == 1, "saved lists: tidied at most every 10 minutes (" .. kept .. ", " .. count() .. ")")
+    Cache.MAX_FILES, Cache.pruned_at = max, nil
+
+    -- the shop's front page: what GZreader keeps, read once a minute
+    local Shop = require("gzreader_bookshop")
+    local s_read, reads = Shop.readKnown, 0
+    Shop.readKnown = function() reads = reads + 1; return {} end
+    local br = { plugin = plugin }
+    Shop.known(br); Shop.known(br)
+    check(reads == 1, "shop front page: its counts not read again at every return")
+    br._shop.known_at = os.time() - 61
+    Shop.known(br)
+    check(reads == 2, "…but again after a minute")
+    Shop.readKnown = s_read
+
+    -- slow traces: due tasks still run, in order, each timed
+    local UIM = require("ui/uimanager")
+    local order = {}
+    local q = { _task_queue = {
+        { time = 2, action = function(x) order[#order + 1] = x end, args = { "late", n = 1 } },
+        { time = 0, action = function(x) order[#order + 1] = x end, args = { "b", n = 1 } },
+        { time = 0, action = function(x) order[#order + 1] = x end, args = { "a", n = 1 } },
+    } }
+    local time = require("ui/time")
+    q._task_queue[1].time = time.now() + time.s(60)
+    q._task_queue[2].time, q._task_queue[3].time = time.s(0), time.s(0)
+    local wait = UIM._checkTasks(q)
+    check(table.concat(order, ",") == "a,b" and #q._task_queue == 1 and wait == q._task_queue[1].time,
+        "slow traces: scheduled tasks run as KOReader runs them (" .. table.concat(order, ",") .. ")")
 end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))

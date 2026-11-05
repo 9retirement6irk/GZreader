@@ -144,6 +144,7 @@ function Warm.run(plugin, on_done)
     local started = os.time()
     BIM:closeDbConnection() -- not shared with the child (like KOReader's extraction)
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
+        require("gzreader_async").lowerPriority(19)
         local plan = Warm.plan(plugin) or { jobs = {}, missing = {}, count = 0 }
         local made = 0
         if plan.count > 0 then
@@ -155,7 +156,6 @@ function Warm.run(plugin, on_done)
         ffiutil.writeToFD(wfd, table.concat(out, "\n"), true)
     end, true)
     if not pid then Warm.running = false; return end
-    renice(pid)
     local out = require("gzreader_async").reader(fd) -- (the list of books can be over a pipe's 64 KB)
     local function poll()
         out:drain()

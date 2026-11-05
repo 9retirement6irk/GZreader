@@ -71,16 +71,20 @@ end
 
 --- Give books already on the Kindle their subtitles (after the index is built).
 function Titles.backfill(plugin)
-    local changed = 0
+    local changed, noted = 0, false
     for id, e in pairs(plugin.store.downloads or {}) do
         if type(e) == "table" and e.path then
             local sub = Titles.subtitle(plugin, id)
-            if sub then
+            -- (gz_titled: the subtitle already looked at for this book; its
+            -- metadata file was opened again every time before)
+            if sub and e.gz_titled ~= sub then
                 local ok, did = pcall(Titles.apply, e.path, e.title, sub, nil)
                 if ok and did then changed = changed + 1 end
+                if ok then e.gz_titled = sub; noted = true end
             end
         end
     end
+    if noted and plugin.save then plugin:save() end
     if changed > 0 then
         Log.info("subtitles added to", changed, "downloaded book(s)")
         UIManager:broadcastEvent(Event:new("BookMetadataChanged"))

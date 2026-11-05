@@ -34,6 +34,17 @@ local Async = {
 
 local function pack(...) return { n = select("#", ...), ... } end
 
+--- (in a background process) Lower its own priority: was a renice command
+--- run from the main process, which copied the whole of GZreader to start
+--- a shell (slow on a Kindle 3) for every job.
+function Async.lowerPriority(n)
+    pcall(function()
+        local ffi = require("ffi")
+        require("ffi/posix_h")
+        ffi.C.setpriority(ffi.C.PRIO_PROCESS, 0, n)
+    end)
+end
+
 --- What a background process writes to its pipe, read as it comes. A pipe
 --- holds ~64 KB: a process writing more blocks until it's read, so waiting
 --- for the process to end before reading would wait forever (1.5.1: a
@@ -120,7 +131,21 @@ local function finish(job, res)
             if job.api.on_change then pcall(job.api.on_change) end
         end
     end
-    if job.api and job.api.dropPending then pcall(job.api.dropPending) end
+    if res.tokens then
+        -- (saved above: the file the background process kept them in can go)
+        if job.api and job.api.dropPending then pcall(job.api.dropPending) end
+    elseif job.api and job.api.store and job.api.recoverPending then
+        -- No tokens came back: the request was stopped (it took too long) or
+        -- failed after the login was renewed. Grimmory has already cancelled
+        -- the old login, so the new one, kept on disk by the background
+        -- process, must be taken, not thrown away (it was until 1.23.7: a
+        -- slow request after a renewal signed you out).
+        local ok, took = pcall(job.api.recoverPending, job.api.store)
+        if ok and took then
+            Log.info("Grimmory login: kept the one a stopped background request got")
+            if job.api.on_change then pcall(job.api.on_change) end
+        end
+    end
     local ok, err = pcall(job.on_done, unpack(res, 1, res.n))
     if not ok then Log.warn("async callback failed:", tostring(err)) end
     UIManager:nextTick(pump)
@@ -135,7 +160,9 @@ pump = function()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
     local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
     job.refresh_before = api.store and api.store.refresh_token
+    local nice = job.nice
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
+        if nice then Async.lowerPriority(10) end -- long CPU work: let the screen go first
         local store = api.store or {}
         local before = {}
         for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end
@@ -168,9 +195,6 @@ pump = function()
         -- couldn't fork (low memory?): give up rather than freeze the screen
         Log.warn("async: couldn't start a background process for", job.name or "?")
         return finish(job, pack(nil, "busy"))
-    end
-    if job.nice then -- long CPU work: let the screen go first
-        os.execute(string.format("renice -n 10 -p %d >/dev/null 2>&1 || renice 10 %d >/dev/null 2>&1", pid, pid))
     end
     local started = os.time()
     local out = Async.reader(fd)
@@ -224,6 +248,7 @@ function Async.background(fn, on_done, name, opts)
     end
     if Async.local_jobs >= 1 then return on_done(nil, "busy") end -- one at a time: memory on a Kindle 3
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
+        Async.lowerPriority(19)
         ffiutil.writeToFD(wfd, encode(protected(fn)), true)
     end, true)
     if not pid then
@@ -231,7 +256,6 @@ function Async.background(fn, on_done, name, opts)
         return on_done(nil, "busy")
     end
     Async.local_jobs = Async.local_jobs + 1
-    os.execute(string.format("renice -n 19 -p %d >/dev/null 2>&1 || renice 19 %d >/dev/null 2>&1", pid, pid))
     local started = os.time()
     local function done(...)
         Async.local_jobs = Async.local_jobs - 1

@@ -287,6 +287,18 @@ end
 
 --- What the cards count (nothing fetched: what GZreader keeps).
 function Shop.known(browser)
+    -- (kept a minute: it read three saved lists and checked every downloaded
+    -- file each time the front page was drawn, on every return to it)
+    local st = browser._shop or {}
+    browser._shop = st
+    if st.known and os.time() - (st.known_at or 0) < Shop.KNOWN_SECONDS then return st.known end
+    local known = Shop.readKnown(browser)
+    st.known, st.known_at = known, os.time()
+    return known
+end
+Shop.KNOWN_SECONDS = 60
+
+function Shop.readKnown(browser)
     local Cache = require("gzreader_listcache")
     local known = {}
     pcall(function() known.index = require("gzreader_index").load(browser.plugin.store) end)

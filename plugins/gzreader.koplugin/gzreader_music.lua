@@ -110,12 +110,20 @@ function Music.trackReady(c, t)
     return lfs.attributes(path, "mode") == "file"
 end
 
-function Music.load(dir)
+--- A collection from its folder. opts.any: stop counting at the first
+--- track that's here (c.have is then 0 or 1: enough to know it's worth
+--- listing; an AAC track's check reads its index, a playlist has dozens).
+function Music.load(dir, opts)
     local c = readJson(dir .. "/music.json")
     if not c or type(c.tracks) ~= "table" then return nil end
     c.dir = dir
     local have = 0
-    for _i, t in ipairs(c.tracks) do if Music.trackReady(c, t) then have = have + 1 end end
+    for _i, t in ipairs(c.tracks) do
+        if Music.trackReady(c, t) then
+            have = have + 1
+            if opts and opts.any then break end
+        end
+    end
     c.have = have
     return c
 end
@@ -126,13 +134,13 @@ function Music.save(c)
     return writeJson(c.dir .. "/music.json", copy)
 end
 
---- Everything downloaded (or partly): newest first.
-function Music.downloaded(plugin)
+--- Everything downloaded (or partly): newest first. opts.any: see Music.load.
+function Music.downloaded(plugin, opts)
     local root, out = Music.root(plugin), {}
     if lfs.attributes(root, "mode") ~= "directory" then return out end
     for name in lfs.dir(root) do
         if name ~= "." and name ~= ".." then
-            local c = Music.load(root .. "/" .. name)
+            local c = Music.load(root .. "/" .. name, opts)
             if c and c.have > 0 then out[#out + 1] = c end
         end
     end

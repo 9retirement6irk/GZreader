@@ -167,7 +167,11 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
             local renamed, rerr = os.rename(part, dest_path)
             if not renamed then
                 Log.err("download rename failed:", rerr)
-                return on_done(false, rerr)
+                on_done(false, rerr, false, { queued = from_queue, left = #Download.queue })
+                -- (the rest of the queue still goes, and Wi-Fi is let go after it:
+                -- until 1.23.7 a failed rename stopped both)
+                UIManager:nextTick(startNext)
+                return
             end
             Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
         else

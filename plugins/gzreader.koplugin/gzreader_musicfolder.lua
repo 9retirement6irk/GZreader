@@ -110,27 +110,38 @@ end
 --- Stand-ins for everything downloaded; none for what's gone.
 function Folder.sync(plugin)
     local Music = require("gzreader_music")
-    local have = {}
-    for _i, c in ipairs(Music.downloaded(plugin)) do
+    local have, changed = {}, false
+    local edir = Folder.entryDir(plugin)
+    -- (each music folder's stand-in, looked up once: it was a search of every
+    -- stand-in, with a file check each, for every album)
+    local by_folder = {}
+    for n, f in pairs(stubs(plugin)) do by_folder[f] = by_folder[f] or {}; table.insert(by_folder[f], n) end
+    -- (any: one track that's here is enough to keep a stand-in)
+    for _i, c in ipairs(Music.downloaded(plugin, { any = true })) do
         local folder = c.dir:match("[^/]+$")
         have[folder] = true
         local exists
-        for n, f in pairs(stubs(plugin)) do
-            if f == folder and lfs.attributes(Folder.entryDir(plugin) .. "/" .. n, "mode") == "file" then exists = true end
+        for _j, n in ipairs(by_folder[folder] or {}) do
+            if lfs.attributes(edir .. "/" .. n, "mode") == "file" then exists = true; break end
         end
-        if not exists then pcall(Folder.writeStub, plugin, c) end
+        if not exists then
+            -- (writeStub saves)
+            pcall(Folder.writeStub, plugin, c)
+        end
     end
     for n, f in pairs(stubs(plugin)) do
         if not have[f] then
-            os.remove(Folder.entryDir(plugin) .. "/" .. n)
+            os.remove(edir .. "/" .. n)
             stubs(plugin)[n] = nil
+            changed = true
             Log.info("music stand-in removed", f)
         end
     end
     -- an empty Music folder isn't shown
-    local dir = Folder.entryDir(plugin)
-    if next(stubs(plugin)) == nil and lfs.attributes(dir, "mode") == "directory" then pcall(lfs.rmdir, dir) end
-    plugin:save()
+    if next(stubs(plugin)) == nil and lfs.attributes(edir, "mode") == "directory" then pcall(lfs.rmdir, edir) end
+    -- (only when something changed: the whole settings file was written
+    -- every time, at every start of the file browser)
+    if changed then plugin:save() end
 end
 
 --- The music folder (in .music) of a stand-in's path, or nil.
@@ -173,7 +184,12 @@ end
 
 function Folder.start(plugin)
     Folder.install(plugin)
-    pcall(Folder.sync, plugin)
+    -- once a run (downloads and deletes sync again themselves): KOReader
+    -- starts the plugin again every time a book closes
+    if not Folder.synced then
+        Folder.synced = true
+        pcall(Folder.sync, plugin)
+    end
 end
 
 return Folder

@@ -143,6 +143,24 @@ function View.grimmoryAuthors(path)
     return nil
 end
 
+--- A book's KOReader custom metadata (custom_props), read once and kept
+--- until its file changes: it was read from disk for every spine each time
+--- a shelf page was built.
+local lfs = require("libs/libkoreader-lfs")
+local custom_cache = {}
+function View.customProps(path)
+    local DocSettings = require("docsettings")
+    local file = DocSettings:findCustomMetadataFile(path)
+    if not file then custom_cache[path] = nil; return nil end
+    local mtime = lfs.attributes(file, "modification") or 0
+    local c = custom_cache[path]
+    if c and c.file == file and c.mtime == mtime then return c.props end
+    local okr, props = pcall(function() return DocSettings.openSettingsFile(file):readSetting("custom_props") end)
+    props = okr and type(props) == "table" and props or nil
+    custom_cache[path] = { file = file, mtime = mtime, props = props }
+    return props
+end
+
 local function bookOf(entry, missing)
     local book = { path = entry.path }
     local ok, BIM = pcall(require, "bookinfomanager")
@@ -151,10 +169,9 @@ local function bookOf(entry, missing)
         if not info.ignore_meta then
             -- (with the book's KOReader custom metadata: GZreader writes
             -- Grimmory's title and authors there; 1.22.3 left them off the spine)
-            local okx, props = pcall(function()
-                return require("apps/filemanager/filemanagerbookinfo").extendProps(info, entry.path)
-            end)
-            local p = okx and type(props) == "table" and props or info
+            local custom = View.customProps(entry.path) or {}
+            local p = { title = custom.title or info.title, authors = custom.authors or info.authors,
+                series_index = custom.series_index or info.series_index }
             book.title = p.title or info.title
             book.authors = p.authors or info.authors
             book.series_index = p.series_index or info.series_index
@@ -219,21 +236,63 @@ function Item:onHoldShelfItem()
     return true
 end
 
-local function redraw(menu)
+--- The shelf (row) an item stands on.
+local function rowOf(menu, idx)
+    if not idx then return nil end
+    for _i, row in ipairs(menu.item_group or {}) do
+        for _j, it in ipairs(row.items or {}) do if it.idx == idx then return row end end
+        for _j, d in ipairs(row.devices or {}) do if d.item and d.item.idx == idx then return row end end
+    end
+end
+
+--- Repaint, the screen updated only where the shelves changed (the rows
+--- given; all of them when they aren't known yet). Every 5-way step
+--- updated the whole page before 1.23.7: slow on a Kindle 3.
+local function redraw(menu, ...)
+    local rect
+    for _i, row in ipairs({ ... }) do
+        if row and row.dimen and row.dimen.w > 0 then
+            rect = rect and rect:combine(row.dimen) or row.dimen:copy()
+        end
+    end
     UIManager:setDirty(menu.show_parent, function()
-        return "ui", menu.item_group and menu.item_group.dimen or menu.dimen
+        return "ui", rect or (menu.item_group and menu.item_group.dimen) or menu.dimen
     end)
+    if rect then View.rowsOnly(menu) end
+end
+View.rowOf = rowOf
+
+--- The 5-way moved along the shelves: KOReader's focus manager then asks
+--- for the whole screen to be updated as well ("fast", no region), which
+--- took in the shelves' own update (KOReader joins overlapping updates).
+--- That one request, right after, only repaints: the shelves' update is
+--- enough. (Kept for the move under way: cleared on the next tick.)
+function View.rowsOnly(menu)
+    View.rows_only = menu
+    UIManager:nextTick(function() if View.rows_only == menu then View.rows_only = nil end end)
+end
+if UIManager.setDirty then
+    local orig = UIManager.setDirty
+    UIManager.setDirty = function(um, widget, refreshtype, region, ...)
+        local m = View.rows_only
+        if m and refreshtype == "fast" and region == nil and widget ~= nil
+                and (widget == m.show_parent or widget == m) then
+            View.rows_only = nil
+            return orig(um, widget, function() return nil end)
+        end
+        return orig(um, widget, refreshtype, region, ...)
+    end
 end
 
 function Item:onFocus()
     self.focused = true
-    if TURNS[self.kind] then View.pick(self.menu, self.idx) else redraw(self.menu) end
+    if TURNS[self.kind] then View.pick(self.menu, self.idx) else redraw(self.menu, rowOf(self.menu, self.idx)) end
     return true
 end
 
 function Item:onUnfocus()
     self.focused = false
-    redraw(self.menu)
+    redraw(self.menu, rowOf(self.menu, self.idx))
     return true
 end
 
@@ -242,8 +301,10 @@ function Item:paintTo() end -- (the shelf paints its items)
 --- The book picked (turned to show its cover): repaint the shelves.
 function View.pick(menu, idx)
     if menu._gz_picked == idx then return end
+    local was = menu._gz_picked
     menu._gz_picked = idx
-    redraw(menu)
+    -- (the shelf it was turned on, and the one it is now)
+    redraw(menu, rowOf(menu, was), rowOf(menu, idx))
 end
 
 ---------------------------------------------------------------- a shelf row

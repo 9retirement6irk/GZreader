@@ -130,7 +130,8 @@ function Net.run(fn, opts)
         table.insert(Net.connecting, go)
         return
     end
-    Net.connecting = { go }
+    local attempt = { go }
+    Net.connecting = attempt
     Log.info("wifi: turning on for", opts.reason or "?")
     Net.ours = not NetworkMgr:isWifiOn()
     local function run_waiting()
@@ -171,7 +172,9 @@ function Net.run(fn, opts)
     end
     -- give up waiting after 90 s (no network in range): drop the callbacks
     UIManager:scheduleIn(90, function()
-        if Net.connecting then
+        -- (this attempt's own: a later one, started after Wi-Fi went off
+        -- again, isn't given up on by this timer; it was until 1.23.7)
+        if Net.connecting == attempt then
             Log.warn("wifi: no connection after 90 s for", opts.reason or "?")
             Net.connecting = nil
             if Net.ours and not busy() then Net.ours = false; NetworkMgr:disableWifi() end
