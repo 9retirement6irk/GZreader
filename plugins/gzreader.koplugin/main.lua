@@ -1590,7 +1590,16 @@ function Grimmory:localPathFor(book_id)
     end
 end
 
-function Grimmory:downloadAndOpen(book, menu)
+--- opts.no_open: download only (the book page's Download): in the
+--- background, a note when it's done.
+function Grimmory:downloadAndOpen(book, menu, opts)
+    opts = opts or {}
+    if opts.no_open then
+        local quiet = {}
+        for k, v in pairs(book) do quiet[k] = v end
+        quiet.gz_quiet = true
+        book = quiet
+    end
     local dir = self:downloadDir()
     local name = type(book.primaryFileName) == "string" and book.primaryFileName:match("[^/\\]+$") or nil
     if not name or name == "" then
@@ -1601,6 +1610,9 @@ function Grimmory:downloadAndOpen(book, menu)
     name = util.getSafeFilename(name, dir)
     local path = dir .. "/" .. name
     local title = type(book.title) == "string" and book.title or name
+    if book.gz_quiet and not Mod.Download.active then
+        UIManager:show(InfoMessage:new{ text = T(_("Downloading “%1”…"), title), timeout = 2 })
+    end
     Mod.Download.start(self, book, path, function(ok, err, watching, info)
         info = info or {}
         if not ok then
@@ -1634,7 +1646,11 @@ function Grimmory:downloadAndOpen(book, menu)
             end
         end
         local shown = Titles.full(title, sub)
-        if watching then
+        if book.gz_quiet and not watching then
+            UIManager:show(InfoMessage:new{ text = (info.left or 0) > 0
+                and T(_("Downloaded “%1”. %2 more in the queue."), shown, info.left)
+                or T(_("Downloaded “%1”."), shown), timeout = 3 })
+        elseif watching then
             self:openBook(path, menu)
         elseif info.queued or (info.left or 0) > 0 then
             UIManager:show(InfoMessage:new{

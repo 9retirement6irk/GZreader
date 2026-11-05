@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.3",
+        changes = {
+            "Grimmory tab, Bookshelf view: each book on the display ledges has a tag on the ledge under it with its letter, title and author (and your stars or how far you are); four books a row so titles fit.",
+            "A book's page (tap a book that isn't on the Kindle): a small cover beside its title, subtitle, authors, series, Goodreads rating, genres, pages, year, publisher, format and size; its description below (page keys scroll it); and Download next to Download & open. Download fetches it in the background and says when it's done, without opening it.",
+            "Sorting works on the Grimmory tab: Sort (its menu or the quick panel) offers what Grimmory can sort by (title, date added, last read, series, your rating, Goodreads rating, publication date, page count, reverse), and the list on screen is opened again in that order. A series keeps its own order.",
+            "Authors, libraries and shelves: each compartment's card is as wide as its name, so long names aren't cut off.",
+        },
+    },
+    {
         version = "1.22.2",
         changes = {
             "The Grimmory tab's Series leaves out series with only one book (the book is still under All books, its author and its library), and the bookshop's Series card counts only the others.",

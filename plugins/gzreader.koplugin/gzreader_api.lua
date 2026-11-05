@@ -484,6 +484,22 @@ function Api:getBook(book_id)
     return nil, err or ("http_" .. tostring(code))
 end
 
+--- A book's page (GET /api/v1/app/books/{id}, AppBookDetail): description,
+--- categories, goodreadsRating, goodreadsReviewCount, pageCount, publisher,
+--- publishedDate, subtitle… Older Grimmory: /api/v1/books/{id}'s metadata.
+function Api:getBookDetail(book_id)
+    local code, data, err = self:call("GET", "/api/v1/app/books/" .. tostring(book_id), { timeouts = { 8, 15 } })
+    if code == 200 and type(data) == "table" then return data end
+    if code ~= 404 and code ~= 405 and code ~= 500 then return nil, err or ("http_" .. tostring(code)) end
+    local full, err2 = self:getBook(book_id)
+    if type(full) ~= "table" then return nil, err2 end
+    local m = type(full.metadata) == "table" and full.metadata or {}
+    return { id = full.id, title = m.title or full.title, subtitle = m.subtitle, description = m.description,
+        categories = m.categories, goodreadsRating = m.goodreadsRating, goodreadsReviewCount = m.goodreadsReviewCount,
+        pageCount = m.pageCount, publisher = m.publisher, publishedDate = m.publishedDate,
+        seriesName = m.seriesName, seriesNumber = m.seriesNumber }
+end
+
 --- PUT /api/v1/app/books/{id}/progress with { fileProgress = {...} }.
 function Api:putProgress(book_id, body)
     local clean = {}

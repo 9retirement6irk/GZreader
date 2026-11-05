@@ -91,13 +91,16 @@ function Views.layout(kind, w, h, band, s)
         L.rows, L.cols = rows, cols
     end
     if kind == "ledges" then
-        -- a ledge row: the cover, its pages, the ledge, the label under it
-        local fixed = s(11) + s(10) + s(22) + s(8)
+        -- a ledge row: the cover, its pages, the ledge, the tag under it
+        -- (its title and author: 1.22.3)
+        local fixed = s(11) + s(10) + s(40) + s(8)
         local rows = clamp(math.floor(avail / (s(100) + fixed)), 1, 4)
         local box_h = math.floor(avail / rows) - fixed
         local box_w = math.floor(box_h * 0.7)
         local gap = s(14)
         local cols = clamp(math.floor((w - 2 * pad + gap) / (box_w + s(11) + gap)), 2, 8)
+        -- (each tag wide enough for a title: 4 a row on a Kindle 3)
+        cols = math.max(2, math.min(cols, math.floor((w - 2 * pad + gap) / (s(124) + gap))))
         grid(rows, cols, pad, top, w - 2 * pad, avail, gap)
         L.box_h = box_h
         L.box_w = math.min(box_w, L.slots[1].w - s(11))
@@ -219,7 +222,7 @@ function Page:paintLedges(bb, x, y)
     local ledges = {}
     for r = 1, L.rows do
         local s1 = L.slots[(r - 1) * L.cols + 1]
-        local base = y + s1.y + s1.h - S(8) - S(22) - S(10)
+        local base = y + s1.y + s1.h - S(8) - S(40) - S(10)
         ledges[r] = { x = x + S(8), y = base, w = self.w - 2 * S(8), h = S(10) }
     end
     for k, sl in ipairs(self.slots) do
@@ -257,23 +260,9 @@ function Page:paintLedges(bb, x, y)
                 t:paintTo(bb, bx + S(11), by + ih - ts.h - S(6))
                 t:free()
             end
-            -- the label under it, on the ledge's front
-            local label = Views.bookLabel(book)
-            local side = (sl.letter and self.menu.is_enable_shortcut) and S(18) or 0
-            if label or side > 0 then
-                local TextWidget = require("ui/widget/textwidget")
-                local t = label and TextWidget:new{ text = label, face = Font:getFace("cfont", 11), bold = true } or nil
-                local tw = t and t:getSize().w or 0
-                local lw = S(6) + side + (t and (side > 0 and S(5) or 0) + tw or 0) + S(8)
-                local lh = math.max(side, t and t:getSize().h or 0) + S(4)
-                local lx, ly = cx + math.floor((slot.w - lw) / 2), led.y + led.h + S(4)
-                bb:paintRect(lx + S(2), ly + S(2), lw, lh, D.gray(0.3))
-                bb:paintRect(lx, ly, lw, lh, Blitbuffer.COLOR_WHITE)
-                bb:paintBorder(lx, ly, lw, lh, 1, Blitbuffer.COLOR_BLACK)
-                local tx = lx + S(6)
-                if side > 0 then D.badge(bb, self.menu, sl.letter, tx, ly + math.floor((lh - side) / 2), side); tx = tx + side + S(5) end
-                if t then t:paintTo(bb, tx, ly + math.floor((lh - t:getSize().h) / 2)); t:free() end
-            end
+            -- its tag on the ledge's front: its letter, title and author (and
+            -- your stars or how far you are)
+            Views.paintTag(bb, self.menu, cx, led.y + led.h + S(4), slot.w, sl.letter, book)
             if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
         elseif e.gz_action == "more" or e.gz_action == "earlier" then
             local r = D.bundle(bb, { x = cx, w = slot.w }, bottom, L.box_h,
@@ -281,12 +270,43 @@ function Page:paintLedges(bb, x, y)
             sl.hot.dimen = Geom:new{ x = r.x, y = r.y, w = r.w, h = r.h }
             if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
             local side = (sl.letter and self.menu.is_enable_shortcut) and S(18) or 0
-            if side > 0 then D.badge(bb, self.menu, sl.letter, cx + math.floor((slot.w - side) / 2), led.y + led.h + S(6), side) end
+            if side > 0 then D.badge(bb, self.menu, sl.letter, cx + math.floor((slot.w - side) / 2), led.y + led.h + S(8), side) end
         else
             message(bb, e.text or "", x + L.slots[1].x, bottom - math.floor(L.box_h / 2), self.w - 2 * L.slots[1].x)
         end
     end
     for r = 1, L.rows do D.ledge(bb, ledges[r]) end
+end
+
+--- A price tag under a cover (x, y: its top-left; w: the slot's width).
+function Views.paintTag(bb, menu, x, y, w, letter, book)
+    local D = Shop().draw
+    local TextWidget = require("ui/widget/textwidget")
+    local side = (letter and menu.is_enable_shortcut) and S(18) or 0
+    local tw, th = w - S(4), S(36)
+    local tx0 = x + S(2)
+    bb:paintRect(tx0 + S(2), y + S(2), tw, th, D.gray(0.3))
+    bb:paintRect(tx0, y, tw, th, Blitbuffer.COLOR_WHITE)
+    bb:paintBorder(tx0, y, tw, th, 1, Blitbuffer.COLOR_BLACK)
+    local tx = tx0 + S(4)
+    if side > 0 then D.badge(bb, menu, letter, tx, y + S(3), side); tx = tx + side + S(4) end
+    local room = tx0 + tw - tx - S(4)
+    local t = TextWidget:new{ text = book.title or "?", face = Font:getFace("cfont", 11), bold = true, max_width = room }
+    t:paintTo(bb, tx, y + S(2))
+    local t_h = t:getSize().h
+    t:free()
+    local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
+    local label = Views.bookLabel(book)
+    local second = authors ~= "" and authors or ""
+    if label then second = second ~= "" and (label .. "  " .. second) or label end
+    if second ~= "" then
+        -- (under the letter too: the whole tag's width)
+        local ax = side > 0 and (tx0 + S(4)) or tx
+        local a = TextWidget:new{ text = second, face = Font:getFace("cfont", 10), fgcolor = D.gray(0.75),
+            max_width = tx0 + tw - ax - S(4) }
+        a:paintTo(bb, ax, y + S(3) + math.max(t_h, side))
+        a:free()
+    end
 end
 
 function Page:paintBay(bb, x, y)

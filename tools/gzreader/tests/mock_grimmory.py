@@ -460,6 +460,16 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/v1/app/books/search":
             ql = q.get("q", [""])[0].lower()
             return self._json(200, {"content": [b for b in BOOKS if ql in b["title"].lower()], "page": 0, "hasNext": False})
+        m = re.match(r"^/api/v1/app/books/(\d+)$", u.path)
+        if m:  # AppBookDetail (the book's page)
+            book = next((b for b in BOOKS if b["id"] == int(m.group(1))), None)
+            if not book:
+                return self._json(404)
+            out = dict(book)
+            out.update({"subtitle": SUBTITLES.get(book["id"]), "description": DESCRIPTIONS.get(book["id"]) or "<p>About <i>%s</i>.</p>" % book["title"],
+                        "categories": ["Fantasy", "Adventure"], "goodreadsRating": 4.12, "goodreadsReviewCount": 1234,
+                        "pageCount": 320, "publisher": "Mock House", "publishedDate": "2001-05-04"})
+            return self._json(200, out)
         if u.path in ("/api/v1/app/books/continue-reading", "/api/v1/app/books/recently-added"):
             return self._json(200, BOOKS[:5] + [BOOKS[31]])
         m = re.match(r"^/api/v1/audiobooks/(\d+)/info$", u.path)

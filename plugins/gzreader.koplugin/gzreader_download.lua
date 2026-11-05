@@ -124,8 +124,9 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         pid = pid, read_fd = read_fd, started = os.time(), book_id = tostring(book.id),
         title = title, expected = expected,
         last_size = resume_from, last_change = os.time(),
-        watching = not from_queue and not Download.background,
-        show_dialog = not Download.background,
+        -- (book.gz_quiet: the book page's Download: no progress box, no opening)
+        watching = not from_queue and not Download.background and not book.gz_quiet,
+        show_dialog = not Download.background and not book.gz_quiet,
     }
     Download.active = job
     pcall(function() require("gzreader_tasks").changed() end)

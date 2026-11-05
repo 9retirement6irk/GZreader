@@ -137,8 +137,12 @@ HomeMenu.SORTS = {
     { "natural", _("File name") },
 }
 
---- Sort the book lists (the Downloaded tab and folders).
+--- Sort the book lists (the Downloaded tab and folders; on the Grimmory
+--- tab, Grimmory's lists: gzreader_browser.lua).
 function HomeMenu.showSort()
+    local okb, Browser = pcall(require, "gzreader_browser")
+    local open = okb and Browser.onTop and Browser.onTop()
+    if open then return open:showSort() end
     local ButtonDialog = require("ui/widget/buttondialog")
     local cur = G_reader_settings:readSetting("collate") or "strcoll"
     local reverse = G_reader_settings:isTrue("reverse_collate")

@@ -646,6 +646,33 @@ end
 local function find(list, pat) for _, it in ipairs(list) do if it.text:match(pat) then return it end end end
 local function texts(list) local t = {} for _, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
 
+print("Sorting Grimmory's lists")
+do
+    check(select(1, Browser.sortParams()) == "title" and select(2, Browser.sortParams()) == "asc", "sorted by title (A–Z) unless chosen")
+    gsettings.gzreader_grimmory_sort = "added"
+    local f, d = Browser.sortParams()
+    gsettings.gzreader_grimmory_sort_reverse = true
+    local f2, d2 = Browser.sortParams()
+    check(f == "addedOn" and d == "desc" and f2 == "addedOn" and d2 == "asc", "Date added: newest first; Reverse: oldest first")
+    gsettings.gzreader_grimmory_sort_reverse = nil
+    local sb = Browser:new(plugin); sb:show()
+    sb:openPaged("All books", { sort = "title", dir = "asc" })
+    runLoop(function() return sb.menu.title == "All books" end, 20)
+    local function lastList()
+        local q
+        for _i, e in ipairs(json.decode(ctl("/state")).log) do
+            if e[1] == "GET" and e[2]:match("^/api/v1/app/books%?") then q = e[2] end
+        end
+        return q or ""
+    end
+    check(lastList():match("sort=addedOn") and lastList():match("dir=desc"), "a book list asks Grimmory in the chosen order")
+    gsettings.gzreader_grimmory_sort = "lastread"
+    sb:resort()
+    runLoop(function() return lastList():match("sort=lastReadTime") ~= nil end, 20)
+    check(lastList():match("sort=lastReadTime") and #sb.menu.item_table_stack == 1, "a new order: the list opened again with it, in its place")
+    gsettings.gzreader_grimmory_sort = nil
+end
+
 b = Browser:new(plugin); b:show()
 captured.pdialog_open = false
 b:openAuthors()
@@ -819,6 +846,19 @@ local bf = io.open(WORK .. "/home/GZreader/big.epub", "rb"); local bsz = bf and 
 check(bsz == 2 * 1024 * 1024, "background download complete (2 MB)")
 captured.confirm.ok_callback()
 check(reader_opened == WORK .. "/home/GZreader/big.epub", "Open from the notice")
+
+-- the book page's Download: no progress box, not opened, a note when done
+ctl("/set?dl_big=false&dl_slow=false")
+reader_opened, captured.info, captured.confirm = nil, nil, nil
+captured.pdialog_open = false
+plugin:downloadAndOpen({ id = 6, title = "Quiet Book", primaryFileName = "quiet.epub", primaryFileType = "EPUB", fileSizeKb = 4 }, nil, { no_open = true })
+check(not captured.pdialog_open and Download.active ~= nil, "Download (not open): no progress box, running")
+runLoop(function() return Download.active == nil end, 20)
+runLoop(function() return captured.info ~= nil and captured.info:match("Downloaded") ~= nil end, 5)
+check(reader_opened == nil and captured.confirm == nil and captured.info and captured.info:match("Downloaded “Quiet Book”"),
+    "done: not opened, not asked, a note " .. tostring(captured.info))
+check(plugin:localPathFor(6) ~= nil, "and it's on the Kindle")
+ctl("/set?dl_big=true") -- (as the stalled download below expects)
 
 ctl("/set?dl_slow=false&dl_stall=true")
 Download.STALL_SECONDS = 3
@@ -1427,6 +1467,34 @@ do
     br:onBook({ id = 14, title = "Book 14", primaryFileType = "EPUB", coverUpdatedOn = "2026-01-02T03:04:05Z" })
     check(captured.confirm and #captured.confirm.added == 1, "next time: from the cache, straight away")
     AsyncMod.sync = true
+end
+
+print("A book's page")
+do
+    local wm = { "ui/widget/container/inputcontainer", "ui/widget/focusmanager", "ui/widget/buttontable", "ui/widget/scrolltextwidget" }
+    local kept = {}
+    for _i, m in ipairs(wm) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    -- (a failed load earlier, with the real widgets, left a marker behind)
+    if type(package.loaded["gzreader_bookpage"]) ~= "table" then package.loaded["gzreader_bookpage"] = nil end
+    local okbp, BP = pcall(require, "gzreader_bookpage")
+    for _i, m in ipairs(wm) do package.loaded[m] = kept[m] end
+    check(okbp, "the book page loads " .. tostring(not okbp and BP or ""))
+    local detail = plugin.api:getBookDetail(5)
+    check(type(detail) == "table" and detail.goodreadsRating == 4.12 and type(detail.categories) == "table", "Grimmory's book page: rating, genres…")
+    if okbp then
+        local f = BP.facts({ title = "Book 05", authors = { "Author 2" }, seriesName = "Saga / Part One", seriesNumber = 2.0,
+            primaryFileType = "EPUB", fileSizeKb = 1536 }, detail)
+        check(f.authors == "Author 2" and f.series == "Book 2 of Saga / Part One" and f.rating == "Goodreads ★ 4.12 · 1,234 ratings"
+            and f.genres == "Adventure · Fantasy" and f.facts == "320 pages · 2001 · Mock House · EPUB · 1.5 MB",
+            "what it shows: authors, series, Goodreads rating, genres, the facts")
+        check(BP.description({ description = "<p>A <b>bold</b> start.</p>" }):match("A bold start") and BP.description({}) == nil,
+            "its description as text")
+        local bare = BP.facts({ title = "x" }, nil)
+        check(bare.rating == nil and bare.genres == nil and bare.facts == nil, "nothing known: nothing made up")
+    end
 end
 
 print("No duplicate reading sessions")

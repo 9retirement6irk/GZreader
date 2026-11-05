@@ -754,8 +754,13 @@ function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
         end
         return
     end
-    -- the card on the right
-    local card_w = math.min(S(118), math.floor(w * 0.44))
+    -- the card on the right, as wide as its name (an author's full name:
+    -- 1.22.2 cut long ones off), at most most of the compartment
+    local TextWidget = require("ui/widget/textwidget")
+    local probe = TextWidget:new{ text = spec.name or "", face = hand(19) }
+    local name_w = probe:getSize().w
+    probe:free()
+    local card_w = math.max(math.min(S(118), math.floor(w * 0.44)), math.min(name_w + S(16), math.floor(w * 0.72)))
     local card_h = math.min(h - S(18), S(62))
     local cx, cy = x + w - card_w - S(6), by - card_h
     -- what stands in it, left of the card

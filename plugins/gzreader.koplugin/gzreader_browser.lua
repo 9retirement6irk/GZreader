@@ -91,6 +91,7 @@ function Browser:show()
     -- the Notes tab, if it's open underneath (ZenOS opens action tabs on top)
     -- the Notes or Calendar tab, if it's open underneath (ZenOS opens action tabs on top)
     pcall(function() require("gzreader_tabs").closeOthers(Browser.TAB_ID) end)
+    Browser.current = self
     self.menu = Menu:new{
         title = _("Grimmory"),
         item_table = self:rootItems(),
@@ -181,7 +182,7 @@ function Browser:rootItems()
         { gz_id = "search", gz_action = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
         { gz_id = "continue", text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
         { gz_id = "recent", text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
-        { gz_id = "all", text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
+        { gz_id = "all", text = _("All books"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
         { gz_id = "libraries", text = _("Libraries"), callback = function() self:openLibraries() end },
         { gz_id = "shelves", text = _("Shelves"), callback = function() self:openShelves() end },
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
@@ -199,8 +200,10 @@ function Browser:openAudiobooks()
         title = _("Audiobooks"),
         key = "audiobooks",
         fetch = function(page)
-            return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = "title", dir = "asc", fileType = { "AUDIOBOOK" } }
+            local sort, dir = Browser.sortParams()
+            return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = sort, dir = dir, fileType = { "AUDIOBOOK" } }
         end,
+        reopen = function() self:openAudiobooks() end,
         to_item = function(book)
             local t = type(book.primaryFileType) == "string" and book.primaryFileType:upper() or ""
             if t ~= "AUDIOBOOK" then return nil end
@@ -332,6 +335,7 @@ function Browser:pagedItems(st)
     if #items == n_header and n_header > 0 then
         items[#items + 1] = { text = spec.empty_text or _("Nothing here yet."), select_enabled = false }
     end
+    items.gz_reopen = spec.reopen -- (a new sort order: opened again with it)
     return items
 end
 
@@ -414,8 +418,88 @@ Browser.matchesSearch = matchesSearch
 
 --- Books matching app-list filters (readable formats only).
 --- opts = { search = q, header = items, empty_text }: a search's results.
+---------------------------------------------------------------- sorting
+
+--- How the Grimmory tab's book lists are sorted (Sort, in its menu): what
+--- Grimmory itself can sort by (its app API). A series stays in its order.
+Browser.SORTS = {
+    { "title", _("Title"), "title", "asc" },
+    { "added", _("Date added"), "addedOn", "desc" },
+    { "lastread", _("Last read"), "lastReadTime", "desc" },
+    { "series", _("Series"), "seriesName", "asc" },
+    { "rating", _("Your rating"), "personalRating", "desc" },
+    { "goodreads", _("Goodreads rating"), "goodreadsRating", "desc" },
+    { "published", _("Publication date"), "publishedDate", "desc" },
+    { "pages", _("Page count"), "pageCount", "asc" },
+}
+
+--- The chosen sort: Grimmory's sort field and direction.
+function Browser.sortParams()
+    local id = G_reader_settings:readSetting("gzreader_grimmory_sort") or "title"
+    local def = Browser.SORTS[1]
+    for _i, d in ipairs(Browser.SORTS) do if d[1] == id then def = d end end
+    local dir = def[4]
+    if G_reader_settings:isTrue("gzreader_grimmory_sort_reverse") then dir = dir == "asc" and "desc" or "asc" end
+    return def[3], dir, def[1]
+end
+
+--- The open Grimmory tab, if it's on top (the Sort menu sorts it).
+function Browser.onTop()
+    local b = Browser.current
+    if not (b and not b.closed and b.menu) then return nil end
+    -- (under a dialog or the quick panel too: the full-screen one on top)
+    local stack = UIManager._window_stack or {}
+    for i = #stack, 1, -1 do
+        local w = stack[i].widget
+        if w == b.menu then return b end
+        if w and w.covers_fullscreen then return nil end
+    end
+    return nil
+end
+
+function Browser:showSort()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local cur = select(3, Browser.sortParams())
+    local reverse = G_reader_settings:isTrue("gzreader_grimmory_sort_reverse")
+    local dialog
+    local function apply(id, rev)
+        UIManager:close(dialog)
+        G_reader_settings:saveSetting("gzreader_grimmory_sort", id)
+        if rev ~= nil then G_reader_settings:saveSetting("gzreader_grimmory_sort_reverse", rev or nil) end
+        self:resort()
+    end
+    local buttons = {}
+    for _i, d in ipairs(Browser.SORTS) do
+        buttons[#buttons + 1] = {{ text = (d[1] == cur and "✓ " or "") .. d[2], callback = function() apply(d[1]) end }}
+    end
+    buttons[#buttons + 1] = {{ text = (reverse and "✓ " or "") .. _("Reverse order"), callback = function() apply(cur, not reverse) end }}
+    dialog = ButtonDialog:new{ title = _("Sort Grimmory's books by"), buttons = buttons }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+end
+
+--- The list on screen again, in the new order (book lists; others as they are).
+function Browser:resort()
+    local m = self.menu
+    local reopen = m and type(m.item_table) == "table" and m.item_table.gz_reopen
+    if not reopen or #m.item_table_stack == 0 then return end
+    -- back to the list it came from (not drawn), then the list opened again
+    local prev = table.remove(m.item_table_stack)
+    m.item_table = prev
+    m.title = prev.title or m.title
+    reopen()
+end
+
 function Browser:openPaged(title, params, with_series_number, opts)
     opts = opts or {}
+    -- in the chosen order (a series in its own)
+    local base_params = params
+    if not with_series_number and not opts.keep_order then
+        params = {}
+        for k, v in pairs(base_params) do params[k] = v end
+        params.sort, params.dir = Browser.sortParams()
+    end
     local header = opts.header
     if not header and not with_series_number then
         -- search this list (a library, a shelf, an author's books…) or everything
@@ -432,6 +516,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
         key = not opts.search and require("gzreader_listcache").key("paged", params) or nil,
         header = header,
         empty_text = opts.empty_text,
+        reopen = function() self:openPaged(title, base_params, with_series_number, opts) end,
         fetch = function(page)
             local p = { page = page, size = PAGE_SIZE, fileType = self.api.READABLE_TYPES }
             for k, v in pairs(params) do p[k] = v end
@@ -699,6 +784,11 @@ function Browser:onBook(book)
         UIManager:show(InfoMessage:new{ text = T(_("“%1” is already downloading or in the queue."), name), timeout = 3 })
         return
     end
+    -- its page: cover, what it is, its description; Download, Download & open
+    -- (gzreader_bookpage.lua); the old box if that fails
+    local okp, page = pcall(function() return require("gzreader_bookpage").show(self, book) end)
+    if okp and page then return end
+    require("gzreader_log").warn("book page:", tostring(page))
     local dl_busy = Download.active ~= nil
     local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
     local box = ConfirmBox:new{
