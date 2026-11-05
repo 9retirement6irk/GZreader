@@ -542,6 +542,58 @@ local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
 check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Downloaded"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Downloaded")
+print("Grimmory tab as a bookshop")
+do
+    local ids = {}
+    for _i, it in ipairs(root) do ids[#ids + 1] = tostring(it.gz_id) end
+    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,downloaded"
+        .. (#root > 9 and ",audiobooks" or ""), "root items: marked for the bookshop " .. table.concat(ids, ","))
+    -- (its drawing only: its widgets stay stubs here)
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    local kept = {}
+    for _i, m in ipairs(widget_mods) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Shop = require("gzreader_bookshop")
+    for _i, m in ipairs(widget_mods) do package.loaded[m] = kept[m] end
+    local one = function(x) return x end
+    local fits = true
+    for _i, size in ipairs({ { 600, 614 }, { 600, 470 }, { 1072, 1150 }, { 758, 790 }, { 1448, 640 } }) do
+        local w, h = size[1], size[2]
+        local L = Shop.layout(w, h, one)
+        local l1, l2 = L.ledges[1], L.ledges[2]
+        local ok = L.fits and L.slip.y + L.slip.h < l1.sign.y and l1.ledge.y + l1.ledge.h < l2.sign.y
+            and l2.ledge.y + l2.ledge.h <= L.case.y and L.case.y + L.case.h <= h and L.case.y >= 0
+            and l1.box_h >= 40 and l1.box_w >= 40 and l1.cols[5].x + l1.cols[5].w <= w
+        for _j, c in ipairs(L.cells) do
+            ok = ok and c.x >= L.case.x and c.x + c.w <= L.case.x + L.case.w and c.y + c.h <= L.case.y + L.case.h
+        end
+        if not ok then fits = false; print("  (doesn't fit at " .. w .. "x" .. h .. ")") end
+    end
+    check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
+    check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
+    check(Shop.compartments(true)[6].id == "audiobooks" and Shop.compartments(false)[6].id == "downloaded",
+        "compartments: Audiobooks with a speaker, Downloaded books without")
+    check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
+    local known = {
+        index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = {} } },
+        libraries = { { id = 1, name = "Fiction" }, { id = 2, name = "Audio only" }, { id = 3, name = "Classics" } },
+        shelves = { { id = 1, name = "Favourites" }, { id = 2, name = "Book club" },
+            { id = 9, name = "Unread sci-fi", magic = true, filter = { rules = { { field = "genre", value = "Science fiction" } } } } },
+        audiobooks = 48, downloaded = 0,
+    }
+    local cards = {}
+    for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks", "downloaded" }) do cards[#cards + 1] = Shop.cardText(id, known) end
+    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks|on this Kindle",
+        "cards: counts from what's kept " .. table.concat(cards, "|"))
+    check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
+        "cards: a magic shelf's rules are never shown")
+    check(Shop.cardText("all", {}) == "A–Z" and Shop.cardText("shelves", {}) == "yours and magic", "cards: nothing kept yet")
+    local books = Shop.ledgeBooks({ { id = 1, primaryFileType = "EPUB" }, { id = 2, primaryFileType = "AUDIOBOOK" }, "junk", { id = 3, primaryFileType = "PDF" } }, Browser.isReadable)
+    check(#books == 2 and books[1].id == 1 and books[2].id == 3, "ledges: readable books only, in order")
+end
+
 local function find(list, pat) for _, it in ipairs(list) do if it.text:match(pat) then return it end end end
 local function texts(list) local t = {} for _, it in ipairs(list) do t[#t + 1] = it.text end return table.concat(t, "|") end
 

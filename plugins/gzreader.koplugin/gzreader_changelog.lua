@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.21.0",
+        changes = {
+            "The Grimmory tab is a bookshop in the Bookshelf view: a search slip pinned at the top, Continue reading and Recently added as covers on display ledges (a ribbon and how far you are, or a NEW tag), each ending in a tied bundle of spines that opens the whole list, and a bookcase below with a compartment for All books, Libraries, Shelves, Authors, Series and Audiobooks (Downloaded books on Kindles without a speaker).",
+            "Each compartment has a card clipped to it with its name, how many (from what GZreader already keeps, nothing extra is fetched) and its letter key. Magic shelves are counted; their rules are never shown.",
+            "The letter keys are the ones the list had: Q search, W Continue reading, E Recently added, R All books, T Libraries, Y Shelves, U Authors, I Series, P Audiobooks. The 5-way moves between the slip, the covers and the compartments; back from a list, it's on what you opened. List with details, Simple list and Tiles keep the list.",
+        },
+    },
+    {
         version = "1.20.1",
         changes = {
             "Quick panel, in a book: Font (the list of fonts, the one in use ticked) and Layout (size, margins, spacing) tiles, so every Kindle reaches them now that More is gone, the Kindle 4 too.",

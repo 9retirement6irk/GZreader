@@ -105,6 +105,8 @@ function Browser:show()
     pcall(self.decorate, self, _("Grimmory"))
     -- book lists with covers (Menu → Display, as in Downloads)
     pcall(function() require("gzreader_covermenu").apply(self.menu, self.plugin) end)
+    -- the first page as a bookshop in the Bookshelf view (gzreader_bookshop.lua)
+    pcall(function() require("gzreader_bookshop").apply(self) end)
     local orig_switch = self.menu.switchItemTable
     self.menu.switchItemTable = function(m, title, ...)
         local r = orig_switch(m, title, ...)
@@ -171,19 +173,22 @@ function Browser:decorate(title)
     menu._gz_status_title = title
 end
 
+--- The first page. gz_id: what the bookshop (gzreader_bookshop.lua) draws
+--- for each; gz_root marks the page.
 function Browser:rootItems()
     return {
-        { text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
-        { text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
-        { text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
-        { text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
-        { text = _("Libraries"), callback = function() self:openLibraries() end },
-        { text = _("Shelves"), callback = function() self:openShelves() end },
-        { text = _("Authors"), callback = function() self:openAuthors() end },
-        { text = _("Series"), callback = function() self:openSeries() end },
-        { text = _("Downloaded books"), callback = function() self:openDownloaded() end },
+        gz_root = true,
+        { gz_id = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
+        { gz_id = "continue", text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
+        { gz_id = "recent", text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
+        { gz_id = "all", text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
+        { gz_id = "libraries", text = _("Libraries"), callback = function() self:openLibraries() end },
+        { gz_id = "shelves", text = _("Shelves"), callback = function() self:openShelves() end },
+        { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
+        { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
+        { gz_id = "downloaded", text = _("Downloaded books"), callback = function() self:openDownloaded() end },
         -- (only on Kindles with a speaker: the Paperwhites have no audio)
-        require("gzreader_touch").audio() and { text = _("Audiobooks"), callback = function() self:openAudiobooks() end } or nil,
+        require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openAudiobooks() end } or nil,
     }
 end
 

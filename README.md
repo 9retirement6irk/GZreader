@@ -47,14 +47,15 @@ same KOReader device support and should work, but their screens and buttons
 haven't been tried.
 
 <table>
-<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-all-books.png" alt="Your Grimmory library" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-tab.png" alt="Your Grimmory library as a bookshop" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
 </table>
 
 [More screenshots](docs/screenshots/)
 
 ## What it does
 
-- 📚 **Grimmory:** search and browse your library, download books in the background,
+- 📚 **Grimmory:** search and browse your library (laid out like a bookshop: covers on
+  display ledges, a bookcase for libraries, shelves, authors and series), download books in the background,
   and keep your **place, bookmarks, highlights and ratings in sync** with Grimmory.
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
   to show its cover. Audiobooks sit on the shelf as a cassette walkman, music as a
