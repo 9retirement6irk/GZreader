@@ -283,8 +283,8 @@ function M.build(books, opts)
     local row_h = math.floor((height - gap * (rows - 1)) / rows)
     local area_h = row_h - S(M.BOARD_H) - S(4)
     local ratio = tonumber(CoverUtils.getRatio and CoverUtils.getRatio()) or 2 / 3
-    local cover_h = math.floor(area_h * 0.86)
-    local cover_w = math.floor(cover_h * ratio)
+    -- (the size the cover is drawn at, so a pre-sized one is found)
+    local cover_w, cover_h = cover_common.uniform_dims(math.floor(area_h * 0.86 * ratio), math.floor(area_h * 0.86))
     local per_row = math.ceil(#books / rows)
     local targets, jobs = {}, {}
     local VerticalGroup = require("ui/widget/verticalgroup")

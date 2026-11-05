@@ -35,6 +35,7 @@ local function calc_uniform_dims(max_w, max_h)
     end
     return max_w, math.floor(max_w / ratio)
 end
+M.uniform_dims = calc_uniform_dims -- GZreader: the size a cover in max_w x max_h is drawn at
 
 local function rounded_enabled()
     local plug = rawget(_G, "__ZEN_UI_PLUGIN")
@@ -256,6 +257,25 @@ function M.make_cover_widget(book, max_w, max_h, opts)
         if cover_bb and book.cover_bb then
             free_bitmap(book.cover_bb)
             book.cover_bb = nil
+        end
+    end
+    -- GZreader: a real cover not yet at this size (a new place for it: the
+    -- shelf, a smaller current book) and not loaded: load and size it now,
+    -- instead of a blank cover that nothing would fill in. The size is kept
+    -- (the cover then on disk) and noted, so every book gets pre-sized for it.
+    if not cover_bb and book and book.has_real_cover == true and book.path
+            and not book.cover_bb and opts.load_missing ~= false then
+        pcall(function() require("common/cover_disk_cache").recordExact(target_w, target_h) end)
+        local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+        local info = ok_bim and BookInfoManager and BookInfoManager:getBookInfo(book.path, true)
+        if info and info.cover_bb and info.has_cover and not info.ignore_cover then
+            local source = info.cover_bb
+            info.cover_bb = nil
+            cover_bb, cache_owned = RenderCache:renderShared(book.path, source, target_w, target_h)
+            cache_key = cache_owned and book.path or nil
+        elseif info and info.cover_bb then
+            info.cover_bb:free()
+            info.cover_bb = nil
         end
     end
     if not cover_bb and book and book.cover_bb then

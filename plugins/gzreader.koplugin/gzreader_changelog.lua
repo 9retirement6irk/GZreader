@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.16.1",
+        changes = {
+            "Covers: the book you're reading (top left) and the book turned on the shelf could show a blank cover, on a Kindle that had shown its covers before at the old sizes. A cover not yet made at a new size is now made then (once; it's kept, and the other books get theirs made in the background).",
+        },
+    },
+    {
         version = "1.16.0",
         changes = {
             "Home is a bookshelf: your recent books stand on one shelf with their spines out (title, author, number in the series), right on the tab bar. The one you move to, or tap, turns to show its cover; tap it again, Press or its letter (at the foot of the spine) opens it. An empty shelf has cobwebs. Settings → Home → the book strip → Bookshelf turns it off.",

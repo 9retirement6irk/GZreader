@@ -1078,6 +1078,7 @@ function M.build_strip(ctx, source_key)
                         {
                             border = cover_common.BORDER_SIZE,
                             background = Blitbuffer.COLOR_LIGHT_GRAY,
+                            load_missing = false, -- (GZreader: the strip fills its covers in afterwards)
                             decorate = decorate_covers and function(frame)
                                 apply_strip_cover_decorations(
                                     frame, book, strip_config, show_badges)

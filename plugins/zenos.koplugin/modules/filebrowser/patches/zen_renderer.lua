@@ -505,6 +505,7 @@ local function apply_zen_renderer()
         local cover_widget_started_at = build_measure and now()
         local frame = CoverWidget.make_cover_widget(book, target_w, target_h, {
             border = border,
+            load_missing = false, -- (GZreader: the library fills its covers in itself)
             uniform = uniform,
             -- Paint the banner before the shared border and corner masks.
             decorate = function(cover_frame)
