@@ -14,7 +14,12 @@ A track is there when its file (or chunks index) is.
 
 Downloads run in a background process, a track at a time, in order, so
 "Play" can start with the first track while the rest come (and the Kindle
-can be read meanwhile). Wi-Fi is only on while downloading.
+can be read meanwhile). Wi-Fi is only on while downloading. Progress (track
+n of m, and how far into it) shows in the album's list, the Downloads screen
+and the status bar, where a download can be stopped. Tracks that came stay
+when one fails or a download is stopped (or GZreader restarts mid-way: a
+track whose file is complete is taken up again); downloading again fetches
+only the missing ones; half-written files are cleared.
 
 Only one thing plays at a time: music, an audiobook or read aloud. Starting
 one pauses the others; sleep (the power switch) and unplugging headphones
@@ -82,6 +87,15 @@ end
 --- Is track t of collection c on the Kindle? (path / chunks set when it is)
 function Music.trackReady(c, t)
     if t.chunks then return true end
+    if not t.file and t.base and c.dir then
+        -- downloaded, but not written down (GZreader stopped mid-download)
+        for _i, ext in ipairs({ "mp3", "aac" }) do
+            if lfs.attributes(c.dir .. "/" .. t.base .. "." .. ext, "mode") == "file" then t.file = t.base .. "." .. ext end
+        end
+        if not t.file and lfs.attributes(c.dir .. "/" .. t.base .. ".m4a.chunks/index.json", "mode") == "file" then
+            t.file = t.base .. ".m4a"
+        end
+    end
     if not t.file then return false end
     local path = c.dir .. "/" .. t.file
     if t.file:match("%.m4a$") then
@@ -162,6 +176,71 @@ end
 
 ---------------------------------------------------------------- downloading
 
+--- About how big track t will be (bytes), for its progress: its file's
+--- size, or (made into MP3 by the server) its length at the bitrate.
+function Music.trackSize(t, bitrate)
+    local how = require("gzreader_plex").how(t)
+    if how ~= "transcode" and t.part and tonumber(t.part.size) then return tonumber(t.part.size) end
+    local ms = tonumber(t.duration)
+    if ms and ms > 0 then return math.floor(ms / 1000 * (bitrate or 192) * 1000 / 8) end
+end
+
+--- How far a download is: 0..1 (tracks done, and the one coming).
+function Music.fraction(st)
+    if not st or (st.total or 0) == 0 then return 0 end
+    local n = (st.done or 0) + (st.failed or 0) + math.min(0.99, st.current_frac or 0)
+    return math.min(1, n / st.total)
+end
+
+--- "track 3 of 12 · 41%" (pure: run_tests.lua)
+function Music.progressShort(st)
+    local at = math.min(st.total, (st.done or 0) + (st.failed or 0) + 1)
+    local text = T(_("track %1 of %2 · %3%"), at, st.total, math.floor(Music.fraction(st) * 100))
+    if (st.failed or 0) > 0 then text = text .. " · " .. T(_("%1 failed"), st.failed) end
+    return text
+end
+
+--- "Downloading… track 3 of 12 · 41%"
+function Music.progressText(st)
+    return T(_("Downloading… %1"), Music.progressShort(st))
+end
+
+--- What to say when a download ends (pure: run_tests.lua).
+function Music.resultText(st, err)
+    local title = st.title or ""
+    if st.cancelled then
+        return T(_("Download stopped: %1 of %2 tracks of “%3” are on the Kindle. Download it again for the rest."),
+            st.done or 0, st.total, title)
+    end
+    if (st.failed or 0) > 0 then
+        return T(_("%1 of %2 tracks of “%3” couldn't be downloaded (%4). The others are on the Kindle; download it again to retry the missing ones."),
+            st.failed, st.total, title, tostring(err or "?"))
+    end
+    return T(_("“%1” is on the Kindle."), title)
+end
+
+--- Tell the lists showing a download how far it is.
+local function notify(st)
+    UIManager:broadcastEvent(require("ui/event"):new("GzMusicDownload", st))
+end
+
+--- Stop downloading into `dir` (the tracks that came stay).
+function Music.stop(dir)
+    local st = Music.downloads[dir]
+    if not (st and st.pid) then return false end
+    st.cancelled = true
+    pcall(ffiutil.terminateSubProcess, st.pid)
+    Log.info("music: download stopped", st.done, "of", st.total)
+    return true
+end
+
+local function clearParts(dir)
+    if lfs.attributes(dir, "mode") ~= "directory" then return end
+    for name in lfs.dir(dir) do
+        if name:match("%.part$") then os.remove(dir .. "/" .. name) end
+    end
+end
+
 --- Download collection `c` ({ kind, key, title, artist, year, thumb,
 --- tracks }) into its folder, in the background, in order. opts.on_track(i)
 --- as each track arrives, opts.on_done(ok, err). Returns the state.
@@ -177,9 +256,16 @@ function Music.download(plugin, c, opts)
     local old = Music.load(dir)
     local col = { kind = c.kind, key = c.key, title = c.title, artist = c.artist, year = c.year, added = old and old.added or os.time(),
         tracks = {}, dir = dir }
+    clearParts(dir)
     for i, t in ipairs(c.tracks) do
         local prev = old and old.tracks[i]
         local base = string.format("%02d", i)
+        if prev and prev.key ~= t.key then
+            -- (a playlist changed: another track was here; not to be taken for this one)
+            for _j, ext in ipairs({ "mp3", "aac", "m4a" }) do os.remove(dir .. "/" .. base .. "." .. ext) end
+            local idx = dir .. "/" .. base .. ".m4a.chunks/index.json"
+            if lfs.attributes(idx, "mode") == "file" then os.remove(idx) end
+        end
         col.tracks[i] = { key = t.key, title = t.title, artist = t.artist, album = t.album, duration = t.duration,
             file = prev and prev.key == t.key and prev.file or nil, base = base, part = t.part }
     end
@@ -190,7 +276,8 @@ function Music.download(plugin, c, opts)
     local script = (Engine.root or "plugins/gzreader.koplugin") .. "/gzreader_mp4.lua"
     local todo = {}
     for i, t in ipairs(col.tracks) do if not Music.trackReady(col, t) then todo[#todo + 1] = i end end
-    local state = { dir = dir, total = #todo, done = 0, listeners = { opts.on_track }, title = c.title, kind = "music" }
+    local state = { dir = dir, total = #todo, done = 0, failed = 0, listeners = { opts.on_track }, title = c.title, kind = "music",
+        todo = todo, current_frac = 0 }
     if #todo == 0 then
         if opts.on_done then opts.on_done(true) end
         return state
@@ -224,9 +311,10 @@ function Music.download(plugin, c, opts)
     end)
     if not pid then
         Music.downloads[dir] = nil
-        if opts.on_done then opts.on_done(false, "could not start the download") end
+        if opts.on_done then opts.on_done(false, "could not start the download", state) end
         return state
     end
+    state.pid = pid
     local key = "music-" .. dir
     Awake.hold(key)
     require("gzreader_net").hold(key)
@@ -243,6 +331,7 @@ function Music.download(plugin, c, opts)
                 local why = rest:match("^error (.*)$")
                 if why then
                     errors[#errors + 1] = why
+                    state.failed = state.failed + 1
                     Log.warn("music: track", i, "of", c.key, "failed:", why)
                 else
                     col.tracks[i].file = rest
@@ -253,17 +342,43 @@ function Music.download(plugin, c, opts)
                 end
             end
         end
+        local moved = #lines > seen
         seen = #lines
-        if not ffiutil.isSubProcessDone(pid) then return UIManager:scheduleIn(1, poll) end
+        if not ffiutil.isSubProcessDone(pid) then
+            -- how far into the track coming: its half-written file
+            local i = todo[seen + 1]
+            local t = i and col.tracks[i]
+            if t then
+                local ext = select(2, require("gzreader_plex").how(t))
+                local size = lfs.attributes(dir .. "/" .. t.base .. "." .. ext .. ".part", "size")
+                local want = Music.trackSize(t, bitrate)
+                state.current_frac = size and want and want > 0 and math.min(0.99, size / want)
+                    or (lfs.attributes(dir .. "/" .. t.base .. "." .. ext, "mode") and 0.99) or 0
+            end
+            local now = os.time()
+            if moved or now - (state.notified or 0) >= 5 then
+                state.notified = now
+                notify(state)
+                if moved then pcall(function() require("gzreader_tasks").changed() end) end
+            end
+            return UIManager:scheduleIn(1, poll)
+        end
         Music.downloads[dir] = nil
         os.remove(report)
+        clearParts(dir)
+        state.current_frac = 0
+        -- (a track finished as it was stopped: written, not yet reported)
+        for _i, t in ipairs(col.tracks) do Music.trackReady(col, t) end
         Awake.release(key)
         require("gzreader_net").release(key)
         pcall(function() require("gzreader_tasks").changed() end)
         Music.save(col)
-        Log.info("music: download finished", c.key, state.done, "of", state.total, #errors > 0 and ("errors: " .. errors[1]) or "")
+        Log.info("music: download finished", c.key, state.done, "of", state.total, #errors > 0 and ("errors: " .. errors[1]) or "",
+            state.cancelled and "(stopped)" or "")
+        state.finished = true
+        notify(state)
         pcall(function() require("gzreader_musicfolder").sync(plugin) end)
-        if opts.on_done then opts.on_done(#errors == 0, errors[1]) end
+        if opts.on_done then opts.on_done(#errors == 0 and not state.cancelled, state.cancelled and "stopped" or errors[1], state) end
     end
     UIManager:scheduleIn(1, poll)
     -- the cover, in the background too (small)

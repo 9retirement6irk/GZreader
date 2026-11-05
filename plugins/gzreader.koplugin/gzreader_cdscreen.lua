@@ -473,6 +473,13 @@ function CDScreen:onCloseMenu() return self:onClose() end
 
 function CDScreen:onShow() UIManager:setDirty(self, "full") end
 
+--- A music download's progress: its line on the insert, kept current.
+function CDScreen:onGzMusicDownload(st)
+    if self.mode == "library" and self.nav and require("gzreader_musictab").updateProgress(self.nav.item_table, st) then
+        self:refresh()
+    end
+end
+
 function CDScreen:onCloseWidget()
     Music().listeners[self.listener_key] = nil
     if self.tab then self.tab.closed = true end

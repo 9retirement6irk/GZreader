@@ -3,7 +3,7 @@ Downloads screen and download status in the Home title bar.
 
 Everything GZreader is fetching or preparing in one place: the book being
 downloaded and the ones waiting in the queue, audiobook downloads and the
-audiobook "preparing" step. From the GZreader menu (Menu key on Home),
+audiobook "preparing" step, and music downloads (track n of m; stoppable). From the GZreader menu (Menu key on Home),
 the Home or Reading menu → Downloads (while something downloads): reopen a progress
 bar, stop the current download, take a book out of the queue, empty the
 queue.
@@ -46,6 +46,13 @@ function Tasks.list()
     if A and A.active_prepare then
         local s = A.active_prepare
         out[#out + 1] = { kind = "prepare", title = s.title, done = s.done, total = s.total, open = s.open_dialog }
+    end
+    local M = package.loaded["gzreader_music"]
+    if M then
+        for dir, st in pairs(M.downloads) do
+            out[#out + 1] = { kind = "music", title = st.title, done = math.floor(M.fraction(st) * 100), total = 100,
+                status = M.progressShort(st), stop = function() M.stop(dir) end }
+        end
     end
     if D then
         for _i, q in ipairs(D.queue) do
@@ -103,7 +110,7 @@ local function line(t)
     local name = t.title or "?"
     if t.kind == "queued" then return T(_("Waiting: %1"), name) end
     local what = t.kind == "prepare" and _("Preparing") or _("Downloading")
-    return T("%1: %2", what, name), Progress.status(t.done or 0, t.total)
+    return T("%1: %2", what, name), t.status or Progress.status(t.done or 0, t.total)
 end
 
 --- The Downloads screen.

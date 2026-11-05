@@ -13,7 +13,8 @@ Tokens: account "plex-token", server "srv-token" (X-Plex-Token header only:
 a token in the address is refused, so it's never in one).
 The audio is tests/media (3-second tones).
 """
-import json, os, sys
+import json
+import time, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -23,7 +24,7 @@ def media(name):
     with open(os.path.join(MEDIA, name), "rb") as f:
         return f.read()
 MP3, M4A, TS = media("tone.mp3"), media("tone.m4a"), media("tone.ts")
-STATE = {"pins": {}, "next_pin": 1000, "log": [], "auto": False, "claimed": set()}
+STATE = {"pins": {}, "next_pin": 1000, "log": [], "auto": False, "claimed": set(), "slow": 0}
 
 def track(k, title, idx, album_key, album, container, codec):
     return {"ratingKey": str(k), "type": "track", "title": title, "index": idx, "duration": 3000,
@@ -76,6 +77,8 @@ class H(BaseHTTPRequestHandler):
             STATE["claimed"].add(q["id"][0]); return self.send(200, {})
         if p == "/ctl/auto":
             STATE["auto"] = True; return self.send(200, {})
+        if p == "/ctl/slow":   # seconds each track file takes (a download to stop)
+            STATE["slow"] = float(q["s"][0]); return self.send(200, {})
         if p == "/ctl/log":
             return self.send(200, STATE["log"])
         # plex.tv
@@ -140,6 +143,7 @@ class H(BaseHTTPRequestHandler):
             if not t: return self.send(404, {})
             c = t["Media"][0]["container"]
             if c == "flac": return self.send(200, b"fLaC-not-for-the-kindle", "audio/flac")
+            if STATE["slow"]: time.sleep(STATE["slow"])
             return self.send(200, MP3 if c == "mp3" else M4A, "audio/mpeg" if c == "mp3" else "audio/mp4")
         if p == "/music/:/transcode/universal/start.m3u8":
             path = q.get("path", [""])[0]

@@ -141,6 +141,11 @@ function Tab.showList(plugin)
         end)
         return true
     end
+    -- a download's progress line, kept current
+    self.menu.onGzMusicDownload = function(m, st)
+        -- (the 5-way stays on the line it was on)
+        if Tab.updateProgress(m.item_table, st) then m:updateItems(m.selected and m.selected.y or nil, true) end
+    end
     local key = "musictab-" .. tostring(self)
     Music().listeners[key] = function() self:refreshRoot() end
     local orig_close = self.menu.onCloseWidget
@@ -152,6 +157,19 @@ function Tab.showList(plugin)
     Tab.instance = self
     UIManager:show(self.menu)
     return self
+end
+
+--- A download's line in `items` (its progress): updated to `st`. True if
+--- there was one.
+function Tab.updateProgress(items, st)
+    local found = false
+    for _i, it in ipairs(items or {}) do
+        if it.gz_music_dl and it.gz_music_dl == st.dir then
+            it.text = st.finished and _("Download finished") or Music().progressText(st)
+            found = true
+        end
+    end
+    return found
 end
 
 --- The root list again (Now playing changed), when it's the one showing.
@@ -466,8 +484,8 @@ function Tab:collectionItems(c)
         local complete = local_c and local_c.have == #c.tracks
         if not complete then
             -- download (in order) and start with the first track as soon as it's in
-            local st = M.download(plugin, c, { on_done = function(ok, err)
-                if not ok and err then UIManager:show(InfoMessage:new{ text = T(_("Some tracks couldn't be downloaded: %1"), tostring(err)) }) end
+            local st = M.download(plugin, c, { on_done = function(ok, err, state)
+                if not ok and err and state then UIManager:show(InfoMessage:new{ text = M.resultText(state, err) }) end
             end })
             local_c = M.find(plugin, c.kind, c.key)
             if not local_c then return end
@@ -481,7 +499,14 @@ function Tab:collectionItems(c)
     items[#items + 1] = { text = _("Play"), bold = true, callback = function() play(1, false) end }
     items[#items + 1] = { text = _("Shuffle"), callback = function() play(math.random(1, math.max(1, #c.tracks)), true) end }
     if dl then
-        items[#items + 1] = { text = T(_("Downloading… (%1 of %2)"), dl.done, dl.total), select_enabled = false }
+        -- (kept current while the download runs: GzMusicDownload)
+        items[#items + 1] = { text = M.progressText(dl), gz_music_dl = dl.dir, callback = function()
+            UIManager:show(require("ui/widget/confirmbox"):new{
+                text = T(_("Stop downloading “%1”? The tracks already on the Kindle stay."), c.title or ""),
+                ok_text = _("Stop"),
+                ok_callback = function() M.stop(dl.dir) end,
+            })
+        end }
     elseif have and have.have == #c.tracks then
         items[#items + 1] = { text = T(_("Delete the download (%1 MB)"), math.floor(M.dirSize(have.dir) / 1048576 + 0.5)), callback = function()
             UIManager:show(require("ui/widget/confirmbox"):new{
@@ -494,13 +519,25 @@ function Tab:collectionItems(c)
             })
         end }
     else
-        local mb = 0
-        for _i, t in ipairs(c.tracks) do mb = mb + ((t.part and t.part.size) or 0) end
-        items[#items + 1] = { text = mb > 0 and T(_("Download for offline (about %1 MB)"), math.floor(mb / 1048576 + 0.5)) or _("Download for offline"),
+        local mb, missing = 0, 0
+        for i, t in ipairs(c.tracks) do
+            local ready = have and have.tracks[i] and have.tracks[i].key == t.key and M.trackReady(have, have.tracks[i])
+            if not ready then
+                missing = missing + 1
+                mb = mb + ((t.part and t.part.size) or 0)
+            end
+        end
+        local partly = have and have.have > 0
+        local label = partly and T(_("Download the %1 missing tracks"), missing) or _("Download for offline")
+        local mbs = math.floor(mb / 1048576 + 0.5)
+        if mbs > 0 then label = label .. " " .. T(_("(about %1 MB)"), mbs) end
+        items[#items + 1] = { text = label,
             callback = function()
-                M.download(plugin, c, { on_done = function(ok, err)
-                    UIManager:show(InfoMessage:new{ text = ok and T(_("“%1” is on the Kindle."), c.title or "")
-                        or T(_("Some tracks couldn't be downloaded: %1"), tostring(err)), timeout = 4 })
+                M.download(plugin, c, { on_done = function(ok, err, state)
+                    UIManager:show(InfoMessage:new{ text = state and M.resultText(state, err)
+                        or T(_("“%1” is on the Kindle."), c.title or ""), timeout = ok and 4 or nil })
+                    -- (the list, if it's still there: the downloaded ticks and what's left)
+                    if self.menu and self.menu.title == c.title then self:replace(c.title, self:collectionItems(c)) end
                 end })
                 self:replace(c.title, self:collectionItems(c))
             end }

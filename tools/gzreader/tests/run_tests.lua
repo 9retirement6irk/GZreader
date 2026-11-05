@@ -3655,6 +3655,52 @@ print("Music (Plex): the server, downloads, the player")
         "Music: AAC in M4A made into ADTS chunks on the Kindle " .. tostring(done and done[2]))
     local list = Music.downloaded(plugin)
     check(#list == 3, "Music: three albums downloaded")
+    do -- progress, stopping, and what's left after
+        local st = { dir = "x", total = 12, done = 2, failed = 0, current_frac = 0.5, title = "T" }
+        check(Music.progressText(st) == "Downloading… track 3 of 12 · 20%", "Music: progress " .. Music.progressText(st))
+        st.failed = 1
+        check(Music.progressShort(st) == "track 4 of 12 · 29% · 1 failed", "Music: failed tracks counted " .. Music.progressShort(st))
+        check(Music.resultText(st, "http_500"):match("^1 of 12 tracks of “T” couldn't be downloaded %(http_500%)%. The others are on the Kindle"),
+            "Music: a failure says how many and that the rest stay")
+        st.cancelled = true
+        check(Music.resultText(st):match("^Download stopped: 2 of 12 tracks"), "Music: a stopped download says what's on the Kindle")
+        -- a download stopped part-way: the first track stays, no half-written files
+        local mp3b = { kind = "album", key = "201b", title = "Slow Album", tracks = tracks }
+        os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/slow?s=3' >/dev/null")
+        local arrived2, stopped = {}, nil
+        local sst = Music.download(plugin, mp3b, { on_track = function(i) arrived2[#arrived2 + 1] = i end,
+            on_done = function(ok, err, s2) stopped = { ok, err, s2 } end })
+        local Tasks = require("gzreader_tasks")
+        local listed
+        for _i, t in ipairs(Tasks.list()) do if t.kind == "music" then listed = t end end
+        check(listed and listed.title == "Slow Album" and listed.status:match("^track 1 of 2") and listed.stop, "Music: on the Downloads screen, stoppable")
+        runLoop(function() return #arrived2 >= 1 end, 20)
+        Music.stop(sst.dir)
+        runLoop(function() return stopped ~= nil end, 20)
+        os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/slow?s=0' >/dev/null")
+        local sc = Music.find(plugin, "album", "201b")
+        local parts = 0
+        for name in lfs.dir(sc.dir) do if name:match("%.part$") then parts = parts + 1 end end
+        check(stopped and stopped[1] == false and stopped[2] == "stopped" and stopped[3].cancelled and sc.have == 1 and parts == 0
+            and Music.downloads[sc.dir] == nil, "Music: stopped part-way: the track that came stays, nothing half-written " .. tostring(sc and sc.have))
+        local Tab = require("gzreader_musictab")
+        local t2 = Tab.new(plugin)
+        local labels = {}
+        for _i, it in ipairs(t2:collectionItems(mp3b)) do labels[#labels + 1] = it.text end
+        check(table.concat(labels, "|"):match("Download the 1 missing tracks"), "Music: then it offers the missing tracks " .. table.concat(labels, "|"))
+        -- GZreader stopped mid-download: a track written but not noted is taken up again
+        local saved = Music.load(c.dir)
+        local missing = saved.tracks[2].file
+        saved.tracks[2].file = nil
+        Music.save(saved)
+        local again = Music.find(plugin, "album", "201")
+        check(again.have == 2 and again.tracks[2].file == missing, "Music: a track downloaded but not written down is taken up again")
+        -- a line showing the download keeps up
+        local items = { { text = "x", gz_music_dl = "d" } }
+        check(Tab.updateProgress(items, { dir = "d", total = 3, done = 1, failed = 0, current_frac = 0 }) and items[1].text:match("track 2 of 3"),
+            "Music: the progress line updates")
+        Music.delete(plugin, sc)
+    end
     do -- Downloads → Music: a stand-in per album (the bookshelf's CD player)
         local MF = require("gzreader_musicfolder")
         local mdir = MF.entryDir(plugin)

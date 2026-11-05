@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.3",
+        changes = {
+            "Music downloads show their progress: track n of m and how far along, kept current in the album's list (in the music player's library too), on the Downloads screen and in the status bar.",
+            "A music download can be stopped: select its progress line, or from the Downloads screen. The tracks that came stay on the Kindle.",
+            "When tracks fail or a download is stopped, the message says how many of how many made it; the album then offers \"Download the n missing tracks\", which fetches only those. Half-written files are cleared, and a track that finished downloading just as GZreader stopped or restarted is kept instead of being fetched again.",
+        },
+    },
+    {
         version = "1.23.2",
         changes = {
             "Kindle 3: the audiobook and music players no longer flash at every change inside them (the library, the lists, a download, the chapter list); the screen flashes only when a player opens and when it closes.",
