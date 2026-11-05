@@ -3469,6 +3469,26 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     Net.connecting = nil
     Net.run(function() ran = ran + 1 end, { reason = "browsing" })
     check(ran == 2 and #shown == 1 and shown[1] == "Connecting to Wi-Fi…", "something you asked for: only \"Connecting to Wi-Fi…\", as on the Kindle 3 (" .. table.concat(shown, ", ") .. ")")
+    -- connected, but no route out yet (a Paperwhite, the first moment): wait for one
+    local saved_route = Net.routeReady
+    local calls = 0
+    Net.routeReady = function() calls = calls + 1; return calls > 2 end
+    for f in pairs(UI.scheduled) do UI.scheduled[f] = nil end
+    Net.connecting = nil
+    Net.run(function() ran = ran + 1 end, { quiet = true, reason = "test" })
+    local before = ran
+    for _round = 1, 5 do
+        local due = {}
+        for f in pairs(UI.scheduled) do due[#due + 1] = f end
+        for _i, f in ipairs(due) do
+            local t = UI.scheduled[f]
+            UI.scheduled[f] = nil
+            if type(t) ~= "number" or t < 60 then f() end -- (not the 90 s give-up)
+        end
+    end
+    check(before == 2 and ran == 3 and calls == 3, string.format(
+        "after connecting, the work waits for a route out (then runs once): %d %d %d", before, ran, calls))
+    Net.routeReady = saved_route
     shown = {}
     NM:reconnectOrShowNetworkMenu(nil, true)
     check(#shown == 2, "the Wi-Fi menu (you): its messages as usual")

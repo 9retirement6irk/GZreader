@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.16.2",
+        changes = {
+            "Settings: opening the end-of-book page's settings could make GZreader crash and restart (1.16.0 gave that page the bookshelf by mistake). It has its own look back.",
+            "Wi-Fi: on the Paperwhite the first requests after connecting could fail (\"Network is unreachable\": calendar links, the update check) because it said it was connected a moment too soon. GZreader now waits until the connection really works (a few seconds at most).",
+        },
+    },
+    {
         version = "1.16.1",
         changes = {
             "Covers: the book you're reading (top left) and the book turned on the shelf could show a blank cover, on a Kindle that had shown its covers before at the old sizes. A cover not yet made at a new size is now made then (once; it's kept, and the other books get theirs made in the background).",

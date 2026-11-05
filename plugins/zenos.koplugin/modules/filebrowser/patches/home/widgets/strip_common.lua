@@ -951,7 +951,13 @@ function M.build_strip(ctx, source_key)
         for _i = 1, #books do cover_plans[#cover_plans + 1] = { width = shelf_cw, height = shelf_ch } end
         local shelf_y = reach - shelf_h - controls_and_gap -- (in the frame, which starts under the tabs' room)
         local shelf_controls_top = tabs_top
-        if page_delta == 0 then controls_visual_top = shelf_controls_top end
+        if page_delta == 0 then
+            controls_visual_top = shelf_controls_top
+            if type(ctx.setContentBounds) == "function" then -- (fixed where it is)
+                ctx.setContentBounds{ top = tabs_top, bottom = total_outer_height, min_shift = 0, max_shift = 0,
+                    lock_shift = true, set_shift = function() end }
+            end
+        end
         local holder = WidgetResources.managedPaintWidget{
             dimen = Geom:new{ w = outer_width, h = outer_height },
             resources = { content },

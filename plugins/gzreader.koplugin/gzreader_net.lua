@@ -98,6 +98,22 @@ end
 
 local wrapScan
 
+Net.ROUTE_WAIT = 8
+
+--- A default route (somewhere to send requests), from /proc/net/route; true
+--- where that can't be read.
+function Net.routeReady()
+    local f = io.open("/proc/net/route", "r")
+    if not f then return true end
+    local ok = false
+    for line in f:lines() do
+        local dest = line:match("^%S+%s+(%x+)%s")
+        if dest == "00000000" then ok = true break end
+    end
+    f:close()
+    return ok
+end
+
 --- Run fn once online. opts.quiet: no "Connecting…" message and no prompt
 --- (background syncs); without "Wi-Fi only when needed", quiet calls only run
 --- when already connected.
@@ -117,12 +133,27 @@ function Net.run(fn, opts)
     Net.connecting = { go }
     Log.info("wifi: turning on for", opts.reason or "?")
     Net.ours = not NetworkMgr:isWifiOn()
-    local function done()
+    local function run_waiting()
         local list = Net.connecting or {}
         Net.connecting = nil
-        Log.info("wifi: connected")
         for _i, f in ipairs(list) do pcall(f) end
         if Net.ours then schedule() end
+    end
+    local function done()
+        Log.info("wifi: connected")
+        -- The Paperwhite says it's connected a moment before it has a route
+        -- out ("Network is unreachable" for the first requests): wait for one
+        -- (up to ROUTE_WAIT seconds).
+        local waited = 0
+        local function routeCheck()
+            if Net.routeReady() or waited >= Net.ROUTE_WAIT then
+                if waited > 0 then Log.info("wifi: route out after", waited, "s") end
+                return run_waiting()
+            end
+            waited = waited + 0.5
+            UIManager:scheduleIn(0.5, routeCheck)
+        end
+        routeCheck()
     end
     local r
     pcall(wrapScan)

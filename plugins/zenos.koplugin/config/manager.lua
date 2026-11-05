@@ -1216,6 +1216,18 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.16.2: 1.16.0 gave the end-of-book page the bookshelf and the
+    -- notebook stats by mistake (they're Home's): back to its own look.
+    if cfg._meta.gz_end_book_look_fixed ~= true then
+        local mods = type(cfg.end_book) == "table" and type(cfg.end_book.modules) == "table" and cfg.end_book.modules or nil
+        if mods and type(mods.strip) == "table" and mods.strip.shelf == true then mods.strip.shelf = nil end
+        if mods and type(mods.stats_triplet) == "table" and mods.stats_triplet.stat_style == "notebook" then
+            mods.stats_triplet.stat_style = "divider"
+        end
+        cfg._meta.gz_end_book_look_fixed = true
+        changed = true
+    end
+
     if cfg._meta.reader_footer_hide_cbz_default_migrated ~= true then
         if type(cfg.reader_footer) ~= "table" then
             cfg.reader_footer = {}
