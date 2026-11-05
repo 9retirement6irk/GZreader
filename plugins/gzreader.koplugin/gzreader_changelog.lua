@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.5",
+        changes = {
+            "Music: tracks Plex has to convert (anything not MP3 or AAC: FLAC, ALAC, Opus…) failed to download, every one (\"transcode http_400\": 92 of your playlist's 93 tracks). Plex picks how to convert by the kind of app asking, and didn't know \"Kindle\"; GZreader now asks as Plex's web app does (and falls back to other ways if a server refuses, keeping AAC as it comes).",
+            "Music: playing an album or playlist with tracks not on the Kindle goes straight to the next track that is, instead of waiting 2 s for each missing one; if none are, it says so at once.",
+            "After an update that changes GZreader's startup script, GZreader no longer asks you to quit (Quit took you to the Kindle's home screen); the new script runs the next time you start GZreader from the Kindle.",
+            "Paperwhite: Forget in the Wi-Fi networks page names the network as the Kindle's Wi-Fi service expects.",
+        },
+    },
+    {
         version = "1.23.4",
         changes = {
             "Kindle 3: the book you're reading on Home (title, author, description) is as big as on the Paperwhite; it was sized by the cover's height in pixels, so the Kindle 3's smaller pixels made it a third smaller.",

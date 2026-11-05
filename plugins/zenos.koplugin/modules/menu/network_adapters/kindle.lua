@@ -96,12 +96,18 @@ local function delete_profile(ssid)
         return requested, request_error
     end
 
-    local requested, request_error = request_delete(profile_id, true)
+    -- (wifid's deleteProfile is a string on a Paperwhite 3 (lipc-probe: "w Str
+    -- deleteProfile"): the network's name first, its number if that's refused)
+    local requested, request_error = request_delete(ssid, false)
     local deleted, delete_error
     if requested then deleted, delete_error = wait_for_profile(ssid, false) end
     if not deleted then
-        requested, request_error = request_delete(ssid, false)
+        requested, request_error = request_delete(profile_id, true)
         if requested then deleted, delete_error = wait_for_profile(ssid, false) end
+        if not deleted then
+            requested, request_error = request_delete(tostring(profile_id), false)
+            if requested then deleted, delete_error = wait_for_profile(ssid, false) end
+        end
     end
     if not deleted then
         logger.warn("Kindle Wi-Fi profile not deleted:", tostring(delete_error or request_error))

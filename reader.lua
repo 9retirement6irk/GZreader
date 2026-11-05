@@ -227,7 +227,13 @@ end
 
 local exit_code
 
-if not Device:isStartupScriptUpToDate() then
+-- GZreader: an update that changes koreader.sh (1.23.0) asked to quit here,
+-- after its own restart, and Quit left you on the Kindle's home screen. The
+-- script that's running is a copy (/var/tmp/koreader.sh), so carrying on is
+-- safe: the new one runs the next time GZreader is started from the Kindle.
+if Device:isKindle() and not Device:isStartupScriptUpToDate() then
+    require("logger").info("GZreader: the startup script was updated; it runs from the next start from the Kindle")
+elseif not Device:isStartupScriptUpToDate() then
     local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
         text = _("KOReader's startup script has been updated. You'll need to completely exit KOReader to finalize the update."),

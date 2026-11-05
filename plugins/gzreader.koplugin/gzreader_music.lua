@@ -453,10 +453,39 @@ local function quietOthers(plugin)
     end)
 end
 
+--- The next track in the play order that's on the Kindle (after the
+--- current one; round to the start with repeat all), or nil.
+function Player:nextReady()
+    local n = #self.order
+    for k = 1, n do
+        local at = self.at + k
+        if at > n then
+            if self["repeat"] ~= "all" then return nil end
+            at = at - n
+        end
+        local t = self.c.tracks[self.order[at]]
+        if t and Music.trackReady(self.c, t) then return at end
+    end
+end
+
 function Player:play()
     local t = self:track()
     if not t then return self:stop() end
     if not Music.trackReady(self.c, t) then self:refreshTracks() end
+    if not Music.trackReady(self.c, t) and not Music.downloads[self.c.dir] then
+        -- not on the Kindle, and nothing's bringing it: on to the next that is
+        -- (at once; it waited 2 s for each missing track before)
+        local nxt = self:nextReady()
+        if nxt then
+            Log.info("music: skipping to the next track on the Kindle")
+            self.at, self.pos = nxt, 0
+            return self:play()
+        end
+        Log.warn("music: none of the tracks are on the Kindle")
+        self:stop()
+        UIManager:show(InfoMessage:new{ text = _("None of these tracks are on the Kindle. Download them again."), timeout = 5 })
+        return false
+    end
     if not Music.trackReady(self.c, t) then
         -- still downloading: start when it's there
         self.waiting = true

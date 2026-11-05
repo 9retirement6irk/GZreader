@@ -149,6 +149,11 @@ class H(BaseHTTPRequestHandler):
             path = q.get("path", [""])[0]
             if q.get("protocol") != ["hls"] or not path.startswith("/library/metadata/"):
                 return self.send(400, {})
+            # as a real server: no client profile for a platform it doesn't know -> 400
+            platform = q.get("X-Plex-Platform", [self.headers.get("X-Plex-Platform", "")])[0]
+            STATE["platforms"] = STATE.get("platforms", []) + [platform]
+            if platform not in ("Chrome", "Safari", "Firefox"):
+                return self.send(400, "<html><head><title>Bad Request</title></head></html>", "text/html")
             STATE["transcoded"] = path
             return self.send(200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=192000\nsession/abc/base/index.m3u8\n", "application/vnd.apple.mpegurl")
         if p == "/music/:/transcode/universal/session/abc/base/index.m3u8":

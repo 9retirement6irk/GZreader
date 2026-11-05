@@ -3695,6 +3695,15 @@ print("Music (Plex): the server, downloads, the player")
         Music.save(saved)
         local again = Music.find(plugin, "album", "201")
         check(again.have == 2 and again.tracks[2].file == missing, "Music: a track downloaded but not written down is taken up again")
+        -- playing an album with tracks missing: on to the next one that's here
+        local half = { dir = "/nonexistent", tracks = { { key = "a" }, { key = "b", chunks = {} }, { key = "c" } } }
+        local pl = Music.Player:new(plugin, half, 1)
+        local n1 = pl:nextReady()
+        pl.at = 2
+        local n2 = pl:nextReady()
+        pl["repeat"] = "all"; pl.at = 3
+        local n3 = pl:nextReady()
+        check(n1 == 2 and n2 == nil and n3 == 2, "Music: a missing track: straight on to the next one on the Kindle (round, with repeat all)")
         -- a line showing the download keeps up
         local items = { { text = "x", gz_music_dl = "d" } }
         check(Tab.updateProgress(items, { dir = "d", total = 3, done = 1, failed = 0, current_frac = 0 }) and items[1].text:match("track 2 of 3"),
@@ -3774,14 +3783,20 @@ print("Music (Plex): the server, downloads, the player")
     p:resume()
     -- a track still downloading: waits for it, then plays
     local waiting = { kind = "album", key = "w", title = "W", dir = c.dir, tracks = { { title = "Later", file = "nothere.mp3" } } }
+    Music.downloads[c.dir] = { listeners = {} }
     local pw = Music.play(plugin, waiting, 1, false)
+    Music.downloads[c.dir] = nil
     check(pw and pw.waiting, "player: waits for a track still downloading")
     pw:stop()
+    -- …but not for one nothing is bringing: it says none are here, at once
+    pw = Music.play(plugin, waiting, 1, false)
+    check(not (pw and pw.waiting) and Music.current == nil, "player: no download, no track: stops at once")
     -- …and plays it when it comes (the download writes music.json, not the player's copy)
     local wdir = Music.dirFor(plugin, "album", "w2")
     os.execute("mkdir -p '" .. wdir .. "'")
     local w2 = { kind = "album", key = "w2", title = "W2", dir = wdir, tracks = { { key = "t1", title = "Later", base = "01" } } }
     Music.save(w2)
+    Music.downloads[wdir] = { listeners = {} }
     pw = Music.play(plugin, Music.load(wdir), 1, false)
     local disk = Music.load(wdir)
     os.execute("cp '" .. PLUGIN .. "/../../tools/gzreader/tests/media/tone.mp3' '" .. wdir .. "/01.mp3'")

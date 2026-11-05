@@ -433,18 +433,60 @@ end
 
 --- The server's MP3 of a track via its transcoder (HLS, MP3 in MPEG-TS):
 --- the playlist, then each segment, joined. true, or nil, err.
-function Plex:transcode(track, dest, bitrate)
+--[[ How to ask Plex's transcoder, in order (the first that works is kept for
+the rest of the download). Plex picks a client profile by X-Plex-Platform; a
+platform it doesn't know ("Kindle") has none, and a real server answered 400
+Bad Request to every track (1.23.4 and before; the mock didn't mind). Plex
+Web's ("Chrome") profile, with MP3 in MPEG-TS added; then the same at the
+/audio/ address (as python-plexapi asks); then Plex Web's profile as it is
+(AAC, kept as an .aac file). ]]
+Plex.TRANSCODE = {
+    { prefix = "/music", platform = "Chrome", mp3 = true },
+    { prefix = "/audio", platform = "Chrome", mp3 = true },
+    { prefix = "/music", platform = "Chrome", mp3 = false },
+    { prefix = "/music", platform = "Kindle", mp3 = true },
+}
+
+--- Start the transcoder for track: the playlist's text, its address, or nil, err.
+function Plex:transcodeStart(track, bitrate, session)
     local s = self.store.server
+    local tried = {}
+    local first = Plex.transcode_way or 1
+    for n = 0, #Plex.TRANSCODE - 1 do
+        local i = (first - 1 + n) % #Plex.TRANSCODE + 1
+        local way = Plex.TRANSCODE[i]
+        local params = {
+            path = "/library/metadata/" .. track.key, protocol = "hls", mediaIndex = 0, partIndex = 0,
+            directPlay = 0, directStream = 0, directStreamAudio = 0, musicBitrate = bitrate or 192,
+            fastSeek = 1, hasMDE = 1,
+            ["X-Plex-Session-Identifier"] = session, session = session, location = "lan",
+            -- (who's asking, in the address too: the transcoder reads it there)
+            ["X-Plex-Platform"] = way.platform, ["X-Plex-Client-Identifier"] = self:clientId(),
+            ["X-Plex-Product"] = Plex.PRODUCT, ["X-Plex-Device"] = "Kindle",
+            ["X-Plex-Client-Profile-Extra"] = way.mp3
+                and "add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=mp3)" or nil,
+        }
+        local base = s.uri .. way.prefix .. "/:/transcode/universal/"
+        local code, text, err = self:request("GET", base .. "start.m3u8" .. query(params), { token = s.token, want_raw = true,
+            timeouts = { 20, 60 }, headers = { ["X-Plex-Platform"] = way.platform } })
+        if not err then
+            if Plex.transcode_way ~= i then
+                require("gzreader_log").info("plex: transcoding works asked as", way.prefix, way.platform, way.mp3 and "mp3" or "as it is")
+            end
+            Plex.transcode_way = i
+            return text, base, s
+        end
+        tried[#tried + 1] = tostring(err)
+        -- (not the way of asking: the server or the network)
+        if code == nil or code == 401 or (code and code >= 500) then break end
+    end
+    return nil, "transcode " .. table.concat(tried, ", ")
+end
+
+function Plex:transcode(track, dest, bitrate)
     local session = require("gzreader_pairserver").randomToken(8)
-    local params = {
-        path = "/library/metadata/" .. track.key, protocol = "hls", mediaIndex = 0, partIndex = 0,
-        directPlay = 0, directStream = 0, directStreamAudio = 0, musicBitrate = bitrate or 192,
-        ["X-Plex-Session-Identifier"] = session, session = session, location = "lan",
-        ["X-Plex-Client-Profile-Extra"] = "add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=mp3)",
-    }
-    local base = s.uri .. "/music/:/transcode/universal/"
-    local _, text, err = self:request("GET", base .. "start.m3u8" .. query(params), { token = s.token, want_raw = true, timeouts = { 20, 60 } })
-    if err then return nil, "transcode " .. err end
+    local text, base, s = self:transcodeStart(track, bitrate, session)
+    if not text then return nil, base end
     -- a master playlist points at the media playlist (relative to it)
     local function lines(t)
         local out = {}
@@ -460,8 +502,10 @@ function Plex:transcode(track, dest, bitrate)
     local list = lines(text)
     if list[1] and list[1]:match("%.m3u8") then
         media_url = resolve(list[1], base)
-        _, text, err = self:request("GET", media_url, { token = s.token, want_raw = true, timeouts = { 20, 60 } })
+        local text2, err = select(2, self:request("GET", media_url, { token = s.token, want_raw = true, timeouts = { 20, 60 },
+            headers = { ["X-Plex-Platform"] = Plex.TRANSCODE[Plex.transcode_way or 1].platform } }))
         if err then return nil, "transcode " .. err end
+        text = text2
         list = lines(text)
     end
     if #list == 0 then return nil, "transcode: no segments" end
@@ -484,12 +528,18 @@ function Plex:transcode(track, dest, bitrate)
     end
     fh:close()
     pcall(function() self:request("GET", base .. "stop" .. query({ session = session }), { token = s.token, timeouts = { 5, 5 } }) end)
-    if total == 0 or (state.stream_type and state.stream_type == 0x0F) then
+    if total == 0 then
         os.remove(part)
-        return nil, total == 0 and "transcode: no audio" or "transcode: AAC instead of MP3"
+        return nil, "transcode: no audio"
+    end
+    if state.stream_type and state.stream_type == 0x0F then
+        -- AAC (Plex Web's own profile): its ADTS frames, as an .aac file
+        local aac = dest:gsub("%.[^./]*$", "") .. ".aac"
+        os.rename(part, aac)
+        return true, "aac", aac
     end
     os.rename(part, dest)
-    return true
+    return true, "mp3", dest
 end
 
 --- Download a track for the Kindle into `dest_base` (without extension).
@@ -498,9 +548,9 @@ function Plex:downloadTrack(track, dest_base, bitrate)
     local how, ext = Plex.how(track)
     local dest = dest_base .. "." .. ext
     if how == "transcode" then
-        local ok, err = self:transcode(track, dest, bitrate)
-        if not ok then return nil, err end
-        return dest, ext
+        local ok, kind, path = self:transcode(track, dest, bitrate)
+        if not ok then return nil, kind end
+        return path or dest, kind or ext
     end
     if not (track.part and track.part.key) then return nil, "no file" end
     local ok, err = download(self, self.store.server.uri .. track.part.key .. "?download=1", dest)
