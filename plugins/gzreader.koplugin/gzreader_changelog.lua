@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.0",
+        changes = {
+            "All of music happens in the CD player: the Music tab, the quick panel's Music and Downloads → Music open it. Under its controls, the CD case insert shows the queue or the library (F, or a tap on its tabs): Downloaded, Shuffle all, Artists, Albums, Playlists, Search and your Plex account; an album or playlist's Play, Shuffle, Download or Delete and its tracks. ▲ ▼ choose, Press opens or plays, ◀ ▶ turn its pages, Back goes back up.",
+            "The Home button works in the CD player.",
+            "Downloads, on the bookshelf: the CD player is drawn to the same scale as the walkman (it was much bigger). In Audiobooks each audiobook is a cassette (its case's spine, turned to show the tape with its label and reels); in Music each album or playlist is a CD (its jewel case's spine, turned to show its cover with the disc peeking out).",
+            "A series on the bookshelf turns to show its first book's cover, its other books behind it, like a book does.",
+        },
+    },
+    {
         version = "1.21.1",
         changes = {
             "The Grimmory tab's lists look like its bookshop too (in the Bookshelf view): books face out on display ledges with a label under each (its letter, your stars or how far you are), a ribbon in the ones you're reading, a tick on the finished ones, ON KINDLE on the downloaded ones; libraries, shelves and authors in bookcase compartments with cards; series as piles of books lying flat; audiobooks as a rack of cassette spines. Search and Refresh are a slip and a sign at the top.",

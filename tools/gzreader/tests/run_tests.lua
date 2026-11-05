@@ -3562,6 +3562,8 @@ print("Music (Plex): the server, downloads, the player")
         SV.specialsFirst(items)
         check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
             "Audiobooks and Music come first, whatever the sort")
+        check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
+            "the walkman and the CD player drawn to one scale (the CD player lower)")
         G_reader_settings:saveSetting("home_dir", saved_home)
     end
     -- the player

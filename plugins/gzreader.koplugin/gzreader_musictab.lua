@@ -96,8 +96,24 @@ function Tab:fetch(what, fn, on_data)
     end, "plex " .. what)
 end
 
+--- The CD player with its library (1.22: all of music happens there); the
+--- list menu below only if it fails, or without a speaker (it says why).
+function Tab.player(plugin, opts)
+    if Tab.LIST_PLAYER or not require("gzreader_touch").audio() then return nil end
+    local ok, w = pcall(function() return require("gzreader_cdscreen").show(plugin, opts) end)
+    if ok then return w end
+    require("gzreader_log").warn("CD player screen:", tostring(w))
+end
+
 function Tab.show(plugin)
     pcall(function() require("gzreader_tabs").closeOthers(Tab.TAB_ID) end)
+    local w = Tab.player(plugin, { library = not Music().current })
+    if w then return w end
+    return Tab.showList(plugin)
+end
+
+--- The Music tab as a list (KOReader's menu).
+function Tab.showList(plugin)
     local self = Tab.new(plugin)
     self.menu = Menu:new{
         title = _("Music"), item_table = self:rootItems(), covers_fullscreen = true, is_borderless = true,
@@ -676,12 +692,9 @@ end
 --- Now playing: what plays, the controls, the queue.
 function Tab.nowPlaying(plugin)
     local M = Music()
-    -- playing: the CD player (gzreader_cdscreen.lua); nothing yet: what can play
-    if M.current and not Tab.LIST_PLAYER then
-        local ok, w = pcall(function() return require("gzreader_cdscreen").show(plugin) end)
-        if ok then return w end
-        require("gzreader_log").warn("CD player screen:", tostring(w))
-    end
+    -- the CD player (gzreader_cdscreen.lua): what plays, or its library
+    local w = Tab.player(plugin)
+    if w then return w end
     local menu
     local function build()
         local p = M.current
@@ -736,9 +749,11 @@ end
 --- The Music tab from anywhere (Home menu, the quick panel); in a book,
 --- Now playing instead (the tabs are at Home).
 function Tab.open(plugin)
+    local w = Tab.player(plugin, { library = not Music().current })
+    if w then return w end
     local ReaderUI = require("apps/reader/readerui")
     if ReaderUI.instance then return Tab.nowPlaying(plugin) end
-    return Tab.show(plugin)
+    return Tab.showList(plugin)
 end
 
 return Tab

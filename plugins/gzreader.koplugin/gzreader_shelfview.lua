@@ -10,7 +10,13 @@ _updateItemsBuildUI) is replaced by this one; every other list keeps its own.
   shelf draws them: shelf.lua). The book the 5-way is on, or that was
   tapped, turns to show its cover; tap it again, Press or its letter opens
   it. Hold: the book's menu.
-- Folders are spines too (light grey, a tab at the top).
+- Folders are spines too (light grey, a tab at the top). A series
+  (ZenOS's series grouping) is a spine that turns to show its first book's
+  cover, the others behind it.
+- In Audiobooks, each audiobook is a cassette: its case's spine, turned to
+  show the tape with its label and reels; in Music, each album or playlist
+  is a CD: its jewel case's spine, turned to show the cover with the disc
+  peeking out.
 - Audiobooks and Music (GZreader's folders of what's downloaded) stand on
   the top shelf to the right of the books: a cassette walkman with
   headphones and a CD player (icons/shelf/*.svg). In lists and tiles
@@ -63,7 +69,7 @@ local function areaH(row_h)
 end
 
 local function deviceSize(name, row_h)
-    local h = math.floor(areaH(row_h) * 0.86)
+    local h = math.floor(areaH(row_h) * 0.86 * (View.SPECIAL[name].height or 1))
     return math.floor(h * View.SPECIAL[name].ratio), h
 end
 
@@ -164,9 +170,11 @@ function Item:open()
     return true
 end
 
+local TURNS = { book = true, series = true, tape = true, cd = true }
+
 function Item:onTapShelfItem()
     local menu = self.menu
-    if self.kind == "book" and menu._gz_picked ~= self.idx then
+    if TURNS[self.kind] and menu._gz_picked ~= self.idx then
         View.pick(menu, self.idx)
         return true
     end
@@ -186,7 +194,7 @@ end
 
 function Item:onFocus()
     self.focused = true
-    if self.kind == "book" then View.pick(self.menu, self.idx) else redraw(self.menu) end
+    if TURNS[self.kind] then View.pick(self.menu, self.idx) else redraw(self.menu) end
     return true
 end
 
@@ -250,6 +258,107 @@ local function plate(bb, text, cx, y, max_w)
     tw:free()
 end
 
+---------------------------------------------------------------- tapes and CDs
+
+local function gray(v) return Blitbuffer.gray(math.max(0, math.min(1, v))) end
+
+--- Text running up a strip w x h (a case's spine), on `bg`.
+local function spineText(bb, x, y, w, h, text, bg, ink, size)
+    local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
+    lying:fill(bg)
+    local t = TextWidget:new{ text = text, face = Font:getFace("cfont", size or 9), bold = true, fgcolor = ink, max_width = h - S(8) }
+    local ts = t:getSize()
+    t:paintTo(lying, math.floor((h - ts.w) / 2), math.floor((w - ts.h) / 2))
+    t:free()
+    local stood = lying:rotatedCopy(270)
+    lying:free()
+    bb:blitFrom(stood, x, y, 0, 0, w, h)
+    stood:free()
+end
+
+--- A cassette case standing, its spine out: the J-card's spine with the title.
+local function tapeSpine(bb, x, y, w, h, title)
+    bb:paintRect(x, y, w, h, gray(0.55))
+    spineText(bb, x + S(3), y + S(3), w - S(6), h - S(6), title, Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK, 9)
+    bb:paintRect(x + S(3), y + S(3), w - S(6), S(4), gray(0.85))
+    bb:paintBorder(x, y, w, h, 1, gray(0.95))
+    Shelf().shadeRound(bb, x, y, w, h, 0.5)
+end
+
+--- A CD's jewel case standing, its spine out.
+local function cdSpine(bb, x, y, w, h, title, shade)
+    local ink = shade >= 0.5 and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+    bb:paintRect(x, y, w, h, gray(shade))
+    spineText(bb, x + 1, y + S(4), w - 2, h - S(8), title, gray(shade), ink, 8)
+    bb:paintBorder(x, y, w, h, 1, gray(0.9))
+    -- the clear case's edges catching the light
+    bb:paintRect(x + 1, y + 1, 1, h - 2, gray(0.15))
+    Shelf().shadeRound(bb, x, y, w, h, 0.4)
+end
+
+--- The tape itself, turned to face out (w x h, its foot on `bottom`).
+local function tapeFront(bb, x, bottom, w, h, title, cover)
+    local y = bottom - h
+    bb:darkenRect(x + S(4), y + S(4), w, h, 0.3)
+    bb:paintRoundedRect(x, y, w, h, gray(0.7), S(5))
+    bb:paintBorder(x, y, w, h, 1, gray(0.95), S(5))
+    -- screws in the corners
+    for _i, c in ipairs({ { S(6), S(6) }, { w - S(7), S(6) }, { S(6), h - S(7) }, { w - S(7), h - S(7) } }) do
+        bb:paintCircle(x + c[1], y + c[2], math.max(2, S(2)), gray(0.25))
+    end
+    -- the label: its cover, the title, the window with the reels
+    local lx, ly, lw, lh = x + S(10), y + S(8), w - S(20), math.floor(h * 0.62)
+    bb:paintRect(lx, ly, lw, lh, gray(0.03))
+    bb:paintRect(lx, ly, lw, S(5), gray(0.6))
+    local tx = lx + S(4)
+    if cover then
+        local cs = math.min(lh - S(12), S(40))
+        local cw = cover:getSize()
+        pcall(function() cover:paintTo(bb, lx + S(4), ly + S(8)) end)
+        tx = lx + S(8) + math.min(cs, cw.w)
+    end
+    local t = TextWidget:new{ text = title, face = Font:getFace("cfont", 11), bold = true, max_width = lx + lw - tx - S(4) }
+    t:paintTo(bb, tx, ly + S(8))
+    t:free()
+    local wy = ly + math.floor(lh * 0.55)
+    local ww, wh = math.floor(lw * 0.55), math.floor(lh * 0.32)
+    local wx = lx + math.floor((lw - ww) / 2)
+    bb:paintRoundedRect(wx, wy, ww, wh, gray(0.35), math.floor(wh / 2))
+    for _i, cx in ipairs({ wx + math.floor(wh / 2) + S(2), wx + ww - math.floor(wh / 2) - S(2) }) do
+        local r = math.floor(wh / 2) - S(2)
+        bb:paintCircle(cx, wy + math.floor(wh / 2), r, Blitbuffer.COLOR_WHITE)
+        bb:paintCircle(cx, wy + math.floor(wh / 2), math.max(2, math.floor(r * 0.45)), gray(0.7))
+    end
+    -- the head opening at the foot
+    local hw = math.floor(w * 0.5)
+    for i = 0, S(9) - 1 do
+        local inset = math.floor((S(9) - i) * S(5) / S(9))
+        bb:paintRect(x + math.floor((w - hw) / 2) - S(5) + inset, bottom - S(9) + i, hw + 2 * S(5) - 2 * inset, 1, gray(0.85))
+    end
+end
+
+--- The CD turned to face out: its case with the cover, the disc peeking out.
+local function cdFront(bb, x, bottom, side, cover)
+    local y = bottom - side
+    -- the disc behind, out on the right
+    local r = math.floor(side * 0.46)
+    local cx, cy = x + side - math.floor(r * 0.35), y + math.floor(side / 2)
+    bb:paintCircle(cx, cy, r, gray(0.25))
+    bb:paintCircle(cx, cy, r - S(2), gray(0.12))
+    for k = 1, 3 do bb:paintCircle(cx, cy, math.floor(r * (0.4 + 0.15 * k)), gray(0.2), 1) end
+    bb:paintCircle(cx, cy, math.floor(r * 0.18), Blitbuffer.COLOR_WHITE)
+    bb:paintCircle(cx, cy, math.floor(r * 0.08), gray(0.5))
+    -- the case
+    bb:darkenRect(x + S(4), y + S(4), side, side, 0.3)
+    bb:paintRect(x, y, side, side, gray(0.2))
+    if cover then pcall(function() cover:paintTo(bb, x + S(7), y + S(2)) end) end
+    bb:paintRect(x, y, S(6), side, gray(0.55)) -- the hinge
+    bb:paintRect(x + S(6), y, 1, side, gray(0.9))
+    bb:paintBorder(x, y, side, side, 1, gray(0.95))
+    -- a glare across the clear front
+    for i = 0, S(10) do bb:lightenRect(x + side - S(30) + i, y + S(4) + i, S(3), 1, 0.4) end
+end
+
 function Row:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
     local menu = self.menu
@@ -277,22 +386,54 @@ function Row:paintTo(bb, x, y)
     local room_end = right
     local picked
     for i, it in ipairs(self.items) do
-        if it.kind == "book" and menu._gz_picked == it.idx then picked = i end
+        if TURNS[it.kind] and menu._gz_picked == it.idx then picked = i end
     end
     local face_w = self.cover_w + 2 * S(6) + S(Sh.PAGES) + S(5)
     local px = x + S(8)
     local spans = {}
     for i, it in ipairs(self.items) do
-        local w = i == picked and face_w or it.w
+        local w = i == picked and (it.face_w or face_w) or it.w
         if px + w > room_end then
             it.hidden = true
             it.dimen = Geom:new{ x = 0, y = 0, w = 0, h = 0 }
         else
             it.hidden = false
-            if i == picked then
+            if i == picked and (it.kind == "tape" or it.kind == "cd") then
+                local CC = require("modules/filebrowser/patches/home/widgets/cover_common")
+                if it.kind == "tape" then
+                    local th = it.face_h
+                    if not it.cover then
+                        local cs = math.min(math.floor(th * 0.62) - S(12), S(40))
+                        it.cover = CC.make_cover_widget(it.book, cs, cs, { border = 1, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
+                    end
+                    tapeFront(bb, px + S(4), board_y, it.face_w - S(10), th, it.book.title or "", it.cover)
+                    it.dimen = Geom:new{ x = px + S(4), y = board_y - th, w = it.face_w - S(10), h = th }
+                else
+                    local side = it.face_h
+                    if not it.cover then
+                        it.cover = CC.make_cover_widget(it.book, side - S(9), side - S(4), { border = 0, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
+                    end
+                    cdFront(bb, px + S(4), board_y, side, it.cover)
+                    it.dimen = Geom:new{ x = px + S(4), y = board_y - side, w = side, h = side }
+                end
+                local d = it.dimen
+                for k = 0, 1 do
+                    bb:paintBorder(d.x - S(3) - k, d.y - S(3) - k, d.w + 2 * (S(3) + k), d.h + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
+                end
+                badge(bb, menu, it, d.x, d.y, d.w, d.h)
+            elseif i == picked then
                 if not it.cover then
                     it.cover = require("modules/filebrowser/patches/home/widgets/cover_common").make_cover_widget(it.book,
                         self.cover_w, self.cover_h, { border = 1, background = Blitbuffer.COLOR_LIGHT_GRAY })
+                end
+                if it.kind == "series" then
+                    -- the series' other books behind its first
+                    local cs0 = it.cover:getSize()
+                    for k = 2, 1, -1 do
+                        local ox, oy = px + S(6) + k * S(5), board_y - cs0.h - S(Sh.PAGES) - k * S(4)
+                        bb:paintRect(ox, oy, cs0.w, cs0.h, Blitbuffer.gray(0.25 + 0.2 * k))
+                        bb:paintBorder(ox, oy, cs0.w, cs0.h, 1, Blitbuffer.COLOR_BLACK)
+                    end
                 end
                 local cs = it.cover:getSize()
                 local cx, cy = px + S(6), board_y - cs.h - S(Sh.PAGES)
@@ -304,7 +445,9 @@ function Row:paintTo(bb, x, y)
                 badge(bb, menu, it, cx, cy, cs.w, cs.h)
             else
                 local top = board_y - it.h
-                it.spine:paintTo(bb, px, top)
+                if it.kind == "tape" then tapeSpine(bb, px, top, it.w, it.h, it.book.title or "")
+                elseif it.kind == "cd" then cdSpine(bb, px, top, it.w, it.h, it.book.title or "", it.shade or 0.3)
+                else it.spine:paintTo(bb, px, top) end
                 if it.kind == "folder" then
                     -- a folder: a tab on top
                     bb:paintRect(px + S(6), top - S(5), it.w - S(12), S(5), Blitbuffer.gray(0.25))
@@ -331,6 +474,21 @@ function Row:free()
 end
 
 ---------------------------------------------------------------- building a page
+
+--- "tape" for an audiobook in Audiobooks, "cd" for an album or playlist in
+--- Music (GZreader's stand-ins in its own folders), else nil.
+function View.caseOf(entry)
+    local path = type(entry) == "table" and entry.is_file and entry.path
+    if type(path) ~= "string" then return nil end
+    local dir = path:match("^(.*)/[^/]+$")
+    local name = dir and dir:match("([^/]+)$")
+    local home = G_reader_settings:readSetting("home_dir")
+    home = home and home:gsub("/+$", "")
+    if not (name and home and dir == home .. "/" .. name) then return nil end
+    if name == "Audiobooks" then return "tape" end
+    if name == "Music" then return "cd" end
+    return nil
+end
 
 local extracting = {} -- path -> true (asked for once)
 
@@ -379,12 +537,36 @@ function View.buildUI(menu)
                 item = Item:new{ menu = menu, entry = entry, idx = idx, slot = slot, kind = "special", w = w, h = h } }
         else
             local is_book = entry.is_file and true or false
-            local book = is_book and bookOf(entry, missing) or folderOf(entry)
+            local series = not is_book and (entry.is_series_group or type(entry.series_items) == "table")
+            local case = is_book and View.caseOf(entry) -- "tape" / "cd" in Audiobooks / Music
+            local book
+            if series then
+                -- a series: its first book's cover when it turns, its name on the spine
+                local first_book = type(entry.series_items) == "table" and entry.series_items[1]
+                book = first_book and bookOf(first_book, missing) or folderOf(entry)
+                book.title = (entry.text or ""):gsub("/$", "")
+                book.series_index = nil
+                book.group_label = entry.path
+            else
+                book = is_book and bookOf(entry, missing) or folderOf(entry)
+            end
             local look = Sh.look(book, area_h)
-            local shade = is_book and look.shade or 0.12
-            local item = Item:new{ menu = menu, entry = entry, idx = idx, slot = slot, kind = is_book and "book" or "folder",
-                w = look.w, h = is_book and look.h or math.floor(area_h * 0.8), book = book }
-            item.spine = Sh.newSpine(book, item.w, item.h, shade)
+            local shade = (is_book or series) and look.shade or 0.12
+            local kind = case or (series and "series") or (is_book and "book") or "folder"
+            local item = Item:new{ menu = menu, entry = entry, idx = idx, slot = slot, kind = kind,
+                w = look.w, h = (is_book or series) and look.h or math.floor(area_h * 0.8), book = book }
+            if case then book.cover_w, book.cover_h = 1, 1 end -- (square: an audiobook's or album's cover)
+            if case == "tape" then
+                item.w, item.h = S(20), math.floor(area_h * 0.52)
+                item.face_h = math.floor(area_h * 0.5)
+                item.face_w = math.floor(item.face_h * 1.55) + S(14)
+            elseif case == "cd" then
+                item.w, item.h, item.shade = S(14), math.floor(area_h * 0.58), shade
+                item.face_h = math.floor(area_h * 0.6)
+                item.face_w = item.face_h + math.floor(item.face_h * 0.3) + S(10)
+            else
+                item.spine = Sh.newSpine(book, item.w, item.h, shade)
+            end
             books[#books + 1] = item
         end
     end

@@ -58,8 +58,8 @@ haven't been tried.
   display ledges, a bookcase for libraries, shelves, authors and series), download books in the background,
   and keep your **place, bookmarks, highlights and ratings in sync** with Grimmory.
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
-  to show its cover. Audiobooks sit on the shelf as a cassette walkman, music as a
-  CD player. Lists and tiles are a tap away.
+  to show its cover. Audiobooks sit on the shelf as a cassette walkman (each one a
+  cassette tape inside), music as a CD player (each album a CD). Lists and tiles are a tap away.
 - 🌐 **Set up from your browser:** scan one QR code, or type the Kindle's address
   into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
   everything (single sign-on works too) and **sends books** straight to the Kindle.
@@ -69,7 +69,8 @@ haven't been tried.
 - 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,
   day, week, month.
 - 🎵 **Music** *(new, Kindles with audio)*: albums and playlists from **Plex**, played
-  while you read. Turn the Music tab on in Settings → Navbar → Tabs.
+  while you read, all in a portable CD player: browse, download and play there. Turn the
+  Music tab on in Settings → Navbar → Tabs.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
   read to you in the Kindle's own voice, the sentence being spoken highlighted and the
   pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.

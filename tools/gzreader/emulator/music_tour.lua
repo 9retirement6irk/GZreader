@@ -16,6 +16,10 @@ end
 local function stack() return require("ui/uimanager")._window_stack end
 local function top() local st = stack(); return st[#st] and st[#st].widget end
 local function menuTitled(pat)
+    -- (1.22: the Music tab is the CD player's library: its lists on the insert)
+    local CD = package.loaded["gzreader_cdscreen"]
+    local cd = CD and CD.instance
+    if cd and cd.nav and cd.mode == "library" and tostring(cd.nav.title):match(pat) then return cd.nav end
     for i = #stack(), 1, -1 do
         local w = stack()[i].widget
         if w.item_table and tostring(w.title):match(pat) then return w end
