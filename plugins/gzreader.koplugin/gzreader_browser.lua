@@ -236,7 +236,10 @@ function Browser:openSimple(endpoint, title)
     self:openCached{
         key = "simple:" .. endpoint,
         title = title,
-        fetch = function() return self.api:simpleList(endpoint, 30) end,
+        fetch = function()
+            if endpoint == "continue-reading" then return self.api:continueReading(30) end
+            return self.api:simpleList(endpoint, 30)
+        end,
         build = function(list)
             local items = {}
             for _, book in ipairs(type(list) == "table" and list or {}) do

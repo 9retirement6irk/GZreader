@@ -33,6 +33,7 @@ STATE = {
     "refresh_calls": 0,
     "lib500": False,
     "old_search": False,   # an older Grimmory whose book list ignores search=
+    "cr_paused": False,    # /continue-reading empty; the books are Paused (the web still lists them)
     "bookmarks": {},       # id -> BookMark dto
     "bm_next": 500,
     "annotations": {},     # id -> AnnotationResponse
@@ -448,6 +449,13 @@ class H(BaseHTTPRequestHandler):
                 ql = q["search"][0].lower().strip()
                 books = [b for b in books if ql in b["title"].lower() or ql in b.get("seriesName", "").lower()
                          or any(ql in a.lower() for a in b["authors"])]
+            if q.get("status"):   # read status: these are Reading (or, with cr_paused, Paused)
+                want = set(q["status"])
+                started = BOOKS[:5] + [BOOKS[31]] + ([BOOKS[6]] if STATE["cr_paused"] else [])
+                status = "PAUSED" if STATE["cr_paused"] else "READING"
+                books = [b for b in books if b in started and status in want]
+                if STATE["cr_paused"]:   # BOOKS[6] read last
+                    books = [dict(b, lastReadTime="2026-11-0%dT10:00:00Z" % (9 if b is BOOKS[6] else 1)) for b in books]
             if q.get("sort") == ["title"]:
                 books = sorted(books, key=lambda b: b["title"].lower(), reverse=q.get("dir") == ["desc"])
             if q.get("sort") == ["seriesNumber"]:
@@ -471,6 +479,8 @@ class H(BaseHTTPRequestHandler):
                         "pageCount": 320, "publisher": "Mock House", "publishedDate": "2001-05-04"})
             return self._json(200, out)
         if u.path in ("/api/v1/app/books/continue-reading", "/api/v1/app/books/recently-added"):
+            if STATE["cr_paused"] and u.path.endswith("continue-reading"):
+                return self._json(200, [])
             return self._json(200, BOOKS[:5] + [BOOKS[31]])
         m = re.match(r"^/api/v1/audiobooks/(\d+)/info$", u.path)
         if m:

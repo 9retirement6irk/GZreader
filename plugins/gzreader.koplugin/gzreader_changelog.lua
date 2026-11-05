@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.5",
+        changes = {
+            "Grimmory tab: Continue reading shows the books the Grimmory website shows. Grimmory's app list only has books marked Reading; books marked Paused (or without a last-read time) are now included too, most recently read first.",
+        },
+    },
+    {
         version = "1.22.4",
         changes = {
             "Downloads, Bookshelf view: every book of a series stands on the shelf (in its order, its number on the spine): grouping series into folders is off in the Bookshelf view; the other views keep the setting.",

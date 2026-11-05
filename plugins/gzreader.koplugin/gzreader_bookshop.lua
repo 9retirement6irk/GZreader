@@ -263,7 +263,7 @@ function Shop.fetch(browser)
         st.loading = true
         local api = browser.api
         require("gzreader_async").run(api, function()
-            return { continue = api:simpleList(ENDPOINT.continue, Shop.LIST_LIMIT),
+            return { continue = api:continueReading(Shop.LIST_LIMIT),
                 recent = api:simpleList(ENDPOINT.recent, Shop.LIST_LIMIT) }
         end, function(res)
             st.loading = false

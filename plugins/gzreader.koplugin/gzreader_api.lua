@@ -394,6 +394,44 @@ function Api:simpleList(endpoint, limit)
     return nil, err or ("http_" .. tostring(code))
 end
 
+-- What the web dashboard's Continue Reading counts as in progress.
+Api.IN_PROGRESS = { "READING", "RE_READING", "PAUSED" }
+
+--- Books in progress, as Grimmory's web dashboard shows them. The app's
+--- /continue-reading only has books marked Reading with a last-read time;
+--- the web also shows Paused ones (and those without a time), so the book
+--- list filtered by those statuses is asked too and the two are merged,
+--- most recently read first. Either one alone does if the other fails.
+function Api:continueReading(limit)
+    limit = limit or 20
+    local list, err = self:simpleList("continue-reading", limit)
+    local page = self:listBooks{ page = 0, size = limit, status = Api.IN_PROGRESS,
+        sort = "lastReadTime", dir = "desc", fileType = Api.READABLE_TYPES }
+    local more = type(page) == "table" and type(page.content) == "table" and page.content or nil
+    if not list and not more then return nil, err end
+    local out, seen, order = {}, {}, {}
+    for _i, src in ipairs{ list or {}, more or {} } do
+        for _j, b in ipairs(src) do
+            if type(b) == "table" and b.id ~= nil and not seen[b.id] then
+                seen[b.id] = true
+                out[#out + 1] = b
+                order[b] = #out
+            end
+        end
+    end
+    local function when(b) return type(b.lastReadTime) == "string" and b.lastReadTime or nil end
+    table.sort(out, function(a, b)
+        local ta, tb = when(a), when(b)
+        if ta and tb and ta ~= tb then return ta > tb end
+        if (ta ~= nil) ~= (tb ~= nil) then return ta ~= nil end
+        return order[a] < order[b]
+    end)
+    while #out > limit do out[#out] = nil end
+    logger.info("Grimmory: continue reading:", list and #list or "failed", "reading,",
+        more and #more or "failed", "in progress ->", #out)
+    return out
+end
+
 --- Grimmory's cover thumbnail for a book, saved to `path`: 250 x 350 JPEG, or
 --- with kind = "audiobook" the square audiobook cover (250 x 250). Grimmory
 --- has no smaller size; GZreader keeps and shrinks them on the Kindle.

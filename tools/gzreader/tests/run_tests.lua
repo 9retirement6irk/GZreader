@@ -555,6 +555,22 @@ end
 b:openSimple("continue-reading", "Continue reading")
 check(#b.menu.item_table == 5, "continue reading list (audiobook dropped)")
 check(b.menu.item_table[1].mandatory:match("13%%"), "progress shown")
+do -- Paused books: the app's /continue-reading leaves them out, the web shows them
+    ctl("/set?cr_paused=true")
+    local list = plugin.api:continueReading(30)
+    local ids = {}
+    for _i, bk in ipairs(list or {}) do ids[#ids + 1] = bk.id end
+    check(list and #list == 6 and ids[1] == 7, "continue reading: Paused books too, most recently read first (" .. table.concat(ids, ",") .. ")")
+    b:openSimple("continue-reading", "Continue reading")
+    check(#b.menu.item_table == 6, "continue reading list: not empty when the app's list is")
+    ctl("/set?cr_paused=false")
+    local saved = plugin.api.listBooks
+    plugin.api.listBooks = function() return nil, "http_400" end   -- an older Grimmory
+    list = plugin.api:continueReading(30)
+    plugin.api.listBooks = saved
+    check(list and #list == 6, "continue reading: the app's list alone if the book list can't filter")
+    b:openSimple("continue-reading", "Continue reading")
+end
 
 print("Libraries, authors, series (local index of readable books)")
 local Index = require("gzreader_index")
