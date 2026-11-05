@@ -3865,6 +3865,67 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
+;(function()
+    local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
+    local saved_path = package.path
+    package.path = zen .. ";" .. package.path
+    local calls = {}
+    local handle = {}
+    function handle:set_string_property(svc, prop, val) calls[#calls + 1] = svc .. " " .. prop .. " " .. tostring(val) end
+    function handle:set_int_property(svc, prop, val) calls[#calls + 1] = svc .. " " .. prop .. " " .. tostring(val) end
+    function handle:get_string_property() return "idle" end
+    function handle:new_hasharray()
+        local ha = {}
+        for _i, m in ipairs({ "add_hash", "put_string", "put_int", "destroy" }) do ha[m] = function() end end
+        return ha
+    end
+    function handle:access_hash_property(_svc, prop)
+        local rows = prop == "profileData" and { { essid = "Home", netid = 3 } }
+            or prop == "scanList" and { { essid = "Home", signal = 4, signal_max = 5, key_mgmt = "WPA-PSK", known = "yes", netid = 3 },
+                { essid = "Cafe", signal = 2, signal_max = 5, key_mgmt = "WPA-PSK", known = "no" } } or {}
+        return { to_table = function() return rows end, destroy = function() end }
+    end
+    function handle:close() end
+    package.loaded["liblipclua"] = nil
+    package.preload["liblipclua"] = function() error("module 'liblipclua' not found") end
+    package.loaded["libopenlipclua"] = { open_no_name = function() return handle end }
+    local NM = { getCurrentNetwork = function() return nil end, turnOffWifi = function() end }
+    package.loaded["modules/menu/network_adapters/kindle"] = nil
+    local ok, Adapter = pcall(require, "modules/menu/network_adapters/kindle")
+    check(ok, "the Kindle adapter loads " .. tostring(not ok and Adapter or ""))
+    if ok then
+        local a = Adapter.new(NM)
+        local list = a.getNetworkList()
+        local home, cafe
+        for _i, n in ipairs(list or {}) do if n.ssid == "Home" then home = n elseif n.ssid == "Cafe" then cafe = n end end
+        check(home and home.saved and cafe and not cafe.saved, "networks the Kindle knows are marked saved (no password asked)")
+        local connected = a.connect({ ssid = "Home" })
+        check(connected and calls[#calls] == "com.lab126.cmd ensureConnection wifi:Home",
+            "connecting without liblipclua: libopenlipclua, as KOReader's own menu does (" .. tostring(calls[#calls]) .. ")")
+        local done
+        a.scan(function(scanned) done = scanned end)
+        check(calls[#calls] == "com.lab126.wifid scan " and done ~= false, "a scan starts (no \"timed out\" at once)")
+        a.close()
+    end
+    package.preload["liblipclua"] = nil
+    package.loaded["libopenlipclua"] = nil
+    package.loaded["modules/menu/network_adapters/kindle"] = nil
+    package.path = saved_path
+end)()
+
+print("Kindles without REAGL: flash when the screen changes")
+do
+    local Eink = require("gzreader_eink")
+    local W, H = 600, 800
+    local function m(mode, region, pending) return (Eink.promote(mode, region, W, H, pending)) end
+    check(m("ui", nil) == "full" and m("ui", { w = 600, h = 800 }) == "flashui" and m("partial", { w = 600, h = 600 }) == "flashui",
+        "most of the screen changing (a tab, a menu, a list's page) flashes")
+    check(m("ui", { w = 584, h = 354 }) == "ui" and m("ui", { w = 36, h = 25 }) == "ui", "small changes (the focus, the clock) don't")
+    check(m("partial", nil) == "partial" and m("partial", nil, true) == "full", "a page turn is left to the page rate, unless a book or full-screen menu just opened or closed")
+    check(m("fast", nil) == "fast" and m("full", nil) == "full" and m("a2", { w = 600, h = 800 }) == "a2", "other modes as asked")
+end
+
 print("Headphones")
 ;(function()
     local Jack = require("gzreader_jack")

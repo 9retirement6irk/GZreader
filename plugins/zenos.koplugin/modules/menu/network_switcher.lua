@@ -766,7 +766,7 @@ function M.open(on_connected, settings_subpage, plugin)
             if type(network.ssid) == "string" and network.ssid ~= "" then
                 local quality = tonumber(network.signal_quality)
                 local status = network.connected and _("Connected")
-                    or (network.password ~= nil or network.kobo_configured) and _("Saved") or nil
+                    or (network.password ~= nil or network.saved or network.kobo_configured) and _("Saved") or nil
                 local signal = quality and tostring(math.floor(quality)) .. "%" or nil
                 local item = {
                     text = network.ssid,
@@ -788,7 +788,7 @@ function M.open(on_connected, settings_subpage, plugin)
                             show_status(_("Networks with WEP encryption are not supported."))
                         elseif network.connected then
                             show_network_actions(network)
-                        elseif network.password == nil
+                        elseif network.password == nil and not network.saved
                                 and not (kobo_adapter and kobo_adapter.profileId(network.ssid)) then
                             prompt_password(network)
                         else
@@ -825,9 +825,17 @@ function M.open(on_connected, settings_subpage, plugin)
         local function load_results(scanned, result, worker_error)
             if closed or not scanning then return end
             scanning = false
+            -- GZreader: a Kindle whose system can't list networks here
+            -- (a Kindle 3) still joins the ones saved in its own settings
+            local legacy = Device.model == "Kindle2" or Device.model == "KindleDXG"
+                or Device.model == "Kindle3"
+            local function legacy_notice()
+                show_status(_("Networks: in the Kindle's own settings"))
+                UIManager:show(InfoMessage:new{ text = _("This Kindle can't list Wi-Fi networks here. Add a network in the Kindle's own settings (Exit to the Kindle, then Menu → Settings → Wi-Fi Networks). GZreader then turns Wi-Fi on and joins it by itself.") })
+            end
             if scanned == false then
-                logger.warn("adapter scan failed")
-                show_status(_("Scanning for Wi-Fi networks timed out."))
+                logger.warn("adapter scan failed:", tostring(result))
+                if legacy then legacy_notice() else show_status(_("Scanning for Wi-Fi networks timed out.")) end
                 return
             end
             local scanned_networks, scan_error
@@ -844,9 +852,9 @@ function M.open(on_connected, settings_subpage, plugin)
             end
             if closed then return end
             if not scanned_networks then
-                logger.warn("scan failed")
+                logger.warn("scan failed:", tostring(scan_error))
                 restore_previous_network()
-                show_status(scan_error or _("Could not scan Wi-Fi networks."))
+                if legacy then legacy_notice() else show_status(scan_error or _("Could not scan Wi-Fi networks.")) end
                 return
             end
             network_list = scanned_networks

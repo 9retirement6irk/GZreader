@@ -46,6 +46,17 @@ function M.build(ctx)
         end,
     })
 
+    -- GZreader: Kindles without REAGL (Kindle 3 …): flash on screen changes
+    local ok_eink, Eink = pcall(require, "gzreader_eink")
+    if ok_eink and Eink.applies() then
+        table.insert(items, {
+            text = _("Flash when the screen changes"),
+            help_text = _("Less ghosting: switching tabs, opening or closing a menu or a book, and turning pages flash the screen clean. Off: quicker, but a grey trace of the last screen stays until the next flash."),
+            checked_func = function() return Eink.enabled() end,
+            callback = function() Eink.setEnabled(not Eink.enabled()) end,
+        })
+    end
+
     table.insert(items, {
         text = _("Allow dragging reader modals"),
         help_text = _("Restore KOReader's default draggable modal behavior."),

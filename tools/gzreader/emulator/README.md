@@ -47,6 +47,23 @@ Press/Back answer), and the order things happen in on a first start.
 4. Optional remote debugging: `python3 feed.py 18091 feed.log` and
    `echo http://127.0.0.1:18091/open/feed/test > /mnt/us/gzreader-remote.txt`.
 
+## E-ink ghosting and the Kindle's Wi-Fi services
+
+- `GZ_EMU_GHOST=1`: the panel as an e-ink screen shows it. A flashing
+  update (full, flashui, flashpartial) leaves it clean; the others leave a
+  trace of what was there (the Kindle 3's partial update a lot, the
+  Paperwhite's REAGL little, GL16 more, A2/DU most), and traces add up until
+  the next flash. Each shot gets a `<name>-ghost.png` beside it and its line
+  in the output says how much of the screen has a visible ghost;
+  `<out>/ghosts.tsv` lists every update (kind, area, ghosting after it).
+  `ghost_tour.lua` walks the tabs, the menu, a book's pages and back on a
+  Kindle 3 (needs the demo Grimmory on 18200).
+- `GZ_EMU_WIFID=1`: a stand-in for the Kindle's Wi-Fi services over lipc
+  (what libopenlipclua reaches on a Kindle): two networks in range, "Home"
+  saved. The calls made print as `[emu] wifid: …` (the network page
+  connects in a subprocess). `wifi_tour.lua` opens the Wi-Fi networks page
+  and joins "Home".
+
 ## Scripts
 
 - `setup_qr.lua` — first start: setup guide, the phone page connects

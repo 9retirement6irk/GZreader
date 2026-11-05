@@ -49,6 +49,8 @@ local MAX_QUEUED_SESSIONS = 200
 
 -- Night mode makes legacy Kindles unusably slow (software inversion): keep it off.
 pcall(function() require("gzreader_nightguard").install() end)
+-- Kindles without REAGL: flash when most of the screen changes (less ghosting).
+pcall(function() require("gzreader_eink").install() end)
 
 local Grimmory = WidgetContainer:extend{
     name = "gzreader",

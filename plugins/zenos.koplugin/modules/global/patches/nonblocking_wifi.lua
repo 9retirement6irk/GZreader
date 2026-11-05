@@ -300,7 +300,14 @@ local function apply_nonblocking_wifi()
         local check = {}
         connection_check = check
         self:runWifiAsync(function()
-            local problem = address_error(self)
+            -- GZreader: a Kindle gets its address and route a moment after
+            -- it says it's connected; wait up to 8 s before calling it a problem
+            local problem
+            for _i = 1, 16 do
+                problem = address_error(self)
+                if not problem then break end
+                ffiutil.usleep(500 * 1000)
+            end
             if problem then return problem end
             if not self:canResolveHostnames() then
                 return _("Wi-Fi connected, but DNS lookup failed. Internet access may be unavailable. Try reconnecting.")

@@ -356,6 +356,10 @@ if [ "${STOP_FRAMEWORK}" = "no" ] && [ "${INIT_TYPE}" = "sysv" ]; then
     echo 'send 139' >/proc/keypad
 fi
 
+# GZreader: say in crash.log how GZreader ended and how the Kindle's own
+# interface came back (the diagnostic log shows it)
+echo "GZreader: exited with ${RETURN_VALUE} (Kindle interface stopped: ${STOP_FRAMEWORK}, ${INIT_TYPE}) at $(date)" >>"${KOREADER_DIR}/crash.log" 2>/dev/null
+
 # Restart framework (if need be)
 if [ "${STOP_FRAMEWORK}" = "yes" ]; then
     logmsg "Restarting framework . . ."
@@ -364,6 +368,7 @@ if [ "${STOP_FRAMEWORK}" = "yes" ]; then
     else
         cd / && start lab126_gui
     fi
+    echo "GZreader: Kindle interface start asked: $? at $(date)" >>"${KOREADER_DIR}/crash.log" 2>/dev/null
 fi
 
 # Display chrome bar if need be (upstart & framework up only)

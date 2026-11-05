@@ -388,6 +388,73 @@ package.preload["device/nook/framebuffer_nst"] = function()
     return NST
 end
 
+-- GZ_EMU_WIFID=1: a stand-in for the Kindle's Wi-Fi services over lipc (what
+-- libopenlipclua reaches on a Kindle): two networks in range, "Home" saved;
+-- joining one makes it the current network. E.wifid holds the state and the
+-- calls made.
+if os.getenv("GZ_EMU_WIFID") == "1" then
+    local W = { calls = {}, current = nil, scanning = 0,
+        profiles = { { essid = "Home", netid = 3 } },
+        scan = { { essid = "Home", signal = 4, signal_max = 5, key_mgmt = "WPA-PSK", known = "yes", netid = 3 },
+            { essid = "Cafe", signal = 2, signal_max = 5, key_mgmt = "WPA-PSK", known = "no" } } }
+    E.wifid = W
+    local function handle()
+        local h = {}
+        function h:set_string_property(svc, prop, val)
+            W.calls[#W.calls + 1] = svc .. " " .. prop .. " " .. tostring(val)
+            -- (the switcher connects in a subprocess: its calls go to the run's output too)
+            print("[emu] wifid: " .. svc .. " " .. prop .. " " .. tostring(val))
+            if prop == "scan" then W.scanning = 3 end
+            local essid = prop == "ensureConnection" and tostring(val):match("^wifi:(.*)$") or prop == "cmConnect" and val
+            if essid then
+                for _i, p in ipairs(W.profiles) do
+                    if p.essid == essid or tostring(p.netid) == essid then W.current = p.essid end
+                end
+            end
+            if prop == "deleteProfile" then
+                for i = #W.profiles, 1, -1 do if W.profiles[i].essid == val then table.remove(W.profiles, i) end end
+            end
+        end
+        function h:set_int_property(svc, prop, val)
+            W.calls[#W.calls + 1] = svc .. " " .. prop .. " " .. tostring(val)
+            if prop == "deleteProfile" then
+                for i = #W.profiles, 1, -1 do if W.profiles[i].netid == val then table.remove(W.profiles, i) end end
+            end
+        end
+        function h:get_string_property(_svc, prop)
+            if prop == "scanState" then
+                if W.scanning > 0 then W.scanning = W.scanning - 1; return "scanning" end
+                return "idle"
+            end
+            if prop == "cmState" then return W.current and "CONNECTED" or "READY" end
+            return ""
+        end
+        function h:new_hasharray()
+            local ha = { rows = {} }
+            function ha:add_hash() self.rows[#self.rows + 1] = {} end
+            function ha:put_string(i, k, v) self.rows[i + 1][k] = v end
+            function ha:put_int(i, k, v) self.rows[i + 1][k] = v end
+            function ha:destroy() end
+            return ha
+        end
+        function h:access_hash_property(_svc, prop, input)
+            local rows = {}
+            if prop == "profileData" then rows = W.profiles
+            elseif prop == "scanList" then rows = W.scan
+            elseif prop == "currentEssid" then rows = { { essid = W.current or "" } }
+            elseif prop == "createProfile" then
+                local p = input.rows[1]
+                W.profiles[#W.profiles + 1] = { essid = p.essid, netid = #W.profiles + 10 }
+                W.calls[#W.calls + 1] = "com.lab126.wifid createProfile " .. tostring(p.essid)
+            end
+            return { to_table = function() return rows end, destroy = function() end }
+        end
+        function h:close() end
+        return h
+    end
+    package.preload["libopenlipclua"] = function() return { open_no_name = handle, open = handle } end
+end
+
 -- the device: patch networking once it exists
 table.insert(package.loaders, 2, function(name)
     if name ~= "device" then return nil end
@@ -466,13 +533,111 @@ function E.installDisplay(Screen)
         E.refreshes = E.refreshes + 1
         E.last_refresh = os.time()
         E.last_refresh_t = E.now()
+        if E.ghost then E.ghost.update(x, y, w, h) end
+    end
+    if os.getenv("GZ_EMU_GHOST") == "1" then E.installGhosts(Screen) end
+end
+
+--[[ GZ_EMU_GHOST=1: e-ink ghosting, roughly. Each refresh's kind (the
+outermost refresh…Imp called) picks a waveform: a flashing one (full,
+flashui, flashpartial) clears the panel; the others leave a trace of what the
+pixel showed before (the Kindle 3's partial update a lot; the Paperwhite's
+REAGL little, its GL16 more, A2/DU most), and traces add up over refreshes
+until a flash. The panel as seen is written beside each shot as
+<name>-ghost.png, and every refresh's kind, area and the screen's ghosting
+afterwards go to <out>/ghosts.tsv (time, kind, x, y, w, h, % of the screen
+with a visible ghost, worst ghost in grey levels). ]]
+local GHOST = {
+    einkfb = { flash = 0, partial = 0.16 },                      -- Kindle 2/3/4, DX: two update modes
+    mxcfb = { flash = 0, reagl = 0.03, gl16 = 0.08, a2 = 0.22 },  -- touch Kindles
+    KEEP = 0.85,     -- how much of an earlier trace a non-flashing update keeps
+    VISIBLE = 16,    -- grey levels (of 255) a trace must reach to be seen
+}
+function E.installGhosts(Screen)
+    local BB = require("ffi/blitbuffer")
+    local W, H = E.display:getWidth(), E.display:getHeight()
+    local touch = SCREEN.mxcfb == true
+    local K = touch and GHOST.mxcfb or GHOST.einkfb
+    local KIND = touch and { Full = "flash", FlashPartial = "flash", FlashUI = "flash", Partial = "reagl",
+            NoMergePartial = "reagl", UI = "gl16", NoMergeUI = "gl16", Fast = "a2", A2 = "a2" }
+        or { Full = "flash", FlashPartial = "flash", FlashUI = "flash" } -- (the rest: partial)
+    local shown = ffi.new("uint8_t[?]", W * H)   -- the grey each pixel was last driven to
+    local trace = ffi.new("float[?]", W * H)     -- its ghost (+: darker than it should be, -: lighter)
+    ffi.fill(shown, W * H, 255)
+    local seen = BB.new(W, H, BB.TYPE_BB8)        -- what the eye sees
+    seen:fill(BB.COLOR_WHITE)
+    local tsv = real_open(OUT .. "/ghosts.tsv", "w")
+    tsv:write("t\tkind\tx\ty\tw\th\tghosted_pct\tworst\n")
+    local depth, kind = 0, nil
+    for name in pairs({ Full = 1, Partial = 1, NoMergePartial = 1, FlashPartial = 1, UI = 1, NoMergeUI = 1,
+            FlashUI = 1, Fast = 1, A2 = 1 }) do
+        local key = "refresh" .. name .. "Imp"
+        local orig = Screen[key]
+        if orig then
+            Screen[key] = function(self, ...)
+                if depth == 0 then kind = KIND[name] or "partial" end
+                depth = depth + 1
+                local r = { pcall(orig, self, ...) }
+                depth = depth - 1
+                if not r[1] then error(r[2]) end
+                return unpack(r, 2)
+            end
+        end
+    end
+    local G = {}
+    E.ghost = G
+    function G.update(x, y, w, h)
+        local kname = kind or "partial"
+        local k = K[kname] or K.partial or 0
+        kind = nil
+        x, y = math.max(0, math.floor(x)), math.max(0, math.floor(y))
+        w, h = math.min(W - x, math.floor(w)), math.min(H - y, math.floor(h))
+        if w <= 0 or h <= 0 then return end
+        local src = ffi.cast("uint8_t*", E.display.data)
+        local sstride = E.display.stride
+        local dst = ffi.cast("uint8_t*", seen.data)
+        local dstride = seen.stride
+        local flash = k == 0
+        for yy = y, y + h - 1 do
+            local srow, drow, base = src + yy * sstride, dst + yy * dstride, yy * W
+            for xx = x, x + w - 1 do
+                local i = base + xx
+                local target = srow[xx * 4]   -- (RGB32: r)
+                if flash then
+                    trace[i] = 0
+                else
+                    trace[i] = trace[i] * GHOST.KEEP + (target - shown[i]) * k
+                end
+                shown[i] = target
+                local v = target - trace[i]
+                drow[xx] = v < 0 and 0 or v > 255 and 255 or v
+            end
+        end
+        -- the whole screen's ghosting now
+        local n, worst = 0, 0
+        for i = 0, W * H - 1, 4 do   -- (every 4th pixel: enough for a percentage)
+            local t = trace[i]
+            if t < 0 then t = -t end
+            if t >= GHOST.VISIBLE then n = n + 1 end
+            if t > worst then worst = t end
+        end
+        G.pct = n * 400 / (W * H)
+        G.worst = worst
+        tsv:write(string.format("%.1f\t%s\t%d\t%d\t%d\t%d\t%.2f\t%d\n", E.now(), kname,
+            x, y, w, h, G.pct, worst))
+        tsv:flush()
+    end
+    function G.write(name)
+        seen:writePNG(OUT .. "/" .. name .. "-ghost.png")
     end
 end
 
 function E.shot(name)
     local p = OUT .. "/" .. name .. ".png"
     local ok, err = pcall(function() E.display:writePNG(p) end)
-    say("shot", name, ok and "" or tostring(err), "refreshes", E.refreshes, "windows:", E.top())
+    if E.ghost then pcall(E.ghost.write, name) end
+    say("shot", name, ok and "" or tostring(err), "refreshes", E.refreshes, "windows:", E.top(),
+        E.ghost and string.format("ghosted %.1f%% worst %d", E.ghost.pct or 0, E.ghost.worst or 0) or "")
 end
 
 local function runScript()

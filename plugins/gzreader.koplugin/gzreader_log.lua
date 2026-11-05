@@ -106,7 +106,7 @@ function Log.exportTo(dir, crash_log_path)
         cf:close()
     end
     if Log.probe_device then
-        out:write("\n\n===== device probe (text-to-speech / audio) =====\n", Log.deviceProbe())
+        out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi) =====\n", Log.deviceProbe())
     end
     out:close()
     return dest
@@ -145,6 +145,12 @@ Log.PROBE_COMMANDS = {
     "ps 2>/dev/null | awk 'tolower($0) ~ /audioserver|gst|aplay/' | grep -v awk",
     "strings /usr/sbin/ttsd 2>/dev/null | awk 'tolower($0) ~ /snippet|unable|read|voice|text|lipc|enqueue|play|speak|id$/' | head -200",
     "awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40",
+    -- Wi-Fi networks menu: the lipc libraries and the Wi-Fi services' property
+    -- names and states (no network names or passwords)
+    "ls -la /usr/lib/liblipc* common/*lipc* libs/*lipc* 2>&1",
+    "lipc-probe com.lab126.wifid 2>&1 | head -60",
+    "lipc-probe com.lab126.cmd 2>&1 | head -40",
+    "for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done",
 }
 
 function Log.deviceProbe()

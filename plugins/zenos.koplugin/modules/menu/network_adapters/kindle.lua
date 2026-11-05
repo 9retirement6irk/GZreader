@@ -11,12 +11,20 @@ end
 
 local function lipc_handle()
     local ok_lipc, lipc = pcall(require, "liblipclua")
-    if not ok_lipc or type(lipc.init) ~= "function" then
-        return nil, "liblipclua unavailable"
+    if ok_lipc and type(lipc) == "table" and type(lipc.init) == "function" then
+        local ok_handle, handle = pcall(lipc.init, "com.github.koreader.networkmgr")
+        if ok_handle and handle then return handle end
     end
-    local ok_handle, handle = pcall(lipc.init, "com.github.koreader.networkmgr")
-    if not ok_handle or not handle then return nil, tostring(handle) end
-    return handle
+    -- GZreader: KOReader's Kindle packages ship only libopenlipclua (no
+    -- liblipclua), so without this every scan and connection failed ("Scanning
+    -- for Wi-Fi networks timed out") on a Kindle 3 and a Paperwhite alike.
+    local ok_open, open = pcall(require, "libopenlipclua")
+    if ok_open and type(open) == "table" and type(open.open_no_name) == "function" then
+        local ok_handle, handle = pcall(open.open_no_name)
+        if ok_handle and handle then return handle end
+        return nil, "lipc: " .. tostring(handle)
+    end
+    return nil, "no lipc library (liblipclua or libopenlipclua)"
 end
 
 local function profile_handle()
@@ -95,7 +103,10 @@ local function delete_profile(ssid)
         requested, request_error = request_delete(ssid, false)
         if requested then deleted, delete_error = wait_for_profile(ssid, false) end
     end
-    if not deleted then return false, delete_error or request_error end
+    if not deleted then
+        logger.warn("Kindle Wi-Fi profile not deleted:", tostring(delete_error or request_error))
+        return false, delete_error or request_error
+    end
     logger.dbg("Kindle Wi-Fi profile deleted", "profile_id=", profile_id)
     return true
 end
@@ -133,10 +144,16 @@ local function create_profile(network)
     if result then pcall(result.destroy, result) end
     if profile_input then pcall(profile_input.destroy, profile_input) end
     pcall(handle.close, handle)
-    if not created then return false, create_error end
+    if not created then
+        logger.warn("Kindle Wi-Fi profile not created:", tostring(create_error))
+        return false, create_error
+    end
 
     local profile, profile_error = wait_for_profile(network.ssid, true)
-    if not profile then return false, profile_error end
+    if not profile then
+        logger.warn("Kindle Wi-Fi profile not saved:", tostring(profile_error))
+        return false, profile_error
+    end
     logger.dbg("Kindle Wi-Fi profile created", "security=", network.flags,
         "profile_id=", profile.netid)
     return true
@@ -172,17 +189,27 @@ function M.new(NetworkMgr)
 
     function adapter.connect(network)
         local profile, profile_error = get_profile(network.ssid)
-        if profile_error then return false, profile_error end
+        if profile_error then
+            logger.warn("Kindle Wi-Fi profiles unreadable:", tostring(profile_error))
+            return false, profile_error
+        end
         if not profile then return false, "saved Kindle Wi-Fi profile not found" end
-        local selector = profile.netid and tostring(profile.netid) or network.ssid
         local handle, handle_error = lipc_handle()
         if not handle then return false, handle_error end
+        -- GZreader: as KOReader's own Kindle network menu does (the
+        -- connection manager joins the saved profile); wifid's cmConnect
+        -- if the connection manager refuses.
         local connected, err = pcall(handle.set_string_property, handle,
-            "com.lab126.wifid", "cmConnect", selector)
-        pcall(handle.close, handle)
-        if connected then
-            logger.dbg("Kindle Wi-Fi connection requested", "profile_selector=", profile.netid ~= nil)
+            "com.lab126.cmd", "ensureConnection", "wifi:" .. network.ssid)
+        if not connected then
+            logger.warn("Kindle Wi-Fi ensureConnection refused:", tostring(err))
+            local selector = profile.netid and tostring(profile.netid) or network.ssid
+            connected, err = pcall(handle.set_string_property, handle,
+                "com.lab126.wifid", "cmConnect", selector)
+            if not connected then logger.warn("Kindle Wi-Fi cmConnect refused:", tostring(err)) end
         end
+        pcall(handle.close, handle)
+        if connected then logger.info("Kindle Wi-Fi connection requested") end
         return connected, err
     end
 
@@ -223,6 +250,9 @@ function M.new(NetworkMgr)
             networks[#networks + 1] = {
                 connected = network.essid == current_ssid,
                 flags = network.key_mgmt or "",
+                -- (wifid needn't hand back a saved password: "known" or a
+                -- profile says it's saved, so it connects without asking)
+                saved = profile ~= nil or network.known == "yes",
                 password = profile and profile.psk,
                 signal_quality = signal and signal_max and signal_max > 0
                     and math.floor(signal * 100 / signal_max) or nil,
@@ -249,6 +279,7 @@ function M.new(NetworkMgr)
         local requested, scan_error = pcall(handle.set_string_property, handle,
             "com.lab126.wifid", "scan", "")
         if not requested then
+            logger.warn("Kindle Wi-Fi scan refused:", tostring(scan_error))
             pcall(handle.close, handle)
             callback(false, scan_error)
             return

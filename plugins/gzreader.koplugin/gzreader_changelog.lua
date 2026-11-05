@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.0",
+        changes = {
+            "Less ghosting on the Kindle 3 (and Kindle 2, DX, 4): switching tabs, opening or closing a menu, the quick panel or a book, and a list's next page now flash the screen clean, and every page turn flashes, as the Kindle's own reader does. Small changes (moving the 5-way, the clock) stay quick. Turn it off in Settings → Advanced → Flash when the screen changes; the book menu's full refresh rate still applies if you set one.",
+            "Wi-Fi networks (Settings → Wi-Fi) works on Kindles: it couldn't reach the Kindle's Wi-Fi service (the library it looked for isn't in KOReader's Kindle packages), so the list never appeared. Networks the Kindle already knows show as Saved and join without asking for the password.",
+            "Kindle 3: if the Kindle can't list networks here, it says to add them in the Kindle's own Wi-Fi settings; GZreader then turns Wi-Fi on and joins them by itself.",
+            "After connecting, the \"no default route\" warning waits a few seconds for the Kindle to finish connecting before it shows.",
+            "Diagnostics: the log now says how GZreader exited and whether the Kindle's own interface was started again, and lists the Wi-Fi service's settings (no network names or passwords).",
+        },
+    },
+    {
         version = "1.22.6",
         changes = {
             "Bigger titles and authors on book spines (Home and Downloads): the spines are a little wider and their type is as big as each spine allows; a long title is set a little smaller so more of it shows. On Kindles without a keyboard, titles run closer to the foot of the spine.",
