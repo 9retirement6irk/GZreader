@@ -3924,6 +3924,9 @@ do
     check(m("ui", { w = 584, h = 354 }) == "ui" and m("ui", { w = 36, h = 25 }) == "ui", "small changes (the focus, the clock) don't")
     check(m("partial", nil) == "partial" and m("partial", nil, true) == "full", "a page turn is left to the page rate, unless a book or full-screen menu just opened or closed")
     check(m("fast", nil) == "fast" and m("full", nil) == "full" and m("a2", { w = 600, h = 800 }) == "a2", "other modes as asked")
+    check(Eink.promote("ui", nil, W, H, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, true) == "ui",
+        "the 5-way's arrows (along the tab bar, around the quick panel) don't flash, however much they redraw")
+    check(Eink.promote("ui", nil, W, H, true, true) == "full", "unless a full-screen window just opened or closed")
 end
 
 print("Headphones")

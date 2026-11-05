@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.1",
+        changes = {
+            "Kindle 3: moving the 5-way along the tab bar or around the quick panel no longer flashes the screen at every step (1.23.0 did, because those moves redraw the whole screen). Opening and closing things still flashes.",
+        },
+    },
+    {
         version = "1.23.0",
         changes = {
             "Less ghosting on the Kindle 3 (and Kindle 2, DX, 4): switching tabs, opening or closing a menu, the quick panel or a book, and a list's next page now flash the screen clean, and every page turn flashes, as the Kindle's own reader does. Small changes (moving the 5-way, the clock) stay quick. Turn it off in Settings → Advanced → Flash when the screen changes; the book menu's full refresh rate still applies if you set one.",

@@ -15,7 +15,9 @@ on by default):
   next page;
 - the first update after a full-screen window opens or closes (a book, a
   full-screen menu) flashes, page or not.
-Small updates (the 5-way's focus, the clock, typing) don't. Page turns flash
+Small updates (the clock, typing) don't, nor does anything the 5-way's arrows
+do (moving along the tab bar, around the quick panel or a list: those redraw
+the whole screen but flashing at every step is too much). Page turns flash
 every page, as the Kindle's own reader does, unless a rate was chosen in the
 book's menu (Screen → E-ink settings → Full refresh rate; KOReader's default
 is every 6 pages, which left a grey trace of the last pages on the page).
@@ -51,10 +53,16 @@ end
 
 local QUIET = { ui = true, ["[ui]"] = true, partial = true, ["[partial]"] = true }
 
+-- The 5-way's arrows (and their repeats)
+Eink.ARROWS = { Left = true, Right = true, Up = true, Down = true }
+Eink.ARROW_S = 1.5   -- how long after an arrow a big update is still its doing
+
 --- The mode an update gets (pure: run_tests.lua). `region` nil: the whole
---- screen; `pending`: a full-screen window just opened or closed.
-function Eink.promote(mode, region, screen_w, screen_h, pending)
+--- screen; `pending`: a full-screen window just opened or closed; `arrow`:
+--- an arrow key was just pressed (moving the focus).
+function Eink.promote(mode, region, screen_w, screen_h, pending, arrow)
     if not QUIET[mode] then return mode, false end
+    if arrow and not pending then return mode, false end
     local big = not region or (region.w * region.h >= Eink.AREA * screen_w * screen_h)
     if not big then return mode, false end
     local page_turn = region == nil and (mode == "partial" or mode == "[partial]")
@@ -67,17 +75,28 @@ function Eink.install()
     Eink.installed = true
     local UIManager = require("ui/uimanager")
     local Screen = require("device").screen
+    local time = require("ui/time")
     local orig_refresh = UIManager._refresh
     UIManager._refresh = function(self, mode, region, dither)
         if mode and not self.currently_scrolling and Eink.enabled() then
             local pending = Eink.pending and os.time() - Eink.pending <= 3   -- (an opened window's own update)
-            local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending)
+            local arrow = Eink.arrow_at and time.to_s(time.now() - Eink.arrow_at) < Eink.ARROW_S
+            local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow)
             if flashed then Eink.pending = nil end
             mode = promoted
         end
         return orig_refresh(self, mode, region, dither)
     end
     Eink.pageRate()
+    -- the last key: an arrow (focus moving: no flash) or not
+    local orig_input = UIManager.handleInputEvent
+    UIManager.handleInputEvent = function(self, ev, ...)
+        if type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onKeyRepeat") then
+            local key = type(ev.args) == "table" and ev.args[1]
+            Eink.arrow_at = type(key) == "table" and Eink.ARROWS[key.key] and time.now() or nil
+        end
+        return orig_input(self, ev, ...)
+    end
     local orig_show, orig_close = UIManager.show, UIManager.close
     UIManager.show = function(self, widget, ...)
         if type(widget) == "table" and widget.covers_fullscreen then Eink.pending = os.time() end
