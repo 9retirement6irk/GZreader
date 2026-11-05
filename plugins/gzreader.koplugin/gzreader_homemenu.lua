@@ -146,6 +146,7 @@ function HomeMenu.showSort()
     local function apply(mode, rev)
         UIManager:close(dialog)
         G_reader_settings:saveSetting("collate", mode)
+        G_reader_settings:saveSetting("gzreader_shelf_sort", mode) -- (Home's shelf too: common/gz_view.lua)
         if rev ~= nil then
             if rev then G_reader_settings:saveSetting("reverse_collate", true) else G_reader_settings:delSetting("reverse_collate") end
         end
@@ -157,6 +158,7 @@ function HomeMenu.showSort()
             if fc.clearSortingCache then pcall(fc.clearSortingCache, fc) end
             pcall(fc.refreshPath, fc)
         end
+        pcall(function() require("common/gz_view").redrawHome() end)
     end
     local buttons = {}
     for _i, sdef in ipairs(HomeMenu.SORTS) do
@@ -204,16 +206,19 @@ end
 ---------------------------------------------------------------- display mode
 
 HomeMenu.DISPLAY_MODES = {
+    { mode = "bookshelf", label = _("Bookshelf"), icon = "series" },
     { mode = "list_image_meta", label = _("List with details"), icon = "view_list" },
     { mode = "list_image_filename", label = _("Simple list"), icon = "view_basic" },
     { mode = "mosaic_image", label = _("Tiles"), icon = "view_mosaic" },
 }
 
---- How Downloads and the other book folders show books (CoverBrowser's mode).
+--- How Home, Downloads and the other book folders show books: "bookshelf"
+--- or CoverBrowser's mode (common/gz_view.lua).
 function HomeMenu.displayMode()
+    local okv, View = pcall(require, "common/gz_view")
+    if okv then return View.get() or "classic" end
     local ok, BIM = pcall(require, "bookinfomanager")
-    local mode = ok and BIM.getSetting and BIM:getSetting("filemanager_display_mode")
-    return mode or "classic"
+    return ok and BIM.getSetting and BIM:getSetting("filemanager_display_mode") or "classic"
 end
 
 function HomeMenu.displayLabel(mode)
@@ -224,9 +229,9 @@ function HomeMenu.displayLabel(mode)
 end
 
 function HomeMenu.setDisplayMode(mode)
-    local f = fm()
-    if f and f.onSetDisplayMode then
-        pcall(f.onSetDisplayMode, f, mode)
+    local okv, View = pcall(require, "common/gz_view")
+    if okv then
+        View.set(mode)
     else
         local ok, BIM = pcall(require, "bookinfomanager")
         if ok and BIM.saveSetting then BIM:saveSetting("filemanager_display_mode", mode) end

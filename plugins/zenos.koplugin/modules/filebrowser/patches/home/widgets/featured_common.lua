@@ -205,6 +205,7 @@ function M.build(ctx, source_key)
     local justify_description_text = module_cfg.justify_description_text == true
     local show_status_bar = module_cfg.show_status_bar == true and type(ctx.buildStatusRow) == "function"
     local cover_widget, cover_w, cover_actual_h
+    local cover_raw -- (GZreader: the cover itself, when cover_widget draws it as a book)
 
     local col_top_pad = math.max(1, Screen:scaleBySize(4))
     local col_bottom_pad = math.max(3, math.floor(height * 0.02))
@@ -249,7 +250,7 @@ function M.build(ctx, source_key)
         ctx.setWidgetActions{
             activate = function()
                 if ctx.openCover then return ctx.openCover() end
-                set_opening_banner_cover(cover_widget)
+                set_opening_banner_cover(cover_raw or cover_widget)
                 ctx.openBook(book.path)
                 return true
             end,
@@ -267,10 +268,20 @@ function M.build(ctx, source_key)
     -- Reserve at least 60% of the usable row width for book details.
     local columns_w = math.max(1, width - gap)
     local cover_max_w = math.max(1, math.floor(columns_w * COVER_WIDTH_SHARE))
+    -- GZreader: with the bookshelf, the book you're reading is a book too:
+    -- its pages behind the cover and a shadow (shelf.lua book3d)
+    local gz_depth = require("common/gz_view").isBookshelf()
+    local depth = gz_depth and (Screen:scaleBySize(6) + Screen:scaleBySize(5)) or 0
     cover_widget, cover_w, cover_actual_h = cover_common.make_cover_widget(
-        book, cover_max_w, col_h,
+        book, cover_max_w - depth, col_h - depth,
         { border = cover_common.BORDER_SIZE, background = Blitbuffer.COLOR_LIGHT_GRAY }
     )
+    cover_raw = cover_widget
+    if gz_depth then
+        cover_widget = require("modules/filebrowser/patches/home/widgets/shelf").book3d(cover_widget)
+        cover_w = cover_w and (cover_w + depth)
+        cover_actual_h = cover_actual_h and (cover_actual_h + depth)
+    end
     local cover_col_w = math.max(1, cover_w or cover_max_w)
     gap = math.min(gap, math.max(0, width - cover_col_w - 1))
     local text_w = math.max(1, width - cover_col_w - gap)
@@ -870,7 +881,7 @@ p { margin: 0; }
         if ges.time ~= nil and not BookOpenTap.shouldOpen(book.path, ges.time, function()
             tap.onHoldFeatured(tap_self, nil, ges)
         end) then return true end
-        set_opening_banner_cover(cover_widget)
+        set_opening_banner_cover(cover_raw or cover_widget)
         ctx.openBook(book.path)
         return true
     end

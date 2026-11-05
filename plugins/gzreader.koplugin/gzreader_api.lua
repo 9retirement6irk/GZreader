@@ -544,6 +544,23 @@ function Api:deleteAnnotation(id)
     return false, err or ("http_" .. tostring(code)), code
 end
 
+--- The user's rating of a book: 1-10 (Grimmory's personal rating), or nil
+--- to remove it. PUT /api/v1/books/personal-rating { ids, rating } /
+--- POST /api/v1/books/reset-personal-rating [ id ].
+function Api:putRating(book_id, rating)
+    local id = tonumber(book_id)
+    local code, _, err
+    if rating then
+        code, _, err = self:call("PUT", "/api/v1/books/personal-rating",
+            { body = { ids = { id }, rating = math.floor(rating) }, timeouts = { 8, 15 } })
+    else
+        code, _, err = self:call("POST", "/api/v1/books/reset-personal-rating",
+            { body = { id }, timeouts = { 8, 15 } })
+    end
+    if code and code >= 200 and code < 300 then return true, nil, code end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
 --- POST /api/v1/reading-sessions (feeds Grimmory's reading statistics).
 function Api:postSession(body)
     local clean = {}

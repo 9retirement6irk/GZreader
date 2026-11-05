@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="132" viewBox="0 0 150 132">
+<defs>
+<linearGradient id="cdb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e0e0e0"/><stop offset=".5" stop-color="#a6a6a6"/><stop offset="1" stop-color="#6a6a6a"/></linearGradient>
+<radialGradient id="lid" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#ececec"/><stop offset="1" stop-color="#9a9a9a"/></radialGradient>
+<radialGradient id="disc" cx=".38" cy=".32" r=".7"><stop offset="0" stop-color="#fbfbfb"/><stop offset=".35" stop-color="#cfcfcf"/><stop offset=".65" stop-color="#eaeaea"/><stop offset="1" stop-color="#8f8f8f"/></radialGradient>
+<linearGradient id="cup" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#222222"/><stop offset=".45" stop-color="#6c6c6c"/><stop offset="1" stop-color="#1c1c1c"/></linearGradient>
+</defs>
+<rect x="6" y="10" width="118" height="120" rx="34" fill="url(#cdb)" stroke="#1a1a1a" stroke-width="2"/>
+<circle cx="65" cy="60" r="44" fill="url(#lid)" stroke="#555555" stroke-width="1.5"/>
+<circle cx="65" cy="60" r="32" fill="url(#disc)" stroke="#444444"/>
+<circle cx="65" cy="60" r="26" fill="none" stroke="#bdbdbd"/>
+<circle cx="65" cy="60" r="20" fill="none" stroke="#e2e2e2"/>
+<path d="M44 40 A30 30 0 0 1 84 36" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.7"/>
+<circle cx="65" cy="60" r="9" fill="#e8e8e8" stroke="#555555"/><circle cx="65" cy="60" r="3" fill="#333333"/>
+<rect x="34" y="108" width="62" height="14" rx="2" fill="#2a2a2a"/>
+<rect x="40" y="112" width="14" height="6" fill="#d9d9d9"/><rect x="58" y="112" width="4" height="6" fill="#d9d9d9"/><rect x="66" y="112" width="22" height="6" fill="#d9d9d9"/>
+<circle cx="20" cy="110" r="5" fill="#555555"/><circle cx="110" cy="110" r="5" fill="#555555"/>
+<path d="M112 130 C112 78 146 78 146 130" fill="none" stroke="#333333" stroke-width="6" stroke-linecap="round"/>
+<path d="M112 130 C112 82 146 82 146 130" fill="none" stroke="#a5a5a5" stroke-width="1.5"/>
+<rect x="104" y="108" width="17" height="24" rx="7" fill="url(#cup)" stroke="#111111"/>
+<rect x="138" y="108" width="12" height="24" rx="6" fill="#4a4a4a" stroke="#111111"/>
+</svg>

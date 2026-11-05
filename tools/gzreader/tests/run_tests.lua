@@ -1558,6 +1558,38 @@ local sess = st.sessions[#st.sessions]
 check(sess and sess.bookId == 3 and sess.durationSeconds >= 300 and sess.bookType == "EPUB"
     and sess.startTime:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"), "reading session sent with ISO times and duration")
 
+print("Ratings (Grimmory's personal rating)")
+do
+    local R = require("gzreader_ratings")
+    check(R.toGrimmory(4) == 8 and R.fromGrimmory(7) == 4 and R.fromGrimmory(10) == 5 and R.fromGrimmory(1) == 1
+        and R.fromGrimmory(nil) == nil and R.toGrimmory(nil) == nil, "stars: 4 = 8 of 10; 7 of 10 = 4 stars")
+    local data = {}
+    readerui.doc_settings = { readSetting = function(_, k) return data[k] end, saveSetting = function(_, k, v) data[k] = v end, flush = function() end }
+    local entry = rplugin.store.downloads["3"]
+    entry.rating_synced = nil
+    local function openBook() rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    local function closeBook() rplugin:onCloseDocument(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    ctl("/rating?book=3&r=7")
+    openBook()
+    check(data.summary and data.summary.rating == 4 and entry.rating_synced == 4, "rated 7 of 10 in Grimmory: 4 stars on the Kindle when the book opens")
+    data.summary.rating = 2
+    closeBook()
+    st = json.decode(ctl("/state"))
+    check(st.ratings["3"] == 4 and entry.rating_synced == 2 and next(rplugin.store.pending.ratings) == nil, "rated 2 stars on the Kindle: 4 of 10 in Grimmory on closing")
+    ctl("/rating?book=3&r=10")
+    openBook()
+    check(data.summary.rating == 5 and entry.rating_synced == 5, "changed in Grimmory only: the Kindle takes it")
+    data.summary.rating = nil
+    NET.connected = false
+    closeBook()
+    check(rplugin.store.pending.ratings["3"] == 0, "stars removed offline: queued")
+    NET.connected = true
+    rplugin:onNetworkConnected(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    st = json.decode(ctl("/state"))
+    check(st.ratings["3"] == nil and entry.rating_synced == 0 and next(rplugin.store.pending.ratings) == nil, "and Grimmory's rating removed when Wi-Fi returns")
+    readerui.doc_settings = nil
+end
+
 print("Wi-Fi back without KOReader noticing")
 rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
 NET.connected = false
@@ -3396,6 +3428,36 @@ print("Music (Plex): the server, downloads, the player")
         "Music: AAC in M4A made into ADTS chunks on the Kindle " .. tostring(done and done[2]))
     local list = Music.downloaded(plugin)
     check(#list == 3, "Music: three albums downloaded")
+    do -- Downloads → Music: a stand-in per album (the bookshelf's CD player)
+        local MF = require("gzreader_musicfolder")
+        local mdir = MF.entryDir(plugin)
+        local saved_arch = package.loaded["ffi/archiver"]
+        package.loaded["ffi/archiver"] = { Writer = { new = function()
+            local w = {}
+            function w:open(path) self.path = path; return true end
+            function w:setZipCompression() return true end
+            function w:addFileFromMemory() return true end
+            function w:close() local f = io.open(self.path, "wb"); f:write("PK"); f:close() end
+            return w
+        end } }
+        MF.sync(plugin)
+        package.loaded["ffi/archiver"] = saved_arch
+        local n = 0
+        for name in lfs.dir(mdir) do if name:match("%.epub$") then n = n + 1 end end
+        local stub = mdir .. "/AAC Album.epub"
+        check(n == 3 and lfs.attributes(stub, "mode") == "file" and MF.folderForPath(plugin, stub) == "album-202",
+            "Music: Downloads → Music holds a stand-in for each album (" .. n .. ")")
+        local SV = require("gzreader_shelforder")
+        local saved_home = G_reader_settings:readSetting("home_dir")
+        G_reader_settings:saveSetting("home_dir", plugin:libraryDir())
+        local items = { { text = "A book.epub", path = plugin:libraryDir() .. "/A book.epub", is_file = true },
+            { text = "Music/", path = mdir }, { text = "Other/", path = plugin:libraryDir() .. "/Other" },
+            { text = "Audiobooks/", path = plugin:libraryDir() .. "/Audiobooks" } }
+        SV.specialsFirst(items)
+        check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
+            "Audiobooks and Music come first, whatever the sort")
+        G_reader_settings:saveSetting("home_dir", saved_home)
+    end
     -- the player
     local cmds = {}
     local saved_exec, saved_alive, saved_clock = Engine.exec, Engine.alive, Engine.clock
@@ -3478,6 +3540,8 @@ print("Music (Plex): the server, downloads, the player")
     Engine.exec, Engine.alive = saved_exec, saved_alive
     Music.delete(plugin, Music.find(plugin, "album", "202"))
     check(Music.find(plugin, "album", "202") == nil and #Music.downloaded(plugin) == 2, "Music: a download deleted")
+    check(lfs.attributes(require("gzreader_musicfolder").entryDir(plugin) .. "/AAC Album.epub", "mode") == nil,
+        "and its stand-in in Downloads → Music is gone")
     -- Settings → Connections → Plex (Music)
     local function texts(list)
         local out = {}

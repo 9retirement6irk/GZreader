@@ -3,8 +3,11 @@
 -- is on, or that was tapped, is pulled out and shows its cover. Tap it (or
 -- Press, or its letter) to open it. One shelf: the most recent books.
 --
--- Drawn with rectangles and text (e-ink greys); a spine is drawn once and
--- kept (spine_cache) until the shelf changes size.
+-- Drawn with rectangles and text (e-ink greys), with some depth: spines are
+-- rounded with light from the left (darker edges, a highlight), cast a shadow
+-- on the wall, and the board has a top, a front edge and a shadow below. A
+-- spine is drawn once and kept (spine_cache) until the shelf changes size.
+-- Downloads' bookshelf (gzreader_shelfview.lua) uses the same spines and boards.
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
@@ -23,8 +26,9 @@ local function S(px) return Screen:scaleBySize(px) end
 local M = {}
 
 M.BOARD_H = 14     -- the shelf board under the books (px at 160 dpi)
-M.MIN_SPINE = 28
-M.MAX_SPINE = 40
+M.UNDER_H = 6      -- its shadow on the wall below
+M.MIN_SPINE = 34
+M.MAX_SPINE = 46
 --- How many spines a shelf of `width` holds.
 function M.perRow(width)
     return math.max(4, math.min(24, math.floor((width - S(16)) / S(M.MAX_SPINE))))
@@ -85,36 +89,62 @@ local function cache_key(book, w, h, shade)
         tostring(book_number(book)), w, h, shade }, "\30")
 end
 
+--- How dark (+) or light (-) a spine is across its width (0: left, 1: right):
+--- a rounded spine lit from the left.
+local ROUND = { { 0, 0.50 }, { 0.09, 0.12 }, { 0.26, -0.30 }, { 0.48, 0 }, { 0.78, 0.12 }, { 1, 0.55 } }
+local function roundness(t)
+    for k = 2, #ROUND do
+        local a, b = ROUND[k - 1], ROUND[k]
+        if t <= b[1] then return a[2] + (b[2] - a[2]) * (t - a[1]) / (b[1] - a[1]) end
+    end
+    return ROUND[#ROUND][2]
+end
+
+--- Shade a stood-up rectangle (a spine, a cover's spine edge) as rounded.
+function M.shadeRound(bb, x, y, w, h, strength)
+    strength = strength or 1
+    for i = 0, w - 1 do
+        local f = roundness(w > 1 and i / (w - 1) or 0.5) * strength
+        if f > 0.01 then bb:darkenRect(x + i, y, 1, h, f)
+        elseif f < -0.01 then bb:lightenRect(x + i, y, 1, h, -f) end
+    end
+end
+
 local function draw_spine(book, w, h, shade)
     -- drawn lying down (h wide, w tall), then stood up
     local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
     local dark = shade >= 0.5
     local ink = dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     lying:fill(Blitbuffer.gray(shade))
-    -- the top of the pages, and bands near each end
+    -- the top: the headband over the pages; bands near each end (the bottom
+    -- one above the letter key's square)
     local cap = math.max(3, S(5))
     lying:paintRect(0, 0, cap, w, Blitbuffer.gray(math.max(0, shade - 0.25)))
-    lying:paintRect(cap + S(4), S(2), 1, w - S(4), ink)
-    lying:paintRect(h - S(10), S(2), 1, w - S(4), ink)
+    lying:paintRect(cap, 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.25)))
+    for _i, bx in ipairs({ cap + S(5), h - S(36) }) do
+        lying:paintRect(bx, 0, 1, w, Blitbuffer.gray(math.max(0, shade - 0.3)))
+        lying:paintRect(bx + 1, 0, S(2), w, ink)
+        lying:paintRect(bx + 1 + S(2), 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.3)))
+    end
     -- the top of the spine: its number in the series, then the title and
     -- author; the bottom is kept for the letter key's square
     local num = book_number(book)
-    local x0 = cap + S(9)
+    local x0 = cap + S(12)
     if num then
-        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 11), bold = true, fgcolor = ink }
+        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 12), bold = true, fgcolor = ink }
         local ns = n:getSize()
         n:paintTo(lying, x0, math.floor((w - ns.h) / 2))
         x0 = x0 + ns.w + S(8)
         n:free()
     end
-    local room = h - x0 - S(34)
+    local room = h - x0 - S(42)
     local author = book_author(book)
-    local two = author ~= "" and w >= S(31)
-    local title_face = Font:getFace("cfont", two and 12 or 13)
+    local two = author ~= "" and w >= S(37)
+    local title_face = Font:getFace("cfont", two and 14 or 15)
     local title = TextWidget:new{ text = book_title(book), face = title_face, bold = true, fgcolor = ink, max_width = room }
     local th = title:getSize().h
     if two then
-        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", 9), fgcolor = ink, max_width = room }
+        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", 11), fgcolor = ink, max_width = room }
         local ah = auth:getSize().h
         local top = math.floor((w - th - ah + S(2)) / 2)
         title:paintTo(lying, x0, top)
@@ -126,6 +156,7 @@ local function draw_spine(book, w, h, shade)
     title:free()
     local stood = lying:rotatedCopy(270)
     lying:free()
+    M.shadeRound(stood, 0, 0, w, h)
     return stood
 end
 
@@ -153,6 +184,87 @@ function Spine:paintTo(bb, x, y)
     bb:paintBorder(x, y, self.w, self.h, 1, Blitbuffer.gray(0.9))
 end
 function Spine:free() end -- (the picture stays in spine_cache)
+
+--- A spine widget for `book` ({ path, title, authors, series_index }).
+function M.newSpine(book, w, h, shade)
+    return Spine:new{ w = w, h = h, book = book, shade = shade }
+end
+
+---------------------------------------------------------------- depth
+
+--- The board under the books at board_y, `w` wide: a top seen from above
+--- (narrower at the back), a front edge, and its shadow on the wall.
+function M.paintBoard(bb, x, board_y, w)
+    local top_h, front_h = S(5), S(M.BOARD_H) - S(5)
+    for i = 0, top_h - 1 do
+        local inset = math.floor((top_h - i) * S(6) / top_h)
+        bb:paintRect(x + inset, board_y + i, w - 2 * inset, 1, Blitbuffer.gray(0.16 + 0.12 * i / top_h))
+    end
+    local fy = board_y + top_h
+    bb:paintRect(x, fy, w, front_h, Blitbuffer.gray(0.58))
+    bb:paintRect(x, fy, w, 1, Blitbuffer.gray(0.30))
+    bb:paintRect(x, fy + front_h - 1, w, 1, Blitbuffer.gray(0.85))
+    local under = S(M.UNDER_H)
+    for i = 0, under - 1 do
+        bb:darkenRect(x + S(4), fy + front_h + i, w - S(8), 1, 0.45 * (1 - i / under))
+    end
+end
+
+--- Where the books stand: a contact shadow on the board's top, and each
+--- spine's shadow on the wall beside a shorter neighbour (light from the left).
+--- spans = { { x, w, h }, ... } in order, standing on board_y.
+function M.paintDepth(bb, board_y, spans)
+    for k, sp in ipairs(spans) do
+        bb:darkenRect(sp.x, board_y, sp.w + S(2), S(3), 0.35)
+        local nxt = spans[k + 1]
+        local drop = sp.h - (nxt and nxt.x == sp.x + sp.w and nxt.h or 0)
+        if drop > S(6) then
+            bb:darkenRect(sp.x + sp.w, board_y - sp.h + S(5), S(5), drop - S(5), 0.30)
+            bb:darkenRect(sp.x + sp.w + S(5), board_y - sp.h + S(8), S(3), drop - S(8), 0.15)
+        end
+    end
+end
+
+M.PAGES = 6 -- how far the pages show behind a cover (px at 160 dpi)
+
+--- A book seen from the front: its cover with the pages behind it (right
+--- and bottom), a drop shadow, and the spine's edge rounded on the left.
+--- Paints `cover` (a widget of cw x ch) at cx, cy.
+function M.paintBook(bb, cover, cx, cy, cw, ch)
+    local p = S(M.PAGES)
+    -- the shadow on whatever is behind (soft: two steps)
+    bb:darkenRect(cx + p + S(5), cy + p + S(5), cw, ch, 0.18)
+    bb:darkenRect(cx + p + S(2), cy + p + S(2), cw, ch, 0.22)
+    -- the pages: a block of thin lines, its edge drawn
+    bb:paintRect(cx + S(2), cy + S(2), cw + p - S(2), ch + p - S(2), Blitbuffer.gray(0.06))
+    for yy = cy + S(4), cy + ch + p - S(2), math.max(2, S(3)) do
+        bb:paintRect(cx + cw, yy, p - 1, 1, Blitbuffer.gray(0.28))
+    end
+    for xx = cx + S(4), cx + cw + p - S(2), math.max(2, S(3)) do
+        bb:paintRect(xx, cy + ch, 1, p - 1, Blitbuffer.gray(0.28))
+    end
+    bb:paintBorder(cx + S(2), cy + S(2), cw + p - S(2), ch + p - S(2), 1, Blitbuffer.gray(0.7))
+    cover:paintTo(bb, cx, cy)
+    -- the spine's edge: rounded, darker
+    local edge = math.max(S(6), math.floor(cw * 0.06))
+    M.shadeRound(bb, cx, cy, edge, ch, 0.8)
+    bb:paintRect(cx + edge, cy, 1, ch, Blitbuffer.gray(0.55))
+end
+
+--- A widget showing `cover` as a book (paintBook): the cover's size plus
+--- the pages and shadow (S(PAGES) + S(5) more each way).
+local Book3D = WidgetContainer:extend{}
+function Book3D:getSize()
+    local s = self[1]:getSize()
+    local extra = S(M.PAGES) + S(5)
+    return Geom:new{ w = s.w + extra, h = s.h + extra }
+end
+function Book3D:paintTo(bb, x, y)
+    local s = self[1]:getSize()
+    self.dimen = Geom:new{ x = x, y = y, w = s.w, h = s.h }
+    M.paintBook(bb, self[1], x, y, s.w, s.h)
+end
+function M.book3d(cover) return Book3D:new{ cover } end
 
 ---------------------------------------------------------------- an empty shelf: cobwebs
 
@@ -198,11 +310,7 @@ function Shelf:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
     local area_h = self.area_h
     local board_y = y + area_h
-    -- the board: its top, its front edge, its shadow
-    bb:paintRect(x, board_y, self.w, S(5), Blitbuffer.gray(0.22))
-    bb:paintRect(x, board_y + S(5), self.w, S(M.BOARD_H) - S(5), Blitbuffer.gray(0.50))
-    bb:paintRect(x, board_y + S(M.BOARD_H), self.w, S(4), Blitbuffer.gray(0.12))
-    bb:paintBorder(x, board_y, self.w, S(M.BOARD_H), 1, Blitbuffer.gray(0.80))
+    M.paintBoard(bb, x, board_y, self.w)
     -- the book picked is turned to show its cover, in its place: the books
     -- after it move along (those that no longer fit aren't shown; if the one
     -- picked wouldn't fit, the shelf starts further along)
@@ -212,7 +320,7 @@ function Shelf:paintTo(bb, x, y)
         local t = slot.target
         if t and menu and menu._zen_home_focus_id == t.id and slot.book.is_group ~= true then picked = i end
     end
-    local face_w = self.cover_w + 2 * S(6)
+    local face_w = self.cover_w + 2 * S(6) + S(M.PAGES) + S(5)
     local function width_of(i) return i == picked and face_w or self.slots[i].w end
     local room = self.w - S(8) - S(4)
     local first = 1
@@ -234,6 +342,7 @@ function Shelf:paintTo(bb, x, y)
     end
     self.overlay = nil
     local px = S(8)
+    local spans = {}
     for i, slot in ipairs(self.slots) do
         local w = width_of(i)
         if i < first or px + w > S(8) + room then
@@ -249,21 +358,22 @@ function Shelf:paintTo(bb, x, y)
                 self[i]:paintTo(bb, x + px, board_y - slot.h)
                 bb:paintRect(x + px, board_y - slot.h, slot.w, slot.h, Blitbuffer.COLOR_WHITE)
                 local cs = slot.cover:getSize()
-                local cx = x + px + math.floor((w - cs.w) / 2)
-                local cy = board_y - cs.h
-                bb:paintRect(cx + S(4), cy + S(4), math.min(cs.w, w - S(4)), cs.h - S(4), Blitbuffer.gray(0.40))
-                slot.cover:paintTo(bb, cx, cy)
+                local cx = x + px + S(6)
+                local cy = board_y - cs.h - S(M.PAGES)
+                M.paintBook(bb, slot.cover, cx, cy, cs.w, cs.h)
                 for k = 0, 1 do
                     bb:paintBorder(cx - S(3) - k, cy - S(3) - k, cs.w + 2 * (S(3) + k), cs.h + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
                 end
                 self.overlay = { rect = Geom:new{ x = cx, y = cy, w = cs.w, h = cs.h }, slot = slot }
             else
                 self[i]:paintTo(bb, x + px, board_y - slot.h)
+                spans[#spans + 1] = { x = x + px, w = w, h = slot.h }
             end
             px = px + w
         end
         if i ~= picked and slot.cover then slot.cover:free(); slot.cover = nil end
     end
+    M.paintDepth(bb, board_y, spans)
 end
 
 function Shelf:free()
@@ -281,7 +391,7 @@ function M.build(books, opts)
     local rows = math.max(1, opts.rows or 1)
     local gap = S(10)
     local row_h = math.floor((height - gap * (rows - 1)) / rows)
-    local area_h = row_h - S(M.BOARD_H) - S(4)
+    local area_h = row_h - S(M.BOARD_H) - S(M.UNDER_H)
     local ratio = tonumber(CoverUtils.getRatio and CoverUtils.getRatio()) or 2 / 3
     -- (the size the cover is drawn at, so a pre-sized one is found)
     local cover_w, cover_h = cover_common.uniform_dims(math.floor(area_h * 0.86 * ratio), math.floor(area_h * 0.86))

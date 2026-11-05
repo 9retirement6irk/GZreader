@@ -1835,13 +1835,15 @@ function M.build(ctx)
                     save_home("reinit")
                 end,
             },
-            -- GZreader: spines on a shelf; the one picked shows its cover
+            -- GZreader: spines on a shelf (the View: bookshelf); the one picked shows its cover
             {
                 text = _("Bookshelf"),
-                help_text = _("Books stand on a shelf with their spines out. The one you move to or tap shows its cover; tap it, Press or its letter opens it."),
-                checked_func = function() return mcfg.shelf == true end,
+                help_text = _("Books stand on a shelf with their spines out. The one you move to or tap shows its cover; tap it, Press or its letter opens it. The same as View → Bookshelf (it changes Downloads too)."),
+                checked_func = function() return require("common/gz_view").isBookshelf() end,
                 callback = function()
-                    mcfg.shelf = mcfg.shelf ~= true
+                    local V = require("common/gz_view")
+                    mcfg.shelf = true
+                    V.set(V.isBookshelf() and "mosaic_image" or "bookshelf")
                     save_home("reinit")
                 end,
             },

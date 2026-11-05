@@ -736,19 +736,6 @@ function M.build_install_pages(ctx)
         end
     end
 
-    local function apply_display_mode(mode)
-        local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
-        local fm = ok_fm and FileManager and FileManager.instance
-        if fm and type(fm.onSetDisplayMode) == "function" then
-            pcall(fm.onSetDisplayMode, fm, mode)
-        else
-            local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-            if ok_bim then
-                pcall(BookInfoManager.saveSetting, BookInfoManager,
-                    "filemanager_display_mode", mode)
-            end
-        end
-    end
 
     -- -----------------------------------------------------------------------
     -- Choice defaults (read current config so defaults feel intentional)
@@ -792,12 +779,15 @@ function M.build_install_pages(ctx)
             title       = _("Library View"),
             choice_type = "radio",
             choices     = {
-                { id = "mosaic", text = _("Mosaic - large cover thumbnails"),     checked = true  },
+                -- GZreader: books on bookshelves (common/gz_view.lua) first
+                { id = "bookshelf", text = _("Bookshelf - spines on shelves; the one picked shows its cover"), checked = true },
+                { id = "mosaic", text = _("Tiles - large cover thumbnails"),      checked = false },
                 { id = "list",   text = _("List - detailed titles and metadata"), checked = false },
             },
             on_apply = function(sel)
-                if     sel["mosaic"] then apply_display_mode("mosaic_image")
-                elseif sel["list"]   then apply_display_mode("list_image_meta")
+                if sel["bookshelf"] then require("common/gz_view").set("bookshelf")
+                elseif sel["mosaic"] then require("common/gz_view").set("mosaic_image")
+                elseif sel["list"]   then require("common/gz_view").set("list_image_meta")
                 end
             end,
         },

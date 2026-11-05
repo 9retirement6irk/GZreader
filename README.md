@@ -39,7 +39,10 @@ built-in connection to your self-hosted **Grimmory** book server.
 ## What it does
 
 - 📚 **Grimmory:** search and browse your library, download books in the background,
-  and keep your **place, bookmarks and highlights in sync** with Grimmory's web reader.
+  and keep your **place, bookmarks, highlights and ratings in sync** with Grimmory.
+- 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
+  to show its cover. Audiobooks sit on the shelf as a cassette walkman, music as a
+  CD player. Lists and tiles are a tap away.
 - 🌐 **Set up from your browser:** scan one QR code, or type the Kindle's address
   into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
   everything (single sign-on works too) and **sends books** straight to the Kindle.

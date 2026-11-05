@@ -86,7 +86,7 @@ local function strip_layout_metrics(outer_width, module_cfg)
     local rows = two_rows and 2 or 1
     count = math.min(count, responsive_per_row(width) * rows)
     local per_row = two_rows and math.ceil(count / 2) or count
-    if module_cfg.shelf == true then -- GZreader: spines, many to a shelf; one shelf, no pages
+    if require("common/gz_view").stripShelf(module_cfg) then -- GZreader: spines, many to a shelf; one shelf, no pages
         two_rows, rows = false, 1
         per_row = require("modules/filebrowser/patches/home/widgets/shelf").perRow(width)
         count = per_row
@@ -111,7 +111,7 @@ local function strip_layout_metrics(outer_width, module_cfg)
     -- enabled (whether or not the current source has more than one page), so
     -- the row keeps one height on every source and the dots always have room.
     -- Use the Library pager's dot spacing, with smaller dots below the covers.
-    local show_page_dots = module_cfg.show_page_indicator ~= false and module_cfg.shelf ~= true
+    local show_page_dots = module_cfg.show_page_indicator ~= false and not require("common/gz_view").stripShelf(module_cfg)
     local dot_diam = show_page_dots and math.max(6, Screen:scaleBySize(8)) or 0
     local dot_gap = show_page_dots and math.max(6, Screen:scaleBySize(12)) or 0
     local dot_gap_above = show_page_dots and math.max(4, Screen:scaleBySize(12)) or 0
@@ -150,7 +150,7 @@ end
 function M.preferred_height(outer_width, module_cfg)
     local metrics = strip_layout_metrics(outer_width, module_cfg)
     local Screen = Device.screen
-    if type(module_cfg) == "table" and module_cfg.shelf == true then
+    if require("common/gz_view").stripShelf(module_cfg) then
         return nil -- GZreader: the shelf takes the room left (taller spines)
     end
     local min_gap = math.max(6, math.min(
@@ -825,7 +825,7 @@ function M.build_strip(ctx, source_key)
         local show_strip_titles = wants_strip_titles
         local books = supplied_books or get_page_books(page_delta or 0) or {}
         local cover_plans = {}
-        if #books == 0 and module_cfg.shelf ~= true then -- (GZreader: an empty shelf instead)
+        if #books == 0 and not require("common/gz_view").stripShelf(module_cfg) then -- (GZreader: an empty shelf instead)
         local empty_cover, cover_w, cover_h = cover_common.make_empty_placeholder_cover(
             width, height,
             { border = cover_common.BORDER_SIZE, background = Blitbuffer.COLOR_LIGHT_GRAY }
@@ -931,7 +931,7 @@ function M.build_strip(ctx, source_key)
     -- GZreader: the bookshelf (spines; the one picked shows its cover). It
     -- stands on the navbar (down through the page's bottom padding), with
     -- the strip's tabs just above it; it takes no part in Home's spacing.
-    if module_cfg.shelf == true then
+    if require("common/gz_view").stripShelf(module_cfg) then
         local Shelf = require("modules/filebrowser/patches/home/widgets/shelf")
         local below = math.max(0, tonumber(ctx.row_space_below) or 0)
         local reach = total_outer_height + below -- the strip's top to the navbar
@@ -1762,7 +1762,7 @@ function M.build_strip(ctx, source_key)
 
     shift_strip_page = function(direction)
         if not ctx.shiftStrip then return false end
-        if module_cfg.shelf == true then return false end -- GZreader: one shelf, no pages
+        if require("common/gz_view").stripShelf(module_cfg) then return false end -- GZreader: one shelf, no pages
         local gesture_started_at = os.clock()
         return ctx.shiftStrip(
             source, count, order, direction, ctx.component_id, two_rows, function()

@@ -924,14 +924,14 @@ local function resolve_rows(dcfg)
         if not comp then return end
         local units = Registry.sizeUnits and Registry.sizeUnits(comp, modules[id]) or 2
         local row = { _home_units = units }
-        -- GZreader: with the bookshelf, a smaller current book and a taller shelf
-        -- (the stats on a notebook page get a little more room too)
-        local shelf = type(modules.strip) == "table" and modules.strip.shelf == true
+        -- GZreader: with the bookshelf, a smaller current book and a tall shelf
+        -- (1.19: a little shorter, the stats on a notebook page a little taller)
+        local shelf = require("common/gz_view").stripShelf(modules.strip)
         if shelf and id == "featured" then row.size, row._home_units = { units = 2.5 }, 2.5 end
-        if shelf and id == "strip" then row.size, row._home_units = { units = 4.5 }, 6 end
+        if shelf and id == "strip" then row.size, row._home_units = { units = 4.25 }, 5.75 end
         if id == "stats_triplet" and type(modules.stats_triplet) == "table"
                 and modules.stats_triplet.stat_style == "notebook" then
-            row.size, row._home_units = { units = 1.5 }, 1.5
+            row.size, row._home_units = { units = shelf and 1.75 or 1.5 }, shelf and 1.75 or 1.5
         end
         table.insert(out, setmetatable(row, { __index = comp }))
     end
@@ -1876,6 +1876,8 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             source,
             normalize_order(order_key),
             tostring(n),
+            -- GZreader: the shelf in the order chosen with Sort
+            require("common/gz_view").isBookshelf() and tostring(require("common/gz_view").shelfSort() or "") or "",
             mcfg.filter_unread == true and "unread" or "",
             mcfg.filter_tbr == true and "tbr" or "",
             mcfg.filter_finished == true and "finished" or "",
@@ -1915,6 +1917,9 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             append_unique_paths(paths, get_history(), n)
         end
 
+        if source == "recently_read" and require("common/gz_view").isBookshelf() then
+            paths = require("common/gz_view").sortPaths(paths) -- GZreader: Sort orders the shelf
+        end
         dataset.strip_paths[strip_cache_key] = paths
         return source, paths, n
     end
@@ -2803,9 +2808,11 @@ local function paint_shortcut_badge(bb, x, y, w, h, letter, at_bottom)
     end)
     if not (ok and icon) then return end
     local pad = math.min(Device.screen:scaleBySize(4), math.floor((h - side) / 2))
-    local by = at_bottom and (y + h - side - pad) or (y + pad) -- GZreader: a spine's at its foot
-    bb:paintRect(x + pad, by, side, side, Blitbuffer.COLOR_WHITE)
-    icon:paintTo(bb, x + pad, by)
+    -- GZreader: a spine's at its foot, in the middle
+    local by = at_bottom and (y + h - side - pad) or (y + pad)
+    local bx = at_bottom and (x + math.floor((w - side) / 2)) or (x + pad)
+    bb:paintRect(bx, by, side, side, Blitbuffer.COLOR_WHITE)
+    icon:paintTo(bb, bx, by)
     if icon.free then icon:free() end
 end
 

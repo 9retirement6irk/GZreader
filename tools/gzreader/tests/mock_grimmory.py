@@ -18,6 +18,7 @@ STATE = {
     "log": [],
     "expire_next_access": False,
     "progress": {},        # book_id -> file progress (mirrors UserBookFileProgressEntity)
+    "ratings": {},         # book_id -> personalRating (1-10, UserBookProgressEntity)
     "sessions": [],
     "offline": False,      # simulate unreachable progress endpoints
     "oidc_enabled": True,
@@ -215,6 +216,13 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/v1/auth/logout":
             self._body()
             return self._json(200, {})
+        if u.path == "/api/v1/books/reset-personal-rating":  # BookController.resetPersonalRating
+            if STATE["offline"]:
+                return self._json(503)
+            ids = self._body()
+            for bid in ids:
+                STATE["ratings"].pop(int(bid), None)
+            return self._json(200, [{"bookId": bid, "personalRating": None} for bid in ids])
         self._json(404)
 
     def do_PUT(self):
@@ -250,6 +258,15 @@ class H(BaseHTTPRequestHandler):
             }
             STATE["last_put_body"] = b
             return self._json(200)
+        if u.path == "/api/v1/books/personal-rating":  # BookController.updatePersonalRating
+            if STATE["offline"]:
+                return self._json(503)
+            b = self._body()
+            if not isinstance(b.get("ids"), list) or not isinstance(b.get("rating"), int):
+                return self._json(400, {"message": "invalid"})
+            for bid in b["ids"]:
+                STATE["ratings"][int(bid)] = b["rating"]
+            return self._json(200, [{"bookId": bid, "personalRating": b["rating"]} for bid in b["ids"]])
         if u.path == "/api/v1/koreader-users/me":
             if not STATE["sync_perm"]:
                 return self._json(403)
@@ -340,7 +357,8 @@ class H(BaseHTTPRequestHandler):
             if not book:
                 return self._json(404)
             out = {"id": bid, "title": book["title"], "primaryFile": {"id": book["primaryFileId"]},
-                   "metadata": {"title": book["title"], "subtitle": SUBTITLES.get(bid), "description": DESCRIPTIONS.get(bid)}}
+                   "metadata": {"title": book["title"], "subtitle": SUBTITLES.get(bid), "description": DESCRIPTIONS.get(bid)},
+                   "personalRating": STATE["ratings"].get(bid)}
             fp = STATE["progress"].get(bid)
             if fp:  # ReadingProgressService.setBookProgressFromFileProgress (EPUB)
                 if book["primaryFileType"] == "AUDIOBOOK":  # setBookProgressFromFileProgress (AUDIOBOOK)
@@ -523,13 +541,17 @@ if __name__ == "__main__":
                     if k in q: a[k] = q[k][0]
             if u.path == "/delan":
                 STATE["annotations"].pop(int(q["id"][0]), None)
+            if u.path == "/rating":  # the web reader rates a book (1-10; none: removed)
+                bid = int(q["book"][0])
+                if "r" in q: STATE["ratings"][bid] = int(q["r"][0])
+                else: STATE["ratings"].pop(bid, None)
             if u.path == "/delbm":
                 STATE["bookmarks"].pop(int(q["id"][0]), None)
             if u.path == "/reset_ko":
                 STATE["kouser"].clear()
             if u.path == "/expire_refresh":
                 STATE["refresh"].clear(); STATE["access"].clear()
-            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", [])}).encode()
+            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "ratings": {str(k): v for k, v in STATE["ratings"].items()}}).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     ctl = ThreadingHTTPServer(("127.0.0.1", port + 1), C)
     threading.Thread(target=ctl.serve_forever, daemon=True).start()

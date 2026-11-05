@@ -43,7 +43,8 @@ local CoverMenu = {
 
 function CoverMenu.mode()
     local ok, HM = pcall(require, "gzreader_homemenu")
-    return ok and HM.displayMode() or "list_image_meta"
+    local mode = ok and HM.displayMode() or "list_image_meta"
+    return mode == "bookshelf" and "mosaic_image" or mode -- (no shelves here yet: tiles)
 end
 
 local function coverOf(entry)

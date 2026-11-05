@@ -729,7 +729,9 @@ another you choose). Browse **Artists**, **Albums**, **Playlists**, or
 (or *Delete the download*), and its tracks. *Play* on one that isn't
 downloaded downloads it in order and starts as soon as the first track is in;
 Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
-(`.music` in the GZreader folder); *Shuffle all downloaded* plays it all.
+(`.music` in the GZreader folder); *Shuffle all downloaded* plays it all. Each
+downloaded album or playlist is also in Downloads → **Music** (on the
+bookshelf, the CD player), like audiobooks: open one to play it.
 
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else
@@ -806,6 +808,30 @@ Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
 fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 (renewed when the cover changes in Grimmory).
 
+## Bookshelves (the View)
+
+Books stand on bookshelves by default, on Home and in Downloads: spines out
+(title, author, number in a series, a letter key at the foot), rounded and
+shaded, casting shadows, on shelves with depth. The book the 5-way is on, or
+that you tap, turns to show its cover; tap it again, Press or its letter opens
+it, and holding it opens its menu. The book you're reading (top of Home) is
+drawn as a book too: its pages behind the cover and a drop shadow.
+
+- **Downloads** has as many shelves as the screen holds, a page at a time.
+  Folders stand as light grey spines with a tab on top.
+- **Audiobooks** stand on the top shelf to the right of the books as a
+  cassette walkman with headphones, and **Music** (downloaded from Plex) as a
+  CD player with headphones. In lists and tiles both folders are always first,
+  whatever the sort.
+- **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,
+  author, series, date downloaded, reading progress, size or file name;
+  *Last read* puts the most recent first.
+- **View** (quick panel → View) switches between Bookshelf, List with details,
+  Simple list and Tiles; Home's strip shows covers in the other views. The
+  setup guide asks too.
+
+![Downloads as bookshelves](docs/screenshots/downloads-shelf.png)
+
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
@@ -860,6 +886,13 @@ KOReader-compatible endpoint.
   the page never waits for the network; JSON replies are gzip-compressed. Forward moves from other devices apply silently; going
   back asks. Offline updates are queued and sent when Wi‑Fi returns.
   Sync jumps are not added to the Back history.
+- Ratings: the stars you give a book (its status page, the end-of-book
+  page) are Grimmory's personal rating for it, and the other way round.
+  Grimmory rates out of 10, so 4 stars are 8 there, and 7 there are 4 stars
+  here. Whichever side changed since they last agreed wins; removing the stars
+  removes Grimmory's rating. Sent when the book closes (queued while
+  offline), taken from Grimmory when it opens; books rated in the file browser
+  are sent the next time Wi‑Fi connects.
 - Reading sessions (30 s or longer) go to Grimmory's reading statistics.
   A session whose reply never came back (timeout, dropped connection) may
   have been saved anyway; before sending it again, GZreader looks in the

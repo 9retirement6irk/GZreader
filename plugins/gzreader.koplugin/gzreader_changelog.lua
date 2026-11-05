@@ -2,6 +2,17 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.19.0",
+        changes = {
+            "Bookshelves are a View, and the default: Home's shelf and Downloads (several shelves, a page at a time) show books standing with their spines out. The book you pick turns to show its cover; tap it again, Press or its letter opens it. View in the quick panel switches between Bookshelf, List with details, Simple list and Tiles.",
+            "The books look solid: rounded, shaded spines that cast shadows, shelves with depth, wider spines with bigger titles and authors, and the letter key in the middle at the foot of each spine. The book you're reading has its pages showing behind the cover and a drop shadow. Home's shelf is a little shorter.",
+            "Sort orders the bookshelves too: Downloads, and Home's shelf (Last read: the most recent first).",
+            "Audiobooks stand on the top shelf to the right of the books as a cassette walkman with headphones; downloaded music as a CD player. In lists and tiles they're always first, whatever the sort.",
+            "Downloaded music is in Downloads → Music, like audiobooks: open an album or playlist there to play it.",
+            "Ratings sync with Grimmory: the stars you give a book on the Kindle become its personal rating in Grimmory (4 stars are 8 out of 10), and a rating made in Grimmory comes to the Kindle when the book opens.",
+        },
+    },
+    {
         version = "1.18.0",
         changes = {
             "Set up from your browser: besides the QR code, the Kindle shows its address and a PIN. Type the address into any browser on the same Wi-Fi (a computer too), enter the PIN, and the same setup page opens. After 5 wrong PINs the PIN stops working (the QR code still works; opening setup again makes a new one).",

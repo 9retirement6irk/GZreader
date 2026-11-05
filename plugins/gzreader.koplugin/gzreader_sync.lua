@@ -421,6 +421,9 @@ function Sync:applyRemote(book, interactive, err)
         if interactive then self.plugin:showError(err) end
         return
     end
+    pcall(function()
+        require("gzreader_ratings").reconcile(self.plugin, self.book_id, self.entry, self.ui.doc_settings, book)
+    end)
     local remote = self:remotePosition(book)
     local here = self:localPosition()
     if not remote or remote.pct <= 0 then
@@ -587,7 +590,11 @@ function Sync:onPageTurned()
 end
 
 function Sync:onLeave()
-    if self.plugin:syncEnabled() then self:push(false) end
+    if self.plugin:syncEnabled() then
+        self:push(false)
+        local ok, queued = pcall(require("gzreader_ratings").check, self.plugin, self.book_id, self.entry, self.ui.doc_settings)
+        if ok and queued and self:canTalk() then self.plugin:flushPending() end
+    end
     self:endSession()
 end
 

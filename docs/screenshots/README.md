@@ -8,7 +8,7 @@ browser talking to the emulated Kindle.</sub>
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="setup-connect.png" alt="First start: Connect your phone" width="240"><br><sub>First start: Connect your phone</sub></td><td align="center" valign="top" width="33%"><img src="setup-qr.png" alt="The QR code, or the address and PIN, opens the setup page" width="240"><br><sub>The QR code, or the address and PIN, opens the setup page</sub></td><td align="center" valign="top" width="33%"><img src="setup-summary.png" alt="Back on the Kindle: what changed" width="240"><br><sub>Back on the Kindle: what changed</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="home.png" alt="Home: the book you're reading" width="240"><br><sub>Home: the book you're reading</sub></td><td align="center" valign="top" width="33%"><img src="home-menu.png" alt="The quick panel at Home: every tile has a letter key" width="240"><br><sub>The quick panel at Home: every tile has a letter key</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="setup-keyboard.png" alt="The Kindle Keyboard's keys" width="240"><br><sub>The Kindle Keyboard's keys</sub></td><td align="center" valign="top" width="33%"><img src="home.png" alt="Home: your books on a shelf" width="240"><br><sub>Home: your books on a shelf</sub></td><td align="center" valign="top" width="33%"><img src="home-menu.png" alt="The quick panel at Home: every tile has a letter key" width="240"><br><sub>The quick panel at Home: every tile has a letter key</sub></td></tr>
 </table>
 
 ## Your phone page

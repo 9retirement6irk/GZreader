@@ -104,6 +104,7 @@ function Grimmory:init()
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
+    self.store.pending.ratings = self.store.pending.ratings or {}
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
     -- the Access key / Cloudflare token on requests to your own servers
@@ -129,16 +130,20 @@ function Grimmory:init()
         end)
         pcall(self.restoreFromManifest, self)
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
-        if Mod.Touch.audio() then pcall(function() require("gzreader_abfolder").start(self) end) end
-        -- Downloads: a list with covers, titles, authors and letter keys
-        -- (Kindle Keyboard) instead of tiles, once; Menu → Display changes it
-        if not G_reader_settings:isTrue("gzreader_downloads_list_v1") then
+        if Mod.Touch.audio() then
+            pcall(function() require("gzreader_abfolder").start(self) end)
+            -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
+            pcall(function() require("gzreader_musicfolder").start(self) end)
+        end
+        -- Downloads and the other book folders as bookshelves (the View)
+        -- (after every plugin has patched the file browser)
+        UIManager:nextTick(function() pcall(function() require("gzreader_shelfview").install() end) end)
+        -- books on bookshelves (Home and Downloads), once (1.19.0); the quick
+        -- panel's View changes it
+        if G_reader_settings:readSetting("gzreader_view") == nil then
             G_reader_settings:makeTrue("gzreader_downloads_list_v1")
             UIManager:nextTick(function()
-                pcall(function()
-                    local HM = require("gzreader_homemenu")
-                    if HM.displayMode() == "mosaic_image" then HM.setDisplayMode("list_image_meta") end
-                end)
+                pcall(function() require("common/gz_view").set("bookshelf") end)
             end)
         end
         -- downloads / audiobook preparing cut short last time: ask what to do
@@ -639,7 +644,7 @@ end
 function Grimmory:afterLogin(previous)
     if type(previous) ~= "table" or previous[1] ~= self.store.server or previous[2] ~= self.store.username then
         -- Different server/account: queued data belongs to the old one.
-        self.store.pending = { progress = {}, sessions = {} }
+        self.store.pending = { progress = {}, sessions = {}, ratings = {} }
         self:save()
     end
     self:flushPending()
@@ -1024,10 +1029,12 @@ end
 function Grimmory:flushPending()
     if self.flushing or not self.api:isPaired() or not NetworkMgr:isConnected() then return end
     local pending = self.store.pending
-    if next(pending.progress) == nil and #pending.sessions == 0 then return end
+    pending.ratings = pending.ratings or {}
+    if next(pending.progress) == nil and #pending.sessions == 0 and next(pending.ratings) == nil then return end
     self.flushing = true
-    local progress, sessions = {}, {}
+    local progress, sessions, ratings = {}, {}, {}
     for book_id, body in pairs(pending.progress) do progress[book_id] = body end
+    for book_id, stars in pairs(pending.ratings) do ratings[book_id] = stars end
     for i, body in ipairs(pending.sessions) do
         sessions[i] = body
         -- remembered before sending: if this attempt's reply is lost, the
@@ -1060,7 +1067,13 @@ function Grimmory:flushPending()
             end
             if ok or code == 400 or code == 404 then n_sessions = n_sessions + 1 else break end
         end
-        return { sent = sent, dropped = dropped, sessions = n_sessions, cfis = cfis }
+        local rated = {}
+        local Ratings = require("gzreader_ratings")
+        for book_id, stars in pairs(ratings) do
+            local ok, _, code = api:putRating(book_id, Ratings.toGrimmory(stars))
+            if ok or code == 400 or code == 403 or code == 404 then rated[book_id] = ok and "ok" or "dropped" else break end
+        end
+        return { sent = sent, dropped = dropped, sessions = n_sessions, cfis = cfis, rated = rated }
     end, function(res)
         self.flushing = nil
         if type(res) ~= "table" then return end
@@ -1083,17 +1096,32 @@ function Grimmory:flushPending()
         for _i = 1, tonumber(res.sessions) or 0 do
             if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
         end
+        for book_id, how in pairs(res.rated or {}) do
+            -- only cleared if not changed again meanwhile
+            if pending.ratings[book_id] == ratings[book_id] then pending.ratings[book_id] = nil end
+            local entry = self.store.downloads[book_id]
+            if entry and how == "ok" then entry.rating_synced = ratings[book_id] end
+            Log.info("rating sent to Grimmory", book_id, ratings[book_id], "stars", how)
+        end
         self:save()
         -- queued while this was being sent: send that too
         local more = false
         for book_id, body in pairs(pending.progress) do if progress[book_id] ~= body then more = true end end
         if #pending.sessions > (#sessions - (tonumber(res.sessions) or 0)) then more = true end
+        for book_id, stars in pairs(pending.ratings) do if ratings[book_id] ~= stars then more = true end end
         if more and #(res.sent or {}) > 0 then UIManager:nextTick(function() self:flushPending() end) end
     end, "flush")
 end
 
 function Grimmory:onNetworkConnected()
-    UIManager:scheduleIn(2, function() self:flushPending() end)
+    UIManager:scheduleIn(2, function()
+        -- books rated in the file browser (not opened) since GZreader started
+        if self.api:isPaired() and self:syncEnabled() and not self._ratings_swept then
+            local ok, _, done = pcall(require("gzreader_ratings").sweep, self, 60)
+            if ok and done then self._ratings_swept = true end
+        end
+        self:flushPending()
+    end)
     -- auto-download shelf (at most every 30 min)
     UIManager:scheduleIn(6, function() pcall(require("gzreader_shelfsync").run, self) end)
 end

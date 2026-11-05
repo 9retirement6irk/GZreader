@@ -157,6 +157,7 @@ function Music.delete(plugin, c)
     if not tostring(c.dir):find("/" .. Music.STORE .. "/", 1, true) then return end -- (only ever inside .music)
     rmrf(c.dir)
     Log.info("music: deleted", c.kind, c.key)
+    pcall(function() require("gzreader_musicfolder").sync(plugin) end)
 end
 
 ---------------------------------------------------------------- downloading
@@ -261,6 +262,7 @@ function Music.download(plugin, c, opts)
         pcall(function() require("gzreader_tasks").changed() end)
         Music.save(col)
         Log.info("music: download finished", c.key, state.done, "of", state.total, #errors > 0 and ("errors: " .. errors[1]) or "")
+        pcall(function() require("gzreader_musicfolder").sync(plugin) end)
         if opts.on_done then opts.on_done(#errors == 0, errors[1]) end
     end
     UIManager:scheduleIn(1, poll)
