@@ -94,20 +94,32 @@ function View.recalculateDimen(menu)
         if not menu.no_title then menu.others_height = menu.others_height + menu.title_bar.dimen.h end
         if menu.page_info then menu.others_height = menu.others_height + menu.page_info:getSize().h end
     end
-    local avail = math.max(S(120), menu.inner_dimen.h - menu.others_height)
-    local rows = math.max(1, math.floor(avail / S(View.ROW_H)))
     local width = menu.inner_dimen.w
-    local row_h = math.floor(avail / rows)
-    local per_row = math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Shelf().MAX_SPINE)))
-    -- the special folders at the start of the list: the room they take
-    local extra = 0
-    for i = 1, math.min(#View.SPECIAL_ORDER + 1, #menu.item_table) do
-        local name = View.specialOf(menu.item_table[i])
-        if name then extra = extra + deviceSlots(name, row_h) - 1 end
+    local function plan(avail)
+        avail = math.max(S(120), avail)
+        local rows = math.max(1, math.floor(avail / S(View.ROW_H)))
+        local row_h = math.floor(avail / rows)
+        local per_row = math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Shelf().MAX_SPINE)))
+        -- the special folders at the start of the list: the room they take
+        local extra = 0
+        for i = 1, math.min(#View.SPECIAL_ORDER + 1, #menu.item_table) do
+            local name = View.specialOf(menu.item_table[i])
+            if name then extra = extra + deviceSlots(name, row_h) - 1 end
+        end
+        return rows, row_h, per_row, math.max(1, rows * per_row - extra)
+    end
+    local avail = menu.inner_dimen.h - menu.others_height
+    local rows, row_h, per_row, perpage = plan(avail)
+    -- one page: no page arrows, so the shelves take their room too and the
+    -- bottom one stands on the tab bar (as on Home)
+    local footer = menu.page_info and menu.page_info:getSize().h or 0
+    if footer > 0 then
+        local r2, h2, p2, pp2 = plan(avail + footer)
+        if #menu.item_table <= pp2 then rows, row_h, per_row, perpage = r2, h2, p2, pp2 end
     end
     menu._gz_rows, menu._gz_per_row, menu._gz_row_h, menu._gz_width = rows, per_row, row_h, width
     menu.nb_cols, menu.nb_rows = per_row, rows
-    menu.perpage = math.max(1, rows * per_row - extra)
+    menu.perpage = perpage
     menu.page_num = math.max(1, math.ceil(#menu.item_table / menu.perpage))
     if menu.page > menu.page_num then menu.page = menu.page_num end
     menu.item_margin = 0

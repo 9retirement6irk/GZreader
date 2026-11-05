@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.6",
+        changes = {
+            "Bigger titles and authors on book spines (Home and Downloads): the spines are a little wider and their type is as big as each spine allows; a long title is set a little smaller so more of it shows. On Kindles without a keyboard, titles run closer to the foot of the spine.",
+            "Downloads, Bookshelf view: when everything fits on one page, the shelves fill the screen and the bottom one stands on the tab bar, as on Home.",
+            "Grimmory tab, Bookshelf view: bigger, darker type on the tags under each book (three books a row, so titles fit).",
+        },
+    },
+    {
         version = "1.22.5",
         changes = {
             "Grimmory tab: Continue reading shows the books the Grimmory website shows. Grimmory's app list only has books marked Reading; books marked Paused (or without a last-read time) are now included too, most recently read first.",

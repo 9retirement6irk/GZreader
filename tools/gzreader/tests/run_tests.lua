@@ -651,6 +651,8 @@ do
         end
     end
     check(vfits, "lists: their places fit the page, below the search")
+    local K3 = Views.layout("ledges", 600, 574, true, one)
+    check(K3.rows == 3 and K3.cols == 3, "ledges on a Kindle 3: 3 rows of 3 (tags wide enough for their bigger type) " .. K3.rows .. "x" .. K3.cols)
     check(Views.bookLabel({ personalRating = 8 }) == "★★★★☆" and Views.bookLabel({ readProgress = 33.6 }) == "34%"
         and Views.bookLabel({}) == nil, "a book's label: your stars, else how far you are")
     check(Views.cardOf({ gz_kind = "shelf", gz_magic = true, mandatory = "smart shelf" }) == "magic shelf"

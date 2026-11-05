@@ -27,8 +27,8 @@ local M = {}
 
 M.BOARD_H = 14     -- the shelf board under the books (px at 160 dpi)
 M.UNDER_H = 6      -- its shadow on the wall below
-M.MIN_SPINE = 34
-M.MAX_SPINE = 46
+M.MIN_SPINE = 44   -- (1.22.6: wider, for bigger type; were 34-46)
+M.MAX_SPINE = 58
 --- How many spines a shelf of `width` holds.
 function M.perRow(width)
     return math.max(4, math.min(24, math.floor((width - S(16)) / S(M.MAX_SPINE))))
@@ -116,6 +116,47 @@ function M.shadeRound(bb, x, y, w, h, strength)
     end
 end
 
+--- Room kept at a spine's foot (px at 160 dpi): the letter key's square on
+--- a Kindle with a keyboard; a little on the others.
+function M.foot()
+    local ok, keys = pcall(function() return Device:hasKeyboard() and not Device:isTouchDevice() end)
+    return (ok and keys) and 42 or 16
+end
+
+-- A line of text's height at a type size (measured once).
+local line_h = {}
+local function lineH(size)
+    if not line_h[size] then
+        local t = TextWidget:new{ text = "Ag", face = Font:getFace("cfont", size) }
+        line_h[size] = t:getSize().h
+        t:free()
+    end
+    return line_h[size]
+end
+
+-- How much of the author's line may tuck under the title's (a line's height
+-- has room above and below the letters).
+local function tuck(size) return math.floor(lineH(size) * 0.22) end
+
+--- The type sizes for a spine `w` px across: the biggest title (and author)
+--- that fit across it, and the smallest the title may shrink to so a long
+--- one shows more of itself.
+local PAIRS = { { 20, 15 }, { 19, 14 }, { 18, 14 }, { 17, 13 }, { 16, 12 }, { 15, 12 }, { 14, 11 }, { 13, 10 }, { 12, 10 } }
+local SINGLE = { 24, 22, 21, 20, 19, 18, 17, 16, 15 }
+function M.spineType(w, two)
+    local across = w - S(2)
+    if two then
+        for _i, p in ipairs(PAIRS) do
+            if lineH(p[1]) + lineH(p[2]) - tuck(p[2]) <= across then return p[1], p[2], math.min(p[1], math.max(p[1] - 3, 14)) end
+        end
+        return 12, 10, 12
+    end
+    for _i, n in ipairs(SINGLE) do
+        if lineH(n) <= across then return n, nil, math.min(n, math.max(n - 4, 15)) end
+    end
+    return 15, nil, 15
+end
+
 local function draw_spine(book, w, h, shade)
     -- drawn lying down (h wide, w tall), then stood up
     local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
@@ -127,7 +168,8 @@ local function draw_spine(book, w, h, shade)
     local cap = math.max(3, S(5))
     lying:paintRect(0, 0, cap, w, Blitbuffer.gray(math.max(0, shade - 0.25)))
     lying:paintRect(cap, 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.25)))
-    for _i, bx in ipairs({ cap + S(5), h - S(36) }) do
+    local foot = S(M.foot())
+    for _i, bx in ipairs({ cap + S(5), h - foot + S(6) }) do
         lying:paintRect(bx, 0, 1, w, Blitbuffer.gray(math.max(0, shade - 0.3)))
         lying:paintRect(bx + 1, 0, S(2), w, ink)
         lying:paintRect(bx + 1 + S(2), 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.3)))
@@ -137,27 +179,34 @@ local function draw_spine(book, w, h, shade)
     local num = book_number(book)
     local x0 = cap + S(12)
     if num then
-        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 12), bold = true, fgcolor = ink }
+        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 15), bold = true, fgcolor = ink }
         local ns = n:getSize()
         n:paintTo(lying, x0, math.floor((w - ns.h) / 2))
         x0 = x0 + ns.w + S(8)
         n:free()
     end
-    local room = h - x0 - S(42)
+    local room = h - x0 - foot
     local author = book_author(book)
-    -- (every spine with an author shows it: the narrow ones in smaller type;
-    -- 1.22.3 left it off spines under 37 px)
+    -- (every spine with an author shows it; the type is as big as the
+    -- spine's width allows (1.22.6), a long title a little smaller so more
+    -- of it shows)
     local two = author ~= ""
-    local narrow = w < S(37)
-    local title_face = Font:getFace("cfont", two and (narrow and 12 or 14) or 15)
-    local title = TextWidget:new{ text = book_title(book), face = title_face, bold = true, fgcolor = ink, max_width = room }
+    local t_size, a_size, t_min = M.spineType(w, two)
+    local text = book_title(book)
+    local title
+    for size = t_size, t_min, -1 do
+        if title then title:free() end
+        title = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = true, fgcolor = ink, max_width = room }
+        if title:getSize().w < room - 1 and not title:isTruncated() then break end
+    end
     local th = title:getSize().h
     if two then
-        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", narrow and 10 or 11), fgcolor = ink, max_width = room }
+        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", a_size), fgcolor = ink, max_width = room }
         local ah = auth:getSize().h
-        local top = math.floor((w - th - ah + S(2)) / 2)
+        local t = tuck(a_size)
+        local top = math.floor((w - th - ah + t) / 2)
         title:paintTo(lying, x0, top)
-        auth:paintTo(lying, x0, top + th - S(2))
+        auth:paintTo(lying, x0, top + th - t)
         auth:free()
     else
         title:paintTo(lying, x0, math.floor((w - th) / 2))

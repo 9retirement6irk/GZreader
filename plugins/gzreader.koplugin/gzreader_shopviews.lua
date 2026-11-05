@@ -34,7 +34,12 @@ local T = require("ffi/util").template
 local Screen = Device.screen
 local function S(px) return Screen:scaleBySize(px) end
 
-local Views = {}
+local Views = {
+    TAG_TITLE = 14,  -- a tag's title and author type (were 11 and 10)
+    TAG_AUTHOR = 12,
+    TAG_H = 44,      -- its height (px at 160 dpi)
+    TAG_W = 150,     -- the narrowest a tag may be (sets the books a row)
+}
 
 local function Shop() return require("gzreader_bookshop") end
 local function Shelf() return require("modules/filebrowser/patches/home/widgets/shelf") end
@@ -92,15 +97,16 @@ function Views.layout(kind, w, h, band, s)
     end
     if kind == "ledges" then
         -- a ledge row: the cover, its pages, the ledge, the tag under it
-        -- (its title and author: 1.22.3)
-        local fixed = s(11) + s(10) + s(40) + s(8)
-        local rows = clamp(math.floor(avail / (s(100) + fixed)), 1, 4)
+        -- (its title and author: 1.22.3; bigger type: 1.22.6)
+        local fixed = s(11) + s(10) + s(Views.TAG_H + 4) + s(8)
+        local rows = clamp(math.floor(avail / (s(88) + fixed)), 1, 4)  -- (3 rows on a Kindle 3)
         local box_h = math.floor(avail / rows) - fixed
         local box_w = math.floor(box_h * 0.7)
         local gap = s(14)
         local cols = clamp(math.floor((w - 2 * pad + gap) / (box_w + s(11) + gap)), 2, 8)
-        -- (each tag wide enough for a title: 4 a row on a Kindle 3)
-        cols = math.max(2, math.min(cols, math.floor((w - 2 * pad + gap) / (s(124) + gap))))
+        -- (each tag wide enough for a title in its bigger type: 3 a row on
+        -- a Kindle 3 or a Paperwhite)
+        cols = math.max(2, math.min(cols, math.floor((w - 2 * pad + gap) / (s(Views.TAG_W) + gap))))
         grid(rows, cols, pad, top, w - 2 * pad, avail, gap)
         L.box_h = box_h
         L.box_w = math.min(box_w, L.slots[1].w - s(11))
@@ -283,7 +289,7 @@ function Views.paintTag(bb, menu, x, y, w, letter, book)
     local D = Shop().draw
     local TextWidget = require("ui/widget/textwidget")
     local side = (letter and menu.is_enable_shortcut) and S(18) or 0
-    local tw, th = w - S(4), S(36)
+    local tw, th = w - S(4), S(Views.TAG_H)
     local tx0 = x + S(2)
     bb:paintRect(tx0 + S(2), y + S(2), tw, th, D.gray(0.3))
     bb:paintRect(tx0, y, tw, th, Blitbuffer.COLOR_WHITE)
@@ -291,7 +297,7 @@ function Views.paintTag(bb, menu, x, y, w, letter, book)
     local tx = tx0 + S(4)
     if side > 0 then D.badge(bb, menu, letter, tx, y + S(3), side); tx = tx + side + S(4) end
     local room = tx0 + tw - tx - S(4)
-    local t = TextWidget:new{ text = book.title or "?", face = Font:getFace("cfont", 11), bold = true, max_width = room }
+    local t = TextWidget:new{ text = book.title or "?", face = Font:getFace("cfont", Views.TAG_TITLE), bold = true, max_width = room }
     t:paintTo(bb, tx, y + S(2))
     local t_h = t:getSize().h
     t:free()
@@ -302,9 +308,9 @@ function Views.paintTag(bb, menu, x, y, w, letter, book)
     if second ~= "" then
         -- (under the letter too: the whole tag's width)
         local ax = side > 0 and (tx0 + S(4)) or tx
-        local a = TextWidget:new{ text = second, face = Font:getFace("cfont", 10), fgcolor = D.gray(0.75),
+        local a = TextWidget:new{ text = second, face = Font:getFace("cfont", Views.TAG_AUTHOR), fgcolor = D.gray(0.85),
             max_width = tx0 + tw - ax - S(4) }
-        a:paintTo(bb, ax, y + S(3) + math.max(t_h, side))
+        a:paintTo(bb, ax, y + S(1) + math.max(t_h, side))
         a:free()
     end
 end
