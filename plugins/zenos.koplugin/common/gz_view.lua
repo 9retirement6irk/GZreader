@@ -66,6 +66,8 @@ function M.set(mode)
         if fc then
             pcall(function()
                 if fc._recalculateDimen then fc:_recalculateDimen() end
+                -- (series grouping is off in the bookshelf view: list again)
+                if fc._zen_clear_item_table_cache then fc:_zen_clear_item_table_cache() end
                 fc:refreshPath()
             end)
         end

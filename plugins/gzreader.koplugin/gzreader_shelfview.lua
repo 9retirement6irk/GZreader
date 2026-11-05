@@ -120,15 +120,32 @@ end
 local function stripExt(name) return (name:gsub("%.[^%.]+$", "")) end
 
 --- What the spine shows: { path, title, authors, series_index, has_real_cover }.
+--- The authors Grimmory has for a downloaded book (its download entry), or nil.
+function View.grimmoryAuthors(path)
+    local store = View.plugin and View.plugin.store
+    for _id, e in pairs(store and store.downloads or {}) do
+        if type(e) == "table" and e.path == path then
+            return type(e.authors) == "string" and e.authors ~= "" and e.authors or nil
+        end
+    end
+    return nil
+end
+
 local function bookOf(entry, missing)
     local book = { path = entry.path }
     local ok, BIM = pcall(require, "bookinfomanager")
     local info = ok and BIM:getBookInfo(entry.path, false)
     if info then
         if not info.ignore_meta then
-            book.title = info.title
-            book.authors = info.authors
-            book.series_index = info.series_index
+            -- (with the book's KOReader custom metadata: GZreader writes
+            -- Grimmory's title and authors there; 1.22.3 left them off the spine)
+            local okx, props = pcall(function()
+                return require("apps/filemanager/filemanagerbookinfo").extendProps(info, entry.path)
+            end)
+            local p = okx and type(props) == "table" and props or info
+            book.title = p.title or info.title
+            book.authors = p.authors or info.authors
+            book.series_index = p.series_index or info.series_index
         end
         book.has_real_cover = info.has_cover and not info.ignore_cover and true or false
     elseif missing then
@@ -136,6 +153,10 @@ local function bookOf(entry, missing)
     end
     if not book.title or book.title == "" then
         book.title = stripExt(entry.text or entry.path:match("([^/]+)$") or "")
+    end
+    if not book.authors or book.authors == "" then
+        -- the file has none: the authors Grimmory has for it
+        book.authors = View.grimmoryAuthors and View.grimmoryAuthors(entry.path) or nil
     end
     return book
 end

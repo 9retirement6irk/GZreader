@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.4",
+        changes = {
+            "Downloads, Bookshelf view: every book of a series stands on the shelf (in its order, its number on the spine): grouping series into folders is off in the Bookshelf view; the other views keep the setting.",
+            "Every spine shows its author: narrower spines left it off; they now use smaller type.",
+            "A book whose file has no author (or only in its KOReader custom metadata) shows the author Grimmory has. Books downloaded before this update get theirs from Grimmory once, in the background, when Wi-Fi is on.",
+        },
+    },
+    {
         version = "1.22.3",
         changes = {
             "Grimmory tab, Bookshelf view: each book on the display ledges has a tag on the ledge under it with its letter, title and author (and your stars or how far you are); four books a row so titles fit.",

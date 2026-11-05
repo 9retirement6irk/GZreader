@@ -59,6 +59,12 @@ local function book_author(book)
         return book.group_count and (tostring(book.group_count) .. " \u{25A4}") or ""
     end
     local a = book.authors
+    if (type(a) ~= "string" or a == "") and book.path then
+        -- GZreader: the file has none, Grimmory knows them (its download entry)
+        local get = rawget(_G, "__GZ_GRIMMORY_AUTHORS")
+        local ok, got = pcall(function() return get and get(book.path) end)
+        if ok and type(got) == "string" then a = got end
+    end
     if type(a) ~= "string" then return "" end
     return (a:gsub("\n.*$", ""))
 end
@@ -139,12 +145,15 @@ local function draw_spine(book, w, h, shade)
     end
     local room = h - x0 - S(42)
     local author = book_author(book)
-    local two = author ~= "" and w >= S(37)
-    local title_face = Font:getFace("cfont", two and 14 or 15)
+    -- (every spine with an author shows it: the narrow ones in smaller type;
+    -- 1.22.3 left it off spines under 37 px)
+    local two = author ~= ""
+    local narrow = w < S(37)
+    local title_face = Font:getFace("cfont", two and (narrow and 12 or 14) or 15)
     local title = TextWidget:new{ text = book_title(book), face = title_face, bold = true, fgcolor = ink, max_width = room }
     local th = title:getSize().h
     if two then
-        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", 11), fgcolor = ink, max_width = room }
+        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", narrow and 10 or 11), fgcolor = ink, max_width = room }
         local ah = auth:getSize().h
         local top = math.floor((w - th - ah + S(2)) / 2)
         title:paintTo(lying, x0, top)

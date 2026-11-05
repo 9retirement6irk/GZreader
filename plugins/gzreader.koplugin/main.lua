@@ -146,7 +146,14 @@ function Grimmory:init()
         rawset(_G, "__GZ_GRIMMORY_STATS", function() return require("gzreader_grimstats").values(plugin_ref) end)
         -- Downloads and the other book folders as bookshelves (the View)
         -- (after every plugin has patched the file browser)
-        UIManager:nextTick(function() pcall(function() require("gzreader_shelfview").install() end) end)
+        UIManager:nextTick(function() pcall(function()
+            local SV = require("gzreader_shelfview")
+            SV.plugin = plugin_ref -- (the authors Grimmory has, for spines whose files have none)
+            rawset(_G, "__GZ_GRIMMORY_AUTHORS", SV.grimmoryAuthors) -- (Home's shelf too: shelf.lua)
+            SV.install()
+        end) end)
+        -- downloads from before 1.22.4 don't know their Grimmory authors yet
+        UIManager:scheduleIn(15, function() pcall(self.backfillAuthors, self) end)
         -- books on bookshelves (Home and Downloads), once (1.19.0); the quick
         -- panel's View changes it
         if G_reader_settings:readSetting("gzreader_view") == nil then
@@ -1628,6 +1635,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         local entry = {
             path = path,
             title = title,
+            -- (the spine shows them when the file has none: gzreader_shelfview.lua)
+            authors = type(book.authors) == "table" and #book.authors > 0 and table.concat(book.authors, "\n") or nil,
             subtitle = info.subtitle,
             format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
             file_id = tonumber(book.primaryFileId),
@@ -1666,6 +1675,47 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             })
         end
     end)
+end
+
+--- Downloads from before 1.22.4: ask Grimmory for their authors (in the
+--- background, while Wi-Fi is on anyway; 40 at a time; each book once).
+function Grimmory:backfillAuthors()
+    if self.backfilling or not self.api:isPaired() or not Net.connected() then return end
+    local ids = {}
+    for id, e in pairs(self.store.downloads or {}) do
+        if type(e) == "table" and e.authors == nil and not e.authors_asked and tonumber(id) then
+            ids[#ids + 1] = id
+            if #ids >= 40 then break end
+        end
+    end
+    if #ids == 0 then return end
+    self.backfilling = true
+    local api = self.api
+    require("gzreader_async").run(api, function()
+        local got = {}
+        for _i, id in ipairs(ids) do
+            local d = api:getBookDetail(id)
+            if type(d) == "table" and type(d.authors) == "table" then got[id] = table.concat(d.authors, "\n") end
+        end
+        return got
+    end, function(got)
+        self.backfilling = nil
+        if type(got) ~= "table" then return end
+        for _i, id in ipairs(ids) do
+            local e = self.store.downloads[id]
+            if type(e) == "table" then
+                e.authors_asked = true
+                if got[id] and got[id] ~= "" then e.authors = got[id] end
+            end
+        end
+        self:save()
+        Log.info("authors for", #ids, "downloaded books asked from Grimmory")
+        pcall(function()
+            local FM = require("apps/filemanager/filemanager")
+            local fc = FM.instance and FM.instance.file_chooser
+            if fc then fc:refreshPath() end
+        end)
+    end, "authors")
 end
 
 function Grimmory:openBook(path, menu)

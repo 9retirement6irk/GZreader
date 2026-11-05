@@ -51,6 +51,10 @@ local function apply_automatic_series_grouping()
     end
 
     local function is_enabled()
+        -- GZreader: not in the Bookshelf view (every book of a series stands
+        -- on the shelf, in order; 1.22.4)
+        local okv, shelf = pcall(function() return require("common/gz_view").isBookshelf() end)
+        if okv and shelf then return false end
         local plugin = get_plugin()
         local features = plugin and plugin.config and plugin.config.features
         if type(features) ~= "table" then

@@ -860,6 +860,18 @@ check(reader_opened == nil and captured.confirm == nil and captured.info and cap
 check(plugin:localPathFor(6) ~= nil, "and it's on the Kindle")
 ctl("/set?dl_big=true") -- (as the stalled download below expects)
 
+-- downloads from before 1.22.4 get their Grimmory authors (for the spines)
+do
+    local was = NET.connected
+    NET.connected = true
+    plugin.store.downloads["3"].authors, plugin.store.downloads["3"].authors_asked = nil, nil
+    plugin:backfillAuthors()
+    runLoop(function() return plugin.backfilling == nil end, 20)
+    check(plugin.store.downloads["3"].authors == "Author 0" and plugin.store.downloads["3"].authors_asked,
+        "a download without authors gets Grimmory's, once " .. tostring(plugin.store.downloads["3"].authors))
+    NET.connected = was
+end
+
 ctl("/set?dl_slow=false&dl_stall=true")
 Download.STALL_SECONDS = 3
 captured.info = nil
