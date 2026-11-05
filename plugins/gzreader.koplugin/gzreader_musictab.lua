@@ -676,6 +676,12 @@ end
 --- Now playing: what plays, the controls, the queue.
 function Tab.nowPlaying(plugin)
     local M = Music()
+    -- playing: the CD player (gzreader_cdscreen.lua); nothing yet: what can play
+    if M.current and not Tab.LIST_PLAYER then
+        local ok, w = pcall(function() return require("gzreader_cdscreen").show(plugin) end)
+        if ok then return w end
+        require("gzreader_log").warn("CD player screen:", tostring(w))
+    end
     local menu
     local function build()
         local p = M.current

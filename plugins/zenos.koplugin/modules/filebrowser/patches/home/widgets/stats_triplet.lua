@@ -124,7 +124,7 @@ local function font_size_fits(candidate, fields, stats, inner_w, inner_h, show_i
         local label_size = label_probe:getSize()
         local value_w = value_size.w or 0
         local value_h = value_size.h or 1
-        if show_icons and stat_icon_paths[field.id] then
+        if show_icons and stat_icon_paths[field.icon or field.id] then
             value_w = value_w + math.max(8, math.floor(value_h * 0.62)) + 3
         end
         local content_h = value_h - math.floor(value_h * 0.18)
@@ -241,7 +241,7 @@ local function notebook(ctx, fields, stats)
             local label = TextWidget:new{ text = tostring(field.label):lower(), face = label_face,
                 fgcolor = Blitbuffer.gray(0.80), max_width = cell_w - S(8) }
             local ls = label:getSize()
-            local streak = field.id == "streak" and tonumber(stats.streak or 0) or nil
+            local streak = (field.tally or field.id == "streak") and tonumber(stats[field.tally or "streak"] or 0) or nil
             if streak and streak >= 1 and streak <= 10 then
                 local th = math.floor(h * 0.36)
                 local tw = tally_width(streak)
@@ -289,15 +289,14 @@ local function notebook(ctx, fields, stats)
     }
 end
 
-return {
-    id = "stats_triplet",
-    label = _("Reading stats"),
-    size = "xs",
-    preferredHeight = preferred_height,
-    build = function(ctx)
+-- GZreader: the same widget for other stats (spec: id, label, fields
+-- { id = { id, label, get(stats), icon, tally } }, config_key, defaults,
+-- stats(ctx)); Grimmory's reading stats use it (grimmory_stats.lua).
+local function build_stats(ctx, spec)
+        local field_map = spec.fields
         local outer_width = ctx.width
         local height = ctx.height
-        local stats = ctx.data.stats or {}
+        local stats = spec.stats(ctx) or {}
         local module_cfg = ctx.module_cfg or {}
         local show_icons = module_cfg.show_icons ~= false
         local stat_style = module_cfg.stat_style == "outline" and "outline"
@@ -307,15 +306,15 @@ return {
             and Device.screen:scaleBySize(8) or 0
         local width = math.max(1, outer_width - horizontal_padding * 2)
 
-        local config = ctx.config.middle_stats_triplet or { "today_pages", "today_duration", "streak" }
+        local config = ctx.config[spec.config_key] or spec.defaults
         local fields = {}
         for _i, fid in ipairs(config) do
-            local entry = FIELD_MAP[fid] or FIELD_MAP.today_pages
+            local entry = field_map[fid] or field_map[spec.defaults[1]]
             table.insert(fields, entry)
             if #fields >= 3 then break end
         end
         while #fields < 3 do
-            table.insert(fields, FIELD_MAP.today_pages)
+            table.insert(fields, field_map[spec.defaults[#fields + 1]])
         end
         if module_cfg.stat_style == "notebook" then return notebook(ctx, fields, stats) end
 
@@ -349,13 +348,13 @@ return {
                 bold = true,
                 fgcolor = Blitbuffer.COLOR_BLACK,
             }
-            if show_icons and stat_icon_paths[field.id] then
+            if show_icons and stat_icon_paths[field.icon or field.id] then
                 local value_size = value_widget:getSize()
                 local icon_size = math.max(8, math.floor((value_size.h or 12) * 0.62))
                 value_widget = HorizontalGroup:new{
                     align = "center",
                     IconWidget:new{
-                        file = stat_icon_paths[field.id],
+                        file = stat_icon_paths[field.icon or field.id],
                         width = icon_size,
                         height = icon_size,
                         alpha = true,
@@ -447,5 +446,25 @@ return {
             background = Background.tile_bg(Blitbuffer.COLOR_WHITE),
             row_container,
         }
-    end,
+end
+
+local function make(spec)
+    return {
+        id = spec.id,
+        label = spec.label,
+        size = "xs",
+        preferredHeight = preferred_height,
+        build = function(ctx) return build_stats(ctx, spec) end,
+        make = make,
+        fmt_time = fmt_time,
+    }
+end
+
+return make{
+    id = "stats_triplet",
+    label = _("Local reading stats"), -- GZreader: Grimmory's are the other ones
+    fields = FIELD_MAP,
+    config_key = "middle_stats_triplet",
+    defaults = { "today_pages", "today_duration", "streak" },
+    stats = function(ctx) return ctx.data.stats end,
 }

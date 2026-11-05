@@ -898,21 +898,25 @@ function Screen:build()
     local function add(w) group[#group + 1] = w end
     local function gap(px) add(VerticalSpan:new{ width = Device.screen:scaleBySize(px) }) end
 
-    if self.cover_bb then
-        add(FrameContainer:new{ padding = 0, bordersize = Size.border.thin,
-            require("ui/widget/imagewidget"):new{ image = self.cover_bb, image_disposable = false } })
-    else
-        local side = math.floor(sh * 0.36)
-        add(FrameContainer:new{ width = side, height = side, padding = 0, bordersize = Size.border.thin,
-            background = Blitbuffer.COLOR_LIGHT_GRAY,
-            CenterContainer:new{ dimen = Geom:new{ w = side, h = side },
-                TextBoxWidget:new{ text = book.title or "", face = face(18, true), width = side - 20, alignment = "center" } } })
-    end
-    gap(12)
-    add(TextBoxWidget:new{ text = book.title or "", face = face(22, true), width = inner, alignment = "center",
-        height = Device.screen:scaleBySize(60), height_adjust = true, height_overflow_show_ellipsis = true })
-    if book.author then add(TextWidget:new{ text = book.author, face = face(17), max_width = inner }) end
-    gap(10)
+    -- a cassette walkman with headphones: the book on the cassette's label,
+    -- the tape moving from reel to reel through the chapter (gzreader_deck.lua)
+    local ch_start0 = ch and (ch.startTimeMs or 0) or 0
+    local nxt0 = chapters[ch_idx + 1]
+    local ch_len0 = math.max(1, (nxt0 and nxt0.startTimeMs or total) - ch_start0)
+    local deck_w = math.min(math.floor(sw * 0.92), math.floor(sh * 0.36 * 320 / 300))
+    add(require("gzreader_deck").Walkman:new{ w = deck_w, state = {
+        title = book.title,
+        line2 = ch and (ch.title and ch.title ~= "" and ch.title or T(_("Chapter %1"), ch_idx)) or book.author,
+        progress = (g - ch_start0) / ch_len0,
+        playing = p.playing,
+        cover_bb = self.cover_bb,
+        counter = string.format("%04d", math.floor(g / 60000) % 10000),
+    } })
+    gap(8)
+    add(TextBoxWidget:new{ text = book.title or "", face = face(20, true), width = inner, alignment = "center",
+        height = Device.screen:scaleBySize(52), height_adjust = true, height_overflow_show_ellipsis = true })
+    if book.author then add(TextWidget:new{ text = book.author, face = face(16), max_width = inner }) end
+    gap(8)
     if ch then
         -- "Chapter 4: On the Trail · 4 of 12" (titles often say "Chapter" already)
         local count = #chapters > 1 and T(_("%1 of %2"), ch_idx, #chapters) or nil
@@ -921,55 +925,61 @@ function Screen:build()
             face = face(17, true), max_width = inner })
     end
     gap(8)
-    local ProgressWidget = require("ui/widget/progresswidget")
     local ch_start = ch and (ch.startTimeMs or 0) or 0
     local nxt = chapters[ch_idx + 1]
     local ch_end = nxt and nxt.startTimeMs or total
     local ch_len = math.max(1, ch_end - ch_start)
-    add(ProgressWidget:new{ width = inner, height = Device.screen:scaleBySize(10),
-        percentage = math.min(1, math.max(0, (g - ch_start) / ch_len)), ticks = nil })
+    -- the whole book: its page edges, a ribbon where you are (as on Home)
+    local okp, BookProgress = pcall(require, "common/ui/book_progress")
+    if okp and BookProgress.edges then
+        add(BookProgress.edges(total > 0 and g / total or 0, inner, Device.screen:scaleBySize(14)))
+    else
+        add(require("ui/widget/progresswidget"):new{ width = inner, height = Device.screen:scaleBySize(10),
+            percentage = total > 0 and math.min(1, g / total) or 0, ticks = nil })
+    end
     gap(4)
     local left = TextWidget:new{ text = T(_("%1 of %2"), Audiobook.fmt(g - ch_start), Audiobook.fmt(ch_len)), face = face(14) }
     local right = TextWidget:new{ text = T("%1 / %2 · %3%", Audiobook.fmt(g), Audiobook.fmt(total),
         total > 0 and math.floor(g / total * 100) or 0), face = face(14) }
     add(HorizontalGroup:new{ left, HorizontalSpan:new{ width = math.max(0, inner - left:getSize().w - right:getSize().w) }, right })
+    -- (playing or paused: the walkman's ▶ / ❚❚ and its play key, down while playing)
+    gap(14)
+    -- the walkman's keys (gzreader_skeuo.lua): transport, then the rest
+    local Skeuo = require("gzreader_skeuo")
+    local function keys(defs, h)
+        local n = #defs
+        local gapw = Device.screen:scaleBySize(6)
+        local kw = math.floor((inner - (n - 1) * gapw) / n)
+        local rowg = HorizontalGroup:new{ align = "center" }
+        for k, d in ipairs(defs) do
+            if k > 1 then rowg[#rowg + 1] = HorizontalSpan:new{ width = gapw } end
+            rowg[#rowg + 1] = Skeuo.Key:new{ w = kw, h = h, label = d[1], letter = d[2] and Touch.keys() and d[2] or nil,
+                down = d[4] and true or false, callback = d[3], font_size = d[5] or 15, icon = d.icon, icon_after = d.after }
+        end
+        return rowg
+    end
+    local kh = Device.screen:scaleBySize(50)
+    add(keys({
+        { "", nil, function() self:onPrevChapter() end, icon = "prev" },
+        { "30 s", nil, function() self:onBack30() end, false, 14, icon = "rew" },
+        { "", nil, function() self:onToggle() end, p.playing, icon = p.playing and "pause" or "play" },
+        { "30 s", nil, function() self:onFwd30() end, false, 14, icon = "ffwd", after = true },
+        { "", nil, function() self:onNextChapter() end, icon = "next" },
+    }, kh))
     gap(10)
-    local status = { p.playing and _("▶ Playing") or _("❚❚ Paused") }
-    local sleep = p:sleepText()
-    if sleep then status[#status + 1] = sleep end
-    add(TextWidget:new{ text = table.concat(status, "  ·  "), face = face(17, true), max_width = inner })
-    gap(18)
-    if Touch.on() then
-        -- touch: what the 5-way does on the Kindle 3
-        add(Touch.chips(inner, {
-            { "\u{23EE}", function() self:onPrevChapter() end },
-            { "\u{2212}30 s", function() self:onBack30() end },
-            { p.playing and "\u{275A}\u{275A}" or "\u{25B6}", function() self:onToggle() end },
-            { "+30 s", function() self:onFwd30() end },
-            { "\u{23ED}", function() self:onNextChapter() end },
-        }, self))
-        gap(10)
-    end
-    -- controls
-    local col = math.floor((inner - 2 * Size.padding.large) / 3)
-    local function row(a, b, c)
-        return HorizontalGroup:new{ align = "center", a, HorizontalSpan:new{ width = Size.padding.large }, b,
-            HorizontalSpan:new{ width = Size.padding.large }, c }
-    end
     local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
         or (p.sleep_at and T(_("Sleep: %1 min"), math.max(1, math.ceil((p.sleep_at - os.time()) / 60))))
         or _("Sleep: off")
-    add(row(
-        self:control("Q", _("Chapters"), function() self:onChapters() end, col),
-        self:control("W", sleep_label, function() self:onSleep() end, col),
-        self:control("E", _("Stop"), function() self:onStopClose() end, col)))
-    gap(8)
-    local vol = CenterContainer:new{ dimen = Geom:new{ w = col, h = Device.screen:scaleBySize(36) },
-        TextWidget:new{ text = T(_("Volume %1 / %2"), Engine.volume(), 15), face = face(16, true) } }
-    add(row(
-        self:control("A", _("Quieter"), function() self:onVolDown() end, col),
-        vol,
-        self:control("S", _("Louder"), function() self:onVolUp() end, col)))
+    add(keys({
+        { _("Chapters"), "Q", function() self:onChapters() end },
+        { sleep_label, "W", function() self:onSleep() end, p.sleep_at ~= nil or p.sleep_end_of_chapter },
+        { _("Stop"), "E", function() self:onStopClose() end, icon = "stop" },
+    }, kh))
+    gap(10)
+    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = 15,
+        value_text = T("%1 / %2", Engine.volume(), 15), label = _("volume"),
+        letters = Touch.keys() and { "A", "S" } or nil,
+        minus = function() self:onVolDown() end, plus = function() self:onVolUp() end })
     gap(12)
     if Touch.on() then
         add(Touch.chips(inner, {

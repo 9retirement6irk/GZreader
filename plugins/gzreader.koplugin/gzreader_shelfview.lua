@@ -63,7 +63,7 @@ local function areaH(row_h)
 end
 
 local function deviceSize(name, row_h)
-    local h = math.floor(areaH(row_h) * 0.74)
+    local h = math.floor(areaH(row_h) * 0.86)
     return math.floor(h * View.SPECIAL[name].ratio), h
 end
 

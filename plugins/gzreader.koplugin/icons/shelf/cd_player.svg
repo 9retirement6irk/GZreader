@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="300" viewBox="0 0 360 300">
+<defs>
+<linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ececec"/><stop offset=".5" stop-color="#c2c2c2"/><stop offset="1" stop-color="#8e8e8e"/></linearGradient>
+<radialGradient id="lid" cx=".42" cy=".36" r=".72"><stop offset="0" stop-color="#e6e6e6"/><stop offset="1" stop-color="#a4a4a4"/></radialGradient>
+<linearGradient id="strip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8d8d8"/><stop offset="1" stop-color="#9a9a9a"/></linearGradient>
+<radialGradient id="foam" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#d6d6d6"/><stop offset=".7" stop-color="#a8a8a8"/><stop offset="1" stop-color="#7a7a7a"/></radialGradient>
+</defs>
+<!-- the cords, from each pad round behind the player (out of sight under it) -->
+<path d="M58 236 C70 262 120 268 170 230 M318 128 C334 170 300 220 240 214" fill="none" stroke="#1c1c1c" stroke-width="2.5"/>
+<!-- the player: round, a front strip with the display and the buttons -->
+<circle cx="180" cy="146" r="122" fill="#6a6a6a"/>
+<circle cx="180" cy="140" r="122" fill="url(#shell)" stroke="#333" stroke-width="2"/>
+<path d="M70 196 A122 122 0 0 0 290 196 L276 214 A110 110 0 0 1 84 214 Z" fill="url(#strip)" stroke="#555"/>
+<!-- the lid's window (the disc is drawn by GZreader) -->
+<circle cx="180" cy="126" r="92" fill="url(#lid)" stroke="#666" stroke-width="1.5"/>
+<circle cx="180" cy="126" r="80" fill="#2a2a2a"/>
+<!-- the display (GZreader writes the track and time on it) -->
+<rect x="142" y="222" width="76" height="30" rx="4" fill="#3a3a3a" stroke="#222"/>
+<rect x="146" y="226" width="68" height="22" rx="2" fill="#b4b4b4"/>
+<circle cx="110" cy="224" r="9" fill="#e2e2e2" stroke="#555"/>
+<circle cx="250" cy="224" r="9" fill="#e2e2e2" stroke="#555"/>
+<ellipse cx="286" cy="176" rx="18" ry="14" fill="#e2e2e2" stroke="#555"/>
+<path d="M280 176 l10 -6 v12 z" fill="#555"/>
+<circle cx="82" cy="170" r="7" fill="#e2e2e2" stroke="#555"/>
+<!-- the headphones, laid around it: the thin band round the back, a foam pad
+     resting on the rim at each end (lower left, upper right), the cord hanging down -->
+<path d="M64 206 A136 136 0 0 1 300 74" fill="none" stroke="#2a2a2a" stroke-width="5" stroke-linecap="round"/>
+<path d="M64 206 A136 136 0 0 1 300 74" fill="none" stroke="#9a9a9a" stroke-width="1.2"/>
+<rect x="50" y="176" width="12" height="26" rx="2" fill="#2a2a2a" transform="rotate(20 56 189)"/>
+<rect x="292" y="74" width="12" height="26" rx="2" fill="#2a2a2a" transform="rotate(-50 298 87)"/>
+<circle cx="70" cy="214" r="27" fill="url(#foam)" stroke="#555" stroke-width="1.5"/>
+<circle cx="70" cy="214" r="18" fill="none" stroke="#9a9a9a" stroke-width="1"/>
+<circle cx="306" cy="104" r="27" fill="url(#foam)" stroke="#555" stroke-width="1.5"/>
+<circle cx="306" cy="104" r="18" fill="none" stroke="#9a9a9a" stroke-width="1"/>
+<g fill="#8a8a8a"><circle cx="60" cy="204" r="1.5"/><circle cx="76" cy="200" r="1.5"/><circle cx="84" cy="216" r="1.5"/><circle cx="64" cy="226" r="1.5"/><circle cx="78" cy="230" r="1.5"/><circle cx="296" cy="94" r="1.5"/><circle cx="312" cy="90" r="1.5"/><circle cx="320" cy="106" r="1.5"/><circle cx="300" cy="116" r="1.5"/><circle cx="314" cy="120" r="1.5"/></g>
+</svg>

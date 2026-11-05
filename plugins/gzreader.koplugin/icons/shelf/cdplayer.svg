@@ -1,22 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="150" height="132" viewBox="0 0 150 132">
+<svg xmlns="http://www.w3.org/2000/svg" width="170" height="124" viewBox="0 0 170 124">
 <defs>
-<linearGradient id="cdb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e0e0e0"/><stop offset=".5" stop-color="#a6a6a6"/><stop offset="1" stop-color="#6a6a6a"/></linearGradient>
-<radialGradient id="lid" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#ececec"/><stop offset="1" stop-color="#9a9a9a"/></radialGradient>
-<radialGradient id="disc" cx=".38" cy=".32" r=".7"><stop offset="0" stop-color="#fbfbfb"/><stop offset=".35" stop-color="#cfcfcf"/><stop offset=".65" stop-color="#eaeaea"/><stop offset="1" stop-color="#8f8f8f"/></radialGradient>
-<linearGradient id="cup" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#222222"/><stop offset=".45" stop-color="#6c6c6c"/><stop offset="1" stop-color="#1c1c1c"/></linearGradient>
+<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9c9c9c"/><stop offset="1" stop-color="#5a5a5a"/></linearGradient>
+<radialGradient id="top" cx=".4" cy=".3" r=".8"><stop offset="0" stop-color="#ededed"/><stop offset=".6" stop-color="#c4c4c4"/><stop offset="1" stop-color="#9a9a9a"/></radialGradient>
+<radialGradient id="lid" cx=".42" cy=".35" r=".7"><stop offset="0" stop-color="#e2e2e2"/><stop offset="1" stop-color="#a8a8a8"/></radialGradient>
+<radialGradient id="foam" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#d4d4d4"/><stop offset=".7" stop-color="#a6a6a6"/><stop offset="1" stop-color="#7c7c7c"/></radialGradient>
 </defs>
-<rect x="6" y="10" width="118" height="120" rx="34" fill="url(#cdb)" stroke="#1a1a1a" stroke-width="2"/>
-<circle cx="65" cy="60" r="44" fill="url(#lid)" stroke="#555555" stroke-width="1.5"/>
-<circle cx="65" cy="60" r="32" fill="url(#disc)" stroke="#444444"/>
-<circle cx="65" cy="60" r="26" fill="none" stroke="#bdbdbd"/>
-<circle cx="65" cy="60" r="20" fill="none" stroke="#e2e2e2"/>
-<path d="M44 40 A30 30 0 0 1 84 36" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.7"/>
-<circle cx="65" cy="60" r="9" fill="#e8e8e8" stroke="#555555"/><circle cx="65" cy="60" r="3" fill="#333333"/>
-<rect x="34" y="108" width="62" height="14" rx="2" fill="#2a2a2a"/>
-<rect x="40" y="112" width="14" height="6" fill="#d9d9d9"/><rect x="58" y="112" width="4" height="6" fill="#d9d9d9"/><rect x="66" y="112" width="22" height="6" fill="#d9d9d9"/>
-<circle cx="20" cy="110" r="5" fill="#555555"/><circle cx="110" cy="110" r="5" fill="#555555"/>
-<path d="M112 130 C112 78 146 78 146 130" fill="none" stroke="#333333" stroke-width="6" stroke-linecap="round"/>
-<path d="M112 130 C112 82 146 82 146 130" fill="none" stroke="#a5a5a5" stroke-width="1.5"/>
-<rect x="104" y="108" width="17" height="24" rx="7" fill="url(#cup)" stroke="#111111"/>
-<rect x="138" y="108" width="12" height="24" rx="6" fill="#4a4a4a" stroke="#111111"/>
+<!-- the cords, from each pad round behind the player -->
+<path d="M22 108 C30 124 70 118 84 100 M163 58 C168 82 140 98 120 92" fill="none" stroke="#1e1e1e" stroke-width="1.6"/>
+<!-- the player: a flat disc seen from above, its edge, its lid -->
+<ellipse cx="85" cy="74" rx="70" ry="40" fill="url(#edge)" stroke="#222"/>
+<ellipse cx="85" cy="67" rx="70" ry="40" fill="url(#top)" stroke="#333"/>
+<ellipse cx="80" cy="60" rx="52" ry="29" fill="url(#lid)" stroke="#6a6a6a"/>
+<path d="M44 52 A48 26 0 0 1 104 36" fill="none" stroke="#ffffff" stroke-width="3" opacity=".8"/>
+<!-- the front: a small display, buttons on the right -->
+<path d="M30 92 C60 110 120 110 146 88" fill="none" stroke="#7a7a7a" stroke-width="1"/>
+<rect x="86" y="88" width="26" height="13" rx="2" fill="#3a3a3a" stroke="#222" transform="rotate(-6 99 94)"/>
+<rect x="89" y="91" width="20" height="7" rx="1" fill="#8e8e8e" transform="rotate(-6 99 94)"/>
+<circle cx="70" cy="96" r="5" fill="#d8d8d8" stroke="#555"/>
+<ellipse cx="128" cy="80" rx="11" ry="8" fill="#d8d8d8" stroke="#555"/>
+<path d="M124 80 l6 -3 v6 z" fill="#555"/>
+<circle cx="138" cy="66" r="4" fill="#d8d8d8" stroke="#555"/>
+<!-- the headphones: the band round the back, a pad on the rim at each end -->
+<path d="M24 94 A78 46 0 0 1 150 40" fill="none" stroke="#2a2a2a" stroke-width="3" stroke-linecap="round"/>
+<rect x="16" y="78" width="7" height="13" rx="1.5" fill="#2a2a2a" transform="rotate(25 19 84)"/>
+<rect x="146" y="34" width="7" height="13" rx="1.5" fill="#2a2a2a" transform="rotate(-55 149 40)"/>
+<ellipse cx="28" cy="98" rx="15" ry="12" fill="url(#foam)" stroke="#555"/>
+<ellipse cx="28" cy="98" rx="9" ry="7" fill="none" stroke="#9a9a9a" stroke-width=".8"/>
+<ellipse cx="152" cy="50" rx="15" ry="12" fill="url(#foam)" stroke="#555"/>
+<ellipse cx="152" cy="50" rx="9" ry="7" fill="none" stroke="#9a9a9a" stroke-width=".8"/>
+<g fill="#8a8a8a"><circle cx="22" cy="94" r="1"/><circle cx="32" cy="92" r="1"/><circle cx="35" cy="101" r="1"/><circle cx="24" cy="104" r="1"/><circle cx="146" cy="46" r="1"/><circle cx="156" cy="44" r="1"/><circle cx="159" cy="53" r="1"/><circle cx="148" cy="56" r="1"/></g>
 </svg>

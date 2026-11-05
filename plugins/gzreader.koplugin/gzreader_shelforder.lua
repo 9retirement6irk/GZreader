@@ -8,8 +8,8 @@ local _ = require("gettext")
 
 local Order = {
     SPECIAL = {
-        Audiobooks = { icon = "walkman", ratio = 126 / 150, label = _("Audiobooks") },
-        Music = { icon = "cdplayer", ratio = 150 / 132, label = _("Music") },
+        Audiobooks = { icon = "walkman", ratio = 130 / 160, label = _("Audiobooks") },
+        Music = { icon = "cdplayer", ratio = 170 / 124, label = _("Music") },
     },
     SPECIAL_ORDER = { "Audiobooks", "Music" },
 }

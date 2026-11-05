@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="300" viewBox="0 0 320 300">
+<defs>
+<linearGradient id="front" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3c3c3c"/><stop offset=".35" stop-color="#5e5e5e"/><stop offset="1" stop-color="#474747"/></linearGradient>
+<linearGradient id="silver" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8b8b8"/><stop offset=".5" stop-color="#f2f2f2"/><stop offset="1" stop-color="#999999"/></linearGradient>
+<linearGradient id="silverh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0f0f0"/><stop offset="1" stop-color="#a6a6a6"/></linearGradient>
+<linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6e6e6"/><stop offset="1" stop-color="#9c9c9c"/></linearGradient>
+<radialGradient id="foam" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#8c8c8c"/><stop offset=".7" stop-color="#5c5c5c"/><stop offset="1" stop-color="#3a3a3a"/></radialGradient>
+</defs>
+<!-- the player -->
+<rect x="22" y="34" width="14" height="10" rx="2" fill="url(#silverh)" stroke="#333"/>
+<rect x="44" y="30" width="34" height="14" rx="2" fill="url(#silverh)" stroke="#333"/>
+<rect x="82" y="32" width="34" height="12" rx="2" fill="url(#silverh)" stroke="#333"/>
+<rect x="120" y="30" width="34" height="14" rx="2" fill="url(#silverh)" stroke="#333"/>
+<rect x="160" y="28" width="12" height="16" rx="1.5" fill="#2a2a2a"/>
+<rect x="10" y="40" width="200" height="252" rx="6" fill="url(#front)" stroke="#111" stroke-width="2"/>
+<rect x="178" y="40" width="32" height="252" rx="4" fill="url(#silver)" stroke="#222"/>
+<rect x="10" y="256" width="168" height="36" rx="4" fill="url(#silverh)" stroke="#222"/>
+<rect x="183" y="90" width="22" height="9" rx="2" fill="#8c8c8c"/>
+<rect x="183" y="108" width="22" height="9" rx="2" fill="#8c8c8c"/>
+<rect x="183" y="126" width="22" height="9" rx="2" fill="#8c8c8c"/>
+<rect x="190" y="160" width="9" height="40" rx="3" fill="#6a6a6a"/>
+<rect x="22" y="52" width="140" height="6" rx="3" fill="#7c7c7c"/>
+<!-- the cassette window (the cassette is drawn by GZreader) -->
+<rect x="30" y="70" width="140" height="100" rx="6" fill="#161616" stroke="#8a8a8a" stroke-width="1.5"/>
+<rect x="34" y="182" width="132" height="62" rx="4" fill="#4c4c4c" stroke="#2a2a2a"/>
+<!-- the headphones: a thin metal band, sliders, foam pads -->
+<path d="M234 156 C222 34 306 30 298 140" fill="none" stroke="#7c7c7c" stroke-width="7" stroke-linecap="round"/>
+<path d="M234 156 C222 38 306 34 298 140" fill="none" stroke="#ececec" stroke-width="2"/>
+<rect x="224" y="110" width="14" height="30" rx="3" fill="url(#band)" stroke="#555" transform="rotate(-6 231 125)"/>
+<rect x="290" y="100" width="14" height="30" rx="3" fill="url(#band)" stroke="#555" transform="rotate(8 297 115)"/>
+<ellipse cx="240" cy="172" rx="25" ry="23" fill="url(#foam)" stroke="#222" stroke-width="1.5"/>
+<ellipse cx="292" cy="160" rx="22" ry="21" fill="url(#foam)" stroke="#222" stroke-width="1.5"/>
+<g fill="#a2a2a2"><circle cx="231" cy="164" r="1.5"/><circle cx="244" cy="160" r="1.5"/><circle cx="252" cy="174" r="1.5"/><circle cx="236" cy="181" r="1.5"/><circle cx="246" cy="186" r="1.5"/><circle cx="285" cy="152" r="1.5"/><circle cx="297" cy="149" r="1.5"/><circle cx="302" cy="163" r="1.5"/><circle cx="288" cy="170" r="1.5"/></g>
+<path d="M240 195 C246 250 282 250 292 182" fill="none" stroke="#1c1c1c" stroke-width="2.5"/>
+<path d="M166 30 C170 0 236 10 244 150" fill="none" stroke="#1c1c1c" stroke-width="2.5"/>
+</svg>

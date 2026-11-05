@@ -54,6 +54,7 @@ end
 local DEFAULT_ORDER = {
     "datetime",
     "featured",
+    "grimmory_stats",
     "stats_triplet",
     "reading_goals",
     "strip",
@@ -63,7 +64,7 @@ local DEFAULT_ORDER = {
 local DEFAULT_ENABLED = {
     featured = true,
     quotes = true,
-    stats_triplet = true,
+    grimmory_stats = true, -- GZreader
     strip = true,
 }
 
@@ -223,20 +224,22 @@ local function ensure_home_widget_cfg(dcfg)
         featured.default_source = { kind = "recent" }
     end
     if type(featured.path) ~= "string" then featured.path = nil end
-    local stats_triplet = ensure_module_cfg(dcfg, "stats_triplet")
-    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
-            and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
-        stats_triplet.stat_style = "divider"
+    for _i, stats_id in ipairs({ "stats_triplet", "grimmory_stats" }) do -- GZreader: Grimmory's too
+        local stats_triplet = ensure_module_cfg(dcfg, stats_id)
+        if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
+                and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
+            stats_triplet.stat_style = "divider"
+        end
+        stats_triplet.font_size = tonumber(stats_triplet.font_size)
+        if stats_triplet.font_size then
+            stats_triplet.font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(stats_triplet.font_size + 0.5)))
+        end
+        stats_triplet.automatic_font_size = stats_triplet.automatic_font_size ~= false
+        stats_triplet.max_font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(
+            (tonumber(stats_triplet.max_font_size) or DEFAULT_STATS_MAX_FONT_SIZE) + 0.5
+        )))
+        stats_triplet.font_scale = nil
     end
-    stats_triplet.font_size = tonumber(stats_triplet.font_size)
-    if stats_triplet.font_size then
-        stats_triplet.font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(stats_triplet.font_size + 0.5)))
-    end
-    stats_triplet.automatic_font_size = stats_triplet.automatic_font_size ~= false
-    stats_triplet.max_font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(
-        (tonumber(stats_triplet.max_font_size) or DEFAULT_STATS_MAX_FONT_SIZE) + 0.5
-    )))
-    stats_triplet.font_scale = nil
     local reading_goals = ensure_module_cfg(dcfg, "reading_goals")
     local goals_font_size = tonumber(reading_goals.font_size)
     reading_goals.font_size = goals_font_size
@@ -272,6 +275,9 @@ local function ensure_cfg(_config)
 
     if type(dcfg.middle_stats_triplet) ~= "table" then
         dcfg.middle_stats_triplet = { "today_pages", "today_duration", "streak" }
+    end
+    if type(dcfg.middle_grimmory_stats) ~= "table" then
+        dcfg.middle_grimmory_stats = { "week_time", "streak", "year_finished" }
     end
 
     dcfg.goals = ReadingGoals.normalize(dcfg.goals)
@@ -1948,6 +1954,7 @@ function M.build(ctx)
         datetime = true,
         featured = true,
         stats_triplet = true,
+        grimmory_stats = true,
         reading_goals = true,
         strip = true,
         quotes = true,
@@ -2269,8 +2276,20 @@ function M.build(ctx)
         return size
     end
 
-    local function build_stats_triplet_items()
-        local stats_cfg = ensure_module_cfg(dcfg, "stats_triplet")
+    -- GZreader: also for Grimmory's reading stats (its own stats, slots and options)
+    local function build_stats_triplet_items(module_id)
+        if type(module_id) ~= "string" then module_id = "stats_triplet" end
+        local grim = module_id == "grimmory_stats"
+        local field_options, field_labels, config_key, first = stats_field_options, stats_field_labels, "middle_stats_triplet", "today_pages"
+        if grim then
+            local G = require("modules/filebrowser/patches/home/widgets/grimmory_stats")
+            field_options, field_labels, config_key, first = {}, {}, "middle_grimmory_stats", "week_time"
+            for _i, oid in ipairs(G.OPTIONS) do
+                field_options[#field_options + 1] = { id = oid, text = G.FIELDS[oid].label }
+                field_labels[oid] = G.FIELDS[oid].label
+            end
+        end
+        local stats_cfg = ensure_module_cfg(dcfg, module_id)
         local items = {
             {
                 text = _("Automatic font size"),
@@ -2394,22 +2413,22 @@ function M.build(ctx)
         for slot = 1, 3 do
             items[#items + 1] = {
                 text_func = function()
-                    local cur = dcfg.middle_stats_triplet[slot] or "today_pages"
+                    local cur = dcfg[config_key][slot] or first
                     return _("Stat slot ") .. tostring(slot) .. ": "
-                        .. (stats_field_labels[cur] or stats_field_labels.today_pages)
+                        .. (field_labels[cur] or field_labels[first])
                 end,
                 sub_item_table = (function()
                     local slot_items = {}
-                    for _i, opt in ipairs(stats_field_options) do
+                    for _i, opt in ipairs(field_options) do
                         local oid = opt.id
                         slot_items[#slot_items + 1] = {
                             text = opt.text,
                             radio = true,
                             checked_func = function()
-                                return (dcfg.middle_stats_triplet[slot] or "today_pages") == oid
+                                return (dcfg[config_key][slot] or first) == oid
                             end,
                             callback = function()
-                                dcfg.middle_stats_triplet[slot] = oid
+                                dcfg[config_key][slot] = oid
                                 save_home("reinit")
                             end,
                         }
@@ -2644,6 +2663,8 @@ function M.build(ctx)
             items = build_goals_items()
         elseif id == "stats_triplet" then
             items = build_stats_triplet_items()
+        elseif id == "grimmory_stats" then
+            items = build_stats_triplet_items("grimmory_stats")
         elseif id == "quotes" then
             items = build_quotes_items()
         end
@@ -2767,7 +2788,7 @@ function M.build(ctx)
                         sub_item_table_func = build_goals_items,
                     },
                     {
-                        text = _("Reading stats"),
+                        text = _("Local reading stats"),
                         sub_item_table_func = build_stats_triplet_items,
                     },
                     {

@@ -63,6 +63,49 @@ function M.bar(ratio, width, height)
     }
 end
 
+-- GZreader: progress as a book's page edges seen from the top: the pages
+-- read darker, the rest light, and a ribbon bookmark where you are. The
+-- ribbon hangs a little above and below (pad, in the widget's height).
+function M.edges(ratio, width, height)
+    ratio = clamp_ratio(ratio) or 0
+    width = math.max(8, math.floor(tonumber(width) or 8))
+    height = math.max(6, math.floor(tonumber(height) or 6))
+    local Screen = require("device").screen
+    local pad = math.max(2, Screen:scaleBySize(3))
+    local rib_w = math.max(4, Screen:scaleBySize(7))
+    return {
+        dimen = Geom:new{ w = width, h = height + 2 * pad },
+        getSize = function(self) return self.dimen end,
+        handleEvent = function() return false end,
+        free = function() end,
+        paintTo = function(_self, bb, x, y)
+            local by, bh = y + pad, height
+            local split = x + math.floor((width - 1) * ratio)
+            for xx = x, x + width - 1 do
+                local read = xx < split
+                local dark = (xx - x) % 2 == 0
+                local c = read and (dark and 0.62 or 0.42) or (dark and 0.22 or 0.06)
+                bb:paintRect(xx, by, 1, bh, Blitbuffer.gray(c))
+            end
+            -- the top and bottom covers' edges, and the round fore-edge
+            bb:paintRect(x, by, width, 1, Blitbuffer.gray(0.75))
+            bb:paintRect(x, by + bh - 1, width, 1, Blitbuffer.gray(0.85))
+            bb:paintRect(x + width - 1, by + 1, 1, bh - 2, Blitbuffer.gray(0.7))
+            -- the ribbon: from above the pages to below them, a notch at its end
+            local rx = math.max(x, math.min(x + width - rib_w, split - math.floor(rib_w / 2)))
+            local bottom = by + bh + pad
+            bb:paintRect(rx, y, rib_w, bottom - y - math.floor(rib_w / 2), Blitbuffer.COLOR_BLACK)
+            local half = math.floor(rib_w / 2)
+            for k = 0, half - 1 do
+                -- (two points: the notch between them)
+                bb:paintRect(rx, bottom - half + k, half - k, 1, Blitbuffer.COLOR_BLACK)
+                bb:paintRect(rx + rib_w - (half - k), bottom - half + k, half - k, 1, Blitbuffer.COLOR_BLACK)
+            end
+            bb:paintRect(rx + 1, y + 1, 1, bottom - y - rib_w, Blitbuffer.gray(0.6))
+        end,
+    }
+end
+
 function M.build(opts)
     opts = opts or {}
     local ratio = clamp_ratio(opts.ratio)
@@ -96,7 +139,7 @@ function M.build(opts)
         align = "center",
         left,
         HorizontalSpan:new{ width = gap },
-        M.bar(ratio, bar_w, bar_h),
+        opts.style == "edges" and M.edges(ratio, bar_w, bar_h) or M.bar(ratio, bar_w, bar_h),
         HorizontalSpan:new{ width = gap },
         right,
     }

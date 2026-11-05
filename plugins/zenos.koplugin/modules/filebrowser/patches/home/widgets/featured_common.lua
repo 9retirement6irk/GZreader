@@ -429,7 +429,9 @@ function M.build(ctx, source_key)
             return BookProgress.build{
                 ratio = progress_percent,
                 width = progress_w,
-                bar_height = progress_h,
+                -- GZreader: with the bookshelf, the book's page edges and a ribbon
+                bar_height = gz_depth and math.max(progress_h, Screen:scaleBySize(12)) or progress_h,
+                style = gz_depth and "edges" or nil,
                 face = stats_face,
                 bold = progress_style.bold == true,
                 gap = math.max(4, math.floor(progress_w * 0.02)),
@@ -437,6 +439,7 @@ function M.build(ctx, source_key)
                 right_text = right_progress_text,
             }
         end
+        if gz_depth then return BookProgress.edges(progress_percent, progress_w, math.max(progress_h, Screen:scaleBySize(12))) end
         return BookProgress.bar(progress_percent, progress_w, progress_h)
     end
 

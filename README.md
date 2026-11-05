@@ -23,12 +23,28 @@ GZreader is [KOReader](https://github.com/koreader/koreader) trimmed down to
 reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted **Grimmory** book server.
 
-| Kindle / Nook | How you use it |
-| --- | --- |
-| **Kindle 2**, **Keyboard (3)**, **DX** | the keyboard: a letter key for everything |
-| **Kindle 4** | the 5-way and Menu |
-| **Kindle Touch**, **Paperwhite 3** | touch |
-| **Nook 1st Edition**, **Nook Simple Touch** — *test builds* | the colour touchscreen / touch |
+| Kindle / Nook | How you use it | Tested |
+| --- | --- | --- |
+| **Kindle 2**, **Keyboard (3)**, **DX** | the keyboard: a letter key for everything | yes |
+| **Kindle 4** | the 5-way and Menu | yes |
+| **Kindle Touch** | touch | yes |
+| **Paperwhite 3** (2015) | touch | yes |
+| Paperwhite 1 (2012) | touch | *untested* |
+| Paperwhite 2 (2013) | touch | *untested* |
+| Paperwhite 4 (2018) | touch | *untested* |
+| Paperwhite 5 (2021), Signature Edition | touch | *untested* |
+| Paperwhite 6 (2024), Signature Edition | touch | *untested* |
+| Kindle Basic 2014 (7th gen), 2016 (8th gen), 2019 (10th gen) | touch | *untested* |
+| Kindle 2022 (11th gen), Kindle 2024 | touch | *untested* |
+| Kindle Voyage | touch | *untested* |
+| Kindle Oasis 1, 2, 3 | touch | *untested* |
+| Kindle Scribe (2022, 2024) | touch | *untested* |
+| Kindle Colorsoft | touch (in greys) | *untested* |
+| **Nook 1st Edition**, **Nook Simple Touch** — *test builds* | the colour touchscreen / touch | yes |
+
+*Tested* means run on that Kindle or its emulator; the untested ones use the
+same KOReader device support and should work, but their screens and buttons
+haven't been tried.
 
 <table>
 <tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-all-books.png" alt="Your Grimmory library" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
@@ -72,9 +88,11 @@ All the details: **[the full guide](GZREADER.md)**.
    | Kindle | Package |
    | --- | --- |
    | Kindle 2, Keyboard (3), DX | `gzreader-kindle-legacy-<version>.zip` |
-   | Kindle 4, Kindle Touch | `gzreader-kindle-<version>.zip` |
-   | Paperwhite 3, firmware 5.16.3 or newer | `gzreader-kindlehf-<version>.zip` |
-   | Paperwhite 3, older firmware | `gzreader-kindlepw2-<version>.zip` |
+   | Kindle 4, Kindle Touch, Paperwhite 1 *(untested)* | `gzreader-kindle-<version>.zip` |
+   | Any Kindle on firmware 5.16.3 or newer: Paperwhite 3, *untested:* Paperwhite 4, 5, 6, Kindle 2019, 2022, 2024, Oasis 3, Scribe, Colorsoft | `gzreader-kindlehf-<version>.zip` |
+   | Paperwhite 2 and newer on firmware 5.16.2.1.1 or older: Paperwhite 3, *untested:* Paperwhite 2, 4, 5, Voyage, Oasis 1–3, Kindle 2014, 2016, 2019, 2022 | `gzreader-kindlepw2-<version>.zip` |
+
+   The firmware version is in the Kindle's Settings → Device Info.
 
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
    with what's there. Eject.

@@ -2,6 +2,7 @@ local builtin_components = {
     require("modules/filebrowser/patches/home/widgets/datetime"),
     require("modules/filebrowser/patches/home/widgets/featured"),
     require("modules/filebrowser/patches/home/widgets/stats_triplet"),
+    require("modules/filebrowser/patches/home/widgets/grimmory_stats"), -- GZreader
     require("modules/filebrowser/patches/home/widgets/reading_goals"),
     require("modules/filebrowser/patches/home/widgets/strip"),
     require("modules/filebrowser/patches/home/widgets/quotes"),
@@ -35,6 +36,7 @@ local LAYOUT_GROWTH = {
     quotes = { max = 3, priority = 3 },
     reading_goals = { max = 1, priority = 4 },
     stats_triplet = { max = 1, priority = 4 },
+    grimmory_stats = { max = 1, priority = 4 },
     strip = { max = 4, expanded_max = 6, priority = 1 },
 }
 
@@ -69,6 +71,7 @@ local MIN_LAYOUT_UNITS = {
     quotes = 1.5,
     reading_goals = 1,
     stats_triplet = 1,
+    grimmory_stats = 1,
     strip = 1.5,
 }
 

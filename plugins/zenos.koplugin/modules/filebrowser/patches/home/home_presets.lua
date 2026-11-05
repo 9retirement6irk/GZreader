@@ -99,6 +99,7 @@ local DEFAULT_HOME_PAGE = {
         order = {
             "datetime",
             "featured",
+            "grimmory_stats", -- GZreader: reading stats from Grimmory (every device)
             "stats_triplet",
             "reading_goals",
             "strip",
@@ -109,7 +110,8 @@ local DEFAULT_HOME_PAGE = {
             featured = true,
             quotes = false, -- GZreader: ~0.5 s per Home rebuild on a Kindle 3
             reading_goals = false,
-            stats_triplet = true,
+            stats_triplet = false, -- GZreader: the local ones, replaced by Grimmory's
+            grimmory_stats = true,
             strip = true,
         },
     },
@@ -118,6 +120,7 @@ local DEFAULT_HOME_PAGE = {
         "today_duration",
         "streak",
     },
+    middle_grimmory_stats = { "week_time", "streak", "year_finished" },
     goals = {
         daily_pages_target = 30,
         daily_target = 30,
@@ -153,6 +156,7 @@ local DEFAULT_HOME_PAGE = {
             max_font_size = 18,
             stat_style = "notebook", -- GZreader
         },
+        grimmory_stats = { automatic_font_size = true, max_font_size = 18, stat_style = "notebook" },
         strip = strip_defaults{ controls = true },
     },
     quotes = {
@@ -174,6 +178,7 @@ local BOOKSHELF_HOME_PAGE = {
         order = {
             "datetime",
             "featured",
+            "grimmory_stats", -- GZreader: reading stats from Grimmory (every device)
             "stats_triplet",
             "reading_goals",
             "strip",
@@ -185,6 +190,7 @@ local BOOKSHELF_HOME_PAGE = {
             quotes = false,
             reading_goals = false,
             stats_triplet = false,
+            grimmory_stats = false,
             strip = true,
         },
     },
@@ -193,6 +199,7 @@ local BOOKSHELF_HOME_PAGE = {
         "today_duration",
         "streak",
     },
+    middle_grimmory_stats = { "week_time", "streak", "year_finished" },
     goals = {
         daily_pages_target = 30,
         daily_target = 30,
@@ -226,6 +233,7 @@ local BOOKSHELF_HOME_PAGE = {
             max_font_size = 18,
             stat_style = "notebook", -- GZreader
         },
+        grimmory_stats = { automatic_font_size = true, max_font_size = 18, stat_style = "notebook" },
         strip = strip_defaults{ count = 8, controls = true, two_rows = true },
     },
     quotes = {
@@ -243,6 +251,7 @@ local HOME_KEYS = {
     "title",
     "rows",
     "middle_stats_triplet",
+    "middle_grimmory_stats",
     "goals",
     "show_status_bar",
     "modules",

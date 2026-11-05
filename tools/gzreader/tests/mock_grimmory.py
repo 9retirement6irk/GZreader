@@ -373,6 +373,28 @@ class H(BaseHTTPRequestHandler):
                     out["pdfProgress"] = {"page": int(fp["positionData"]) if fp["positionData"] else None,
                                           "percentage": round(fp["progressPercent"], 1)}
             return self._json(200, out)
+        if u.path.startswith("/api/v1/user-stats/reading/"):  # UserStatsController
+            if not self._user():
+                return self._json(401)
+            if not STATE.get("stats_perm", True):
+                return self._json(403)
+            what = u.path.rsplit("/reading/", 1)[1]
+            days = sorted({s["startTime"][:10] for s in STATE["sessions"]})
+            if what == "streak":
+                return self._json(200, {"currentStreak": STATE.get("streak", len(days) and 1), "longestStreak": STATE.get("longest", 5),
+                                        "totalReadingDays": len(days), "last52Weeks": []})
+            if what == "timeline":
+                by_book = {}
+                for s in STATE["sessions"]:
+                    by_book.setdefault(s["bookId"], 0)
+                    by_book[s["bookId"]] += int(s["durationSeconds"])
+                STATE["last_timeline_query"] = u.query
+                return self._json(200, [{"bookId": b, "bookTitle": "?", "totalSessions": 1, "totalDurationSeconds": d} for b, d in by_book.items()])
+            if what == "heatmap/monthly":
+                return self._json(200, [{"date": d, "count": sum(1 for s in STATE["sessions"] if s["startTime"][:10] == d)} for d in days])
+            if what == "completion-timeline":
+                return self._json(200, [{"year": 2026, "month": 10, "totalBooks": 3, "finishedBooks": 2}, {"year": 2026, "month": 11, "totalBooks": 1, "finishedBooks": 1}])
+            return self._json(404)
         if u.path == "/api/v1/app/libraries":
             if STATE.get("lib500"):   # what the user's server does
                 return self._json(500, {"message": "An unexpected error occurred.", "status": 500})

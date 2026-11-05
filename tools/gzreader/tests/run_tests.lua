@@ -884,8 +884,8 @@ do
     check(not no_diag:match("Diagnostics") and labels(Panel.controls(hplug)):match("|Diagnostics|"), "Diagnostics tile only while diagnostics is on")
     hplug.store.logging_disabled = saved_ld
     local home = labels(Panel.homeTiles(hplug, nil))
-    check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and home:match("|More|")
-        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort, More; Manage only with a book… " .. home)
+    check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
+        and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort (no More); Manage only with a book… " .. home)
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }
@@ -1557,6 +1557,31 @@ check(math.abs(st.progress["3"].progressPercent - 98.3) < 0.1 and before ~= st.p
 local sess = st.sessions[#st.sessions]
 check(sess and sess.bookId == 3 and sess.durationSeconds >= 300 and sess.bookType == "EPUB"
     and sess.startTime:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"), "reading session sent with ISO times and duration")
+
+print("Grimmory reading stats (Home widget)")
+do
+    local GS = require("gzreader_grimstats")
+    check(GS.isoWeekOfYear(os.time{ year = 2026, month = 11, day = 4, hour = 12 }) == 45
+        and GS.isoWeekOfYear(os.time{ year = 2027, month = 1, day = 1, hour = 12 }) == 0
+        and GS.isoWeekOfYear(os.time{ year = 2026, month = 1, day = 1, hour = 12 }) == 1,
+        "the week Grimmory's timeline asks for (ISO, Monday first)")
+    rplugin.store.grimmory_stats = nil
+    local v = GS.values(rplugin)
+    check(v.reading_days and v.reading_days >= 1 and v.streak and v.week_time and v.week_time >= 300 and v.week_books == 1
+        and v.year_finished == 3 and v.month_sessions and v.longest_streak == 5,
+        "streak, days, this week's time and books, this month's sessions, finished this year: from Grimmory")
+    ctl("/set?stats_perm=false")
+    GS.refresh(rplugin, true)
+    check(rplugin.store.grimmory_stats.error == "permission" and rplugin.store.grimmory_stats.values.year_finished == 3,
+        "a user who may not see statistics: the last numbers stay, the log says why")
+    ctl("/set?stats_perm=true")
+    local at = rplugin.store.grimmory_stats.at
+    GS.values(rplugin)
+    check(rplugin.store.grimmory_stats.at == at, "not asked again within 15 minutes")
+    GS.stale(rplugin)
+    GS.values(rplugin)
+    check(rplugin.store.grimmory_stats.error == nil, "asked again after this Kindle's sessions reached Grimmory")
+end
 
 print("Ratings (Grimmory's personal rating)")
 do

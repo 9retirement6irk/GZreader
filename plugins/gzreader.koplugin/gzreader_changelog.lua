@@ -2,6 +2,19 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.20.0",
+        changes = {
+            "Home's reading stats come from Grimmory: reading time and books this week, day streak, longest streak, days read, sessions this month, books finished this year, counted over every device that reads with your account. Pick any three in Settings → Home → Widgets → Grimmory reading stats. The earlier widget is now Local reading stats (this Kindle only) and can be turned back on there.",
+            "The book you're reading shows its progress as its page edges, the pages read darker, with a ribbon bookmark where you are.",
+            "The audiobook player is a cassette walkman with headphones: the book's title, chapter and cover on the cassette's label, the tape moving from reel to reel through the chapter, a counter, and the page-edge progress for the book.",
+            "Now playing (music) is a portable CD player with headphones: the album's cover on the disc, track and time on its display, the controls with letter keys, and the queue like the back of a CD case.",
+            "The players' buttons look like hardware: the walkman's chunky keys (play stays down while playing) and a volume dial; the CD player's pill buttons, with the queue on a CD case insert between its spines.",
+            "The walkman and CD player on the bookshelf are redrawn to match, a little bigger, with their letter keys; the CD player's headphones lie around it, the cords running behind.",
+            "Quick panel: the light's slider can be dragged; the More tile is gone. Opening Settings, History or Diagnostics from it on a touch Kindle no longer leaves part of the panel on the screen.",
+            "The README lists every Kindle, marking the ones not tested yet.",
+        },
+    },
+    {
         version = "1.19.0",
         changes = {
             "Bookshelves are a View, and the default: Home's shelf and Downloads (several shelves, a page at a time) show books standing with their spines out. The book you pick turns to show its cover; tap it again, Press or its letter opens it. View in the quick panel switches between Bookshelf, List with details, Simple list and Tiles.",

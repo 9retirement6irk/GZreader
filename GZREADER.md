@@ -179,6 +179,10 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Volume buttons | yes | — | — | — | — | — |
 | Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
 
+Other Kindles (Paperwhite 1, 2, 4, 5, 6, Voyage, Oasis, Kindle 2014–2024,
+Scribe, Colorsoft) run the `kindle`, `kindlepw2` or `kindlehf` package
+(README) as touch Kindles, like the Paperwhite 3. They're untested.
+
 KOReader's own device code decides the model from the serial number (the DX
 runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts
 each screen to keys, the 5-way or touch.
@@ -396,12 +400,13 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
   Settings, Diagnostics (when diagnostics is on in Settings) and Exit to Kindle
   (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
-  History, View, Sort, Music, and More (the full Home menu).
+  History, View, Sort and Music.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
-  Bookmarks, Go to page, Search book, Fit pictures, Read aloud, Music, and More
-  (the full Reading menu).
+  Bookmarks, Go to page, Search book, Fit pictures, Read aloud and Music. Fonts
+  and layout are in the reader's own menu (tap the top of the page).
 
-On a touch Kindle with a frontlight the panel also has a light slider, and
+On a touch Kindle with a frontlight the panel also has a light slider (tap or
+drag it; − and + step), and
 holding a book at Home or in Downloads opens Manage book.
 
 ![The quick panel at Home](docs/screenshots/home-menu.png)
@@ -418,7 +423,7 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
 | Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). |
-| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music. **More** opens the full Reading menu (fonts, dictionary, page browser, book info, close book). |
+| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
@@ -718,6 +723,12 @@ Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
 is also in the Home menu and the Reading menu (what's playing, or *Music*),
 and in the quick panel (*Music*).
 
+While music plays, *Now playing* is a portable CD player with headphones: the
+album's cover on the disc, the track and time on its little display, then the
+track, the controls (Q previous, W play / pause, E next, A shuffle, S repeat,
+D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ and
+Press, or tap a track, to play it).
+
 Sign in, either way:
 - on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
   phone or computer and enter the 4 letters shown;
@@ -807,6 +818,32 @@ Picking a book in the Grimmory browser asks whether to download it and shows
 Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
 fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 (renewed when the cover changes in Grimmory).
+
+## Reading stats on Home
+
+Home shows **Grimmory reading stats** by default: three numbers on a notebook
+page, counted over every device that reads with your Grimmory account
+(GZreader on each Kindle and Grimmory's web reader send their reading
+sessions; Grimmory adds them up). Choose the three in Settings → Home →
+Widgets → Grimmory reading stats → Stat slot 1–3:
+
+- Read this week (time), Books this week
+- Day streak (as tally marks up to 10), Longest streak, Days read
+- Sessions this month, Finished this year
+
+They're fetched from Grimmory when Home shows them and they're over 15
+minutes old (only while Wi‑Fi is on), and again after this Kindle's reading
+sessions reach Grimmory; the last ones stay for when it's offline. Your
+Grimmory user needs permission to see statistics (Grimmory → user settings →
+permissions); without it the widget shows dashes and the diagnostic log says
+why.
+
+**Local reading stats** (the earlier widget: pages and time today, this
+Kindle only) is still there: turn it on in Settings → Home → Widgets, and the
+Grimmory one off, to go back.
+
+The book you're reading shows its progress as the book's page edges, read
+pages darker, with a ribbon bookmark where you are.
 
 ## Bookshelves (the View)
 
@@ -1031,6 +1068,11 @@ settings → Slower / Faster). The diagnostic log records every step.
 Grimmory tab → Audiobooks.
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
+a cassette walkman with headphones. The cassette's label has the book's title,
+chapter and cover written on it, the tape moves from the left reel to the
+right one through the chapter, and the counter shows the minutes into the
+book. Under it, the book's progress as its page edges with a ribbon where you
+are (as on Home).
 
 | Key | Does |
 | --- | --- |

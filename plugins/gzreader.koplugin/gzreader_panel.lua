@@ -5,17 +5,16 @@ the top of the screen. Square tiles, in two groups:
   Controls   Wi-Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
-             Search, History, View, Sort, Music, More
+             Search, History, View, Sort, Music
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Fit pictures, Read aloud, Music, More
+             Search book, Fit pictures, Read aloud, Music
 
 With a keyboard each tile shows its letter (Controls: the top row of keys,
 Q to P; the second group: A to L) and the 5-way and Press work too; the
 Kindle 4 (no letter keys) has the 5-way; touch Kindles tap, and have the
 light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
-playing) is drawn inverted. More opens the old list (font and layout, page
-browser, book information…).
+playing) is drawn inverted. Touch Kindles: tap or drag the light's slider.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -132,9 +131,10 @@ function Panel.controls(plugin)
     list[#list + 1] = { icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
     list[#list + 1] = { icon = "updates", label = _("Updates"), run = function() require("gzreader_update").run() end }
-    list[#list + 1] = { icon = "settings", label = _("Settings"), run = function() require("gzreader_homemenu").settings() end }
+    -- (a full page over the panel: a full refresh after it, or touch Kindles keep a ghost of the panel)
+    list[#list + 1] = { icon = "settings", label = _("Settings"), full = true, run = function() require("gzreader_homemenu").settings() end }
     if plugin and plugin.store and plugin.store.logging_disabled ~= true then
-        list[#list + 1] = { icon = "diagnostics", label = _("Diagnostics"), run = function() plugin:showDiagnostics() end }
+        list[#list + 1] = { icon = "diagnostics", label = _("Diagnostics"), full = true, run = function() plugin:showDiagnostics() end }
     end
     list[#list + 1] = { icon = "exit", label = _("Exit to Kindle"), run = function() dispatch("exit") end }
     return list
@@ -170,7 +170,7 @@ function Panel.homeTiles(plugin, book)
     list[#list + 1] = { icon = "continue", label = _("Continue"), run = function() dispatch("open_previous_document") end }
     list[#list + 1] = { icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
     list[#list + 1] = { icon = "search", label = _("Search"), run = function() dispatch("file_search") end }
-    list[#list + 1] = { icon = "history", label = _("History"), run = function() dispatch("history") end }
+    list[#list + 1] = { icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }
     list[#list + 1] = { icon = "sort", label = _("Sort"), run = function() HomeMenu.showSort() end }
     local m = musicTile(plugin)
@@ -186,7 +186,6 @@ function Panel.homeTiles(plugin, book)
         local item = Tasks.menuItem()
         list[#list + 1] = { icon = "updates", label = item.text_func(), run = function() item.callback() end }
     end
-    list[#list + 1] = { icon = "more", label = _("More"), run = function() HomeMenu.show(plugin) end }
     return list
 end
 
@@ -216,7 +215,6 @@ function Panel.bookTiles(plugin, ui)
     end
     local m = musicTile(plugin)
     if m then list[#list + 1] = m end
-    list[#list + 1] = { icon = "more", label = _("More"), run = function() require("gzreader_readmenu").show(plugin) end }
     return list
 end
 
@@ -290,6 +288,44 @@ function PanelWidget:init()
     -- a tap below the panel closes it (and the light's slider)
     local whole = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.ges_events = { TapPanel = { GestureRange:new{ ges = "tap", range = whole } } }
+    if light then
+        -- drag the slider (pan while moving, then its release; a quick drag is a swipe)
+        local strip = function() return Geom:new{ x = 0, y = self.light_y - S(10), w = sw, h = S(64) } end
+        self.ges_events.PanLight = { GestureRange:new{ ges = "pan", range = strip } }
+        self.ges_events.PanReleaseLight = { GestureRange:new{ ges = "pan_release", range = strip } }
+        self.ges_events.SwipeLight = { GestureRange:new{ ges = "swipe", range = strip } }
+    end
+end
+
+--- The light at the slider's position x (the bar only; − and + are buttons).
+function PanelWidget:lightAt(x, final)
+    local min, max = select(2, self:lightInfo())
+    local bar = self:lightBar(0)
+    local f = math.max(0, math.min(1, (x - bar.x) / math.max(1, bar.w)))
+    local v = math.floor(min + f * (max - min) + 0.5)
+    if v == self._dragged and not final then return true end
+    self._dragged = v
+    self:setLight(v, not final)
+    return true
+end
+
+function PanelWidget:onPanLight(_arg, ges)
+    if not (ges and ges.pos) then return true end
+    return self:lightAt(ges.pos.x)
+end
+
+function PanelWidget:onPanReleaseLight(_arg, ges)
+    self._dragged = nil
+    if not (ges and ges.pos) then return true end
+    return self:lightAt(ges.pos.x, true)
+end
+
+function PanelWidget:onSwipeLight(_arg, ges)
+    if not (ges and ges.pos and (ges.direction == "east" or ges.direction == "west")) then return true end
+    -- (pos is where it started: end where it went)
+    local x = ges.pos.x + (ges.direction == "east" and 1 or -1) * (ges.distance or 0)
+    self._dragged = nil
+    return self:lightAt(x, true)
 end
 
 function PanelWidget:getSize() return self.dimen end
@@ -299,6 +335,7 @@ function PanelWidget:pick(t)
     if t.run then UIManager:nextTick(function()
         pcall(function() require("gzreader_usage").menu(self.section_id, t.label) end)
         t.run()
+        if t.full then UIManager:scheduleIn(0.4, function() UIManager:setDirty(nil, "full") end) end
     end) end
 end
 
@@ -375,11 +412,14 @@ function PanelWidget:paintLight(bb, x, y)
     bb:paintBorder(kx, cy - math.floor(knob / 2), knob, knob, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, math.floor(knob / 2))
 end
 
-function PanelWidget:setLight(v)
+function PanelWidget:setLight(v, dragging)
     local powerd, min, max = self:lightInfo()
     v = math.max(min, math.min(max, math.floor(v + 0.5)))
     powerd:setIntensity(v)
-    UIManager:setDirty(self, function() return "ui", Geom:new{ x = 0, y = self.light_y, w = self.w, h = S(44) } end)
+    -- (while dragging: the quick black-and-white refresh)
+    UIManager:setDirty(self, function()
+        return dragging and "fast" or "ui", Geom:new{ x = 0, y = self.light_y, w = self.w, h = S(44) }
+    end)
 end
 
 function PanelWidget:onTapPanel(_arg, ges)

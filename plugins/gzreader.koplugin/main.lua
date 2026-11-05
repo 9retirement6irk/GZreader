@@ -135,6 +135,9 @@ function Grimmory:init()
             -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
             pcall(function() require("gzreader_musicfolder").start(self) end)
         end
+        -- Home's "Grimmory reading stats" (every device's reading, from Grimmory)
+        local plugin_ref = self
+        rawset(_G, "__GZ_GRIMMORY_STATS", function() return require("gzreader_grimstats").values(plugin_ref) end)
         -- Downloads and the other book folders as bookshelves (the View)
         -- (after every plugin has patched the file browser)
         UIManager:nextTick(function() pcall(function() require("gzreader_shelfview").install() end) end)
@@ -1096,6 +1099,7 @@ function Grimmory:flushPending()
         for _i = 1, tonumber(res.sessions) or 0 do
             if pending.sessions[1] == sessions[_i] then table.remove(pending.sessions, 1) end
         end
+        if (tonumber(res.sessions) or 0) > 0 then require("gzreader_grimstats").stale(self) end
         for book_id, how in pairs(res.rated or {}) do
             -- only cleared if not changed again meanwhile
             if pending.ratings[book_id] == ratings[book_id] then pending.ratings[book_id] = nil end

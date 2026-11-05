@@ -609,6 +609,7 @@ end
 local DEFAULT_ROW_ORDER = {
     "datetime",
     "featured",
+    "grimmory_stats",
     "stats_triplet",
     "reading_goals",
     "strip",
@@ -618,7 +619,7 @@ local DEFAULT_ROW_ORDER = {
 local DEFAULT_ROW_ENABLED = {
     featured = true,
     quotes = false, -- GZreader: slow to lay out on a Kindle 3
-    stats_triplet = true,
+    grimmory_stats = true, -- GZreader: Grimmory's reading stats (the local ones: stats_triplet)
     strip = true,
 }
 
@@ -755,24 +756,26 @@ local function ensure_home_widget_cfg(dcfg)
         featured.default_source = { kind = "recent" }
     end
     if type(featured.path) ~= "string" then featured.path = nil end
-    local stats_triplet = ensure_module_cfg(dcfg, "stats_triplet")
-    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
-            and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
-        stats_triplet.stat_style = "divider"
+    for _i, stats_id in ipairs({ "stats_triplet", "grimmory_stats" }) do -- GZreader: Grimmory's too
+        local stats_triplet = ensure_module_cfg(dcfg, stats_id)
+        if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
+                and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
+            stats_triplet.stat_style = "divider"
+        end
+        local stats_font_size = tonumber(stats_triplet.font_size)
+            or tonumber(stats_triplet.font_scale) and DEFAULT_STATS_FONT_SIZE * stats_triplet.font_scale / 100
+        local stats_font_override = stats_triplet.font_size_override == true
+        stats_triplet.font_size = stats_font_size
+            and (stats_font_override or stats_font_size ~= DEFAULT_STATS_FONT_SIZE)
+            and math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(stats_font_size + 0.5))) or nil
+        stats_triplet.font_size_override = stats_triplet.font_size and true or nil
+        stats_triplet.automatic_font_size = stats_triplet.automatic_font_size ~= false
+        stats_triplet.max_font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(
+            (tonumber(stats_triplet.max_font_size) or DEFAULT_STATS_MAX_FONT_SIZE) + 0.5
+        )))
+        stats_triplet.max_font_size_override = nil
+        stats_triplet.font_scale = nil
     end
-    local stats_font_size = tonumber(stats_triplet.font_size)
-        or tonumber(stats_triplet.font_scale) and DEFAULT_STATS_FONT_SIZE * stats_triplet.font_scale / 100
-    local stats_font_override = stats_triplet.font_size_override == true
-    stats_triplet.font_size = stats_font_size
-        and (stats_font_override or stats_font_size ~= DEFAULT_STATS_FONT_SIZE)
-        and math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(stats_font_size + 0.5))) or nil
-    stats_triplet.font_size_override = stats_triplet.font_size and true or nil
-    stats_triplet.automatic_font_size = stats_triplet.automatic_font_size ~= false
-    stats_triplet.max_font_size = math.max(8, math.min(MAX_STATS_FONT_SIZE, math.floor(
-        (tonumber(stats_triplet.max_font_size) or DEFAULT_STATS_MAX_FONT_SIZE) + 0.5
-    )))
-    stats_triplet.max_font_size_override = nil
-    stats_triplet.font_scale = nil
     local reading_goals = ensure_module_cfg(dcfg, "reading_goals")
     local goals_font_size = tonumber(reading_goals.font_size)
     local goals_font_override = reading_goals.font_size_override == true
@@ -874,6 +877,9 @@ local function ensure_home_cfg()
     if type(dcfg.middle_stats_triplet) ~= "table" then
         dcfg.middle_stats_triplet = { "today_pages", "today_duration", "streak" }
     end
+    if type(dcfg.middle_grimmory_stats) ~= "table" then
+        dcfg.middle_grimmory_stats = { "week_time", "streak", "year_finished" }
+    end
 
     dcfg.goals = ReadingGoals.normalize(dcfg.goals)
 
@@ -929,8 +935,8 @@ local function resolve_rows(dcfg)
         local shelf = require("common/gz_view").stripShelf(modules.strip)
         if shelf and id == "featured" then row.size, row._home_units = { units = 2.5 }, 2.5 end
         if shelf and id == "strip" then row.size, row._home_units = { units = 4.25 }, 5.75 end
-        if id == "stats_triplet" and type(modules.stats_triplet) == "table"
-                and modules.stats_triplet.stat_style == "notebook" then
+        if (id == "stats_triplet" or id == "grimmory_stats") and type(modules[id]) == "table"
+                and modules[id].stat_style == "notebook" then
             row.size, row._home_units = { units = shelf and 1.75 or 1.5 }, shelf and 1.75 or 1.5
         end
         table.insert(out, setmetatable(row, { __index = comp }))

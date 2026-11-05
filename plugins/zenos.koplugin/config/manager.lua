@@ -1035,6 +1035,36 @@ local function migrate_home_gz_shelf()
     return PresetStore.saveStore("home", store)
 end
 
+-- GZreader 1.20.0: Grimmory's reading stats on Home in place of the local
+-- ones (the same look), once; Settings → Home → Widgets brings either back.
+local function migrate_home_gz_grimmory_stats()
+    local store = PresetStore.loadStore("home")
+    local settings = type(store.settings) == "table" and store.settings or nil
+    if not settings or settings.gz_grimmory_stats_migrated == true then return false end
+    settings.gz_grimmory_stats_migrated = true
+    local rows = type(settings.rows) == "table" and settings.rows or nil
+    if rows and type(rows.order) == "table" then
+        local has, at = false, nil
+        for i, id in ipairs(rows.order) do
+            if id == "grimmory_stats" then has = true end
+            if id == "stats_triplet" then at = i end
+        end
+        if not has then table.insert(rows.order, at or (#rows.order + 1), "grimmory_stats") end
+        rows.enabled = type(rows.enabled) == "table" and rows.enabled or {}
+        if rows.enabled.stats_triplet == true then
+            rows.enabled.stats_triplet = false
+            rows.enabled.grimmory_stats = true
+        end
+    end
+    local modules = type(settings.modules) == "table" and settings.modules or nil
+    if modules and modules.grimmory_stats == nil then
+        local look = type(modules.stats_triplet) == "table" and modules.stats_triplet or {}
+        modules.grimmory_stats = { automatic_font_size = look.automatic_font_size ~= false,
+            max_font_size = look.max_font_size, stat_style = look.stat_style or "notebook" }
+    end
+    return PresetStore.saveStore("home", store)
+end
+
 local function migrate_home_featured_config()
     if type(HomePresets.normalizeFeaturedConfig) ~= "function" then return false end
     local store = PresetStore.loadStore("home")
@@ -1082,6 +1112,9 @@ local function migrate_settings_files()
         changed = true
     end
     if migrate_home_gz_shelf() then
+        changed = true
+    end
+    if migrate_home_gz_grimmory_stats() then
         changed = true
     end
     if migrate_home_layout_grid() then

@@ -106,9 +106,11 @@ add({ fn = function(E)
     local Music = require("gzreader_music")
     check(Music.current and Music.current.playing and not Music.current.waiting and tostring(Music.nowText()):match("^Tone [AB] — The Tones$"),
         "Play: downloaded, playing " .. tostring(Music.nowText()))
-    local m = menuTitled("^Now playing")
-    check(m and pick(m, "^Pause") and pick(m, "^Next track"), "Now playing: the controls")
-    require("ui/uimanager"):close(m)
+    local UIM = require("ui/uimanager")
+    local st = UIM._window_stack
+    local m = st[#st] and st[#st].widget
+    check(m and m.name == "gzreader cd player" and m.onNext and m.onToggle, "Now playing: the CD player, with its controls")
+    if m then UIM:close(m) end
 end, after = 3 })
 add({ fn = function() require("gzreader_homemenu").show(plugin()) end, after = 4 })
 add({ shot = "10-home-menu" })
