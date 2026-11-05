@@ -1019,6 +1019,22 @@ local function migrate_home_strip_config()
     return changed and PresetStore.saveStore("home", store)
 end
 
+-- GZreader 1.16.0: Home's strip is a bookshelf (spines; the one picked shows
+-- its cover) and the reading stats a notebook page, once; Settings → Home
+-- turns either off (the strip's Bookshelf, the stats' Stat separators).
+local function migrate_home_gz_shelf()
+    local store = PresetStore.loadStore("home")
+    local settings = type(store.settings) == "table" and store.settings or nil
+    if not settings or settings.gz_shelf_migrated == true then return false end
+    settings.gz_shelf_migrated = true
+    local modules = type(settings.modules) == "table" and settings.modules or nil
+    local strip = modules and type(modules.strip) == "table" and modules.strip or nil
+    if strip and strip.shelf == nil then strip.shelf = true end
+    local stats = modules and type(modules.stats_triplet) == "table" and modules.stats_triplet or nil
+    if stats and (stats.stat_style == nil or stats.stat_style == "divider") then stats.stat_style = "notebook" end
+    return PresetStore.saveStore("home", store)
+end
+
 local function migrate_home_featured_config()
     if type(HomePresets.normalizeFeaturedConfig) ~= "function" then return false end
     local store = PresetStore.loadStore("home")
@@ -1063,6 +1079,9 @@ local function migrate_settings_files()
         changed = true
     end
     if migrate_home_strip_config() then
+        changed = true
+    end
+    if migrate_home_gz_shelf() then
         changed = true
     end
     if migrate_home_layout_grid() then

@@ -73,6 +73,7 @@ local function strip_defaults(opts)
         default_source = { kind = "recent" },
         interactive = true,
         order = "default",
+        shelf = true, -- GZreader: a bookshelf (shelf.lua)
         show_badges = false,
         show_page_indicator = true,
         show_strip_titles = false,
@@ -150,7 +151,7 @@ local DEFAULT_HOME_PAGE = {
             automatic_font_size = true,
             font_size = 16,
             max_font_size = 18,
-            stat_style = "divider",
+            stat_style = "notebook", -- GZreader
         },
         strip = strip_defaults{ controls = true },
     },
@@ -223,7 +224,7 @@ local BOOKSHELF_HOME_PAGE = {
         stats_triplet = {
             automatic_font_size = true,
             max_font_size = 18,
-            stat_style = "divider",
+            stat_style = "notebook", -- GZreader
         },
         strip = strip_defaults{ count = 8, controls = true, two_rows = true },
     },

@@ -174,7 +174,119 @@ local function preferred_height(ctx)
     WidgetResources.free(label_probe)
     local content_h = value_h - math.floor(value_h * 0.18) + 1 + label_h
     local border_size = ctx.module_cfg and ctx.module_cfg.stat_style == "outline" and 2 or 0
+    if module_cfg.stat_style == "notebook" then return Device.screen:scaleBySize(112) end -- GZreader
     return math.max(20, content_h + 12 + border_size * 2)
+end
+
+-- GZreader: the stats handwritten on a notebook page taped up (like the
+-- Notes tab's sticky notes): ruled lines, a margin line, two strips of tape,
+-- a small tilt; a streak of up to 10 days as tally marks.
+local function hand_face(size)
+    local ok, Sticky = pcall(require, "gzreader_sticky")
+    if ok and Sticky and Sticky.hand then return Sticky.hand(size) end
+    return Font:getFace("cfont", size)
+end
+
+local function paint_tally(bb, x, y, n, h)
+    local S = function(px) return Device.screen:scaleBySize(px) end
+    local w, gap = math.max(2, S(3)), S(6)
+    local px = x
+    for i = 1, n do
+        bb:paintRect(px, y + ((i % 2 == 0) and 1 or 0), w, h - ((i % 3 == 0) and 2 or 0), Blitbuffer.COLOR_BLACK)
+        if i % 5 == 0 then
+            -- the fifth stroke across the four before it
+            local x0 = px - 4 * gap - S(2)
+            local span = px + w - x0
+            for k = 0, span - 1 do
+                bb:paintRect(x0 + k, y + h - 4 - math.floor(k * (h - 8) / span), 1, math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+            end
+            px = px + gap + S(4)
+        else
+            px = px + gap
+        end
+    end
+    return px - x
+end
+
+local function tally_width(n)
+    local S = function(px) return Device.screen:scaleBySize(px) end
+    return n * S(6) + math.floor(n / 5) * S(4)
+end
+
+local function notebook(ctx, fields, stats)
+    local S = function(px) return Device.screen:scaleBySize(px) end
+    local outer_w, height = ctx.width, ctx.height
+    local m = S(12)
+    local w = math.max(S(120), outer_w - S(60))
+    local h = math.max(S(40), math.min(height - S(14), S(90)))
+    local tilt = not rawequal(Background.tile_bg(Blitbuffer.COLOR_WHITE), nil) -- (over a background picture: no tilt, no white corners)
+    local value_face = hand_face(math.max(14, math.min(36, math.floor(h * 0.40))))
+    local label_face = hand_face(math.max(10, math.min(18, math.floor(h * 0.20))))
+    local function draw()
+        local canvas = Blitbuffer.new(w + 2 * m, h + 2 * m, Blitbuffer.TYPE_BB8)
+        canvas:fill(Blitbuffer.COLOR_WHITE)
+        canvas:paintRect(m + S(4), m + S(4), w, h, Blitbuffer.gray(0.30)) -- shadow
+        canvas:paintRect(m, m, w, h, Blitbuffer.COLOR_WHITE)
+        local pitch = S(24)
+        local ly = S(18)
+        while ly < h - 2 do
+            canvas:paintRect(m + 1, m + ly, w - 2, 1, Blitbuffer.gray(0.18))
+            ly = ly + pitch
+        end
+        canvas:paintRect(m + S(44), m + 1, 1, h - 2, Blitbuffer.gray(0.40)) -- the margin
+        canvas:paintBorder(m, m, w, h, 1, Blitbuffer.gray(0.50))
+        local cell_w = math.floor(w / 3)
+        for i, field in ipairs(fields) do
+            local cx = m + (i - 1) * cell_w
+            local label = TextWidget:new{ text = tostring(field.label):lower(), face = label_face,
+                fgcolor = Blitbuffer.gray(0.80), max_width = cell_w - S(8) }
+            local ls = label:getSize()
+            local streak = field.id == "streak" and tonumber(stats.streak or 0) or nil
+            if streak and streak >= 1 and streak <= 10 then
+                local th = math.floor(h * 0.36)
+                local tw = tally_width(streak)
+                local top = m + math.floor((h - th - ls.h - S(4)) / 2)
+                paint_tally(canvas, cx + math.floor((cell_w - tw) / 2), top, streak, th)
+                label:paintTo(canvas, cx + math.floor((cell_w - ls.w) / 2), top + th + S(4))
+            else
+                local value = TextWidget:new{ text = field.get(stats), face = value_face, max_width = cell_w - S(8) }
+                local vs = value:getSize()
+                local top = m + math.floor((h - vs.h - ls.h + S(6)) / 2)
+                value:paintTo(canvas, cx + math.floor((cell_w - vs.w) / 2), top)
+                label:paintTo(canvas, cx + math.floor((cell_w - ls.w) / 2), top + vs.h - S(6))
+                value:free()
+            end
+            label:free()
+        end
+        -- two strips of tape over the top edge
+        local tw, th = S(62), S(18)
+        canvas:paintRect(m + S(22), m - math.floor(th / 2), tw, th, Blitbuffer.gray(0.24))
+        canvas:paintRect(m + w - S(22) - tw, m - math.floor(th / 2) + S(1), tw, th, Blitbuffer.gray(0.24))
+        if not tilt then return canvas end
+        local ok, Sticky = pcall(require, "gzreader_sticky")
+        if not (ok and Sticky and Sticky.rotate) then return canvas end
+        local turned = Sticky.rotate(canvas, -0.8)
+        canvas:free()
+        return turned
+    end
+    local img
+    local widget = WidgetResources.managedPaintWidget{
+        dimen = Geom:new{ w = outer_w, h = height },
+        paintTo = function(_self, bb, x, y)
+            if not img then img = draw() end
+            local iw, ih = img:getWidth(), img:getHeight()
+            bb:blitFrom(img, x + math.floor((outer_w - iw) / 2), y + math.floor((height - ih) / 2), 0, 0, iw, ih)
+        end,
+        free = function() if img then img:free(); img = nil end end,
+    }
+    if type(ctx.setContentBounds) == "function" then
+        ctx.setContentBounds{ top = 0, bottom = height, min_shift = 0, max_shift = 0, set_shift = function() end }
+    end
+    return FrameContainer:new{
+        width = outer_w, height = height, padding = 0, bordersize = 0,
+        background = Background.tile_bg(Blitbuffer.COLOR_WHITE),
+        widget,
+    }
 end
 
 return {
@@ -205,6 +317,7 @@ return {
         while #fields < 3 do
             table.insert(fields, FIELD_MAP.today_pages)
         end
+        if module_cfg.stat_style == "notebook" then return notebook(ctx, fields, stats) end
 
         local gap_w = stat_style == "outline" and math.max(10, math.floor(width * 0.045))
             or stat_style == "divider" and 8

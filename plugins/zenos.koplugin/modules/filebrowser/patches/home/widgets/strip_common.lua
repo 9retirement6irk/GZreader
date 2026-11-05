@@ -86,6 +86,11 @@ local function strip_layout_metrics(outer_width, module_cfg)
     local rows = two_rows and 2 or 1
     count = math.min(count, responsive_per_row(width) * rows)
     local per_row = two_rows and math.ceil(count / 2) or count
+    if module_cfg.shelf == true then -- GZreader: spines, many to a shelf; one shelf, no pages
+        two_rows, rows = false, 1
+        per_row = require("modules/filebrowser/patches/home/widgets/shelf").perRow(width)
+        count = per_row
+    end
     local strip_title_face = library_font.getFace(16)
     local title_h = 0
     local title_gap = 0
@@ -106,7 +111,7 @@ local function strip_layout_metrics(outer_width, module_cfg)
     -- enabled (whether or not the current source has more than one page), so
     -- the row keeps one height on every source and the dots always have room.
     -- Use the Library pager's dot spacing, with smaller dots below the covers.
-    local show_page_dots = module_cfg.show_page_indicator ~= false
+    local show_page_dots = module_cfg.show_page_indicator ~= false and module_cfg.shelf ~= true
     local dot_diam = show_page_dots and math.max(6, Screen:scaleBySize(8)) or 0
     local dot_gap = show_page_dots and math.max(6, Screen:scaleBySize(12)) or 0
     local dot_gap_above = show_page_dots and math.max(4, Screen:scaleBySize(12)) or 0
@@ -145,6 +150,9 @@ end
 function M.preferred_height(outer_width, module_cfg)
     local metrics = strip_layout_metrics(outer_width, module_cfg)
     local Screen = Device.screen
+    if type(module_cfg) == "table" and module_cfg.shelf == true then
+        return nil -- GZreader: the shelf takes the room left (taller spines)
+    end
     local min_gap = math.max(6, math.min(
         Screen:scaleBySize(14), math.floor(metrics.width * 0.018)))
     local cover_w = math.max(24, math.floor(
@@ -817,7 +825,7 @@ function M.build_strip(ctx, source_key)
         local show_strip_titles = wants_strip_titles
         local books = supplied_books or get_page_books(page_delta or 0) or {}
         local cover_plans = {}
-        if #books == 0 then
+        if #books == 0 and module_cfg.shelf ~= true then -- (GZreader: an empty shelf instead)
         local empty_cover, cover_w, cover_h = cover_common.make_empty_placeholder_cover(
             width, height,
             { border = cover_common.BORDER_SIZE, background = Blitbuffer.COLOR_LIGHT_GRAY }
@@ -919,6 +927,47 @@ function M.build_strip(ctx, source_key)
     if per_row_budget > MIN_COVER_H then max_cover_h_per_row = per_row_budget end
     local page_focus_targets = {}
     local hydration_jobs = {}
+
+    -- GZreader: the bookshelf (spines; the one picked shows its cover). It
+    -- stands on the navbar (down through the page's bottom padding), with
+    -- the strip's tabs just above it; it takes no part in Home's spacing.
+    if module_cfg.shelf == true then
+        local Shelf = require("modules/filebrowser/patches/home/widgets/shelf")
+        local below = math.max(0, tonumber(ctx.row_space_below) or 0)
+        local reach = total_outer_height + below -- the strip's top to the navbar
+        local tabs_top = controls_enabled and Screen:scaleBySize(6) or 0
+        local tabs_gap = controls_enabled and Screen:scaleBySize(8) or Screen:scaleBySize(6)
+        local shelf_h = math.max(Screen:scaleBySize(60), reach - tabs_top - controls_height - tabs_gap)
+        local content, shelf_targets, shelf_jobs, shelf_cw, shelf_ch = Shelf.build(books, {
+            ctx = ctx, width = width, height = shelf_h, rows = 1,
+            interactive = interactive, source_name = source_name,
+            empty_text = source_name == "recently_read" and _("Start reading books to fill this shelf.")
+                or ctx.empty_message or cover_common.get_empty_message(source_name),
+        })
+        for _i, t in ipairs(shelf_targets) do page_focus_targets[#page_focus_targets + 1] = t end
+        for _i, j in ipairs(shelf_jobs) do
+            if not hydration_failed_paths[j.path] then hydration_jobs[#hydration_jobs + 1] = j end
+        end
+        for _i = 1, #books do cover_plans[#cover_plans + 1] = { width = shelf_cw, height = shelf_ch } end
+        local shelf_y = reach - shelf_h - controls_and_gap -- (in the frame, which starts under the tabs' room)
+        local shelf_controls_top = tabs_top
+        if page_delta == 0 then controls_visual_top = shelf_controls_top end
+        local holder = WidgetResources.managedPaintWidget{
+            dimen = Geom:new{ w = outer_width, h = outer_height },
+            resources = { content },
+            paintTo = function(_self, bb, x, y)
+                content:paintTo(bb, x + metrics.padding, y + shelf_y)
+            end,
+        }
+        holder.handleEvent = function(_self, ev) return content:handleEvent(ev) end
+        local shelf_frame = FrameContainer:new{
+            width = outer_width, height = outer_height, padding = 0, bordersize = 0,
+            background = Background.tile_bg(Blitbuffer.COLOR_WHITE),
+            holder,
+        }
+        return shelf_frame, add_control_targets(page_focus_targets), hydration_jobs, books, cover_plans,
+            shelf_controls_top
+    end
 
     local function build_group_cover(book, max_cover_w, cover_h)
         local config = type(ctx.zen_config) == "table" and ctx.zen_config
@@ -1706,6 +1755,7 @@ function M.build_strip(ctx, source_key)
 
     shift_strip_page = function(direction)
         if not ctx.shiftStrip then return false end
+        if module_cfg.shelf == true then return false end -- GZreader: one shelf, no pages
         local gesture_started_at = os.clock()
         return ctx.shiftStrip(
             source, count, order, direction, ctx.component_id, two_rows, function()

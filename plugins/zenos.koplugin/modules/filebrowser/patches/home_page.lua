@@ -756,7 +756,8 @@ local function ensure_home_widget_cfg(dcfg)
     end
     if type(featured.path) ~= "string" then featured.path = nil end
     local stats_triplet = ensure_module_cfg(dcfg, "stats_triplet")
-    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none" then
+    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
+            and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
         stats_triplet.stat_style = "divider"
     end
     local stats_font_size = tonumber(stats_triplet.font_size)
@@ -922,7 +923,17 @@ local function resolve_rows(dcfg)
         local comp = Registry.get(id)
         if not comp then return end
         local units = Registry.sizeUnits and Registry.sizeUnits(comp, modules[id]) or 2
-        table.insert(out, setmetatable({ _home_units = units }, { __index = comp }))
+        local row = { _home_units = units }
+        -- GZreader: with the bookshelf, a smaller current book and a taller shelf
+        -- (the stats on a notebook page get a little more room too)
+        local shelf = type(modules.strip) == "table" and modules.strip.shelf == true
+        if shelf and id == "featured" then row.size, row._home_units = { units = 2.5 }, 2.5 end
+        if shelf and id == "strip" then row.size, row._home_units = { units = 4.5 }, 6 end
+        if id == "stats_triplet" and type(modules.stats_triplet) == "table"
+                and modules.stats_triplet.stat_style == "notebook" then
+            row.size, row._home_units = { units = 1.5 }, 1.5
+        end
+        table.insert(out, setmetatable(row, { __index = comp }))
     end
 
     for _i, id in ipairs(order) do
@@ -2781,7 +2792,7 @@ local function home_key_hints()
 end
 
 -- A letter key's square in the corner of what it opens.
-local function paint_shortcut_badge(bb, x, y, w, h, letter)
+local function paint_shortcut_badge(bb, x, y, w, h, letter, at_bottom)
     if not (letter and w > 12 and h > 12) then return end
     local Device = require("device")
     local Geom = require("ui/geometry")
@@ -2792,8 +2803,9 @@ local function paint_shortcut_badge(bb, x, y, w, h, letter)
     end)
     if not (ok and icon) then return end
     local pad = math.min(Device.screen:scaleBySize(4), math.floor((h - side) / 2))
-    bb:paintRect(x + pad, y + pad, side, side, Blitbuffer.COLOR_WHITE)
-    icon:paintTo(bb, x + pad, y + pad)
+    local by = at_bottom and (y + h - side - pad) or (y + pad) -- GZreader: a spine's at its foot
+    bb:paintRect(x + pad, by, side, side, Blitbuffer.COLOR_WHITE)
+    icon:paintTo(bb, x + pad, by)
     if icon.free then icon:free() end
 end
 
@@ -2836,7 +2848,7 @@ local function wrap_home_focus_target(menu, target, widget, defer_registration)
             local bounds = target.content_bounds
             local shift = bounds and bounds.shift or 0
             local top = bounds and math.max(0, (bounds.top or 0) + shift) or 0
-            paint_shortcut_badge(bb, x, y + top, fs.w, fs.h - top, target.shortcut)
+            paint_shortcut_badge(bb, x, y + top, fs.w, fs.h - top, target.shortcut, target.badge_at_bottom)
         end
         do
             local frame_size = self:getSize()
@@ -2844,9 +2856,11 @@ local function wrap_home_focus_target(menu, target, widget, defer_registration)
             local shift = bounds and bounds.shift or 0
             local top = bounds and math.min(0, bounds.top + shift - 2) or 0
             local bottom = bounds and math.max(frame_size.h, bounds.bottom + shift + 2) or frame_size.h
-            -- GZreader: where its focus box goes (moving the focus refreshes only the two boxes)
-            target._focus_rect = { x = x, y = y + top, w = frame_size.w, h = bottom - top }
-            if menu._zen_home_focus_id == target.id then
+            -- GZreader: where its focus box goes (moving the focus refreshes only the two boxes);
+            -- a bookshelf's book is pulled out with its cover: the box is around that
+            target._focus_rect = type(target.focus_rect) == "function" and target.focus_rect(x, y)
+                or { x = x, y = y + top, w = frame_size.w, h = bottom - top }
+            if menu._zen_home_focus_id == target.id and not target.own_focus_box then
                 paint_focus_rect(
                     bb, x, y + top, frame_size.w, bottom - top, target.focus_color)
             end
@@ -2890,7 +2904,8 @@ local function set_home_focus(menu, index)
             local Geom = require("ui/geometry")
             -- (the quick mode is black and white: over a background picture, "ui")
             local bg = type(Background.library_path) == "function" and Background.library_path(_zen_plugin) or ""
-            return (bg == "" or bg == nil) and "fast" or "ui", Geom:new(now_prev):combine(Geom:new(now_new))
+            local covers = target.slow_refresh or prev.slow_refresh -- (a cover pulled out: greys)
+            return (bg == "" or bg == nil) and not covers and "fast" or "ui", Geom:new(now_prev):combine(Geom:new(now_new))
         end)
         return true
     end
@@ -3532,6 +3547,12 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                 activate_strip_focus_targets(comp.id, targets)
             end,
             clearStripFocusTargets = clear_strip_focus_targets,
+            -- GZreader: the bookshelf: a tap pulls a book out (the 5-way's place)
+            focusHomeTarget = function(target)
+                sort_home_focus_targets(menu)
+                local idx = target and find_home_focus_index(menu, target.key)
+                return idx and set_home_focus(menu, idx) or false
+            end,
             registerStripPageHandler = register_strip_page_handler,
             refreshStrip = refresh_strip,
             registerStripCoverListener = register_strip_cover_listener,

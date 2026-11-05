@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.16.0",
+        changes = {
+            "Home is a bookshelf: your recent books stand on one shelf with their spines out (title, author, number in the series), right on the tab bar. The one you move to, or tap, turns to show its cover; tap it again, Press or its letter (at the foot of the spine) opens it. An empty shelf has cobwebs. Settings → Home → the book strip → Bookshelf turns it off.",
+            "The book you're reading is smaller at the top, so the shelf is taller.",
+            "The reading stats are handwritten on a notebook page taped up (pages today, read today, and the streak as tally marks). Settings → Home → Reading stats → Stat separators has the old looks.",
+        },
+    },
+    {
         version = "1.15.0",
         changes = {
             "The Calendar tab looks like paper, like the Notes tab, in the same handwriting: Month is a wall calendar on its hook with a spiral binding and today circled; Week and Day are pages of a spiral planner (a ruled row per day, today highlighted); Agenda is a tear-off day pad, the day in big with its events beside it, the next days below.",

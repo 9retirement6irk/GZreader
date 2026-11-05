@@ -224,7 +224,8 @@ local function ensure_home_widget_cfg(dcfg)
     end
     if type(featured.path) ~= "string" then featured.path = nil end
     local stats_triplet = ensure_module_cfg(dcfg, "stats_triplet")
-    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none" then
+    if stats_triplet.stat_style ~= "outline" and stats_triplet.stat_style ~= "none"
+            and stats_triplet.stat_style ~= "notebook" then -- GZreader: a notebook page
         stats_triplet.stat_style = "divider"
     end
     stats_triplet.font_size = tonumber(stats_triplet.font_size)
@@ -1834,6 +1835,16 @@ function M.build(ctx)
                     save_home("reinit")
                 end,
             },
+            -- GZreader: spines on a shelf; the one picked shows its cover
+            {
+                text = _("Bookshelf"),
+                help_text = _("Books stand on a shelf with their spines out. The one you move to or tap shows its cover; tap it, Press or its letter opens it."),
+                checked_func = function() return mcfg.shelf == true end,
+                callback = function()
+                    mcfg.shelf = mcfg.shelf ~= true
+                    save_home("reinit")
+                end,
+            },
             {
                 text = _("Center books"),
                 checked_func = function() return mcfg.center_books == true end,
@@ -2331,11 +2342,22 @@ function M.build(ctx)
             {
                 text = _("Stat separators"),
                 sub_item_table = {
+                    -- GZreader: handwritten on a notebook page, taped up
+                    {
+                        text = _("Notebook page"),
+                        radio = true,
+                        checked_func = function() return stats_cfg.stat_style == "notebook" end,
+                        callback = function()
+                            stats_cfg.stat_style = "notebook"
+                            save_home("reinit")
+                        end,
+                    },
                     {
                         text = _("Dividing lines"),
                         radio = true,
                         checked_func = function()
                             return stats_cfg.stat_style ~= "outline" and stats_cfg.stat_style ~= "none"
+                                and stats_cfg.stat_style ~= "notebook"
                         end,
                         callback = function()
                             stats_cfg.stat_style = "divider"
