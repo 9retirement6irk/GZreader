@@ -430,7 +430,18 @@ function Update.download(info)
         end
         Update.state = { has_update = false, latest = info.version }
         UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 installed. Restarting…"), info.version), timeout = 2 })
-        UIManager:scheduleIn(2, function() UIManager:restartKOReader() end)
+        -- (not in the middle of a request to Grimmory: a new login it brings
+        -- back would be lost; 20 s at most)
+        local waited = 0
+        local function restart()
+            local Async = package.loaded["gzreader_async"]
+            if Async and (Async.busy or #(Async.queue or {}) > 0) and waited < 20 then
+                waited = waited + 1
+                return UIManager:scheduleIn(1, restart)
+            end
+            UIManager:restartKOReader()
+        end
+        UIManager:scheduleIn(2, restart)
     end
     UIManager:scheduleIn(1, poll)
 end

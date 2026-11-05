@@ -424,6 +424,26 @@ ctl("/set?expire_next_access=true")
 data = plugin.api:listBooks{ page = 0, size = 5 }
 check(data ~= nil, "401 mid-session -> refresh once and retry")
 
+print("A new login kept safe")
+do
+    local Api = require("gzreader_api")
+    local path = os.tmpname()
+    local st = { refresh_token = "R1", access_token = "A1", access_expires_at = 5 }
+    -- a background process rotated R1 into R2, then GZreader restarted before saving it
+    local child = { refresh_token = "R2", access_token = "A2", access_expires_at = 99 }
+    check(Api.writePending(child, "R1", path), "the background process writes the new login at once")
+    local f = io.open(path); local txt = f:read("*a"); f:close()
+    check(not txt:find("R1", 1, true), "the file never holds the old token itself")
+    check(Api.recoverPending(st, path) and st.refresh_token == "R2" and st.access_token == "A2" and st.access_expires_at == 99,
+        "at start: the new login taken (it follows the saved one)")
+    check(io.open(path) == nil, "and the file removed")
+    Api.writePending({ refresh_token = "R9" }, "R7", path)
+    local st2 = { refresh_token = "R5" }
+    check(not Api.recoverPending(st2, path) and st2.refresh_token == "R5", "not from these tokens (a new login since): left alone")
+    check(not Api.writePending({ refresh_token = "R1" }, "R1", path), "nothing new: nothing written")
+    os.remove(path)
+end
+
 print("Library browsing")
 local Browser = require("gzreader_browser")
 local b = Browser:new(plugin)

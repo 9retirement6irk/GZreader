@@ -107,6 +107,12 @@ function Grimmory:init()
     self.store.pending.ratings = self.store.pending.ratings or {}
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
+    -- a login a background process got but GZreader never saved (it was
+    -- closed or restarted meanwhile): take it (gzreader_api.lua)
+    if Api.recoverPending(self.store) then
+        Log.info("Grimmory login: kept the one a background request got before GZreader closed")
+        self:save()
+    end
     -- the Access key / Cloudflare token on requests to your own servers
     pcall(function() require("gzreader_access").install(self) end)
     self:onDispatcherRegisterActions()
@@ -1408,7 +1414,11 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     closeTouchMenu(touchmenu)
     if not self.api:isPaired() then
         UIManager:show(ConfirmBox:new{
-            text = _("This Kindle isn't connected to Grimmory yet. Connect now with a QR code?"),
+            -- (connected before: Grimmory stopped taking its login)
+            text = self.store.server and self.store.username
+                and T(_("Grimmory signed this Kindle out (%1 at %2). Your books and progress are still here. Connect again?"),
+                    self.store.username, (self.store.server:gsub("^https?://", "")))
+                or _("This Kindle isn't connected to Grimmory yet. Connect now with a QR code?"),
             ok_text = _("Connect"),
             ok_callback = function() self:onGrimmoryPair() end,
         })

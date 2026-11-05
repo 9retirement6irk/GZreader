@@ -112,12 +112,15 @@ local function finish(job, res)
         -- the login was refreshed in the background process: keep the new tokens
         local store = job.api.store
         if res.tokens.cleared then
-            pcall(job.api.clearTokens, job.api)
+            -- (only if they're still the ones it started with: the main
+            -- process may have a newer login, it must not be thrown away)
+            if store.refresh_token == job.refresh_before then pcall(job.api.clearTokens, job.api) end
         else
             for _i, k in ipairs(TOKEN_FIELDS) do if res.tokens[k] ~= nil then store[k] = res.tokens[k] end end
             if job.api.on_change then pcall(job.api.on_change) end
         end
     end
+    if job.api and job.api.dropPending then pcall(job.api.dropPending) end
     local ok, err = pcall(job.on_done, unpack(res, 1, res.n))
     if not ok then Log.warn("async callback failed:", tostring(err)) end
     UIManager:nextTick(pump)
@@ -131,6 +134,7 @@ pump = function()
     job.t0 = require("socket").gettime()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
     local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
+    job.refresh_before = api.store and api.store.refresh_token
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
         local store = api.store or {}
         local before = {}
@@ -144,8 +148,15 @@ pump = function()
                 ffiutil.writeToFD(wfd, encode(pack(nil, err), tokens), true)
                 return
             end
+            -- a new login: on disk at once (see gzreader_api.lua, writePending)
+            if store.refresh_token ~= before.refresh_token and api.writePending then
+                pcall(api.writePending, store, before.refresh_token)
+            end
         end
         local res = protected(job.fn, api)
+        if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
+            pcall(api.writePending, store, before.refresh_token)
+        end
         local tokens
         for _i, k in ipairs(TOKEN_FIELDS) do
             if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end

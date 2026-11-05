@@ -142,6 +142,68 @@ function Api:_saveTokens(data)
     self.on_change()
 end
 
+---------------------------------------------------------------- a rotated login, kept safe
+
+-- Grimmory hands out a new refresh token each time one is used, and the old
+-- one stops working. A background process that got a new one must not lose
+-- it: if GZreader restarts (an update) or is closed before the main process
+-- saved it, the Kindle is left with the old one, Grimmory says no, and the
+-- Kindle is "not connected" any more (1.22.0 after an update). So the
+-- background process writes the new tokens to a file next to the settings
+-- straight away; the main process removes it once it has saved them, and
+-- picks them up from it at start if it never did.
+
+local function pendingPath()
+    local ok, DataStorage = pcall(require, "datastorage")
+    return ok and (DataStorage:getSettingsDir() .. "/gzreader_tokens.pending") or nil
+end
+
+--- A token's fingerprint (the file never holds the old token itself).
+local function fingerprint(token)
+    if not token then return "" end
+    local ok, sha2 = pcall(require, "ffi/sha2")
+    if ok and sha2 and sha2.sha256 then return sha2.sha256(token) end
+    return tostring(#token) .. ":" .. token:sub(-6)
+end
+Api.fingerprint = fingerprint
+
+--- (background process) The tokens changed from `old_refresh`: keep them on disk.
+function Api.writePending(store, old_refresh, path)
+    path = path or pendingPath()
+    if not path or not store.refresh_token or store.refresh_token == old_refresh then return false end
+    local tmp = path .. ".tmp"
+    local f = io.open(tmp, "w")
+    if not f then return false end
+    f:write(fingerprint(old_refresh), "\n", store.refresh_token, "\n", tostring(store.access_token or ""), "\n",
+        tostring(store.access_expires_at or 0), "\n")
+    f:close()
+    return os.rename(tmp, path) and true or false
+end
+
+--- (main process) Saved: the file isn't needed any more.
+function Api.dropPending(path)
+    path = path or pendingPath()
+    if path then os.remove(path) end
+end
+
+--- (main process, at start) Tokens a background process got but that were
+--- never saved: take them, if they follow the ones saved. True if it did.
+function Api.recoverPending(store, path)
+    path = path or pendingPath()
+    local f = path and io.open(path, "r")
+    if not f then return false end
+    local old, refresh, access, expires = f:read("*l"), f:read("*l"), f:read("*l"), f:read("*l")
+    f:close()
+    os.remove(path)
+    if not (old and refresh and refresh ~= "") then return false end
+    if store.refresh_token == refresh then return false end -- (saved after all)
+    if old ~= fingerprint(store.refresh_token) then return false end -- (not from these: a new login since)
+    store.refresh_token = refresh
+    store.access_token = access ~= "" and access or nil
+    store.access_expires_at = tonumber(expires)
+    return true
+end
+
 function Api:clearTokens()
     self.store.access_token = nil
     self.store.access_expires_at = nil
@@ -202,6 +264,7 @@ function Api:ensureToken()
         return true
     elseif code == 400 or code == 401 or code == 403 then
         -- Refresh token expired/revoked: the user must pair again.
+        Log.warn("Grimmory refused this Kindle's login (HTTP " .. tostring(code) .. "): it must connect again")
         self:clearTokens()
         return false, "expired"
     end

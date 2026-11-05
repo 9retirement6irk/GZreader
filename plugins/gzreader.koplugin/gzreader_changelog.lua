@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.1",
+        changes = {
+            "Fixed: a Kindle could be signed out of Grimmory after an update (or after GZreader was closed in the middle of a request). Grimmory gives a new login each time the old one is renewed and the old one stops working; if GZreader restarted before saving the new one, it was lost. The new one is now written to disk the moment it arrives and picked up at the next start, and an update waits for requests to finish before restarting.",
+            "A background request that failed to renew the login no longer signs the Kindle out when it already has a newer one.",
+            "When Grimmory signed the Kindle out, the Grimmory tab says so (and that your books and progress are still there) instead of \"isn't connected yet\".",
+        },
+    },
+    {
         version = "1.22.0",
         changes = {
             "All of music happens in the CD player: the Music tab, the quick panel's Music and Downloads → Music open it. Under its controls, the CD case insert shows the queue or the library (F, or a tap on its tabs): Downloaded, Shuffle all, Artists, Albums, Playlists, Search and your Plex account; an album or playlist's Play, Shuffle, Download or Delete and its tracks. ▲ ▼ choose, Press opens or plays, ◀ ▶ turn its pages, Back goes back up.",
