@@ -8,7 +8,7 @@
   <b>Grimmory + ZenOS + KOReader for older Kindles</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle: download books, read them
   or have them read aloud, and keep your place, bookmarks and highlights in sync.
-  Notes, calendars, and books sent from your phone too.
+  Notes, calendars, and books sent from your browser too.
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ built-in connection to your self-hosted **Grimmory** book server.
 | **Nook 1st Edition**, **Nook Simple Touch** — *test builds* | the colour touchscreen / touch |
 
 <table>
-<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-all-books.png" alt="Your Grimmory library" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your phone" width="200"><br><sub>Set up from your phone</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-all-books.png" alt="Your Grimmory library" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
 </table>
 
 [More screenshots](docs/screenshots/)
@@ -40,8 +40,9 @@ built-in connection to your self-hosted **Grimmory** book server.
 
 - 📚 **Grimmory:** search and browse your library, download books in the background,
   and keep your **place, bookmarks and highlights in sync** with Grimmory's web reader.
-- 📱 **Set up from your phone:** scan one QR code to connect everything (single
-  sign-on works too) and **send books** straight from your phone.
+- 🌐 **Set up from your browser:** scan one QR code, or type the Kindle's address
+  into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
+  everything (single sign-on works too) and **sends books** straight to the Kindle.
 - 🔁 **Copy connections** from another GZreader over the Wi‑Fi with a PIN.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
   checklists, write and edit, offline too.
@@ -75,7 +76,7 @@ All the details: **[the full guide](GZREADER.md)**.
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
    with what's there. Eject.
 4. **Start** it: KUAL → **GZreader → Start GZreader**. The setup guide shows a QR code
-   for your phone.
+   for your phone, and an address and PIN for any browser.
 
 Updates come by themselves (Settings → General → Updates). Step-by-step help,
 uninstalling and the Nooks: [Install in the full guide](GZREADER.md#install).

@@ -158,7 +158,7 @@ local function phone(args, server)
     local out = WORK .. "/phone_" .. tostring(math.random(1e9))
     os.execute("(curl -s -o '" .. out .. "' -w '%{http_code}' " .. args .. " > '" .. out .. ".code') &")
     for _ = 1, 400 do
-        if #UI.zmqs > 0 then UI.zmqs[1]:waitEvent() elseif server and server.server then server:waitEvent() end
+        if #UI.zmqs > 0 then for _i, z in ipairs(UI.zmqs) do z:waitEvent() end elseif server and server.server then server:waitEvent() end
         local f = io.open(out .. ".code"); local c = f and f:read("*a"); if f then f:close() end
         if c and c ~= "" then
             local b = io.open(out):read("*a")
@@ -195,6 +195,7 @@ local AsyncMod = require("gzreader_async")
 AsyncMod.sync = true -- most sections check results right away; the async section turns it off
 local PairServer = require("gzreader_pairserver")
 PairServer.port = PORT + 10
+require("gzreader_phone").PORT80 = false -- (the PIN part turns it on, on another port)
 
 local plugin = Grimmory:new{ ui = { menu = { registerToMainMenu = function() end } } }
 
@@ -212,6 +213,15 @@ check(#token_path == 7 + 32, "token is 128-bit hex")
 
 local code, body = phone("'" .. base .. "/phone/deadbeef'")
 check(code == 404, "wrong token -> 404")
+check(type(screen.pin) == "string" and screen.pin:match("^%d%d%d%d%d%d$") and screen.address and screen.address:match("^%d+%.%d+%.%d+%.%d+:%d+$"),
+    "the screen shows the address to type (with the port when port 80 isn't used) and a 6-digit PIN")
+code, body = phone("'" .. base .. "/'")
+check(code == 200 and body:find('name="pin"', 1, true) and not body:find(token_path, 1, true), "typed address: asks for the PIN (no secret address in it)")
+local wrong_pin = screen.pin == "000000" and "111111" or "000000"
+code, body = phone("--data-urlencode 'pin=" .. wrong_pin .. "' '" .. base .. "/'")
+check(code == 200 and body:find("That isn't the PIN", 1, true) and body:find("4 tries left", 1, true) and not body:find(token_path, 1, true), "wrong PIN: says so, 4 tries left")
+code, body = phone("-i --data-urlencode 'pin=" .. screen.pin:sub(1, 3) .. " " .. screen.pin:sub(4) .. "' '" .. base .. "/'")
+check(code == 303 and body:find("Location: " .. token_path .. "#grimmory", 1, true), "right PIN (spaces are fine): on to the page")
 code, body = phone("'" .. base .. token_path .. "'")
 check(code == 200 and body:find('action="' .. token_path .. '/grimmory"', 1, true) and body:find('action="' .. token_path .. '/memos"', 1, true)
     and body:find('action="' .. token_path .. '/caldav"', 1, true) and body:find('action="' .. token_path .. '/links"', 1, true)
@@ -242,6 +252,42 @@ check(s2:connect("127.0.0.1", tonumber(base:match(":(%d+)$"))) == nil, "page por
 s2:close()
 for f, delay in pairs(UI.scheduled) do if delay <= 15 then UI.scheduled[f] = nil end end -- (start-up checks: Wi-Fi, usage statistics)
 check(next(UI.scheduled) == nil, "expiry timer cancelled")
+
+print("Setup from a browser: the Kindle's address and PIN")
+do
+    local Phone = require("gzreader_phone")
+    Phone.PORT80 = PORT + 20
+    PS.new = function(self, o) screen = o; return o end
+    plugin:startQrPairing()
+    local ip = screen.url:match("^http://([%d.]+):")
+    check(#UI.zmqs == 2 and screen.address == ip .. ":" .. (PORT + 20), "a second port for the typed address (port 80 on a Kindle): " .. tostring(screen.address))
+    local tpath = screen.url:match("(/phone/%x+)")
+    local kbase = "http://127.0.0.1:" .. UI.zmqs[1].port
+    code, body = phone("-i 'http://127.0.0.1:" .. (PORT + 20) .. "/'")
+    check(code == 302 and body:find("Location: http://" .. ip .. ":" .. UI.zmqs[1].port .. "/", 1, true), "it sends the browser to the PIN page")
+    local why
+    screen.setPin = function(_s, _p, w) why = w end
+    local wrong = screen.pin == "000000" and "111111" or "000000"
+    for _i = 1, 5 do code, body = phone("--data-urlencode 'pin=" .. wrong .. "' '" .. kbase .. "/'") end
+    check(body:find("The PIN is off after 5 wrong tries", 1, true) and why and why:match("PIN off"), "5 wrong PINs: the PIN is off (on the Kindle too)")
+    code, body = phone("--data-urlencode 'pin=" .. screen.pin .. "' '" .. kbase .. "/'")
+    check(code == 200 and not body:find(tpath, 1, true), "then not even the right PIN opens the page")
+    code, body = phone("'" .. kbase .. tpath .. "'")
+    check(code == 200 and body:find('id="diagnostics"', 1, true) and body:find(tpath .. '/log"', 1, true), "the QR code still works; Diagnostics tab while logging is on")
+    code, body = phone("-i '" .. kbase .. tpath .. "/log'")
+    check(code == 200 and body:find('Content-Disposition: attachment; filename="gzreader-log-', 1, true) and not body:find("hunter22", 1, true),
+        "Download the log: the log as a file (no passwords)")
+    plugin.store.logging_disabled = true
+    code, body = phone("'" .. kbase .. tpath .. "'")
+    local no_tab = code == 200 and not body:find('id="diagnostics"', 1, true)
+    code = phone("'" .. kbase .. tpath .. "/log'")
+    check(no_tab and code == 404, "diagnostics off: no tab, no log")
+    plugin.store.logging_disabled = nil
+    screen.on_cancel()
+    check(#UI.zmqs == 0, "Back on the Kindle: both ports closed")
+    Phone.PORT80 = false
+    plugin.api:clearTokens()
+end
 
 print("Single sign-on from the phone page")
 local function startPairing()
@@ -920,7 +966,7 @@ do
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Remote debugging|Usage statistics|Send diagnostic log to my phone %(QR code%)|Save diagnostic log %(USB%)|"),
+    check(d:match("|Diagnostic logging|Remote debugging|Usage statistics|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
         "General: logging, remote debugging, usage statistics, send and save the log " .. d)
     check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
         "Reader: Read aloud, Test audiobook playback, the headphones")

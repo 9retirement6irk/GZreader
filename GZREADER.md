@@ -16,7 +16,7 @@ Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `gzreader.koplugin` | GZreader itself: the phone page (QR code: connections, sending books), library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
+| `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
 
@@ -86,9 +86,10 @@ take the package for your Kindle (the others won't start on it):
 
 ### 5. The first start
 
-A setup guide runs. Its first page, **Connect your phone**, shows a QR code: scan it
-with your phone (same Wi‑Fi as the Kindle) to connect Grimmory, Notes (Memos) and
-Calendar, or to send books, or pick *Skip for now*. You can come back to it any time:
+A setup guide runs. Its first page, **Set up from your browser**, shows a QR code:
+scan it with your phone, or type the address under it into any browser on the
+same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar,
+or to send books, or pick *Skip for now*. You can come back to it any time:
 the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the
 top). The guide then asks about the library view, tabs, sleep
 screen, usage statistics, clock and reading defaults.
@@ -115,9 +116,11 @@ with your books stays until you delete it.
 - **It flashes and returns to the Kindle's home screen:** most likely the package for
   another Kindle or firmware; take the one from the table above. `koreader/crash.log`
   on the drive says why.
-- **The phone page doesn't open:** the phone must be on the same Wi‑Fi as the Kindle,
-  and the Kindle's Wi‑Fi must be on.
-- **Something else:** Settings → General → **Send diagnostic log to my phone** (or
+- **The setup page doesn't open:** the phone or computer must be on the same Wi‑Fi
+  as the Kindle, and the Kindle's Wi‑Fi must be on. Type the address exactly as the
+  Kindle shows it (with `:8642` if it shows one), starting `http://` if the browser
+  insists on `https://`.
+- **Something else:** Settings → General → **Send diagnostic log to a browser** (or
   *Save diagnostic log*, which puts it on the drive) and attach it to an issue.
 
 ## Usage statistics
@@ -363,7 +366,7 @@ run the same GZreader with ZenOS's touch interface:
   button in the title.
 - **Calendar:** ◀, Today, ▶ and More under the title (or swipe left and
   right); tap an event for its details, a day in Week or Month to open it.
-- **The phone page:** tap Done on the Kindle when you're done (instead of
+- **The setup page:** tap Done on the Kindle when you're done (instead of
   Back).
 - **On the Kindle's own home screen** (firmware 5), GZreader shows as a
   "GZreader" book with its logo (`documents/GZreader.sh`); tapping it starts
@@ -424,12 +427,25 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Anywhere | Volume buttons | Speaker volume for audiobooks and read aloud (a note shows the level). |
 | Note editor | Menu | To the formatting toolbar and back; the cursor stays where it is. |
 
-## The phone page (QR code)
+## The setup page (from your browser)
 
-One page on your phone sets up everything: the Kindle shows a QR code, you
-scan it, and the page that opens (served by the Kindle itself over your Wi‑Fi;
-phone and Kindle on the same network) has a tab for each connection (it opens
-at the one you came from; without JavaScript they're one under the other):
+One page in your browser sets up everything. The Kindle shows a QR code, its
+address and a 6-digit PIN:
+
+- **With a phone:** scan the QR code. No PIN needed.
+- **With any browser** (a computer, a tablet, a phone without a camera): type
+  the address into the browser, for example `192.168.1.20` (some Kindles show
+  `192.168.1.20:8642`: type that). The browser asks for the PIN on the Kindle's
+  screen. After 5 wrong PINs the PIN stops working; the QR code still works,
+  and opening the page again on the Kindle makes a new PIN.
+
+The page is served by the Kindle itself over your Wi‑Fi (browser and Kindle on
+the same network). It fits any screen: tabs along the top on a phone, down
+the side on a computer. There's a tab for each connection (it opens at the one
+you came from; without JavaScript they're one under the other):
+
+![The setup page in a computer's browser](docs/screenshots/browser-setup.png)
+
 
 - **Grimmory**: connect with a password or single sign-on, or disconnect.
 - **Notes (Memos)**: the Memos address and an access token, or disconnect.
@@ -438,24 +454,27 @@ at the one you came from; without JavaScript they're one under the other):
   or removed; add new links (several at once); connect or disconnect a CalDAV
   account.
 - **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
-  page, which comes back to the phone page), the Plex server to use, sign out.
-- **Send books**: pick books on the phone (EPUB, PDF, MOBI, AZW3, FB2, CBZ,
+  page, which comes back to the setup page), the Plex server to use, sign out.
+- **Send books**: pick books in the browser (EPUB, PDF, MOBI, AZW3, FB2, CBZ,
   TXT, DOCX…, up to 1 GB each) and they go straight into the GZreader folder
   (the Downloads tab). No Grimmory needed. A name already there gets
   "(2)"; a book is written to a temporary file first, so a dropped Wi‑Fi
   leaves nothing half-copied; it is refused when the Kindle is short of
   space.
 - **Access**: the key for a Cloudflare rule (below).
+- **Diagnostics** (while diagnostic logging is on, Settings → General →
+  Diagnostic logging): download the diagnostic log.
 
 Each change shows a short note on the Kindle, and the page shows what
 happened and stays open for the next thing. Press **Back** on the Kindle when
 you're done (or leave it 10 minutes): a summary shows what changed, and the
-page stops working. The page's address has a random code in it; passwords
+page stops working. The QR code's address has a random code in it, and the typed address needs
+the PIN; passwords
 and tokens are sent once to the Kindle and only Grimmory's login tokens,
 the Memos token and the CalDAV password are kept (never logged).
 
-Where to open it: the setup guide's first page (**Connect your phone**), Home
-menu → **Send books from your phone**, the Grimmory, Notes and Calendar tabs'
+Where to open it: the setup guide's first page (**Set up from your browser**),
+the quick panel → **Send books**, the Grimmory, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
 
 ## Copy connections from another GZreader
@@ -481,7 +500,7 @@ What's copied:
 - **Grimmory:** the address and user name. Grimmory gives every device its own
   sign-in (a refresh token used on two devices signs both out) and GZreader
   never keeps your password, so the new one then signs in: type the password
-  (address and user name filled in), or the phone page for single sign-on.
+  (address and user name filled in), or the setup page for single sign-on.
 
 Each copy is checked by connecting with it, as when typed in. Both must be on
 the same Wi‑Fi. Finding each other is mDNS / DNS‑SD (`_gzreader._tcp`, what
@@ -505,14 +524,14 @@ Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi o
 when needed and the diagnostic log in Settings → General; updates in Settings
 → General → Updates.
 
-- **Connect with QR code**: opens the phone page (above) at its Grimmory
+- **Connect with QR code**: opens the setup page (above) at its Grimmory
   section. The Kindle keeps only Grimmory's login tokens (never the
   password).
 - **Connect by typing**: the same, using the Kindle's keyboard.
 
 ### Single sign-on (SSO / OIDC)
 
-If Grimmory has SSO turned on, the phone page shows **Sign in with <provider>**.
+If Grimmory has SSO turned on, the setup page shows **Sign in with <provider>**.
 One-time setup, the same for every Kindle: add
 
     https://9retirement6irk.github.io/GZreader/oauth2-callback
@@ -521,7 +540,7 @@ as an extra redirect URI on Grimmory's client at your identity provider
 (Authentik, Pocket ID, Authelia, Keycloak…), next to Grimmory's own
 `…/oauth2-callback`. If `ALLOWED_ORIGINS` is set in Grimmory, add
 `https://9retirement6irk.github.io` there too. The address is also shown on the
-phone page and under **Settings → Connections → Grimmory → Single sign-on (SSO)
+setup page and under **Settings → Connections → Grimmory → Single sign-on (SSO)
 → How to set it up**.
 
 How it works: the identity provider sends the phone back to that page
@@ -536,7 +555,7 @@ forwards to a Kindle's address on a private network (port 8642). So:
   IP, and readers can sign in from their own homes.
 - While signing in, the phone has to be on the same Wi‑Fi as the Kindle
   (any Wi‑Fi: the reader's own, or the Kindle on the phone's hotspot), like
-  the rest of the phone page.
+  the rest of the setup page.
 
 Under **Single sign-on (SSO)** you can also choose:
 
@@ -599,7 +618,7 @@ API to `/api` are found too.
   off; turn it on there (or on the setup guide's Navbar Tabs page, which also
   offers Notes) to have both.
 - **Connect:** the first time, the tab offers *Connect with QR code* (the
-  phone page, at its Notes section: the Memos address and an access token) or
+  setup page, at its Notes section: the Memos address and an access token) or
   *Connect by typing*. Create the
   token in Memos → Settings → My account → Access Tokens. The Kindle keeps
   the token (never your password) in GZreader's settings; it's never written
@@ -650,7 +669,7 @@ The Calendar tab (B) shows calendars from their **shared links** (webcal:// or
 https://….ics: Proton Calendar's Share → Share with anyone, Google's secret
 iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only.
 
-- **Calendar links:** add several at once on the phone page (one per line,
+- **Calendar links:** add several at once on the setup page (one per line,
   `Name | link` to name one), by typing, or from `calendars.txt` (GZreader
   folder or the top of the USB drive). Each is fetched when added (named after
   its `X-WR-CALNAME`) and at every sync; `webcal://` is fetched over HTTPS,
@@ -658,7 +677,7 @@ iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only
   logged (requests show the server only, `rawRequest`'s `log_url`). Times use
   the file's own VTIMEZONE rules; repeating events are expanded on the Kindle.
   Settings → Connections → Calendar → Calendar links: show / rename / remove,
-  or the same on the phone page (*Add or edit links with QR code*), which
+  or the same on the setup page (*Add or edit links with QR code*), which
   also replaces a link that changed.
 
 The CalDAV account: Nextcloud
@@ -666,7 +685,7 @@ The CalDAV account: Nextcloud
 Fastmail (`https://caldav.fastmail.com`), Google
 (`https://apidata.googleusercontent.com/caldav/v2/`), Radicale, Baïkal…
 
-- **Connect:** Connect with QR code (the phone page: address, user name and
+- **Connect:** Connect with QR code (the setup page: address, user name and
   password; it also shows or hides each calendar) or Connect by typing. Use an app password where the server
   has them; it's kept in GZreader's settings like the Memos token and never
   logged (the log has addresses only, and passwords are redacted from it).
@@ -702,7 +721,7 @@ and in the quick panel (*Music*).
 Sign in, either way:
 - on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
   phone or computer and enter the 4 letters shown;
-- on the phone page: Music → *Sign in with Plex*.
+- on the setup page: Music → *Sign in with Plex*.
 
 GZreader then uses your own Plex server (the one on the same Wi‑Fi first, or
 another you choose). Browse **Artists**, **Albums**, **Playlists**, or
@@ -739,7 +758,7 @@ is paused (send the log: it lists what was looked at).
 
 If your servers are behind Cloudflare and its bot checks block the Kindle,
 GZreader can send a secret key with each request to them, for a rule that lets
-it through. Phone page → **Access**: tick *Send the key*, add other host names
+it through. Setup page → **Access**: tick *Send the key*, add other host names
 if needed (your Grimmory, Memos and CalDAV servers are included; each name
 covers its subdomains), Save. The page then shows the rule to paste:
 
@@ -790,7 +809,7 @@ fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
-**Downloads** tab shows it. Books sent from your phone (quick panel → Send
+**Downloads** tab shows it. Books sent from your browser (quick panel → Send
 books) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
@@ -1147,9 +1166,10 @@ ask for still connect.
 
 ## Diagnostic log
 
-**Send it to your phone:** Diagnostics in the Home or Reading menu, or Settings →
-General → Send diagnostic log to my phone (QR code). Scan the code (same Wi-Fi), tap Download, then attach
-the file wherever you need it.
+**Send it to a browser:** the Diagnostics tab of the setup page (quick panel →
+Send books), Diagnostics in the quick panel, or Settings → General → Send
+diagnostic log to a browser (QR code). Scan the code (same Wi-Fi), tap
+Download, then attach the file wherever you need it.
 
 
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,

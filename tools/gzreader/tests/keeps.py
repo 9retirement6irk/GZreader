@@ -29,7 +29,7 @@ MUST = [
     ("plugins/zenos.koplugin/modules/settings/zen_settings.lua", "Connections"),
     ("plugins/zenos.koplugin/modules/menu/patches/quick_settings.lua", "read_aloud"),
     ("plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua", "onGzOptions"),
-    ("plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua", "Connect your phone"),
+    ("plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua", "Set up from your browser"),
     ("frontend/ui/elements/filemanager_menu_order.lua", "gzreader"),
     ("frontend/ui/elements/reader_menu_order.lua", "gzreader"),
     ("frontend/device.lua", "device/nook/device"),

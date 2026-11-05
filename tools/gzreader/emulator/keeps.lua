@@ -61,7 +61,7 @@ local KINDLE_WORD -- "Kindle", or "Nook" on a Nook
 -- 1. the setup guide, then Home and its tabs
 add({ fn = function(E)
     KINDLE_WORD = (E.model == "nook" or E.model == "nst") and "Nook" or "Kindle"
-    check(has("Connect your phone"), "setup guide opens on \"Connect your phone\"")
+    check(has("Set up from your browser"), "setup guide opens on \"Set up from your browser\"")
     for i = #UIM()._window_stack, 1, -1 do
         local w = UIM()._window_stack[i].widget
         if w.name == "setup guide" or w.name == "QR code screen" then UIM():close(w) end

@@ -30,6 +30,8 @@ local PairServer = {
     -- upload = function(method, path, headers, length) -> nil (not an upload) |
     --   { error = code, message } | { file = path to write, done = function(ok, err) -> code, ctype, body }
     upload = nil,
+    exact_port = false, -- only `port` (otherwise the next few if it's taken)
+    keep_wifi = true,   -- hold Wi-Fi on while it runs
 }
 
 function PairServer:new(o)
@@ -51,7 +53,7 @@ end
 function PairServer:start()
     local server, err
     -- Try a few ports in case one is taken.
-    for offset = 0, 4 do
+    for offset = 0, self.exact_port and 0 or 4 do
         server, err = socket.bind("*", self.port + offset)
         if server then
             self.port = self.port + offset
@@ -64,7 +66,9 @@ function PairServer:start()
     server:settimeout(0)
     self.server = server
     firewall("-A", self.port)
-    pcall(function() require("gzreader_net").hold("pairserver") end) -- keep Wi-Fi up while the QR page is open
+    if self.keep_wifi then
+        pcall(function() require("gzreader_net").hold("pairserver") end) -- keep Wi-Fi up while the QR page is open
+    end
     logger.dbg("Grimmory pairing server listening on", self.port)
     return true
 end
@@ -80,14 +84,14 @@ function PairServer:stop()
         self.server:close()
         self.server = nil
         firewall("-D", self.port)
-        pcall(function() require("gzreader_net").release("pairserver") end)
+        if self.keep_wifi then pcall(function() require("gzreader_net").release("pairserver") end) end
         logger.dbg("Grimmory pairing server stopped")
     end
 end
 
 local REASONS = { [200] = "OK", [302] = "Found", [303] = "See Other", [400] = "Bad Request", [404] = "Not Found",
     [405] = "Method Not Allowed", [409] = "Conflict", [411] = "Length Required", [413] = "Payload Too Large",
-    [415] = "Unsupported Media Type", [507] = "Insufficient Storage" }
+    [415] = "Unsupported Media Type", [500] = "Internal Server Error", [507] = "Insufficient Storage" }
 
 local function respond(client, code, content_type, body, extra_headers)
     body = body or ""

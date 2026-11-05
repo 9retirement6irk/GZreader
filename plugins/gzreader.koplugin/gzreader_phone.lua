@@ -1,13 +1,23 @@
 --[[--
-Set up the Kindle from a phone: one page, opened with a QR code, for every
-connection and for sending books.
+Set up the Kindle from a browser (a phone's or a computer's): one page,
+opened with a QR code or by typing the Kindle's address, for every connection
+and for sending books.
 
 - Grimmory: sign in with a password or single sign-on, or disconnect.
 - Notes (Memos): address and access token, or disconnect.
 - Calendar: a CalDAV account (connect, disconnect, show or hide each of its
   calendars) and calendar links (add, rename, replace the link, show or hide,
   remove).
-- Send books: files from the phone go into the GZreader folder.
+- Send books: files from the browser go into the GZreader folder.
+- Diagnostics (while diagnostic logging is on): download the log.
+
+Two ways in, both while the page is on the Kindle's screen:
+- the QR code: a secret address (no PIN needed);
+- the Kindle's address typed into a browser (http://192.168.1.20, or with
+  :8642 where port 80 can't be used): the browser asks for the 6-digit PIN
+  shown on the Kindle, then goes to the same secret address. 5 wrong PINs
+  turn the PIN off (the QR code still works; opening the page again makes a
+  new PIN).
 
 The Kindle Keyboard has no camera: the Kindle shows a QR code with a secret
 address served by the Kindle itself (gzreader_pairserver.lua); the phone opens
@@ -17,7 +27,7 @@ the phone is sent back to the page (POST, then a redirect), with what happened
 at the top. Passwords, tokens and calendar links are never written to the log.
 
 Opened from the setup guide, from each Connect with QR code (Grimmory, Notes,
-Calendar) and from the Home menu (Send books from your phone).
+Calendar) and from the quick panel (Send books).
 ]]
 
 local InfoMessage = require("ui/widget/infomessage")
@@ -32,6 +42,7 @@ local T = require("ffi/util").template
 local Phone = {
     TIMEOUT = 10 * 60,  -- seconds without a request
     MAX_FAILED = 10,    -- failed sign-ins (all services) before the page closes
+    PIN_TRIES = 5,      -- wrong PINs before the PIN stops working
     MAX_MB = 1024,      -- per book
     ACCEPT = ".epub,.pdf,.mobi,.azw,.azw3,.prc,.fb2,.fbz,.cbz,.cbr,.cbt,.djvu,.txt,.rtf,.html,.htm,.doc,.docx,.odt,.md,.chm,.zip",
     session = nil,
@@ -147,6 +158,8 @@ local function state(S, flash)
         cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
         error = sec == "access" and flash.error or nil }
     st.start = S.opts.section or "grimmory"
+    -- diagnostics: the log, while diagnostic logging is on
+    if store.logging_disabled ~= true then st.diagnostics = { level = store.log_level } end
     -- books
     local dir = plugin:libraryDir()
     local free = Phone.freeBytes(dir)
@@ -196,6 +209,21 @@ function Phone.freeBytes(dir)
     return ok and type(du) == "table" and du.available or nil
 end
 
+--- The typed PIN is the PIN (every digit compared, whatever the first wrong one).
+function Phone.samePin(typed, pin)
+    typed, pin = tostring(typed or ""), tostring(pin or "")
+    if #pin == 0 or #typed ~= #pin then return false end
+    local diff = 0
+    for i = 1, #pin do
+        if typed:byte(i) ~= pin:byte(i) then diff = diff + 1 end
+    end
+    return diff == 0
+end
+
+--- Also listen on port 80 (the address is then just the IP), where it can
+--- be used; false: only the page's own port.
+Phone.PORT80 = 80
+
 local function mb(bytes) return string.format("%.1f MB", (bytes or 0) / 1048576) end
 
 --- Open the page; opts.section ("grimmory", "notes", "calendar", "books")
@@ -209,15 +237,17 @@ function Phone.open(plugin, opts)
         sso_cache = {}, last = os.time() }
     S.token = PairServer.randomToken(16)
     S.base = "/phone/" .. S.token
+    S.pin, S.pin_tries = require("gzreader_spake").pin(), 0
     Phone.session = S
 
-    local server, screen, idle_task, done
+    local server, server80, screen, idle_task, done
     local function finish(reason)
         if done then return end
         done = true
         Phone.session = nil
         if idle_task then UIManager:unschedule(idle_task) end
         if server then UIManager:removeZMQ(server); server:stop() end
+        if server80 then UIManager:removeZMQ(server80); server80:stop() end
         if screen then UIManager:close(screen); screen = nil end
         pcall(function() require("gzreader_awake").release("phone") end)
         plugin.pairing = nil
@@ -249,7 +279,7 @@ function Phone.open(plugin, opts)
         if S.failed >= Phone.MAX_FAILED then
             UIManager:nextTick(function()
                 finish("too many failed sign-ins")
-                UIManager:show(InfoMessage:new{ text = _("The phone page closed after too many failed sign-ins.") })
+                UIManager:show(InfoMessage:new{ text = _("The setup page closed after too many failed sign-ins.") })
             end)
             return true
         end
@@ -519,11 +549,46 @@ function Phone.open(plugin, opts)
         return back({ ok = true, text = T(_("Saved “%1”."), Calendar().feedName(f)), section = "calendar" })
     end
 
+    -- the typed-in address: the PIN on the Kindle's screen, then the page
+    local function pinPage(method, body)
+        local st = { tries_left = Phone.PIN_TRIES - S.pin_tries, off = S.pin_tries >= Phone.PIN_TRIES }
+        if method == "GET" or st.off then return 200, "text/html", PairPage.pin(st) end
+        if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
+        local typed = tostring(PairServer.parseForm(body).pin or ""):gsub("%D", "")
+        if Phone.samePin(typed, S.pin) then
+            Log.info("phone page: PIN accepted")
+            return 303, "text/plain", S.base .. (S.opts.section and ("#" .. S.opts.section) or "")
+        end
+        S.pin_tries = S.pin_tries + 1
+        Log.info("phone page: wrong PIN", S.pin_tries, "of", Phone.PIN_TRIES)
+        st.tries_left, st.off, st.wrong = Phone.PIN_TRIES - S.pin_tries, S.pin_tries >= Phone.PIN_TRIES, true
+        if st.off and screen and screen.setPin then
+            screen:setPin(nil, _("PIN off: 5 wrong tries"))
+        end
+        return 200, "text/html", PairPage.pin(st)
+    end
+
+    -- Diagnostics: the log as a file (made when asked; passwords and tokens are never in it)
+    local function logFile()
+        if plugin.store.logging_disabled == true then return 404, "text/plain", "Not found" end
+        local lib = plugin:libraryDir()
+        Log.probe_device = require("device"):isKindle()
+        local dest, err = Log.exportTo(lib:match("^(.+)/[^/]+$") or lib, require("datastorage"):getDataDir() .. "/crash.log")
+        local f = dest and io.open(dest, "rb")
+        if not f then return 500, "text/plain", "Couldn't save the log: " .. tostring(err) end
+        local content = f:read("*a")
+        f:close()
+        local filename = dest:match("[^/]+$")
+        Log.info("log sent to the browser", filename, #content, "bytes")
+        return 200, "text/plain", content, { ["Content-Disposition"] = 'attachment; filename="' .. filename .. '"' }
+    end
+
     server = PairServer:new{
         handler = function(method, full_path, _headers, body)
             local path, query = full_path:match("^([^?]*)%??(.*)$")
             if done then return 200, "text/html", PairPage.gone() end
             if path == "/oauth2-callback" and method == "GET" then touch(); return finishSso(query) end
+            if path == "/" or path == "/pin" then touch(); return pinPage(method, body) end
             if path ~= S.base and path:sub(1, #S.base + 1) ~= S.base .. "/" then return 404, "text/plain", "Not found" end
             touch()
             local sub = path:sub(#S.base + 1)
@@ -534,6 +599,7 @@ function Phone.open(plugin, opts)
                 return 200, "text/html", PairPage.hub(state(S, f))
             end
             if sub == "/plex/done" and method == "GET" then return plexDone() end
+            if sub == "/log" and method == "GET" then return logFile() end
             local route = routes[sub]
             if not route then return 404, "text/plain", "Not found" end
             if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
@@ -600,13 +666,29 @@ function Phone.open(plugin, opts)
     S.server = server
     plugin.pairing = true
     UIManager:insertZMQ(server)
+    -- port 80 too, where it can be used, so that the address is just the IP
+    -- (it only sends the browser to the PIN page)
+    S.address = T("%1:%2", ip, server.port)
+    if Phone.PORT80 then
+        server80 = PairServer:new{ port = Phone.PORT80, exact_port = true, keep_wifi = false, handler = function()
+            return 302, "text/plain", S.origin .. "/"
+        end }
+        if server80:start() then
+            UIManager:insertZMQ(server80)
+            S.address = Phone.PORT80 == 80 and ip or T("%1:%2", ip, Phone.PORT80)
+        else
+            server80 = nil
+        end
+    end
     pcall(function() require("gzreader_awake").hold("phone") end) -- (uploads take a while)
     Log.info("phone page open on", S.origin, "section", tostring(opts.section))
     local url = S.origin .. S.base .. (opts.section and ("#" .. opts.section) or "")
     screen = require("gzreader_pairscreen"):new{
         url = url,
-        title = opts.title or _("Set up from your phone"),
+        title = opts.title or _("Set up from your browser"),
         instructions = opts.instructions or _("Scan this code with your phone to set up GZreader connections and send books."),
+        address = S.address,
+        pin = S.pin,
         footer = _("Press Back when you're done."),
         button_text = _("Done"),
         on_cancel = function() screen = nil; finish("back") end,

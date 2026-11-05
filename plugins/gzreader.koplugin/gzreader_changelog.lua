@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.18.0",
+        changes = {
+            "Set up from your browser: besides the QR code, the Kindle shows its address and a PIN. Type the address into any browser on the same Wi-Fi (a computer too), enter the PIN, and the same setup page opens. After 5 wrong PINs the PIN stops working (the QR code still works; opening setup again makes a new one).",
+            "The setup page fits any screen: tabs along the top on a phone, down the side on a computer.",
+            "A Diagnostics tab on the setup page (while diagnostic logging is on) downloads the diagnostic log.",
+        },
+    },
+    {
         version = "1.17.0",
         changes = {
             "One quick panel on every Kindle and Nook: square tiles for Wi-Fi, night mode, rotate, restart, sleep, Home, updates, Settings, diagnostics and Exit, then Home's (manage the highlighted book, continue, send books, search, history, view, sort, music) or, in a book, the book's (sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music). Menu opens it (on a touch Kindle, swipe down from the top); every tile has a letter. It replaces the GZreader menu and ZenOS's quick settings; More in it has the full menus.",

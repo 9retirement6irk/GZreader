@@ -32,7 +32,7 @@ local has_folder_page = false
 for _, pg in ipairs(pages) do if pg.title == "Home Folder" then has_folder_page = true end end
 check(not has_folder_page, "no 'Home Folder' question in the guide")
 check(HOME_SET == 1, "guide sets the home folder to the Grimmory folder instead")
-check(pages[1].title == "Connect your phone", "setup guide starts with Connect your phone (Grimmory, Notes, Calendar, books)")
+check(pages[1].title == "Set up from your browser", "setup guide starts with Set up from your browser (Grimmory, Notes, Calendar, books)")
 check(pages[2].title == "Welcome to GZreader", "GZreader welcome follows")
 local titles = {} for _, pg in ipairs(pages) do titles[#titles + 1] = pg.title end
 local tl = table.concat(titles, "|")

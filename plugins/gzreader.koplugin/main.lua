@@ -306,8 +306,8 @@ function Grimmory:menuItems()
             end,
         },
         {
-            text = paired and _("Reconnect with QR code (phone page)") or _("Connect with QR code (phone page)"),
-            help_text = _("Shows a QR code: the page it opens on your phone connects Grimmory, Notes and calendars, and sends books to this Kindle."),
+            text = paired and _("Reconnect from your browser (QR code)") or _("Connect from your browser (QR code)"),
+            help_text = _("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle."),
             callback = function(touchmenu) self:onGrimmoryPair(touchmenu) end,
         },
         {
@@ -368,7 +368,7 @@ function Grimmory:sectionItems(section)
                 icon("connect", require("gzreader_remote").menuItems(self)),
                 icon("settings_stats", require("gzreader_usage").menuItems()),
                 icon("send", {
-                    text = _("Send diagnostic log to my phone (QR code)"),
+                    text = _("Send diagnostic log to a browser (QR code)"),
                     callback = function(touchmenu)
                         closeTouchMenu(touchmenu)
                         self:shareLog()
@@ -510,7 +510,7 @@ function Grimmory:showDiagnostics()
     dialog = ButtonDialog:new{
         title = _("Diagnostics\nThe log helps find problems. Passwords and tokens are never in it."),
         buttons = {
-            { { text = label("send", _("Send to my phone (QR code)")), align = "left", callback = function()
+            { { text = label("send", _("Send to a browser (QR code)")), align = "left", callback = function()
                 UIManager:close(dialog)
                 UIManager:nextTick(function() self:shareLog() end)
             end } },
@@ -847,7 +847,7 @@ end
 
 function Grimmory:openPhonePage(section)
     if self.pairing then return end
-    Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "phone page" })
+    Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "the setup page" })
 end
 
 --- Settings → Connections → Grimmory → Single sign-on (SSO): where the

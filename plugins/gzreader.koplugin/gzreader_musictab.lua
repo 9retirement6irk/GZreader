@@ -179,7 +179,7 @@ end
 function Tab.signInItems(plugin, after)
     return {
         { text = _("Sign in to Plex with a code (plex.tv/link)"), callback = function() Tab.linkSignIn(plugin, after) end },
-        { text = _("Sign in to Plex with QR code (phone page)"), callback = function()
+        { text = _("Sign in to Plex from your browser (QR code)"), callback = function()
             require("gzreader_net").run(function()
                 require("gzreader_phone").open(plugin, { section = "music", on_close = function() if after then after() end end })
             end, { reason = "connecting to Plex" })

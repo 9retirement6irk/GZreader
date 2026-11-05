@@ -492,7 +492,7 @@ function Copy.grimmorySignIn(plugin, g, before)
                 UIManager:close(d)
                 plugin:keyboardLogin({ server = g.server, username = g.username })
             end } },
-            { { text = _("Single sign-on (phone page)"), callback = function()
+            { { text = _("Single sign-on (browser page)"), callback = function()
                 UIManager:close(d)
                 require("gzreader_net").run(function()
                     require("gzreader_phone").open(plugin, { section = "grimmory", grimmory_form = { server = g.server, username = g.username } })

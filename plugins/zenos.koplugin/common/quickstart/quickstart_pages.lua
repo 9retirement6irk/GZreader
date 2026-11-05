@@ -642,7 +642,7 @@ local function buildGrimmoryPage(ctx)
     if state.paired then
         choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
     end
-    choices[#choices + 1] = { id = "qr",   text = _("Scan a QR code with my phone"), checked = not state.paired }
+    choices[#choices + 1] = { id = "qr",   text = _("Set up from a browser (QR code or this Kindle's address)"), checked = not state.paired }
     choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login on this Kindle"), checked = false }
     -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
     choices[#choices + 1] = { id = "gz_copy", text = _("Copy them from another GZreader (it shows a PIN)"), checked = false }
@@ -651,8 +651,8 @@ local function buildGrimmoryPage(ctx)
     end
     choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
     return {
-        title       = _("Connect your phone"),
-        description = _("Scan the QR code with your phone: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from your phone (no Grimmory needed)") .. "\n"
+        title       = _("Set up from your browser"),
+        description = _("Scan the QR code with your phone, or type this Kindle's address into any browser on the Wi-Fi: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from that browser (no Grimmory needed)") .. "\n"
             -- GZreader: or from another GZreader
             .. _("Already set up on another GZreader? Copy its connections over the Wi-Fi.") .. "\n"
             .. (not require("device"):isTouchDevice() and _("Come back to it any time: Menu → Send books.")

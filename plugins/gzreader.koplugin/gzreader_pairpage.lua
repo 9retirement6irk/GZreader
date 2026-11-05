@@ -1,4 +1,4 @@
--- HTML served to the phone during QR pairing. Self-contained, no external assets.
+-- HTML served to the browser (a phone's or a computer's) during setup. Self-contained, no external assets.
 
 local PairPage = {}
 
@@ -20,6 +20,7 @@ form,.card{background:var(--card);border:1px solid var(--line);border-radius:14p
 label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
 input{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 14px}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
+input.pin{font-size:28px;letter-spacing:.25em;text-align:center;font-variant-numeric:tabular-nums}
 button{width:100%;font:inherit;font-weight:600;padding:12px;border:0;border-radius:10px;background:var(--accent);color:var(--bg);cursor:pointer}
 button:disabled{opacity:.6}
 button.alt{background:transparent;color:var(--ink);border:1px solid var(--line);margin-top:10px}
@@ -32,12 +33,13 @@ details{margin-top:14px}summary{cursor:pointer;font-size:14px;color:var(--muted)
 .note{color:var(--muted);font-size:12px;margin-top:16px}
 ]]
 
-local function shell(title, inner)
+local function shell(title, inner, body_class)
     local page = table.concat({
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         '<meta name="robots" content="noindex">',
-        "<title>", esc(title), "</title><style>", STYLE, "</style></head><body><main>",
+        "<title>", esc(title), "</title><style>", STYLE, "</style></head><body",
+        body_class and (' class="' .. body_class .. '"') or "", "><main>",
         inner,
         "</main></body></html>",
     })
@@ -48,13 +50,35 @@ local function shell(title, inner)
 end
 
 function PairPage.gone()
-    return shell("Link expired", '<h1>This page has closed</h1><div class="card"><p>The page works while its QR code is on the Kindle\'s screen. To open it again: Send books from your phone in the Home menu (on a touch Kindle: Phone in the launcher), or Connect with QR code in the Grimmory, Notes or Calendar tab.</p></div>')
+    return shell("Link expired", '<h1>This page has closed</h1><div class="card"><p>The page works while its QR code is on the Kindle\'s screen. To open it again: Send books in the quick panel (Menu, or on a touch Kindle swipe down from the top), or Connect with QR code in the Grimmory, Notes or Calendar tab.</p></div>')
+end
+
+--- The Kindle's address typed into a browser: the PIN on its screen first.
+--- st = { tries_left, wrong, off }.
+function PairPage.pin(st)
+    st = st or {}
+    local inner
+    if st.off then
+        inner = '<div class="card"><p class="err" style="margin:0 0 8px">The PIN is off after 5 wrong tries.</p>'
+            .. '<p style="margin:0">Scan the QR code on the Kindle\'s screen instead, or close setup on the Kindle and open it again for a new PIN.</p></div>'
+    else
+        inner = '<form method="post" action="/" autocomplete="off">'
+            .. '<label for="pin">PIN</label>'
+            .. '<input id="pin" name="pin" class="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" required autofocus>'
+            .. (st.wrong and ('<p class="err">That isn\'t the PIN. ' .. (st.tries_left == 1 and "1 try left." or (esc(st.tries_left) .. " tries left.")) .. "</p>") or "")
+            .. '<button type="submit">Continue</button></form>'
+            .. '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while setup is open there (Send books in its quick panel).</p>'
+    end
+    return shell("Kindle setup", "<h1>Set up your Kindle</h1>"
+        .. '<p class="sub">Enter the PIN shown on the Kindle\'s screen.</p>' .. inner)
 end
 
 ---------------------------------------------------------------- the phone page
 
 local HUB_STYLE = [[
+body.hub main{max-width:1040px}
 a{color:inherit;text-underline-offset:2px}
+a.button{display:block;text-align:center;font-weight:600;padding:12px;border-radius:10px;background:var(--accent);color:var(--bg);text-decoration:none}
 nav{display:flex;gap:4px;margin:0 -16px 16px;padding:8px 16px;overflow-x:auto;position:sticky;top:0;background:var(--bg);z-index:2;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
 nav a{flex:none;font-size:14px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:6px 13px;background:var(--card);white-space:nowrap}
@@ -85,6 +109,19 @@ textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);
 #up p,.results p{margin:6px 0;font-size:14px;word-break:break-word}
 .drop{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;margin:0 0 12px;color:var(--muted);font-size:14px}
 .drop input{margin:10px 0 0}
+/* wide screens: the tabs down the side, the page beside them */
+@media (min-width:760px){
+body{padding:40px 28px}
+h1{font-size:26px}
+.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:28px;align-items:start}
+nav{flex-direction:column;gap:6px;margin:0;padding:0;overflow:visible;top:24px}
+nav a{border-radius:10px;padding:9px 14px;font-size:15px}
+section{padding:24px 28px;scroll-margin-top:24px}
+section h2{font-size:20px}
+section>form,section>.what,section>.status,section>.err,section>details,section>p,section>a.button{max-width:600px}
+.drop{padding:28px}
+}
+@media (min-width:1100px){.layout{grid-template-columns:220px minmax(0,1fr)}}
 ]]
 
 local function form(action, inner, busy)
@@ -132,7 +169,7 @@ local function grimmorySection(st, base)
             .. '" type="submit" name="action" value="sso" formnovalidate>' .. esc(label) .. "</button>"
             .. '<p class="note">For single sign-on, your identity provider must allow this redirect address: <code>'
             .. esc(g.redirect_uri or "") .. "</code>"
-            .. (g.sso_relay and " (the same for every Kindle; the phone just needs to be on the Kindle's Wi-Fi to finish)" or "")
+            .. (g.sso_relay and " (the same for every Kindle; the browser just needs to be on the Kindle's Wi-Fi to finish)" or "")
             .. "</p>"
     end
     local pw = input("g_username", "username", "Username", (g.form or {}).username, 'autocomplete="username" ' .. NAME_ATTRS)
@@ -301,7 +338,7 @@ local function booksSection(st, base)
     for _i, name in ipairs(b.received or {}) do received[#received + 1] = '<p class="ok">✓ ' .. esc(name) .. "</p>" end
     return table.concat({
         '<section id="books" class="tab"><h2>Send books</h2>',
-        '<p class="what">Books from your phone go straight onto the Kindle (into the ', esc(b.folder or "GZreader"),
+        '<p class="what">Books from this browser go straight onto the Kindle (into the ', esc(b.folder or "GZreader"),
         ' folder; the Downloads tab shows them). No Grimmory needed.</p>',
         '<div class="drop"><label for="files" style="margin:0">EPUB, PDF, MOBI, AZW3, FB2, CBZ, TXT…</label>',
         '<input id="files" type="file" multiple accept="', esc(b.accept or ""), '"></div>',
@@ -323,7 +360,18 @@ local function booksSection(st, base)
     })
 end
 
---- The phone page: every connection and sending books. `st` (see gzreader_phone.lua):
+local function diagnosticsSection(st, base)
+    if not st.diagnostics then return "" end
+    return table.concat({
+        '<section id="diagnostics" class="tab"><h2>Diagnostics</h2>',
+        '<p class="what">The diagnostic log says what GZreader did and what went wrong, for a bug report or a chat about it. Passwords, tokens and calendar links are never in it.</p>',
+        '<a class="button" href="', esc(base), '/log" download>Download the log</a>',
+        '<p class="note">It\'s put together when you tap (a few seconds), and saved on the Kindle too. Diagnostic logging can be turned off on the Kindle: Settings → General → Diagnostic logging.</p>',
+        "</section>",
+    })
+end
+
+--- The setup page: every connection and sending books. `st` (see gzreader_phone.lua):
 --- base, flash = { ok, text }, grimmory, memos, caldav, links, books.
 function PairPage.hub(st)
     local base = st.base
@@ -338,6 +386,7 @@ function PairPage.hub(st)
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "books", "Send books" }
     tabs[#tabs + 1] = { "access", "Access", (st.access or {}).enabled }
+    if st.diagnostics then tabs[#tabs + 1] = { "diagnostics", "Diagnostics" } end
     local nav = {}
     for _i, t in ipairs(tabs) do
         nav[#nav + 1] = '<a href="#' .. t[1] .. '" data-tab="' .. t[1] .. '">' .. t[2] .. (t[3] and '<span class="d"></span>' or "") .. "</a>"
@@ -348,18 +397,19 @@ function PairPage.hub(st)
         "<script>document.documentElement.className='js'</script>",
         "<h1>Set up your Kindle</h1>",
         '<p class="sub">Everything here goes straight to your Kindle over your Wi‑Fi.</p>',
+        '<div class="layout"><nav>', table.concat(nav), "</nav><div>",
         flash,
-        "<nav>", table.concat(nav), "</nav>",
         grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), musicSection(st, base),
-        booksSection(st, base), accessSection(st, base),
-        '<p class="note">This page works while its code is on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
+        booksSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
+        '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
+        "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',
         '[].forEach.call(document.querySelectorAll("nav a"),function(a){a.className=a.getAttribute("data-tab")==id?"on":""});',
         'var on=document.querySelector("nav a.on");if(on&&on.scrollIntoView)try{on.scrollIntoView({inline:"center",block:"nearest"})}catch(e){}}',
         '[].forEach.call(document.querySelectorAll("nav a"),function(a){a.onclick=function(e){e.preventDefault();var id=a.getAttribute("data-tab");show(id);history.replaceState(null,"","#"+id);window.scrollTo(0,0)}});',
         'show(location.hash.slice(1));window.onhashchange=function(){show(location.hash.slice(1))}})();</script>',
-    }))
+    }), "hub")
 end
 
 return PairPage
