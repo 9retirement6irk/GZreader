@@ -7,7 +7,7 @@ the top of the screen. Square tiles, in two groups:
   Home       Manage “book” (the one highlighted), Continue, Send books,
              Search, History, View, Sort, Music
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Fit pictures, Read aloud, Music
+             Search book, Font, Layout, Fit pictures, Read aloud, Music
 
 With a keyboard each tile shows its letter (Controls: the top row of keys,
 Q to P; the second group: A to L) and the 5-way and Press work too; the
@@ -40,7 +40,7 @@ local S = function(px) return Screen:scaleBySize(px) end
 
 local Panel = {
     TOP_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
-    SECOND_KEYS = { "A", "S", "D", "F", "G", "H", "J", "K", "L" },
+    SECOND_KEYS = { "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M" },
     COLUMNS = 5,
 }
 
@@ -204,6 +204,11 @@ function Panel.bookTiles(plugin, ui)
     list[#list + 1] = { icon = "bookmarks", label = _("Bookmarks"), run = send("ShowBookmark") }
     list[#list + 1] = { icon = "gotopage", label = _("Go to page"), run = send("ShowGotoDialog") }
     list[#list + 1] = { icon = "searchbook", label = _("Search book"), run = send("ShowFulltextSearchInput") }
+    -- the font (reflowing books), and the layout panel (size, margins, spacing…)
+    if ui.font and ui.font.face_table and ui.document and not ui.document.info.has_pages then
+        list[#list + 1] = { icon = "font", label = _("Font"), run = function() Panel.showFonts(ui) end }
+    end
+    list[#list + 1] = { icon = "layout", label = _("Layout"), run = send("ShowConfigMenu") }
     if ui.document and not ui.document.info.has_pages and ui.styletweak then
         local PB = require("gzreader_picturebook")
         local item = PB.menuItem(ui)
@@ -216,6 +221,35 @@ function Panel.bookTiles(plugin, ui)
     local m = musicTile(plugin)
     if m then list[#list + 1] = m end
     return list
+end
+
+--- The fonts, as a list (the one in use ticked): picking one sets it.
+--- (KOReader's font menu, outside its top menu: letter keys, the 5-way, taps.)
+function Panel.showFonts(ui)
+    local face_table = ui.font.face_table
+    if face_table.needs_refresh and face_table.refresh_func then face_table = face_table.refresh_func() end
+    local items, current = {}, 1
+    for _i, it in ipairs(face_table) do
+        if it.menu_item_id and it.callback then
+            local on = it.checked_func and it.checked_func()
+            if on then current = #items + 1 end
+            items[#items + 1] = { text = it.text_func and it.text_func() or it.text or it.menu_item_id,
+                mandatory = on and "\u{2713}" or nil, gz_run = it.callback }
+        end
+    end
+    local menu
+    menu = Menu:new{ title = _("Font"), item_table = items, covers_fullscreen = true, is_borderless = true,
+        width = Screen:getWidth(), height = Screen:getHeight(),
+        is_popout = false, title_bar_fm_style = true,
+        onMenuSelect = function(_m, item)
+            UIManager:close(menu)
+            if item.gz_run then UIManager:nextTick(item.gz_run) end
+            return true
+        end }
+    -- open at the page with the font in use
+    pcall(function() menu:onGotoPage(math.ceil(current / menu.perpage)) end)
+    UIManager:show(menu)
+    return menu
 end
 
 ---------------------------------------------------------------- the panel

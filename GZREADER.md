@@ -402,8 +402,9 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
   History, View, Sort and Music.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
-  Bookmarks, Go to page, Search book, Fit pictures, Read aloud and Music. Fonts
-  and layout are in the reader's own menu (tap the top of the page).
+  Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
+  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud and
+  Music.
 
 On a touch Kindle with a frontlight the panel also has a light slider (tap or
 drag it; − and + step), and
@@ -423,7 +424,7 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
 | Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). |
-| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, fit pictures, read aloud, music. |
+| Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, font, layout, fit pictures, read aloud, music. |
 | Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |

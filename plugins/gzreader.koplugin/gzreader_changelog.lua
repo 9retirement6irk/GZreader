@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.20.1",
+        changes = {
+            "Quick panel, in a book: Font (the list of fonts, the one in use ticked) and Layout (size, margins, spacing) tiles, so every Kindle reaches them now that More is gone, the Kindle 4 too.",
+        },
+    },
+    {
         version = "1.20.0",
         changes = {
             "Home's reading stats come from Grimmory: reading time and books this week, day streak, longest streak, days read, sessions this month, books finished this year, counted over every device that reads with your account. Pick any three in Settings → Home → Widgets → Grimmory reading stats. The earlier widget is now Local reading stats (this Kindle only) and can be turned back on there.",
