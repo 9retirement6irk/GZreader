@@ -561,14 +561,35 @@ function Grimmory:shareLog()
     local filename = dest:match("[^/]+$")
     local token = Mod.PairServer.randomToken(16)
     local base = "/log/" .. token
-    local server, screen, timeout_task, done
+    -- typed into a browser: just the IP (port 80 where it can be used) and
+    -- the PIN on the screen, like setup's page (gzreader_phone.lua)
+    local pin, pin_tries = require("gzreader_spake").pin(), 0
+    local PairPage = require("gzreader_pairpage")
+    local Phone = require("gzreader_phone")
+    local server, server80, screen, timeout_task, done
     local function finish()
         if done then return end
         done = true
         if timeout_task then UIManager:unschedule(timeout_task) end
         if server then UIManager:removeZMQ(server); server:stop() end
+        if server80 then UIManager:removeZMQ(server80); server80:stop() end
         if screen then UIManager:close(screen) end
         self.pairing = nil
+    end
+    local function pinPage(method, body)
+        local st = { log = true, tries_left = Phone.PIN_TRIES - pin_tries, off = pin_tries >= Phone.PIN_TRIES }
+        if method == "GET" or st.off then return 200, "text/html", PairPage.pin(st) end
+        if method ~= "POST" then return 405, "text/plain", "Method not allowed" end
+        local typed = tostring(Mod.PairServer.parseForm(body).pin or ""):gsub("%D", "")
+        if Phone.samePin(typed, pin) then
+            Log.info("log page: PIN accepted")
+            return 303, "text/plain", base
+        end
+        pin_tries = pin_tries + 1
+        Log.info("log page: wrong PIN", pin_tries, "of", Phone.PIN_TRIES)
+        st.tries_left, st.off, st.wrong = Phone.PIN_TRIES - pin_tries, pin_tries >= Phone.PIN_TRIES, true
+        if st.off and screen and screen.setPin then screen:setPin(nil, _("PIN off: 5 wrong tries")) end
+        return 200, "text/html", PairPage.pin(st)
     end
     local page = string.format([[<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>GZreader diagnostic log</title><style>body{font-family:system-ui,sans-serif;max-width:32em;margin:2em auto;padding:0 1em;line-height:1.5}
@@ -578,7 +599,8 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
 <p>Then attach the downloaded file wherever you need it, for example in your chat with Claude.</p></body></html>]],
         filename, math.ceil(#content / 1024), base, filename, filename)
     server = Mod.PairServer:new{
-        handler = function(method, path)
+        handler = function(method, path, _headers, body)
+            if path == "/" or path == "/pin" then return pinPage(method, body) end
             if method ~= "GET" then return 405, "text/plain", "Method not allowed" end
             if path == base then return 200, "text/html", page end
             if path == base .. "/" .. filename then
@@ -605,8 +627,23 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
     UIManager:insertZMQ(server)
     local url = T("http://%1:%2%3", ip, server.port, base)
     Log.info("sharing log on", T("http://%1:%2", ip, server.port))
+    local origin = T("http://%1:%2", ip, server.port)
+    local address = T("%1:%2", ip, server.port)
+    if Phone.PORT80 then
+        server80 = Mod.PairServer:new{ port = Phone.PORT80, exact_port = true, keep_wifi = false, handler = function()
+            return 302, "text/plain", origin .. "/"
+        end }
+        if server80:start() then
+            UIManager:insertZMQ(server80)
+            address = Phone.PORT80 == 80 and ip or T("%1:%2", ip, Phone.PORT80)
+        else
+            server80 = nil
+        end
+    end
     screen = Mod.PairScreen:new{
         url = url,
+        address = address,
+        pin = pin,
         title = _("Send the diagnostic log"),
         instructions = T(_("Scan this code with your phone and tap \"Download the log\".\n\nIt's also saved as %1."), dest),
         footer = _("Press Back when you're done."),
@@ -1304,7 +1341,11 @@ function Grimmory:onSuspend()
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
     local ok_ab, Audiobook = pcall(require, "gzreader_audiobook")
-    if ok_ab and Audiobook.current and Audiobook.current.playing then Audiobook.current:pause() end
+    if ok_ab and Audiobook.current then
+        -- (also one about to start, still asking Grimmory where it was)
+        Audiobook.current.pull_gen = (Audiobook.current.pull_gen or 0) + 1
+        if Audiobook.current.playing then Audiobook.current:pause() end
+    end
     if self.tts then self.tts:stop() end
     if self.sync then self.sync:onLeave() end
     self.suspended_at = os.time()

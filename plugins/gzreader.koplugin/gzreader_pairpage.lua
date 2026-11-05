@@ -67,9 +67,11 @@ function PairPage.pin(st)
             .. '<input id="pin" name="pin" class="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" required autofocus>'
             .. (st.wrong and ('<p class="err">That isn\'t the PIN. ' .. (st.tries_left == 1 and "1 try left." or (esc(st.tries_left) .. " tries left.")) .. "</p>") or "")
             .. '<button type="submit">Continue</button></form>'
-            .. '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while setup is open there (Send books in its quick panel).</p>'
+            .. (st.log and '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while it\'s sending the log.</p>'
+                or '<p class="note">The PIN is under the QR code on the Kindle\'s screen, while setup is open there (Send books in its quick panel).</p>')
     end
-    return shell("Kindle setup", "<h1>Set up your Kindle</h1>"
+    -- (st.log: the diagnostic log's page, GZreader → Send the diagnostic log)
+    return shell(st.log and "Diagnostic log" or "Kindle setup", (st.log and "<h1>Get the diagnostic log</h1>" or "<h1>Set up your Kindle</h1>")
         .. '<p class="sub">Enter the PIN shown on the Kindle\'s screen.</p>' .. inner)
 end
 

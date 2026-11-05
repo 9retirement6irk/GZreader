@@ -932,9 +932,13 @@ local function resolve_rows(dcfg)
         local row = { _home_units = units }
         -- GZreader: with the bookshelf, a smaller current book and a tall shelf
         -- (1.19: a little shorter, the stats on a notebook page a little taller)
+        -- (1.21.1: without the strip's controls, their room goes to the
+        -- book you're reading: a bigger cover, more of its description)
         local shelf = require("common/gz_view").stripShelf(modules.strip)
-        if shelf and id == "featured" then row.size, row._home_units = { units = 2.5 }, 2.5 end
-        if shelf and id == "strip" then row.size, row._home_units = { units = 4.25 }, 5.75 end
+        local sc = type(modules.strip) == "table" and modules.strip.controls
+        local spare = (type(sc) == "table" and sc.enabled == true) and 0 or 0.9
+        if shelf and id == "featured" then row.size, row._home_units = { units = 2.5 + spare }, 2.5 + spare end
+        if shelf and id == "strip" then row.size, row._home_units = { units = 4.25 - spare }, 5.75 - spare end
         if (id == "stats_triplet" or id == "grimmory_stats") and type(modules[id]) == "table"
                 and modules[id].stat_style == "notebook" then
             row.size, row._home_units = { units = shelf and 1.75 or 1.5 }, shelf and 1.75 or 1.5

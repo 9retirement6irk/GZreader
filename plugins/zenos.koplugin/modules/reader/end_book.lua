@@ -511,6 +511,11 @@ function EndBook:rebuild()
         end
         if id == "stats_triplet" and stats_label then ctx.height = math.max(1, row_height - stats_label_h) end
         local content = widget.build(ctx)
+        -- GZreader: a widget that doesn't report its bounds (Grimmory's reading
+        -- stats) took the end-of-book page down (its preview in Settings)
+        if type(content_bounds) ~= "table" then
+            content_bounds = { top = 0, bottom = row_height, min_shift = 0, max_shift = 0 }
+        end
         if id == "stats_triplet" and stats_label then
             content = VerticalGroup:new{
                 align = "center",

@@ -501,8 +501,10 @@ end
 
 --- Offer Grimmory's position when it differs from ours by more than a minute.
 function Player:pull(on_done)
-    if not (self.plugin.api:isPaired() and NetworkMgr:isConnected()) then return on_done() end
-    if not self._pulled then
+    -- (asked once: 1.21.0 and older asked again and again when Grimmory
+    -- didn't have the book any more, about once a second)
+    if self._pulled == nil and not (self.plugin.api:isPaired() and NetworkMgr:isConnected()) then return on_done() end
+    if self._pulled == nil then
         return require("gzreader_async").call(self.plugin.api, "getBook", { self.book.id }, function(remote)
             self._pulled = remote or false
             self:pull(on_done)
@@ -624,6 +626,7 @@ end
 --- Kindle 3's sound pipeline doesn't come back from a suspended player, and a
 --- stopped one frees the sound device (read aloud can speak).
 function Player:pause()
+    self.pull_gen = (self.pull_gen or 0) + 1 -- (a start still on its way: not any more)
     if not self.playing then return end
     pcall(function() require("gzreader_jack").unwatch("audiobook") end)
     self.pos = self:globalPos()
@@ -1164,7 +1167,16 @@ function Audiobook.open(plugin, book)
     local screen = Screen:new{ player = p }
     UIManager:show(screen)
     if not p.playing and not p.paused then
-        p:pull(function() p:play(); screen:refresh() end)
+        -- (only if nothing happened meanwhile: the Kindle went to sleep, the
+        -- player was closed, Play was pressed; 1.21.0 started an audiobook
+        -- on a Kindle 3 while it slept)
+        local gen = (p.pull_gen or 0) + 1
+        p.pull_gen = gen
+        p:pull(function()
+            if p.pull_gen ~= gen or p.playing or Audiobook.current ~= p then return end
+            if UIManager.isWidgetShown and not UIManager:isWidgetShown(screen) then return end
+            p:play(); screen:refresh()
+        end)
     end
     return screen
 end

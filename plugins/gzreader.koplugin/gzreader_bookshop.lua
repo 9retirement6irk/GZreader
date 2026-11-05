@@ -63,11 +63,16 @@ end
 
 ---------------------------------------------------------------- when
 
+--- The Bookshelf view?
+function Shop.bookshelf()
+    local ok, on = pcall(function() return require("common/gz_view").isBookshelf() end)
+    return ok and on == true
+end
+
 --- The Grimmory tab's root in the bookshelf view?
 function Shop.applies(m)
     if type(m) ~= "table" or type(m.item_table) ~= "table" or not m.item_table.gz_root then return false end
-    local ok, on = pcall(function() return require("common/gz_view").isBookshelf() end)
-    return ok and on == true
+    return Shop.bookshelf()
 end
 
 ---------------------------------------------------------------- where things go
@@ -137,7 +142,8 @@ function Shop.compartments(audio)
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        audio and { id = "audiobooks", kind = "tapes" } or { id = "downloaded", kind = "downloaded" },
+        -- (no speaker: no audiobooks; an empty compartment, cobwebs in it)
+        audio and { id = "audiobooks", kind = "tapes" } or { kind = "empty" },
     }
 end
 
@@ -573,8 +579,8 @@ local function miniCover(bb, x, bottom, w, h, label)
     bb:paintBorder(x, bottom - h, w, h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
     Shelf().shadeRound(bb, x, bottom - h, S(5), h, 0.8)
     local TextBoxWidget = require("ui/widget/textboxwidget")
-    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", 8), bold = true, width = w - S(8),
-        fgcolor = Blitbuffer.COLOR_WHITE, height = h - S(8), height_adjust = true, height_overflow_show_ellipsis = true }
+    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", 9), bold = true, width = w - S(9),
+        fgcolor = Blitbuffer.COLOR_WHITE, bgcolor = gray(0.8), height = h - S(8), height_adjust = true, height_overflow_show_ellipsis = true }
     tb:paintTo(bb, x + S(6), bottom - h + S(4))
     tb:free()
     return x + w + S(6)
@@ -583,15 +589,16 @@ end
 --- What stands in a compartment, in the room left of its card.
 local function paintContents(bb, kind, room, info)
     local x, bottom, right, h = room.x, room.bottom, room.right, room.h
+    local sd = info.seed or "" -- (lists: each compartment its own books)
     local spans = {}
     if kind == "spines" then
-        local _, sp = spines(bb, x, bottom, right, h, "all")
+        local _, sp = spines(bb, x, bottom, right, h, sd .. "all")
         spans = sp
     elseif kind == "bookends" then
         local groups = math.max(1, math.min(3, info.libraries or 3))
         local per = math.max(2, math.floor(11 / groups))
         for g = 1, groups do
-            local nx, sp = spines(bb, x, bottom, right - S(12), h * 0.95, "lib" .. g, per)
+            local nx, sp = spines(bb, x, bottom, right - S(12), h * 0.95, sd .. "lib" .. g, per)
             for _i, s in ipairs(sp) do spans[#spans + 1] = s end
             x = nx + S(2)
             if g < groups and x + S(14) < right then x = bookend(bb, x, bottom, math.floor(h * 0.7)) end
@@ -599,13 +606,13 @@ local function paintContents(bb, kind, room, info)
     elseif kind == "faceout" then
         local cw = math.min(S(42), math.floor(h * 0.62))
         x = miniCover(bb, x, bottom, cw, math.floor(h * 0.86), info.shelf_name or _("Shelves"))
-        local _, sp = spines(bb, x, bottom, right, h * 0.95, "shelf")
+        local _, sp = spines(bb, x, bottom, right, h * 0.95, sd .. "shelf")
         spans = sp
     elseif kind == "dividers" then
         local letters = info.letters or { "A", "M" }
         for g, l in ipairs(letters) do
             x = divider(bb, x, bottom, math.floor(h * 0.98), l)
-            local nx, sp = spines(bb, x, bottom, right, h * 0.82, "au" .. g, 4)
+            local nx, sp = spines(bb, x, bottom, right, h * 0.82, sd .. "au" .. g, 4)
             for _i, s in ipairs(sp) do spans[#spans + 1] = s end
             x = nx + S(2)
         end
@@ -723,12 +730,10 @@ function Page:paintLedge(bb, ox, oy, i, L)
     paintLedge(bb, ledge)
 end
 
-function Page:paintCell(bb, ox, oy, k, L)
-    local menu = self.menu
-    local cell = L.cells[k]
-    local spec = self.cells[k]
-    if not spec then return end
-    local x, y, w, h = ox + cell.x, oy + cell.y, cell.w, cell.h
+--- A compartment of the bookcase (x, y, w, h): its back, its board, what
+--- stands in it and its card (spec = { kind, name, sub, letter, hot }).
+--- kind "empty": nothing, cobwebs in its corners.
+function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
     -- the back of the compartment, darker at the top (the shelf above's shadow)
     bb:paintRect(x, y, w, h, gray(0.1))
     for i = 0, S(6) - 1 do bb:darkenRect(x, y + i, w, 1, 0.4 * (1 - i / S(6))) end
@@ -736,25 +741,43 @@ function Page:paintCell(bb, ox, oy, k, L)
     local by = y + h - board_h
     for i = 0, board_h - 1 do bb:paintRect(x, by + i, w, 1, gray(0.62 - 0.2 * i / board_h)) end
     bb:paintRect(x, by, w, math.max(2, S(3)), gray(0.25))
+    if spec.kind == "empty" then
+        local Sh = Shelf()
+        local r = math.min(S(70), math.floor((h - board_h) * 0.75))
+        if Sh.cobweb then
+            Sh.cobweb(bb, x + 1, y + 1, 1, 1, r)
+            Sh.cobweb(bb, x + w - 2, by - 1, -1, -1, math.floor(r * 0.7))
+        end
+        return
+    end
     -- the card on the right
     local card_w = math.min(S(118), math.floor(w * 0.44))
     local card_h = math.min(h - S(18), S(62))
     local cx, cy = x + w - card_w - S(6), by - card_h
     -- what stands in it, left of the card
-    paintContents(bb, spec.kind, { x = x + S(8), bottom = by, right = cx - S(8), h = math.min(h - S(12), S(70)) }, self.info)
+    paintContents(bb, spec.kind, { x = x + S(8), bottom = by, right = cx - S(8), h = math.min(h - S(12), S(70)) }, info or {})
     bb:paintRect(cx + S(3), cy + S(3), card_w, card_h, gray(0.35))
     bb:paintRect(cx, cy, card_w, card_h, Blitbuffer.COLOR_WHITE)
     bb:paintBorder(cx, cy, card_w, card_h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
     clip(bb, cx + math.floor(card_w / 2), cy, S(20))
-    local name_sz = text(bb, spec.name, hand(19), cx + S(7), cy + S(4), { max_width = card_w - S(12) })
+    local name_sz = text(bb, spec.name or "", hand(19), cx + S(7), cy + S(4), { max_width = card_w - S(12) })
     local side = (spec.letter and menu.is_enable_shortcut) and S(20) or 0
-    text(bb, spec.sub, Font:getFace("cfont", 10), cx + S(7), cy + S(5) + name_sz.h,
+    text(bb, spec.sub or "", Font:getFace("cfont", 10), cx + S(7), cy + S(5) + name_sz.h,
         { color = gray(0.8), max_width = card_w - S(12) - (side > 0 and side + S(4) or 0) })
     if side > 0 then badge(bb, menu, spec.letter, cx + card_w - side - S(5), cy + card_h - side - S(5), side) end
-    spec.hot.dimen = Geom:new{ x = x, y = y, w = w, h = h }
-    if spec.hot.focused then
-        bb:paintBorder(cx - S(4), cy - S(4), card_w + S(8), card_h + S(8), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+    if spec.hot then
+        spec.hot.dimen = Geom:new{ x = x, y = y, w = w, h = h }
+        if spec.hot.focused then
+            bb:paintBorder(cx - S(4), cy - S(4), card_w + S(8), card_h + S(8), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+        end
     end
+end
+
+function Page:paintCell(bb, ox, oy, k, L)
+    local cell = L.cells[k]
+    local spec = self.cells[k]
+    if not spec then return end
+    Shop.paintCompartment(bb, self.menu, ox + cell.x, oy + cell.y, cell.w, cell.h, spec, self.info)
 end
 
 function Page:paintTo(bb, x, y)
@@ -792,6 +815,16 @@ function Page:paintTo(bb, x, y)
     for i = 0, c.top - 1 do bb:paintRect(cx - S(2), cy + i, c.w + S(4), 1, gray(0.7 + 0.15 * i / c.top)) end
     for k = 1, #L.cells do self:paintCell(bb, x, y, k, L) end
 end
+
+---------------------------------------------------------------- shared with the lists' views
+
+Shop.Hot = Hot
+Shop.draw = {
+    gray = gray, text = text, badge = badge, focusRing = focusRing, clip = clip, wall = paintWall,
+    sign = paintSign, ledge = paintLedge, ribbon = ribbon, bundle = paintBundle, spine = spine,
+    spines = spines, flatPile = flatPile, tapePile = tapePile, cassette = cassette, cover = coverImage,
+    hand = hand, hash = hash,
+}
 
 ---------------------------------------------------------------- building it
 
@@ -910,13 +943,15 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local audio = by.audiobooks ~= nil
     local row
     for k, comp in ipairs(Shop.compartments(audio)) do
-        local root = by[comp.id]
-        local spec = { kind = comp.kind, name = names[comp.id], sub = Shop.cardText(comp.id, known),
-            letter = root and letterOf(m, root.idx) }
-        spec.hot = hot(root and root.entry)
+        local spec = { kind = comp.kind }
+        if comp.id then
+            local root = by[comp.id]
+            spec.name, spec.sub, spec.letter = names[comp.id], Shop.cardText(comp.id, known), root and letterOf(m, root.idx)
+            spec.hot = hot(root and root.entry)
+        end
         page.cells[k] = spec
         if k % 2 == 1 then row = {}; m.layout[#m.layout + 1] = row end
-        row[#row + 1] = spec.hot
+        if spec.hot then row[#row + 1] = spec.hot end
     end
     page.L = L
     table.insert(m.item_group, page)
@@ -962,6 +997,17 @@ function Shop.apply(browser)
             end
         end
         menu._gz_shop = nil
+        -- the lists: in the bookshop's style too (gzreader_shopviews.lua)
+        local kind = Shop.bookshelf() and not menu._gz_view_failed and require("gzreader_shopviews").kindOf(menu.item_table)
+        if kind then
+            local ok, res = pcall(require("gzreader_shopviews").build, menu, browser, kind, select_number, no_recalculate_dimen)
+            if ok and res then return end
+            if not ok then
+                require("gzreader_log").warn("bookshop list:", tostring(res))
+                menu._gz_view_failed = true
+            end
+        end
+        menu._gz_view = nil
         return orig_update(menu, select_number, no_recalculate_dimen)
     end
     -- what's opened from it (a tap, Press or its letter): back from it, the

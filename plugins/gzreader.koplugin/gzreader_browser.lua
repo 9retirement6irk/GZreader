@@ -27,7 +27,7 @@ Browser.__index = Browser
 
 -- what GZreader uses of a book (Grimmory sends ~40 fields: ratings, tags…)
 local BOOK_FIELDS = { "id", "title", "authors", "primaryFileType", "primaryFileName", "primaryFileId",
-    "fileSizeKb", "readProgress", "seriesName", "seriesNumber", "coverUpdatedOn", "libraryId", "isPhysical" }
+    "fileSizeKb", "readProgress", "seriesName", "seriesNumber", "coverUpdatedOn", "libraryId", "isPhysical", "personalRating" }
 local function slim(book)
     local out = {}
     for _i, k in ipairs(BOOK_FIELDS) do out[k] = book[k] end
@@ -178,7 +178,7 @@ end
 function Browser:rootItems()
     return {
         gz_root = true,
-        { gz_id = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
+        { gz_id = "search", gz_action = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
         { gz_id = "continue", text = _("Continue reading"), callback = function() self:openSimple("continue-reading", _("Continue reading")) end },
         { gz_id = "recent", text = _("Recently added"), callback = function() self:openSimple("recently-added", _("Recently added")) end },
         { gz_id = "all", text = _("All books (A–Z)"), callback = function() self:openPaged(_("All books"), { sort = "title", dir = "asc" }) end },
@@ -316,7 +316,7 @@ function Browser:pagedItems(st)
     local n_header = #items
     if st.first > 0 then
         items[#items + 1] = {
-            text = T(_("Earlier books (page %1 of %2)…"), st.first, st.total or "?"),
+            text = T(_("Earlier books (page %1 of %2)…"), st.first, st.total or "?"), gz_action = "earlier",
             callback = function() self:loadPage(st, st.first - 1) end,
         }
     end
@@ -325,7 +325,7 @@ function Browser:pagedItems(st)
     end
     if st.next_of[st.last] then
         items[#items + 1] = {
-            text = T(_("Load more (page %1 of %2)…"), st.last + 2, st.total or "?"),
+            text = T(_("Load more (page %1 of %2)…"), st.last + 2, st.total or "?"), gz_action = "more",
             callback = function() self:loadPage(st, st.last + 1) end,
         }
     end
@@ -422,6 +422,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
         local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors
         local scope = scoped and { title = title, params = params } or nil
         header = { {
+            gz_action = "search",
             text = scope and T(_("Search in %1…"), title) or _("Search Grimmory…"),
             callback = function() self:promptSearch(scope) end,
         } }
@@ -461,6 +462,7 @@ end
 
 local function refreshItem(self, reopen)
     return {
+        gz_action = "refresh",
         text = _("Refresh list from Grimmory"),
         callback = function()
             Index.build(self.plugin, true, function(data, err)
@@ -493,6 +495,7 @@ function Browser:openLibraries()
                         items[#items + 1] = {
                             text = name,
                             sort_key = name:lower(),
+                            gz_kind = "library", gz_count = n, -- (the bookshelf view: gzreader_shopviews.lua)
                             mandatory = countText(n),
                             callback = function()
                                 self:openPaged(name, { libraryId = lib.id, sort = "title", dir = "asc" })
@@ -520,6 +523,7 @@ function Browser:openShelves()
                     items[#items + 1] = {
                         text = name,
                         sort_key = (sh.magic and "1" or "0") .. name:lower(),
+                        gz_kind = "shelf", gz_magic = sh.magic and true or nil, gz_count = tonumber(sh.bookCount),
                         mandatory = sh.magic and _("smart shelf") or countText(sh.bookCount),
                         callback = function()
                             local params = { sort = "title", dir = "asc" }
@@ -543,6 +547,7 @@ function Browser:openAuthors(search, replace)
                 items[#items + 1] = {
                     text = name,
                     sort_key = name:lower(),
+                    gz_kind = "author", gz_count = n,
                     mandatory = countText(n),
                     callback = function()
                         self:openPaged(name, { authors = name, sort = "title", dir = "asc" })
@@ -552,7 +557,7 @@ function Browser:openAuthors(search, replace)
         end
         sortedByName(items)
         if not search then
-            table.insert(items, 1, { text = _("Search authors…"), callback = function() self:promptAuthorSearch() end })
+            table.insert(items, 1, { gz_action = "search", text = _("Search authors…"), callback = function() self:promptAuthorSearch() end })
             table.insert(items, 2, refreshItem(self, function() self:openAuthors() end))
         end
         local title = search and T(_("Authors: %1"), search) or _("Authors")
@@ -588,6 +593,7 @@ function Browser:openSeries(search)
                 items[#items + 1] = {
                     text = authors ~= "" and (name .. " — " .. authors) or name,
                     sort_key = name:lower(),
+                    gz_kind = "series", gz_name = name, gz_authors = authors, gz_count = s.count,
                     mandatory = countText(s.count),
                     callback = function()
                         -- filter rather than /series/{name}/books: names can contain "/"
@@ -600,7 +606,7 @@ function Browser:openSeries(search)
         if search then
             self:push(T(_("Series: %1"), search), items)
         else
-            table.insert(items, 1, { text = _("Search series…"), callback = function() self:promptSeriesSearch() end })
+            table.insert(items, 1, { gz_action = "search", text = _("Search series…"), callback = function() self:promptSeriesSearch() end })
             table.insert(items, 2, refreshItem(self, function() self:openSeries() end))
             self:push(_("Series"), items)
         end
@@ -656,7 +662,7 @@ function Browser:search(q, scope)
     local title = scope and T(_("%1: “%2”"), scope.title, q) or T(_("Search: %1"), q)
     self:openPaged(title, params, false, {
         search = q,
-        header = { { text = _("Search again…"), callback = function() self:promptSearch(scope, q) end } },
+        header = { { gz_action = "search", text = _("Search again…"), callback = function() self:promptSearch(scope, q) end } },
         empty_text = T(_("No books match “%1”."), q),
     })
 end

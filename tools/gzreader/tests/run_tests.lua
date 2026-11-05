@@ -573,8 +573,8 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments(true)[6].id == "audiobooks" and Shop.compartments(false)[6].id == "downloaded",
-        "compartments: Audiobooks with a speaker, Downloaded books without")
+    check(Shop.compartments(true)[6].id == "audiobooks" and Shop.compartments(false)[6].id == nil and Shop.compartments(false)[6].kind == "empty",
+        "compartments: Audiobooks with a speaker, an empty one (cobwebs) without")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
         index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = {} } },
@@ -590,6 +590,35 @@ do
     check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
         "cards: a magic shelf's rules are never shown")
     check(Shop.cardText("all", {}) == "A–Z" and Shop.cardText("shelves", {}) == "yours and magic", "cards: nothing kept yet")
+    -- the lists opened from it, in its style
+    local saved_w = {}
+    for _i, m in ipairs(widget_mods) do
+        saved_w[m] = package.loaded[m]
+        if type(saved_w[m]) ~= "table" then package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Views = require("gzreader_shopviews")
+    for _i, m in ipairs(widget_mods) do package.loaded[m] = saved_w[m] end
+    check(Views.kindOf({ { text = "Search…", gz_action = "search" }, { book = { id = 1 } } }) == "ledges"
+        and Views.kindOf({ { book = { id = 1 }, cover_kind = "audiobook" } }) == "tapes"
+        and Views.kindOf({ { gz_kind = "series" } }) == "piles" and Views.kindOf({ { gz_kind = "author" } }) == "bay"
+        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil,
+        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments")
+    check(Views.headerCount({ { gz_action = "search" }, { gz_action = "refresh" }, { gz_kind = "author" } }) == 2
+        and Views.headerCount({ { gz_kind = "author" }, { gz_action = "search" } }) == 0, "lists: search and refresh above the list")
+    local vfits = true
+    for _i, kind in ipairs({ "ledges", "bay", "piles", "tapes" }) do
+        for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 } }) do
+            local L = Views.layout(kind, size[1], size[2], true, one)
+            local ok = L.fits and #L.slots >= 4
+            for _k, sl in ipairs(L.slots) do ok = ok and sl.x >= 0 and sl.x + sl.w <= size[1] and sl.y >= L.band.y + L.band.h and sl.y + sl.h <= size[2] end
+            if not ok then vfits = false; print("  (" .. kind .. " doesn't fit at " .. size[1] .. "x" .. size[2] .. ")") end
+        end
+    end
+    check(vfits, "lists: their places fit the page, below the search")
+    check(Views.bookLabel({ personalRating = 8 }) == "★★★★☆" and Views.bookLabel({ readProgress = 33.6 }) == "34%"
+        and Views.bookLabel({}) == nil, "a book's label: your stars, else how far you are")
+    check(Views.cardOf({ gz_kind = "shelf", gz_magic = true, mandatory = "smart shelf" }) == "magic shelf"
+        and Views.cardOf({ gz_kind = "author", gz_count = 3 }) == "3 books", "a compartment's card: a magic shelf says so, nothing more")
     local books = Shop.ledgeBooks({ { id = 1, primaryFileType = "EPUB" }, { id = 2, primaryFileType = "AUDIOBOOK" }, "junk", { id = 3, primaryFileType = "PDF" } }, Browser.isReadable)
     check(#books == 2 and books[1].id == 1 and books[2].id == 3, "ledges: readable books only, in order")
 end

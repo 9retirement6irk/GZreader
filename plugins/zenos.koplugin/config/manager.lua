@@ -996,22 +996,8 @@ local function migrate_home_strip_config()
     if type(HomePresets.normalizeStripConfig) ~= "function" then return false end
     local store = PresetStore.loadStore("home")
     local changed = HomePresets.normalizeStripConfig(store.settings)
-    local active_preset = type(store.settings) == "table"
-        and store.settings.active_preset or nil
-    if type(active_preset) ~= "string" or active_preset == "" then
-        active_preset = store.active_preset
-    end
-    local strip = type(store.settings) == "table"
-        and type(store.settings.modules) == "table"
-        and store.settings.modules.strip or nil
-    if (active_preset == HomePresets.DEFAULT_PRESET_NAME
-                or active_preset == HomePresets.BOOKSHELF_PRESET_NAME)
-            and type(strip) == "table"
-            and type(strip.controls) == "table"
-            and strip.controls.enabled ~= true then
-        strip.controls.enabled = true
-        changed = true
-    end
+    -- (GZreader 1.21.1: the presets' strip controls are no longer turned
+    -- back on here: they're off by default, and stay as you set them)
     for _name, preset in pairs(store.presets) do
         local page = type(preset) == "table" and (preset.home_page or preset)
         if HomePresets.normalizeStripConfig(page) then changed = true end
@@ -1032,6 +1018,20 @@ local function migrate_home_gz_shelf()
     if strip and strip.shelf == nil then strip.shelf = true end
     local stats = modules and type(modules.stats_triplet) == "table" and modules.stats_triplet or nil
     if stats and (stats.stat_style == nil or stats.stat_style == "divider") then stats.stat_style = "notebook" end
+    return PresetStore.saveStore("home", store)
+end
+
+-- GZreader 1.21.1: the book strip's controls off, once (their room goes to
+-- the book you're reading); Settings → Home → Widgets → Book strip →
+-- Controls turns them back on.
+local function migrate_home_gz_strip_controls()
+    local store = PresetStore.loadStore("home")
+    local settings = type(store.settings) == "table" and store.settings or nil
+    if not settings or settings.gz_strip_controls_migrated == true then return false end
+    settings.gz_strip_controls_migrated = true
+    local modules = type(settings.modules) == "table" and settings.modules or nil
+    local strip = modules and type(modules.strip) == "table" and modules.strip or nil
+    if strip and type(strip.controls) == "table" then strip.controls.enabled = false end
     return PresetStore.saveStore("home", store)
 end
 
@@ -1115,6 +1115,9 @@ local function migrate_settings_files()
         changed = true
     end
     if migrate_home_gz_grimmory_stats() then
+        changed = true
+    end
+    if migrate_home_gz_strip_controls() then
         changed = true
     end
     if migrate_home_layout_grid() then

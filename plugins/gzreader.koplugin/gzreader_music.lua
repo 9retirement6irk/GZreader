@@ -351,6 +351,7 @@ function Player:play()
         return true
     end
     self.waiting = nil
+    self.skipped = 0
     local src, fmt = self:source(t, self.pos)
     local p = Engine.chosen(fmt)
     if not p then
@@ -473,7 +474,17 @@ function Player:tick()
         self:refreshTracks()
         if Music.trackReady(self.c, self:track()) then return self:play() end
         if not Music.downloads[self.c.dir] then
-            -- the download stopped without it: skip it
+            -- the download stopped without it: skip it (once round the
+            -- list at most: 1.21.0 went round and round, every 2 s)
+            self.skipped = (self.skipped or 0) + 1
+            if self.skipped >= #(self.c.tracks or {}) then
+                Log.warn("music: none of the tracks are on the Kindle, stopping")
+                self.skipped = 0
+                self.waiting = nil
+                self:stop()
+                UIManager:show(InfoMessage:new{ text = _("None of these tracks are on the Kindle. Download the album again."), timeout = 5 })
+                return
+            end
             Log.warn("music: track never arrived, skipping")
             return self:step(1)
         end

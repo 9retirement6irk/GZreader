@@ -157,7 +157,7 @@ local DEFAULT_HOME_PAGE = {
             stat_style = "notebook", -- GZreader
         },
         grimmory_stats = { automatic_font_size = true, max_font_size = 18, stat_style = "notebook" },
-        strip = strip_defaults{ controls = true },
+        strip = strip_defaults{ controls = false }, -- GZreader 1.21.1: off (more room for the book you're reading)
     },
     quotes = {
         automatic_font_size = true,
@@ -234,7 +234,7 @@ local BOOKSHELF_HOME_PAGE = {
             stat_style = "notebook", -- GZreader
         },
         grimmory_stats = { automatic_font_size = true, max_font_size = 18, stat_style = "notebook" },
-        strip = strip_defaults{ count = 8, controls = true, two_rows = true },
+        strip = strip_defaults{ count = 8, controls = false, two_rows = true }, -- GZreader 1.21.1
     },
     quotes = {
         automatic_font_size = true,

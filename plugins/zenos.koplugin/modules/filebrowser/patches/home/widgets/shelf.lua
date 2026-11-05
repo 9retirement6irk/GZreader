@@ -300,6 +300,8 @@ local function cobweb(bb, ax, ay, sx, sy, r)
     end
 end
 
+M.cobweb = cobweb -- (GZreader's Grimmory tab: an empty compartment)
+
 ---------------------------------------------------------------- a shelf
 
 local Shelf = WidgetContainer:extend{ w = 0, h = 0 }

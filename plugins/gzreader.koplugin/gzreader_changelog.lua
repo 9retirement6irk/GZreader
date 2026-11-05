@@ -2,6 +2,18 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.21.1",
+        changes = {
+            "The Grimmory tab's lists look like its bookshop too (in the Bookshelf view): books face out on display ledges with a label under each (its letter, your stars or how far you are), a ribbon in the ones you're reading, a tick on the finished ones, ON KINDLE on the downloaded ones; libraries, shelves and authors in bookcase compartments with cards; series as piles of books lying flat; audiobooks as a rack of cassette spines. Search and Refresh are a slip and a sign at the top.",
+            "On Kindles without a speaker the bookshop's sixth compartment is empty, with cobwebs.",
+            "Home: the book strip's controls are off by default, and their room goes to the book you're reading (a bigger cover, more of its description). Settings → Home → Widgets → Book strip → Controls brings them back, and they stay as you set them.",
+            "Fixed: an audiobook whose book was removed from Grimmory asked Grimmory for it about once a second while its player was open, and could start playing after the Kindle went to sleep.",
+            "Fixed: music went round and round its track list (every 2 s) when none of the tracks had been downloaded; it now stops and says so.",
+            "Fixed: Settings → End of book's preview closed KOReader when Grimmory reading stats were on that page.",
+            "Send the diagnostic log: like setup's page, its address is just the Kindle's IP (with the PIN on the screen), besides the QR code.",
+        },
+    },
+    {
         version = "1.21.0",
         changes = {
             "The Grimmory tab is a bookshop in the Bookshelf view: a search slip pinned at the top, Continue reading and Recently added as covers on display ledges (a ribbon and how far you are, or a NEW tag), each ending in a tied bundle of spines that opens the whole list, and a bookcase below with a compartment for All books, Libraries, Shelves, Authors, Series and Audiobooks (Downloaded books on Kindles without a speaker).",
