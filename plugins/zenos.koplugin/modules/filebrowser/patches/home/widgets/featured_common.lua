@@ -287,7 +287,10 @@ function M.build(ctx, source_key)
     local text_w = math.max(1, width - cover_col_w - gap)
 
     -- Fonts
-    local scale = clamp(math.max(1, cover_actual_h or col_h) / 300, 0.55, 1.28)
+    -- GZreader: the cover's height in the screen's own units (was in pixels:
+    -- a Kindle 3's 167 dpi cover came out at 0.77, its text a third smaller
+    -- than on a Paperwhite; 168 units are 300 px on a Paperwhite, as before)
+    local scale = clamp(math.max(1, cover_actual_h or col_h) / Screen:scaleBySize(168), 0.55, 1.28)
     local detail_scale = ctx.showBookStatus and scale * 2 or scale
     local title_style = text_style(module_cfg, "title")
     local author_style = text_style(module_cfg, "author")

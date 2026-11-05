@@ -31,7 +31,8 @@ end
 
 ---------------------------------------------------------------- a key
 
-local Key = InputContainer:extend{ w = 100, h = 48, label = "", icon = nil, icon_after = false, letter = nil, down = false, shape = "key", callback = nil, font_size = 15 }
+local Key = InputContainer:extend{ w = 100, h = 48, label = "", icon = nil, icon_after = false, letter = nil, down = false, shape = "key", callback = nil, font_size = 15,
+    focused = false } -- (focused: the 5-way is on it, a black ring round it)
 Skeuo.Key = Key
 
 function Key:init()
@@ -109,6 +110,10 @@ function Key:paintTo(bb, x, y)
         fillRounded(bb, x, by, w, h, r, function(t) return 0.03 + 0.30 * t * t end)
     end
     bb:paintBorder(x, by, w, h, math.max(1, S(2)), Blitbuffer.gray(0.85), r)
+    if self.focused then
+        local o = math.max(2, S(3))
+        bb:paintBorder(x - o, by - o, w + 2 * o, h + 2 * o + (self.down and 0 or depth), math.max(2, S(3)), Blitbuffer.COLOR_BLACK, r + o)
+    end
     -- the letter, then the label (a symbol and/or text)
     local lx, side = x, 0
     if self.letter then
@@ -153,7 +158,7 @@ end
 ---------------------------------------------------------------- a dial
 
 local Dial = InputContainer:extend{ w = 160, h = 56, value = 0, max = 10, label = "", value_text = nil,
-    minus = nil, plus = nil, letters = nil }
+    minus = nil, plus = nil, letters = nil, focused = nil } -- (focused: "minus" or "plus", ringed)
 Skeuo.Dial = Dial
 
 function Dial:init()
@@ -199,10 +204,25 @@ function Dial:paintTo(bb, x, y)
     v:paintTo(bb, tx, top)
     l:paintTo(bb, tx, top + vh)
     v:free(); l:free()
-    local marks = self.letters and (self.letters[1] .. " \u{2212}   " .. self.letters[2] .. " +") or "\u{2212}   +"
-    local m = TextWidget:new{ text = marks, face = Font:getFace("cfont", 13), bold = true, fgcolor = Blitbuffer.gray(0.7) }
-    m:paintTo(bb, x + w - m:getSize().w - S(8), y + math.floor((h - m:getSize().h) / 2))
-    m:free()
+    -- − and + (with their letters), each in its own place so the 5-way's ring can sit round one
+    local function mark(text, focused)
+        return TextWidget:new{ text = text, face = Font:getFace("cfont", focused and 16 or 13), bold = true,
+            fgcolor = focused and Blitbuffer.COLOR_BLACK or Blitbuffer.gray(0.7) }
+    end
+    local mm = mark(self.letters and (self.letters[1] .. " \u{2212}") or "\u{2212}", self.focused == "minus")
+    local mp = mark(self.letters and (self.letters[2] .. " +") or "+", self.focused == "plus")
+    local pad = S(8)
+    local px = x + w - mp:getSize().w - S(10)
+    local mx = px - S(18) - mm:getSize().w
+    for _i, it in ipairs({ { mm, mx, self.focused == "minus" }, { mp, px, self.focused == "plus" } }) do
+        local tw, th = it[1]:getSize().w, it[1]:getSize().h
+        local ty = y + math.floor((h - th) / 2)
+        it[1]:paintTo(bb, it[2], ty)
+        if it[3] then
+            bb:paintBorder(it[2] - pad, ty - S(3), tw + 2 * pad, th + S(6), math.max(2, S(3)), Blitbuffer.COLOR_BLACK, S(4))
+        end
+        it[1]:free()
+    end
 end
 
 ---------------------------------------------------------------- a CD case's spine

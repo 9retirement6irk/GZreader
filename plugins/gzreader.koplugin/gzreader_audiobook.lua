@@ -821,8 +821,32 @@ Audiobook.Screen = Screen
     [Q Chapters] [W Sleep: off]  [E Stop]
     [A Quieter]  Volume 10 / 15  [S Louder]
 
-    ◀ ▶ 30 s · ▲ ▼ chapter · Press: play / pause · Back: close (keeps playing)
+    5-way: from key to key (it starts on play / pause) · Press: that key
+    · D: about this book · Back: close (keeps playing)
+    (Kindles with a 5-way and no touch screen; on the others ◀ ▶ skip 30 s
+    and ▲ ▼ change chapter)
 ]]
+
+--- The 5-way moves between the keys (Kindle 2, 3, 4, DX: no touch screen).
+local function fiveWay() return Device:hasDPad() and not Device:isTouchDevice() end
+Screen.ROWS = { 5, 3, 2 }   -- transport · chapters / sleep / stop · volume − +
+
+--- The focus after an arrow (pure: run_tests.lua): rows of different
+--- lengths keep it where it was across the screen.
+function Screen.move(focus, dir, rows)
+    rows = rows or Screen.ROWS
+    local r, c = focus[1], focus[2]
+    if dir == "Left" then c = math.max(1, c - 1)
+    elseif dir == "Right" then c = math.min(rows[r], c + 1)
+    elseif dir == "Up" or dir == "Down" then
+        local nr = math.max(1, math.min(#rows, r + (dir == "Up" and -1 or 1)))
+        if nr ~= r then
+            c = math.min(rows[nr], math.floor((c - 0.5) * rows[nr] / rows[r]) + 1)
+            r = nr
+        end
+    end
+    return { r, c }
+end
 
 function Screen:init()
     screenWidgets()
@@ -844,6 +868,14 @@ function Screen:init()
         Description = { { "D" } },
         Close = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
     }
+    if fiveWay() then
+        -- the 5-way goes from key to key; Press uses the one it's on (play / pause to start)
+        self.key_events.Back30, self.key_events.Fwd30, self.key_events.PrevChapter, self.key_events.NextChapter = nil, nil, nil, nil
+        self.key_events.Toggle = { { " " } }
+        self.key_events.FocusMove = { { { "Left", "Right", "Up", "Down" } } }
+        self.key_events.FocusPress = { { "Press" } }
+        self.focus = self.focus or { 1, 3 }
+    end
     self.player.screen = self
     self:loadCover()
     self:build()
@@ -958,31 +990,36 @@ function Screen:build()
         for k, d in ipairs(defs) do
             if k > 1 then rowg[#rowg + 1] = HorizontalSpan:new{ width = gapw } end
             rowg[#rowg + 1] = Skeuo.Key:new{ w = kw, h = h, label = d[1], letter = d[2] and Touch.keys() and d[2] or nil,
-                down = d[4] and true or false, callback = d[3], font_size = d[5] or 15, icon = d.icon, icon_after = d.after }
+                down = d[4] and true or false, callback = d[3], font_size = d[5] or 15, icon = d.icon, icon_after = d.after,
+                focused = self.focus ~= nil and self.focus[1] == d.row and self.focus[2] == k }
+            if d.row then self.actions[d.row] = self.actions[d.row] or {}; self.actions[d.row][k] = d[3] end
         end
         return rowg
     end
     local kh = Device.screen:scaleBySize(50)
+    self.actions = {}
     add(keys({
-        { "", nil, function() self:onPrevChapter() end, icon = "prev" },
-        { "30 s", nil, function() self:onBack30() end, false, 14, icon = "rew" },
-        { "", nil, function() self:onToggle() end, p.playing, icon = p.playing and "pause" or "play" },
-        { "30 s", nil, function() self:onFwd30() end, false, 14, icon = "ffwd", after = true },
-        { "", nil, function() self:onNextChapter() end, icon = "next" },
+        { "", nil, function() self:onPrevChapter() end, icon = "prev", row = 1 },
+        { "30 s", nil, function() self:onBack30() end, false, 14, icon = "rew", row = 1 },
+        { "", nil, function() self:onToggle() end, p.playing, icon = p.playing and "pause" or "play", row = 1 },
+        { "30 s", nil, function() self:onFwd30() end, false, 14, icon = "ffwd", after = true, row = 1 },
+        { "", nil, function() self:onNextChapter() end, icon = "next", row = 1 },
     }, kh))
     gap(10)
     local sleep_label = p.sleep_end_of_chapter and _("Sleep: chapter")
         or (p.sleep_at and T(_("Sleep: %1 min"), math.max(1, math.ceil((p.sleep_at - os.time()) / 60))))
         or _("Sleep: off")
     add(keys({
-        { _("Chapters"), "Q", function() self:onChapters() end },
-        { sleep_label, "W", function() self:onSleep() end, p.sleep_at ~= nil or p.sleep_end_of_chapter },
-        { _("Stop"), "E", function() self:onStopClose() end, icon = "stop" },
+        { _("Chapters"), "Q", function() self:onChapters() end, row = 2 },
+        { sleep_label, "W", function() self:onSleep() end, p.sleep_at ~= nil or p.sleep_end_of_chapter, row = 2 },
+        { _("Stop"), "E", function() self:onStopClose() end, icon = "stop", row = 2 },
     }, kh))
+    self.actions[3] = { function() self:onVolDown() end, function() self:onVolUp() end }
     gap(10)
     add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = 15,
         value_text = T("%1 / %2", Engine.volume(), 15), label = _("volume"),
         letters = Touch.keys() and { "A", "S" } or nil,
+        focused = self.focus and self.focus[1] == 3 and (self.focus[2] == 1 and "minus" or "plus") or nil,
         minus = function() self:onVolDown() end, plus = function() self:onVolUp() end })
     gap(12)
     if Touch.on() then
@@ -991,7 +1028,8 @@ function Screen:build()
             { _("Close (keeps playing)"), function() self:onClose() end },
         }, self))
     else
-        add(TextBoxWidget:new{ text = _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
+        add(TextBoxWidget:new{ text = fiveWay() and _("5-way: choose a key   Press: use it\nD: about this book   Back: close (keeps playing)")
+            or _("◀ ▶ 30 s   ▲ ▼ chapter   Press: play / pause\nD: about this book   Back: close (keeps playing)"),
             face = face(14), width = inner, alignment = "center", fgcolor = Blitbuffer.COLOR_DARK_GRAY })
     end
     self.content = group
@@ -1016,6 +1054,27 @@ function Screen:refreshTime()
 end
 
 function Screen:onToggle() self.player:toggle(); self:refresh(); return true end
+
+--- The 5-way: to the next key that way (a quick redraw).
+function Screen:onFocusMove(_arg, key)
+    local dir = type(key) == "table" and key.key or nil
+    if not (dir and self.focus) then return true end
+    local nf = Screen.move(self.focus, dir)
+    if nf[1] ~= self.focus[1] or nf[2] ~= self.focus[2] then
+        self.focus = nf
+        self:build()
+        UIManager:setDirty(self, "fast")
+    end
+    return true
+end
+
+--- Press: the key the 5-way is on.
+function Screen:onFocusPress()
+    local row = self.focus and self.actions and self.actions[self.focus[1]]
+    local act = row and row[self.focus[2]]
+    if act then act() else self:onToggle() end
+    return true
+end
 function Screen:onBack30() self.player:skip(-Audiobook.SKIP_MS); self:refresh(); return true end
 function Screen:onFwd30() self.player:skip(Audiobook.SKIP_MS); self:refresh(); return true end
 function Screen:onPrevChapter() self.player:chapterStep(-1); self:refresh(); return true end

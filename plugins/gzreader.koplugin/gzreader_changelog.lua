@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.4",
+        changes = {
+            "Kindle 3: the book you're reading on Home (title, author, description) is as big as on the Paperwhite; it was sized by the cover's height in pixels, so the Kindle 3's smaller pixels made it a third smaller.",
+            "Kindle 3 audiobook player: the 5-way moves between the player's keys (a black ring shows which; it starts on play / pause) and Press uses it, instead of skipping 30 s and changing chapters. The letter keys still work.",
+        },
+    },
+    {
         version = "1.23.3",
         changes = {
             "Music downloads show their progress: track n of m and how far along, kept current in the album's list (in the music player's library too), on the Downloads screen and in the status bar.",

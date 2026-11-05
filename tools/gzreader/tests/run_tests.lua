@@ -3960,6 +3960,17 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
     package.path = saved_path
 end)()
 
+print("Audiobook player: the 5-way goes from key to key (Kindle 3)")
+;(function()
+    local S = require("gzreader_audiobook").Screen
+    local function m(f, ...) for _i, d in ipairs({ ... }) do f = S.move(f, d) end return f[1] .. "," .. f[2] end
+    check(m({ 1, 3 }, "Right", "Right", "Right") == "1,5" and m({ 1, 3 }, "Left", "Left", "Left") == "1,1",
+        "along a row, stopping at its ends")
+    check(m({ 1, 3 }, "Down") == "2,2" and m({ 1, 5 }, "Down") == "2,3" and m({ 1, 1 }, "Down") == "2,1" and m({ 2, 3 }, "Down") == "3,2"
+        and m({ 3, 1 }, "Up") == "2,1" and m({ 1, 3 }, "Up") == "1,3" and m({ 3, 2 }, "Down") == "3,2",
+        "up and down keep to the same part of the screen (play → Sleep → volume +)")
+end)()
+
 print("Kindles without REAGL: flash when the screen changes")
 ;(function()
     local Eink = require("gzreader_eink")
