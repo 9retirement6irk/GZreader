@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.22.2",
+        changes = {
+            "The Grimmory tab's Series leaves out series with only one book (the book is still under All books, its author and its library), and the bookshop's Series card counts only the others.",
+            "Music and audiobooks start at your volume: the Kindle's own (often full) volume was used until the volume rocker was pressed. GZreader sets the speaker to your level as the player starts, and again once it's playing.",
+        },
+    },
+    {
         version = "1.22.1",
         changes = {
             "Fixed: a Kindle could be signed out of Grimmory after an update (or after GZreader was closed in the middle of a request). Grimmory gives a new login each time the old one is renewed and the old one stops working; if GZreader restarted before saving the new one, it was lost. The new one is now written to disk the moment it arrives and picked up at the next start, and an update waits for requests to finish before restarting.",

@@ -589,7 +589,9 @@ function Browser:openSeries(search)
         local needle = search and search:lower()
         for name, s in pairs(index.series or {}) do
             local authors = type(s.authors) == "table" and table.concat(s.authors, ", ") or ""
-            if not needle or name:lower():find(needle, 1, true) or authors:lower():find(needle, 1, true) then
+            -- (a series of one book isn't shown: it's just that book; 1.22.2)
+            if (tonumber(s.count) or 0) >= 2
+                    and (not needle or name:lower():find(needle, 1, true) or authors:lower():find(needle, 1, true)) then
                 items[#items + 1] = {
                     text = authors ~= "" and (name .. " — " .. authors) or name,
                     sort_key = name:lower(),

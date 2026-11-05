@@ -199,7 +199,11 @@ function Shop.cardText(id, known)
         local n = idx and countOf(idx.authors) or 0
         return n > 0 and T(_("%1 · A–Z"), thousands(n)) or _("A–Z")
     elseif id == "series" then
-        local n = idx and countOf(idx.series) or 0
+        -- (series of two books or more: the list doesn't show the others)
+        local n = 0
+        for _k, sr in pairs(idx and idx.series or {}) do
+            if type(sr) ~= "table" or (tonumber(sr.count) or 0) >= 2 then n = n + 1 end
+        end
         return n > 0 and (n == 1 and _("1 series") or T(_("%1 series"), thousands(n))) or _("in order")
     elseif id == "audiobooks" then
         local n = tonumber(known.audiobooks)

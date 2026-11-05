@@ -211,7 +211,15 @@ function Engine.play(p, src)
     os.remove(LOG_FILE)
     os.remove(PID_FILE)
     local cmd, started_ms = Engine.command(p, src)
+    -- your volume, not the Kindle's own (music started at full volume until
+    -- the rocker was pressed): before it starts, and again once it has
+    -- opened the sound device, which can set it back
+    Engine.applyVolume()
     run(string.format("(%s > %s 2>&1 & echo $! > %s) >/dev/null 2>&1", cmd, LOG_FILE, PID_FILE))
+    if not Engine.exec then
+        UIManager:scheduleIn(1.5, Engine.applyVolume)
+        UIManager:scheduleIn(4, Engine.applyVolume)
+    end
     current = { p = p, src = src, offset_ms = started_ms, first_offset_ms = started_ms, started_at = Engine.clock() }
     Log.info("audio play", p.id, src.path or src.dir, "from", started_ms, "ms")
     return true, started_ms
@@ -272,6 +280,11 @@ function Engine.active() return current ~= nil end
 ---------------------------------------------------------------- volume
 
 function Engine.volume() return G_reader_settings:readSetting("gzreader_tts_volume") or 10 end
+--- Set the speaker to the saved volume.
+function Engine.applyVolume()
+    run(string.format("lipc-set-prop -i com.lab126.audio CmdIVolume %d >/dev/null 2>&1", Engine.volume()))
+end
+
 function Engine.setVolume(v)
     v = math.max(0, math.min(15, v))
     G_reader_settings:saveSetting("gzreader_tts_volume", v)

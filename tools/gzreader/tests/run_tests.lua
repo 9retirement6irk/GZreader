@@ -597,7 +597,7 @@ do
         "compartments: Audiobooks with a speaker, an empty one (cobwebs) without")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
-        index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = {} } },
+        index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = { count = 3 }, Y = { count = 1 } } },
         libraries = { { id = 1, name = "Fiction" }, { id = 2, name = "Audio only" }, { id = 3, name = "Classics" } },
         shelves = { { id = 1, name = "Favourites" }, { id = 2, name = "Book club" },
             { id = 9, name = "Unread sci-fi", magic = true, filter = { rules = { { field = "genre", value = "Science fiction" } } } } },
@@ -684,6 +684,9 @@ local sl = b.menu.item_table
 check(sl[1].text == "Search series…" and sl[2].text:match("Refresh") and sl[3].text == "Saga / Part One — Author 2, Author 0, Author 1", "series: search, refresh, then A–Z, with its authors")
 check(not texts(sl):match("Audio Only Saga"), "audiobook-only series left out")
 check(sl[3].mandatory == "3 books", "series counts readable books only")
+local ones = 0
+for _i, it in ipairs(sl) do if it.gz_kind == "series" and (tonumber(it.gz_count) or 0) < 2 then ones = ones + 1 end end
+check(ones == 0, "series of one book aren't listed")
 sl[3].callback()
 local st = {}
 for _, it in ipairs(b.menu.item_table) do st[#st + 1] = it.text:match("^(#[%d%.]+)") or "?" end
