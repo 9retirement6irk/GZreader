@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.10",
+        changes = {
+            "Kindles with keys (Kindle 2, DX, 3, 4): a Grimmory book's page can be used again. Its Download and Download & open buttons couldn't be pressed (the 5-way's Press and arrows did nothing there since 1.22.3, only Back worked), so books couldn't be downloaded from it.",
+        },
+    },
+    {
         version = "1.23.9",
         changes = {
             "Diagnostic log: a sent log ends with what keeps the Kindle from sleeping right then (a download, the audiobook or music playing, the Kindle's own screensaver block), and the log notes when the audiobook is paused.",

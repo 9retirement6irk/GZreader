@@ -1560,6 +1560,11 @@ do
             "its description as text")
         local bare = BP.facts({ title = "x" }, nil)
         check(bare.rating == nil and bare.genres == nil and bare.facts == nil, "nothing known: nothing made up")
+        -- the 5-way's keys (FocusManager's, set before init) are kept
+        local page = { key_events = { Press = { { "Press" } }, FocusUp = { { "Up" } } }, build = function() end }
+        local oki, ierr = pcall(BP.init, page)
+        check(oki and page.key_events.Press and page.key_events.FocusUp and page.key_events.Close,
+            "book page: Press and the arrows still work on a Kindle with keys (Download can be pressed) " .. tostring(ierr or ""))
     end
 end
 

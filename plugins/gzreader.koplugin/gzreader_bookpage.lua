@@ -99,11 +99,13 @@ end
 function BookPage:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     local back = Device.input and Device.input.group and Device.input.group.Back or "Back"
-    self.key_events = {
-        Close = { { back } },
-        ScrollDown = { { Device.input and Device.input.group and Device.input.group.PgFwd or "RPgFwd" } },
-        ScrollUp = { { Device.input and Device.input.group and Device.input.group.PgBack or "RPgBack" } },
-    }
+    -- (added to FocusManager's keys, not instead of them: until 1.23.10 the
+    -- 5-way's arrows and Press did nothing here, so a Kindle with keys
+    -- couldn't press Download)
+    self.key_events = self.key_events or {}
+    self.key_events.Close = { { back } }
+    self.key_events.ScrollDown = { { Device.input and Device.input.group and Device.input.group.PgFwd or "RPgFwd" } }
+    self.key_events.ScrollUp = { { Device.input and Device.input.group and Device.input.group.PgBack or "RPgBack" } }
     self.ges_events = {
         TapOutside = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } },
     }
