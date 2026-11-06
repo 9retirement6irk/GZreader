@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.12",
+        changes = {
+            "Touch Kindles (Kindle Touch, Paperwhite and newer): the install packages now include GZreader's launcher (documents/GZreader.sh), so the GZreader item is on the Kindle's own home screen right after copying, before GZreader has ever been started from KUAL.",
+        },
+    },
+    {
         version = "1.23.11",
         changes = {
             "Settings → Storage: how much room books, audiobooks, music, notes, the calendar and covers take on the Kindle, and how much is free. Books, audiobooks, music and notes open on their largest ones.",

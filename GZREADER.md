@@ -67,11 +67,14 @@ take the package for your Kindle (the others won't start on it):
 
 1. Connect the Kindle to the computer with USB; it shows up as a drive.
 2. Unzip the package on the computer. Inside are the folders `koreader`, `extensions`
-   and, in the Kindle 2/3/DX package, `launchpad`.
-3. Copy those folders to the **top of the Kindle's drive** (next to `documents`),
-   merging with any folders of the same name already there (KUAL's own
-   `extensions` folder stays; GZreader adds `extensions/koreader`). If an old
-   KOReader is installed, its `koreader` folder is replaced.
+   and, in the Kindle 2/3/DX package, `launchpad`; the other packages also have
+   `documents` with one file, `GZreader.sh` (the GZreader item on the Kindle's home
+   screen).
+3. Copy those folders to the **top of the Kindle's drive**, merging with any folders
+   of the same name already there (your books in `documents` and KUAL's own
+   `extensions` folder stay; GZreader adds `documents/GZreader.sh` and
+   `extensions/koreader`). If an old KOReader is installed, its `koreader` folder is
+   replaced.
 4. **Eject** the Kindle safely and unplug it.
 
 ### 4. Start GZreader
@@ -81,8 +84,11 @@ take the package for your Kindle (the others won't start on it):
   free memory, and the Kindle restarts its home screen when you exit.)
 - **Kindle 2, 3, DX** also: press **Shift, G, G** (the last book), **Shift, G, L** (the
   library) or **Shift, G, N** (without the Kindle's framework).
-- **Kindle Touch and Paperwhite:** after the first start, a **GZreader** book with
-  GZreader's logo appears on the Kindle's own home screen; tapping it starts GZreader.
+- **Kindle Touch, Paperwhite and newer:** a **GZreader** item with GZreader's logo
+  is on the Kindle's own home screen (`documents/GZreader.sh` from the package; on a
+  Kindle that can run these launchers, e.g. with kindlemodding.org's jailbreak and
+  hotfix); tapping it starts GZreader. If it isn't there, start from KUAL once: GZreader
+  puts it back.
 
 ### 5. The first start
 

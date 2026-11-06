@@ -97,9 +97,10 @@ All the details: **[the full guide](GZREADER.md)**.
    The firmware version is in the Kindle's Settings → Device Info.
 
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
-   with what's there. Eject.
-4. **Start** it: KUAL → **GZreader → Start GZreader**. The setup guide shows a QR code
-   for your phone, and an address and PIN for any browser.
+   with what's there (your books stay). Eject.
+4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Kindle Touch,
+   Paperwhite or newer the **GZreader** item on the Kindle's home screen. The setup
+   guide shows a QR code for your phone, and an address and PIN for any browser.
 
 Updates come by themselves (Settings → General → Updates). Step-by-step help,
 uninstalling and the Nooks: [Install in the full guide](GZREADER.md#install).

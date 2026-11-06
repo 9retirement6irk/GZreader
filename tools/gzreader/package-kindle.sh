@@ -8,7 +8,8 @@
 #   koreader-kindlepw2-vX.zip      touch Kindles on firmware 5.6.1 – 5.16.2
 #
 # Outputs, in out-dir:
-#   gzreader-<platform>-<version>.zip   full install (koreader, extensions[, launchpad])
+#   gzreader-<platform>-<version>.zip   full install (koreader, extensions[, launchpad]
+#                                       [, documents/GZreader.sh: firmware 5])
 #   gzreader-update.zip                 what the in-app updater installs: Lua
 #                                       only, the same for every Kindle (the
 #                                       packages share one LuaJIT version, so
@@ -61,6 +62,15 @@ cp "$REPO/platform/kindle/extensions/koreader/menu.json" \
    "$REPO/platform/kindle/extensions/koreader/config.xml" "$STAGE/extensions/koreader/"
 # (launchpad: the Kindle 2/3/DX's own launcher; firmware 5 has only KUAL)
 if [ -d "$STAGE/launchpad" ]; then cp "$REPO/platform/kindle/launchpad/koreader.ini" "$STAGE/launchpad/"; fi
+# Touch Kindles (Kindle Touch, Paperwhite and newer): the "GZreader" item on
+# the Kindle's own home screen (a scriptlet: documents/GZreader.sh, ZenOS's
+# kindle-launcher), there from the start instead of after GZreader's first
+# start (ZenOS still installs or updates it then: common/kindle_launcher.lua).
+if [ "$PLATFORM" != "kindle-legacy" ]; then
+    mkdir -p "$STAGE/documents"
+    cp "$REPO/plugins/zenos.koplugin/kindle-launcher/GZreader.sh" "$STAGE/documents/GZreader.sh"
+    chmod 755 "$STAGE/documents/GZreader.sh"
+fi
 
 # 4. Bundled English dictionary: Open English WordNet (CC BY 4.0) as StarDict.
 OEWN_XML=${OEWN_XML:-"$REPO/tools/gzreader/cache/english-wordnet-2025.xml.gz"}
@@ -136,7 +146,7 @@ echo "$GZ_VERSION" > "$KO/gzreader-version"
 
 OUT="$OUT_DIR/gzreader-${PLATFORM}-${GZ_VERSION}.zip"
 rm -f "$OUT"
-(cd "$STAGE" && zip -qr -9 "$OUT" koreader extensions $( [ -d launchpad ] && echo launchpad ))
+(cd "$STAGE" && zip -qr -9 "$OUT" koreader extensions $( [ -d launchpad ] && echo launchpad ) $( [ -d documents ] && echo documents ))
 echo "$OUT"
 du -h "$OUT"
 
