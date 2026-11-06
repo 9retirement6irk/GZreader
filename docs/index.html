@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GZreader – Grimmory and KOReader for Kindle</title>
-<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer. Notes from Memos, CalDAV calendars, audiobooks, read aloud.">
-<meta name="keywords" content="Grimmory, BookLore, Kindle, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
+<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer. Notes from Memos, CalDAV calendars, audiobooks, read aloud. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
+<meta name="keywords" content="Grimmory, BookLore, Kindle, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
 <link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="GZreader – Grimmory and KOReader for Kindle">
@@ -67,6 +67,32 @@
   th { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   code { font: 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
   ol { padding-left: 22px; } ol li { margin: 6px 0; }
+  .pill { display: inline-block; margin-top: 18px; padding: 7px 14px; border-radius: 999px; background: var(--card);
+    border: 1px solid var(--line); font-size: 15px; text-decoration: none; color: var(--muted); }
+  .pill:hover { color: var(--ink); border-color: var(--ink); }
+  .usb { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 28px; align-items: center;
+    margin: 56px 0 8px; padding: 30px 32px; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--shadow); scroll-margin-top: 16px; }
+  .usb h2 { margin: 2px 0 10px; font-size: 32px; }
+  .eyebrow { margin: 0; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .lede { margin: 0 0 16px; font-size: 18px; color: var(--muted); }
+  .ways { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 14px; }
+  .ways h3 { margin: 0 0 4px; font-size: 16px; }
+  .ways ul { margin: 0; padding-left: 18px; font-size: 15px; color: var(--muted); }
+  .ways li { margin: 3px 0; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .steps li { counter-increment: s; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; }
+  .steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px;
+    border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 700; }
+  .cta.left { justify-content: flex-start; margin-top: 18px; }
+  .fine { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+  .usb-art { width: 100%; height: auto; color: var(--ink); }
+  @media (max-width: 720px) {
+    .usb { grid-template-columns: 1fr; padding: 22px 18px; }
+    .usb-art { max-width: 260px; margin: 0 auto; order: -1; }
+    .usb h2 { font-size: 26px; }
+    .ways, .steps { grid-template-columns: 1fr; }
+  }
   footer { margin: 56px 0 40px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
   @media (max-width: 720px) {
     h1 { font-size: 34px; }
@@ -89,6 +115,7 @@
       <a class="btn" href="https://github.com/9retirement6irk/GZreader">Source on GitHub</a>
       <a class="btn" href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md">Full guide</a>
     </div>
+    <a class="pill" href="#sync">New: no Wi‑Fi? The Kindle 2 and DX sync through your computer →</a>
   </header>
 
   <section class="shots" aria-label="Screenshots">
@@ -110,9 +137,73 @@
     <div class="feature"><h3>Notes and calendars</h3><p>Your Memos notes as sticky notes, and CalDAV calendars or calendar links (Proton, Google…) as an agenda, week or month.</p></div>
     <div class="feature"><h3>Audiobooks and music</h3><p>Grimmory audiobooks with your place kept, and albums from Plex, on Kindles with a speaker or headphone jack.</p></div>
     <div class="feature"><h3>Read aloud</h3><p>On the Kindle 2, 3, DX and Touch: books read in the Kindle's own voice, the sentence highlighted and pages turning by themselves.</p></div>
-    <div class="feature"><h3>No Wi‑Fi? Sync over USB</h3><p>The Kindle 2 and DX sync through <a href="sync/">a page on your computer</a>: reading progress to Grimmory, and books, audiobooks, music, notes and calendars back.</p></div>
     <div class="feature"><h3>Made for e-ink</h3><p>Wi‑Fi only when needed, few screen flashes on older Kindles, a built-in English dictionary and updates from GitHub.</p></div>
   </div>
+
+  <section class="usb" id="sync" aria-labelledby="sync-title">
+    <div class="usb-text">
+      <p class="eyebrow">Kindle 2 · Kindle DX · no Wi‑Fi needed</p>
+      <h2 id="sync-title">Make your Wi‑Fi‑less Kindle feel connected</h2>
+      <p class="lede">The Kindle 2 and DX never had Wi‑Fi. GZreader keeps them in step anyway: plug the Kindle into
+        your computer, open the sync page in Chrome or Edge and press Sync. Everything travels both ways.</p>
+      <div class="ways">
+        <div>
+          <h3>Kindle → your servers</h3>
+          <ul>
+            <li>Where you are in every book</li>
+            <li>Reading time and ratings, for Grimmory's stats</li>
+            <li>Notes you wrote or ticked, to Memos</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Your servers → Kindle</h3>
+          <ul>
+            <li>Books and audiobooks you chose, on the Kindle or on the page</li>
+            <li>Albums and playlists from Plex</li>
+            <li>Your Memos notes and calendars</li>
+            <li>A copy of your library, with covers, to browse offline</li>
+            <li>GZreader updates</li>
+          </ul>
+        </div>
+      </div>
+      <ol class="steps">
+        <li><strong>Exit GZreader</strong> and plug the Kindle in.</li>
+        <li><strong>Open the sync page</strong> and choose the Kindle's drive.</li>
+        <li><strong>Press Sync</strong>, eject, start GZreader.</li>
+      </ol>
+      <div class="cta left">
+        <a class="btn primary" href="sync/">Open the sync page</a>
+        <a class="btn" href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#sync-with-a-computer">How it works</a>
+      </div>
+      <p class="fine">Runs in your browser: it talks only to your own servers and writes to the Kindle. Sign-ins stay in
+        the browser; the Kindle never gets a password. Any Kindle can sync this way too.</p>
+    </div>
+    <svg class="usb-art" viewBox="0 0 320 300" role="img" aria-label="An e-reader with a keyboard joined by a USB cable to a laptop, arrows going both ways">
+      <g fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+        <!-- the e-reader -->
+        <rect x="18" y="30" width="112" height="196" rx="10"/>
+        <rect x="32" y="46" width="84" height="104" rx="2"/>
+        <path d="M44 66h60M44 80h60M44 94h60M44 108h44" stroke-width="2"/>
+        <g stroke-width="1.6">
+          <path d="M32 166h84M32 180h84M32 194h84"/>
+          <path d="M44 162v36M58 162v36M72 162v36M86 162v36M100 162v36"/>
+        </g>
+        <rect x="56" y="206" width="36" height="10" rx="2" stroke-width="2"/>
+        <!-- the cable -->
+        <path d="M74 226v34c0 12 10 20 22 20h96c14 0 22-8 22-20v-60" stroke-width="3"/>
+        <rect x="68" y="224" width="12" height="10" rx="1.5" fill="currentColor"/>
+        <rect x="208" y="190" width="12" height="12" rx="1.5" fill="currentColor"/>
+        <!-- the laptop -->
+        <rect x="172" y="70" width="128" height="88" rx="6"/>
+        <rect x="184" y="82" width="104" height="64" rx="2" stroke-width="2"/>
+        <path d="M158 170h156l-12 16H170z"/>
+        <path d="M200 102h52M200 114h70M200 126h40" stroke-width="2"/>
+        <!-- both ways -->
+        <path d="M140 92h22m-8-7 8 7-8 7" stroke-width="2.5"/>
+        <path d="M162 120h-22m8-7-8 7 8 7" stroke-width="2.5"/>
+      </g>
+    </svg>
+  </section>
 
   <h2>Which package</h2>
   <table>
@@ -131,7 +222,8 @@
       Kindle 2, 3, DX, 4 and Touch: <a href="https://www.mobileread.com/forums/forumdisplay.php?f=150">MobileRead</a>).</li>
     <li>Download your package from the <a href="https://github.com/9retirement6irk/GZreader/releases/latest">latest release</a>.</li>
     <li>Unzip it and copy its folders to the top of the Kindle's USB drive. Eject.</li>
-    <li>Start GZreader from KUAL, or from the GZreader item on a touch Kindle's home screen. The setup guide shows a QR code.</li>
+    <li>Start GZreader from KUAL, or from the GZreader item on a touch Kindle's home screen. The setup guide shows a QR code
+      (on a Kindle 2 or DX, how to <a href="#sync">sync with your computer</a> instead).</li>
   </ol>
 
   <footer>
