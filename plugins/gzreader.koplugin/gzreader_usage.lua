@@ -21,6 +21,9 @@ Cost on a Kindle 3: recording an event appends one line to a small file;
 events are sent in one batch from a background process, at most every 15
 minutes and only while Wi-Fi is already on (GZreader never turns Wi-Fi on
 for this). The file is capped, so a long time offline can't fill storage.
+Kindles without Wi-Fi hand the waiting files to the sync page (in the
+.gzsync folder's usage/ folder, when GZreader steps aside for the USB
+drive), which sends them from the computer.
 ]]
 
 local DataStorage = require("datastorage")
@@ -174,6 +177,12 @@ end
 
 ---------------------------------------------------------------- sending
 
+--- Syncing through a computer (no Wi-Fi): the sync page sends them.
+function U.noWifi()
+    local okn, Net = pcall(require, "gzreader_net")
+    return okn and Net.usb == true
+end
+
 --- Send what's queued: in a background process, only while Wi-Fi is on.
 function U.maybeSend(force)
     if U.sending or not on() then return end
@@ -247,6 +256,42 @@ function U.maybeSend(force)
         return
     end
     UIManager:scheduleIn(2, poll)
+end
+
+--- Kindles without Wi-Fi: hand what's waiting to the sync page (it sends
+--- it from the computer: Usb.handOverUsage). Moves the waiting files into
+--- dest_dir; returns how many were moved.
+function U.handOver(dest_dir)
+    if not on() or U.sending then return 0 end
+    local dir = U.dir()
+    if countLines() > 0 then
+        os.rename(queuePath(), string.format("%s/sending-%d.jsonl", dir, os.time()))
+        U.lines = 0
+    end
+    local names = {}
+    for name in lfs.dir(dir) do
+        if name:match("^sending%-.*%.jsonl$") then names[#names + 1] = name end
+    end
+    if #names == 0 then return 0 end
+    if lfs.attributes(dest_dir, "mode") ~= "directory" then lfs.mkdir(dest_dir) end
+    local moved = 0
+    for _i, name in ipairs(names) do
+        local to = dest_dir .. "/" .. name
+        local k = 2
+        while lfs.attributes(to, "mode") do
+            to = dest_dir .. "/" .. name:gsub("%.jsonl$", "") .. "-" .. k .. ".jsonl"
+            k = k + 1
+        end
+        local from = dir .. "/" .. name
+        local ok = os.rename(from, to)
+        if not ok then
+            local text = readFile(from)
+            if text then writeFile(to, text); ok = lfs.attributes(to, "mode") == "file" end
+            if ok then os.remove(from) end
+        end
+        if ok then moved = moved + 1 end
+    end
+    return moved
 end
 
 --- Called whenever GZreader used the network (Wi-Fi is on): send soon.
@@ -505,6 +550,7 @@ function U.menuItems()
                 _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on. Still no titles, file names or account.")),
             item(_("Off (send nothing)"), "off", _("Nothing is recorded or sent. What was waiting is deleted.")),
         },
+        help_text = U.noWifi() and _("This Kindle has no Wi-Fi: the statistics wait on the Kindle and the sync page sends them from the computer when you sync.") or nil,
         separator = true,
     }
 end

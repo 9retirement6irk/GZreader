@@ -429,6 +429,49 @@ if [ "${PASSCODE_DISABLED}" = "yes" ]; then
     touch "/var/local/system/userpasswdenabled"
 fi
 
+# GZreader: Sync with computer (exit code 86). The Kindle's drive can only be
+# shared over USB while nothing runs from it: GZreader lives on it, so it
+# keeps volumd (the Kindle's USB drive service) stopped while it runs. It
+# asked to step aside: volumd runs again (above), so plugging the Kindle in
+# (or the cable that's in already) starts the Kindle's own USB drive mode.
+# This script runs from a copy in /var/tmp, not from the drive, so it waits:
+# once the drive has been shared and is back (ejected, unplugged), GZreader
+# starts again and takes in what the computer brought. No USB mode within 15
+# minutes: it stops waiting (start GZreader as usual).
+gz_drive_here() {
+    grep -qE " /mnt/(base-)?us " /proc/mounts
+}
+# (only the latest of these waits goes on: a GZreader started meanwhile may ask again)
+gz_latest_wait() {
+    [ "$(cat /var/tmp/gzreader-usbwait 2>/dev/null)" = "$$" ]
+}
+if [ "${RETURN_VALUE}" -eq 86 ]; then
+    cd / || true
+    echo "$$" >/var/tmp/gzreader-usbwait
+    eips_print_bottom_centered "Plug the Kindle into the computer (or replug the cable)" 2
+    eips_print_bottom_centered "GZreader comes back after you eject it" 1
+    GZ_WAITED=0
+    while gz_drive_here && gz_latest_wait && [ ${GZ_WAITED} -lt 900 ]; do
+        sleep 2
+        GZ_WAITED=$((GZ_WAITED + 2))
+    done
+    if ! gz_drive_here && gz_latest_wait; then
+        logmsg "GZreader: the drive is shared over USB, waiting for it to come back . . ."
+        while ! gz_drive_here; do
+            sleep 2
+        done
+        # (the drive settles: fsck, the Kindle's indexer)
+        sleep 5
+        if gz_latest_wait && [ -f /mnt/us/koreader/koreader.sh ] && ! pidof reader.lua >/dev/null 2>&1; then
+            rm -f /var/tmp/gzreader-usbwait
+            echo "GZreader: back from USB drive mode at $(date)" >>/mnt/us/koreader/crash.log 2>/dev/null
+            rm -f /var/tmp/fbink
+            # shellcheck disable=SC2086
+            exec /bin/sh /mnt/us/koreader/koreader.sh ${REEXEC_FLAGS}
+        fi
+    fi
+fi
+
 # Wipe the clones on exit
 rm -f /var/tmp/koreader.sh /var/tmp/fbink
 

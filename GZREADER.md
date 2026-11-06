@@ -499,9 +499,12 @@ plugged in over USB: <https://9retirement6irk.github.io/GZreader/sync/>
 write to a USB drive). Any other Kindle can sync this way too: Settings →
 Connections → Sync through a computer.
 
-1. On the Kindle: Menu → Exit to the Kindle. (KOReader turns the Kindle's
-   USB drive off while it runs, so GZreader has to be closed first.)
-2. Plug the Kindle into the computer, open the page and choose the Kindle's
+1. On the Kindle: Menu → Sync → **Connect to computer**. KOReader turns the
+   Kindle's USB drive off while it runs, so GZreader steps aside and waits;
+   after you eject the Kindle it starts again by itself. (Or Menu → Exit to
+   the Kindle.)
+2. Plug the Kindle into the computer (unplug and plug it again if it was
+   already plugged in), open the page and choose the Kindle's
    drive (or its `documents/GZreader` folder). Nothing else can be set up
    before a Kindle is chosen.
 3. Enter the Kindle's **PIN**. The first time, you choose one: the sign-ins
@@ -519,8 +522,14 @@ Connections → Sync through a computer.
    - **Sync**: how much room is left on the Kindle and what takes it (books,
      audiobooks, music, the library copy, notes' pictures), how much the next
      sync brings, and **Sync**.
-5. Eject the Kindle, unplug it and start GZreader: it takes in what was
-   brought ("Synced with your computer").
+5. Eject the Kindle and unplug it; GZreader starts again (or start it) and
+   takes in what was brought ("Synced with your computer"). Books and
+   audiobooks open at their place on Grimmory the first time.
+
+Usage statistics (if they're on, Settings → General → Usage statistics) wait
+on the Kindle; when GZreader steps aside for the USB drive it leaves them in
+`.gzsync/usage/`, and the page sends them at the level chosen on the Kindle,
+then deletes them. Off: nothing is left or sent.
 
 **Test mode**: <https://9retirement6irk.github.io/GZreader/sync/?test> works
 with a pretend Kindle kept in the browser, to try the page (and your

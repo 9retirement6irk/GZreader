@@ -714,7 +714,7 @@ local function buildGrimmoryPage(ctx)
             title       = _("Sync with a computer"),
             icon_file   = _plugin_root .. "/icons/usb.svg",
             description = _("This Kindle has no Wi‑Fi. Books, audiobooks, notes and calendars come from a page on a computer:") .. "\n"
-                .. _("1. Exit GZreader and plug the Kindle in.") .. "\n"
+                .. _("1. Menu → Sync → Connect to computer, and plug the Kindle in.") .. "\n"
                 .. _("2. Open 9retirement6irk.github.io/GZreader/sync in Chrome or Edge.") .. "\n"
                 .. _("3. Connect Grimmory there and press Sync.") .. "\n"
                 .. _("Later: Menu → Sync with computer."),

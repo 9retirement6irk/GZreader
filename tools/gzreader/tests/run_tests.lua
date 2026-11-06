@@ -1773,6 +1773,21 @@ reader.pos = 0; rplugin.sync.entry.last_pushed_pct = nil
 rplugin.sync:pull(false)
 check(reader.pos == 3700, "href + in-chapter percent lands exactly (3000 + 25% of 3000)")
 
+print("Progress kept at download (first opening, no Wi-Fi)")
+NET.connected = false
+reader.pos = 0; rplugin.sync.entry.last_pushed_pct = nil
+rplugin.sync.entry.grimmory_progress = { epubProgress = { percentage = 20, href = "Text/ch2.xhtml", contentSourceProgressPercent = 25 } }
+UI.scheduled = {}
+rplugin.sync:onReady()
+for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+check(reader.pos == 3700 and rplugin.sync.entry.grimmory_progress == nil,
+    "a just-downloaded book opens at Grimmory's place without Wi-Fi; only the first time")
+reader.pos = 100
+rplugin.sync:onReady()
+for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+check(reader.pos == 100, "…not again at the next opening")
+NET.connected = true
+
 print("Backward positions")
 reader.pos = 5000; rplugin.sync:push(true)
 reader.pos = 5500                                  -- read on; server still has our own 83.3%
@@ -2661,12 +2676,33 @@ end)()
 ctl("/webprogress?book=32&pct=90&cfi=50000&href=1")
 captured.confirm = nil
 local P2 = Audiobook.Player:new(plugin, ab_done)
-P2.pos = 0
+P2.pos = 5000
 local pulled
 P2:pull(function() pulled = true end)
 check(captured.confirm and captured.confirm.text:match("1:50"), "Grimmory's position offered (track 2 @ 0:50 = 1:50)")
 captured.confirm.ok_callback()
 check(pulled and P2.pos == 110000, "jumps there")
+-- nothing listened to here yet: Grimmory's place without asking
+captured.confirm = nil
+local P2b = Audiobook.Player:new(plugin, ab_done)
+P2b.pos = 0
+pulled = nil
+P2b:pull(function() pulled = true end)
+check(pulled and not captured.confirm and P2b.pos == 110000, "just downloaded: starts at Grimmory's place, no question")
+-- syncing through a computer: the progress the page brought, without Wi-Fi
+do
+    local was = NET.connected
+    NET.connected = false
+    plugin.store.audiobooks[ab_done.id] = plugin.store.audiobooks[ab_done.id] or {}
+    plugin.store.audiobooks[ab_done.id].grimmory_progress = { audiobookProgress = { positionMs = 20000, trackIndex = 1 } }
+    local P2c = Audiobook.Player:new(plugin, ab_done)
+    P2c.pos = 0
+    pulled = nil
+    P2c:pull(function() pulled = true end)
+    check(pulled and P2c.pos == 80000 and plugin.store.audiobooks[ab_done.id].grimmory_progress == nil,
+        "no Wi-Fi: the progress kept at download (track 2 @ 0:20 = 1:20), once")
+    NET.connected = was
+end
 do
 -- player quits at once: position kept, no skipping to the next track
 local P3 = Audiobook.Player:new(plugin, ab_done)
@@ -2821,6 +2857,27 @@ print("Usage statistics")
     local left = 0
     for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
     check(left == 0, "sent batches are removed")
+    -- no Wi-Fi: handed to the sync page (the .gzsync folder's usage/)
+    local hand = WORK .. "/usage-hand"
+    os.execute("rm -rf '" .. hand .. "'")
+    U.event("start", { device = "Kindle2" })
+    check(U.handOver(hand) == 1, "no Wi-Fi: what's waiting goes to the sync page's folder")
+    local moved, lines = 0, 0
+    for name in require("libs/libkoreader-lfs").dir(hand) do
+        if name:match("jsonl$") then
+            moved = moved + 1
+            for line in io.lines(hand .. "/" .. name) do if json.decode(line).payload.name == "start" then lines = lines + 1 end end
+        end
+    end
+    left = 0
+    for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
+    check(moved == 1 and lines == 1 and left == 0, "…moved, not copied")
+    gsettings.gzreader_usage = "off"
+    check(U.handOver(hand) == 0 and require("gzreader_usbsync").usageInfo() == nil, "Off: nothing handed over, no server in the outbox")
+    gsettings.gzreader_usage = "basic"
+    local ui = require("gzreader_usbsync").usageInfo()
+    check(ui and ui.level == "basic" and ui.server == U.SERVER, "the outbox tells the page where to send them")
+    os.execute("rm -rf '" .. hand .. "'")
     gsettings.gzreader_usage = nil
 end)()
 
@@ -4511,8 +4568,10 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     put(base .. "/inbox.json", JSON.encode({ format = 1, written_at = 1700000000, done = done,
         failed = { { id = rj[13].id, error = "unreachable" } },
         grimmory = { server = "https://books.example.com", user = "reader" },
-        books = { { id = 20, file = "in/book-20.epub", name = "Dune.epub", title = "Dune", authors = { "Frank Herbert" }, format = "EPUB", file_id = 200 } },
+        books = { { id = 20, file = "in/book-20.epub", name = "Dune.epub", title = "Dune", authors = { "Frank Herbert" }, format = "EPUB", file_id = 200,
+            progress = { epubProgress = { percentage = 40, cfi = "epubcfi(/6/4)" } } } },
         audiobooks = { { id = 30, dir = "in/audio-30", primaryFileName = "Walden.mp3", title = "Walden",
+            progress = { audiobookProgress = { positionMs = 2000, trackIndex = 0 } },
             info = { title = "Walden", author = "Thoreau", durationMs = 5000, codec = "mp3", bookFileId = 300, folderBased = false } } },
         music = { { kind = "album", key = "55", dir = "in/music-album-55" } },
         notes = { file = "in/notes.json", files = "in/notes-files", done = { "q1" }, server = "https://notes.example.com", user = "me" },
@@ -4523,6 +4582,9 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     check(r and r.books == 1 and entry and entry.path == lib .. "/Dune.epub" and read(entry.path) == "EPUB-DUNE"
         and entry.authors == "Frank Herbert" and entry.file_id == 200 and not Usb.isQueued(fake, 20),
         "inbox: a book into the GZreader folder, as a download, off the queue")
+    check(entry.grimmory_progress and entry.grimmory_progress.epubProgress.percentage == 40
+        and fake.store.audiobooks["30"].grimmory_progress.audiobookProgress.positionMs == 2000,
+        "inbox: Grimmory's progress kept for the first opening (books and audiobooks)")
     check(next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0 and fake.store.pending.ratings["12"] == nil
         and fake.store.pending.ratings["13"] == 0 and fake.store.downloads["20"] and r.sent == 3 and r.failed == 1,
         "inbox: what went to Grimmory is off the pending lists; what didn't stays")
@@ -4589,6 +4651,26 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         check(list:match("^usb,") and not list:match("wifi") and not list:match("updates"),
             "no Wi-Fi: the quick panel has Sync instead of Wi-Fi, no Updates (" .. list .. ")")
     end
+    -- Connect to computer: GZreader quits with 86 (koreader.sh lets the Kindle share its drive)
+    local UIMq = require("ui/uimanager")
+    local quit_code, orig_quit = nil, UIMq.quit
+    UIMq.quit = function(_um, code) quit_code = code end
+    local orig_fs = UIMq.flushSettings
+    UIMq.flushSettings = UIMq.flushSettings or function() end
+    Usb.connect(fake)
+    UIMq.quit, UIMq.flushSettings = orig_quit, orig_fs
+    check(quit_code == 86, "Connect to computer: GZreader saves and steps aside (exit code 86)")
+    -- no Wi-Fi: no sending the log to a phone, no remote debugging, no Wi-Fi switch
+    local gen = plugin:sectionItems("general")
+    local labels = {}
+    for _i, it in ipairs(gen.diagnostics or {}) do labels[#labels + 1] = tostring(it.text) end
+    local orig_bd = package.loaded["ui/widget/buttondialog"]
+    local nbtn
+    package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) nbtn = #o.buttons; return o end }
+    plugin:showDiagnostics()
+    package.loaded["ui/widget/buttondialog"] = orig_bd
+    check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
+        and nbtn == 2, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone (" .. table.concat(labels, ", ") .. ")")
     local Notes = require("gzreader_notes")
     local err
     Notes.refresh(fake, function(_ok, e) err = e end)
@@ -4657,6 +4739,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local b = fake.store.downloads["3"]
         check(b and b.path == lib .. "/book3.epub" and b.subtitle == "Old School" and #fake.store.usb_queue == 0,
             "e2e: the book is in the GZreader folder, the queue empty")
+        check(b and b.grimmory_progress and b.grimmory_progress.epubProgress.percentage == 30
+            and fake.store.audiobooks["32"].grimmory_progress.audiobookProgress.positionMs == 50000,
+            "e2e: Grimmory's places kept for the first opening")
         check(runLoop(function() return ready end, 60), "e2e: audiobooks and music prepared (AAC converted on the Kindle)")
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",

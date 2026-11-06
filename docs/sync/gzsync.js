@@ -1270,13 +1270,32 @@ gets a password or token.
     if (ext === "cbx") ext = "cbz";
     var file = "in/book-" + q.id + "." + ext;
     await Drive.writeStream(Drive.sync, file, r.body, onBytes);
+    var progress = null;
+    try { progress = progressOf(await G.json("/api/v1/books/" + q.id)); } catch (e) {}
     inbox.books.push({ id: q.id, file: file, name: q.name, title: q.title, authors: q.authors, format: q.format, file_id: q.file_id,
-      subtitle: (K.subtitles || {})[String(q.id)] });
+      subtitle: (K.subtitles || {})[String(q.id)], progress: progress || undefined });
+  }
+
+  // Grimmory's reading progress of a book: the Kindle opens it there the first time
+  var PROGRESS_KEYS = ["epubProgress", "pdfProgress", "cbxProgress", "audiobookProgress"];
+  function progressOf(book) {
+    if (!book || typeof book !== "object") return null;
+    var p = {}, any = false;
+    PROGRESS_KEYS.forEach(function (k) {
+      var v = book[k];
+      if (v && typeof v === "object" && Object.keys(v).length) { p[k] = v; any = true; }
+    });
+    return any ? p : null;
   }
 
   async function bringAudiobook(q, inbox, onBytes) {
     var info = await G.json("/api/v1/audiobooks/" + q.id + "/info");
-    try { var full = await G.json("/api/v1/books/" + q.id); if (full.metadata && full.metadata.description) info.gz_description = full.metadata.description; } catch (e) {}
+    var progress = null;
+    try {
+      var full = await G.json("/api/v1/books/" + q.id);
+      if (full.metadata && full.metadata.description) info.gz_description = full.metadata.description;
+      progress = progressOf(full);
+    } catch (e) {}
     var dir = "in/audio-" + q.id;
     var files = [];
     if (info.folderBased && Array.isArray(info.tracks) && info.tracks.length) {
@@ -1296,7 +1315,7 @@ gets a password or token.
       var c = await G.fetch("/api/v1/audiobooks/" + q.id + "/cover");
       if (c.ok) await Drive.write(Drive.sync, dir + "/cover.jpg", await c.blob());
     } catch (e) {}
-    inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title });
+    inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title, progress: progress || undefined });
   }
 
   // 4. notes
@@ -1485,6 +1504,47 @@ gets a password or token.
     return base + "." + ext;
   }
 
+  // Usage statistics the Kindle left in usage/ (it has no Wi-Fi to send them:
+  // gzreader_usage.lua), sent from here at the level chosen on the Kindle
+  async function sendUsage(out) {
+    var dir = await Drive.tryDir(Drive.sync, "usage");
+    if (!dir) return;
+    var names = [];
+    for await (var entry of dir.values()) if (entry.kind === "file" && /\.jsonl$/.test(entry.name)) names.push(entry.name);
+    if (!names.length) return;
+    var u = out.usage;
+    if (!u || !u.server || u.level === "off") {
+      // (turned off on the Kindle: nothing is sent)
+      for (var d = 0; d < names.length; d++) await dir.removeEntry(names[d]);
+      return;
+    }
+    var server = String(u.server).replace(/\/+$/, "");
+    if (!/^https:\/\//.test(server) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(server)) return;
+    names.sort();
+    var sent = 0, waiting = false;
+    for (var i = 0; i < names.length && !waiting; i++) {
+      var text = await (await (await dir.getFileHandle(names[i])).getFile()).text();
+      var items = [];
+      text.split("\n").forEach(function (line) {
+        if (!line.trim()) return;
+        try { var it = JSON.parse(line); if (it && /^(event|identify)$/.test(it.type) && it.payload) items.push(it); } catch (e) {}
+      });
+      for (var k = 0; k < items.length; k += 100) {
+        var r = null;
+        try {
+          r = await fetch(server + "/api/application/batch", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ events: items.slice(k, k + 100) }) });
+        } catch (e) { r = null; }
+        if (!r || r.status >= 500) { waiting = true; break; } // (offline or server trouble: the next sync)
+      }
+      if (waiting) break;
+      await dir.removeEntry(names[i]); // sent (or refused for good)
+      sent += items.length;
+    }
+    if (sent) log("Usage statistics sent for the Kindle (" + sent + " event" + (sent === 1 ? "" : "s") + ").", "ok");
+    if (waiting) log("The Kindle's usage statistics couldn't be sent: they wait for the next sync.");
+  }
+
   async function runSync() {
     $("#sync").disabled = true;
     $("#done").classList.add("hidden");
@@ -1520,6 +1580,7 @@ gets a password or token.
       setPicks(picks().filter(function (p) {
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
+      try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
       await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)

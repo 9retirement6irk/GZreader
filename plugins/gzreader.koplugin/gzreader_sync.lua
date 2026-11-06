@@ -393,27 +393,55 @@ function Sync:canTalk()
     return self.api:isPaired() and (NetworkMgr:isConnected() or self.api.offline == true)
 end
 
-function Sync:pull(interactive)
+--- Grimmory's progress fields of a book (what a download keeps for the
+--- book's first opening: entry.grimmory_progress), or nil when it has none.
+Sync.PROGRESS_KEYS = { "epubProgress", "pdfProgress", "cbxProgress", "audiobookProgress" }
+function Sync.progressOf(book)
+    if type(book) ~= "table" then return nil end
+    local p, any = {}, false
+    for _i, k in ipairs(Sync.PROGRESS_KEYS) do
+        if type(book[k]) == "table" and next(book[k]) ~= nil then p[k] = book[k]; any = true end
+    end
+    return any and p or nil
+end
+
+--- saved: Grimmory's progress kept when the book was downloaded (used when
+--- Grimmory can't be asked now: no Wi-Fi, or not in the computer's copy).
+function Sync:pull(interactive, saved)
     if not self.ui.document or self.plugin.sync ~= self then return end
-    if not self:canTalk() then
+    local talk = self:canTalk()
+    if not talk and not saved then
         if interactive then self.plugin:showError("unreachable") end
         return
     end
-    self.plugin:flushPending()
+    if talk then self.plugin:flushPending() end
     -- in the background, with the web reader's CFI turned into an XPointer there
     local file = self:isEpub() and self.ui.document.file or nil
     local book_id = self.book_id
-    Async.run(self.api, function(api)
-        local book, err = api:getBook(book_id)
+    local function work(api)
+        local book, err
+        if api then book, err = api:getBook(book_id) end
+        if type(book) ~= "table" and saved then
+            book, err = {}, nil
+            for k, v in pairs(saved) do book[k] = v end
+        end
         local ep = type(book) == "table" and book.epubProgress
         if file and type(ep) == "table" and type(ep.cfi) == "string" and ep.cfi ~= "" then
             book.gz_xp = Sync.xpInFile(file, ep.cfi)
         end
         return book, err
-    end, function(book, err)
+    end
+    local function done(book, err)
         if not self.ui.document or self.plugin.sync ~= self then return end
+        if type(book) ~= "table" and saved and not talk then book, err = saved, nil end -- (the background was busy)
+        if saved and type(book) == "table" then Log.info("sync pull book", self.book_id, "with the progress kept at download") end
         self:applyRemote(book, interactive, err)
-    end, "pull")
+    end
+    if talk then
+        Async.run(self.api, work, done, "pull")
+    else
+        Async.background(function() return work(nil) end, done, "pull (kept progress)")
+    end
 end
 
 --- Act on Grimmory's record of the book (from pull).
@@ -576,8 +604,15 @@ function Sync:onReady()
     self:startSession()
     UIManager:scheduleIn(2, function() self.plugin:flushPending() end)
     if self.plugin:syncEnabled() then
+        -- Grimmory's progress when the book was downloaded: for its first
+        -- opening only (afterwards this Kindle has its own place)
+        local saved = type(self.entry) == "table" and self.entry.grimmory_progress or nil
+        if saved then
+            self.entry.grimmory_progress = nil
+            self.plugin:save()
+        end
         -- let the first page render before talking to the network
-        UIManager:scheduleIn(1, function() self:pull(false) end)
+        UIManager:scheduleIn(1, function() self:pull(false, saved) end)
     end
 end
 

@@ -533,6 +533,15 @@ end
 
 --- Offer Grimmory's position when it differs from ours by more than a minute.
 function Player:pull(on_done)
+    -- Grimmory's progress kept when it was downloaded (syncing through a
+    -- computer, no Wi-Fi now): the first opening only
+    local kept = self.plugin.store.audiobooks and self.plugin.store.audiobooks[self.book.id]
+    if self._pulled == nil and type(kept) == "table" and kept.grimmory_progress then
+        local saved = kept.grimmory_progress
+        kept.grimmory_progress = nil
+        self.plugin:save()
+        if not (self.plugin.api:isPaired() and NetworkMgr:isConnected()) then self._pulled = saved end
+    end
     -- (asked once: 1.21.0 and older asked again and again when Grimmory
     -- didn't have the book any more, about once a second)
     if self._pulled == nil and not (self.plugin.api:isPaired() and NetworkMgr:isConnected()) then return on_done() end
@@ -555,6 +564,13 @@ function Player:pull(on_done)
         end
     end
     if math.abs(ms - self.pos) < 60000 then return on_done() end
+    if self.pos < 1000 then
+        -- nothing listened to here yet (just downloaded): Grimmory's place, no question
+        Log.info("audiobook", self.book.id, "starts at Grimmory's place", ms)
+        self.pos = ms
+        UIManager:show(InfoMessage:new{ text = T(_("Continuing from %1 (Grimmory)."), Audiobook.fmt(ms)), timeout = 2 })
+        return on_done()
+    end
     UIManager:show(ConfirmBox:new{
         text = T(_("Grimmory has this audiobook at %1 (here: %2). Continue from there?"), Audiobook.fmt(ms), Audiobook.fmt(self.pos)),
         ok_text = _("Use Grimmory's"), cancel_text = _("Keep this"),

@@ -278,6 +278,7 @@ do
         if usb and usb.plugin then
             -- syncing through a computer: the open book's exact place, and the outbox, now
             pcall(usb.finishCfis, usb.plugin)
+            pcall(usb.handOverUsage, usb.plugin)
             pcall(usb.plugin.save, usb.plugin)
         elseif pending then pcall(pending) end
         return orig_quit(um, ...)
@@ -414,6 +415,13 @@ function Grimmory:menuItems()
     return items
 end
 
+-- A list without the items left out (nil): t has n places.
+local function packed(n, t)
+    local out = {}
+    for i = 1, n do if t[i] ~= nil then out[#out + 1] = t[i] end end
+    return out
+end
+
 --- GZreader's settings that live in ZenOS's other Settings sections
 --- (zenos modules/settings/zen_settings.lua puts them there):
 ---   "general"   { wifi = item, diagnostics = { items } }
@@ -428,13 +436,13 @@ function Grimmory:sectionItems(section)
     end
     if section == "general" then
         return {
-            wifi = icon("wifi_off", {
+            wifi = not Net.usb and icon("wifi_off", {
                 text = _("Wi-Fi only when needed"),
                 help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
                 checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
                 callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
-            }),
-            diagnostics = {
+            }) or nil, -- (no Wi-Fi: nothing to turn on)
+            diagnostics = packed(5, {
                 icon("settings_bug", {
                     text = _("Diagnostic logging"),
                     help_text = _("Keep a log of Grimmory activity in koreader/gzreader.log (passwords and tokens are never written)."),
@@ -445,20 +453,21 @@ function Grimmory:sectionItems(section)
                         self:save()
                     end,
                 }),
-                icon("connect", require("gzreader_remote").menuItems(self)),
+                -- (no Wi-Fi: nothing a phone could reach; the log is saved for the USB drive)
+                not Net.usb and icon("connect", require("gzreader_remote").menuItems(self)) or nil,
                 icon("settings_stats", require("gzreader_usage").menuItems()),
-                icon("send", {
+                not Net.usb and icon("send", {
                     text = _("Send diagnostic log to a browser (QR code)"),
                     callback = function(touchmenu)
                         closeTouchMenu(touchmenu)
                         self:shareLog()
                     end,
-                }),
+                }) or nil,
                 icon("save", {
                     text = _("Save diagnostic log (USB)"),
                     callback = function() self:exportLog() end,
                 }),
-            },
+            }),
         }
     elseif section == "reader" then
         if not Mod.Touch.audio() then return {} end -- (no speaker: no read aloud, no audiobooks)
@@ -588,19 +597,22 @@ function Grimmory:showDiagnostics()
     local okc, icons = pcall(require, "common/inline_icon_map")
     local function label(icon, text) return (okc and icons[icon]) and (icons[icon] .. "  " .. text) or text end
     local dialog
+    local buttons = {}
+    -- (no Wi-Fi, Kindle 2 and DX: no phone to send it to; saved for the USB drive)
+    if not Net.usb then
+        buttons[#buttons + 1] = { { text = label("send", _("Send to a browser (QR code)")), align = "left", callback = function()
+            UIManager:close(dialog)
+            UIManager:nextTick(function() self:shareLog() end)
+        end } }
+    end
+    buttons[#buttons + 1] = { { text = label("save", _("Save to the Kindle (copy over USB)")), align = "left", callback = function()
+        UIManager:close(dialog)
+        UIManager:nextTick(function() self:exportLog() end)
+    end } }
+    buttons[#buttons + 1] = { { text = label("remove", _("Cancel")), align = "left", callback = function() UIManager:close(dialog) end } }
     dialog = ButtonDialog:new{
         title = _("Diagnostics\nThe log helps find problems. Passwords and tokens are never in it."),
-        buttons = {
-            { { text = label("send", _("Send to a browser (QR code)")), align = "left", callback = function()
-                UIManager:close(dialog)
-                UIManager:nextTick(function() self:shareLog() end)
-            end } },
-            { { text = label("save", _("Save to the Kindle (copy over USB)")), align = "left", callback = function()
-                UIManager:close(dialog)
-                UIManager:nextTick(function() self:exportLog() end)
-            end } },
-            { { text = label("remove", _("Cancel")), align = "left", callback = function() UIManager:close(dialog) end } },
-        },
+        buttons = buttons,
     }
     -- ZenOS's look: icon column, and Q, W, E keys on a Kindle Keyboard
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
@@ -614,6 +626,7 @@ end
 --- The phone saves the file, which can then be attached anywhere.
 function Grimmory:shareLog()
     if self.pairing then return end
+    if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
     if not Net.connected() and Net.enabled() then
         return Net.run(function() self:shareLog() end, { reason = "sending the log" })
     end
@@ -1780,9 +1793,23 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             format = type(book.primaryFileType) == "string" and book.primaryFileType or nil,
             file_id = tonumber(book.primaryFileId),
         }
+        -- Grimmory's progress, for the book's first opening without Wi-Fi
+        -- (gzreader_sync.lua: Sync:onReady)
+        entry.grimmory_progress = Sync.progressOf(book)
         self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()
+        if book.gz_quiet and Net.connected() then
+            -- (downloaded for later: Grimmory's latest, while Wi-Fi is on)
+            local key = tostring(book.id)
+            require("gzreader_async").run(self.api, function(api) return api:getBook(book.id) end, function(full)
+                local p = Sync.progressOf(full)
+                if p and self.store.downloads[key] == entry and not (self.sync and self.sync.book_id == key) then
+                    entry.grimmory_progress = p
+                    self:save()
+                end
+            end, "download progress", { nice = true })
+        end
         pcall(function() require("gzreader_coverwarm").schedule(self, 15) end)
         local Titles = require("gzreader_titles")
         local sub = info.subtitle or Titles.subtitle(self, book.id)

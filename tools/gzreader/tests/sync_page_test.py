@@ -111,7 +111,13 @@ OUTBOX = {
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
+    # usage statistics: the page sends what the Kindle left in usage/
+    "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
 }
+USAGE_LINES = "\n".join(json.dumps(x) for x in [
+    {"type": "identify", "payload": {"application": "test-app", "os": "Kindle2", "language": "en", "data": {"id": "k", "version": "1.25.2"}}},
+    {"type": "event", "payload": {"application": "test-app", "name": "start", "os": "Kindle2", "language": "en", "data": {"install": "k"}}},
+]) + "\n"
 
 from playwright.sync_api import sync_playwright
 
@@ -135,15 +141,17 @@ with sync_playwright() as pw:
     page.wait_for_function("window.GZSync")
     check(page.locator("h1").inner_text() == "Sync with computer" and page.locator("#sync").is_disabled(),
           "the page opens; Sync waits for a Kindle and a connection")
-    page.evaluate("""async (outbox) => {
+    page.evaluate("""async ({ outbox, usage }) => {
         const root = await navigator.storage.getDirectory();
         for await (const name of root.keys()) await root.removeEntry(name, { recursive: true });
         const gz = await (await root.getDirectoryHandle('documents', { create: true })).getDirectoryHandle('GZreader', { create: true });
         const sync = await gz.getDirectoryHandle('.gzsync', { create: true });
         const w = await (await sync.getFileHandle('outbox.json', { create: true })).createWritable();
         await w.write(JSON.stringify(outbox)); await w.close();
+        const u = await (await (await sync.getDirectoryHandle('usage', { create: true })).getFileHandle('sending-1.jsonl', { create: true })).createWritable();
+        await u.write(usage); await u.close();
         window.testRoot = root;
-    }""", OUTBOX)
+    }""", {"outbox": OUTBOX, "usage": USAGE_LINES})
     check(page.locator("#gate").is_visible() and not page.locator("#app").is_visible(), "a Kindle first: nothing to set up before one is chosen")
     page.evaluate("() => GZSync.open(window.testRoot, true)")
     page.wait_for_selector("#unlock:not(.hidden)")
@@ -274,6 +282,9 @@ with sync_playwright() as pw:
     check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text(),
           "update: a newer GZreader is offered for the Kindle")
 
+    # Grimmory has places for the books the sync brings (they open there on the Kindle)
+    urllib.request.urlopen("http://127.0.0.1:%d/webprogress?book=3&pct=30&cfi=epubcfi(/6/6!/4/2)&href=Text/ch1.xhtml" % (GP + 1)).read()
+    urllib.request.urlopen("http://127.0.0.1:%d/webprogress?book=32&pct=60&cfi=50000&href=1" % (GP + 1)).read()
     page.click("#sync")
     page.wait_for_selector("#done:not(.hidden)", timeout=120000)
     log = page.locator("#log").inner_text()
@@ -355,10 +366,17 @@ check(len(details) == 35, "book pages: one per book")
 book = next((b for b in inbox.get("books", []) if b["id"] == 3), None)
 check(book and files.get(G + book["file"], b"").startswith(b"PK\x03\x04") and book["name"] == "book3.epub" and book["subtitle"] == "Old School",
       "the sync queue: the book, under in/")
+check(book and (book.get("progress") or {}).get("epubProgress", {}).get("percentage") == 30.0,
+      "the sync queue: the book's place on Grimmory goes with it (it opens there)")
 ab = next((a for a in inbox.get("audiobooks", []) if a["id"] == 32), None)
 check(ab and G + ab["dir"] + "/track-001.mp3" in files and G + ab["dir"] + "/track-002.mp3" in files
       and G + ab["dir"] + "/cover.jpg" in files and ab["info"]["folderBased"] and "folder" in (ab["info"].get("gz_description") or ""),
       "the sync queue: the audiobook's tracks, named as GZreader names them, its cover and description")
+check(ab and (ab.get("progress") or {}).get("audiobookProgress", {}).get("positionMs") == 50000,
+      "the sync queue: the audiobook's place on Grimmory too")
+usage = state.get("usage", [])
+check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
+      "usage statistics the Kindle left: sent from the computer, then deleted")
 mus = {m["key"]: m for m in inbox.get("music", [])}
 def col(key):
     m = mus.get(key)

@@ -30,10 +30,14 @@ Format 1:
     queue = { { id, kind = "book"|"audiobook", title, authors, format, file_id, name, size_kb } },
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
-    calendar = { from, to }, auto_shelf = { id, magic }, last_import }
+    calendar = { from, to }, auto_shelf = { id, magic }, last_import,
+    usage = { level, server, app } (absent when off) }
+- usage/*.jsonl (the Kindle, when it steps aside for the USB drive): usage
+  statistics waiting to be sent (gzreader_usage.lua); the page sends them
+  to usage.server and deletes each file it sent.
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
-    books = { { id, file, name, title, authors, format, file_id, subtitle } },
-    audiobooks = { { id, dir, info, primaryFileName, title } },
+    books = { { id, file, name, title, authors, format, file_id, subtitle, progress } },
+    audiobooks = { { id, dir, info, primaryFileName, title, progress } },
     music = { { kind, key, dir } },
     notes = { file, done = { queue ids }, server, user },
     calendars = { { name, file } },
@@ -373,6 +377,20 @@ function Usb.have(plugin)
     return { books = books, audiobooks = jsonList(audiobooks), music = jsonList(music) }
 end
 
+function Usb.usageInfo()
+    local ok, U = pcall(require, "gzreader_usage")
+    if not ok or not U.on() then return nil end
+    return { level = U.level(), server = U.SERVER, app = U.APP }
+end
+
+--- Usage statistics waiting on the Kindle: into .gzsync/usage/ for the page
+--- (when GZreader steps aside for the USB drive).
+function Usb.handOverUsage(plugin)
+    local n = require("gzreader_usage").handOver(Usb.dir(plugin) .. "/usage")
+    if n > 0 then Log.info("sync: usage statistics for the sync page:", n, "file(s)") end
+    return n
+end
+
 function Usb.outbox(plugin)
     local store = plugin.store
     local Copy = require("gzreader_copy")
@@ -421,6 +439,8 @@ function Usb.outbox(plugin)
         calendar = { days_back = cal_from or 14, days_ahead = cal_to or 90 },
         auto_shelf = shelf,
         last_import = store.usb_last and store.usb_last.at or nil,
+        -- usage statistics (gzreader_usage.lua): the page sends what's in usage/
+        usage = Usb.usageInfo(),
         -- (how much room is left on the Kindle, for the page)
         disk = cached("disk", function()
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
@@ -547,6 +567,8 @@ function Usb.takeBook(plugin, base, b)
     entry.subtitle = type(b.subtitle) == "string" and b.subtitle ~= "" and b.subtitle or entry.subtitle
     entry.format = type(b.format) == "string" and b.format or entry.format
     entry.file_id = tonumber(b.file_id) or entry.file_id
+    -- (Grimmory's progress: the book opens there the first time)
+    entry.grimmory_progress = require("gzreader_sync").progressOf(b.progress) or entry.grimmory_progress
     plugin.store.downloads[id] = entry
     if entry.subtitle then
         pcall(require("gzreader_titles").apply, path, title, entry.subtitle, authors)
@@ -577,6 +599,7 @@ function Usb.takeAudiobook(plugin, base, a, prepare_list)
     plugin.store.audiobooks = plugin.store.audiobooks or {}
     local e = plugin.store.audiobooks[id] or {}
     e.title, e.author = book.title, book.author
+    e.grimmory_progress = require("gzreader_sync").progressOf(a.progress) or e.grimmory_progress
     plugin.store.audiobooks[id] = e
     prepare_list[#prepare_list + 1] = { dir = dest, book = book, id = id }
     Usb.dequeue(plugin, a.id)
@@ -934,14 +957,17 @@ function Usb.show(plugin)
     Usb.writeOutbox(plugin)
     local updates, notes = Usb.waiting(plugin)
     local q = queue(plugin)
+    local kindle = Device:isKindle()
     local lines = {
         _("Sync with a computer"),
         "",
-        _("1. Exit GZreader (the Kindle's USB drive only works while it isn't running)."),
+        kindle and _("1. Press Connect to computer: GZreader steps aside so the Kindle can share its USB drive (it can't while GZreader runs).")
+            or _("1. Exit GZreader (the USB drive only works while it isn't running)."),
         _("2. Plug the Kindle into a computer and open this page in Chrome or Edge:"),
         "   " .. Usb.PAGE_URL:gsub("^https://", ""),
         _("3. Choose the Kindle's drive, enter its PIN and press Sync."),
-        _("4. Eject the Kindle and start GZreader: it takes in the new books."),
+        kindle and _("4. Eject the Kindle and unplug it: GZreader starts again by itself and takes in the new books.")
+            or _("4. Eject the Kindle and start GZreader: it takes in the new books."),
         "",
     }
     local status = {}
@@ -960,6 +986,12 @@ function Usb.show(plugin)
     end
     local dialog
     local buttons = {}
+    if kindle then
+        buttons[#buttons + 1] = { { text = _("Connect to computer (USB drive)"), callback = function()
+            UIManager:close(dialog)
+            Usb.connect(plugin)
+        end } }
+    end
     if #q > 0 then
         buttons[#buttons + 1] = { { text = T(_("Sync queue (%1)"), #q), callback = function()
             UIManager:close(dialog)
@@ -977,6 +1009,25 @@ function Usb.show(plugin)
     dialog = ButtonDialog:new{ title = table.concat(lines, "\n"), title_align = "left", buttons = buttons }
     UIManager:show(dialog)
     return dialog
+end
+
+--- Step aside for the Kindle's USB drive mode: save everything (the outbox
+--- included), then quit with exit code 86. koreader.sh (platform/kindle)
+--- lets the Kindle's USB service run again, waits while the drive is shared
+--- and starts GZreader again once it's back.
+function Usb.connect(plugin)
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local Event = require("ui/event")
+    local _ = require("gettext")
+    pcall(Usb.finishCfis, plugin)
+    plugin:save()
+    Log.info("sync: stepping aside for the Kindle's USB drive mode")
+    UIManager:show(InfoMessage:new{ text = _("Plug the Kindle into the computer.\n\nGZreader starts again after you eject it."), timeout = 0 })
+    UIManager:forceRePaint()
+    UIManager:flushSettings()
+    UIManager:broadcastEvent(Event:new("Close"))
+    UIManager:quit(86)
 end
 
 --- The sync queue: what the next sync brings; select one to take it off.

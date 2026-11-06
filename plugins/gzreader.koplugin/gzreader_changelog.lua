@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.26.0",
+        changes = {
+            "Sync with a computer: Menu → Sync → Connect to computer. GZreader saves everything and steps aside so the Kindle can share its USB drive (KOReader turns the drive off while it runs); after you eject the Kindle, GZreader starts again by itself. (If the Kindle was already plugged in, unplug it and plug it in again.)",
+            "Books and audiobooks just downloaded open at their place on Grimmory, also without Wi-Fi: the sync page brings each one's progress with it, and a book downloaded for later (Download on its page) keeps Grimmory's progress for when it's opened offline. An audiobook not listened to on the Kindle yet starts at Grimmory's place without asking.",
+            "Kindles without Wi-Fi: usage statistics are sent by the sync page from the computer (at the level chosen on the Kindle; Off sends nothing).",
+            "Kindles without Wi-Fi: no more Send diagnostic log to a browser (QR code), Remote debugging or Wi-Fi in Settings and Diagnostics; Save diagnostic log (USB) is there.",
+        },
+    },
+    {
         version = "1.25.1",
         changes = {
             "Sync with a computer: the sync page stopped with an error (\"reduce/some is not a function\") and Sync stayed greyed out when the Kindle had nothing waiting in a list: GZreader wrote empty lists the way the page didn't expect. Fixed on both sides (the page already handles Kindles that haven't updated).",
