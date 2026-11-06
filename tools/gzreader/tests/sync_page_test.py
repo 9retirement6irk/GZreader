@@ -116,6 +116,12 @@ OUTBOX = {
 from playwright.sync_api import sync_playwright
 
 print("The sync page (docs/sync), in a browser")
+# (browsers keep GitHub Pages' files 10 minutes: a new page with an old script breaks, so the
+# page asks for the script by its content: update ?v= in index.html when gzsync.js changes)
+_js = open(os.path.join(REPO, "docs", "sync", "gzsync.js"), "rb").read()
+_v = hashlib.sha256(_js).hexdigest()[:10]
+check(('gzsync.js?v=%s"' % _v) in open(os.path.join(REPO, "docs", "sync", "index.html")).read(),
+      "index.html asks for this gzsync.js (?v=%s: its SHA-256)" % _v)
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     page = browser.new_page()
