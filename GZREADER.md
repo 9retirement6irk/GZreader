@@ -98,7 +98,7 @@ same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar,
 or to send books, or pick *Skip for now*. You can come back to it any time:
 the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the
 top). The guide then asks about the library view, tabs, sleep
-screen, usage statistics, clock and reading defaults.
+screen, clock and usage statistics.
 
 Books you download or send go to the **GZreader** folder at the top of the Kindle's
 drive; the **Downloads** tab shows them.

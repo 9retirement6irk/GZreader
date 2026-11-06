@@ -363,13 +363,88 @@ function QuickstartScreen:_paintChoiceRows(bb, x, choices_top, row_h, page, sel)
     end
 end
 
+-- GZreader: choices as tiles, each a preview (choice.image_bb or image) with
+-- its label under it; the chosen one framed. Two columns (three when there's
+-- room). The tiles' rectangles are kept for taps (self._tiles).
+function QuickstartScreen:_paintChoiceTiles(bb, x, y, page)
+    local L   = self._L
+    local sel = self._selections[self._page_idx] or {}
+    local n   = #page.choices
+    local top = y + L.img_y + L.pad
+    local bot = y + L.dot_y - Screen:scaleBySize(6)
+    if page.description and page.description ~= "" then
+        local prompt_w = L.sw - L.pad * 2
+        local prompt = TextBoxWidget:new{
+            text = page.description, face = Font:getFace("cfont", 18), width = prompt_w, alignment = "center",
+        }
+        prompt:paintTo(bb, x + L.pad, top)
+        top = top + prompt:getSize().h + Screen:scaleBySize(12)
+        prompt:free()
+    end
+    local cols = (n > 4 and L.sw > L.sh * 0.9) and 3 or 2
+    local rows = math.ceil(n / cols)
+    local gap  = Screen:scaleBySize(12)
+    local tile_w = math.floor((L.sw - L.pad * 2 - gap * (cols - 1)) / cols)
+    local tile_h = math.floor((bot - top - gap * (rows - 1)) / rows)
+    local label_face = Font:getFace("cfont", 16)
+    local label_h = TextWidget:new{ text = "Ag", face = label_face, padding = 0 }
+    local lh = label_h:getSize().h
+    label_h:free()
+    local prev_h = tile_h - lh - Screen:scaleBySize(14)
+    -- previews shaped like the screen
+    local prev_w = math.min(tile_w - Screen:scaleBySize(8), math.floor(prev_h * L.sw / L.sh))
+    prev_h = math.min(prev_h, math.floor(prev_w * L.sh / L.sw))
+    self._tiles = {}
+    self._tile_cols = cols
+    for i, choice in ipairs(page.choices) do
+        local c = (i - 1) % cols
+        local r = math.floor((i - 1) / cols)
+        -- the last row centred when it isn't full
+        local in_row = (r == rows - 1) and (n - r * cols) or cols
+        local row_w = in_row * tile_w + (in_row - 1) * gap
+        local tx = x + math.floor((L.sw - row_w) / 2) + c * (tile_w + gap)
+        local ty = top + r * (tile_h + gap)
+        self._tiles[i] = { x = tx - x, y = ty - y, w = tile_w, h = tile_h }
+        local is_sel = sel[choice.id] == true
+        local px = tx + math.floor((tile_w - prev_w) / 2)
+        local py = ty + Screen:scaleBySize(4)
+        bb:paintRect(px, py, prev_w, prev_h, Blitbuffer.COLOR_LIGHT_GRAY)
+        if (choice.image_bb or choice.image) and ImageWidget then
+            pcall(function()
+                local iw = ImageWidget:new{
+                    image = choice.image_bb, file = choice.image_bb == nil and choice.image or nil,
+                    width = prev_w, height = prev_h, scale_factor = 0,
+                    image_disposable = false, original_in_nightmode = false, alpha = choice.image_bb == nil,
+                }
+                local isz = iw:getSize()
+                iw:paintTo(bb, px + math.floor((prev_w - isz.w) / 2), py + math.floor((prev_h - isz.h) / 2))
+                iw:free()
+            end)
+        end
+        bb:paintBorder(px, py, prev_w, prev_h, 1, Blitbuffer.COLOR_DARK_GRAY)
+        if is_sel then
+            local t = Screen:scaleBySize(3)
+            bb:paintBorder(px - t - 2, py - t - 2, prev_w + 2 * (t + 2), prev_h + 2 * (t + 2), t, Blitbuffer.COLOR_BLACK)
+        end
+        local tw = TextWidget:new{ text = choice.text or "", face = label_face, bold = is_sel, padding = 0,
+            max_width = tile_w }
+        local tsz = tw:getSize()
+        tw:paintTo(bb, tx + math.floor((tile_w - tsz.w) / 2), py + prev_h + Screen:scaleBySize(8))
+        tw:free()
+        if self._focused_choice == i then
+            self:_paintFocusRing(bb, tx, ty, tile_w, tile_h)
+        end
+    end
+    self._choice_area = nil
+end
+
 function QuickstartScreen:paintTo(bb, x, y)
     local L = self._L
 
     bb:paintRect(x, y, L.sw, L.sh, Blitbuffer.COLOR_WHITE)
 
     local page = self.pages[self._page_idx] or {}
-    local has_icon  = page.icon  and IconWidget  ~= nil
+    local has_icon  = (page.icon or page.icon_file) and IconWidget ~= nil
     local has_image = (page.image or page.image_bb) and ImageWidget ~= nil
     local has_visual = has_icon or has_image
 
@@ -418,6 +493,8 @@ function QuickstartScreen:paintTo(bb, x, y)
         end
         self[1]:paintTo(bb, x, y + picker_y)
         self._choice_area = nil
+    elseif page.choices and page.choice_layout == "tiles" then
+        self:_paintChoiceTiles(bb, x, y, page)
     elseif page.choices and not has_visual then
         self:_paintChoicesFullBand(bb, x, y, page)
     else
@@ -431,7 +508,8 @@ function QuickstartScreen:paintTo(bb, x, y)
                 local icon_sz = requested_sz and math.min(requested_sz, max_h)
                     or math.min(L.sw - L.pad * 2, max_h)
                 local ico = IconWidget:new{
-                    icon   = page.icon,
+                    icon   = page.icon_file == nil and page.icon or nil,
+                    file   = page.icon_file,
                     width  = icon_sz,
                     height = icon_sz,
                 }
@@ -609,6 +687,7 @@ function QuickstartScreen:setPage(n)
     end
     self._page_idx       = n
     self._choice_area    = nil
+    self._tiles          = nil
     self._finale_btn     = nil
     self._focused_choice = nil  -- reset focus when page changes
     UIManager:setDirty(self, function()
@@ -630,9 +709,28 @@ function QuickstartScreen:onQsPrevPage()
     return true
 end
 
+-- GZreader: the arrows move between tiles (a tile page), by `step`
+function QuickstartScreen:_moveTile(step)
+    local page = self.pages[self._page_idx] or {}
+    local n = #page.choices
+    local cur = self._focused_choice
+    if not cur then
+        -- start on the chosen tile
+        local sel = self._selections[self._page_idx] or {}
+        for i, c in ipairs(page.choices) do if sel[c.id] then cur = i end end
+        cur = cur or 1
+    else
+        cur = cur + step
+    end
+    self._focused_choice = math.max(1, math.min(n, cur))
+    UIManager:setDirty(self, function() return "ui", self.dimen end)
+    return true
+end
+
 -- Right arrow: advance page (same as PgFwd for non-choice pages)
 function QuickstartScreen:onQsFocusRight()
     local page = self.pages[self._page_idx] or {}
+    if page.choice_layout == "tiles" then return self:_moveTile(1) end
     if not page.choices then
         self:_nextPage()
     end
@@ -642,6 +740,7 @@ end
 -- Left arrow: go back a page (same as PgBack for non-choice pages)
 function QuickstartScreen:onQsFocusLeft()
     local page = self.pages[self._page_idx] or {}
+    if page.choice_layout == "tiles" then return self:_moveTile(-1) end
     if not page.choices then
         self:_prevPage()
     end
@@ -651,6 +750,7 @@ end
 -- Up arrow: move keyboard focus up in choice list
 function QuickstartScreen:onQsFocusUp()
     local page = self.pages[self._page_idx] or {}
+    if page.choice_layout == "tiles" then return self:_moveTile(-(self._tile_cols or 2)) end
     if page.choices and #page.choices > 0 then
         local cur = self._focused_choice or 1
         self._focused_choice = math.max(1, cur - 1)
@@ -662,6 +762,7 @@ end
 -- Down arrow: move keyboard focus down in choice list
 function QuickstartScreen:onQsFocusDown()
     local page = self.pages[self._page_idx] or {}
+    if page.choice_layout == "tiles" then return self:_moveTile(self._tile_cols or 2) end
     if page.choices and #page.choices > 0 then
         local cur = self._focused_choice or 0
         self._focused_choice = math.min(#page.choices, cur + 1)
@@ -701,7 +802,8 @@ end
 -- Call on_apply for the current page if it has choices (forward navigation only).
 function QuickstartScreen:_applyCurrentPage()
     local page = self.pages[self._page_idx] or {}
-    if page.choices and type(page.on_apply) == "function" then
+    -- (GZreader: a page without choices may have one too: the last page's)
+    if type(page.on_apply) == "function" then
         local sel = self._selections[self._page_idx] or {}
         pcall(page.on_apply, sel)
     end
@@ -761,6 +863,18 @@ function QuickstartScreen:_onTap(ges)
             local dx = L.dot_start_x + (i - 1) * (L.dot_r * 2 + L.dot_gap)
             if p.x >= dx and p.x < dx + L.dot_r * 2 then
                 self:setPage(i)
+                return true
+            end
+        end
+    end
+
+    -- GZreader: tiles
+    local page_t = self.pages[self._page_idx] or {}
+    if page_t.choice_layout == "tiles" and self._tiles then
+        for i, t in ipairs(self._tiles) do
+            if p.x >= t.x and p.x < t.x + t.w and p.y >= t.y and p.y < t.y + t.h and page_t.choices[i] then
+                self._selections[self._page_idx] = { [page_t.choices[i].id] = true }
+                UIManager:setDirty(self, function() return "ui", self.dimen end)
                 return true
             end
         end

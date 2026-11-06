@@ -19,9 +19,6 @@ local Accent = require("common/ui/accent")
 
 local _plugin_root = require("common/plugin_root") or ""
 
-local function img(rel)
-    return _plugin_root .. "/images/quickstart/" .. rel
-end
 
 -- Load up to `n` book covers. ReadHistory first, then home-dir scan to fill.
 -- Returns array of { bb, w, h, progress, status } -- caller owns the blitbuffer copies.
@@ -358,48 +355,6 @@ end
 
 -- Render the zen-mode quicksettings button (circle border + quick_zen icon) centered
 -- on a white canvas. Returns a Blitbuffer (caller owns) or nil on error.
-local function buildZenButtonBB(avail_w)
-    local ok_bb,  Blitbuffer = pcall(require, "ffi/blitbuffer")
-    local ok_iw,  IconWidget = pcall(require, "ui/widget/iconwidget")
-    local ok_dev, Device     = pcall(require, "device")
-    if not (ok_bb and ok_iw and ok_dev) then return nil end
-    local ok_u, utils = pcall(require, "common/utils")
-    local Screen   = Device.screen
-    local BTN_SZ   = Screen:scaleBySize(160)
-    local BORDER   = Screen:scaleBySize(3)
-    local ICO_SZ   = math.floor(BTN_SZ * 0.52)
-    local canvas_h = BTN_SZ + Screen:scaleBySize(40)
-    local canvas   = Blitbuffer.new(avail_w, canvas_h, Blitbuffer.TYPE_BB8)
-    canvas:fill(Blitbuffer.COLOR_WHITE)
-    local r  = math.floor(BTN_SZ / 2)
-    local cx = math.floor(avail_w / 2)
-    local cy = math.floor(canvas_h / 2)
-    -- Circle border
-    for dy = -r, r do
-        local hw = math.floor(math.sqrt(r*r - dy*dy) + 0.5)
-        if hw > 0 then canvas:paintRect(cx - hw, cy + dy, hw*2, 1, Blitbuffer.COLOR_BLACK) end
-    end
-    -- White interior
-    local ir = r - BORDER
-    for dy = -ir, ir do
-        local hw = math.floor(math.sqrt(ir*ir - dy*dy) + 0.5)
-        if hw > 0 then canvas:paintRect(cx - hw, cy + dy, hw*2, 1, Blitbuffer.COLOR_WHITE) end
-    end
-    local icon_path = ok_u and utils.resolveIcon(_plugin_root .. "/icons/", "quick_zen")
-    pcall(function()
-        local ico = IconWidget:new{
-            file   = icon_path or nil,
-            icon   = icon_path and nil or "quick_zen",
-            width  = ICO_SZ,
-            height = ICO_SZ,
-        }
-        local isz = ico:getSize()
-        ico:paintTo(canvas, cx - math.floor(isz.w / 2), cy - math.floor(isz.h / 2))
-        ico:free()
-    end)
-    return canvas
-end
-
 -- Compose a 1x3 horizontal strip of portrait covers.
 -- Returns a Blitbuffer (caller owns) or nil on error.
 local function buildMosaicBB(covers, avail_w)
@@ -545,6 +500,120 @@ local function buildListBB(covers, avail_w)
     return canvas
 end
 
+-- GZreader: the Bookshelf choice's preview: books on a shelf, spines out, the
+-- picked one turned to show its cover (as gzreader_shelfview.lua draws them).
+local SHELF_TITLES = {
+    { title = "Emma", authors = "Jane Austen" }, { title = "Walden", authors = "Henry David Thoreau" },
+    { title = "Persuasion", authors = "Jane Austen" }, { title = "Hamlet", authors = "William Shakespeare" },
+    { title = "Moby Dick", authors = "Herman Melville" }, { title = "Middlemarch", authors = "George Eliot" },
+    { title = "Dracula", authors = "Bram Stoker" }, { title = "Ivanhoe", authors = "Walter Scott" },
+}
+local function buildShelfBB(covers, avail_w)
+    local ok_bb, Blitbuffer = pcall(require, "ffi/blitbuffer")
+    local ok_sh, Sh = pcall(require, "modules/filebrowser/patches/home/widgets/shelf")
+    local ok_dev, Device = pcall(require, "device")
+    if not (ok_bb and ok_sh and ok_dev) then return nil end
+    local Screen = Device.screen
+    local S = function(v) return Screen:scaleBySize(v) end
+    local PAD = S(8)
+    local cell_w = math.floor((avail_w - 2 * PAD - 2 * S(6)) / 3)
+    local area_h = math.floor(cell_w * 3 / 2)                       -- (the Tiles preview's height)
+    local h = area_h + S(Sh.BOARD_H) + S(Sh.UNDER_H) + 2 * PAD
+    local canvas = Blitbuffer.new(avail_w, h, Blitbuffer.TYPE_BB8)
+    canvas:fill(Blitbuffer.COLOR_WHITE)
+    local board_y = PAD + area_h
+    Sh.paintBoard(canvas, PAD, board_y, avail_w - 2 * PAD)
+    -- the turned book: a cover (the first one here, else a plain one)
+    local cover_h = math.floor(area_h * 0.86)
+    local cover_w = math.floor(cover_h * 2 / 3)
+    local spans, x, i = {}, PAD + S(6), 1
+    local picked_at = 3
+    local right = avail_w - PAD - S(6)
+    while x < right do
+        if i == picked_at then
+            local cx, cy = x, board_y - cover_h - S(Sh.PAGES)
+            local c = covers and covers[1]
+            local face = { paintTo = function(_self, bb, px, py)
+                bb:paintRect(px, py, cover_w, cover_h, Blitbuffer.gray(0.55))
+                if c and c.bb then
+                    pcall(function()
+                        local iw = require("ui/widget/imagewidget"):new{ image = c.bb, width = cover_w, height = cover_h,
+                            scale_factor = 0, image_disposable = false, original_in_nightmode = false }
+                        local isz = iw:getSize()
+                        iw:paintTo(bb, px + math.floor((cover_w - isz.w) / 2), py + math.floor((cover_h - isz.h) / 2))
+                        iw:free()
+                    end)
+                end
+            end }
+            if x + cover_w + S(Sh.PAGES) + S(5) > right then break end
+            Sh.paintBook(canvas, face, cx, cy, cover_w, cover_h)
+            x = x + cover_w + S(Sh.PAGES) + S(10)
+        else
+            local book = SHELF_TITLES[((i - 1) % #SHELF_TITLES) + 1]
+            local look = Sh.look({ title = book.title, path = book.title }, area_h)
+            if x + look.w > right then break end
+            local ok_sp = pcall(function()
+                local sp = Sh.newSpine({ title = book.title, authors = book.authors, path = book.title }, look.w, look.h, look.shade)
+                sp:paintTo(canvas, x, board_y - look.h)
+            end)
+            if not ok_sp then canvas:paintRect(x, board_y - look.h, look.w, look.h, Blitbuffer.gray(look.shade or 0.5)) end
+            spans[#spans + 1] = { x = x, w = look.w, h = look.h }
+            x = x + look.w
+        end
+        i = i + 1
+    end
+    pcall(Sh.paintDepth, canvas, board_y, spans)
+    if Screen.night_mode then canvas:invertRect(0, 0, avail_w, h) end
+    return canvas
+end
+
+-- GZreader: the sleep screen choices' previews: a small screen, as the Kindle
+-- would show it asleep.
+local function buildSleepBB(kind, covers, w, h)
+    local ok_bb, Blitbuffer = pcall(require, "ffi/blitbuffer")
+    local ok_iw, ImageWidget = pcall(require, "ui/widget/imagewidget")
+    if not (ok_bb and ok_iw) then return nil end
+    local canvas = Blitbuffer.new(w, h, Blitbuffer.TYPE_BB8)
+    local dark = kind == "cover_black" or kind == "zen_black"
+    canvas:fill(dark and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE)
+    local function put(opts, fw, fh)
+        pcall(function()
+            opts.width, opts.height, opts.scale_factor = fw, fh, 0
+            opts.original_in_nightmode = false
+            local iw = ImageWidget:new(opts)
+            local isz = iw:getSize()
+            iw:paintTo(canvas, math.floor((w - isz.w) / 2), math.floor((h - isz.h) / 2))
+            iw:free()
+        end)
+    end
+    local c = covers and covers[1]
+    if kind == "auto" or kind == "cover_black" then
+        if c and c.bb then
+            put({ image = c.bb, image_disposable = false }, w, h)
+        else
+            local cw = math.floor(w * 0.7)
+            local ch = math.min(h, math.floor(cw * 3 / 2))
+            canvas:paintRect(math.floor((w - cw) / 2), math.floor((h - ch) / 2), cw, ch, Blitbuffer.gray(0.55))
+        end
+    elseif kind == "zen_white" or kind == "zen_black" then
+        local utils = require("common/utils")
+        local f = utils.resolveLocalIcon(_plugin_root .. "/icons/", kind == "zen_white" and "zen_cover" or "zen_cover_light")
+        if f then put({ file = f, alpha = true }, math.floor(w * 0.8), math.floor(h * 0.8)) end
+    else -- keep: what's set now
+        local ok_f, Font = pcall(require, "ui/font")
+        local ok_t, TextWidget = pcall(require, "ui/widget/textwidget")
+        if ok_f and ok_t then
+            local tw = TextWidget:new{ text = "…", face = Font:getFace("cfont", 28), padding = 0 }
+            local sz = tw:getSize()
+            tw:paintTo(canvas, math.floor((w - sz.w) / 2), math.floor((h - sz.h) / 2))
+            tw:free()
+        end
+    end
+    local Screen = require("device").screen
+    if Screen.night_mode then canvas:invertRect(0, 0, w, h) end
+    return canvas
+end
+
 -- ---------------------------------------------------------------------------
 -- ctx = { plugin = <ZenOS plugin>, config = <config table> }
 -- ---------------------------------------------------------------------------
@@ -642,21 +711,19 @@ local function buildGrimmoryPage(ctx)
     if state.paired then
         choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }
     end
-    choices[#choices + 1] = { id = "qr",   text = _("Set up from a browser (QR code or this Kindle's address)"), checked = not state.paired }
-    choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login on this Kindle"), checked = false }
+    choices[#choices + 1] = { id = "qr",   text = _("Set up from a browser"), checked = not state.paired }
+    choices[#choices + 1] = { id = "type", text = _("Type my Grimmory login here"), checked = false }
     -- GZreader: copy the connections of another GZreader on the Wi-Fi (PIN)
-    choices[#choices + 1] = { id = "gz_copy", text = _("Copy them from another GZreader (it shows a PIN)"), checked = false }
+    choices[#choices + 1] = { id = "gz_copy", text = _("Copy from another GZreader"), checked = false }
     if state.connected_any then
-        choices[#choices + 1] = { id = "gz_send", text = _("Send this Kindle's connections to another GZreader"), checked = false }
+        choices[#choices + 1] = { id = "gz_send", text = _("Send to another GZreader"), checked = false }
     end
     choices[#choices + 1] = { id = "skip", text = _("Skip for now"),                   checked = false }
     return {
         title       = _("Set up from your browser"),
-        description = _("Scan the QR code with your phone, or type this Kindle's address into any browser on the Wi-Fi: one page there sets up\n• Grimmory: your book library, reading progress in sync\n• Notes: your Memos server\n• Calendar: a CalDAV account, or webcal / ICS links (e.g. Proton)\n• Sending books from that browser (no Grimmory needed)") .. "\n"
-            -- GZreader: or from another GZreader
-            .. _("Already set up on another GZreader? Copy its connections over the Wi-Fi.") .. "\n"
-            .. (not require("device"):isTouchDevice() and _("Come back to it any time: Menu → Send books.")
-                or _("Come back to it any time: swipe down from the top and tap Send books.")),
+        description = _("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, to connect Grimmory, Notes and Calendar, or to send books.") .. "\n"
+            .. (not require("device"):isTouchDevice() and _("Later: Menu → Send books.")
+                or _("Later: swipe down → Send books.")),
         choice_type = "radio",
         choices     = choices,
         on_apply    = function(sel)
@@ -780,7 +847,7 @@ function M.build_install_pages(ctx)
             choice_type = "radio",
             choices     = {
                 -- GZreader: books on bookshelves (common/gz_view.lua) first
-                { id = "bookshelf", text = _("Bookshelf - spines on shelves; the one picked shows its cover"), checked = true },
+                { id = "bookshelf", text = _("Bookshelf - spines on shelves"), checked = true },
                 { id = "mosaic", text = _("Tiles - large cover thumbnails"),      checked = false },
                 { id = "list",   text = _("List - detailed titles and metadata"), checked = false },
             },
@@ -848,52 +915,51 @@ function M.build_install_pages(ctx)
         -- 4. GZreader: keyboard (static) / 5-way / touch
         dpad and {
             title       = _("Your 5-way and buttons"),
-            description = _("The 5-way moves; press its centre to pick. Down from the bottom of Home reaches the tabs (Home, Downloads, Grimmory, Notes, Calendar): Left and Right choose one.") .. "\n"
-                .. _("Menu: the quick panel (at Home and in a book), the options in Notes and Calendar.") .. "\n"
-                .. _("Back: return from a link, or go to the Home screen. The page keys turn pages.") .. "\n"
-                .. _("The keyboard key shows the on-screen keyboard for typing."),
+            icon_file   = _plugin_root .. "/icons/fiveway.svg",
+            icon_size   = 150,
+            description = _("5-way: move, press to pick. Down from Home: the tabs.") .. "\n"
+                .. _("Menu: the quick panel and options.") .. "\n"
+                .. _("Back: Home. Page keys: turn pages."),
         } or not has_keys and {
             title       = _("Using GZreader"),
-            description = _("The tabs at the bottom: Home, Downloads, Grimmory, Notes, Calendar.") .. "\n\n"
-                .. _("Swipe down from the top of the screen for the quick panel: Wi-Fi, light, sleep, Send books and more. Hold a book for its options.") .. "\n\n"
-                .. _("While reading: tap the right side for the next page, the left side for the previous one, the top for the menu. Swipe up for the page browser."),
+            icon_file   = _plugin_root .. "/icons/touch.svg",
+            icon_size   = 150,
+            description = _("Swipe down from the top: the quick panel.") .. "\n"
+                .. _("Hold a book: its options.") .. "\n"
+                .. _("While reading, tap the top for the menu."),
         } or {
             title       = _("Your keyboard"),
-            description = _("Z, X, C, V, B: switch the bottom tabs, counted from the left (Home, Downloads, Grimmory, Notes, Calendar). Alt + Q, W, E… work too.") .. "\n"
-                .. _("Q, W, E …: pick an item in a list (the letter is shown next to it).") .. "\n"
-                .. _("Menu while reading: the Reading menu (contents, bookmarks, go to page, search, read aloud, fonts, sync). Hold Menu for the page browser.") .. "\n"
-                .. _("Shift + Sym: read aloud / stop.") .. "\n"
-                .. _("Back: return from a link, or go to the Home screen."),
+            icon_file   = _plugin_root .. "/icons/keyboard.svg",
+            icon_size   = 150,
+            description = _("Z X C V B: the tabs") .. "\n"
+                .. _("Q W E …: pick an item in a list") .. "\n"
+                .. _("Menu: the Reading menu (hold: page browser)") .. "\n"
+                .. _("Shift + Sym: read aloud") .. "\n"
+                .. _("Back: Home"),
         },
 
         -- 4b. GZreader: sync (static)
         {
             title       = _("Synced with Grimmory"),
-            description = _("Books you download from the Grimmory tab keep your reading position and bookmarks in sync with Grimmory's web reader and your other devices.") .. "\n\n"
-                .. _("No Wi-Fi? Your progress is saved on the Kindle and sent when you're back online."),
+            icon_file   = _plugin_root .. "/icons/library.svg",
+            icon_size   = 120,
+            description = _("Books from the Grimmory tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
+                .. _("Offline? It syncs when you're back online."),
         },
 
-        -- 5. Zen Mode (static)
+        -- 6. Sleep Screen (INTERACTIVE — tiles with previews)
         {
-            title       = _("Zen Mode"),
-            image       = img("onboarding/zen_mode.png"),
-            description = _("Turn on Zen mode to strip KOReader down to its bare essentials.\n\nRemove visual clutter for a focused, distraction-free reading experience. Exit at anytime from Settings.") .. "\n\n"
-                .. _("Disable zen mode to access default KOReader menus."),
-        },
-
-        -- 6. Sleep Screen (INTERACTIVE — radio)
-        {
-            title       = _("Sleep Screen"),
-            description = _("What should your device show when it goes to sleep?") .. "\n"
-                .. _("Book cover / screensavers folder: the book's cover while reading, a picture from the \"screensavers\" folder on Home and in menus."),
-            choice_type = "radio",
-            choices     = {
-                { id = "gz_auto",       text = _("Book cover / screensavers folder"), checked = not quickstart_completed },
-                { id = "keep",          text = _("Keep existing settings"),         checked = quickstart_completed },
-                { id = "cover_black",   text = _("Always the last book's cover"), checked = false },
-                { id = "zen_white",     text = _("Show Zen icon - white background"),   checked = false },
-                { id = "zen_black",     text = _("Show Zen icon - black background"),   checked = false },
-            },
+            title         = _("Sleep Screen"),
+            description   = _("While reading: the book's cover. Elsewhere: a picture from the screensavers folder, or one of these."),
+            choice_type   = "radio",
+            choice_layout = "tiles",
+            choices       = gz_compact({
+                { id = "gz_auto",     text = _("Cover or screensavers"), checked = not quickstart_completed, preview = "auto" },
+                { id = "cover_black", text = _("Last book's cover"),     checked = false, preview = "cover_black" },
+                { id = "zen_white",   text = _("GZ logo, white"),            checked = false, preview = "zen_white" },
+                { id = "zen_black",   text = _("GZ logo, black"),            checked = false, preview = "zen_black" },
+                quickstart_completed and { id = "keep", text = _("Keep current"), checked = true, preview = "keep" } or false,
+            }),
             on_apply = function(sel)
                 if sel["keep"] then return end
                 if sel["gz_auto"] then
@@ -917,30 +983,6 @@ function M.build_install_pages(ctx)
                     PresetStore.saveSettings("screensaver", preset)
                     PresetStore.setActivePreset("screensaver", preset.name)
                 end
-            end,
-        },
-
-        -- GZreader: usage statistics (on by default at Basic; can be turned off)
-        {
-            title       = _("Usage Statistics"),
-            description = _("Help improve GZreader by sending anonymous usage statistics to its developer. They're sent only while Wi-Fi is already on, never book titles, file names, your account or anything you type.") .. "\n"
-                .. _("Basic: GZreader's version, the Kindle model and firmware, downloads that worked or failed, slow moments, and restarts after a freeze.") .. "\n"
-                .. _("Full: also time on each screen, menus used, reading sessions, read aloud, sync and Wi-Fi times. Change it later in Settings → General → Usage statistics."),
-            choice_type = "radio",
-            choices     = (function()
-                local cur = G_reader_settings:readSetting("gzreader_usage")
-                cur = (cur == "off" or cur == "full") and cur or "basic"
-                return {
-                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
-                    { id = "full",  text = _("Full"),                checked = cur == "full" },
-                    { id = "off",   text = _("Off: send nothing"),   checked = cur == "off" },
-                }
-            end)(),
-            on_apply = function(sel)
-                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
-                if not v then return end
-                local ok, U = pcall(require, "gzreader_usage")
-                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
             end,
         },
 
@@ -969,61 +1011,45 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- 8. Reader (INTERACTIVE — radio)
+        -- GZreader: usage statistics (Basic by default; can be turned off)
         {
-            title       = _("Reader"),
-            description = _("Font, margins, contrast, line spacing etc - tested together for the best reading experience"),
+            title       = _("Usage Statistics"),
+            description = _("Anonymous, and sent only when Wi‑Fi is on: never titles, files, accounts or what you type.") .. "\n"
+                .. _("Basic: version, Kindle model, failed downloads, freezes.") .. "\n"
+                .. _("Full: also screens, menus and reading time."),
             choice_type = "radio",
-            choices     = {
-                { id = "keep", text = _("Keep existing settings"), checked = quickstart_completed },
-                { id = "zen",  text = _("ZenOS defaults"), checked = not quickstart_completed },
-            },
+            choices     = (function()
+                local cur = G_reader_settings:readSetting("gzreader_usage")
+                cur = (cur == "off" or cur == "full") and cur or "basic"
+                return {
+                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
+                    { id = "full",  text = _("Full"),                checked = cur == "full" },
+                    { id = "off",   text = _("Off"),                 checked = cur == "off" },
+                }
+            end)(),
             on_apply = function(sel)
-                if type(config._meta) ~= "table" then config._meta = {} end
-                if sel["keep"] then
-                    config._meta.reader_defaults_apply_on_next_open = false
-                    save_zen_config()
-                    return
-                end
-                local applied = ReaderDefaults.apply(G_reader_settings, config)
-                config._meta.reader_defaults_apply_on_next_open = applied ~= true
-                save_and_apply("reader_top_status_bar")
+                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
+                if not v then return end
+                local ok, U = pcall(require, "gzreader_usage")
+                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
             end,
         },
 
-        -- 9. Reading (static)
-        dpad and {
-            title       = _("While reading"),
-            description = _("Press Menu for the Reading menu: contents, bookmarks, go to page, search, fonts and layout, sync. Hold Menu for the page browser.") .. "\n\n"
-                .. _("Your place, bookmarks and highlights sync with Grimmory when the book opens and closes.") .. "\n\n"
-                .. _("The page keys on both sides turn pages."),
-        } or not has_keys and {
-            title       = _("While reading"),
-            description = _("Tap the top of the page for the menu: contents, bookmarks, search, fonts and layout.") .. "\n\n"
-                .. _("Your place, bookmarks and highlights sync with Grimmory when the book opens and closes.") .. "\n\n"
-                .. _("Hold a word to look it up or highlight it."),
-        } or {
-            title       = _("While reading"),
-            description = _("Press Menu for the Reading menu. Every entry has a letter key next to it.") .. "\n\n"
-                .. _("Read aloud: press Shift + Sym. The sentence being read is highlighted and pages turn by themselves. The first time, GZreader finds the Kindle's voice with a short test.") .. "\n\n"
-                .. _("Press AA for fonts and layout. Hold Menu for the page browser."),
-        },
-
-        -- 10. Settings & Updates (static)
-        {
-            title       = _("Settings & Updates"),
-            icon        = "_zen_quickstart_update",
-            icon_size   = 120,
-            description = _("All settings are in one unified tab. This icon with the dot indicates an update is available.") .. "\n\n"
-                .. _("GZreader checks for updates once a day (github.com/9retirement6irk/GZreader). Updating keeps your books, settings and reading progress."),
-        },
-
-        -- 11. Finale
+        -- Finale. (GZreader: the reading defaults (font, margins, contrast…)
+        -- the "Reader" page offered are applied here on a first setup; until
+        -- 1.23.13 that page asked, with them chosen already.)
         {
             title       = _("You're All Set"),
             icon        = "_zen_quickstart",
             finale      = true,
             description = _("The best interface is the one you forget is there.\nNow go get lost in a good book."),
+            on_apply    = function()
+                if quickstart_completed then return end
+                if type(config._meta) ~= "table" then config._meta = {} end
+                local applied = ReaderDefaults.apply(G_reader_settings, config)
+                config._meta.reader_defaults_apply_on_next_open = applied ~= true
+                save_and_apply("reader_top_status_bar")
+            end,
         },
     }
 
@@ -1054,18 +1080,24 @@ function M.build_install_pages(ctx)
         local slot_w  = scr_w - qs_pad * 2
         local slot_h  = img_h - Device.screen:scaleBySize(8)
         local mosaic_bb       = buildMosaicBB(covers, avail_w)
+        local shelf_bb        = buildShelfBB(covers, avail_w)
+        -- (the sleep screen tiles: small screens)
+        local sleep_w         = Device.screen:scaleBySize(150)
+        local sleep_h         = math.floor(sleep_w * scr_h / scr_w)
+        for _i, page in ipairs(pages) do
+            for _j, choice in ipairs(page.choices or {}) do
+                if choice.preview then choice.image_bb = buildSleepBB(choice.preview, covers, sleep_w, sleep_h) end
+            end
+        end
         local list_bb         = buildListBB(covers, avail_w)
         local context_menu_bb = buildContextMenuBB(slot_w, slot_h, covers[1])
         local quicksettings_bb = buildQuickSettingsBB(slot_w, slot_h)
         local page_browser_bb = buildPageBrowserBB(slot_w, slot_h)
-        local zen_bb          = buildZenButtonBB(avail_w)
         local home_bb         = buildHomeIconBB(avail_w)
         for _i, c in ipairs(covers) do c.bb:free() end
         for _i, page in ipairs(pages) do
             if page.title == _("Context Menu") and context_menu_bb then
                 page.image_bb, page.image = context_menu_bb, nil
-            elseif page.title == _("Zen Mode") and zen_bb then
-                page.image_bb, page.image = zen_bb, nil
             elseif page.title == _("Home Folder") and home_bb then
                 page.image_bb, page.image = home_bb, nil
             elseif page.title == _("Quick Settings") and quicksettings_bb then
@@ -1075,7 +1107,9 @@ function M.build_install_pages(ctx)
             end
             if page.choices then
                 for _j, choice in ipairs(page.choices) do
-                    if choice.id == "mosaic" and mosaic_bb then
+                    if choice.id == "bookshelf" and shelf_bb then
+                        choice.image_bb, choice.image = shelf_bb, nil
+                    elseif choice.id == "mosaic" and mosaic_bb then
                         choice.image_bb, choice.image = mosaic_bb, nil
                     elseif choice.id == "list" and list_bb then
                         choice.image_bb, choice.image = list_bb, nil

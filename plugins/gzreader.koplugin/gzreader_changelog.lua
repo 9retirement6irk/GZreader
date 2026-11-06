@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.13",
+        changes = {
+            "A shorter setup guide: less text on every page; a bookshelf preview for the Bookshelf view, the keys' and Grimmory's pictures; the sleep screen chosen from pictures of what each one looks like; usage statistics asked last. The Zen mode, Reader, While reading and Settings & Updates pages are gone (GZreader's reading defaults are still set on a first setup).",
+        },
+    },
+    {
         version = "1.23.12",
         changes = {
             "Touch Kindles (Kindle Touch, Paperwhite and newer): the install packages now include GZreader's launcher (documents/GZreader.sh), so the GZreader item is on the Kindle's own home screen right after copying, before GZreader has ever been started from KUAL.",

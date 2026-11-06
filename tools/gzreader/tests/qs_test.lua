@@ -36,10 +36,22 @@ check(pages[1].title == "Set up from your browser", "setup guide starts with Set
 check(pages[2].title == "Welcome to GZreader", "GZreader welcome follows")
 local titles = {} for _, pg in ipairs(pages) do titles[#titles + 1] = pg.title end
 local tl = table.concat(titles, "|")
-check(tl:match("Your keyboard") and tl:match("Synced with Grimmory") and tl:match("While reading"), "GZreader pages: keyboard, sync, reading")
+check(tl:match("Your keyboard") and tl:match("Synced with Grimmory"), "GZreader pages: keyboard, sync")
+check(not tl:match("Zen Mode") and not tl:match("|Reader|") and not tl:match("While reading") and not tl:match("Settings & Updates"),
+    "setup guide 1.23.13: no Zen mode, Reader, While reading or Settings & Updates pages")
+check(titles[#titles] == "You're All Set" and titles[#titles - 1] == "Usage Statistics", "usage statistics just before the end")
+local kbp, syncp for _, pg in ipairs(pages) do if pg.title == "Your keyboard" then kbp = pg elseif pg.title == "Synced with Grimmory" then syncp = pg end end
+check(kbp.icon_file:match("keyboard%.svg$") and syncp.icon_file:match("library%.svg$"), "keyboard and Grimmory icons")
+local lib for _, pg in ipairs(pages) do if pg.title == "Library View" then lib = pg end end
+check(lib.choices[1].id == "bookshelf", "library view: bookshelf first (with its own preview)")
+-- the finale applies the reading defaults the Reader page used to
+local fin = pages[#pages]
+check(type(fin.on_apply) == "function", "the finale applies the reading defaults on a first setup")
 check(not tl:match("Context Menu") and not tl:match("Quick Settings") and not tl:match("Page Browser"), "touch-only pages removed")
 local sleep for _, pg in ipairs(pages) do if pg.title == "Sleep Screen" then sleep = pg end end
 check(sleep and sleep.choices[1].id == "gz_auto" and sleep.choices[1].checked, "sleep screen: cover while reading / screensavers folder otherwise is the default")
+check(sleep.choice_layout == "tiles" and #sleep.choices == 4 and sleep.choices[3].preview == "zen_white",
+    "sleep screen: tiles with previews (no 'Keep current' on a first setup)")
 local SAVED = {} G_reader_settings.makeTrue = function(_, k) SAVED[k] = true end G_reader_settings.makeFalse = function(_, k) SAVED[k] = false end
 sleep.on_apply({ gz_auto = true }) check(SAVED.gzreader_sleep_auto == true, "choosing it turns GZreader sleep mode on")
 local ids = {} for _, c in ipairs(pages[1].choices) do ids[#ids + 1] = c.id .. (c.checked and "*" or "") end
@@ -69,7 +81,7 @@ do
         "setup tabs: Notes and Calendar on; Continue and Favorites offered but off")
     local kb
     for _, p in ipairs(M.build_install_pages({ plugin = { ui = {} }, config = cfg })) do if p.title == "Your keyboard" then kb = p end end
-    check(kb and kb.description:match("^Z, X, C, V, B: switch the bottom tabs"), "setup guide: the keyboard page names Z, X, C, V, B")
+    check(kb and kb.description:match("^Z X C V B: the tabs"), "setup guide: the keyboard page names Z X C V B")
     check(pg.max_selections == 5, "setup tabs: room left for Downloads and Grimmory (7 in all)")
     local sel = { home = true, continue = true, favorites = true, history = true }
     pg.on_apply(sel)
