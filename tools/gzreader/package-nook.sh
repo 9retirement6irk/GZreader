@@ -33,7 +33,7 @@ cp "$RUNTIME/SOURCES.txt" "$G/runtime-SOURCES.txt" 2>/dev/null || true
 cp "$REPO/platform/nook/gzreader.sh" "$G/gzreader.sh"
 chmod 755 "$G/gzreader.sh" "$KO/luajit"
 cat > "$G/README-NOOK.txt" <<TXT
-GZreader $GZ_VERSION for the Nook 1st Edition and Nook Simple Touch - TEST BUILD
+GZreader $GZ_VERSION for the Nook ${GZ_NOOK_FOR:-1st Edition and Nook Simple Touch} - TEST BUILD
 
 Copy this folder to /data/gzreader on a rooted Nook, then start it as root:
     adb push gzreader /data/gzreader
@@ -45,7 +45,8 @@ https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-1st-editi
 https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-simple-touch-test-build
 TXT
 
-OUT="$OUT_DIR/gzreader-nook-${GZ_VERSION}.zip"
+# (GZ_NOOK_NAME=gzreader-nook-1st-edition: the build without VFP, gzreader-nook.yml)
+OUT="$OUT_DIR/${GZ_NOOK_NAME:-gzreader-nook}-${GZ_VERSION}.zip"
 rm -f "$OUT"
 (cd "$STAGE" && zip -qr -9 "$OUT" gzreader)
 echo "$OUT"
