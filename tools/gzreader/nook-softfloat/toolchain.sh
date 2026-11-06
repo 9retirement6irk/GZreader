@@ -35,7 +35,7 @@ mkdir -p "$WORK/build" && cd "$WORK/build"
 ct-ng distclean
 unset CFLAGS CXXFLAGS LDFLAGS
 ct-ng arm-kindle-linux-gnueabi
-yes "" | ct-ng oldconfig > /dev/null
+ct-ng oldconfig < /dev/null > /dev/null
 ct-ng upgradeconfig
 sed -i 's/^CT_LOG_PROGRESS_BAR=y/CT_LOG_PROGRESS_BAR=n/' .config
 grep -q '^CT_ARCH_FLOAT_SW=y' .config || { echo "not a soft-float configuration" >&2; exit 1; }
