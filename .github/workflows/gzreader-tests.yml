@@ -26,7 +26,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq luajit lua-socket lua-check python3 curl rsync unzip \
             qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
-          sudo pip install -q --break-system-packages radicale   # (the CalDAV tests' server)
+          sudo pip install -q --break-system-packages radicale playwright   # (the CalDAV tests' server; the sync page's browser)
+          sudo python3 -m playwright install-deps chromium
+          python3 -m playwright install chromium
           sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
       - name: KOReader's Kindle 2/3/DX package (the binaries GZreader runs on)
         run: |

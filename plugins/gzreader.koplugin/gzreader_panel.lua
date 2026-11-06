@@ -118,8 +118,11 @@ end
 
 --- The Controls tiles: { icon, label, on, run }.
 function Panel.controls(plugin)
+    -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
+    local usb = require("gzreader_net").usb == true
     local list = {
-        { icon = "wifi", label = _("Wi-Fi"), on = NetworkMgr:isWifiOn(), run = function() dispatch("toggle_wifi") end },
+        usb and { icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
+            or { icon = "wifi", label = _("Wi-Fi"), on = NetworkMgr:isWifiOn(), run = function() dispatch("toggle_wifi") end },
     }
     local okn, Guard = pcall(require, "gzreader_nightguard")
     if not (okn and Guard.applies and Guard.applies()) then
@@ -130,7 +133,7 @@ function Panel.controls(plugin)
     list[#list + 1] = { icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
-    list[#list + 1] = { icon = "updates", label = _("Updates"), run = function() require("gzreader_update").run() end }
+    if not usb then list[#list + 1] = { icon = "updates", label = _("Updates"), run = function() require("gzreader_update").run() end } end
     -- (a full page over the panel: a full refresh after it, or touch Kindles keep a ghost of the panel)
     list[#list + 1] = { icon = "settings", label = _("Settings"), full = true, run = function() require("gzreader_homemenu").settings() end }
     if plugin and plugin.store and plugin.store.logging_disabled ~= true then
@@ -168,7 +171,9 @@ function Panel.homeTiles(plugin, book)
         end }
     end
     list[#list + 1] = { icon = "continue", label = _("Continue"), run = function() dispatch("open_previous_document") end }
-    list[#list + 1] = { icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
+    if not require("gzreader_net").usb then -- (no Wi-Fi: Sync, in Controls)
+        list[#list + 1] = { icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
+    end
     list[#list + 1] = { icon = "search", label = _("Search"), run = function() dispatch("file_search") end }
     list[#list + 1] = { icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }

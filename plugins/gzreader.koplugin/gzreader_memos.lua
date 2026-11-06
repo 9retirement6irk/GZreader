@@ -42,7 +42,8 @@ function Memos.normalizeServer(s)
 end
 
 function Memos:isConnected()
-    return self.store.server ~= nil and self.store.token ~= nil
+    -- (usb: notes brought by a computer, gzreader_usbsync.lua; the computer keeps the token)
+    return (self.store.server ~= nil and self.store.token ~= nil) or self.store.usb == true
 end
 
 local function query(params)

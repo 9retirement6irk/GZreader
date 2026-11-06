@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.24.0",
+        changes = {
+            "Kindles without Wi-Fi (Kindle 2, Kindle DX): sync with a computer. Exit GZreader, plug the Kindle in and open 9retirement6irk.github.io/GZreader/sync in Chrome or Edge: your reading positions, reading time and ratings go to Grimmory; books and audiobooks from the sync queue, your notes (and the ones written on the Kindle go to Memos), calendars and Plex albums come back, with a copy of your library. GZreader recognises these Kindles by itself; any Kindle can choose it in Settings → Connections → Sync through a computer.",
+            "Without Wi-Fi, the Grimmory tab browses that copy of your library: lists, search, shelves, authors, series, small covers and book descriptions. Download (and an audiobook's Add to sync queue) puts a book in the sync queue; the next sync brings it. Menu → Sync with computer shows how, what's waiting and the queue.",
+            "The sync page lets you choose books, audiobooks and Plex albums and playlists for the Kindle (each marked when it's on the Kindle or queued already), and brings a newer GZreader, which installs when GZreader starts.",
+            "The setup guide starts with how to sync with a computer on these Kindles; their Menu (quick panel and Home menu) has Sync instead of Wi-Fi, the QR code and Updates.",
+        },
+    },
+    {
         version = "1.23.13",
         changes = {
             "A shorter setup guide: less text on every page; a bookshelf preview for the Bookshelf view, the keys' and Grimmory's pictures; the sleep screen chosen from pictures of what each one looks like; usage statistics asked last. The Zen mode, Reader, While reading and Settings & Updates pages are gone (GZreader's reading defaults are still set on a first setup).",

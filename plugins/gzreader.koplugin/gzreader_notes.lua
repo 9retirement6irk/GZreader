@@ -110,6 +110,7 @@ local function info(text, timeout) UIManager:show(InfoMessage:new{ text = text, 
 --- Memos' filter (CEL) for the server-side part of the current filter.
 function Notes.cel(f)
     f = f or Notes.filter
+    if require("gzreader_net").usb then return nil end -- (no Memos to ask: Notes.keep filters here)
     if f.kind == "tag" then return string.format('%q in tags', f.value) end
     if f.kind == "pinned" then return "pinned == true" end
     if f.kind == "date" then return string.format('created_ts > now - duration("%dh")', f.value * 24) end
@@ -120,6 +121,26 @@ end
 --- The part done on the Kindle (Memos v0.31 can't filter by place or attachments).
 function Notes.keep(m, f)
     f = f or Notes.filter
+    if require("gzreader_net").usb then return Notes.keepHere(m, f) end
+    if f.kind == "place" then return m.place == f.value end
+    if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
+    return true
+end
+
+--- Every filter, worked out on the Kindle (syncing through a computer: no Memos to ask).
+function Notes.keepHere(m, f)
+    if f.kind == "tag" then
+        for _i, t in ipairs(m.tags or {}) do if t == f.value then return true end end
+        return false
+    end
+    if f.kind == "pinned" then return m.pinned == true end
+    if f.kind == "date" then
+        local y, mo, d, h, mi, s = tostring(m.created or ""):match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+        if not y then return true end
+        local t = os.time{ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) }
+        return t > os.time() - (tonumber(f.value) or 0) * 86400 - 86400
+    end
+    if f.kind == "search" then return tostring(m.content or ""):lower():find(tostring(f.value):lower(), 1, true) ~= nil end
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
     return true
@@ -203,6 +224,8 @@ end
 --- Send queued changes, then fetch the notes for the current filter.
 --- on_done(ok, err) on the screen's thread.
 function Notes.refresh(plugin, on_done)
+    -- (syncing through a computer: the notes come with the next sync)
+    if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
     local client = Notes.client(plugin)
     if not client:isConnected() then return on_done and on_done(false, "not_connected") end
     if Notes.refreshing then return end
@@ -256,6 +279,7 @@ local function describe(err)
     if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (M → Connect to Memos again).") end
     if err == "unreachable" then return _("Couldn't reach Memos. Check Wi-Fi and the address.") end
     if err == "not_connected" then return _("Not connected to Memos.") end
+    if err == "usb" then return _("Notes come from Memos through your computer: they're brought and sent with each sync (Menu → Sync with computer).") end
     if err == "timeout" then return _("Memos took too long to answer.") end
     return T(_("Memos answered: %1"), tostring(err))
 end
@@ -1044,7 +1068,7 @@ function Notes.setFilter(plugin, f)
     if not Notes.cel(f) then Notes.loadCache(plugin) end
     Notes.reloadBoard(false)
     Notes.refresh(plugin, function(ok, err)
-        if ok then Notes.reloadBoard(false) elseif err ~= "not_connected" then info(describe(err), 3) end
+        if ok then Notes.reloadBoard(false) elseif err ~= "not_connected" and err ~= "usb" then info(describe(err), 3) end
     end)
 end
 
@@ -1195,7 +1219,12 @@ end
 
 --- Not connected yet: how to connect (in the Notes tab).
 function Notes.showConnect(plugin, again)
-    local items = {
+    local items = require("gzreader_net").usb and {
+        -- no Wi-Fi: the sync page connects to Memos (gzreader_usbsync.lua)
+        { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end },
+        { text = _("Notes come from Memos through your computer: connect Memos on the sync page, then sync. Notes you write here go back with the next sync."),
+          select_enabled = false },
+    } or {
         { text = _("Connect with QR code (enter it on your phone)"), callback = function()
             require("gzreader_net").run(function() Notes.qrConnect(plugin) end, { reason = "connecting to Memos" })
         end },

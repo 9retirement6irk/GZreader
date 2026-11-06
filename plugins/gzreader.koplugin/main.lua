@@ -112,6 +112,14 @@ function Grimmory:init()
     self.store.pending.ratings = self.store.pending.ratings or {}
     Log.enabled = self.store.logging_disabled ~= true
     self.api = Api:new(self.store, function() self:save() end)
+    -- no Wi-Fi (Kindle 2, DX): Grimmory through a computer, the library
+    -- from the copy the sync page left (gzreader_usbsync.lua)
+    local Usb = require("gzreader_usbsync")
+    if Usb.active() then
+        local okd, dir = pcall(Usb.dir, self)
+        if okd and dir then self.api = require("gzreader_offlineapi"):new(self.store, function() self:save() end, dir) end
+    end
+    pcall(Usb.start, self)
     -- a login a background process got but GZreader never saved (it was
     -- closed or restarted meanwhile): take it (gzreader_api.lua)
     if Api.recoverPending(self.store) then
@@ -234,8 +242,12 @@ end
 
 function Grimmory:save()
     if Grimmory.save_soon then UIManager:unschedule(Grimmory.save_soon); Grimmory.save_soon = nil end
+    local usb = Net.usb and require("gzreader_usbsync") or nil
+    if usb then pcall(usb.number, self) end -- (queued positions numbered before they're saved)
     self.settings:saveSetting("state", self.store)
     self.settings:flush()
+    -- syncing through a computer: what it should send and bring, next to the books
+    if usb then usb.writeOutbox(self) end
 end
 
 --- Save within a few seconds (once, however many changes come meanwhile):
@@ -262,7 +274,12 @@ do
     local orig_quit = UIManager.quit
     UIManager.quit = function(um, ...)
         local pending = Grimmory.save_soon
-        if pending then pcall(pending) end
+        local usb = Net.usb and package.loaded["gzreader_usbsync"]
+        if usb and usb.plugin then
+            -- syncing through a computer: the open book's exact place, and the outbox, now
+            pcall(usb.finishCfis, usb.plugin)
+            pcall(usb.plugin.save, usb.plugin)
+        elseif pending then pcall(pending) end
         return orig_quit(um, ...)
     end
 end
@@ -530,6 +547,7 @@ local ERRORS = {
     unreachable = _("Couldn't reach the Grimmory server. Check Wi-Fi and the server address."),
     bad_credentials = _("Wrong username or password."),
     rate_limited = _("Too many attempts. Wait a minute and try again."),
+    usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
 }
 
 function Grimmory:describeError(err)
@@ -747,6 +765,7 @@ end
 
 function Grimmory:onGrimmoryPair(touchmenu)
     closeTouchMenu(touchmenu)
+    if Net.usb then require("gzreader_usbsync").show(self); return true end
     Net.run(function() self:startQrPairing() end, { reason = "connecting to Grimmory" })
     return true
 end
@@ -947,6 +966,7 @@ end
 
 function Grimmory:openPhonePage(section)
     if self.pairing then return end
+    if Net.usb then return require("gzreader_usbsync").show(self) end
     Net.run(function() require("gzreader_phone").open(self, { section = section }) end, { reason = "the setup page" })
 end
 
@@ -1111,6 +1131,7 @@ function Grimmory:queue(kind, book_id, body)
     if kind == "progress" and Grimmory.gone_books[tostring(book_id)] then return end
     if kind == "progress" then
         pending.progress[tostring(book_id)] = body
+        if Net.usb then pcall(require("gzreader_usbsync").cfiSoon, self, book_id, body) end
     else
         table.insert(pending.sessions, body)
         while #pending.sessions > MAX_QUEUED_SESSIONS do table.remove(pending.sessions, 1) end
@@ -1387,6 +1408,7 @@ function Grimmory:onPosUpdate()
 end
 
 function Grimmory:onGrimmorySyncNow()
+    if Net.usb then require("gzreader_usbsync").show(self); return true end
     if not self.sync then
         UIManager:show(InfoMessage:new{ text = _("This book wasn't downloaded from Grimmory, so it can't be synced."), timeout = 3 })
         return true
@@ -1471,6 +1493,11 @@ end
 
 function Grimmory:onShowGrimmoryLibrary(touchmenu)
     closeTouchMenu(touchmenu)
+    if not self.api:isPaired() and Net.usb then
+        -- no copy of the library yet: the first sync brings it
+        require("gzreader_usbsync").show(self)
+        return true
+    end
     if not self.api:isPaired() then
         UIManager:show(ConfirmBox:new{
             -- (connected before: Grimmory stopped taking its login)
@@ -1487,6 +1514,38 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
     Mod.Browser:new(self):show()
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true
+end
+
+--- Settings → Connections → Sync through a computer.
+function Grimmory:usbSyncItems()
+    local Usb = require("gzreader_usbsync")
+    return {
+        {
+            text = _("Sync with computer…"),
+            enabled_func = function() return Usb.active() end,
+            keep_menu_open = true,
+            callback = function() Usb.show(self) end,
+        },
+        {
+            text = _("Sync through a computer"),
+            help_text = _("For Kindles without Wi-Fi (Kindle 2, DX), on by itself there: books, audiobooks, music, notes and calendars come from a web page on a computer the Kindle is plugged into, and your reading goes back to Grimmory the same way. GZreader restarts to switch."),
+            checked_func = function() return Usb.active() end,
+            callback = function()
+                Usb.setActive(not Usb.active())
+                UIManager:show(ConfirmBox:new{
+                    text = _("GZreader needs to restart for this. Restart now?"),
+                    ok_text = _("Restart"),
+                    ok_callback = function() dispatch("restart") end,
+                })
+            end,
+        },
+        {
+            text = _("Sync queue"),
+            enabled_func = function() return #(self.store.usb_queue or {}) > 0 end,
+            keep_menu_open = true,
+            callback = function() Usb.showQueue(self) end,
+        },
+    }
 end
 
 --- The Calendar tab (ZenOS's tab bar): CalDAV calendars.
@@ -1677,6 +1736,10 @@ end
 --- background, a note when it's done.
 function Grimmory:downloadAndOpen(book, menu, opts)
     opts = opts or {}
+    if Net.usb then
+        -- no Wi-Fi: into the sync queue; the next sync with the computer brings it
+        return require("gzreader_usbsync").queuedMessage(self, book)
+    end
     if opts.no_open then
         local quiet = {}
         for k, v in pairs(book) do quiet[k] = v end

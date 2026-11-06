@@ -52,6 +52,7 @@ SUBTITLES = {3: "Old School", 2: "Rodrick Rules"}
 DESCRIPTIONS = {32: "<p>A <b>folder</b> audiobook &amp; its tracks.</p><p>Second paragraph.</p>"}
 BOOK_BYTES = b"PK\x03\x04 fake epub bytes " * 200
 AUDIO_BYTES = b"ID3 fake audio " * 400
+COVER_JPEG = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "media", "cover.jpg"), "rb").read()  # a real one (the sync page shrinks it)
 M4A_BYTES = open(os.environ["GZ_TEST_M4A"], "rb").read() if os.environ.get("GZ_TEST_M4A") else b""
 # libraries / authors / series metadata for the browser
 for b in BOOKS:
@@ -79,7 +80,27 @@ def page_of(items, q, default_size):
             "totalPages": total_pages, "hasNext": page + 1 < total_pages, "hasPrevious": page > 0}
 
 
+ALLOW_HEADERS = 'Authorization, Cache-Control, Content-Type, Range, If-None-Match, If-Modified-Since'
+
+
 class H(BaseHTTPRequestHandler):
+
+    # (the sync page, docs/sync, asks from a browser: cross-origin, like the real server)
+    def end_headers(self):
+        o = self.headers.get("Origin")
+        if o:
+            self.send_header("Access-Control-Allow-Origin", o)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Accept-Ranges, Content-Range, Content-Length")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS, PATCH, REPORT, PROPFIND")
+        self.send_header("Access-Control-Allow-Headers", ALLOW_HEADERS or (self.headers.get("Access-Control-Request-Headers") or ""))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def log_message(self, *a):
         pass
 
@@ -248,6 +269,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(503)
             book_id = int(u.path.split("/")[5])
             b = self._body()
+            if book_id > 500:   # (no such book: Grimmory's "not found")
+                return self._json(404, {"message": "Book not found"})
             fp = b.get("fileProgress")
             if not fp or fp.get("bookFileId") is None or fp.get("progressPercent") is None:
                 return self._json(400, {"message": "invalid"})
@@ -412,11 +435,14 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/v1/app/series":
             items = sorted(SERIES, key=lambda x: x["seriesName"].lower()) if q.get("sort") == ["name"] else SERIES
             return self._json(200, page_of(items, q, 20))
-        m = re.match(r"^/api/v1/media/book/(\d+)/thumbnail$", u.path)
+        m = re.match(r"^/api/v1/media/book/(\d+)/(audiobook-)?thumbnail$", u.path)
         if m:
             if not self._user():
                 return self._json(401)
-            data = b"\xff\xd8\xff\xe0" + b"fake jpeg" * 50
+            book = next((b for b in BOOKS if b["id"] == int(m.group(1))), None)
+            if m.group(2) and not (book and book["primaryFileType"] == "AUDIOBOOK"):
+                return self._json(404)   # (only audiobooks have the square cover)
+            data = COVER_JPEG
             self.send_response(200); self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             return

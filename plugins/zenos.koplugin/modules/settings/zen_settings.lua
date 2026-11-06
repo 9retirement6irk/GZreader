@@ -204,7 +204,16 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.connect),
-            }, 5),
+                -- GZreader: syncing through a computer (the Kindles without Wi-Fi; any Kindle can choose it)
+                IconItem.decorate({
+                    text = _("Sync through a computer"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.usbSyncItems) == "function" then return g:usbSyncItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.sync),
+            }, 6),
         }, icons.connect),
         {
             text = _("KOReader"),

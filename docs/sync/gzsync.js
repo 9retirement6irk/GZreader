@@ -1,0 +1,1664 @@
+/*
+GZreader: sync with computer (https://9retirement6irk.github.io/GZreader/sync/).
+
+For Kindles without Wi-Fi. GZreader leaves .gzsync/outbox.json in its folder
+on the Kindle (what to send to Grimmory, the sync queue, what's on the
+Kindle); this page, with the Kindle plugged in:
+  1. sends the outbox's jobs to Grimmory (positions, reading time, ratings);
+  2. leaves a copy of the library (library.json, small covers, book pages);
+  3. brings what's in the sync queue (books, audiobooks) and the auto-download
+     shelf's new books;
+  4. Memos: sends the notes written on the Kindle, brings the notes;
+  5. calendars: links, CalDAV calendars, .ics files;
+  6. Plex: the albums and playlists chosen here;
+and writes .gzsync/inbox.json (after each step: what's there so far). The
+next time GZreader starts it takes all that in (gzreader_usbsync.lua).
+
+Nothing leaves this browser except to your own servers (and plex.tv for a
+Plex sign-in). Sign-ins are kept in this browser's storage; the Kindle never
+gets a password or token.
+*/
+(function () {
+  "use strict";
+
+  var FORMAT = 1;
+  var PAGE = 100;
+  var BOOK_FIELDS = ["id", "title", "authors", "primaryFileType", "primaryFileName", "primaryFileId", "fileSizeKb",
+    "readProgress", "readStatus", "seriesName", "seriesNumber", "coverUpdatedOn", "audiobookCoverUpdatedOn", "libraryId",
+    "isPhysical", "personalRating", "addedOn", "lastReadTime", "publishedDate", "pageCount", "goodreadsRating"];
+  var READABLE = ["EPUB", "PDF", "FB2", "MOBI", "AZW3", "CBX"];
+  var COVER_W = 160, COVER_H = 240;
+
+  function $(s) { return document.querySelector(s); }
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) { if (k === "class") e.className = attrs[k]; else e.setAttribute(k, attrs[k]); }
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // ------------------------------------------------------------ storage in this browser
+
+  var LS = {
+    get: function (k, d) {
+      try { var v = localStorage.getItem("gzsync." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; }
+    },
+    set: function (k, v) { try { localStorage.setItem("gzsync." + k, JSON.stringify(v)); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem("gzsync." + k); } catch (e) {} },
+  };
+
+  // file and folder handles (the Kindle, .ics files) live in IndexedDB
+  var idb = {
+    db: null,
+    open: function () {
+      if (this.db) return Promise.resolve(this.db);
+      var self = this;
+      return new Promise(function (ok, bad) {
+        var r = indexedDB.open("gzsync", 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore("kv"); };
+        r.onsuccess = function () { self.db = r.result; ok(r.result); };
+        r.onerror = function () { bad(r.error); };
+      });
+    },
+    get: function (k) {
+      return this.open().then(function (db) {
+        return new Promise(function (ok) {
+          var t = db.transaction("kv").objectStore("kv").get(k);
+          t.onsuccess = function () { ok(t.result); };
+          t.onerror = function () { ok(undefined); };
+        });
+      }).catch(function () { return undefined; });
+    },
+    set: function (k, v) {
+      return this.open().then(function (db) {
+        return new Promise(function (ok) {
+          var t = db.transaction("kv", "readwrite");
+          t.objectStore("kv").put(v, k);
+          t.oncomplete = function () { ok(); };
+          t.onerror = function () { ok(); };
+        });
+      }).catch(function () {});
+    },
+    del: function (k) {
+      return this.open().then(function (db) {
+        return new Promise(function (ok) {
+          var t = db.transaction("kv", "readwrite");
+          t.objectStore("kv").delete(k);
+          t.oncomplete = function () { ok(); };
+          t.onerror = function () { ok(); };
+        });
+      }).catch(function () {});
+    },
+  };
+
+  // ------------------------------------------------------------ the activity list
+
+  function log(text, kind) {
+    var li = el("li", kind ? { class: kind } : null, text);
+    $("#log").appendChild(li);
+    li.scrollIntoView({ block: "nearest" });
+  }
+  function phase(text) { $("#phase").textContent = text || ""; }
+  var bar = {
+    set: function (done, total) {
+      var b = $("#bar");
+      b.classList.remove("hidden");
+      if (total) { b.max = total; b.value = Math.min(done, total); } else { b.removeAttribute("value"); }
+    },
+    hide: function () { $("#bar").classList.add("hidden"); },
+  };
+  // (calendar links carry secret keys: only their host in what's shown)
+  function hostOf(u) { try { return new URL(u.replace(/^webcal:/i, "https:")).host; } catch (e) { return "link"; } }
+  function mb(bytes) { return (bytes / 1048576).toFixed(bytes > 104857600 ? 0 : 1) + " MB"; }
+
+  function HttpError(status, what) { this.status = status; this.message = (what || "the server") + " answered " + status; }
+  HttpError.prototype = Object.create(Error.prototype);
+
+  function rand(n) {
+    var b = new Uint8Array(n);
+    crypto.getRandomValues(b);
+    return Array.prototype.map.call(b, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+  }
+  function b64url(buf) {
+    var s = String.fromCharCode.apply(null, new Uint8Array(buf));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function qs(params) {
+    var parts = [];
+    Object.keys(params).forEach(function (k) {
+      var v = params[k];
+      if (v == null || v === "") return;
+      (Array.isArray(v) ? v : [v]).forEach(function (x) { parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(x)); });
+    });
+    return parts.length ? "?" + parts.join("&") : "";
+  }
+  function normalizeServer(s) {
+    s = String(s || "").trim().replace(/\/+$/, "");
+    if (!s) return null;
+    if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+    try { var u = new URL(s); return u.origin + u.pathname.replace(/\/+$/, ""); } catch (e) { return null; }
+  }
+  function mixedContent(server) {
+    return location.protocol === "https:" && /^http:/i.test(server) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(server);
+  }
+
+  // a few at a time
+  function pool(items, n, fn) {
+    var i = 0;
+    function worker() {
+      if (i >= items.length) return Promise.resolve();
+      var k = i++;
+      return Promise.resolve(fn(items[k], k)).then(worker);
+    }
+    var ws = [];
+    for (var w = 0; w < Math.min(n, items.length); w++) ws.push(worker());
+    return Promise.all(ws);
+  }
+
+  // ------------------------------------------------------------ the Kindle's drive
+
+  var Drive = {
+    root: null, gz: null, sync: null,
+    dir: async function (parent, path, create) {
+      var d = parent;
+      var parts = String(path || "").split("/").filter(Boolean);
+      for (var i = 0; i < parts.length; i++) d = await d.getDirectoryHandle(parts[i], { create: !!create });
+      return d;
+    },
+    tryDir: async function (parent, path) { try { return await Drive.dir(parent, path); } catch (e) { return null; } },
+    file: async function (parent, path, create) {
+      var parts = String(path).split("/");
+      var name = parts.pop();
+      var d = await Drive.dir(parent, parts.join("/"), create);
+      return d.getFileHandle(name, { create: !!create });
+    },
+    readText: async function (parent, path) {
+      try { return await (await (await Drive.file(parent, path)).getFile()).text(); } catch (e) { return null; }
+    },
+    readJSON: async function (parent, path) {
+      var t = await Drive.readText(parent, path);
+      if (t == null) return null;
+      try { return JSON.parse(t); } catch (e) { return null; }
+    },
+    has: async function (parent, path) { try { await Drive.file(parent, path); return true; } catch (e) { return false; } },
+    write: async function (parent, path, data) {
+      var fh = await Drive.file(parent, path, true);
+      var w = await fh.createWritable();
+      await w.write(data);
+      await w.close(); // (Chrome writes a copy and swaps it in on close: never half a file)
+    },
+    writeStream: async function (parent, path, body, onBytes) {
+      var fh = await Drive.file(parent, path, true);
+      var w = await fh.createWritable();
+      var reader = body.getReader();
+      try {
+        for (;;) {
+          var r = await reader.read();
+          if (r.done) break;
+          await w.write(r.value);
+          if (onBytes) onBytes(r.value.length);
+        }
+        await w.close();
+      } catch (e) {
+        try { await w.abort(); } catch (e2) {}
+        throw e;
+      }
+    },
+    remove: async function (parent, path) {
+      var parts = String(path).split("/");
+      var name = parts.pop();
+      try { var d = await Drive.dir(parent, parts.join("/")); await d.removeEntry(name, { recursive: true }); } catch (e) {}
+    },
+    list: async function (dir) {
+      var out = [];
+      try { for await (var entry of dir.values()) out.push(entry.name); } catch (e) {}
+      return out;
+    },
+    // the GZreader folder: the drive picked, its documents folder, or the folder itself
+    locate: async function (root) {
+      var tries = ["documents/GZreader", "GZreader", ""];
+      for (var i = 0; i < tries.length; i++) {
+        var gz = tries[i] ? await Drive.tryDir(root, tries[i]) : root;
+        if (!gz) continue;
+        var sync = await Drive.tryDir(gz, ".gzsync");
+        if (sync) return { gz: gz, sync: sync };
+        if (tries[i] || root.name === "GZreader") return { gz: gz, sync: await Drive.dir(gz, ".gzsync", true) };
+      }
+      return null;
+    },
+  };
+
+  async function permitted(handle, mode) {
+    if (!handle || !handle.queryPermission) return true;
+    var opts = { mode: mode || "readwrite" };
+    if ((await handle.queryPermission(opts)) === "granted") return true;
+    try { return (await handle.requestPermission(opts)) === "granted"; } catch (e) { return false; }
+  }
+
+  // ------------------------------------------------------------ Grimmory
+
+  var G = {
+    st: LS.get("grimmory", null), // { server, user, access, refresh, exp }
+    save: function () { LS.set("grimmory", G.st); },
+    connected: function () { return !!(G.st && G.st.server && G.st.refresh); },
+    keep: function (d) {
+      G.st.access = d.accessToken;
+      G.st.refresh = d.refreshToken || G.st.refresh;
+      G.st.exp = Date.now() + (Number(d.expires) || 7200) * 1000;
+      G.save();
+    },
+    token: async function () {
+      if (G.st.access && Date.now() < (G.st.exp || 0) - 120000) return G.st.access;
+      var r = await fetch(G.st.server + "/api/v1/auth/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: G.st.refresh }),
+      });
+      if (r.status === 400 || r.status === 401 || r.status === 403) {
+        G.st.refresh = null; G.st.access = null; G.save(); renderConnections();
+        throw new Error("Grimmory signed this browser out: sign in again.");
+      }
+      if (!r.ok) throw new HttpError(r.status, "Grimmory");
+      G.keep(await r.json());
+      return G.st.access;
+    },
+    fetch: async function (path, opts) {
+      opts = opts || {};
+      for (var attempt = 0; attempt < 2; attempt++) {
+        var t = await G.token();
+        var h = Object.assign({ Authorization: "Bearer " + t }, opts.headers || {});
+        var body = opts.body;
+        if (body !== undefined && typeof body !== "string") { body = JSON.stringify(body); h["Content-Type"] = "application/json"; }
+        var r = await fetch(G.st.server + path, { method: opts.method || "GET", headers: h, body: body });
+        if (r.status === 401 && attempt === 0) { G.st.access = null; continue; }
+        return r;
+      }
+    },
+    json: async function (path) {
+      var r = await G.fetch(path);
+      if (!r.ok) throw new HttpError(r.status, "Grimmory");
+      return r.json();
+    },
+    me: async function () {
+      try { var me = await G.json("/api/v1/users/me"); return me.username || me.name || null; } catch (e) { return null; }
+    },
+    login: async function (server, user, pass) {
+      var base = normalizeServer(server);
+      if (!base) throw new Error("Enter your Grimmory address.");
+      if (mixedContent(base)) throw new Error("A web page can only reach Grimmory over https://.");
+      var r = await fetch(base + "/api/v1/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }),
+      });
+      if (r.status === 401 || r.status === 403 || r.status === 400) throw new Error("Wrong username or password.");
+      if (r.status === 429) throw new Error("Too many attempts. Wait a minute and try again.");
+      if (!r.ok) throw new HttpError(r.status, "Grimmory");
+      G.st = { server: base, user: user };
+      G.keep(await r.json());
+    },
+    // single sign-on: the provider sends the browser to the hand-off page
+    // (../oauth2-callback), which sends it back here with ?code&state
+    redirectUri: function () { return new URL("../oauth2-callback", location.href).href.replace(/\?.*$/, ""); },
+    startSso: async function (server) {
+      var base = normalizeServer(server);
+      if (!base) throw new Error("Enter your Grimmory address first.");
+      if (mixedContent(base)) throw new Error("A web page can only reach Grimmory over https://.");
+      var ps = await (await fetch(base + "/api/v1/public-settings")).json();
+      var pd = ps.oidcProviderDetails || {};
+      if (ps.oidcEnabled !== true || !pd.clientId || !pd.issuerUri) throw new Error("Single sign-on isn't turned on for this Grimmory server.");
+      var doc = await (await fetch(pd.issuerUri.replace(/\/+$/, "") + "/.well-known/openid-configuration")).json();
+      if (!doc.authorization_endpoint) throw new Error("Couldn't reach your identity provider.");
+      var st = await (await fetch(base + "/api/v1/auth/oidc/state")).json();
+      if (!st.state) throw new Error("Grimmory didn't start single sign-on. Try again.");
+      var verifier = rand(32), nonce = rand(16);
+      var challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+      var redirect = G.redirectUri();
+      LS.set("sso", { base: base, state: st.state, verifier: verifier, nonce: nonce, redirect: redirect, at: Date.now() });
+      var ep = doc.authorization_endpoint;
+      var auth = ep + (ep.indexOf("?") >= 0 ? "&" : "?") + qs({
+        response_type: "code", client_id: pd.clientId, redirect_uri: redirect, scope: pd.scopes || "openid profile email offline_access",
+        code_challenge: challenge, code_challenge_method: "S256", state: st.state, nonce: nonce,
+      }).slice(1);
+      var back = location.href.replace(/[?#].*$/, "");
+      location.assign(redirect + "#back=" + encodeURIComponent(back) + "&go=" + encodeURIComponent(auth));
+    },
+    finishSso: async function () {
+      var q = new URLSearchParams(location.search);
+      if (!q.get("state") || !(q.get("code") || q.get("error"))) return false;
+      history.replaceState(null, "", location.pathname);
+      var s = LS.get("sso", null);
+      LS.del("sso");
+      if (!s || s.state !== q.get("state") || Date.now() - s.at > 30 * 60 * 1000) throw new Error("That sign-in has expired. Try single sign-on again.");
+      if (q.get("error")) throw new Error("Sign-in didn't complete: " + (q.get("error_description") || q.get("error")));
+      var form = new URLSearchParams({ code: q.get("code"), code_verifier: s.verifier, redirect_uri: s.redirect, nonce: s.nonce, state: s.state });
+      var r = await fetch(s.base + "/api/v1/auth/oidc/mobile/callback", { method: "POST", body: form });
+      if (!r.ok) throw new Error("Grimmory rejected the sign-in (" + r.status + ").");
+      G.st = { server: s.base };
+      G.keep(await r.json());
+      G.st.user = await G.me();
+      G.save();
+      return true;
+    },
+  };
+
+  // ------------------------------------------------------------ Memos
+
+  var M = {
+    st: LS.get("memos", null), // { server, token, prefix, user, userName }
+    save: function () { LS.set("memos", M.st); },
+    connected: function () { return !!(M.st && M.st.server && M.st.token); },
+    req: async function (method, path, body, params) {
+      var prefixes = [M.st.prefix, "/api/v1", "/api"].filter(function (p, i, a) { return p && a.indexOf(p) === i; });
+      var last;
+      for (var i = 0; i < prefixes.length; i++) {
+        var h = { Authorization: "Bearer " + M.st.token };
+        if (body !== undefined) h["Content-Type"] = "application/json";
+        var r = await fetch(M.st.server + prefixes[i] + path + qs(params || {}), {
+          method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        if (r.status !== 404 && r.status !== 410) {
+          if (r.ok && prefixes[i] !== M.st.prefix) { M.st.prefix = prefixes[i]; M.save(); }
+          return r;
+        }
+        last = last && last.status === 404 ? last : r;
+      }
+      return last;
+    },
+    me: async function () {
+      var r = await M.req("GET", "/auth/me");
+      if (r.status === 401 || r.status === 403) throw new Error("Memos didn't accept the access token.");
+      if (!r.ok) throw new HttpError(r.status, "Memos");
+      var d = await r.json();
+      var u = d.user || d;
+      return { name: u.name, username: u.username || u.displayName };
+    },
+    connect: async function (server, token) {
+      var base = normalizeServer(server);
+      if (!base || !token) throw new Error("Enter the Memos address and an access token.");
+      if (mixedContent(base)) throw new Error("A web page can only reach Memos over https://.");
+      M.st = { server: base, token: token.trim() };
+      try {
+        var u = await M.me();
+        M.st.user = u.username; M.st.userName = u.name;
+        M.save();
+      } catch (e) { M.st = null; throw e; }
+    },
+  };
+
+  // what the Notes tab keeps of a note (gzreader_memos.lua Memos.slim)
+  function slimMemo(m) {
+    var loc = m.location && typeof m.location === "object" ? m.location : null;
+    return {
+      name: m.name, content: m.content || "", pinned: m.pinned === true, visibility: m.visibility,
+      tags: Array.isArray(m.tags) ? m.tags : [], created: m.createTime, updated: m.updateTime,
+      place: loc && loc.placeholder ? loc.placeholder : undefined,
+      attachments: (m.attachments || []).map(function (a) {
+        return { name: a.name, filename: a.filename, type: a.type, size: Number(a.size) || undefined, link: a.externalLink || undefined };
+      }),
+    };
+  }
+  // where the Kindle keeps an attachment (Memos.filePath)
+  function memoFileName(att) {
+    var uid = (String(att.name || "").match(/attachments\/(.+)$/) || [, "x"])[1];
+    var fname = String(att.filename || "file").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_");
+    return uid.replace(/[^A-Za-z0-9\-_]/g, "_") + "-" + fname;
+  }
+
+  // ------------------------------------------------------------ Plex
+
+  var P = {
+    st: LS.get("plex", null), // { token, user, server: { name, uri, token } }
+    clientId: function () {
+      var id = LS.get("plexClient", null);
+      if (!id) { id = "gzreader-sync-" + rand(8); LS.set("plexClient", id); }
+      return id;
+    },
+    save: function () { LS.set("plex", P.st); },
+    connected: function () { return !!(P.st && P.st.token && P.st.server && P.st.server.uri); },
+    headers: function (token) {
+      var h = { "X-Plex-Product": "GZreader", "X-Plex-Version": "sync", "X-Plex-Client-Identifier": P.clientId(),
+        "X-Plex-Platform": "Chrome", "X-Plex-Device": "Browser", "X-Plex-Device-Name": "GZreader sync page", Accept: "application/json" };
+      if (token) h["X-Plex-Token"] = token;
+      return h;
+    },
+    tv: async function (method, path, token) {
+      var r = await fetch("https://plex.tv" + path, { method: method, headers: P.headers(token) });
+      if (!r.ok) throw new HttpError(r.status, "plex.tv");
+      return r.json();
+    },
+    signIn: async function (onWaiting) {
+      var pin = await P.tv("POST", "/api/v2/pins?strong=true");
+      var url = "https://app.plex.tv/auth#?" + "clientID=" + encodeURIComponent(P.clientId()) + "&code=" + encodeURIComponent(pin.code)
+        + "&context%5Bdevice%5D%5Bproduct%5D=GZreader";
+      var win = window.open(url, "plexauth", "width=520,height=720");
+      if (onWaiting) onWaiting(!win);
+      var token = null;
+      for (var i = 0; i < 150 && !token; i++) {
+        await new Promise(function (ok) { setTimeout(ok, 2000); });
+        var d = await P.tv("GET", "/api/v2/pins/" + pin.id + qs({ code: pin.code }));
+        token = d.authToken || null;
+      }
+      try { if (win) win.close(); } catch (e) {}
+      if (!token) throw new Error("The Plex sign-in wasn't finished.");
+      var user = await P.tv("GET", "/api/v2/user", token);
+      var res = await P.tv("GET", "/api/v2/resources" + qs({ includeHttps: 1, includeRelay: 1 }), token);
+      var servers = (res || []).filter(function (r) { return String(r.provides || "").indexOf("server") >= 0; });
+      servers.sort(function (a, b) { return (a.owned ? 0 : 1) - (b.owned ? 0 : 1); });
+      for (var s = 0; s < servers.length; s++) {
+        var conns = (servers[s].connections || []).filter(function (c) { return c.uri && (c.protocol === "https" || location.protocol === "http:"); });
+        conns.sort(function (a, b) { return (a.local ? 0 : 2) + (a.relay ? 4 : 0) - ((b.local ? 0 : 2) + (b.relay ? 4 : 0)); });
+        for (var c = 0; c < conns.length; c++) {
+          var stoken = servers[s].accessToken || token;
+          try {
+            var ctl = new AbortController();
+            var timer = setTimeout(function () { ctl.abort(); }, 5000);
+            var r = await fetch(conns[c].uri + "/identity", { headers: P.headers(stoken), signal: ctl.signal });
+            clearTimeout(timer);
+            if (r.ok) {
+              P.st = { token: token, user: user.username || user.title, server: { name: servers[s].name, uri: conns[c].uri, token: stoken } };
+              P.save();
+              return;
+            }
+          } catch (e) {}
+        }
+      }
+      throw new Error("None of your Plex servers answered this browser.");
+    },
+    get: async function (path, params, extra) {
+      var r = await fetch(P.st.server.uri + path + qs(params || {}), { headers: Object.assign(P.headers(P.st.server.token), extra || {}) });
+      if (!r.ok) throw new HttpError(r.status, "Plex");
+      return r;
+    },
+    items: async function (path, params, extra) {
+      var d = await (await P.get(path, params, extra)).json();
+      var mc = d.MediaContainer || {};
+      return (mc.Metadata || mc.Directory || []).map(P.item).filter(function (x) { return x && x.key; });
+    },
+    // (gzreader_plex.lua Plex.item)
+    item: function (m) {
+      if (!m) return null;
+      var t = { key: m.ratingKey && String(m.ratingKey), type: m.type, title: m.title || "?",
+        artist: m.grandparentTitle || m.parentTitle, album: m.parentTitle, year: m.year, index: m.index,
+        duration: m.duration, thumb: m.thumb || m.composite || m.parentThumb, count: m.leafCount || m.childCount };
+      if (t.type === "album") t.artist = m.parentTitle;
+      if (t.type === "artist") t.artist = undefined;
+      var media = m.Media && m.Media[0], part = media && media.Part && media.Part[0];
+      if (part) t.part = { key: part.key, container: part.container || media.container, size: part.size, codec: media.audioCodec };
+      return t;
+    },
+    how: function (t) {
+      var p = t.part || {}, c = String(p.container || "").toLowerCase(), codec = String(p.codec || "").toLowerCase();
+      if (c === "mp3" || (codec === "mp3" && c === "")) return ["file", "mp3"];
+      if ((c === "mp4" || c === "m4a") && (codec === "aac" || codec === "")) return ["file", "m4a"];
+      if (c === "aac" || c === "adts") return ["file", "aac"];
+      return ["transcode", "mp3"];
+    },
+  };
+
+  // MPEG-TS → its audio (MP3 or ADTS frames), as gzreader_plex.lua Plex.demuxTs
+  function demuxTs(data, state, out) {
+    var n = data.length, i = 0;
+    while (i < n && data[i] !== 0x47) i++;
+    while (i + 187 < n) {
+      if (data[i] !== 0x47) break;
+      var b1 = data[i + 1], b2 = data[i + 2], b3 = data[i + 3];
+      var pusi = (b1 & 0x40) !== 0, pid = ((b1 & 0x1f) << 8) | b2, afc = (b3 >> 4) & 3;
+      var p = i + 4;
+      if (afc === 2 || afc === 3) p = p + 1 + data[p];
+      var payload = (afc === 1 || afc === 3) && p <= i + 187 ? data.subarray(p, i + 188) : new Uint8Array(0);
+      if (pid === 0 && pusi && payload.length > 12) {
+        var sec = payload.subarray(1 + payload[0]);
+        state.pmt = ((sec[10] & 0x1f) << 8) | sec[11];
+      } else if (state.pmt != null && pid === state.pmt && pusi && payload.length > 16) {
+        var s = payload.subarray(1 + payload[0]);
+        var B = function (k) { return s[k - 1] || 0; }; // (1-based, like the Lua)
+        var slen = ((B(2) & 0x0f) << 8) | B(3);
+        var pinfo = ((B(11) & 0x0f) << 8) | B(12);
+        var j = 13 + pinfo, stop = 3 + slen - 4;
+        while (j + 4 <= stop) {
+          var st = B(j), epid = ((B(j + 1) & 0x1f) << 8) | B(j + 2), eslen = ((B(j + 3) & 0x0f) << 8) | B(j + 4);
+          if ((st === 0x03 || st === 0x04 || st === 0x0f) && state.audio == null) { state.audio = epid; state.type = st; }
+          j = j + 5 + eslen;
+        }
+      } else if (state.audio != null && pid === state.audio && payload.length > 0) {
+        if (pusi && payload[0] === 0 && payload[1] === 0 && payload[2] === 1) payload = payload.subarray(9 + (payload[8] || 0));
+        out.push(payload.slice());
+        state.bytes = (state.bytes || 0) + payload.length;
+      }
+      i += 188;
+    }
+  }
+
+  // ------------------------------------------------------------ calendars
+
+  var Cal = {
+    list: LS.get("calendars", []), // { id, type = link | caldav | file, name, url, user, pass }
+    save: function () { LS.set("calendars", Cal.list); },
+    range: function (out) {
+      var c = (out && out.calendar) || {};
+      var day = new Date(); day.setHours(0, 0, 0, 0);
+      return { from: new Date(day.getTime() - (c.days_back || 14) * 86400000), to: new Date(day.getTime() + ((c.days_ahead || 90) + 1) * 86400000) };
+    },
+    text: async function (src, range) {
+      if (src.type === "file") {
+        var h = await idb.get("calfile:" + src.id);
+        if (!h) throw new Error("the file isn't remembered any more: add it again");
+        if (!(await permitted(h, "read"))) throw new Error("this browser wasn't allowed to read it");
+        return (await h.getFile()).text();
+      }
+      var url = src.url.replace(/^webcal:/i, "https:");
+      var headers = {};
+      if (src.user) headers.Authorization = "Basic " + btoa(unescape(encodeURIComponent(src.user + ":" + (src.pass || ""))));
+      if (src.type === "caldav") return Cal.caldav(url, headers, range);
+      var r;
+      try { r = await fetch(url, { headers: headers }); } catch (e) { throw new Error("its server doesn't let web pages read it (add the .ics file instead)"); }
+      if (r.status === 401 || r.status === 403) throw new Error("not allowed (" + r.status + ")");
+      if (r.status === 404 || r.status === 410) throw new Error("the link no longer works");
+      if (!r.ok) throw new HttpError(r.status, "the calendar server");
+      var t = await r.text();
+      if (t.indexOf("BEGIN:VCALENDAR") < 0) {
+        // not a calendar file: maybe a CalDAV address
+        src.type = "caldav"; Cal.save();
+        return Cal.caldav(url, headers, range);
+      }
+      return t;
+    },
+    utc: function (d) { return d.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z"); },
+    caldav: async function (url, headers, range) {
+      var dav = "urn:ietf:params:xml:ns:caldav";
+      var body = '<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="' + dav + '"><d:prop><c:calendar-data/></d:prop>'
+        + '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="' + Cal.utc(range.from)
+        + '" end="' + Cal.utc(range.to) + '"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>';
+      var r;
+      try {
+        r = await fetch(url, { method: "REPORT", headers: Object.assign({ Depth: "1", "Content-Type": "application/xml; charset=utf-8" }, headers), body: body });
+      } catch (e) { throw new Error("the CalDAV server doesn't let web pages read it (export an .ics file instead)"); }
+      if (r.status === 401 || r.status === 403) throw new Error("the user name or app password wasn't accepted");
+      if (!r.ok && r.status !== 207) throw new HttpError(r.status, "the CalDAV server");
+      var xml = new DOMParser().parseFromString(await r.text(), "application/xml");
+      var parts = Array.prototype.map.call(xml.getElementsByTagNameNS(dav, "calendar-data"), function (n) { return n.textContent; });
+      return parts.join("\r\n");
+    },
+  };
+
+  // ------------------------------------------------------------ GZreader updates
+
+  // One file out of a zip (a GZreader update: its koreader/gzreader-version).
+  async function zipEntryText(blob, name) {
+    var tailLen = Math.min(blob.size, 65557);
+    var tail = new Uint8Array(await blob.slice(blob.size - tailLen).arrayBuffer());
+    var dv = new DataView(tail.buffer), eocd = -1;
+    for (var i = tail.length - 22; i >= 0; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+    if (eocd < 0) return null;
+    var cdSize = dv.getUint32(eocd + 12, true), cdOff = dv.getUint32(eocd + 16, true);
+    var cd = new Uint8Array(await blob.slice(cdOff, cdOff + cdSize).arrayBuffer());
+    var c = new DataView(cd.buffer), dec = new TextDecoder();
+    for (var p = 0; p + 46 <= cd.length && c.getUint32(p, true) === 0x02014b50;) {
+      var method = c.getUint16(p + 10, true), csize = c.getUint32(p + 20, true);
+      var nlen = c.getUint16(p + 28, true), elen = c.getUint16(p + 30, true), clen = c.getUint16(p + 32, true);
+      var lho = c.getUint32(p + 42, true);
+      if (dec.decode(cd.subarray(p + 46, p + 46 + nlen)) === name) {
+        var lh = new DataView(await blob.slice(lho, lho + 30).arrayBuffer());
+        var start = lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+        var data = blob.slice(start, start + csize);
+        if (method === 0) return data.text();
+        if (method === 8) return new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+        return null;
+      }
+      p += 46 + nlen + elen + clen;
+    }
+    return null;
+  }
+
+  var Update = {
+    API: "https://api.github.com/repos/9retirement6irk/GZreader/releases/latest",
+    // (GitHub's release downloads can't be read by a web page; the release
+    // workflow also puts the update on this branch, which can)
+    RAW: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
+    RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
+    latest: null, chosen: true, file: null,
+    compare: function (a, b) {
+      var pa = String(a).replace(/^v\.?/, "").split(/[.-]/), pb = String(b).replace(/^v\.?/, "").split(/[.-]/);
+      for (var i = 0; i < 3; i++) {
+        var x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+        if (x !== y) return x < y ? -1 : 1;
+      }
+      return 0;
+    },
+    check: async function () {
+      Update.latest = null;
+      $("#o-update-row").classList.add("hidden");
+      var have = (K.out || {}).gzreader;
+      if (!have) return;
+      try {
+        var rel = await (await fetch(Update.API, { headers: { Accept: "application/vnd.github+json" } })).json();
+        var v = String(rel.tag_name || "").replace(/^v\.?/, "");
+        if (!v || Update.compare(v, have) <= 0) return;
+        Update.latest = v;
+        $("#o-update-text").textContent = "Update GZreader on the Kindle to " + v + " (it has " + have + ")";
+        $("#o-update-row").classList.remove("hidden");
+        Update.chosen = $("#o-update").checked;
+        var box = $("#kindle");
+        var note = el("div", { class: "update small" }, "GZreader " + v + " is out (this Kindle has " + have + "). The sync brings it; GZreader installs it when it starts. ");
+        var b = el("button", { class: "link" }, "Use a downloaded update file…");
+        b.onclick = busy(b, Update.pick);
+        note.appendChild(b);
+        box.appendChild(note);
+      } catch (e) {}
+    },
+    // the update downloaded by hand (gzreader-update.zip from the release)
+    pick: async function () {
+      var file;
+      if (window.showOpenFilePicker) {
+        try { file = await (await window.showOpenFilePicker({ types: [{ description: "GZreader update", accept: { "application/zip": [".zip"] } }] }))[0].getFile(); }
+        catch (e) { if (e.name === "AbortError") return; throw e; }
+      }
+      if (!file) return;
+      var v = await Update.versionOf(file);
+      if (!v) throw new Error("That isn't a GZreader update (gzreader-update.zip).");
+      Update.file = file; Update.chosen = true; $("#o-update").checked = true;
+      $("#o-update-text").textContent = "Update GZreader on the Kindle to " + v + " (from " + file.name + ")";
+      $("#o-update-row").classList.remove("hidden");
+      if (!Update.latest) Update.latest = v;
+    },
+    versionOf: async function (blob) {
+      try {
+        var t = await zipEntryText(blob, "koreader/gzreader-version");
+        var v = t && t.trim().replace(/^v\.?/, "");
+        return v && /^\d+(\.\d+)*/.test(v) ? v : null;
+      } catch (e) { return null; }
+    },
+    bring: async function (out, inbox) {
+      phase("GZreader update…");
+      var blob = Update.file;
+      if (!blob) {
+        try {
+          var meta = await (await fetch(Update.RAW + "latest.json", { cache: "no-store" })).json();
+          if (meta.version && Update.compare(meta.version, out.gzreader || "0") > 0) {
+            var r = await fetch(Update.RAW + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
+            if (r.ok) {
+              var b = await r.blob();
+              if (meta.size && b.size !== meta.size) throw new Error("the update came incomplete");
+              if (meta.sha256) {
+                var h = Array.prototype.map.call(new Uint8Array(await crypto.subtle.digest("SHA-256", await b.arrayBuffer())),
+                  function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+                if (h !== meta.sha256) throw new Error("the update didn't come through intact");
+              }
+              blob = b;
+            }
+          }
+        } catch (e) { if (/incomplete|intact/.test(e.message)) throw e; }
+      }
+      if (!blob) {
+        log("GZreader " + Update.latest + " can't be fetched by this page yet: download gzreader-update.zip from " + Update.RELEASES.replace(/^https:\/\//, "")
+          + ", add it with “Use a downloaded update file…” above and sync again.", "bad");
+        return;
+      }
+      var v = await Update.versionOf(blob);
+      if (!v) throw new Error("that isn't a GZreader update");
+      if (Update.compare(v, out.gzreader || "0") <= 0) { log("GZreader " + (out.gzreader || "") + " is already up to date."); return; }
+      await Drive.write(Drive.sync, "in/gzreader-update.zip", blob);
+      inbox.update = { version: v, file: "in/gzreader-update.zip", size: blob.size };
+      log("GZreader " + v + " is on its way: it installs when GZreader starts.", "ok");
+    },
+  };
+
+  // ------------------------------------------------------------ the Kindle and its outbox
+
+  var K = { out: null, handle: null };
+
+  async function openDrive(handle, quiet) {
+    if (!(await permitted(handle, "readwrite"))) { if (!quiet) log("The browser wasn't allowed to use the Kindle's drive.", "bad"); return false; }
+    var where = await Drive.locate(handle);
+    if (!where) {
+      showKindle(null, "No GZreader folder there. Choose the Kindle's drive itself (it has a documents folder), with GZreader installed and started once.");
+      return false;
+    }
+    Drive.root = handle; Drive.gz = where.gz; Drive.sync = where.sync;
+    K.handle = handle;
+    if (!window.GZSYNC_TEST) await idb.set("drive", handle); // (tests: a folder in the browser's own storage)
+    K.out = await Drive.readJSON(Drive.sync, "outbox.json");
+    K.pending = await Drive.readJSON(Drive.sync, "inbox.json");
+    showKindle(K.out);
+    renderPicks();
+    Browse.show();
+    Update.check();
+    return true;
+  }
+
+  function kindleIcon() {
+    var ns = "http://www.w3.org/2000/svg";
+    var s = document.createElementNS(ns, "svg");
+    s.setAttribute("width", "46"); s.setAttribute("height", "60"); s.setAttribute("viewBox", "0 0 46 60");
+    s.innerHTML = '<rect x="2" y="2" width="42" height="56" rx="5" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+      + '<rect x="8" y="8" width="30" height="34" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+      + '<path d="M12 16h22M12 22h22M12 28h14" stroke="currentColor" stroke-width="1.5"/>'
+      + '<path d="M10 48h26M10 52h26" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/>';
+    return s;
+  }
+
+  function showKindle(out, problem) {
+    var box = $("#kindle");
+    box.classList.remove("hidden");
+    box.textContent = "";
+    if (problem) { box.appendChild(el("p", { class: "bad" }, problem)); updateSyncButton(); return; }
+    var row = el("div", { class: "kindle" });
+    row.appendChild(kindleIcon());
+    var info = el("div");
+    if (!out) {
+      info.appendChild(el("strong", null, "GZreader folder found"));
+      info.appendChild(el("p", { class: "small muted" }, "GZreader hasn't left its sync file yet: update it to 1.24 or newer, start it once, then exit it and plug the Kindle in again. You can still sync: the next start takes in what's brought."));
+    } else {
+      var k = out.kindle || {};
+      info.appendChild(el("strong", null, (k.name || "Kindle") + (out.gzreader ? " · GZreader " + out.gzreader : "")));
+      var jobs = (out.jobs || []).length, q = out.queue || [], notes = ((out.notes || {}).queue || []).length;
+      var kb = q.reduce(function (a, x) { return a + (Number(x.size_kb) || 0); }, 0);
+      var lines = [];
+      lines.push(jobs ? jobs + " reading update" + (jobs === 1 ? "" : "s") + " to send to Grimmory" : "No reading updates waiting");
+      if (q.length) lines.push(q.length + " in the sync queue" + (kb ? " (" + mb(kb * 1024) + ")" : ""));
+      if (notes) lines.push(notes + " note change" + (notes === 1 ? "" : "s") + " to send to Memos");
+      if (out.written_at) lines.push("Kindle's list from " + new Date(out.written_at * 1000).toLocaleString());
+      if (K.pending) lines.push("A sync GZreader hasn't taken in yet is there: this one adds to it.");
+      lines.forEach(function (l) { info.appendChild(el("div", { class: "small muted" }, l)); });
+      if (q.length) {
+        var ul = el("ul", { class: "items" });
+        q.forEach(function (x) {
+          var li = el("li");
+          li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "")));
+          li.appendChild(el("span", { class: "small muted" }, x.kind === "audiobook" ? "audiobook" : (x.format || "")));
+          ul.appendChild(li);
+        });
+        info.appendChild(ul);
+      }
+      if (out.grimmory && G.st && G.st.server && normalizeServer(out.grimmory.server) !== G.st.server) {
+        info.appendChild(el("p", { class: "bad small" }, "This Kindle was last synced with " + hostOf(out.grimmory.server) + "; this browser is signed in to " + hostOf(G.st.server) + "."));
+      }
+      $("#c-plex").classList.toggle("hidden", k.audio === false);
+    }
+    row.appendChild(info);
+    box.appendChild(row);
+    updateSyncButton();
+  }
+
+  // ------------------------------------------------------------ the sync
+
+  var Opt = { covers: true, details: true };
+
+  function newInbox(prev) {
+    var inbox = prev && prev.format === FORMAT ? prev : { format: FORMAT, done: [], books: [], audiobooks: [], music: [] };
+    inbox.done = inbox.done || []; inbox.books = inbox.books || []; inbox.audiobooks = inbox.audiobooks || []; inbox.music = inbox.music || [];
+    inbox.failed = [];
+    return inbox;
+  }
+
+  async function saveInbox(inbox) {
+    inbox.written_at = Math.floor(Date.now() / 1000);
+    inbox.page = "gzsync 1";
+    await Drive.write(Drive.sync, "inbox.json", JSON.stringify(inbox));
+  }
+
+  function slimBook(b) {
+    var o = {};
+    BOOK_FIELDS.forEach(function (k) { if (b[k] !== undefined && b[k] !== null) o[k] = b[k]; });
+    return o;
+  }
+
+  async function allPages(path, params, onPage, max) {
+    var out = [], page = 0, pages = 1;
+    while (page < pages && page < (max || 1000)) {
+      var d = await G.json(path + qs(Object.assign({ page: page, size: PAGE }, params)));
+      pages = Number(d.totalPages || (d.page && d.page.totalPages)) || 1;
+      (d.content || []).forEach(function (b) { out.push(b); });
+      page++;
+      if (onPage) onPage(page, pages);
+    }
+    return out;
+  }
+
+  // 1. what the Kindle has to send
+  async function sendJobs(out, inbox) {
+    var done = new Set(inbox.done);
+    var jobs = (out.jobs || []).filter(function (j) { return !done.has(j.id); });
+    if (!jobs.length) return;
+    phase("Sending reading updates to Grimmory…");
+    var sent = 0;
+    for (var i = 0; i < jobs.length; i++) {
+      var j = jobs[i];
+      var r;
+      try { r = await G.fetch(j.path, { method: j.method, body: j.body }); } catch (e) {
+        inbox.failed.push({ id: j.id, error: "unreachable" });
+        log("Couldn't reach Grimmory to send the rest: " + e.message, "bad");
+        break;
+      }
+      if (r.ok) { inbox.done.push(j.id); sent++; }
+      else if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 408 && r.status !== 429) {
+        // refused for good (a book gone from Grimmory): not sent again
+        if (j.kind === "progress") inbox.failed.push({ id: j.id, error: "http_" + r.status });
+        else inbox.done.push(j.id);
+      } else inbox.failed.push({ id: j.id, error: "http_" + r.status });
+      bar.set(i + 1, jobs.length);
+    }
+    await saveInbox(inbox);
+    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + " to Grimmory.", "ok");
+  }
+
+  // 2. the library copy
+  async function libraryCopy(out, inbox) {
+    phase("Reading your Grimmory library…");
+    var books = (await allPages("/api/v1/app/books", { sort: "title", dir: "asc" }, function (p, n) { bar.set(p, n); })).map(slimBook);
+    var libraries;
+    try { libraries = await G.json("/api/v1/app/libraries"); } catch (e) { try { libraries = await G.json("/api/v1/libraries"); } catch (e2) { libraries = []; } }
+    var shelves = [];
+    try { shelves = (await G.json("/api/v1/app/shelves")) || []; } catch (e) {}
+    try { (await G.json("/api/v1/app/shelves/magic") || []).forEach(function (s) { s.magic = true; shelves.push(s); }); } catch (e) {}
+    var lists = { shelf: {}, magic: {}, continue: [], recent: [] };
+    phase("Reading your shelves…");
+    for (var i = 0; i < shelves.length; i++) {
+      var s = shelves[i];
+      try {
+        var on = await allPages("/api/v1/app/books", s.magic ? { magicShelfId: s.id, sort: "title", dir: "asc" } : { shelfId: s.id, sort: "title", dir: "asc" }, null, 20);
+        lists[s.magic ? "magic" : "shelf"][String(s.id)] = on.map(function (b) { return b.id; });
+      } catch (e) {}
+    }
+    // Continue reading, as the Kindle asks for it (gzreader_api.lua continueReading)
+    try {
+      var cr = await G.json("/api/v1/app/books/continue-reading?limit=30");
+      var more = [];
+      try {
+        more = (await G.json("/api/v1/app/books" + qs({ page: 0, size: 30, status: ["READING", "RE_READING", "PAUSED"], sort: "lastReadTime", dir: "desc", fileType: READABLE }))).content || [];
+      } catch (e) {}
+      var seen = {}, merged = [];
+      cr.concat(more).forEach(function (b, n) { if (b && b.id != null && !seen[b.id]) { seen[b.id] = true; merged.push({ b: b, n: n }); } });
+      merged.sort(function (x, y) {
+        var a = x.b.lastReadTime || "", c = y.b.lastReadTime || "";
+        if (a && c && a !== c) return a > c ? -1 : 1;
+        if (!!a !== !!c) return a ? -1 : 1;
+        return x.n - y.n;
+      });
+      lists.continue = merged.slice(0, 30).map(function (x) { return x.b.id; });
+    } catch (e) {}
+    try { lists.recent = (await G.json("/api/v1/app/books/recently-added?limit=30")).map(function (b) { return b.id; }); } catch (e) {}
+    // the books on the Kindle: their places elsewhere
+    var have = out.have || {};
+    var ids = Object.keys(have.books || {}).concat((have.audiobooks || []).map(String));
+    var full = {};
+    phase("Reading where you are in the books on the Kindle…");
+    await pool(ids, 4, async function (id) {
+      try {
+        var b = await G.json("/api/v1/books/" + id);
+        var keep = { id: b.id, personalRating: b.personalRating };
+        Object.keys(b).forEach(function (k) { if (/Progress$/.test(k)) keep[k] = b[k]; });
+        full[id] = keep;
+      } catch (e) {}
+    });
+    // subtitles (only the web app's list has them)
+    var subtitles = {};
+    phase("Reading subtitles…");
+    try {
+      var wp = 0, wps = 1;
+      while (wp < wps && wp < 500) {
+        var d = await G.json("/api/v1/books/page" + qs({ page: wp, size: 100 }));
+        var meta = d.page && typeof d.page === "object" ? d.page : d;
+        wps = Number(meta.totalPages) || 1;
+        (d.content || []).forEach(function (b) { var m = b && b.metadata; if (m && m.subtitle) subtitles[String(b.id)] = m.subtitle; });
+        wp++;
+      }
+    } catch (e) {}
+    var copy = { format: FORMAT, written_at: Math.floor(Date.now() / 1000), server: G.st.server, user: G.st.user,
+      books: books, libraries: libraries, shelves: shelves, lists: lists, full: full, subtitles: subtitles };
+    await Drive.write(Drive.sync, "library.json", JSON.stringify(copy));
+    inbox.grimmory = { server: G.st.server, user: G.st.user };
+    log("Library copy: " + books.length + " books and audiobooks, " + shelves.length + " shelves.", "ok");
+    K.subtitles = subtitles;
+    K.books = books;
+    if (Opt.covers) await covers(books);
+    if (Opt.details) await details(books);
+  }
+
+  async function shrink(blob, w, h) {
+    var img = await createImageBitmap(blob);
+    var scale = Math.min(w / img.width, h / img.height, 1);
+    var cw = Math.max(1, Math.round(img.width * scale)), ch = Math.max(1, Math.round(img.height * scale));
+    var canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(cw, ch) : Object.assign(document.createElement("canvas"), { width: cw, height: ch });
+    var ctx = canvas.getContext("2d");
+    ctx.filter = "grayscale(1)"; // (e-ink: smaller files, the same picture)
+    ctx.drawImage(img, 0, 0, cw, ch);
+    if (img.close) img.close();
+    if (canvas.convertToBlob) return canvas.convertToBlob({ type: "image/jpeg", quality: 0.8 });
+    return new Promise(function (ok) { canvas.toBlob(ok, "image/jpeg", 0.8); });
+  }
+
+  async function covers(books) {
+    var index = (await Drive.readJSON(Drive.sync, "covers/index.json")) || {};
+    var todo = [];
+    books.forEach(function (b) {
+      var audio = String(b.primaryFileType || "").toUpperCase() === "AUDIOBOOK";
+      var stamp = String((audio ? b.audiobookCoverUpdatedOn || b.coverUpdatedOn : b.coverUpdatedOn) || "0");
+      var name = b.id + (audio ? "-a" : "");
+      if (index[name] !== stamp && index[name] !== stamp + ":none") todo.push({ id: b.id, name: name, stamp: stamp, audio: audio });
+    });
+    if (!todo.length) return;
+    phase("Small covers for the Grimmory tab…");
+    var n = 0, got = 0;
+    await pool(todo, 6, async function (t) {
+      try {
+        var r = await G.fetch("/api/v1/media/book/" + t.id + (t.audio ? "/audiobook-thumbnail" : "/thumbnail"), { headers: { Accept: "image/*" } });
+        if (r.status === 404) index[t.name] = t.stamp + ":none";
+        else if (r.ok) {
+          var small = await shrink(await r.blob(), COVER_W, t.audio ? COVER_W : COVER_H);
+          await Drive.write(Drive.sync, "covers/" + t.name + ".jpg", small);
+          index[t.name] = t.stamp;
+          got++;
+        }
+      } catch (e) {}
+      n++;
+      bar.set(n, todo.length);
+      if (n % 50 === 0) await Drive.write(Drive.sync, "covers/index.json", JSON.stringify(index));
+    });
+    await Drive.write(Drive.sync, "covers/index.json", JSON.stringify(index));
+    log(got + " cover" + (got === 1 ? "" : "s") + " updated.", "ok");
+  }
+
+  async function details(books) {
+    var dir = await Drive.dir(Drive.sync, "details", true);
+    var here = new Set(await Drive.list(dir));
+    var todo = books.filter(function (b) { return !here.has(b.id + ".json"); });
+    if (!todo.length) return;
+    phase("Book descriptions…");
+    var n = 0;
+    await pool(todo, 4, async function (b) {
+      try {
+        var d = await G.json("/api/v1/app/books/" + b.id);
+        var keep = {};
+        ["id", "title", "subtitle", "description", "categories", "goodreadsRating", "goodreadsReviewCount", "pageCount",
+          "publisher", "publishedDate", "seriesName", "seriesNumber", "authors", "narrator", "language"].forEach(function (k) {
+          if (d[k] !== undefined && d[k] !== null) keep[k] = d[k];
+        });
+        await Drive.write(dir, b.id + ".json", JSON.stringify(keep));
+      } catch (e) {}
+      n++;
+      bar.set(n, todo.length);
+    });
+    log("Descriptions for " + n + " book" + (n === 1 ? "" : "s") + ".", "ok");
+  }
+
+  function extOf(name, fallback) { var m = /\.([A-Za-z0-9]+)$/.exec(name || ""); return m ? m[1].toLowerCase() : fallback; }
+  function inInbox(inbox, id) {
+    return inbox.books.some(function (b) { return String(b.id) === String(id); })
+      || inbox.audiobooks.some(function (a) { return String(a.id) === String(id); });
+  }
+
+  // 3. the sync queue (and the auto-download shelf)
+  async function bringQueue(out, inbox) {
+    var have = (out.have || {}).books || {};
+    var queue = (out.queue || []).slice();
+    // (and what was chosen on this page)
+    bookPicks().forEach(function (p) {
+      if (!queue.some(function (q) { return String(q.id) === String(p.id); }) && !have[String(p.id)]
+          && !((out.have || {}).audiobooks || []).some(function (a) { return String(a) === String(p.id); })) queue.push(p);
+    });
+    var shelf = out.auto_shelf;
+    if (shelf && shelf.id != null) {
+      try {
+        var on = await allPages("/api/v1/app/books", shelf.magic ? { magicShelfId: shelf.id, sort: "addedOn", dir: "desc", fileType: READABLE }
+          : { shelfId: shelf.id, sort: "addedOn", dir: "desc", fileType: READABLE }, null, 4);
+        var added = 0;
+        on.forEach(function (b) {
+          if (added >= 20 || b.isPhysical || have[String(b.id)] || inInbox(inbox, b.id)) return;
+          if (queue.some(function (q) { return String(q.id) === String(b.id); })) return;
+          queue.push({ id: b.id, kind: "book", title: b.title, authors: b.authors, format: b.primaryFileType, file_id: b.primaryFileId,
+            name: (b.primaryFileName || "").split(/[\/\\]/).pop(), size_kb: b.fileSizeKb, shelf: true });
+          added++;
+        });
+        if (added) log(added + " new book" + (added === 1 ? "" : "s") + " on “" + (shelf.name || "your shelf") + "”.");
+      } catch (e) { log("Couldn't read the auto-download shelf: " + e.message, "bad"); }
+    }
+    queue = queue.filter(function (q) { return !inInbox(inbox, q.id); });
+    if (!queue.length) return;
+    var total = queue.reduce(function (a, q) { return a + (Number(q.size_kb) || 0) * 1024; }, 0), got = 0;
+    for (var i = 0; i < queue.length; i++) {
+      var q = queue[i];
+      phase("Bringing “" + (q.title || "?") + "” (" + (i + 1) + " of " + queue.length + ")…");
+      try {
+        if (q.kind === "audiobook") await bringAudiobook(q, inbox, function (n) { got += n; bar.set(got, total); });
+        else await bringBook(q, inbox, function (n) { got += n; bar.set(got, total); });
+        await saveInbox(inbox);
+        log("“" + (q.title || "?") + "” is on its way to the Kindle.", "ok");
+      } catch (e) {
+        log("“" + (q.title || "?") + "” couldn't be brought: " + e.message, "bad");
+        if (/quota|space|NoModificationAllowed|InvalidState/i.test(String(e.name) + e.message)) { log("The Kindle may be full.", "bad"); break; }
+      }
+    }
+  }
+
+  async function bringBook(q, inbox, onBytes) {
+    var r = await G.fetch("/api/v1/books/" + q.id + "/download");
+    if (!r.ok) throw new HttpError(r.status, "Grimmory");
+    var ext = extOf(q.name, String(q.format || "epub").toLowerCase());
+    if (ext === "cbx") ext = "cbz";
+    var file = "in/book-" + q.id + "." + ext;
+    await Drive.writeStream(Drive.sync, file, r.body, onBytes);
+    inbox.books.push({ id: q.id, file: file, name: q.name, title: q.title, authors: q.authors, format: q.format, file_id: q.file_id,
+      subtitle: (K.subtitles || {})[String(q.id)] });
+  }
+
+  async function bringAudiobook(q, inbox, onBytes) {
+    var info = await G.json("/api/v1/audiobooks/" + q.id + "/info");
+    try { var full = await G.json("/api/v1/books/" + q.id); if (full.metadata && full.metadata.description) info.gz_description = full.metadata.description; } catch (e) {}
+    var dir = "in/audio-" + q.id;
+    var files = [];
+    if (info.folderBased && Array.isArray(info.tracks) && info.tracks.length) {
+      info.tracks.forEach(function (t, i) {
+        files.push({ name: "track-" + ("00" + (i + 1)).slice(-3) + "." + extOf(t.fileName, "mp3"),
+          url: "/api/v1/audiobooks/" + q.id + "/track/" + (t.index != null ? t.index : i) + "/stream" });
+      });
+    } else {
+      files.push({ name: "audiobook." + extOf(q.name, /mp3/i.test(info.codec || "") ? "mp3" : "m4b"), url: "/api/v1/audiobooks/" + q.id + "/stream" });
+    }
+    for (var i = 0; i < files.length; i++) {
+      var r = await G.fetch(files[i].url);
+      if (!r.ok) throw new HttpError(r.status, "Grimmory");
+      await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
+    }
+    try {
+      var c = await G.fetch("/api/v1/media/book/" + q.id + "/audiobook-thumbnail", { headers: { Accept: "image/*" } });
+      if (c.ok) await Drive.write(Drive.sync, dir + "/cover.jpg", await c.blob());
+    } catch (e) {}
+    inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title });
+  }
+
+  // 4. notes
+  async function syncNotes(out, inbox) {
+    var n = out.notes || {};
+    var prev = inbox.notes || {};
+    var done = (prev.done || []).slice();
+    var sentNow = 0;
+    phase("Notes: sending what was written on the Kindle…");
+    for (var i = 0; i < (n.queue || []).length; i++) {
+      var q = n.queue[i];
+      if (done.indexOf(q.id) >= 0) continue;
+      var r;
+      if (q.op === "create") r = await M.req("POST", "/memos", { content: q.content, visibility: q.visibility || "PRIVATE" });
+      else if (q.op === "update") r = await M.req("PATCH", "/" + q.name, { name: q.name, content: q.content, visibility: q.visibility },
+        { updateMask: q.visibility ? "content,visibility" : "content" });
+      else if (q.op === "pin") r = await M.req("PATCH", "/" + q.name, { name: q.name, pinned: q.pinned === true }, { updateMask: "pinned" });
+      else { done.push(q.id); continue; }
+      if (r.ok) { done.push(q.id); sentNow++; }
+      else if (r.status === 401 || r.status === 403) throw new Error("Memos didn't accept the access token.");
+      else if (r.status >= 400 && r.status < 500) done.push(q.id); // refused for good: dropped
+      else break;
+    }
+    phase("Notes: bringing your notes…");
+    var keep = Number(n.keep) || 100;
+    var filter = null;
+    if (Array.isArray(n.sync_tags) && n.sync_tags.length) filter = "tag in [" + n.sync_tags.map(function (t) { return JSON.stringify(String(t)); }).join(", ") + "]";
+    var notes = [], token = null;
+    do {
+      var r2 = await M.req("GET", "/memos", undefined, { pageSize: Math.min(200, keep - notes.length), pageToken: token, filter: filter, orderBy: "pinned desc, create_time desc" });
+      if (r2.status === 401 || r2.status === 403) throw new Error("Memos didn't accept the access token.");
+      if (!r2.ok) throw new HttpError(r2.status, "Memos");
+      var d = await r2.json();
+      (d.memos || []).forEach(function (m) { notes.push(slimMemo(m)); });
+      token = d.nextPageToken || null;
+    } while (token && notes.length < keep);
+    var tags = null;
+    try {
+      if (!M.st.userName) { var u = await M.me(); M.st.userName = u.name; M.save(); }
+      var rs = await M.req("GET", "/" + M.st.userName + ":getStats");
+      if (rs.ok) { var sd = await rs.json(); tags = sd.tagCounts || sd.tagCount || null; }
+    } catch (e) {}
+    await Drive.write(Drive.sync, "in/notes.json", JSON.stringify({ notes: notes, at: Math.floor(Date.now() / 1000), tags: tags }));
+    // their pictures (not already on the Kindle)
+    var have = new Set(n.files || []);
+    var budget = (Number(n.files_mb) || 50) * 1048576 * 0.8, pics = [];
+    notes.forEach(function (m) {
+      m.attachments.forEach(function (a) {
+        var fname = memoFileName(a);
+        if (/^image\//.test(a.type || "") && !a.link && (a.size || 0) <= 3145728 && !have.has(fname) && budget - (a.size || 0) > 0) {
+          budget -= a.size || 0;
+          pics.push({ a: a, fname: fname });
+        }
+      });
+    });
+    await pool(pics, 3, async function (p) {
+      var uid = (String(p.a.name || "").match(/attachments\/(.+)$/) || [])[1];
+      if (!uid) return;
+      try {
+        var r3 = await fetch(M.st.server + "/file/attachments/" + uid + "/" + encodeURIComponent(p.a.filename || "file"), { headers: { Authorization: "Bearer " + M.st.token } });
+        if (r3.ok) await Drive.write(Drive.sync, "in/notes-files/" + p.fname, await r3.blob());
+      } catch (e) {}
+    });
+    inbox.notes = { file: "in/notes.json", files: "in/notes-files", done: done, server: M.st.server, user: M.st.user };
+    await saveInbox(inbox);
+    log("Notes: " + notes.length + " brought" + (sentNow ? ", " + sentNow + " change" + (sentNow === 1 ? "" : "s") + " sent to Memos" : "") + (pics.length ? ", " + pics.length + " picture" + (pics.length === 1 ? "" : "s") : "") + ".", "ok");
+  }
+
+  // 5. calendars
+  async function syncCalendars(out, inbox) {
+    phase("Calendars…");
+    var range = Cal.range(out);
+    var list = [], events = 0;
+    for (var i = 0; i < Cal.list.length; i++) {
+      var src = Cal.list[i];
+      var label = src.name || (src.type === "file" ? "calendar file" : hostOf(src.url));
+      try {
+        var text = await Cal.text(src, range);
+        if (!text || text.indexOf("BEGIN:VCALENDAR") < 0) throw new Error("it isn't a calendar");
+        var named = (text.match(/\nX-WR-CALNAME[^:\r\n]*:([^\r\n]*)/) || [])[1];
+        var file = "in/calendar/" + (list.length + 1) + ".ics";
+        await Drive.write(Drive.sync, file, text);
+        list.push({ name: src.name || named || label, file: file });
+        events += (text.match(/BEGIN:VEVENT/g) || []).length;
+      } catch (e) {
+        log("Calendar “" + label + "”: " + e.message, "bad");
+        list.push({ name: src.name || label, file: null });
+      }
+    }
+    inbox.calendars = list;
+    await saveInbox(inbox);
+    log("Calendars: " + list.filter(function (c) { return c.file; }).length + " of " + list.length + " brought (" + events + " events).", "ok");
+  }
+
+  // 6. music
+  function picksKey() { return "music." + kid(); }
+  function picks() { return LS.get(picksKey(), []); }
+  function safe(s) { return String(s == null ? "" : s).replace(/[^A-Za-z0-9\-]/g, "_"); }
+
+  async function syncMusic(out, inbox) {
+    var have = new Set(((out.have || {}).music) || []);
+    var todo = picks().filter(function (p) {
+      var k = safe(p.kind) + "-" + safe(p.key);
+      return !have.has(p.kind + "-" + p.key) && !have.has(k) && !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
+    });
+    for (var i = 0; i < todo.length; i++) {
+      var p = todo[i];
+      phase("Music: “" + p.title + "”…");
+      try {
+        var tracks = p.kind === "playlist" ? await playlistTracks(p.key) : await P.items("/library/metadata/" + encodeURIComponent(p.key) + "/children");
+        tracks = tracks.filter(function (t) { return t.type === "track" || t.part; });
+        var dir = "in/music-" + safe(p.kind) + "-" + safe(p.key);
+        var col = { kind: p.kind, key: String(p.key), title: p.title, artist: p.artist, year: p.year, added: Math.floor(Date.now() / 1000), tracks: [] };
+        for (var j = 0; j < tracks.length; j++) {
+          var t = tracks[j], base = ("0" + (j + 1)).slice(-2);
+          bar.set(j, tracks.length);
+          var entry = { key: t.key, title: t.title, artist: t.artist, album: t.album, duration: t.duration, base: base, part: t.part };
+          try { entry.file = await bringTrack(t, dir, base); } catch (e) { log("“" + t.title + "”: " + e.message, "bad"); }
+          col.tracks.push(entry);
+        }
+        if (p.thumb) {
+          try {
+            var c = await P.get("/photo/:/transcode", { url: p.thumb, width: 300, height: 300, minSize: 1, upscale: 1, format: "jpeg" });
+            await Drive.write(Drive.sync, dir + "/cover.jpg", await c.blob());
+          } catch (e) {}
+        }
+        await Drive.write(Drive.sync, dir + "/music.json", JSON.stringify(col));
+        inbox.music.push({ kind: p.kind, key: String(p.key), dir: dir });
+        await saveInbox(inbox);
+        var nt = col.tracks.filter(function (x) { return x.file; }).length;
+        log("Music: “" + p.title + "”, " + nt + " track" + (nt === 1 ? "" : "s") + ".", "ok");
+      } catch (e) { log("Music: “" + p.title + "” couldn't be brought: " + e.message, "bad"); }
+    }
+  }
+
+  async function playlistTracks(key) {
+    var out = [];
+    for (var start = 0; start < 5000; start += 100) {
+      var page = await P.items("/playlists/" + encodeURIComponent(key) + "/items", null,
+        { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "100" });
+      out = out.concat(page);
+      if (page.length < 100) break;
+    }
+    return out;
+  }
+
+  async function bringTrack(t, dir, base) {
+    var how = P.how(t);
+    if (how[0] === "file") {
+      if (!t.part || !t.part.key) throw new Error("no file");
+      var r = await P.get(t.part.key, { download: 1 });
+      await Drive.writeStream(Drive.sync, dir + "/" + base + "." + how[1], r.body);
+      return base + "." + how[1];
+    }
+    // the server's MP3 (FLAC, ALAC, Ogg…): its transcoder, HLS with MP3 in MPEG-TS
+    var session = rand(8);
+    var params = { path: "/library/metadata/" + t.key, protocol: "hls", mediaIndex: 0, partIndex: 0, directPlay: 0, directStream: 0,
+      directStreamAudio: 0, musicBitrate: 192, fastSeek: 1, hasMDE: 1, "X-Plex-Session-Identifier": session, session: session,
+      location: "lan", "X-Plex-Platform": "Chrome", "X-Plex-Client-Identifier": P.clientId(), "X-Plex-Product": "GZreader",
+      "X-Plex-Client-Profile-Extra": "add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=mp3)" };
+    var start = P.st.server.uri + "/music/:/transcode/universal/start.m3u8";
+    var lines = function (txt) { return String(txt).split(/\r?\n/).filter(function (l) { return l && l[0] !== "#"; }); };
+    var text = await (await P.get("/music/:/transcode/universal/start.m3u8", params)).text();
+    var media = start, list = lines(text);
+    if (list[0] && /\.m3u8/.test(list[0])) {
+      media = new URL(list[0], start).href;
+      text = await (await fetch(media, { headers: P.headers(P.st.server.token) })).text();
+      list = lines(text);
+    }
+    if (!list.length) throw new Error("the transcoder sent nothing");
+    var state = {}, chunks = [];
+    for (var i = 0; i < list.length; i++) {
+      var data = null;
+      for (var tries = 0; tries < 20 && !data; tries++) {
+        var r2 = await fetch(new URL(list[i], media).href, { headers: P.headers(P.st.server.token) });
+        if (r2.ok) { var buf = new Uint8Array(await r2.arrayBuffer()); if (buf.length) data = buf; }
+        if (!data) await new Promise(function (ok) { setTimeout(ok, 1000); });
+      }
+      if (!data) throw new Error("a part of the track never came");
+      demuxTs(data, state, chunks);
+    }
+    try { await fetch(P.st.server.uri + "/music/:/transcode/universal/stop" + qs({ session: session }), { headers: P.headers(P.st.server.token) }); } catch (e) {}
+    if (!state.bytes) throw new Error("no audio");
+    var ext = state.type === 0x0f ? "aac" : "mp3";
+    await Drive.write(Drive.sync, dir + "/" + base + "." + ext, new Blob(chunks));
+    return base + "." + ext;
+  }
+
+  async function runSync() {
+    $("#sync").disabled = true;
+    $("#done").classList.add("hidden");
+    $("#log").textContent = "";
+    Opt.covers = $("#o-covers").checked; Opt.details = $("#o-details").checked;
+    var t0 = Date.now();
+    try {
+      // (asked first, while the button press still counts: the .ics files)
+      for (var i = 0; i < Cal.list.length; i++) {
+        if (Cal.list[i].type === "file") { var h = await idb.get("calfile:" + Cal.list[i].id); if (h) await permitted(h, "read"); }
+      }
+      if (!(await permitted(K.handle, "readwrite"))) throw new Error("The browser wasn't allowed to write to the Kindle.");
+      K.out = await Drive.readJSON(Drive.sync, "outbox.json") || {};
+      var inbox = newInbox(await Drive.readJSON(Drive.sync, "inbox.json"));
+      var out = K.out;
+      if (G.connected()) {
+        try {
+          if (!G.st.user) { G.st.user = await G.me(); G.save(); }
+          await sendJobs(out, inbox);
+          await libraryCopy(out, inbox);
+          await saveInbox(inbox);
+          await bringQueue(out, inbox);
+        } catch (e) { log("Grimmory: " + e.message, "bad"); }
+        setBookPicks(bookPicks().filter(function (p) { return !inInbox(inbox, p.id); }));
+      } else if ((out.jobs || []).length || (out.queue || []).length) {
+        log("Not signed in to Grimmory: reading updates and the sync queue wait for the next sync.", "bad");
+      }
+      if (M.connected()) { try { await syncNotes(out, inbox); } catch (e) { log("Notes: " + e.message, "bad"); } }
+      if (Cal.list.length) { try { await syncCalendars(out, inbox); } catch (e) { log("Calendars: " + e.message, "bad"); } }
+      if (P.connected() && ((out.kindle || {}).audio !== false) && picks().length) {
+        try { await syncMusic(out, inbox); } catch (e) { log("Music: " + e.message, "bad"); }
+      }
+      LS.set(picksKey(), picks().filter(function (p) {
+        return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
+      }));
+      if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
+      await saveInbox(inbox);
+      phase("");
+      bar.hide();
+      var secs = Math.round((Date.now() - t0) / 1000);
+      var dn = $("#done");
+      dn.textContent = "Done in " + (secs >= 90 ? Math.round(secs / 60) + " min" : secs + " s") + ". Eject the Kindle, unplug it and start GZreader: it takes in what was brought.";
+      dn.classList.remove("hidden");
+      K.pending = inbox;
+      showKindle(K.out);
+      renderPicks();
+      Browse.show();
+    } catch (e) {
+      phase("");
+      bar.hide();
+      log(e.message || String(e), "bad");
+    }
+    updateSyncButton();
+  }
+
+  // ------------------------------------------------------------ the page
+
+  function updateSyncButton() {
+    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected());
+  }
+
+  function renderConnections() {
+    var g = G.connected();
+    $("#c-grimmory").classList.toggle("on", g);
+    $("#g-status").textContent = g ? "Signed in to " + hostOf(G.st.server) + (G.st.user ? " as " + G.st.user : "") : "Not connected";
+    $("#g-form").classList.toggle("hidden", g);
+    $("#g-on").classList.toggle("hidden", !g);
+    if (!g && G.st && G.st.server) $("#g-server").value = G.st.server;
+    var m = M.connected();
+    $("#c-memos").classList.toggle("on", m);
+    $("#m-status").textContent = m ? "Connected to " + hostOf(M.st.server) + (M.st.user ? " as " + M.st.user : "") : "Not connected";
+    $("#m-form").classList.toggle("hidden", m);
+    $("#m-on").classList.toggle("hidden", !m);
+    var c = Cal.list.length;
+    $("#c-cal").classList.toggle("on", c > 0);
+    $("#cal-status").textContent = c ? c + " calendar" + (c === 1 ? "" : "s") : "None yet";
+    var ul = $("#cal-list");
+    ul.textContent = "";
+    Cal.list.forEach(function (src) {
+      var li = el("li");
+      li.appendChild(el("span", null, (src.name || (src.type === "file" ? "calendar file" : hostOf(src.url))) + "  "));
+      li.lastChild.appendChild(el("span", { class: "small muted" }, src.type === "file" ? ".ics file" : src.type === "caldav" ? "CalDAV" : "link"));
+      var b = el("button", null, "Remove");
+      b.onclick = function () {
+        Cal.list = Cal.list.filter(function (x) { return x !== src; });
+        Cal.save(); idb.del("calfile:" + src.id); renderConnections();
+      };
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    var p = P.connected();
+    $("#c-plex").classList.toggle("on", p);
+    $("#p-status").textContent = p ? "Signed in" + (P.st.user ? " as " + P.st.user : "") + " · " + (P.st.server.name || "Plex") : "Not connected";
+    $("#p-form").classList.toggle("hidden", p);
+    $("#p-on").classList.toggle("hidden", !p);
+    renderPicks();
+    if (Drive.sync && !$("#b-results").children.length) Browse.show();
+    updateSyncButton();
+  }
+
+  // ------------------------------------------------------------ choosing what to bring
+
+  function kid() { return ((K.out || {}).kindle || {}).id || "kindle"; }
+  function bookPicks() { return LS.get("books." + kid(), []); }
+  function setBookPicks(l) { LS.set("books." + kid(), l); }
+
+  // where a book or album stands: on the Kindle, queued there, brought, chosen here
+  function standing(kind, id) {
+    var out = K.out || {}, have = out.have || {}, inbox = K.pending || {};
+    id = String(id);
+    if (kind === "album" || kind === "playlist") {
+      if ((have.music || []).some(function (m) { return m === kind + "-" + id || m === safe(kind) + "-" + safe(id); })) return "here";
+      if ((inbox.music || []).some(function (m) { return m.kind === kind && String(m.key) === id; })) return "brought";
+      return picks().some(function (y) { return y.kind === kind && String(y.key) === id; }) ? "chosen" : "";
+    }
+    if ((have.books || {})[id] || (have.audiobooks || []).some(function (a) { return String(a) === id; })) return "here";
+    if ((inbox.books || []).concat(inbox.audiobooks || []).some(function (b) { return String(b.id) === id; })) return "brought";
+    if ((out.queue || []).some(function (q) { return String(q.id) === id; })) return "queued";
+    return bookPicks().some(function (b) { return String(b.id) === id; }) ? "chosen" : "";
+  }
+  var STANDING = { here: "On the Kindle", brought: "Brought", queued: "In its queue", chosen: "Added ✓" };
+
+  var Browse = {
+    tab: "books", page: 0, more: null, urls: [],
+    clear: function () {
+      Browse.urls.forEach(function (u) { URL.revokeObjectURL(u); });
+      Browse.urls = [];
+      $("#b-results").textContent = "";
+      $("#b-more").classList.add("hidden");
+    },
+    note: function (text) { Browse.clear(); $("#b-results").appendChild(el("li", { class: "small muted" }, text)); },
+    setTab: function (tab) {
+      Browse.tab = tab;
+      document.querySelectorAll(".tabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.tab === tab); });
+      $("#b-search").value = "";
+      $("#b-search").placeholder = tab === "music" ? "Search albums and playlists" : tab === "audio" ? "Search audiobooks" : "Search books";
+      var lists = $("#b-lists");
+      lists.textContent = "";
+      var add = function (label, fn) { var b = el("button", { class: "link" }, label); b.onclick = busy(b, fn); lists.appendChild(b); };
+      if (tab === "music") {
+        add("Albums A–Z", function () { return Browse.albums(0); });
+        add("Playlists", Browse.playlists);
+      } else {
+        add("Recently added", function () { return Browse.grimmory(null, 0); });
+        add("A–Z", function () { return Browse.grimmory(null, 0, "title"); });
+      }
+      Browse.show();
+    },
+    show: function () {
+      if (!Drive.sync) return Browse.note("Choose the Kindle first (step 1).");
+      if (Browse.tab === "music") {
+        if ((((K.out || {}).kindle) || {}).audio === false) return Browse.note("This Kindle has no speaker or headphone jack.");
+        if (!P.connected()) return Browse.note("Sign in with Plex above to choose music.");
+        return Browse.albums(0).catch(function (e) { Browse.note(e.message); });
+      }
+      if (Browse.tab === "audio" && (((K.out || {}).kindle) || {}).audio === false) return Browse.note("This Kindle has no speaker or headphone jack.");
+      if (!G.connected()) return Browse.note("Sign in to Grimmory above to choose books.");
+      return Browse.grimmory(null, 0).catch(function (e) { Browse.note(e.message); });
+    },
+    search: async function () {
+      var q = $("#b-search").value.trim();
+      if (Browse.tab === "music") {
+        if (!P.connected()) return Browse.show();
+        if (!q) return Browse.albums(0);
+        var d = await (await P.get("/hubs/search", { query: q, limit: 30 })).json();
+        var found = [];
+        ((d.MediaContainer || {}).Hub || []).forEach(function (hub) {
+          if (hub.type === "album" || hub.type === "playlist") (hub.Metadata || []).forEach(function (m) { var it = P.item(m); if (it && it.key) found.push(it); });
+        });
+        Browse.clear();
+        return Browse.musicItems(found);
+      }
+      if (!G.connected()) return Browse.show();
+      return Browse.grimmory(q || null, 0);
+    },
+    grimmory: async function (q, page, sort) {
+      var audio = Browse.tab === "audio";
+      if (page === 0) Browse.note("Loading…");
+      var types = audio ? ["AUDIOBOOK"] : READABLE;
+      var d;
+      if (q) d = await G.json("/api/v1/app/books" + qs({ search: q, page: page, size: 25, fileType: types, sort: "title", dir: "asc" }));
+      else d = await G.json("/api/v1/app/books" + qs({ page: page, size: 25, fileType: types, sort: sort || "addedOn", dir: sort ? "asc" : "desc" }));
+      if (page === 0) Browse.clear();
+      var list = (d.content || []).filter(function (b) {
+        var t = String(b.primaryFileType || "").toUpperCase();
+        return !b.isPhysical && (audio ? t === "AUDIOBOOK" : t && t !== "AUDIOBOOK");
+      });
+      if (q) { var ql = q.toLowerCase(); list = list.filter(function (b) {
+        return (b.title || "").toLowerCase().indexOf(ql) >= 0 || (b.authors || []).join(" ").toLowerCase().indexOf(ql) >= 0
+          || (b.seriesName || "").toLowerCase().indexOf(ql) >= 0;
+      }); }
+      if (page === 0 && !list.length) Browse.note("Nothing found.");
+      list.forEach(Browse.bookItem);
+      var pages = Number(d.totalPages) || 1;
+      Browse.more = page + 1 < pages ? function () { return Browse.grimmory(q, page + 1, sort); } : null;
+      $("#b-more").classList.toggle("hidden", !Browse.more);
+    },
+    bookItem: function (b) {
+      var audio = String(b.primaryFileType || "").toUpperCase() === "AUDIOBOOK";
+      var li = el("li", audio ? { class: "square" } : null);
+      var ph = el("span", { class: "ph" });
+      li.appendChild(ph);
+      var txt = el("span", { class: "txt" }, b.title || "?");
+      var meta = [(b.authors || []).join(", "), audio ? "audiobook" : b.primaryFileType,
+        b.fileSizeKb ? mb(b.fileSizeKb * 1024) : null, b.seriesName ? b.seriesName + (b.seriesNumber ? " #" + b.seriesNumber : "") : null];
+      txt.appendChild(el("span", { class: "meta" }, meta.filter(Boolean).join(" · ")));
+      li.appendChild(txt);
+      li.appendChild(Browse.button("book", b.id, function (on) {
+        var l = bookPicks().filter(function (x) { return String(x.id) !== String(b.id); });
+        if (on) l.push({ id: b.id, kind: audio ? "audiobook" : "book", title: b.title, authors: b.authors, format: b.primaryFileType,
+          file_id: b.primaryFileId, name: String(b.primaryFileName || "").split(/[\/\\]/).pop() || undefined, size_kb: b.fileSizeKb });
+        setBookPicks(l);
+      }));
+      $("#b-results").appendChild(li);
+      // its cover, a moment later
+      G.fetch("/api/v1/media/book/" + b.id + (audio ? "/audiobook-thumbnail" : "/thumbnail"), { headers: { Accept: "image/*" } }).then(function (r) {
+        return r.ok ? r.blob() : null;
+      }).then(function (blob) {
+        if (!blob || !ph.isConnected) return;
+        var u = URL.createObjectURL(blob);
+        Browse.urls.push(u);
+        ph.replaceWith(el("img", { src: u, alt: "" }));
+      }).catch(function () {});
+    },
+    button: function (kind, id, onToggle) {
+      var st = standing(kind === "book" ? "book" : kind, id);
+      var b = el("button", null, STANDING[st] || "Add");
+      b.disabled = st === "here" || st === "brought" || st === "queued";
+      b.onclick = function () {
+        var on = standing(kind === "book" ? "book" : kind, id) !== "chosen";
+        onToggle(on);
+        b.textContent = on ? STANDING.chosen : "Add";
+        renderPicks();
+      };
+      return b;
+    },
+    albums: async function (start) {
+      if (start === 0) Browse.note("Loading…");
+      var music = [];
+      var d = await (await P.get("/library/sections")).json();
+      ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x.key); });
+      if (!music.length) return Browse.note("No music library on this Plex server.");
+      var items = await P.items("/library/sections/" + encodeURIComponent(music[0]) + "/all", { type: 9, sort: "titleSort:asc" },
+        { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "50" });
+      if (start === 0) Browse.clear();
+      items.forEach(function (x) { x.type = "album"; });
+      Browse.musicItems(items);
+      Browse.more = items.length === 50 ? function () { return Browse.albums(start + 50); } : null;
+      $("#b-more").classList.toggle("hidden", !Browse.more);
+    },
+    playlists: async function () {
+      Browse.note("Loading…");
+      var items = await P.items("/playlists", { playlistType: "audio" });
+      Browse.clear();
+      items.forEach(function (x) { x.type = "playlist"; });
+      if (!items.length) return Browse.note("No playlists.");
+      Browse.musicItems(items);
+    },
+    musicItems: function (items) {
+      items.forEach(function (it) {
+        var kind = it.type === "playlist" ? "playlist" : "album";
+        var li = el("li", { class: "square" });
+        var ph = el("span", { class: "ph" });
+        li.appendChild(ph);
+        var txt = el("span", { class: "txt" }, it.title);
+        txt.appendChild(el("span", { class: "meta" }, [it.artist, kind === "playlist" ? "playlist" : it.year, it.count ? it.count + " tracks" : null].filter(Boolean).join(" · ")));
+        li.appendChild(txt);
+        li.appendChild(Browse.button(kind, it.key, function (on) {
+          var l = picks().filter(function (y) { return !(y.kind === kind && String(y.key) === String(it.key)); });
+          if (on) l.push({ kind: kind, key: it.key, title: it.title, artist: it.artist, year: it.year, thumb: it.thumb });
+          LS.set(picksKey(), l);
+        }));
+        $("#b-results").appendChild(li);
+        if (it.thumb) {
+          P.get("/photo/:/transcode", { url: it.thumb, width: 96, height: 96, minSize: 1, format: "jpeg" }).then(function (r) { return r.blob(); })
+            .then(function (blob) { if (!ph.isConnected) return; var u = URL.createObjectURL(blob); Browse.urls.push(u); ph.replaceWith(el("img", { src: u, alt: "" })); })
+            .catch(function () {});
+        }
+      });
+    },
+  };
+
+  // what comes with the next sync: the Kindle's queue, then what was chosen here
+  function renderPicks() {
+    var ul = $("#picks");
+    if (!ul) return;
+    ul.textContent = "";
+    var rows = 0;
+    ((K.out || {}).queue || []).forEach(function (q) {
+      if (standing("book", q.id) === "brought") return;
+      var li = el("li");
+      li.appendChild(el("span", null, (q.title || "?") + (q.authors && q.authors.length ? " — " + q.authors.join(", ") : "")));
+      li.appendChild(el("span", { class: "small muted" }, "the Kindle's queue"));
+      ul.appendChild(li); rows++;
+    });
+    var remove = function (fn) { var b = el("button", null, "Remove"); b.onclick = function () { fn(); renderPicks(); if (Drive.sync) Browse.show(); }; return b; };
+    bookPicks().forEach(function (x) {
+      var li = el("li");
+      li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "") + (x.kind === "audiobook" ? " (audiobook)" : "")));
+      li.appendChild(remove(function () { setBookPicks(bookPicks().filter(function (y) { return String(y.id) !== String(x.id); })); }));
+      ul.appendChild(li); rows++;
+    });
+    picks().forEach(function (x) {
+      if (standing(x.kind, x.key) === "here") return;
+      var li = el("li");
+      li.appendChild(el("span", null, x.title + (x.artist ? " — " + x.artist : "") + " (" + x.kind + ")"));
+      li.appendChild(remove(function () { LS.set(picksKey(), picks().filter(function (y) { return !(y.kind === x.kind && String(y.key) === String(x.key)); })); }));
+      ul.appendChild(li); rows++;
+    });
+    if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
+  }
+
+  function busy(btn, fn) {
+    return async function () {
+      btn.disabled = true;
+      try { await fn(); } catch (e) { alertIn(btn, e.message || String(e)); }
+      btn.disabled = false;
+    };
+  }
+  function alertIn(btn, text) {
+    var box = btn.closest(".conn") || btn.closest("section");
+    var old = box.querySelector(".err");
+    if (old) old.remove();
+    var p = el("p", { class: "err bad small" }, text);
+    box.appendChild(p);
+    setTimeout(function () { p.remove(); }, 12000);
+  }
+
+  async function start() {
+    if (!window.showDirectoryPicker && !window.GZSYNC_TEST) {
+      $("#unsupported").classList.remove("hidden");
+      $("#pick").disabled = true;
+    }
+    $("#pick").onclick = async function () {
+      try {
+        var h = await window.showDirectoryPicker({ id: "gzkindle", mode: "readwrite" });
+        await openDrive(h);
+      } catch (e) { if (e.name !== "AbortError") log(e.message, "bad"); }
+    };
+    var last = await idb.get("drive");
+    if (last) {
+      $("#reopen").classList.remove("hidden");
+      $("#reopen").textContent = "Use “" + last.name + "” again";
+      $("#reopen").onclick = async function () { if (await openDrive(last)) $("#reopen").classList.add("hidden"); };
+    }
+    $("#g-login").onclick = busy($("#g-login"), async function () {
+      await G.login($("#g-server").value, $("#g-user").value.trim(), $("#g-pass").value);
+      $("#g-pass").value = "";
+      renderConnections();
+    });
+    $("#g-sso").onclick = busy($("#g-sso"), function () { return G.startSso($("#g-server").value); });
+    $("#g-out").onclick = function () {
+      if (G.st && G.st.refresh) fetch(G.st.server + "/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: G.st.refresh }) }).catch(function () {});
+      G.st = { server: G.st && G.st.server }; G.save(); renderConnections();
+    };
+    $("#m-connect").onclick = busy($("#m-connect"), async function () {
+      await M.connect($("#m-server").value, $("#m-token").value);
+      $("#m-token").value = "";
+      renderConnections();
+    });
+    $("#m-out").onclick = function () { M.st = null; LS.del("memos"); renderConnections(); };
+    $("#cal-add").onclick = busy($("#cal-add"), async function () {
+      var url = $("#cal-url").value.trim();
+      if (!/^(webcal|https?):\/\//i.test(url)) throw new Error("Enter a calendar link (webcal:// or https://).");
+      if (mixedContent(url.replace(/^webcal:/i, "https:"))) throw new Error("A web page can only read calendars over https://.");
+      var user = $("#cal-user").value.trim();
+      Cal.list.push({ id: rand(4), type: user ? "caldav" : "link", name: $("#cal-name").value.trim() || null, url: url, user: user || null, pass: $("#cal-pass").value || null });
+      Cal.save();
+      $("#cal-url").value = ""; $("#cal-name").value = ""; $("#cal-user").value = ""; $("#cal-pass").value = "";
+      renderConnections();
+    });
+    $("#cal-file").onclick = busy($("#cal-file"), async function () {
+      if (!window.showOpenFilePicker) throw new Error("This browser can't remember files: use Chrome or Edge.");
+      var hs;
+      try { hs = await window.showOpenFilePicker({ multiple: true, types: [{ description: "Calendars", accept: { "text/calendar": [".ics"] } }] }); }
+      catch (e) { if (e.name === "AbortError") return; throw e; }
+      for (var i = 0; i < hs.length; i++) {
+        var id = rand(4);
+        await idb.set("calfile:" + id, hs[i]);
+        Cal.list.push({ id: id, type: "file", name: $("#cal-name").value.trim() || hs[i].name.replace(/\.ics$/i, "") });
+      }
+      Cal.save();
+      $("#cal-name").value = "";
+      renderConnections();
+    });
+    $("#p-login").onclick = busy($("#p-login"), async function () {
+      $("#p-status").textContent = "Waiting for the Plex sign-in…";
+      await P.signIn(function (blocked) { if (blocked) alertIn($("#p-login"), "Allow pop-ups for this page, then try again."); });
+      renderConnections();
+    });
+    $("#p-out").onclick = function () { P.st = null; LS.del("plex"); renderConnections(); };
+    document.querySelectorAll(".tabs button").forEach(function (b) { b.onclick = function () { Browse.setTab(b.dataset.tab); }; });
+    var search = busy($("#b-go"), Browse.search);
+    $("#b-go").onclick = search;
+    $("#b-search").onkeydown = function (e) { if (e.key === "Enter") search(); };
+    $("#b-more").onclick = busy($("#b-more"), function () { return Browse.more && Browse.more(); });
+    $("#o-update").onchange = function () { Update.chosen = $("#o-update").checked; };
+    Browse.setTab("books");
+    $("#sync").onclick = runSync;
+    renderConnections();
+    try {
+      if (await G.finishSso()) { renderConnections(); log("Signed in to Grimmory.", "ok"); }
+    } catch (e) { alertIn($("#g-sso"), e.message); }
+  }
+
+  // (tests: a folder standing in for the Kindle, without the folder picker)
+  window.GZSync = {
+    open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
+    G: G, M: M, P: P, Cal: Cal, LS: LS, picksKey: picksKey, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();

@@ -208,6 +208,8 @@ end
 
 --- Fetch the chosen calendars' events for the sync range. on_done(ok, err).
 function Calendar.refresh(plugin, on_done)
+    -- (syncing through a computer: the calendars come with the next sync)
+    if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
     if not Calendar.hasSources(plugin) then return on_done and on_done(false, "not_connected") end
     if Calendar.refreshing then return end
     Calendar.refreshing = true
@@ -247,6 +249,7 @@ local function describe(err)
     if err == "unreachable" then return _("Couldn't reach the calendar server. Check Wi-Fi and the address.") end
     if err == "timeout" then return _("The calendar server took too long to answer.") end
     if err == "not_connected" then return _("Not connected to a calendar.") end
+    if err == "usb" then return _("Calendars come through your computer: they're brought with each sync (Menu → Sync with computer).") end
     if err == "gone" then return _("A calendar link no longer works (the calendar was unshared or the link changed).") end
     if err == "not a calendar" then return _("That link doesn't lead to a calendar (.ics).") end
     return T(_("The calendar server answered: %1"), tostring(err))
@@ -1431,7 +1434,12 @@ function Calendar.removeFeed(plugin, index)
 end
 
 function Calendar.showConnect(plugin)
-    local items = {
+    local items = require("gzreader_net").usb and {
+        -- no Wi-Fi: the sync page brings the calendars (gzreader_usbsync.lua)
+        { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end },
+        { text = _("Calendars come through your computer: add calendar links, a CalDAV account or .ics files on the sync page, then sync."),
+          select_enabled = false },
+    } or {
         { text = _("Add calendars with QR code: links (webcal / ICS, e.g. Proton) or a CalDAV account"), callback = function()
             require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
         end },

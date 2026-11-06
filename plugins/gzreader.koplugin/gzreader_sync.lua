@@ -389,7 +389,8 @@ end
 ---------------------------------------------------------------- pull / push
 
 function Sync:canTalk()
-    return self.api:isPaired() and NetworkMgr:isConnected()
+    -- (syncing through a computer: the library copy has the other devices' places)
+    return self.api:isPaired() and (NetworkMgr:isConnected() or self.api.offline == true)
 end
 
 function Sync:pull(interactive)

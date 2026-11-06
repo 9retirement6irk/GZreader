@@ -11,7 +11,8 @@ Kindle, wherever it is, instead of each Kindle's own address. Nothing is
 sent anywhere but the provider and the Kindle; the sign-in code is useless
 without the secret the Kindle keeps (PKCE). The page only ever forwards to
 a Kindle on a private network (192.168.x, 10.x, 172.16-31.x, a phone's
-hotspot), port 8642, path /oauth2-callback.
+hotspot), port 8642, path /oauth2-callback, or to the sync page next to
+this one (sync/, for Kindles without Wi-Fi), which keeps its own secret.
 
 Host it yourself anywhere on HTTPS as long as the address ends in
 /oauth2-callback (e.g. https://books.example.com/gzreader/oauth2-callback),
@@ -70,6 +71,14 @@ Single sign-on redirect).
     return o[0] === 10 || (o[0] === 192 && o[1] === 168) || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)
       || (o[0] === 169 && o[1] === 254) || (o[0] === 100 && o[1] >= 64 && o[1] <= 127);
   }
+  // Or the sync page next to this one (https://<here>/sync/), same site
+  function syncPage(u) {
+    var a;
+    try { a = new URL(u); } catch (e) { return false; }
+    var dir = location.pathname.replace(/oauth2-callback(\.html)?$/, "");
+    return a.origin === location.origin && a.pathname === dir + "sync/" && !a.search && !a.hash && !a.username;
+  }
+  function allowed(u) { return kindleCallback(u) || syncPage(u); }
   function store(k, v) {
     try { sessionStorage.setItem(k, v); } catch (e) {}
     try { localStorage.setItem(k, v); } catch (e) {}
@@ -88,7 +97,7 @@ Single sign-on redirect).
     if (!go || go.protocol !== "https:" && go.hostname !== "localhost" && go.hostname !== "127.0.0.1" || !state) {
       return show("Can't sign in", "The link from the Kindle is incomplete. Start again from the QR code on the Kindle.", true);
     }
-    if (!kindleCallback(h.back)) {
+    if (!allowed(h.back)) {
       return show("Can't sign in", "This page only returns to a Kindle on your own network.", true);
     }
     store(KEY + state, JSON.stringify({ back: h.back, at: Date.now() }));
@@ -102,10 +111,11 @@ Single sign-on redirect).
     // 2. from the provider: back to the Kindle with the result
     var saved = null;
     try { saved = JSON.parse(take(KEY + q.state) || "null"); } catch (e) {}
-    if (!saved || !kindleCallback(saved.back) || Date.now() - saved.at > 30 * 60 * 1000) {
+    if (!saved || !allowed(saved.back) || Date.now() - saved.at > 30 * 60 * 1000) {
       return show("Can't finish signing in", "Open this from the QR code page on the Kindle, in the same browser, and try again.", true);
     }
-    show("Back to the Kindle…", "Your phone must be on the same Wi‑Fi as the Kindle.");
+    if (syncPage(saved.back)) show("Back to the sync page…", "");
+    else show("Back to the Kindle…", "Your phone must be on the same Wi‑Fi as the Kindle.");
     location.replace(saved.back + location.search);
     return;
   }

@@ -65,6 +65,11 @@ haven't been tried.
   into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
   everything (single sign-on works too) and **sends books** straight to the Kindle.
 - 🔁 **Copy connections** from another GZreader over the Wi‑Fi with a PIN.
+- 🔌 **No Wi‑Fi? Sync with a computer** *(Kindle 2, DX)*: plug the Kindle in and open
+  the [sync page](https://9retirement6irk.github.io/GZreader/sync/) in Chrome or Edge.
+  Your reading goes to Grimmory; books, audiobooks and Plex music (chosen on the Kindle
+  or the page), notes, calendars, GZreader updates and a copy of your library (to browse
+  the Grimmory tab) come back.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
   checklists, write and edit, offline too.
 - 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,

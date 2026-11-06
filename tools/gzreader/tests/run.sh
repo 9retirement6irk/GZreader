@@ -7,7 +7,8 @@
 #
 # <koreader base dir>: an unzipped official KOReader package's koreader/
 # folder (its ffi/ Lua is used; e.g. koreader-kindle-legacy-vX.zip).
-# Needs: luajit, lua-socket, luacheck, python3 with radicale (pip), curl. Ports port … port+15.
+# Needs: luajit, lua-socket, luacheck, python3 with radicale (pip), curl;
+# for the sync page, Playwright with Chromium. Ports port … port+15, port+40 … port+62.
 # Exit status: the number of failed suites.
 set -u
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -27,8 +28,21 @@ echo "== luacheck"
 echo "== GZreader's changes to upstream files kept"
 python3 "$T/keeps.py" || failed=$((failed + 1))
 
+echo "== the sync page (a browser, mock servers)"
+mkdir -p "$WORK/work" "$WORK/syncdump"
+if python3 -c "import playwright" 2>/dev/null; then
+  (cd "$T" && timeout 300 python3 sync_page_test.py $((PORT + 40)) "$WORK/syncdump") > "$WORK/page.txt" 2>&1
+  rc=$?
+  grep "FAIL" "$WORK/page.txt"
+  tail -1 "$WORK/page.txt"
+  [ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/page.txt"; }
+  # (the Kindle side takes in what the page left: run_tests.lua)
+  export GZ_SYNC_DUMP="$WORK/syncdump"
+else
+  echo "skipped: no Playwright (pip install playwright; playwright install chromium)"
+fi
+
 echo "== plugin (mock servers)"
-mkdir -p "$WORK/work"
 export GZ_TEST_M4A="$REPO/plugins/gzreader.koplugin/audio/test.m4a"
 python3 -I "$T/mock_grimmory.py" "$PORT" > "$WORK/mock.log" 2>&1 & echo $! > "$WORK/mock.pid"
 sleep 1

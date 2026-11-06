@@ -1,0 +1,948 @@
+--[[--
+Syncing through a computer, for Kindles without Wi-Fi (Kindle 2, Kindle DX,
+Kindle DX Graphite; any Kindle with Settings → Connections → Sync through a
+computer).
+
+The Kindle and a web page (https://9retirement6irk.github.io/GZreader/sync/,
+Chrome or Edge on a computer the Kindle is plugged into) pass files in the
+GZreader folder's hidden .gzsync folder:
+
+- outbox.json (the Kindle writes it whenever its settings are saved):
+  what to send to Grimmory (reading positions, reading time, ratings, as
+  ready-made requests: jobs), the sync queue (books and audiobooks to bring),
+  what's on the Kindle, the notes changed here (Memos), which calendar range.
+  Never a password or token: the page keeps its own sign-ins.
+- library.json and covers/ (the page): a copy of the Grimmory library, so the
+  Grimmory tab can be browsed without a network (gzreader_offlineapi.lua);
+  details/<id>.json: a book's page.
+- in/… and inbox.json (the page, inbox.json last): books, audiobooks and
+  music it brought, the notes, the calendars, and which jobs went through.
+  The next time GZreader starts it takes them in (import) and deletes the
+  inbox.
+
+The Kindle's USB drive is only there while GZreader isn't running (KOReader
+stops the Kindle's USB service while it runs): exit GZreader first.
+
+Format 1:
+  outbox = { format, written_at, gzreader, kindle = { model, name, id, audio },
+    grimmory = { server, user },
+    jobs = { { id, kind = "progress"|"session"|"rating", book, method, path, body } },
+    queue = { { id, kind = "book"|"audiobook", title, authors, format, file_id, name, size_kb } },
+    have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
+    notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
+    calendar = { from, to }, auto_shelf = { id, magic }, last_import }
+  inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
+    books = { { id, file, name, title, authors, format, file_id, subtitle } },
+    audiobooks = { { id, dir, info, primaryFileName, title } },
+    music = { { kind, key, dir } },
+    notes = { file, done = { queue ids }, server, user },
+    calendars = { { name, file } },
+    grimmory = { server, user } }
+]]
+
+local DataStorage = require("datastorage")
+local Device = require("device")
+local JSON = require("json")
+local lfs = require("libs/libkoreader-lfs")
+local Log = require("gzreader_log")
+
+local Usb = {
+    FORMAT = 1,
+    MODELS = { Kindle2 = true, KindleDX = true, KindleDXG = true }, -- no Wi-Fi
+    PAGE_URL = "https://9retirement6irk.github.io/GZreader/sync/",
+    FOLDER = ".gzsync",
+}
+
+---------------------------------------------------------------- which Kindles
+
+--- This model has no Wi-Fi.
+function Usb.noWifi(model)
+    return Usb.MODELS[tostring(model or Device.model)] == true
+end
+
+--- Sync through a computer: Kindles without Wi-Fi, or chosen in Settings.
+function Usb.active()
+    local s = G_reader_settings and G_reader_settings:readSetting("gzreader_usb_sync")
+    if s == true or s == false then return s end
+    return Usb.noWifi()
+end
+
+function Usb.setActive(on)
+    if on == Usb.noWifi() then G_reader_settings:delSetting("gzreader_usb_sync")
+    else G_reader_settings:saveSetting("gzreader_usb_sync", on) end
+end
+
+function Usb.dir(plugin)
+    local dir = plugin:libraryDir() .. "/" .. Usb.FOLDER
+    if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
+    return dir
+end
+
+---------------------------------------------------------------- files
+
+local function readJson(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local ok, data = pcall(JSON.decode, f:read("*a"))
+    f:close()
+    return ok and type(data) == "table" and data or nil
+end
+Usb.readJson = readJson
+
+local function writeFile(path, text)
+    local f = io.open(path .. ".tmp", "wb")
+    if not f then return false end
+    f:write(text)
+    f:close()
+    os.remove(path) -- (FAT: rename doesn't replace)
+    return os.rename(path .. ".tmp", path)
+end
+Usb.writeFile = writeFile
+
+local function isFile(p) return lfs.attributes(p, "mode") == "file" end
+local function isDir(p) return lfs.attributes(p, "mode") == "directory" end
+
+local function rmrf(path)
+    if isDir(path) then
+        for name in lfs.dir(path) do
+            if name ~= "." and name ~= ".." then rmrf(path .. "/" .. name) end
+        end
+        lfs.rmdir(path)
+    elseif lfs.attributes(path, "mode") then
+        os.remove(path)
+    end
+end
+Usb.rmrf = rmrf
+
+local function copyFile(src, dst)
+    local i = io.open(src, "rb")
+    if not i then return false end
+    local o = io.open(dst, "wb")
+    if not o then i:close(); return false end
+    while true do
+        local chunk = i:read(256 * 1024)
+        if not chunk then break end
+        o:write(chunk)
+    end
+    i:close(); o:close()
+    return true
+end
+
+--- Move a file or folder (renamed when it can be, copied otherwise).
+local function move(src, dst)
+    if os.rename(src, dst) then return true end
+    if isFile(src) then
+        if copyFile(src, dst) then os.remove(src); return true end
+        return false
+    end
+    if isDir(src) then
+        lfs.mkdir(dst)
+        for name in lfs.dir(src) do
+            if name ~= "." and name ~= ".." then
+                if not move(src .. "/" .. name, dst .. "/" .. name) then return false end
+            end
+        end
+        lfs.rmdir(src)
+        return true
+    end
+    return false
+end
+Usb.move = move
+
+---------------------------------------------------------------- the sync queue
+
+local function queue(plugin)
+    plugin.store.usb_queue = plugin.store.usb_queue or {}
+    return plugin.store.usb_queue
+end
+Usb.queue = queue
+
+function Usb.isQueued(plugin, book_id)
+    if not plugin then return false end
+    for _i, q in ipairs(plugin.store.usb_queue or {}) do
+        if tostring(q.id) == tostring(book_id) then return true end
+    end
+    return false
+end
+
+--- Add a book or audiobook (a Grimmory summary) to the sync queue.
+function Usb.enqueue(plugin, book, kind)
+    if Usb.isQueued(plugin, book.id) then return false end
+    local ftype = type(book.primaryFileType) == "string" and book.primaryFileType:upper() or ""
+    kind = kind or (ftype == "AUDIOBOOK" and "audiobook" or "book")
+    local list = queue(plugin)
+    list[#list + 1] = {
+        id = tonumber(book.id) or book.id, kind = kind, title = book.title,
+        authors = type(book.authors) == "table" and book.authors or nil,
+        format = book.primaryFileType, file_id = tonumber(book.primaryFileId),
+        name = type(book.primaryFileName) == "string" and book.primaryFileName:match("[^/\\]+$") or nil,
+        size_kb = tonumber(book.fileSizeKb), at = os.time(),
+    }
+    Log.info("sync queue: added", kind, book.id)
+    plugin:save()
+    return true
+end
+
+function Usb.dequeue(plugin, book_id)
+    local list, out, gone = queue(plugin), {}, false
+    for _i, q in ipairs(list) do
+        if tostring(q.id) == tostring(book_id) then gone = true else out[#out + 1] = q end
+    end
+    plugin.store.usb_queue = out
+    if gone then plugin:save() end
+    return gone
+end
+
+function Usb.queueSizeKb(plugin)
+    local kb = 0
+    for _i, q in ipairs(queue(plugin)) do kb = kb + (tonumber(q.size_kb) or 0) end
+    return kb
+end
+
+---------------------------------------------------------------- the outbox
+
+local function clean(body)
+    local out = {}
+    for k, v in pairs(body or {}) do if not tostring(k):match("^gz_") then out[k] = v end end
+    return out
+end
+
+--- A job's id: what the page reports back as done.
+function Usb.jobId(kind, book_id, body)
+    if kind == "progress" then return "p:" .. tostring(book_id) .. ":" .. tostring(body.gz_seq or 0) end
+    if kind == "session" then return "s:" .. tostring(body.bookId) .. ":" .. tostring(body.startTime) end
+    return "r:" .. tostring(book_id) .. ":" .. tostring(body)
+end
+
+--- Every queued position (each numbered once: its id changes when a newer one replaces it).
+local function number(plugin)
+    local store = plugin.store
+    local changed = false
+    for _id, body in pairs(store.pending.progress or {}) do
+        if type(body) == "table" and not body.gz_seq then
+            store.usb_seq = (store.usb_seq or 0) + 1
+            body.gz_seq = store.usb_seq
+            changed = true
+        end
+    end
+    return changed
+end
+Usb.number = number
+
+function Usb.jobs(plugin)
+    number(plugin)
+    local pending = plugin.store.pending
+    local jobs = {}
+    local ids = {}
+    for id in pairs(pending.progress or {}) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for _i, id in ipairs(ids) do
+        local body = pending.progress[id]
+        jobs[#jobs + 1] = { id = Usb.jobId("progress", id, body), kind = "progress", book = tonumber(id) or id,
+            method = "PUT", path = "/api/v1/app/books/" .. id .. "/progress", body = clean(body) }
+    end
+    for _i, body in ipairs(pending.sessions or {}) do
+        jobs[#jobs + 1] = { id = Usb.jobId("session", nil, body), kind = "session", book = body.bookId,
+            method = "POST", path = "/api/v1/reading-sessions", body = clean(body) }
+    end
+    local Ratings = require("gzreader_ratings")
+    for id, stars in pairs(pending.ratings or {}) do
+        local value = Ratings.toGrimmory(stars)
+        jobs[#jobs + 1] = value
+            and { id = Usb.jobId("rating", id, stars), kind = "rating", book = tonumber(id) or id,
+                method = "PUT", path = "/api/v1/books/personal-rating", body = { ids = { tonumber(id) }, rating = math.floor(value) } }
+            or { id = Usb.jobId("rating", id, stars), kind = "rating", book = tonumber(id) or id,
+                method = "POST", path = "/api/v1/books/reset-personal-rating", body = { tonumber(id) } }
+    end
+    return jobs
+end
+
+-- (the outbox is written at every save: what takes reading many files is
+-- looked at again at most every two minutes, and after an import)
+local slow = {}
+local function cached(key, fn)
+    local c = slow[key]
+    if c and os.time() - c.at < 120 then return c.value end
+    local value = fn()
+    slow[key] = { at = os.time(), value = value }
+    return value
+end
+function Usb.forgetCached() slow = {} end
+
+function Usb.have(plugin)
+    local books, audiobooks = {}, {}
+    for id, e in pairs(plugin.store.downloads or {}) do
+        if type(e) == "table" and e.path and isFile(e.path) then
+            books[tostring(id)] = { file_id = e.file_id, format = e.format }
+        end
+    end
+    for id in pairs(plugin.store.audiobooks or {}) do
+        if isFile(plugin:libraryDir() .. "/" .. require("gzreader_abfolder").STORE .. "/" .. tostring(id) .. "/audiobook.json") then
+            audiobooks[#audiobooks + 1] = tonumber(id) or id
+        end
+    end
+    table.sort(audiobooks, function(a, b) return tostring(a) < tostring(b) end)
+    local music = cached("music", function()
+        local list = {}
+        pcall(function()
+            for _i, c in ipairs(require("gzreader_music").downloaded(plugin, { any = true })) do
+                list[#list + 1] = tostring(c.kind) .. "-" .. tostring(c.key)
+            end
+        end)
+        return list
+    end)
+    return { books = books, audiobooks = audiobooks, music = music }
+end
+
+function Usb.outbox(plugin)
+    local store = plugin.store
+    local Copy = require("gzreader_copy")
+    local version
+    pcall(function() version = require("gzreader_update").currentVersion() end)
+    local cal_from, cal_to
+    pcall(function()
+        local p = require("gzreader_calendar").prefs(plugin)
+        cal_from, cal_to = p.days_back, p.days_ahead
+    end)
+    local shelf
+    pcall(function()
+        local s = require("gzreader_shelfsync").shelf(plugin)
+        if s then shelf = { id = s.id, magic = s.magic == true, name = s.name } end
+    end)
+    local memos = store.memos or {}
+    local notes_queue = {}
+    for _i, q in ipairs(memos.queue or {}) do
+        notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
+            name = q.name, pinned = q.pinned, at = q.at }
+    end
+    -- the notes' pictures already here (not brought again)
+    local note_files = cached("note_files", function()
+        local list = {}
+        pcall(function()
+            local dir = require("gzreader_memos").filesDir()
+            for f in lfs.dir(dir) do
+                if f ~= "." and f ~= ".." and isFile(dir .. "/" .. f) then list[#list + 1] = f end
+            end
+            table.sort(list)
+        end)
+        return list
+    end)
+    local name, id
+    pcall(function() name, id = Copy.deviceName(plugin), Copy.deviceId(plugin) end)
+    return {
+        format = Usb.FORMAT,
+        gzreader = version,
+        kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true },
+        grimmory = store.server and { server = store.server, user = store.username } or nil,
+        jobs = Usb.jobs(plugin),
+        queue = queue(plugin),
+        have = Usb.have(plugin),
+        notes = { queue = notes_queue, sync_tags = memos.sync_tags, keep = (store.notes_prefs or {}).keep,
+            files_mb = (store.notes_prefs or {}).files_mb, files = note_files },
+        calendar = { days_back = cal_from or 14, days_ahead = cal_to or 90 },
+        auto_shelf = shelf,
+        last_import = store.usb_last and store.usb_last.at or nil,
+    }
+end
+
+--- Write outbox.json (skipped when nothing changed since the last time).
+function Usb.writeOutbox(plugin)
+    local ok, err = pcall(function()
+        local out = Usb.outbox(plugin)
+        local text = JSON.encode(out)
+        if text == Usb.last_outbox and isFile(Usb.dir(plugin) .. "/outbox.json") then return end
+        Usb.last_outbox = text
+        out.written_at = os.time()
+        writeFile(Usb.dir(plugin) .. "/outbox.json", JSON.encode(out))
+    end)
+    if not ok then Log.warn("sync: couldn't write the outbox:", tostring(err)) end
+end
+
+--- A queued position for an EPUB: its exact place (CFI) worked out in the
+--- background, as when it's sent over Wi-Fi (gzreader_sync.lua).
+function Usb.cfiSoon(plugin, book_id, body)
+    local fp = type(body) == "table" and body.fileProgress
+    if not (body.gz_xp and body.gz_file and type(fp) == "table" and not fp.positionData) then return end
+    local Async = require("gzreader_async")
+    local xp, file = body.gz_xp, body.gz_file
+    Async.background(function() return require("gzreader_sync").cfiInFile(file, xp) end, function(cfi)
+        if type(cfi) ~= "string" then return end
+        if plugin.store.pending.progress[tostring(book_id)] == body then
+            fp.positionData = cfi
+            plugin:saveSoon()
+        end
+    end, "cfi for the outbox")
+end
+
+--- Before GZreader closes: the open book's place as a CFI now (it may be
+--- the last chance before the Kindle is plugged in).
+function Usb.finishCfis(plugin)
+    local n = 0
+    for _id, body in pairs(plugin.store.pending.progress or {}) do
+        local fp = type(body) == "table" and body.fileProgress
+        if body.gz_xp and body.gz_file and type(fp) == "table" and not fp.positionData and n < 3 then
+            n = n + 1
+            fp.positionData = require("gzreader_sync").cfiInFile(body.gz_file, body.gz_xp)
+        end
+    end
+end
+
+---------------------------------------------------------------- taking in what the page brought
+
+local function set(list)
+    local s = {}
+    for _i, v in ipairs(type(list) == "table" and list or {}) do s[tostring(v)] = true end
+    return s
+end
+
+--- Jobs the page sent: off the pending lists.
+function Usb.applyDone(plugin, done)
+    local pending = plugin.store.pending
+    local n = 0
+    for id, body in pairs(pending.progress or {}) do
+        if done[Usb.jobId("progress", id, body)] then
+            pending.progress[id] = nil
+            n = n + 1
+            local entry = plugin.store.downloads[id]
+            local fp = body.fileProgress
+            if entry and fp then entry.last_pushed_pct = fp.progressPercent; entry.last_pushed_cfi = fp.positionData end
+        end
+    end
+    local left = {}
+    for _i, body in ipairs(pending.sessions or {}) do
+        if done[Usb.jobId("session", nil, body)] then n = n + 1 else left[#left + 1] = body end
+    end
+    pending.sessions = left
+    for id, stars in pairs(pending.ratings or {}) do
+        if done[Usb.jobId("rating", id, stars)] then
+            pending.ratings[id] = nil
+            n = n + 1
+            local entry = plugin.store.downloads[id]
+            if entry then entry.rating_synced = stars end
+        end
+    end
+    return n
+end
+
+local function safeName(plugin, name, dir)
+    local util = require("util")
+    return util.getSafeFilename(name, dir)
+end
+
+--- A book the page brought: into the GZreader folder, as a download.
+function Usb.takeBook(plugin, base, b)
+    local src = base .. "/" .. tostring(b.file or "")
+    if not b.id or not isFile(src) then return false end
+    local dir = plugin:libraryDir()
+    local id = tostring(b.id)
+    local old = plugin.store.downloads[id]
+    local name = type(b.name) == "string" and b.name:match("[^/\\]+$") or nil
+    if not name or name == "" then
+        local ext = (type(b.format) == "string" and b.format:lower() or "epub")
+        if ext == "cbx" then ext = "cbz" end
+        name = (b.title or ("book-" .. id)) .. "." .. ext
+    end
+    name = safeName(plugin, name, dir)
+    local path = dir .. "/" .. name
+    if type(old) == "table" and old.path and isFile(old.path) then
+        path = old.path -- a newer file of a book already here: in its place
+        os.remove(path)
+    elseif isFile(path) then
+        local stem, ext = name:match("^(.*)(%.[^.]+)$")
+        local i = 2
+        while isFile(path) do
+            path = dir .. "/" .. (stem or name) .. " (" .. i .. ")" .. (ext or "")
+            i = i + 1
+        end
+    end
+    if not move(src, path) then return false end
+    local authors = type(b.authors) == "table" and #b.authors > 0 and table.concat(b.authors, "\n") or nil
+    local title = type(b.title) == "string" and b.title or name
+    local entry = type(old) == "table" and old or {}
+    entry.path, entry.title, entry.authors = path, title, authors or entry.authors
+    entry.subtitle = type(b.subtitle) == "string" and b.subtitle ~= "" and b.subtitle or entry.subtitle
+    entry.format = type(b.format) == "string" and b.format or entry.format
+    entry.file_id = tonumber(b.file_id) or entry.file_id
+    plugin.store.downloads[id] = entry
+    if entry.subtitle then
+        pcall(require("gzreader_titles").apply, path, title, entry.subtitle, authors)
+    end
+    Usb.dequeue(plugin, b.id)
+    Log.info("sync: book", id, "brought by the computer:", (path:match("[^/]+$")))
+    return true
+end
+
+--- An audiobook the page brought: its folder in place; M4B audio is
+--- prepared for the Kindle (in the background, one after another).
+function Usb.takeAudiobook(plugin, base, a, prepare_list)
+    local src = base .. "/" .. tostring(a.dir or "")
+    if not a.id or type(a.info) ~= "table" or not isDir(src) then return false end
+    local Audiobook = require("gzreader_audiobook")
+    local id = tostring(a.id)
+    local dest = Audiobook.dir(plugin, id)
+    local parent = dest:match("^(.*)/[^/]+$")
+    if parent and not isDir(parent) then lfs.mkdir(parent) end
+    if isDir(dest) then
+        local cur = Audiobook.current
+        if cur and tostring(cur.book.id) == id then pcall(cur.stop, cur) end
+        rmrf(dest)
+    end
+    if not move(src, dest) then return false end
+    local book = Audiobook.describe(id, a.info, a.primaryFileName)
+    book.title = book.title or a.title
+    plugin.store.audiobooks = plugin.store.audiobooks or {}
+    local e = plugin.store.audiobooks[id] or {}
+    e.title, e.author = book.title, book.author
+    plugin.store.audiobooks[id] = e
+    prepare_list[#prepare_list + 1] = { dir = dest, book = book, id = id }
+    Usb.dequeue(plugin, a.id)
+    Log.info("sync: audiobook", id, "brought by the computer,", #book.tracks, "file(s)")
+    return true
+end
+
+--- Prepare the audiobooks and music (M4B/M4A → AAC chunks), one by one.
+function Usb.prepareAll(plugin, list, on_done)
+    local Audiobook = require("gzreader_audiobook")
+    local JSONenc = JSON.encode
+    local i = 0
+    local function nxt()
+        i = i + 1
+        local p = list[i]
+        if not p then return on_done and on_done() end
+        Audiobook.prepare(p.dir, p.tracks or p.book.tracks, p.book and p.book.title or p.title, function(ok, err)
+            if p.book then
+                if ok then
+                    Audiobook.finishLayout(p.dir, p.book)
+                    local f = io.open(p.dir .. "/audiobook.json", "wb")
+                    if f then f:write(JSONenc(p.book)); f:close() end
+                    local Folder = require("gzreader_abfolder")
+                    pcall(Folder.writeStub, plugin, p.id)
+                    pcall(Folder.fetchCover, plugin, p.id)
+                else
+                    Log.warn("sync: audiobook", p.id, "couldn't be prepared:", tostring(err))
+                end
+            elseif p.music then
+                local Music = require("gzreader_music")
+                local c = Music.load(p.dir)
+                if c then
+                    for _j, t in ipairs(c.tracks) do Music.trackReady(c, t) end
+                    Music.save(c)
+                end
+                pcall(function() require("gzreader_musicfolder").sync(plugin) end)
+            end
+            plugin:save()
+            nxt()
+        end)
+    end
+    nxt()
+end
+
+--- Music (a Plex album or playlist) the page brought.
+function Usb.takeMusic(plugin, base, m, prepare_list)
+    local src = base .. "/" .. tostring(m.dir or "")
+    if not (m.kind and m.key) or not isFile(src .. "/music.json") then return false end
+    local Music = require("gzreader_music")
+    local root = Music.root(plugin)
+    if not isDir(root) then lfs.mkdir(root) end
+    local dest = Music.dirFor(plugin, m.kind, m.key)
+    if isDir(dest) then rmrf(dest) end
+    if not move(src, dest) then return false end
+    local c = Music.load(dest)
+    if not c then return false end
+    local todo = {}
+    for _i, t in ipairs(c.tracks) do
+        if t.file and t.file:match("%.m4a$") and not Music.trackReady(c, t) then
+            todo[#todo + 1] = { file = t.file, size = lfs.attributes(dest .. "/" .. t.file, "size") }
+        end
+    end
+    Music.save(c)
+    prepare_list[#prepare_list + 1] = { dir = dest, tracks = todo, title = c.title, music = true }
+    Log.info("sync: music", m.kind, m.key, "brought by the computer,", #c.tracks, "tracks")
+    return true
+end
+
+--- The notes the page brought (Memos): the Notes tab's copy.
+function Usb.takeNotes(plugin, base, n)
+    local data = readJson(base .. "/" .. tostring(n.file or ""))
+    if not data or type(data.notes) ~= "table" then return false end
+    local Memos = require("gzreader_memos")
+    local store = plugin.store
+    store.memos = store.memos or {}
+    local memos = store.memos
+    memos.usb = true
+    memos.server = memos.server or n.server
+    memos.user = n.user or memos.user
+    if type(data.tags) == "table" then memos.tag_counts = data.tags end
+    local done = set(n.done)
+    local left = {}
+    for _i, q in ipairs(memos.queue or {}) do if not done[tostring(q.id)] then left[#left + 1] = q end end
+    memos.queue = left
+    Memos.saveCache({ notes = data.notes, at = tonumber(data.at) or os.time() })
+    -- attachments (pictures…)
+    local files = base .. "/" .. tostring(n.files or "in/notes-files")
+    if isDir(files) then
+        local dest = Memos.filesDir()
+        for name in lfs.dir(files) do
+            if name ~= "." and name ~= ".." and isFile(files .. "/" .. name) then
+                os.remove(dest .. "/" .. name)
+                move(files .. "/" .. name, dest .. "/" .. name)
+            end
+        end
+    end
+    local Notes = package.loaded["gzreader_notes"]
+    if Notes then Notes.notes = nil end
+    Log.info("sync: notes brought by the computer:", #data.notes)
+    return #data.notes
+end
+
+--- The calendars the page brought (.ics texts): events for the Calendar tab.
+function Usb.takeCalendars(plugin, base, cals)
+    local CalDAV = require("gzreader_caldav")
+    local Calendar = require("gzreader_calendar")
+    local prefs = Calendar.prefs(plugin)
+    local today = os.time()
+    local t = os.date("*t", today)
+    t.hour, t.min, t.sec = 0, 0, 0
+    local day = os.time(t)
+    local from, to = day - prefs.days_back * 86400, day + (prefs.days_ahead + 1) * 86400
+    local feeds, events = {}, {}
+    local n = #((plugin.store.caldav or {}).calendars or {})
+    if not (plugin.store.caldav and plugin.store.caldav.server) then n = 0 end
+    for i, c in ipairs(type(cals) == "table" and cals or {}) do
+        local f = io.open(base .. "/" .. tostring(c.file or ""), "rb")
+        local text = f and f:read("*a")
+        if f then f:close() end
+        local old
+        for _j, o in ipairs(plugin.store.calendar_feeds or {}) do if o.usb and o.name == c.name then old = o end end
+        feeds[#feeds + 1] = { name = c.name, usb = true, enabled = not (old and old.enabled == false) }
+        if text and text:find("BEGIN:VCALENDAR", 1, true) and feeds[#feeds].enabled then
+            local ok, occ = pcall(function() return CalDAV.occurrences(CalDAV.parseEvents(text), from, to) end)
+            if ok then
+                for _j, ev in ipairs(occ) do ev.cal = n + i; events[#events + 1] = ev end
+            else
+                Log.warn("sync: calendar", i, "couldn't be read:", tostring(occ))
+            end
+        end
+    end
+    table.sort(events, function(a, b)
+        if a.start ~= b.start then return a.start < b.start end
+        if (a.all_day and 1 or 0) ~= (b.all_day and 1 or 0) then return a.all_day == true end
+        return (a.title or "") < (b.title or "")
+    end)
+    plugin.store.calendar_feeds = feeds
+    CalDAV.saveCache({ at = os.time(), from = from, to = to, events = events })
+    Calendar.events = nil
+    Log.info("sync: calendars brought by the computer:", #feeds, "with", #events, "events")
+    return #events
+end
+
+--- Take in what the page left (inbox.json). Returns a summary, or nil
+--- when there's nothing. on_prepared: once audiobooks/music are ready.
+function Usb.import(plugin, on_prepared)
+    local base = Usb.dir(plugin)
+    local inbox = readJson(base .. "/inbox.json")
+    if not inbox then return nil end
+    local r = { sent = 0, failed = 0, books = 0, audiobooks = 0, music = 0 }
+    local ok, err = pcall(function()
+        r.sent = Usb.applyDone(plugin, set(inbox.done))
+        for _i, f in ipairs(type(inbox.failed) == "table" and inbox.failed or {}) do
+            Log.warn("sync: the computer couldn't send", tostring(f.id), tostring(f.error))
+            if tostring(f.error or ""):match("^http_4") and tostring(f.id):match("^p:") then
+                -- (refused for good: a book gone from Grimmory; not sent again)
+                local book = tostring(f.id):match("^p:([^:]+):")
+                local body = book and plugin.store.pending.progress[book]
+                if body and Usb.jobId("progress", book, body) == f.id then plugin.store.pending.progress[book] = nil end
+            else
+                r.failed = r.failed + 1 -- (still waiting: the next sync tries again)
+            end
+        end
+        if type(inbox.grimmory) == "table" and inbox.grimmory.server then
+            plugin.store.server = inbox.grimmory.server
+            plugin.store.username = inbox.grimmory.user
+        end
+        for _i, b in ipairs(type(inbox.books) == "table" and inbox.books or {}) do
+            local okb, got = pcall(Usb.takeBook, plugin, base, b)
+            if okb and got then r.books = r.books + 1
+            elseif not okb then Log.warn("sync: book", tostring(b.id), tostring(got)) end
+        end
+        local prepare = {}
+        for _i, a in ipairs(type(inbox.audiobooks) == "table" and inbox.audiobooks or {}) do
+            local oka, got = pcall(Usb.takeAudiobook, plugin, base, a, prepare)
+            if oka and got then r.audiobooks = r.audiobooks + 1
+            elseif not oka then Log.warn("sync: audiobook", tostring(a.id), tostring(got)) end
+        end
+        for _i, m in ipairs(type(inbox.music) == "table" and inbox.music or {}) do
+            local okm, got = pcall(Usb.takeMusic, plugin, base, m, prepare)
+            if okm and got then r.music = r.music + 1
+            elseif not okm then Log.warn("sync: music", tostring(m.key), tostring(got)) end
+        end
+        if type(inbox.notes) == "table" then
+            local okn, got = pcall(Usb.takeNotes, plugin, base, inbox.notes)
+            if okn then r.notes = got or nil else Log.warn("sync: notes:", tostring(got)) end
+        end
+        if type(inbox.calendars) == "table" then
+            local okc, got = pcall(Usb.takeCalendars, plugin, base, inbox.calendars)
+            if okc then r.events = got else Log.warn("sync: calendars:", tostring(got)) end
+        end
+        r.prepare = prepare
+    end)
+    if not ok then Log.err("sync: taking in what the computer brought failed:", tostring(err)) end
+    -- done with it (also when part of it failed: not taken in twice)
+    os.remove(base .. "/inbox.json")
+    rmrf(base .. "/in")
+    plugin.store.usb_last = { at = tonumber(inbox.written_at) or os.time(), imported = os.time(),
+        books = r.books, audiobooks = r.audiobooks, music = r.music, sent = r.sent }
+    -- the library copy may be new: lists and the index from it
+    pcall(function() require("gzreader_offlineapi").forget() end)
+    pcall(function()
+        local Index = require("gzreader_index")
+        Index.data = nil
+        os.remove(DataStorage:getSettingsDir() .. "/gzreader_index.json")
+    end)
+    Usb.last_outbox = nil
+    Usb.forgetCached()
+    plugin:save()
+    pcall(plugin.writeManifest, plugin)
+    pcall(function() require("gzreader_coverwarm").schedule(plugin, 15) end)
+    Log.info("sync: took in what the computer brought:", r.sent, "sent,", r.books, "books,", r.audiobooks, "audiobooks,",
+        r.music, "music")
+    if r.prepare and #r.prepare > 0 then
+        Usb.prepareAll(plugin, r.prepare, on_prepared)
+    elseif on_prepared then
+        on_prepared()
+    end
+    return r
+end
+
+--- What the summary says, e.g. "3 books, 1 audiobook; 12 updates sent".
+function Usb.summaryText(r)
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local parts = {}
+    if r.books > 0 then parts[#parts + 1] = r.books == 1 and _("1 book") or T(_("%1 books"), r.books) end
+    if r.audiobooks > 0 then parts[#parts + 1] = r.audiobooks == 1 and _("1 audiobook") or T(_("%1 audiobooks"), r.audiobooks) end
+    if r.music > 0 then parts[#parts + 1] = r.music == 1 and _("1 album or playlist") or T(_("%1 albums or playlists"), r.music) end
+    if r.notes then parts[#parts + 1] = r.notes == 1 and _("1 note") or T(_("%1 notes"), r.notes) end
+    if r.events then parts[#parts + 1] = T(_("calendar: %1 events"), r.events) end
+    local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
+    if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end
+    if r.failed > 0 then text = text .. "\n" .. T(_("%1 couldn't be sent; they'll go with the next sync."), r.failed) end
+    return text
+end
+
+---------------------------------------------------------------- a GZreader update
+
+--- The page brought a GZreader update (inbox.update = { version, file, size }):
+--- installed before anything else is taken in (the new GZreader takes in
+--- the rest after it restarts). Returns true when it was installed (restart
+--- now), or nil, why it wasn't.
+function Usb.installUpdate(plugin, base, inbox)
+    local u = type(inbox) == "table" and inbox.update
+    if type(u) ~= "table" or type(u.file) ~= "string" then return nil end
+    local Update = require("gzreader_update")
+    local src = base .. "/" .. u.file
+    local function forget()
+        -- (off the inbox: not tried again; the rest of it still comes in)
+        inbox.update = nil
+        writeFile(base .. "/inbox.json", JSON.encode(inbox))
+        os.remove(src)
+    end
+    if not isFile(src) then forget(); return nil, "the update file isn't there" end
+    if Update.compare(u.version, Update.currentVersion()) <= 0 then
+        Log.info("sync: update", tostring(u.version), "not newer than", Update.currentVersion())
+        forget()
+        return nil
+    end
+    local size = lfs.attributes(src, "size")
+    if tonumber(u.size) and size ~= tonumber(u.size) then
+        Log.warn("sync: update", u.version, "is", size, "bytes, expected", u.size)
+        forget()
+        return nil, "the update file is incomplete"
+    end
+    -- (out of in/ first: taking in the rest removes in/)
+    local zip = DataStorage:getDataDir() .. "/cache/gzreader-update.zip"
+    lfs.mkdir(DataStorage:getDataDir() .. "/cache")
+    os.remove(zip)
+    if not move(src, zip) then forget(); return nil, "couldn't move the update" end
+    inbox.update = nil
+    writeFile(base .. "/inbox.json", JSON.encode(inbox))
+    Log.info("sync: installing GZreader", u.version, "brought by the computer")
+    local ok, err = Update.apply(zip, {})
+    os.remove(zip)
+    if not ok then Log.err("sync: update failed:", tostring(err)); return nil, err end
+    return true
+end
+
+---------------------------------------------------------------- at start
+
+--- Set up (each start): note the mode, take in the inbox.
+function Usb.start(plugin)
+    local Net = require("gzreader_net")
+    Net.usb = Usb.active()
+    Usb.plugin = plugin
+    if not Net.usb then return end
+    if Usb.started then return end
+    Usb.started = true
+    local UIManager = require("ui/uimanager")
+    UIManager:scheduleIn(1, function()
+        local base = Usb.dir(plugin)
+        if not isFile(base .. "/inbox.json") then return Usb.writeOutbox(plugin) end
+        local InfoMessage = require("ui/widget/infomessage")
+        local _ = require("gettext")
+        local T = require("ffi/util").template
+        local inbox = readJson(base .. "/inbox.json")
+        if inbox and type(inbox.update) == "table" then
+            local version = tostring(inbox.update.version)
+            local busy = InfoMessage:new{ text = T(_("Installing GZreader %1 (from your computer)…"), version), timeout = 0 }
+            UIManager:show(busy)
+            UIManager:forceRePaint()
+            local done, err = Usb.installUpdate(plugin, base, inbox)
+            UIManager:close(busy)
+            if done then
+                -- the new GZreader takes in the rest when it starts
+                UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 installed. Restarting…"), version), timeout = 2 })
+                UIManager:scheduleIn(2, function() UIManager:restartKOReader() end)
+                return
+            elseif err then
+                UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 couldn't be installed: %2"), version, tostring(err)), timeout = 6 })
+            end
+        end
+        local msg = InfoMessage:new{ text = _("Taking in what your computer brought…"), timeout = 0 }
+        UIManager:show(msg)
+        UIManager:forceRePaint()
+        local r = Usb.import(plugin, function()
+            pcall(function() require("gzreader_tasks").changed() end)
+        end)
+        UIManager:close(msg)
+        Usb.writeOutbox(plugin)
+        if r then
+            UIManager:show(InfoMessage:new{ text = _("Synced with your computer") .. "\n\n" .. Usb.summaryText(r), timeout = 6 })
+            pcall(function()
+                local FM = require("apps/filemanager/filemanager")
+                local fc = FM.instance and FM.instance.file_chooser
+                if fc then fc:refreshPath() end
+            end)
+        end
+    end)
+end
+
+---------------------------------------------------------------- the screen
+
+--- What's waiting to go (for the Sync screen).
+function Usb.waiting(plugin)
+    local p = plugin.store.pending
+    local n = 0
+    for _k in pairs(p.progress or {}) do n = n + 1 end
+    n = n + #(p.sessions or {})
+    for _k in pairs(p.ratings or {}) do n = n + 1 end
+    local notes = #((plugin.store.memos or {}).queue or {})
+    return n, notes
+end
+
+--- Menu → Sync with computer: how to, what's waiting, the queue.
+function Usb.show(plugin)
+    local UIManager = require("ui/uimanager")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    Usb.writeOutbox(plugin)
+    local updates, notes = Usb.waiting(plugin)
+    local q = queue(plugin)
+    local lines = {
+        _("Sync with a computer"),
+        "",
+        _("1. Exit GZreader (the Kindle's USB drive only works while it isn't running)."),
+        _("2. Plug the Kindle into a computer and open this page in Chrome or Edge:"),
+        "   " .. Usb.PAGE_URL:gsub("^https://", ""),
+        _("3. Choose the Kindle's drive and press Sync."),
+        _("4. Eject the Kindle and start GZreader: it takes in the new books."),
+        "",
+    }
+    local status = {}
+    if updates > 0 then status[#status + 1] = T(_("%1 reading updates to send"), updates) end
+    if notes > 0 then status[#status + 1] = T(_("%1 note changes to send"), notes) end
+    if #q > 0 then
+        local kb = Usb.queueSizeKb(plugin)
+        status[#status + 1] = T(_("%1 in the sync queue"), #q)
+            .. (kb > 0 and string.format(kb < 10240 and " (%.1f MB)" or " (%.0f MB)", kb / 1024) or "")
+    end
+    if #status == 0 then status[1] = _("Nothing waiting to be sent.") end
+    lines[#lines + 1] = table.concat(status, "\n")
+    local last = plugin.store.usb_last
+    if last and last.imported then
+        lines[#lines + 1] = T(_("Last sync: %1"), os.date("%b %d, %H:%M", last.imported))
+    end
+    local dialog
+    local buttons = {}
+    if #q > 0 then
+        buttons[#buttons + 1] = { { text = T(_("Sync queue (%1)"), #q), callback = function()
+            UIManager:close(dialog)
+            Usb.showQueue(plugin)
+        end } }
+    end
+    buttons[#buttons + 1] = { { text = _("Exit GZreader now"), callback = function()
+        UIManager:close(dialog)
+        pcall(Usb.finishCfis, plugin)
+        plugin:save()
+        local ok, Dispatcher = pcall(require, "dispatcher")
+        if ok and Dispatcher.execute then Dispatcher:execute({ exit = true }) end
+    end } }
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
+    dialog = ButtonDialog:new{ title = table.concat(lines, "\n"), title_align = "left", buttons = buttons }
+    UIManager:show(dialog)
+    return dialog
+end
+
+--- The sync queue: what the next sync brings; select one to take it off.
+function Usb.showQueue(plugin)
+    local UIManager = require("ui/uimanager")
+    local Menu = require("ui/widget/menu")
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local menu
+    local function items()
+        local out = {}
+        for _i, q in ipairs(queue(plugin)) do
+            local authors = type(q.authors) == "table" and table.concat(q.authors, ", ") or ""
+            out[#out + 1] = {
+                text = (q.title or "?") .. (authors ~= "" and (" — " .. authors) or ""),
+                mandatory = (q.kind == "audiobook" and _("audiobook") or (q.format or ""))
+                    .. (q.size_kb and string.format(" · %.1f MB", q.size_kb / 1024) or ""),
+                callback = function()
+                    UIManager:show(ConfirmBox:new{
+                        text = T(_("Take “%1” off the sync queue?"), q.title or ""),
+                        ok_text = _("Take off"),
+                        ok_callback = function()
+                            Usb.dequeue(plugin, q.id)
+                            if menu then menu:switchItemTable(nil, items()) end
+                        end,
+                    })
+                end,
+            }
+        end
+        if #out == 0 then out[1] = { text = _("The sync queue is empty."), select_enabled = false } end
+        return out
+    end
+    menu = Menu:new{ title = _("Sync queue"), item_table = items(), covers_fullscreen = true, is_borderless = true,
+        is_popout = false, title_bar_fm_style = true, name = "gz_usb_queue" }
+    UIManager:show(menu)
+    return menu
+end
+
+--- "Added to the sync queue" (and that a sync brings it).
+function Usb.queuedMessage(plugin, book)
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    local name = book.title or ""
+    if not Usb.enqueue(plugin, book) then
+        return UIManager:show(InfoMessage:new{ text = T(_("“%1” is already in the sync queue."), name), timeout = 3 })
+    end
+    UIManager:show(InfoMessage:new{
+        text = T(_("“%1” is in the sync queue. It comes to the Kindle with the next sync with your computer (Menu → Sync with computer)."), name),
+        timeout = 4 })
+end
+
+return Usb

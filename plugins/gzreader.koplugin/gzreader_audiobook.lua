@@ -1348,6 +1348,23 @@ function Audiobook.choose(plugin, summary)
     local book = Audiobook.load(plugin, summary.id)
     if book then return Audiobook.open(plugin, book) end
     local size_kb = tonumber(summary.fileSizeKb)
+    if require("gzreader_net").usb then
+        -- no Wi-Fi: the next sync with the computer brings it (gzreader_usbsync.lua)
+        local Usb = require("gzreader_usbsync")
+        if Usb.isQueued(plugin, summary.id) then
+            return UIManager:show(ConfirmBox:new{
+                text = T(_("“%1” is in the sync queue: it comes with the next sync with your computer."), summary.title or ""),
+                ok_text = _("Take it off"), cancel_text = _("Keep"),
+                ok_callback = function() Usb.dequeue(plugin, summary.id) end,
+            })
+        end
+        return UIManager:show(ConfirmBox:new{
+            text = T(_("Add the audiobook “%1” to the sync queue?"), summary.title or "")
+                .. (size_kb and ("\n" .. string.format("%.0f MB", size_kb / 1024)) or ""),
+            ok_text = _("Add to sync queue"),
+            ok_callback = function() Usb.queuedMessage(plugin, summary) end,
+        })
+    end
     UIManager:show(ConfirmBox:new{
         text = T(_("Download the audiobook “%1” to this Kindle?"), summary.title or "")
             .. (size_kb and ("\n" .. string.format("%.0f MB", size_kb / 1024)) or ""),

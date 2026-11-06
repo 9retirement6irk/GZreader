@@ -212,7 +212,8 @@ function Browser:openAudiobooks()
             return {
                 text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
                 book = book, cover_kind = "audiobook", -- the square audiobook cover in the cover views
-                mandatory = here and _("on Kindle") or nil,
+                mandatory = here and _("on Kindle")
+                    or (require("gzreader_usbsync").isQueued(self.plugin, book.id) and _("queued")) or nil,
                 callback = function() Audiobook.choose(self.plugin, book) end,
             }
         end,
@@ -298,7 +299,7 @@ function Browser:openCached(opts)
     end
     if Net.connected() then return fetch() end
     -- Wi-Fi off or still connecting: the saved copy now, fresh one once online
-    Net.run(fetch, { quiet = shown ~= nil, reason = "Grimmory library" })
+    Net.run(fetch, { quiet = shown ~= nil, reason = "Grimmory library", usb = true })
 end
 
 ---------------------------------------------------------------- paged lists
@@ -783,6 +784,23 @@ function Browser:onBook(book)
     local size = size_kb and (size_kb >= 1024 and T("%1 MB", string.format("%.1f", size_kb / 1024)) or T("%1 KB", size_kb)) or ""
     local Download = require("gzreader_download")
     local name = require("gzreader_titles").forBook(self.plugin, book) or ""
+    local Usb = require("gzreader_usbsync")
+    if Usb.isQueued(self.plugin, book.id) then
+        -- (syncing through a computer)
+        UIManager:show(ConfirmBox:new{
+            text = T(_("“%1” is in the sync queue: it comes with the next sync with your computer."), name),
+            ok_text = _("Take it off"), cancel_text = _("Keep"),
+            ok_callback = function()
+                Usb.dequeue(self.plugin, book.id)
+                local menu = self.menu
+                for _i, item in ipairs(menu and menu.item_table or {}) do
+                    if item.book and tostring(item.book.id) == tostring(book.id) then item.mandatory = self:bookItem(item.book).mandatory end
+                end
+                if menu and menu.updateItems then menu:updateItems() end
+            end,
+        })
+        return
+    end
     if Download.isQueued(book.id) then
         UIManager:show(InfoMessage:new{ text = T(_("“%1” is already downloading or in the queue."), name), timeout = 3 })
         return

@@ -40,7 +40,12 @@ local function queuedIds()
 end
 
 --- Is this Grimmory book downloading or waiting to?
-function Download.isQueued(book_id) return queuedIds()[tostring(book_id)] == true end
+function Download.isQueued(book_id)
+    if queuedIds()[tostring(book_id)] == true then return true end
+    -- (syncing through a computer: in the sync queue)
+    local Usb = package.loaded["gzreader_usbsync"]
+    return Usb ~= nil and Usb.plugin ~= nil and Usb.isQueued(Usb.plugin, book_id)
+end
 
 local function startNext()
     if Download.active then return end

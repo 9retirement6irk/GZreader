@@ -282,7 +282,7 @@ function Shop.fetch(browser)
         end, "bookshop")
     end
     if Net.connected() then return go() end
-    Net.run(go, { quiet = true, reason = "Grimmory tab" })
+    Net.run(go, { quiet = true, reason = "Grimmory tab", usb = true })
 end
 
 --- What the cards count (nothing fetched: what GZreader keeps).

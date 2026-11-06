@@ -155,6 +155,7 @@ function BookPage:build()
     -- the buttons
     local Download = require("gzreader_download")
     local busy = Download.active ~= nil
+    local usb = require("gzreader_net").usb
     local buttons = {
         {
             { text = busy and _("Add to queue") or _("Download"), callback = function() self:download(false) end },
@@ -162,6 +163,11 @@ function BookPage:build()
         },
         { { text = _("Close"), callback = function() self:onClose() end } },
     }
+    if usb then
+        -- no Wi-Fi: the next sync with the computer brings it (gzreader_usbsync.lua)
+        busy = false
+        buttons[1] = { { text = _("Add to sync queue"), callback = function() self:download(false) end } }
+    end
     self.buttontable = ButtonTable:new{ width = inner, buttons = buttons, zero_sep = true, show_parent = self }
     -- the description takes the rest
     local desc = BookPage.description(self.detail)

@@ -178,6 +178,7 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) | Nook Simple Touch (test) |
 | --- | --- | --- | --- | --- | --- | --- |
 | Use | keyboard, 5-way | 5-way, Menu | touch | touch | the colour touchscreen's buttons and keyboard | touch |
+| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](#sync-with-a-computer) | yes | yes | yes | yes | yes |
 | Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
 | Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) |
 | Audiobooks | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) | — (no audio) |
@@ -488,6 +489,74 @@ the Memos token and the CalDAV password are kept (never logged).
 Where to open it: the setup guide's first page (**Set up from your browser**),
 the quick panel → **Send books**, the Grimmory, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
+
+## Sync with a computer
+
+The Kindle 2 and the Kindle DX have no Wi‑Fi. GZreader notices (from the
+model) and syncs through a web page on a computer instead, with the Kindle
+plugged in over USB: <https://9retirement6irk.github.io/GZreader/sync/>
+(Chrome or Edge, on Windows, Mac, Linux or a Chromebook; other browsers can't
+write to a USB drive). Any other Kindle can sync this way too: Settings →
+Connections → Sync through a computer.
+
+1. On the Kindle: Menu → Exit to the Kindle. (KOReader turns the Kindle's
+   USB drive off while it runs, so GZreader has to be closed first.)
+2. Plug the Kindle into the computer, open the page and choose the Kindle's
+   drive (or its `documents/GZreader` folder). The page shows what the Kindle
+   has waiting.
+3. Connect what you use, once per browser: Grimmory (password or single
+   sign-on), Notes (a Memos access token), calendars, Plex. The page keeps
+   these sign-ins in the browser; the Kindle never gets a password or token.
+4. Choose what to bring, if you like: the page lists your Grimmory books and
+   audiobooks (newest first, A–Z or a search) and your Plex albums and
+   playlists, each marked when it's on the Kindle or in its queue already.
+5. Press **Sync**. Eject the Kindle, unplug it and start GZreader: it takes in
+   what was brought ("Synced with your computer").
+
+Updates: when a newer GZreader is out, the page offers it ("Update GZreader
+on the Kindle to …", on by default) and brings it with the sync; GZreader
+installs it as it starts, restarts, then takes in the rest. The page fetches
+the update from the repository's `updates` branch, which the release workflow
+fills (GitHub's release downloads can't be read by a web page). If it isn't
+there yet, download `gzreader-update.zip` from the latest release and add it
+with **Use a downloaded update file…**. The page checks the file is a GZreader
+update, and its size and SHA-256 when it fetched it itself.
+
+What a sync does:
+
+| | Kindle → computer | Computer → Kindle |
+| --- | --- | --- |
+| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves, Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere |
+| Downloads | The **sync queue**: in the Grimmory tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
+| GZreader | Its version | A newer GZreader, installed at the next start |
+| Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
+| Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
+| Music | | The Plex albums and playlists chosen on the page (Kindles with a speaker or headphone jack) |
+
+The Grimmory tab works from the copy: browse, search, Libraries, Shelves,
+Authors and Series, a book's page with its description. Download puts the
+book in the sync queue (a book's page says "Add to sync queue"; selecting a
+queued book offers to take it off; Settings → Connections → Sync through a
+computer → Sync queue lists them). Menu → **Sync with computer** shows the
+steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
+
+Bookmarks and highlights aren't synced this way yet (they stay on the Kindle).
+
+Calendars: many calendar servers (Google, Proton) don't let a web page read
+their links, and most CalDAV servers don't either. The page says so; then
+save the calendar as an `.ics` file and add the file instead (the page
+remembers it and reads it again at each sync: keep it up to date where it is).
+
+How it works: GZreader writes `documents/GZreader/.gzsync/outbox.json`
+whenever it saves its settings (the requests to send to Grimmory, ready-made,
+the queue, what's on the Kindle, the notes written here). The page writes the
+library copy (`library.json`, `covers/`, `details/`), the books and audio
+under `in/`, and `inbox.json` last; at the next start GZreader takes them in,
+moves the books into the GZreader folder, prepares M4B/M4A audio (as for a
+download) and deletes the inbox. Syncing twice before starting GZreader adds
+to the same inbox. Nothing is sent anywhere but your own servers (and
+plex.tv for the Plex sign-in). The page is plain HTML and JavaScript in
+`docs/sync/` and can be hosted anywhere on HTTPS.
 
 ## Copy connections from another GZreader
 

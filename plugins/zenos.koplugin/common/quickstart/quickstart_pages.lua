@@ -707,6 +707,19 @@ end
 local function buildGrimmoryPage(ctx)
     local state = grimmoryState(ctx)
     if not state then return nil end
+    -- GZreader: no Wi-Fi (Kindle 2, DX): set up and sync from a page on a computer
+    local okn, Net = pcall(require, "gzreader_net")
+    if okn and type(Net) == "table" and Net.usb == true then
+        return {
+            title       = _("Sync with a computer"),
+            icon_file   = _plugin_root .. "/icons/usb.svg",
+            description = _("This Kindle has no Wi‑Fi. Books, audiobooks, notes and calendars come from a page on a computer:") .. "\n"
+                .. _("1. Exit GZreader and plug the Kindle in.") .. "\n"
+                .. _("2. Open 9retirement6irk.github.io/GZreader/sync in Chrome or Edge.") .. "\n"
+                .. _("3. Connect Grimmory there and press Sync.") .. "\n"
+                .. _("Later: Menu → Sync with computer."),
+        }
+    end
     local choices = {}
     if state.paired then
         choices[#choices + 1] = { id = "keep", text = T(_("Keep connection (%1)"), state.username or "?"), checked = true }

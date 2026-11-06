@@ -278,24 +278,27 @@ function HomeMenu.showDisplay(on_changed)
 end
 
 function HomeMenu.items(plugin)
+    -- no Wi-Fi: books, notes and calendars come through a computer (gzreader_usbsync.lua)
+    local usb = require("gzreader_net").usb
     local items = {
         { text = _("Continue reading (last book)"), callback = function() dispatch("open_previous_document") end },
         { text = _("Search books on this Kindle"), callback = function() dispatch("file_search") end },
         { text = _("History"), callback = function() dispatch("history") end },
         { text = _("Sort"), callback = function() HomeMenu.showSort() end },
-        { text = _("Set up or send books from a browser (QR code)"), callback = function() plugin:openPhonePage("books") end },
+        usb and { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end } or nil,
+        not usb and { text = _("Set up or send books from a browser (QR code)"), callback = function() plugin:openPhonePage("books") end } or nil,
         require("gzreader_touch").audio() and require("gzreader_musictab").menuItem(plugin) or nil,
         { text_func = function()
             return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
         end, callback = function() HomeMenu.showDisplay() end },
-        { text_func = function()
+        not usb and { text_func = function()
             return NetworkMgr:isWifiOn() and _("Turn Wi-Fi off") or _("Turn Wi-Fi on")
-        end, callback = function() dispatch("toggle_wifi") end },
+        end, callback = function() dispatch("toggle_wifi") end } or nil,
         not require("gzreader_nightguard").applies() and { text_func = function()
             return G_reader_settings:isTrue("night_mode") and _("Night mode off") or _("Night mode on")
         end, callback = function() dispatch("night_mode") end } or nil,
         { text = _("Settings"), callback = function() HomeMenu.settings() end },
-        { text = _("Check for updates"), callback = function() require("gzreader_update").run() end },
+        not usb and { text = _("Check for updates"), callback = function() require("gzreader_update").run() end } or nil,
         { text = _("Diagnostics"), callback = function() plugin:showDiagnostics() end },
         { text = _("Sleep"), callback = function() dispatch("suspend") end },
         { text = _("Restart GZreader"), callback = function() dispatch("restart") end },

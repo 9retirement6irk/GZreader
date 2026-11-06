@@ -119,6 +119,14 @@ end
 --- when already connected.
 function Net.run(fn, opts)
     opts = opts or {}
+    if Net.usb then
+        -- no Wi-Fi (syncing through a computer, gzreader_usbsync.lua): what
+        -- the library copy can answer runs; anything else asked for opens the
+        -- Sync with computer screen, background work waits for the computer
+        if opts.usb then return fn() end
+        if not opts.quiet then pcall(Net.onUsb, opts.reason) end
+        return
+    end
     local function go() Net.touch(); fn() end
     if Net.connected() then return go() end
     if opts.quiet and Net.keptOff() then return end -- you turned it off: background work waits
@@ -180,6 +188,14 @@ function Net.run(fn, opts)
             if Net.ours and not busy() then Net.ours = false; NetworkMgr:disableWifi() end
         end
     end)
+end
+
+--- Asked for something that needs the network on a Kindle syncing through
+--- a computer: the Sync with computer screen.
+function Net.onUsb(reason)
+    local Usb = require("gzreader_usbsync")
+    Log.info("wifi: none (syncing through a computer); asked for", tostring(reason))
+    if Usb.plugin then Usb.show(Usb.plugin) end
 end
 
 --- Touch Kindles (Paperwhite, Touch) turn Wi-Fi on through KOReader's scan

@@ -42,6 +42,13 @@ check(not tl:match("Zen Mode") and not tl:match("|Reader|") and not tl:match("Wh
 check(titles[#titles] == "You're All Set" and titles[#titles - 1] == "Usage Statistics", "usage statistics just before the end")
 local kbp, syncp for _, pg in ipairs(pages) do if pg.title == "Your keyboard" then kbp = pg elseif pg.title == "Synced with Grimmory" then syncp = pg end end
 check(kbp.icon_file:match("keyboard%.svg$") and syncp.icon_file:match("library%.svg$"), "keyboard and Grimmory icons")
+-- a Kindle without Wi-Fi (Kindle 2, DX): how to sync with a computer instead
+package.loaded["gzreader_net"] = { usb = true }
+local usb_pages = build(false)
+package.loaded["gzreader_net"] = nil
+check(usb_pages[1].title == "Sync with a computer" and usb_pages[1].description:match("GZreader/sync")
+    and not usb_pages[1].choices and usb_pages[1].icon_file:match("usb%.svg$"),
+    "no Wi-Fi: the guide starts with syncing through a computer (the page's address)")
 local lib for _, pg in ipairs(pages) do if pg.title == "Library View" then lib = pg end end
 check(lib.choices[1].id == "bookshelf", "library view: bookshelf first (with its own preview)")
 -- the finale applies the reading defaults the Reader page used to

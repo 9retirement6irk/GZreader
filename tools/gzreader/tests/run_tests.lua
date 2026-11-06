@@ -4332,5 +4332,302 @@ print("Settings → Storage")
     os.execute("rm -rf '" .. lib .. "'")
 end)()
 
+print("Sync through a computer (Kindles without Wi-Fi)")
+;(function()
+    local Usb = require("gzreader_usbsync")
+    local OfflineApi = require("gzreader_offlineapi")
+    local Net = require("gzreader_net")
+    local JSON = require("json")
+    local lib = WORK .. "/usb-lib"
+    os.execute("rm -rf '" .. lib .. "'; mkdir -p '" .. lib .. "'")
+    local function put(path, text)
+        os.execute("mkdir -p '" .. path:match("^(.*)/[^/]*$") .. "'")
+        local f = io.open(path, "wb"); f:write(text); f:close()
+    end
+    local function read(path) local f = io.open(path, "rb"); if not f then return nil end local t = f:read("*a"); f:close(); return t end
+    local function exists(path) return require("lfs").attributes(path, "mode") ~= nil end
+
+    check(Usb.noWifi("Kindle2") and Usb.noWifi("KindleDXG") and not Usb.noWifi("Kindle3") and not Usb.noWifi("KindlePaperWhite3"),
+        "the Kindle 2 and DX have no Wi-Fi; the Kindle Keyboard and Paperwhite do")
+    check(not Usb.active(), "a Kindle Keyboard syncs over Wi-Fi unless told otherwise")
+    Usb.setActive(true)
+    check(Usb.active(), "…any Kindle can choose to sync through a computer")
+    Usb.setActive(false)
+    check(not Usb.active() and G_reader_settings:readSetting("gzreader_usb_sync") == nil, "…and back (no setting kept for the default)")
+
+    local saved = 0
+    local fake = { store = {
+        server = "https://books.example.com", username = "reader",
+        access_token = "SECRET-ACCESS", refresh_token = "SECRET-REFRESH",
+        downloads = {}, audiobooks = {},
+        pending = { progress = {
+            ["12"] = { fileProgress = { bookFileId = 120, progressPercent = 41.5, positionHref = "ch3.xhtml" },
+                gz_xp = "/body/DocFragment[3]", gz_file = lib .. "/x.epub" },
+        }, sessions = {
+            { bookId = 12, startTime = "2026-11-05T10:00:00Z", endTime = "2026-11-05T10:30:00Z", durationSeconds = 1800, gz_tries = 1 },
+        }, ratings = { ["12"] = 4, ["13"] = 0 } },
+        memos = { server = "https://notes.example.com", token = "SECRET-MEMOS",
+            queue = { { id = "q1", op = "create", content = "milk #shopping", visibility = "PRIVATE", at = 5 } } },
+        caldav = { server = "https://cal.example.com", password = "SECRET-CALDAV" },
+        plex = { token = "SECRET-PLEX" },
+    } }
+    function fake:libraryDir() return lib end
+    function fake:save() saved = saved + 1 end
+    function fake:saveSoon() end
+    function fake:writeManifest() end
+
+    -- the queue
+    check(Usb.enqueue(fake, { id = 20, title = "Dune", authors = { "Frank Herbert" }, primaryFileType = "EPUB", primaryFileId = 200,
+        primaryFileName = "lib/Dune.epub", fileSizeKb = 900 }) and not Usb.enqueue(fake, { id = 20, title = "Dune" }),
+        "sync queue: a book goes in once")
+    Usb.enqueue(fake, { id = 30, title = "Walden (audio)", primaryFileType = "AUDIOBOOK", fileSizeKb = 50000 })
+    check(#fake.store.usb_queue == 2 and fake.store.usb_queue[2].kind == "audiobook" and fake.store.usb_queue[1].name == "Dune.epub"
+        and Usb.isQueued(fake, "20") and Usb.queueSizeKb(fake) == 50900, "…audiobooks too; ids and sizes kept")
+
+    -- the outbox
+    Usb.number(fake)
+    Usb.writeOutbox(fake)
+    local text = read(lib .. "/.gzsync/outbox.json") or ""
+    local out = JSON.decode(text) or {}
+    local jobs = {}
+    for _i, j in ipairs(out.jobs or {}) do jobs[j.kind] = jobs[j.kind] or {}; table.insert(jobs[j.kind], j) end
+    local pj = jobs.progress and jobs.progress[1]
+    check(out.format == 1 and out.grimmory.server == "https://books.example.com" and pj and pj.method == "PUT"
+        and pj.path == "/api/v1/app/books/12/progress" and pj.body.fileProgress.progressPercent == 41.5
+        and pj.body.gz_xp == nil and pj.body.gz_seq == nil and pj.id:match("^p:12:%d+$"),
+        "outbox: a reading position as a ready request (GZreader's own fields left out)")
+    local sj = jobs.session and jobs.session[1]
+    check(sj and sj.path == "/api/v1/reading-sessions" and sj.body.durationSeconds == 1800 and sj.body.gz_tries == nil
+        and sj.id == "s:12:2026-11-05T10:00:00Z", "outbox: reading time")
+    local rj = {}
+    for _i, j in ipairs(jobs.rating or {}) do rj[j.book] = j end
+    check(rj[12] and rj[12].method == "PUT" and rj[12].body.rating == 8 and rj[13] and rj[13].path == "/api/v1/books/reset-personal-rating",
+        "outbox: ratings (and a rating taken away)")
+    check(#out.queue == 2 and out.notes.queue[1].content == "milk #shopping" and out.calendar.days_ahead == 90,
+        "outbox: the sync queue, notes written here, the calendar range")
+    check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),
+        "outbox: no password or token in it")
+    local mtime = require("lfs").attributes(lib .. "/.gzsync/outbox.json", "modification")
+    os.remove(lib .. "/.gzsync/outbox.json")
+    Usb.writeOutbox(fake)
+    check(exists(lib .. "/.gzsync/outbox.json") and mtime, "outbox: written again when it's gone")
+
+    -- the library copy: browsing without a network
+    local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
+    check(not api:isPaired(), "no copy of the library yet: not connected")
+    local books = {
+        { id = 1, title = "Emma", authors = { "Jane Austen" }, primaryFileType = "EPUB", libraryId = 1, addedOn = "2026-01-02", readStatus = "READING" },
+        { id = 2, title = "persuasion", authors = { "Jane Austen" }, primaryFileType = "PDF", libraryId = 2, addedOn = "2026-03-01", seriesName = "Novels", seriesNumber = 2 },
+        { id = 3, title = "Walden", authors = { "Henry David Thoreau" }, primaryFileType = "AUDIOBOOK", libraryId = 1, addedOn = "2026-02-01" },
+        { id = 4, title = "Dracula", authors = { "Bram Stoker" }, primaryFileType = "EPUB", libraryId = 1, seriesName = "Novels", seriesNumber = 1 },
+    }
+    put(lib .. "/.gzsync/library.json", JSON.encode({ format = 1, server = "https://books.example.com", user = "reader", books = books,
+        libraries = { { id = 1, name = "Main" }, { id = 2, name = "Papers" } }, shelves = { { id = 7, name = "Fav" }, { id = 8, name = "Magic", magic = true } },
+        lists = { shelf = { ["7"] = { 4, 1 } }, magic = { ["8"] = { 2 } }, continue = { 1 } },
+        full = { ["1"] = { id = 1, epubProgress = { cfi = "epubcfi(/6/4)", percentage = 10 } } },
+        audio = { ["3"] = { durationMs = 1000, folderBased = false } }, subtitles = { ["2"] = "A Novel" } }))
+    put(lib .. "/.gzsync/details/1.json", JSON.encode({ id = 1, title = "Emma", description = "A clever young woman…" }))
+    put(lib .. "/.gzsync/covers/1.jpg", "JPEGDATA")
+    OfflineApi.forget()
+    check(api:isPaired(), "with a copy: connected (offline)")
+    local all = api:listBooks{ sort = "title", dir = "asc", size = 2, page = 0 }
+    check(all.totalElements == 4 and all.totalPages == 2 and all.content[1].title == "Dracula" and all.content[2].title == "Emma"
+        and all.hasNext, "copy: all books, A–Z, a page at a time (case ignored)")
+    local readable = api:listBooks{ fileType = api.READABLE_TYPES, libraryId = 1, sort = "addedOn", dir = "desc" }
+    check(readable.totalElements == 2 and readable.content[1].id == 1 and readable.content[2].id == 4,
+        "copy: by type and library; newest first, undated last")
+    check(api:listBooks{ shelfId = 7 }.totalElements == 2 and api:listBooks{ magicShelfId = 8 }.content[1].id == 2
+        and api:listBooks{ status = { "READING" } }.content[1].id == 1 and api:listBooks{ authors = "Jane Austen" }.totalElements == 2,
+        "copy: shelves, magic shelves, reading status, author")
+    local series = api:listBooks{ series = "Novels", sort = "seriesName", dir = "asc" }
+    check(series.content[1].id == 4 and series.content[2].id == 2, "copy: a series in its order")
+    check(api:searchBooks("austen").totalElements == 2 and api:searchBooks("WALD").content[1].id == 3, "copy: search titles and authors")
+    check(api:continueReading(10)[1].id == 1 and api:simpleList("recently-added", 2)[1].id == 2, "copy: continue reading, recently added")
+    check(#api:listLibraries() == 2 and api:listShelves()[2].magic == true, "copy: libraries and shelves")
+    check(api:getBook(1).epubProgress.cfi == "epubcfi(/6/4)" and select(2, api:getBook(2)) == "usb",
+        "copy: a downloaded book's record (its place elsewhere)")
+    check(api:getBookDetail(1).description:match("clever") and api:getBookDetail(2).subtitle == "A Novel",
+        "copy: a book's page, or what the list knows")
+    check(api:listWebBooks(0).content[1].metadata.subtitle == "A Novel", "copy: subtitles for the index")
+    check(api:audiobookInfo(3).durationMs == 1000, "copy: an audiobook's details")
+    local thumb = WORK .. "/usb-thumb.jpg"
+    check(api:downloadThumbnail(1, thumb) and read(thumb) == "JPEGDATA" and not api:downloadThumbnail(2, thumb),
+        "copy: covers")
+    check(api:downloadThumbnails({ { id = 1, path = thumb }, { id = 4, path = thumb } }).got == 1, "copy: covers for a page")
+    check(not api:putProgress(1, {}) and select(2, api:putProgress(1, {})) == "usb" and select(2, api:postSession({})) == "usb"
+        and not api:putRating(1, 8), "copy: writes aren't sent (they stay queued for the computer)")
+
+    -- what the page brought
+    local base = lib .. "/.gzsync"
+    put(base .. "/in/book-20.epub", "EPUB-DUNE")
+    put(base .. "/in/audio-30/audiobook.mp3", "ID3-MP3")
+    put(base .. "/in/audio-30/cover.jpg", "JPEG")
+    put(base .. "/in/music-album-55/01.mp3", "ID3")
+    put(base .. "/in/music-album-55/music.json", JSON.encode({ kind = "album", key = "55", title = "Blue", artist = "Joni",
+        tracks = { { key = "551", title = "All I Want", base = "01", file = "01.mp3", duration = 1000 } } }))
+    put(base .. "/in/notes.json", JSON.encode({ at = 1000, notes = { { name = "memos/1", content = "hello #a", tags = { "a" }, attachments = {} } },
+        tags = { a = 1 } }))
+    put(base .. "/in/notes-files/abc-pic.jpg", "PIC")
+    local now = os.time()
+    local function ics(t) return os.date("!%Y%m%dT%H%M%SZ", t) end
+    put(base .. "/in/calendar/1.ics", "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nSUMMARY:Dentist\r\nDTSTART:" .. ics(now + 86400)
+        .. "\r\nDTEND:" .. ics(now + 90000) .. "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+    local done = { pj.id, sj.id, rj[12].id }
+    put(base .. "/inbox.json", JSON.encode({ format = 1, written_at = 1700000000, done = done,
+        failed = { { id = rj[13].id, error = "unreachable" } },
+        grimmory = { server = "https://books.example.com", user = "reader" },
+        books = { { id = 20, file = "in/book-20.epub", name = "Dune.epub", title = "Dune", authors = { "Frank Herbert" }, format = "EPUB", file_id = 200 } },
+        audiobooks = { { id = 30, dir = "in/audio-30", primaryFileName = "Walden.mp3", title = "Walden",
+            info = { title = "Walden", author = "Thoreau", durationMs = 5000, codec = "mp3", bookFileId = 300, folderBased = false } } },
+        music = { { kind = "album", key = "55", dir = "in/music-album-55" } },
+        notes = { file = "in/notes.json", files = "in/notes-files", done = { "q1" }, server = "https://notes.example.com", user = "me" },
+        calendars = { { name = "Family", file = "in/calendar/1.ics" } } }))
+    local prepared = false
+    local r = Usb.import(fake, function() prepared = true end)
+    local entry = fake.store.downloads["20"]
+    check(r and r.books == 1 and entry and entry.path == lib .. "/Dune.epub" and read(entry.path) == "EPUB-DUNE"
+        and entry.authors == "Frank Herbert" and entry.file_id == 200 and not Usb.isQueued(fake, 20),
+        "inbox: a book into the GZreader folder, as a download, off the queue")
+    check(next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0 and fake.store.pending.ratings["12"] == nil
+        and fake.store.pending.ratings["13"] == 0 and fake.store.downloads["20"] and r.sent == 3 and r.failed == 1,
+        "inbox: what went to Grimmory is off the pending lists; what didn't stays")
+    local ab = require("gzreader_audiobook").load(fake, "30")
+    check(r.audiobooks == 1 and prepared and ab and ab.title == "Walden" and ab.files[1] == "audiobook.mp3"
+        and fake.store.audiobooks["30"] and not Usb.isQueued(fake, 30), "inbox: an audiobook, ready to listen to")
+    local col = require("gzreader_music").load(require("gzreader_music").dirFor(fake, "album", "55"))
+    check(r.music == 1 and col and col.have == 1 and col.title == "Blue", "inbox: music")
+    local Memos = require("gzreader_memos")
+    local cache = Memos.loadCache()
+    check(r.notes == 1 and cache and cache.notes[1].content == "hello #a" and #fake.store.memos.queue == 0
+        and fake.store.memos.token == "SECRET-MEMOS" and read(Memos.filesDir() .. "/abc-pic.jpg") == "PIC",
+        "inbox: notes (the ones written here are in Memos now), their pictures")
+    local cal = require("gzreader_caldav").loadCache()
+    check(r.events == 1 and cal and cal.events[1].title == "Dentist" and fake.store.calendar_feeds[1].name == "Family"
+        and fake.store.calendar_feeds[1].usb, "inbox: calendars, as events")
+    check(not exists(base .. "/inbox.json") and not exists(base .. "/in") and fake.store.usb_last.books == 1,
+        "inbox: taken in once, then gone")
+    check(Usb.import(fake) == nil, "no inbox: nothing to do")
+    check(Usb.summaryText(r):match("1 book") and Usb.summaryText(r):match("3 reading updates"), "the summary says what came")
+
+    -- a GZreader update the page brought: installed before the rest comes in
+    local Update = require("gzreader_update")
+    local KO2 = WORK .. "/ko-usb"
+    os.execute("rm -rf '" .. KO2 .. "' && mkdir -p '" .. KO2 .. "/frontend' '" .. KO2 .. "/plugins/gzreader.koplugin'")
+    put(KO2 .. "/gzreader-version", "1.0.0\n"); put(KO2 .. "/frontend/old.lua", "old")
+    Update.root = KO2
+    PKG = { ["koreader/frontend/new.lua"] = "new", ["koreader/plugins/gzreader.koplugin/main.lua"] = "new main",
+        ["koreader/gzreader-version"] = "1.2.0\n" }
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local ib = { format = 1, update = { version = "1.2.0", file = "in/gzreader-update.zip", size = 7 }, books = { { id = 1 } } }
+    put(base .. "/inbox.json", JSON.encode(ib))
+    local installed = Usb.installUpdate(fake, base, ib)
+    local left = JSON.decode(read(base .. "/inbox.json") or "{}")
+    check(installed and Update.currentVersion() == "1.2.0" and read(KO2 .. "/frontend/new.lua") == "new"
+        and left.update == nil and left.books and not exists(base .. "/in/gzreader-update.zip"),
+        "update from the computer: installed first; the rest of the inbox waits for the new GZreader")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local same = { update = { version = "1.2.0", file = "in/gzreader-update.zip", size = 7 } }
+    local short = { update = { version = "1.3.0", file = "in/gzreader-update.zip", size = 99 } }
+    check(Usb.installUpdate(fake, base, same) == nil and same.update == nil, "…not again when it's already installed")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local r2, e2 = Usb.installUpdate(fake, base, short)
+    check(r2 == nil and tostring(e2):match("incomplete") and Update.currentVersion() == "1.2.0", "…nor when the file is incomplete")
+    Update.root = nil
+    os.remove(base .. "/inbox.json")
+    os.execute("rm -rf '" .. KO2 .. "' '" .. base .. "/in'")
+
+    -- the rest of GZreader when there's no Wi-Fi
+    local ran = {}
+    local onUsb = Net.onUsb
+    Net.onUsb = function(reason) ran.screen = reason end
+    Net.usb = true
+    Net.run(function() ran.copy = true end, { usb = true, reason = "Grimmory library" })
+    Net.run(function() ran.quiet = true end, { quiet = true, reason = "notes" })
+    Net.run(function() ran.asked = true end, { reason = "the setup page" })
+    check(ran.copy and not ran.quiet and not ran.asked and ran.screen == "the setup page",
+        "no Wi-Fi: the library copy answers; background work waits; asking for the network opens Sync with computer")
+    local okp, Panel = pcall(require, "gzreader_panel")
+    if okp then
+        local icons = {}
+        for _i, t in ipairs(Panel.controls(plugin)) do icons[#icons + 1] = t.icon end
+        local list = table.concat(icons, ",")
+        check(list:match("^usb,") and not list:match("wifi") and not list:match("updates"),
+            "no Wi-Fi: the quick panel has Sync instead of Wi-Fi, no Updates (" .. list .. ")")
+    end
+    local Notes = require("gzreader_notes")
+    local err
+    Notes.refresh(fake, function(_ok, e) err = e end)
+    check(err == "usb" and Notes.cel({ kind = "tag", value = "a" }) == nil
+        and Notes.keep({ tags = { "a" } }, { kind = "tag", value = "a" }) and not Notes.keep({ tags = {} }, { kind = "tag", value = "a" })
+        and Notes.keep({ content = "Buy Milk" }, { kind = "search", value = "milk" }),
+        "no Wi-Fi: notes are filtered on the Kindle and come with the sync")
+    local orig_plugin = Usb.plugin
+    Usb.plugin = plugin
+    plugin.store.usb_queue = nil
+    local before = #UI.shown
+    plugin:downloadAndOpen({ id = 77, title = "Ivanhoe", primaryFileType = "EPUB" }, nil)
+    check(Usb.isQueued(plugin, 77) and require("gzreader_download").isQueued(77) and #UI.shown == before + 1
+        and not require("gzreader_download").active,
+        "no Wi-Fi: Download puts the book in the sync queue")
+    Usb.dequeue(plugin, 77)
+    Net.usb, Net.onUsb, Usb.plugin = nil, onUsb, orig_plugin
+    os.execute("rm -rf '" .. lib .. "'")
+    os.remove(Memos.cachePath())
+    os.remove(require("gzreader_caldav").cachePath())
+end)()
+
+-- The sync page's own output (sync_page_test.py ran it in a browser and left
+-- the GZreader folder it wrote in GZ_SYNC_DUMP): taken in by the Kindle.
+if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DUMP") .. "/.gzsync/inbox.json", "mode") then
+    print("Sync through a computer: what the page brought, taken in")
+    ;(function()
+        local Usb = require("gzreader_usbsync")
+        local JSON = require("json")
+        local lib = WORK .. "/usb-e2e"
+        os.execute("rm -rf '" .. lib .. "'; mkdir -p '" .. lib .. "'; cp -r '" .. os.getenv("GZ_SYNC_DUMP") .. "/.gzsync' '" .. lib .. "/'")
+        local fake = { store = { downloads = { ["1"] = { path = lib .. "/book1.epub", title = "Book 01" } }, audiobooks = {},
+            pending = { progress = {
+                ["1"] = { gz_seq = 7, fileProgress = { bookFileId = 1001, progressPercent = 42.5 } },
+                ["999"] = { gz_seq = 3, fileProgress = { bookFileId = 1, progressPercent = 1 } },
+            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 } },
+            memos = { queue = { { id = "q1", op = "create", content = "Written on the Kindle #kindle" } } },
+            usb_queue = { { id = 3, kind = "book", title = "Book 03" }, { id = 32, kind = "audiobook", title = "Book 32" } } } }
+        local f = io.open(lib .. "/book1.epub", "wb"); f:write("x"); f:close()
+        function fake:libraryDir() return lib end
+        function fake:save() end
+        function fake:saveSoon() end
+        function fake:writeManifest() end
+        local ready = false
+        local r = Usb.import(fake, function() ready = true end)
+        check(r and r.sent == 3 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
+            and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
+        local b = fake.store.downloads["3"]
+        check(b and b.path == lib .. "/book3.epub" and b.subtitle == "Old School" and #fake.store.usb_queue == 0,
+            "e2e: the book is in the GZreader folder, the queue empty")
+        check(runLoop(function() return ready end, 60), "e2e: audiobooks and music prepared (AAC converted on the Kindle)")
+        local ab = require("gzreader_audiobook").load(fake, "32")
+        check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
+            "e2e: the folder audiobook plays from its two tracks")
+        local Music = require("gzreader_music")
+        local mp3 = Music.load(Music.dirFor(fake, "album", "201"))
+        local aac = Music.load(Music.dirFor(fake, "album", "202"))
+        local flac = Music.load(Music.dirFor(fake, "album", "203"))
+        check(mp3 and mp3.have == 2 and aac and aac.have == 1 and aac.tracks[1].chunks and flac and flac.have == 1,
+            "e2e: the three albums play (MP3, AAC made into chunks, FLAC as MP3)")
+        check(r.notes and r.notes >= 3 and #fake.store.memos.queue == 0, "e2e: notes in, the Kindle's note sent")
+        check(r.events == 2 and #fake.store.calendar_feeds == 2, "e2e: the calendar's events, the failed one kept by name")
+        local api = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")
+        require("gzreader_offlineapi").forget()
+        local thumb = WORK .. "/e2e-thumb.jpg"
+        check(api:isPaired() and api:listBooks{ fileType = api.READABLE_TYPES }.totalElements == 32 and api:listShelves()[1]
+            and api:listBooks{ shelfId = 4 }.totalElements == 3 and api:getBook(1).epubProgress.percentage == 42.5
+            and api:getBookDetail(32).description and api:downloadThumbnail(5, thumb),
+            "e2e: the Grimmory tab browses the page's copy: books, shelves, places, pages, covers")
+        os.execute("rm -rf '" .. lib .. "'")
+        os.remove(require("gzreader_memos").cachePath())
+        os.remove(require("gzreader_caldav").cachePath())
+    end)()
+end
+
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

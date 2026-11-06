@@ -52,6 +52,25 @@ jobs:
           done
       - name: Attach to the release
         run: gh release upload "$TAG" out/gzreader-kindle-legacy-*.zip out/gzreader-kindle-[0-9]*.zip out/gzreader-kindlehf-*.zip out/gzreader-kindlepw2-*.zip out/gzreader-update.zip --clobber
+      - name: The update for the sync page (Kindles without Wi-Fi)
+        # A web page can't read GitHub's release downloads (no CORS), but it
+        # can read raw.githubusercontent.com: the update and latest.json go
+        # on the "updates" branch, one commit replaced at every release (so
+        # the repository doesn't grow). Only for the latest release.
+        continue-on-error: true
+        run: |
+          VERSION="${TAG#v}"; VERSION="${VERSION#.}"
+          LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName)
+          if [ "$LATEST" != "$TAG" ]; then echo "not the latest release ($LATEST): updates branch left as it is"; exit 0; fi
+          mkdir -p upd && cp out/gzreader-update.zip upd/
+          SIZE=$(stat -c %s upd/gzreader-update.zip)
+          SHA=$(sha256sum upd/gzreader-update.zip | cut -d' ' -f1)
+          printf '{"version":"%s","size":%s,"sha256":"%s","file":"gzreader-update.zip"}\n' "$VERSION" "$SIZE" "$SHA" > upd/latest.json
+          cd upd
+          git init -q -b updates
+          git add gzreader-update.zip latest.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "GZreader $VERSION update"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" updates
       - name: Nook 1st Edition (test build)
         # the Kindle 2/3/DX package + Debian wheezy's glibc and BusyBox (the
         # Nook's Android has no glibc) + the Nook's start script; a failure

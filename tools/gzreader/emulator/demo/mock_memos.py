@@ -171,7 +171,27 @@ def matcher(f):
     return lambda m: all(t(m) for t in tests)
 
 
+ALLOW_HEADERS = None
+
+
 class H(BaseHTTPRequestHandler):
+
+    # (the sync page, docs/sync, asks from a browser: cross-origin, like the real server)
+    def end_headers(self):
+        o = self.headers.get("Origin")
+        if o:
+            self.send_header("Access-Control-Allow-Origin", o)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Accept-Ranges, Content-Range, Content-Length")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS, PATCH, REPORT, PROPFIND")
+        self.send_header("Access-Control-Allow-Headers", ALLOW_HEADERS or (self.headers.get("Access-Control-Request-Headers") or ""))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def log_message(self, *a):
         pass
 

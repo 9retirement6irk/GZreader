@@ -113,7 +113,7 @@ function Covers.fetch(plugin, wanted, on_done)
     if #items == 0 then return false end
     if not (plugin.api and plugin.api:isPaired()) then return false end
     local ok_net, Net = pcall(require, "gzreader_net")
-    if not (ok_net and Net.connected()) then return false end
+    if not (ok_net and (Net.connected() or plugin.api.offline)) then return false end
     if Covers.running then
         Covers.pending = { plugin = plugin, wanted = wanted, on_done = on_done }
         return true
@@ -122,7 +122,7 @@ function Covers.fetch(plugin, wanted, on_done)
     require("gzreader_async").call(plugin.api, "downloadThumbnails", { items }, function(res)
         Covers.running = false
         if type(res) == "table" then
-            for _i, id in ipairs(res.none or {}) do
+            for _i, id in ipairs(not plugin.api.offline and res.none or {}) do -- (a later copy may have it)
                 for _j, it in ipairs(items) do
                     if tostring(it.id) == tostring(id) then
                         local f = io.open(base(it.id, it.kind) .. ".none", "wb")
