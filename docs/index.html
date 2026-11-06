@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GZreader – Grimmory and KOReader for Kindle</title>
+<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer. Notes from Memos, CalDAV calendars, audiobooks, read aloud.">
+<meta name="keywords" content="Grimmory, BookLore, Kindle, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
+<link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="GZreader – Grimmory and KOReader for Kindle">
+<meta property="og:description" content="Your Grimmory library on a Kindle: download books, read them, and keep your place, bookmarks and highlights in sync.">
+<meta property="og:url" content="https://9retirement6irk.github.io/GZreader/">
+<meta property="og:image" content="https://9retirement6irk.github.io/GZreader/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="gzreader-logo.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "GZreader",
+  "applicationCategory": "BookApplication",
+  "operatingSystem": "Kindle (jailbroken), KOReader",
+  "description": "Grimmory (BookLore) client for Kindle e-readers, built on KOReader and ZenOS: download, read and sync your self-hosted library.",
+  "url": "https://9retirement6irk.github.io/GZreader/",
+  "downloadUrl": "https://github.com/9retirement6irk/GZreader/releases/latest",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  :root {
+    --paper: #f5f2ea; --card: #fffdf8; --ink: #1d1b17; --muted: #5d584e; --line: #dcd5c6; --accent: #1d1b17;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #171614; --card: #201f1c; --ink: #ecebe6; --muted: #aaa598; --line: #37342e; --accent: #ecebe6;
+      --shadow: 0 1px 2px rgba(0,0,0,.4); }
+    .logo { filter: invert(1); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  header { text-align: center; padding: 56px 0 28px; }
+  .logo { width: 96px; height: auto; }
+  h1 { font: 700 44px/1.1 Georgia, "Times New Roman", serif; margin: 14px 0 6px; letter-spacing: -.5px; }
+  .tag { font-size: 20px; color: var(--muted); margin: 0 auto; max-width: 640px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 26px 0 0; }
+  .btn { display: inline-block; padding: 12px 20px; border-radius: 10px; text-decoration: none; font-weight: 600;
+    border: 1.5px solid var(--ink); }
+  .btn.primary { background: var(--ink); color: var(--paper); }
+  .shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 40px 0 8px; }
+  .shots figure { margin: 0; text-align: center; }
+  .shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    box-shadow: var(--shadow); }
+  .shots figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  h2 { font: 700 28px/1.2 Georgia, "Times New Roman", serif; margin: 48px 0 14px; }
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .feature { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .feature h3 { margin: 0 0 4px; font-size: 18px; }
+  .feature p { margin: 0; color: var(--muted); font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; font-size: 16px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  code { font: 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+  ol { padding-left: 22px; } ol li { margin: 6px 0; }
+  footer { margin: 56px 0 40px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+  @media (max-width: 720px) {
+    h1 { font-size: 34px; }
+    .tag { font-size: 18px; }
+    .shots { grid-template-columns: repeat(2, 1fr); }
+    .features { grid-template-columns: 1fr; }
+    table { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="logo" src="gzreader-logo.svg" alt="GZreader logo" width="96" height="96">
+    <h1>GZreader</h1>
+    <p class="tag">Your <strong>Grimmory</strong> library on a <strong>Kindle</strong>. Download books, read them or
+      have them read aloud, and keep your place, bookmarks and highlights in sync.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/9retirement6irk/GZreader/releases/latest">Download the latest release</a>
+      <a class="btn" href="https://github.com/9retirement6irk/GZreader">Source on GitHub</a>
+      <a class="btn" href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md">Full guide</a>
+    </div>
+  </header>
+
+  <section class="shots" aria-label="Screenshots">
+    <figure><img src="screenshots/home.png" alt="GZreader's Home screen on a Kindle 3" width="600" height="800" loading="lazy"><figcaption>Home</figcaption></figure>
+    <figure><img src="screenshots/grimmory-tab.png" alt="The Grimmory library laid out like a bookshop" width="600" height="800" loading="lazy"><figcaption>Your Grimmory library</figcaption></figure>
+    <figure><img src="screenshots/downloads-shelf.png" alt="Downloaded books standing on shelves" width="600" height="800" loading="lazy"><figcaption>Books on shelves</figcaption></figure>
+    <figure><img src="screenshots/notes-board.png" alt="Memos notes as sticky notes" width="600" height="800" loading="lazy"><figcaption>Notes from Memos</figcaption></figure>
+  </section>
+
+  <h2>What it is</h2>
+  <p>GZreader is <a href="https://github.com/koreader/koreader">KOReader</a> trimmed down to reading, with the
+    <a href="https://github.com/xZenLabs/zen-os">ZenOS</a> interface and a built-in connection to your self-hosted
+    <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) book server. It runs on jailbroken Kindles,
+    from the Kindle 2 and Kindle Keyboard to the Paperwhite and newer.</p>
+
+  <div class="features">
+    <div class="feature"><h3>Grimmory sync</h3><p>Browse and search your library, download in the background, and keep reading position, bookmarks, highlights and ratings in sync.</p></div>
+    <div class="feature"><h3>Set up from your browser</h3><p>Scan a QR code or type the Kindle's address and a PIN. One page connects everything, single sign-on included, and sends books to the Kindle.</p></div>
+    <div class="feature"><h3>Notes and calendars</h3><p>Your Memos notes as sticky notes, and CalDAV calendars or calendar links (Proton, Google…) as an agenda, week or month.</p></div>
+    <div class="feature"><h3>Audiobooks and music</h3><p>Grimmory audiobooks with your place kept, and albums from Plex, on Kindles with a speaker or headphone jack.</p></div>
+    <div class="feature"><h3>Read aloud</h3><p>On the Kindle 2, 3, DX and Touch: books read in the Kindle's own voice, the sentence highlighted and pages turning by themselves.</p></div>
+    <div class="feature"><h3>Made for e-ink</h3><p>Wi‑Fi only when needed, few screen flashes on older Kindles, a built-in English dictionary and updates from GitHub.</p></div>
+  </div>
+
+  <h2>Which package</h2>
+  <table>
+    <thead><tr><th>Kindle</th><th>Package</th></tr></thead>
+    <tbody>
+      <tr><td>Kindle 2, Kindle Keyboard (3), DX</td><td><code>gzreader-kindle-legacy</code></td></tr>
+      <tr><td>Kindle 4, Kindle Touch</td><td><code>gzreader-kindle</code></td></tr>
+      <tr><td>Firmware 5.16.3 or newer: Paperwhite 3 and later, Kindle 2019–2024, Oasis, Scribe, Colorsoft</td><td><code>gzreader-kindlehf</code></td></tr>
+      <tr><td>Paperwhite 2 and newer on firmware 5.16.2 or older</td><td><code>gzreader-kindlepw2</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Install</h2>
+  <ol>
+    <li>Jailbreak the Kindle and install KUAL (<a href="https://kindlemodding.org/jailbreaking/">kindlemodding.org</a>;
+      Kindle 2, 3, DX, 4 and Touch: <a href="https://www.mobileread.com/forums/forumdisplay.php?f=150">MobileRead</a>).</li>
+    <li>Download your package from the <a href="https://github.com/9retirement6irk/GZreader/releases/latest">latest release</a>.</li>
+    <li>Unzip it and copy its folders to the top of the Kindle's USB drive. Eject.</li>
+    <li>Start GZreader from KUAL, or from the GZreader item on a touch Kindle's home screen. The setup guide shows a QR code.</li>
+  </ol>
+
+  <footer>
+    GZreader is free software, built on KOReader (AGPL-3.0) and ZenOS.
+    Grimmory, Kindle and other names belong to their owners; GZreader isn't affiliated with Amazon or the Grimmory project.
+    · <a href="https://github.com/9retirement6irk/GZreader">github.com/9retirement6irk/GZreader</a>
+  </footer>
+</div>
+</body>
+</html>

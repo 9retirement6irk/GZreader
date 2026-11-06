@@ -5,8 +5,9 @@
 <h1 align="center">GZreader</h1>
 
 <p align="center">
-  <b>Grimmory + ZenOS + KOReader for older Kindles</b><br>
-  Your <a href="https://grimmory.org">Grimmory</a> library on a Kindle: download books, read them
+  <b>Grimmory + ZenOS + KOReader for Kindles</b><br>
+  Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on a Kindle,
+  from the Kindle Keyboard to the Paperwhite: download books, read them
   or have them read aloud, and keep your place, bookmarks and highlights in sync.
   Notes, calendars, and books sent from your browser too.
 </p>
