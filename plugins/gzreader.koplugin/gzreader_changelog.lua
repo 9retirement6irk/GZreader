@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.25.0",
+        changes = {
+            "Sync with a computer: bookmarks, highlights and notes made, changed or deleted on the Kindle go to Grimmory with the next sync, and Grimmory's come back to be merged when the book opens, as with Wi-Fi.",
+            "The sync page: choose the Kindle first, then enter its PIN; the sign-ins are kept on the Kindle, encrypted with the PIN, so any computer can sync it. Then three tabs: Connections; Content, browsed like the Grimmory tab (Recently added, A–Z, Libraries, Shelves, Authors, Series, search; Plex albums and playlists); Sync, with how much room is left on the Kindle and what the sync brings. Add ?test to the address to try it with a pretend Kindle.",
+            "The sync page's covers work with Grimmory (it doesn't let web pages read its covers): the page shows them, and for the Kindle's Grimmory tab it takes an EPUB's cover from the book and an audiobook's from its audio cover.",
+            "GZreader tells the page how much room is left on the Kindle.",
+        },
+    },
+    {
         version = "1.24.0",
         changes = {
             "Kindles without Wi-Fi (Kindle 2, Kindle DX): sync with a computer. Exit GZreader, plug the Kindle in and open 9retirement6irk.github.io/GZreader/sync in Chrome or Edge: your reading positions, reading time and ratings go to Grimmory; books and audiobooks from the sync queue, your notes (and the ones written on the Kindle go to Memos), calendars and Plex albums come back, with a copy of your library. GZreader recognises these Kindles by itself; any Kindle can choose it in Settings → Connections → Sync through a computer.",

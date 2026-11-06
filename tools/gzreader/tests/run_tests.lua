@@ -4457,6 +4457,39 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     check(not api:putProgress(1, {}) and select(2, api:putProgress(1, {})) == "usb" and select(2, api:postSession({})) == "usb"
         and not api:putRating(1, 8), "copy: writes aren't sent (they stay queued for the computer)")
 
+    -- bookmarks and highlights without Wi-Fi: the journal
+    local snapx = JSON.decode(read(lib .. "/.gzsync/library.json"))
+    snapx.marks = { ["1"] = { bookmarks = { { id = 501, bookId = 1, cfi = "epubcfi(/6/4!/4/2)", title = "web" } },
+        annotations = { { id = 901, bookId = 1, cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", text = "Hello", color = "#FFC107", note = nil } } } }
+    put(lib .. "/.gzsync/library.json", JSON.encode(snapx))
+    OfflineApi.forget()
+    check(api:listBookmarks(2) == nil and #api:listBookmarks(1) == 1, "marks: Grimmory's bookmarks from the copy (none known: nothing to compare)")
+    local made = api:createBookmark({ bookId = 1, cfi = "epubcfi(/6/8!/4/2)", title = "Kindle" })
+    check(made and tostring(made.id):match("^usb%-") and #api:listBookmarks(1) == 2, "marks: a bookmark made here gets a temporary id and is listed")
+    check(api:deleteBookmark(501) and #api:listBookmarks(1) == 1 and api:listBookmarks(1)[1].id == made.id, "marks: …a deleted one isn't")
+    local hl = api:createAnnotation({ bookId = 1, cfi = "epubcfi(/6/8!/4/2,/1:0,/1:3)", text = "Abc", color = "#4ADE80" })
+    api:updateAnnotation(hl.id, { color = "#F87171", note = "mine" })
+    api:updateAnnotation(901, { note = "web note" })
+    local anns = api:listAnnotations(1)
+    local by = {}
+    for _i, a in ipairs(anns) do by[tostring(a.id)] = a end
+    check(#anns == 2 and by[tostring(hl.id)].color == "#F87171" and by[tostring(hl.id)].note == "mine" and by["901"].note == "web note",
+        "marks: highlights made and changed here, on top of Grimmory's")
+    api:deleteAnnotation(901)
+    check(#api:listAnnotations(1) == 1, "marks: …and deleted")
+    local mj = {}
+    for _i, j in ipairs(Usb.jobs(fake)) do if j.kind == "mark" then mj[#mj + 1] = j end end
+    check(#mj == 6 and mj[1].op == "bookmark+" and mj[1].temp == made.id and mj[2].ref == "501" and mj[2].path == "/api/v1/bookmarks/{id}"
+        and mj[4].ref == tostring(hl.id) and mj[6].op == "highlight-", "outbox: the journal's requests, in order, for the page")
+    fake.store.downloads["1"] = { bookmarks = { ["/body/x"] = made.id }, anno_shadow = { [tostring(hl.id)] = { full = 1 } } }
+    local sent = Usb.applyMarks(fake, { [mj[1].id] = true, [mj[2].id] = true, [mj[3].id] = true }, { [made.id] = 777, [hl.id] = 888 })
+    local rest = Usb.journal(fake)
+    check(sent == 3 and #rest == 3 and rest[1].ref == "888" and fake.store.downloads["1"].bookmarks["/body/x"] == 777
+        and fake.store.downloads["1"].anno_shadow["888"] and Usb.realId(fake, hl.id) == 888,
+        "inbox: what was sent leaves the journal; Grimmory's ids replace the temporary ones everywhere")
+    os.remove(Usb.journalPath(fake))
+    fake.store.downloads["1"] = nil
+
     -- what the page brought
     local base = lib .. "/.gzsync"
     put(base .. "/in/book-20.epub", "EPUB-DUNE")
@@ -4597,8 +4630,26 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         function fake:save() end
         function fake:saveSoon() end
         function fake:writeManifest() end
+        -- (the journal the page's outbox had: two made here, one changed, one deleted)
+        local jf = io.open(lib .. "/.gzsync/journal.jsonl", "wb")
+        for _i, j in ipairs({ { id = "m:1", op = "bookmark+", temp = "usb-1" }, { id = "m:2", op = "highlight+", temp = "usb-2" },
+                { id = "m:3", op = "highlight~", ref = "usb-2" }, { id = "m:4", op = "bookmark-", ref = "9999" },
+                { id = "m:5", op = "highlight~", ref = "usb-2", body = { note = "later" } } }) do
+            jf:write(JSON.encode(j), "\n")
+        end
+        jf:close()
+        fake.store.downloads["1"].bookmarks = { ["/body/DocFragment[2]"] = "usb-1" }
         local ready = false
         local r = Usb.import(fake, function() ready = true end)
+        local left = Usb.journal(fake)
+        check(r.marks == 4 and #left == 1 and left[1].id == "m:5" and left[1].ref ~= "usb-2" and tonumber(left[1].ref)
+            and fake.store.downloads["1"].bookmarks["/body/DocFragment[2]"] ~= "usb-1" and fake.store.usb_idmap["usb-2"],
+            "e2e: the journal's sent lines gone, the rest now refer to Grimmory's ids, as does the Kindle")
+        local api2 = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")
+        require("gzreader_offlineapi").forget()
+        local anns = api2:listAnnotations(1) or {}
+        check(#anns == 1 and anns[1].note == "later" and anns[1].color == "#F87171",
+            "e2e: highlights as GZreader sees them: Grimmory's (from the copy) with the journal's change on top")
         check(r and r.sent == 3 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
             and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
         local b = fake.store.downloads["3"]

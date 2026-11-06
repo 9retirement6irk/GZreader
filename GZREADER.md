@@ -502,16 +502,36 @@ Connections → Sync through a computer.
 1. On the Kindle: Menu → Exit to the Kindle. (KOReader turns the Kindle's
    USB drive off while it runs, so GZreader has to be closed first.)
 2. Plug the Kindle into the computer, open the page and choose the Kindle's
-   drive (or its `documents/GZreader` folder). The page shows what the Kindle
-   has waiting.
-3. Connect what you use, once per browser: Grimmory (password or single
-   sign-on), Notes (a Memos access token), calendars, Plex. The page keeps
-   these sign-ins in the browser; the Kindle never gets a password or token.
-4. Choose what to bring, if you like: the page lists your Grimmory books and
-   audiobooks (newest first, A–Z or a search) and your Plex albums and
-   playlists, each marked when it's on the Kindle or in its queue already.
-5. Press **Sync**. Eject the Kindle, unplug it and start GZreader: it takes in
-   what was brought ("Synced with your computer").
+   drive (or its `documents/GZreader` folder). Nothing else can be set up
+   before a Kindle is chosen.
+3. Enter the Kindle's **PIN**. The first time, you choose one: the sign-ins
+   (Grimmory, Memos, Plex, calendars) are kept on the Kindle, encrypted with
+   it, so any computer can sync the Kindle with just the PIN. (Or "Don't keep
+   sign-ins on the Kindle": they last until the tab is closed.)
+4. Three tabs:
+   - **Connections**: Grimmory (password or single sign-on), Notes (a Memos
+     access token), calendars, Plex.
+   - **Content**: what to bring, browsed as in the Kindle's Grimmory tab:
+     Books and Audiobooks (Recently added, A–Z, Libraries, Shelves, Authors,
+     Series, search) and Music (Plex albums A–Z, playlists, search). Each is
+     marked when it's on the Kindle or in its queue already; "Coming with the
+     next sync" lists the Kindle's queue and what was chosen here.
+   - **Sync**: how much room is left on the Kindle and what takes it (books,
+     audiobooks, music, the library copy, notes' pictures), how much the next
+     sync brings, and **Sync**.
+5. Eject the Kindle, unplug it and start GZreader: it takes in what was
+   brought ("Synced with your computer").
+
+**Test mode**: <https://9retirement6irk.github.io/GZreader/sync/?test> works
+with a pretend Kindle kept in the browser, to try the page (and your
+connections) without a Kindle.
+
+The PIN: the sign-ins file (`.gzsync/keys.json`) is encrypted with AES-256-GCM
+under a key made from the PIN (PBKDF2-SHA-256, 600 000 rounds). Grimmory's
+password is never kept, only its sign-in token. Someone who has the Kindle and
+time could try every short PIN, so a longer one is safer. GZreader on the
+Kindle never reads the file. Forgot the PIN: "Start over" deletes the file;
+connect again.
 
 Updates: when a newer GZreader is out, the page offers it ("Update GZreader
 on the Kindle to …", on by default) and brings it with the sync; GZreader
@@ -526,7 +546,7 @@ What a sync does:
 
 | | Kindle → computer | Computer → Kindle |
 | --- | --- | --- |
-| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves, Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere |
+| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves, Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
 | Downloads | The **sync queue**: in the Grimmory tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
@@ -540,7 +560,17 @@ queued book offers to take it off; Settings → Connections → Sync through a
 computer → Sync queue lists them). Menu → **Sync with computer** shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 
-Bookmarks and highlights aren't synced this way yet (they stay on the Kindle).
+Bookmarks and highlights sync as with Wi-Fi, a sync later: what you add,
+change or delete on the Kindle is kept in a journal (`.gzsync/journal.jsonl`,
+in order) that the page sends to Grimmory; something made on the Kindle gets
+a temporary id until then, and Grimmory's own after the next start. The page
+brings each downloaded book's bookmarks and highlights, which GZreader
+compares and merges when the book opens (a highlight changed in both places
+since the last sync is left as it is in each, as with Wi-Fi).
+
+Covers: Grimmory doesn't let other web pages read its covers (only show
+them), so the page takes an EPUB's cover from the book itself and an
+audiobook's from its audio cover; PDFs and comics have no cover in the copy.
 
 Calendars: many calendar servers (Google, Proton) don't let a web page read
 their links, and most CalDAV servers don't either. The page says so; then

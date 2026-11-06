@@ -92,7 +92,16 @@ OUTBOX = {
         {"id": "r:2:4", "kind": "rating", "book": 2, "method": "PUT", "path": "/api/v1/books/personal-rating", "body": {"ids": [2], "rating": 8}},
         {"id": "p:999:3", "kind": "progress", "book": 999, "method": "PUT", "path": "/api/v1/app/books/999/progress",
          "body": {"fileProgress": {"bookFileId": 1, "progressPercent": 1}}},
+        # bookmarks and highlights made on the Kindle (its journal), in order
+        {"id": "m:1", "kind": "mark", "op": "bookmark+", "book": 1, "method": "POST", "path": "/api/v1/bookmarks",
+         "body": {"bookId": 1, "cfi": "epubcfi(/6/4!/4/8)", "title": "Kindle"}, "temp": "usb-1"},
+        {"id": "m:2", "kind": "mark", "op": "highlight+", "book": 1, "method": "POST", "path": "/api/v1/annotations",
+         "body": {"bookId": 1, "cfi": "epubcfi(/6/4!/4/2,/1:0,/1:5)", "text": "Hello", "color": "#FFC107", "style": "highlight"}, "temp": "usb-2"},
+        {"id": "m:3", "kind": "mark", "op": "highlight~", "method": "PUT", "path": "/api/v1/annotations/{id}", "ref": "usb-2",
+         "body": {"color": "#F87171", "style": "highlight", "note": "from the Kindle"}},
+        {"id": "m:4", "kind": "mark", "op": "bookmark-", "method": "DELETE", "path": "/api/v1/bookmarks/{id}", "ref": "9999"},
     ],
+    "disk": {"total": 1500000000, "available": 900000000},
     "queue": [
         {"id": 3, "kind": "book", "title": "Book 03", "authors": ["Author 0"], "format": "EPUB", "file_id": 1003, "name": "book3.epub", "size_kb": 300},
         {"id": 32, "kind": "audiobook", "title": "Book 32", "format": "AUDIOBOOK", "name": "book32.audiobook", "size_kb": 12},
@@ -128,10 +137,19 @@ with sync_playwright() as pw:
         await w.write(JSON.stringify(outbox)); await w.close();
         window.testRoot = root;
     }""", OUTBOX)
-    ok = page.evaluate("() => GZSync.open(window.testRoot, true)")
-    text = page.locator("#kindle").inner_text()
-    check(ok and "Kindle 2 · 3F2A" in text and "4 reading updates" in text and "2 in the sync queue" in text,
-          "the Kindle's drive: its GZreader folder found, what's waiting shown")
+    check(page.locator("#gate").is_visible() and not page.locator("#app").is_visible(), "a Kindle first: nothing to set up before one is chosen")
+    page.evaluate("() => GZSync.open(window.testRoot, true)")
+    page.wait_for_selector("#unlock:not(.hidden)")
+    check("Choose a PIN" in page.locator("#unlock-title").inner_text() and page.locator("#pin2").is_visible(),
+          "a new Kindle: a PIN is chosen for it")
+    page.fill("#pin", "24"); page.fill("#pin2", "24"); page.click("#unlock-go")
+    page.wait_for_selector("#unlock-err:not(.hidden)")
+    check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
+    page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
+    page.wait_for_selector("#app:not(.hidden)")
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "8 reading updates" in page.locator("#k-sub").inner_text()
+          and page.locator("nav.main button.on").inner_text() == "Connections",
+          "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
     # connections, as a person would make them
     page.fill("#g-server", "http://127.0.0.1:%d" % GP)
@@ -143,9 +161,7 @@ with sync_playwright() as pw:
     page.fill("#g-pass", "hunter22")
     page.click("#g-login")
     page.wait_for_selector("#c-grimmory.on")
-    stored = page.evaluate("() => localStorage.getItem('gzsync.grimmory')")
-    check("hunter22" not in stored and json.loads(stored)["refresh"] and page.locator("#g-pass").input_value() == "",
-          "Grimmory: signed in; the password isn't kept, a sign-in token is")
+    check(page.locator("#g-pass").input_value() == "", "Grimmory: signed in")
     page.fill("#m-server", "http://127.0.0.1:%d" % MP)
     page.fill("#m-token", "memos-test-token")
     page.click("#m-connect")
@@ -160,20 +176,64 @@ with sync_playwright() as pw:
     check(page.locator("#cal-list li").count() == 2, "calendars: two links added")
     page.evaluate("""(pp) => {
         GZSync.P.st = { token: 'plex-token', user: 'tones', server: { name: 'Tones', uri: 'http://127.0.0.1:' + pp, token: 'srv-token' } };
-        GZSync.P.save();
+        return GZSync.P.save();
     }""", PP)
-    page.goto("about:blank")   # (a fresh visit)
+    keys = page.evaluate("""async () => {
+        for (let i = 0; i < 20; i++) {
+            await GZSync.Vault.chain;
+            try {
+                const s = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('documents')).getDirectoryHandle('GZreader');
+                return await (await (await (await s.getDirectoryHandle('.gzsync')).getFileHandle('keys.json')).getFile()).text();
+            } catch (e) { await new Promise(r => setTimeout(r, 200)); }   // (being written)
+        }
+    }""")
+    check(all(t not in keys for t in ("hunter22", "memos-test-token", "plex-token", "family.ics", "127.0.0.1")) and json.loads(keys)["cipher"] == "AES-256-GCM"
+          and not page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gzsync.') && k !== 'gzsync.sso').length"),
+          "the sign-ins are on the Kindle, encrypted with its PIN (and not in the browser)")
+
+    page.goto("about:blank")   # (a fresh visit, as on another computer)
     page.goto("http://127.0.0.1:%d/GZreader/sync/" % WP)
     page.wait_for_function("window.GZSync")
     page.evaluate("""async () => { window.testRoot = await navigator.storage.getDirectory(); await GZSync.open(window.testRoot, true); }""")
-    check(page.locator("#c-plex.on").count() == 1 and page.locator("#c-grimmory.on").count() == 1,
-          "after a reload: still signed in everywhere (this browser remembers)")
-    # choosing on the page: books, audiobooks, music
+    page.wait_for_selector("#unlock:not(.hidden)")
+    page.fill("#pin", "1357"); page.click("#unlock-go")
+    page.wait_for_selector("#unlock-err:not(.hidden)")
+    check("isn't this Kindle's PIN" in page.locator("#unlock-err").inner_text(), "unlock: a wrong PIN says so")
+    page.fill("#pin", "2468"); page.click("#unlock-go")
+    page.wait_for_selector("#app:not(.hidden)")
+    seen = (page.locator("#c-plex.on").count(), page.locator("#c-grimmory.on").count(), page.locator("#c-memos.on").count(),
+            page.locator("#cal-list li").count(), page.locator("nav.main button.on").inner_text())
+    check(seen == (1, 1, 1, 2, "Content"), "unlocked again (another visit): every connection back; Content first %r" % (seen,))
+
+    # choosing on the page: books, audiobooks, music, as in the Kindle's Grimmory tab
     page.wait_for_selector("#b-results li button")
     text = page.locator("#b-results").inner_text()
     check("Book 25" in text and "Book 33" not in text and page.locator("#b-results li", has_text="Book 01").locator("button").inner_text() == "On the Kindle"
           and page.locator("#b-results li", has_text="Book 03").locator("button").inner_text() == "In its queue" and page.locator("#b-more").is_visible(),
-          "Books: a page of Grimmory's books (no audiobooks), More; what's on the Kindle or in its queue says so")
+          "Books: Recently added, a page at a time (no audiobooks); what's on the Kindle or in its queue says so")
+    page.wait_for_function("[...document.querySelectorAll('#b-results img')].some(i => i.complete && i.naturalWidth > 0)")
+    check(True, "covers shown (Grimmory's, in <img>: a web page can't read them, it can show them)")
+    page.click("#b-cats button:has-text('Libraries')")
+    page.wait_for_selector("#b-results li.nav:has-text('fiction')")
+    page.click("#b-results li.nav:has-text('fiction')")
+    page.wait_for_selector("#b-crumbs button:has-text('Libraries')")
+    page.wait_for_function("document.querySelector('#b-results').innerText.includes('Book 02')")
+    check("Book 02" in page.locator("#b-results").inner_text() and "Book 01" not in page.locator("#b-results").inner_text(),
+          "Libraries: a library's books, with the way back")
+    page.click("#b-crumbs button")
+    page.wait_for_selector("#b-results li.nav:has-text('Comics')")
+    page.click("#b-cats button:has-text('Shelves')")
+    page.wait_for_selector("#b-results li.nav")
+    page.locator("#b-results li.nav").first.click()
+    page.wait_for_function("document.querySelector('#b-results').innerText.includes('Book 10')")
+    page.click("#b-cats button:has-text('Authors')")
+    page.wait_for_selector("#b-results li.nav:has-text('Author 2')")
+    page.click("#b-cats button:has-text('Series')")
+    page.wait_for_selector("#b-results li.nav:has-text('Saga / Part One')")
+    page.click("#b-results li.nav:has-text('Saga / Part One')")
+    page.wait_for_function("document.querySelector('#b-results').innerText.includes('Book 06')")
+    order = page.locator("#b-results li .txt").all_inner_texts()
+    check(order[0].startswith("Book 06") and order[1].startswith("Book 05"), "Shelves, Authors, Series: a series in its order")
     page.fill("#b-search", "Book 05")
     page.click("#b-go")
     page.wait_for_function("document.querySelectorAll('#b-results li').length === 1")
@@ -183,16 +243,19 @@ with sync_playwright() as pw:
     check(page.locator("#b-results li", has_text="Book 32").locator("button").inner_text() == "In its queue",
           "Audiobooks: only audiobooks; one the Kindle queued says so")
     page.locator("#b-results li", has_text="Book 33").locator("button").click()
-    check(page.locator("#b-results li img").count() >= 1, "covers shown while choosing")
     page.click(".tabs button[data-tab=music]")
     page.wait_for_selector("#b-results li:has-text('FLAC Album') button")
     for title in ("MP3 Album", "AAC Album", "FLAC Album"):
         page.locator("#b-results li", has_text=title).locator("button").click()
-    page.click("#b-lists button:has-text('Playlists')")
+    page.click("#b-cats button:has-text('Playlists')")
     page.wait_for_selector("#b-results li button")
     picks = page.locator("#picks").inner_text()
     check(page.locator("#picks li").count() == 7 and "the Kindle's queue" in picks and "Book 05" in picks and "Book 33 — Audio Author (audiobook)" in picks
           and "FLAC Album" in picks, "coming with the next sync: the Kindle's queue, then the books, audiobook and albums chosen here")
+    page.click("nav.main button[data-panel=sync]")
+    page.wait_for_function("document.querySelector('#storage').innerText.includes('free of')")
+    st = page.locator("#storage").inner_text()
+    check("858 MB free of 1431 MB" in st and "Books:" in st and "next sync brings about" in st, "Sync: room on the Kindle, what's on it, what's coming")
 
     # a GZreader update (the release, and the file the page can read, served here)
     page.evaluate("""(wp) => {
@@ -201,7 +264,7 @@ with sync_playwright() as pw:
         return GZSync.Update.check();
     }""", WP)
     page.wait_for_selector("#o-update-row:not(.hidden)")
-    check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text() and "is out" in page.locator("#kindle").inner_text(),
+    check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text(),
           "update: a newer GZreader is offered for the Kindle")
 
     page.click("#sync")
@@ -227,6 +290,24 @@ with sync_playwright() as pw:
         await walk(root, '');
         return files;
     }""")
+    # test mode (?test): a pretend Kindle in the browser, no drive to choose
+    page.goto("about:blank")
+    page.evaluate("() => 0")
+    page2 = browser.new_page()
+    page2.on("pageerror", lambda e: errors.append(str(e)))
+    page2.goto("http://127.0.0.1:%d/GZreader/sync/?test" % WP)
+    page2.wait_for_selector("#unlock:not(.hidden)")
+    page2.click("#test-reset")  # (confirm() is answered by Playwright: dismissed)
+    check(page2.locator("#testbar").is_visible() and not page2.locator("#gate").is_visible(),
+          "test mode (?test): straight to the pretend Kindle's PIN, the banner says so")
+    page2.on("dialog", lambda d: d.accept())
+    page2.click("#test-reset")
+    page2.wait_for_function("document.querySelector('#unlock-title').innerText.includes('Choose a PIN') && document.activeElement.id === 'pin'")
+    page2.wait_for_timeout(300)
+    page2.fill("#pin", "0000"); page2.fill("#pin2", "0000"); page2.click("#unlock-go")
+    page2.wait_for_selector("#app:not(.hidden)")
+    check(page2.locator("#k-name").inner_text() == "Pretend Kindle" and page2.locator("#c-grimmory.on").count() == 0,
+          "test mode: started over, a fresh pretend Kindle to set up")
     browser.close()
 
 files = {k: base64.b64decode(v) for k, v in res.items()}
@@ -239,6 +320,13 @@ check(inbox.get("update", {}).get("version") == "1.30.0" and files.get(G + inbox
       and inbox["update"]["size"] == len(UPD), "update: brought (checked against its size and SHA-256), for GZreader to install")
 check(any(b["id"] == 5 for b in inbox.get("books", [])) and any(a["id"] == 33 for a in inbox.get("audiobooks", [])),
       "what was chosen on the page came too (a book and an audiobook)")
+marks = lib.get("marks", {}).get("1", {})
+hl = [a for a in state["annotations"] if a["text"] == "Hello"]
+check(set(inbox.get("created", {})) == {"usb-1", "usb-2"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
+      and any(b.get("title") == "Kindle" for b in state["bookmarks"]) and {"m:1", "m:2", "m:3", "m:4"} <= set(inbox["done"]),
+      "bookmarks and highlights: made, changed (by their new ids) and deleted on Grimmory; the new ids for the Kindle")
+check(any(a.get("note") == "from the Kindle" for a in marks.get("annotations", [])) and any(b.get("title") == "Kindle" for b in marks.get("bookmarks", [])),
+      "…and the books' bookmarks and highlights in the copy, for GZreader to merge")
 check(not errors, "no script errors" + ("" if not errors else ": " + "; ".join(errors)))
 check(set(inbox.get("done", [])) >= {"p:1:7", "s:1:2026-11-05T10:00:00Z", "r:2:4"},
       "jobs: positions, reading time and ratings reported done")
@@ -253,7 +341,8 @@ check(len(lib.get("books", [])) == 35 and lib["server"] == "http://127.0.0.1:%d"
       "library copy: every book, shelves, the books on the Kindle with their places, subtitles")
 covers = [k for k in files if k.startswith(G + "covers/") and k.endswith(".jpg")]
 small = files.get(G + "covers/1.jpg", b"")
-check(len(covers) == 35 and small[:2] == b"\xff\xd8" and len(small) < 5664, "small covers: one per book, shrunk JPEGs")
+check(len(covers) == 33 and small[:2] == b"\xff\xd8" and len(small) < 5664 and G + "covers/34.jpg" not in files,
+      "small covers: the EPUBs' own and the audiobooks' (Grimmory's can't be read by a web page; PDFs have none), shrunk JPEGs")
 details = [k for k in files if k.startswith(G + "details/")]
 check(len(details) == 35, "book pages: one per book")
 book = next((b for b in inbox.get("books", []) if b["id"] == 3), None)

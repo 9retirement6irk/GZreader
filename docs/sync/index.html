@@ -80,7 +80,33 @@
   .done { font-size: 18px; }
   details summary { cursor: pointer; color: var(--muted); }
   footer { color: var(--muted); font-size: 14px; margin-top: 30px; }
-  @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 26px; } .kindle svg { display: none; } }
+  .testbar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 10px 14px; margin: 10px 0; display: flex;
+    gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 15px; }
+  .testbar button { border-color: var(--paper); color: var(--paper); margin: 0; padding: 5px 10px; font-size: 14px; }
+  .bar-k { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 16px 0 0; }
+  .bar-k strong { font-size: 17px; }
+  .bar-k button { margin: 0; }
+  nav.main { display: flex; gap: 4px; margin: 14px 0 0; border-bottom: 1.5px solid var(--line); }
+  nav.main button { margin: 0 0 -1.5px; border: 1.5px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; padding: 10px 18px;
+    font-size: 16px; color: var(--muted); }
+  nav.main button.on { border-color: var(--line); background: var(--card); color: var(--ink); }
+  .panel { background: var(--card); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; padding: 18px; box-shadow: var(--shadow); }
+  .pin { font-size: 22px; letter-spacing: .3em; max-width: 240px; text-align: center; }
+  .crumbs { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; min-height: 34px; }
+  .crumbs button { margin: 0; padding: 4px 10px; font-size: 14px; }
+  .crumbs strong { overflow-wrap: anywhere; }
+  .cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .cats button { margin: 0; padding: 6px 12px; font-size: 14px; border-width: 1px; }
+  .cats button.on { background: var(--ink); color: var(--paper); }
+  ul.browse li.nav { cursor: pointer; }
+  ul.browse li.nav:hover { background: var(--soft); }
+  .count { font-size: 13px; color: var(--muted); flex: none; }
+  .meter { height: 14px; border-radius: 7px; background: var(--soft); overflow: hidden; display: flex; margin: 8px 0; }
+  .meter span { display: block; height: 100%; }
+  .legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 16px; font-size: 14px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+  @media (max-width: 680px) {
+    nav.main button { padding: 8px 12px; font-size: 15px; } .grid { grid-template-columns: 1fr; } h1 { font-size: 26px; } .kindle svg { display: none; } }
 </style>
 </head>
 <body>
@@ -97,120 +123,155 @@
     This page needs <strong>Chrome or Edge</strong> on a computer (Windows, Mac, Linux or a Chromebook): it writes to the Kindle's
     drive, and other browsers can't. Open <strong>9retirement6irk.github.io/GZreader/sync</strong> there.
   </div>
+  <div id="testbar" class="testbar hidden">
+    <span><strong>Test mode:</strong> a pretend Kindle kept in this browser. Nothing is written to a real Kindle.</span>
+    <span><button id="test-reset">Start the pretend Kindle over</button> <button id="test-leave">Leave test mode</button></span>
+  </div>
+  <p id="sso-wait" class="warn hidden">Finishing your Grimmory sign-in: choose the Kindle and unlock it.</p>
 
-  <section class="card" id="step-kindle">
-    <h2><span class="n">1</span> Your Kindle</h2>
+  <!-- 1. the Kindle first -->
+  <section class="card" id="gate">
+    <h2><span class="n">1</span> Connect your Kindle</h2>
     <p class="small muted">Exit GZreader on the Kindle first (Menu → Exit to the Kindle): its USB drive only appears while GZreader
-      isn't running. Then plug it in and choose the Kindle's drive (or its <em>documents/GZreader</em> folder).</p>
+      isn't running. Plug it in, then choose the Kindle's drive (or its <em>documents/GZreader</em> folder).</p>
     <div class="row">
       <button class="primary" id="pick">Choose the Kindle drive</button>
       <button id="reopen" class="hidden">Use the Kindle from last time</button>
     </div>
-    <div id="kindle" class="hidden" style="margin-top:12px"></div>
+    <p class="small muted" style="margin-top:12px">No Kindle at hand? <a href="?test">Try the page in test mode</a> with a pretend Kindle.</p>
+    <div id="kindle-problem" class="hidden"></div>
   </section>
 
-  <section class="card" id="step-connect">
-    <h2><span class="n">2</span> Connections</h2>
-    <p class="small muted">Remembered in this browser only, never written to the Kindle. Passwords aren't kept: Grimmory keeps
-      you signed in with a sign-in token.</p>
-    <div class="grid">
-      <div class="conn" id="c-grimmory">
-        <h3>Grimmory</h3>
-        <p class="status" id="g-status">Not connected</p>
-        <div id="g-form">
-          <label for="g-server">Server address</label>
-          <input type="url" id="g-server" placeholder="https://books.example.com" autocomplete="url">
-          <label for="g-user">Username</label>
-          <input type="text" id="g-user" autocomplete="username">
-          <label for="g-pass">Password</label>
-          <input type="password" id="g-pass" autocomplete="current-password">
-          <div class="row">
-            <button class="primary" id="g-login">Sign in</button>
-            <button id="g-sso">Single sign-on</button>
+  <!-- 2. its PIN -->
+  <section class="card hidden" id="unlock">
+    <h2><span class="n">2</span> <span id="unlock-title">Unlock</span></h2>
+    <p class="small muted" id="unlock-text"></p>
+    <form id="unlock-form" autocomplete="off">
+      <div class="row">
+        <input type="password" id="pin" class="pin" inputmode="numeric" autocomplete="off" aria-label="PIN">
+        <input type="password" id="pin2" class="pin hidden" inputmode="numeric" autocomplete="off" aria-label="The PIN again" placeholder="again">
+        <button class="primary" id="unlock-go" type="submit">Unlock</button>
+      </div>
+    </form>
+    <p class="small"><button class="link" id="unlock-skip">Don't keep sign-ins on the Kindle</button>
+      <span id="unlock-reset-wrap" class="hidden"> · <button class="link" id="unlock-reset">Forgot the PIN? Start over</button></span></p>
+    <p id="unlock-err" class="bad small hidden"></p>
+  </section>
+
+  <!-- 3. connections, content, sync -->
+  <main id="app" class="hidden">
+    <div class="bar-k">
+      <span><strong id="k-name">Kindle</strong> <span class="muted small" id="k-sub"></span></span>
+      <span><button id="k-lock" class="link">Lock</button> · <button id="k-other" class="link">Another Kindle</button></span>
+    </div>
+    <div id="kindle"></div>
+    <nav class="main" role="tablist">
+      <button role="tab" data-panel="connections" class="on">Connections</button>
+      <button role="tab" data-panel="content">Content</button>
+      <button role="tab" data-panel="sync">Sync</button>
+    </nav>
+
+    <section class="panel" data-panel="connections">
+      <p class="small muted" id="keep-note">Kept on the Kindle, locked with its PIN (any computer can sync it with the PIN).
+        Grimmory's password isn't kept: it stays signed in with a sign-in token.</p>
+      <div class="grid">
+        <div class="conn" id="c-grimmory">
+          <h3>Grimmory</h3>
+          <p class="status" id="g-status">Not connected</p>
+          <div id="g-form">
+            <label for="g-server">Server address</label>
+            <input type="url" id="g-server" placeholder="https://books.example.com" autocomplete="url">
+            <label for="g-user">Username</label>
+            <input type="text" id="g-user" autocomplete="username">
+            <label for="g-pass">Password</label>
+            <input type="password" id="g-pass" autocomplete="current-password">
+            <div class="row">
+              <button class="primary" id="g-login">Sign in</button>
+              <button id="g-sso">Single sign-on</button>
+            </div>
           </div>
+          <div id="g-on" class="hidden"><button id="g-out">Sign out</button></div>
         </div>
-        <div id="g-on" class="hidden"><button id="g-out">Sign out</button></div>
-      </div>
 
-      <div class="conn" id="c-memos">
-        <h3>Notes (Memos)</h3>
-        <p class="status" id="m-status">Not connected</p>
-        <div id="m-form">
-          <label for="m-server">Memos address</label>
-          <input type="url" id="m-server" placeholder="https://notes.example.com">
-          <label for="m-token">Access token <span class="muted">(Memos → Settings → Access Tokens)</span></label>
-          <input type="password" id="m-token" autocomplete="off">
-          <button class="primary" id="m-connect">Connect</button>
+        <div class="conn" id="c-memos">
+          <h3>Notes (Memos)</h3>
+          <p class="status" id="m-status">Not connected</p>
+          <div id="m-form">
+            <label for="m-server">Memos address</label>
+            <input type="url" id="m-server" placeholder="https://notes.example.com">
+            <label for="m-token">Access token <span class="muted">(Memos → Settings → Access Tokens)</span></label>
+            <input type="password" id="m-token" autocomplete="off">
+            <button class="primary" id="m-connect">Connect</button>
+          </div>
+          <div id="m-on" class="hidden"><button id="m-out">Disconnect</button></div>
         </div>
-        <div id="m-on" class="hidden"><button id="m-out">Disconnect</button></div>
+
+        <div class="conn" id="c-cal">
+          <h3>Calendars</h3>
+          <p class="status" id="cal-status">None yet</p>
+          <ul class="items" id="cal-list"></ul>
+          <details>
+            <summary>Add a calendar</summary>
+            <label for="cal-name">Name (optional)</label>
+            <input type="text" id="cal-name" placeholder="Family">
+            <label for="cal-url">Calendar link (webcal:// or https://…ics) or CalDAV calendar address</label>
+            <input type="url" id="cal-url" placeholder="https://calendar.example.com/…/basic.ics">
+            <label for="cal-user">CalDAV user name and app password (CalDAV only)</label>
+            <div class="row" style="flex-wrap:nowrap">
+              <input type="text" id="cal-user" placeholder="user">
+              <input type="password" id="cal-pass" placeholder="app password" autocomplete="off">
+            </div>
+            <div class="row">
+              <button id="cal-add">Add link</button>
+              <button id="cal-file">Add .ics files…</button>
+            </div>
+            <p class="small muted">Many calendar servers (Google, Proton…) don't let web pages read their links. Then download the
+              calendar as an .ics file and add the file: each sync on this computer reads it again.</p>
+          </details>
+        </div>
+
+        <div class="conn" id="c-plex">
+          <h3>Music (Plex)</h3>
+          <p class="status" id="p-status">Not connected</p>
+          <div id="p-form"><button class="primary" id="p-login">Sign in with Plex</button></div>
+          <div id="p-on" class="hidden"><button id="p-out">Sign out of Plex</button></div>
+        </div>
       </div>
+    </section>
 
-      <div class="conn" id="c-cal">
-        <h3>Calendars</h3>
-        <p class="status" id="cal-status">None yet</p>
-        <ul class="items" id="cal-list"></ul>
-        <details>
-          <summary>Add a calendar</summary>
-          <label for="cal-name">Name (optional)</label>
-          <input type="text" id="cal-name" placeholder="Family">
-          <label for="cal-url">Calendar link (webcal:// or https://…ics) or CalDAV calendar address</label>
-          <input type="url" id="cal-url" placeholder="https://calendar.example.com/…/basic.ics">
-          <label for="cal-user">CalDAV user name and app password (CalDAV only)</label>
-          <div class="row" style="flex-wrap:nowrap">
-            <input type="text" id="cal-user" placeholder="user">
-            <input type="password" id="cal-pass" placeholder="app password" autocomplete="off">
-          </div>
-          <div class="row">
-            <button id="cal-add">Add link</button>
-            <button id="cal-file">Add .ics files…</button>
-          </div>
-          <p class="small muted">Many calendar servers (Google, Proton…) don't let web pages read their links. Then download the
-            calendar as an .ics file and add the file: each sync reads it again, so keep it up to date where it is.</p>
-        </details>
+    <section class="panel hidden" data-panel="content">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="books" class="on">Books</button>
+        <button role="tab" data-tab="audio">Audiobooks</button>
+        <button role="tab" data-tab="music">Music</button>
       </div>
-
-      <div class="conn" id="c-plex">
-        <h3>Music (Plex)</h3>
-        <p class="status" id="p-status">Not connected</p>
-        <div id="p-form"><button class="primary" id="p-login">Sign in with Plex</button></div>
-        <div id="p-on" class="hidden"><button id="p-out">Sign out of Plex</button></div>
+      <div class="row" style="flex-wrap:nowrap">
+        <input type="search" id="b-search" placeholder="Search books">
+        <button id="b-go" style="margin:0">Search</button>
       </div>
-    </div>
-  </section>
+      <div class="cats" id="b-cats"></div>
+      <div class="crumbs" id="b-crumbs"></div>
+      <ul class="items browse" id="b-results"></ul>
+      <button id="b-more" class="hidden">More</button>
+      <h3 style="margin-top:16px">Coming with the next sync <span class="muted small" id="picks-size"></span></h3>
+      <ul class="items" id="picks"></ul>
+    </section>
 
-  <section class="card" id="step-choose">
-    <h2><span class="n">3</span> Choose what to bring</h2>
-    <p class="small muted" id="choose-note">Books and audiobooks from Grimmory, albums and playlists from Plex: they come with
-      the next sync, with what's in the Kindle's own sync queue.</p>
-    <div class="tabs" role="tablist">
-      <button role="tab" data-tab="books" class="on">Books</button>
-      <button role="tab" data-tab="audio">Audiobooks</button>
-      <button role="tab" data-tab="music">Music</button>
-    </div>
-    <div class="row" style="flex-wrap:nowrap">
-      <input type="search" id="b-search" placeholder="Search Grimmory">
-      <button id="b-go" style="margin:0">Search</button>
-    </div>
-    <div class="row small" id="b-lists"></div>
-    <ul class="items browse" id="b-results"></ul>
-    <button id="b-more" class="hidden">More</button>
-    <h3 style="margin-top:14px">Coming with the next sync</h3>
-    <ul class="items" id="picks"></ul>
-  </section>
-
-  <section class="card" id="step-sync">
-    <h2><span class="n">4</span> Sync</h2>
-    <div class="opts small">
-      <label><input type="checkbox" id="o-covers" checked> Small covers, to browse the Grimmory tab</label>
-      <label><input type="checkbox" id="o-details" checked> Book descriptions (their pages in the Grimmory tab)</label>
-      <label id="o-update-row" class="hidden"><input type="checkbox" id="o-update" checked> <span id="o-update-text">Update GZreader</span></label>
-    </div>
-    <button class="primary big" id="sync" disabled>Sync</button>
-    <progress id="bar" class="hidden" max="1" value="0"></progress>
-    <p id="phase" class="small muted"></p>
-    <p id="done" class="done hidden"></p>
-    <ol class="log" id="log"></ol>
-  </section>
+    <section class="panel hidden" data-panel="sync">
+      <h3>On the Kindle</h3>
+      <div id="storage" class="small muted">Measuring…</div>
+      <div class="opts small" style="margin-top:14px">
+        <label><input type="checkbox" id="o-covers" checked> Small covers, to browse the Grimmory tab</label>
+        <label><input type="checkbox" id="o-details" checked> Book descriptions (their pages in the Grimmory tab)</label>
+        <label id="o-update-row" class="hidden"><input type="checkbox" id="o-update" checked> <span id="o-update-text">Update GZreader</span></label>
+      </div>
+      <button class="primary big" id="sync" disabled>Sync</button>
+      <progress id="bar" class="hidden" max="1" value="0"></progress>
+      <p id="phase" class="small muted"></p>
+      <p id="done" class="done hidden"></p>
+      <ol class="log" id="log"></ol>
+    </section>
+  </main>
 
   <footer>
     Everything here runs in this browser: it talks to your own servers and writes to the Kindle, nothing else.

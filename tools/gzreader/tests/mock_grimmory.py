@@ -88,13 +88,18 @@ class H(BaseHTTPRequestHandler):
     # (the sync page, docs/sync, asks from a browser: cross-origin, like the real server)
     def end_headers(self):
         o = self.headers.get("Origin")
-        if o:
+        # (like Grimmory: its /api/v1/media/** chain has no CORS, so a web
+        # page can show those covers in <img> but not read them)
+        if o and not self.path.startswith("/api/v1/media/"):
             self.send_header("Access-Control-Allow-Origin", o)
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Accept-Ranges, Content-Range, Content-Length")
         super().end_headers()
 
     def do_OPTIONS(self):
+        if self.path.startswith("/api/v1/media/"):
+            self.send_response(200); self.send_header("Allow", "GET,HEAD,OPTIONS"); self.send_header("Content-Length", "0")
+            return self.end_headers()
         self.send_response(204)
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS, PATCH, REPORT, PROPFIND")
         self.send_header("Access-Control-Allow-Headers", ALLOW_HEADERS or (self.headers.get("Access-Control-Request-Headers") or ""))
@@ -124,6 +129,8 @@ class H(BaseHTTPRequestHandler):
     def _user(self):
         auth = self.headers.get("Authorization", "")
         tok = auth[7:] if auth.startswith("Bearer ") else None
+        if not tok and urlparse(self.path).path.startswith(("/api/v1/media/", "/api/v1/audiobooks/")):
+            tok = parse_qs(urlparse(self.path).query).get("token", [None])[0]   # (QueryParameterJwtFilter)
         if STATE["expire_next_access"] and tok:
             STATE["expire_next_access"] = False
             STATE["access"].pop(tok, None)
@@ -435,6 +442,33 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/v1/app/series":
             items = sorted(SERIES, key=lambda x: x["seriesName"].lower()) if q.get("sort") == ["name"] else SERIES
             return self._json(200, page_of(items, q, 20))
+        m = re.match(r"^/api/v1/epub/(\d+)/info$", u.path)   # EpubReaderController
+        if m:
+            if not self._user():
+                return self._json(401)
+            book = next((b for b in BOOKS if b["id"] == int(m.group(1))), None)
+            if not book or book["primaryFileType"] != "EPUB":
+                return self._json(404)
+            return self._json(200, {"containerPath": "META-INF/container.xml", "rootPath": "OEBPS/", "spine": [], "manifest": [],
+                                    "coverPath": "OEBPS/images/cover.jpg"})
+        m = re.match(r"^/api/v1/epub/(\d+)/file/(.+)$", u.path)
+        if m:
+            if not self._user():
+                return self._json(401)
+            if m.group(2) != "OEBPS/images/cover.jpg":
+                return self._json(404)
+            data = COVER_JPEG
+            self.send_response(200); self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            return
+        m = re.match(r"^/api/v1/audiobooks/(\d+)/cover$", u.path)   # (audiobook streaming chain: CORS)
+        if m:
+            if not self._user():
+                return self._json(401)
+            data = COVER_JPEG
+            self.send_response(200); self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            return
         m = re.match(r"^/api/v1/media/book/(\d+)/(audiobook-)?thumbnail$", u.path)
         if m:
             if not self._user():

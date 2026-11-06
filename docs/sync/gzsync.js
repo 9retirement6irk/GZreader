@@ -238,8 +238,8 @@ gets a password or token.
   // ------------------------------------------------------------ Grimmory
 
   var G = {
-    st: LS.get("grimmory", null), // { server, user, access, refresh, exp }
-    save: function () { LS.set("grimmory", G.st); },
+    st: null, // { server, user, access, refresh, exp } (in the Vault)
+    save: function () { Vault.save(); },
     connected: function () { return !!(G.st && G.st.server && G.st.refresh); },
     keep: function (d) {
       G.st.access = d.accessToken;
@@ -316,13 +316,16 @@ gets a password or token.
         response_type: "code", client_id: pd.clientId, redirect_uri: redirect, scope: pd.scopes || "openid profile email offline_access",
         code_challenge: challenge, code_challenge_method: "S256", state: st.state, nonce: nonce,
       }).slice(1);
-      var back = location.href.replace(/[?#].*$/, "");
+      var back = location.origin + location.pathname.replace(/index\.html$/, "");
       location.assign(redirect + "#back=" + encodeURIComponent(back) + "&go=" + encodeURIComponent(auth));
     },
+    // (the provider's answer was kept when the page loaded: the Kindle had to be unlocked first)
     finishSso: async function () {
-      var q = new URLSearchParams(location.search);
+      var back = null;
+      try { back = sessionStorage.getItem("gzsync.sso-return"); sessionStorage.removeItem("gzsync.sso-return"); } catch (e) {}
+      $("#sso-wait").classList.add("hidden");
+      var q = new URLSearchParams(back || "");
       if (!q.get("state") || !(q.get("code") || q.get("error"))) return false;
-      history.replaceState(null, "", location.pathname);
       var s = LS.get("sso", null);
       LS.del("sso");
       if (!s || s.state !== q.get("state") || Date.now() - s.at > 30 * 60 * 1000) throw new Error("That sign-in has expired. Try single sign-on again.");
@@ -341,8 +344,8 @@ gets a password or token.
   // ------------------------------------------------------------ Memos
 
   var M = {
-    st: LS.get("memos", null), // { server, token, prefix, user, userName }
-    save: function () { LS.set("memos", M.st); },
+    st: null, // { server, token, prefix, user, userName } (in the Vault)
+    save: function () { Vault.save(); },
     connected: function () { return !!(M.st && M.st.server && M.st.token); },
     req: async function (method, path, body, params) {
       var prefixes = [M.st.prefix, "/api/v1", "/api"].filter(function (p, i, a) { return p && a.indexOf(p) === i; });
@@ -404,13 +407,13 @@ gets a password or token.
   // ------------------------------------------------------------ Plex
 
   var P = {
-    st: LS.get("plex", null), // { token, user, server: { name, uri, token } }
+    st: null, // { token, user, server: { name, uri, token } } (in the Vault)
     clientId: function () {
-      var id = LS.get("plexClient", null);
-      if (!id) { id = "gzreader-sync-" + rand(8); LS.set("plexClient", id); }
+      var id = Vault.plexClient;
+      if (!id) { id = Vault.plexClient = "gzreader-sync-" + rand(8); Vault.save(); }
       return id;
     },
-    save: function () { LS.set("plex", P.st); },
+    save: function () { Vault.save(); },
     connected: function () { return !!(P.st && P.st.token && P.st.server && P.st.server.uri); },
     headers: function (token) {
       var h = { "X-Plex-Product": "GZreader", "X-Plex-Version": "sync", "X-Plex-Client-Identifier": P.clientId(),
@@ -529,8 +532,8 @@ gets a password or token.
   // ------------------------------------------------------------ calendars
 
   var Cal = {
-    list: LS.get("calendars", []), // { id, type = link | caldav | file, name, url, user, pass }
-    save: function () { LS.set("calendars", Cal.list); },
+    list: [], // { id, type = link | caldav | file, name, url, user, pass } (in the Vault; a file's handle: this browser)
+    save: function () { Vault.save(); },
     range: function (out) {
       var c = (out && out.calendar) || {};
       var day = new Date(); day.setHours(0, 0, 0, 0);
@@ -700,81 +703,246 @@ gets a password or token.
     },
   };
 
+  // ------------------------------------------------------------ sign-ins, kept on the Kindle with a PIN
+
+  // .gzsync/keys.json: the connections (Grimmory's sign-in token, the Memos
+  // token, Plex, calendar links and CalDAV app passwords), encrypted with a
+  // key made from the PIN (PBKDF2-SHA-256, 600 000 rounds, AES-256-GCM).
+  // Only this page reads it; GZreader on the Kindle never does. Without the
+  // PIN it's unreadable, but a short PIN can be guessed by someone who has
+  // the file and time: a longer one is safer.
+  var Vault = {
+    FILE: "keys.json", ROUNDS: 600000,
+    key: null, salt: null, mode: null, // "kindle" | "session"
+    plexClient: null,
+    exists: async function () { return !!(Drive.sync && await Drive.has(Drive.sync, Vault.FILE)); },
+    derive: async function (pin, salt) {
+      var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveKey"]);
+      return crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt: salt, iterations: Vault.ROUNDS }, base,
+        { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    },
+    b64: function (buf) { return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))); },
+    unb64: function (s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); },
+    data: function () { return { grimmory: G.st, memos: M.st, plex: P.st, plexClient: Vault.plexClient, calendars: Cal.list }; },
+    use: function (d) {
+      d = d || {};
+      G.st = d.grimmory || null; M.st = d.memos || null; P.st = d.plex || null;
+      Vault.plexClient = d.plexClient || null; Cal.list = Array.isArray(d.calendars) ? d.calendars : [];
+    },
+    // a new PIN (or the first one)
+    create: async function (pin) {
+      Vault.salt = crypto.getRandomValues(new Uint8Array(16));
+      Vault.key = await Vault.derive(pin, Vault.salt);
+      Vault.mode = "kindle";
+      await Vault.write();
+    },
+    unlock: async function (pin) {
+      var f = await Drive.readJSON(Drive.sync, Vault.FILE);
+      if (!f || !f.salt || !f.iv || !f.data) throw new Error("The Kindle's sign-ins file is damaged: start over.");
+      var salt = Vault.unb64(f.salt), key = await Vault.derive(pin, salt);
+      var plain;
+      try { plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: Vault.unb64(f.iv) }, key, Vault.unb64(f.data)); }
+      catch (e) { throw new Error("That isn't this Kindle's PIN."); }
+      Vault.salt = salt; Vault.key = key; Vault.mode = "kindle";
+      Vault.use(JSON.parse(new TextDecoder().decode(plain)));
+    },
+    // (no PIN: the sign-ins last as long as this tab)
+    session: function () {
+      Vault.mode = "session"; Vault.key = null;
+      try { Vault.use(JSON.parse(sessionStorage.getItem("gzsync.session") || "null")); } catch (e) { Vault.use(null); }
+    },
+    lock: function () { Vault.key = null; Vault.mode = null; Vault.use(null); },
+    chain: Promise.resolve(),
+    // every change written at once (Grimmory changes its sign-in token at each refresh), one write at a time
+    save: function () {
+      Vault.chain = Vault.chain.then(Vault.write).catch(function (e) { log("Couldn't keep the sign-ins on the Kindle: " + e.message, "bad"); });
+      return Vault.chain;
+    },
+    write: async function () {
+      if (Vault.mode === "session") { try { sessionStorage.setItem("gzsync.session", JSON.stringify(Vault.data())); } catch (e) {} return; }
+      if (Vault.mode !== "kindle" || !Vault.key || !Drive.sync) return;
+      var iv = crypto.getRandomValues(new Uint8Array(12));
+      var data = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, Vault.key, new TextEncoder().encode(JSON.stringify(Vault.data())));
+      await Drive.write(Drive.sync, Vault.FILE, JSON.stringify({ format: 1, kdf: "PBKDF2-SHA256", rounds: Vault.ROUNDS,
+        cipher: "AES-256-GCM", salt: Vault.b64(Vault.salt), iv: Vault.b64(iv), data: Vault.b64(data), written_at: Math.floor(Date.now() / 1000) }));
+    },
+    forget: async function () { await Drive.remove(Drive.sync, Vault.FILE); Vault.lock(); },
+  };
+
+  // What's chosen on the page for the next sync, kept on the Kindle (.gzsync/picks.json: no secrets)
+  var Picks = {
+    d: { books: [], music: [] },
+    load: async function () {
+      var d = Drive.sync && await Drive.readJSON(Drive.sync, "picks.json");
+      Picks.d = { books: (d && d.books) || [], music: (d && d.music) || [] };
+    },
+    save: function () { if (Drive.sync) Drive.write(Drive.sync, "picks.json", JSON.stringify(Picks.d)).catch(function () {}); },
+  };
+
   // ------------------------------------------------------------ the Kindle and its outbox
 
-  var K = { out: null, handle: null };
+  var K = { out: null, handle: null, test: false };
 
+  function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+  // 1. the drive: its GZreader folder, the Kindle's outbox
   async function openDrive(handle, quiet) {
-    if (!(await permitted(handle, "readwrite"))) { if (!quiet) log("The browser wasn't allowed to use the Kindle's drive.", "bad"); return false; }
+    if (!(await permitted(handle, "readwrite"))) { if (!quiet) problem("The browser wasn't allowed to use the Kindle's drive."); return false; }
     var where = await Drive.locate(handle);
     if (!where) {
-      showKindle(null, "No GZreader folder there. Choose the Kindle's drive itself (it has a documents folder), with GZreader installed and started once.");
+      problem("No GZreader folder there. Choose the Kindle's drive itself (it has a documents folder), with GZreader installed and started once.");
       return false;
     }
     Drive.root = handle; Drive.gz = where.gz; Drive.sync = where.sync;
     K.handle = handle;
-    if (!window.GZSYNC_TEST) await idb.set("drive", handle); // (tests: a folder in the browser's own storage)
+    if (!K.test && !window.GZSYNC_TEST) await idb.set("drive", handle); // (test mode: a folder in the browser's own storage)
     K.out = await Drive.readJSON(Drive.sync, "outbox.json");
     K.pending = await Drive.readJSON(Drive.sync, "inbox.json");
-    showKindle(K.out);
-    renderPicks();
-    Browse.show();
-    Update.check();
+    await Picks.load();
+    show("#kindle-problem", false);
+    await askPin();
     return true;
   }
 
-  function kindleIcon() {
-    var ns = "http://www.w3.org/2000/svg";
-    var s = document.createElementNS(ns, "svg");
-    s.setAttribute("width", "46"); s.setAttribute("height", "60"); s.setAttribute("viewBox", "0 0 46 60");
-    s.innerHTML = '<rect x="2" y="2" width="42" height="56" rx="5" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-      + '<rect x="8" y="8" width="30" height="34" fill="none" stroke="currentColor" stroke-width="1.5"/>'
-      + '<path d="M12 16h22M12 22h22M12 28h14" stroke="currentColor" stroke-width="1.5"/>'
-      + '<path d="M10 48h26M10 52h26" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/>';
-    return s;
+  function problem(text) {
+    var box = $("#kindle-problem");
+    box.textContent = "";
+    box.appendChild(el("p", { class: "bad" }, text));
+    show("#kindle-problem", true);
   }
 
-  function showKindle(out, problem) {
+  // 2. its PIN: unlock the sign-ins kept on it, or set one
+  async function askPin() {
+    var has = await Vault.exists();
+    $("#unlock-title").textContent = has ? "Unlock the Kindle's connections" : "Choose a PIN for this Kindle";
+    $("#unlock-text").textContent = has
+      ? "Enter the PIN you chose for this Kindle: its sign-ins (Grimmory, Memos, Plex, calendars) are kept on it, locked with it."
+      : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 4 characters at least; a longer one is safer (someone with the Kindle could try to guess a short one).";
+    show("#pin2", !has);
+    $("#unlock-go").textContent = has ? "Unlock" : "Keep sign-ins on the Kindle";
+    show("#unlock-reset-wrap", has);
+    show("#unlock-err", false);
+    $("#pin").value = ""; $("#pin2").value = "";
+    show("#gate", false);
+    show("#unlock", true);
+    $("#pin").focus();
+  }
+
+  async function unlocked() {
+    show("#unlock", false);
+    show("#app", true);
+    $("#keep-note").textContent = Vault.mode === "kindle"
+      ? "Kept on the Kindle, locked with its PIN (any computer can sync it with the PIN). Grimmory's password isn't kept: it stays signed in with a sign-in token."
+      : "Not kept on the Kindle: these sign-ins last until this tab is closed. Grimmory's password isn't kept.";
+    showKindle(K.out);
+    renderConnections();
+    renderPicks();
+    setPanel(G.connected() || M.connected() || P.connected() || Cal.list.length ? "content" : "connections");
+    Update.check();
+    measure();
+    try {
+      if (await G.finishSso()) { renderConnections(); setPanel("connections"); alertIn($("#g-out"), "Signed in to Grimmory."); }
+    } catch (e) { setPanel("connections"); alertIn($("#g-sso"), e.message); }
+  }
+
+  function setPanel(name) {
+    document.querySelectorAll("nav.main button").forEach(function (b) { b.classList.toggle("on", b.dataset.panel === name); });
+    document.querySelectorAll("section.panel").forEach(function (p) { p.classList.toggle("hidden", p.dataset.panel !== name); });
+    if (name === "content" && !$("#b-results").children.length) Browse.show();
+    if (name === "sync") measure();
+  }
+
+  function showKindle(out) {
+    var k = (out && out.kindle) || {};
+    $("#k-name").textContent = K.test ? "Pretend Kindle" : (k.name || "Kindle");
+    var sub = [];
+    if (out && out.gzreader) sub.push("GZreader " + out.gzreader);
+    var jobs = ((out && out.jobs) || []).length, notes = (((out && out.notes) || {}).queue || []).length;
+    if (jobs) sub.push(jobs + " reading update" + (jobs === 1 ? "" : "s") + " to send");
+    if (notes) sub.push(notes + " note change" + (notes === 1 ? "" : "s"));
+    if (K.pending) sub.push("a sync not taken in yet (this one adds to it)");
+    $("#k-sub").textContent = sub.length ? "· " + sub.join(" · ") : "";
     var box = $("#kindle");
-    box.classList.remove("hidden");
     box.textContent = "";
-    if (problem) { box.appendChild(el("p", { class: "bad" }, problem)); updateSyncButton(); return; }
-    var row = el("div", { class: "kindle" });
-    row.appendChild(kindleIcon());
-    var info = el("div");
     if (!out) {
-      info.appendChild(el("strong", null, "GZreader folder found"));
-      info.appendChild(el("p", { class: "small muted" }, "GZreader hasn't left its sync file yet: update it to 1.24 or newer, start it once, then exit it and plug the Kindle in again. You can still sync: the next start takes in what's brought."));
-    } else {
-      var k = out.kindle || {};
-      info.appendChild(el("strong", null, (k.name || "Kindle") + (out.gzreader ? " · GZreader " + out.gzreader : "")));
-      var jobs = (out.jobs || []).length, q = out.queue || [], notes = ((out.notes || {}).queue || []).length;
-      var kb = q.reduce(function (a, x) { return a + (Number(x.size_kb) || 0); }, 0);
-      var lines = [];
-      lines.push(jobs ? jobs + " reading update" + (jobs === 1 ? "" : "s") + " to send to Grimmory" : "No reading updates waiting");
-      if (q.length) lines.push(q.length + " in the sync queue" + (kb ? " (" + mb(kb * 1024) + ")" : ""));
-      if (notes) lines.push(notes + " note change" + (notes === 1 ? "" : "s") + " to send to Memos");
-      if (out.written_at) lines.push("Kindle's list from " + new Date(out.written_at * 1000).toLocaleString());
-      if (K.pending) lines.push("A sync GZreader hasn't taken in yet is there: this one adds to it.");
-      lines.forEach(function (l) { info.appendChild(el("div", { class: "small muted" }, l)); });
-      if (q.length) {
-        var ul = el("ul", { class: "items" });
-        q.forEach(function (x) {
-          var li = el("li");
-          li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "")));
-          li.appendChild(el("span", { class: "small muted" }, x.kind === "audiobook" ? "audiobook" : (x.format || "")));
-          ul.appendChild(li);
-        });
-        info.appendChild(ul);
-      }
-      if (out.grimmory && G.st && G.st.server && normalizeServer(out.grimmory.server) !== G.st.server) {
-        info.appendChild(el("p", { class: "bad small" }, "This Kindle was last synced with " + hostOf(out.grimmory.server) + "; this browser is signed in to " + hostOf(G.st.server) + "."));
-      }
-      $("#c-plex").classList.toggle("hidden", k.audio === false);
+      box.appendChild(el("p", { class: "warn small" }, "GZreader hasn't left its sync file on this Kindle yet: update it to 1.24 or newer, start it once, then exit it and plug the Kindle in again. You can still sync: the next start takes in what's brought."));
+    } else if (out.grimmory && G.st && G.st.server && normalizeServer(out.grimmory.server) !== G.st.server) {
+      box.appendChild(el("p", { class: "warn small" }, "This Kindle was last synced with " + hostOf(out.grimmory.server) + "; the connections here use " + hostOf(G.st.server) + "."));
     }
-    row.appendChild(info);
-    box.appendChild(row);
+    $("#c-plex").classList.toggle("hidden", k.audio === false);
     updateSyncButton();
+  }
+
+  // what's on the Kindle, and how much room is left (the Sync tab)
+  async function dirSize(dir, skip) {
+    var total = 0;
+    try {
+      for await (var entry of dir.values()) {
+        if (skip && skip(entry.name)) continue;
+        if (entry.kind === "file") { try { total += (await entry.getFile()).size; } catch (e) {} }
+        else total += await dirSize(entry);
+      }
+    } catch (e) {}
+    return total;
+  }
+  var COLORS = { books: "#3b6ea5", audiobooks: "#a5673b", music: "#6a3ba5", copy: "#3ba57a", notes: "#a53b6a" };
+  async function measure() {
+    var box = $("#storage");
+    if (!Drive.gz || !box) return;
+    var gz = Drive.gz;
+    // (as GZreader's Settings → Storage counts them: the Audiobooks and Music folders hold stand-ins)
+    var ab = await Drive.tryDir(gz, ".audiobooks"), mu = await Drive.tryDir(gz, ".music"), cp = Drive.sync;
+    var parts = [
+      { key: "books", label: "Books", bytes: await dirSize(gz, function (n) { return n[0] === "." || n === "Audiobooks" || n === "Music"; }) },
+      { key: "audiobooks", label: "Audiobooks", bytes: ab ? await dirSize(ab) : 0 },
+      { key: "music", label: "Music", bytes: mu ? await dirSize(mu) : 0 },
+    ];
+    parts.push({ key: "copy", label: "Library copy, covers and sync files", bytes: await dirSize(cp, function (n) { return n === "in" || n === Vault.FILE; }) });
+    var notes = Drive.root && await Drive.tryDir(Drive.root, "koreader/cache/gzreader-notes");
+    if (notes) parts.push({ key: "notes", label: "Notes' pictures", bytes: await dirSize(notes) });
+    var disk = (K.out || {}).disk;
+    var coming = Picks.d.books.concat((K.out || {}).queue || []).reduce(function (a, q) { return a + (Number(q.size_kb) || 0) * 1024; }, 0);
+    box.textContent = "";
+    if (disk && disk.total) {
+      var head = el("div", null, mb(disk.available) + " free of " + mb(disk.total) + " (as GZreader last saw it)");
+      box.appendChild(head);
+      var meter = el("div", { class: "meter", role: "img", "aria-label": "Space used on the Kindle" });
+      parts.forEach(function (p) {
+        if (!p.bytes) return;
+        var span = el("span"); span.style.width = Math.max(0.5, p.bytes / disk.total * 100) + "%"; span.style.background = COLORS[p.key]; span.title = p.label;
+        meter.appendChild(span);
+      });
+      box.appendChild(meter);
+    }
+    var legend = el("div", { class: "legend" });
+    parts.forEach(function (p) {
+      var d = el("div"); var i = el("i"); i.style.background = COLORS[p.key];
+      d.appendChild(i); d.appendChild(document.createTextNode(p.label + ": " + mb(p.bytes))); legend.appendChild(d);
+    });
+    box.appendChild(legend);
+    if (coming) {
+      var warn = disk && disk.available && coming > disk.available * 0.9;
+      box.appendChild(el("p", { class: warn ? "bad" : "" }, "The next sync brings about " + mb(coming) + (warn ? ": more than there's room for." : ".")));
+    }
+  }
+
+  // test mode (?test): a pretend Kindle in this browser's own storage
+  var TEST_OUTBOX = {
+    format: 1, gzreader: "1.24.0", written_at: 0,
+    kindle: { model: "Kindle2", name: "Pretend Kindle 2", id: "test00", audio: true },
+    jobs: [], queue: [], have: { books: {}, audiobooks: [], music: [] },
+    notes: { queue: [], keep: 100, files: [] }, calendar: { days_back: 14, days_ahead: 90 },
+    disk: { total: 1.4 * 1073741824, available: 1.1 * 1073741824 },
+  };
+  async function testKindle(reset) {
+    var root = await navigator.storage.getDirectory();
+    if (reset) { for await (var n of root.keys()) await root.removeEntry(n, { recursive: true }); }
+    var sync = await Drive.dir(root, "documents/GZreader/.gzsync", true);
+    if (!(await Drive.has(sync, "outbox.json"))) {
+      var o = JSON.parse(JSON.stringify(TEST_OUTBOX)); o.written_at = Math.floor(Date.now() / 1000);
+      await Drive.write(sync, "outbox.json", JSON.stringify(o));
+    }
+    return root;
   }
 
   // ------------------------------------------------------------ the sync
@@ -818,17 +986,32 @@ gets a password or token.
     var jobs = (out.jobs || []).filter(function (j) { return !done.has(j.id); });
     if (!jobs.length) return;
     phase("Sending reading updates to Grimmory…");
-    var sent = 0;
+    var sent = 0, marks = 0;
+    inbox.created = inbox.created || {};
     for (var i = 0; i < jobs.length; i++) {
       var j = jobs[i];
-      var r;
-      try { r = await G.fetch(j.path, { method: j.method, body: j.body }); } catch (e) {
+      var r, path = j.path, body = j.body;
+      if (j.kind === "mark") {
+        // a bookmark or highlight: ids made on the Kindle ("usb-…") are Grimmory's once created
+        var ref = j.ref != null ? String(j.ref) : null;
+        if (ref && inbox.created[ref]) ref = String(inbox.created[ref]);
+        if (ref && /^usb-/.test(ref)) { inbox.done.push(j.id); continue; } // (its creation never went through)
+        path = path.replace("{id}", encodeURIComponent(ref || ""));
+      }
+      try { r = await G.fetch(path, { method: j.method, body: body }); } catch (e) {
         inbox.failed.push({ id: j.id, error: "unreachable" });
         log("Couldn't reach Grimmory to send the rest: " + e.message, "bad");
         break;
       }
-      if (r.ok) { inbox.done.push(j.id); sent++; }
-      else if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 408 && r.status !== 429) {
+      if (r.ok) {
+        inbox.done.push(j.id);
+        if (j.kind === "mark") {
+          marks++;
+          if (j.temp) { try { var made = await r.json(); if (made && made.id != null) inbox.created[j.temp] = made.id; } catch (e) {} }
+        } else sent++;
+      } else if (j.kind === "mark" && (r.status === 404 || r.status === 409 || r.status === 400)) {
+        inbox.done.push(j.id); // (already gone, or already there: the next sync's lists show it)
+      } else if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 408 && r.status !== 429) {
         // refused for good (a book gone from Grimmory): not sent again
         if (j.kind === "progress") inbox.failed.push({ id: j.id, error: "http_" + r.status });
         else inbox.done.push(j.id);
@@ -836,7 +1019,7 @@ gets a password or token.
       bar.set(i + 1, jobs.length);
     }
     await saveInbox(inbox);
-    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + " to Grimmory.", "ok");
+    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark and highlight change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
   }
 
   // 2. the library copy
@@ -888,6 +1071,16 @@ gets a password or token.
         full[id] = keep;
       } catch (e) {}
     });
+    // their bookmarks and highlights (GZreader compares and merges them when the book opens)
+    var marks = {};
+    phase("Reading bookmarks and highlights…");
+    await pool(Object.keys(have.books || {}), 4, async function (id) {
+      try {
+        var bms = await G.json("/api/v1/bookmarks/book/" + id);
+        var ans = await G.json("/api/v1/annotations/book/" + id);
+        marks[id] = { bookmarks: Array.isArray(bms) ? bms : [], annotations: Array.isArray(ans) ? ans : [] };
+      } catch (e) {}
+    });
     // subtitles (only the web app's list has them)
     var subtitles = {};
     phase("Reading subtitles…");
@@ -902,7 +1095,7 @@ gets a password or token.
       }
     } catch (e) {}
     var copy = { format: FORMAT, written_at: Math.floor(Date.now() / 1000), server: G.st.server, user: G.st.user,
-      books: books, libraries: libraries, shelves: shelves, lists: lists, full: full, subtitles: subtitles };
+      books: books, libraries: libraries, shelves: shelves, lists: lists, full: full, subtitles: subtitles, marks: marks };
     await Drive.write(Drive.sync, "library.json", JSON.stringify(copy));
     inbox.grimmory = { server: G.st.server, user: G.st.user };
     log("Library copy: " + books.length + " books and audiobooks, " + shelves.length + " shelves.", "ok");
@@ -925,7 +1118,29 @@ gets a password or token.
     return new Promise(function (ok) { canvas.toBlob(ok, "image/jpeg", 0.8); });
   }
 
+  // A book's cover, as a page can read it. Grimmory's covers (/api/v1/media)
+  // don't let other web pages read them (no CORS: an <img> can show them,
+  // a script can't save them); the EPUB's own cover image (/api/v1/epub) and
+  // an audiobook's cover (/api/v1/audiobooks/…/cover) can be read.
+  var mediaReadable = null; // (tried once a sync)
+  async function coverOf(id, audio) {
+    if (mediaReadable !== false) {
+      try {
+        var r = await G.fetch("/api/v1/media/book/" + id + (audio ? "/audiobook-thumbnail" : "/thumbnail"));
+        mediaReadable = true;
+        return r;
+      } catch (e) { if (mediaReadable === true) return null; mediaReadable = false; }
+    }
+    if (audio) return G.fetch("/api/v1/audiobooks/" + id + "/cover");
+    var info = await G.fetch("/api/v1/epub/" + id + "/info");
+    if (!info.ok) return null; // (not an EPUB: no cover a page can read)
+    var cp = (await info.json()).coverPath;
+    if (!cp) return null;
+    return G.fetch("/api/v1/epub/" + id + "/file/" + cp.split("/").map(encodeURIComponent).join("/"));
+  }
+
   async function covers(books) {
+    mediaReadable = null;
     var index = (await Drive.readJSON(Drive.sync, "covers/index.json")) || {};
     var todo = [];
     books.forEach(function (b) {
@@ -939,8 +1154,8 @@ gets a password or token.
     var n = 0, got = 0;
     await pool(todo, 6, async function (t) {
       try {
-        var r = await G.fetch("/api/v1/media/book/" + t.id + (t.audio ? "/audiobook-thumbnail" : "/thumbnail"), { headers: { Accept: "image/*" } });
-        if (r.status === 404) index[t.name] = t.stamp + ":none";
+        var r = await coverOf(t.id, t.audio);
+        if (!r || r.status === 404) index[t.name] = t.stamp + ":none";
         else if (r.ok) {
           var small = await shrink(await r.blob(), COVER_W, t.audio ? COVER_W : COVER_H);
           await Drive.write(Drive.sync, "covers/" + t.name + ".jpg", small);
@@ -1058,7 +1273,7 @@ gets a password or token.
       await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
     }
     try {
-      var c = await G.fetch("/api/v1/media/book/" + q.id + "/audiobook-thumbnail", { headers: { Accept: "image/*" } });
+      var c = await G.fetch("/api/v1/audiobooks/" + q.id + "/cover");
       if (c.ok) await Drive.write(Drive.sync, dir + "/cover.jpg", await c.blob());
     } catch (e) {}
     inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title });
@@ -1157,8 +1372,8 @@ gets a password or token.
   }
 
   // 6. music
-  function picksKey() { return "music." + kid(); }
-  function picks() { return LS.get(picksKey(), []); }
+  function picks() { return Picks.d.music; }
+  function setPicks(l) { Picks.d.music = l; Picks.save(); }
   function safe(s) { return String(s == null ? "" : s).replace(/[^A-Za-z0-9\-]/g, "_"); }
 
   async function syncMusic(out, inbox) {
@@ -1282,11 +1497,12 @@ gets a password or token.
       if (P.connected() && ((out.kindle || {}).audio !== false) && picks().length) {
         try { await syncMusic(out, inbox); } catch (e) { log("Music: " + e.message, "bad"); }
       }
-      LS.set(picksKey(), picks().filter(function (p) {
+      setPicks(picks().filter(function (p) {
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
+      await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)
       phase("");
       bar.hide();
       var secs = Math.round((Date.now() - t0) / 1000);
@@ -1296,7 +1512,8 @@ gets a password or token.
       K.pending = inbox;
       showKindle(K.out);
       renderPicks();
-      Browse.show();
+      $("#b-results").textContent = "";
+      measure();
     } catch (e) {
       phase("");
       bar.hide();
@@ -1346,15 +1563,14 @@ gets a password or token.
     $("#p-form").classList.toggle("hidden", p);
     $("#p-on").classList.toggle("hidden", !p);
     renderPicks();
-    if (Drive.sync && !$("#b-results").children.length) Browse.show();
+    $("#b-results").textContent = ""; // (the Content tab loads again with the new connections)
     updateSyncButton();
   }
 
   // ------------------------------------------------------------ choosing what to bring
 
-  function kid() { return ((K.out || {}).kindle || {}).id || "kindle"; }
-  function bookPicks() { return LS.get("books." + kid(), []); }
-  function setBookPicks(l) { LS.set("books." + kid(), l); }
+  function bookPicks() { return Picks.d.books; }
+  function setBookPicks(l) { Picks.d.books = l; Picks.save(); }
 
   // where a book or album stands: on the Kindle, queued there, brought, chosen here
   function standing(kind, id) {
@@ -1372,86 +1588,165 @@ gets a password or token.
   }
   var STANDING = { here: "On the Kindle", brought: "Brought", queued: "In its queue", chosen: "Added ✓" };
 
+  // The Content tab, as the Grimmory tab on the Kindle: Recently added, A–Z,
+  // Libraries, Shelves, Authors, Series, a search; Plex's albums, playlists.
+  // Each list is a view; opening one from another (a library's books) can go back.
   var Browse = {
-    tab: "books", page: 0, more: null, urls: [],
-    clear: function () {
-      Browse.urls.forEach(function (u) { URL.revokeObjectURL(u); });
-      Browse.urls = [];
-      $("#b-results").textContent = "";
-      $("#b-more").classList.add("hidden");
-    },
+    tab: "books", cat: null, stack: [], more: null,
+    clear: function () { $("#b-results").textContent = ""; show("#b-more", false); Browse.more = null; },
     note: function (text) { Browse.clear(); $("#b-results").appendChild(el("li", { class: "small muted" }, text)); },
+    CATS: {
+      books: [["recent", "Recently added"], ["az", "A–Z"], ["libraries", "Libraries"], ["shelves", "Shelves"], ["authors", "Authors"], ["series", "Series"]],
+      audio: [["recent", "Recently added"], ["az", "A–Z"], ["libraries", "Libraries"], ["authors", "Authors"], ["series", "Series"]],
+      music: [["albums", "Albums A–Z"], ["playlists", "Playlists"]],
+    },
     setTab: function (tab) {
       Browse.tab = tab;
       document.querySelectorAll(".tabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.tab === tab); });
       $("#b-search").value = "";
       $("#b-search").placeholder = tab === "music" ? "Search albums and playlists" : tab === "audio" ? "Search audiobooks" : "Search books";
-      var lists = $("#b-lists");
-      lists.textContent = "";
-      var add = function (label, fn) { var b = el("button", { class: "link" }, label); b.onclick = busy(b, fn); lists.appendChild(b); };
-      if (tab === "music") {
-        add("Albums A–Z", function () { return Browse.albums(0); });
-        add("Playlists", Browse.playlists);
-      } else {
-        add("Recently added", function () { return Browse.grimmory(null, 0); });
-        add("A–Z", function () { return Browse.grimmory(null, 0, "title"); });
-      }
-      Browse.show();
+      var cats = $("#b-cats");
+      cats.textContent = "";
+      Browse.CATS[tab].forEach(function (c) {
+        var b = el("button", { "data-cat": c[0] }, c[1]);
+        b.onclick = function () { Browse.open(c[0]); };
+        cats.appendChild(b);
+      });
+      Browse.open(Browse.CATS[tab][0][0]);
     },
-    show: function () {
-      if (!Drive.sync) return Browse.note("Choose the Kindle first (step 1).");
-      if (Browse.tab === "music") {
-        if ((((K.out || {}).kindle) || {}).audio === false) return Browse.note("This Kindle has no speaker or headphone jack.");
-        if (!P.connected()) return Browse.note("Sign in with Plex above to choose music.");
-        return Browse.albums(0).catch(function (e) { Browse.note(e.message); });
-      }
-      if (Browse.tab === "audio" && (((K.out || {}).kindle) || {}).audio === false) return Browse.note("This Kindle has no speaker or headphone jack.");
-      if (!G.connected()) return Browse.note("Sign in to Grimmory above to choose books.");
-      return Browse.grimmory(null, 0).catch(function (e) { Browse.note(e.message); });
+    ready: function () {
+      if (Browse.tab !== "books" && (((K.out || {}).kindle) || {}).audio === false) { Browse.note("This Kindle has no speaker or headphone jack."); return false; }
+      if (Browse.tab === "music" && !P.connected()) { Browse.note("Sign in with Plex (Connections) to choose music."); return false; }
+      if (Browse.tab !== "music" && !G.connected()) { Browse.note("Sign in to Grimmory (Connections) to choose books."); return false; }
+      return true;
     },
-    search: async function () {
-      var q = $("#b-search").value.trim();
-      if (Browse.tab === "music") {
-        if (!P.connected()) return Browse.show();
-        if (!q) return Browse.albums(0);
-        var d = await (await P.get("/hubs/search", { query: q, limit: 30 })).json();
-        var found = [];
-        ((d.MediaContainer || {}).Hub || []).forEach(function (hub) {
-          if (hub.type === "album" || hub.type === "playlist") (hub.Metadata || []).forEach(function (m) { var it = P.item(m); if (it && it.key) found.push(it); });
-        });
-        Browse.clear();
-        return Browse.musicItems(found);
-      }
-      if (!G.connected()) return Browse.show();
-      return Browse.grimmory(q || null, 0);
+    show: function () { Browse.setTab(Browse.tab); },
+    // a category: the start of a new trail
+    open: function (cat) {
+      Browse.cat = cat;
+      document.querySelectorAll("#b-cats button").forEach(function (b) { b.classList.toggle("on", b.dataset.cat === cat); });
+      Browse.stack = [];
+      if (!Browse.ready()) return;
+      var label = (Browse.CATS[Browse.tab].filter(function (c) { return c[0] === cat; })[0] || [, ""])[1];
+      Browse.push(label, Browse.loader(cat));
     },
-    grimmory: async function (q, page, sort) {
+    loader: function (cat) {
       var audio = Browse.tab === "audio";
-      if (page === 0) Browse.note("Loading…");
-      var types = audio ? ["AUDIOBOOK"] : READABLE;
-      var d;
-      if (q) d = await G.json("/api/v1/app/books" + qs({ search: q, page: page, size: 25, fileType: types, sort: "title", dir: "asc" }));
-      else d = await G.json("/api/v1/app/books" + qs({ page: page, size: 25, fileType: types, sort: sort || "addedOn", dir: sort ? "asc" : "desc" }));
+      if (cat === "recent") return function (p) { return Browse.books({ sort: "addedOn", dir: "desc" }, p); };
+      if (cat === "az") return function (p) { return Browse.books({ sort: "title", dir: "asc" }, p); };
+      if (cat === "libraries") return Browse.libraries;
+      if (cat === "shelves") return Browse.shelves;
+      if (cat === "authors") return function (p) { return Browse.named("/api/v1/app/authors", "authors", p); };
+      if (cat === "series") return function (p) { return Browse.named("/api/v1/app/series", "series", p); };
+      if (cat === "albums") return Browse.albums;
+      if (cat === "playlists") return Browse.playlists;
+      return function () { Browse.note(audio ? "" : ""); };
+    },
+    push: function (title, load) {
+      Browse.stack.push({ title: title, load: load });
+      Browse.run();
+    },
+    back: function () { Browse.stack.pop(); Browse.run(); },
+    run: function () {
+      var view = Browse.stack[Browse.stack.length - 1];
+      var crumbs = $("#b-crumbs");
+      crumbs.textContent = "";
+      if (!view) return;
+      if (Browse.stack.length > 1) {
+        var b = el("button", null, "← " + Browse.stack[Browse.stack.length - 2].title);
+        b.onclick = Browse.back;
+        crumbs.appendChild(b);
+      }
+      crumbs.appendChild(el("strong", null, view.title));
+      Browse.note("Loading…");
+      Promise.resolve(view.load(0)).catch(function (e) { Browse.note(e.message || String(e)); });
+    },
+    pageMore: function (fn) { Browse.more = fn; show("#b-more", !!fn); },
+    // books (and audiobooks): a page of Grimmory's list with these filters
+    books: async function (params, page) {
+      var audio = Browse.tab === "audio";
+      var d = await G.json("/api/v1/app/books" + qs(Object.assign({ page: page, size: 30, fileType: audio ? ["AUDIOBOOK"] : READABLE }, params)));
       if (page === 0) Browse.clear();
       var list = (d.content || []).filter(function (b) {
         var t = String(b.primaryFileType || "").toUpperCase();
         return !b.isPhysical && (audio ? t === "AUDIOBOOK" : t && t !== "AUDIOBOOK");
       });
-      if (q) { var ql = q.toLowerCase(); list = list.filter(function (b) {
-        return (b.title || "").toLowerCase().indexOf(ql) >= 0 || (b.authors || []).join(" ").toLowerCase().indexOf(ql) >= 0
-          || (b.seriesName || "").toLowerCase().indexOf(ql) >= 0;
-      }); }
-      if (page === 0 && !list.length) Browse.note("Nothing found.");
-      list.forEach(Browse.bookItem);
+      if (params.search) {
+        // (older Grimmory ignores search=: only what matches)
+        var ql = String(params.search).toLowerCase();
+        list = list.filter(function (b) {
+          return [b.title, (b.authors || []).join(" "), b.seriesName].join(" ").toLowerCase().indexOf(ql) >= 0;
+        });
+      }
+      if (page === 0 && !list.length) Browse.note("Nothing here.");
+      var token = await G.token().catch(function () { return null; });
+      list.forEach(function (b) { Browse.bookItem(b, token); });
       var pages = Number(d.totalPages) || 1;
-      Browse.more = page + 1 < pages ? function () { return Browse.grimmory(q, page + 1, sort); } : null;
-      $("#b-more").classList.toggle("hidden", !Browse.more);
+      Browse.pageMore(page + 1 < pages ? function () { return Browse.books(params, page + 1); } : null);
     },
-    bookItem: function (b) {
+    navItem: function (title, meta, count, onOpen) {
+      var li = el("li", { class: "nav", tabindex: "0", role: "button" });
+      var txt = el("span", { class: "txt" }, title);
+      if (meta) txt.appendChild(el("span", { class: "meta" }, meta));
+      li.appendChild(txt);
+      if (count != null) li.appendChild(el("span", { class: "count" }, String(count)));
+      li.onclick = onOpen;
+      li.onkeydown = function (e) { if (e.key === "Enter") onOpen(); };
+      $("#b-results").appendChild(li);
+    },
+    libraries: async function () {
+      var libs;
+      try { libs = await G.json("/api/v1/app/libraries"); } catch (e) { libs = await G.json("/api/v1/libraries"); }
+      Browse.clear();
+      (libs || []).forEach(function (l) {
+        Browse.navItem(l.name || "Library", null, l.bookCount, function () {
+          Browse.push(l.name || "Library", function (p) { return Browse.books({ libraryId: l.id, sort: "title", dir: "asc" }, p); });
+        });
+      });
+      if (!(libs || []).length) Browse.note("No libraries.");
+    },
+    shelves: async function () {
+      var list = (await G.json("/api/v1/app/shelves")) || [];
+      try { (await G.json("/api/v1/app/shelves/magic") || []).forEach(function (s) { s.magic = true; list.push(s); }); } catch (e) {}
+      Browse.clear();
+      list.forEach(function (sh) {
+        Browse.navItem(sh.name || "Shelf", sh.magic ? "magic shelf" : null, sh.bookCount, function () {
+          Browse.push(sh.name || "Shelf", function (p) {
+            return Browse.books(sh.magic ? { magicShelfId: sh.id, sort: "title", dir: "asc" } : { shelfId: sh.id, sort: "title", dir: "asc" }, p);
+          });
+        });
+      });
+      if (!list.length) Browse.note("No shelves.");
+    },
+    // authors and series: a page of names, each opening its books
+    named: async function (path, kind, page) {
+      var d = await G.json(path + qs({ page: page, size: 50, sort: "name", dir: "asc" }));
+      if (page === 0) Browse.clear();
+      var items = d.content || (Array.isArray(d) ? d : []);
+      items.forEach(function (x) {
+        var name = kind === "series" ? (x.seriesName || x.name) : x.name;
+        if (!name) return;
+        var meta = kind === "series" && Array.isArray(x.authors) && x.authors.length ? x.authors.join(", ") : null;
+        Browse.navItem(name, meta, x.bookCount, function () {
+          Browse.push(name, function (p) {
+            return Browse.books(kind === "series" ? { series: name, sort: "seriesNumber", dir: "asc" } : { authors: name, sort: "title", dir: "asc" }, p);
+          });
+        });
+      });
+      if (page === 0 && !items.length) Browse.note("Nothing here.");
+      var pages = Number(d.totalPages) || 1;
+      Browse.pageMore(page + 1 < pages ? function () { return Browse.named(path, kind, page + 1); } : null);
+    },
+    bookItem: function (b, token) {
       var audio = String(b.primaryFileType || "").toUpperCase() === "AUDIOBOOK";
       var li = el("li", audio ? { class: "square" } : null);
-      var ph = el("span", { class: "ph" });
-      li.appendChild(ph);
+      if (token) {
+        // (Grimmory's covers can be shown, not read, by a web page: an <img> with the sign-in in its address)
+        var img = el("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer",
+          src: G.st.server + "/api/v1/media/book/" + b.id + (audio ? "/audiobook-thumbnail" : "/thumbnail") + "?token=" + encodeURIComponent(token) });
+        img.onerror = function () { img.replaceWith(el("span", { class: "ph" })); };
+        li.appendChild(img);
+      } else li.appendChild(el("span", { class: "ph" }));
       var txt = el("span", { class: "txt" }, b.title || "?");
       var meta = [(b.authors || []).join(", "), audio ? "audiobook" : b.primaryFileType,
         b.fileSizeKb ? mb(b.fileSizeKb * 1024) : null, b.seriesName ? b.seriesName + (b.seriesNumber ? " #" + b.seriesNumber : "") : null];
@@ -1464,30 +1759,41 @@ gets a password or token.
         setBookPicks(l);
       }));
       $("#b-results").appendChild(li);
-      // its cover, a moment later
-      G.fetch("/api/v1/media/book/" + b.id + (audio ? "/audiobook-thumbnail" : "/thumbnail"), { headers: { Accept: "image/*" } }).then(function (r) {
-        return r.ok ? r.blob() : null;
-      }).then(function (blob) {
-        if (!blob || !ph.isConnected) return;
-        var u = URL.createObjectURL(blob);
-        Browse.urls.push(u);
-        ph.replaceWith(el("img", { src: u, alt: "" }));
-      }).catch(function () {});
     },
     button: function (kind, id, onToggle) {
-      var st = standing(kind === "book" ? "book" : kind, id);
+      var st = standing(kind, id);
       var b = el("button", null, STANDING[st] || "Add");
       b.disabled = st === "here" || st === "brought" || st === "queued";
       b.onclick = function () {
-        var on = standing(kind === "book" ? "book" : kind, id) !== "chosen";
+        var on = standing(kind, id) !== "chosen";
         onToggle(on);
         b.textContent = on ? STANDING.chosen : "Add";
         renderPicks();
       };
       return b;
     },
+    search: async function () {
+      var q = $("#b-search").value.trim();
+      if (!q) return Browse.open(Browse.CATS[Browse.tab][0][0]);
+      document.querySelectorAll("#b-cats button").forEach(function (b) { b.classList.remove("on"); });
+      Browse.stack = [];
+      if (!Browse.ready()) return;
+      if (Browse.tab === "music") {
+        return Browse.push("“" + q + "”", async function () {
+          var d = await (await P.get("/hubs/search", { query: q, limit: 30 })).json();
+          var found = [];
+          ((d.MediaContainer || {}).Hub || []).forEach(function (hub) {
+            if (hub.type === "album" || hub.type === "playlist") (hub.Metadata || []).forEach(function (m) { var it = P.item(m); if (it && it.key) found.push(it); });
+          });
+          Browse.clear();
+          if (!found.length) Browse.note("Nothing found.");
+          Browse.musicItems(found);
+        });
+      }
+      Browse.push("“" + q + "”", function (p) { return Browse.books({ search: q, sort: "title", dir: "asc" }, p); });
+    },
     albums: async function (start) {
-      if (start === 0) Browse.note("Loading…");
+      start = start || 0;
       var music = [];
       var d = await (await P.get("/library/sections")).json();
       ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x.key); });
@@ -1497,11 +1803,9 @@ gets a password or token.
       if (start === 0) Browse.clear();
       items.forEach(function (x) { x.type = "album"; });
       Browse.musicItems(items);
-      Browse.more = items.length === 50 ? function () { return Browse.albums(start + 50); } : null;
-      $("#b-more").classList.toggle("hidden", !Browse.more);
+      Browse.pageMore(items.length === 50 ? function () { return Browse.albums(start + 50); } : null);
     },
     playlists: async function () {
-      Browse.note("Loading…");
       var items = await P.items("/playlists", { playlistType: "audio" });
       Browse.clear();
       items.forEach(function (x) { x.type = "playlist"; });
@@ -1520,12 +1824,12 @@ gets a password or token.
         li.appendChild(Browse.button(kind, it.key, function (on) {
           var l = picks().filter(function (y) { return !(y.kind === kind && String(y.key) === String(it.key)); });
           if (on) l.push({ kind: kind, key: it.key, title: it.title, artist: it.artist, year: it.year, thumb: it.thumb });
-          LS.set(picksKey(), l);
+          setPicks(l);
         }));
         $("#b-results").appendChild(li);
         if (it.thumb) {
           P.get("/photo/:/transcode", { url: it.thumb, width: 96, height: 96, minSize: 1, format: "jpeg" }).then(function (r) { return r.blob(); })
-            .then(function (blob) { if (!ph.isConnected) return; var u = URL.createObjectURL(blob); Browse.urls.push(u); ph.replaceWith(el("img", { src: u, alt: "" })); })
+            .then(function (blob) { if (ph.isConnected) ph.replaceWith(el("img", { src: URL.createObjectURL(blob), alt: "" })); })
             .catch(function () {});
         }
       });
@@ -1537,28 +1841,30 @@ gets a password or token.
     var ul = $("#picks");
     if (!ul) return;
     ul.textContent = "";
-    var rows = 0;
+    var rows = 0, bytes = 0;
     ((K.out || {}).queue || []).forEach(function (q) {
       if (standing("book", q.id) === "brought") return;
       var li = el("li");
       li.appendChild(el("span", null, (q.title || "?") + (q.authors && q.authors.length ? " — " + q.authors.join(", ") : "")));
       li.appendChild(el("span", { class: "small muted" }, "the Kindle's queue"));
-      ul.appendChild(li); rows++;
+      ul.appendChild(li); rows++; bytes += (Number(q.size_kb) || 0) * 1024;
     });
-    var remove = function (fn) { var b = el("button", null, "Remove"); b.onclick = function () { fn(); renderPicks(); if (Drive.sync) Browse.show(); }; return b; };
+    var refresh = function () { renderPicks(); if (!$("#app").classList.contains("hidden")) Browse.run(); };
+    var remove = function (fn) { var b = el("button", null, "Remove"); b.onclick = function () { fn(); refresh(); }; return b; };
     bookPicks().forEach(function (x) {
       var li = el("li");
       li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "") + (x.kind === "audiobook" ? " (audiobook)" : "")));
       li.appendChild(remove(function () { setBookPicks(bookPicks().filter(function (y) { return String(y.id) !== String(x.id); })); }));
-      ul.appendChild(li); rows++;
+      ul.appendChild(li); rows++; bytes += (Number(x.size_kb) || 0) * 1024;
     });
     picks().forEach(function (x) {
       if (standing(x.kind, x.key) === "here") return;
       var li = el("li");
       li.appendChild(el("span", null, x.title + (x.artist ? " — " + x.artist : "") + " (" + x.kind + ")"));
-      li.appendChild(remove(function () { LS.set(picksKey(), picks().filter(function (y) { return !(y.kind === x.kind && String(y.key) === String(x.key)); })); }));
+      li.appendChild(remove(function () { setPicks(picks().filter(function (y) { return !(y.kind === x.kind && String(y.key) === String(x.key)); })); }));
       ul.appendChild(li); rows++;
     });
+    $("#picks-size").textContent = bytes ? "· about " + mb(bytes) : "";
     if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
   }
 
@@ -1573,28 +1879,66 @@ gets a password or token.
     var box = btn.closest(".conn") || btn.closest("section");
     var old = box.querySelector(".err");
     if (old) old.remove();
-    var p = el("p", { class: "err bad small" }, text);
+    var p = el("p", { class: "err small " + (/^Signed in/.test(text) ? "ok" : "bad") }, text);
     box.appendChild(p);
     setTimeout(function () { p.remove(); }, 12000);
   }
 
+  // ------------------------------------------------------------ start
+
   async function start() {
-    if (!window.showDirectoryPicker && !window.GZSYNC_TEST) {
-      $("#unsupported").classList.remove("hidden");
+    var params = new URLSearchParams(location.search);
+    K.test = params.has("test");
+    if (!window.showDirectoryPicker && !K.test && !window.GZSYNC_TEST) {
+      show("#unsupported", true);
       $("#pick").disabled = true;
     }
-    $("#pick").onclick = async function () {
-      try {
-        var h = await window.showDirectoryPicker({ id: "gzkindle", mode: "readwrite" });
-        await openDrive(h);
-      } catch (e) { if (e.name !== "AbortError") log(e.message, "bad"); }
-    };
-    var last = await idb.get("drive");
-    if (last) {
-      $("#reopen").classList.remove("hidden");
-      $("#reopen").textContent = "Use “" + last.name + "” again";
-      $("#reopen").onclick = async function () { if (await openDrive(last)) $("#reopen").classList.add("hidden"); };
+    // back from single sign-on: finished once the Kindle is unlocked
+    if (params.get("state") && (params.get("code") || params.get("error"))) {
+      try { sessionStorage.setItem("gzsync.sso-return", location.search); } catch (e) {}
+      history.replaceState(null, "", location.pathname + (K.test ? "?test" : ""));
+      show("#sso-wait", true);
     }
+    // the gate: a Kindle
+    $("#pick").onclick = async function () {
+      try { await openDrive(await window.showDirectoryPicker({ id: "gzkindle", mode: "readwrite" })); }
+      catch (e) { if (e.name !== "AbortError") problem(e.message); }
+    };
+    var last = !K.test && await idb.get("drive");
+    if (last) {
+      show("#reopen", true);
+      $("#reopen").textContent = "Use “" + last.name + "” again";
+      $("#reopen").onclick = async function () { await openDrive(last); };
+    }
+    // the PIN
+    $("#unlock-form").onsubmit = async function (e) {
+      e.preventDefault();
+      var pin = $("#pin").value, err = $("#unlock-err");
+      show("#unlock-err", false);
+      $("#unlock-go").disabled = true;
+      try {
+        if (await Vault.exists()) await Vault.unlock(pin);
+        else {
+          if (pin.length < 4) throw new Error("At least 4 characters.");
+          if (pin !== $("#pin2").value) throw new Error("The two PINs aren't the same.");
+          // (sign-ins made in this tab without a PIN come along)
+          if (Vault.mode !== "session") Vault.use(null);
+          await Vault.create(pin);
+        }
+        await unlocked();
+      } catch (x) { err.textContent = x.message; show("#unlock-err", true); }
+      $("#unlock-go").disabled = false;
+    };
+    $("#unlock-skip").onclick = function () { Vault.session(); unlocked(); };
+    $("#unlock-reset").onclick = async function () {
+      if (!confirm("Start over? The connections kept on this Kindle are deleted; you connect again and choose a new PIN.")) return;
+      await Vault.forget();
+      await askPin();
+    };
+    $("#k-lock").onclick = function () { Vault.lock(); show("#app", false); askPin(); };
+    $("#k-other").onclick = function () { Vault.lock(); Drive.sync = null; show("#app", false); show("#unlock", false); show("#gate", true); };
+    document.querySelectorAll("nav.main button").forEach(function (b) { b.onclick = function () { setPanel(b.dataset.panel); }; });
+    // connections
     $("#g-login").onclick = busy($("#g-login"), async function () {
       await G.login($("#g-server").value, $("#g-user").value.trim(), $("#g-pass").value);
       $("#g-pass").value = "";
@@ -1610,7 +1954,7 @@ gets a password or token.
       $("#m-token").value = "";
       renderConnections();
     });
-    $("#m-out").onclick = function () { M.st = null; LS.del("memos"); renderConnections(); };
+    $("#m-out").onclick = function () { M.st = null; M.save(); renderConnections(); };
     $("#cal-add").onclick = busy($("#cal-add"), async function () {
       var url = $("#cal-url").value.trim();
       if (!/^(webcal|https?):\/\//i.test(url)) throw new Error("Enter a calendar link (webcal:// or https://).");
@@ -1640,25 +1984,34 @@ gets a password or token.
       await P.signIn(function (blocked) { if (blocked) alertIn($("#p-login"), "Allow pop-ups for this page, then try again."); });
       renderConnections();
     });
-    $("#p-out").onclick = function () { P.st = null; LS.del("plex"); renderConnections(); };
+    $("#p-out").onclick = function () { P.st = null; P.save(); renderConnections(); };
+    // content
     document.querySelectorAll(".tabs button").forEach(function (b) { b.onclick = function () { Browse.setTab(b.dataset.tab); }; });
     var search = busy($("#b-go"), Browse.search);
     $("#b-go").onclick = search;
     $("#b-search").onkeydown = function (e) { if (e.key === "Enter") search(); };
     $("#b-more").onclick = busy($("#b-more"), function () { return Browse.more && Browse.more(); });
+    // sync
     $("#o-update").onchange = function () { Update.chosen = $("#o-update").checked; };
-    Browse.setTab("books");
     $("#sync").onclick = runSync;
-    renderConnections();
-    try {
-      if (await G.finishSso()) { renderConnections(); log("Signed in to Grimmory.", "ok"); }
-    } catch (e) { alertIn($("#g-sso"), e.message); }
+    // test mode: the pretend Kindle at once
+    if (K.test) {
+      show("#testbar", true);
+      $("#test-reset").onclick = async function () {
+        if (!confirm("Start the pretend Kindle over? Everything on it, its PIN and connections included, is deleted.")) return;
+        Vault.lock(); show("#app", false);
+        await openDrive(await testKindle(true), true);
+      };
+      $("#test-leave").onclick = function () { location.href = location.pathname; };
+      await openDrive(await testKindle(false), true);
+    }
   }
 
   // (tests: a folder standing in for the Kindle, without the folder picker)
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
-    G: G, M: M, P: P, Cal: Cal, LS: LS, picksKey: picksKey, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
+    G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
+    testKindle: testKindle, setPanel: setPanel,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

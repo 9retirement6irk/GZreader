@@ -222,7 +222,7 @@ end
 --- opts.nice: lower the process's priority (long conversions); opts.timeout (s).
 function Async.run(api, fn, on_done, name, opts)
     on_done = on_done or function() end
-    if api and api.offline and not Async.sync then
+    if api and api.offline and not Async.sync and not (opts and opts.nice) then
         -- the library copy (gzreader_offlineapi.lua): files, no network; here, a moment later
         return UIManager:nextTick(function()
             local res = protected(fn, api)

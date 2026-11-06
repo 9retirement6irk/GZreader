@@ -53,7 +53,10 @@ end
 --- Plain copies of the open book's highlights (what the background job sees).
 function Anno:snapshot()
     local out = {}
+    local map = self.plugin.store.usb_idmap
     for _i, a in ipairs(self.ui.annotation and self.ui.annotation.annotations or {}) do
+        -- (made here without Wi-Fi: the sync page gave it Grimmory's id since)
+        if map and a.grimmory_id ~= nil and map[tostring(a.grimmory_id)] then a.grimmory_id = map[tostring(a.grimmory_id)] end
         out[#out + 1] = a
     end
     return out
@@ -260,7 +263,8 @@ function Anno:run(on_done)
     if not self:enabled() then return on_done and on_done(false) end
     if self.busy then self.again = true; return end
     local Net = require("gzreader_net")
-    if not Net.connected() then return on_done and on_done(false) end
+    -- (no Wi-Fi: the journal the sync page sends, gzreader_offlineapi.lua)
+    if not (Net.connected() or self.api.offline) then return on_done and on_done(false) end
     if not self:spineOk() then -- our spine doesn't match crengine's: don't guess
         Log.warn("highlights: book layout not understood, not synced", self.book_id)
         return on_done and on_done(false)
@@ -302,7 +306,7 @@ function Anno:onAnnotationsModified(items)
     self.entry.anno_dirty = true
     self.touched = true
     if self.pending then UIManager:unschedule(self.pending) end
-    if not require("gzreader_net").connected() then return end -- sent on close / next open
+    if not (require("gzreader_net").connected() or self.api.offline) then return end -- sent on close / next open
     self.pending = function()
         self.pending = nil
         self:run()
@@ -319,7 +323,7 @@ function Anno:onClose()
     self:spineOk() -- while the book is still open
     local snapshot = self:snapshot()
     self.snapshot = function() return snapshot end -- the book's highlights as it closed
-    if Net.connected() then return self:run() end
+    if Net.connected() or self.api.offline then return self:run() end
     UIManager:scheduleIn(1, function()
         Net.run(function() self:run() end, { quiet = true, reason = "highlights on close" })
     end)

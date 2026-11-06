@@ -165,6 +165,12 @@ function BM:enabled()
     return self.plugin:syncEnabled() and self.plugin.store.bookmark_sync_disabled ~= true
 end
 
+--- Can talk to Grimmory now: Wi-Fi, or (no Wi-Fi) the journal the sync
+--- page sends (gzreader_offlineapi.lua).
+function BM:online()
+    return NetworkMgr:isConnected() or (self.api and self.api.offline == true)
+end
+
 local function isPageBookmark(item)
     return type(item) == "table" and not item.drawer and not item.pos0 and item.page ~= nil
 end
@@ -279,7 +285,7 @@ function BM:push(key, item) return self:pushAll({ [key] = item }) end
 --- Bring both sides together. Called when the book opens and on "Sync now".
 --- The requests run in the background; the bookmarks are changed here.
 function BM:reconcile()
-    if not self:enabled() or not NetworkMgr:isConnected() then return end
+    if not self:enabled() or not self:online() then return end
     if self.reconciling then self.again = true; return end
     self.reconciling = true
     local book_id = self.sync.book_id
@@ -352,7 +358,7 @@ function BM:onAnnotationsModified(items)
     local key = tostring(item.page)
     if idx > 0 then
         if not self:enabled() then return end
-        if NetworkMgr:isConnected() then self:push(key, item)
+        if self:online() then self:push(key, item)
         else self.entry.bm_pending.add[key] = true end
     else
         local id = self.entry.bookmarks[key]
@@ -361,7 +367,7 @@ function BM:onAnnotationsModified(items)
             self.entry.bookmarks[key] = nil
             self.entry.bm_pending.del[tostring(id)] = true
             Log.info("bookmark removed", self.sync.book_id, tostring(id))
-            if self:enabled() and NetworkMgr:isConnected() then
+            if self:enabled() and self:online() then
                 require("gzreader_async").call(self.api, "deleteBookmark", { id }, function(ok)
                     if ok then self.entry.bm_pending.del[tostring(id)] = nil; self.plugin:save() end
                 end)

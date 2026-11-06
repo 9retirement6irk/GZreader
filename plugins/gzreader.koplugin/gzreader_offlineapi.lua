@@ -72,11 +72,7 @@ function OfflineApi:putProgress() return false, NOT end
 function OfflineApi:postSession() return false, NOT end
 function OfflineApi:hasSession() return nil end
 function OfflineApi:putRating() return false, NOT end
-function OfflineApi:createBookmark() return nil, NOT end
-function OfflineApi:deleteBookmark() return false, NOT end
-function OfflineApi:createAnnotation() return nil, NOT end
-function OfflineApi:updateAnnotation() return nil, NOT end
-function OfflineApi:deleteAnnotation() return false, NOT end
+-- (bookmarks and highlights: written to the journal, below)
 function OfflineApi:downloadToFile() return false, NOT end
 function OfflineApi:downloadAudio() return false, NOT, false end
 
@@ -267,8 +263,137 @@ function OfflineApi:audiobookInfo(book_id)
     return nil, NOT
 end
 
-function OfflineApi:listBookmarks() return nil, NOT end
-function OfflineApi:listAnnotations() return nil, NOT end
+---------------------------------------------------------------- bookmarks and highlights
+
+--[[ Bookmarks and highlights go through the journal (.gzsync/journal.jsonl):
+each create, change or delete made on the Kindle is a line, as the request
+the sync page sends to Grimmory, in order. Something made here gets a
+temporary id ("usb-…"): the page swaps it for Grimmory's own when it sends
+the request, and tells the Kindle (inbox.created), which then uses Grimmory's
+id. Grimmory's lists, as GZreader sees them here, are the page's copy
+(library.json: marks, for the books on the Kindle) with what the journal
+still has to send applied on top: the code that syncs bookmarks and
+highlights (gzreader_bookmarks.lua, gzreader_annotations.lua) runs as it
+does with Wi-Fi. Appending a line is safe from the background process
+those run in. ]]
+
+function OfflineApi:journalPath() return self.dir .. "/journal.jsonl" end
+
+--- The journal's lines still to send (each { id, op, method, path, body, temp, ref, book }).
+function OfflineApi:journal()
+    local out = {}
+    local f = io.open(self:journalPath(), "rb")
+    if not f then return out end
+    for line in f:lines() do
+        local ok, j = pcall(JSON.decode, line)
+        if ok and type(j) == "table" and j.id then out[#out + 1] = j end
+    end
+    f:close()
+    return out
+end
+
+local function uid()
+    local ok, PS = pcall(require, "gzreader_pairserver")
+    local r = ok and PS.randomToken(4) or tostring(math.random(1e9))
+    return tostring(os.time()) .. "-" .. r
+end
+
+function OfflineApi:record(j)
+    j.id = "m:" .. uid()
+    j.at = os.time()
+    local f = io.open(self:journalPath(), "ab")
+    if not f then return false end
+    f:write(JSON.encode(j), "\n")
+    f:close()
+    return true
+end
+
+function OfflineApi:createBookmark(body)
+    local temp = "usb-" .. uid()
+    if not self:record{ op = "bookmark+", method = "POST", path = "/api/v1/bookmarks", body = body, temp = temp, book = body.bookId } then
+        return nil, NOT
+    end
+    local made = {}
+    for k, v in pairs(body) do made[k] = v end
+    made.id = temp
+    return made
+end
+
+function OfflineApi:deleteBookmark(id)
+    if not self:record{ op = "bookmark-", method = "DELETE", path = "/api/v1/bookmarks/{id}", ref = tostring(id) } then return false, NOT end
+    return true
+end
+
+function OfflineApi:createAnnotation(body)
+    local temp = "usb-" .. uid()
+    if not self:record{ op = "highlight+", method = "POST", path = "/api/v1/annotations", body = body, temp = temp, book = body.bookId } then
+        return nil, NOT
+    end
+    local made = {}
+    for k, v in pairs(body) do made[k] = v end
+    made.id = temp
+    return made, nil, 201
+end
+
+function OfflineApi:updateAnnotation(id, body)
+    if not self:record{ op = "highlight~", method = "PUT", path = "/api/v1/annotations/{id}", ref = tostring(id), body = body } then
+        return nil, NOT
+    end
+    return true, nil, 200
+end
+
+function OfflineApi:deleteAnnotation(id)
+    if not self:record{ op = "highlight-", method = "DELETE", path = "/api/v1/annotations/{id}", ref = tostring(id) } then
+        return false, NOT
+    end
+    return true, nil, 204
+end
+
+--- Grimmory's list (the page's copy) with the journal applied.
+function OfflineApi:marks(book_id, kind)
+    local snap = self:snapshot()
+    local m = snap and type(snap.marks) == "table" and snap.marks[tostring(book_id)]
+    if type(m) ~= "table" or type(m[kind]) ~= "table" then return nil end -- (not in the copy yet: nothing to compare)
+    local list, at = {}, {}
+    for _i, x in ipairs(m[kind]) do
+        if type(x) == "table" then
+            local c = {}
+            for k, v in pairs(x) do c[k] = v end
+            list[#list + 1] = c
+            at[tostring(c.id)] = c
+        end
+    end
+    local plus, change, minus = kind == "bookmarks" and "bookmark+" or "highlight+", "highlight~",
+        kind == "bookmarks" and "bookmark-" or "highlight-"
+    for _i, j in ipairs(self:journal()) do
+        if j.op == plus and type(j.body) == "table" and tostring(j.book or j.body.bookId) == tostring(book_id) then
+            local c = {}
+            for k, v in pairs(j.body) do c[k] = v end
+            c.id = j.temp
+            list[#list + 1] = c
+            at[tostring(c.id)] = c
+        elseif j.op == change and at[tostring(j.ref)] and type(j.body) == "table" then
+            for k, v in pairs(j.body) do at[tostring(j.ref)][k] = v end
+        elseif j.op == minus and at[tostring(j.ref)] then
+            local gone = at[tostring(j.ref)]
+            at[tostring(j.ref)] = nil
+            for i = #list, 1, -1 do if list[i] == gone then table.remove(list, i) end end
+        end
+    end
+    return list
+end
+
+function OfflineApi:listBookmarks(book_id)
+    local l = self:marks(book_id, "bookmarks")
+    if l then return l end
+    return nil, NOT
+end
+
+function OfflineApi:listAnnotations(book_id)
+    local l = self:marks(book_id, "annotations")
+    if l then return l end
+    return nil, NOT
+end
 
 ---------------------------------------------------------------- covers
 

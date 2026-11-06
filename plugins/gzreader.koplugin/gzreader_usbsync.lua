@@ -254,7 +254,76 @@ function Usb.jobs(plugin)
             or { id = Usb.jobId("rating", id, stars), kind = "rating", book = tonumber(id) or id,
                 method = "POST", path = "/api/v1/books/reset-personal-rating", body = { tonumber(id) } }
     end
+    -- bookmarks and highlights, in the order they were made (the journal:
+    -- gzreader_offlineapi.lua); "{id}" in a path and temp/ref ids are for
+    -- the page to fill in
+    for _i, j in ipairs(Usb.journal(plugin)) do
+        jobs[#jobs + 1] = { id = j.id, kind = "mark", op = j.op, book = j.book, method = j.method, path = j.path,
+            body = j.body, temp = j.temp, ref = j.ref }
+    end
     return jobs
+end
+
+function Usb.journalPath(plugin) return Usb.dir(plugin) .. "/journal.jsonl" end
+
+function Usb.journal(plugin)
+    local out = {}
+    local f = io.open(Usb.journalPath(plugin), "rb")
+    if not f then return out end
+    for line in f:lines() do
+        local ok, j = pcall(JSON.decode, line)
+        if ok and type(j) == "table" and j.id then out[#out + 1] = j end
+    end
+    f:close()
+    return out
+end
+
+--- The journal without what the page sent; Grimmory's ids for what was
+--- made here (inbox.created = { temp = id }) everywhere GZreader keeps one.
+function Usb.applyMarks(plugin, done, created)
+    local left, sent = {}, 0
+    for _i, j in ipairs(Usb.journal(plugin)) do
+        if done[tostring(j.id)] then sent = sent + 1 else left[#left + 1] = j end
+    end
+    local map = {}
+    for temp, id in pairs(type(created) == "table" and created or {}) do map[tostring(temp)] = id end
+    if next(map) then
+        local idmap = plugin.store.usb_idmap or {}
+        for temp, id in pairs(map) do idmap[temp] = id end
+        plugin.store.usb_idmap = idmap
+        -- (ids still to be sent that refer to these: Grimmory's now)
+        for _i, j in ipairs(left) do
+            if j.ref and map[tostring(j.ref)] then j.ref = tostring(map[tostring(j.ref)]) end
+        end
+        for _id, e in pairs(plugin.store.downloads or {}) do
+            if type(e) == "table" then
+                for key, id in pairs(type(e.bookmarks) == "table" and e.bookmarks or {}) do
+                    if map[tostring(id)] then e.bookmarks[key] = map[tostring(id)] end
+                end
+                if type(e.anno_shadow) == "table" then
+                    for id, v in pairs(e.anno_shadow) do
+                        if map[tostring(id)] then
+                            e.anno_shadow[id] = nil
+                            e.anno_shadow[tostring(map[tostring(id)])] = v
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if sent > 0 or next(map) then
+        local lines = {}
+        for _i, j in ipairs(left) do lines[#lines + 1] = JSON.encode(j) end
+        if #lines > 0 then writeFile(Usb.journalPath(plugin), table.concat(lines, "\n") .. "\n")
+        else os.remove(Usb.journalPath(plugin)) end
+    end
+    return sent
+end
+
+--- A highlight's Grimmory id as this Kindle had it (made here before a sync: a "usb-…" one).
+function Usb.realId(plugin, id)
+    local map = plugin and plugin.store.usb_idmap
+    return map and id ~= nil and map[tostring(id)] or id
 end
 
 -- (the outbox is written at every save: what takes reading many files is
@@ -342,6 +411,11 @@ function Usb.outbox(plugin)
         calendar = { days_back = cal_from or 14, days_ahead = cal_to or 90 },
         auto_shelf = shelf,
         last_import = store.usb_last and store.usb_last.at or nil,
+        -- (how much room is left on the Kindle, for the page)
+        disk = cached("disk", function()
+            local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
+            return ok and type(du) == "table" and du.total and { total = du.total, available = du.available } or nil
+        end),
     }
 end
 
@@ -645,6 +719,7 @@ function Usb.import(plugin, on_prepared)
     local r = { sent = 0, failed = 0, books = 0, audiobooks = 0, music = 0 }
     local ok, err = pcall(function()
         r.sent = Usb.applyDone(plugin, set(inbox.done))
+        r.marks = Usb.applyMarks(plugin, set(inbox.done), inbox.created)
         for _i, f in ipairs(type(inbox.failed) == "table" and inbox.failed or {}) do
             Log.warn("sync: the computer couldn't send", tostring(f.id), tostring(f.error))
             if tostring(f.error or ""):match("^http_4") and tostring(f.id):match("^p:") then
@@ -726,6 +801,7 @@ function Usb.summaryText(r)
     if r.events then parts[#parts + 1] = T(_("calendar: %1 events"), r.events) end
     local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
     if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end
+    if (r.marks or 0) > 0 then text = text .. "\n" .. T(_("%1 bookmark and highlight changes sent to Grimmory."), r.marks) end
     if r.failed > 0 then text = text .. "\n" .. T(_("%1 couldn't be sent; they'll go with the next sync."), r.failed) end
     return text
 end
@@ -854,7 +930,7 @@ function Usb.show(plugin)
         _("1. Exit GZreader (the Kindle's USB drive only works while it isn't running)."),
         _("2. Plug the Kindle into a computer and open this page in Chrome or Edge:"),
         "   " .. Usb.PAGE_URL:gsub("^https://", ""),
-        _("3. Choose the Kindle's drive and press Sync."),
+        _("3. Choose the Kindle's drive, enter its PIN and press Sync."),
         _("4. Eject the Kindle and start GZreader: it takes in the new books."),
         "",
     }
