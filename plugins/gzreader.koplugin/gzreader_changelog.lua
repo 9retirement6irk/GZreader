@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.26.1",
+        changes = {
+            "Sync with a computer: Home's Grimmory reading stats widget (streak, this week, this month, books finished this year) gets Grimmory's numbers from the sync page, counted after the Kindle's reading time reached Grimmory.",
+        },
+    },
+    {
         version = "1.26.0",
         changes = {
             "Sync with a computer: Menu → Sync → Connect to computer. GZreader saves everything and steps aside so the Kindle can share its USB drive (KOReader turns the drive off while it runs); after you eject the Kindle, GZreader starts again by itself. (If the Kindle was already plugged in, unplug it and plug it in again.)",

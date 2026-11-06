@@ -524,7 +524,8 @@ Connections → Sync through a computer.
      sync brings, and **Sync**.
 5. Eject the Kindle and unplug it; GZreader starts again (or start it) and
    takes in what was brought ("Synced with your computer"). Books and
-   audiobooks open at their place on Grimmory the first time.
+   audiobooks open at their place on Grimmory the first time, and Home's
+   Grimmory reading stats show Grimmory's numbers as of the sync.
 
 Usage statistics (if they're on, Settings → General → Usage statistics) wait
 on the Kindle; when GZreader steps aside for the USB drive it leaves them in

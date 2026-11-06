@@ -41,7 +41,9 @@ Format 1:
     music = { { kind, key, dir } },
     notes = { file, done = { queue ids }, server, user },
     calendars = { { name, file } },
-    grimmory = { server, user } }
+    grimmory = { server, user },
+    grimmory_stats = { at, values = { streak, longest_streak, reading_days,
+      week_time, week_books, month_sessions, year_finished } } or { at, error } }
 ]]
 
 local DataStorage = require("datastorage")
@@ -745,6 +747,30 @@ end
 
 --- Take in what the page left (inbox.json). Returns a summary, or nil
 --- when there's nothing. on_prepared: once audiobooks/music are ready.
+--- Grimmory's reading stats the page fetched (Home's "Grimmory reading
+--- stats" widget: gzreader_grimstats.lua), with this sync's sessions in.
+function Usb.takeStats(plugin, st)
+    if type(st) ~= "table" then return nil end
+    local old = plugin.store.grimmory_stats
+    local prev = type(old) == "table" and type(old.values) == "table" and old.values or {}
+    local at = tonumber(st.at) or os.time()
+    if type(st.values) == "table" then
+        local values = {}
+        for _i, k in ipairs({ "streak", "longest_streak", "reading_days", "week_time", "week_books", "month_sessions", "year_finished" }) do
+            values[k] = tonumber(st.values[k])
+        end
+        plugin.store.grimmory_stats = { at = at, values = values, usb = true }
+    elseif st.error then
+        Log.warn("sync: Grimmory reading stats:", tostring(st.error) == "permission"
+            and "this user may not see reading statistics (Grimmory: user settings → permissions)" or tostring(st.error))
+        plugin.store.grimmory_stats = { at = at, values = prev, error = tostring(st.error), usb = true }
+    else
+        return nil
+    end
+    pcall(function() require("common/gz_view").redrawHome() end)
+    return true
+end
+
 function Usb.import(plugin, on_prepared)
     local base = Usb.dir(plugin)
     local inbox = readJson(base .. "/inbox.json")
@@ -768,6 +794,7 @@ function Usb.import(plugin, on_prepared)
             plugin.store.server = inbox.grimmory.server
             plugin.store.username = inbox.grimmory.user
         end
+        r.stats = Usb.takeStats(plugin, inbox.grimmory_stats)
         for _i, b in ipairs(type(inbox.books) == "table" and inbox.books or {}) do
             local okb, got = pcall(Usb.takeBook, plugin, base, b)
             if okb and got then r.books = r.books + 1

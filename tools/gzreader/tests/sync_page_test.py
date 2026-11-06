@@ -13,7 +13,7 @@ it is copied there, for run_tests.lua's import test (GZ_SYNC_DUMP).
 Ports: port (Grimmory) port+1 (its control), port+20 Memos, port+21 Plex,
 port+22 the page.
 """
-import base64, json, os, subprocess, sys, tempfile, threading, time, urllib.request
+import base64, datetime, json, os, subprocess, sys, tempfile, threading, time, urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -288,6 +288,14 @@ with sync_playwright() as pw:
     page.click("#sync")
     page.wait_for_selector("#done:not(.hidden)", timeout=120000)
     log = page.locator("#log").inner_text()
+    _days = ["2026-01-01", "2027-01-01", "2027-01-04", "2025-12-29", "2024-12-31", "2026-11-06", "2028-01-02", "2028-06-15"]
+    page_weeks = page.evaluate("(ds) => ds.map((s) => { const p = s.split('-').map(Number); return GZSync.isoWeekOfYear(new Date(p[0], p[1] - 1, p[2], 9)); })", _days)
+    week_of = []
+    for _s in _days:
+        _d = datetime.date(*map(int, _s.split("-")))
+        _j = datetime.date(_d.year, 1, 1).isoweekday()
+        week_of.append(((_d.timetuple().tm_yday - 1) + (_j - 1)) // 7 + (1 if _j <= 4 else 0))
+    check(page_weeks == week_of, "reading stats: the page's week numbers match GZreader's around New Year (%s)" % page_weeks)
     print("    (page log)\n      " + log.replace("\n", "\n      "))
 
     res = page.evaluate("""async () => {
@@ -374,6 +382,19 @@ check(ab and G + ab["dir"] + "/track-001.mp3" in files and G + ab["dir"] + "/tra
       "the sync queue: the audiobook's tracks, named as GZreader names them, its cover and description")
 check(ab and (ab.get("progress") or {}).get("audiobookProgress", {}).get("positionMs") == 50000,
       "the sync queue: the audiobook's place on Grimmory too")
+gs = inbox.get("grimmory_stats") or {}
+gv = gs.get("values") or {}
+check(gv.get("reading_days", 0) >= 1 and gv.get("week_time", 0) >= 1800 and gv.get("year_finished") == 3 and "streak" in gv
+      and abs(gs.get("at", 0) - time.time()) < 600,
+      "reading stats for the Kindle's Home widget, with this sync's session in")
+import datetime
+def iso_week(d):  # (Grimmory's WeekFields.ISO.weekOfYear(), as gzreader_grimstats.lua counts it)
+    jan1 = datetime.date(d.year, 1, 1).isoweekday()
+    days = (d.timetuple().tm_yday - 1) + (jan1 - 1)
+    return days // 7 + (1 if jan1 <= 4 else 0)
+_today = datetime.date.today()
+check(state.get("last_timeline_query") == "year=%d&week=%d" % (_today.year, iso_week(_today)),
+      "reading stats: this week as Grimmory counts weeks (%s)" % state.get("last_timeline_query"))
 usage = state.get("usage", [])
 check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
       "usage statistics the Kindle left: sent from the computer, then deleted")

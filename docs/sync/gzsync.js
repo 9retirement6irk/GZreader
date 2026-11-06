@@ -1545,6 +1545,43 @@ gets a password or token.
     if (waiting) log("The Kindle's usage statistics couldn't be sent: they wait for the next sync.");
   }
 
+  // Grimmory's reading stats for the Kindle's Home widget (as GZreader asks
+  // for them: gzreader_grimstats.lua), after this sync's reading sessions
+  function isoWeekOfYear(d) {
+    // (Grimmory's WeekFields.ISO.weekOfYear(): Monday first, week 1 has at least 4 days; before it: 0)
+    var jan1 = new Date(d.getFullYear(), 0, 1, 12);
+    var jan1Wday = (jan1.getDay() + 6) % 7 + 1;
+    var yday = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12) - jan1) / 86400000) + 1;
+    var days = (yday - 1) + (jan1Wday - 1);
+    return Math.floor(days / 7) + (jan1Wday <= 4 ? 1 : 0);
+  }
+  async function readingStats(inbox, now) {
+    now = now || new Date();
+    function sum(list, key) {
+      return (Array.isArray(list) ? list : []).reduce(function (a, r) { return a + (Number(r && r[key]) || 0); }, 0);
+    }
+    var base = "/api/v1/user-stats/reading/";
+    var at = Math.floor(now.getTime() / 1000);
+    var r = await G.fetch(base + "streak");
+    if (!r.ok) {
+      inbox.grimmory_stats = { at: at, error: r.status === 403 ? "permission" : "http_" + r.status };
+      if (r.status === 403) log("Reading stats: this Grimmory user may not see reading statistics (Grimmory: user settings → permissions).");
+      return;
+    }
+    var streak = await r.json();
+    var v = { streak: streak.currentStreak, longest_streak: streak.longestStreak, reading_days: streak.totalReadingDays };
+    async function get(path) { try { var x = await G.fetch(base + path); return x.ok ? await x.json() : null; } catch (e) { return null; } }
+    var y = now.getFullYear();
+    var tl = await get("timeline?year=" + y + "&week=" + isoWeekOfYear(now));
+    if (Array.isArray(tl)) { v.week_time = sum(tl, "totalDurationSeconds"); v.week_books = tl.length; }
+    var heat = await get("heatmap/monthly?year=" + y + "&month=" + (now.getMonth() + 1));
+    if (Array.isArray(heat)) v.month_sessions = sum(heat, "count");
+    var done = await get("completion-timeline?year=" + y);
+    if (Array.isArray(done)) v.year_finished = sum(done, "finishedBooks");
+    inbox.grimmory_stats = { at: at, values: v };
+    log("Reading stats for the Kindle's Home: " + (v.streak || 0) + "-day streak.", "ok");
+  }
+
   async function runSync() {
     $("#sync").disabled = true;
     $("#done").classList.add("hidden");
@@ -1564,6 +1601,7 @@ gets a password or token.
         try {
           if (!G.st.user) { G.st.user = await G.me(); G.save(); }
           await sendJobs(out, inbox);
+          try { await readingStats(inbox); } catch (e) { log("Reading stats: " + e.message, "bad"); }
           await libraryCopy(out, inbox);
           await saveInbox(inbox);
           await bringQueue(out, inbox);
@@ -2092,7 +2130,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

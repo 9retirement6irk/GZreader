@@ -4742,6 +4742,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         check(b and b.grimmory_progress and b.grimmory_progress.epubProgress.percentage == 30
             and fake.store.audiobooks["32"].grimmory_progress.audiobookProgress.positionMs == 50000,
             "e2e: Grimmory's places kept for the first opening")
+        local gst = fake.store.grimmory_stats
+        check(r.stats and gst and gst.values.year_finished == 3 and (gst.values.week_time or 0) >= 1800 and gst.values.reading_days >= 1,
+            "e2e: Home's Grimmory reading stats, from the page")
         check(runLoop(function() return ready end, 60), "e2e: audiobooks and music prepared (AAC converted on the Kindle)")
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
