@@ -577,6 +577,8 @@ function Usb.takeBook(plugin, base, b)
     end
     Usb.dequeue(plugin, b.id)
     Log.info("sync: book", id, "brought by the computer:", (path:match("[^/]+$")))
+    -- (a picture book: fitted before it's first opened)
+    pcall(function() require("gzreader_picturebook").prepare(path) end)
     return true
 end
 
@@ -747,6 +749,27 @@ end
 
 --- Take in what the page left (inbox.json). Returns a summary, or nil
 --- when there's nothing. on_prepared: once audiobooks/music are ready.
+--- The Kindle's clock, from the computer's: a Kindle without Wi-Fi never
+--- sets its own, and a Kindle DX whose battery ran down starts at 1970
+--- (reading times then went out with 1970 dates). The page wrote the inbox
+--- (written_at, the computer's clock) before GZreader read it, so a clock
+--- behind that is wrong: set to it plus a minute (unplugging and starting).
+--- Returns true when the clock was set.
+Usb.setClock = function(t)
+    if not Device:isKindle() then return false end
+    os.execute(string.format("date -u %s >/dev/null 2>&1 && (hwclock -u -w >/dev/null 2>&1 || true)", os.date("!%m%d%H%M%Y.%S", t)))
+    return true
+end
+function Usb.fixClock(written_at)
+    local t = tonumber(written_at)
+    if not t or t < 1700000000 then return false end
+    local now = os.time()
+    if now >= t - 60 then return false end
+    Log.info("sync: the Kindle's clock said", os.date("!%Y-%m-%d %H:%M", now), "UTC: set from the computer's",
+        os.date("!%Y-%m-%d %H:%M", t + 60))
+    return Usb.setClock(t + 60) == true
+end
+
 --- Grimmory's reading stats the page fetched (Home's "Grimmory reading
 --- stats" widget: gzreader_grimstats.lua), with this sync's sessions in.
 function Usb.takeStats(plugin, st)
@@ -776,6 +799,7 @@ function Usb.import(plugin, on_prepared)
     local inbox = readJson(base .. "/inbox.json")
     if not inbox then return nil end
     local r = { sent = 0, failed = 0, books = 0, audiobooks = 0, music = 0 }
+    r.clock = select(2, pcall(Usb.fixClock, inbox.written_at)) == true
     local ok, err = pcall(function()
         r.sent = Usb.applyDone(plugin, set(inbox.done))
         r.marks = Usb.applyMarks(plugin, set(inbox.done), inbox.created)

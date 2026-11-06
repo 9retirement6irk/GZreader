@@ -1156,7 +1156,7 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
 - Page bookmarks stay with bookmark sync. Switch: Grimmory menu → Sync
   highlights and notes.
 
-## Read aloud (Kindle 3 text-to-speech)
+## Read aloud (Kindle 2, 3, DX text-to-speech)
 
 Uses the Kindle's own voice (Amazon's speech service, reached over lipc
 with the Kindle's `lipc-hash-prop` tool, run in the background so the screen
@@ -1178,6 +1178,12 @@ characters already said. The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
 settings → Slower / Faster). The diagnostic log records every step.
+
+Kindle 2 and DX (firmware 2.x): there's no `lipc-hash-prop` and the speech
+service has an older interface (`com.lab126.tts`: `playFile`, the path of a
+text file it reads aloud). Find the Kindle voice tries that too: each
+sentence is written to a small file in `/tmp` (or `/var/tmp`) and handed to
+the voice, one sentence at a time.
 
 ## Audiobooks (experimental)
 

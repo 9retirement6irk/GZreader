@@ -89,6 +89,8 @@ OUTBOX = {
          "body": {"fileProgress": {"bookFileId": 1001, "progressPercent": 42.5, "positionHref": "ch2.xhtml", "positionData": "epubcfi(/6/4!/4/2)"}}},
         {"id": "s:1:2026-11-05T10:00:00Z", "kind": "session", "book": 1, "method": "POST", "path": "/api/v1/reading-sessions",
          "body": {"bookId": 1, "bookType": "EPUB", "startTime": "2026-11-05T10:00:00Z", "endTime": "2026-11-05T10:30:00Z", "durationSeconds": 1800}},
+        {"id": "s:1:1970-01-01T02:11:00Z", "kind": "session", "book": 1, "method": "POST", "path": "/api/v1/reading-sessions",
+         "body": {"bookId": 1, "bookType": "EPUB", "startTime": "1970-01-01T02:11:00Z", "endTime": "1970-01-01T02:41:00Z", "durationSeconds": 1799}},
         {"id": "r:2:4", "kind": "rating", "book": 2, "method": "PUT", "path": "/api/v1/books/personal-rating", "body": {"ids": [2], "rating": 8}},
         {"id": "p:999:3", "kind": "progress", "book": 999, "method": "PUT", "path": "/api/v1/app/books/999/progress",
          "body": {"fileProgress": {"bookFileId": 1, "progressPercent": 1}}},
@@ -162,7 +164,7 @@ with sync_playwright() as pw:
     check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
     page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
-    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "8 reading updates" in page.locator("#k-sub").inner_text()
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "9 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
           "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
@@ -395,6 +397,8 @@ def iso_week(d):  # (Grimmory's WeekFields.ISO.weekOfYear(), as gzreader_grimsta
 _today = datetime.date.today()
 check(state.get("last_timeline_query") == "year=%d&week=%d" % (_today.year, iso_week(_today)),
       "reading stats: this week as Grimmory counts weeks (%s)" % state.get("last_timeline_query"))
+check("s:1:1970-01-01T02:11:00Z" in inbox.get("done", []) and not any(x["durationSeconds"] == 1799 for x in state["sessions"]),
+      "reading time recorded while the Kindle's clock said 1970: not sent to Grimmory (dropped on the Kindle)")
 usage = state.get("usage", [])
 check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
       "usage statistics the Kindle left: sent from the computer, then deleted")

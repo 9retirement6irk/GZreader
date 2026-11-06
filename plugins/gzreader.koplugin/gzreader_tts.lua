@@ -16,6 +16,14 @@ What the diagnostic logs showed on a Kindle 3 (firmware 3.4.3):
   messages: it adds the missing field, retries, and stops when ttsd accepts
   it; then it asks whether you heard the test sentence. The shape is saved.
 
+What the diagnostic log showed on a Kindle DX (firmware 2.5.8): no
+com.lab126.ttsd and no lipc-hash-prop; ttsd answers as com.lab126.tts:
+playFile (a string: a text file's path; ttsd reads the file and says it),
+stop, pause, unpause, TtsISpeed, TtsSVoice [Tom], TextToProcess. So the
+discovery also tries writing the sentence to a file and handing ttsd its
+path (lipc-set-prop -s com.lab126.tts playFile <file>). ttsd has no queue
+and sends no events there: one sentence at a time, paced by estimates.
+
 Reading: one sentence at a time (crengine sentence boundaries). The sentence
 being spoken is highlighted, pages turn by themselves, Shift + Sym plays and
 stops (like the stock Kindle). The next sentence starts after a time worked
@@ -39,6 +47,9 @@ local TTS = {
     TARGETS = {
         { pub = "com.lab126.ttsd", prop = "playSnippetNow" },
         { pub = "com.lab126.ttsd", prop = "enqueueSnippet" },
+        -- Kindle 2 / DX (firmware 2.x): a text file ttsd reads (file = its folder)
+        { pub = "com.lab126.tts", prop = "playFile", file = "/tmp" },
+        { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" },
     },
     -- First guesses for fields ttsd asks for (by name); anything else is
     -- tried as a number, then as a string.
@@ -137,8 +148,53 @@ function TTS.result(out)
     return true, body
 end
 
+--- The text of a request (its "text" field).
+local function textOf(fields)
+    for _i, f in ipairs(fields) do if f[1] == "text" then return tostring(f.str or "") end end
+    return ""
+end
+
+--- Firmware 2.x's voice reads plain text: typographic punctuation as ASCII.
+function TTS.plainText(text)
+    return (tostring(text):gsub("\u{2018}", "'"):gsub("\u{2019}", "'"):gsub("\u{201C}", '"'):gsub("\u{201D}", '"')
+        :gsub("\u{2014}", ", "):gsub("\u{2013}", ", "):gsub("\u{2026}", "..."):gsub("\u{00A0}", " "):gsub("[\r\n\t]+", " "))
+end
+
+--- The text file a playFile request hands ttsd (a few kept: ttsd may still
+--- be reading the previous one).
+local function playFileRequest(target, fields)
+    TTS.seq = TTS.seq + 1
+    local path = string.format("%s/gzreader-tts.%d.txt", target.file, TTS.seq)
+    local f = io.open(path, "wb")
+    if not f then return nil, "cannot write " .. path end
+    f:write(TTS.plainText(textOf(fields)), "\n")
+    f:close()
+    TTS.last_file = path
+    os.remove(string.format("%s/gzreader-tts.%d.txt", target.file, TTS.seq - 4))
+    local h = openLipc()
+    if h then
+        local ok, err = pcall(h.set_string_property, h, target.pub, target.prop, path)
+        pcall(h.close, h)
+        if not ok then return nil, tostring(err) end
+        return true
+    end
+    local out = OUT_PREFIX .. TTS.seq .. ".out"
+    os.remove(out)
+    -- (pub/prop are constants from TARGETS; the path is ours)
+    run(string.format("(lipc-set-prop -s %s %s %s > %s 2>&1; echo \"rc=$?\" >> %s) &", target.pub, target.prop, path, out, out))
+    return out
+end
+
+--- Is this voice one ttsd queues (enqueueSnippet, with events), or one
+--- sentence at a time (firmware 2.x's playFile)?
+function TTS.oneAtATime(template)
+    template = template or TTS.template()
+    return type(template) == "table" and type(template.target) == "table" and template.target.file ~= nil
+end
+
 --- Send one request. Returns a result handle for TTS.result, or nil, err.
 function TTS.send(target, fields)
+    if target.file then return playFileRequest(target, fields) end
     local h = openLipc()
     if not h then
         return hashPropAsync(target.pub, target.prop, TTS.hashText(fields))
@@ -190,7 +246,7 @@ function TTS.say(text, template, opts)
     TTS.next_id = TTS.next_id + 1
     local id = TTS.next_id
     local target = template.target
-    if opts.enqueue and target.pub == "com.lab126.ttsd" then
+    if opts.enqueue and target.pub == "com.lab126.ttsd" and not target.file then
         target = { pub = target.pub, prop = "enqueueSnippet" }
     end
     local handle, err = TTS.send(target, fieldsFor(template, text, id))
@@ -263,18 +319,22 @@ end
 --- Like TTS.cancel, but waits until ttsd has it (so a request sent right
 --- after can't be cancelled by it).
 function TTS.cancelNow()
+    local pub, prop = "com.lab126.ttsd", "cancelSnippetPlayback"
+    if TTS.oneAtATime() then pub, prop = "com.lab126.tts", "stop" end
     local h = openLipc()
     if h then
-        pcall(h.set_int_property, h, "com.lab126.ttsd", "cancelSnippetPlayback", 1)
+        pcall(h.set_int_property, h, pub, prop, 1)
         pcall(h.close, h)
         return
     end
-    run("lipc-set-prop -i com.lab126.ttsd cancelSnippetPlayback 1 >/dev/null 2>&1")
+    run(string.format("lipc-set-prop -i %s %s 1 >/dev/null 2>&1", pub, prop))
 end
 
---- Remove leftover result files of background calls.
+--- Remove leftover result files of background calls (and playFile's texts).
 function TTS.cleanup()
-    run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash >/dev/null 2>&1")
+    local dirs = {}
+    for _i, t in ipairs(TTS.TARGETS) do if t.file then dirs[#dirs + 1] = t.file .. "/gzreader-tts.*.txt" end end
+    run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash " .. table.concat(dirs, " ") .. " >/dev/null 2>&1")
 end
 
 function TTS.speed() return settings():readSetting("gzreader_tts_speed") or 100 end
@@ -359,15 +419,21 @@ function TTS.discover(on_done)
             local ok, detail = TTS.result(handle)
             if handle and ok == nil and n < 8 then return UIManager:scheduleIn(0.5, function() wait(n + 1) end) end
             if not handle then ok, detail = false, err end
-            local desc = target.prop .. " " .. TTS.hashText(fields)
+            local desc = target.prop .. (target.file and (" (a text file in " .. target.file .. ")") or (" " .. TTS.hashText(fields)))
+            local complaint = TTS.ttsdComplaint(since)
+            if ok and target.file and complaint and TTS.last_file and complaint:find(TTS.last_file, 1, true) then
+                ok, detail = false, complaint -- (ttsd couldn't use the file)
+            end
             if ok then
                 Log.info("tts discover: accepted", desc)
                 return on_done({ target = target, fields = fields })
             end
-            local complaint = TTS.ttsdComplaint(since)
-            last_err = complaint or detail
+            -- (every different answer, for the message: the first ones say most)
+            local this_err = tostring(complaint or detail or "?")
+            if not last_err then last_err = this_err
+            elseif not last_err:find(this_err, 1, true) then last_err = last_err .. "\n" .. this_err end
             Log.info("tts discover: rejected", desc, "|", tostring(detail), "|", tostring(complaint))
-            local name = TTS.missingField(complaint)
+            local name = not target.file and TTS.missingField(complaint) or nil
             local next_fields
             if name then
                 local key = name
@@ -397,7 +463,8 @@ function TTS.discover(on_done)
             end
             UIManager:scheduleIn(0.5, attempt)
         end
-        UIManager:scheduleIn(1, function() wait(0) end)
+        -- (a text file: ttsd reads it a moment later, and complains then if it can't)
+        UIManager:scheduleIn(target.file and 2.5 or 1, function() wait(0) end)
     end
     attempt()
 end
@@ -572,8 +639,10 @@ function Reader:start()
     pcall(function() require("gzreader_abfolder").releaseAudio("read aloud", true) end)
     self.active, self.paused = true, false
     TTS.applySettings()
-    TTS.startEvents()
+    self.one = TTS.oneAtATime()
+    if not self.one then TTS.startEvents() end
     self.events_ok = nil
+    if self.one then self.events_ok = false end -- (firmware 2.x: no events, paced by estimates)
     self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
@@ -624,7 +693,7 @@ function Reader:fill()
             local item = { text = spoken, xp0 = xp0, xp1 = xp1,
                 turn_xp = extra and extra.turn_xp, turn_frac = extra and extra.turn_frac }
             self.queue[#self.queue + 1] = item
-            self.outbox[#self.outbox + 1] = item
+            if not self.one then self.outbox[#self.outbox + 1] = item end -- (one at a time: sent when shown)
         end
         if not self.next_xp then self.no_more = true; break end
     end
@@ -674,6 +743,26 @@ function Reader:playHead()
     if not self.active or not head or head.shown then return end
     head.shown = true
     head.shown_at = os.time()
+    if self.one then
+        -- firmware 2.x: no queue in ttsd; this sentence now
+        local since = (self.said or 0) < 3 and os.date("!%y%m%d:%H%M%S", os.time() - 2) or nil
+        local handle, id = TTS.say(head.text)
+        if not handle then
+            Log.warn("tts say failed:", id)
+            self:stop()
+            UIManager:show(InfoMessage:new{ text = T(_("The Kindle voice didn't respond: %1"), id) })
+            return
+        end
+        head.id = id
+        self.said = (self.said or 0) + 1
+        if since then
+            -- (the first few: what ttsd thought of them, for the log)
+            UIManager:scheduleIn(2, function()
+                local c = TTS.ttsdComplaint(since)
+                if c then Log.warn("tts: ttsd:", c) end
+            end)
+        end
+    end
     self.cur = { head.xp0, head.xp1 }
     self:follow(head.xp0)
     self:highlight(head.xp0, head.xp1)
@@ -769,6 +858,7 @@ function Reader:stop()
     self.queue = {}
     TTS.cancel()
     if was_active then TTS.stopEvents(); TTS.cleanup() end
+    self.said = nil
     self:clearHighlight()
 end
 

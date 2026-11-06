@@ -193,6 +193,8 @@ os.execute("mkdir -p '" .. WORK .. "/settings' '" .. WORK .. "/home'")
 local Grimmory = dofile(PLUGIN .. "/main.lua")
 local AsyncMod = require("gzreader_async")
 AsyncMod.sync = true -- most sections check results right away; the async section turns it off
+-- (books fitted as picture books before they're opened: only in the picture book section)
+rawset(_G, "GZ_NO_PB_PREPARE", true)
 local PairServer = require("gzreader_pairserver")
 PairServer.port = PORT + 10
 require("gzreader_phone").PORT80 = false -- (the PIN part turns it on, on another port)
@@ -2236,6 +2238,56 @@ do
     PB.onOpen(ui)
     check(reopened == 4, "…and not again")
 
+    -- a picture book brought by the computer (or downloaded for later): recognized and
+    -- fitted before it's first opened, so it opens once, already fitted
+    local pf = WORK .. "/pb-prefit.epub"
+    local pfh = io.open(pf, "wb"); pfh:write("x"); pfh:close()
+    local DocSettings = require("docsettings")
+    local docstore, orig_open = {}, DocSettings.open
+    DocSettings.open = function(_s, path)
+        docstore[path] = docstore[path] or {}
+        local o = { data = docstore[path] }
+        function o:readSetting(k) return self.data[k] end
+        function o:saveSetting(k, v) self.data[k] = v end
+        function o:flush() end
+        return o
+    end
+    check(PB.prefit(pf, true, { "logo.jpg" }), "picture book recognized before it's opened")
+    local dsx = DocSettings:open(pf)
+    local tweak = dsx:readSetting("book_style_tweak") or ""
+    check(dsx:readSetting("gzreader_picture_book") == true and dsx:readSetting("copt_t_page_margin") == 30
+        and dsx:readSetting("copt_b_page_margin") == 4 and dsx:readSetting("copt_h_page_margins")[1] == 0
+        and dsx:readSetting("copt_smooth_scaling") == 1 and dsx:readSetting("book_style_tweak_enabled") == true
+        and tweak:find("/* v5 */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
+        and type(dsx:readSetting("gzreader_pb_margins")) == "table",
+        "…fitted with this Kindle's layout (from the last picture book fitted here), the old margins kept")
+    check(not PB.prefit(pf, true, {}), "…once")
+    ds.d = { gzreader_picture_book = true, gzreader_pb_fit = dsx:readSetting("gzreader_pb_fit") }
+    ui.styletweak.book_style_tweak = tweak
+    ui.styletweak.book_style_tweak_enabled = true
+    local before_open = reopened
+    PB.onOpen(ui)
+    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    check(reopened == before_open, "opening it: already fitted, not opened a second time")
+    ds.d.gzreader_pb_fit = { top = 0, bottom = 40 }
+    PB.onOpen(ui)
+    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    check(reopened == before_open + 1, "…unless the title bar or footer changed since: fitted again")
+    local pg = WORK .. "/pb-plain.epub"
+    pfh = io.open(pg, "wb"); pfh:write("x"); pfh:close()
+    local orig_bg2 = Async.background
+    Async.background = function(_fn, cb) cb({ yes = false, wide = {} }) end
+    PB.PREPARE_DELAY = 0
+    rawset(_G, "GZ_NO_PB_PREPARE", nil)
+    PB.prepare(pg); PB.prepare(pg)
+    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    Async.background = orig_bg2
+    check(DocSettings:open(pg):readSetting("gzreader_picture_book") == false and #PB.queue == 0,
+        "a book that isn't one: noted (not checked again when it opens)")
+    DocSettings.open = orig_open
+    rawset(_G, "GZ_NO_PB_PREPARE", true)
+    os.execute("rm -f '" .. pf .. "' '" .. pg .. "'")
+
     Dev.screen = saved_screen
     _G.__ZEN_UI_PLUGIN = zen_saved
 end
@@ -2375,7 +2427,10 @@ local function fakeTtsd(hash, prop)
 end
 TTS.exec = function(cmd)
     local out = cmd:match("> (/tmp/gzreader%-tts%.%d+%.out) 2>&1")
-    if out then
+    if out and cmd:match("lipc%-set%-prop %-s") then
+        -- (firmware 3's playFile is a hash property: a string is refused)
+        local f = io.open(out, "wb"); f:write("com.lab126.tts failed to access property playFile (0x8)\nrc=1\n"); f:close()
+    elseif out then
         local hf = io.open(cmd:match("< (%S+)")); local hash = hf:read("*a"); hf:close()
         local prop = cmd:match("lipc%-hash%-prop %S+ (%S+)")
         sent[#sent + 1] = hash
@@ -2446,6 +2501,54 @@ runLoop(function() return #props >= 3 end, 5)
 check(tts_ui.hl == "s2" and #props == 3 and props[3].prop == "enqueueSnippet" and props[3].text == "On the next page.", "next sentence shown when ttsd starts it; one more queued")
 R3:stop()
 check(not R3.active and tts_ui.hl == nil, "stop clears everything")
+print("Read aloud on the Kindle DX (firmware 2.x): a text file for ttsd")
+do
+    local said, calls = {}, {}
+    TTS.exec = function(cmd)
+        local out = cmd:match("> (/tmp/gzreader%-tts%.%d+%.out) 2>&1")
+        if not out then return 0 end
+        local rc, body = 0, ""
+        if cmd:match("lipc%-hash%-prop") then
+            rc, body = 127, "sh: lipc-hash-prop: not found"
+        else
+            local path = cmd:match("lipc%-set%-prop %-s com%.lab126%.tts playFile (%S+)")
+            calls[#calls + 1] = path
+            local tf = path and io.open(path, "rb")
+            if tf then said[#said + 1] = tf:read("*a"); tf:close() end
+            if path and path:match("^/tmp/") then
+                -- (this ttsd only reads from its own folder)
+                local f = io.open(SYSLOG, "ab")
+                f:write("261029:040100 ttsd[2070]: E lipc_handling:wrong_file:file=" .. path .. ":playFile: wrong file\n")
+                f:close()
+            end
+        end
+        local f = io.open(out, "wb"); f:write(body, "\nrc=", rc, "\n"); f:close()
+        return 0
+    end
+    os.remove(SYSLOG); io.open(SYSLOG, "wb"):close()
+    gsettings.gzreader_tts_template = nil
+    captured.confirm, captured.info = nil, nil
+    TTS.findVoice()
+    runLoop(function() return captured.confirm ~= nil or (captured.info and captured.info:match("didn't accept")) end, 60)
+    check(captured.confirm and #calls >= 2 and calls[1]:match("^/tmp/") and calls[2]:match("^/var/tmp/")
+        and said[1] == "This is the Kindle voice test. \n",
+        "no lipc-hash-prop: the sentence in a text file, its path to ttsd's playFile (the next folder when ttsd can't use it)")
+    captured.confirm.ok_callback()
+    local tpl2 = gsettings.gzreader_tts_template
+    check(tpl2 and tpl2.target.prop == "playFile" and tpl2.target.file == "/var/tmp" and TTS.oneAtATime(tpl2), "saved: playFile, one sentence at a time")
+    check(TTS.plainText("\u{201C}Hi\u{201D} \u{2014} it\u{2019}s\u{2026}") == '"Hi" ,  it\'s...', "typographic punctuation as plain text")
+    calls, said = {}, {}
+    page = 1; tts_ui.turned = nil
+    local R4 = TTS.Reader:new(tts_ui)
+    R4:start()
+    check(R4.active and #calls == 1 and R4.events_ok == false and said[1]:match("^" .. R4.queue[1].text) and tts_ui.hl == "s1",
+        "reading: only the sentence shown goes to ttsd (no queue there), paced by estimates")
+    R4:advance(R4.queue[1].id)
+    check(#calls == 2 and tts_ui.hl == "s2" and said[2]:match("^Second one%."), "…then the next one")
+    R4:stop()
+    check(not R4.active, "stopped")
+    gsettings.gzreader_tts_template = TPL
+end
 TTS.exec = nil; TTS.lipc = nil; TTS.now = nil
 local _ = before
 
@@ -2469,6 +2572,7 @@ end
 local info = Update.check()
 check(info and info.version == "1.1.0" and info.size == 123 and info.url:match("gzreader%-update%.zip$") and Update.state.has_update, "latest release found, newer than installed, asset + size picked")
 local PKG
+package.loaded["ffi/archiver"] = nil -- (the real one can't load here; a failed try leaves a marker)
 package.preload["ffi/archiver"] = function()
     local Reader = {}
     function Reader:new() return setmetatable({}, { __index = self }) end
@@ -4604,6 +4708,13 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     check(not exists(base .. "/inbox.json") and not exists(base .. "/in") and fake.store.usb_last.books == 1,
         "inbox: taken in once, then gone")
     check(Usb.import(fake) == nil, "no inbox: nothing to do")
+    local set_to
+    local orig_set = Usb.setClock
+    Usb.setClock = function(t) set_to = t; return true end
+    local later = os.time() + 3600
+    check(Usb.fixClock(later) and set_to == later + 60 and not Usb.fixClock(os.time() - 600) and not Usb.fixClock(0),
+        "the Kindle's clock behind the computer's (when the page wrote the inbox): set from it; a right clock is left alone")
+    Usb.setClock = orig_set
     check(Usb.summaryText(r):match("1 book") and Usb.summaryText(r):match("3 reading updates"), "the summary says what came")
 
     -- a GZreader update the page brought: installed before the rest comes in

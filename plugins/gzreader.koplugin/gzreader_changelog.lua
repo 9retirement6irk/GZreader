@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.26.2",
+        changes = {
+            "Kindle 2 and DX: Read aloud finds the Kindle's voice. Their older firmware has no lipc-hash-prop and reads text from a file (com.lab126.tts playFile): Find the Kindle voice now tries that, and reading hands it one sentence at a time.",
+            "Picture books (Diary of a Wimpy Kid…) brought by the computer or downloaded for later are recognized and fitted in the background before they're first opened, so the first opening doesn't measure every picture and then open the book a second time (on a Kindle DX: 22 s, then 8 s more).",
+            "Sync with a computer: the Kindle's clock is set from the computer's when it's behind (a Kindle DX whose battery ran down starts at 1970), and reading time recorded while it said 1970 isn't sent to Grimmory.",
+        },
+    },
+    {
         version = "1.26.1",
         changes = {
             "Sync with a computer: Home's Grimmory reading stats widget (streak, this week, this month, books finished this year) gets Grimmory's numbers from the sync page, counted after the Kindle's reading time reached Grimmory.",

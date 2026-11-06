@@ -1006,11 +1006,16 @@ gets a password or token.
     var jobs = (out.jobs || []).filter(function (j) { return !done.has(j.id); });
     if (!jobs.length) return;
     phase("Sending reading updates to Grimmory…");
-    var sent = 0, marks = 0;
+    var sent = 0, marks = 0, badClock = 0;
     inbox.created = inbox.created || {};
     for (var i = 0; i < jobs.length; i++) {
       var j = jobs[i];
       var r, path = j.path, body = j.body;
+      if (j.kind === "session" && body && Date.parse(body.startTime) < Date.UTC(2020, 0, 1)) {
+        // read while the Kindle's clock was wrong (a Kindle DX starts at 1970 when its clock is lost):
+        // not sent, so Grimmory's stats don't get 1970 dates
+        inbox.done.push(j.id); badClock++; continue;
+      }
       if (j.kind === "mark") {
         // a bookmark or highlight: ids made on the Kindle ("usb-…") are Grimmory's once created
         var ref = j.ref != null ? String(j.ref) : null;
@@ -1039,6 +1044,7 @@ gets a password or token.
       bar.set(i + 1, jobs.length);
     }
     await saveInbox(inbox);
+    if (badClock) log(badClock + " reading time" + (badClock === 1 ? "" : "s") + " left out: recorded while the Kindle's clock was wrong (it's set from this computer's now).");
     log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark and highlight change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
   }
 

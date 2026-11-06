@@ -1799,6 +1799,10 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()
+        if book.gz_quiet then
+            -- (downloaded for later: a picture book is fitted before it's first opened)
+            pcall(function() require("gzreader_picturebook").prepare(path) end)
+        end
         if book.gz_quiet and Net.connected() then
             -- (downloaded for later: Grimmory's latest, while Wi-Fi is on)
             local key = tostring(book.id)

@@ -186,9 +186,14 @@ end
 --- Is this a picture book? (EPUB whose chapter files are pictures, not text.)
 function PB.detect(doc)
     if not doc or doc.info.has_pages or type(doc.getDocumentFileContent) ~= "function" then return false end
+    return PB.detectWith(function(p) return doc:getDocumentFileContent(p) end)
+end
+
+--- The same from the EPUB's files: read(path) -> a file inside the EPUB.
+function PB.detectWith(read)
     local ok_s, Sync = pcall(require, "gzreader_sync")
     if not ok_s then return false end
-    local ok, spine = pcall(Sync.parseSpine, function(p) return doc:getDocumentFileContent(p) end)
+    local ok, spine = pcall(Sync.parseSpine, read)
     if not ok or not spine or #spine.frag < 3 then return false end
     local sampled, pictures, text_total, img_total = 0, 0, 0, 0
     local n = #spine.frag
@@ -196,7 +201,7 @@ function PB.detect(doc)
     local first, last = math.min(3, n), math.max(1, n - 1)
     local step = math.max(1, math.floor((last - first) / 10))
     for i = first, last, step do
-        local html = doc:getDocumentFileContent(spine.frag[i])
+        local html = read(spine.frag[i])
         if html then
             sampled = sampled + 1
             local body = html:match("<[%w:]*body[^>]*>(.*)</[%w:]*body>") or html
@@ -287,6 +292,10 @@ function PB.set(ui, on, opts)
             ui.doc_settings:saveSetting("gzreader_pb_smooth", cfg.smooth_scaling == 1)
         end
         cfg.smooth_scaling = 1
+        -- (this Kindle's layout: books recognized before they're opened get it: PB.prefit)
+        G_reader_settings:saveSetting("gzreader_pb_layout", { top = lay.top, bottom = lay.bottom, vh = lay.vh,
+            avail_w = lay.avail_w, avail_h = lay.avail_h })
+        ui.doc_settings:saveSetting("gzreader_pb_fit", { top = lay.top, bottom = lay.bottom })
         Log.info("picture book layout: screen", lay.screen, "title bar", lay.header, "footer", lay.footer,
             "margins top", lay.top, "bottom", lay.bottom, "pictures", lay.vh .. "vh", "wide ones kept as they are", #wide)
     else
@@ -338,6 +347,16 @@ function PB.onOpen(ui)
         UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
         return
     end
+    local fit = ui.doc_settings:readSetting("gzreader_pb_fit")
+    if known == true and PB.isOn(ui) and type(fit) == "table" then
+        -- fitted before it was first opened (PB.prefit): for this Kindle's
+        -- layout as it was then; if the title bar or footer changed since, again
+        local lay = PB.layout(ui)
+        if lay.top ~= fit.top or lay.bottom ~= fit.bottom then
+            UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
+        end
+        return
+    end
     if known == true and not PB.isOn(ui) then
         -- recognized, but closed before it was fitted: finish now
         UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
@@ -354,6 +373,114 @@ function PB.onOpen(ui)
             end
         end)
     end
+end
+
+--- Books just downloaded or brought by the computer: recognized and fitted
+--- before they're first opened, in the background. Otherwise the first
+--- opening read every picture (in the background, 22 s for Diary of a Wimpy
+--- Kid on a Kindle DX) and then opened the book a second time with the new
+--- layout. Fitted needs this Kindle's layout (title bar, footer): known once
+--- a picture book has been fitted here; until then it's only recognized and
+--- its pictures measured, and the first opening fits it (one reopen).
+PB.queue = {}
+function PB.prepare(file)
+    -- (the tests turn it off where it isn't what they check)
+    if rawget(_G, "GZ_NO_PB_PREPARE") or type(file) ~= "string" or not file:lower():match("%.epub$") then return end
+    if G_reader_settings:readSetting("gzreader_picture_book_auto") == false then return end
+    for _i, f in ipairs(PB.queue) do if f == file then return end end
+    PB.queue[#PB.queue + 1] = file
+    if #PB.queue == 1 then UIManager:scheduleIn(PB.PREPARE_DELAY or 10, PB.safeNext) end
+end
+
+function PB.safeNext()
+    local ok, err = pcall(PB.prepareNext)
+    if not ok then
+        Log.warn("picture book: preparing:", tostring(err))
+        PB.queue = {}
+    end
+end
+
+local function openNow(file)
+    local okr, ReaderUI = pcall(require, "apps/reader/readerui")
+    local cur = okr and ReaderUI.instance or nil
+    return cur and cur.document and cur.document.file == file
+end
+
+function PB.prepareNext()
+    local file = PB.queue[1]
+    if not file then return end
+    local okd, DocSettings = pcall(require, "docsettings")
+    if not okd or openNow(file) or DocSettings:open(file):readSetting("gzreader_picture_book") ~= nil then
+        table.remove(PB.queue, 1)
+        if #PB.queue > 0 then UIManager:scheduleIn(1, PB.safeNext) end
+        return
+    end
+    local lay = G_reader_settings:readSetting("gzreader_pb_layout")
+    local Screen = require("device").screen
+    local w = type(lay) == "table" and tonumber(lay.avail_w) or Screen:getWidth()
+    local h = type(lay) == "table" and tonumber(lay.avail_h) or math.floor(Screen:getHeight() * 0.95)
+    require("gzreader_async").background(function()
+        local Archiver = require("ffi/archiver")
+        local r = Archiver.Reader:new()
+        if not r:open(file) then return nil end
+        for _e in r:iterate() do end
+        local read = function(p) return r:extractToMemory(p) end
+        local yes = PB.detectWith(read)
+        local wide = yes and PB.widePictures(read, w, h) or {}
+        r:close()
+        return { yes = yes, wide = wide }
+    end, function(res, err)
+        if err == "busy" then return UIManager:scheduleIn(30, PB.safeNext) end -- (another job: later)
+        table.remove(PB.queue, 1)
+        if type(res) == "table" then
+            local ok, e = pcall(PB.prefit, file, res.yes == true, type(res.wide) == "table" and res.wide or {})
+            if not ok then Log.warn("picture book: couldn't prepare", tostring(e)) end
+        else
+            Log.info("picture book: not checked before opening:", tostring(err))
+        end
+        if #PB.queue > 0 then UIManager:scheduleIn(2, PB.safeNext) end
+    end, "picture book check", { timeout = 900 })
+end
+
+--- Save what was found with the book (not when it was opened meanwhile).
+function PB.prefit(file, yes, wide)
+    if openNow(file) then return false end
+    local DocSettings = require("docsettings")
+    local ds = DocSettings:open(file)
+    if ds:readSetting("gzreader_picture_book") ~= nil then return false end
+    ds:saveSetting("gzreader_picture_book", yes)
+    local fitted = false
+    if yes then
+        ds:saveSetting("gzreader_pb_wide", wide)
+        local lay = G_reader_settings:readSetting("gzreader_pb_layout")
+        if type(lay) == "table" and tonumber(lay.top) and tonumber(lay.bottom) then
+            local function def(k, d)
+                local v = G_reader_settings:readSetting("copt_" .. k)
+                if v == nil then return d end
+                return v
+            end
+            local hm = def("h_page_margins", { 15, 15 })
+            local vh = tonumber(lay.vh) or PB.VH
+            -- what PB.set keeps to put back when it's turned off
+            ds:saveSetting("gzreader_pb_margins", { hm[1], def("t_page_margin", 15), hm[2], def("b_page_margin", 15),
+                def("sync_t_b_page_margins", nil) })
+            ds:saveSetting("gzreader_pb_smooth", def("smooth_scaling", 0) == 1)
+            ds:saveSetting("gzreader_pb_vh", vh)
+            ds:saveSetting("copt_h_page_margins", { 0, 0 })
+            ds:saveSetting("copt_t_page_margin", lay.top)
+            ds:saveSetting("copt_b_page_margin", lay.bottom)
+            ds:saveSetting("copt_sync_t_b_page_margins", 0)
+            ds:saveSetting("copt_smooth_scaling", 1)
+            ds:saveSetting("book_style_tweak", PB.css(vh, wide))
+            ds:saveSetting("book_style_tweak_enabled", true)
+            ds:saveSetting("gzreader_pb_fit", { top = lay.top, bottom = lay.bottom })
+            fitted = true
+        end
+    end
+    ds:flush()
+    Log.info("picture book check before opening:", (file:match("[^/]+$")), yes and (fitted and "yes, fitted" or "yes") or "no",
+        yes and ("(wide pictures " .. #wide .. ")") or "")
+    return true
 end
 
 function PB.menuItem(ui)
