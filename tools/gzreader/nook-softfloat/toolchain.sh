@@ -17,6 +17,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 CTNG_REPO=${CTNG_REPO:-https://github.com/benoit-pierre/crosstool-ng.git}
 CTNG_REV=${CTNG_REV:-34844bc8e985ad1ba26b072a5b58264967072e19} # koxtoolchain's
 WORK=${CTNG_WORK:-$(mktemp -d)}
+mkdir -p "$WORK"
 
 cd "$WORK"
 [ -d CT-NG ] || git clone -q "$CTNG_REPO" CT-NG
