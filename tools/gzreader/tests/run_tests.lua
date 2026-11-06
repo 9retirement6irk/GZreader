@@ -4405,6 +4405,8 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         "outbox: ratings (and a rating taken away)")
     check(#out.queue == 2 and out.notes.queue[1].content == "milk #shopping" and out.calendar.days_ahead == 90,
         "outbox: the sync queue, notes written here, the calendar range")
+    check(text:find('"music":[]', 1, true) and text:find('"audiobooks":[]', 1, true),
+        "outbox: empty lists written as lists ([], not {}: the page reads them as lists)")
     check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),
         "outbox: no password or token in it")
     local mtime = require("lfs").attributes(lib .. "/.gzsync/outbox.json", "modification")

@@ -201,6 +201,16 @@ end
 
 ---------------------------------------------------------------- the outbox
 
+-- A list, as a list in JSON even when it's empty ([] and not {}: the page
+-- reads the outbox; KOReader's JSON (luajson) and dkjson each have their mark).
+local ARRAY = { __is_luajson_array = true, __jsontype = "array" }
+local function list(t)
+    local out = {}
+    for i, v in ipairs(type(t) == "table" and t or {}) do out[i] = v end
+    return setmetatable(out, ARRAY)
+end
+Usb.list = list
+
 local function clean(body)
     local out = {}
     for k, v in pairs(body or {}) do if not tostring(k):match("^gz_") then out[k] = v end end
@@ -360,7 +370,7 @@ function Usb.have(plugin)
         end)
         return list
     end)
-    return { books = books, audiobooks = audiobooks, music = music }
+    return { books = books, audiobooks = list(audiobooks), music = list(music) }
 end
 
 function Usb.outbox(plugin)
@@ -403,11 +413,11 @@ function Usb.outbox(plugin)
         gzreader = version,
         kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true },
         grimmory = store.server and { server = store.server, user = store.username } or nil,
-        jobs = Usb.jobs(plugin),
-        queue = queue(plugin),
+        jobs = list(Usb.jobs(plugin)),
+        queue = list(queue(plugin)),
         have = Usb.have(plugin),
-        notes = { queue = notes_queue, sync_tags = memos.sync_tags, keep = (store.notes_prefs or {}).keep,
-            files_mb = (store.notes_prefs or {}).files_mb, files = note_files },
+        notes = { queue = list(notes_queue), sync_tags = memos.sync_tags and list(memos.sync_tags) or nil, keep = (store.notes_prefs or {}).keep,
+            files_mb = (store.notes_prefs or {}).files_mb, files = list(note_files) },
         calendar = { days_back = cal_from or 14, days_ahead = cal_to or 90 },
         auto_shelf = shelf,
         last_import = store.usb_last and store.usb_last.at or nil,

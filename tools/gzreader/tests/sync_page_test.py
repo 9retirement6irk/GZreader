@@ -106,9 +106,10 @@ OUTBOX = {
         {"id": 3, "kind": "book", "title": "Book 03", "authors": ["Author 0"], "format": "EPUB", "file_id": 1003, "name": "book3.epub", "size_kb": 300},
         {"id": 32, "kind": "audiobook", "title": "Book 32", "format": "AUDIOBOOK", "name": "book32.audiobook", "size_kb": 12},
     ],
-    "have": {"books": {"1": {"file_id": 1001, "format": "EPUB"}}, "audiobooks": [], "music": ["album-999"]},
+    # (empty lists as GZreader 1.24 on a Kindle wrote them: {}, KOReader's JSON)
+    "have": {"books": {"1": {"file_id": 1001, "format": "EPUB"}}, "audiobooks": {}, "music": ["album-999"]},
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
-              "keep": 100, "files": []},
+              "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
 }
 

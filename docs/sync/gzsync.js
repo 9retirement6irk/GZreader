@@ -774,7 +774,7 @@ gets a password or token.
     d: { books: [], music: [] },
     load: async function () {
       var d = Drive.sync && await Drive.readJSON(Drive.sync, "picks.json");
-      Picks.d = { books: (d && d.books) || [], music: (d && d.music) || [] };
+      Picks.d = { books: asList(d && d.books), music: asList(d && d.music) };
     },
     save: function () { if (Drive.sync) Drive.write(Drive.sync, "picks.json", JSON.stringify(Picks.d)).catch(function () {}); },
   };
@@ -784,6 +784,26 @@ gets a password or token.
   var K = { out: null, handle: null, test: false };
 
   function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+  // The outbox as GZreader wrote it: an empty list can come as {} (KOReader's
+  // JSON writes an empty Lua table as an object; GZreader 1.24): lists here.
+  function asList(x) { return Array.isArray(x) ? x : (x && typeof x === "object" ? Object.keys(x).map(function (k) { return x[k]; }) : []); }
+  function fixOutbox(o) {
+    if (!o || typeof o !== "object") return o;
+    o.jobs = asList(o.jobs);
+    o.queue = asList(o.queue);
+    o.have = o.have && typeof o.have === "object" ? o.have : {};
+    o.have.books = o.have.books && typeof o.have.books === "object" && !Array.isArray(o.have.books) ? o.have.books : {};
+    o.have.audiobooks = asList(o.have.audiobooks);
+    o.have.music = asList(o.have.music);
+    o.notes = o.notes && typeof o.notes === "object" ? o.notes : {};
+    o.notes.queue = asList(o.notes.queue);
+    o.notes.files = asList(o.notes.files);
+    if (o.notes.sync_tags != null) o.notes.sync_tags = asList(o.notes.sync_tags);
+    o.jobs.forEach(function (j) { if (j && j.queue) j.queue = asList(j.queue); });
+    o.queue.forEach(function (q) { if (q && q.authors != null) q.authors = asList(q.authors); });
+    return o;
+  }
 
   // 1. the drive: its GZreader folder, the Kindle's outbox
   async function openDrive(handle, quiet) {
@@ -796,7 +816,7 @@ gets a password or token.
     Drive.root = handle; Drive.gz = where.gz; Drive.sync = where.sync;
     K.handle = handle;
     if (!K.test && !window.GZSYNC_TEST) await idb.set("drive", handle); // (test mode: a folder in the browser's own storage)
-    K.out = await Drive.readJSON(Drive.sync, "outbox.json");
+    K.out = fixOutbox(await Drive.readJSON(Drive.sync, "outbox.json"));
     K.pending = await Drive.readJSON(Drive.sync, "inbox.json");
     await Picks.load();
     show("#kindle-problem", false);
@@ -1477,7 +1497,7 @@ gets a password or token.
         if (Cal.list[i].type === "file") { var h = await idb.get("calfile:" + Cal.list[i].id); if (h) await permitted(h, "read"); }
       }
       if (!(await permitted(K.handle, "readwrite"))) throw new Error("The browser wasn't allowed to write to the Kindle.");
-      K.out = await Drive.readJSON(Drive.sync, "outbox.json") || {};
+      K.out = fixOutbox(await Drive.readJSON(Drive.sync, "outbox.json") || {});
       var inbox = newInbox(await Drive.readJSON(Drive.sync, "inbox.json"));
       var out = K.out;
       if (G.connected()) {

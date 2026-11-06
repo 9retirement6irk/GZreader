@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.25.1",
+        changes = {
+            "Sync with a computer: the sync page stopped with an error (\"reduce/some is not a function\") and Sync stayed greyed out when the Kindle had nothing waiting in a list: GZreader wrote empty lists the way the page didn't expect. Fixed on both sides (the page already handles Kindles that haven't updated).",
+        },
+    },
+    {
         version = "1.25.0",
         changes = {
             "Sync with a computer: bookmarks, highlights and notes made, changed or deleted on the Kindle go to Grimmory with the next sync, and Grimmory's come back to be merged when the book opens, as with Wi-Fi.",
