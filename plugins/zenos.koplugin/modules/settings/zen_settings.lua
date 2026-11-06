@@ -139,6 +139,17 @@ function M.build(plugin)
         interface_item,
         IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
+        -- GZreader: what's on the Kindle (books, audiobooks, music, notes,
+        -- calendar) and the biggest of each
+        {
+            text = _("Storage"),
+            icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "database"),
+            keep_menu_open = true,
+            callback = function()
+                local g = gzreader()
+                if g then require("gzreader_storage").show(g) end
+            end,
+        },
         -- GZreader: Connections: the Grimmory plugin's settings (connection,
         -- sync, audiobooks; also under KOReader → Tools → Grimmory) and
         -- Memos (the Notes tab: connection, synced tags, storage, limits).

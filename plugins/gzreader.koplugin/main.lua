@@ -127,6 +127,15 @@ function Grimmory:init()
     if not self.ui.document and not self.store.home_is_library then
         -- Grimmory build: the home folder is the GZreader folder (no setup question)
         pcall(self.useLibraryAsHome, self)
+    elseif not self.ui.document then
+        -- and it stays so (an older build's "Set home folder" may have changed it)
+        pcall(function()
+            local dir = self:libraryDir()
+            if G_reader_settings:readSetting("home_dir") ~= dir then
+                G_reader_settings:saveSetting("home_dir", dir)
+                Log.info("home folder set back to", dir)
+            end
+        end)
     end
     if not self.ui.document then
         -- download status in ZenOS's title bar (after every plugin has loaded)

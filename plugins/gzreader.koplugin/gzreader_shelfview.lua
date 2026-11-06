@@ -459,6 +459,16 @@ function Row:paintTo(bb, x, y)
     local Sh = Shelf()
     local board_y = y + self.h - S(Sh.BOARD_H) - S(Sh.UNDER_H)
     Sh.paintBoard(bb, x, board_y, self.w)
+    if self.note then
+        local title = TextWidget:new{ text = self.note[1], face = Font:getFace("cfont", 22), bold = true, max_width = self.w - S(32) }
+        local line = require("ui/widget/textboxwidget"):new{ text = self.note[2], face = Font:getFace("cfont", 16),
+            width = self.w - S(48), alignment = "center" }
+        local th, lh = title:getSize().h, line:getSize().h
+        local ty = y + math.floor((board_y - y - th - S(8) - lh) / 2)
+        title:paintTo(bb, x + math.floor((self.w - title:getSize().w) / 2), ty)
+        line:paintTo(bb, x + S(24), ty + th + S(8))
+        title:free(); line:free()
+    end
     -- devices on the right (this shelf's room for books ends where they start)
     local right = x + self.w - S(8)
     for k = #self.devices, 1, -1 do
@@ -681,9 +691,17 @@ function View.buildUI(menu)
     if menu._gz_picked and not (menu._gz_picked > first and menu._gz_picked <= first + menu.perpage) then
         menu._gz_picked = nil
     end
+    -- nothing here yet (the GZreader folder with no books): say what fills it,
+    -- on the top shelf (ZenOS's "No books found" + "Set home folder" went under
+    -- the shelves, over the tab bar, until 1.23.11)
+    menu._gz_shelves = true
+    local note
+    if #books == 0 and #devices == 0 and menu.page == 1 then
+        note = { _("No books yet"), _("Books you download from the Grimmory tab appear here.") }
+    end
     for rr = 1, rows do
         local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {},
-            devices = rr == 1 and devices or {}, cover_w = cover_w, cover_h = cover_h }
+            devices = rr == 1 and devices or {}, cover_w = cover_w, cover_h = cover_h, note = rr == 1 and note or nil }
         table.insert(menu.item_group, row)
         local line = {}
         for _i, it in ipairs(row.items) do line[#line + 1] = it end

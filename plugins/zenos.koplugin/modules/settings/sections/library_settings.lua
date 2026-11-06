@@ -871,34 +871,8 @@ function M.build(ctx)
     table.insert(folders_item.sub_item_table, IconItem.decorate({
         text = _("Home folder"),
         sub_item_table = {
-            {
-                text = _("Set home folder"),
-                callback = function()
-                    local filemanagerutil = require("apps/filemanager/filemanagerutil")
-                    local title_header = _("Current home folder:")
-                    local current_path = paths.getHomeDir()
-                    local default_path = filemanagerutil.getDefaultDir()
-                    filemanagerutil.showChooseDialog(title_header, function(path)
-                        G_reader_settings:saveSetting("home_dir", path)
-                        if paths.isUnsafeFlatViewRoot(path)
-                                and type(config.browser_flat_view) == "table"
-                                and config.browser_flat_view.enabled == true then
-                            config.browser_flat_view.enabled = false
-                            plugin:saveConfig()
-                            local InfoMessage = require("ui/widget/infomessage")
-                            UIManager:show(InfoMessage:new{
-                                text = _("Subfolder flat view was disabled because the home folder is the device storage root."),
-                            })
-                        end
-                        local ok, FM = pcall(require, "apps/filemanager/filemanager")
-                        local fm = ok and FM and FM.instance
-                        if fm and type(fm.updateTitleBarPath) == "function" then
-                            pcall(fm.updateTitleBarPath, fm)
-                        end
-                    end, current_path, default_path)
-                end,
-                keep_menu_open = true,
-            },
+            -- GZreader: no "Set home folder": the home folder is always the
+            -- GZreader folder (GZreader sets it again at every start)
             {
                 text = _("Lock home folder"),
                 enabled_func = function()

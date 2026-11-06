@@ -151,7 +151,8 @@ end
 
 ---------------------------------------------------------------- the page
 
-local Editor = InputContainer:extend{ covers_fullscreen = true }
+local Editor = InputContainer:extend{ covers_fullscreen = true,
+    gz_no_flash = true } -- (typing: no flash at every key on a Kindle 3, gzreader_eink)
 
 -- The text box: Alt shortcuts reach the editor before the box types them,
 -- and Alt + the top row types 1–0 (the Kindle Keyboard's numbers).

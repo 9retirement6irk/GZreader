@@ -1015,9 +1015,9 @@ check(plugin.store.library_dir == libdir, "Grimmory folder created under the dev
 check(gsettings.home_dir == libdir and plugin.store.home_is_library == true, "home folder set to it on first start, no prompt")
 check(gsettings.collate == "access", "sorted by recently opened, like ZenOS's folder setup")
 check(plugin:localPathFor(3) == libdir .. "/book3.epub", "downloads saved straight into it (shows in the Downloaded tab)")
-gsettings.home_dir = "/somewhere/else"                     -- user changes it later
+gsettings.home_dir = "/somewhere/else"                     -- an older build's "Set home folder"
 Grimmory:new{ ui = { menu = { registerToMainMenu = function() end }, active_widgets = {} } }
-check(gsettings.home_dir == "/somewhere/else", "only done once: a later choice of home folder is respected")
+check(gsettings.home_dir == libdir, "the home folder is always the GZreader folder: set back at the next start")
 gsettings.home_dir = libdir
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 
@@ -4074,6 +4074,15 @@ print("Kindles without REAGL: flash when the screen changes")
     check(Eink.inPlayer(stack) and not Eink.inPlayer({ { widget = { name = "home" } } }), "a player is open: one marked gz_player is on the stack")
     check(Eink.flashesFor(player, stack) and not Eink.flashesFor(chapters, stack) and Eink.flashesFor(chapters, { { widget = {} } }),
         "inside a player only its own opening and closing flash (not its chapter list)")
+    -- (the widgets are stand-ins here: the editor's class is read from its file)
+    local src = io.open(debug.getinfo(Eink.promote, "S").source:sub(2):gsub("gzreader_eink%.lua$", "gzreader_noteeditor.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    local ed = { covers_fullscreen = true, gz_no_flash = true }
+    local estack = { { widget = { name = "home" } }, { widget = ed } }
+    check(text:match("local Editor = InputContainer:extend{ covers_fullscreen = true,%s*gz_no_flash = true }")
+        and Eink.inPlayer(estack) and Eink.flashesFor(ed, { { widget = {} } }) and not Eink.flashesFor({ covers_fullscreen = true }, estack),
+        "the note editor: typing doesn't flash the screen at every key (only its opening and closing do)")
 end)()
 
 print("Headphones")
@@ -4275,6 +4284,52 @@ print("1.23.7 fixes and speed-ups")
     local wait = UIM._checkTasks(q)
     check(table.concat(order, ",") == "a,b" and #q._task_queue == 1 and wait == q._task_queue[1].time,
         "slow traces: scheduled tasks run as KOReader runs them (" .. table.concat(order, ",") .. ")")
+end)()
+
+print("Settings → Storage")
+;(function()
+    local St = require("gzreader_storage")
+    local lib = WORK .. "/storage-lib"
+    os.execute("rm -rf '" .. lib .. "'")
+    local function put(path, bytes)
+        os.execute("mkdir -p '" .. path:match("^(.*)/[^/]*$") .. "'")
+        local f = io.open(path, "wb"); f:write(string.rep("x", bytes)); f:close()
+    end
+    put(lib .. "/Big Book.epub", 5000)
+    put(lib .. "/Big Book.sdr/metadata.epub.lua", 1000)
+    put(lib .. "/Small.pdf", 300)
+    put(lib .. "/Series/Third.epub", 2000)
+    put(lib .. "/Half.epub.part", 700)
+    put(lib .. "/Audiobooks/Walk.epub", 50)            -- a stand-in: not a book
+    put(lib .. "/.audiobooks/90/audiobook.m4b", 9000)
+    put(lib .. "/.audiobooks/90/audiobook.m4b.chunks/0.aac", 4000)
+    put(lib .. "/.audiobooks/7/a.mp3", 3000)
+    put(lib .. "/.music/album-1/01.mp3", 6000)
+    put(lib .. "/Music/Album.epub", 40)
+    local fake = { store = {
+        downloads = { ["5"] = { path = lib .. "/Big Book.epub", title = "The Big Book" } },
+        audiobooks = { [90] = { title = "A Walk in the Woods" } },
+    } }
+    local b = St.books(fake, lib)
+    check(b.count == 4 and b.bytes == 9000 and b.items[1].name == "The Big Book" and b.items[1].bytes == 6000
+        and b.items[2].name == "Third" and b.items[3].name:match("^Half") and b.items[3].name:match("unfinished"),
+        "storage: books with their KOReader settings, largest first, titles from Grimmory (" .. b.bytes .. ")")
+    local a = St.audiobooks(fake, lib)
+    check(a.count == 2 and a.items[1].name == "A Walk in the Woods" and a.items[1].bytes == 13000 and a.bytes == 16050,
+        "storage: audiobooks (audio and what was made from it), by title")
+    local m = St.music(fake, lib)
+    check(m.count == 1 and m.bytes == 6040, "storage: music, with the stand-ins")
+    check(St.noteName("# Groceries\nmilk") == "Groceries" and St.noteName("  ") ~= "" and #St.noteName(string.rep("é", 60)) < 140,
+        "storage: a note is named by its first line")
+    local items = St.items({ disk = { total = 3 * 1024 ^ 3, available = 1024 ^ 3 }, books = b, audiobooks = a, music = m,
+        notes = { bytes = 2048, count = 0, items = {} }, calendar = { bytes = 2048 }, caches = { bytes = 10 * 1024 ^ 2 } })
+    local by = {}
+    for _i, it in ipairs(items) do by[it.text] = it end
+    check(by["Free on this Kindle"].mandatory == "1.00 GB of 3.00 GB" and by.Books.mandatory == "4 books · 9 KB"
+        and #by.Books.sub_item_table == 4 and by.Notes.sub_item_table[1].text:match("No notes")
+        and by.Calendar.mandatory == "2 KB" and by["Covers and saved lists"].mandatory == "10.0 MB",
+        "storage page: free space, each part's size, the biggest of each")
+    os.execute("rm -rf '" .. lib .. "'")
 end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))

@@ -17,8 +17,10 @@ on by default):
   full-screen menu) flashes, page or not.
 Small updates (the clock, typing) don't, nor does anything the 5-way's arrows
 do (moving along the tab bar, around the quick panel or a list: those redraw
-the whole screen but flashing at every step is too much). Inside the audiobook and music players (gz_player windows) nothing flashes
-but opening and closing the player itself. Page turns flash
+the whole screen but flashing at every step is too much). Inside the
+audiobook and music players (gz_player windows) and the note editor
+(gz_no_flash: typing) nothing flashes but opening and closing them. Page
+turns flash
 every page, as the Kindle's own reader does, unless a rate was chosen in the
 book's menu (Screen → E-ink settings → Full refresh rate; KOReader's default
 is every 6 pages, which left a grey trace of the last pages on the page).
@@ -71,19 +73,24 @@ function Eink.promote(mode, region, screen_w, screen_h, pending, arrow)
     return region and "flashui" or "full", true
 end
 
---- The audiobook or music player is open (a window marked gz_player).
+--- A window where nothing flashes but its own opening and closing: the
+--- audiobook and music players (gz_player), the note editor (gz_no_flash:
+--- typing redraws most of the screen, and every key flashed it until 1.23.11).
+local function quiet(w) return type(w) == "table" and (w.gz_player == true or w.gz_no_flash == true) end
+
+--- Such a window is open.
 function Eink.inPlayer(stack)
     for _i, w in ipairs(stack or {}) do
-        if type(w.widget) == "table" and w.widget.gz_player then return true end
+        if quiet(w.widget) then return true end
     end
     return false
 end
 
 --- Does opening or closing `widget` call for a flash? A full-screen window,
---- but inside a player only the player itself.
+--- but inside a quiet one (a player, the note editor) only that one itself.
 function Eink.flashesFor(widget, stack)
     if type(widget) ~= "table" or not widget.covers_fullscreen then return false end
-    return widget.gz_player == true or not Eink.inPlayer(stack)
+    return quiet(widget) or not Eink.inPlayer(stack)
 end
 
 function Eink.install()

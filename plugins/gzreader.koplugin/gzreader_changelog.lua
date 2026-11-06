@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.23.11",
+        changes = {
+            "Settings → Storage: how much room books, audiobooks, music, notes, the calendar and covers take on the Kindle, and how much is free. Books, audiobooks, music and notes open on their largest ones.",
+            "Downloads, with no books yet: \"No books yet\" on the top shelf, and where books come from. The \"Set home folder\" button is gone (it went over the tab bar), and so is Settings → Library → Folders → Home folder → Set home folder: the home folder is always the GZreader folder (set back at the next start if it was changed).",
+            "Kindle 3 (and the other Kindles without REAGL): typing a note no longer flashes the whole screen at every key; the note editor flashes only when it opens and closes.",
+        },
+    },
+    {
         version = "1.23.10",
         changes = {
             "Kindles with keys (Kindle 2, DX, 3, 4): a Grimmory book's page can be used again. Its Download and Download & open buttons couldn't be pressed (the 5-way's Press and arrows did nothing there since 1.22.3, only Back worked), so books couldn't be downloaded from it.",
