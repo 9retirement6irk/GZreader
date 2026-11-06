@@ -31,7 +31,8 @@ Format 1:
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
-    usage = { level, server, app } (absent when off) }
+    usage = { level, server, app } (absent when off),
+    screensavers = { names, mode = "auto"|"always"|"other" }; kindle.screen = { w, h } }
 - usage/*.jsonl (the Kindle, when it steps aside for the USB drive): usage
   statistics waiting to be sent (gzreader_usage.lua); the page sends them
   to usage.server and deletes each file it sent.
@@ -42,6 +43,7 @@ Format 1:
     notes = { file, done = { queue ids }, server, user },
     calendars = { { name, file } },
     grimmory = { server, user },
+    screensavers = { add = { { file, name } }, remove = { names }, mode },
     grimmory_stats = { at, values = { streak, longest_streak, reading_days,
       week_time, week_books, month_sessions, year_finished } } or { at, error } }
 ]]
@@ -379,6 +381,14 @@ function Usb.have(plugin)
     return { books = books, audiobooks = jsonList(audiobooks), music = jsonList(music) }
 end
 
+--- The screen, upright (for pictures made to fit it).
+function Usb.screenSize()
+    local ok, w, h = pcall(function() return Device.screen:getWidth(), Device.screen:getHeight() end)
+    if not ok or not tonumber(w) or not tonumber(h) then return nil end
+    if w > h then w, h = h, w end
+    return { w = w, h = h }
+end
+
 function Usb.usageInfo()
     local ok, U = pcall(require, "gzreader_usage")
     if not ok or not U.on() then return nil end
@@ -431,7 +441,8 @@ function Usb.outbox(plugin)
     return {
         format = Usb.FORMAT,
         gzreader = version,
-        kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true },
+        kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true,
+            screen = Usb.screenSize() },
         grimmory = store.server and { server = store.server, user = store.username } or nil,
         jobs = jsonList(Usb.jobs(plugin)),
         queue = jsonList(queue(plugin)),
@@ -441,6 +452,8 @@ function Usb.outbox(plugin)
         calendar = { days_back = cal_from or 14, days_ahead = cal_to or 90 },
         auto_shelf = shelf,
         last_import = store.usb_last and store.usb_last.at or nil,
+        -- the sleep screen's pictures (the page makes new ones for this screen)
+        screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
         -- usage statistics (gzreader_usage.lua): the page sends what's in usage/
         usage = Usb.usageInfo(),
         -- (how much room is left on the Kindle, for the page)
@@ -770,6 +783,89 @@ function Usb.fixClock(written_at)
     return Usb.setClock(t + 60) == true
 end
 
+---------------------------------------------------------------- sleep screen pictures
+
+--- Where the sleep screen's pictures are: the drive's "screensavers" folder
+--- on a Kindle (frontend/ui/screensaver.lua looks there), elsewhere the
+--- folder chosen in the sleep screen settings or GZreader's own.
+function Usb.screensaverDir()
+    if Usb.SCREENSAVER_DIR then return Usb.SCREENSAVER_DIR end -- (tests)
+    if Device:isKindle() then return "/mnt/us/screensavers" end
+    local dir = G_reader_settings:readSetting("screensaver_dir")
+    if type(dir) == "string" and dir ~= "" then return dir end
+    return DataStorage:getDataDir() .. "/screensavers"
+end
+
+local PICTURE = { png = true, jpg = true, jpeg = true, gif = true, bmp = true, svg = true }
+local function isPicture(name)
+    local ext = type(name) == "string" and name:match("%.(%w+)$")
+    return ext ~= nil and PICTURE[ext:lower()] == true
+end
+
+--- The pictures there (names), for the page.
+function Usb.screensavers()
+    local list = {}
+    pcall(function()
+        local dir = Usb.screensaverDir()
+        if not isDir(dir) then return end
+        for f in lfs.dir(dir) do
+            if f:sub(1, 1) ~= "." and isPicture(f) and isFile(dir .. "/" .. f) then list[#list + 1] = f end
+        end
+        table.sort(list)
+    end)
+    return list
+end
+
+--- inbox.screensavers = { add = { { file, name } }, remove = { names }, mode = "auto"|"always" }:
+--- pictures the page made for this screen into the folder, the ones taken
+--- off removed, and when they show (auto: the book's cover while reading,
+--- a picture elsewhere; always: a picture). Returns how many came.
+function Usb.takeScreensavers(base, st)
+    local dir = Usb.screensaverDir()
+    if not isDir(dir) then lfs.mkdir(dir) end
+    local added = 0
+    for _i, p in ipairs(type(st.add) == "table" and st.add or {}) do
+        local src = type(p) == "table" and type(p.file) == "string" and base .. "/" .. p.file
+        local name = type(p) == "table" and type(p.name) == "string" and p.name:match("[^/\\]+$")
+        if src and name and isPicture(name) and not name:find("^%.") and isFile(src) then
+            local dest = dir .. "/" .. name
+            local stem, ext = name:match("^(.*)(%.[^.]+)$")
+            local k = 2
+            while isFile(dest) do
+                dest = dir .. "/" .. (stem or name) .. " (" .. k .. ")" .. (ext or "")
+                k = k + 1
+            end
+            if move(src, dest) then added = added + 1 end
+        end
+    end
+    for _i, name in ipairs(type(st.remove) == "table" and st.remove or {}) do
+        -- (only a picture's name in that folder)
+        if type(name) == "string" and not name:find("[/\\]") and not name:find("^%.") and isPicture(name) then
+            os.remove(dir .. "/" .. name)
+        end
+    end
+    if st.mode == "auto" then
+        G_reader_settings:saveSetting("gzreader_sleep_auto", true)
+    elseif st.mode == "always" then
+        G_reader_settings:saveSetting("gzreader_sleep_auto", false)
+        G_reader_settings:saveSetting("screensaver_type", "random_image")
+        G_reader_settings:saveSetting("screensaver_dir", dir)
+    end
+    if not Device:isKindle() and G_reader_settings:readSetting("screensaver_dir") == nil then
+        G_reader_settings:saveSetting("screensaver_dir", dir) -- (only Kindles look in /mnt/us/screensavers by themselves)
+    end
+    slow.screensavers = nil -- (the outbox lists them afresh)
+    Log.info("sync: sleep screen pictures:", added, "brought,", type(st.remove) == "table" and #st.remove or 0, "taken off, mode", tostring(st.mode))
+    return added
+end
+
+--- Which sleep screen is on, for the page.
+function Usb.sleepMode()
+    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then return "auto" end
+    if G_reader_settings:readSetting("screensaver_type") == "random_image" then return "always" end
+    return "other"
+end
+
 --- Grimmory's reading stats the page fetched (Home's "Grimmory reading
 --- stats" widget: gzreader_grimstats.lua), with this sync's sessions in.
 function Usb.takeStats(plugin, st)
@@ -843,6 +939,10 @@ function Usb.import(plugin, on_prepared)
             local okc, got = pcall(Usb.takeCalendars, plugin, base, inbox.calendars)
             if okc then r.events = got else Log.warn("sync: calendars:", tostring(got)) end
         end
+        if type(inbox.screensavers) == "table" then
+            local oks, got = pcall(Usb.takeScreensavers, base, inbox.screensavers)
+            if oks then r.pictures = got else Log.warn("sync: sleep screen pictures:", tostring(got)) end
+        end
         r.prepare = prepare
     end)
     if not ok then Log.err("sync: taking in what the computer brought failed:", tostring(err)) end
@@ -883,6 +983,7 @@ function Usb.summaryText(r)
     if r.music > 0 then parts[#parts + 1] = r.music == 1 and _("1 album or playlist") or T(_("%1 albums or playlists"), r.music) end
     if r.notes then parts[#parts + 1] = r.notes == 1 and _("1 note") or T(_("%1 notes"), r.notes) end
     if r.events then parts[#parts + 1] = T(_("calendar: %1 events"), r.events) end
+    if (r.pictures or 0) > 0 then parts[#parts + 1] = r.pictures == 1 and _("1 sleep screen picture") or T(_("%1 sleep screen pictures"), r.pictures) end
     local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
     if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end
     if (r.marks or 0) > 0 then text = text .. "\n" .. T(_("%1 bookmark and highlight changes sent to Grimmory."), r.marks) end

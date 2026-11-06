@@ -977,6 +977,8 @@ function M.build_install_pages(ctx)
                 if sel["keep"] then return end
                 if sel["gz_auto"] then
                     G_reader_settings:makeTrue("gzreader_sleep_auto")
+                    G_reader_settings:makeFalse("screensaver_show_message")
+                    pcall(PresetStore.setActivePreset, "screensaver", nil)
                     pcall(function()
                         local lfs = require("libs/libkoreader-lfs")
                         if require("device"):isKindle() and not lfs.attributes("/mnt/us/screensavers", "mode") then

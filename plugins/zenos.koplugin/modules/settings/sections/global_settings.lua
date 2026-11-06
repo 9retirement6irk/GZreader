@@ -331,6 +331,19 @@ function M.build(ctx)
             separator = #all > 0,
         })
 
+        -- GZreader's own sleep screen (the default, and the setup guide's
+        -- "Cover or screensavers"): shown as chosen, not as no preset at all
+        table.insert(preset_items, {
+            text = _("Cover or screensavers (GZreader)"),
+            radio = true,
+            checked_func = function() return G_reader_settings:nilOrTrue("gzreader_sleep_auto") end,
+            callback = function(touchmenu_instance)
+                G_reader_settings:makeTrue("gzreader_sleep_auto")
+                PresetStore.setActivePreset("screensaver", nil)
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+            separator = #all == 0,
+        })
         for i, preset in ipairs(all) do
             local pname = preset.name
             local is_builtin = preset.builtin == true
@@ -339,6 +352,7 @@ function M.build(ctx)
                 text = pname,
                 radio = true,
                 checked_func = function()
+                    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then return false end
                     return PresetStore.getActivePreset("screensaver") == pname
                 end,
                 callback = function(touchmenu_instance)

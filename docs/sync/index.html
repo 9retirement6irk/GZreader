@@ -41,6 +41,7 @@
   label { display: block; font-size: 14px; color: var(--muted); margin: 8px 0 3px; }
   input[type=text], input[type=url], input[type=password], input[type=search] { width: 100%; padding: 9px 10px; border-radius: 8px;
     border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); max-width: 100%; }
   button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 9px; border: 1.5px solid var(--ink);
     background: transparent; color: var(--ink); cursor: pointer; margin: 8px 6px 0 0; }
   button.primary { background: var(--ink); color: var(--paper); }
@@ -60,6 +61,9 @@
   ul.items li span { min-width: 0; overflow-wrap: anywhere; }
   ul.items li span + span { flex: none; white-space: nowrap; }
   ul.items li button { margin: 0; padding: 4px 10px; font-size: 14px; flex: none; }
+  .ss-row { display: flex; align-items: center; gap: 10px; }
+  .ss-thumb { width: 36px; height: 48px; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; flex: none; background: #fff; }
+  .ss-off { text-decoration: line-through; }
   .opts label { display: flex; gap: 8px; align-items: center; color: var(--ink); margin: 6px 0; }
   .tabs { display: flex; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid var(--line); }
   .tabs button { margin: 0 0 -1px; border: 1px solid transparent; border-radius: 8px 8px 0 0; font-weight: 600; color: var(--muted); }
@@ -256,6 +260,22 @@
       <button id="b-more" class="hidden">More</button>
       <h3 style="margin-top:16px">Coming with the next sync <span class="muted small" id="picks-size"></span></h3>
       <ul class="items" id="picks"></ul>
+
+      <h3 style="margin-top:22px">Sleep screen pictures <span class="muted small" id="ss-size"></span></h3>
+      <p class="small muted">Your own pictures for the Kindle's sleep screen: made here to fit its screen, in grey, and put in its <code>screensavers</code> folder with the next sync.</p>
+      <div class="row">
+        <button id="ss-add" style="margin:0">Add pictures…</button>
+        <input type="file" id="ss-files" accept="image/*" multiple class="hidden">
+        <select id="ss-fit" aria-label="How pictures fit the screen">
+          <option value="cover">Fill the screen (edges cropped)</option>
+          <option value="contain">Whole picture (white edges)</option>
+        </select>
+      </div>
+      <div class="opts small" style="margin-top:8px">
+        <label><input type="radio" name="ss-mode" value="auto"> The book's cover while reading, a picture from Home and menus</label>
+        <label><input type="radio" name="ss-mode" value="always"> A picture, always</label>
+      </div>
+      <ul class="items" id="ss-list"></ul>
     </section>
 
     <section class="panel hidden" data-panel="sync">
@@ -279,6 +299,6 @@
     <a href="../">GZreader</a> · <a href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#sync-with-a-computer">How syncing with a computer works</a>
   </footer>
 </div>
-<script src="gzsync.js?v=fd90f9cf56"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
+<script src="gzsync.js?v=d497a21a98"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
 </body>
 </html>

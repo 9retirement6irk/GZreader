@@ -4835,8 +4835,19 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         jf:close()
         fake.store.downloads["1"].bookmarks = { ["/body/DocFragment[2]"] = "usb-1" }
         local ready = false
+        Usb.SCREENSAVER_DIR = lib .. "/screensavers"
         local r = Usb.import(fake, function() ready = true end)
         local left = Usb.journal(fake)
+        local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
+        local phead = pf and pf:read(24)
+        if pf then pf:close() end
+        check(r.pictures == 1 and phead and phead:sub(2, 4) == "PNG" and G_reader_settings:readSetting("screensaver_type") == "random_image"
+            and G_reader_settings:readSetting("gzreader_sleep_auto") == false and G_reader_settings:readSetting("screensaver_dir") == lib .. "/screensavers"
+            and Usb.sleepMode() == "always" and #Usb.screensavers() == 1 and Usb.summaryText(r):match("1 sleep screen picture"),
+            "e2e: the sleep screen picture in the screensavers folder; pictures always, as chosen on the page")
+        G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
+        G_reader_settings:saveSetting("screensaver_dir", nil)
+        Usb.SCREENSAVER_DIR = nil
         check(r.marks == 4 and #left == 1 and left[1].id == "m:5" and left[1].ref ~= "usb-2" and tonumber(left[1].ref)
             and fake.store.downloads["1"].bookmarks["/body/DocFragment[2]"] ~= "usb-1" and fake.store.usb_idmap["usb-2"],
             "e2e: the journal's sent lines gone, the rest now refer to Grimmory's ids, as does the Kindle")

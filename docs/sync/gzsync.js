@@ -857,6 +857,7 @@ gets a password or token.
     showKindle(K.out);
     renderConnections();
     renderPicks();
+    Sleep.render();
     setPanel(G.connected() || M.connected() || P.connected() || Cal.list.length ? "content" : "connections");
     Update.check();
     measure();
@@ -953,6 +954,7 @@ gets a password or token.
     jobs: [], queue: [], have: { books: {}, audiobooks: [], music: [] },
     notes: { queue: [], keep: 100, files: [] }, calendar: { days_back: 14, days_ahead: 90 },
     disk: { total: 1.4 * 1073741824, available: 1.1 * 1073741824 },
+    screensavers: { names: [], mode: "auto" },
   };
   async function testKindle(reset) {
     var root = await navigator.storage.getDirectory();
@@ -1625,6 +1627,7 @@ gets a password or token.
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
       try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
+      if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
       await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)
@@ -1637,6 +1640,7 @@ gets a password or token.
       K.pending = inbox;
       showKindle(K.out);
       renderPicks();
+      Sleep.render();
       $("#b-results").textContent = "";
       measure();
     } catch (e) {
@@ -1650,7 +1654,7 @@ gets a password or token.
   // ------------------------------------------------------------ the page
 
   function updateSyncButton() {
-    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected());
+    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected() || Sleep.count());
   }
 
   function renderConnections() {
@@ -1993,6 +1997,117 @@ gets a password or token.
     if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
   }
 
+  // ------------------------------------------------------------ sleep screen pictures
+
+  // Pictures for the Kindle's sleep screen: made here for its screen (grey,
+  // its size, filling it or whole), brought with the sync; GZreader moves
+  // them into the drive's screensavers folder (gzreader_usbsync.lua).
+  var Sleep = {
+    pending: [], // { name, blob, url } (in this tab only)
+    remove: {},  // names of the Kindle's pictures to take off
+    mode: null,  // "auto" | "always" (null: as it is on the Kindle)
+    screen: function () {
+      var sc = ((K.out || {}).kindle || {}).screen;
+      return sc && sc.w > 0 && sc.h > 0 ? { w: Math.round(sc.w), h: Math.round(sc.h) } : { w: 600, h: 800 };
+    },
+    onKindle: function () { return asList(((K.out || {}).screensavers || {}).names); },
+    count: function () { return Sleep.pending.length + Object.keys(Sleep.remove).length + (Sleep.mode ? 1 : 0); },
+    nameFor: function (file) {
+      var base = String(file.name || "picture").replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9 _-]+/g, "-").replace(/^[-\s.]+|[-\s]+$/g, "").slice(0, 40) || "picture";
+      var name = base + ".png", k = 2;
+      var taken = function (n) { return Sleep.pending.some(function (p) { return p.name === n; }); };
+      while (taken(name)) name = base + " (" + (k++) + ").png";
+      return name;
+    },
+    // the picture as the Kindle's screen shows it: its size, in grey
+    make: async function (file, fit) {
+      var img = await createImageBitmap(file);
+      var sc = Sleep.screen();
+      var c = document.createElement("canvas");
+      c.width = sc.w; c.height = sc.h;
+      var g = c.getContext("2d");
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, sc.w, sc.h);
+      var k = fit === "contain" ? Math.min(sc.w / img.width, sc.h / img.height) : Math.max(sc.w / img.width, sc.h / img.height);
+      var w = img.width * k, h = img.height * k;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(img, (sc.w - w) / 2, (sc.h - h) / 2, w, h);
+      if (img.close) img.close();
+      var d = g.getImageData(0, 0, sc.w, sc.h), px = d.data;
+      for (var i = 0; i < px.length; i += 4) {
+        var y = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
+        px[i] = px[i + 1] = px[i + 2] = y; px[i + 3] = 255;
+      }
+      g.putImageData(d, 0, 0);
+      return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
+    },
+    add: async function (files) {
+      var fit = ($("#ss-fit") || {}).value || "cover", bad = 0;
+      for (var i = 0; i < files.length; i++) {
+        try {
+          var blob = await Sleep.make(files[i], fit);
+          Sleep.pending.push({ name: Sleep.nameFor(files[i]), blob: blob, url: URL.createObjectURL(blob) });
+        } catch (e) { bad++; }
+      }
+      Sleep.render();
+      if (bad) alertIn($("#ss-add"), bad + " picture" + (bad === 1 ? "" : "s") + " couldn't be read (this browser can't open that kind of file).");
+    },
+    render: function () {
+      var ul = $("#ss-list");
+      if (!ul) return;
+      ul.textContent = "";
+      var sc = Sleep.screen();
+      $("#ss-size").textContent = "· made " + sc.w + " × " + sc.h + " for this Kindle";
+      var mode = Sleep.mode || ((K.out || {}).screensavers || {}).mode;
+      document.querySelectorAll('input[name="ss-mode"]').forEach(function (r) { r.checked = r.value === mode; });
+      Sleep.pending.forEach(function (p) {
+        var li = el("li");
+        var left = el("span", { class: "ss-row" });
+        var im = el("img", { class: "ss-thumb", alt: "", src: p.url });
+        left.appendChild(im);
+        left.appendChild(el("span", null, p.name));
+        li.appendChild(left);
+        var b = el("button", null, "Remove");
+        b.onclick = function () { URL.revokeObjectURL(p.url); Sleep.pending = Sleep.pending.filter(function (x) { return x !== p; }); Sleep.render(); };
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+      Sleep.onKindle().forEach(function (name) {
+        var li = el("li");
+        var off = !!Sleep.remove[name];
+        li.appendChild(el("span", { class: off ? "muted ss-off" : "" }, name));
+        var right = el("span", { class: "small muted" }, off ? "taken off with the sync " : "on the Kindle ");
+        var b = el("button", null, off ? "Keep" : "Take off");
+        b.onclick = function () { if (off) delete Sleep.remove[name]; else Sleep.remove[name] = true; Sleep.render(); };
+        right.appendChild(b);
+        li.appendChild(right);
+        ul.appendChild(li);
+      });
+      if (!ul.children.length) ul.appendChild(el("li", { class: "small muted" }, "No pictures yet: add some, or the Kindle shows its own."));
+      updateSyncButton();
+    },
+    // with the sync: the new pictures under in/, what to do with them in the inbox
+    bring: async function (inbox) {
+      var st = inbox.screensavers && typeof inbox.screensavers === "object" ? inbox.screensavers : {};
+      st.add = asList(st.add); st.remove = asList(st.remove);
+      var n = 0;
+      for (var i = 0; i < Sleep.pending.length; i++) {
+        var p = Sleep.pending[i];
+        var file = "in/screensavers/" + Date.now() + "-" + i + ".png";
+        await Drive.write(Drive.sync, file, p.blob);
+        st.add.push({ file: file, name: p.name });
+        n++;
+      }
+      Object.keys(Sleep.remove).forEach(function (name) { if (st.remove.indexOf(name) < 0) st.remove.push(name); });
+      if (Sleep.mode) st.mode = Sleep.mode;
+      inbox.screensavers = st;
+      var off = Object.keys(Sleep.remove).length;
+      Sleep.pending.forEach(function (p) { URL.revokeObjectURL(p.url); });
+      Sleep.pending = []; Sleep.remove = {}; Sleep.mode = null;
+      if (n || off) log("Sleep screen: " + (n ? n + " picture" + (n === 1 ? "" : "s") + " on the way" : "") + (n && off ? ", " : "") + (off ? off + " taken off" : "") + ".", "ok");
+    },
+  };
+
   function busy(btn, fn) {
     return async function () {
       btn.disabled = true;
@@ -2024,6 +2139,12 @@ gets a password or token.
       history.replaceState(null, "", location.pathname + (K.test ? "?test" : ""));
       show("#sso-wait", true);
     }
+    // sleep screen pictures
+    $("#ss-add").onclick = function () { $("#ss-files").click(); };
+    $("#ss-files").onchange = async function () { var f = Array.prototype.slice.call(this.files || []); this.value = ""; await Sleep.add(f); };
+    document.querySelectorAll('input[name="ss-mode"]').forEach(function (r) {
+      r.onchange = function () { if (r.checked) { Sleep.mode = r.value === ((K.out || {}).screensavers || {}).mode ? null : r.value; Sleep.render(); } };
+    });
     // the gate: a Kindle
     $("#pick").onclick = async function () {
       try { await openDrive(await window.showDirectoryPicker({ id: "gzkindle", mode: "readwrite" })); }
@@ -2136,7 +2257,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

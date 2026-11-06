@@ -31,6 +31,8 @@ local function genMenuItem(text, setting, value, enabled_func, separator, help_t
         help_text = help_text,
         enabled_func = enabled_func,
         checked_func = function()
+            -- (GZreader's automatic sleep screen, when on, is the one chosen)
+            if setting == "screensaver_type" and G_reader_settings:nilOrTrue("gzreader_sleep_auto") then return false end
             return G_reader_settings:readSetting(setting) == value
         end,
         callback = function()
@@ -49,6 +51,14 @@ local sub_item_table = {
     {
         text = _("Wallpaper"),
         sub_item_table = {
+            -- GZreader's own (the default; the setup guide's "Cover or screensavers")
+            {
+                text = _("Book cover while reading, a picture from the screensavers folder elsewhere"),
+                help_text = _("While a book is open, its cover. From Home and menus, a picture from the screensavers folder on the Kindle's drive (the sync page can add some), else one of the Kindle's own."),
+                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_sleep_auto") end,
+                callback = function() G_reader_settings:makeTrue("gzreader_sleep_auto") end,
+                radio = true,
+            },
             genMenuItem(_("Show book cover on sleep screen"), "screensaver_type", "cover", hasLastFile),
             genMenuItem(_("Show custom image (book cover while reading)"), "screensaver_type", "document_cover", nil, nil,
                 _("From Home and menus the sleep screen shows the image you choose. While a book is open it shows that book's cover.")),

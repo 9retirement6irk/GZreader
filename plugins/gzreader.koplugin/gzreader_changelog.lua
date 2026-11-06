@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.26.3",
+        changes = {
+            "Sync with a computer: your own sleep screen pictures. On the sync page (Content), add pictures: they're made to fit the Kindle's screen, in grey, and put in its screensavers folder with the sync. Take off ones that are there, and choose when they show: the book's cover while reading and a picture elsewhere, or a picture always.",
+            "No \"Sleeping\" message over the sleep screen by default (KOReader turned it on by itself on a first start). Turned off once on every Kindle; Settings → Sleep screen → Message turns it back on.",
+            "The sleep screen chosen in the setup guide shows as chosen: Settings → Sleep screen listed \"Leave screen as-is\" (and ZenOS's sleep screen presets nothing) for GZreader's own \"Cover or screensavers\", which is now an entry of its own in both.",
+        },
+    },
+    {
         version = "1.26.2",
         changes = {
             "Kindle 2 and DX: Read aloud finds the Kindle's voice. Their older firmware has no lipc-hash-prop and reads text from a file (com.lab126.tts playFile): Find the Kindle voice now tries that, and reading hands it one sentence at a time.",

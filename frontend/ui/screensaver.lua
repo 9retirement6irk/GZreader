@@ -31,7 +31,15 @@ if G_reader_settings:hasNot("screensaver_show_message") then
 end
 if G_reader_settings:hasNot("screensaver_type") then
     G_reader_settings:saveSetting("screensaver_type", "disable")
-    G_reader_settings:makeTrue("screensaver_show_message")
+    -- (GZreader: no "Sleeping" message; KOReader turns it on with "disable",
+    -- which GZreader's own sleep screen replaces anyway)
+end
+-- GZreader: no message over the sleep screen by default. 1.26.3 turned it off
+-- once on every Kindle (KOReader had turned it on by itself on a first start);
+-- Sleep screen → Message turns it back on.
+if G_reader_settings:hasNot("gzreader_sleep_message_off") then
+    G_reader_settings:makeFalse("screensaver_show_message")
+    G_reader_settings:makeTrue("gzreader_sleep_message_off")
 end
 if G_reader_settings:hasNot("screensaver_img_background") then
     G_reader_settings:saveSetting("screensaver_img_background", "black")

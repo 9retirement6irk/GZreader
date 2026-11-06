@@ -60,7 +60,8 @@ check(sleep and sleep.choices[1].id == "gz_auto" and sleep.choices[1].checked, "
 check(sleep.choice_layout == "tiles" and #sleep.choices == 4 and sleep.choices[3].preview == "zen_white",
     "sleep screen: tiles with previews (no 'Keep current' on a first setup)")
 local SAVED = {} G_reader_settings.makeTrue = function(_, k) SAVED[k] = true end G_reader_settings.makeFalse = function(_, k) SAVED[k] = false end
-sleep.on_apply({ gz_auto = true }) check(SAVED.gzreader_sleep_auto == true, "choosing it turns GZreader sleep mode on")
+sleep.on_apply({ gz_auto = true }) check(SAVED.gzreader_sleep_auto == true and SAVED.screensaver_show_message == false,
+    "choosing it turns GZreader sleep mode on (no message over it)")
 local ids = {} for _, c in ipairs(pages[1].choices) do ids[#ids + 1] = c.id .. (c.checked and "*" or "") end
 check(table.concat(ids, ",") == "qr*,type,gz_copy,skip", "not connected: QR (default), type, copy from another GZreader, skip")
 BROADCAST = nil; pages[1].on_apply({ qr = true });   check(BROADCAST == "GrimmoryPair", "QR choice -> GrimmoryPair event")

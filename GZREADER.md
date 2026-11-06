@@ -527,6 +527,12 @@ Connections → Sync through a computer.
    audiobooks open at their place on Grimmory the first time, and Home's
    Grimmory reading stats show Grimmory's numbers as of the sync.
 
+Sleep screen pictures: the Content tab's **Sleep screen pictures** adds your
+own (made to fit the Kindle's screen, in grey) to the drive's `screensavers`
+folder with the sync, takes off ones that are there, and chooses when they
+show: the book's cover while reading and a picture from Home and menus, or a
+picture always.
+
 Usage statistics (if they're on, Settings → General → Usage statistics) wait
 on the Kindle; when GZreader steps aside for the USB drive it leaves them in
 `.gzsync/usage/`, and the page sends them at the level chosen on the Kindle,

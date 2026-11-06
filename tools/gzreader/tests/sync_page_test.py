@@ -13,7 +13,7 @@ it is copied there, for run_tests.lua's import test (GZ_SYNC_DUMP).
 Ports: port (Grimmory) port+1 (its control), port+20 Memos, port+21 Plex,
 port+22 the page.
 """
-import base64, datetime, json, os, subprocess, sys, tempfile, threading, time, urllib.request
+import base64, datetime, json, os, struct, subprocess, sys, tempfile, threading, time, urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -82,7 +82,8 @@ for p in (GP, MP, PP):
 
 OUTBOX = {
     "format": 1, "written_at": int(now), "gzreader": "1.24.0",
-    "kindle": {"model": "Kindle2", "name": "Kindle 2 · 3F2A", "id": "3f2a01", "audio": True},
+    "kindle": {"model": "Kindle2", "name": "Kindle 2 · 3F2A", "id": "3f2a01", "audio": True, "screen": {"w": 824, "h": 1200}},
+    "screensavers": {"names": ["old.png"], "mode": "auto"},
     "grimmory": {"server": "http://127.0.0.1:%d" % GP, "user": "will"},
     "jobs": [
         {"id": "p:1:7", "kind": "progress", "book": 1, "method": "PUT", "path": "/api/v1/app/books/1/progress",
@@ -284,6 +285,25 @@ with sync_playwright() as pw:
     check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text(),
           "update: a newer GZreader is offered for the Kindle")
 
+    # sleep screen pictures: one added (a wide colour picture), one of the Kindle's taken off, always pictures
+    import struct, zlib
+    def png(w, h):
+        raw = b"".join(b"\x00" + bytes([200, 30, 30]) * w for _ in range(h))
+        def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    pic = os.path.join(web, "My Dog!.png")
+    with open(pic, "wb") as f: f.write(png(60, 30))
+    page.evaluate("() => GZSync.setPanel('content')")
+    page.set_input_files("#ss-files", pic)
+    page.wait_for_function("GZSync.Sleep.pending.length === 1")
+    ss = page.locator("#ss-list").inner_text()
+    check("My Dog.png" in ss and "old.png" in ss and "824 × 1200" in page.locator("#ss-size").inner_text()
+          and page.locator('input[name="ss-mode"][value="auto"]').is_checked(),
+          "sleep screen pictures: a picture added (made for this Kindle's screen), the Kindle's own listed, its mode shown")
+    page.locator("#ss-list li", has_text="old.png").locator("button").click()
+    page.check('input[name="ss-mode"][value="always"]')
+    check("taken off with the sync" in page.locator("#ss-list").inner_text(), "…one of the Kindle's to take off")
+    page.evaluate("() => GZSync.setPanel('sync')")
     # Grimmory has places for the books the sync brings (they open there on the Kindle)
     urllib.request.urlopen("http://127.0.0.1:%d/webprogress?book=3&pct=30&cfi=epubcfi(/6/6!/4/2)&href=Text/ch1.xhtml" % (GP + 1)).read()
     urllib.request.urlopen("http://127.0.0.1:%d/webprogress?book=32&pct=60&cfi=50000&href=1" % (GP + 1)).read()
@@ -399,6 +419,13 @@ check(state.get("last_timeline_query") == "year=%d&week=%d" % (_today.year, iso_
       "reading stats: this week as Grimmory counts weeks (%s)" % state.get("last_timeline_query"))
 check("s:1:1970-01-01T02:11:00Z" in inbox.get("done", []) and not any(x["durationSeconds"] == 1799 for x in state["sessions"]),
       "reading time recorded while the Kindle's clock said 1970: not sent to Grimmory (dropped on the Kindle)")
+sst = inbox.get("screensavers") or {}
+added = (sst.get("add") or [{}])[0]
+pdata = files.get(G + added.get("file", "-"), b"")
+pw, ph = struct.unpack(">II", pdata[16:24]) if pdata[:8] == b"\x89PNG\r\n\x1a\n" else (0, 0)
+check(added.get("name") == "My Dog.png" and added.get("file", "").startswith("in/screensavers/") and (pw, ph) == (824, 1200)
+      and sst.get("remove") == ["old.png"] and sst.get("mode") == "always",
+      "sleep screen pictures: brought as a PNG the screen's size, with what to take off and when they show")
 usage = state.get("usage", [])
 check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
       "usage statistics the Kindle left: sent from the computer, then deleted")
