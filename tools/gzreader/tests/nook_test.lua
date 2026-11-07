@@ -61,10 +61,31 @@ HW.sys = {
     mmap = function() return mem end,
     munmap = function() return 0 end,
     write = function(path, v) sysfs[#sysfs + 1] = path .. "=" .. tostring(v); return true end,
-    read = function(path) if path:match("enable$") then return "1" end end,
+    writeOnce = function(path, v) sysfs[#sysfs + 1] = path .. "=" .. tostring(v) .. "!"; return true end,
+    -- (as Android leaves them asleep: tube off, backlight off and dimmed, taps only)
+    read = function(path)
+        if path:match("enable$") then return "1" end
+        return ({ lcd_power = "0", backlight_power = "0", backlight_level = "8", gesture_mask = "1" })[path:match("[^/]+$")]
+    end,
+    find = function(dir, name)
+        return (dir:match("spi") and "/sys/bus/spi/devices/spi0.0/" or "/sys/bus/i2c/devices/0-0020/") .. name
+    end,
 }
+-- by default Android's way (the direct way froze a real Nook at its first refresh)
 assert(HW:open())
-check(HW.vfb_fd == 10 and HW.epd_fd == 11 and HW.direct, "finds bravo-vfb and the S1D13521 by name, drives the e-ink directly")
+local woke = table.concat(sysfs, " ")
+check(HW.vfb_fd == 10 and HW.epd_fd == 11 and not HW.direct and not woke:find("enable=", 1, true),
+    "by default: the kernel's e-ink updates (Android's way), left on")
+check(woke:find("0-0020/gesture_mask=16!", 1, true) and woke:find("spi0.0/lcd_power=1!", 1, true)
+    and woke:find("backlight_level=64", 1, true) and woke:find("backlight_power=1", 1, true),
+    "the colour screen woken: LCD powered up, backlight on at Android's level, the panel reporting finger motion (one write each)")
+HW.vfb_fd, HW.epd_fd = nil, nil
+calls, sysfs = {}, {}
+local orig_mode = HW.epdMode
+HW.epdMode = function() return "direct" end -- (GZ_NOOK_EPD=direct)
+assert(HW:open())
+HW.epdMode = orig_mode
+check(HW.vfb_fd == 10 and HW.epd_fd == 11 and HW.direct, "GZ_NOOK_EPD=direct: finds bravo-vfb and the S1D13521 by name, drives the e-ink directly")
 check(calls[1] and calls[1].req == 0x4606 and calls[1].yoffset == 0, "shows the vfb's first buffer (Android was on its second)")
 check(sysfs[1] == "/sys/devices/platform/s1d13521fb.0/enable=0", "the kernel's own e-ink updates off")
 
@@ -117,6 +138,8 @@ HW:close()
 check(row800[0] == 0x1234, "Android's LCD picture restored")
 local joined = table.concat(sysfs, " ")
 check(joined:find("enable=1", 1, true) and joined:find("redraw=1", 1, true), "kernel updates back on, Android's page redrawn")
+check(joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
+    and joined:find("backlight_level=8", 1, true), "the colour screen and touch panel left as Android had them (it wakes them itself)")
 
 ------------------------------------------------------------------ lcd touch
 print("colour screen touches")

@@ -231,10 +231,11 @@ script's changes are undone by exiting or restarting the Nook.
 
 ### Both screens
 
-- **The e-ink page** shows GZreader as on a Kindle 4. GZreader sends each
-  update straight to the e-ink controller with a waveform suited to it: fast
-  black-and-white for highlights, grey without a flash for page turns, a
-  flashing full refresh now and then (like the Kindles).
+- **The e-ink page** shows GZreader as on a Kindle 4, refreshed the way
+  Android does it (through the Nook's kernel: each update a full refresh).
+  Sending updates straight to the e-ink controller, with a faster waveform
+  for each, froze a real Nook at the first refresh; it can still be tried
+  with `GZ_NOOK_EPD=direct` (below).
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
@@ -316,9 +317,9 @@ Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
 colour screen). If anything goes wrong, holding power to restart the Nook
 always brings back its own software.
 
-If the e-ink page doesn't update properly, try the Nook's own way of
-refreshing it (every update a full refresh, slower but safe):
-`adb shell GZ_NOOK_EPD=kernel sh /data/gzreader/gzreader.sh`.
+To try GZreader's own e-ink refreshes (faster, fewer flashes; this froze
+a Nook on its first refresh, so only if you're ready to restart it):
+`adb shell "GZ_NOOK_EPD=direct sh /data/gzreader/gzreader.sh"`.
 
 ### What to send back
 
