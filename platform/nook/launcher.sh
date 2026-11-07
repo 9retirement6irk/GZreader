@@ -38,7 +38,7 @@ log() { echo "$($BB date '+%F %T') $*" >> "$LOG"; }
 running() {
     local pid
     pid=$($BB cat "$PIDF" 2>/dev/null) || return 1
-    [ -n "$pid" ] && $BB tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | $BB grep -q "launcher.sh run"
+    [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] && $BB tr '\0' ' ' < "/proc/$pid/cmdline" | $BB grep -q "launcher.sh run"
 }
 
 start_helper() {

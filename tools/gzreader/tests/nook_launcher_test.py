@@ -192,9 +192,9 @@ def main():
             f.write(str(stale.pid))
         r = launcher("start")
         newpid = helper_pid()
-        check(r.returncode == 0 and newpid and newpid != stale.pid and alive(newpid)
+        check(r.returncode == 0 and newpid and newpid != stale.pid and alive(newpid) and r.stderr == ""
               and "start: helper started" in open(os.path.join(gz, "launch", "helper.log")).read(),
-              "start after a restart, the old pid now someone else's: the helper started")
+              "start after a restart, the old pid now someone else's (or nobody's): the helper started, quietly")
         stale.kill()
         launcher("uninstall")
         r = launcher("frobnicate")
