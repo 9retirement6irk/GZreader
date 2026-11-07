@@ -58,6 +58,8 @@ $BB --install -s /bin 2>/dev/null
 mount -o remount,ro / 2>/dev/null
 
 RUN=$GZ/run
+# e-ink refreshes all full, with a flash (as up to 1.26.6): touch $GZ/eink-flash
+[ -f "$GZ/eink-flash" ] && export GZ_NOOK_EPD=flash
 mkdir -p $RUN
 
 # --- 1b. where the books go ------------------------------------------------

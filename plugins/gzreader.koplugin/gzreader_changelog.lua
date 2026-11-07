@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition: no flash when the selection moves, a menu opens or the clock changes. GZreader now refreshes the e-ink page the way Android does on this Nook, just the part that changed, without a flash; a full refresh with a flash comes only when one is asked for (every few page turns, against ghosting). If the screen doesn't keep up, `touch /data/gzreader/eink-flash` over adb brings back a full refresh every time (see GZREADER.md).",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",
