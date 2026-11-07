@@ -90,7 +90,27 @@ if [ -n "$ZYGOTE" ]; then
 fi
 log "paused Android: $(wc -l < $RUN/stopped) processes"
 
+# Unaligned memory accesses: the 1st Edition's kernel stops a program that
+# makes one ("User faults: 4 (signal)" in /proc/cpu/alignment: exit code
+# 135, Bus error). GZreader's Nook build avoids them; any left are fixed up
+# by the kernel (2, without logging each one: logging them froze the Nook)
+# while GZreader runs, and the Nook's own setting comes back afterwards.
+ALIGN_OLD=
+if [ -w /proc/cpu/alignment ]; then
+    ALIGN_OLD=$(sed -n 's/^User faults:[[:space:]]*\([0-9]\).*/\1/p' /proc/cpu/alignment)
+    ALIGN_START=$(sed -n 's/^User:[[:space:]]*\([0-9]*\).*/\1/p' /proc/cpu/alignment)
+    echo 2 > /proc/cpu/alignment && log "unaligned accesses: fixed up (the Nook's setting: ${ALIGN_OLD:-?})"
+fi
+restore_alignment() {
+    [ -n "$ALIGN_OLD" ] || return 0
+    n=$(sed -n 's/^User:[[:space:]]*\([0-9]*\).*/\1/p' /proc/cpu/alignment)
+    log "unaligned accesses fixed up while GZreader ran: $(( ${n:-0} - ${ALIGN_START:-0} ))"
+    echo "$ALIGN_OLD" > /proc/cpu/alignment
+    ALIGN_OLD=
+}
+
 resume_android() {
+    restore_alignment
     umount /system/etc 2>/dev/null
     if [ -s $RUN/stopped ]; then
         while read -r pid; do kill -CONT "$pid" 2>/dev/null; done < $RUN/stopped

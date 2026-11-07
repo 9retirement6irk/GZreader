@@ -20,7 +20,8 @@ arm-kindle-linux-gnueabi-gcc -v 2>&1 | grep -q -- '--with-float=soft' || { echo 
     https://github.com/koreader/koreader.git "$SRC"
 cd "$SRC"
 
-# kindle-legacy's compiler flags without the floating-point unit:
+# kindle-legacy's compiler flags without the floating-point unit (and
+# without unaligned loads):
 #   ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136jf-s -mfpu=vfp -marm
 #   (kindle-legacy) TARGET_CFLAGS+=-mfloat-abi=softfp
 python3 - base/Makefile.defs <<'PY'
@@ -29,8 +30,10 @@ p = sys.argv[1]
 s = open(p).read()
 old = "ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136jf-s -mfpu=vfp -marm"
 if old in s:
-    s = s.replace(old, "ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136j-s -marm")
-assert "ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136j-s -marm" in s, "ARMV6_1136_ARCH changed upstream"
+    # (and no unaligned loads: ARMv6 can do them, but the Nook's kernel stops
+    # the program instead (Bus error); only the C code had this, not C++)
+    s = s.replace(old, "ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136j-s -marm -mno-unaligned-access")
+assert "ARMV6_1136_ARCH:=-march=armv6j -mtune=arm1136j-s -marm -mno-unaligned-access" in s, "ARMV6_1136_ARCH changed upstream"
 blocks = [m.start() for m in re.finditer(r"else ifeq \(\$\(TARGET\), kindle-legacy\)", s)]
 assert len(blocks) == 2, "kindle-legacy blocks changed upstream"
 i = blocks[1]
