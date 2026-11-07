@@ -4712,6 +4712,12 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     os.remove(lib .. "/.gzsync/outbox.json")
     Usb.writeOutbox(fake)
     check(exists(lib .. "/.gzsync/outbox.json") and mtime, "outbox: written again when it's gone")
+    check(out.test_builds == nil, "outbox: test builds off, not mentioned")
+    gsettings.gzreader_update_beta = true
+    os.remove(lib .. "/.gzsync/outbox.json")
+    Usb.writeOutbox(fake)
+    check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
+    gsettings.gzreader_update_beta = nil
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
@@ -4878,6 +4884,16 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     put(base .. "/in/gzreader-update.zip", "ZIPDATA")
     local r2, e2 = Usb.installUpdate(fake, base, short)
     check(r2 == nil and tostring(e2):match("incomplete") and Update.currentVersion() == "1.2.0", "…nor when the file is incomplete")
+    -- a test build from the page: any other than the installed one, even with a lower number
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local older = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7 } }
+    check(Usb.installUpdate(fake, base, older) == nil and Update.currentVersion() == "1.2.0", "an older release from the page: not installed")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local beta = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7, beta = true } }
+    check(Usb.installUpdate(fake, base, beta) == true, "a test build from the page: installed, though its number is lower")
+    check(Usb.takeTestBuilds({ test_builds = true }) and Update.betaEnabled() and not Usb.takeTestBuilds({ test_builds = true })
+        and not Usb.takeTestBuilds({}) and Update.betaEnabled() and Usb.takeTestBuilds({ test_builds = false }) and not Update.betaEnabled(),
+        "test builds switched on and off on the page: the Kindle's setting follows")
     Update.root = nil
     os.remove(base .. "/inbox.json")
     os.execute("rm -rf '" .. KO2 .. "' '" .. base .. "/in'")

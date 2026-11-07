@@ -441,6 +441,8 @@ function Usb.outbox(plugin)
     return {
         format = Usb.FORMAT,
         gzreader = version,
+        -- (Settings → Updates → Test builds: the page then brings those)
+        test_builds = require("gzreader_update").betaEnabled() or nil,
         kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true,
             screen = Usb.screenSize() },
         grimmory = store.server and { server = store.server, user = store.username } or nil,
@@ -993,6 +995,16 @@ end
 
 ---------------------------------------------------------------- a GZreader update
 
+--- Test builds switched on or off on the page (inbox.test_builds): the
+--- Kindle's own setting follows (Settings → Updates → Test builds).
+function Usb.takeTestBuilds(inbox)
+    if type(inbox) ~= "table" or type(inbox.test_builds) ~= "boolean" then return false end
+    local Update = require("gzreader_update")
+    if inbox.test_builds == Update.betaEnabled() then return false end
+    Update.setBeta(inbox.test_builds)
+    return true
+end
+
 --- The page brought a GZreader update (inbox.update = { version, file, size }):
 --- installed before anything else is taken in (the new GZreader takes in
 --- the rest after it restarts). Returns true when it was installed (restart
@@ -1009,7 +1021,8 @@ function Usb.installUpdate(plugin, base, inbox)
         os.remove(src)
     end
     if not isFile(src) then forget(); return nil, "the update file isn't there" end
-    if Update.compare(u.version, Update.currentVersion()) <= 0 then
+    -- (a test build: any other than this one; a release: a newer one)
+    if not Update.isNewer({ version = tostring(u.version), beta = u.beta == true }) then
         Log.info("sync: update", tostring(u.version), "not newer than", Update.currentVersion())
         forget()
         return nil
@@ -1052,6 +1065,7 @@ function Usb.start(plugin)
         local _ = require("gettext")
         local T = require("ffi/util").template
         local inbox = readJson(base .. "/inbox.json")
+        Usb.takeTestBuilds(inbox)
         if inbox and type(inbox.update) == "table" then
             local version = tostring(inbox.update.version)
             local busy = InfoMessage:new{ text = T(_("Installing GZreader %1 (from your computer)…"), version), timeout = 0 }

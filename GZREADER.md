@@ -175,7 +175,9 @@ repository's `beta` branch: every push there builds an update package
 ("GZreader test builds (beta)" workflow) onto the `beta-updates` branch,
 where GZreader looks. Any test build other than the installed one is
 offered. Turn it off to go back to releases: the next release is offered as
-usual. Native parts (KOReader's programs, the Nook's icon app) still come
+usual. Kindles without Wi‑Fi get them through the sync page: tick **Test
+builds** there (it follows the Kindle's setting, and tells the Kindle when
+you change it). Native parts (KOReader's programs, the Nook's icon app) still come
 only with a full package.
 
 The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
