@@ -106,6 +106,7 @@ OUTBOX = {
     "format": 1, "written_at": int(now), "gzreader": "1.24.0",
     "kindle": {"model": "Kindle2", "name": "Kindle 2 · 3F2A", "id": "3f2a01", "audio": True, "screen": {"w": 824, "h": 1200}},
     "screensavers": {"names": ["old.png"], "mode": "auto"},
+    "music_quality": {"bitrate": 128, "shrink": False},
     "grimmory": {"server": "http://127.0.0.1:%d" % GP, "user": "will"},
     "jobs": [
         {"id": "p:1:7", "kind": "progress", "book": 1, "method": "PUT", "path": "/api/v1/app/books/1/progress",
@@ -266,6 +267,13 @@ with sync_playwright() as pw:
     }""")
     check(stale is not None and stale[:2] == [0, 0] and "Book 01" not in stale[2] and "Old Album" not in stale[2],
           "picks the Kindle already has: off the list (on the Kindle too), not shown as coming %r" % (stale,))
+    # music quality: as on the Kindle (128, MP3/AAC as they are), then chosen here: 192, bigger ones made smaller
+    page.evaluate("() => GZSync.setPanel('connections')")
+    check(page.locator("#p-bitrate").input_value() == "128" and not page.locator("#p-shrink").is_checked(),
+          "music quality: the Kindle's, shown with the Plex connection")
+    page.select_option("#p-bitrate", "192")
+    page.check("#p-shrink")
+    page.evaluate("() => GZSync.setPanel('content')")
 
     # choosing on the page: books, audiobooks, music, as in the Kindle's Grimmory tab
     page.wait_for_selector("#b-results li button")
@@ -572,7 +580,7 @@ def col(key):
     return m and json.loads(files.get(G + m["dir"] + "/music.json", b"{}"))
 c1, c2, c3 = col("201"), col("202"), col("203")
 check(c1 and [t["file"] for t in c1["tracks"]] == ["01.mp3", "02.mp3"] and G + mus["201"]["dir"] + "/cover.jpg" in files,
-      "music: an MP3 album as it is, with its cover")
+      "music: an MP3 album, with its cover (one track made smaller: see the music quality check)")
 want, want_idx = lua_chunks(os.path.join(HERE, "media", "tone.m4a"))
 d2 = c2 and G + mus["202"]["dir"] + "/01.m4a.chunks/"
 check(c2 and c2["tracks"][0]["file"] == "01.m4a" and G + mus["202"]["dir"] + "/01.m4a" not in files
@@ -588,6 +596,9 @@ check(not [k for k in files if k.startswith("gzsync-prepare/")], "…and nothing
 f3 = c3 and c3["tracks"][0].get("file")
 check(f3 and files.get(G + mus["203"]["dir"] + "/" + f3, b"")[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xfa") or (f3 and len(files.get(G + mus["203"]["dir"] + "/" + f3, b"")) > 1000),
       "music: FLAC made into MP3 by Plex, its MPEG-TS taken apart in the browser")
+tc = {p: b for p, b in json.loads(urllib.request.urlopen("http://127.0.0.1:%d/ctl/transcodes" % PP).read())}
+check(tc == {"/library/metadata/301": "192", "/library/metadata/304": "192"} and inbox.get("music_quality") == {"bitrate": 192, "shrink": True},
+      "music quality chosen on the page: FLAC and the 320 kbps MP3 converted at 192 kbps; the 200 kbps MP3 as it is; the Kindle told %r" % (tc,))
 notes = json.loads(files.get(G + "in/notes.json", b"{}"))
 memos = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % MP).read())
 check(inbox.get("notes", {}).get("done") == ["q1"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),

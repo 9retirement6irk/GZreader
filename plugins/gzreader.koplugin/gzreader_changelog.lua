@@ -12,6 +12,8 @@ return {
             "Sync page: a book, audiobook or album chosen on the page that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list. It stayed listed as coming with the next sync, and was brought again after you deleted it from the Kindle.",
             "Sync page (Kindles without Wi‑Fi): M4B audiobooks and M4A music are prepared for the Kindle on the computer, during the sync. The Kindle no longer spends minutes after the sync converting them (8 minutes and more on a Kindle DX): they play straight away.",
             "Nook 1st Edition: updates install when the Nook's internal disk is full. GZreader shares its 242 MB with Android, and an update unpacked next to GZreader needs room for a second copy of it (\"Update failed, nothing was changed: could not unpack\"). Then it's downloaded and unpacked on the microSD card and copied in part by part; if a part can't be copied, every part is put back.",
+            "Music (Plex): Make bigger MP3 and AAC smaller (Music tab → Plex: you · server). MP3 and AAC tracks of a higher quality than “Quality when converting” are converted to MP3 at that quality by Plex too, to save room on the Kindle.",
+            "Sync page: music is converted at the Kindle's “Quality when converting” (it was always 192 kbps), and both choices can be changed on the page, with the Plex connection; the Kindle keeps what's chosen there.",
         },
     },
     {

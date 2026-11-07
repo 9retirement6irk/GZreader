@@ -4217,6 +4217,22 @@ print("Music (Plex): the server, downloads, the player")
     check(res and #res.tracks == 4 and #res.artists == 1, "Plex: search")
     check(Plex.how(tracks[1]) == "file" and Plex.how(plex:children("202")[1]) == "m4a" and Plex.how(plex:children("203")[1]) == "transcode",
         "Plex: MP3 as it is, AAC converted on the Kindle, FLAC converted by the server")
+    do -- "Make bigger MP3 and AAC smaller": tracks well above the quality made into MP3 at it
+        local aac1 = plex:children("202")[1]
+        check(tracks[1].part.bitrate == 320 and Plex.how(tracks[1], 192) == "transcode" and select(2, Plex.how(tracks[1], 192)) == "mp3"
+            and Plex.how(tracks[2], 192) == "file" and Plex.how(aac1, 128) == "transcode" and Plex.how(aac1, 192) == "m4a"
+            and Plex.how({ part = { container = "mp3" } }, 128) == "file",
+            "Plex: bigger MP3/AAC converted when asked (320 kbps MP3 at 192, 160 kbps AAC at 128), not a VBR 200 kbps at 192, nor without a bitrate")
+        local q0, q1 = Plex.quality({}), Plex.quality({ plex = { bitrate = 128, shrink = true } })
+        check(q0.bitrate == 192 and q0.shrink == false and q1.bitrate == 128 and q1.shrink == true, "Plex: the quality settings, and their defaults")
+        local Usb = require("gzreader_usbsync")
+        local fakep = { store = {}, save = function() end }
+        check(Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } }) and fakep.store.plex.bitrate == 128
+            and fakep.store.plex.shrink == true and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } })
+            and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 999 } }) and fakep.store.plex.bitrate == 128
+            and Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 320, shrink = false } }) and fakep.store.plex.shrink == nil,
+            "sync: the music quality chosen on the page kept in the Kindle's Plex settings (a bitrate it doesn't offer ignored)")
+    end
     -- downloads
     Engine.root = PLUGIN
     local album = { kind = "album", key = "201", title = "MP3 Album", artist = "The Tones", thumb = "/t", tracks = tracks }
@@ -4433,7 +4449,7 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
         "Settings → Connections → Plex: account, server, quality, downloads, sign out: " .. st)
     local q = si[3].sub_item_table_func()
     q[3].callback()
@@ -4957,6 +4973,9 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         "outbox: ratings (and a rating taken away)")
     check(#out.queue == 2 and out.notes.queue[1].content == "milk #shopping" and out.calendar.days_ahead == 90,
         "outbox: the sync queue, notes written here, the calendar range")
+    check(out.music_quality and out.music_quality.bitrate == ((fake.store.plex or {}).bitrate or 192)
+        and out.music_quality.shrink == ((fake.store.plex or {}).shrink == true),
+        "outbox: Plex music's quality, for the page")
     check(text:find('"music":[]', 1, true) and text:find('"audiobooks":[]', 1, true),
         "outbox: empty lists written as lists ([], not {}: the page reads them as lists)")
     check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),
@@ -5294,6 +5313,8 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local flac = Music.load(Music.dirFor(fake, "album", "203"))
         check(mp3 and mp3.have == 2 and aac and aac.have == 1 and aac.tracks[1].chunks and flac and flac.have == 1,
             "e2e: the three albums play (MP3, AAC made into chunks, FLAC as MP3)")
+        check(fake.store.plex and fake.store.plex.bitrate == 192 and fake.store.plex.shrink == true,
+            "e2e: the music quality chosen on the page, in the Kindle's Plex settings")
         check(r.notes and r.notes >= 3 and #fake.store.memos.queue == 0, "e2e: notes in, the Kindle's note sent")
         check(r.events == 2 and #fake.store.calendar_feeds == 2, "e2e: the calendar's events, the failed one kept by name")
         local api = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")
