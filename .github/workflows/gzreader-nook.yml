@@ -114,6 +114,8 @@ jobs:
       - name: No VFP in KOReader's programs
         run: |
           mkdir -p chk && unzip -q dl/koreader-kindle-legacy-*.zip -d chk
+          # (wmctrl: a prebuilt helper for touch Kindles, not built here; the Nook package leaves it out)
+          rm -f chk/koreader/wmctrl
           tools/gzreader/nook-softfloat/check-novfp.sh chk
       - name: GZreader in the emulator on a CPU without VFP (as the Nook's)
         run: |
