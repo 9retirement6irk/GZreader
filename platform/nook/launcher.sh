@@ -43,8 +43,22 @@ running() {
 
 start_helper() {
     running && return 0
-    # (its own session: nothing that started it takes it down)
-    $BB setsid $BB sh "$GZ/launcher.sh" run < /dev/null > /dev/null 2>&1 &
+    # In its own session (nothing that started it takes it down), and with
+    # nothing it was started with left open: adb's shell hands its children
+    # its connection on many descriptors (3, 7-30 on a Nook), and adb waits
+    # for every copy to close ("install" never returned). They're closed in
+    # a subshell that then becomes the helper: the helper itself must not
+    # close descriptors, one of them is the script its shell is reading (at
+    # the Nook's start-up that left it spinning, never listening).
+    (
+        # (no redirection on the loop: the shell would keep a copy of the
+        # descriptor in one of those it closes, and give up putting it back)
+        for f in /proc/self/fd/*; do
+            n=${f##*/}
+            case "$n" in 0|1|2|*[!0-9]*|'') ;; *) eval "exec $n>&-" ;; esac
+        done
+        exec $BB setsid $BB sh "$GZ/launcher.sh" run < /dev/null > /dev/null 2>&1
+    ) < /dev/null > /dev/null 2>&1 &
     $BB sleep 1
     running
 }
@@ -112,11 +126,6 @@ start)
     fi
     ;;
 run)
-    # Nothing it was started with stays open: adb's shell hands its children
-    # its own connection on many descriptors (3, 7-30 on a Nook), and adb
-    # waits for every copy to close, so "install" never returned.
-    fd=3
-    while [ $fd -lt 64 ]; do eval "exec $fd>&-" 2>/dev/null; fd=$((fd + 1)); done
     [ -x "$BB" ] || chmod 755 "$BB"
     $BB mkdir -p "$GZ/launch"
     # the icon (an app, not root) must reach the pipe: through the folders,

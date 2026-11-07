@@ -139,6 +139,9 @@ def main():
               "…and the folders on the way to it open to apps")
         pid = helper_pid()
         check(alive(pid), "the helper runs")
+        time.sleep(1)
+        st = open("/proc/%d/stat" % pid).read().split()[2] if pid else "?"
+        check(st == "S", "…waiting, not spinning (state %s)" % st)
         r = launcher("install")
         check(r.returncode == 0 and open(hook).read().count("# GZreader launcher helper") == 1 and helper_pid() == pid,
               "install again: nothing added twice, the same helper")
