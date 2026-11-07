@@ -596,7 +596,11 @@ Sleep screen pictures: the Content tab's **Sleep screen pictures** adds your
 own (made to fit the Kindle's screen, in grey) to the drive's `screensavers`
 folder with the sync, takes off ones that are there, and chooses when they
 show: the book's cover while reading and a picture from Home and menus, or a
-picture always.
+picture always. Any picture the browser can open works, and iPhone photos
+(HEIC/HEIF) too in every browser: the page converts them itself, in the
+browser (the photo isn't sent anywhere), with
+[libheif](https://github.com/strukturag/libheif) (LGPL 3.0), which it loads
+only when you add one (about 2 MB, once).
 
 Usage statistics (if they're on, Settings → General → Usage statistics) wait
 on the Kindle; when GZreader steps aside for the USB drive it leaves them in

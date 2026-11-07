@@ -8,6 +8,7 @@ return {
             "How long something kept the e-reader awake is timed on a clock that doesn't jump (the log said 26 years after a run-down clock was set).",
             "Test builds: the update and its data are read from the same commit of the updates branch. Right after a new test build, GitHub's file server could still hand out the last one's data with the new zip, and the update said it was incomplete.",
             "Nook 1st Edition: no flash when the selection moves, a menu opens or the clock changes. GZreader now refreshes the e-ink page the way Android does on this Nook, just the part that changed, without a flash; a full refresh with a flash comes only when one is asked for (every few page turns, against ghosting). If the screen doesn't keep up, `touch /data/gzreader/eink-flash` over adb brings back a full refresh every time (see GZREADER.md).",
+            "Sync page (Kindles without Wi‑Fi): sleep screen pictures can be iPhone photos (HEIC). Browsers other than Safari can't open them (\"this browser can't open that kind of file\"), so the page now converts them itself, in the browser.",
         },
     },
     {

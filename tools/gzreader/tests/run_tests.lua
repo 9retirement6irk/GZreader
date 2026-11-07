@@ -5213,10 +5213,14 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
         local phead = pf and pf:read(24)
         if pf then pf:close() end
-        check(r.pictures == 1 and phead and phead:sub(2, 4) == "PNG" and G_reader_settings:readSetting("screensaver_type") == "random_image"
+        local hf = io.open(lib .. "/screensavers/Beach.png", "rb") -- (made on the page from a HEIC photo)
+        local hhead = hf and hf:read(24)
+        if hf then hf:close() end
+        check(r.pictures == 2 and phead and phead:sub(2, 4) == "PNG" and hhead and hhead:sub(2, 4) == "PNG"
+            and G_reader_settings:readSetting("screensaver_type") == "random_image"
             and G_reader_settings:readSetting("gzreader_sleep_auto") == false and G_reader_settings:readSetting("screensaver_dir") == lib .. "/screensavers"
-            and Usb.sleepMode() == "always" and #Usb.screensavers() == 1 and Usb.summaryText(r):match("1 sleep screen picture"),
-            "e2e: the sleep screen picture in the screensavers folder; pictures always, as chosen on the page")
+            and Usb.sleepMode() == "always" and #Usb.screensavers() == 2 and Usb.summaryText(r):match("2 sleep screen pictures"),
+            "e2e: the sleep screen pictures (one from a HEIC photo) in the screensavers folder; pictures always, as chosen on the page")
         G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
         G_reader_settings:saveSetting("screensaver_dir", nil)
         Usb.SCREENSAVER_DIR = nil
