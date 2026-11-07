@@ -4,10 +4,16 @@ The Nook 1st Edition's e-ink screen for KOReader: an 8-bit grey page
 under it is the LCD module's (device/nook/lcd.lua), through the same
 display_hw.
 
-Each e-ink refresh goes through the Nook's kernel, and every one of those is
-a full-page refresh with a flash (the direct, per-area way froze the Nook).
-So GZreader asks for as few as it can: every update is copied into the
-page at once, and the kernel's refresh comes after, once for all of them:
+Each e-ink refresh goes through the Nook's kernel (the direct, per-area way
+froze the Nook). Its refresh without a flash (display_hw's einkPan: the
+areas that changed, GU) is used for every update that doesn't ask for a
+flash; one that does (a full refresh) gets the kernel's full redraw. Every
+update is copied into the page at once, and the refresh comes after, once
+for all of them: one when the updates stop coming (DEBOUNCE_MS), and no
+later than MAX_DELAY_MS after the first one.
+
+With GZ_NOOK_EPD=flash (every refresh a full redraw, with its flash, as up
+to 1.26.6) GZreader asks for as few as it can:
 
 - after a tap or a button (and for a big change, like a new page or a
   dialog): one refresh when the updates stop coming (DEBOUNCE_MS), and no
@@ -73,7 +79,12 @@ function framebuffer:flush()
     self.pending = nil
     self.last_flush = self:now()
     self.flushed_top = self:topWidget()
-    local ok, err = pcall(self.hw.einkRedraw, self.hw)
+    local ok, err
+    if self.hw.partial and not p.flash then
+        ok, err = pcall(self.hw.einkPan, self.hw)
+    else
+        ok, err = pcall(self.hw.einkRedraw, self.hw)
+    end
     if not ok then logger.warn("nook: e-ink refresh failed:", err) end
     if p.count > 1 then logger.dbg("nook: one e-ink refresh for", p.count, "updates") end
 end
@@ -134,7 +145,8 @@ local function update(self, waveform, flash, x, y, w, h)
     local now = self:now()
     local asked = self.last_input and now - self.last_input <= time.ms(self.INPUT_WINDOW_MS)
     local big = flash or w * h >= self.BIG_AREA * self.bb:getWidth() * self.bb:getHeight()
-    local kind = (asked or big) and "now" or "background"
+    -- (without a flash, nothing needs to wait)
+    local kind = (asked or big or self.hw.partial) and "now" or "background"
     if kind == "background" then
         local top = self:topWidget()
         if top and not top.covers_fullscreen then
@@ -143,6 +155,7 @@ local function update(self, waveform, flash, x, y, w, h)
         end
     end
     self:_later(kind, now)
+    if flash then self.pending.flash = true end
 end
 
 function framebuffer:refreshFullImp(x, y, w, h) update(self, "gc", true, x, y, w, h) end

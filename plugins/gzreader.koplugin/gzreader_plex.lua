@@ -283,7 +283,7 @@ function Plex.item(m)
     local part = media and type(media.Part) == "table" and media.Part[1]
     if part then
         t.part = { key = str(part.key), container = str(part.container) or str(media.container),
-            size = tonumber(part.size), codec = str(media.audioCodec) }
+            size = tonumber(part.size), codec = str(media.audioCodec), bitrate = tonumber(media.bitrate) }
     end
     return t
 end
@@ -354,13 +354,29 @@ end
 --- How a track's audio comes to the Kindle: "file" (as it is: MP3), "m4a"
 --- (as it is, then converted to ADTS AAC on the Kindle) or "transcode" (the
 --- server makes MP3).
-function Plex.how(track)
+--- shrink_to (kbps; default Plex.shrink_to, from Settings: "Make bigger MP3
+--- and AAC smaller"): an MP3 or AAC track well above it (15 % more, so a
+--- VBR file at about that quality stays as it is) is made into MP3 at that
+--- quality too, to save room.
+Plex.SHRINK_MARGIN = 1.15
+function Plex.how(track, shrink_to)
     local p = track.part or {}
     local c, codec = tostring(p.container or ""):lower(), tostring(p.codec or ""):lower()
-    if c == "mp3" or (codec == "mp3" and c == "") then return "file", "mp3" end
-    if (c == "mp4" or c == "m4a") and (codec == "aac" or codec == "") then return "m4a", "m4a" end
-    if c == "aac" or c == "adts" then return "file", "aac" end
-    return "transcode", "mp3"
+    local how, ext
+    if c == "mp3" or (codec == "mp3" and c == "") then how, ext = "file", "mp3"
+    elseif (c == "mp4" or c == "m4a") and (codec == "aac" or codec == "") then how, ext = "m4a", "m4a"
+    elseif c == "aac" or c == "adts" then how, ext = "file", "aac"
+    else return "transcode", "mp3" end
+    shrink_to = shrink_to or Plex.shrink_to
+    local kbps = tonumber(p.bitrate)
+    if shrink_to and kbps and kbps > shrink_to * Plex.SHRINK_MARGIN then return "transcode", "mp3" end
+    return how, ext
+end
+
+--- The Plex settings' quality: { bitrate = kbps, shrink = true/false }.
+function Plex.quality(store)
+    local s = type(store) == "table" and store.plex or {}
+    return { bitrate = tonumber(s and s.bitrate) or 192, shrink = (s and s.shrink) == true }
 end
 
 local function download(self, url, dest, opts)

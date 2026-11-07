@@ -445,6 +445,8 @@ function Usb.outbox(plugin)
         test_builds = require("gzreader_update").betaEnabled() or nil,
         kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true,
             screen = Usb.screenSize() },
+        -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
+        music_quality = require("gzreader_plex").quality(store),
         grimmory = store.server and { server = store.server, user = store.username } or nil,
         jobs = jsonList(Usb.jobs(plugin)),
         queue = jsonList(queue(plugin)),
@@ -917,6 +919,7 @@ function Usb.import(plugin, on_prepared)
             plugin.store.username = inbox.grimmory.user
         end
         r.stats = Usb.takeStats(plugin, inbox.grimmory_stats)
+        pcall(Usb.takeMusicQuality, plugin, inbox)
         for _i, b in ipairs(type(inbox.books) == "table" and inbox.books or {}) do
             local okb, got = pcall(Usb.takeBook, plugin, base, b)
             if okb and got then r.books = r.books + 1
@@ -1002,6 +1005,25 @@ function Usb.takeTestBuilds(inbox)
     local Update = require("gzreader_update")
     if inbox.test_builds == Update.betaEnabled() then return false end
     Update.setBeta(inbox.test_builds)
+    return true
+end
+
+--- Music quality chosen on the page (inbox.music_quality = { bitrate, shrink }):
+--- the Kindle's Plex settings follow (Music tab → Plex: you · server).
+function Usb.takeMusicQuality(plugin, inbox)
+    local q = type(inbox) == "table" and inbox.music_quality
+    if type(q) ~= "table" then return false end
+    local b = tonumber(q.bitrate)
+    local ok = false
+    for _i, v in ipairs(require("gzreader_music").BITRATES) do if v == b then ok = true end end
+    if not ok then return false end
+    plugin.store.plex = plugin.store.plex or {}
+    local s = plugin.store.plex
+    local shrink = q.shrink == true or nil
+    if s.bitrate == b and s.shrink == shrink then return false end
+    s.bitrate, s.shrink = b, shrink
+    plugin:save()
+    Log.info("sync: music quality from the computer:", b, "kbps, shrink", tostring(shrink == true))
     return true
 end
 

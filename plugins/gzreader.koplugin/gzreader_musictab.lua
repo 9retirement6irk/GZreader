@@ -580,6 +580,12 @@ function Tab:openAccount()
                 self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
             end }
     end
+    items[#items + 1] = { text = s.shrink and _("Bigger MP3 and AAC made smaller: on") or _("Bigger MP3 and AAC made smaller: off"),
+        callback = function()
+            s.shrink = not s.shrink or nil
+            plugin:save()
+            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+        end }
     for _i, srv in ipairs(s.servers or {}) do
         if srv.id ~= (s.server or {}).id then
             items[#items + 1] = { text = T(_("Use the server “%1”"), srv.name or "?"), callback = function()
@@ -657,7 +663,7 @@ function Tab.settingsItems(plugin)
               return list
           end },
         { text_func = function() return T(_("Quality when converting: %1 kbps"), st().bitrate or 192) end,
-          help_text = _("For music the Kindle can't play as it is (FLAC and others), Plex converts it to MP3 at this quality. MP3 and AAC download as they are."),
+          help_text = _("For music the Kindle can't play as it is (FLAC and others), Plex converts it to MP3 at this quality. MP3 and AAC download as they are, unless “Make bigger MP3 and AAC smaller” is on."),
           sub_item_table_func = function()
               local list = {}
               for _i, b in ipairs(Music().BITRATES) do
@@ -667,6 +673,10 @@ function Tab.settingsItems(plugin)
               end
               return list
           end },
+        { text = _("Make bigger MP3 and AAC smaller"),
+          help_text = _("MP3 and AAC tracks of a higher quality than the one above are converted to MP3 at that quality by Plex too, to save room on the Kindle. Music already downloaded stays as it is."),
+          checked_func = function() return st().shrink == true end,
+          callback = function() st().shrink = not st().shrink or nil; plugin:save() end },
         { text_func = function()
               local n = #Music().downloaded(plugin)
               local mb = Music().dirSize(Music().root(plugin)) / 1048576

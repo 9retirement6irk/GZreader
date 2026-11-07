@@ -1138,6 +1138,20 @@ do
         "staying awake: a holder that has ended is let go of, the others kept")
     Awake.release("other")
     check(cmds[#cmds]:match("preventScreenSaver 0"), "…and the Kindle may sleep again")
+    -- the wall clock set while something is held (a Nook's run-down clock): the time held still right
+    local mono, logged = 100, {}
+    local orig_now = Awake.now
+    Awake.now = function() return mono end
+    Awake.hold("phone", { what = "phone page" })
+    mono = 180
+    local Log = require("gzreader_log")
+    local orig_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    Awake.release("phone")
+    Log.info = orig_info
+    Awake.now = orig_now
+    check(logged[1] and logged[1]:match("after 80s$"), "staying awake: timed on a clock that doesn't jump (" .. tostring(logged[1]) .. ")")
+    check(type(Awake.now()) == "number", "…which is there")
     Awake.exec = exec
 end
 
@@ -2994,6 +3008,26 @@ do
         and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
         and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
         "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    -- (GitHub's file server keeps each file of a branch for minutes, each on its own:
+    -- the test build's data and its zip are read at the branch's commit)
+    local sha, asks = string.rep("ab12", 10), {}
+    Update.request = function(u, _path, accept)
+        asks[#asks + 1] = u
+        if u:match("/commits/updates$") then return 200, accept == "application/vnd.github.sha" and sha or "{}" end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    local pinned = Update.check()
+    check(asks[1] == "https://api.github.com/repos/9retirement6irk/GZreader/commits/updates"
+        and asks[2] == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/latest-beta.json"
+        and pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/gzreader-beta-update.zip",
+        "test builds: the data and the zip from the same commit of the updates branch (no half-old, half-new: 'incomplete')")
+    Update.request = function(u)
+        if u:match("/commits/") then return 403 end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    pinned = Update.check()
+    check(pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip",
+        "GitHub doesn't say the commit (rate limit): the branch as before")
     Update.request = function()
         return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
     end
@@ -4206,6 +4240,22 @@ print("Music (Plex): the server, downloads, the player")
     check(res and #res.tracks == 4 and #res.artists == 1, "Plex: search")
     check(Plex.how(tracks[1]) == "file" and Plex.how(plex:children("202")[1]) == "m4a" and Plex.how(plex:children("203")[1]) == "transcode",
         "Plex: MP3 as it is, AAC converted on the Kindle, FLAC converted by the server")
+    do -- "Make bigger MP3 and AAC smaller": tracks well above the quality made into MP3 at it
+        local aac1 = plex:children("202")[1]
+        check(tracks[1].part.bitrate == 320 and Plex.how(tracks[1], 192) == "transcode" and select(2, Plex.how(tracks[1], 192)) == "mp3"
+            and Plex.how(tracks[2], 192) == "file" and Plex.how(aac1, 128) == "transcode" and Plex.how(aac1, 192) == "m4a"
+            and Plex.how({ part = { container = "mp3" } }, 128) == "file",
+            "Plex: bigger MP3/AAC converted when asked (320 kbps MP3 at 192, 160 kbps AAC at 128), not a VBR 200 kbps at 192, nor without a bitrate")
+        local q0, q1 = Plex.quality({}), Plex.quality({ plex = { bitrate = 128, shrink = true } })
+        check(q0.bitrate == 192 and q0.shrink == false and q1.bitrate == 128 and q1.shrink == true, "Plex: the quality settings, and their defaults")
+        local Usb = require("gzreader_usbsync")
+        local fakep = { store = {}, save = function() end }
+        check(Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } }) and fakep.store.plex.bitrate == 128
+            and fakep.store.plex.shrink == true and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } })
+            and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 999 } }) and fakep.store.plex.bitrate == 128
+            and Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 320, shrink = false } }) and fakep.store.plex.shrink == nil,
+            "sync: the music quality chosen on the page kept in the Kindle's Plex settings (a bitrate it doesn't offer ignored)")
+    end
     -- downloads
     Engine.root = PLUGIN
     local album = { kind = "album", key = "201", title = "MP3 Album", artist = "The Tones", thumb = "/t", tracks = tracks }
@@ -4422,7 +4472,7 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
         "Settings → Connections → Plex: account, server, quality, downloads, sign out: " .. st)
     local q = si[3].sub_item_table_func()
     q[3].callback()
@@ -4946,6 +4996,9 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         "outbox: ratings (and a rating taken away)")
     check(#out.queue == 2 and out.notes.queue[1].content == "milk #shopping" and out.calendar.days_ahead == 90,
         "outbox: the sync queue, notes written here, the calendar range")
+    check(out.music_quality and out.music_quality.bitrate == ((fake.store.plex or {}).bitrate or 192)
+        and out.music_quality.shrink == ((fake.store.plex or {}).shrink == true),
+        "outbox: Plex music's quality, for the page")
     check(text:find('"music":[]', 1, true) and text:find('"audiobooks":[]', 1, true),
         "outbox: empty lists written as lists ([], not {}: the page reads them as lists)")
     check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),
@@ -5237,10 +5290,14 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
         local phead = pf and pf:read(24)
         if pf then pf:close() end
-        check(r.pictures == 1 and phead and phead:sub(2, 4) == "PNG" and G_reader_settings:readSetting("screensaver_type") == "random_image"
+        local hf = io.open(lib .. "/screensavers/Beach.png", "rb") -- (made on the page from a HEIC photo)
+        local hhead = hf and hf:read(24)
+        if hf then hf:close() end
+        check(r.pictures == 2 and phead and phead:sub(2, 4) == "PNG" and hhead and hhead:sub(2, 4) == "PNG"
+            and G_reader_settings:readSetting("screensaver_type") == "random_image"
             and G_reader_settings:readSetting("gzreader_sleep_auto") == false and G_reader_settings:readSetting("screensaver_dir") == lib .. "/screensavers"
-            and Usb.sleepMode() == "always" and #Usb.screensavers() == 1 and Usb.summaryText(r):match("1 sleep screen picture"),
-            "e2e: the sleep screen picture in the screensavers folder; pictures always, as chosen on the page")
+            and Usb.sleepMode() == "always" and #Usb.screensavers() == 2 and Usb.summaryText(r):match("2 sleep screen pictures"),
+            "e2e: the sleep screen pictures (one from a HEIC photo) in the screensavers folder; pictures always, as chosen on the page")
         G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
         G_reader_settings:saveSetting("screensaver_dir", nil)
         Usb.SCREENSAVER_DIR = nil
@@ -5267,12 +5324,20 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
             "e2e: the folder audiobook plays from its two tracks")
+        local ab33 = require("gzreader_audiobook").load(fake, "33")
+        local d33 = ab33 and require("gzreader_audiobook").dir(fake, "33")
+        local lfs = require("libs/libkoreader-lfs")
+        check(ab33 and ab33.tracks[1].chunks and #ab33.tracks[1].chunks.starts >= 1 and ab33.files[1]:match("^audiobook%.m4b%.chunks/c0%.aac$")
+            and lfs.attributes(d33 .. "/audiobook.m4b.chunks/c0.aac", "mode") == "file" and not lfs.attributes(d33 .. "/audiobook.m4b"),
+            "e2e: the M4B audiobook the page prepared plays from its chunks (nothing to convert on the Kindle)")
         local Music = require("gzreader_music")
         local mp3 = Music.load(Music.dirFor(fake, "album", "201"))
         local aac = Music.load(Music.dirFor(fake, "album", "202"))
         local flac = Music.load(Music.dirFor(fake, "album", "203"))
         check(mp3 and mp3.have == 2 and aac and aac.have == 1 and aac.tracks[1].chunks and flac and flac.have == 1,
             "e2e: the three albums play (MP3, AAC made into chunks, FLAC as MP3)")
+        check(fake.store.plex and fake.store.plex.bitrate == 192 and fake.store.plex.shrink == true,
+            "e2e: the music quality chosen on the page, in the Kindle's Plex settings")
         check(r.notes and r.notes >= 3 and #fake.store.memos.queue == 0, "e2e: notes in, the Kindle's note sent")
         check(r.events == 2 and #fake.store.calendar_feeds == 2, "e2e: the calendar's events, the failed one kept by name")
         local api = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")

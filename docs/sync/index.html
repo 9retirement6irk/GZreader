@@ -239,7 +239,17 @@
           <h3>Music (Plex)</h3>
           <p class="status" id="p-status">Not connected</p>
           <div id="p-form"><button class="primary" id="p-login">Sign in with Plex</button></div>
-          <div id="p-on" class="hidden"><button id="p-out">Sign out of Plex</button></div>
+          <div id="p-on" class="hidden">
+            <div class="opts small">
+              <label>Quality when converting
+                <select id="p-bitrate" aria-label="Quality when converting">
+                  <option value="128">128 kbps</option><option value="192">192 kbps</option><option value="320">320 kbps</option>
+                </select></label>
+              <label><input type="checkbox" id="p-shrink"> Make bigger MP3 and AAC smaller (converted at that quality too, to save room)</label>
+              <p class="muted">FLAC and other formats the Kindle can't play are converted to MP3 by your Plex server at this quality. As on the Kindle (Music tab → Plex), where the choice is kept.</p>
+            </div>
+            <button id="p-out">Sign out of Plex</button>
+          </div>
         </div>
       </div>
     </section>
@@ -265,7 +275,7 @@
       <p class="small muted">Your own pictures for the Kindle's sleep screen: made here to fit its screen, in grey, and put in its <code>screensavers</code> folder with the next sync.</p>
       <div class="row">
         <button id="ss-add" style="margin:0">Add pictures…</button>
-        <input type="file" id="ss-files" accept="image/*" multiple class="hidden">
+        <input type="file" id="ss-files" accept="image/*,.heic,.heif" multiple class="hidden">
         <select id="ss-fit" aria-label="How pictures fit the screen">
           <option value="cover">Fill the screen (edges cropped)</option>
           <option value="contain">Whole picture (white edges)</option>
@@ -300,6 +310,6 @@
     <a href="../">GZreader</a> · <a href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#sync-with-a-computer">How syncing with a computer works</a>
   </footer>
 </div>
-<script src="gzsync.js?v=0f406f73b1"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
+<script src="gzsync.js?v=2e268d2191"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
 </body>
 </html>

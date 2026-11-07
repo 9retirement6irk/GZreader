@@ -280,6 +280,8 @@ function Music.download(plugin, c, opts)
     Music.save(col)
     local plex = Music.plex(plugin)
     local bitrate = plugin.store.plex.bitrate or 192
+    -- (bigger MP3/AAC made smaller too, if asked: Plex.how, here and in the download's process)
+    require("gzreader_plex").shrink_to = plugin.store.plex.shrink and bitrate or nil
     local luajit = require("gzreader_audiobook").luajit()
     local script = (Engine.root or "plugins/gzreader.koplugin") .. "/gzreader_mp4.lua"
     local todo = {}

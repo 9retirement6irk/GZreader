@@ -5,7 +5,21 @@ return {
         version = "next",
         changes = {
             "Nook 1st Edition and Simple Touch: most of GZreader moves to the microSD card (or, without one, the Nook's own storage), leaving the Nook's small app disk, shared with Android, with room to spare. Its Lua code, fonts, hyphenation, translations and cache (about 55 MB) are moved at the first start (a minute or two) and mounted back into its folder while it runs; its programs, libraries and settings stay on the Nook (about 30 MB). Leave the card in: without it GZreader asks for it. Updates write each part where it lives.",
+        },
+    },
+    {
+        version = "1.26.7",
+        changes = {
+            "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",
+            "How long something kept the e-reader awake is timed on a clock that doesn't jump (the log said 26 years after a run-down clock was set).",
+            "Test builds: the update and its data are read from the same commit of the updates branch. Right after a new test build, GitHub's file server could still hand out the last one's data with the new zip, and the update said it was incomplete.",
+            "Nook 1st Edition: no flash when the selection moves, a menu opens or the clock changes. GZreader now refreshes the e-ink page the way Android does on this Nook, just the part that changed, without a flash; a full refresh with a flash comes only when one is asked for (every few page turns, against ghosting). If the screen doesn't keep up, `touch /data/gzreader/eink-flash` over adb brings back a full refresh every time (see GZREADER.md).",
+            "Sync page (Kindles without Wi‑Fi): sleep screen pictures can be iPhone photos (HEIC). Browsers other than Safari can't open them (\"this browser can't open that kind of file\"), so the page now converts them itself, in the browser.",
+            "Sync page: a book, audiobook or album chosen on the page that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list. It stayed listed as coming with the next sync, and was brought again after you deleted it from the Kindle.",
+            "Sync page (Kindles without Wi‑Fi): M4B audiobooks and M4A music are prepared for the Kindle on the computer, during the sync. The Kindle no longer spends minutes after the sync converting them (8 minutes and more on a Kindle DX): they play straight away.",
             "Nook 1st Edition: updates install when the Nook's internal disk is full. GZreader shares its 242 MB with Android, and an update unpacked next to GZreader needs room for a second copy of it (\"Update failed, nothing was changed: could not unpack\"). Then it's downloaded and unpacked on the microSD card and copied in part by part; if a part can't be copied, every part is put back.",
+            "Music (Plex): Make bigger MP3 and AAC smaller (Music tab → Plex: you · server). MP3 and AAC tracks of a higher quality than “Quality when converting” are converted to MP3 at that quality by Plex too, to save room on the Kindle.",
+            "Sync page: music is converted at the Kindle's “Quality when converting” (it was always 192 kbps), and both choices can be changed on the page, with the Plex connection; the Kindle keeps what's chosen there.",
         },
     },
     {

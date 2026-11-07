@@ -58,6 +58,8 @@ $BB --install -s /bin 2>/dev/null
 mount -o remount,ro / 2>/dev/null
 
 RUN=$GZ/run
+# e-ink refreshes all full, with a flash (as up to 1.26.6): touch $GZ/eink-flash
+[ -f "$GZ/eink-flash" ] && export GZ_NOOK_EPD=flash
 mkdir -p $RUN
 
 # --- 1b. where the books go ------------------------------------------------
@@ -257,6 +259,10 @@ start_wifi() {
         route add default gw "$(getprop dhcp.eth0.gateway)" dev eth0 2>/dev/null
     fi
     wifi_up && log "Wi-Fi: connected"
+    # power saving off: on, the chip naps between packets (2 pings in 5 lost,
+    # 50-75 ms to the router, GZreader's HTTPS requests timing out); Android
+    # manages it itself (frontend/device/nook/wifi_power.lua)
+    log "Wi-Fi: $(cd "$GZ/koreader" && ./luajit frontend/device/nook/wifi_power.lua off 2>&1 | head -1)"
 }
 stop_wifi() {
     [ -n "$WIFI_STARTED" ] || return 0

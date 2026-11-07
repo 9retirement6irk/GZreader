@@ -9,6 +9,9 @@
 #
 #   tools/gzreader/ci-test.sh <koreader-kindle-legacy-vX.zip> <out dir>
 #
+# GZ_CI_MODELS=none: the tests only, no emulator (CI, for a pull request that
+# changes nothing the emulator runs: tools/gzreader/ci_emulator_needed.py).
+#
 # Writes <out dir>/summary.md and screenshots; exit status: what failed.
 # Needs: luajit lua-socket lua-check python3 (+ radicale) curl rsync unzip
 #        qemu-user-static libc6-armel-cross libgcc-s1-armel-cross, a writable /mnt/us.
@@ -32,6 +35,11 @@ else
 fi
 
 echo "### GZreader in the emulator: what makes it GZreader" >> "$SUM"
+if [ "${GZ_CI_MODELS:-}" = none ]; then
+    echo "- ⏭️ skipped: this change touches only the web pages (docs/), tests, Markdown or the changelog" >> "$SUM"
+    cat "$SUM"
+    exit $failed
+fi
 python3 "$REPO/tools/gzreader/tests/make_epub.py" "$OUT/book.epub"
 python3 "$REPO/tools/gzreader/tests/make_epub.py" --pictures "$OUT/pictures.epub"
 mkdir -p "$OUT/nook-home"

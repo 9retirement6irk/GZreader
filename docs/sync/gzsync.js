@@ -483,15 +483,32 @@ gets a password or token.
       if (t.type === "album") t.artist = m.parentTitle;
       if (t.type === "artist") t.artist = undefined;
       var media = m.Media && m.Media[0], part = media && media.Part && media.Part[0];
-      if (part) t.part = { key: part.key, container: part.container || media.container, size: part.size, codec: media.audioCodec };
+      if (part) t.part = { key: part.key, container: part.container || media.container, size: part.size, codec: media.audioCodec, bitrate: media.bitrate };
       return t;
     },
+    // (gzreader_plex.lua Plex.how: bigger MP3/AAC made into MP3 at the quality too, if asked)
     how: function (t) {
-      var p = t.part || {}, c = String(p.container || "").toLowerCase(), codec = String(p.codec || "").toLowerCase();
-      if (c === "mp3" || (codec === "mp3" && c === "")) return ["file", "mp3"];
-      if ((c === "mp4" || c === "m4a") && (codec === "aac" || codec === "")) return ["file", "m4a"];
-      if (c === "aac" || c === "adts") return ["file", "aac"];
-      return ["transcode", "mp3"];
+      var p = t.part || {}, c = String(p.container || "").toLowerCase(), codec = String(p.codec || "").toLowerCase(), r;
+      if (c === "mp3" || (codec === "mp3" && c === "")) r = ["file", "mp3"];
+      else if ((c === "mp4" || c === "m4a") && (codec === "aac" || codec === "")) r = ["file", "m4a"];
+      else if (c === "aac" || c === "adts") r = ["file", "aac"];
+      else return ["transcode", "mp3"];
+      var q = P.quality(), kbps = Number(p.bitrate);
+      if (q.shrink && kbps > q.bitrate * P.SHRINK_MARGIN) return ["transcode", "mp3"];
+      return r;
+    },
+    BITRATES: [128, 192, 320],
+    SHRINK_MARGIN: 1.15,
+    q: null, // chosen on the page (null: as on the Kindle)
+    quality: function () {
+      if (P.q) return P.q;
+      var k = (K.out || {}).music_quality || {};
+      return { bitrate: P.BITRATES.indexOf(Number(k.bitrate)) >= 0 ? Number(k.bitrate) : 192, shrink: k.shrink === true };
+    },
+    renderQuality: function () {
+      var q = P.quality();
+      if ($("#p-bitrate")) $("#p-bitrate").value = String(q.bitrate);
+      if ($("#p-shrink")) $("#p-shrink").checked = q.shrink;
     },
   };
 
@@ -622,7 +639,22 @@ gets a password or token.
     RAW_BETA: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
     beta: false, betaTouched: false,
     raw: function () { return Update.beta ? Update.RAW_BETA : Update.RAW; },
-    meta: function () { return Update.raw() + (Update.beta ? "latest-beta.json" : "latest.json"); },
+    meta: function (base) { return (base || Update.raw()) + (Update.beta ? "latest-beta.json" : "latest.json"); },
+    // the updates branch at its commit now: GitHub's file server keeps each
+    // file of a branch for minutes, each on its own, so right after a new
+    // build latest.json and the zip could be from different builds ("the
+    // update came incomplete"); a commit's files never change
+    base: async function () {
+      var raw = Update.raw(), m = raw.match(/^(https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/)updates\/$/);
+      if (!m) return raw;
+      try {
+        var r = await fetch("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates",
+          { headers: { Accept: "application/vnd.github.sha" }, cache: "no-store" });
+        var sha = r.ok ? (await r.text()).trim() : "";
+        if (/^[0-9a-f]{40}$/.test(sha)) return m[1] + sha + "/";
+      } catch (e) {}
+      return raw;
+    },
     // whether `v` should go to a Kindle that has `have`
     offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
@@ -695,9 +727,10 @@ gets a password or token.
       var blob = Update.file;
       if (!blob) {
         try {
-          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
+          var base = await Update.base();
+          var meta = await (await fetch(Update.meta(base), { cache: "no-store" })).json();
           if (Update.offered(meta.version, out.gzreader || "0") && /^[\w.-]+$/.test(meta.file || "gzreader-update.zip")) {
-            var r = await fetch(Update.raw() + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
+            var r = await fetch(base + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
             if (r.ok) {
               var b = await r.blob();
               if (meta.size && b.size !== meta.size) throw new Error("the update came incomplete");
@@ -799,6 +832,20 @@ gets a password or token.
       Picks.d = { books: asList(d && d.books), music: asList(d && d.music) };
     },
     save: function () { if (Drive.sync) Drive.write(Drive.sync, "picks.json", JSON.stringify(Picks.d)).catch(function () {}); },
+    // Off the list: what the Kindle already has (it came another way: a sync
+    // from another computer, a download over Wi-Fi). Left there, it was listed
+    // as coming, and came again once deleted from the Kindle.
+    prune: function (out) {
+      var have = (out && out.have) || {};
+      var books = have.books || {}, audio = asList(have.audiobooks).map(String), music = asList(have.music);
+      var b = Picks.d.books.filter(function (p) { var id = String(p.id); return !books[id] && audio.indexOf(id) < 0; });
+      var m = Picks.d.music.filter(function (p) {
+        return music.indexOf(p.kind + "-" + p.key) < 0 && music.indexOf(safe(p.kind) + "-" + safe(p.key)) < 0;
+      });
+      var n = Picks.d.books.length - b.length + Picks.d.music.length - m.length;
+      if (n) { Picks.d = { books: b, music: m }; Picks.save(); }
+      return n;
+    },
   };
 
   // ------------------------------------------------------------ the Kindle and its outbox
@@ -841,6 +888,7 @@ gets a password or token.
     K.out = fixOutbox(await Drive.readJSON(Drive.sync, "outbox.json"));
     K.pending = await Drive.readJSON(Drive.sync, "inbox.json");
     await Picks.load();
+    Picks.prune(K.out);
     show("#kindle-problem", false);
     await askPin();
     return true;
@@ -1339,7 +1387,8 @@ gets a password or token.
     for (var i = 0; i < files.length; i++) {
       var r = await G.fetch(files[i].url);
       if (!r.ok) throw new HttpError(r.status, "Grimmory");
-      await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
+      if (Mp4.needs(files[i].name)) await Mp4.bring(dir, files[i].name, r.body, onBytes, q.title + (files.length > 1 ? " (" + (i + 1) + "/" + files.length + ")" : ""));
+      else await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
     }
     try {
       var c = await G.fetch("/api/v1/audiobooks/" + q.id + "/cover");
@@ -1347,6 +1396,219 @@ gets a password or token.
     } catch (e) {}
     inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title, progress: progress || undefined });
   }
+
+  // ------------------------------------------------------------ M4B/M4A → ADTS AAC chunks
+
+  // The Kindle can decode AAC but can't open MP4 files, so GZreader repacks
+  // M4B/M4A audio once into ~15-second ADTS AAC files (gzreader_mp4.lua): on
+  // a Kindle DX that takes 8 minutes and more for a long book. Done here
+  // instead, with the same files (byte for byte: sync_page_test.py compares
+  // them with gzreader_mp4.lua's): <file>.chunks/c0.aac, c1.aac… and
+  // index.json, written last. GZreader then finds them ready and has nothing
+  // to do (Audiobook.prepare skips a track with an index; Music.trackReady).
+  // The download waits in the browser's own storage (not on the Kindle) while
+  // it's converted; if anything fails, the file goes to the Kindle as it is,
+  // and GZreader converts it as before.
+  var Mp4 = {
+    CHUNK_SECONDS: 15,
+    WINDOW: 4 << 20, // bytes read from the file at a time
+    CONTAINERS: { moov: true, trak: true, mdia: true, minf: true, stbl: true },
+    needs: function (name) { return /\.(m4a|m4b|mp4)$/i.test(name || ""); },
+    // reads of a Blob (a File) at any place, through a window
+    reader: function (blob) {
+      var w = null, wAt = 0;
+      return async function (pos, n) {
+        pos = Math.max(0, pos); n = Math.max(0, Math.min(n, blob.size - pos));
+        if (n <= 0) return new Uint8Array(0);
+        if (!w || pos < wAt || pos + n > wAt + w.length) {
+          if (n > Mp4.WINDOW) return new Uint8Array(await blob.slice(pos, pos + n).arrayBuffer());
+          wAt = pos;
+          w = new Uint8Array(await blob.slice(pos, Math.min(blob.size, pos + Mp4.WINDOW)).arrayBuffer());
+        }
+        return w.subarray(pos - wAt, pos - wAt + n);
+      };
+    },
+    u32: function (d, i) { return i + 4 <= d.length ? ((d[i] << 24) >>> 0) + (d[i + 1] << 16) + (d[i + 2] << 8) + d[i + 3] : 0; },
+    u64: function (d, i) { return Mp4.u32(d, i) * 4294967296 + Mp4.u32(d, i + 4); },
+    str: function (d, i, n) { return String.fromCharCode.apply(null, Array.prototype.slice.call(d.subarray(i, i + n))); },
+    // a table of 4- or 8-byte entries, whole (a long book's sample sizes: a few MB)
+    table: async function (read, at, n, width) {
+      var d = await read(at, n * width), out = new Float64Array(n);
+      for (var k = 0; k < n; k++) out[k] = (k + 1) * width <= d.length ? (width === 8 ? Mp4.u64(d, k * 8) : Mp4.u32(d, k * 4)) : 0;
+      return out;
+    },
+    // the first sound track's timescale, sample tables and AAC config (esds)
+    parse: async function (blob) {
+      var read = Mp4.reader(blob), size = blob.size, tracks = [], cur = null;
+      var walk = async function (start, stop) {
+        var pos = start;
+        while (pos + 8 <= stop) {
+          var hdr = (await read(pos, 16)).slice();
+          if (hdr.length < 8) break;
+          var bsize = Mp4.u32(hdr, 0), btype = Mp4.str(hdr, 4, 4), hlen = 8;
+          if (bsize === 1) { bsize = Mp4.u64(hdr, 8); hlen = 16; } else if (bsize === 0) bsize = stop - pos;
+          if (bsize < hlen) break;
+          var body = pos + hlen, end = pos + bsize, d;
+          if (btype === "trak") { cur = {}; tracks.push(cur); await walk(body, end); }
+          else if (Mp4.CONTAINERS[btype]) await walk(body, end);
+          else if (cur) {
+            if (btype === "hdlr") cur.handler = Mp4.str(await read(body + 8, 4), 0, 4);
+            else if (btype === "mdhd") {
+              d = await read(body, 32);
+              if (d[0] === 1) { cur.timescale = Mp4.u32(d, 20); cur.duration = Mp4.u64(d, 24); }
+              else { cur.timescale = Mp4.u32(d, 12); cur.duration = Mp4.u32(d, 16); }
+            } else if (btype === "stsd") {
+              d = (await read(body, Math.min(bsize - hlen, 4096))).slice();
+              cur.codec = Mp4.str(d, 12, 4);
+              var e = -1;
+              for (var j = 0; j + 4 <= d.length; j++) if (d[j] === 101 && d[j + 1] === 115 && d[j + 2] === 100 && d[j + 3] === 115) { e = j; break; }
+              if (e >= 0) {
+                var i = e + 8; // after "esds" and its version/flags: the descriptors
+                while (i < d.length) {
+                  var tag = d[i++], len = 0;
+                  for (var q = 0; q < 4; q++) {
+                    var b = d[i++];
+                    if (b === undefined) break;
+                    len = len * 128 + (b & 0x7f);
+                    if (b < 0x80) break;
+                  }
+                  if (tag === 0x03) i += 3;       // ES_ID, flags
+                  else if (tag === 0x04) i += 13; // DecoderConfig's fixed part
+                  else if (tag === 0x05) { cur.asc = d.slice(i, i + len); break; } // DecoderSpecificInfo
+                  else i += len;
+                }
+              }
+            } else if (btype === "stts" || btype === "stsc") {
+              d = await read(body, 8);
+              var words = btype === "stts" ? 2 : 3, n = Mp4.u32(d, 4);
+              cur[btype] = await Mp4.table(read, body + 8, n * words, 4);
+              cur[btype + "_n"] = n;
+            } else if (btype === "stsz") {
+              d = await read(body, 12);
+              var fixed = Mp4.u32(d, 4);
+              cur.count = Mp4.u32(d, 8); cur.fixed_size = fixed > 0 ? fixed : null; cur.stsz_at = body + 12;
+            } else if (btype === "stco" || btype === "co64") {
+              d = await read(body, 8);
+              cur.chunk_count = Mp4.u32(d, 4); cur.stco_at = body + 8; cur.stco_w = btype === "stco" ? 4 : 8;
+            }
+          }
+          pos = end;
+        }
+      };
+      await walk(0, size);
+      for (var k = 0; k < tracks.length; k++) {
+        var t = tracks[k];
+        if (t.handler === "soun" && t.codec === "mp4a" && t.asc && t.count != null && t.stco_at != null && t.stsc && t.stts) {
+          t.file_size = size; t.read = read;
+          return t;
+        }
+      }
+      throw new Error("no AAC audio track found");
+    },
+    // AudioSpecificConfig → object type, sampling frequency index, channels
+    config: function (asc) {
+      var b0 = asc[0], b1 = asc[1] || 0;
+      var ot = b0 >> 3, sfi = ((b0 & 7) << 1) | (b1 >> 7), ch = (b1 >> 3) & 0xf;
+      if (ot === 5 || ot === 29) ot = 2; // HE-AAC: the core is AAC-LC
+      return [ot, sfi, ch];
+    },
+    adts: function (ot, sfi, ch, n) {
+      var len = n + 7;
+      return new Uint8Array([0xff, 0xf1, (((ot - 1) & 3) << 6) | ((sfi & 0xf) << 2) | ((ch >> 2) & 1),
+        ((ch & 3) << 6) | ((len >> 11) & 3), (len >> 3) & 0xff, ((len & 7) << 5) | 0x1f, 0xfc]);
+    },
+    // the chunk files, through write(name, blob) (a few at once); progress(done, total)
+    convert: async function (blob, write, progress) {
+      var t = await Mp4.parse(blob), read = t.read;
+      var cfg = Mp4.config(t.asc), ot = cfg[0], sfi = cfg[1], ch = cfg[2];
+      var sizes = t.fixed_size ? null : await Mp4.table(read, t.stsz_at, t.count, 4);
+      var offsets = await Mp4.table(read, t.stco_at, t.chunk_count, t.stco_w);
+      var chunkLen = Mp4.CHUNK_SECONDS * t.timescale;
+      var sttsI = 0, sttsLeft = t.stts_n > 0 ? t.stts[0] : 0;
+      var nextDuration = function () {
+        while (sttsI < t.stts_n && sttsLeft === 0) { sttsI++; sttsLeft = sttsI < t.stts_n ? t.stts[sttsI * 2] : 0; }
+        if (sttsI >= t.stts_n) return 1024;
+        sttsLeft--;
+        return t.stts[sttsI * 2 + 1];
+      };
+      var starts = [], outN = -1, pieces = [], time = 0, sample = 0, done = 0, nextReport = 0, writing = [];
+      var flush = async function () {
+        var name = "c" + outN + ".aac", data = new Blob(pieces);
+        pieces = [];
+        writing.push(write(name, data));
+        if (writing.length >= 4) await writing.shift();
+      };
+      var openChunk = async function () {
+        if (outN >= 0) await flush();
+        outN++;
+        starts.push(Math.floor(time * 1000 / t.timescale));
+      };
+      await openChunk();
+      var stscI = 0;
+      for (var c = 0; c < t.chunk_count; c++) {
+        while (stscI + 1 < t.stsc_n && t.stsc[(stscI + 1) * 3] <= c + 1) stscI++;
+        var n = t.stsc[stscI * 3 + 1], chunkSizes = [], total = 0;
+        for (var k = 0; k < n; k++) {
+          if (sample + k >= t.count) break;
+          var sz = t.fixed_size || (sizes && sizes[sample + k]) || 0;
+          chunkSizes.push(sz); total += sz;
+        }
+        if (c >= offsets.length) break;
+        var data = (await read(offsets[c], total)).slice(), pos = 0;
+        for (k = 0; k < chunkSizes.length; k++) {
+          sz = chunkSizes[k];
+          if (time >= (outN + 1) * chunkLen) await openChunk();
+          pieces.push(Mp4.adts(ot, sfi, ch, sz), data.subarray(pos, pos + sz));
+          pos += sz;
+          time += nextDuration();
+          sample++;
+        }
+        done += total;
+        if (progress && done >= nextReport) {
+          progress(done, t.file_size);
+          nextReport = done + Math.max(256 * 1024, Math.floor(t.file_size / 200));
+        }
+      }
+      await flush();
+      await Promise.all(writing);
+      if (progress) progress(t.file_size, t.file_size);
+      return { starts: starts, durationMs: Math.floor(time * 1000 / t.timescale), count: outN + 1 };
+    },
+    indexJson: function (res) {
+      return '{"starts":[' + res.starts.map(function (v) { return String(Math.floor(v)); }).join(",") + '],"durationMs":' + res.durationMs + ',"count":' + res.count + "}";
+    },
+    // The browser's own storage, for the download while it's converted (null: none here).
+    scratch: async function () {
+      try { return await (await navigator.storage.getDirectory()).getDirectoryHandle("gzsync-prepare", { create: true }); }
+      catch (e) { return null; }
+    },
+    // Download an M4B/M4A (a fetch response's body) to path on the Kindle:
+    // as chunks when it can, else the file as it is. Returns true if converted.
+    bring: async function (dir, name, body, onBytes, what) {
+      var tmp = Mp4.scratch && await Mp4.scratch(), tmpName = rand(8) + ".m4a";
+      if (!tmp) { await Drive.writeStream(Drive.sync, dir + "/" + name, body, onBytes); return false; }
+      try {
+        await Drive.writeStream(tmp, tmpName, body, onBytes);
+        var file = await (await tmp.getFileHandle(tmpName)).getFile();
+        var cdir = dir + "/" + name + ".chunks", started = Date.now();
+        try {
+          var res = await Mp4.convert(file, function (n, data) { return Drive.write(Drive.sync, cdir + "/" + n, data); }, function (d, total) {
+            phase("Preparing “" + (what || name) + "” for the Kindle… " + Math.floor(d * 100 / Math.max(1, total)) + "%");
+          });
+          await Drive.write(Drive.sync, cdir + "/index.json", Mp4.indexJson(res));
+          log("“" + (what || name) + "”: prepared for the Kindle here (" + res.count + " parts, " + Math.round((Date.now() - started) / 1000) + " s).");
+          return true;
+        } catch (e) {
+          await Drive.remove(Drive.sync, cdir);
+          log("“" + (what || name) + "” couldn't be prepared here (" + e.message + "): the Kindle prepares it.");
+          await Drive.write(Drive.sync, dir + "/" + name, file);
+          return false;
+        }
+      } finally {
+        try { await tmp.removeEntry(tmpName); } catch (e) {}
+      }
+    },
+  };
 
   // 4. notes
   async function syncNotes(out, inbox) {
@@ -1497,13 +1759,14 @@ gets a password or token.
     if (how[0] === "file") {
       if (!t.part || !t.part.key) throw new Error("no file");
       var r = await P.get(t.part.key, { download: 1 });
-      await Drive.writeStream(Drive.sync, dir + "/" + base + "." + how[1], r.body);
+      if (how[1] === "m4a") await Mp4.bring(dir, base + ".m4a", r.body, null, t.title);
+      else await Drive.writeStream(Drive.sync, dir + "/" + base + "." + how[1], r.body);
       return base + "." + how[1];
     }
     // the server's MP3 (FLAC, ALAC, Ogg…): its transcoder, HLS with MP3 in MPEG-TS
     var session = rand(8);
     var params = { path: "/library/metadata/" + t.key, protocol: "hls", mediaIndex: 0, partIndex: 0, directPlay: 0, directStream: 0,
-      directStreamAudio: 0, musicBitrate: 192, fastSeek: 1, hasMDE: 1, "X-Plex-Session-Identifier": session, session: session,
+      directStreamAudio: 0, musicBitrate: P.quality().bitrate, fastSeek: 1, hasMDE: 1, "X-Plex-Session-Identifier": session, session: session,
       location: "lan", "X-Plex-Platform": "Chrome", "X-Plex-Client-Identifier": P.clientId(), "X-Plex-Product": "GZreader",
       "X-Plex-Client-Profile-Extra": "add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=mp3)" };
     var start = P.st.server.uri + "/music/:/transcode/universal/start.m3u8";
@@ -1648,10 +1911,12 @@ gets a password or token.
       setPicks(picks().filter(function (p) {
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
+      Picks.prune(out);
       try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)
       if (out.gzreader && Update.betaTouched) inbox.test_builds = Update.beta;
+      if (P.q) inbox.music_quality = { bitrate: P.q.bitrate, shrink: P.q.shrink }; // (the Kindle's Plex settings follow)
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
       await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)
@@ -1715,6 +1980,7 @@ gets a password or token.
     $("#p-status").textContent = p ? "Signed in" + (P.st.user ? " as " + P.st.user : "") + " · " + (P.st.server.name || "Plex") : "Not connected";
     $("#p-form").classList.toggle("hidden", p);
     $("#p-on").classList.toggle("hidden", !p);
+    P.renderQuality();
     renderPicks();
     $("#b-results").textContent = ""; // (the Content tab loads again with the new connections)
     updateSyncButton();
@@ -2005,6 +2271,7 @@ gets a password or token.
     var refresh = function () { renderPicks(); if (!$("#app").classList.contains("hidden")) Browse.run(); };
     var remove = function (fn) { var b = el("button", null, "Remove"); b.onclick = function () { fn(); refresh(); }; return b; };
     bookPicks().forEach(function (x) {
+      if (standing("book", x.id) === "here") return; // (Picks.prune takes it off)
       var li = el("li");
       li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "") + (x.kind === "audiobook" ? " (audiobook)" : "")));
       li.appendChild(remove(function () { setBookPicks(bookPicks().filter(function (y) { return String(y.id) !== String(x.id); })); }));
@@ -2020,6 +2287,80 @@ gets a password or token.
     $("#picks-size").textContent = bytes ? "· about " + mb(bytes) : "";
     if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
   }
+
+  // ------------------------------------------------------------ HEIC pictures
+
+  // HEIC/HEIF (iPhone photos): only Safari opens them. Elsewhere libheif
+  // (vendor/, LGPL 3.0, see vendor/README.md) decodes them, in a worker (it
+  // compiles its WebAssembly at once, which a page may not do with a big one,
+  // and a 12-megapixel photo takes a moment). Loaded only when one is added;
+  // the picture never leaves the browser.
+  var Heic = {
+    LIB: "vendor/libheif-1.23.5.js",
+    BRANDS: ["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"],
+    worker: null, n: 0, waits: {},
+    // by its name, its type, or its first bytes ("ftyp" and a HEIF brand)
+    is: async function (file) {
+      if (/\.(heic|heif|hif)$/i.test(file.name || "") || /^image\/hei[cf]/i.test(file.type || "")) return true;
+      try {
+        var b = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+        var s = String.fromCharCode.apply(null, b);
+        return s.slice(4, 8) === "ftyp" && Heic.BRANDS.indexOf(s.slice(8, 12)) >= 0;
+      } catch (e) { return false; }
+    },
+    // the worker's code: libheif, then one picture at a time
+    code: function () {
+      var lib = null;
+      onmessage = async function (e) {
+        var id = e.data.id;
+        try {
+          if (!lib) {
+            importScripts(e.data.lib);
+            lib = libheif();
+            if (lib && typeof lib.then === "function") lib = await lib;
+          }
+          var imgs = new lib.HeifDecoder().decode(new Uint8Array(e.data.buf));
+          if (!imgs || !imgs.length) throw new Error("not a picture libheif can read");
+          var im = imgs[0], w = im.get_width(), h = im.get_height();
+          im.display({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }, function (d) {
+            imgs.forEach(function (x) { try { x.free(); } catch (er) {} });
+            if (!d) postMessage({ id: id, error: "libheif couldn't decode it" });
+            else postMessage({ id: id, w: w, h: h, data: d.data.buffer }, [d.data.buffer]);
+          });
+        } catch (err) { postMessage({ id: id, error: String((err && err.message) || err) }); }
+      };
+    },
+    start: function () {
+      if (Heic.worker) return Heic.worker;
+      var url = URL.createObjectURL(new Blob(["(" + Heic.code.toString() + ")();"], { type: "text/javascript" }));
+      Heic.worker = new Worker(url);
+      URL.revokeObjectURL(url);
+      var fail = function (msg) {
+        Object.keys(Heic.waits).forEach(function (k) { Heic.waits[k].bad(new Error(msg)); });
+        Heic.waits = {};
+        Heic.worker.terminate(); Heic.worker = null;
+      };
+      Heic.worker.onmessage = function (e) {
+        var w = Heic.waits[e.data.id];
+        if (!w) return;
+        delete Heic.waits[e.data.id];
+        if (e.data.error) w.bad(new Error(e.data.error)); else w.ok(e.data);
+      };
+      Heic.worker.onerror = function (e) { e.preventDefault(); fail("the HEIC converter didn't load (" + (e.message || "no connection?") + ")"); };
+      return Heic.worker;
+    },
+    // a HEIC file → an ImageBitmap, like createImageBitmap(file)
+    bitmap: async function (file) {
+      var buf = await file.arrayBuffer();
+      var worker = Heic.start(), id = ++Heic.n;
+      var lib = new URL(Heic.LIB, location.href).href;
+      var r = await new Promise(function (ok, bad) {
+        Heic.waits[id] = { ok: ok, bad: bad };
+        worker.postMessage({ id: id, lib: lib, buf: buf }, [buf]);
+      });
+      return await createImageBitmap(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+    },
+  };
 
   // ------------------------------------------------------------ sleep screen pictures
 
@@ -2045,7 +2386,12 @@ gets a password or token.
     },
     // the picture as the Kindle's screen shows it: its size, in grey
     make: async function (file, fit) {
-      var img = await createImageBitmap(file);
+      var img;
+      try { img = await createImageBitmap(file); }
+      catch (e) {
+        if (!(await Heic.is(file))) throw e;
+        img = await Heic.bitmap(file); // (an iPhone photo, in a browser that can't open it)
+      }
       var sc = Sleep.screen();
       var c = document.createElement("canvas");
       c.width = sc.w; c.height = sc.h;
@@ -2066,15 +2412,25 @@ gets a password or token.
       return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
     },
     add: async function (files) {
-      var fit = ($("#ss-fit") || {}).value || "cover", bad = 0;
-      for (var i = 0; i < files.length; i++) {
-        try {
-          var blob = await Sleep.make(files[i], fit);
-          Sleep.pending.push({ name: Sleep.nameFor(files[i]), blob: blob, url: URL.createObjectURL(blob) });
-        } catch (e) { bad++; }
-      }
+      var fit = ($("#ss-fit") || {}).value || "cover", bad = 0, heicBad = [];
+      var btn = $("#ss-add"), label = btn.textContent;
+      btn.disabled = true;
+      try {
+        for (var i = 0; i < files.length; i++) {
+          btn.textContent = files.length > 1 ? "Making " + (i + 1) + " of " + files.length + "…" : "Making the picture…";
+          try {
+            var blob = await Sleep.make(files[i], fit);
+            Sleep.pending.push({ name: Sleep.nameFor(files[i]), blob: blob, url: URL.createObjectURL(blob) });
+          } catch (e) {
+            if (await Heic.is(files[i])) heicBad.push(e.message || String(e)); else bad++;
+          }
+        }
+      } finally { btn.disabled = false; btn.textContent = label; }
       Sleep.render();
-      if (bad) alertIn($("#ss-add"), bad + " picture" + (bad === 1 ? "" : "s") + " couldn't be read (this browser can't open that kind of file).");
+      var msg = [];
+      if (bad) msg.push(bad + " picture" + (bad === 1 ? "" : "s") + " couldn't be read (this browser can't open that kind of file).");
+      if (heicBad.length) msg.push(heicBad.length + " HEIC picture" + (heicBad.length === 1 ? "" : "s") + " couldn't be converted: " + heicBad[0] + ".");
+      if (msg.length) alertIn(btn, msg.join(" "));
     },
     render: function () {
       var ul = $("#ss-list");
@@ -2263,6 +2619,9 @@ gets a password or token.
     $("#b-more").onclick = busy($("#b-more"), function () { return Browse.more && Browse.more(); });
     // sync
     $("#o-update").onchange = function () { Update.chosen = $("#o-update").checked; };
+    var qChanged = function () { P.q = { bitrate: Number($("#p-bitrate").value) || 192, shrink: $("#p-shrink").checked }; };
+    $("#p-bitrate").onchange = qChanged;
+    $("#p-shrink").onchange = qChanged;
     $("#o-beta").onchange = function () { Update.betaTouched = true; Update.file = null; Update.check(); };
     $("#sync").onclick = runSync;
     // test mode: the pretend Kindle at once
@@ -2282,7 +2641,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
