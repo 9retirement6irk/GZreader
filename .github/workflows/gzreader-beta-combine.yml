@@ -1,0 +1,41 @@
+# The beta branch (test builds over Wi-Fi) made again from main and every
+# open pull request labelled "beta": when one of them changes, is labelled,
+# unlabelled or closed, and when main moves. A pull request that clashes
+# gets a comment and is left out. tools/gzreader/beta-combine.sh.
+name: GZreader beta (combine labelled pull requests)
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, closed, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: gzreader-beta-combine
+  cancel-in-progress: false
+
+jobs:
+  combine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # (only pull requests that are, or were, labelled beta matter)
+    if: >-
+      github.event_name != 'pull_request_target'
+      || contains(github.event.pull_request.labels.*.name, 'beta')
+      || (github.event.action == 'unlabeled' && github.event.label.name == 'beta')
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # (main's own scripts: nothing from the pull requests is run)
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: tools/gzreader/beta-combine.sh

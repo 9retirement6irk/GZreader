@@ -21,7 +21,7 @@ on:
         required: false
         default: ""
   push:
-    branches: [nook-softfloat, 'feat/nook-*']
+    branches: [nook-softfloat, beta, 'feat/nook-*']
 
 permissions:
   contents: write
@@ -165,6 +165,8 @@ jobs:
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
           [ -n "$VERSION" ] || VERSION=$(tr -d ' \n' < GZREADER_VERSION)
+          # (a test build: the version its over-the-air updates have, gzreader-beta.yml)
+          if [ -z "$TAG" ] && [ "$GITHUB_REF" = refs/heads/beta ]; then VERSION="$VERSION-beta.$(git rev-parse --short=7 HEAD)"; fi
           GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-*.zip out
           tools/gzreader/nook-runtime.sh nook-runtime
           GZ_VERSION="$VERSION" GZ_NOOK_NAME=gzreader-nook-1st-edition GZ_NOOK_FOR="1st Edition (built without VFP)" GZ_NOOK_APK=apk/GZreader-launcher.apk \
