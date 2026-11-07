@@ -2735,21 +2735,21 @@ captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()
 check(captured.textviewer and captured.textviewer.title == "GZreader changelog" and captured.textviewer.text:match("GZreader 1%.0%.3"), "changelog is GZreader's")
--- test builds: the beta-updates branch's latest.json, any build other than the installed one
+-- test builds: latest-beta.json on the updates branch, any build other than the installed one
 do
     local asked
     Update.request = function(u)
         asked = u
-        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-update.zip",
+        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-beta-update.zip",
             commit = "0123abcd", notes = "• Nook: fewer flashes" })
     end
     check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl(), "test builds off by default: releases")
     Update.setBeta(true)
     local binfo = Update.check()
-    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/beta-updates/latest.json",
-        "test builds on: latest.json on the beta-updates branch")
+    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/latest-beta.json",
+        "test builds on: latest-beta.json on the updates branch (next to the release's latest.json)")
     check(binfo and binfo.beta and binfo.version == "1.4.0-beta.12" and binfo.size == 4567
-        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/beta-updates/gzreader-update.zip"
+        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
         and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
         "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
     Update.request = function()

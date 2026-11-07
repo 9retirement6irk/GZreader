@@ -618,9 +618,11 @@ gets a password or token.
     // test builds (the Kindle's Settings → Updates → Test builds, or the
     // checkbox here): every push to the beta branch, any other than the
     // Kindle's is offered (gzreader-beta.yml)
-    RAW_BETA: "https://raw.githubusercontent.com/9retirement6irk/GZreader/beta-updates/",
+    // (next to the release's: gzreader-beta-update.zip, latest-beta.json)
+    RAW_BETA: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
     beta: false, betaTouched: false,
     raw: function () { return Update.beta ? Update.RAW_BETA : Update.RAW; },
+    meta: function () { return Update.raw() + (Update.beta ? "latest-beta.json" : "latest.json"); },
     // whether `v` should go to a Kindle that has `have`
     offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
@@ -646,7 +648,7 @@ gets a password or token.
       try {
         var v;
         if (Update.beta) {
-          var meta = await (await fetch(Update.RAW_BETA + "latest.json", { cache: "no-store" })).json();
+          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
           v = String(meta.version || "");
         } else {
           var rel = await (await fetch(Update.API, { headers: { Accept: "application/vnd.github+json" } })).json();
@@ -693,7 +695,7 @@ gets a password or token.
       var blob = Update.file;
       if (!blob) {
         try {
-          var meta = await (await fetch(Update.raw() + "latest.json", { cache: "no-store" })).json();
+          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
           if (Update.offered(meta.version, out.gzreader || "0") && /^[\w.-]+$/.test(meta.file || "gzreader-update.zip")) {
             var r = await fetch(Update.raw() + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
             if (r.ok) {

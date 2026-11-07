@@ -73,10 +73,9 @@ with zipfile.ZipFile(upd, "w", zipfile.ZIP_DEFLATED) as z:
 UPD = open(upd, "rb").read()
 with open(os.path.join(web, "updates", "latest.json"), "w") as f:
     json.dump({"version": "1.30.0", "file": "gzreader-update.zip", "size": len(UPD), "sha256": hashlib.sha256(UPD).hexdigest()}, f)
-# test builds (the beta-updates branch)
-os.makedirs(os.path.join(web, "beta"))
-with open(os.path.join(web, "beta", "latest.json"), "w") as f:
-    json.dump({"version": "1.29.0-beta.abc1234", "file": "gzreader-update.zip", "size": 1, "sha256": "00"}, f)
+# test builds (next to the release's on the updates branch)
+with open(os.path.join(web, "updates", "latest-beta.json"), "w") as f:
+    json.dump({"version": "1.29.0-beta.abc1234", "file": "gzreader-beta-update.zip", "size": 1, "sha256": "00"}, f)
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = ThreadingHTTPServer(("127.0.0.1", WP), partial(Quiet, directory=web))
@@ -290,7 +289,7 @@ with sync_playwright() as pw:
           "update: a newer GZreader is offered for the Kindle")
     check(page.locator("#o-beta-row:not(.hidden)").count() == 1 and not page.locator("#o-beta").is_checked(),
           "test builds: a choice on the page, off (as on the Kindle)")
-    page.evaluate("(wp) => { GZSync.Update.RAW_BETA = 'http://127.0.0.1:' + wp + '/beta/'; }", WP)
+    page.evaluate("(wp) => { GZSync.Update.RAW_BETA = 'http://127.0.0.1:' + wp + '/updates/'; }", WP)
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('test build')")
     check("to test build 1.29.0-beta.abc1234 (it has 1.24.0)" in page.locator("#o-update-row").inner_text()

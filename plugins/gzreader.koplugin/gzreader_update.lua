@@ -14,8 +14,9 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     taken from it. The native binaries, fonts and dictionary stay as
     installed either way;
   * test builds (Settings → Updates → Test builds, off by default): the
-    updater reads latest.json on the repository's "beta-updates" branch
-    instead (raw.githubusercontent.com), which the "GZreader test builds
+    updater reads latest-beta.json on the repository's "updates" branch
+    instead (raw.githubusercontent.com; the release's latest.json is there
+    too, for the sync page), which the "GZreader test builds
     (beta)" workflow writes from every push to the "beta" branch: the same
     kind of update package, version <version>-beta.<commit>. Any test build
     other than the one installed is offered. Switched off, the next release
@@ -63,13 +64,13 @@ function Update.apiUrl()
     return "https://api.github.com/repos/" .. Update.REPO .. "/releases/latest"
 end
 
-Update.BETA_BRANCH = "beta-updates"
+Update.BETA_BRANCH = "updates"
 
 --- Test builds instead of releases (Settings → Updates → Test builds).
 function Update.betaEnabled() return G_reader_settings:isTrue("gzreader_update_beta") end
 
 function Update.betaUrl(file)
-    return "https://raw.githubusercontent.com/" .. Update.REPO .. "/" .. Update.BETA_BRANCH .. "/" .. (file or "latest.json")
+    return "https://raw.githubusercontent.com/" .. Update.REPO .. "/" .. Update.BETA_BRANCH .. "/" .. (file or "latest-beta.json")
 end
 
 --- Where to look: the latest release, or the latest test build.
@@ -114,7 +115,7 @@ local TRUSTED = {
     ["release-assets.githubusercontent.com"] = true,
     ["github-releases.githubusercontent.com"] = true,
     ["codeload.github.com"] = true, -- source code zips
-    ["raw.githubusercontent.com"] = true, -- test builds (the beta-updates branch)
+    ["raw.githubusercontent.com"] = true, -- test builds (the updates branch)
 }
 
 local function host(u) return tostring(u):match("^https://([^/:]+)") end
@@ -184,7 +185,7 @@ function Update.parseRelease(body)
     return info
 end
 
---- Parse the beta-updates branch's latest.json into the same info.
+--- Parse the updates branch's latest-beta.json into the same info.
 function Update.parseBeta(body)
     local ok, b = pcall(JSON.decode, body or "")
     if not ok or type(b) ~= "table" or type(b.version) ~= "string" or type(b.file) ~= "string"
@@ -197,7 +198,7 @@ function Update.parseBeta(body)
         page = commit and ("https://github.com/" .. Update.REPO .. "/commit/" .. commit) or nil }
 end
 
---- The feed's body (a release's JSON, or a test build's latest.json).
+--- The feed's body (a release's JSON, or the test build's latest-beta.json).
 function Update.parseFeed(body)
     if Update.betaEnabled() then return Update.parseBeta(body) end
     return Update.parseRelease(body)

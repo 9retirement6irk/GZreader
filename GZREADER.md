@@ -172,8 +172,10 @@ plugins from it.
 waiting to be tried instead of releases, over Wi‑Fi like a release (the
 version then reads like `1.26.5-beta.d6819bd`). They come from the
 repository's `beta` branch: every push there builds an update package
-("GZreader test builds (beta)" workflow) onto the `beta-updates` branch,
-where GZreader looks. Any test build other than the installed one is
+("GZreader test builds (beta)" workflow) onto the `updates` branch, as
+`gzreader-beta-update.zip` with `latest-beta.json` next to the release's
+`gzreader-update.zip` and `latest.json`; GZreader and the sync page look
+there. Any test build other than the installed one is
 offered. Turn it off to go back to releases: the next release is offered as
 usual. Kindles without Wi‑Fi get them through the sync page: tick **Test
 builds** there (it follows the Kindle's setting, and tells the Kindle when
