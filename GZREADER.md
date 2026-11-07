@@ -631,6 +631,8 @@ What a sync does:
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
 | Music | | The Plex albums and playlists chosen on the page (Kindles with a speaker or headphone jack) |
 
+What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
+
 The Grimmory tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a

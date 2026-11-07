@@ -799,6 +799,20 @@ gets a password or token.
       Picks.d = { books: asList(d && d.books), music: asList(d && d.music) };
     },
     save: function () { if (Drive.sync) Drive.write(Drive.sync, "picks.json", JSON.stringify(Picks.d)).catch(function () {}); },
+    // Off the list: what the Kindle already has (it came another way: a sync
+    // from another computer, a download over Wi-Fi). Left there, it was listed
+    // as coming, and came again once deleted from the Kindle.
+    prune: function (out) {
+      var have = (out && out.have) || {};
+      var books = have.books || {}, audio = asList(have.audiobooks).map(String), music = asList(have.music);
+      var b = Picks.d.books.filter(function (p) { var id = String(p.id); return !books[id] && audio.indexOf(id) < 0; });
+      var m = Picks.d.music.filter(function (p) {
+        return music.indexOf(p.kind + "-" + p.key) < 0 && music.indexOf(safe(p.kind) + "-" + safe(p.key)) < 0;
+      });
+      var n = Picks.d.books.length - b.length + Picks.d.music.length - m.length;
+      if (n) { Picks.d = { books: b, music: m }; Picks.save(); }
+      return n;
+    },
   };
 
   // ------------------------------------------------------------ the Kindle and its outbox
@@ -841,6 +855,7 @@ gets a password or token.
     K.out = fixOutbox(await Drive.readJSON(Drive.sync, "outbox.json"));
     K.pending = await Drive.readJSON(Drive.sync, "inbox.json");
     await Picks.load();
+    Picks.prune(K.out);
     show("#kindle-problem", false);
     await askPin();
     return true;
@@ -1648,6 +1663,7 @@ gets a password or token.
       setPicks(picks().filter(function (p) {
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
+      Picks.prune(out);
       try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)
@@ -2005,6 +2021,7 @@ gets a password or token.
     var refresh = function () { renderPicks(); if (!$("#app").classList.contains("hidden")) Browse.run(); };
     var remove = function (fn) { var b = el("button", null, "Remove"); b.onclick = function () { fn(); refresh(); }; return b; };
     bookPicks().forEach(function (x) {
+      if (standing("book", x.id) === "here") return; // (Picks.prune takes it off)
       var li = el("li");
       li.appendChild(el("span", null, (x.title || "?") + (x.authors && x.authors.length ? " — " + x.authors.join(", ") : "") + (x.kind === "audiobook" ? " (audiobook)" : "")));
       li.appendChild(remove(function () { setBookPicks(bookPicks().filter(function (y) { return String(y.id) !== String(x.id); })); }));

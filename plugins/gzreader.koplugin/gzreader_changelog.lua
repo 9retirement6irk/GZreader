@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Sync page: a book, audiobook or album chosen on the page that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list. It stayed listed as coming with the next sync, and was brought again after you deleted it from the Kindle.",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",

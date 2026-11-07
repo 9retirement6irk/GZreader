@@ -212,6 +212,17 @@ with sync_playwright() as pw:
           and not page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gzsync.') && k !== 'gzsync.sso').length"),
           "the sign-ins are on the Kindle, encrypted with its PIN (and not in the browser)")
 
+    # picks the Kindle has meanwhile (from another computer's sync, say): Book 01 and album 999 are on it
+    page.evaluate("""async () => {
+        const s = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('documents')).getDirectoryHandle('GZreader');
+        const d = await s.getDirectoryHandle('.gzsync');
+        let p = { books: [], music: [] };
+        try { p = JSON.parse(await (await (await d.getFileHandle('picks.json')).getFile()).text()); } catch (e) {}
+        p.books = (p.books || []).concat([{ id: 1, kind: 'book', title: 'Book 01', size_kb: 100 }]);
+        p.music = (p.music || []).concat([{ kind: 'album', key: '999', title: 'Old Album' }]);
+        const w = await (await d.getFileHandle('picks.json', { create: true })).createWritable();
+        await w.write(JSON.stringify(p)); await w.close();
+    }""")
     page.goto("about:blank")   # (a fresh visit, as on another computer)
     page.goto("http://127.0.0.1:%d/GZreader/sync/" % WP)
     page.wait_for_function("window.GZSync")
@@ -225,6 +236,17 @@ with sync_playwright() as pw:
     seen = (page.locator("#c-plex.on").count(), page.locator("#c-grimmory.on").count(), page.locator("#c-memos.on").count(),
             page.locator("#cal-list li").count(), page.locator("nav.main button.on").inner_text())
     check(seen == (1, 1, 1, 2, "Content"), "unlocked again (another visit): every connection back; Content first %r" % (seen,))
+    stale = page.evaluate("""async () => {
+        const s = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('documents')).getDirectoryHandle('GZreader');
+        for (let i = 0; i < 50; i++) {
+            const p = JSON.parse(await (await (await (await s.getDirectoryHandle('.gzsync')).getFileHandle('picks.json')).getFile()).text());
+            if (!p.books.some(b => b.id === 1) && !p.music.some(m => m.key === '999')) return [GZSync.Picks.d.books.length, GZSync.Picks.d.music.length, document.querySelector('#picks').innerText];
+            await new Promise(r => setTimeout(r, 100));
+        }
+        return null;
+    }""")
+    check(stale is not None and stale[:2] == [0, 0] and "Book 01" not in stale[2] and "Old Album" not in stale[2],
+          "picks the Kindle already has: off the list (on the Kindle too), not shown as coming %r" % (stale,))
 
     # choosing on the page: books, audiobooks, music, as in the Kindle's Grimmory tab
     page.wait_for_selector("#b-results li button")
