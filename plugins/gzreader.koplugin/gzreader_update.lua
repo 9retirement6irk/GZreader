@@ -71,12 +71,48 @@ Update.BETA_BRANCH = "updates"
 --- Test builds instead of releases (Settings → Updates → Test builds).
 function Update.betaEnabled() return G_reader_settings:isTrue("gzreader_update_beta") end
 
-function Update.betaUrl(file)
-    return "https://raw.githubusercontent.com/" .. Update.REPO .. "/" .. Update.BETA_BRANCH .. "/" .. (file or "latest-beta.json")
+--- A file on the updates branch, as it is at commit `ref` (default: the
+--- branch as it is now).
+function Update.betaUrl(file, ref)
+    return "https://raw.githubusercontent.com/" .. Update.REPO .. "/" .. (ref or Update.BETA_BRANCH) .. "/" .. (file or "latest-beta.json")
 end
 
 --- Where to look: the latest release, or the latest test build.
 function Update.feedUrl() return Update.betaEnabled() and Update.betaUrl() or Update.apiUrl() end
+
+--- The updates branch's commit now, or the branch's name if GitHub doesn't
+--- say. raw.githubusercontent.com keeps each file of a branch for up to
+--- 5 minutes, each on its own: right after a new test build, latest-beta.json
+--- could still be the last build's while the zip was already the new one
+--- ("the download was incomplete"). A commit's files never change, so the
+--- test build's data and its zip are read at the same commit.
+function Update.betaRef()
+    local code, body = Update.get("https://api.github.com/repos/" .. Update.REPO .. "/commits/" .. Update.BETA_BRANCH,
+        nil, "application/vnd.github.sha")
+    if code == 200 and type(body) == "string" then
+        local sha = body:match("^%s*(%x+)%s*$")
+        if not sha then
+            local ok, j = pcall(JSON.decode, body)
+            sha = ok and type(j) == "table" and type(j.sha) == "string" and j.sha:match("^%x+$") or nil
+        end
+        if sha and #sha == 40 then return sha end
+    end
+    return Update.BETA_BRANCH
+end
+
+--- Fetch the feed: returns code, body, err, the url asked and (test builds)
+--- the commit it was read at.
+function Update.fetchFeed()
+    if not Update.betaEnabled() then
+        local u = Update.apiUrl()
+        local code, body, err = Update.get(u)
+        return code, body, err, u
+    end
+    local ref = Update.betaRef()
+    local u = Update.betaUrl(nil, ref)
+    local code, body, err = Update.get(u)
+    return code, body, err, u, ref
+end
 
 function Update.pageUrl()
     return "https://github.com/" .. Update.REPO .. "/releases"
@@ -124,8 +160,8 @@ local function host(u) return tostring(u):match("^https://([^/:]+)") end
 
 --- GET following redirects (only to GitHub's hosts, only https).
 --- With `path`, the body is written there. Returns code, body, err.
-function Update.get(u, path)
-    if Update.request then return Update.request(u, path) end
+function Update.get(u, path, accept)
+    if Update.request then return Update.request(u, path, accept) end
     local http = require("socket.http")
     local ltn12 = require("ltn12")
     local socket = require("socket")
@@ -147,7 +183,7 @@ function Update.get(u, path)
                 url = u, method = "GET", sink = sink, redirect = false,
                 -- downloads accept anything: GitHub's API answers 415 to
                 -- "application/octet-stream" for a release's source code zip
-                headers = { ["User-Agent"] = "GZreader", ["Accept"] = path and "*/*" or "application/vnd.github+json" },
+                headers = { ["User-Agent"] = "GZreader", ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
             })
         end)
         socketutil:reset_timeout()
@@ -188,21 +224,21 @@ function Update.parseRelease(body)
 end
 
 --- Parse the updates branch's latest-beta.json into the same info.
-function Update.parseBeta(body)
+function Update.parseBeta(body, ref)
     local ok, b = pcall(JSON.decode, body or "")
     if not ok or type(b) ~= "table" or type(b.version) ~= "string" or type(b.file) ~= "string"
             or not b.file:match("^[%w%._%-]+$") then
         return nil, "bad test build data"
     end
     local commit = type(b.commit) == "string" and b.commit:match("^%x+$") or nil
-    return { version = b.version, url = Update.betaUrl(b.file), size = tonumber(b.size), beta = true,
+    return { version = b.version, url = Update.betaUrl(b.file, ref), size = tonumber(b.size), beta = true,
         notes = type(b.notes) == "string" and b.notes or "",
         page = commit and ("https://github.com/" .. Update.REPO .. "/commit/" .. commit) or nil }
 end
 
 --- The feed's body (a release's JSON, or the test build's latest-beta.json).
-function Update.parseFeed(body)
-    if Update.betaEnabled() then return Update.parseBeta(body) end
+function Update.parseFeed(body, ref)
+    if Update.betaEnabled() then return Update.parseBeta(body, ref) end
     return Update.parseRelease(body)
 end
 
@@ -215,14 +251,13 @@ end
 
 --- Blocking check (a few seconds). Returns info or nil, err; updates state.
 function Update.check()
-    local feed = Update.feedUrl()
-    local code, body, err = Update.get(feed)
+    local code, body, err, feed, ref = Update.fetchFeed()
     Log.info("update check", feed, tostring(code or err))
     if code == 404 then
         return nil, Update.betaEnabled() and _("No test build has been published yet.") or _("No GZreader release has been published yet.")
     end
     if code ~= 200 then return nil, err or ("HTTP " .. tostring(code)) end
-    local info, perr = Update.parseFeed(body)
+    local info, perr = Update.parseFeed(body, ref)
     if not info then return nil, perr end
     Update.state = { has_update = Update.isNewer(info), latest = info.version, info = info }
     G_reader_settings:saveSetting("gzreader_update_last_check", os.time())
@@ -245,10 +280,10 @@ function Update.backgroundCheck(on_found)
     end
     local NetworkMgr = require("ui/network/manager")
     if not NetworkMgr:isConnected() then return end
-    local feed = Update.feedUrl()
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
-        local code, body = Update.get(feed)
-        ffiutil.writeToFD(wfd, code == 200 and body or "", true)
+        local code, body, _, _, ref = Update.fetchFeed()
+        -- (the commit it was read at on the first line)
+        ffiutil.writeToFD(wfd, code == 200 and ((ref or "") .. "\n" .. body) or "", true)
     end, true)
     if not pid then return end
     local tries = 0
@@ -257,8 +292,8 @@ function Update.backgroundCheck(on_found)
         tries = tries + 1
         out:drain()
         if ffiutil.isSubProcessDone(pid) then
-            local body = out:finish()
-            local info = body ~= "" and Update.parseFeed(body)
+            local ref, body = (out:finish() or ""):match("^([^\n]*)\n(.*)$")
+            local info = body and body ~= "" and Update.parseFeed(body, ref ~= "" and ref or nil)
             G_reader_settings:saveSetting("gzreader_update_last_check", os.time())
             if info then
                 G_reader_settings:saveSetting("gzreader_update_latest", info.version)

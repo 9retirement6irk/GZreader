@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Test builds: the update and its data are read from the same commit of the updates branch. Right after a new test build, GitHub's file server could still hand out the last one's data with the new zip, and the update said it was incomplete.",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",
