@@ -1,8 +1,8 @@
-# Test builds over Wi-Fi: every push to the "beta" branch (what's waiting to
-# be tried on a device, merged there by the merging agent) builds the update
+# Test builds over Wi-Fi: every push to the "beta" branch (made from the pull
+# requests labelled beta, gzreader-beta-combine.yml) builds the update
 # package the way a release does (Lua only, the same for every Kindle and the
-# Nook) and puts it on the "beta-updates" branch with latest.json, one commit
-# replaced each time. GZreader's updater reads it there when Settings →
+# Nook) and puts it on the "updates" branch as gzreader-beta-update.zip with
+# latest-beta.json, next to the release's (tools/gzreader/publish-updates.sh). GZreader's updater reads it there when Settings →
 # Updates → Test builds is on (gzreader_update.lua). Version:
 # <GZREADER_VERSION>-beta.<commit> (the Nook package built from the same
 # push, gzreader-nook.yml, has the same one).
@@ -23,6 +23,9 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    concurrency:
+      group: gzreader-updates-branch
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -41,18 +44,8 @@ jobs:
           VERSION="$(tr -d ' \n' < GZREADER_VERSION)-beta.$(git rev-parse --short=7 HEAD)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-v*.zip out
-      - name: To the beta-updates branch
-        run: |
-          mkdir -p upd && cp out/gzreader-update.zip upd/
-          SIZE=$(stat -c %s upd/gzreader-update.zip)
-          SHA=$(sha256sum upd/gzreader-update.zip | cut -d' ' -f1)
-          # what's in it: the newest commits' subjects (merges left out)
-          NOTES=$(git log --no-merges -8 --format='• %s' | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))')
-          printf '{"version":"%s","size":%s,"sha256":"%s","file":"gzreader-update.zip","commit":"%s","notes":%s}\n' \
-            "$VERSION" "$SIZE" "$SHA" "$GITHUB_SHA" "$NOTES" > upd/latest.json
-          cat upd/latest.json
-          cd upd
-          git init -q -b beta-updates
-          git add gzreader-update.zip latest.json
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "GZreader $VERSION (test build)"
-          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" beta-updates
+      - name: To the updates branch (gzreader-beta-update.zip, latest-beta.json)
+        # (the job's concurrency: one publish to "updates" at a time, the release's too)
+        # LEGACY_BETA_BRANCH: devices on test builds before 1.26.6 read the old
+        # beta-updates branch: kept until theirs read "updates"
+        run: LEGACY_BETA_BRANCH=1 tools/gzreader/publish-updates.sh beta out/gzreader-update.zip "$VERSION" "$GITHUB_SHA"
