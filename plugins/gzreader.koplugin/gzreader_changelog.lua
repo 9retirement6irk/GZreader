@@ -2,7 +2,7 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
-        version = "next",
+        version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",
             "Nook 1st Edition: updates over Wi‑Fi like the Kindles (Settings → General → Updates). The update also brings the Nook's start script, used from the next start.",
