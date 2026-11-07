@@ -42,6 +42,22 @@ open(p, "w").write(s)
 print("Makefile.defs: kindle-legacy without VFP")
 PY
 
+# Tesseract (OCR, in k2pdfopt) decides on NEON by whether the compiler
+# takes -mfpu=neon; with soft float it does, but its NEON code then compiles
+# to nothing and libk2pdfopt is left needing DotProductNEON (so PDFs and the
+# statistics plugin don't load). No NEON: as if the check had said no.
+python3 - base/thirdparty/tesseract/CMakeLists.txt <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+if "-DHAVE_NEON=FALSE" not in s:
+    old = "    -DGRAPHICS_DISABLED=TRUE\n"
+    assert s.count(old) == 1, "tesseract's CMakeLists changed upstream"
+    s = s.replace(old, old + "    -DHAVE_NEON=FALSE\n")
+    open(p, "w").write(s)
+print("tesseract: no NEON")
+PY
+
 make TARGET=kindle-legacy PARALLEL_JOBS="$(nproc)" update-zip
 ZIP=$(ls -t koreader-kindle-legacy-*.zip | head -1)
 cp "$ZIP" "$OUT/"
