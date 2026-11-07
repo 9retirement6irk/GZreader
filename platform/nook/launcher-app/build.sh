@@ -6,7 +6,8 @@
 # installed with adb; to replace it, uninstall it first).
 #   platform/nook/launcher-app/build.sh <out.apk>
 set -euo pipefail
-OUT=$(cd "$(dirname "${1:?out.apk}")" && pwd)/$(basename "$1")
+mkdir -p "$(dirname "${1:?out.apk}")"
+OUT=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 HERE=$(cd "$(dirname "$0")" && pwd)
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:?ANDROID_HOME}}
 BT=$SDK/build-tools/$(ls "$SDK/build-tools" | sort -V | tail -1)
