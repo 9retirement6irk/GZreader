@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # GZreader's tests, on a computer (no Kindle needed): the plugin against a
 # mock Grimmory / Memos / CalDAV (real LuaSocket, KOReader's UI stubbed),
-# ZenOS's setup guide, the Nooks' screen commands; plus luacheck.
+# ZenOS's setup guide, the Nooks' screen commands and launcher helper; plus
+# luacheck.
 #
 #   tools/gzreader/tests/run.sh <koreader base dir> [port]
 #
@@ -58,6 +59,10 @@ echo "== ZenOS setup guide"
 
 echo "== Nook screens"
 (cd "$T" && luajit nook_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== Nook launcher helper"
+timeout 120 python3 "$T/nook_launcher_test.py" 2>&1 | grep -E "FAIL|passed|BusyBox"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== beta branch (labelled pull requests combined)"

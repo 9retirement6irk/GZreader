@@ -160,6 +160,118 @@ check(joined:find("enable=1", 1, true) and joined:find("redraw=1", 1, true), "ke
 check(joined:find("home_height=1500!", 1, true) and joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
     and joined:find("backlight_level=8", 1, true), "the colour screen and touch panel left as Android had them (it wakes them itself)")
 
+------------------------------------------------------------------ fewer refreshes
+print("e-ink refreshes through the kernel: as few as possible")
+do
+    local redraws, staged = 0, {}
+    local fakeHW = { EINK_W = 600, EINK_H = 800, direct = false }
+    function fakeHW:open() return self end
+    function fakeHW:einkStage(_bb, y, h) staged[#staged + 1] = y .. "+" .. h end
+    function fakeHW:einkRedraw() redraws = redraws + 1 end
+    function fakeHW:close() end
+    local real_hw = package.loaded["device/nook/display_hw"]
+    package.loaded["device/nook/display_hw"] = fakeHW
+    package.loaded["device/nook/framebuffer"] = nil
+    local FB = require("device/nook/framebuffer")
+    local fb = FB:new{ device = { getDeviceScreenDPI = function() return 167 end }, debug = function() end }
+    package.loaded["device/nook/display_hw"] = real_hw
+    local time = require("ui/time")
+    local now, timer = 0, nil -- (ms; the one pending timer: { at, fn })
+    fb.now = function() return time.ms(now) end
+    local screen_under = { covers_fullscreen = true } -- (Home or the book)
+    local top = screen_under
+    fb.topWidget = function() return top end
+    fb.schedule = function(this, ms, fn)
+        this.scheduled = fn
+        timer = fn and { at = now + ms, fn = fn } or nil
+    end
+    local function advance(ms)
+        local target = now + ms
+        while timer and timer.at <= target do
+            now = timer.at
+            local t = timer
+            timer = nil
+            t.fn()
+        end
+        now = target
+    end
+    -- a tap, its highlight, the menu it opens and the status bar: one refresh
+    advance(10000)
+    fb:noteInput()
+    fb:refreshFast(100, 700, 80, 40)
+    advance(60)
+    fb:refreshUI(0, 0, 600, 500)
+    advance(40)
+    fb:refreshUI(0, 760, 600, 40)
+    check(redraws == 0 and #staged == 3, "nothing refreshed while the updates are coming (each copied into the page at once)")
+    advance(149)
+    check(redraws == 0, "…not before they've stopped for 150 ms")
+    advance(1)
+    check(redraws == 1, "a tap, its highlight, the menu it opens and the status bar under it: one refresh, not three")
+    advance(5000)
+    check(redraws == 1, "and no more after")
+    -- updates that keep coming (a page drawn in pieces): at most 600 ms after the first
+    fb:noteInput()
+    for _i = 1, 10 do fb:refreshUI(0, 0, 600, 100); advance(100) end
+    check(redraws == 2, "updates that keep coming: refreshed 600 ms after the first one asked (" .. redraws .. ")")
+    advance(5000)
+    check(redraws == 3, "…and once more for the ones after that")
+    -- the clock while you read (no tap for minutes): no refresh of its own
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    check(redraws == 3, "the clock changing while you read: no refresh of its own")
+    fb:noteInput()
+    fb:refreshPartial(0, 0, 600, 800)
+    advance(200)
+    check(redraws == 4, "…it shows with the next page turn, in the same refresh")
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(300 * 1000 - 1)
+    check(redraws == 4, "…or")
+    advance(1)
+    check(redraws == 5, "…after five minutes at the latest")
+    -- a big change nobody asked for (a dialog popping up, a download done): soon
+    advance(60000)
+    fb:refreshUI(50, 200, 500, 400)
+    advance(150)
+    check(redraws == 6, "a big change without a tap (a dialog): refreshed 150 ms later")
+    advance(60000)
+    fb:refreshFlashUI(100, 100, 50, 50)
+    advance(150)
+    check(redraws == 7, "a flashing refresh asked for: also soon")
+    -- a popup that opens by itself (a download's progress): soon; its progress bar now and then
+    advance(60000)
+    local popup = {}
+    top = popup
+    local before = redraws
+    fb:refreshUI(100, 300, 400, 120)
+    advance(150)
+    check(redraws == before + 1, "a popup opening by itself (a download started from the Grimmory tab): shown at once")
+    for _i = 1, 20 do advance(500); fb:refreshUI(120, 380, 360, 20) end -- (its bar, every 0.5 s for 10 s)
+    check(redraws == before + 3, "…its progress bar: about every 4 s, not every update (" .. (redraws - before) .. ")")
+    advance(5000)
+    check(redraws == before + 4, "…and its last change shows")
+    top = screen_under
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    check(redraws == before + 4, "the popup gone: the clock is back to waiting")
+    advance(300 * 1000)
+    -- before sleeping, and on exit: right away
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    local at = redraws
+    fb:flush()
+    check(redraws == at + 1 and timer == nil, "flush (before sleep): refreshed at once, nothing left waiting")
+    fb:flush()
+    check(redraws == at + 1, "…and nothing to refresh: no refresh")
+    fb:refreshUI(500, 0, 100, 30)
+    fb:close()
+    check(redraws == at + 2, "on exit: what's waiting is refreshed")
+end
+
 ------------------------------------------------------------------ lcd touch
 print("colour screen touches")
 local LCD = require("device/nook/lcd")
@@ -224,6 +336,25 @@ fake:refreshFastImp(0, 0, 10, 10)
 check(got[5] == 2, "fast: DU")
 fake:refreshUIImp(590, 790, 50, 50)
 check(got[3] == 599 and got[4] == 799, "clipped to the screen")
+
+------------------------------------------------------------------ ZenOS's paths
+print("ZenOS's paths on a Nook (no /storage)")
+do
+    local real_lfs = package.loaded["libs/libkoreader-lfs"]
+    local function paths(has_storage)
+        package.loaded["libs/libkoreader-lfs"] = { attributes = function(p, what)
+            if p == "/storage/emulated/0" and has_storage then return what == "mode" and "directory" or {} end
+        end }
+        local P = dofile(REPO .. "/plugins/zenos.koplugin/common/paths.lua")
+        return P
+    end
+    local nook = paths(false)
+    check(nook.normPath("/sdcard/GZreader") == "/sdcard/GZreader" and nook.normPath("/sdcard") == "/sdcard",
+        "the Nook's /sdcard (the microSD card) stays /sdcard: the Downloads tab opens GZreader's folder")
+    local android = paths(true)
+    check(android.normPath("/sdcard/GZreader") == "/storage/emulated/0/GZreader", "modern Android: /sdcard is still /storage/emulated/0")
+    package.loaded["libs/libkoreader-lfs"] = real_lfs
+end
 
 ------------------------------------------------------------------ Wi-Fi power saving
 print("Nook 1st Edition: Wi-Fi power saving (no iwconfig on Android 1.5)")

@@ -73,6 +73,9 @@ with zipfile.ZipFile(upd, "w", zipfile.ZIP_DEFLATED) as z:
 UPD = open(upd, "rb").read()
 with open(os.path.join(web, "updates", "latest.json"), "w") as f:
     json.dump({"version": "1.30.0", "file": "gzreader-update.zip", "size": len(UPD), "sha256": hashlib.sha256(UPD).hexdigest()}, f)
+# test builds (next to the release's on the updates branch)
+with open(os.path.join(web, "updates", "latest-beta.json"), "w") as f:
+    json.dump({"version": "1.29.0-beta.abc1234", "file": "gzreader-beta-update.zip", "size": 1, "sha256": "00"}, f)
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = ThreadingHTTPServer(("127.0.0.1", WP), partial(Quiet, directory=web))
@@ -284,6 +287,17 @@ with sync_playwright() as pw:
     page.wait_for_selector("#o-update-row:not(.hidden)")
     check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text(),
           "update: a newer GZreader is offered for the Kindle")
+    check(page.locator("#o-beta-row:not(.hidden)").count() == 1 and not page.locator("#o-beta").is_checked(),
+          "test builds: a choice on the page, off (as on the Kindle)")
+    page.evaluate("(wp) => { GZSync.Update.RAW_BETA = 'http://127.0.0.1:' + wp + '/updates/'; }", WP)
+    page.click("#o-beta")
+    page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('test build')")
+    check("to test build 1.29.0-beta.abc1234 (it has 1.24.0)" in page.locator("#o-update-row").inner_text()
+          and page.locator("#update-note").count() == 1,
+          "test builds on: the latest test build offered (even with a lower number than the release), one note")
+    page.click("#o-beta")
+    page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
+    check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
 
     # sleep screen pictures: one added (a wide colour picture), one of the Kindle's taken off, always pictures
     import struct, zlib
@@ -366,6 +380,8 @@ state = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/" % (GP + 1)).rea
 
 check(inbox.get("update", {}).get("version") == "1.30.0" and files.get(G + inbox["update"]["file"]) == UPD
       and inbox["update"]["size"] == len(UPD), "update: brought (checked against its size and SHA-256), for GZreader to install")
+check(inbox.get("test_builds") is False and inbox["update"].get("beta") is False,
+      "test builds switched off on the page: the Kindle is told (it remembers it in its update settings)")
 check(any(b["id"] == 5 for b in inbox.get("books", [])) and any(a["id"] == 33 for a in inbox.get("audiobooks", [])),
       "what was chosen on the page came too (a book and an audiobook)")
 marks = lib.get("marks", {}).get("1", {})

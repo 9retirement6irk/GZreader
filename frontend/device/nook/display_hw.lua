@@ -13,10 +13,12 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   waveform for each refresh, like on the Kindles (s1d13521ioctl.h: load an
   area, write the pixels in bursts, update the area with a waveform), after
   switching the kernel's own updates off (sysfs enable = 0).
-  On a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1) the direct
-  way froze the whole Nook at the first refresh, so Android's way is the
-  default; GZ_NOOK_EPD=direct tries the direct way (each refresh otherwise
-  a full GC flash).
+  On a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1) every try
+  at the direct way froze the whole Nook (three step-by-step test runs: the
+  first few register reads work, the next access of any kind hangs it), so
+  Android's way it is; GZ_NOOK_EPD=direct is left only for experiments.
+  Each kernel refresh is a full GC flash, so framebuffer.lua asks for as
+  few as it can.
 
 The emulator replaces this module (package.preload["device/nook/display_hw"]).
 ]]
@@ -224,7 +226,13 @@ function HW:eink(bb, x, y, w, h, waveform, flash)
         cmd(self, IOC.WAIT_DSPE_TRG)
         return
     end
-    -- Android's way: RGB565 into bravo-vfb, then the kernel converts and refreshes everything
+    self:einkStage(bb, y, h)
+    self:einkRedraw()
+end
+
+--- Android's way, in two halves (framebuffer.lua puts several updates into
+--- one redraw): rows y .. y+h-1 into bravo-vfb as RGB565…
+function HW:einkStage(bb, y, h)
     local line = self.line
     for row = y, y + h - 1 do
         local src = ffi.cast("uint8_t *", bb.data) + row * bb.stride
@@ -234,6 +242,11 @@ function HW:eink(bb, x, y, w, h, waveform, flash)
             dst[col] = bit.bor(bit.lshift(bit.rshift(g, 3), 11), bit.lshift(bit.rshift(g, 2), 5), bit.rshift(g, 3))
         end
     end
+end
+
+--- …and the kernel's refresh: it converts the whole page to grey and
+--- refreshes all of it (a full GC update, with its flash).
+function HW:einkRedraw()
     HW.sys.write(SYS_EINK .. "/redraw", 1)
 end
 

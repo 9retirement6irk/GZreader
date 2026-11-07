@@ -31,6 +31,7 @@
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
 7 plugins/zenos.koplugin/common/gz_view.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
+6 plugins/zenos.koplugin/common/paths.lua
 3 plugins/zenos.koplugin/common/quickstart/menu_tour.lua
 70 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
 6 plugins/zenos.koplugin/common/quickstart/quickstart_screen.lua

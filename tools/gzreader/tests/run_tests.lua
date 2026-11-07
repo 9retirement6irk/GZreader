@@ -1584,6 +1584,167 @@ do
     end
 end
 
+print("A book's page: the cover the list shows")
+do
+    if type(package.loaded["gzreader_bookpage"]) ~= "table" then package.loaded["gzreader_bookpage"] = nil end
+    local okbp, BP = pcall(require, "gzreader_bookpage")
+    check(okbp and BP.coverImage, "the book page loads " .. tostring(not okbp and BP or ""))
+    if okbp then
+        local Covers = require("gzreader_covers")
+        local orig_image = Covers.image
+        local asked
+        Covers.image = function(id, kind, w, h)
+            asked = { id = id, kind = kind, w = w, h = h }
+            return { copy = function() return "a copy of the list's cover" end }
+        end
+        os.remove(Covers.path(9071)); os.remove(Covers.dir() .. "/9071.none")
+        local none = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(none == nil and asked == nil, "no cover on the Kindle: none drawn (it's fetched)")
+        local f = io.open(Covers.path(9071), "wb"); f:write("jpeg"); f:close()
+        local img = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(img and img.image == "a copy of the list's cover" and img.image_disposable == true
+            and asked and asked.id == 9071 and asked.w == 96 and asked.h == 144,
+            "the Grimmory tab's cached cover is the page's cover (a copy, sized for the page), whatever the old cache has")
+        os.remove(Covers.path(9071))
+        Covers.image = orig_image
+    end
+end
+
+print("The Grimmory tab's selection stays where it is (keys)")
+do
+    local F = require("gzreader_focus")
+    check(F.keyOf({ book = { id = 5 }, text = "x" }) == "book:5" and F.keyOf({ gz_id = "all", text = "All" }) == "id:all"
+        and F.keyOf({ gz_action = "search", text = "S" }) == "action:search" and F.keyOf({ text = "Libraries" }) == "text:Libraries"
+        and F.keyOf(nil) == nil, "what's selected is known by what it is: a book's id, a card, a row's text")
+    -- a menu drawn three to a row, the page putting the selection on the first
+    -- thing (as the bookshop and the list views do)
+    local function books(ids)
+        local t = {}
+        for i, id in ipairs(ids) do t[i] = { book = { id = id }, text = "Book " .. id } end
+        return t
+    end
+    local function newMenu(items)
+        local m = { item_table = items, page = 1, drawn = 0 }
+        function m:moveFocusTo(x, y) self.selected = { x = x, y = y } end
+        function m:updateItems()
+            self.drawn = self.drawn + 1
+            self.layout = {}
+            for i, e in ipairs(self.item_table) do
+                local r = math.floor((i - 1) / 3) + 1
+                self.layout[r] = self.layout[r] or {}
+                table.insert(self.layout[r], { entry = e })
+            end
+            self.selected = { x = 1, y = 1 }
+        end
+        return m
+    end
+    local function on(m) local c = F.current(m); return c and c.key end
+    local m = newMenu(books({ 1, 2, 3, 4, 5, 6, 7 }))
+    F.apply(m, true)
+    m:updateItems()
+    check(on(m) == "book:1", "first drawn: where the page puts it")
+    m:updateItems()
+    check(on(m) == "book:1", "not moved: a redraw places it as the page always did")
+    m.selected = { x = 2, y = 2 } -- the 5-way, down to book 5
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 2,
+        "moved, then the page drawn again (covers in, the bookshop's lists in, a download): still on book 5")
+    m:updateItems()
+    check(on(m) == "book:5", "and at every redraw after that")
+    table.insert(m.item_table, 1, { book = { id = 99 }, text = "Book 99" })
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 3 and m.selected.y == 2, "a book added before it: still on book 5, where it is now")
+    -- Grimmory's fresh copy of the list replaces the saved one
+    local fresh = books({ 99, 5, 1, 2 })
+    local at = F.carry(m, fresh)
+    check(at == 2, "the fresh copy is shown from book 5's place " .. tostring(at))
+    m.item_table = fresh
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 1, "the fresh copy: still on book 5")
+    local gone = books({ 10, 11 })
+    check(F.carry(m, gone) == nil, "book 5 not in the fresh copy: shown from the start")
+    -- not moved since: the fresh copy as before (from the first)
+    local m2 = newMenu(books({ 1, 2, 3 }))
+    F.apply(m2, true)
+    m2:updateItems()
+    check(F.carry(m2, books({ 1, 2, 3 })) == nil and m2._gz_focus_want == nil, "not moved: the fresh copy as before")
+    -- another list opened: where it starts as before
+    local m3 = newMenu(books({ 1, 2, 3, 4 }))
+    F.apply(m3, true)
+    m3:updateItems()
+    m3.selected = { x = 3, y = 1 }
+    m3.item_table = books({ 7, 8 })
+    m3:updateItems()
+    check(on(m3) == "book:7", "another list: from its start")
+    local touch = newMenu(books({ 1, 2 }))
+    local before = touch.updateItems
+    F.apply(touch, false)
+    check(touch.updateItems == before and not touch._gz_focus, "touch Kindles: nothing selected, nothing changed")
+end
+
+print("A download shows in the Downloads tab when it's on screen")
+do
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    local UIM = require("ui/uimanager")
+    local was_stack = UIM._window_stack
+    local refreshed = 0
+    local fc = { path = WORK .. "/library/", refreshPath = function() refreshed = refreshed + 1 end }
+    local fm = { file_chooser = fc, covers_fullscreen = true }
+    package.loaded["apps/filemanager/filemanager"] = { instance = fm }
+    local p = { store = { library_dir = WORK .. "/library" } }
+    setmetatable(p, { __index = plugin })
+    UIM._window_stack = { { widget = fm }, { widget = { text = "Downloading…" } } }
+    check(p:refreshDownloadsTab() == true and refreshed == 1, "the Downloads tab on screen (a message over it): shown again with the book")
+    UIM._window_stack = { { widget = fm }, { widget = { name = "home", covers_fullscreen = true } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "Home over it: left alone")
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_grimmory" } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "the Grimmory tab over it: left alone")
+    UIM._window_stack = { { widget = fm } }
+    fc.path = WORK .. "/elsewhere"
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "another folder in the file manager: left alone")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    UIM._window_stack = was_stack
+end
+
+print("Kindle DX: four shelves in Downloads, two on Home")
+do
+    local Device = require("device")
+    local was_model, was_screen = Device.model, Device.screen
+    local Touch = require("gzreader_touch")
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    -- (a failed load earlier left a marker behind; its widgets stubbed while it loads)
+    if type(package.loaded["gzreader_shelfview"]) ~= "table" then package.loaded["gzreader_shelfview"] = nil end
+    local wm = { "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }
+    local kept = {}
+    for _i, m in ipairs(wm) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then
+            package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end })
+        end
+    end
+    local okv, View = pcall(require, "gzreader_shelfview")
+    for _i, m in ipairs(wm) do package.loaded[m] = kept[m] end
+    local okg, GzView = pcall(require, "common/gz_view")
+    package.path = saved_path
+    check(okv and okg, "the shelf views load " .. tostring(not okv and View or not okg and GzView or ""))
+    local function as(model, w, h)
+        Device.model = model
+        Device.screen = { getWidth = function() return w end, getHeight = function() return h end }
+    end
+    as("Kindle2", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX: Downloads four shelves a page, Home two")
+    as("KindleDXG", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX Graphite: the same")
+    as("Kindle2", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 2 (6\"): as before")
+    as("Kindle3", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 3: as before")
+    as("KindlePaperWhite3", 1072, 1448)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Paperwhite 3: as before")
+    Device.model, Device.screen = was_model, was_screen
+end
+
 print("No duplicate reading sessions")
 do
     local before = #json.decode(ctl("/state")).sessions
@@ -1831,6 +1992,26 @@ check(math.abs(st.progress["3"].progressPercent - 98.3) < 0.1 and before ~= st.p
 local sess = st.sessions[#st.sessions]
 check(sess and sess.bookId == 3 and sess.durationSeconds >= 300 and sess.bookType == "EPUB"
     and sess.startTime:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"), "reading session sent with ISO times and duration")
+
+print("The clock from a server's, when it ran down")
+do
+    local Clock = require("gzreader_clock")
+    check(Clock.parseHttpDate("Sat, 07 Nov 2026 06:57:01 GMT") == 1794034621 and Clock.parseHttpDate("Thu, 01 Jan 1970 00:00:00 GMT") == 0
+        and Clock.parseHttpDate("Tue, 29 Feb 2028 23:59:59 GMT") == 1835481599 and Clock.parseHttpDate("yesterday") == nil,
+        "a server's Date read (UTC)")
+    local orig_set, set_to = Clock.set, nil
+    Clock.set = function(t) set_to = t; return true end
+    Clock.done = false
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:57:01 GMT" }, 1794030000) and set_to == nil and Clock.done,
+        "a clock that's right: left alone (and not looked at again)")
+    Clock.done = false
+    check(not Clock.fromServer({ date = "garbage" }, 946729573) and set_to == nil and not Clock.done, "no usable Date: nothing")
+    check(Clock.fromServer({ ["date"] = "Sat, 07 Nov 2026 06:57:01 GMT" }, 946729573) and set_to == 1794034621,
+        "a clock in the year 2000 (a Nook's after its battery ran down): set from the server's")
+    set_to = nil
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:58:01 GMT" }, 946729600) and set_to == nil, "…once per start")
+    Clock.set, Clock.done = orig_set, true
+end
 
 print("Grimmory reading stats (Home widget)")
 do
@@ -2719,10 +2900,73 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "src main" and rf(KO ..
 check(rf(KO .. "/plugins/kosync.koplugin/main.lua") == nil and rf(KO .. "/README.md") == nil and rf(KO .. "/base/thirdparty/x.c") == nil, "plugins not installed and other repo files are skipped")
 check(rf(KO .. "/plugins/zenos.koplugin/locales/de.po") == nil and rf(KO .. "/plugins/zenos.koplugin/locales/en.po") == "en", "English-only catalogs kept")
 check(Update.currentVersion() == "1.2.0" and rf(KO .. "/settings/settings.reader.lua") == "mine", "version from the tag; settings untouched")
+do
+-- the same update package on a Kindle and on a Nook: the Nook's start script only on a Nook
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n",
+    ["koreader/nook-launcher.sh"] = "#!/system/bin/sh\n# new helper\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0", "update with the Nook's start script in it, on a Kindle: installed")
+check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil and rf(WORK .. "/launcher.sh") == nil,
+    "…without the Nook's scripts (a Kindle has none)")
+local NK = WORK .. "/nook/gzreader/koreader"
+os.execute("rm -rf '" .. WORK .. "/nook' && mkdir -p '" .. NK .. "/frontend' '" .. NK .. "/plugins/gzreader.koplugin'")
+wf(NK .. "/plugins/gzreader.koplugin/main.lua", "old main"); wf(NK .. "/gzreader-version", "1.2.0\n")
+wf(WORK .. "/nook/gzreader/gzreader.sh", "#!/system/bin/sh\n# old\n")
+local running = io.open(WORK .. "/nook/gzreader/gzreader.sh", "rb") -- (sh has the running script open)
+Update.root = NK
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0" and rf(NK .. "/frontend/k.lua") == "k", "on a Nook: the same update installed")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "…and the Nook's start script replaced, from the next start")
+check(rf(WORK .. "/nook/gzreader/launcher.sh") == "#!/system/bin/sh\n# new helper\n", "…and the icon's helper (from the Nook's next restart)")
+check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
+running:close()
+check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/nook-gzreader.sh"] = "not a script" }
+check(Update.apply("pkg.zip") and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "a broken start script in the package: the Nook keeps its own")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/nook/gzreader.sh"] = "#!/system/bin/sh\n# src\n",
+    [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n",
+    "a release's source code zip: the Nook's start script from platform/nook/")
+Update.root = KO
+end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()
 check(captured.textviewer and captured.textviewer.title == "GZreader changelog" and captured.textviewer.text:match("GZreader 1%.0%.3"), "changelog is GZreader's")
+-- test builds: latest-beta.json on the updates branch, any build other than the installed one
+do
+    local asked
+    Update.request = function(u)
+        asked = u
+        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-beta-update.zip",
+            commit = "0123abcd", notes = "• Nook: fewer flashes" })
+    end
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl(), "test builds off by default: releases")
+    Update.setBeta(true)
+    local binfo = Update.check()
+    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/latest-beta.json",
+        "test builds on: latest-beta.json on the updates branch (next to the release's latest.json)")
+    check(binfo and binfo.beta and binfo.version == "1.4.0-beta.12" and binfo.size == 4567
+        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
+        and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
+        "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    Update.request = function()
+        return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
+    end
+    check(Update.check() and not Update.state.has_update, "the installed test build: nothing to offer")
+    Update.request = function() return 200, json.encode({ version = "1.0.0-beta.3", size = 1, file = "gzreader-update.zip" }) end
+    check(Update.check() and Update.state.has_update, "an older test build than the installed version: still offered (test builds go by build, not number)")
+    Update.request = function() return 200, json.encode({ version = "1.5.0-beta.1", size = 1, file = "../../evil.zip" }) end
+    check(not Update.check(), "a file name with a path in it: refused")
+    Update.request = function() return 404 end
+    local _n, berr = Update.check()
+    check(berr and berr:match("No test build"), "no test build yet: says so")
+    Update.setBeta(false)
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl() and gsettings.gzreader_update_last_check == 0,
+        "test builds off: releases again, checked at once")
+    check(Update.compare("1.4.0", "1.4.0-beta.12") > 0 and Update.compare("1.3.9", "1.4.0-beta.12") < 0,
+        "after test builds: the release of that version is newer, an older release isn't")
+end
 Update.request = function() return 404 end
 local none, nerr = Update.check()
 check(none == nil and nerr:match("No GZreader release"), "no release yet -> clear message")
@@ -4666,6 +4910,12 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     os.remove(lib .. "/.gzsync/outbox.json")
     Usb.writeOutbox(fake)
     check(exists(lib .. "/.gzsync/outbox.json") and mtime, "outbox: written again when it's gone")
+    check(out.test_builds == nil, "outbox: test builds off, not mentioned")
+    gsettings.gzreader_update_beta = true
+    os.remove(lib .. "/.gzsync/outbox.json")
+    Usb.writeOutbox(fake)
+    check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
+    gsettings.gzreader_update_beta = nil
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
@@ -4832,6 +5082,16 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     put(base .. "/in/gzreader-update.zip", "ZIPDATA")
     local r2, e2 = Usb.installUpdate(fake, base, short)
     check(r2 == nil and tostring(e2):match("incomplete") and Update.currentVersion() == "1.2.0", "…nor when the file is incomplete")
+    -- a test build from the page: any other than the installed one, even with a lower number
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local older = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7 } }
+    check(Usb.installUpdate(fake, base, older) == nil and Update.currentVersion() == "1.2.0", "an older release from the page: not installed")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local beta = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7, beta = true } }
+    check(Usb.installUpdate(fake, base, beta) == true, "a test build from the page: installed, though its number is lower")
+    check(Usb.takeTestBuilds({ test_builds = true }) and Update.betaEnabled() and not Usb.takeTestBuilds({ test_builds = true })
+        and not Usb.takeTestBuilds({}) and Update.betaEnabled() and Usb.takeTestBuilds({ test_builds = false }) and not Update.betaEnabled(),
+        "test builds switched on and off on the page: the Kindle's setting follows")
     Update.root = nil
     os.remove(base .. "/inbox.json")
     os.execute("rm -rf '" .. KO2 .. "' '" .. base .. "/in'")

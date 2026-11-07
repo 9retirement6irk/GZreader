@@ -31,7 +31,10 @@ cp -r "$RUNTIME" "$G/runtime"
 rm -f "$G/runtime/SOURCES.txt"
 cp "$RUNTIME/SOURCES.txt" "$G/runtime-SOURCES.txt" 2>/dev/null || true
 cp "$REPO/platform/nook/gzreader.sh" "$G/gzreader.sh"
-chmod 755 "$G/gzreader.sh" "$KO/luajit"
+cp "$REPO/platform/nook/launcher.sh" "$G/launcher.sh"
+# GZreader's icon for the Nook's app list (platform/nook/launcher-app; built in CI)
+if [ -n "${GZ_NOOK_APK:-}" ]; then cp "$GZ_NOOK_APK" "$G/GZreader-launcher.apk"; fi
+chmod 755 "$G/gzreader.sh" "$G/launcher.sh" "$KO/luajit"
 cat > "$G/README-NOOK.txt" <<TXT
 GZreader $GZ_VERSION for the Nook ${GZ_NOOK_FOR:-1st Edition and Nook Simple Touch} - TEST BUILD
 
@@ -39,6 +42,10 @@ Copy this folder to /data/gzreader on a rooted Nook, then start it as root:
     adb push gzreader /data/gzreader
     adb shell sh /data/gzreader/gzreader.sh
 Choose Exit in GZreader to go back to the Nook's own software.
+
+An icon in the Nook's app list (Nook 1st Edition), once:
+    adb install gzreader/GZreader-launcher.apk
+    adb shell sh /data/gzreader/launcher.sh install
 
 Full steps (rooting, installing, what to try, what to send back):
 https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-1st-edition-test-build

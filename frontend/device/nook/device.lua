@@ -148,14 +148,18 @@ end
 --- detector: the e-ink page isn't touch); its swipe "keys" (sent by the touch
 --- controller itself) turn pages unless the colour screen saw that swipe.
 function Nook:hookInput()
-    local input, lcd = self.input, self.lcd
+    local input, lcd, screen = self.input, self.lcd, self.screen
+    -- (what's drawn soon after a tap or a button is its answer: framebuffer.lua)
+    local function noted() if screen.noteInput then screen:noteInput() end end
     input.handleTouchEv = function(this, ev)
+        noted()
         local evs = lcd:onInputEvent(this, ev)
         if evs and #evs > 0 then lcd.last_gesture_events = os.time() end
         return evs
     end
     local orig = input.handleKeyBoardEv
     input.handleKeyBoardEv = function(this, ev)
+        noted()
         if ev.code == 330 then -- BTN_TOUCH
             local evs = lcd:onInputEvent(this, ev)
             return evs and evs[1] or nil
@@ -233,6 +237,8 @@ end
 --- Sleep: the colour screen goes dark and the kernel suspends (Android's
 --- interface is paused, so nothing else asks for it). The power button wakes it.
 function Nook:suspend()
+    -- the sleep screen first (the e-ink refreshes wait a moment: framebuffer.lua)
+    if self.screen and self.screen.flush then pcall(self.screen.flush, self.screen) end
     if self.lcd then self.lcd:setBacklight(false) end
     local f = io.open("/sys/power/state", "w")
     if f then f:write("mem"); f:close() end

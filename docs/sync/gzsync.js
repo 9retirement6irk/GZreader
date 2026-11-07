@@ -615,6 +615,16 @@ gets a password or token.
     // (GitHub's release downloads can't be read by a web page; the release
     // workflow also puts the update on this branch, which can)
     RAW: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
+    // test builds (the Kindle's Settings → Updates → Test builds, or the
+    // checkbox here): every push to the beta branch, any other than the
+    // Kindle's is offered (gzreader-beta.yml)
+    // (next to the release's: gzreader-beta-update.zip, latest-beta.json)
+    RAW_BETA: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
+    beta: false, betaTouched: false,
+    raw: function () { return Update.beta ? Update.RAW_BETA : Update.RAW; },
+    meta: function () { return Update.raw() + (Update.beta ? "latest-beta.json" : "latest.json"); },
+    // whether `v` should go to a Kindle that has `have`
+    offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
     latest: null, chosen: true, file: null,
     compare: function (a, b) {
@@ -628,18 +638,30 @@ gets a password or token.
     check: async function () {
       Update.latest = null;
       $("#o-update-row").classList.add("hidden");
+      var old = $("#update-note");
+      if (old) old.remove();
       var have = (K.out || {}).gzreader;
       if (!have) return;
+      $("#o-beta-row").classList.remove("hidden");
+      if (!Update.betaTouched) $("#o-beta").checked = (K.out || {}).test_builds === true;
+      Update.beta = $("#o-beta").checked;
       try {
-        var rel = await (await fetch(Update.API, { headers: { Accept: "application/vnd.github+json" } })).json();
-        var v = String(rel.tag_name || "").replace(/^v\.?/, "");
-        if (!v || Update.compare(v, have) <= 0) return;
+        var v;
+        if (Update.beta) {
+          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
+          v = String(meta.version || "");
+        } else {
+          var rel = await (await fetch(Update.API, { headers: { Accept: "application/vnd.github+json" } })).json();
+          v = String(rel.tag_name || "").replace(/^v\.?/, "");
+        }
+        if (!Update.offered(v, have)) return;
         Update.latest = v;
-        $("#o-update-text").textContent = "Update GZreader on the Kindle to " + v + " (it has " + have + ")";
+        $("#o-update-text").textContent = "Update GZreader on the Kindle to " + (Update.beta ? "test build " : "") + v + " (it has " + have + ")";
         $("#o-update-row").classList.remove("hidden");
         Update.chosen = $("#o-update").checked;
         var box = $("#kindle");
-        var note = el("div", { class: "update small" }, "GZreader " + v + " is out (this Kindle has " + have + "). The sync brings it; GZreader installs it when it starts. ");
+        var note = el("div", { class: "update small", id: "update-note" }, (Update.beta ? "Test build " + v + " is waiting" : "GZreader " + v + " is out")
+          + " (this Kindle has " + have + "). The sync brings it; GZreader installs it when it starts. ");
         var b = el("button", { class: "link" }, "Use a downloaded update file…");
         b.onclick = busy(b, Update.pick);
         note.appendChild(b);
@@ -673,9 +695,9 @@ gets a password or token.
       var blob = Update.file;
       if (!blob) {
         try {
-          var meta = await (await fetch(Update.RAW + "latest.json", { cache: "no-store" })).json();
-          if (meta.version && Update.compare(meta.version, out.gzreader || "0") > 0) {
-            var r = await fetch(Update.RAW + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
+          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
+          if (Update.offered(meta.version, out.gzreader || "0") && /^[\w.-]+$/.test(meta.file || "gzreader-update.zip")) {
+            var r = await fetch(Update.raw() + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
             if (r.ok) {
               var b = await r.blob();
               if (meta.size && b.size !== meta.size) throw new Error("the update came incomplete");
@@ -696,9 +718,9 @@ gets a password or token.
       }
       var v = await Update.versionOf(blob);
       if (!v) throw new Error("that isn't a GZreader update");
-      if (Update.compare(v, out.gzreader || "0") <= 0) { log("GZreader " + (out.gzreader || "") + " is already up to date."); return; }
+      if (!Update.offered(v, out.gzreader || "0")) { log("GZreader " + (out.gzreader || "") + " is already up to date."); return; }
       await Drive.write(Drive.sync, "in/gzreader-update.zip", blob);
-      inbox.update = { version: v, file: "in/gzreader-update.zip", size: blob.size };
+      inbox.update = { version: v, file: "in/gzreader-update.zip", size: blob.size, beta: Update.beta };
       log("GZreader " + v + " is on its way: it installs when GZreader starts.", "ok");
     },
   };
@@ -1628,6 +1650,8 @@ gets a password or token.
       }));
       try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
+      // (test builds on or off: the Kindle remembers it, Settings → Updates)
+      if (out.gzreader && Update.betaTouched) inbox.test_builds = Update.beta;
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
       await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)
@@ -2239,6 +2263,7 @@ gets a password or token.
     $("#b-more").onclick = busy($("#b-more"), function () { return Browse.more && Browse.more(); });
     // sync
     $("#o-update").onchange = function () { Update.chosen = $("#o-update").checked; };
+    $("#o-beta").onchange = function () { Update.betaTouched = true; Update.file = null; Update.check(); };
     $("#sync").onclick = runSync;
     // test mode: the pretend Kindle at once
     if (K.test) {

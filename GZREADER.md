@@ -168,6 +168,27 @@ attached files, Kindles use the release's source code zip instead (~9 MB),
 taking only `frontend/`, `reader.lua`, `koreader.sh` and the installed
 plugins from it.
 
+**Test builds.** Settings → General → Updates → **Test builds** gets what's
+waiting to be tried instead of releases, over Wi‑Fi like a release (the
+version then reads like `1.26.5-beta.d6819bd`). They come from the
+repository's `beta` branch: every push there builds an update package
+("GZreader test builds (beta)" workflow) onto the `updates` branch, as
+`gzreader-beta-update.zip` with `latest-beta.json` next to the release's
+`gzreader-update.zip` and `latest.json`; GZreader and the sync page look
+there. Any test build other than the installed one is
+offered. Turn it off to go back to releases: the next release is offered as
+usual. Kindles without Wi‑Fi get them through the sync page: tick **Test
+builds** there (it follows the Kindle's setting, and tells the Kindle when
+you change it). Native parts (KOReader's programs, the Nook's icon app) still come
+only with a full package.
+
+The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
+(Settings → General → Updates, over the Nook's Wi‑Fi): the Lua is the same
+on every device, and the Nook's own programs (built without floating point)
+stay as installed. Its start script (`/data/gzreader/gzreader.sh`) comes
+in the update too and takes effect the next time GZreader starts. A new
+KOReader version still needs the full Nook package installed again.
+
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
@@ -238,10 +259,17 @@ exiting or restarting the Nook.
 ### Both screens
 
 - **The e-ink page** shows GZreader as on a Kindle 4, refreshed the way
-  Android does it (through the Nook's kernel: each update a full refresh).
-  Sending updates straight to the e-ink controller, with a faster waveform
-  for each, froze a real Nook at the first refresh; it can still be tried
-  with `GZ_NOOK_EPD=direct` (below).
+  Android does it: through the Nook's kernel, and every refresh is of the
+  whole page, with a flash. So GZreader asks for as few as it can: after
+  a tap or a button press it waits until the screen has stopped changing
+  (a fraction of a second) and refreshes once, so a tap, the menu it opens
+  and the status bar are one flash. A popup that opens by itself (a
+  download's progress, a message) shows at once, and its progress bar
+  updates every few seconds. Small changes on their own (the clock, the
+  battery, the footer while you read) wait for the next refresh, five
+  minutes at most. Sending updates straight to the e-ink controller,
+  without the flash, froze the Nook every time it was tried, so GZreader
+  doesn't.
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
@@ -328,18 +356,28 @@ yours in full first, charge the battery, and back up your books.
 
 ### Start and exit
 
+- **On the Nook: GZreader's icon** in the app list (the launcher Softroot
+  installs). Set it up once, with the Nook connected to the computer:
+
+  ```
+  adb install gzreader/GZreader-launcher.apk
+  adb shell sh /data/gzreader/launcher.sh install
+  ```
+
+  Starting GZreader needs root, which an app can't have on this Nook (its
+  `su` only works for adb), so the second line sets up a small helper that
+  runs as root and starts GZreader when the icon asks: it adds one line to
+  the Nook's start-up script `/system/etc/bravo_pltinfo.sh` (so the helper
+  starts with the Nook) and starts it now. Tapping the icon twice starts
+  GZreader once. To undo it: `adb shell sh /data/gzreader/launcher.sh uninstall`
+  and `adb uninstall gzreader.nook.launcher`. A newer icon app: uninstall
+  the old one first (each build is signed with its own key).
 - From the computer: `adb shell sh /data/gzreader/gzreader.sh`
-- On the Nook, with a terminal app (Android Terminal Emulator 1.0.x runs on
-  Android 1.5): `su -c "sh /data/gzreader/gzreader.sh"`
 
 GZreader starts with its setup guide, as on a Kindle. To go back to the
 Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
 colour screen). If anything goes wrong, holding power to restart the Nook
 always brings back its own software.
-
-To try GZreader's own e-ink refreshes (faster, fewer flashes; this froze
-a Nook on its first refresh, so only if you're ready to restart it):
-`adb shell "GZ_NOOK_EPD=direct sh /data/gzreader/gzreader.sh"`.
 
 ### What to send back
 
@@ -742,6 +780,13 @@ background, and the fresh list replaces it in place (same page) when it
 arrives, unless you've moved on. With no Wi‑Fi the saved copies are what you
 get. "Load more" and Search always ask Grimmory.
 
+The 5-way's selection stays on the book (or card) you moved to when the page
+is drawn again: when the fresh copy of a list or the first page's Continue
+reading / Recently added arrive, when covers come in, and after Download on a
+book's page. (Before, each of these put it back on the first book.) A book's
+page shows the same cover as the list; one not on the Kindle yet is fetched
+into the same cache.
+
 Search looks for the words in a book's title, series or authors (Grimmory's
 book list with `search=`, readable formats only, A–Z, paged like All books).
 All books has "Search Grimmory…" at the top; a library, shelf or author's
@@ -1002,8 +1047,12 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens its menu. The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
 
-- **Downloads** has as many shelves as the screen holds, a page at a time.
-  Folders stand as light grey spines with a tab on top.
+- **Downloads** has as many shelves as the screen holds, a page at a time
+  (on the DX four, so the books are bigger). Folders stand as light grey
+  spines with a tab on top. A book that finishes downloading while
+  Downloads is on screen appears in it straight away.
+- **Home** has one shelf of your most recent books; the DX's taller screen
+  has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with headphones, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,

@@ -2,7 +2,8 @@
 # GZreader on the Nook 1st Edition and the Nook Simple Touch (TEST BUILD).
 #
 # Run as root, e.g. from a computer:   adb shell sh /data/gzreader/gzreader.sh
-# or in a terminal app on the Nook:    su -c "sh /data/gzreader/gzreader.sh"
+# or from GZreader's icon on the Nook 1st Edition (launcher.sh: the Nook's su
+# is for adb only, so a root helper starts it).
 #
 # What it does, and undoes when GZreader closes:
 #  1. gives GZreader's Linux programs what they expect on a Linux system:
@@ -36,7 +37,7 @@ log() { echo "$(date '+%F %T') $*" >> "$LOG"; echo "$*"; }
 : > "$LOG"
 
 if [ "$(id -u)" != "0" ]; then
-    echo "GZreader needs root: run it with adb shell, or su -c \"sh $0\" in a terminal."
+    echo "GZreader needs root: run it with adb shell (or from GZreader's icon: sh $GZ/launcher.sh install, once)."
     exit 1
 fi
 if [ ! -x "$GZ/koreader/luajit" ] && [ ! -f "$GZ/koreader/luajit" ]; then

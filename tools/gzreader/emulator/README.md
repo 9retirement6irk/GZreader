@@ -95,6 +95,11 @@ Press/Back answer), and the order things happen in on a first start.
   forks and files opened for everyday keys on Home, the tabs, the Home menu
   and Settings, twice; a sampling profiler shows where the CPU went. Needs
   the demo library server on 18080.
+- `grimmory_browse.lua` (demo library on 18080) — the Grimmory tab's
+  selection kept when the page is drawn again and after Download, a book's
+  page with its cover, and the Downloads tab taking in a finished download.
+- `dx_shelves.lua` (`GZ_EMU_MODEL=dx`, `GZ_EMU_BOOKS` a folder of EPUBs, e.g.
+  the demo library's) — the DX's Home with two shelves and Downloads with four.
 - `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
   `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
   books with real covers) — Lua memory and RSS while paging through All

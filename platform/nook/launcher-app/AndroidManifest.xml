@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GZreader's icon in the Nook 1st Edition's app list (Android 1.5): it asks
+     GZreader's helper (platform/nook/launcher.sh, root) to start GZreader. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="gzreader.nook.launcher"
+    android:versionCode="1"
+    android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="3" android:targetSdkVersion="3" />
+    <application android:label="GZreader" android:icon="@drawable/icon">
+        <activity android:name=".Start" android:label="GZreader"
+            android:launchMode="singleTask" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
