@@ -244,7 +244,7 @@ end
 --- colour screen kept Android's last picture, so GZreader writes it there
 --- itself. GZ_NOOK_LCD=vfb / direct forces one way; GZ_NOOK_LCD_ROT=ccw
 --- turns it the other way.
-local LCD_FB_W, LCD_FB_H, LCD_FB_X = 240, 480, 96
+local LCD_FB_H, LCD_FB_X = 480, 96 -- (240 wide)
 function HW:openLcdFb()
     if not self.lcdfb_fd then return false end
     local finfo = ffi.new("struct fb_fix_screeninfo")
