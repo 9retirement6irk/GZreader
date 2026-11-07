@@ -21,7 +21,7 @@ on:
         required: false
         default: ""
   push:
-    branches: [nook-softfloat, beta]
+    branches: [nook-softfloat, beta, 'feat/nook-*']
 
 permissions:
   contents: write
