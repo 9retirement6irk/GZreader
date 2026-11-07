@@ -1,0 +1,173 @@
+# GZreader for the Nook 1st Edition: KOReader's native programs rebuilt
+# without floating-point (VFP) instructions. The Nook's kernel doesn't
+# enable the processor's floating-point unit, so the Kindle 2/3/DX binaries
+# stop at their first instruction with SIGILL (exit code 132).
+#   1. toolchain: koxtoolchain's Kindle 2/3/DX compiler, soft-float
+#      (tools/gzreader/nook-softfloat/toolchain.sh; cached, built once)
+#   2. koreader:  KOReader's kindle-legacy package from source with it
+#      (build-koreader.sh, in KOReader's build image; cached per tag)
+#   3. package:   checked (no VFP anywhere; GZreader started in the
+#      emulator on a CPU without VFP), then packaged as
+#      gzreader-nook-1st-edition-<version>.zip, attached to the release.
+name: GZreader Nook 1st Edition build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the package to (empty: only a workflow artifact)"
+        required: false
+        default: ""
+  push:
+    branches: [nook-softfloat]
+
+permissions:
+  contents: write
+
+env:
+  KOREADER_TAG: v2026.07.1
+  TC_PREFIX: /opt/x-tools
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - id: cache
+        uses: actions/cache@v5
+        with:
+          path: /opt/x-tools
+          key: nook-softfloat-tc-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh') }}
+      - name: crosstool-NG's tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq autoconf automake bison flex gawk gettext git gperf help2man \
+            libncurses-dev libtool libtool-bin make patch python3-dev rsync texinfo unzip wget xz-utils
+      - name: Build the soft-float toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p "$TC_PREFIX" && sudo chown "$USER" "$TC_PREFIX"
+          CI=1 CTNG_WORK="$RUNNER_TEMP/ctng" tools/gzreader/nook-softfloat/toolchain.sh "$TC_PREFIX"
+      - name: The toolchain log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nook-toolchain-log
+          path: ${{ runner.temp }}/ctng/build/build.log
+          retention-days: 7
+
+  koreader:
+    needs: toolchain
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    container:
+      image: koreader/kobase:1.0.0-22.04
+      options: --user root
+    steps:
+      - uses: actions/checkout@v7
+      - id: zip
+        uses: actions/cache@v5
+        with:
+          path: ko-out
+          key: nook-softfloat-koreader-${{ env.KOREADER_TAG }}-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh', 'tools/gzreader/nook-softfloat/build-koreader.sh') }}
+      - uses: actions/cache/restore@v5
+        if: steps.zip.outputs.cache-hit != 'true'
+        with:
+          path: /opt/x-tools
+          key: nook-softfloat-tc-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh') }}
+          fail-on-cache-miss: true
+      - name: KOReader's Kindle 2/3/DX package, without VFP
+        if: steps.zip.outputs.cache-hit != 'true'
+        run: |
+          git config --global --add safe.directory '*'
+          tools/gzreader/nook-softfloat/build-koreader.sh "$TC_PREFIX" "$KOREADER_TAG" ko-out
+      - uses: actions/upload-artifact@v7
+        with:
+          name: koreader-kindle-legacy-softfloat
+          path: ko-out/*.zip
+          retention-days: 14
+
+  package:
+    needs: koreader
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG || github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: koreader-kindle-legacy-softfloat
+          path: dl
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
+      - name: The build, for trying it elsewhere (branch nook-softfloat-out, one commit)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          mkdir -p o && cp dl/koreader-kindle-legacy-*.zip o/
+          cd o && git init -q -b nook-softfloat-out && git add . \
+            && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "KOReader kindle-legacy without VFP" \
+            && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" nook-softfloat-out
+      - name: No VFP in KOReader's programs
+        run: |
+          mkdir -p chk && unzip -q dl/koreader-kindle-legacy-*.zip -d chk
+          # (wmctrl: a prebuilt helper for touch Kindles, not built here; the Nook package leaves it out)
+          rm -f chk/koreader/wmctrl
+          tools/gzreader/nook-softfloat/check-novfp.sh chk
+      - name: Nothing missing (every library's symbols provided)
+        # (libopenlipclua: the Kindle's lipc, not on the Nook and not used there)
+        run: python3 tools/gzreader/nook-softfloat/check-symbols.py chk /usr/arm-linux-gnueabi/lib --ignore libopenlipclua.so
+      - name: GZreader in the emulator on a CPU without VFP (as the Nook's)
+        run: |
+          mkdir -p emu
+          python3 tools/gzreader/tests/make_epub.py emu/book.epub
+          python3 tools/gzreader/tests/make_epub.py --pictures emu/pictures.epub
+          TREE=$(tools/gzreader/emulator/make-tree.sh dl/koreader-kindle-legacy-*.zip emu/tree)
+          QEMU_CPU="arm1136,vfp=off" qemu-arm-static -L /usr/arm-linux-gnueabi "$TREE/luajit" -e 'print("LuaJIT without VFP:", 1.5 * 2, math.sqrt(2))'
+          mkdir -p emu/nook-home
+          QEMU_CPU="arm1136,vfp=off" GZ_NOOK_HOME="$PWD/emu/nook-home" GZ_EMU_BOOK="$PWD/emu/book.epub" \
+            GZ_EMU_PICTURES="$PWD/emu/pictures.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=nook EMU_TIMEOUT=600 \
+            bash tools/gzreader/emulator/run.sh tools/gzreader/emulator/keeps.lua emu/keeps-nook || true
+          k=emu/keeps-nook/keeps.txt
+          [ -s "$k" ] || { echo "GZreader didn't finish in the emulator"; grep -n -iE "error|fail|not found|cannot|stack traceback" emu/keeps-nook.txt | head -60; tail -40 emu/keeps-nook.txt; exit 1; }
+          cat "$k"
+          ! grep -q '^FAIL' "$k"
+      - name: Package
+        run: |
+          VERSION="${TAG#v}"; VERSION="${VERSION#.}"
+          [ -n "$VERSION" ] || VERSION=$(tr -d ' \n' < GZREADER_VERSION)
+          GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-*.zip out
+          tools/gzreader/nook-runtime.sh nook-runtime
+          GZ_VERSION="$VERSION" GZ_NOOK_NAME=gzreader-nook-1st-edition GZ_NOOK_FOR="1st Edition (built without VFP)" \
+            tools/gzreader/package-nook.sh out/gzreader-kindle-legacy-"$VERSION".zip nook-runtime out
+          mkdir -p chk2 && unzip -q out/gzreader-nook-1st-edition-*.zip -d chk2
+          tools/gzreader/nook-softfloat/check-novfp.sh chk2
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gzreader-nook-1st-edition
+          path: out/gzreader-nook-1st-edition-*.zip
+          retention-days: 30
+      - name: Attach to the release
+        if: env.TAG != ''
+        run: gh release upload "$TAG" out/gzreader-nook-1st-edition-*.zip --clobber
+      - name: Emulator screens and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nook-softfloat-emulator
+          path: |
+            emu/keeps-nook.txt
+            emu/keeps-nook/*.png
+            emu/keeps-nook/keeps.txt
+          retention-days: 14

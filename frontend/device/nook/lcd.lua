@@ -174,6 +174,7 @@ function LCD:onInputEvent(input, ev)
         local x, y = self:map(t.rx, t.ry)
         if not t.active then
             t.active, t.x0, t.y0, t.t0 = true, x, y, now
+            t.rx0, t.ry0 = t.rx, t.ry
         end
         t.x, t.y = x, y
         return nil
@@ -192,6 +193,12 @@ function LCD:onInputEvent(input, ev)
             g = { kind = "tap", x = t.x0, y = t.y0 }
         end
         t.pressure, t.down_flag = nil, nil
+        -- (the first touches in the log: the panel's own numbers, to set its orientation)
+        self.logged_touches = (self.logged_touches or 0) + 1
+        if self.logged_touches <= 5 then
+            logger.info("nook: touch", g.kind, "raw", t.rx0, t.ry0, "->", t.x0, t.y0,
+                "(swap", self.swap_xy, "flip", self.flip_x, self.flip_y, ")")
+        end
         return self:gesture(g, input, ev.time)
     end
     return nil

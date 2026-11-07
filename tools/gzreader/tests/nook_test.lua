@@ -26,25 +26,27 @@ print("e-ink controller commands")
 local HW = require("device/nook/display_hw")
 local calls, sysfs = {}, {}
 local mem = ffi.new("uint8_t[?]", 600 * 944 * 2 * 2)
+local lcdmem = ffi.new("uint8_t[?]", 240 * 960 * 2)
 for i = 0, 600 * 944 * 2 * 2 - 1, 2 do mem[i] = 0x34; mem[i + 1] = 0x12 end -- (Android's picture)
 HW.sys = {
     open = function(path)
-        return ({ ["/dev/graphics/fb0"] = 10, ["/dev/graphics/fb1"] = 11 })[path] or -1
+        return ({ ["/dev/graphics/fb0"] = 10, ["/dev/graphics/fb1"] = 12, ["/dev/graphics/fb2"] = 11 })[path] or -1
     end,
     close = function() return 0 end,
     ioctl = function(fd, req, arg)
         req = tonumber(req)
         if req == 0x4602 then -- FBIOGET_FSCREENINFO
-            local id = fd == 10 and "bravo-vfb" or "S1D13521"
+            local id = fd == 10 and "bravo-vfb" or (fd == 12 and "s3cfb" or "S1D13521")
             ffi.copy(arg.id, id)
-            arg.line_length = fd == 10 and 1200 or 600
-            arg.smem_len = fd == 10 and 600 * 944 * 2 * 2 or 600 * 800 * 3
+            arg.line_length = fd == 10 and 1200 or (fd == 12 and 480 or 600)
+            arg.smem_len = fd == 10 and 600 * 944 * 2 * 2 or (fd == 12 and 240 * 960 * 2 or 600 * 800 * 3)
             return 0
         elseif req == 0x4600 then -- FBIOGET_VSCREENINFO
             arg.yoffset = 944 -- (Android last showed its second buffer)
             return 0
         end
         local rec = { fd = fd, req = req }
+        if req == 0x4611 then rec.blank = tonumber(arg) end
         if req == 0x4547 then
             local hwc = ffi.cast("struct gz_s1d_hwc *", arg)
             rec.len = tonumber(hwc.value)
@@ -58,13 +60,38 @@ HW.sys = {
         calls[#calls + 1] = rec
         return 0
     end,
-    mmap = function() return mem end,
+    mmap = function(_a, _s, _p, _f, fd) return fd == 12 and lcdmem or mem end,
     munmap = function() return 0 end,
     write = function(path, v) sysfs[#sysfs + 1] = path .. "=" .. tostring(v); return true end,
-    read = function(path) if path:match("enable$") then return "1" end end,
+    writeOnce = function(path, v) sysfs[#sysfs + 1] = path .. "=" .. tostring(v) .. "!"; return true end,
+    -- (as Android leaves them asleep: tube off, backlight off and dimmed, taps only)
+    read = function(path)
+        if path:match("enable$") then return "1" end
+        return ({ lcd_power = "0", backlight_power = "0", backlight_level = "8", gesture_mask = "1", home_height = "1500" })[path:match("[^/]+$")]
+    end,
+    find = function(dir, name)
+        return (dir:match("spi") and "/sys/bus/spi/devices/spi0.0/" or "/sys/bus/i2c/devices/0-0020/") .. name
+    end,
 }
+-- by default Android's way (the direct way froze a real Nook at its first refresh)
 assert(HW:open())
-check(HW.vfb_fd == 10 and HW.epd_fd == 11 and HW.direct, "finds bravo-vfb and the S1D13521 by name, drives the e-ink directly")
+local woke = table.concat(sysfs, " ")
+check(HW.vfb_fd == 10 and HW.epd_fd == 11 and not HW.direct and not woke:find("enable=", 1, true),
+    "by default: the kernel's e-ink updates (Android's way), left on")
+check(woke:find("0-0020/gesture_mask=16!", 1, true) and woke:find("spi0.0/lcd_power=1!", 1, true)
+    and woke:find("backlight_level=64", 1, true) and woke:find("backlight_power=1", 1, true),
+    "the colour screen woken: LCD powered up, backlight on at Android's level, the panel reporting finger motion (one write each)")
+check(woke:find("0-0020/home_height=0!", 1, true), "…and no kernel Home strip on the panel (its touches are GZreader's)")
+local unblanked = false
+for _i, c in ipairs(calls) do if c.req == 0x4611 and c.fd == 12 and c.blank == 0 then unblanked = true end end
+check(unblanked, "…and the LCD controller unblanked (s3cfb: FBIOBLANK, as Android does)")
+HW.vfb_fd, HW.epd_fd = nil, nil
+calls, sysfs = {}, {}
+local orig_mode = HW.epdMode
+HW.epdMode = function() return "direct" end -- (GZ_NOOK_EPD=direct)
+assert(HW:open())
+HW.epdMode = orig_mode
+check(HW.vfb_fd == 10 and HW.epd_fd == 11 and HW.direct, "GZ_NOOK_EPD=direct: finds bravo-vfb and the S1D13521 by name, drives the e-ink directly")
 check(calls[1] and calls[1].req == 0x4606 and calls[1].yoffset == 0, "shows the vfb's first buffer (Android was on its second)")
 check(sysfs[1] == "/sys/devices/platform/s1d13521fb.0/enable=0", "the kernel's own e-ink updates off")
 
@@ -96,11 +123,24 @@ print("colour screen picture")
 local lcd_bb = BB.new(480, 144, BB.TYPE_BBRGB16)
 lcd_bb:paintRectRGB32(0, 0, 480, 144, BB.ColorRGB32(0xFF, 0, 0, 0xFF))
 calls = {}
+local orig_lcd_mode = HW.lcdMode
+HW.lcdMode = function() return "vfb" end
 HW:lcd(lcd_bb)
 local row800 = ffi.cast("uint16_t *", mem + 800 * 1200)
 check(row800[0] == 0xF800 and row800[479] == 0xF800, "LCD rows go to vfb rows 800-943, RGB565 (red = 0xF800)")
 check(row800[480] == 0x1234, "columns 480-599 untouched")
 check(calls[1].req == 0x4642 and calls[1].fd == 10, "then the vfb's update ioctl (0x4642: copies them to the LCD)")
+-- a kernel without the 2D engine (/dev/s3c-g2d): the picture written into
+-- the colour screen's own framebuffer, turned 90°
+HW.lcdMode = function() return "direct" end
+HW.lcd_direct = nil
+lcd_bb:paintRectRGB32(0, 0, 1, 1, BB.ColorRGB32(0, 0, 0xFF, 0xFF)) -- (a blue top-left pixel)
+HW:lcd(lcd_bb)
+local fb = ffi.cast("uint16_t *", lcdmem)
+check(HW.lcd_direct and fb[0 * 240 + 239] == 0x001F and fb[0 * 240 + 238] == 0xF800 and fb[479 * 240 + 96] == 0xF800
+    and fb[0 * 240 + 95] == 0, "no 2D engine: written into the s3cfb framebuffer, turned 90° into columns 96-239 (top-left lands top-right)")
+HW.lcdMode = orig_lcd_mode
+HW.lcd_direct = false
 
 print("Android's way (GZ_NOOK_EPD=kernel)")
 HW.direct = false
@@ -117,6 +157,8 @@ HW:close()
 check(row800[0] == 0x1234, "Android's LCD picture restored")
 local joined = table.concat(sysfs, " ")
 check(joined:find("enable=1", 1, true) and joined:find("redraw=1", 1, true), "kernel updates back on, Android's page redrawn")
+check(joined:find("home_height=1500!", 1, true) and joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
+    and joined:find("backlight_level=8", 1, true), "the colour screen and touch panel left as Android had them (it wakes them itself)")
 
 ------------------------------------------------------------------ lcd touch
 print("colour screen touches")

@@ -218,23 +218,30 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 ## Nook 1st Edition (test build)
 
 GZreader also runs on Barnes & Noble's first Nook (2009): a 6" e-ink page
-with a small colour touchscreen under it. **This is a test build:** it has
-been checked in GZreader's emulator only, not yet on a real Nook. Try it on
-a Nook you're prepared to restore, and send back what happens (below).
+with a small colour touchscreen under it. **This is a test build:** it runs
+on a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1): the setup
+guide, Home, the colour screen's controls, Wi‑Fi, downloading books. Each
+e-ink update is still a full refresh (below). Try it on a Nook you're
+prepared to restore, and send back what happens (below).
 
-How it works: the Nook's processor runs the same programs as a Kindle 3, so
-GZreader uses the Kindle 2/3/DX build plus what the Nook's Android 1.5 lacks
-(a Linux C library and BusyBox, from Debian 7). A start script pauses the
-Nook's own software while GZreader runs (Wi‑Fi stays connected) and resumes
-it when you exit. Nothing on the Nook's system is changed for good: the
-script's changes are undone by exiting or restarting the Nook.
+How it works: the Nook's processor is the same family as a Kindle 3's, but
+its kernel has the floating-point unit switched off and stops programs that
+read unaligned memory, so the Nook gets its own build of KOReader's programs
+(`gzreader-nook-1st-edition-<version>.zip`: floating point in software, no
+unaligned reads), plus what the Nook's Android 1.5 lacks (a Linux C library
+and BusyBox, from Debian 7). A start script pauses the Nook's own software
+while GZreader runs and resumes it when you exit. It also wakes what Android
+had put to sleep: the colour screen, its touch panel and Wi‑Fi. Nothing on
+the Nook's system is changed for good: the script's changes are undone by
+exiting or restarting the Nook.
 
 ### Both screens
 
-- **The e-ink page** shows GZreader as on a Kindle 4. GZreader sends each
-  update straight to the e-ink controller with a waveform suited to it: fast
-  black-and-white for highlights, grey without a flash for page turns, a
-  flashing full refresh now and then (like the Kindles).
+- **The e-ink page** shows GZreader as on a Kindle 4, refreshed the way
+  Android does it (through the Nook's kernel: each update a full refresh).
+  Sending updates straight to the e-ink controller, with a faster waveform
+  for each, froze a real Nook at the first refresh; it can still be tried
+  with `GZ_NOOK_EPD=direct` (below).
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
@@ -260,10 +267,15 @@ first touch only lights it), its brightness, and a **touch test** with
 mirror / swap switches in case the touch is the wrong way round on your
 Nook.
 
+Wi‑Fi: GZreader uses the networks saved in the Nook's own settings. When
+Android has switched Wi‑Fi off (it does when its screen goes off), the start
+script switches it on and connects as Android would, and switches it off
+again when you exit GZreader. (`GZ_NOOK_WIFI=off` leaves Wi‑Fi alone.)
+
 Not in the test build: audiobooks and read aloud (the Nook has a speaker,
-but GZreader plays audio with the Kindle's player), turning Wi‑Fi on and off
-(Android's Wi‑Fi stays as it was: connect before starting GZreader), and a
-launcher icon (start it with adb or a terminal app, below).
+but GZreader plays audio with the Kindle's player), switching Wi‑Fi on and
+off from GZreader's menus, and a launcher icon (start it with adb or a
+terminal app, below).
 
 ### Root the Nook
 
@@ -286,9 +298,14 @@ yours in full first, charge the battery, and back up your books.
 
 ### Install
 
-1. Download `gzreader-nook-<version>.zip` from the
+1. Download **`gzreader-nook-1st-edition-<version>.zip`** from the
    [releases](https://github.com/9retirement6irk/GZreader/releases) and
-   unzip it on your computer: you get a folder, `gzreader`.
+   unzip it on your computer: you get a folder, `gzreader`. (Not
+   `gzreader-nook-<version>.zip`: that one is built for the Kindle 2/3/DX's
+   floating-point unit, which the Nook 1st Edition's kernel doesn't turn on
+   (`/proc/cpuinfo` has no `vfp`), so it stops at once with exit code 132.
+   The 1st Edition package is KOReader's programs rebuilt to do floating
+   point in software: `.github/workflows/gzreader-nook.yml`.)
 2. Check there's room (about 75 MB) in the Nook's app storage:
    `adb shell df /data`.
 3. Copy it there (the Nook's USB storage can't run programs):
@@ -297,8 +314,15 @@ yours in full first, charge the battery, and back up your books.
    adb push gzreader /data/gzreader
    ```
 
-4. Copy books to the Nook as usual (USB: the **nook** drive): GZreader keeps
-   its folder, `GZreader`, next to B&N's `my documents`.
+4. Copy books to the Nook as usual over USB. GZreader keeps its folder,
+   `GZreader` (books, audiobooks, what it downloads), on the **microSD card**
+   when one is in (more room), else on the Nook's own storage next to B&N's
+   `my documents`. A card put in later: GZreader uses it from its next
+   start (books already in the Nook's own `GZreader` folder stay there:
+   move them over USB). To choose yourself:
+   `adb shell "GZ_NOOK_HOME=/system/media/sdcard sh /data/gzreader/gzreader.sh"`.
+   (Take `bravo_update.dat` off the card after rooting: holding the page
+   button while turning the Nook on would install it again.)
 
 ### Start and exit
 
@@ -311,9 +335,9 @@ Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
 colour screen). If anything goes wrong, holding power to restart the Nook
 always brings back its own software.
 
-If the e-ink page doesn't update properly, try the Nook's own way of
-refreshing it (every update a full refresh, slower but safe):
-`adb shell GZ_NOOK_EPD=kernel sh /data/gzreader/gzreader.sh`.
+To try GZreader's own e-ink refreshes (faster, fewer flashes; this froze
+a Nook on its first refresh, so only if you're ready to restart it):
+`adb shell "GZ_NOOK_EPD=direct sh /data/gzreader/gzreader.sh"`.
 
 ### What to send back
 

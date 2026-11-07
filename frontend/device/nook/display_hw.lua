@@ -13,8 +13,10 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   waveform for each refresh, like on the Kindles (s1d13521ioctl.h: load an
   area, write the pixels in bursts, update the area with a waveform), after
   switching the kernel's own updates off (sysfs enable = 0).
-  GZ_NOOK_EPD=kernel uses Android's way instead (each refresh a full GC
-  flash): the fallback if the direct way misbehaves on a real Nook.
+  On a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1) the direct
+  way froze the whole Nook at the first refresh, so Android's way is the
+  default; GZ_NOOK_EPD=direct tries the direct way (each refresh otherwise
+  a full GC flash).
 
 The emulator replaces this module (package.preload["device/nook/display_hw"]).
 ]]
@@ -66,10 +68,68 @@ local function readFile(path)
     return s
 end
 
+--- One write(2), whatever it answers: B&N's lcd_power and gesture_mask
+--- attributes report 0 bytes written when they took the value, and C's
+--- buffered output (io.write) then writes again forever.
+local function writeOnce(path, value)
+    local fd = C.open(path, C.O_WRONLY)
+    if fd < 0 then return false end
+    local s = tostring(value)
+    C.write(fd, s, #s)
+    C.close(fd)
+    return true
+end
+
 local HW = {}
+
+--- How e-ink refreshes are sent: "kernel" (Android's way, the default) or
+--- "direct" (to the controller: froze a real Nook; GZ_NOOK_EPD=direct).
+--- How the colour screen's picture gets there: "vfb" (the kernel's 2D
+--- engine copy) or "direct" (into its framebuffer): direct when the kernel
+--- has no 2D engine device.
+function HW.lcdMode()
+    local m = os.getenv("GZ_NOOK_LCD")
+    if m == "vfb" or m == "direct" then return m end
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if ok and lfs.attributes("/dev/s3c-g2d", "mode") then return "vfb" end
+    return "direct"
+end
+
+function HW.epdMode()
+    return os.getenv("GZ_NOOK_EPD") == "direct" and "direct" or "kernel"
+end
+
+--- The colour screen and its touch panel as Android leaves them asleep
+--- (B&N's kernel): the "picture tube" LCD powered down (lcd_power 0, an SPI
+--- device), the backlight off, and the Synaptics panel reporting only taps
+--- (gesture_mask 1: a tap sends Home, which wakes Android) instead of
+--- finger motion (16). GZreader started with the colour screen black and
+--- deaf to touches: Android had put it to sleep before it was paused. (The
+--- LCD controller itself is stopped by the kernel's early suspend, which
+--- platform/nook/gzreader.sh undoes: "on" in /sys/power/state.)
+local SYS_SPI, SYS_I2C = "/sys/bus/spi/devices", "/sys/bus/i2c/devices"
+-- linux/fb.h: FBIOBLANK takes the blank level itself as its argument
+local FBIOBLANK, BLANK_UNBLANK, BLANK_POWERDOWN = 0x4611, 0, 4
+local GESTURE_MOTION = 16
+
+--- The first <dir>/*/<name> that exists, or nil.
+local function findAttr(dir, name)
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok then return nil end
+    local okd, iter, state = pcall(lfs.dir, dir)
+    if not okd then return nil end
+    for entry in iter, state do
+        if entry ~= "." and entry ~= ".." then
+            local path = dir .. "/" .. entry .. "/" .. name
+            if lfs.attributes(path, "mode") == "file" then return path end
+        end
+    end
+end
 
 --- The system calls (a test replaces them).
 HW.sys = {
+    find = findAttr,
+    writeOnce = writeOnce,
     open = function(...) return C.open(...) end,
     close = function(...) return C.close(...) end,
     ioctl = function(...) return C.ioctl(...) end,
@@ -93,6 +153,8 @@ function HW:open()
                     self.vfb_fd, self.vfb_path = fd, path
                 elseif id:find("S1D13521") and not self.epd_fd then
                     self.epd_fd, self.epd_path = fd, path
+                elseif id:find("s3cfb") and not self.lcdfb_fd then
+                    self.lcdfb_fd = fd -- (the colour screen's LCD controller: its power is FBIOBLANK)
                 else
                     HW.sys.close(fd)
                 end
@@ -119,8 +181,7 @@ function HW:open()
         HW.sys.ioctl(self.vfb_fd, 0x4606, self.vinfo) -- (FBIOPAN_DISPLAY)
         self.yoffset = 0
     end
-    local mode = os.getenv("GZ_NOOK_EPD")
-    self.direct = self.epd_fd ~= nil and mode ~= "kernel"
+    self.direct = self.epd_fd ~= nil and HW.epdMode() == "direct"
     if self.direct then
         self.kernel_enable = HW.sys.read(SYS_EINK .. "/enable")
         if not HW.sys.write(SYS_EINK .. "/enable", 0) then
@@ -128,6 +189,7 @@ function HW:open()
             self.direct = false
         end
     end
+    self:wakeLcd()
     self.params = ffi.new("struct gz_s1d_params")
     self.hwc = ffi.new("struct gz_s1d_hwc")
     logger.info("nook: vfb", self.vfb_path, "e-ink", self.epd_path or "-", self.direct and "direct" or "through the kernel")
@@ -175,8 +237,59 @@ function HW:eink(bb, x, y, w, h, waveform, flash)
     HW.sys.write(SYS_EINK .. "/redraw", 1)
 end
 
+--- The colour screen's own framebuffer (s3cfb: 240 × 480 portrait, RGB565,
+--- the 480 × 144 picture turned 90° in columns 96–239). The kernel copies
+--- the vfb's rows 800–943 there with the 2D engine; on a Nook whose kernel
+--- has no 2D engine device (/dev/s3c-g2d) that copy never happens and the
+--- colour screen kept Android's last picture, so GZreader writes it there
+--- itself. GZ_NOOK_LCD=vfb / direct forces one way; GZ_NOOK_LCD_ROT=ccw
+--- turns it the other way.
+local LCD_FB_H, LCD_FB_X = 480, 96 -- (240 wide)
+function HW:openLcdFb()
+    if not self.lcdfb_fd then return false end
+    local finfo = ffi.new("struct fb_fix_screeninfo")
+    if HW.sys.ioctl(self.lcdfb_fd, C.FBIOGET_FSCREENINFO, finfo) ~= 0 then return false end
+    self.lcd_line = finfo.line_length
+    self.lcd_size = finfo.smem_len
+    local map = HW.sys.mmap(nil, self.lcd_size, bit.bor(C.PROT_READ, C.PROT_WRITE), C.MAP_SHARED, self.lcdfb_fd, 0)
+    if tonumber(ffi.cast("intptr_t", map)) == C.MAP_FAILED then return false end
+    self.lcd_map = ffi.cast("uint8_t *", map)
+    self.lcd_var = ffi.new("struct fb_var_screeninfo")
+    HW.sys.ioctl(self.lcdfb_fd, C.FBIOGET_VSCREENINFO, self.lcd_var)
+    return true
+end
+
+function HW:lcdDirect(bb)
+    local line2 = self.lcd_line / 2
+    local dst = ffi.cast("uint16_t *", self.lcd_map)
+    local ccw = self.lcd_ccw
+    for y = 0, LCD_H - 1 do
+        local src = ffi.cast("uint16_t *", ffi.cast("uint8_t *", bb.data) + y * bb.stride)
+        if ccw then
+            local col = LCD_FB_X + y
+            for x = 0, LCD_W - 1 do dst[(LCD_FB_H - 1 - x) * line2 + col] = src[x] end
+        else
+            local col = LCD_FB_X + (LCD_H - 1 - y)
+            for x = 0, LCD_W - 1 do dst[x * line2 + col] = src[x] end
+        end
+    end
+    -- (show its first buffer)
+    if self.lcd_var.yoffset ~= 0 then
+        self.lcd_var.yoffset = 0
+        HW.sys.ioctl(self.lcdfb_fd, 0x4606, self.lcd_var) -- (FBIOPAN_DISPLAY)
+    end
+end
+
 --- Copy the colour screen's picture (480 × 144, RGB565 BlitBuffer) to the LCD.
 function HW:lcd(bb)
+    if self.lcd_direct == nil then
+        local mode = HW.lcdMode()
+        self.lcd_direct = mode == "direct" and self:openLcdFb() or false
+        self.lcd_ccw = os.getenv("GZ_NOOK_LCD_ROT") == "ccw"
+        logger.info("nook: colour screen", self.lcd_direct and ("written directly (" .. (self.lcd_ccw and "ccw" or "cw") .. ")")
+            or "through the vfb (2D engine)")
+    end
+    if self.lcd_direct then return self:lcdDirect(bb) end
     local line = self.line
     for row = 0, LCD_H - 1 do
         ffi.copy(self.map + (EINK_H + row) * line, ffi.cast("uint8_t *", bb.data) + row * bb.stride, LCD_W * 2)
@@ -184,8 +297,49 @@ function HW:lcd(bb)
     HW.sys.ioctl(self.vfb_fd, BRAVO_VFB_UPDATE, nil)
 end
 
+--- Wake the colour screen and its touch panel, keeping how Android left
+--- them (put back by close).
+function HW:wakeLcd()
+    self.tube = self.tube or HW.sys.find(SYS_SPI, "lcd_power")
+    self.gesture = self.gesture or HW.sys.find(SYS_I2C, "gesture_mask")
+    self.saved_power = {
+        lcd = HW.sys.read(SYS_LCD .. "/lcd_power"),
+        tube = self.tube and HW.sys.read(self.tube),
+        backlight = HW.sys.read(SYS_LCD .. "/backlight_power"),
+        level = HW.sys.read(SYS_LCD .. "/backlight_level"),
+        gesture = self.gesture and HW.sys.read(self.gesture),
+    }
+    -- B&N's "home area": touches in a strip of the panel are taken by the
+    -- kernel as the Home button (dmesg "Tap HomeKey") and never reported as
+    -- touches; GZreader draws its own buttons there. Strip 0 high while it runs.
+    local ts_dir = self.gesture and self.gesture:match("^(.*)/[^/]+$")
+    if ts_dir then
+        self.home_h = ts_dir .. "/home_height"
+        self.saved_power.home_h = HW.sys.read(self.home_h)
+        if self.saved_power.home_h then HW.sys.writeOnce(self.home_h, 0) end
+    end
+    -- The LCD controller: Android blanks it (FBIOBLANK powerdown) when the
+    -- screen goes off; its sysfs lcd_power only reads. The backlight doesn't
+    -- light while it's off (the kernel waits for it).
+    if self.lcdfb_fd then
+        HW.sys.ioctl(self.lcdfb_fd, FBIOBLANK, ffi.cast("unsigned long", BLANK_UNBLANK))
+    end
+    if self.gesture then HW.sys.writeOnce(self.gesture, GESTURE_MOTION) end
+    -- (Android dims to 8 before turning it off: its normal level is 64)
+    local level = tonumber(self.saved_power.level or "")
+    self:backlight(true, (not level or level < 32) and 64 or nil)
+    logger.info("nook: colour screen woken (LCD was", tostring(self.saved_power.lcd), "now", tostring(HW.sys.read(SYS_LCD .. "/lcd_power")),
+        "; tube", tostring(self.tube), "was", tostring(self.saved_power.tube),
+        "; backlight was", tostring(self.saved_power.backlight), "level", tostring(self.saved_power.level),
+        "; touch", tostring(self.gesture), "was", tostring(self.saved_power.gesture),
+        "home area", tostring(self.saved_power.home_h), ")")
+end
+
 --- LCD backlight: on/off and level (0–255; the Nook's default is 64).
+--- On also powers the LCD itself up (the kernel doesn't light the
+--- backlight while the "picture tube" is powered down).
 function HW:backlight(on, level)
+    if on and self.tube then HW.sys.writeOnce(self.tube, 1) end
     if level then HW.sys.write(SYS_LCD .. "/backlight_level", math.floor(level)) end
     HW.sys.write(SYS_LCD .. "/backlight_power", on and 1 or 0)
 end
@@ -203,10 +357,26 @@ function HW:close()
     end
     if self.direct then HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1) end
     HW.sys.write(SYS_EINK .. "/redraw", 1)
-    self:backlight(true)
+    -- the colour screen and touch panel as Android left them (it wakes them itself)
+    local saved = self.saved_power
+    if saved then
+        if self.gesture and saved.gesture then HW.sys.writeOnce(self.gesture, saved.gesture) end
+        if self.home_h and saved.home_h then HW.sys.writeOnce(self.home_h, saved.home_h) end
+        if saved.level then HW.sys.write(SYS_LCD .. "/backlight_level", saved.level) end
+        if saved.backlight then HW.sys.write(SYS_LCD .. "/backlight_power", saved.backlight) end
+        if self.tube and saved.tube then HW.sys.writeOnce(self.tube, saved.tube) end
+        if self.lcdfb_fd and saved.lcd == "0" then
+            HW.sys.ioctl(self.lcdfb_fd, FBIOBLANK, ffi.cast("unsigned long", BLANK_POWERDOWN))
+        end
+        self.saved_power = nil
+    else
+        self:backlight(true)
+    end
     if self.map then HW.sys.munmap(self.map, self.size); self.map = nil end
+    if self.lcd_map then HW.sys.munmap(self.lcd_map, self.lcd_size); self.lcd_map = nil end
     if self.vfb_fd then HW.sys.close(self.vfb_fd); self.vfb_fd = nil end
     if self.epd_fd then HW.sys.close(self.epd_fd); self.epd_fd = nil end
+    if self.lcdfb_fd then HW.sys.close(self.lcdfb_fd); self.lcdfb_fd = nil end
 end
 
 HW.EINK_W, HW.EINK_H, HW.LCD_W, HW.LCD_H, HW.VFB_H = VFB_W, EINK_H, LCD_W, LCD_H, VFB_H
