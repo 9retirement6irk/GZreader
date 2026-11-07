@@ -33,8 +33,12 @@ LOG=$GZ/launch/helper.log
 
 log() { echo "$($BB date '+%F %T') $*" >> "$LOG"; }
 
+# (the helper's pid, and that it's still the helper: after a restart the
+# number can belong to something else)
 running() {
-    [ -f "$PIDF" ] && kill -0 "$($BB cat "$PIDF")" 2>/dev/null
+    local pid
+    pid=$($BB cat "$PIDF" 2>/dev/null) || return 1
+    [ -n "$pid" ] && $BB tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | $BB grep -q "launcher.sh run"
 }
 
 start_helper() {
@@ -97,7 +101,15 @@ uninstall)
     echo "GZreader's launcher helper is off and no longer starts with the Nook."
     ;;
 start)
-    start_helper
+    # (from the Nook's start-up script)
+    $BB mkdir -p "$GZ/launch"
+    if running; then
+        log "start: the helper runs already"
+    elif start_helper; then
+        log "start: helper started"
+    else
+        log "start: the helper didn't start"
+    fi
     ;;
 run)
     # Nothing it was started with stays open: adb's shell hands its children

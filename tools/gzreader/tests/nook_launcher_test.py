@@ -142,6 +142,9 @@ def main():
         r = launcher("install")
         check(r.returncode == 0 and open(hook).read().count("# GZreader launcher helper") == 1 and helper_pid() == pid,
               "install again: nothing added twice, the same helper")
+        r = launcher("start")
+        check(r.returncode == 0 and helper_pid() == pid and "the helper runs already" in open(os.path.join(gz, "launch", "helper.log")).read(),
+              "start (the Nook's start-up) with the helper running: the same helper, logged")
 
         tap("hello")
         time.sleep(0.5)
@@ -179,6 +182,18 @@ def main():
               "…left over from a GZreader that didn't close: unmounted, then installed")
         launcher("uninstall")
         env.pop("GZ_MOUNTS")
+        # after a restart: the old pid file names a process that isn't the helper
+        stale = subprocess.Popen(["sleep", "30"])
+        os.makedirs(os.path.join(gz, "launch"), exist_ok=True)
+        with open(os.path.join(gz, "launch", "helper.pid"), "w") as f:
+            f.write(str(stale.pid))
+        r = launcher("start")
+        newpid = helper_pid()
+        check(r.returncode == 0 and newpid and newpid != stale.pid and alive(newpid)
+              and "start: helper started" in open(os.path.join(gz, "launch", "helper.log")).read(),
+              "start after a restart, the old pid now someone else's: the helper started")
+        stale.kill()
+        launcher("uninstall")
         r = launcher("frobnicate")
         check(r.returncode == 1 and "Usage" in r.stdout, "anything else: usage")
     finally:
