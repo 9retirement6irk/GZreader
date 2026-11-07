@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition: updates over Wi‑Fi like the Kindles (Settings → General → Updates). The update also brings the Nook's start script, used from the next start.",
+        },
+    },
+    {
         version = "1.26.5",
         changes = {
             "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",

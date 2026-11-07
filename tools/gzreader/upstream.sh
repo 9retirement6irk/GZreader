@@ -140,7 +140,9 @@ merge() {
     # versions
     sed -i "s/^$comp .*/$comp $new/" "$UPFILE"
     if [ "$comp" = koreader ]; then
-        sed -i "s/KOREADER_TAG: .*/KOREADER_TAG: $new/" "$REPO/.github/workflows/gzreader-release.yml"
+        # (the Nook 1st Edition build too: its update package comes from the release's)
+        sed -i "s/KOREADER_TAG: .*/KOREADER_TAG: $new/" "$REPO/.github/workflows/gzreader-release.yml" \
+            "$REPO/.github/workflows/gzreader-nook.yml"
     fi
 
     local pre=""; [ "$sub" = . ] || pre="$sub/"

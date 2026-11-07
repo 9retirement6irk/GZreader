@@ -2705,6 +2705,32 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "src main" and rf(KO ..
 check(rf(KO .. "/plugins/kosync.koplugin/main.lua") == nil and rf(KO .. "/README.md") == nil and rf(KO .. "/base/thirdparty/x.c") == nil, "plugins not installed and other repo files are skipped")
 check(rf(KO .. "/plugins/zenos.koplugin/locales/de.po") == nil and rf(KO .. "/plugins/zenos.koplugin/locales/en.po") == "en", "English-only catalogs kept")
 check(Update.currentVersion() == "1.2.0" and rf(KO .. "/settings/settings.reader.lua") == "mine", "version from the tag; settings untouched")
+do
+-- the same update package on a Kindle and on a Nook: the Nook's start script only on a Nook
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0", "update with the Nook's start script in it, on a Kindle: installed")
+check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil, "…without the Nook's start script (a Kindle has none)")
+local NK = WORK .. "/nook/gzreader/koreader"
+os.execute("rm -rf '" .. WORK .. "/nook' && mkdir -p '" .. NK .. "/frontend' '" .. NK .. "/plugins/gzreader.koplugin'")
+wf(NK .. "/plugins/gzreader.koplugin/main.lua", "old main"); wf(NK .. "/gzreader-version", "1.2.0\n")
+wf(WORK .. "/nook/gzreader/gzreader.sh", "#!/system/bin/sh\n# old\n")
+local running = io.open(WORK .. "/nook/gzreader/gzreader.sh", "rb") -- (sh has the running script open)
+Update.root = NK
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0" and rf(NK .. "/frontend/k.lua") == "k", "on a Nook: the same update installed")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "…and the Nook's start script replaced, from the next start")
+check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
+running:close()
+check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/nook-gzreader.sh"] = "not a script" }
+check(Update.apply("pkg.zip") and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "a broken start script in the package: the Nook keeps its own")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/nook/gzreader.sh"] = "#!/system/bin/sh\n# src\n",
+    [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n",
+    "a release's source code zip: the Nook's start script from platform/nook/")
+Update.root = KO
+end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()

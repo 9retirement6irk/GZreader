@@ -18,6 +18,12 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     GitHub lists for the asset, and the zip must open and contain a
     complete GZreader layout before anything is replaced.
 
+On a Nook (GZreader in /data/gzreader: koreader/ next to the start script
+gzreader.sh) the same update is installed, and the package's copy of the
+Nook's start script (koreader/nook-gzreader.sh, from platform/nook/) then
+replaces gzreader.sh, by a rename: the running script keeps reading its
+old copy; the new one runs from the next start.
+
 Installing never touches settings/, the books, their .sdr folders, history or
 the GZreader folder. Each replaced folder is renamed aside first and put back
 if anything fails, then GZreader restarts.
@@ -233,10 +239,19 @@ local function rmTree(p)
     end
 end
 
+--- The Nook's start script in an update (it goes to ../gzreader.sh there).
+local NOOK_SCRIPT = "nook-gzreader.sh"
+
+--- The Nook's start script next to koreader/ (nil: not a Nook install).
+local function nookScript(base)
+    local p = base .. "/../gzreader.sh"
+    return lfs.attributes(p, "mode") == "file" and p or nil
+end
+
 --- Things an update may replace, relative to koreader/. Anything else in
 --- the package is ignored (settings, books, history are never in it).
 local function allowed(rel)
-    return rel == "frontend" or rel == "reader.lua" or rel == "koreader.sh" or rel == "gzreader-version"
+    return rel == "frontend" or rel == "reader.lua" or rel == "koreader.sh" or rel == "gzreader-version" or rel == NOOK_SCRIPT
         or rel == "git-rev" or rel:match("^plugins/[%w_%-]+%.koplugin$") ~= nil
 end
 
@@ -245,6 +260,7 @@ end
 local function sourceTarget(rel, base)
     if rel == "reader.lua" then return "reader.lua" end
     if rel == "platform/kindle/koreader.sh" then return "koreader.sh" end
+    if rel == "platform/nook/gzreader.sh" then return NOOK_SCRIPT end
     if rel:match("^frontend/") then return rel end
     local plugin, rest = rel:match("^plugins/([%w_%-]+%.koplugin)/(.+)$")
     if plugin and isDir(base .. "/plugins/" .. plugin) then -- only plugins this install has
@@ -309,8 +325,11 @@ function Update.apply(zip, opts)
     end
     -- Work out what to replace.
     local items = {}
+    local nook = nookScript(base)
     for e in lfs.dir(src) do
-        if e ~= "." and e ~= ".." and e ~= "plugins" and allowed(e) then items[#items + 1] = e end
+        if e ~= "." and e ~= ".." and e ~= "plugins" and allowed(e) and (e ~= NOOK_SCRIPT or nook) then
+            items[#items + 1] = e
+        end
     end
     if isDir(src .. "/plugins") then
         for e in lfs.dir(src .. "/plugins") do
@@ -339,6 +358,21 @@ function Update.apply(zip, opts)
     end
     for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
     rmTree(stage)
+    if nook and exists(base .. "/" .. NOOK_SCRIPT) then
+        -- the Nook's start script: a whole new file renamed over the old one
+        -- (sh reads the running script as it goes; it keeps the old file)
+        local new = io.open(base .. "/" .. NOOK_SCRIPT, "rb")
+        local body = new and new:read("*a")
+        if new then new:close() end
+        local tmp = nook .. ".gz-new"
+        local out = body and body:match("^#!") and io.open(tmp, "wb")
+        if out and out:write(body) and out:close() and os.rename(tmp, nook) then
+            Log.info("update: the Nook's start script updated")
+        else
+            if out then os.remove(tmp) end
+            Log.warn("update: the Nook's start script not updated (kept as it was)")
+        end
+    end
     Log.info("update installed", Update.currentVersion(), "items", #done)
     return true
 end

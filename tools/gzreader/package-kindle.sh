@@ -151,9 +151,12 @@ echo "$OUT"
 du -h "$OUT"
 
 # Update package: only what the updater may replace (see gzreader_update.lua).
+# The Nooks install it too (the Lua is the same); their start script comes
+# along as koreader/nook-gzreader.sh (only a Nook installs it).
+cp "$REPO/platform/nook/gzreader.sh" "$KO/nook-gzreader.sh"
 UPD="$OUT_DIR/gzreader-update.zip"
 rm -f "$UPD"
-(cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh \
+(cd "$STAGE" && zip -qr -9 "$UPD" koreader/frontend koreader/reader.lua koreader/koreader.sh koreader/nook-gzreader.sh \
     koreader/gzreader-version koreader/git-rev $(for p in $KEEP_PLUGINS; do echo "koreader/plugins/$p.koplugin"; done))
 echo "$UPD"
 du -h "$UPD"

@@ -168,6 +168,13 @@ attached files, Kindles use the release's source code zip instead (~9 MB),
 taking only `frontend/`, `reader.lua`, `koreader.sh` and the installed
 plugins from it.
 
+The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
+(Settings → General → Updates, over the Nook's Wi‑Fi): the Lua is the same
+on every device, and the Nook's own programs (built without floating point)
+stay as installed. Its start script (`/data/gzreader/gzreader.sh`) comes
+in the update too and takes effect the next time GZreader starts. A new
+KOReader version still needs the full Nook package installed again.
+
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
