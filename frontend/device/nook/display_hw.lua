@@ -13,10 +13,14 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   waveform for each refresh, like on the Kindles (s1d13521ioctl.h: load an
   area, write the pixels in bursts, update the area with a waveform), after
   switching the kernel's own updates off (sysfs enable = 0).
-  On a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1) the direct
-  way froze the whole Nook at the first refresh, so Android's way is the
-  default; GZ_NOOK_EPD=direct tries the direct way (each refresh otherwise
-  a full GC flash).
+  The driver keeps the controller asleep between its own updates
+  (s1d13521_lock/unlock: RUN_SYS before, SLP after) and its ioctls don't
+  wake it: the first direct try sent WAIT_DSPE_TRG to the sleeping
+  controller and froze the whole Nook (the eink-test.lua log showed it).
+  So each direct refresh wakes it, waits by reading the display engine
+  status (0x338) as the driver does rather than with the WAIT_DSPE
+  commands, and puts it back to sleep. Still opt-in until it has run on a
+  Nook: GZ_NOOK_EPD=direct (otherwise each refresh is a full GC flash).
 
 The emulator replaces this module (package.preload["device/nook/display_hw"]).
 ]]
@@ -39,10 +43,13 @@ local VFB_H = EINK_H + LCD_H
 
 -- s1d13521ioctl.h (plain numbers, 'E' << 8 | command)
 local IOC = {
-    LD_IMG_AREA = 0x4522, LD_IMG_END = 0x4523, WR_REG = 0x4511,
-    WAIT_DSPE_TRG = 0x4528, WAIT_DSPE_FREND = 0x4529, WAIT_DSPE_LUTFREE = 0x452A,
-    UPD_FULL_AREA = 0x4534, UPD_PART_AREA = 0x4536, MEMBURSTWRITE = 0x4547,
+    RUN_SYS = 0x4502, SLP = 0x4505, LD_IMG_AREA = 0x4522, LD_IMG_END = 0x4523, WR_REG = 0x4511,
+    UPD_FULL_AREA = 0x4534, UPD_PART_AREA = 0x4536, REGREAD = 0x4540, REGWRITE = 0x4541,
+    MEMBURSTWRITE = 0x4547,
 }
+-- (never WAIT_DSPE_TRG / _FREND / _LUTFREE, 0x4528-0x452A: see above)
+local REG_INT_STATUS, REG_LUT_BUSY, REG_DSPE_STATUS = 0x033A, 0x0336, 0x0338
+local DSPE_TRIGGER, DSPE_FRAME = 0, 3 -- (0x338 bits: trigger busy, frame not ended)
 local BRAVO_VFB_UPDATE = 0x4642
 local DFMT_8BPP = 3
 --- Broadsheet waveforms (s1d13521.h): DU fast black & white, GU grey without
@@ -137,6 +144,7 @@ HW.sys = {
     munmap = function(...) return C.munmap(...) end,
     write = writeFile,
     read = readFile,
+    sleepMs = function(ms) C.usleep(ms * 1000) end,
 }
 
 --- Open both devices. Returns HW (ok) or nil, error.
@@ -202,27 +210,75 @@ local function cmd(self, ioc, ...)
     return HW.sys.ioctl(self.epd_fd, ioc, self.params)
 end
 
+local function reg(self, addr)
+    self.hwc.addr, self.hwc.value = addr, 0
+    HW.sys.ioctl(self.epd_fd, IOC.REGREAD, self.hwc)
+    return tonumber(self.hwc.value)
+end
+
+--- Wait for a display engine status bit to clear (the driver's
+--- bs_cmd_wait_for_bit). False after timeout_ms.
+local function waitBit(self, bitpos, timeout_ms)
+    local waited = 0
+    while bit.band(reg(self, REG_DSPE_STATUS), bit.lshift(1, bitpos)) ~= 0 do
+        if waited >= timeout_ms then return false end
+        HW.sys.sleepMs(5)
+        waited = waited + 5
+    end
+    return true
+end
+
+--- A free waveform LUT (0-14; the driver keeps 15 for its full refreshes).
+local function freeLut(self)
+    local busy = reg(self, REG_LUT_BUSY)
+    for i = 0, 14 do
+        if bit.band(busy, bit.lshift(1, i)) == 0 then return i end
+    end
+end
+
+--- Give up on direct refreshes (the controller didn't answer): the
+--- kernel's updates back on, Android's way from now on.
+function HW:stopDirect(why)
+    logger.warn("nook: direct e-ink refreshes off:", why)
+    cmd(self, IOC.SLP)
+    self.direct = false
+    HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1)
+end
+
 --- Show rows y .. y+h-1 of `bb` (BB8, 600 wide, contiguous) with a waveform
 --- on the area x, y, w, h: "du", "gu" or "gc"; flash: a full (flashing) update.
 function HW:eink(bb, x, y, w, h, waveform, flash)
     if self.direct then
-        -- (whole rows go over: one contiguous burst from the page buffer)
-        cmd(self, IOC.WAIT_DSPE_TRG)
-        cmd(self, IOC.WAIT_DSPE_FREND) -- (one update at a time: no LUT clashes)
-        cmd(self, IOC.LD_IMG_AREA, bit.lshift(DFMT_8BPP, 4), 0, y, VFB_W, h)
-        cmd(self, IOC.WR_REG, 0x154)
-        self.hwc.value = VFB_W * h
-        self.hwc.buffer = ffi.cast("uint8_t *", bb.data) + y * bb.stride
-        HW.sys.ioctl(self.epd_fd, IOC.MEMBURSTWRITE, self.hwc)
-        cmd(self, IOC.LD_IMG_END)
-        -- the controller wants an even x and width
-        local x2 = x + w
-        x = x - x % 2
-        x2 = math.min(VFB_W, x2 + x2 % 2)
-        local arg = bit.lshift(WF[waveform] or WF.gu, 8) -- (LUT 0, no border update)
-        cmd(self, flash and IOC.UPD_FULL_AREA or IOC.UPD_PART_AREA, arg, x, y, x2 - x, h)
-        cmd(self, IOC.WAIT_DSPE_TRG)
-        return
+        -- awake, interrupts cleared (the driver's s1d13521_lock)
+        cmd(self, IOC.RUN_SYS)
+        self.hwc.addr, self.hwc.value = REG_INT_STATUS, 0xFFFF
+        HW.sys.ioctl(self.epd_fd, IOC.REGWRITE, self.hwc)
+        -- one update at a time (no LUT clashes)
+        local lut = waitBit(self, DSPE_TRIGGER, 1000) and waitBit(self, DSPE_FRAME, 2000) and freeLut(self)
+        if not lut then
+            self:stopDirect("the controller stayed busy")
+        else
+            -- (whole rows go over: one contiguous burst from the page buffer)
+            cmd(self, IOC.LD_IMG_AREA, bit.lshift(DFMT_8BPP, 4), 0, y, VFB_W, h)
+            cmd(self, IOC.WR_REG, 0x154)
+            self.hwc.value = VFB_W * h
+            self.hwc.buffer = ffi.cast("uint8_t *", bb.data) + y * bb.stride
+            HW.sys.ioctl(self.epd_fd, IOC.MEMBURSTWRITE, self.hwc)
+            cmd(self, IOC.LD_IMG_END)
+            -- the controller wants an even x and width
+            local x2 = x + w
+            x = x - x % 2
+            x2 = math.min(VFB_W, x2 + x2 % 2)
+            local arg = bit.bor(bit.lshift(WF[waveform] or WF.gu, 8), bit.lshift(lut, 4)) -- (no border update)
+            cmd(self, flash and IOC.UPD_FULL_AREA or IOC.UPD_PART_AREA, arg, x, y, x2 - x, h)
+            if not waitBit(self, DSPE_TRIGGER, 1000) then
+                self:stopDirect("the update wasn't taken")
+            else
+                -- back to sleep, as the driver leaves it (the update finishes on its own)
+                cmd(self, IOC.SLP)
+                return
+            end
+        end
     end
     -- Android's way: RGB565 into bravo-vfb, then the kernel converts and refreshes everything
     local line = self.line

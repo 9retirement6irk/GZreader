@@ -25,6 +25,7 @@ preload("ui/uimanager", {
 print("e-ink controller commands")
 local HW = require("device/nook/display_hw")
 local calls, sysfs = {}, {}
+local eink_regs, slept = {}, 0 -- (the e-ink controller's registers, read with REGREAD)
 local mem = ffi.new("uint8_t[?]", 600 * 944 * 2 * 2)
 local lcdmem = ffi.new("uint8_t[?]", 240 * 960 * 2)
 for i = 0, 600 * 944 * 2 * 2 - 1, 2 do mem[i] = 0x34; mem[i + 1] = 0x12 end -- (Android's picture)
@@ -46,6 +47,13 @@ HW.sys = {
             return 0
         end
         local rec = { fd = fd, req = req }
+        if req == 0x4540 or req == 0x4541 then
+            local hwc = ffi.cast("struct gz_s1d_hwc *", arg)
+            rec.addr, rec.value = tonumber(hwc.addr), tonumber(hwc.value)
+            if req == 0x4540 then hwc.value = (eink_regs[rec.addr] or function() return 0 end)() end
+            calls[#calls + 1] = rec
+            return 0
+        end
         if req == 0x4611 then rec.blank = tonumber(arg) end
         if req == 0x4547 then
             local hwc = ffi.cast("struct gz_s1d_hwc *", arg)
@@ -72,6 +80,7 @@ HW.sys = {
     find = function(dir, name)
         return (dir:match("spi") and "/sys/bus/spi/devices/spi0.0/" or "/sys/bus/i2c/devices/0-0020/") .. name
     end,
+    sleepMs = function(ms) slept = slept + ms end,
 }
 -- by default Android's way (the direct way froze a real Nook at its first refresh)
 assert(HW:open())
@@ -98,26 +107,60 @@ check(sysfs[1] == "/sys/devices/platform/s1d13521fb.0/enable=0", "the kernel's o
 local BB = require("ffi/blitbuffer")
 local page = BB.new(600, 800, BB.TYPE_BB8)
 page:fill(BB.COLOR_WHITE)
-calls = {}
+local function busyFor(n, value) -- (a register reading `value` n times, then 0)
+    return function()
+        if n > 0 then n = n - 1; return value end
+        return 0
+    end
+end
+local function sent(list)
+    local reqs = {}
+    for _i, c in ipairs(list) do
+        reqs[#reqs + 1] = string.format("%x", c.req) .. ((c.req == 0x4540 or c.req == 0x4541) and string.format("(%x)", c.addr) or "")
+    end
+    return table.concat(reqs, " ")
+end
+local function find(req)
+    for _i, c in ipairs(calls) do if c.req == req then return c end end
+end
+calls, sysfs = {}, {}
+eink_regs = { [0x0336] = function() return 0x0001 end } -- (LUT 0 busy)
 HW:eink(page, 101, 50, 199, 20, "gu", false)
-local reqs = {}
-for _i, c in ipairs(calls) do reqs[#reqs + 1] = string.format("%x", c.req) end
-check(table.concat(reqs, " ") == "4528 4529 4522 4511 4547 4523 4536 4528",
-    "an update: wait trigger, wait frames, load area, data register, burst, end, update area, wait (" .. table.concat(reqs, " ") .. ")")
-local ld = calls[3].p
+check(sent(calls) == "4502 4541(33a) 4540(338) 4540(338) 4540(336) 4522 4511 4547 4523 4536 4540(338) 4505",
+    "an update: wake, clear interrupts, trigger and frame free (0x338), a free LUT (0x336), load area, data register, burst, end, update area, taken (0x338), sleep (" .. sent(calls) .. ")")
+local all_sent = sent(calls)
+check(not all_sent:find("452[89a]"), "never the WAIT_DSPE commands (they froze the Nook on its sleeping controller)")
+check(find(0x4541).value == 0xFFFF, "interrupts cleared: 0x033A = 0xFFFF (as the driver does on waking it)")
+local ld = find(0x4522).p
 check(ld[1] == 0x30 and ld[2] == 0 and ld[3] == 50 and ld[4] == 600 and ld[5] == 20, "load area: 8-bit pixels (3 << 4), whole rows 50-69")
-check(calls[4].p[1] == 0x154, "pixel data goes to register 0x154 (the ioctl sends just that parameter)")
+check(find(0x4511).p[1] == 0x154, "pixel data goes to register 0x154 (the ioctl sends just that parameter)")
 local base = tonumber(ffi.cast("intptr_t", page.data))
-check(calls[5].len == 600 * 20 and calls[5].buf == base + 50 * 600, "burst: the 20 rows straight from the page buffer")
-local up = calls[7].p
-check(up[1] == 0x200 and up[2] == 100 and up[3] == 50 and up[4] == 200 and up[5] == 20,
-    "partial update, GU waveform (2 << 8), x and width made even: 100, 50, 200 × 20")
+local burst = find(0x4547)
+check(burst.len == 600 * 20 and burst.buf == base + 50 * 600, "burst: the 20 rows straight from the page buffer")
+local up = find(0x4536).p
+check(up[1] == 0x210 and up[2] == 100 and up[3] == 50 and up[4] == 200 and up[5] == 20,
+    "partial update, GU waveform (2 << 8) on the first free LUT (1 << 4), x and width made even: 100, 50, 200 × 20")
+check(HW.direct and #sysfs == 0, "no kernel redraw")
 calls = {}
+eink_regs = {}
 HW:eink(page, 0, 0, 600, 800, "gc", true)
-check(calls[7].req == 0x4534 and calls[7].p[1] == 0x300, "full refresh: UPD_FULL_AREA with GC (3 << 8)")
-calls = {}
+check(find(0x4534) and find(0x4534).p[1] == 0x300, "full refresh: UPD_FULL_AREA with GC (3 << 8), LUT 0")
+calls, slept = {}, 0
+eink_regs = { [0x0338] = busyFor(4, 0x0008) } -- (a frame still going: bit 3; the trigger check reads it once)
 HW:eink(page, 10, 10, 30, 30, "du", false)
-check(calls[7].req == 0x4536 and calls[7].p[1] == 0x100, "fast refresh: DU (1 << 8)")
+check(find(0x4536) and find(0x4536).p[1] == 0x100 and slept == 15, "fast refresh: DU (1 << 8), after the last frame ended (15 ms)")
+-- the controller doesn't answer: back to the kernel's way, for good
+calls, sysfs, slept = {}, {}, 0
+eink_regs = { [0x0338] = function() return 0x0001 end }
+HW:eink(page, 0, 0, 600, 800, "gu", false)
+check(not find(0x4536) and find(0x4505) and not HW.direct, "trigger stuck: no update sent, controller back to sleep, direct refreshes off (" .. sent(calls) .. ")")
+check(sysfs[1] == "/sys/devices/platform/s1d13521fb.0/enable=1" and sysfs[#sysfs] == "/sys/devices/platform/s1d13521fb.0/redraw=1"
+    and slept == 1000, "…the kernel's updates back on and this refresh done its way, after a 1 s wait (" .. table.concat(sysfs, " ") .. ")")
+calls, sysfs = {}, {}
+eink_regs = {}
+HW:eink(page, 0, 0, 600, 800, "gu", false)
+check(#calls == 0 and sysfs[1]:find("redraw=1"), "…and from then on")
+HW.direct = true
 
 print("colour screen picture")
 local lcd_bb = BB.new(480, 144, BB.TYPE_BBRGB16)
@@ -229,6 +272,7 @@ check(got[3] == 599 and got[4] == 799, "clipped to the screen")
 print("Nook 1st Edition: the step-by-step e-ink test")
 do
     local lines, synced, ioctls, closed = {}, 0, {}, {}
+    local updated, upd_arg, slept = nil, nil, 0
     local fakeC = setmetatable({
         O_WRONLY = 1, O_RDWR = 2, O_CREAT = 64, O_APPEND = 1024, FBIOGET_FSCREENINFO = 17922,
         open = function(path)
@@ -239,6 +283,7 @@ do
         end,
         write = function(fd, buf, n) lines[#lines + 1] = ffi.string(buf, n); return n end,
         fsync = function() synced = synced + 1; return 0 end,
+        usleep = function() error("eink-test sleeps through GZ_EINK_SLEEP in the tests") end,
         close = function(fd) closed[#closed + 1] = fd; return 0 end,
         ioctl = function(fd, req, p)
             if req == 17922 then
@@ -246,23 +291,38 @@ do
                 return 0
             end
             ioctls[#ioctls + 1] = { fd = fd, req = req, last = lines[#lines], synced = synced == #lines }
+            if req == 0x4540 then
+                -- display engine busy for the first two reads after the update
+                if p.addr == 0x0338 then
+                    p.value = (updated and updated > 0) and 1 or 0
+                    if updated then updated = updated - 1 end
+                elseif p.addr == 0x0336 then p.value = 0x0003 end
+            elseif req == 0x4536 then
+                updated, upd_arg = 2, p.param[0]
+            end
             return 0
         end,
     }, { __index = function(_, k) error("eink-test uses C." .. k) end })
+    rawset(_G, "GZ_EINK_SLEEP", function(ms) slept = slept + ms end)
     rawset(_G, "GZ_EINK_C", fakeC); rawset(_G, "GZ_EINK_LOG", "LOG"); rawset(_G, "GZ_EINK_SYS", "/nonexistent/s1d13521fb.0")
     local saved = io.stdout
     io.stdout = { write = function() end, flush = function() end }
     local ok, r = pcall(dofile, REPO .. "/platform/nook/eink-test.lua")
     io.stdout = saved
     check(ok and r == true, "runs to the end " .. tostring(r))
-    local want = { 0x4540, 0x4540, 0x4540, 0x4528, 0x4529, 0x4528, 0x4529, 0x4522, 0x4511, 0x4547, 0x4523, 0x4540, 0x4536, 0x4528, 0x4529 }
+    local want = { 0x4540, 0x4540, 0x4540, 0x4502, 0x4541, 0x4540, 0x4540, 0x4540, 0x4540, 0x4522, 0x4511, 0x4547, 0x4523, 0x4536, 0x4540, 0x4540, 0x4540, 0x4540, 0x4540, 0x4505 }
     local got = {}
     for i, c in ipairs(ioctls) do got[i] = c.req end
     check(table.concat(got, ",") == table.concat(want, ","), "the controller's commands in order: " .. table.concat(got, ","))
     local before = true
     for _, c in ipairs(ioctls) do
-        if c.fd ~= 12 or not (c.last or ""):find(" step %d+ ") or not c.synced then before = false end
+        if c.fd ~= 12 or not ((c.last or ""):find(" step %d+ ") or (c.last or ""):find("^%S+ step ")) or not c.synced then before = false end
     end
+    local all = table.concat(lines)
+    check(not all:find("0x4528") and not all:find("WAIT_DSPE"), "no WAIT_DSPE commands (they hang a sleeping controller)")
+    check(upd_arg == 0x0120, string.format("DU waveform on the first free LUT (2): 0x%04x", upd_arg or 0))
+    check(all:find("wait for the trigger %(0x338 bit 0%)\n[^\n]*ok %d+ clear after 10 ms"), "waits for the update by reading 0x338 (busy twice: 10 ms)")
+    check(slept >= 1500, "time to see the square")
     check(before, "every command on the e-ink device, its step written and synced first")
     check(lines[#lines]:find("every step answered"), "the end is logged")
     check(table.concat(closed, ",") == "10,11,12,3", "the other screens, the e-ink device and the log closed: " .. table.concat(closed, ","))
@@ -272,7 +332,7 @@ do
     ok, r = pcall(dofile, REPO .. "/platform/nook/eink-test.lua")
     io.stdout = saved
     check(ok and r == false and #ioctls == 0 and lines[#lines]:find("no S1D13521"), "no e-ink controller: says so, sends nothing")
-    rawset(_G, "GZ_EINK_C", nil); rawset(_G, "GZ_EINK_LOG", nil); rawset(_G, "GZ_EINK_SYS", nil)
+    rawset(_G, "GZ_EINK_C", nil); rawset(_G, "GZ_EINK_LOG", nil); rawset(_G, "GZ_EINK_SYS", nil); rawset(_G, "GZ_EINK_SLEEP", nil)
 end
 
 print(string.format("%d passed, %d failed", pass, fail))

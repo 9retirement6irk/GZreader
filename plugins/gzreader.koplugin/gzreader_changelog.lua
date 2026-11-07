@@ -5,6 +5,7 @@ return {
         version = "next",
         changes = {
             "Nook 1st Edition: an e-ink test (GZ_NOOK_EINK_TEST=1, see GZREADER.md) that sends the e-ink controller GZreader's refresh commands one at a time and logs each before it's sent, to find the one that froze the Nook; a step towards refreshes without the full-screen flash.",
+            "Nook 1st Edition: GZreader's own e-ink refreshes (GZ_NOOK_EPD=direct, still to be tried) wake the e-ink controller first, as the Nook does: the Nook keeps it asleep between updates, and a command to the sleeping controller froze the Nook. If the controller doesn't answer, GZreader goes back to the Nook's own refreshes.",
         },
     },
     {

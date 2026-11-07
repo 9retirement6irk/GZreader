@@ -9,6 +9,14 @@ Started by the start script instead of GZreader:
     adb shell "GZ_NOOK_EINK_TEST=1 sh /data/gzreader/gzreader.sh"
 Log: /data/gzreader/eink-test.log. A small square near the top left of the
 e-ink page turns black, then the page is redrawn the Nook's way.
+
+The first run hung at the first WAIT_DSPE_TRG: B&N's driver keeps the
+controller asleep between updates (s1d13521_lock/unlock: RUN_SYS before,
+SLP after) and the driver's ioctls don't wake it, so a display engine
+command to a sleeping controller never answers (the kernel then spins on
+the ready line with the big kernel lock held). So, as the driver itself
+does: wake it, clear its interrupts, and wait by reading the display
+engine status register (0x338) rather than with the WAIT_DSPE commands.
 ]]
 
 local ffi = require("ffi")
@@ -51,9 +59,10 @@ end
 
 local SYS_EINK = rawget(_G, "GZ_EINK_SYS") or "/sys/devices/platform/s1d13521fb.0"
 local IOC = {
-    REGREAD = 0x4540, WR_REG = 0x4511, LD_IMG_AREA = 0x4522, LD_IMG_END = 0x4523,
-    WAIT_DSPE_TRG = 0x4528, WAIT_DSPE_FREND = 0x4529, UPD_PART_AREA = 0x4536, MEMBURSTWRITE = 0x4547,
+    REGREAD = 0x4540, REGWRITE = 0x4541, WR_REG = 0x4511, LD_IMG_AREA = 0x4522, LD_IMG_END = 0x4523,
+    UPD_PART_AREA = 0x4536, MEMBURSTWRITE = 0x4547, RUN_SYS = 0x4502, SLP = 0x4505,
 }
+local sleep_ms = rawget(_G, "GZ_EINK_SLEEP") or function(ms) C.usleep(ms * 1000) end
 local params = ffi.new("struct gzt_params")
 local hwc = ffi.new("struct gzt_hwc")
 
@@ -95,27 +104,59 @@ local function cmd(ioc, ...)
     return C.ioctl(fd, ioc, params)
 end
 
+local function regValue(addr)
+    hwc.addr, hwc.value = addr, 0
+    C.ioctl(fd, IOC.REGREAD, hwc)
+    return tonumber(hwc.value)
+end
+local function waitBit(bitpos, timeout_ms)
+    -- (the driver: bs_cmd_wait_for_bit / s1d13521fb_wait_for_trigger)
+    local waited = 0
+    while bit.band(regValue(0x0338), bit.lshift(1, bitpos)) ~= 0 do
+        if waited >= timeout_ms then return string.format("still set after %d ms", waited) end
+        sleep_ms(5)
+        waited = waited + 5
+    end
+    return string.format("clear after %d ms", waited)
+end
+
 log("kernel updates (enable):", sysfs(SYS_EINK .. "/enable"))
 run("read the product code (0x0000)", function() return reg(0x0000) end)
 run("read the system status (0x000A)", function() return reg(0x000A) end)
 run("read the display engine status (0x0338)", function() return reg(0x0338) end)
-run("WAIT_DSPE_TRG, kernel updates on", function() return cmd(IOC.WAIT_DSPE_TRG) end)
-run("WAIT_DSPE_FREND, kernel updates on", function() return cmd(IOC.WAIT_DSPE_FREND) end)
 run("kernel updates off (enable = 0)", function() return sysfs(SYS_EINK .. "/enable", 0) end)
-run("WAIT_DSPE_TRG, kernel updates off", function() return cmd(IOC.WAIT_DSPE_TRG) end)
-run("WAIT_DSPE_FREND", function() return cmd(IOC.WAIT_DSPE_FREND) end)
-run("LD_IMG_AREA 8 bpp, 16 x 16 at 32, 32", function() return cmd(IOC.LD_IMG_AREA, bit.lshift(3, 4), 32, 32, 16, 16) end)
+run("RUN_SYS: wake the controller (the driver keeps it asleep)", function() return cmd(IOC.RUN_SYS) end)
+run("clear its interrupts (0x033A = 0xFFFF)", function()
+    hwc.addr, hwc.value = 0x033A, 0xFFFF
+    return C.ioctl(fd, IOC.REGWRITE, hwc)
+end)
+run("read the system status again (0x000A)", function() return reg(0x000A) end)
+run("wait for the trigger to be free (0x338 bit 0)", function() return waitBit(0, 1000) end)
+run("wait for the frame end (0x338 bit 3)", function() return waitBit(3, 2000) end)
+local lut = 0
+run("free LUTs (0x0336)", function()
+    local busy = regValue(0x0336)
+    for i = 0, 14 do
+        if bit.band(busy, bit.lshift(1, i)) == 0 then lut = i; break end
+    end
+    return string.format("busy 0x%04x, using LUT %d", busy, lut)
+end)
+run("LD_IMG_AREA 8 bpp, rows 32-47 (whole rows, as the driver does)", function() return cmd(IOC.LD_IMG_AREA, bit.lshift(3, 4), 0, 32, 600, 16) end)
 run("WR_REG 0x154", function() return cmd(IOC.WR_REG, 0x154) end)
-local black = ffi.new("uint8_t[256]")
-run("MEMBURSTWRITE 256 bytes", function()
-    hwc.addr, hwc.value, hwc.buffer = 0, 256, black
+local black = ffi.new("uint8_t[?]", 600 * 16)
+run("MEMBURSTWRITE 9600 bytes", function()
+    hwc.addr, hwc.value, hwc.buffer = 0, 600 * 16, black
     return C.ioctl(fd, IOC.MEMBURSTWRITE, hwc)
 end)
 run("LD_IMG_END", function() return cmd(IOC.LD_IMG_END) end)
+run("UPD_PART_AREA, DU waveform, 16 x 16 at 32, 32", function()
+    return cmd(IOC.UPD_PART_AREA, bit.bor(bit.lshift(1, 8), bit.lshift(lut, 4)), 32, 32, 16, 16)
+end)
+run("wait for the trigger (0x338 bit 0)", function() return waitBit(0, 1000) end)
+run("wait for the frame end (0x338 bit 3)", function() return waitBit(3, 2000) end)
 run("read the display engine status (0x0338)", function() return reg(0x0338) end)
-run("UPD_PART_AREA, DU waveform, 16 x 16 at 32, 32", function() return cmd(IOC.UPD_PART_AREA, bit.lshift(1, 8), 32, 32, 16, 16) end)
-run("WAIT_DSPE_TRG after the update", function() return cmd(IOC.WAIT_DSPE_TRG) end)
-run("WAIT_DSPE_FREND after the update", function() return cmd(IOC.WAIT_DSPE_FREND) end)
+sleep_ms(1500) -- (time to see the square)
+run("SLP: the controller back to sleep (as the driver leaves it)", function() return cmd(IOC.SLP) end)
 run("kernel updates back on (enable = 1)", function() return sysfs(SYS_EINK .. "/enable", 1) end)
 run("the Nook's own full redraw", function() return sysfs(SYS_EINK .. "/redraw", 1) end)
 log("---- e-ink test done: every step answered")

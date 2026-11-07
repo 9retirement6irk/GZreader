@@ -240,8 +240,10 @@ exiting or restarting the Nook.
 - **The e-ink page** shows GZreader as on a Kindle 4, refreshed the way
   Android does it (through the Nook's kernel: each update a full refresh).
   Sending updates straight to the e-ink controller, with a faster waveform
-  for each, froze a real Nook at the first refresh; it can still be tried
-  with `GZ_NOOK_EPD=direct` (below).
+  for each and no full-screen flash, froze a real Nook at the first
+  refresh: the Nook keeps the controller asleep between updates, and GZreader
+  didn't wake it. It now does, as the Nook itself does; it's still to be
+  tried with `GZ_NOOK_EPD=direct` (below) until it has run on a Nook.
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's
@@ -335,12 +337,15 @@ Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
 colour screen). If anything goes wrong, holding power to restart the Nook
 always brings back its own software.
 
-To try GZreader's own e-ink refreshes (faster, fewer flashes; this froze
-a Nook on its first refresh, so only if you're ready to restart it):
+To try GZreader's own e-ink refreshes (faster, no full-screen flash; an
+earlier version froze a Nook, so only if you're ready to restart it, and
+after the e-ink test below has gone through):
 `adb shell "GZ_NOOK_EPD=direct sh /data/gzreader/gzreader.sh"`.
+If the controller stops answering, GZreader goes back to the Nook's own
+refreshes by itself ("direct e-ink refreshes off" in crash.log).
 
-To find out where those refreshes hang, the e-ink test sends the e-ink
-controller the same commands one at a time, writing each to
+The e-ink test sends the e-ink controller the same commands one at a
+time, writing each to
 `/data/gzreader/eink-test.log` before it's sent (a small black square
 near the top left, then the Nook's own redraw), and returns to the Nook
 instead of starting GZreader:
