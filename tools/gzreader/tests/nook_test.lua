@@ -225,5 +225,24 @@ check(got[5] == 2, "fast: DU")
 fake:refreshUIImp(590, 790, 50, 50)
 check(got[3] == 599 and got[4] == 799, "clipped to the screen")
 
+------------------------------------------------------------------ ZenOS's paths
+print("ZenOS's paths on a Nook (no /storage)")
+do
+    local real_lfs = package.loaded["libs/libkoreader-lfs"]
+    local function paths(has_storage)
+        package.loaded["libs/libkoreader-lfs"] = { attributes = function(p, what)
+            if p == "/storage/emulated/0" and has_storage then return what == "mode" and "directory" or {} end
+        end }
+        local P = dofile(REPO .. "/plugins/zenos.koplugin/common/paths.lua")
+        return P
+    end
+    local nook = paths(false)
+    check(nook.normPath("/sdcard/GZreader") == "/sdcard/GZreader" and nook.normPath("/sdcard") == "/sdcard",
+        "the Nook's /sdcard (the microSD card) stays /sdcard: the Downloads tab opens GZreader's folder")
+    local android = paths(true)
+    check(android.normPath("/sdcard/GZreader") == "/storage/emulated/0/GZreader", "modern Android: /sdcard is still /storage/emulated/0")
+    package.loaded["libs/libkoreader-lfs"] = real_lfs
+end
+
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
