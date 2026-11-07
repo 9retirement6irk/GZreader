@@ -1282,7 +1282,12 @@ Kindle 3 out of memory in 1.0.21.
 
 EPUBs whose chapter files are pictures with next to no text (scanned pages,
 e.g. Diary of a Wimpy Kid: 385 x 625 JPEG per page) are recognized on
-opening (`gzreader_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only).
+opening (`gzreader_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only;
+a book in fewer than 6 files, such as one big file between a cover and a
+contents page, is cut into 12 parts and the middle 10 are sampled instead).
+An EPUB converted from a PDF, whose pages are pictures with the text as
+separate lines between them, isn't one: fitting its pictures can't put the
+text back on the page.
 GZreader then adds a book style tweak (`img { height: 100%; width: auto;
 max-width: 100% }`, no margins/padding), sets the book's page margins to 0
 and turns on smooth image scaling, keeping the old settings for when it's
