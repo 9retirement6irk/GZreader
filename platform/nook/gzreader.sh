@@ -80,11 +80,12 @@ mount -o bind $RUN/etc /system/etc && log "DNS: $(tr '\n' ' ' < $RUN/etc/resolv.
 # card when one is in and writable (more room), else the Nook's own storage
 # (the 1st Edition's /system/media/sdcard, the Simple Touch's /media; GZreader
 # tells the two Nooks apart by their screens). Both Nooks have their own
-# storage on mmcblk0 and the card slot on mmcblk1 (vold's 179:8-15).
+# storage on mmcblk0 and the card slot on mmcblk1 (vold's 179:8-15; a 1st
+# Edition lists them as /dev/block//vold/179:3 and /dev/block//vold/179:9).
 # GZ_NOOK_HOME overrides it.
 MOUNTS=${GZ_MOUNTS:-/proc/mounts}
 if [ -z "$GZ_NOOK_HOME" ]; then
-    SD=$(awk '$1 ~ /^\/dev\/block\/(vold\/179:(8|9|1[0-5])$|mmcblk1)/ && $3 ~ /^(vfat|msdos|fat)$/ && ("," $4 ",") ~ /,rw,/ { print $2; exit }' "$MOUNTS" 2>/dev/null)
+    SD=$(awk '$1 ~ /^\/dev\/block\/+(vold\/179:(8|9|1[0-5])$|mmcblk1)/ && $3 ~ /^(vfat|msdos|fat)$/ && ("," $4 ",") ~ /,rw,/ { print $2; exit }' "$MOUNTS" 2>/dev/null)
     if [ -n "$SD" ] && mkdir -p "$SD/GZreader" 2>/dev/null && : > "$SD/GZreader/.gz-write-test" 2>/dev/null; then
         rm -f "$SD/GZreader/.gz-write-test"
         GZ_NOOK_HOME=$SD
