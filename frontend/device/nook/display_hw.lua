@@ -97,6 +97,8 @@ end
 --- LCD controller itself is stopped by the kernel's early suspend, which
 --- platform/nook/gzreader.sh undoes: "on" in /sys/power/state.)
 local SYS_SPI, SYS_I2C = "/sys/bus/spi/devices", "/sys/bus/i2c/devices"
+-- linux/fb.h: FBIOBLANK takes the blank level itself as its argument
+local FBIOBLANK, BLANK_UNBLANK, BLANK_POWERDOWN = 0x4611, 0, 4
 local GESTURE_MOTION = 16
 
 --- The first <dir>/*/<name> that exists, or nil.
@@ -140,6 +142,8 @@ function HW:open()
                     self.vfb_fd, self.vfb_path = fd, path
                 elseif id:find("S1D13521") and not self.epd_fd then
                     self.epd_fd, self.epd_path = fd, path
+                elseif id:find("s3cfb") and not self.lcdfb_fd then
+                    self.lcdfb_fd = fd -- (the colour screen's LCD controller: its power is FBIOBLANK)
                 else
                     HW.sys.close(fd)
                 end
@@ -237,16 +241,24 @@ function HW:wakeLcd()
     self.tube = self.tube or HW.sys.find(SYS_SPI, "lcd_power")
     self.gesture = self.gesture or HW.sys.find(SYS_I2C, "gesture_mask")
     self.saved_power = {
+        lcd = HW.sys.read(SYS_LCD .. "/lcd_power"),
         tube = self.tube and HW.sys.read(self.tube),
         backlight = HW.sys.read(SYS_LCD .. "/backlight_power"),
         level = HW.sys.read(SYS_LCD .. "/backlight_level"),
         gesture = self.gesture and HW.sys.read(self.gesture),
     }
+    -- The LCD controller: Android blanks it (FBIOBLANK powerdown) when the
+    -- screen goes off; its sysfs lcd_power only reads. The backlight doesn't
+    -- light while it's off (the kernel waits for it).
+    if self.lcdfb_fd then
+        HW.sys.ioctl(self.lcdfb_fd, FBIOBLANK, ffi.cast("unsigned long", BLANK_UNBLANK))
+    end
     if self.gesture then HW.sys.writeOnce(self.gesture, GESTURE_MOTION) end
     -- (Android dims to 8 before turning it off: its normal level is 64)
     local level = tonumber(self.saved_power.level or "")
     self:backlight(true, (not level or level < 32) and 64 or nil)
-    logger.info("nook: colour screen woken (tube", tostring(self.tube), "was", tostring(self.saved_power.tube),
+    logger.info("nook: colour screen woken (LCD was", tostring(self.saved_power.lcd), "now", tostring(HW.sys.read(SYS_LCD .. "/lcd_power")),
+        "; tube", tostring(self.tube), "was", tostring(self.saved_power.tube),
         "; backlight was", tostring(self.saved_power.backlight), "level", tostring(self.saved_power.level),
         "; touch", tostring(self.gesture), "was", tostring(self.saved_power.gesture), ")")
 end
@@ -280,6 +292,9 @@ function HW:close()
         if saved.level then HW.sys.write(SYS_LCD .. "/backlight_level", saved.level) end
         if saved.backlight then HW.sys.write(SYS_LCD .. "/backlight_power", saved.backlight) end
         if self.tube and saved.tube then HW.sys.writeOnce(self.tube, saved.tube) end
+        if self.lcdfb_fd and saved.lcd == "0" then
+            HW.sys.ioctl(self.lcdfb_fd, FBIOBLANK, ffi.cast("unsigned long", BLANK_POWERDOWN))
+        end
         self.saved_power = nil
     else
         self:backlight(true)
@@ -287,6 +302,7 @@ function HW:close()
     if self.map then HW.sys.munmap(self.map, self.size); self.map = nil end
     if self.vfb_fd then HW.sys.close(self.vfb_fd); self.vfb_fd = nil end
     if self.epd_fd then HW.sys.close(self.epd_fd); self.epd_fd = nil end
+    if self.lcdfb_fd then HW.sys.close(self.lcdfb_fd); self.lcdfb_fd = nil end
 end
 
 HW.EINK_W, HW.EINK_H, HW.LCD_W, HW.LCD_H, HW.VFB_H = VFB_W, EINK_H, LCD_W, LCD_H, VFB_H

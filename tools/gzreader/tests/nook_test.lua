@@ -29,13 +29,13 @@ local mem = ffi.new("uint8_t[?]", 600 * 944 * 2 * 2)
 for i = 0, 600 * 944 * 2 * 2 - 1, 2 do mem[i] = 0x34; mem[i + 1] = 0x12 end -- (Android's picture)
 HW.sys = {
     open = function(path)
-        return ({ ["/dev/graphics/fb0"] = 10, ["/dev/graphics/fb1"] = 11 })[path] or -1
+        return ({ ["/dev/graphics/fb0"] = 10, ["/dev/graphics/fb1"] = 12, ["/dev/graphics/fb2"] = 11 })[path] or -1
     end,
     close = function() return 0 end,
     ioctl = function(fd, req, arg)
         req = tonumber(req)
         if req == 0x4602 then -- FBIOGET_FSCREENINFO
-            local id = fd == 10 and "bravo-vfb" or "S1D13521"
+            local id = fd == 10 and "bravo-vfb" or (fd == 12 and "s3cfb" or "S1D13521")
             ffi.copy(arg.id, id)
             arg.line_length = fd == 10 and 1200 or 600
             arg.smem_len = fd == 10 and 600 * 944 * 2 * 2 or 600 * 800 * 3
@@ -45,6 +45,7 @@ HW.sys = {
             return 0
         end
         local rec = { fd = fd, req = req }
+        if req == 0x4611 then rec.blank = tonumber(arg) end
         if req == 0x4547 then
             local hwc = ffi.cast("struct gz_s1d_hwc *", arg)
             rec.len = tonumber(hwc.value)
@@ -79,6 +80,9 @@ check(HW.vfb_fd == 10 and HW.epd_fd == 11 and not HW.direct and not woke:find("e
 check(woke:find("0-0020/gesture_mask=16!", 1, true) and woke:find("spi0.0/lcd_power=1!", 1, true)
     and woke:find("backlight_level=64", 1, true) and woke:find("backlight_power=1", 1, true),
     "the colour screen woken: LCD powered up, backlight on at Android's level, the panel reporting finger motion (one write each)")
+local unblanked = false
+for _i, c in ipairs(calls) do if c.req == 0x4611 and c.fd == 12 and c.blank == 0 then unblanked = true end end
+check(unblanked, "…and the LCD controller unblanked (s3cfb: FBIOBLANK, as Android does)")
 HW.vfb_fd, HW.epd_fd = nil, nil
 calls, sysfs = {}, {}
 local orig_mode = HW.epdMode
