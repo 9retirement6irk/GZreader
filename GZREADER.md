@@ -343,8 +343,8 @@ yours in full first, charge the battery, and back up your books.
    (`/proc/cpuinfo` has no `vfp`), so it stops at once with exit code 132.
    The 1st Edition package is KOReader's programs rebuilt to do floating
    point in software: `.github/workflows/gzreader-nook.yml`.)
-2. Check there's room (about 75 MB) in the Nook's app storage:
-   `adb shell df /data`.
+2. Check there's room (about 90 MB, for the first start) in the Nook's
+   app storage: `adb shell df /data`.
 3. Copy it there (the Nook's USB storage can't run programs):
 
    ```
@@ -360,6 +360,21 @@ yours in full first, charge the battery, and back up your books.
    `adb shell "GZ_NOOK_HOME=/system/media/sdcard sh /data/gzreader/gzreader.sh"`.
    (Take `bravo_update.dat` off the card after rooting: holding the page
    button while turning the Nook on would install it again.)
+5. **GZreader moves most of itself out of the Nook's app storage** at its
+   first start (a minute or two, with the Nook's own screen still showing).
+   That storage is about 240 MB, shared with Android, and it filled up: an
+   update couldn't unpack. What GZreader only reads (its Lua code, fonts,
+   hyphenation, translations, about 55 MB) and its cache go to
+   `.gzreader-app` on the microSD card when one is in, else on the Nook's
+   own storage. They're mounted back into `/data/gzreader/koreader` while
+   GZreader runs, so nothing else changes. Its programs and libraries
+   (the card can't run them) and its settings and reading history (so a
+   card swap can't lose them) stay in `/data/gzreader`, about 30 MB.
+   - Leave the card in: without it GZreader says to put it back and
+     doesn't start.
+   - A full package pushed over it later is moved again at the next start.
+   - To keep everything in `/data/gzreader` (and bring it back):
+     `adb shell touch /data/gzreader/app-here`, then start GZreader.
 
 ### Start and exit
 

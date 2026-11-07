@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition and Simple Touch: most of GZreader moves to the microSD card (or, without one, the Nook's own storage), leaving the Nook's small app disk, shared with Android, with room to spare. Its Lua code, fonts, hyphenation, translations and cache (about 55 MB) are moved at the first start (a minute or two) and mounted back into its folder while it runs; its programs, libraries and settings stay on the Nook (about 30 MB). Leave the card in: without it GZreader asks for it. Updates write each part where it lives.",
+        },
+    },
+    {
         version = "1.26.7",
         changes = {
             "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",

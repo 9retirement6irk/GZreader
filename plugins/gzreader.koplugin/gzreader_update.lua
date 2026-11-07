@@ -381,6 +381,9 @@ function Update.freeSpace(path)
     return ok and free or nil
 end
 
+--- The disk a path is on; a test replaces it.
+function Update.devOf(p) return lfs.attributes(p, "dev") end
+
 --- The Nook's card (the start script says where), or nil; a test replaces it.
 function Update.cardDir() return os.getenv("GZ_NOOK_HOME") end
 
@@ -516,56 +519,64 @@ function Update.apply(zip, opts)
             if allowed("plugins/" .. e) then items[#items + 1] = "plugins/" .. e end
         end
     end
-    -- Swap: current -> .old, new -> current. Roll back on any failure.
-    local done = {}
-    local function rollback()
-        for i = #done, 1, -1 do
-            local rel = done[i]
-            rmTree(base .. "/" .. rel)
-            if exists(base .. "/" .. rel .. ".gz-old") then os.rename(base .. "/" .. rel .. ".gz-old", base .. "/" .. rel) end
-        end
+    -- Swap each part. Next to it on the same disk: current -> .gz-old, new ->
+    -- current (renamed). Elsewhere (the update unpacked on the Nook's card,
+    -- or a part that lives on the card: the Nook's start script mounts it
+    -- into koreader/): the current part copied aside (to put back), taken
+    -- out, the new one copied in; never more than one part's difference in
+    -- room needed. Any failure puts every part back.
+    local keep = stage .. "/kept"
+    local devOf = Update.devOf
+    local function parentOf(p) return p:match("^(.*)/[^/]+$") end
+    local function byCopy(cur)
+        if elsewhere then return true end
+        local at = exists(cur) and cur or parentOf(cur)
+        local d = devOf(at)
+        if d ~= devOf(src) then return true end
+        return exists(cur) and d ~= devOf(parentOf(cur)) -- (a mount point)
     end
-    if elsewhere then
-        -- Another disk: no renaming across. Each part: the current one
-        -- copied next to the new one (to put back), taken out, the new one
-        -- copied in. Never more than one part's difference in room needed.
-        local keep = stage .. "/kept"
-        lfs.mkdir(keep)
-        lfs.mkdir(keep .. "/plugins")
-        local function putBack()
-            for i = #done, 1, -1 do
-                local rel = done[i]
-                rmTree(base .. "/" .. rel)
-                if exists(keep .. "/" .. rel) and not Update.copyTree(keep .. "/" .. rel, base .. "/" .. rel) then
+    local done = {}
+    local function fail(msg)
+        for i = #done, 1, -1 do
+            local rel, how = done[i][1], done[i][2]
+            local cur = base .. "/" .. rel
+            rmTree(cur)
+            if how == "copy" then
+                if exists(keep .. "/" .. rel) and not Update.copyTree(keep .. "/" .. rel, cur) then
                     Log.err("update: could not put back", rel)
                 end
+            elseif exists(cur .. ".gz-old") then
+                os.rename(cur .. ".gz-old", cur)
             end
         end
-        for _i, rel in ipairs(items) do
-            local cur = base .. "/" .. rel
+        rmTree(stage)
+        return nil, msg
+    end
+    for _i, rel in ipairs(items) do
+        local cur = base .. "/" .. rel
+        if byCopy(cur) then
+            if not isDir(keep) then lfs.mkdir(keep); lfs.mkdir(keep .. "/plugins") end
             if exists(cur) and not Update.copyTree(cur, keep .. "/" .. rel) then
-                putBack(); rmTree(stage); return nil, "could not keep a copy of " .. rel .. " (is the card full?)"
+                return fail("could not keep a copy of " .. rel .. " (is the disk full?)")
             end
-            done[#done + 1] = rel
+            done[#done + 1] = { rel, "copy" }
             rmTree(cur)
             if not Update.copyTree(src .. "/" .. rel, cur) then
-                putBack(); rmTree(stage)
-                return nil, "could not install " .. rel .. " (not enough room?)"
+                return fail("could not install " .. rel .. " (not enough room?)")
             end
-        end
-    else
-        for _i, rel in ipairs(items) do
-            local cur, old = base .. "/" .. rel, base .. "/" .. rel .. ".gz-old"
+        else
+            local old = cur .. ".gz-old"
             rmTree(old)
-            if exists(cur) and not os.rename(cur, old) then rollback(); rmTree(stage); return nil, "could not move " .. rel end
+            if exists(cur) and not os.rename(cur, old) then return fail("could not move " .. rel) end
             if not os.rename(src .. "/" .. rel, cur) then
                 if exists(old) then os.rename(old, cur) end
-                rollback(); rmTree(stage)
-                return nil, "could not install " .. rel
+                return fail("could not install " .. rel)
             end
-            done[#done + 1] = rel
+            done[#done + 1] = { rel, "rename" }
         end
-        for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
+    end
+    for _i, d in ipairs(done) do
+        if d[2] == "rename" then rmTree(base .. "/" .. d[1] .. ".gz-old") end
     end
     rmTree(stage)
     -- the Nook's scripts: each a whole new file renamed over the old one
@@ -624,7 +635,8 @@ function Update.download(info)
     local ProgressbarDialog = require("gzreader_progress")
     local Net = require("gzreader_net")
     -- (the download, and what it unpacks to: about three times its size)
-    local work, elsewhere = Update.workDir((info.size or (12 * 1024 * 1024)) * 4)
+    -- (and a copy of the parts it replaces when they're on another disk)
+    local work, elsewhere = Update.workDir((info.size or (12 * 1024 * 1024)) * 5)
     local zip = elsewhere and (work .. ".zip") or (DataStorage:getDataDir() .. "/cache/gzreader-update.zip")
     lfs.mkdir(DataStorage:getDataDir() .. "/cache")
     os.remove(zip)
