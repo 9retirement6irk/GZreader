@@ -2501,10 +2501,12 @@ runLoop(function() return #props >= 3 end, 5)
 check(tts_ui.hl == "s2" and #props == 3 and props[3].prop == "enqueueSnippet" and props[3].text == "On the next page.", "next sentence shown when ttsd starts it; one more queued")
 R3:stop()
 check(not R3.active and tts_ui.hl == nil, "stop clears everything")
-print("Read aloud on the Kindle DX (firmware 2.x): a text file for ttsd")
+print("Read aloud on the Kindle DX (firmware 2.x): the speech pipe, then a text file for ttsd")
 do
-    local said, calls = {}, {}
+    local said, calls, cmds = {}, {}, {}
+    local refuse -- function(path) -> true when this ttsd says "wrong file"
     TTS.exec = function(cmd)
+        cmds[#cmds + 1] = cmd
         local out = cmd:match("> (/tmp/gzreader%-tts%.%d+%.out) 2>&1")
         if not out then return 0 end
         local rc, body = 0, ""
@@ -2513,29 +2515,69 @@ do
         else
             local path = cmd:match("lipc%-set%-prop %-s com%.lab126%.tts playFile (%S+)")
             calls[#calls + 1] = path
-            local tf = path and io.open(path, "rb")
-            if tf then said[#said + 1] = tf:read("*a"); tf:close() end
-            if path and path:match("^/tmp/") then
-                -- (this ttsd only reads from its own folder)
+            -- (through the pipe: the text is what `cat` writes into it)
+            local src = cmd:match("%(cat (%S+) > " .. (path or ""):gsub("%p", "%%%0") .. "%)") or path
+            if refuse(path) then
                 local f = io.open(SYSLOG, "ab")
                 f:write("261029:040100 ttsd[2070]: E lipc_handling:wrong_file:file=" .. path .. ":playFile: wrong file\n")
                 f:close()
+            else
+                local tf = src and io.open(src, "rb")
+                if tf then said[#said + 1] = tf:read("*a"); tf:close() end
             end
         end
         local f = io.open(out, "wb"); f:write(body, "\nrc=", rc, "\n"); f:close()
         return 0
     end
+
+    -- 1. the DX of the logs: plain text files are "wrong file"; its pipe works
+    refuse = function(path) return not path:match("ttsUSFifo$") end
     os.remove(SYSLOG); io.open(SYSLOG, "wb"):close()
     gsettings.gzreader_tts_template = nil
     captured.confirm, captured.info = nil, nil
     TTS.findVoice()
     runLoop(function() return captured.confirm ~= nil or (captured.info and captured.info:match("didn't accept")) end, 60)
-    check(captured.confirm and #calls >= 2 and calls[1]:match("^/tmp/") and calls[2]:match("^/var/tmp/")
+    local first
+    for _i, c in ipairs(cmds) do if c:find("playFile", 1, true) then first = c; break end end
+    check(captured.confirm and calls[1] == "/var/tmp/ttsUSFifo" and said[1] == "This is the Kindle voice test. \n",
+        "no lipc-hash-prop: the sentence goes into the Kindle's speech pipe, its path to ttsd's playFile")
+    check(first and first:find("[ -p /var/tmp/ttsUSFifo ] || { rm -f /var/tmp/ttsUSFifo; mkfifo /var/tmp/ttsUSFifo", 1, true)
+        and first:find("(cat /tmp/gzreader-tts.fifo.", 1, true) and first:find("echo $w > " .. TTS.FIFO_WRITER_PID, 1, true)
+        and first:find("sleep " .. TTS.FIFO_WRITER_TIMEOUT .. "; kill $w", 1, true) and first:find("&$"),
+        "the pipe is made when missing; the writer runs in the background and gives up after a while")
+    captured.confirm.ok_callback()
+    local tpl1 = gsettings.gzreader_tts_template
+    check(tpl1 and tpl1.target.prop == "playFile" and tpl1.target.fifo == "/var/tmp/ttsUSFifo" and TTS.oneAtATime(tpl1), "saved: the speech pipe, one sentence at a time")
+    calls, said = {}, {}
+    page = 1; tts_ui.turned = nil
+    local R5 = TTS.Reader:new(tts_ui)
+    R5:start()
+    check(R5.active and #calls == 1 and calls[1] == "/var/tmp/ttsUSFifo" and said[1]:match("^" .. R5.queue[1].text) and tts_ui.hl == "s1",
+        "reading through the pipe: the sentence shown, paced by estimates")
+    R5:advance(R5.queue[1].id)
+    check(#calls == 2 and said[2]:match("^Second one%.") and cmds[#cmds]:find("kill $(cat " .. TTS.FIFO_WRITER_PID, 1, true),
+        "…then the next one (a writer still waiting is stopped first)")
+    local wf = io.open(TTS.FIFO_WRITER_PID, "wb"); wf:write("4242"); wf:close()
+    R5:stop()
+    local killed
+    for _i, c in ipairs(cmds) do if c == "kill 4242 >/dev/null 2>&1" then killed = true end end
+    check(not R5.active and killed and not io.open(TTS.FIFO_WRITER_PID, "rb"), "stopping also stops a sentence still waiting for the pipe")
+
+    -- 2. a ttsd that wants neither pipe nor /tmp: a text file in /var/tmp
+    refuse = function(path) return path:match("ttsUSFifo$") or path:match("^/tmp/") end
+    calls, said, cmds = {}, {}, {}
+    os.remove(SYSLOG); io.open(SYSLOG, "wb"):close()
+    gsettings.gzreader_tts_template = nil
+    captured.confirm, captured.info = nil, nil
+    TTS.findVoice()
+    runLoop(function() return captured.confirm ~= nil or (captured.info and captured.info:match("didn't accept")) end, 60)
+    check(captured.confirm and #calls >= 4 and calls[1] == "/var/tmp/ttsUSFifo" and calls[2] == "/tmp/ttsUSFifo"
+        and calls[3]:match("^/tmp/gzreader%-tts%.") and calls[4]:match("^/var/tmp/gzreader%-tts%.")
         and said[1] == "This is the Kindle voice test. \n",
-        "no lipc-hash-prop: the sentence in a text file, its path to ttsd's playFile (the next folder when ttsd can't use it)")
+        "pipes refused: the sentence in a text file, its path to ttsd's playFile (the next folder when ttsd can't use it)")
     captured.confirm.ok_callback()
     local tpl2 = gsettings.gzreader_tts_template
-    check(tpl2 and tpl2.target.prop == "playFile" and tpl2.target.file == "/var/tmp" and TTS.oneAtATime(tpl2), "saved: playFile, one sentence at a time")
+    check(tpl2 and tpl2.target.prop == "playFile" and tpl2.target.file == "/var/tmp" and not tpl2.target.fifo and TTS.oneAtATime(tpl2), "saved: playFile, one sentence at a time")
     check(TTS.plainText("\u{201C}Hi\u{201D} \u{2014} it\u{2019}s\u{2026}") == '"Hi" ,  it\'s...', "typographic punctuation as plain text")
     calls, said = {}, {}
     page = 1; tts_ui.turned = nil

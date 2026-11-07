@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",
+        },
+    },
+    {
         version = "1.26.4",
         changes = {
             "Nook 1st Edition: a build of its own, gzreader-nook-1st-edition-<version>.zip, that runs on a real Nook. Its kernel has the floating-point unit switched off and stops programs that read unaligned memory, so KOReader's programs are built for that (the Kindle build stopped at once).",

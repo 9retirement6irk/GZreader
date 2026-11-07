@@ -24,6 +24,12 @@ discovery also tries writing the sentence to a file and handing ttsd its
 path (lipc-set-prop -s com.lab126.tts playFile <file>). ttsd has no queue
 and sends no events there: one sentence at a time, paced by estimates.
 
+A later DX log: ttsd refused a plain text file ("playFile: wrong file", before
+it even opened it). Kindle 2/3 firmware feeds ttsd through a named pipe,
+/var/tmp/ttsUSFifo (the stock reader writes the text into it): so the
+discovery first hands ttsd that pipe's path and writes the sentence into it
+(`fifo` targets), then falls back to plain text files.
+
 Reading: one sentence at a time (crengine sentence boundaries). The sentence
 being spoken is highlighted, pages turn by themselves, Shift + Sym plays and
 stops (like the stock Kindle). The next sentence starts after a time worked
@@ -47,7 +53,10 @@ local TTS = {
     TARGETS = {
         { pub = "com.lab126.ttsd", prop = "playSnippetNow" },
         { pub = "com.lab126.ttsd", prop = "enqueueSnippet" },
-        -- Kindle 2 / DX (firmware 2.x): a text file ttsd reads (file = its folder)
+        -- Kindle 2 / DX (firmware 2.x): the Kindle's speech pipe (fifo), the
+        -- sentence written into it; then a text file ttsd reads (file = its folder)
+        { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp", fifo = "/var/tmp/ttsUSFifo" },
+        { pub = "com.lab126.tts", prop = "playFile", file = "/tmp", fifo = "/tmp/ttsUSFifo" },
         { pub = "com.lab126.tts", prop = "playFile", file = "/tmp" },
         { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" },
     },
@@ -162,8 +171,39 @@ end
 
 --- The text file a playFile request hands ttsd (a few kept: ttsd may still
 --- be reading the previous one).
+TTS.FIFO_WRITER_PID = OUT_PREFIX .. "writer.pid"
+TTS.FIFO_WRITER_TIMEOUT = 30 -- seconds a sentence waits for ttsd to read the pipe
+
+--- playFile through the Kindle's speech pipe: make the pipe if it isn't
+--- there, write the sentence into it in the background (the write waits
+--- until ttsd opens the pipe; given up after FIFO_WRITER_TIMEOUT), and hand
+--- ttsd the pipe's path. A writer still waiting from the previous sentence
+--- is stopped first.
+local function fifoRequest(target, text)
+    local txt = string.format("%sfifo.%d.txt", OUT_PREFIX, TTS.seq)
+    local f = io.open(txt, "wb")
+    if not f then return nil, "cannot write " .. txt end
+    f:write(text, "\n")
+    f:close()
+    os.remove(string.format("%sfifo.%d.txt", OUT_PREFIX, TTS.seq - 4))
+    TTS.last_file = target.fifo
+    local out = OUT_PREFIX .. TTS.seq .. ".out"
+    os.remove(out)
+    -- (pub/prop/fifo are constants from TARGETS; the text only goes in the file)
+    local pidf, fifo = TTS.FIFO_WRITER_PID, target.fifo
+    run(string.format("(kill $(cat %s 2>/dev/null) >/dev/null 2>&1; "
+        .. "[ -p %s ] || { rm -f %s; mkfifo %s 2>/dev/null || mknod %s p; }; "
+        .. "(cat %s > %s) >/dev/null 2>&1 & w=$!; echo $w > %s; "
+        .. "lipc-set-prop -s %s %s %s > %s 2>&1; echo \"rc=$?\" >> %s; "
+        .. "sleep %d; kill $w >/dev/null 2>&1) >/dev/null 2>&1 &",
+        pidf, fifo, fifo, fifo, fifo, txt, fifo, pidf,
+        target.pub, target.prop, fifo, out, out, TTS.FIFO_WRITER_TIMEOUT))
+    return out
+end
+
 local function playFileRequest(target, fields)
     TTS.seq = TTS.seq + 1
+    if target.fifo then return fifoRequest(target, TTS.plainText(textOf(fields))) end
     local path = string.format("%s/gzreader-tts.%d.txt", target.file, TTS.seq)
     local f = io.open(path, "wb")
     if not f then return nil, "cannot write " .. path end
@@ -311,9 +351,19 @@ local function intProp(pub, prop, value)
     pcall(h.close, h)
 end
 
+--- Stop a sentence still waiting to be written into the speech pipe.
+local function stopFifoWriter()
+    local f = io.open(TTS.FIFO_WRITER_PID, "rb")
+    local pid = f and tonumber(f:read("*a"))
+    if f then f:close() end
+    if pid then run("kill " .. pid .. " >/dev/null 2>&1") end
+    os.remove(TTS.FIFO_WRITER_PID)
+end
+
 function TTS.cancel()
     intProp("com.lab126.ttsd", "cancelSnippetPlayback", 1)
     intProp("com.lab126.tts", "stop", 1)
+    stopFifoWriter()
 end
 
 --- Like TTS.cancel, but waits until ttsd has it (so a request sent right
@@ -334,7 +384,8 @@ end
 function TTS.cleanup()
     local dirs = {}
     for _i, t in ipairs(TTS.TARGETS) do if t.file then dirs[#dirs + 1] = t.file .. "/gzreader-tts.*.txt" end end
-    run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash " .. table.concat(dirs, " ") .. " >/dev/null 2>&1")
+    stopFifoWriter()
+    run("rm -f " .. OUT_PREFIX .. "*.out " .. OUT_PREFIX .. "*.hash " .. OUT_PREFIX .. "fifo.*.txt " .. table.concat(dirs, " ") .. " >/dev/null 2>&1")
 end
 
 function TTS.speed() return settings():readSetting("gzreader_tts_speed") or 100 end
@@ -419,7 +470,8 @@ function TTS.discover(on_done)
             local ok, detail = TTS.result(handle)
             if handle and ok == nil and n < 8 then return UIManager:scheduleIn(0.5, function() wait(n + 1) end) end
             if not handle then ok, detail = false, err end
-            local desc = target.prop .. (target.file and (" (a text file in " .. target.file .. ")") or (" " .. TTS.hashText(fields)))
+            local desc = target.prop .. (target.fifo and (" (the speech pipe " .. target.fifo .. ")")
+                or target.file and (" (a text file in " .. target.file .. ")") or (" " .. TTS.hashText(fields)))
             local complaint = TTS.ttsdComplaint(since)
             if ok and target.file and complaint and TTS.last_file and complaint:find(TTS.last_file, 1, true) then
                 ok, detail = false, complaint -- (ttsd couldn't use the file)

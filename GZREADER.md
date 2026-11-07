@@ -1210,10 +1210,13 @@ after a time computed from its length and the speed setting (Read-aloud
 settings → Slower / Faster). The diagnostic log records every step.
 
 Kindle 2 and DX (firmware 2.x): there's no `lipc-hash-prop` and the speech
-service has an older interface (`com.lab126.tts`: `playFile`, the path of a
-text file it reads aloud). Find the Kindle voice tries that too: each
-sentence is written to a small file in `/tmp` (or `/var/tmp`) and handed to
-the voice, one sentence at a time.
+service has an older interface (`com.lab126.tts`: `playFile`). Find the Kindle
+voice tries that too, one sentence at a time: first through the Kindle's own
+speech pipe (`/var/tmp/ttsUSFifo`, made if it's missing: `playFile` gets the
+pipe's path and the sentence is written into it; this is what works on a
+Kindle DX), then as a small text file in `/tmp` (or `/var/tmp`) whose path
+goes to `playFile`. If none works, the diagnostic log lists the files and
+paths the speech service knows about.
 
 ## Audiobooks (experimental)
 
