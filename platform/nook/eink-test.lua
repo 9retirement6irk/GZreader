@@ -10,13 +10,17 @@ Started by the start script instead of GZreader:
 Log: /data/gzreader/eink-test.log. A small square near the top left of the
 e-ink page turns black, then the page is redrawn the Nook's way.
 
-The first run hung at the first WAIT_DSPE_TRG: B&N's driver keeps the
-controller asleep between updates (s1d13521_lock/unlock: RUN_SYS before,
-SLP after) and the driver's ioctls don't wake it, so a display engine
-command to a sleeping controller never answers (the kernel then spins on
-the ready line with the big kernel lock held). So, as the driver itself
-does: wake it, clear its interrupts, and wait by reading the display
-engine status register (0x338) rather than with the WAIT_DSPE commands.
+Two runs froze the Nook: at the first WAIT_DSPE_TRG, then at the first
+RUN_SYS (waking the controller). The Nook's own kernel (Softroot 2.5.1's
+kernel.bin, disassembled) sends those commands exactly as the ioctls do,
+but inside s1d13521_lock, which also marks the controller awake: only then
+does its interrupt work (s1d13521if_eink_work_func) acknowledge the
+controller's interrupts. Woken behind the driver's back, the controller's
+interrupt is never acknowledged and fires again at once, forever. So the
+controller's interrupts are switched off first (0x033E display engine,
+0x0244 host; checked by reading them back, the test stops if they didn't
+take), and put back as they were at the end; waits read the display
+engine status (0x338) rather than using the WAIT_DSPE commands.
 ]]
 
 local ffi = require("ffi")
@@ -120,11 +124,47 @@ local function waitBit(bitpos, timeout_ms)
     return string.format("clear after %d ms", waited)
 end
 
+local function regWrite(addr, value)
+    hwc.addr, hwc.value = addr, value
+    return C.ioctl(fd, IOC.REGWRITE, hwc)
+end
+
 log("kernel updates (enable):", sysfs(SYS_EINK .. "/enable"))
 run("read the product code (0x0000)", function() return reg(0x0000) end)
 run("read the system status (0x000A)", function() return reg(0x000A) end)
 run("read the display engine status (0x0338)", function() return reg(0x0338) end)
+local saved = {}
+run("the interrupt settings (0x0244 host, 0x033E display engine, 0x033C pending)", function()
+    saved[0x0244], saved[0x033E] = regValue(0x0244), regValue(0x033E)
+    return string.format("0x0244 = 0x%04x, 0x033E = 0x%04x, 0x033C = 0x%04x", saved[0x0244], saved[0x033E], regValue(0x033C))
+end)
 run("kernel updates off (enable = 0)", function() return sysfs(SYS_EINK .. "/enable", 0) end)
+run("display engine interrupts off (0x033E = 0)", function() return regWrite(0x033E, 0) end)
+run("host interrupts off (0x0244 = 0)", function() return regWrite(0x0244, 0) end)
+run("clear pending interrupts (0x033A = 0xFFFF)", function() return regWrite(0x033A, 0xFFFF) end)
+local off
+run("read them back", function()
+    local a, b, c = regValue(0x0244), regValue(0x033E), regValue(0x033C)
+    off = a == 0 and b == 0
+    return string.format("0x0244 = 0x%04x, 0x033E = 0x%04x, 0x033C = 0x%04x", a, b, c)
+end)
+local function restore()
+    run("interrupts back as they were", function()
+        regWrite(0x033A, 0xFFFF)
+        regWrite(0x033E, saved[0x033E])
+        regWrite(0x0244, saved[0x0244])
+        return string.format("0x0244 = 0x%04x, 0x033E = 0x%04x", regValue(0x0244), regValue(0x033E))
+    end)
+    run("kernel updates back on (enable = 1)", function() return sysfs(SYS_EINK .. "/enable", 1) end)
+    run("the Nook's own full redraw", function() return sysfs(SYS_EINK .. "/redraw", 1) end)
+end
+if not off then
+    log("the interrupts didn't switch off: stopping before waking the controller")
+    restore()
+    C.close(fd)
+    if logfd >= 0 then C.close(logfd) end
+    return false
+end
 run("RUN_SYS: wake the controller (the driver keeps it asleep)", function() return cmd(IOC.RUN_SYS) end)
 run("clear its interrupts (0x033A = 0xFFFF)", function()
     hwc.addr, hwc.value = 0x033A, 0xFFFF
@@ -157,8 +197,7 @@ run("wait for the frame end (0x338 bit 3)", function() return waitBit(3, 2000) e
 run("read the display engine status (0x0338)", function() return reg(0x0338) end)
 sleep_ms(1500) -- (time to see the square)
 run("SLP: the controller back to sleep (as the driver leaves it)", function() return cmd(IOC.SLP) end)
-run("kernel updates back on (enable = 1)", function() return sysfs(SYS_EINK .. "/enable", 1) end)
-run("the Nook's own full redraw", function() return sysfs(SYS_EINK .. "/redraw", 1) end)
+restore()
 log("---- e-ink test done: every step answered")
 C.close(fd)
 if logfd >= 0 then C.close(logfd) end

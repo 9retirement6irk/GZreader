@@ -241,9 +241,12 @@ exiting or restarting the Nook.
   Android does it (through the Nook's kernel: each update a full refresh).
   Sending updates straight to the e-ink controller, with a faster waveform
   for each and no full-screen flash, froze a real Nook at the first
-  refresh: the Nook keeps the controller asleep between updates, and GZreader
-  didn't wake it. It now does, as the Nook itself does; it's still to be
-  tried with `GZ_NOOK_EPD=direct` (below) until it has run on a Nook.
+  refresh. The Nook's own kernel (from Softroot's update file) showed why:
+  it only answers the controller's interrupts while it has woken the
+  controller itself, so waking it behind the kernel's back leaves an
+  interrupt firing forever. GZreader now switches the controller's
+  interrupts off while it drives it, and back on when it's done; still to
+  be tried with `GZ_NOOK_EPD=direct` (below) until it has run on a Nook.
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's

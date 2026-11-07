@@ -14,13 +14,17 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   area, write the pixels in bursts, update the area with a waveform), after
   switching the kernel's own updates off (sysfs enable = 0).
   The driver keeps the controller asleep between its own updates
-  (s1d13521_lock/unlock: RUN_SYS before, SLP after) and its ioctls don't
-  wake it: the first direct try sent WAIT_DSPE_TRG to the sleeping
-  controller and froze the whole Nook (the eink-test.lua log showed it).
-  So each direct refresh wakes it, waits by reading the display engine
-  status (0x338) as the driver does rather than with the WAIT_DSPE
-  commands, and puts it back to sleep. Still opt-in until it has run on a
-  Nook: GZ_NOOK_EPD=direct (otherwise each refresh is a full GC flash).
+  (s1d13521_lock/unlock: RUN_SYS before, SLP after), and only while it has
+  it awake does its interrupt work acknowledge the controller's interrupts
+  (the Nook's kernel, disassembled). Woken behind its back, the
+  controller's interrupt fires forever: direct tries froze the Nook at the
+  first WAIT_DSPE_TRG and at the first RUN_SYS (eink-test.lua's logs). So
+  GZreader switches the controller's interrupts off while it drives it
+  (0x033E, 0x0244; read back, or no direct refreshes), wakes it for each
+  refresh, waits by reading the display engine status (0x338) rather than
+  with the WAIT_DSPE commands, puts it back to sleep, and gives the
+  interrupts back on exit. Still opt-in until it has run on a Nook:
+  GZ_NOOK_EPD=direct (otherwise each refresh is a full GC flash).
 
 The emulator replaces this module (package.preload["device/nook/display_hw"]).
 ]]
@@ -49,6 +53,7 @@ local IOC = {
 }
 -- (never WAIT_DSPE_TRG / _FREND / _LUTFREE, 0x4528-0x452A: see above)
 local REG_INT_STATUS, REG_LUT_BUSY, REG_DSPE_STATUS = 0x033A, 0x0336, 0x0338
+local REG_HOST_INT_ENABLE, REG_DSPE_INT_ENABLE = 0x0244, 0x033E
 local DSPE_TRIGGER, DSPE_FRAME = 0, 3 -- (0x338 bits: trigger busy, frame not ended)
 local BRAVO_VFB_UPDATE = 0x4642
 local DFMT_8BPP = 3
@@ -197,9 +202,13 @@ function HW:open()
             self.direct = false
         end
     end
-    self:wakeLcd()
     self.params = ffi.new("struct gz_s1d_params")
     self.hwc = ffi.new("struct gz_s1d_hwc")
+    if self.direct and not self:interruptsOff() then
+        logger.warn("nook: the e-ink controller's interrupts didn't switch off; using the kernel's refreshes")
+        self.direct = false
+    end
+    self:wakeLcd()
     logger.info("nook: vfb", self.vfb_path, "e-ink", self.epd_path or "-", self.direct and "direct" or "through the kernel")
     return self
 end
@@ -236,12 +245,45 @@ local function freeLut(self)
     end
 end
 
+local function regWrite(self, addr, value)
+    self.hwc.addr, self.hwc.value = addr, value
+    return HW.sys.ioctl(self.epd_fd, IOC.REGWRITE, self.hwc)
+end
+
+--- The controller's interrupts off while GZreader drives it (the driver
+--- only acknowledges them while it has the controller awake itself).
+--- True if they read back off; otherwise they're as they were, the
+--- kernel's updates back on.
+function HW:interruptsOff()
+    self.saved_int = { host = reg(self, REG_HOST_INT_ENABLE), dspe = reg(self, REG_DSPE_INT_ENABLE) }
+    regWrite(self, REG_DSPE_INT_ENABLE, 0)
+    regWrite(self, REG_HOST_INT_ENABLE, 0)
+    regWrite(self, REG_INT_STATUS, 0xFFFF)
+    if reg(self, REG_HOST_INT_ENABLE) == 0 and reg(self, REG_DSPE_INT_ENABLE) == 0 then
+        logger.info(string.format("nook: e-ink controller interrupts off (were 0x%04x, 0x%04x)", self.saved_int.host, self.saved_int.dspe))
+        return true
+    end
+    self:interruptsBack()
+    HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1)
+    return false
+end
+
+function HW:interruptsBack()
+    local saved = self.saved_int
+    if not saved then return end
+    regWrite(self, REG_INT_STATUS, 0xFFFF)
+    regWrite(self, REG_DSPE_INT_ENABLE, saved.dspe)
+    regWrite(self, REG_HOST_INT_ENABLE, saved.host)
+    self.saved_int = nil
+end
+
 --- Give up on direct refreshes (the controller didn't answer): the
 --- kernel's updates back on, Android's way from now on.
 function HW:stopDirect(why)
     logger.warn("nook: direct e-ink refreshes off:", why)
     cmd(self, IOC.SLP)
     self.direct = false
+    self:interruptsBack()
     HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1)
 end
 
@@ -411,7 +453,10 @@ function HW:close()
         ffi.copy(self.map + EINK_H * self.line, self.saved_lcd, LCD_H * self.line)
         HW.sys.ioctl(self.vfb_fd, BRAVO_VFB_UPDATE, nil)
     end
-    if self.direct then HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1) end
+    if self.direct then
+        self:interruptsBack()
+        HW.sys.write(SYS_EINK .. "/enable", self.kernel_enable or 1)
+    end
     HW.sys.write(SYS_EINK .. "/redraw", 1)
     -- the colour screen and touch panel as Android left them (it wakes them itself)
     local saved = self.saved_power
