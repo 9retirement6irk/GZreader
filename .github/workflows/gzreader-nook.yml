@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ko-out
-          key: nook-softfloat-koreader-${{ env.KOREADER_TAG }}-${{ hashFiles('tools/gzreader/nook-softfloat/*') }}
+          key: nook-softfloat-koreader-${{ env.KOREADER_TAG }}-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh', 'tools/gzreader/nook-softfloat/build-koreader.sh') }}
       - uses: actions/cache/restore@v5
         if: steps.zip.outputs.cache-hit != 'true'
         with:
@@ -125,6 +125,9 @@ jobs:
           # (wmctrl: a prebuilt helper for touch Kindles, not built here; the Nook package leaves it out)
           rm -f chk/koreader/wmctrl
           tools/gzreader/nook-softfloat/check-novfp.sh chk
+      - name: Nothing missing (every library's symbols provided)
+        # (libopenlipclua: the Kindle's lipc, not on the Nook and not used there)
+        run: python3 tools/gzreader/nook-softfloat/check-symbols.py chk /usr/arm-linux-gnueabi/lib --ignore libopenlipclua.so
       - name: GZreader in the emulator on a CPU without VFP (as the Nook's)
         run: |
           mkdir -p emu

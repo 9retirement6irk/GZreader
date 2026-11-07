@@ -286,9 +286,14 @@ yours in full first, charge the battery, and back up your books.
 
 ### Install
 
-1. Download `gzreader-nook-<version>.zip` from the
+1. Download **`gzreader-nook-1st-edition-<version>.zip`** from the
    [releases](https://github.com/9retirement6irk/GZreader/releases) and
-   unzip it on your computer: you get a folder, `gzreader`.
+   unzip it on your computer: you get a folder, `gzreader`. (Not
+   `gzreader-nook-<version>.zip`: that one is built for the Kindle 2/3/DX's
+   floating-point unit, which the Nook 1st Edition's kernel doesn't turn on
+   (`/proc/cpuinfo` has no `vfp`), so it stops at once with exit code 132.
+   The 1st Edition package is KOReader's programs rebuilt to do floating
+   point in software: `.github/workflows/gzreader-nook.yml`.)
 2. Check there's room (about 75 MB) in the Nook's app storage:
    `adb shell df /data`.
 3. Copy it there (the Nook's USB storage can't run programs):
