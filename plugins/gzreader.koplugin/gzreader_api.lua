@@ -117,6 +117,10 @@ local function rawRequest(method, full_url, opts)
         local ok, decoded = pcall(JSON.decode, raw)
         if ok then data = decoded end
     end
+    if type(code) == "number" and type(resp_headers) == "table" then
+        -- (a Nook or Kindle whose clock ran down: set from the server's)
+        pcall(function() require("gzreader_clock").fromServer(resp_headers) end)
+    end
     if type(code) ~= "number" then
         logger.warn("Grimmory: network error", method, shown_url, code)
         Log.warn("HTTP", method, shown_url, "network error:", code, ms .. "ms")

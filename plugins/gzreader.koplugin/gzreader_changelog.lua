@@ -8,6 +8,8 @@ return {
             "Nook 1st Edition: updates over Wi‑Fi like the Kindles (Settings → General → Updates). The update also brings the Nook's start script, used from the next start.",
             "Test builds: Settings → General → Updates → Test builds installs what's waiting to be tried over Wi‑Fi, before it's released (no cable for each try). Turn it off to go back to releases. Kindles without Wi‑Fi: the same choice on the sync page.",
             "Nook 1st Edition: a GZreader icon in the Nook's app list. The Nook's su only works for adb, so a small helper set up once over adb (launcher.sh install) runs as root from the Nook's start-up and starts GZreader when you tap the icon. See GZREADER.md.",
+            "Nook 1st Edition: the Downloads tab opens GZreader's folder on the microSD card (it showed the root folder: ZenOS took /sdcard for a modern Android's /storage/emulated/0, which the Nook doesn't have).",
+            "A clock that ran down (a Nook in the year 2000, a Kindle in 1970) is set from Grimmory's the first time it answers. Grimmory's reading statistics on Home were asked for the year 2000, so only the day streak showed.",
         },
     },
     {

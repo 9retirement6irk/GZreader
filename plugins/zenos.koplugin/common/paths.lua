@@ -8,8 +8,22 @@ local M = {}
 -- Normalize the Android /sdcard symlink to its canonical /storage/emulated/0
 -- form so prefix comparisons are consistent regardless of which path form
 -- KOReader or the SQLite cache happens to store.
+-- GZreader: only where /storage/emulated/0 exists (modern Android). On the
+-- Nook 1st Edition (Android 1.5) /sdcard is the microSD card itself and
+-- there is no /storage: the Downloads tab went to /storage/emulated/0/GZreader,
+-- which isn't there, and showed the root folder instead.
+local gz_emulated
+local function gzHasEmulated()
+    if gz_emulated == nil then
+        local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+        gz_emulated = ok and lfs.attributes("/storage/emulated/0", "mode") == "directory" or false
+    end
+    return gz_emulated
+end
+
 function M.normPath(p)
     if not p then return p end
+    if not gzHasEmulated() then return p end
     return (p:gsub("^/sdcard/", "/storage/emulated/0/")
              :gsub("^/sdcard$",  "/storage/emulated/0"))
 end

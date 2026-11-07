@@ -1818,6 +1818,26 @@ local sess = st.sessions[#st.sessions]
 check(sess and sess.bookId == 3 and sess.durationSeconds >= 300 and sess.bookType == "EPUB"
     and sess.startTime:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"), "reading session sent with ISO times and duration")
 
+print("The clock from a server's, when it ran down")
+do
+    local Clock = require("gzreader_clock")
+    check(Clock.parseHttpDate("Sat, 07 Nov 2026 06:57:01 GMT") == 1794034621 and Clock.parseHttpDate("Thu, 01 Jan 1970 00:00:00 GMT") == 0
+        and Clock.parseHttpDate("Tue, 29 Feb 2028 23:59:59 GMT") == 1835481599 and Clock.parseHttpDate("yesterday") == nil,
+        "a server's Date read (UTC)")
+    local orig_set, set_to = Clock.set, nil
+    Clock.set = function(t) set_to = t; return true end
+    Clock.done = false
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:57:01 GMT" }, 1794030000) and set_to == nil and Clock.done,
+        "a clock that's right: left alone (and not looked at again)")
+    Clock.done = false
+    check(not Clock.fromServer({ date = "garbage" }, 946729573) and set_to == nil and not Clock.done, "no usable Date: nothing")
+    check(Clock.fromServer({ ["date"] = "Sat, 07 Nov 2026 06:57:01 GMT" }, 946729573) and set_to == 1794034621,
+        "a clock in the year 2000 (a Nook's after its battery ran down): set from the server's")
+    set_to = nil
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:58:01 GMT" }, 946729600) and set_to == nil, "…once per start")
+    Clock.set, Clock.done = orig_set, true
+end
+
 print("Grimmory reading stats (Home widget)")
 do
     local GS = require("gzreader_grimstats")
