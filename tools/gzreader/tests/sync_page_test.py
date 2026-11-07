@@ -13,7 +13,7 @@ it is copied there, for run_tests.lua's import test (GZ_SYNC_DUMP).
 Ports: port (Grimmory) port+1 (its control), port+20 Memos, port+21 Plex,
 port+22 the page.
 """
-import base64, datetime, json, os, struct, subprocess, sys, tempfile, threading, time, urllib.request
+import base64, datetime, json, os, shutil, struct, subprocess, sys, tempfile, threading, time, urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -314,6 +314,35 @@ with sync_playwright() as pw:
     check("My Dog.png" in ss and "old.png" in ss and "824 × 1200" in page.locator("#ss-size").inner_text()
           and page.locator('input[name="ss-mode"][value="auto"]').is_checked(),
           "sleep screen pictures: a picture added (made for this Kindle's screen), the Kindle's own listed, its mode shown")
+    # an iPhone photo (HEIC, which Chromium can't open): converted by the vendored libheif, in a worker
+    # (media/picture.heic: 120 × 60, its left half dark blue, its right half red)
+    heic = os.path.join(web, "Beach.HEIC")
+    shutil.copy(os.path.join(HERE, "media", "picture.heic"), heic)
+    page.set_input_files("#ss-files", heic)
+    page.wait_for_function("GZSync.Sleep.pending.length === 2 && !document.querySelector('#ss-add').disabled", timeout=60000)
+    got = page.evaluate("""async () => {
+      const p = GZSync.Sleep.pending[1], img = await createImageBitmap(p.blob);
+      const c = new OffscreenCanvas(img.width, img.height), g = c.getContext('2d'); g.drawImage(img, 0, 0);
+      const px = (x, y) => Array.from(g.getImageData(x, y, 1, 1).data);
+      return { name: p.name, w: img.width, h: img.height, left: px(200, 600), right: px(620, 600), worker: !!GZSync.Heic.worker };
+    }""")
+    L, R = got["left"], got["right"]
+    check(got["name"] == "Beach.png" and (got["w"], got["h"]) == (824, 1200) and got["worker"]
+          and L[0] == L[1] == L[2] and R[0] == R[1] == R[2] and L[0] < 60 and 60 < R[0] < 110,
+          "sleep screen pictures: a HEIC photo converted (grey, the screen's size, the blue half darker than the red) %r" % got)
+    sniff = page.evaluate("""async (b) => {
+      const bytes = Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+      return [await GZSync.Heic.is(new File([bytes], 'IMG_0001', { type: '' })),
+              await GZSync.Heic.is(new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13])], 'a.png'))];
+    }""", base64.b64encode(open(heic, "rb").read()[:12]).decode())
+    check(sniff == [True, False], "HEIC told by its first bytes too (a photo without its .heic name), a PNG isn't")
+    broken = os.path.join(web, "broken.heic")
+    with open(broken, "wb") as f: f.write(b"\x00\x00\x00\x18ftypheic" + b"\x00" * 64)
+    page.set_input_files("#ss-files", broken)
+    page.wait_for_function("(document.querySelector('#ss-add').closest('section').querySelector('.err') || {}).innerText", timeout=60000)
+    err = page.locator("#ss-add").locator("xpath=ancestor::section").locator(".err").inner_text()
+    check("1 HEIC picture couldn't be converted" in err and page.evaluate("GZSync.Sleep.pending.length") == 2,
+          "a HEIC that can't be decoded: said so, nothing added (%s)" % err)
     page.locator("#ss-list li", has_text="old.png").locator("button").click()
     page.check('input[name="ss-mode"][value="always"]')
     check("taken off with the sync" in page.locator("#ss-list").inner_text(), "…one of the Kindle's to take off")
@@ -442,6 +471,11 @@ pw, ph = struct.unpack(">II", pdata[16:24]) if pdata[:8] == b"\x89PNG\r\n\x1a\n"
 check(added.get("name") == "My Dog.png" and added.get("file", "").startswith("in/screensavers/") and (pw, ph) == (824, 1200)
       and sst.get("remove") == ["old.png"] and sst.get("mode") == "always",
       "sleep screen pictures: brought as a PNG the screen's size, with what to take off and when they show")
+added2 = (sst.get("add") or [{}, {}])[1:2] or [{}]
+pdata2 = files.get(G + added2[0].get("file", "-"), b"")
+check(added2[0].get("name") == "Beach.png" and len(sst.get("add") or []) == 2 and pdata2[:8] == b"\x89PNG\r\n\x1a\n"
+      and struct.unpack(">II", pdata2[16:24]) == (824, 1200),
+      "sleep screen pictures: the HEIC photo brought as a PNG too")
 usage = state.get("usage", [])
 check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
       "usage statistics the Kindle left: sent from the computer, then deleted")

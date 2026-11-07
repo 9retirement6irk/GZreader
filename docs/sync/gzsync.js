@@ -2021,6 +2021,80 @@ gets a password or token.
     if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
   }
 
+  // ------------------------------------------------------------ HEIC pictures
+
+  // HEIC/HEIF (iPhone photos): only Safari opens them. Elsewhere libheif
+  // (vendor/, LGPL 3.0, see vendor/README.md) decodes them, in a worker (it
+  // compiles its WebAssembly at once, which a page may not do with a big one,
+  // and a 12-megapixel photo takes a moment). Loaded only when one is added;
+  // the picture never leaves the browser.
+  var Heic = {
+    LIB: "vendor/libheif-1.23.5.js",
+    BRANDS: ["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"],
+    worker: null, n: 0, waits: {},
+    // by its name, its type, or its first bytes ("ftyp" and a HEIF brand)
+    is: async function (file) {
+      if (/\.(heic|heif|hif)$/i.test(file.name || "") || /^image\/hei[cf]/i.test(file.type || "")) return true;
+      try {
+        var b = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+        var s = String.fromCharCode.apply(null, b);
+        return s.slice(4, 8) === "ftyp" && Heic.BRANDS.indexOf(s.slice(8, 12)) >= 0;
+      } catch (e) { return false; }
+    },
+    // the worker's code: libheif, then one picture at a time
+    code: function () {
+      var lib = null;
+      onmessage = async function (e) {
+        var id = e.data.id;
+        try {
+          if (!lib) {
+            importScripts(e.data.lib);
+            lib = libheif();
+            if (lib && typeof lib.then === "function") lib = await lib;
+          }
+          var imgs = new lib.HeifDecoder().decode(new Uint8Array(e.data.buf));
+          if (!imgs || !imgs.length) throw new Error("not a picture libheif can read");
+          var im = imgs[0], w = im.get_width(), h = im.get_height();
+          im.display({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }, function (d) {
+            imgs.forEach(function (x) { try { x.free(); } catch (er) {} });
+            if (!d) postMessage({ id: id, error: "libheif couldn't decode it" });
+            else postMessage({ id: id, w: w, h: h, data: d.data.buffer }, [d.data.buffer]);
+          });
+        } catch (err) { postMessage({ id: id, error: String((err && err.message) || err) }); }
+      };
+    },
+    start: function () {
+      if (Heic.worker) return Heic.worker;
+      var url = URL.createObjectURL(new Blob(["(" + Heic.code.toString() + ")();"], { type: "text/javascript" }));
+      Heic.worker = new Worker(url);
+      URL.revokeObjectURL(url);
+      var fail = function (msg) {
+        Object.keys(Heic.waits).forEach(function (k) { Heic.waits[k].bad(new Error(msg)); });
+        Heic.waits = {};
+        Heic.worker.terminate(); Heic.worker = null;
+      };
+      Heic.worker.onmessage = function (e) {
+        var w = Heic.waits[e.data.id];
+        if (!w) return;
+        delete Heic.waits[e.data.id];
+        if (e.data.error) w.bad(new Error(e.data.error)); else w.ok(e.data);
+      };
+      Heic.worker.onerror = function (e) { e.preventDefault(); fail("the HEIC converter didn't load (" + (e.message || "no connection?") + ")"); };
+      return Heic.worker;
+    },
+    // a HEIC file → an ImageBitmap, like createImageBitmap(file)
+    bitmap: async function (file) {
+      var buf = await file.arrayBuffer();
+      var worker = Heic.start(), id = ++Heic.n;
+      var lib = new URL(Heic.LIB, location.href).href;
+      var r = await new Promise(function (ok, bad) {
+        Heic.waits[id] = { ok: ok, bad: bad };
+        worker.postMessage({ id: id, lib: lib, buf: buf }, [buf]);
+      });
+      return await createImageBitmap(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h));
+    },
+  };
+
   // ------------------------------------------------------------ sleep screen pictures
 
   // Pictures for the Kindle's sleep screen: made here for its screen (grey,
@@ -2045,7 +2119,12 @@ gets a password or token.
     },
     // the picture as the Kindle's screen shows it: its size, in grey
     make: async function (file, fit) {
-      var img = await createImageBitmap(file);
+      var img;
+      try { img = await createImageBitmap(file); }
+      catch (e) {
+        if (!(await Heic.is(file))) throw e;
+        img = await Heic.bitmap(file); // (an iPhone photo, in a browser that can't open it)
+      }
       var sc = Sleep.screen();
       var c = document.createElement("canvas");
       c.width = sc.w; c.height = sc.h;
@@ -2066,15 +2145,25 @@ gets a password or token.
       return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
     },
     add: async function (files) {
-      var fit = ($("#ss-fit") || {}).value || "cover", bad = 0;
-      for (var i = 0; i < files.length; i++) {
-        try {
-          var blob = await Sleep.make(files[i], fit);
-          Sleep.pending.push({ name: Sleep.nameFor(files[i]), blob: blob, url: URL.createObjectURL(blob) });
-        } catch (e) { bad++; }
-      }
+      var fit = ($("#ss-fit") || {}).value || "cover", bad = 0, heicBad = [];
+      var btn = $("#ss-add"), label = btn.textContent;
+      btn.disabled = true;
+      try {
+        for (var i = 0; i < files.length; i++) {
+          btn.textContent = files.length > 1 ? "Making " + (i + 1) + " of " + files.length + "…" : "Making the picture…";
+          try {
+            var blob = await Sleep.make(files[i], fit);
+            Sleep.pending.push({ name: Sleep.nameFor(files[i]), blob: blob, url: URL.createObjectURL(blob) });
+          } catch (e) {
+            if (await Heic.is(files[i])) heicBad.push(e.message || String(e)); else bad++;
+          }
+        }
+      } finally { btn.disabled = false; btn.textContent = label; }
       Sleep.render();
-      if (bad) alertIn($("#ss-add"), bad + " picture" + (bad === 1 ? "" : "s") + " couldn't be read (this browser can't open that kind of file).");
+      var msg = [];
+      if (bad) msg.push(bad + " picture" + (bad === 1 ? "" : "s") + " couldn't be read (this browser can't open that kind of file).");
+      if (heicBad.length) msg.push(heicBad.length + " HEIC picture" + (heicBad.length === 1 ? "" : "s") + " couldn't be converted: " + heicBad[0] + ".");
+      if (msg.length) alertIn(btn, msg.join(" "));
     },
     render: function () {
       var ul = $("#ss-list");
@@ -2282,7 +2371,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
