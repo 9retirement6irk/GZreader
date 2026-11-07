@@ -113,8 +113,9 @@ set_dns() {
 # Wi-Fi: Android keeps it, but when its screen went off it switched Wi-Fi off
 # (B&N's wifi_stop: eth0 down, the chip unpowered), and paused it can't turn
 # it back on: GZreader's setup said "Error connecting to network". So, when
-# there's no connection, it's brought up as Android does: init's wifi_start
-# (powers the chip, eth0 up), wpa_supplicant with the networks saved on the
+# there's no connection, it's brought up as Android does: B&N's wifi_start
+# (powers the chip: /sys/power/wifi_pm, eth0 up; the Marvell chip takes a few
+# seconds to appear), wpa_supplicant with the networks saved on the
 # Nook, dhcpcd for an address. Taken down again on exit (Android left it
 # off). GZ_NOOK_WIFI=off leaves Wi-Fi alone.
 WIFI_STARTED=
@@ -131,8 +132,10 @@ start_wifi() {
     if wifi_up; then log "Wi-Fi: already connected"; return 0; fi
     log "Wi-Fi: off (Android switched it off), connecting"
     WIFI_STARTED=1
-    setprop ctl.start wifi_start
-    if ! wait_for 15 test -e /sys/class/net/eth0; then log "Wi-Fi: the chip didn't come up"; return 1; fi
+    # (B&N's wifi_start.sh, done here: init's service didn't run it for us)
+    echo 1 > /sys/power/wifi_pm
+    if ! wait_for 25 test -e /sys/class/net/eth0; then log "Wi-Fi: the chip didn't come up"; return 1; fi
+    ifconfig eth0 up 2>/dev/null
     setprop ctl.start wpa_supplicant
     sleep 3
     setprop dhcp.eth0.result ""
@@ -152,7 +155,9 @@ stop_wifi() {
     [ -n "$WIFI_STARTED" ] || return 0
     setprop ctl.stop dhcpcd
     setprop ctl.stop wpa_supplicant
-    setprop ctl.start wifi_stop
+    # (B&N's wifi_stop.sh)
+    ifconfig eth0 down 2>/dev/null
+    echo 0 > /sys/power/wifi_pm
     WIFI_STARTED=
     log "Wi-Fi: off again, as Android left it"
 }
