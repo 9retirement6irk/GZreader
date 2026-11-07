@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition: an e-ink test (GZ_NOOK_EINK_TEST=1, see GZREADER.md) that sends the e-ink controller GZreader's refresh commands one at a time and logs each before it's sent, to find the one that froze the Nook; a step towards refreshes without the full-screen flash.",
+        },
+    },
+    {
         version = "1.26.4",
         changes = {
             "Nook 1st Edition: a build of its own, gzreader-nook-1st-edition-<version>.zip, that runs on a real Nook. Its kernel has the floating-point unit switched off and stops programs that read unaligned memory, so KOReader's programs are built for that (the Kindle build stopped at once).",

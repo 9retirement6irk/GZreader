@@ -31,6 +31,7 @@ cp -r "$RUNTIME" "$G/runtime"
 rm -f "$G/runtime/SOURCES.txt"
 cp "$RUNTIME/SOURCES.txt" "$G/runtime-SOURCES.txt" 2>/dev/null || true
 cp "$REPO/platform/nook/gzreader.sh" "$G/gzreader.sh"
+cp "$REPO/platform/nook/eink-test.lua" "$G/eink-test.lua"
 chmod 755 "$G/gzreader.sh" "$KO/luajit"
 cat > "$G/README-NOOK.txt" <<TXT
 GZreader $GZ_VERSION for the Nook ${GZ_NOOK_FOR:-1st Edition and Nook Simple Touch} - TEST BUILD

@@ -234,6 +234,15 @@ export EXT_FONT_DIR="/system/fonts;$GZ_NOOK_HOME/fonts"
 export HOME=$GZ_NOOK_HOME
 mkdir -p "$GZ_NOOK_HOME/GZreader" 2>/dev/null
 RETURN_VALUE=85
+if [ "${GZ_NOOK_EINK_TEST:-}" = 1 ]; then
+    # the e-ink controller one command at a time (eink-test.lua), instead
+    # of GZreader; each step is in $GZ/eink-test.log before it runs
+    log "e-ink test (log: $GZ/eink-test.log)"
+    GZ="$GZ" ./luajit "$GZ/eink-test.lua" >> crash.log 2>&1
+    log "e-ink test exited with $?"
+    sync
+    RETURN_VALUE=0
+fi
 while [ "$RETURN_VALUE" -eq 85 ]; do
     ./luajit ./reader.lua "$@" >> crash.log 2>&1
     RETURN_VALUE=$?

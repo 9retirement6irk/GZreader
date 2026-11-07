@@ -225,5 +225,55 @@ check(got[5] == 2, "fast: DU")
 fake:refreshUIImp(590, 790, 50, 50)
 check(got[3] == 599 and got[4] == 799, "clipped to the screen")
 
+------------------------------------------------------------------ e-ink test
+print("Nook 1st Edition: the step-by-step e-ink test")
+do
+    local lines, synced, ioctls, closed = {}, 0, {}, {}
+    local fakeC = setmetatable({
+        O_WRONLY = 1, O_RDWR = 2, O_CREAT = 64, O_APPEND = 1024, FBIOGET_FSCREENINFO = 17922,
+        open = function(path)
+            if path == "LOG" then return 3 end
+            local n = tonumber(tostring(path):match("/dev/graphics/fb(%d)$"))
+            if n and n <= 2 then return 10 + n end
+            return -1
+        end,
+        write = function(fd, buf, n) lines[#lines + 1] = ffi.string(buf, n); return n end,
+        fsync = function() synced = synced + 1; return 0 end,
+        close = function(fd) closed[#closed + 1] = fd; return 0 end,
+        ioctl = function(fd, req, p)
+            if req == 17922 then
+                ffi.copy(p.id, fd == 12 and "S1D13521 FB" or "s3cfb")
+                return 0
+            end
+            ioctls[#ioctls + 1] = { fd = fd, req = req, last = lines[#lines], synced = synced == #lines }
+            return 0
+        end,
+    }, { __index = function(_, k) error("eink-test uses C." .. k) end })
+    rawset(_G, "GZ_EINK_C", fakeC); rawset(_G, "GZ_EINK_LOG", "LOG"); rawset(_G, "GZ_EINK_SYS", "/nonexistent/s1d13521fb.0")
+    local saved = io.stdout
+    io.stdout = { write = function() end, flush = function() end }
+    local ok, r = pcall(dofile, REPO .. "/platform/nook/eink-test.lua")
+    io.stdout = saved
+    check(ok and r == true, "runs to the end " .. tostring(r))
+    local want = { 0x4540, 0x4540, 0x4540, 0x4528, 0x4529, 0x4528, 0x4529, 0x4522, 0x4511, 0x4547, 0x4523, 0x4540, 0x4536, 0x4528, 0x4529 }
+    local got = {}
+    for i, c in ipairs(ioctls) do got[i] = c.req end
+    check(table.concat(got, ",") == table.concat(want, ","), "the controller's commands in order: " .. table.concat(got, ","))
+    local before = true
+    for _, c in ipairs(ioctls) do
+        if c.fd ~= 12 or not (c.last or ""):find(" step %d+ ") or not c.synced then before = false end
+    end
+    check(before, "every command on the e-ink device, its step written and synced first")
+    check(lines[#lines]:find("every step answered"), "the end is logged")
+    check(table.concat(closed, ",") == "10,11,12,3", "the other screens, the e-ink device and the log closed: " .. table.concat(closed, ","))
+    lines, ioctls = {}, {}
+    fakeC.open = function(path) return path == "LOG" and 3 or -1 end
+    io.stdout = { write = function() end, flush = function() end }
+    ok, r = pcall(dofile, REPO .. "/platform/nook/eink-test.lua")
+    io.stdout = saved
+    check(ok and r == false and #ioctls == 0 and lines[#lines]:find("no S1D13521"), "no e-ink controller: says so, sends nothing")
+    rawset(_G, "GZ_EINK_C", nil); rawset(_G, "GZ_EINK_LOG", nil); rawset(_G, "GZ_EINK_SYS", nil)
+end
+
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

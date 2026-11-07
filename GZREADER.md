@@ -339,6 +339,16 @@ To try GZreader's own e-ink refreshes (faster, fewer flashes; this froze
 a Nook on its first refresh, so only if you're ready to restart it):
 `adb shell "GZ_NOOK_EPD=direct sh /data/gzreader/gzreader.sh"`.
 
+To find out where those refreshes hang, the e-ink test sends the e-ink
+controller the same commands one at a time, writing each to
+`/data/gzreader/eink-test.log` before it's sent (a small black square
+near the top left, then the Nook's own redraw), and returns to the Nook
+instead of starting GZreader:
+`adb shell "GZ_NOOK_EINK_TEST=1 sh /data/gzreader/gzreader.sh"`.
+If the Nook freezes, hold power to restart it, then send
+`adb shell cat /data/gzreader/eink-test.log`: the last "step" line
+without its "ok" is the command that hung.
+
 ### What to send back
 
 `/data/gzreader/gzreader-start.log`, `/data/gzreader/koreader/crash.log`
