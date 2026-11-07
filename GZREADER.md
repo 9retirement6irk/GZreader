@@ -259,17 +259,18 @@ exiting or restarting the Nook.
 ### Both screens
 
 - **The e-ink page** shows GZreader as on a Kindle 4, refreshed the way
-  Android does it: through the Nook's kernel, and every refresh is of the
-  whole page, with a flash. So GZreader asks for as few as it can: after
-  a tap or a button press it waits until the screen has stopped changing
-  (a fraction of a second) and refreshes once, so a tap, the menu it opens
-  and the status bar are one flash. A popup that opens by itself (a
-  download's progress, a message) shows at once, and its progress bar
-  updates every few seconds. Small changes on their own (the clock, the
-  battery, the footer while you read) wait for the next refresh, five
-  minutes at most. Sending updates straight to the e-ink controller,
-  without the flash, froze the Nook every time it was tried, so GZreader
-  doesn't.
+  Android does it, through the Nook's kernel: moving the selection, menus,
+  the clock and other changes refresh just the part that changed, without
+  a flash. A full refresh (with a flash, which clears the ghosting) comes
+  when GZreader asks for one, as on a Kindle: every few page turns, and
+  when a full-screen view opens or closes. After a tap or a button press
+  GZreader waits until the screen has stopped changing (a fraction of a
+  second) and refreshes once. Sending updates straight to the e-ink
+  controller froze the Nook every time it was tried, so GZreader doesn't.
+  If the screen doesn't keep up with what you do (a menu that doesn't
+  appear until the next flash), go back to a full refresh every time
+  (as up to 1.26.6) with `adb shell touch /data/gzreader/eink-flash` and
+  start GZreader again; `adb shell rm /data/gzreader/eink-flash` undoes it.
 - **The colour touchscreen** is what you drive it with, and it changes with
   what you're doing:
   - **Controls** (Home, menus, lists): ▲ ▼ ◀ ▶ and **OK** (the Kindle 4's

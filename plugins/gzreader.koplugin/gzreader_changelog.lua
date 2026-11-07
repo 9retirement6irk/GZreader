@@ -7,6 +7,7 @@ return {
             "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",
             "How long something kept the e-reader awake is timed on a clock that doesn't jump (the log said 26 years after a run-down clock was set).",
             "Test builds: the update and its data are read from the same commit of the updates branch. Right after a new test build, GitHub's file server could still hand out the last one's data with the new zip, and the update said it was incomplete.",
+            "Nook 1st Edition: no flash when the selection moves, a menu opens or the clock changes. GZreader now refreshes the e-ink page the way Android does on this Nook, just the part that changed, without a flash; a full refresh with a flash comes only when one is asked for (every few page turns, against ghosting). If the screen doesn't keep up, `touch /data/gzreader/eink-flash` over adb brings back a full refresh every time (see GZREADER.md).",
         },
     },
     {

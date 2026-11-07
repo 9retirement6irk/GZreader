@@ -7,8 +7,13 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   colour touchscreen. Panning it (or its ioctl 0x4642) copies the bottom
   part to the LCD, turned 90° by the 2D engine (bravo_virtualfb.c).
 - "S1D13521", the Epson Broadsheet e-ink controller. Android's way is to
-  draw the page into bravo-vfb and let the kernel convert it to grey and
-  refresh the changed rows, always with the flashing GC waveform. GZreader
+  draw the page into bravo-vfb and pan it (FBIOPAN_DISPLAY): the kernel's
+  e-ink thread then converts it to grey, finds the rows that changed and
+  refreshes just those areas with the GU waveform, without a flash
+  (Softroot 2.5.1's kernel: bravo_vfb_pan → s1d13521if_dirty + _trigger →
+  s1d13521fb_sync_thread → do_convert_display → update_regions →
+  bs_cmd_upd_part_area(2, …)). Its sysfs "redraw" is a full GC refresh,
+  with the flash (redraw_store → bs_cmd_upd_full(3, …)). GZreader
   instead sends its 8-bit grey page straight to the controller and picks the
   waveform for each refresh, like on the Kindles (s1d13521ioctl.h: load an
   area, write the pixels in bursts, update the area with a waveform), after
@@ -17,8 +22,10 @@ github.com/JesusFreke/nook-linux-kernel) drives them:
   at the direct way froze the whole Nook (three step-by-step test runs: the
   first few register reads work, the next access of any kind hangs it), so
   Android's way it is; GZ_NOOK_EPD=direct is left only for experiments.
-  Each kernel refresh is a full GC flash, so framebuffer.lua asks for as
-  few as it can.
+  Refreshes pan the vfb (no flash) unless a flashing one is asked for
+  (redraw); GZ_NOOK_EPD=flash (the start script sets it when
+  /data/gzreader/eink-flash exists) redraws every time, as up to 1.26.6.
+  framebuffer.lua puts several updates into one refresh.
 
 The emulator replaces this module (package.preload["device/nook/display_hw"]).
 ]]
@@ -98,7 +105,9 @@ function HW.lcdMode()
 end
 
 function HW.epdMode()
-    return os.getenv("GZ_NOOK_EPD") == "direct" and "direct" or "kernel"
+    local m = os.getenv("GZ_NOOK_EPD")
+    if m == "direct" or m == "flash" then return m end
+    return "kernel"
 end
 
 --- The colour screen and its touch panel as Android leaves them asleep
@@ -191,10 +200,14 @@ function HW:open()
             self.direct = false
         end
     end
+    -- (refreshes without a flash: by panning the vfb)
+    self.partial = not self.direct and HW.epdMode() == "kernel"
+    self.pans = 0
     self:wakeLcd()
     self.params = ffi.new("struct gz_s1d_params")
     self.hwc = ffi.new("struct gz_s1d_hwc")
-    logger.info("nook: vfb", self.vfb_path, "e-ink", self.epd_path or "-", self.direct and "direct" or "through the kernel")
+    logger.info("nook: vfb", self.vfb_path, "e-ink", self.epd_path or "-", self.direct and "direct"
+        or (self.partial and "through the kernel, changed areas without a flash" or "through the kernel, full redraws"))
     return self
 end
 
@@ -250,6 +263,28 @@ function HW:einkRedraw()
     HW.sys.write(SYS_EINK .. "/redraw", 1)
 end
 
+--- …or, without the flash, Android's way: pan the vfb (to where it is), and
+--- the kernel's e-ink thread refreshes the areas that changed (GU).
+function HW:einkPan()
+    local t0 = HW.clock()
+    self.vinfo.yoffset = 0
+    -- (it also asks for the colour screen's copy, which fails without a 2D
+    -- engine and says so: what it answers doesn't matter here)
+    HW.sys.ioctl(self.vfb_fd, 0x4606, self.vinfo) -- (FBIOPAN_DISPLAY)
+    self.pans = self.pans + 1
+    local ms = (HW.clock() - t0) * 1000
+    if self.pans <= 3 or ms > 500 then
+        logger.info(string.format("nook: e-ink refresh without a flash #%d took %.0f ms", self.pans, ms))
+    end
+end
+
+--- Seconds (monotonic, fractional); a test replaces it.
+function HW.clock()
+    local ok, time = pcall(require, "ui/time")
+    if ok and time.now then return time.to_s(time.now()) end
+    return os.clock()
+end
+
 --- The colour screen's own framebuffer (s3cfb: 240 × 480 portrait, RGB565,
 --- the 480 × 144 picture turned 90° in columns 96–239). The kernel copies
 --- the vfb's rows 800–943 there with the 2D engine; on a Nook whose kernel
@@ -302,12 +337,21 @@ function HW:lcd(bb)
         logger.info("nook: colour screen", self.lcd_direct and ("written directly (" .. (self.lcd_ccw and "ccw" or "cw") .. ")")
             or "through the vfb (2D engine)")
     end
-    if self.lcd_direct then return self:lcdDirect(bb) end
+    if self.lcd_direct then
+        -- (also into the vfb's colour rows: a pan asks the kernel to copy
+        -- those to the colour screen, so they're never an old picture)
+        if self.partial then self:lcdIntoVfb(bb) end
+        return self:lcdDirect(bb)
+    end
+    self:lcdIntoVfb(bb)
+    HW.sys.ioctl(self.vfb_fd, BRAVO_VFB_UPDATE, nil)
+end
+
+function HW:lcdIntoVfb(bb)
     local line = self.line
     for row = 0, LCD_H - 1 do
         ffi.copy(self.map + (EINK_H + row) * line, ffi.cast("uint8_t *", bb.data) + row * bb.stride, LCD_W * 2)
     end
-    HW.sys.ioctl(self.vfb_fd, BRAVO_VFB_UPDATE, nil)
 end
 
 --- Wake the colour screen and its touch panel, keeping how Android left
