@@ -225,5 +225,35 @@ check(got[5] == 2, "fast: DU")
 fake:refreshUIImp(590, 790, 50, 50)
 check(got[3] == 599 and got[4] == 799, "clipped to the screen")
 
+------------------------------------------------------------------ Wi-Fi power saving
+print("Nook 1st Edition: Wi-Fi power saving (no iwconfig on Android 1.5)")
+do
+    local W = require("device/nook/wifi_power")
+    check(ffi.sizeof("struct gz_iwreq") == 32 and ffi.offsetof("struct gz_iw_param", "disabled") == 5,
+        "struct iwreq as the kernel has it (32 bytes; iw_param.disabled at 5)")
+    local power_off, calls = false, {}
+    local real = W.C
+    W.C = setmetatable({
+        socket = function() return 7 end,
+        close = function() return 0 end,
+        strerror = function() return ffi.cast("char *", "nope") end,
+        ioctl = function(fd, req, r)
+            calls[#calls + 1] = { req = req, name = ffi.string(r.name), disabled = r.u.power.disabled }
+            if req == 0x8B2D then r.u.power.disabled = power_off and 1 or 0 end
+            if req == 0x8B2C then power_off = r.u.power.disabled == 1 end
+            return 0
+        end,
+    }, { __index = real })
+    check(W.get("eth0") == "on", "power saving on (as the Nook leaves it)")
+    check(W.set("eth0", false) and power_off and calls[2].req == 0x8B2C and calls[2].name == "eth0" and calls[2].disabled == 1,
+        "switched off: SIOCSIWPOWER on eth0 with disabled = 1 (iwconfig eth0 power off)")
+    check(W.get("eth0") == "off", "…and reads back off")
+    W.C = setmetatable({ ioctl = function() return -1 end, socket = function() return 7 end, close = function() return 0 end,
+        strerror = function() return ffi.cast("char *", "Operation not supported") end }, { __index = real })
+    local st, err = W.get("eth0")
+    check(st == nil and err == "Operation not supported", "a driver that can't: says why")
+    W.C = real
+end
+
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

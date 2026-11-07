@@ -1138,6 +1138,20 @@ do
         "staying awake: a holder that has ended is let go of, the others kept")
     Awake.release("other")
     check(cmds[#cmds]:match("preventScreenSaver 0"), "…and the Kindle may sleep again")
+    -- the wall clock set while something is held (a Nook's run-down clock): the time held still right
+    local mono, logged = 100, {}
+    local orig_now = Awake.now
+    Awake.now = function() return mono end
+    Awake.hold("phone", { what = "phone page" })
+    mono = 180
+    local Log = require("gzreader_log")
+    local orig_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    Awake.release("phone")
+    Log.info = orig_info
+    Awake.now = orig_now
+    check(logged[1] and logged[1]:match("after 80s$"), "staying awake: timed on a clock that doesn't jump (" .. tostring(logged[1]) .. ")")
+    check(type(Awake.now()) == "number", "…which is there")
     Awake.exec = exec
 end
 
