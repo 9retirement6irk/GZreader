@@ -34,6 +34,22 @@ def check(cond, name):
 procs = []
 import atexit
 atexit.register(lambda: [p.terminate() for p in procs])  # (also when a step fails)
+def lua_chunks(path, seconds=15):
+    """gzreader_mp4.lua's conversion (what GZreader does on the Kindle): {name: bytes}, index.json's text."""
+    out = tempfile.mkdtemp()
+    script = os.path.join(out, "convert.lua")
+    with open(script, "w") as f:
+        f.write("package.path = %r .. '/?.lua;' .. package.path\n" % os.path.join(REPO, "plugins", "gzreader.koplugin")
+                + "local Mp4 = require('gzreader_mp4'); Mp4.CHUNK_SECONDS = %s\n" % seconds
+                + "local r = assert(Mp4.convert(arg[1], arg[2])); io.write(Mp4.indexJson(r))\n")
+    os.makedirs(os.path.join(out, "c"))
+    idx = subprocess.run(["luajit", script, path, os.path.join(out, "c")], capture_output=True, check=True).stdout.decode()
+    got = {}
+    for n in os.listdir(os.path.join(out, "c")):
+        with open(os.path.join(out, "c", n), "rb") as f: got[n] = f.read()
+    shutil.rmtree(out)
+    return got, idx
+
 def spawn(*args):
     p = subprocess.Popen([sys.executable, "-I", *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ))
     procs.append(p)
@@ -49,6 +65,9 @@ def wait_port(port):
         except Exception:
             time.sleep(0.1)
 
+# (the single-file audiobook Grimmory streams: a real M4A, which the page prepares for the Kindle)
+TEST_M4A = os.path.join(REPO, "plugins", "gzreader.koplugin", "audio", "test.m4a")
+os.environ.setdefault("GZ_TEST_M4A", TEST_M4A)
 spawn(os.path.join(HERE, "mock_grimmory.py"), str(GP))
 spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample")
 spawn(os.path.join(HERE, "mock_plex.py"), str(PP))
@@ -400,6 +419,37 @@ with sync_playwright() as pw:
     check(page_weeks == week_of, "reading stats: the page's week numbers match GZreader's around New Year (%s)" % page_weeks)
     print("    (page log)\n      " + log.replace("\n", "\n      "))
 
+    # M4B/M4A prepared for the Kindle here: the same files as gzreader_mp4.lua's (short chunks: many of them)
+    for src in (os.path.join(HERE, "media", "tone.m4a"), TEST_M4A):
+        for secs in (15, 0.25):
+            want, want_idx = lua_chunks(src, secs)
+            got = page.evaluate("""async ([b64, secs]) => {
+                const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), files = {};
+                const keep = GZSync.Mp4.CHUNK_SECONDS; GZSync.Mp4.CHUNK_SECONDS = secs;
+                try {
+                    const r = await GZSync.Mp4.convert(new Blob([bytes]), async (n, d) => {
+                        const b = new Uint8Array(await d.arrayBuffer()); let s = '';
+                        for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+                        files[n] = btoa(s);
+                    });
+                    return { index: GZSync.Mp4.indexJson(r), files };
+                } finally { GZSync.Mp4.CHUNK_SECONDS = keep; }
+            }""", [base64.b64encode(open(src, "rb").read()).decode(), secs])
+            gotf = {k: base64.b64decode(v) for k, v in got["files"].items()}
+            check(got["index"] == want_idx and gotf == want and len(want) >= (1 if secs == 15 else 3),
+                  "audio prepared in the browser = on the Kindle, byte for byte (%s, %s s chunks: %d files)" % (os.path.basename(src), secs, len(want)))
+    fb = page.evaluate("""async () => {
+        const junk = new TextEncoder().encode('not an mp4 at all, just bytes');
+        const ok = await GZSync.Mp4.bring('in/prep-test', 'x.m4b', new Response(junk).body, null, 'Junk');
+        const s = await (await (await window.testRoot.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+        const d = await (await s.getDirectoryHandle('in')).getDirectoryHandle('prep-test');
+        const names = []; for await (const n of d.keys()) names.push(n);
+        const text = await (await (await d.getFileHandle('x.m4b')).getFile()).text();
+        await (await s.getDirectoryHandle('in')).removeEntry('prep-test', { recursive: true });
+        return [ok, names, text];
+    }""")
+    check(fb == [False, ["x.m4b"], "not an mp4 at all, just bytes"],
+          "a file that can't be prepared here goes to the Kindle as it is (GZreader prepares it) %r" % (fb,))
     res = page.evaluate("""async () => {
         const root = window.testRoot;
         const files = {};
@@ -523,7 +573,18 @@ def col(key):
 c1, c2, c3 = col("201"), col("202"), col("203")
 check(c1 and [t["file"] for t in c1["tracks"]] == ["01.mp3", "02.mp3"] and G + mus["201"]["dir"] + "/cover.jpg" in files,
       "music: an MP3 album as it is, with its cover")
-check(c2 and c2["tracks"][0]["file"] == "01.m4a", "music: AAC in M4A as it is (the Kindle converts it)")
+want, want_idx = lua_chunks(os.path.join(HERE, "media", "tone.m4a"))
+d2 = c2 and G + mus["202"]["dir"] + "/01.m4a.chunks/"
+check(c2 and c2["tracks"][0]["file"] == "01.m4a" and G + mus["202"]["dir"] + "/01.m4a" not in files
+      and files.get(d2 + "index.json", b"").decode() == want_idx and all(files.get(d2 + n) == b for n, b in want.items()),
+      "music: AAC in M4A prepared for the Kindle here (its chunks, not the M4A)")
+ab33 = next((a for a in inbox.get("audiobooks", []) if a["id"] == 33), None)
+want, want_idx = lua_chunks(TEST_M4A)
+d33 = ab33 and G + ab33["dir"] + "/audiobook.m4b.chunks/"
+check(ab33 and G + ab33["dir"] + "/audiobook.m4b" not in files and files.get(d33 + "index.json", b"").decode() == want_idx
+      and all(files.get(d33 + n) == b for n, b in want.items()),
+      "audiobook: the M4B prepared for the Kindle here (its chunks, not the M4B)")
+check(not [k for k in files if k.startswith("gzsync-prepare/")], "…and nothing left in the browser's own storage")
 f3 = c3 and c3["tracks"][0].get("file")
 check(f3 and files.get(G + mus["203"]["dir"] + "/" + f3, b"")[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xfa") or (f3 and len(files.get(G + mus["203"]["dir"] + "/" + f3, b"")) > 1000),
       "music: FLAC made into MP3 by Plex, its MPEG-TS taken apart in the browser")

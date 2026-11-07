@@ -43,7 +43,8 @@ STATE = {
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 BOOKS = [
     {"id": i, "title": f"Book {i:02d}", "authors": ["Author"], "primaryFileType": t,
-     "primaryFileName": f"book{i}.{t.lower()}", "fileSizeKb": 300, "readProgress": 12.5 if i == 1 else None,
+     # (an audiobook in one file is named as on disk, an M4B; book 32 is folder-based)
+     "primaryFileName": f"book{i}.m4b" if t == "AUDIOBOOK" and i != 32 else f"book{i}.{t.lower()}", "fileSizeKb": 300, "readProgress": 12.5 if i == 1 else None,
      "primaryFileId": 1000 + i}
     for i, t in enumerate(["EPUB"] * 30 + ["AUDIOBOOK"] * 3 + ["PDF"] * 2, start=1)
 ]

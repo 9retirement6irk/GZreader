@@ -10,6 +10,7 @@ return {
             "Nook 1st Edition: no flash when the selection moves, a menu opens or the clock changes. GZreader now refreshes the e-ink page the way Android does on this Nook, just the part that changed, without a flash; a full refresh with a flash comes only when one is asked for (every few page turns, against ghosting). If the screen doesn't keep up, `touch /data/gzreader/eink-flash` over adb brings back a full refresh every time (see GZREADER.md).",
             "Sync page (Kindles without Wi‑Fi): sleep screen pictures can be iPhone photos (HEIC). Browsers other than Safari can't open them (\"this browser can't open that kind of file\"), so the page now converts them itself, in the browser.",
             "Sync page: a book, audiobook or album chosen on the page that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list. It stayed listed as coming with the next sync, and was brought again after you deleted it from the Kindle.",
+            "Sync page (Kindles without Wi‑Fi): M4B audiobooks and M4A music are prepared for the Kindle on the computer, during the sync. The Kindle no longer spends minutes after the sync converting them (8 minutes and more on a Kindle DX): they play straight away.",
         },
     },
     {
