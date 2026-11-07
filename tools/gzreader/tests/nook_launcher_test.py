@@ -60,11 +60,11 @@ def main():
     with open(bb, "w") as f:
         if real:
             # a real BusyBox's shell (ash: read -t, exec 3<>, as on the Nook); no remounting here
-            # (its shell; the other commands: this computer's)
-            f.write('#!/bin/sh\ncase "$1" in sh) exec %s "$@" ;; mount) exit 1 ;; esac\nexec "$@"\n' % real)
+            # (its shell; the other commands: this computer's; root, as on the Nook (CI runs as a user))
+            f.write('#!/bin/sh\ncase "$1" in sh) exec %s "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; esac\nexec "$@"\n' % real)
         else:
             f.write('#!/bin/bash\n# the Nook\'s BusyBox, played by this computer\'s commands\n'
-                    'case "$1" in sh) shift; exec bash "$@" ;; mount) exit 1 ;; esac\nexec "$@"\n')
+                    'case "$1" in sh) shift; exec bash "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; esac\nexec "$@"\n')
     print("BusyBox:", real or "none here (bash and this computer's commands)")
     os.chmod(bb, 0o755)
     starts = os.path.join(work, "starts")
