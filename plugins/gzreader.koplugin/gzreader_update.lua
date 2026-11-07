@@ -325,6 +325,87 @@ local function rmTree(p)
     end
 end
 
+--- Copy a file or a folder (and what's in it) to `dest`. Returns true or nil.
+local function copyTree(from, dest)
+    local mode = lfs.attributes(from, "mode")
+    if mode == "directory" then
+        if not isDir(dest) and not lfs.mkdir(dest) then return nil end
+        for e in lfs.dir(from) do
+            if e ~= "." and e ~= ".." and not copyTree(from .. "/" .. e, dest .. "/" .. e) then return nil end
+        end
+        return true
+    end
+    local inf = io.open(from, "rb")
+    if not inf then return nil end
+    local out = io.open(dest, "wb")
+    if not out then inf:close(); return nil end
+    local ok = true
+    while true do
+        local chunk = inf:read(65536)
+        if not chunk then break end
+        if not out:write(chunk) then ok = false; break end
+    end
+    inf:close()
+    if not out:close() then ok = false end
+    return ok or nil
+end
+Update.copyTree = copyTree
+
+--- Write `data` to `path`, making its folders. Returns true or nil.
+function Update.writeFile(path, data)
+    local dir = path:match("^(.*)/[^/]*$")
+    if dir and not isDir(dir) then
+        local at = ""
+        for part in dir:gmatch("[^/]+") do
+            at = at .. "/" .. part
+            if not isDir(at) then lfs.mkdir(at) end
+        end
+        if dir:sub(1, 1) ~= "/" then return nil end
+    end
+    local f = io.open(path, "wb")
+    if not f then return nil end
+    local ok = f:write(data)
+    return (f:close() and ok) and true or nil
+end
+
+--- Bytes free for us on the disk that holds `path` (nil: can't tell); a
+--- test replaces it.
+function Update.freeSpace(path)
+    local ok, free = pcall(function()
+        local ffi = require("ffi")
+        require("ffi/posix_h")
+        local st = ffi.new("struct statvfs")
+        if ffi.C.statvfs(path, st) ~= 0 then return nil end
+        return tonumber(st.f_bavail) * tonumber(st.f_bsize)
+    end)
+    return ok and free or nil
+end
+
+--- The Nook's card (the start script says where), or nil; a test replaces it.
+function Update.cardDir() return os.getenv("GZ_NOOK_HOME") end
+
+--- Where an update is downloaded and unpacked: next to GZreader, or, when
+--- that disk hasn't room for it (the Nook 1st Edition: GZreader shares a
+--- 242 MB disk with Android, and it can be full), on the Nook's card.
+--- `need`: bytes (the download and what it unpacks to). Returns the folder
+--- and whether it's elsewhere (another disk: installed by copying).
+function Update.workDir(need)
+    local base = root()
+    local here = base .. "/.gzreader-update"
+    local free = Update.freeSpace(base)
+    if not free or free >= need then return here, false end
+    local card = Update.cardDir()
+    if card and card ~= "" and isDir(card) then
+        local cfree = Update.freeSpace(card)
+        if not cfree or cfree >= need then
+            lfs.mkdir(card .. "/GZreader")
+            Log.info("update: not enough room next to GZreader (" .. math.floor(free / 1048576) .. " MB free), using the card")
+            return card .. "/GZreader/.gzreader-update", true
+        end
+    end
+    return here, false -- (try anyway: it says what failed)
+end
+
 --- The Nook's scripts in an update, and where they go next to koreader/.
 local NOOK_SCRIPTS = { ["nook-gzreader.sh"] = "gzreader.sh", ["nook-launcher.sh"] = "launcher.sh" }
 local NOOK_SCRIPT = "nook-gzreader.sh" -- (the start script: a Nook install has it)
@@ -368,7 +449,9 @@ function Update.apply(zip, opts)
     opts = opts or {}
     local Archiver = require("ffi/archiver")
     local base = root()
-    local stage = base .. "/.gzreader-update"
+    -- (opts.stage: on another disk, the Nook's card when GZreader's is full)
+    local stage = opts.stage or (base .. "/.gzreader-update")
+    local elsewhere = opts.stage ~= nil
     rmTree(stage)
     lfs.mkdir(stage)
     local reader = Archiver.Reader:new()
@@ -384,7 +467,16 @@ function Update.apply(zip, opts)
                 dest = target and ("koreader/" .. target)
             end
             if dest then
-                if not reader:extractToPath(p, stage .. "/" .. dest) then
+                local okx
+                if elsewhere then
+                    -- (the card is FAT: libarchive's own writing fails there
+                    -- setting owners and modes; the bytes are written here)
+                    local data = reader:extractToMemory(p)
+                    okx = data and Update.writeFile(stage .. "/" .. dest, data)
+                else
+                    okx = reader:extractToPath(p, stage .. "/" .. dest)
+                end
+                if not okx then
                     reader:close(); rmTree(stage); return nil, "could not unpack " .. p
                 end
                 n = n + 1
@@ -433,18 +525,48 @@ function Update.apply(zip, opts)
             if exists(base .. "/" .. rel .. ".gz-old") then os.rename(base .. "/" .. rel .. ".gz-old", base .. "/" .. rel) end
         end
     end
-    for _i, rel in ipairs(items) do
-        local cur, old = base .. "/" .. rel, base .. "/" .. rel .. ".gz-old"
-        rmTree(old)
-        if exists(cur) and not os.rename(cur, old) then rollback(); rmTree(stage); return nil, "could not move " .. rel end
-        if not os.rename(src .. "/" .. rel, cur) then
-            if exists(old) then os.rename(old, cur) end
-            rollback(); rmTree(stage)
-            return nil, "could not install " .. rel
+    if elsewhere then
+        -- Another disk: no renaming across. Each part: the current one
+        -- copied next to the new one (to put back), taken out, the new one
+        -- copied in. Never more than one part's difference in room needed.
+        local keep = stage .. "/kept"
+        lfs.mkdir(keep)
+        lfs.mkdir(keep .. "/plugins")
+        local function putBack()
+            for i = #done, 1, -1 do
+                local rel = done[i]
+                rmTree(base .. "/" .. rel)
+                if exists(keep .. "/" .. rel) and not Update.copyTree(keep .. "/" .. rel, base .. "/" .. rel) then
+                    Log.err("update: could not put back", rel)
+                end
+            end
         end
-        done[#done + 1] = rel
+        for _i, rel in ipairs(items) do
+            local cur = base .. "/" .. rel
+            if exists(cur) and not Update.copyTree(cur, keep .. "/" .. rel) then
+                putBack(); rmTree(stage); return nil, "could not keep a copy of " .. rel .. " (is the card full?)"
+            end
+            done[#done + 1] = rel
+            rmTree(cur)
+            if not Update.copyTree(src .. "/" .. rel, cur) then
+                putBack(); rmTree(stage)
+                return nil, "could not install " .. rel .. " (not enough room?)"
+            end
+        end
+    else
+        for _i, rel in ipairs(items) do
+            local cur, old = base .. "/" .. rel, base .. "/" .. rel .. ".gz-old"
+            rmTree(old)
+            if exists(cur) and not os.rename(cur, old) then rollback(); rmTree(stage); return nil, "could not move " .. rel end
+            if not os.rename(src .. "/" .. rel, cur) then
+                if exists(old) then os.rename(old, cur) end
+                rollback(); rmTree(stage)
+                return nil, "could not install " .. rel
+            end
+            done[#done + 1] = rel
+        end
+        for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
     end
-    for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
     rmTree(stage)
     -- the Nook's scripts: each a whole new file renamed over the old one
     -- (sh reads a running script as it goes; it keeps the old file)
@@ -501,7 +623,9 @@ end
 function Update.download(info)
     local ProgressbarDialog = require("gzreader_progress")
     local Net = require("gzreader_net")
-    local zip = DataStorage:getDataDir() .. "/cache/gzreader-update.zip"
+    -- (the download, and what it unpacks to: about three times its size)
+    local work, elsewhere = Update.workDir((info.size or (12 * 1024 * 1024)) * 4)
+    local zip = elsewhere and (work .. ".zip") or (DataStorage:getDataDir() .. "/cache/gzreader-update.zip")
     lfs.mkdir(DataStorage:getDataDir() .. "/cache")
     os.remove(zip)
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
@@ -547,7 +671,7 @@ function Update.download(info)
         local busy = InfoMessage:new{ text = _("Installing… Please wait."), timeout = 0, dismissable = false, modal = true }
         UIManager:show(busy)
         UIManager:forceRePaint()
-        local ok, err = Update.apply(zip, { source = info.source, version = info.version })
+        local ok, err = Update.apply(zip, { source = info.source, version = info.version, stage = elsewhere and work or nil })
         os.remove(zip)
         UIManager:close(busy)
         if not ok then
