@@ -5,7 +5,8 @@ Some EPUBs are scans (Diary of a Wimpy Kid: every page is a 385 x 625 JPEG
 of the printed page, text included), so the font size does nothing, and
 with the book's own margins and padding the pictures came out small, or
 cut off at the bottom of a page. GZreader recognizes such books when they
-open (nearly every chapter file is pictures with next to no text) and, once
+open (nearly every chapter file, or part of the book when it's all in one
+or two files, is pictures with next to no text) and, once
 per book:
 - adds a book-specific style tweak that makes each picture as tall as the
   space between ZenOS's title bar and the footer, keeping its shape, with
@@ -194,29 +195,58 @@ function PB.detectWith(read)
     local ok_s, Sync = pcall(require, "gzreader_sync")
     if not ok_s then return false end
     local ok, spine = pcall(Sync.parseSpine, read)
-    if not ok or not spine or #spine.frag < 3 then return false end
+    if not ok or not spine or #spine.frag < 1 then return false end
     local sampled, pictures, text_total, img_total = 0, 0, 0, 0
+    local function sample(body)
+        sampled = sampled + 1
+        local imgs = select(2, body:gsub("<[%w:]*img[%s>/]", "")) + select(2, body:gsub("<[%w:]*image[%s>/]", ""))
+        local text = body:gsub("<[^>]*>", " "):gsub("&[#%w]+;", " "):gsub("%s+", "")
+        img_total = img_total + imgs
+        text_total = text_total + #text
+        if imgs > 0 and #text < 100 * imgs then pictures = pictures + 1 end
+    end
+    local function bodyOf(html) return html:match("<[%w:]*body[^>]*>(.*)</[%w:]*body>") or html end
     local n = #spine.frag
-    -- skip the first and last few (cover, title, copyright pages)
-    local first, last = math.min(3, n), math.max(1, n - 1)
-    local step = math.max(1, math.floor((last - first) / 10))
-    for i = first, last, step do
-        local html = read(spine.frag[i])
-        if html then
-            sampled = sampled + 1
-            local body = html:match("<[%w:]*body[^>]*>(.*)</[%w:]*body>") or html
-            local imgs = select(2, body:gsub("<[%w:]*img[%s>/]", "")) + select(2, body:gsub("<[%w:]*image[%s>/]", ""))
-            local text = body:gsub("<[^>]*>", " "):gsub("&[#%w]+;", " "):gsub("%s+", "")
-            img_total = img_total + imgs
-            text_total = text_total + #text
-            if imgs > 0 and #text < 100 * imgs then pictures = pictures + 1 end
+    local unit = "files,"
+    if n >= PB.FEW_FILES then
+        -- skip the first and last few (cover, title, copyright pages)
+        local first, last = 3, n - 1
+        local step = math.max(1, math.floor((last - first) / 10))
+        for i = first, last, step do
+            local html = read(spine.frag[i])
+            if html then sample(bodyOf(html)) end
+            if sampled >= 12 then break end
         end
-        if sampled >= 12 then break end
+    else
+        -- the whole book in a few big files (one file of 450 pictures, a
+        -- cover page and a contents page): skipping the first and last few
+        -- left nothing to look at (1.26.4 said "0 files … no"). Look at
+        -- parts of the book instead: all of it cut into 12, without the
+        -- first and last part.
+        local all = {}
+        for i = 1, n do
+            local html = read(spine.frag[i])
+            if html then all[#all + 1] = bodyOf(html) end
+        end
+        local book = table.concat(all, "\n")
+        local len, parts = #book, 12
+        local cuts = { 1 }
+        for k = 1, parts - 1 do
+            -- cut before a tag, so no tag is counted in two parts or none
+            local at = book:find("<", math.floor(k * len / parts) + 1, true) or (len + 1)
+            cuts[#cuts + 1] = math.max(at, cuts[#cuts])
+        end
+        cuts[#cuts + 1] = len + 1
+        for k = 2, parts - 1 do
+            sample(book:sub(cuts[k], cuts[k + 1] - 1))
+        end
+        unit = "parts of " .. n .. " files,"
     end
     local yes = sampled >= 2 and pictures >= sampled * 0.7 and img_total >= sampled
-    Log.info("picture book check:", sampled, "files,", pictures, "pictures-only,", img_total, "images,", text_total, "chars ->", yes and "yes" or "no")
+    Log.info("picture book check:", sampled, unit, pictures, "pictures-only,", img_total, "images,", text_total, "chars ->", yes and "yes" or "no")
     return yes
 end
+PB.FEW_FILES = 6
 
 local function stripOurs(css)
     if not css then return nil end

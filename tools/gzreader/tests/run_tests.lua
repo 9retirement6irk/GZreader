@@ -2192,6 +2192,42 @@ do
         reloadDocument = function() reopened = reopened + 1 end,
         handleEvent = function(_, ev) if ev.name == "SetPageMargins" then relayouts = relayouts + 1 end end }
     check(select(1, PB.imageSize(files["OEBPS/images/logo.jpg"])) == 338, "picture size read from the JPEG header")
+
+    -- recognizing picture books, however the book is split into files
+    local function epubOf(spine_files)
+        local man, sp, fs = {}, {}, { ["META-INF/container.xml"] = CONTAINER }
+        for i, body in ipairs(spine_files) do
+            man[#man + 1] = string.format('<item id="f%d" href="Text/f%d.xhtml" media-type="application/xhtml+xml"/>', i, i)
+            sp[#sp + 1] = string.format('<itemref idref="f%d"/>', i)
+            fs[string.format("OEBPS/Text/f%d.xhtml", i)] = "<html><body>" .. body .. "</body></html>"
+        end
+        fs["OEBPS/content.opf"] = "<package><manifest>" .. table.concat(man) .. "</manifest><spine>" .. table.concat(sp) .. "</spine></package>"
+        return function(p) return fs[p] end
+    end
+    local function pics(a, b, text)
+        local t = {}
+        for i = a, b do
+            t[#t + 1] = string.format('<p><img src="../images/p%d.jpg"/></p>', i)
+            if text then t[#t + 1] = "<p>" .. text .. "</p>" end
+        end
+        return table.concat(t, "\n")
+    end
+    local cover = '<div><img src="../images/cover.jpg"/></div>'
+    local contents = "<h1>Contents</h1><ul>" .. string.rep("<li>Page so and so of the book</li>", 40) .. "</ul>"
+    local scans = {}
+    for i = 1, 20 do scans[i] = pics(i * 10, i * 10 + 9) end
+    check(PB.detectWith(epubOf(scans)), "picture book: a scan per page, in many files")
+    -- Dog Days as Grimmory had it: the whole book in one file between a cover and a contents page
+    check(PB.detectWith(epubOf({ cover, pics(1, 450), contents })), "picture book in one big file (with a cover and a contents page): recognized")
+    check(PB.detectWith(epubOf({ pics(1, 300) })), "…and as the only file")
+    check(PB.detectWith(epubOf({ cover, pics(1, 200), pics(201, 400), contents })), "…in a few big files")
+    local line = "For me, summer vacation is basically a three-month guilt trip, and everyone expects you to be outside."
+    check(not PB.detectWith(epubOf({ cover, pics(1, 450, line .. " " .. line), contents })),
+        "a converted PDF (pictures with the text as lines between them, one big file): not a picture book")
+    check(not PB.detectWith(epubOf({ cover, string.rep("<p>" .. line .. "</p>", 3000), contents })), "a novel in one file: not a picture book")
+    local chapters = {}
+    for i = 1, 3 do chapters[i] = string.rep("<p>" .. line .. "</p>", 300) end
+    check(not PB.detectWith(epubOf(chapters)), "a novel in three files: not a picture book")
     -- the picture sizes are read in a background job first, never on the screen's thread
     local reads = 0
     ui.document.getDocumentFileContent = function(_, p) if p:match("%.jpg$") then reads = reads + 1 end return files[p] end
