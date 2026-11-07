@@ -5209,6 +5209,12 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
             "e2e: the folder audiobook plays from its two tracks")
+        local ab33 = require("gzreader_audiobook").load(fake, "33")
+        local d33 = ab33 and require("gzreader_audiobook").dir(fake, "33")
+        local lfs = require("libs/libkoreader-lfs")
+        check(ab33 and ab33.tracks[1].chunks and #ab33.tracks[1].chunks.starts >= 1 and ab33.files[1]:match("^audiobook%.m4b%.chunks/c0%.aac$")
+            and lfs.attributes(d33 .. "/audiobook.m4b.chunks/c0.aac", "mode") == "file" and not lfs.attributes(d33 .. "/audiobook.m4b"),
+            "e2e: the M4B audiobook the page prepared plays from its chunks (nothing to convert on the Kindle)")
         local Music = require("gzreader_music")
         local mp3 = Music.load(Music.dirFor(fake, "album", "201"))
         local aac = Music.load(Music.dirFor(fake, "album", "202"))

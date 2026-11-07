@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Sync page (Kindles without Wi‑Fi): M4B audiobooks and M4A music are prepared for the Kindle on the computer, during the sync. The Kindle no longer spends minutes after the sync converting them (8 minutes and more on a Kindle DX): they play straight away.",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",

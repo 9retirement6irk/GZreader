@@ -1339,7 +1339,8 @@ gets a password or token.
     for (var i = 0; i < files.length; i++) {
       var r = await G.fetch(files[i].url);
       if (!r.ok) throw new HttpError(r.status, "Grimmory");
-      await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
+      if (Mp4.needs(files[i].name)) await Mp4.bring(dir, files[i].name, r.body, onBytes, q.title + (files.length > 1 ? " (" + (i + 1) + "/" + files.length + ")" : ""));
+      else await Drive.writeStream(Drive.sync, dir + "/" + files[i].name, r.body, onBytes);
     }
     try {
       var c = await G.fetch("/api/v1/audiobooks/" + q.id + "/cover");
@@ -1347,6 +1348,219 @@ gets a password or token.
     } catch (e) {}
     inbox.audiobooks.push({ id: q.id, dir: dir, info: info, primaryFileName: q.name, title: q.title, progress: progress || undefined });
   }
+
+  // ------------------------------------------------------------ M4B/M4A → ADTS AAC chunks
+
+  // The Kindle can decode AAC but can't open MP4 files, so GZreader repacks
+  // M4B/M4A audio once into ~15-second ADTS AAC files (gzreader_mp4.lua): on
+  // a Kindle DX that takes 8 minutes and more for a long book. Done here
+  // instead, with the same files (byte for byte: sync_page_test.py compares
+  // them with gzreader_mp4.lua's): <file>.chunks/c0.aac, c1.aac… and
+  // index.json, written last. GZreader then finds them ready and has nothing
+  // to do (Audiobook.prepare skips a track with an index; Music.trackReady).
+  // The download waits in the browser's own storage (not on the Kindle) while
+  // it's converted; if anything fails, the file goes to the Kindle as it is,
+  // and GZreader converts it as before.
+  var Mp4 = {
+    CHUNK_SECONDS: 15,
+    WINDOW: 4 << 20, // bytes read from the file at a time
+    CONTAINERS: { moov: true, trak: true, mdia: true, minf: true, stbl: true },
+    needs: function (name) { return /\.(m4a|m4b|mp4)$/i.test(name || ""); },
+    // reads of a Blob (a File) at any place, through a window
+    reader: function (blob) {
+      var w = null, wAt = 0;
+      return async function (pos, n) {
+        pos = Math.max(0, pos); n = Math.max(0, Math.min(n, blob.size - pos));
+        if (n <= 0) return new Uint8Array(0);
+        if (!w || pos < wAt || pos + n > wAt + w.length) {
+          if (n > Mp4.WINDOW) return new Uint8Array(await blob.slice(pos, pos + n).arrayBuffer());
+          wAt = pos;
+          w = new Uint8Array(await blob.slice(pos, Math.min(blob.size, pos + Mp4.WINDOW)).arrayBuffer());
+        }
+        return w.subarray(pos - wAt, pos - wAt + n);
+      };
+    },
+    u32: function (d, i) { return i + 4 <= d.length ? ((d[i] << 24) >>> 0) + (d[i + 1] << 16) + (d[i + 2] << 8) + d[i + 3] : 0; },
+    u64: function (d, i) { return Mp4.u32(d, i) * 4294967296 + Mp4.u32(d, i + 4); },
+    str: function (d, i, n) { return String.fromCharCode.apply(null, Array.prototype.slice.call(d.subarray(i, i + n))); },
+    // a table of 4- or 8-byte entries, whole (a long book's sample sizes: a few MB)
+    table: async function (read, at, n, width) {
+      var d = await read(at, n * width), out = new Float64Array(n);
+      for (var k = 0; k < n; k++) out[k] = (k + 1) * width <= d.length ? (width === 8 ? Mp4.u64(d, k * 8) : Mp4.u32(d, k * 4)) : 0;
+      return out;
+    },
+    // the first sound track's timescale, sample tables and AAC config (esds)
+    parse: async function (blob) {
+      var read = Mp4.reader(blob), size = blob.size, tracks = [], cur = null;
+      var walk = async function (start, stop) {
+        var pos = start;
+        while (pos + 8 <= stop) {
+          var hdr = (await read(pos, 16)).slice();
+          if (hdr.length < 8) break;
+          var bsize = Mp4.u32(hdr, 0), btype = Mp4.str(hdr, 4, 4), hlen = 8;
+          if (bsize === 1) { bsize = Mp4.u64(hdr, 8); hlen = 16; } else if (bsize === 0) bsize = stop - pos;
+          if (bsize < hlen) break;
+          var body = pos + hlen, end = pos + bsize, d;
+          if (btype === "trak") { cur = {}; tracks.push(cur); await walk(body, end); }
+          else if (Mp4.CONTAINERS[btype]) await walk(body, end);
+          else if (cur) {
+            if (btype === "hdlr") cur.handler = Mp4.str(await read(body + 8, 4), 0, 4);
+            else if (btype === "mdhd") {
+              d = await read(body, 32);
+              if (d[0] === 1) { cur.timescale = Mp4.u32(d, 20); cur.duration = Mp4.u64(d, 24); }
+              else { cur.timescale = Mp4.u32(d, 12); cur.duration = Mp4.u32(d, 16); }
+            } else if (btype === "stsd") {
+              d = (await read(body, Math.min(bsize - hlen, 4096))).slice();
+              cur.codec = Mp4.str(d, 12, 4);
+              var e = -1;
+              for (var j = 0; j + 4 <= d.length; j++) if (d[j] === 101 && d[j + 1] === 115 && d[j + 2] === 100 && d[j + 3] === 115) { e = j; break; }
+              if (e >= 0) {
+                var i = e + 8; // after "esds" and its version/flags: the descriptors
+                while (i < d.length) {
+                  var tag = d[i++], len = 0;
+                  for (var q = 0; q < 4; q++) {
+                    var b = d[i++];
+                    if (b === undefined) break;
+                    len = len * 128 + (b & 0x7f);
+                    if (b < 0x80) break;
+                  }
+                  if (tag === 0x03) i += 3;       // ES_ID, flags
+                  else if (tag === 0x04) i += 13; // DecoderConfig's fixed part
+                  else if (tag === 0x05) { cur.asc = d.slice(i, i + len); break; } // DecoderSpecificInfo
+                  else i += len;
+                }
+              }
+            } else if (btype === "stts" || btype === "stsc") {
+              d = await read(body, 8);
+              var words = btype === "stts" ? 2 : 3, n = Mp4.u32(d, 4);
+              cur[btype] = await Mp4.table(read, body + 8, n * words, 4);
+              cur[btype + "_n"] = n;
+            } else if (btype === "stsz") {
+              d = await read(body, 12);
+              var fixed = Mp4.u32(d, 4);
+              cur.count = Mp4.u32(d, 8); cur.fixed_size = fixed > 0 ? fixed : null; cur.stsz_at = body + 12;
+            } else if (btype === "stco" || btype === "co64") {
+              d = await read(body, 8);
+              cur.chunk_count = Mp4.u32(d, 4); cur.stco_at = body + 8; cur.stco_w = btype === "stco" ? 4 : 8;
+            }
+          }
+          pos = end;
+        }
+      };
+      await walk(0, size);
+      for (var k = 0; k < tracks.length; k++) {
+        var t = tracks[k];
+        if (t.handler === "soun" && t.codec === "mp4a" && t.asc && t.count != null && t.stco_at != null && t.stsc && t.stts) {
+          t.file_size = size; t.read = read;
+          return t;
+        }
+      }
+      throw new Error("no AAC audio track found");
+    },
+    // AudioSpecificConfig → object type, sampling frequency index, channels
+    config: function (asc) {
+      var b0 = asc[0], b1 = asc[1] || 0;
+      var ot = b0 >> 3, sfi = ((b0 & 7) << 1) | (b1 >> 7), ch = (b1 >> 3) & 0xf;
+      if (ot === 5 || ot === 29) ot = 2; // HE-AAC: the core is AAC-LC
+      return [ot, sfi, ch];
+    },
+    adts: function (ot, sfi, ch, n) {
+      var len = n + 7;
+      return new Uint8Array([0xff, 0xf1, (((ot - 1) & 3) << 6) | ((sfi & 0xf) << 2) | ((ch >> 2) & 1),
+        ((ch & 3) << 6) | ((len >> 11) & 3), (len >> 3) & 0xff, ((len & 7) << 5) | 0x1f, 0xfc]);
+    },
+    // the chunk files, through write(name, blob) (a few at once); progress(done, total)
+    convert: async function (blob, write, progress) {
+      var t = await Mp4.parse(blob), read = t.read;
+      var cfg = Mp4.config(t.asc), ot = cfg[0], sfi = cfg[1], ch = cfg[2];
+      var sizes = t.fixed_size ? null : await Mp4.table(read, t.stsz_at, t.count, 4);
+      var offsets = await Mp4.table(read, t.stco_at, t.chunk_count, t.stco_w);
+      var chunkLen = Mp4.CHUNK_SECONDS * t.timescale;
+      var sttsI = 0, sttsLeft = t.stts_n > 0 ? t.stts[0] : 0;
+      var nextDuration = function () {
+        while (sttsI < t.stts_n && sttsLeft === 0) { sttsI++; sttsLeft = sttsI < t.stts_n ? t.stts[sttsI * 2] : 0; }
+        if (sttsI >= t.stts_n) return 1024;
+        sttsLeft--;
+        return t.stts[sttsI * 2 + 1];
+      };
+      var starts = [], outN = -1, pieces = [], time = 0, sample = 0, done = 0, nextReport = 0, writing = [];
+      var flush = async function () {
+        var name = "c" + outN + ".aac", data = new Blob(pieces);
+        pieces = [];
+        writing.push(write(name, data));
+        if (writing.length >= 4) await writing.shift();
+      };
+      var openChunk = async function () {
+        if (outN >= 0) await flush();
+        outN++;
+        starts.push(Math.floor(time * 1000 / t.timescale));
+      };
+      await openChunk();
+      var stscI = 0;
+      for (var c = 0; c < t.chunk_count; c++) {
+        while (stscI + 1 < t.stsc_n && t.stsc[(stscI + 1) * 3] <= c + 1) stscI++;
+        var n = t.stsc[stscI * 3 + 1], chunkSizes = [], total = 0;
+        for (var k = 0; k < n; k++) {
+          if (sample + k >= t.count) break;
+          var sz = t.fixed_size || (sizes && sizes[sample + k]) || 0;
+          chunkSizes.push(sz); total += sz;
+        }
+        if (c >= offsets.length) break;
+        var data = (await read(offsets[c], total)).slice(), pos = 0;
+        for (k = 0; k < chunkSizes.length; k++) {
+          sz = chunkSizes[k];
+          if (time >= (outN + 1) * chunkLen) await openChunk();
+          pieces.push(Mp4.adts(ot, sfi, ch, sz), data.subarray(pos, pos + sz));
+          pos += sz;
+          time += nextDuration();
+          sample++;
+        }
+        done += total;
+        if (progress && done >= nextReport) {
+          progress(done, t.file_size);
+          nextReport = done + Math.max(256 * 1024, Math.floor(t.file_size / 200));
+        }
+      }
+      await flush();
+      await Promise.all(writing);
+      if (progress) progress(t.file_size, t.file_size);
+      return { starts: starts, durationMs: Math.floor(time * 1000 / t.timescale), count: outN + 1 };
+    },
+    indexJson: function (res) {
+      return '{"starts":[' + res.starts.map(function (v) { return String(Math.floor(v)); }).join(",") + '],"durationMs":' + res.durationMs + ',"count":' + res.count + "}";
+    },
+    // The browser's own storage, for the download while it's converted (null: none here).
+    scratch: async function () {
+      try { return await (await navigator.storage.getDirectory()).getDirectoryHandle("gzsync-prepare", { create: true }); }
+      catch (e) { return null; }
+    },
+    // Download an M4B/M4A (a fetch response's body) to path on the Kindle:
+    // as chunks when it can, else the file as it is. Returns true if converted.
+    bring: async function (dir, name, body, onBytes, what) {
+      var tmp = Mp4.scratch && await Mp4.scratch(), tmpName = rand(8) + ".m4a";
+      if (!tmp) { await Drive.writeStream(Drive.sync, dir + "/" + name, body, onBytes); return false; }
+      try {
+        await Drive.writeStream(tmp, tmpName, body, onBytes);
+        var file = await (await tmp.getFileHandle(tmpName)).getFile();
+        var cdir = dir + "/" + name + ".chunks", started = Date.now();
+        try {
+          var res = await Mp4.convert(file, function (n, data) { return Drive.write(Drive.sync, cdir + "/" + n, data); }, function (d, total) {
+            phase("Preparing “" + (what || name) + "” for the Kindle… " + Math.floor(d * 100 / Math.max(1, total)) + "%");
+          });
+          await Drive.write(Drive.sync, cdir + "/index.json", Mp4.indexJson(res));
+          log("“" + (what || name) + "”: prepared for the Kindle here (" + res.count + " parts, " + Math.round((Date.now() - started) / 1000) + " s).");
+          return true;
+        } catch (e) {
+          await Drive.remove(Drive.sync, cdir);
+          log("“" + (what || name) + "” couldn't be prepared here (" + e.message + "): the Kindle prepares it.");
+          await Drive.write(Drive.sync, dir + "/" + name, file);
+          return false;
+        }
+      } finally {
+        try { await tmp.removeEntry(tmpName); } catch (e) {}
+      }
+    },
+  };
 
   // 4. notes
   async function syncNotes(out, inbox) {
@@ -1497,7 +1711,8 @@ gets a password or token.
     if (how[0] === "file") {
       if (!t.part || !t.part.key) throw new Error("no file");
       var r = await P.get(t.part.key, { download: 1 });
-      await Drive.writeStream(Drive.sync, dir + "/" + base + "." + how[1], r.body);
+      if (how[1] === "m4a") await Mp4.bring(dir, base + ".m4a", r.body, null, t.title);
+      else await Drive.writeStream(Drive.sync, dir + "/" + base + "." + how[1], r.body);
       return base + "." + how[1];
     }
     // the server's MP3 (FLAC, ALAC, Ogg…): its transcoder, HLS with MP3 in MPEG-TS
@@ -2282,7 +2497,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Mp4: Mp4,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

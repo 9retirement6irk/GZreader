@@ -661,7 +661,12 @@ the queue, what's on the Kindle, the notes written here). The page writes the
 library copy (`library.json`, `covers/`, `details/`), the books and audio
 under `in/`, and `inbox.json` last; at the next start GZreader takes them in,
 moves the books into the GZreader folder, prepares M4B/M4A audio (as for a
-download) and deletes the inbox. Syncing twice before starting GZreader adds
+download) and deletes the inbox. The page prepares M4B/M4A audiobooks and
+music itself, on the computer (the same pieces GZreader would make), so the
+Kindle has nothing to convert; only if that fails does the file go to the
+Kindle as it is, for GZreader to prepare. The download waits in the
+browser's own storage meanwhile, so leave some room on the computer (as much
+as the biggest audiobook). Syncing twice before starting GZreader adds
 to the same inbox. Nothing is sent anywhere but your own servers (and
 plex.tv for the Plex sign-in). The page is plain HTML and JavaScript in
 `docs/sync/` and can be hosted anywhere on HTTPS.
@@ -1311,7 +1316,9 @@ with Freescale's hardware decoders `mfw_mp3decoder` and `mfw_aacdecoder`,
 into ALSA. MP3 starts anywhere (the file is fed from the right byte offset).
 There is no MP4 demuxer on the Kindle, so an M4B is converted once after
 download (`gzreader_mp4.lua`: each AAC frame gets an ADTS header; no
-re-encoding) into ~15-second pieces in `<file>.chunks/`; playback starts at
+re-encoding) into ~15-second pieces in `<file>.chunks/` (audio brought by
+the sync page comes already converted, the same pieces made by `Mp4` in
+`gzsync.js`); playback starts at
 the piece holding the position and feeds the following ones to the AAC
 decoder. **Test audio playback** tries the pipelines with a short MP3 and an
 AAC tune (converted from the bundled M4A, which also tests the converter),
