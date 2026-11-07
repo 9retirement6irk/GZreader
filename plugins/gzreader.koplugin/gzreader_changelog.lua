@@ -7,6 +7,7 @@ return {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",
             "Nook 1st Edition: updates over Wi‑Fi like the Kindles (Settings → General → Updates). The update also brings the Nook's start script, used from the next start.",
             "Test builds: Settings → General → Updates → Test builds installs what's waiting to be tried over Wi‑Fi, before it's released (no cable for each try). Turn it off to go back to releases. Kindles without Wi‑Fi: the same choice on the sync page.",
+            "Nook 1st Edition: a GZreader icon in the Nook's app list. The Nook's su only works for adb, so a small helper set up once over adb (launcher.sh install) runs as root from the Nook's start-up and starts GZreader when you tap the icon. See GZREADER.md.",
         },
     },
     {

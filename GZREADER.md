@@ -354,9 +354,23 @@ yours in full first, charge the battery, and back up your books.
 
 ### Start and exit
 
+- **On the Nook: GZreader's icon** in the app list (the launcher Softroot
+  installs). Set it up once, with the Nook connected to the computer:
+
+  ```
+  adb install gzreader/GZreader-launcher.apk
+  adb shell sh /data/gzreader/launcher.sh install
+  ```
+
+  Starting GZreader needs root, which an app can't have on this Nook (its
+  `su` only works for adb), so the second line sets up a small helper that
+  runs as root and starts GZreader when the icon asks: it adds one line to
+  the Nook's start-up script `/system/etc/bravo_pltinfo.sh` (so the helper
+  starts with the Nook) and starts it now. Tapping the icon twice starts
+  GZreader once. To undo it: `adb shell sh /data/gzreader/launcher.sh uninstall`
+  and `adb uninstall gzreader.nook.launcher`. A newer icon app: uninstall
+  the old one first (each build is signed with its own key).
 - From the computer: `adb shell sh /data/gzreader/gzreader.sh`
-- On the Nook, with a terminal app (Android Terminal Emulator 1.0.x runs on
-  Android 1.5): `su -c "sh /data/gzreader/gzreader.sh"`
 
 GZreader starts with its setup guide, as on a Kindle. To go back to the
 Nook's own software, choose **Exit to Nook** in the quick panel (Menu on the
