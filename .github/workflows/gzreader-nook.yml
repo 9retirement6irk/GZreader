@@ -111,6 +111,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
           sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
+      - name: The build, for trying it elsewhere (branch nook-softfloat-out, one commit)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          mkdir -p o && cp dl/koreader-kindle-legacy-*.zip o/
+          cd o && git init -q -b nook-softfloat-out && git add . \
+            && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "KOReader kindle-legacy without VFP" \
+            && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" nook-softfloat-out
       - name: No VFP in KOReader's programs
         run: |
           mkdir -p chk && unzip -q dl/koreader-kindle-legacy-*.zip -d chk
@@ -129,7 +137,7 @@ jobs:
             GZ_EMU_PICTURES="$PWD/emu/pictures.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=nook EMU_TIMEOUT=600 \
             bash tools/gzreader/emulator/run.sh tools/gzreader/emulator/keeps.lua emu/keeps-nook || true
           k=emu/keeps-nook/keeps.txt
-          [ -s "$k" ] || { echo "GZreader didn't finish in the emulator"; tail -40 emu/keeps-nook.txt; exit 1; }
+          [ -s "$k" ] || { echo "GZreader didn't finish in the emulator"; grep -n -iE "error|fail|not found|cannot|stack traceback" emu/keeps-nook.txt | head -60; tail -40 emu/keeps-nook.txt; exit 1; }
           cat "$k"
           ! grep -q '^FAIL' "$k"
       - name: Package
