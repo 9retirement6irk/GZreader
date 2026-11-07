@@ -50,11 +50,25 @@ stop_helper() {
     $BB rm -f "$PIDF"
 }
 
+# The Nook's own /system/etc: while GZreader runs, its copy is mounted over
+# it (for DNS: gzreader.sh), and a line added there wouldn't last.
+nook_system_etc() {
+    if $BB grep -q " /system/etc " "${GZ_MOUNTS:-/proc/mounts}" 2>/dev/null; then
+        if $BB pidof luajit > /dev/null 2>&1; then
+            echo "GZreader is running: choose Exit to Nook in GZreader first, then run this again."
+            exit 1
+        fi
+        # (left over from a GZreader that didn't close properly)
+        $BB umount /system/etc 2>/dev/null || umount /system/etc 2>/dev/null
+    fi
+}
+
 remount() { $BB mount -o "remount,$1" /system 2>/dev/null || mount -o "remount,$1" /system 2>/dev/null; }
 
 case "${1:-run}" in
 install)
     [ "$($BB id -u)" = 0 ] || { echo "Run it as root: adb shell sh $GZ/launcher.sh install"; exit 1; }
+    nook_system_etc
     [ -f "$HOOK" ] || { echo "$HOOK isn't there: this isn't a Nook 1st Edition with its own software?"; exit 1; }
     if ! $BB grep -q "^$MARK" "$HOOK"; then
         remount rw
@@ -71,6 +85,7 @@ install)
     fi
     ;;
 uninstall)
+    nook_system_etc
     stop_helper
     if $BB grep -q "^$MARK" "$HOOK" 2>/dev/null; then
         remount rw

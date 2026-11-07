@@ -61,10 +61,10 @@ def main():
         if real:
             # a real BusyBox's shell (ash: read -t, exec 3<>, as on the Nook); no remounting here
             # (its shell; the other commands: this computer's; root, as on the Nook (CI runs as a user))
-            f.write('#!/bin/sh\ncase "$1" in sh) exec %s "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; esac\nexec "$@"\n' % real)
+            f.write('#!/bin/sh\ncase "$1" in sh) exec %s "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; umount) echo "$2" >> "$GZ/umounts"; exit 0 ;; pidof) [ -f "$GZ/running" ] && echo 123 && exit 0; exit 1 ;; esac\nexec "$@"\n' % real)
         else:
             f.write('#!/bin/bash\n# the Nook\'s BusyBox, played by this computer\'s commands\n'
-                    'case "$1" in sh) shift; exec bash "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; esac\nexec "$@"\n')
+                    'case "$1" in sh) shift; exec bash "$@" ;; mount) exit 1 ;; id) echo 0; exit 0 ;; umount) echo "$2" >> "$GZ/umounts"; exit 0 ;; pidof) [ -f "$GZ/running" ] && echo 123 && exit 0; exit 1 ;; esac\nexec "$@"\n')
     print("BusyBox:", real or "none here (bash and this computer's commands)")
     os.chmod(bb, 0o755)
     starts = os.path.join(work, "starts")
@@ -163,6 +163,22 @@ def main():
         r = launcher("uninstall")
         check(r.returncode == 0 and open(hook).read() == original + "\n", "uninstall: our lines out, the Nook's own as they were")
         check(wait_for(lambda: not alive(pid), 3) and not os.path.exists(pipe), "…the helper stopped, the pipe gone")
+        # GZreader's own /system/etc mounted over the Nook's (while it runs, or left over)
+        mounts = os.path.join(work, "mounts")
+        with open(mounts, "w") as f:
+            f.write("/dev/block/mtdblock4 /system yaffs2 ro 0 0\n/data/gzreader/run/etc /system/etc yaffs2 rw 0 0\n")
+        env["GZ_MOUNTS"] = mounts
+        open(os.path.join(gz, "running"), "w").close()
+        r = launcher("install")
+        check(r.returncode == 1 and "Exit to Nook" in r.stdout and "# GZreader" not in open(hook).read(),
+              "install while GZreader runs (its /system/etc over the Nook's): asks to exit it first, changes nothing")
+        os.remove(os.path.join(gz, "running"))
+        r = launcher("install")
+        check(r.returncode == 0 and open(os.path.join(gz, "umounts")).read().strip() == "/system/etc"
+              and open(hook).read().count("# GZreader launcher helper") == 1,
+              "…left over from a GZreader that didn't close: unmounted, then installed")
+        launcher("uninstall")
+        env.pop("GZ_MOUNTS")
         r = launcher("frobnicate")
         check(r.returncode == 1 and "Usage" in r.stdout, "anything else: usage")
     finally:
