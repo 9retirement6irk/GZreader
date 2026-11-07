@@ -261,10 +261,15 @@ first touch only lights it), its brightness, and a **touch test** with
 mirror / swap switches in case the touch is the wrong way round on your
 Nook.
 
+Wi‑Fi: GZreader uses the networks saved in the Nook's own settings. When
+Android has switched Wi‑Fi off (it does when its screen goes off), the start
+script switches it on and connects as Android would, and switches it off
+again when you exit GZreader. (`GZ_NOOK_WIFI=off` leaves Wi‑Fi alone.)
+
 Not in the test build: audiobooks and read aloud (the Nook has a speaker,
-but GZreader plays audio with the Kindle's player), turning Wi‑Fi on and off
-(Android's Wi‑Fi stays as it was: connect before starting GZreader), and a
-launcher icon (start it with adb or a terminal app, below).
+but GZreader plays audio with the Kindle's player), switching Wi‑Fi on and
+off from GZreader's menus, and a launcher icon (start it with adb or a
+terminal app, below).
 
 ### Root the Nook
 

@@ -56,24 +56,8 @@ done
 $BB --install -s /bin 2>/dev/null
 mount -o remount,ro / 2>/dev/null
 
-# DNS: Android's servers (properties) in a resolv.conf, over /system/etc
-# for as long as GZreader runs (a copy of it plus resolv.conf)
 RUN=$GZ/run
 mkdir -p $RUN
-umount /system/etc 2>/dev/null
-rm -rf $RUN/etc
-mkdir -p $RUN/etc
-cp -a /system/etc/. $RUN/etc/ 2>/dev/null
-: > $RUN/etc/resolv.conf
-for p in net.dns1 net.dns2 dhcp.eth0.dns1 dhcp.eth0.dns2 dhcp.tiwlan0.dns1 dhcp.wlan0.dns1; do
-    ip=$(getprop $p 2>/dev/null)
-    case "$ip" in
-        [0-9]*) grep -q "nameserver $ip\$" $RUN/etc/resolv.conf || echo "nameserver $ip" >> $RUN/etc/resolv.conf ;;
-    esac
-done
-[ -s $RUN/etc/resolv.conf ] || echo "nameserver 1.1.1.1" > $RUN/etc/resolv.conf
-grep -q localhost $RUN/etc/hosts 2>/dev/null || echo "127.0.0.1 localhost" >> $RUN/etc/hosts
-mount -o bind $RUN/etc /system/etc && log "DNS: $(tr '\n' ' ' < $RUN/etc/resolv.conf)"
 
 # --- 1b. where the books go ------------------------------------------------
 # Where the GZreader folder (books, audiobooks, downloads) goes: a microSD
@@ -107,6 +91,72 @@ if [ -z "$GZ_NOOK_HOME" ]; then
 fi
 export GZ_NOOK_HOME
 
+# DNS: Android's servers (properties) in a resolv.conf, over /system/etc
+# for as long as GZreader runs (a copy of it plus resolv.conf)
+set_dns() {
+    umount /system/etc 2>/dev/null
+    rm -rf $RUN/etc
+    mkdir -p $RUN/etc
+    cp -a /system/etc/. $RUN/etc/ 2>/dev/null
+    : > $RUN/etc/resolv.conf
+    for p in net.dns1 net.dns2 dhcp.eth0.dns1 dhcp.eth0.dns2 dhcp.tiwlan0.dns1 dhcp.wlan0.dns1; do
+        ip=$(getprop $p 2>/dev/null)
+        case "$ip" in
+            [0-9]*) grep -q "nameserver $ip\$" $RUN/etc/resolv.conf || echo "nameserver $ip" >> $RUN/etc/resolv.conf ;;
+        esac
+    done
+    [ -s $RUN/etc/resolv.conf ] || echo "nameserver 1.1.1.1" > $RUN/etc/resolv.conf
+    grep -q localhost $RUN/etc/hosts 2>/dev/null || echo "127.0.0.1 localhost" >> $RUN/etc/hosts
+    mount -o bind $RUN/etc /system/etc && log "DNS: $(tr '\n' ' ' < $RUN/etc/resolv.conf)"
+}
+
+# Wi-Fi: Android keeps it, but when its screen went off it switched Wi-Fi off
+# (B&N's wifi_stop: eth0 down, the chip unpowered), and paused it can't turn
+# it back on: GZreader's setup said "Error connecting to network". So, when
+# there's no connection, it's brought up as Android does: init's wifi_start
+# (powers the chip, eth0 up), wpa_supplicant with the networks saved on the
+# Nook, dhcpcd for an address. Taken down again on exit (Android left it
+# off). GZ_NOOK_WIFI=off leaves Wi-Fi alone.
+WIFI_STARTED=
+wifi_up() {
+    netcfg 2>/dev/null | awk '$1 == "eth0" && $2 == "UP" && $3 != "0.0.0.0" { ok = 1 } END { exit !ok }'
+}
+wait_for() { # <seconds> <command...>
+    n=$1; shift
+    while [ "$n" -gt 0 ]; do "$@" && return 0; sleep 1; n=$((n - 1)); done
+    return 1
+}
+start_wifi() {
+    [ "$GZ_NOOK_WIFI" = "off" ] && return 0
+    if wifi_up; then log "Wi-Fi: already connected"; return 0; fi
+    log "Wi-Fi: off (Android switched it off), connecting"
+    WIFI_STARTED=1
+    setprop ctl.start wifi_start
+    if ! wait_for 15 test -e /sys/class/net/eth0; then log "Wi-Fi: the chip didn't come up"; return 1; fi
+    setprop ctl.start wpa_supplicant
+    sleep 3
+    setprop dhcp.eth0.result ""
+    setprop ctl.start dhcpcd
+    if ! wait_for 45 sh -c '[ "$(getprop dhcp.eth0.result)" = "ok" ]'; then
+        log "Wi-Fi: no address (no saved network in reach?)"
+        return 1
+    fi
+    if ! wifi_up; then
+        # (as Android's NetworkUtils does with dhcpcd's answer)
+        ifconfig eth0 "$(getprop dhcp.eth0.ipaddress)" netmask "$(getprop dhcp.eth0.mask)" up 2>/dev/null
+        route add default gw "$(getprop dhcp.eth0.gateway)" dev eth0 2>/dev/null
+    fi
+    wifi_up && log "Wi-Fi: connected"
+}
+stop_wifi() {
+    [ -n "$WIFI_STARTED" ] || return 0
+    setprop ctl.stop dhcpcd
+    setprop ctl.stop wpa_supplicant
+    setprop ctl.start wifi_stop
+    WIFI_STARTED=
+    log "Wi-Fi: off again, as Android left it"
+}
+
 # --- 2. pause Android's interface ----------------------------------------
 : > $RUN/stopped
 ZYGOTE=$(pidof zygote)
@@ -127,6 +177,8 @@ log "paused Android: $(wc -l < $RUN/stopped) processes"
 # (GZreader then lights it, and puts the Nook to sleep itself.)
 echo on > /sys/power/state 2>/dev/null && log "kernel awake (early suspend undone)"
 sleep 1
+start_wifi
+set_dns
 
 # Unaligned memory accesses: the 1st Edition's kernel stops a program that
 # makes one ("User faults: 4 (signal)" in /proc/cpu/alignment: exit code
@@ -149,6 +201,7 @@ restore_alignment() {
 
 resume_android() {
     restore_alignment
+    stop_wifi
     umount /system/etc 2>/dev/null
     if [ -s $RUN/stopped ]; then
         while read -r pid; do kill -CONT "$pid" 2>/dev/null; done < $RUN/stopped
