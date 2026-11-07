@@ -61,7 +61,11 @@ local KINDLE_WORD -- "Kindle", or "Nook" on a Nook
 -- 1. the setup guide, then Home and its tabs
 add({ fn = function(E)
     KINDLE_WORD = (E.model == "nook" or E.model == "nst") and "Nook" or "Kindle"
-    check(has("Set up from your browser"), "setup guide opens on \"Set up from your browser\"")
+    if E.no_wifi then -- (Kindle 2/DX: no Wi-Fi, set up from the sync page)
+        check(has("Sync with a computer") and not has("Set up from your browser"), "no Wi-Fi: setup guide opens on \"Sync with a computer\"")
+    else
+        check(has("Set up from your browser"), "setup guide opens on \"Set up from your browser\"")
+    end
     for i = #UIM()._window_stack, 1, -1 do
         local w = UIM()._window_stack[i].widget
         if w.name == "setup guide" or w.name == "QR code screen" then UIM():close(w) end
@@ -88,13 +92,18 @@ add({ shot = "keeps-home" })
 -- 2. the quick panel (the Menu key, or a swipe down from the top)
 add({ fn = function(E) openPanel(E) end, after = 5 })
 add({ fn = function(E)
-    check(topName() == "gzreader quick panel" and hasTile("Send books") and hasTile("Restart") and hasTile("Settings"),
+    -- (Send books goes over Wi-Fi: not on the Kindle 2/DX)
+    check(topName() == "gzreader quick panel" and hasTile("Send books") == not E.no_wifi and hasTile("Restart") and hasTile("Settings"),
         (TOUCH[E.model] and "a swipe down at Home: the quick panel" or "Menu key at Home: the quick panel") .. " (top: " .. topName() .. ")")
     check(hasTile("Exit to " .. KINDLE_WORD), "names: \"Exit to " .. KINDLE_WORD .. "\"")
     check(not hasTile("Contents"), "…with Home's tiles, not a book's")
     local px = require("ui/font"):getFace("cfont", 15).size
     local mm = px / (({ dx = 150, dxg = 150, pw3 = 300 })[E.model] or 167) * 25.4
     check(mm >= 2.2 and mm <= 3.8, string.format("tile text a readable size: %.1f mm", mm))
+    if E.no_wifi then
+        check(hasTile("Sync") and not hasTile("Wi-Fi") and not hasTile("Updates"),
+            "no Wi-Fi (Kindle 2/DX): the quick panel has Sync, not Wi-Fi or Updates")
+    end
 end, after = 1 })
 add({ shot = "keeps-menu" })
 add({ fn = function() closeTop() end, after = 3 })
@@ -174,6 +183,9 @@ add({ fn = function(E)
 end, after = 10 })
 
 add({ fn = function(E)
+    if E.no_wifi then
+        check(not E.wifi_asked, "no Wi-Fi (Kindle 2/DX): nothing asked to turn Wi-Fi on" .. (E.wifi_asked and (" (asked " .. E.wifi_asked .. " times)") or ""))
+    end
     local f = io.open(E.out .. "/keeps.txt", "w")
     f:write(table.concat(lines, "\n"), "\n")
     f:close()

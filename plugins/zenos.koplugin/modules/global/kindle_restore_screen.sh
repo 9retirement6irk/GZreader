@@ -10,6 +10,7 @@ trap 'echo "ZenOS: [kindle_restore_screen] stopped reason=$reason polls=$attempt
 trap 'reason=signal; exit 0' HUP INT TERM
 echo "ZenOS: [kindle_restore_screen] started size=$size"
 
+# (dd, not head -c: the Kindle 2/DX BusyBox 1.7.2 head has no -c)
 # shortcut: limit monitoring to 240 polls; extend only if device logs show slower restores.
 content_polls=0
 next_refresh=0
@@ -18,14 +19,14 @@ while [ "$attempt" -lt 240 ]; do
     usleep 250000 || break
     attempt=$((attempt + 1))
     reason=framebuffer_read
-    head -c "$size" "$framebuffer" > "$directory/current" || break
+    dd if="$framebuffer" bs="$size" count=1 2>/dev/null > "$directory/current" || break
     [ "$(wc -c < "$directory/current")" -eq "$size" ] || break
     if cmp -s "$directory/current" "$directory/screen"; then
         content_polls=0
     elif cmp -s "$directory/current" "$directory/blank"; then
         content_polls=0
         # Recheck before writing so a returning UI gets priority.
-        if ! head -c "$size" "$framebuffer" | cmp -s - "$directory/blank"; then
+        if ! dd if="$framebuffer" bs="$size" count=1 2>/dev/null | cmp -s - "$directory/blank"; then
             reason=timeout
             continue
         fi

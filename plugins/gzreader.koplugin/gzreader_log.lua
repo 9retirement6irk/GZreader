@@ -155,6 +155,14 @@ Log.PROBE_COMMANDS = {
     "lipc-probe com.lab126.wifid 2>&1 | head -60",
     "lipc-probe com.lab126.cmd 2>&1 | head -40",
     "for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done",
+    -- Kindle 2/DX "Connect to computer": what restarts or reboots the Kindle
+    -- (pmond, the watchdog) and what runs when USB is plugged or unplugged
+    -- (their system files, comments left out; no user data in them)
+    "for f in /etc/pmond/cvm.conf /etc/pmond/volumd.conf /etc/pmond/watchdogd.conf /etc/pmond/powerd.conf /etc/sysconfig/watchdogd; do [ -f $f ] && { echo \"== $f\"; grep -v '^ *#' $f | grep -v '^ *$'; }; done",
+    "for f in /etc/init.d/framework /etc/init.d/volumd; do [ -f $f ] && { echo \"== $f\"; grep -v '^ *#' $f | grep -v '^ *$' | tr -cd '\\11\\12\\40-\\176'; }; done",
+    "for f in /lib/udev/bin/notifyusb /etc/lipc-daemon-events.conf /etc/udev/rules.d/10-mario.rules /etc/init.d/pmond /etc/init.d/reboot /etc/init.d/diag_reboot /usr/sbin/checkpmond; do [ -f $f ] && { echo \"== $f\"; grep -v '^ *#' $f | grep -v '^ *$' | tr -cd '\\11\\12\\40-\\176' | sed -n '1,60p'; }; done",
+    "cat /proc/uptime; ls -la /var/log /var/local/log 2>&1 | head -30",
+    "awk 'tolower($0) ~ /pmond|watchdog|reboot|volumd|usb|cvm|framework/' /var/log/messages 2>/dev/null | tail -60",
 }
 
 --- What keeps the Kindle from sleeping, as the log is sent: GZreader's
