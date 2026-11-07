@@ -178,6 +178,9 @@ do
     local time = require("ui/time")
     local now, timer = 0, nil -- (ms; the one pending timer: { at, fn })
     fb.now = function() return time.ms(now) end
+    local screen_under = { covers_fullscreen = true } -- (Home or the book)
+    local top = screen_under
+    fb.topWidget = function() return top end
     fb.schedule = function(this, ms, fn)
         this.scheduled = fn
         timer = fn and { at = now + ms, fn = fn } or nil
@@ -239,16 +242,34 @@ do
     fb:refreshFlashUI(100, 100, 50, 50)
     advance(150)
     check(redraws == 7, "a flashing refresh asked for: also soon")
+    -- a popup that opens by itself (a download's progress): soon; its progress bar now and then
+    advance(60000)
+    local popup = {}
+    top = popup
+    local before = redraws
+    fb:refreshUI(100, 300, 400, 120)
+    advance(150)
+    check(redraws == before + 1, "a popup opening by itself (a download started from the Grimmory tab): shown at once")
+    for _i = 1, 20 do advance(500); fb:refreshUI(120, 380, 360, 20) end -- (its bar, every 0.5 s for 10 s)
+    check(redraws == before + 3, "…its progress bar: about every 4 s, not every update (" .. (redraws - before) .. ")")
+    advance(5000)
+    check(redraws == before + 4, "…and its last change shows")
+    top = screen_under
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    check(redraws == before + 4, "the popup gone: the clock is back to waiting")
+    advance(300 * 1000)
     -- before sleeping, and on exit: right away
     advance(60000)
     fb:refreshUI(500, 0, 100, 30)
+    local at = redraws
     fb:flush()
-    check(redraws == 8 and timer == nil, "flush (before sleep): refreshed at once, nothing left waiting")
+    check(redraws == at + 1 and timer == nil, "flush (before sleep): refreshed at once, nothing left waiting")
     fb:flush()
-    check(redraws == 8, "…and nothing to refresh: no refresh")
+    check(redraws == at + 1, "…and nothing to refresh: no refresh")
     fb:refreshUI(500, 0, 100, 30)
     fb:close()
-    check(redraws == 9, "on exit: what's waiting is refreshed")
+    check(redraws == at + 2, "on exit: what's waiting is refreshed")
 end
 
 ------------------------------------------------------------------ lcd touch

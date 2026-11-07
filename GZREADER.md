@@ -242,9 +242,11 @@ exiting or restarting the Nook.
   whole page, with a flash. So GZreader asks for as few as it can: after
   a tap or a button press it waits until the screen has stopped changing
   (a fraction of a second) and refreshes once, so a tap, the menu it opens
-  and the status bar are one flash. Small changes on their own (the clock,
-  the battery, a progress bar while you read) wait for the next refresh,
-  five minutes at most. Sending updates straight to the e-ink controller,
+  and the status bar are one flash. A popup that opens by itself (a
+  download's progress, a message) shows at once, and its progress bar
+  updates every few seconds. Small changes on their own (the clock, the
+  battery, the footer while you read) wait for the next refresh, five
+  minutes at most. Sending updates straight to the e-ink controller,
   without the flash, froze the Nook every time it was tried, so GZreader
   doesn't.
 - **The colour touchscreen** is what you drive it with, and it changes with
