@@ -2,6 +2,15 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Grimmory tab: a book's page shows the book's cover. It looked for the cover in a cache of its own and showed none when its own download of it didn't come back (Wi‑Fi still coming up, say); it now uses the cover the list already shows.",
+            "Grimmory tab: the selection stays on the book you moved to. Moving down while the tab was still loading, covers coming in, or downloading a book put it back on the top-left book; now it stays put when the page is drawn again.",
+            "Downloads tab: a book that finishes downloading while you're looking at Downloads appears in it straight away (before, only after leaving the tab and coming back).",
+            "Kindle DX: Home has two shelves of recent books to fill the taller screen, and Downloads four shelves to a page instead of six, so the books are bigger.",
+        },
+    },
+    {
         version = "1.26.5",
         changes = {
             "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",

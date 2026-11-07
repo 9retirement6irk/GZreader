@@ -86,10 +86,10 @@ local function strip_layout_metrics(outer_width, module_cfg)
     local rows = two_rows and 2 or 1
     count = math.min(count, responsive_per_row(width) * rows)
     local per_row = two_rows and math.ceil(count / 2) or count
-    if require("common/gz_view").stripShelf(module_cfg) then -- GZreader: spines, many to a shelf; one shelf, no pages
-        two_rows, rows = false, 1
+    if require("common/gz_view").stripShelf(module_cfg) then -- GZreader: spines, many to a shelf; one shelf (two on the DX), no pages
+        two_rows, rows = false, require("common/gz_view").homeShelves()
         per_row = require("modules/filebrowser/patches/home/widgets/shelf").perRow(width)
-        count = per_row
+        count = per_row * rows
     end
     local strip_title_face = library_font.getFace(16)
     local title_h = 0
@@ -939,7 +939,7 @@ function M.build_strip(ctx, source_key)
         local tabs_gap = controls_enabled and Screen:scaleBySize(8) or Screen:scaleBySize(6)
         local shelf_h = math.max(Screen:scaleBySize(60), reach - tabs_top - controls_height - tabs_gap)
         local content, shelf_targets, shelf_jobs, shelf_cw, shelf_ch = Shelf.build(books, {
-            ctx = ctx, width = width, height = shelf_h, rows = 1,
+            ctx = ctx, width = width, height = shelf_h, rows = num_rows, per_row = per_row,
             interactive = interactive, source_name = source_name,
             empty_text = source_name == "recently_read" and _("Start reading books to fill this shelf.")
                 or ctx.empty_message or cover_common.get_empty_message(source_name),

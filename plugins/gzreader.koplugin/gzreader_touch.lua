@@ -33,6 +33,16 @@ function Touch.audio()
     return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3" or m == "KindleTouch"
 end
 
+--- The DX or DX Graphite: the 9.7" 824 × 1200 screen (KOReader's Kindle 2
+--- class runs the DX, so by its size).
+function Touch.dx()
+    local m = Device.model or ""
+    if m ~= "Kindle2" and m ~= "KindleDX" and m ~= "KindleDXG" then return false end
+    local s = Device.screen
+    local ok, small = pcall(function() return math.min(s:getWidth(), s:getHeight()) end)
+    return ok and small > 600 or false
+end
+
 --- Read aloud (the Kindle's voice): every Kindle with audio. Shift + Sym on
 --- a keyboard; the quick panel's Read aloud button on a touch screen.
 function Touch.tts() return Touch.audio() end
