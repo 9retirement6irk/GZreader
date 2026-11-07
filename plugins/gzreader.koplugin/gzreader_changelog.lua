@@ -2,7 +2,7 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
-        version = "next",
+        version = "1.26.5",
         changes = {
             "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",
             "Picture books whose pages are all in one or two big files (a cover, one file with every page, a contents page) are recognized and fitted to the screen. GZreader skipped a book's first and last files when checking, and with only three files there was nothing left to check.",
