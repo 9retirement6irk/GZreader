@@ -188,6 +188,12 @@ on every device, and the Nook's own programs (built without floating point)
 stay as installed. Its start script (`/data/gzreader/gzreader.sh`) comes
 in the update too and takes effect the next time GZreader starts. A new
 KOReader version still needs the full Nook package installed again.
+GZreader shares the Nook's 242 MB internal disk with Android, which can be
+full. When there isn't room there for an update (the download and what it
+unpacks to, about three times its size), it's downloaded and unpacked on
+the microSD card (`GZreader/.gzreader-update`, removed afterwards) and
+copied in part by part, with a copy of each part kept on the card to put
+back if one fails.
 
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,

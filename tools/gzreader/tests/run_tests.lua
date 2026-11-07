@@ -2846,6 +2846,7 @@ package.preload["ffi/archiver"] = function()
     function Reader:extractToPath(p, dest)
         os.execute("mkdir -p '" .. dest:match("^(.*)/") .. "'"); wf(dest, PKG[p]); return true
     end
+    function Reader:extractToMemory(p) return PKG[p] end
     function Reader:close() end
     return { Reader = Reader }
 end
@@ -2913,6 +2914,40 @@ PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [
     [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
 check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n",
     "a release's source code zip: the Nook's start script from platform/nook/")
+-- the Nook's disk full (GZreader shares 242 MB with Android): downloaded and
+-- unpacked on the card, installed by copying
+local CARD = WORK .. "/card"
+os.execute("rm -rf '" .. CARD .. "' && mkdir -p '" .. CARD .. "'")
+local real_free, real_card, real_copy = Update.freeSpace, Update.cardDir, Update.copyTree
+Update.cardDir = function() return CARD end
+Update.freeSpace = function(p) return p == NK and 1024 * 1024 or 1e10 end
+local work, elsewhere = Update.workDir(30e6)
+check(elsewhere and work == CARD .. "/GZreader/.gzreader-update", "1 MB free next to GZreader, 30 MB needed: the update goes to the card")
+PKG = { ["koreader/frontend/c.lua"] = "card", ["koreader/plugins/gzreader.koplugin/main.lua"] = "card main",
+    ["koreader/gzreader-version"] = "1.5.0\n" }
+local cok, cerr = Update.apply("pkg.zip", { stage = work })
+check(cok and rf(NK .. "/frontend/c.lua") == "card" and rf(NK .. "/frontend/k.lua") == nil
+    and rf(NK .. "/plugins/gzreader.koplugin/main.lua") == "card main" and Update.currentVersion() == "1.5.0",
+    "…unpacked there and copied in, each part as a whole (" .. tostring(cerr) .. ")")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n"
+    and io.popen("ls -a '" .. CARD .. "/GZreader' '" .. NK .. "' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"),
+    "…nothing left on the card or next to GZreader")
+PKG = { ["koreader/frontend/d.lua"] = "d", ["koreader/plugins/gzreader.koplugin/main.lua"] = "d main",
+    ["koreader/gzreader-version"] = "1.6.0\n" }
+Update.copyTree = function(from, dest)
+    if dest == NK .. "/plugins/gzreader.koplugin" and from:find("/koreader/plugins/") then return nil end
+    return real_copy(from, dest)
+end
+local fok, ferr = Update.apply("pkg.zip", { stage = work })
+Update.copyTree = real_copy
+check(not fok and ferr:match("could not install plugins/gzreader.koplugin") and rf(NK .. "/frontend/c.lua") == "card"
+    and rf(NK .. "/frontend/d.lua") == nil and rf(NK .. "/plugins/gzreader.koplugin/main.lua") == "card main"
+    and Update.currentVersion() == "1.5.0",
+    "a part that can't be copied in (the disk full after all): every part put back as it was, nothing changed")
+check(io.popen("ls -a '" .. CARD .. "/GZreader' | grep -c 'gzreader-update'"):read("*a"):match("^0"), "…and nothing left on the card")
+Update.freeSpace = function() return 1e10 end
+check(select(2, Update.workDir(30e6)) == false, "room next to GZreader: unpacked there, as before")
+Update.freeSpace, Update.cardDir = real_free, real_card
 Update.root = KO
 end
 captured.textviewer = nil
