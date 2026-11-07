@@ -146,6 +146,9 @@ Log.PROBE_COMMANDS = {
     "ps 2>/dev/null | awk 'tolower($0) ~ /audioserver|gst|aplay/' | grep -v awk",
     "strings /usr/sbin/ttsd 2>/dev/null | awk 'tolower($0) ~ /snippet|unable|read|voice|text|lipc|enqueue|play|speak|id$/' | head -200",
     "awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40",
+    -- firmware 2.x: which file or pipe ttsd's playFile wants (its built-in paths)
+    "strings /usr/sbin/ttsd 2>/dev/null | awk '/\\// || tolower($0) ~ /fifo|\\.txt|\\.text|wrong/' | head -40",
+    "ls -la /var/tmp/*tts* /var/tmp/*Fifo* /tmp/*tts* /tmp/*Fifo* 2>&1 | head -20",
     -- Wi-Fi networks menu: the lipc libraries and the Wi-Fi services' property
     -- names and states (no network names or passwords)
     "ls -la /usr/lib/liblipc* common/*lipc* libs/*lipc* 2>&1",
