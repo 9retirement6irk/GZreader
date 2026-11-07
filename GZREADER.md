@@ -303,8 +303,15 @@ yours in full first, charge the battery, and back up your books.
    adb push gzreader /data/gzreader
    ```
 
-4. Copy books to the Nook as usual (USB: the **nook** drive): GZreader keeps
-   its folder, `GZreader`, next to B&N's `my documents`.
+4. Copy books to the Nook as usual over USB. GZreader keeps its folder,
+   `GZreader` (books, audiobooks, what it downloads), on the **microSD card**
+   when one is in (more room), else on the Nook's own storage next to B&N's
+   `my documents`. A card put in later: GZreader uses it from its next
+   start (books already in the Nook's own `GZreader` folder stay there:
+   move them over USB). To choose yourself:
+   `adb shell "GZ_NOOK_HOME=/system/media/sdcard sh /data/gzreader/gzreader.sh"`.
+   (Take `bravo_update.dat` off the card after rooting: holding the page
+   button while turning the Nook on would install it again.)
 
 ### Start and exit
 

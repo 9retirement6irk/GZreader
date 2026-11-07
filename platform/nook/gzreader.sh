@@ -122,10 +122,20 @@ trap 'resume_android; exit 1' INT TERM HUP
 
 # --- 3. GZreader -----------------------------------------------------------
 cd "$GZ/koreader" || exit 1
-# (GZreader tells the two Nooks apart by their screens; their own storage:
-# the 1st Edition's /system/media/sdcard, the Simple Touch's /media)
+# Where the GZreader folder (books, audiobooks, downloads) goes: a microSD
+# card when one is in and writable (more room), else the Nook's own storage
+# (the 1st Edition's /system/media/sdcard, the Simple Touch's /media; GZreader
+# tells the two Nooks apart by their screens). Both Nooks have their own
+# storage on mmcblk0 and the card slot on mmcblk1 (vold's 179:8-15).
+# GZ_NOOK_HOME overrides it.
+MOUNTS=${GZ_MOUNTS:-/proc/mounts}
 if [ -z "$GZ_NOOK_HOME" ]; then
-    if [ -d /sys/devices/platform/bravo-vfb ]; then GZ_NOOK_HOME=/system/media/sdcard
+    SD=$(awk '$1 ~ /^\/dev\/block\/(vold\/179:(8|9|1[0-5])$|mmcblk1)/ && $3 ~ /^(vfat|msdos|fat)$/ && ("," $4 ",") ~ /,rw,/ { print $2; exit }' "$MOUNTS" 2>/dev/null)
+    if [ -n "$SD" ] && mkdir -p "$SD/GZreader" 2>/dev/null && : > "$SD/GZreader/.gz-write-test" 2>/dev/null; then
+        rm -f "$SD/GZreader/.gz-write-test"
+        GZ_NOOK_HOME=$SD
+        log "GZreader folder on the microSD card ($SD)"
+    elif [ -d /sys/devices/platform/bravo-vfb ]; then GZ_NOOK_HOME=/system/media/sdcard
     elif [ -d /media ]; then GZ_NOOK_HOME=/media
     else GZ_NOOK_HOME=/sdcard
     fi
