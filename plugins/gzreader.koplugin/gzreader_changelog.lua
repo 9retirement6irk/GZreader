@@ -5,6 +5,7 @@ return {
         version = "next",
         changes = {
             "Nook 1st Edition: updates over Wi‑Fi like the Kindles (Settings → General → Updates). The update also brings the Nook's start script, used from the next start.",
+            "Test builds: Settings → General → Updates → Test builds installs what's waiting to be tried over Wi‑Fi, before it's released (no cable for each try). Turn it off to go back to releases.",
         },
     },
     {

@@ -168,6 +168,16 @@ attached files, Kindles use the release's source code zip instead (~9 MB),
 taking only `frontend/`, `reader.lua`, `koreader.sh` and the installed
 plugins from it.
 
+**Test builds.** Settings → General → Updates → **Test builds** gets what's
+waiting to be tried instead of releases, over Wi‑Fi like a release (the
+version then reads like `1.26.5-beta.d6819bd`). They come from the
+repository's `beta` branch: every push there builds an update package
+("GZreader test builds (beta)" workflow) onto the `beta-updates` branch,
+where GZreader looks. Any test build other than the installed one is
+offered. Turn it off to go back to releases: the next release is offered as
+usual. Native parts (KOReader's programs, the Nook's icon app) still come
+only with a full package.
+
 The Nook 1st Edition updates the same way, from the same `gzreader-update.zip`
 (Settings → General → Updates, over the Nook's Wi‑Fi): the Lua is the same
 on every device, and the Nook's own programs (built without floating point)

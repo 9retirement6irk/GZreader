@@ -1,0 +1,58 @@
+# Test builds over Wi-Fi: every push to the "beta" branch (what's waiting to
+# be tried on a device, merged there by the merging agent) builds the update
+# package the way a release does (Lua only, the same for every Kindle and the
+# Nook) and puts it on the "beta-updates" branch with latest.json, one commit
+# replaced each time. GZreader's updater reads it there when Settings →
+# Updates → Test builds is on (gzreader_update.lua). Version:
+# <GZREADER_VERSION>-beta.<commit> (the Nook package built from the same
+# push, gzreader-nook.yml, has the same one).
+name: GZreader test builds (beta)
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gzreader-beta
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 30
+      - name: Tools
+        # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+      - name: Official KOReader Kindle 2/3/DX release (its LuaJIT, for the bytecode)
+        run: |
+          KOREADER_TAG=$(awk '$1 == "koreader" { print $2 }' tools/gzreader/UPSTREAM)
+          gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-v*.zip" --dir dl
+      - name: Update package
+        run: |
+          VERSION="$(tr -d ' \n' < GZREADER_VERSION)-beta.$(git rev-parse --short=7 HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-v*.zip out
+      - name: To the beta-updates branch
+        run: |
+          mkdir -p upd && cp out/gzreader-update.zip upd/
+          SIZE=$(stat -c %s upd/gzreader-update.zip)
+          SHA=$(sha256sum upd/gzreader-update.zip | cut -d' ' -f1)
+          # what's in it: the newest commits' subjects (merges left out)
+          NOTES=$(git log --no-merges -8 --format='• %s' | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))')
+          printf '{"version":"%s","size":%s,"sha256":"%s","file":"gzreader-update.zip","commit":"%s","notes":%s}\n' \
+            "$VERSION" "$SIZE" "$SHA" "$GITHUB_SHA" "$NOTES" > upd/latest.json
+          cat upd/latest.json
+          cd upd
+          git init -q -b beta-updates
+          git add gzreader-update.zip latest.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "GZreader $VERSION (test build)"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" beta-updates

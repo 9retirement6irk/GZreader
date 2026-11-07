@@ -2735,6 +2735,40 @@ captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()
 check(captured.textviewer and captured.textviewer.title == "GZreader changelog" and captured.textviewer.text:match("GZreader 1%.0%.3"), "changelog is GZreader's")
+-- test builds: the beta-updates branch's latest.json, any build other than the installed one
+do
+    local asked
+    Update.request = function(u)
+        asked = u
+        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-update.zip",
+            commit = "0123abcd", notes = "• Nook: fewer flashes" })
+    end
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl(), "test builds off by default: releases")
+    Update.setBeta(true)
+    local binfo = Update.check()
+    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/beta-updates/latest.json",
+        "test builds on: latest.json on the beta-updates branch")
+    check(binfo and binfo.beta and binfo.version == "1.4.0-beta.12" and binfo.size == 4567
+        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/beta-updates/gzreader-update.zip"
+        and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
+        "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    Update.request = function()
+        return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
+    end
+    check(Update.check() and not Update.state.has_update, "the installed test build: nothing to offer")
+    Update.request = function() return 200, json.encode({ version = "1.0.0-beta.3", size = 1, file = "gzreader-update.zip" }) end
+    check(Update.check() and Update.state.has_update, "an older test build than the installed version: still offered (test builds go by build, not number)")
+    Update.request = function() return 200, json.encode({ version = "1.5.0-beta.1", size = 1, file = "../../evil.zip" }) end
+    check(not Update.check(), "a file name with a path in it: refused")
+    Update.request = function() return 404 end
+    local _n, berr = Update.check()
+    check(berr and berr:match("No test build"), "no test build yet: says so")
+    Update.setBeta(false)
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl() and gsettings.gzreader_update_last_check == 0,
+        "test builds off: releases again, checked at once")
+    check(Update.compare("1.4.0", "1.4.0-beta.12") > 0 and Update.compare("1.3.9", "1.4.0-beta.12") < 0,
+        "after test builds: the release of that version is newer, an older release isn't")
+end
 Update.request = function() return 404 end
 local none, nerr = Update.check()
 check(none == nil and nerr:match("No GZreader release"), "no release yet -> clear message")
