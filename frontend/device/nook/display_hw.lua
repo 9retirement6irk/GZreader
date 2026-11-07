@@ -84,6 +84,17 @@ local HW = {}
 
 --- How e-ink refreshes are sent: "kernel" (Android's way, the default) or
 --- "direct" (to the controller: froze a real Nook; GZ_NOOK_EPD=direct).
+--- How the colour screen's picture gets there: "vfb" (the kernel's 2D
+--- engine copy) or "direct" (into its framebuffer): direct when the kernel
+--- has no 2D engine device.
+function HW.lcdMode()
+    local m = os.getenv("GZ_NOOK_LCD")
+    if m == "vfb" or m == "direct" then return m end
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if ok and lfs.attributes("/dev/s3c-g2d", "mode") then return "vfb" end
+    return "direct"
+end
+
 function HW.epdMode()
     return os.getenv("GZ_NOOK_EPD") == "direct" and "direct" or "kernel"
 end
@@ -226,8 +237,59 @@ function HW:eink(bb, x, y, w, h, waveform, flash)
     HW.sys.write(SYS_EINK .. "/redraw", 1)
 end
 
+--- The colour screen's own framebuffer (s3cfb: 240 × 480 portrait, RGB565,
+--- the 480 × 144 picture turned 90° in columns 96–239). The kernel copies
+--- the vfb's rows 800–943 there with the 2D engine; on a Nook whose kernel
+--- has no 2D engine device (/dev/s3c-g2d) that copy never happens and the
+--- colour screen kept Android's last picture, so GZreader writes it there
+--- itself. GZ_NOOK_LCD=vfb / direct forces one way; GZ_NOOK_LCD_ROT=ccw
+--- turns it the other way.
+local LCD_FB_W, LCD_FB_H, LCD_FB_X = 240, 480, 96
+function HW:openLcdFb()
+    if not self.lcdfb_fd then return false end
+    local finfo = ffi.new("struct fb_fix_screeninfo")
+    if HW.sys.ioctl(self.lcdfb_fd, C.FBIOGET_FSCREENINFO, finfo) ~= 0 then return false end
+    self.lcd_line = finfo.line_length
+    self.lcd_size = finfo.smem_len
+    local map = HW.sys.mmap(nil, self.lcd_size, bit.bor(C.PROT_READ, C.PROT_WRITE), C.MAP_SHARED, self.lcdfb_fd, 0)
+    if tonumber(ffi.cast("intptr_t", map)) == C.MAP_FAILED then return false end
+    self.lcd_map = ffi.cast("uint8_t *", map)
+    self.lcd_var = ffi.new("struct fb_var_screeninfo")
+    HW.sys.ioctl(self.lcdfb_fd, C.FBIOGET_VSCREENINFO, self.lcd_var)
+    return true
+end
+
+function HW:lcdDirect(bb)
+    local line2 = self.lcd_line / 2
+    local dst = ffi.cast("uint16_t *", self.lcd_map)
+    local ccw = self.lcd_ccw
+    for y = 0, LCD_H - 1 do
+        local src = ffi.cast("uint16_t *", ffi.cast("uint8_t *", bb.data) + y * bb.stride)
+        if ccw then
+            local col = LCD_FB_X + y
+            for x = 0, LCD_W - 1 do dst[(LCD_FB_H - 1 - x) * line2 + col] = src[x] end
+        else
+            local col = LCD_FB_X + (LCD_H - 1 - y)
+            for x = 0, LCD_W - 1 do dst[x * line2 + col] = src[x] end
+        end
+    end
+    -- (show its first buffer)
+    if self.lcd_var.yoffset ~= 0 then
+        self.lcd_var.yoffset = 0
+        HW.sys.ioctl(self.lcdfb_fd, 0x4606, self.lcd_var) -- (FBIOPAN_DISPLAY)
+    end
+end
+
 --- Copy the colour screen's picture (480 × 144, RGB565 BlitBuffer) to the LCD.
 function HW:lcd(bb)
+    if self.lcd_direct == nil then
+        local mode = HW.lcdMode()
+        self.lcd_direct = mode == "direct" and self:openLcdFb() or false
+        self.lcd_ccw = os.getenv("GZ_NOOK_LCD_ROT") == "ccw"
+        logger.info("nook: colour screen", self.lcd_direct and ("written directly (" .. (self.lcd_ccw and "ccw" or "cw") .. ")")
+            or "through the vfb (2D engine)")
+    end
+    if self.lcd_direct then return self:lcdDirect(bb) end
     local line = self.line
     for row = 0, LCD_H - 1 do
         ffi.copy(self.map + (EINK_H + row) * line, ffi.cast("uint8_t *", bb.data) + row * bb.stride, LCD_W * 2)
@@ -300,6 +362,7 @@ function HW:close()
         self:backlight(true)
     end
     if self.map then HW.sys.munmap(self.map, self.size); self.map = nil end
+    if self.lcd_map then HW.sys.munmap(self.lcd_map, self.lcd_size); self.lcd_map = nil end
     if self.vfb_fd then HW.sys.close(self.vfb_fd); self.vfb_fd = nil end
     if self.epd_fd then HW.sys.close(self.epd_fd); self.epd_fd = nil end
     if self.lcdfb_fd then HW.sys.close(self.lcdfb_fd); self.lcdfb_fd = nil end
