@@ -169,6 +169,14 @@ function LCD:onInputEvent(input, ev)
     end
     local down = t.down_flag
     if down == nil then down = (t.pressure or 0) > 0 end
+    -- (the first touches' raw frames in the log: finding out how the panel reports them)
+    if down ~= t.was_down then
+        t.was_down = down
+        self.logged_frames = (self.logged_frames or 0) + 1
+        if self.logged_frames <= 60 then
+            logger.info("nook: touch", down and "down" or "up", "raw", t.rx, t.ry, "pressure", t.pressure, "finger", t.down_flag)
+        end
+    end
     local now = time.timeval(ev.time)
     if down and t.rx and t.ry then
         local x, y = self:map(t.rx, t.ry)

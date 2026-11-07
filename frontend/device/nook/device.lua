@@ -195,8 +195,18 @@ function Nook:openInputDevices()
                 end
                 local rx, ry = range(0), range(1)
                 if rx and ry then
-                    self.lcd.range = { x = rx, y = ry }
                     logger.info("nook: touch panel", path, "x", rx[1], rx[2], "y", ry[1], ry[2])
+                    -- B&N's Synaptics driver (synaptics_i2c_rmi.c) reports y in the whole
+                    -- virtual screen's height (0-13518: the e-ink page above, the colour
+                    -- screen in its last 2082, from 11436), and x scaled by 0.8 after
+                    -- announcing the panel's own range: the colour screen's touches are
+                    -- x 0-5662, y 11436-13518. (With the announced ranges every touch
+                    -- landed in the picture's bottom strip: "the left side is the down
+                    -- arrow".)
+                    if rx[2] == 7078 and ry[2] == 13518 then
+                        rx, ry = { 0, math.floor(7078 * 800 / 1000) }, { 11436, 13518 }
+                    end
+                    self.lcd.range = { x = rx, y = ry }
                 end
                 C.close(fd)
             end
