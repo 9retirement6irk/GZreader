@@ -309,6 +309,15 @@ function HW:wakeLcd()
         level = HW.sys.read(SYS_LCD .. "/backlight_level"),
         gesture = self.gesture and HW.sys.read(self.gesture),
     }
+    -- B&N's "home area": touches in a strip of the panel are taken by the
+    -- kernel as the Home button (dmesg "Tap HomeKey") and never reported as
+    -- touches; GZreader draws its own buttons there. Strip 0 high while it runs.
+    local ts_dir = self.gesture and self.gesture:match("^(.*)/[^/]+$")
+    if ts_dir then
+        self.home_h = ts_dir .. "/home_height"
+        self.saved_power.home_h = HW.sys.read(self.home_h)
+        if self.saved_power.home_h then HW.sys.writeOnce(self.home_h, 0) end
+    end
     -- The LCD controller: Android blanks it (FBIOBLANK powerdown) when the
     -- screen goes off; its sysfs lcd_power only reads. The backlight doesn't
     -- light while it's off (the kernel waits for it).
@@ -322,7 +331,8 @@ function HW:wakeLcd()
     logger.info("nook: colour screen woken (LCD was", tostring(self.saved_power.lcd), "now", tostring(HW.sys.read(SYS_LCD .. "/lcd_power")),
         "; tube", tostring(self.tube), "was", tostring(self.saved_power.tube),
         "; backlight was", tostring(self.saved_power.backlight), "level", tostring(self.saved_power.level),
-        "; touch", tostring(self.gesture), "was", tostring(self.saved_power.gesture), ")")
+        "; touch", tostring(self.gesture), "was", tostring(self.saved_power.gesture),
+        "home area", tostring(self.saved_power.home_h), ")")
 end
 
 --- LCD backlight: on/off and level (0–255; the Nook's default is 64).
@@ -351,6 +361,7 @@ function HW:close()
     local saved = self.saved_power
     if saved then
         if self.gesture and saved.gesture then HW.sys.writeOnce(self.gesture, saved.gesture) end
+        if self.home_h and saved.home_h then HW.sys.writeOnce(self.home_h, saved.home_h) end
         if saved.level then HW.sys.write(SYS_LCD .. "/backlight_level", saved.level) end
         if saved.backlight then HW.sys.write(SYS_LCD .. "/backlight_power", saved.backlight) end
         if self.tube and saved.tube then HW.sys.writeOnce(self.tube, saved.tube) end

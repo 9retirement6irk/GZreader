@@ -127,20 +127,29 @@ wait_for() { # <seconds> <command...>
     while [ "$n" -gt 0 ]; do "$@" && return 0; sleep 1; n=$((n - 1)); done
     return 1
 }
+dhcp_done() {
+    [ "$(getprop dhcp.eth0.result)" = "ok" ] || wifi_up
+}
 start_wifi() {
     [ "$GZ_NOOK_WIFI" = "off" ] && return 0
     if wifi_up; then log "Wi-Fi: already connected"; return 0; fi
     log "Wi-Fi: off (Android switched it off), connecting"
     WIFI_STARTED=1
-    # (B&N's wifi_start.sh, done here: init's service didn't run it for us)
+    # (B&N's wifi_start.sh, done here: init's services didn't run for us, so
+    # wpa_supplicant and dhcpcd are started directly too, as init.rc has them)
     echo 1 > /sys/power/wifi_pm
     if ! wait_for 25 test -e /sys/class/net/eth0; then log "Wi-Fi: the chip didn't come up"; return 1; fi
     ifconfig eth0 up 2>/dev/null
-    setprop ctl.start wpa_supplicant
-    sleep 3
+    rm -f /data/misc/wifi/sockets/wpa_ctrl_* 2>/dev/null
+    /system/bin/wpa_supplicant -Dwext -ieth0 -c/system/etc/wifi/wpa_supplicant.conf -B > $RUN/wpa.log 2>&1
+    sleep 1
+    WPA_PID=$(pidof wpa_supplicant)
+    if [ -z "$WPA_PID" ]; then log "Wi-Fi: wpa_supplicant didn't start ($(head -c 200 $RUN/wpa.log | tr '\n' ' '))"; return 1; fi
+    log "Wi-Fi: wpa_supplicant running"
     setprop dhcp.eth0.result ""
-    setprop ctl.start dhcpcd
-    if ! wait_for 45 sh -c '[ "$(getprop dhcp.eth0.result)" = "ok" ]'; then
+    /system/bin/dhcpcd -ABKL eth0 > $RUN/dhcpcd.log 2>&1 &
+    DHCP_PID=$!
+    if ! wait_for 45 dhcp_done; then
         log "Wi-Fi: no address (no saved network in reach?)"
         return 1
     fi
@@ -153,8 +162,8 @@ start_wifi() {
 }
 stop_wifi() {
     [ -n "$WIFI_STARTED" ] || return 0
-    setprop ctl.stop dhcpcd
-    setprop ctl.stop wpa_supplicant
+    [ -n "$DHCP_PID" ] && kill "$DHCP_PID" 2>/dev/null
+    for p in $(pidof dhcpcd) $(pidof wpa_supplicant); do kill "$p" 2>/dev/null; done
     # (B&N's wifi_stop.sh)
     ifconfig eth0 down 2>/dev/null
     echo 0 > /sys/power/wifi_pm

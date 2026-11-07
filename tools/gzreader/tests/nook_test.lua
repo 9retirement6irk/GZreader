@@ -67,7 +67,7 @@ HW.sys = {
     -- (as Android leaves them asleep: tube off, backlight off and dimmed, taps only)
     read = function(path)
         if path:match("enable$") then return "1" end
-        return ({ lcd_power = "0", backlight_power = "0", backlight_level = "8", gesture_mask = "1" })[path:match("[^/]+$")]
+        return ({ lcd_power = "0", backlight_power = "0", backlight_level = "8", gesture_mask = "1", home_height = "1500" })[path:match("[^/]+$")]
     end,
     find = function(dir, name)
         return (dir:match("spi") and "/sys/bus/spi/devices/spi0.0/" or "/sys/bus/i2c/devices/0-0020/") .. name
@@ -81,6 +81,7 @@ check(HW.vfb_fd == 10 and HW.epd_fd == 11 and not HW.direct and not woke:find("e
 check(woke:find("0-0020/gesture_mask=16!", 1, true) and woke:find("spi0.0/lcd_power=1!", 1, true)
     and woke:find("backlight_level=64", 1, true) and woke:find("backlight_power=1", 1, true),
     "the colour screen woken: LCD powered up, backlight on at Android's level, the panel reporting finger motion (one write each)")
+check(woke:find("0-0020/home_height=0!", 1, true), "…and no kernel Home strip on the panel (its touches are GZreader's)")
 local unblanked = false
 for _i, c in ipairs(calls) do if c.req == 0x4611 and c.fd == 12 and c.blank == 0 then unblanked = true end end
 check(unblanked, "…and the LCD controller unblanked (s3cfb: FBIOBLANK, as Android does)")
@@ -156,7 +157,7 @@ HW:close()
 check(row800[0] == 0x1234, "Android's LCD picture restored")
 local joined = table.concat(sysfs, " ")
 check(joined:find("enable=1", 1, true) and joined:find("redraw=1", 1, true), "kernel updates back on, Android's page redrawn")
-check(joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
+check(joined:find("home_height=1500!", 1, true) and joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
     and joined:find("backlight_level=8", 1, true), "the colour screen and touch panel left as Android had them (it wakes them itself)")
 
 ------------------------------------------------------------------ lcd touch
