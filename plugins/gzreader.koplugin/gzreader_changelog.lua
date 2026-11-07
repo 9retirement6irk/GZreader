@@ -10,6 +10,10 @@ return {
             "Nook 1st Edition: a GZreader icon in the Nook's app list. The Nook's su only works for adb, so a small helper set up once over adb (launcher.sh install) runs as root from the Nook's start-up and starts GZreader when you tap the icon. See GZREADER.md.",
             "Nook 1st Edition: the Downloads tab opens GZreader's folder on the microSD card (it showed the root folder: ZenOS took /sdcard for a modern Android's /storage/emulated/0, which the Nook doesn't have).",
             "A clock that ran down (a Nook in the year 2000, a Kindle in 1970) is set from Grimmory's the first time it answers. Grimmory's reading statistics on Home were asked for the year 2000, so only the day streak showed.",
+            "Grimmory tab: a book's page shows the book's cover. It looked for the cover in a cache of its own and showed none when its own download of it didn't come back (Wi‑Fi still coming up, say); it now uses the cover the list already shows.",
+            "Grimmory tab: the selection stays on the book you moved to. Moving down while the tab was still loading, covers coming in, or downloading a book put it back on the top-left book; now it stays put when the page is drawn again.",
+            "Downloads tab: a book that finishes downloading while you're looking at Downloads appears in it straight away (before, only after leaving the tab and coming back).",
+            "Kindle DX: Home has two shelves of recent books to fill the taller screen, and Downloads four shelves to a page instead of six, so the books are bigger.",
         },
     },
     {

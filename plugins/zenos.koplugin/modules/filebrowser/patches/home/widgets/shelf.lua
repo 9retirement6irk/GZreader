@@ -1,7 +1,7 @@
 -- GZreader: the Home strip as a bookshelf. Books stand on wooden shelves with
 -- their spines out (title, author, number in the series); the one the 5-way
 -- is on, or that was tapped, is pulled out and shows its cover. Tap it (or
--- Press, or its letter) to open it. One shelf: the most recent books.
+-- Press, or its letter) to open it. One shelf of the most recent books (two on the DX).
 --
 -- Drawn with rectangles and text (e-ink greys), with some depth: spines are
 -- rounded with light from the left (darker edges, a highlight), cast a shadow
@@ -444,7 +444,8 @@ function Shelf:free()
 end
 
 --- The shelves for `books`: { widget, targets, jobs }.
---- opts = { ctx, width, height, rows, interactive, source_name, row_offset }
+--- opts = { ctx, width, height, rows, per_row, interactive, source_name, row_offset }
+--- per_row: fill each shelf up to it before the next (else shared evenly).
 function M.build(books, opts)
     local ctx = opts.ctx
     local width, height = opts.width, opts.height
@@ -455,7 +456,7 @@ function M.build(books, opts)
     local ratio = tonumber(CoverUtils.getRatio and CoverUtils.getRatio()) or 2 / 3
     -- (the size the cover is drawn at, so a pre-sized one is found)
     local cover_w, cover_h = cover_common.uniform_dims(math.floor(area_h * 0.86 * ratio), math.floor(area_h * 0.86))
-    local per_row = math.ceil(#books / rows)
+    local per_row = tonumber(opts.per_row) or math.ceil(#books / rows)
     local targets, jobs = {}, {}
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
@@ -463,7 +464,7 @@ function M.build(books, opts)
     local menu = ctx.menu
     for r = 1, rows do
         local shelf = Shelf:new{ w = width, h = row_h, area_h = area_h, slots = {}, menu = menu,
-            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and opts.empty_text or nil }
+            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and r == 1 and opts.empty_text or nil }
         local x = S(8)
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]

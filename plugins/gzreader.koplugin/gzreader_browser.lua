@@ -108,6 +108,8 @@ function Browser:show()
     pcall(function() require("gzreader_covermenu").apply(self.menu, self.plugin) end)
     -- the first page as a bookshop in the Bookshelf view (gzreader_bookshop.lua)
     pcall(function() require("gzreader_bookshop").apply(self) end)
+    -- the selection stays where it is when the page is drawn again (keys)
+    pcall(function() require("gzreader_focus").apply(self.menu, require("device"):hasDPad()) end)
     local orig_switch = self.menu.switchItemTable
     self.menu.switchItemTable = function(m, title, ...)
         local r = orig_switch(m, title, ...)
@@ -288,7 +290,9 @@ function Browser:openCached(opts)
         if #items == 0 then items = { { text = _("Nothing here yet."), select_enabled = false } } end
         local per_page = menu.perpage or PAGE_SIZE
         local first = ((menu.page or 1) - 1) * per_page + 1
-        menu:switchItemTable(opts.title, items, math.min(first, #items))
+        -- (what's selected stays selected, if it's still in the list: gzreader_focus.lua)
+        local okf, at = pcall(function() return require("gzreader_focus").carry(menu, items) end)
+        menu:switchItemTable(opts.title, items, math.min(okf and at or first, #items))
     end
     local function fetch()
         local msg = not shown and busy(_("Loading…")) or nil

@@ -1799,6 +1799,8 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         self.store.downloads[tostring(book.id)] = entry
         self:save()
         self:writeManifest()
+        -- the Downloads tab, if it's what's on screen: the new book in it
+        pcall(self.refreshDownloadsTab, self)
         if book.gz_quiet then
             -- (downloaded for later: a picture book is fitted before it's first opened)
             pcall(function() require("gzreader_picturebook").prepare(path) end)
@@ -1845,6 +1847,35 @@ function Grimmory:downloadAndOpen(book, menu, opts)
             })
         end
     end)
+end
+
+--- Is the Downloads tab (the file manager in the GZreader folder) what's on
+--- screen? Not under Home, the Grimmory tab, a book or another full-screen
+--- page; a message box over it doesn't count.
+function Grimmory:downloadsTabShowing()
+    local FM = require("apps/filemanager/filemanager")
+    local fm = FM.instance
+    local fc = fm and fm.file_chooser
+    if not (fc and fc.path and not fm.invisible and not fm.tearing_down) then return false end
+    local dir = self.store.library_dir
+    if not dir or fc.path:gsub("/+$", "") ~= dir:gsub("/+$", "") then return false end
+    local stack = UIManager._window_stack or {}
+    for i = #stack, 1, -1 do
+        local w = stack[i].widget
+        if w == fm then return true end
+        if w and (w.covers_fullscreen or w._gz_navbar_tab_id) then return false end
+    end
+    return false
+end
+
+--- A book was downloaded: if the Downloads tab is on screen, show it again
+--- with the book in it (before, it showed up only after leaving the tab).
+function Grimmory:refreshDownloadsTab()
+    if not self:downloadsTabShowing() then return false end
+    local fc = require("apps/filemanager/filemanager").instance.file_chooser
+    fc:refreshPath()
+    Log.info("Downloads tab refreshed: a new book")
+    return true
 end
 
 --- Downloads from before 1.22.4: ask Grimmory for their authors (in the

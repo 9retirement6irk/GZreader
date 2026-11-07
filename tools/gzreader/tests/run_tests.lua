@@ -1570,6 +1570,167 @@ do
     end
 end
 
+print("A book's page: the cover the list shows")
+do
+    if type(package.loaded["gzreader_bookpage"]) ~= "table" then package.loaded["gzreader_bookpage"] = nil end
+    local okbp, BP = pcall(require, "gzreader_bookpage")
+    check(okbp and BP.coverImage, "the book page loads " .. tostring(not okbp and BP or ""))
+    if okbp then
+        local Covers = require("gzreader_covers")
+        local orig_image = Covers.image
+        local asked
+        Covers.image = function(id, kind, w, h)
+            asked = { id = id, kind = kind, w = w, h = h }
+            return { copy = function() return "a copy of the list's cover" end }
+        end
+        os.remove(Covers.path(9071)); os.remove(Covers.dir() .. "/9071.none")
+        local none = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(none == nil and asked == nil, "no cover on the Kindle: none drawn (it's fetched)")
+        local f = io.open(Covers.path(9071), "wb"); f:write("jpeg"); f:close()
+        local img = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(img and img.image == "a copy of the list's cover" and img.image_disposable == true
+            and asked and asked.id == 9071 and asked.w == 96 and asked.h == 144,
+            "the Grimmory tab's cached cover is the page's cover (a copy, sized for the page), whatever the old cache has")
+        os.remove(Covers.path(9071))
+        Covers.image = orig_image
+    end
+end
+
+print("The Grimmory tab's selection stays where it is (keys)")
+do
+    local F = require("gzreader_focus")
+    check(F.keyOf({ book = { id = 5 }, text = "x" }) == "book:5" and F.keyOf({ gz_id = "all", text = "All" }) == "id:all"
+        and F.keyOf({ gz_action = "search", text = "S" }) == "action:search" and F.keyOf({ text = "Libraries" }) == "text:Libraries"
+        and F.keyOf(nil) == nil, "what's selected is known by what it is: a book's id, a card, a row's text")
+    -- a menu drawn three to a row, the page putting the selection on the first
+    -- thing (as the bookshop and the list views do)
+    local function books(ids)
+        local t = {}
+        for i, id in ipairs(ids) do t[i] = { book = { id = id }, text = "Book " .. id } end
+        return t
+    end
+    local function newMenu(items)
+        local m = { item_table = items, page = 1, drawn = 0 }
+        function m:moveFocusTo(x, y) self.selected = { x = x, y = y } end
+        function m:updateItems()
+            self.drawn = self.drawn + 1
+            self.layout = {}
+            for i, e in ipairs(self.item_table) do
+                local r = math.floor((i - 1) / 3) + 1
+                self.layout[r] = self.layout[r] or {}
+                table.insert(self.layout[r], { entry = e })
+            end
+            self.selected = { x = 1, y = 1 }
+        end
+        return m
+    end
+    local function on(m) local c = F.current(m); return c and c.key end
+    local m = newMenu(books({ 1, 2, 3, 4, 5, 6, 7 }))
+    F.apply(m, true)
+    m:updateItems()
+    check(on(m) == "book:1", "first drawn: where the page puts it")
+    m:updateItems()
+    check(on(m) == "book:1", "not moved: a redraw places it as the page always did")
+    m.selected = { x = 2, y = 2 } -- the 5-way, down to book 5
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 2,
+        "moved, then the page drawn again (covers in, the bookshop's lists in, a download): still on book 5")
+    m:updateItems()
+    check(on(m) == "book:5", "and at every redraw after that")
+    table.insert(m.item_table, 1, { book = { id = 99 }, text = "Book 99" })
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 3 and m.selected.y == 2, "a book added before it: still on book 5, where it is now")
+    -- Grimmory's fresh copy of the list replaces the saved one
+    local fresh = books({ 99, 5, 1, 2 })
+    local at = F.carry(m, fresh)
+    check(at == 2, "the fresh copy is shown from book 5's place " .. tostring(at))
+    m.item_table = fresh
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 1, "the fresh copy: still on book 5")
+    local gone = books({ 10, 11 })
+    check(F.carry(m, gone) == nil, "book 5 not in the fresh copy: shown from the start")
+    -- not moved since: the fresh copy as before (from the first)
+    local m2 = newMenu(books({ 1, 2, 3 }))
+    F.apply(m2, true)
+    m2:updateItems()
+    check(F.carry(m2, books({ 1, 2, 3 })) == nil and m2._gz_focus_want == nil, "not moved: the fresh copy as before")
+    -- another list opened: where it starts as before
+    local m3 = newMenu(books({ 1, 2, 3, 4 }))
+    F.apply(m3, true)
+    m3:updateItems()
+    m3.selected = { x = 3, y = 1 }
+    m3.item_table = books({ 7, 8 })
+    m3:updateItems()
+    check(on(m3) == "book:7", "another list: from its start")
+    local touch = newMenu(books({ 1, 2 }))
+    local before = touch.updateItems
+    F.apply(touch, false)
+    check(touch.updateItems == before and not touch._gz_focus, "touch Kindles: nothing selected, nothing changed")
+end
+
+print("A download shows in the Downloads tab when it's on screen")
+do
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    local UIM = require("ui/uimanager")
+    local was_stack = UIM._window_stack
+    local refreshed = 0
+    local fc = { path = WORK .. "/library/", refreshPath = function() refreshed = refreshed + 1 end }
+    local fm = { file_chooser = fc, covers_fullscreen = true }
+    package.loaded["apps/filemanager/filemanager"] = { instance = fm }
+    local p = { store = { library_dir = WORK .. "/library" } }
+    setmetatable(p, { __index = plugin })
+    UIM._window_stack = { { widget = fm }, { widget = { text = "Downloading…" } } }
+    check(p:refreshDownloadsTab() == true and refreshed == 1, "the Downloads tab on screen (a message over it): shown again with the book")
+    UIM._window_stack = { { widget = fm }, { widget = { name = "home", covers_fullscreen = true } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "Home over it: left alone")
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_grimmory" } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "the Grimmory tab over it: left alone")
+    UIM._window_stack = { { widget = fm } }
+    fc.path = WORK .. "/elsewhere"
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "another folder in the file manager: left alone")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    UIM._window_stack = was_stack
+end
+
+print("Kindle DX: four shelves in Downloads, two on Home")
+do
+    local Device = require("device")
+    local was_model, was_screen = Device.model, Device.screen
+    local Touch = require("gzreader_touch")
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    -- (a failed load earlier left a marker behind; its widgets stubbed while it loads)
+    if type(package.loaded["gzreader_shelfview"]) ~= "table" then package.loaded["gzreader_shelfview"] = nil end
+    local wm = { "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }
+    local kept = {}
+    for _i, m in ipairs(wm) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then
+            package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end })
+        end
+    end
+    local okv, View = pcall(require, "gzreader_shelfview")
+    for _i, m in ipairs(wm) do package.loaded[m] = kept[m] end
+    local okg, GzView = pcall(require, "common/gz_view")
+    package.path = saved_path
+    check(okv and okg, "the shelf views load " .. tostring(not okv and View or not okg and GzView or ""))
+    local function as(model, w, h)
+        Device.model = model
+        Device.screen = { getWidth = function() return w end, getHeight = function() return h end }
+    end
+    as("Kindle2", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX: Downloads four shelves a page, Home two")
+    as("KindleDXG", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX Graphite: the same")
+    as("Kindle2", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 2 (6\"): as before")
+    as("Kindle3", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 3: as before")
+    as("KindlePaperWhite3", 1072, 1448)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Paperwhite 3: as before")
+    Device.model, Device.screen = was_model, was_screen
+end
+
 print("No duplicate reading sessions")
 do
     local before = #json.decode(ctl("/state")).sessions

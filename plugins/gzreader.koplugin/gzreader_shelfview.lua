@@ -64,6 +64,15 @@ end
 
 ---------------------------------------------------------------- sizes
 
+--- At most this many shelves on a page: the DX's tall screen fitted six,
+--- each book small; four make them bigger. nil: as many as fit.
+View.DX_ROWS = 4
+function View.maxRows()
+    local ok, dx = pcall(function() return require("gzreader_touch").dx() end)
+    if ok and dx then return View.DX_ROWS end
+    return nil
+end
+
 local function areaH(row_h)
     return row_h - S(Shelf().BOARD_H) - S(Shelf().UNDER_H) - S(10)
 end
@@ -98,6 +107,8 @@ function View.recalculateDimen(menu)
     local function plan(avail)
         avail = math.max(S(120), avail)
         local rows = math.max(1, math.floor(avail / S(View.ROW_H)))
+        local cap = View.maxRows()
+        if cap then rows = math.min(rows, cap) end
         local row_h = math.floor(avail / rows)
         local per_row = math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Shelf().MAX_SPINE)))
         -- the special folders at the start of the list: the room they take
