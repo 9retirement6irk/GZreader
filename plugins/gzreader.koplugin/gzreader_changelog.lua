@@ -6,6 +6,7 @@ return {
         changes = {
             "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",
             "How long something kept the e-reader awake is timed on a clock that doesn't jump (the log said 26 years after a run-down clock was set).",
+            "Test builds: the update and its data are read from the same commit of the updates branch. Right after a new test build, GitHub's file server could still hand out the last one's data with the new zip, and the update said it was incomplete.",
         },
     },
     {

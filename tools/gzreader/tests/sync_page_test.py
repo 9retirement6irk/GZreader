@@ -289,6 +289,21 @@ with sync_playwright() as pw:
           "update: a newer GZreader is offered for the Kindle")
     check(page.locator("#o-beta-row:not(.hidden)").count() == 1 and not page.locator("#o-beta").is_checked(),
           "test builds: a choice on the page, off (as on the Kindle)")
+    # the files at the updates branch's commit (GitHub's file server keeps each file of a branch on its own)
+    sha = "ab12" * 10
+    page.route("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates",
+               lambda route: route.fulfill(status=200, body=sha if route.request.headers.get("accept") == "application/vnd.github.sha" else "{}"))
+    bases = page.evaluate("""async () => {
+        var keep = GZSync.Update.RAW, out = [];
+        GZSync.Update.RAW = 'https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/';
+        out.push(await GZSync.Update.base());
+        GZSync.Update.RAW = keep;
+        out.push(await GZSync.Update.base());
+        return out;
+    }""")
+    check(bases[0] == "https://raw.githubusercontent.com/9retirement6irk/GZreader/%s/" % sha and bases[1].startswith("http://127.0.0.1:"),
+          "update files read at the updates branch's commit (the data and the zip from the same build)")
+    page.unroute("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates")
     page.evaluate("(wp) => { GZSync.Update.RAW_BETA = 'http://127.0.0.1:' + wp + '/updates/'; }", WP)
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('test build')")

@@ -2950,6 +2950,26 @@ do
         and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
         and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
         "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    -- (GitHub's file server keeps each file of a branch for minutes, each on its own:
+    -- the test build's data and its zip are read at the branch's commit)
+    local sha, asks = string.rep("ab12", 10), {}
+    Update.request = function(u, _path, accept)
+        asks[#asks + 1] = u
+        if u:match("/commits/updates$") then return 200, accept == "application/vnd.github.sha" and sha or "{}" end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    local pinned = Update.check()
+    check(asks[1] == "https://api.github.com/repos/9retirement6irk/GZreader/commits/updates"
+        and asks[2] == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/latest-beta.json"
+        and pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/gzreader-beta-update.zip",
+        "test builds: the data and the zip from the same commit of the updates branch (no half-old, half-new: 'incomplete')")
+    Update.request = function(u)
+        if u:match("/commits/") then return 403 end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    pinned = Update.check()
+    check(pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip",
+        "GitHub doesn't say the commit (rate limit): the branch as before")
     Update.request = function()
         return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
     end

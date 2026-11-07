@@ -622,7 +622,22 @@ gets a password or token.
     RAW_BETA: "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/",
     beta: false, betaTouched: false,
     raw: function () { return Update.beta ? Update.RAW_BETA : Update.RAW; },
-    meta: function () { return Update.raw() + (Update.beta ? "latest-beta.json" : "latest.json"); },
+    meta: function (base) { return (base || Update.raw()) + (Update.beta ? "latest-beta.json" : "latest.json"); },
+    // the updates branch at its commit now: GitHub's file server keeps each
+    // file of a branch for minutes, each on its own, so right after a new
+    // build latest.json and the zip could be from different builds ("the
+    // update came incomplete"); a commit's files never change
+    base: async function () {
+      var raw = Update.raw(), m = raw.match(/^(https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/)updates\/$/);
+      if (!m) return raw;
+      try {
+        var r = await fetch("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates",
+          { headers: { Accept: "application/vnd.github.sha" }, cache: "no-store" });
+        var sha = r.ok ? (await r.text()).trim() : "";
+        if (/^[0-9a-f]{40}$/.test(sha)) return m[1] + sha + "/";
+      } catch (e) {}
+      return raw;
+    },
     // whether `v` should go to a Kindle that has `have`
     offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
@@ -695,9 +710,10 @@ gets a password or token.
       var blob = Update.file;
       if (!blob) {
         try {
-          var meta = await (await fetch(Update.meta(), { cache: "no-store" })).json();
+          var base = await Update.base();
+          var meta = await (await fetch(Update.meta(base), { cache: "no-store" })).json();
           if (Update.offered(meta.version, out.gzreader || "0") && /^[\w.-]+$/.test(meta.file || "gzreader-update.zip")) {
-            var r = await fetch(Update.raw() + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
+            var r = await fetch(base + (meta.file || "gzreader-update.zip"), { cache: "no-store" });
             if (r.ok) {
               var b = await r.blob();
               if (meta.size && b.size !== meta.size) throw new Error("the update came incomplete");
