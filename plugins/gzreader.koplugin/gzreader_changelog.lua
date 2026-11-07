@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition: a GZreader icon in the Nook's app list. The Nook's su only works for adb, so a small helper set up once over adb (launcher.sh install) runs as root from the Nook's start-up and starts GZreader when you tap the icon. See GZREADER.md.",
+        },
+    },
+    {
         version = "1.26.5",
         changes = {
             "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",
