@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",
+            "How long something kept the e-reader awake is timed on a clock that doesn't jump (the log said 26 years after a run-down clock was set).",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",

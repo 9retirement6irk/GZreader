@@ -298,7 +298,9 @@ Nook.
 Wi‑Fi: GZreader uses the networks saved in the Nook's own settings. When
 Android has switched Wi‑Fi off (it does when its screen goes off), the start
 script switches it on and connects as Android would, and switches it off
-again when you exit GZreader. (`GZ_NOOK_WIFI=off` leaves Wi‑Fi alone.)
+again when you exit GZreader. It also turns the Wi‑Fi chip's power saving
+off while GZreader runs: with it on, the chip naps between packets, loses
+some, and sign-ins time out. (`GZ_NOOK_WIFI=off` leaves Wi‑Fi alone.)
 
 Not in the test build: audiobooks and read aloud (the Nook has a speaker,
 but GZreader plays audio with the Kindle's player), switching Wi‑Fi on and
