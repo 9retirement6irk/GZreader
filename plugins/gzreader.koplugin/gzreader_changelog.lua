@@ -2,6 +2,13 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Music (Plex): Make bigger MP3 and AAC smaller (Music tab → Plex: you · server). MP3 and AAC tracks of a higher quality than “Quality when converting” are converted to MP3 at that quality by Plex too, to save room on the Kindle.",
+            "Sync page: music is converted at the Kindle's “Quality when converting” (it was always 192 kbps), and both choices can be changed on the page, with the Plex connection; the Kindle keeps what's chosen there.",
+        },
+    },
+    {
         version = "1.26.6",
         changes = {
             "Nook 1st Edition: far fewer flashes. Each e-ink refresh on this Nook is of the whole page, so GZreader now waits until the screen has stopped changing after a tap or button and refreshes once: a tap, the menu it opens and the status bar are one flash instead of three. A popup that opens by itself (a download's progress) shows at once and updates every few seconds. The clock and battery no longer flash the page on their own; they show with the next refresh (five minutes at most).",

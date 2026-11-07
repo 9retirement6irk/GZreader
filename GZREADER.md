@@ -938,7 +938,12 @@ bookshelf, the CD player), like audiobooks: open one to play it.
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else
 (FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or
-320 kbps: *Plex: you · server* in the Music tab). Converting uses Plex's
+320 kbps: *Plex: you · server* in the Music tab). To save room, **Make bigger
+MP3 and AAC smaller** (in the same place) has Plex convert MP3 and AAC tracks
+of a higher quality to MP3 at that quality too (more than 15 % above it, so a
+file at about that quality stays as it is); music already downloaded stays as
+it is. The sync page (Kindles without Wi‑Fi) shows the same two choices with
+the Plex connection and uses them; changed there, the Kindle keeps them. Converting uses Plex's
 transcoder; if your server refuses it, those tracks say so.
 
 *Now playing*: pause, next, previous, shuffle, repeat (off, all, this track),

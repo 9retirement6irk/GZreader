@@ -483,15 +483,32 @@ gets a password or token.
       if (t.type === "album") t.artist = m.parentTitle;
       if (t.type === "artist") t.artist = undefined;
       var media = m.Media && m.Media[0], part = media && media.Part && media.Part[0];
-      if (part) t.part = { key: part.key, container: part.container || media.container, size: part.size, codec: media.audioCodec };
+      if (part) t.part = { key: part.key, container: part.container || media.container, size: part.size, codec: media.audioCodec, bitrate: media.bitrate };
       return t;
     },
+    // (gzreader_plex.lua Plex.how: bigger MP3/AAC made into MP3 at the quality too, if asked)
     how: function (t) {
-      var p = t.part || {}, c = String(p.container || "").toLowerCase(), codec = String(p.codec || "").toLowerCase();
-      if (c === "mp3" || (codec === "mp3" && c === "")) return ["file", "mp3"];
-      if ((c === "mp4" || c === "m4a") && (codec === "aac" || codec === "")) return ["file", "m4a"];
-      if (c === "aac" || c === "adts") return ["file", "aac"];
-      return ["transcode", "mp3"];
+      var p = t.part || {}, c = String(p.container || "").toLowerCase(), codec = String(p.codec || "").toLowerCase(), r;
+      if (c === "mp3" || (codec === "mp3" && c === "")) r = ["file", "mp3"];
+      else if ((c === "mp4" || c === "m4a") && (codec === "aac" || codec === "")) r = ["file", "m4a"];
+      else if (c === "aac" || c === "adts") r = ["file", "aac"];
+      else return ["transcode", "mp3"];
+      var q = P.quality(), kbps = Number(p.bitrate);
+      if (q.shrink && kbps > q.bitrate * P.SHRINK_MARGIN) return ["transcode", "mp3"];
+      return r;
+    },
+    BITRATES: [128, 192, 320],
+    SHRINK_MARGIN: 1.15,
+    q: null, // chosen on the page (null: as on the Kindle)
+    quality: function () {
+      if (P.q) return P.q;
+      var k = (K.out || {}).music_quality || {};
+      return { bitrate: P.BITRATES.indexOf(Number(k.bitrate)) >= 0 ? Number(k.bitrate) : 192, shrink: k.shrink === true };
+    },
+    renderQuality: function () {
+      var q = P.quality();
+      if ($("#p-bitrate")) $("#p-bitrate").value = String(q.bitrate);
+      if ($("#p-shrink")) $("#p-shrink").checked = q.shrink;
     },
   };
 
@@ -1503,7 +1520,7 @@ gets a password or token.
     // the server's MP3 (FLAC, ALAC, Ogg…): its transcoder, HLS with MP3 in MPEG-TS
     var session = rand(8);
     var params = { path: "/library/metadata/" + t.key, protocol: "hls", mediaIndex: 0, partIndex: 0, directPlay: 0, directStream: 0,
-      directStreamAudio: 0, musicBitrate: 192, fastSeek: 1, hasMDE: 1, "X-Plex-Session-Identifier": session, session: session,
+      directStreamAudio: 0, musicBitrate: P.quality().bitrate, fastSeek: 1, hasMDE: 1, "X-Plex-Session-Identifier": session, session: session,
       location: "lan", "X-Plex-Platform": "Chrome", "X-Plex-Client-Identifier": P.clientId(), "X-Plex-Product": "GZreader",
       "X-Plex-Client-Profile-Extra": "add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=mp3)" };
     var start = P.st.server.uri + "/music/:/transcode/universal/start.m3u8";
@@ -1652,6 +1669,7 @@ gets a password or token.
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)
       if (out.gzreader && Update.betaTouched) inbox.test_builds = Update.beta;
+      if (P.q) inbox.music_quality = { bitrate: P.q.bitrate, shrink: P.q.shrink }; // (the Kindle's Plex settings follow)
       if (Update.chosen && Update.latest) { try { await Update.bring(out, inbox); } catch (e) { log("Update: " + e.message, "bad"); } }
       await saveInbox(inbox);
       await Vault.chain; // (a renewed sign-in token: on the Kindle before it's unplugged)
@@ -1715,6 +1733,7 @@ gets a password or token.
     $("#p-status").textContent = p ? "Signed in" + (P.st.user ? " as " + P.st.user : "") + " · " + (P.st.server.name || "Plex") : "Not connected";
     $("#p-form").classList.toggle("hidden", p);
     $("#p-on").classList.toggle("hidden", !p);
+    P.renderQuality();
     renderPicks();
     $("#b-results").textContent = ""; // (the Content tab loads again with the new connections)
     updateSyncButton();
@@ -2263,6 +2282,9 @@ gets a password or token.
     $("#b-more").onclick = busy($("#b-more"), function () { return Browse.more && Browse.more(); });
     // sync
     $("#o-update").onchange = function () { Update.chosen = $("#o-update").checked; };
+    var qChanged = function () { P.q = { bitrate: Number($("#p-bitrate").value) || 192, shrink: $("#p-shrink").checked }; };
+    $("#p-bitrate").onchange = qChanged;
+    $("#p-shrink").onchange = qChanged;
     $("#o-beta").onchange = function () { Update.betaTouched = true; Update.file = null; Update.check(); };
     $("#sync").onclick = runSync;
     // test mode: the pretend Kindle at once

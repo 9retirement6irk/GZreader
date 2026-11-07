@@ -26,19 +26,19 @@ def media(name):
 MP3, M4A, TS = media("tone.mp3"), media("tone.m4a"), media("tone.ts")
 STATE = {"pins": {}, "next_pin": 1000, "log": [], "auto": False, "claimed": set(), "slow": 0}
 
-def track(k, title, idx, album_key, album, container, codec):
+def track(k, title, idx, album_key, album, container, codec, kbps):
     return {"ratingKey": str(k), "type": "track", "title": title, "index": idx, "duration": 3000,
             "parentRatingKey": str(album_key), "parentTitle": album, "grandparentTitle": "The Tones",
-            "Media": [{"container": container, "audioCodec": codec,
+            "Media": [{"container": container, "audioCodec": codec, "bitrate": kbps,
                        "Part": [{"key": f"/library/parts/{k}/1/file.{container}", "container": container, "size": 12000}]}]}
 
 ALBUMS = {
     "201": {"ratingKey": "201", "type": "album", "title": "MP3 Album", "parentTitle": "The Tones", "year": 2020, "thumb": "/library/metadata/201/thumb/1",
-            "tracks": [track(301, "Tone A", 1, 201, "MP3 Album", "mp3", "mp3"), track(302, "Tone B", 2, 201, "MP3 Album", "mp3", "mp3")]},
+            "tracks": [track(301, "Tone A", 1, 201, "MP3 Album", "mp3", "mp3", 320), track(302, "Tone B", 2, 201, "MP3 Album", "mp3", "mp3", 200)]},
     "202": {"ratingKey": "202", "type": "album", "title": "AAC Album", "parentTitle": "The Tones", "year": 2021,
-            "tracks": [track(303, "Tone C", 1, 202, "AAC Album", "mp4", "aac")]},
+            "tracks": [track(303, "Tone C", 1, 202, "AAC Album", "mp4", "aac", 160)]},
     "203": {"ratingKey": "203", "type": "album", "title": "FLAC Album", "parentTitle": "The Tones", "year": 2022,
-            "tracks": [track(304, "Tone D", 1, 203, "FLAC Album", "flac", "flac")]},
+            "tracks": [track(304, "Tone D", 1, 203, "FLAC Album", "flac", "flac", 900)]},
 }
 ARTIST = {"ratingKey": "101", "type": "artist", "title": "The Tones"}
 TRACKS = {t["ratingKey"]: t for a in ALBUMS.values() for t in a["tracks"]}
@@ -99,6 +99,8 @@ class H(BaseHTTPRequestHandler):
             STATE["auto"] = True; return self.send(200, {})
         if p == "/ctl/slow":   # seconds each track file takes (a download to stop)
             STATE["slow"] = float(q["s"][0]); return self.send(200, {})
+        if p == "/ctl/transcodes":
+            return self.send(200, STATE.get("transcodes", []))
         if p == "/ctl/log":
             return self.send(200, STATE["log"])
         # plex.tv
@@ -175,6 +177,7 @@ class H(BaseHTTPRequestHandler):
             if platform not in ("Chrome", "Safari", "Firefox"):
                 return self.send(400, "<html><head><title>Bad Request</title></head></html>", "text/html")
             STATE["transcoded"] = path
+            STATE["transcodes"] = STATE.get("transcodes", []) + [[path, q.get("musicBitrate", [""])[0]]]
             return self.send(200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=192000\nsession/abc/base/index.m3u8\n", "application/vnd.apple.mpegurl")
         if p == "/music/:/transcode/universal/session/abc/base/index.m3u8":
             return self.send(200, "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.5,\n00000.ts\n#EXTINF:1.5,\n00001.ts\n#EXT-X-ENDLIST\n", "application/vnd.apple.mpegurl")
