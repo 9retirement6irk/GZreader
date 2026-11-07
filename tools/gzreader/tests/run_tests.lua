@@ -2947,6 +2947,29 @@ check(not fok and ferr:match("could not install plugins/gzreader.koplugin") and 
 check(io.popen("ls -a '" .. CARD .. "/GZreader' | grep -c 'gzreader-update'"):read("*a"):match("^0"), "…and nothing left on the card")
 Update.freeSpace = function() return 1e10 end
 check(select(2, Update.workDir(30e6)) == false, "room next to GZreader: unpacked there, as before")
+-- parts on the card (the Nook's start script mounts them into koreader/):
+-- unpacked next to GZreader, but those parts copied in, not renamed
+local real_dev, copied = Update.devOf, {}
+Update.devOf = function(p)
+    if p == NK .. "/frontend" or p:find("^" .. NK:gsub("%p", "%%%0") .. "/frontend/") then return "card" end
+    return real_dev(p)
+end
+Update.copyTree = function(from, dest)
+    copied[#copied + 1] = dest
+    return real_copy(from, dest)
+end
+PKG = { ["koreader/frontend/m.lua"] = "mounted", ["koreader/plugins/gzreader.koplugin/main.lua"] = "m main",
+    ["koreader/gzreader-version"] = "1.7.0\n" }
+local mok, merr = Update.apply("pkg.zip")
+Update.copyTree, Update.devOf = real_copy, real_dev
+local copied_frontend, copied_other = false, false
+for _i, d in ipairs(copied) do
+    if d == NK .. "/frontend" then copied_frontend = true elseif not d:find("/kept/") and not d:find("^" .. NK:gsub("%p", "%%%0") .. "/frontend/") then copied_other = true end
+end
+check(mok and rf(NK .. "/frontend/m.lua") == "mounted" and rf(NK .. "/frontend/c.lua") == nil and Update.currentVersion() == "1.7.0"
+    and copied_frontend and not copied_other,
+    "a part on another disk (frontend on the card): copied in; the rest renamed as before (" .. tostring(merr) .. ")")
+check(io.popen("ls -a '" .. NK .. "' '" .. NK .. "/plugins' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"), "…nothing left behind")
 Update.freeSpace, Update.cardDir = real_free, real_card
 Update.root = KO
 end

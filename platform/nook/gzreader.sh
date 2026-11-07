@@ -92,6 +92,103 @@ if [ -z "$GZ_NOOK_HOME" ]; then
 fi
 export GZ_NOOK_HOME
 
+# --- 1c. GZreader's files on the card ----------------------------------------
+# (begin app parts: tools/gzreader/tests/nook_app_test.py runs this part)
+# The Nook's own disk (/data, 242 MB on a 1st Edition) is shared with Android
+# and was full: updates couldn't unpack. The parts of GZreader that are only
+# read, not run (its Lua, fonts, hyphenation, translations) and its cache
+# live on the microSD card when there is one, else on the Nook's own
+# storage: $GZ_NOOK_HOME/.gzreader-app. They're mounted into koreader/ while
+# GZreader runs, so it sees one folder. Its programs and libraries (they need
+# a Linux disk: the card is FAT) and its settings stay on /data. The first
+# start moves them (a minute or two); a full package pushed over them later
+# is moved again. Where they went is kept in $GZ/app-home: without that
+# storage (the card taken out) GZreader doesn't start. GZ_NOOK_APP=here (or
+# a file $GZ/app-here) brings everything back to /data and keeps it there.
+[ -f "$GZ/app-here" ] && GZ_NOOK_APP=here
+APP_PARTS="frontend plugins fonts data resources ffi jit l10n cache"
+APP_BOUND=
+bind_part() { mount -o bind "$1" "$2"; }
+unbind_part() { umount "$1" 2>/dev/null || umount -l "$1" 2>/dev/null; }
+part_bound() { awk -v d="$1" '$2 == d { found = 1 } END { exit !found }' "$MOUNTS" 2>/dev/null; }
+files_in() { find "$1" -type f 2>/dev/null | wc -l; }
+unbind_app() {
+    for P in $APP_BOUND; do unbind_part "$GZ/koreader/$P"; done
+    APP_BOUND=
+}
+# copy a folder to <dest> (a new folder), checked; the source is left as it is
+copy_part() {
+    rm -rf "$2.gz-new"
+    if cp -r "$1" "$2.gz-new" 2>/dev/null && [ "$(files_in "$1")" = "$(files_in "$2.gz-new")" ]; then
+        rm -rf "$2" && mv "$2.gz-new" "$2" && return 0
+    fi
+    rm -rf "$2.gz-new"
+    return 1
+}
+app_parts() {
+    APP_FILE=$GZ/app-home
+    APP=$GZ_NOOK_HOME/.gzreader-app
+    [ -s "$APP_FILE" ] && APP=$(cat "$APP_FILE")
+    # (left over from a GZreader that didn't close properly)
+    for P in $APP_PARTS; do part_bound "$GZ/koreader/$P" && unbind_part "$GZ/koreader/$P"; done
+    if [ -s "$APP_FILE" ] && [ ! -f "$APP/.gz-app" ]; then
+        log "app: GZreader's files are in $APP, which isn't there (card taken out?)"
+        echo "GZreader's files are on the storage it was started from ($APP): put that card back in."
+        return 1
+    fi
+    if [ "$GZ_NOOK_APP" = "here" ]; then
+        [ -s "$APP_FILE" ] || return 0
+        back=1
+        for P in $APP_PARTS; do
+            K=$GZ/koreader/$P
+            if [ -d "$APP/$P" ] && [ -z "$(ls -A "$K" 2>/dev/null)" ]; then
+                rmdir "$K" 2>/dev/null
+                if copy_part "$APP/$P" "$K"; then rm -rf "$APP/$P"
+                else log "app: couldn't bring $P back (not enough room?): it stays in $APP"; mkdir -p "$K"; back=; fi
+            fi
+        done
+        if [ -n "$back" ]; then
+            rm -f "$APP_FILE"
+            log "app: all of GZreader on the Nook's own disk again"
+            return 0
+        fi
+    fi
+    # (.nomedia: Android's media scanner leaves its fonts and pictures alone)
+    if ! { mkdir -p "$APP" && : > "$APP/.gz-app" && : > "$APP/.nomedia"; } 2>/dev/null; then
+        log "app: can't write $APP: GZreader stays on the Nook's own disk"
+        return 0
+    fi
+    echo "$APP" > "$APP_FILE"
+    for P in $APP_PARTS; do
+        K=$GZ/koreader/$P
+        [ "$P" = cache ] && mkdir -p "$K" "$APP/cache" # (there even when empty)
+        if [ "$GZ_NOOK_APP" != "here" ] && [ -d "$K" ] && [ -n "$(ls -A "$K" 2>/dev/null)" ]; then
+            # (on /data: the first start, or a full package pushed over it)
+            log "app: moving $P to $APP ($(du -sk "$K" | cut -f1) KB)"
+            if copy_part "$K" "$APP/$P"; then
+                rm -rf "$K"
+            else
+                log "app: couldn't copy $P (card full?): it stays on the Nook's own disk"
+                continue
+            fi
+        fi
+        [ -d "$APP/$P" ] || continue
+        mkdir -p "$K"
+        if bind_part "$APP/$P" "$K"; then
+            APP_BOUND="$APP_BOUND $P"
+        else
+            log "app: couldn't mount $P from $APP"
+            echo "GZreader couldn't use its files in $APP (see $LOG)."
+            unbind_app
+            return 1
+        fi
+    done
+    log "app: on $APP:$APP_BOUND"
+    return 0
+}
+# (end app parts)
+app_parts || { umount /system/etc 2>/dev/null; exit 1; }
+
 # DNS: Android's servers (properties) in a resolv.conf, over /system/etc
 # for as long as GZreader runs (a copy of it plus resolv.conf)
 set_dns() {
@@ -218,6 +315,7 @@ resume_android() {
     restore_alignment
     stop_wifi
     umount /system/etc 2>/dev/null
+    unbind_app
     if [ -s $RUN/stopped ]; then
         while read -r pid; do kill -CONT "$pid" 2>/dev/null; done < $RUN/stopped
         : > $RUN/stopped
