@@ -2708,9 +2708,11 @@ check(Update.currentVersion() == "1.2.0" and rf(KO .. "/settings/settings.reader
 do
 -- the same update package on a Kindle and on a Nook: the Nook's start script only on a Nook
 PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
-    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n" }
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n",
+    ["koreader/nook-launcher.sh"] = "#!/system/bin/sh\n# new helper\n" }
 check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0", "update with the Nook's start script in it, on a Kindle: installed")
-check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil, "…without the Nook's start script (a Kindle has none)")
+check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil and rf(WORK .. "/launcher.sh") == nil,
+    "…without the Nook's scripts (a Kindle has none)")
 local NK = WORK .. "/nook/gzreader/koreader"
 os.execute("rm -rf '" .. WORK .. "/nook' && mkdir -p '" .. NK .. "/frontend' '" .. NK .. "/plugins/gzreader.koplugin'")
 wf(NK .. "/plugins/gzreader.koplugin/main.lua", "old main"); wf(NK .. "/gzreader-version", "1.2.0\n")
@@ -2719,6 +2721,7 @@ local running = io.open(WORK .. "/nook/gzreader/gzreader.sh", "rb") -- (sh has t
 Update.root = NK
 check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0" and rf(NK .. "/frontend/k.lua") == "k", "on a Nook: the same update installed")
 check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "…and the Nook's start script replaced, from the next start")
+check(rf(WORK .. "/nook/gzreader/launcher.sh") == "#!/system/bin/sh\n# new helper\n", "…and the icon's helper (from the Nook's next restart)")
 check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
 running:close()
 check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
