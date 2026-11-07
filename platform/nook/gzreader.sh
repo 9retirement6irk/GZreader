@@ -121,6 +121,12 @@ if [ -n "$ZYGOTE" ]; then
     kill -STOP "$ZYGOTE" && echo "$ZYGOTE" >> $RUN/stopped
 fi
 log "paused Android: $(wc -l < $RUN/stopped) processes"
+# Awake: when Android turned its screen off it asked the kernel to sleep
+# (early suspend: the colour screen's LCD controller stopped), and nothing
+# would wake it now that Android is paused: the colour screen stayed black.
+# (GZreader then lights it, and puts the Nook to sleep itself.)
+echo on > /sys/power/state 2>/dev/null && log "kernel awake (early suspend undone)"
+sleep 1
 
 # Unaligned memory accesses: the 1st Edition's kernel stops a program that
 # makes one ("User faults: 4 (signal)" in /proc/cpu/alignment: exit code

@@ -93,7 +93,9 @@ end
 --- device), the backlight off, and the Synaptics panel reporting only taps
 --- (gesture_mask 1: a tap sends Home, which wakes Android) instead of
 --- finger motion (16). GZreader started with the colour screen black and
---- deaf to touches: Android had put it to sleep before it was paused.
+--- deaf to touches: Android had put it to sleep before it was paused. (The
+--- LCD controller itself is stopped by the kernel's early suspend, which
+--- platform/nook/gzreader.sh undoes: "on" in /sys/power/state.)
 local SYS_SPI, SYS_I2C = "/sys/bus/spi/devices", "/sys/bus/i2c/devices"
 local GESTURE_MOTION = 16
 
