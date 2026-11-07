@@ -2705,10 +2705,73 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "src main" and rf(KO ..
 check(rf(KO .. "/plugins/kosync.koplugin/main.lua") == nil and rf(KO .. "/README.md") == nil and rf(KO .. "/base/thirdparty/x.c") == nil, "plugins not installed and other repo files are skipped")
 check(rf(KO .. "/plugins/zenos.koplugin/locales/de.po") == nil and rf(KO .. "/plugins/zenos.koplugin/locales/en.po") == "en", "English-only catalogs kept")
 check(Update.currentVersion() == "1.2.0" and rf(KO .. "/settings/settings.reader.lua") == "mine", "version from the tag; settings untouched")
+do
+-- the same update package on a Kindle and on a Nook: the Nook's start script only on a Nook
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n",
+    ["koreader/nook-launcher.sh"] = "#!/system/bin/sh\n# new helper\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0", "update with the Nook's start script in it, on a Kindle: installed")
+check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil and rf(WORK .. "/launcher.sh") == nil,
+    "…without the Nook's scripts (a Kindle has none)")
+local NK = WORK .. "/nook/gzreader/koreader"
+os.execute("rm -rf '" .. WORK .. "/nook' && mkdir -p '" .. NK .. "/frontend' '" .. NK .. "/plugins/gzreader.koplugin'")
+wf(NK .. "/plugins/gzreader.koplugin/main.lua", "old main"); wf(NK .. "/gzreader-version", "1.2.0\n")
+wf(WORK .. "/nook/gzreader/gzreader.sh", "#!/system/bin/sh\n# old\n")
+local running = io.open(WORK .. "/nook/gzreader/gzreader.sh", "rb") -- (sh has the running script open)
+Update.root = NK
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0" and rf(NK .. "/frontend/k.lua") == "k", "on a Nook: the same update installed")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "…and the Nook's start script replaced, from the next start")
+check(rf(WORK .. "/nook/gzreader/launcher.sh") == "#!/system/bin/sh\n# new helper\n", "…and the icon's helper (from the Nook's next restart)")
+check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
+running:close()
+check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/nook-gzreader.sh"] = "not a script" }
+check(Update.apply("pkg.zip") and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "a broken start script in the package: the Nook keeps its own")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/nook/gzreader.sh"] = "#!/system/bin/sh\n# src\n",
+    [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n",
+    "a release's source code zip: the Nook's start script from platform/nook/")
+Update.root = KO
+end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()
 check(captured.textviewer and captured.textviewer.title == "GZreader changelog" and captured.textviewer.text:match("GZreader 1%.0%.3"), "changelog is GZreader's")
+-- test builds: latest-beta.json on the updates branch, any build other than the installed one
+do
+    local asked
+    Update.request = function(u)
+        asked = u
+        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-beta-update.zip",
+            commit = "0123abcd", notes = "• Nook: fewer flashes" })
+    end
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl(), "test builds off by default: releases")
+    Update.setBeta(true)
+    local binfo = Update.check()
+    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/latest-beta.json",
+        "test builds on: latest-beta.json on the updates branch (next to the release's latest.json)")
+    check(binfo and binfo.beta and binfo.version == "1.4.0-beta.12" and binfo.size == 4567
+        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
+        and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
+        "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    Update.request = function()
+        return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
+    end
+    check(Update.check() and not Update.state.has_update, "the installed test build: nothing to offer")
+    Update.request = function() return 200, json.encode({ version = "1.0.0-beta.3", size = 1, file = "gzreader-update.zip" }) end
+    check(Update.check() and Update.state.has_update, "an older test build than the installed version: still offered (test builds go by build, not number)")
+    Update.request = function() return 200, json.encode({ version = "1.5.0-beta.1", size = 1, file = "../../evil.zip" }) end
+    check(not Update.check(), "a file name with a path in it: refused")
+    Update.request = function() return 404 end
+    local _n, berr = Update.check()
+    check(berr and berr:match("No test build"), "no test build yet: says so")
+    Update.setBeta(false)
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl() and gsettings.gzreader_update_last_check == 0,
+        "test builds off: releases again, checked at once")
+    check(Update.compare("1.4.0", "1.4.0-beta.12") > 0 and Update.compare("1.3.9", "1.4.0-beta.12") < 0,
+        "after test builds: the release of that version is newer, an older release isn't")
+end
 Update.request = function() return 404 end
 local none, nerr = Update.check()
 check(none == nil and nerr:match("No GZreader release"), "no release yet -> clear message")
@@ -4652,6 +4715,12 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     os.remove(lib .. "/.gzsync/outbox.json")
     Usb.writeOutbox(fake)
     check(exists(lib .. "/.gzsync/outbox.json") and mtime, "outbox: written again when it's gone")
+    check(out.test_builds == nil, "outbox: test builds off, not mentioned")
+    gsettings.gzreader_update_beta = true
+    os.remove(lib .. "/.gzsync/outbox.json")
+    Usb.writeOutbox(fake)
+    check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
+    gsettings.gzreader_update_beta = nil
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
@@ -4818,6 +4887,16 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     put(base .. "/in/gzreader-update.zip", "ZIPDATA")
     local r2, e2 = Usb.installUpdate(fake, base, short)
     check(r2 == nil and tostring(e2):match("incomplete") and Update.currentVersion() == "1.2.0", "…nor when the file is incomplete")
+    -- a test build from the page: any other than the installed one, even with a lower number
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local older = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7 } }
+    check(Usb.installUpdate(fake, base, older) == nil and Update.currentVersion() == "1.2.0", "an older release from the page: not installed")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local beta = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7, beta = true } }
+    check(Usb.installUpdate(fake, base, beta) == true, "a test build from the page: installed, though its number is lower")
+    check(Usb.takeTestBuilds({ test_builds = true }) and Update.betaEnabled() and not Usb.takeTestBuilds({ test_builds = true })
+        and not Usb.takeTestBuilds({}) and Update.betaEnabled() and Usb.takeTestBuilds({ test_builds = false }) and not Update.betaEnabled(),
+        "test builds switched on and off on the page: the Kindle's setting follows")
     Update.root = nil
     os.remove(base .. "/inbox.json")
     os.execute("rm -rf '" .. KO2 .. "' '" .. base .. "/in'")

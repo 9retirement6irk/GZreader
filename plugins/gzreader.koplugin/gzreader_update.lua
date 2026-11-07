@@ -13,10 +13,26 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     platform/kindle/koreader.sh and the plugins already installed are
     taken from it. The native binaries, fonts and dictionary stay as
     installed either way;
+  * test builds (Settings → Updates → Test builds, off by default): the
+    updater reads latest-beta.json on the repository's "updates" branch
+    instead (raw.githubusercontent.com; the release's latest.json is there
+    too, for the sync page), which the "GZreader test builds
+    (beta)" workflow writes from every push to the "beta" branch: the same
+    kind of update package, version <version>-beta.<commit>. Any test build
+    other than the one installed is offered. Switched off, the next release
+    is offered as usual (1.2.0 is newer than 1.2.0-beta.7);
   * no hashing on the Kindle: the download comes over HTTPS straight from
     GitHub (which protects it in transit), its size must match the size
     GitHub lists for the asset, and the zip must open and contain a
     complete GZreader layout before anything is replaced.
+
+On a Nook (GZreader in /data/gzreader: koreader/ next to the start script
+gzreader.sh) the same update is installed, and the package's copy of the
+Nook's scripts then replace theirs next to koreader/: the start script
+(koreader/nook-gzreader.sh → gzreader.sh) and the icon's helper
+(koreader/nook-launcher.sh → launcher.sh), each by a rename: a running
+script keeps reading its old copy; the new one runs from the next start
+(the helper: from the Nook's next restart).
 
 Installing never touches settings/, the books, their .sdr folders, history or
 the GZreader folder. Each replaced folder is renamed aside first and put back
@@ -49,6 +65,18 @@ local function root() return Update.root or (lfs.currentdir() or ".") end
 function Update.apiUrl()
     return "https://api.github.com/repos/" .. Update.REPO .. "/releases/latest"
 end
+
+Update.BETA_BRANCH = "updates"
+
+--- Test builds instead of releases (Settings → Updates → Test builds).
+function Update.betaEnabled() return G_reader_settings:isTrue("gzreader_update_beta") end
+
+function Update.betaUrl(file)
+    return "https://raw.githubusercontent.com/" .. Update.REPO .. "/" .. Update.BETA_BRANCH .. "/" .. (file or "latest-beta.json")
+end
+
+--- Where to look: the latest release, or the latest test build.
+function Update.feedUrl() return Update.betaEnabled() and Update.betaUrl() or Update.apiUrl() end
 
 function Update.pageUrl()
     return "https://github.com/" .. Update.REPO .. "/releases"
@@ -89,6 +117,7 @@ local TRUSTED = {
     ["release-assets.githubusercontent.com"] = true,
     ["github-releases.githubusercontent.com"] = true,
     ["codeload.github.com"] = true, -- source code zips
+    ["raw.githubusercontent.com"] = true, -- test builds (the updates branch)
 }
 
 local function host(u) return tostring(u):match("^https://([^/:]+)") end
@@ -158,16 +187,44 @@ function Update.parseRelease(body)
     return info
 end
 
+--- Parse the updates branch's latest-beta.json into the same info.
+function Update.parseBeta(body)
+    local ok, b = pcall(JSON.decode, body or "")
+    if not ok or type(b) ~= "table" or type(b.version) ~= "string" or type(b.file) ~= "string"
+            or not b.file:match("^[%w%._%-]+$") then
+        return nil, "bad test build data"
+    end
+    local commit = type(b.commit) == "string" and b.commit:match("^%x+$") or nil
+    return { version = b.version, url = Update.betaUrl(b.file), size = tonumber(b.size), beta = true,
+        notes = type(b.notes) == "string" and b.notes or "",
+        page = commit and ("https://github.com/" .. Update.REPO .. "/commit/" .. commit) or nil }
+end
+
+--- The feed's body (a release's JSON, or the test build's latest-beta.json).
+function Update.parseFeed(body)
+    if Update.betaEnabled() then return Update.parseBeta(body) end
+    return Update.parseRelease(body)
+end
+
+--- Whether `info` should be offered: a newer release; any other test build.
+function Update.isNewer(info)
+    if not info or not info.version then return false end
+    if info.beta then return info.version ~= Update.currentVersion() end
+    return Update.compare(info.version, Update.currentVersion()) > 0
+end
+
 --- Blocking check (a few seconds). Returns info or nil, err; updates state.
 function Update.check()
-    local code, body, err = Update.get(Update.apiUrl())
-    Log.info("update check", Update.apiUrl(), tostring(code or err))
-    if code == 404 then return nil, _("No GZreader release has been published yet.") end
+    local feed = Update.feedUrl()
+    local code, body, err = Update.get(feed)
+    Log.info("update check", feed, tostring(code or err))
+    if code == 404 then
+        return nil, Update.betaEnabled() and _("No test build has been published yet.") or _("No GZreader release has been published yet.")
+    end
     if code ~= 200 then return nil, err or ("HTTP " .. tostring(code)) end
-    local info, perr = Update.parseRelease(body)
+    local info, perr = Update.parseFeed(body)
     if not info then return nil, perr end
-    Update.state = { has_update = Update.compare(info.version, Update.currentVersion()) > 0,
-        latest = info.version, info = info }
+    Update.state = { has_update = Update.isNewer(info), latest = info.version, info = info }
     G_reader_settings:saveSetting("gzreader_update_last_check", os.time())
     G_reader_settings:saveSetting("gzreader_update_latest", info.version)
     return info
@@ -181,15 +238,16 @@ function Update.backgroundCheck(on_found)
     local last = G_reader_settings:readSetting("gzreader_update_last_check") or 0
     if os.time() - last < Update.CHECK_EVERY and os.time() >= last then
         local latest = G_reader_settings:readSetting("gzreader_update_latest")
-        if latest and Update.compare(latest, Update.currentVersion()) > 0 then
+        if latest and Update.isNewer({ version = latest, beta = Update.betaEnabled() }) then
             Update.state = { has_update = true, latest = latest }
         end
         return
     end
     local NetworkMgr = require("ui/network/manager")
     if not NetworkMgr:isConnected() then return end
+    local feed = Update.feedUrl()
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
-        local code, body = Update.get(Update.apiUrl())
+        local code, body = Update.get(feed)
         ffiutil.writeToFD(wfd, code == 200 and body or "", true)
     end, true)
     if not pid then return end
@@ -200,12 +258,11 @@ function Update.backgroundCheck(on_found)
         out:drain()
         if ffiutil.isSubProcessDone(pid) then
             local body = out:finish()
-            local info = body ~= "" and Update.parseRelease(body)
+            local info = body ~= "" and Update.parseFeed(body)
             G_reader_settings:saveSetting("gzreader_update_last_check", os.time())
             if info then
                 G_reader_settings:saveSetting("gzreader_update_latest", info.version)
-                Update.state = { has_update = Update.compare(info.version, Update.currentVersion()) > 0,
-                    latest = info.version, info = info }
+                Update.state = { has_update = Update.isNewer(info), latest = info.version, info = info }
                 Log.info("update background check: latest", info.version, "installed", Update.currentVersion())
                 if Update.state.has_update and on_found then on_found(info) end
             end
@@ -233,10 +290,20 @@ local function rmTree(p)
     end
 end
 
+--- The Nook's scripts in an update, and where they go next to koreader/.
+local NOOK_SCRIPTS = { ["nook-gzreader.sh"] = "gzreader.sh", ["nook-launcher.sh"] = "launcher.sh" }
+local NOOK_SCRIPT = "nook-gzreader.sh" -- (the start script: a Nook install has it)
+
+--- The Nook's start script next to koreader/ (nil: not a Nook install).
+local function nookScript(base)
+    local p = base .. "/../gzreader.sh"
+    return lfs.attributes(p, "mode") == "file" and p or nil
+end
+
 --- Things an update may replace, relative to koreader/. Anything else in
 --- the package is ignored (settings, books, history are never in it).
 local function allowed(rel)
-    return rel == "frontend" or rel == "reader.lua" or rel == "koreader.sh" or rel == "gzreader-version"
+    return rel == "frontend" or rel == "reader.lua" or rel == "koreader.sh" or rel == "gzreader-version" or NOOK_SCRIPTS[rel] ~= nil
         or rel == "git-rev" or rel:match("^plugins/[%w_%-]+%.koplugin$") ~= nil
 end
 
@@ -245,6 +312,8 @@ end
 local function sourceTarget(rel, base)
     if rel == "reader.lua" then return "reader.lua" end
     if rel == "platform/kindle/koreader.sh" then return "koreader.sh" end
+    if rel == "platform/nook/gzreader.sh" then return NOOK_SCRIPT end
+    if rel == "platform/nook/launcher.sh" then return "nook-launcher.sh" end
     if rel:match("^frontend/") then return rel end
     local plugin, rest = rel:match("^plugins/([%w_%-]+%.koplugin)/(.+)$")
     if plugin and isDir(base .. "/plugins/" .. plugin) then -- only plugins this install has
@@ -309,8 +378,11 @@ function Update.apply(zip, opts)
     end
     -- Work out what to replace.
     local items = {}
+    local nook = nookScript(base)
     for e in lfs.dir(src) do
-        if e ~= "." and e ~= ".." and e ~= "plugins" and allowed(e) then items[#items + 1] = e end
+        if e ~= "." and e ~= ".." and e ~= "plugins" and allowed(e) and (not NOOK_SCRIPTS[e] or nook) then
+            items[#items + 1] = e
+        end
     end
     if isDir(src .. "/plugins") then
         for e in lfs.dir(src .. "/plugins") do
@@ -339,6 +411,24 @@ function Update.apply(zip, opts)
     end
     for _i, rel in ipairs(done) do rmTree(base .. "/" .. rel .. ".gz-old") end
     rmTree(stage)
+    -- the Nook's scripts: each a whole new file renamed over the old one
+    -- (sh reads a running script as it goes; it keeps the old file)
+    for from, to in pairs(nook and NOOK_SCRIPTS or {}) do
+        if exists(base .. "/" .. from) then
+            local dest = base .. "/../" .. to
+            local new = io.open(base .. "/" .. from, "rb")
+            local body = new and new:read("*a")
+            if new then new:close() end
+            local tmp = dest .. ".gz-new"
+            local out = body and body:match("^#!") and io.open(tmp, "wb")
+            if out and out:write(body) and out:close() and os.rename(tmp, dest) then
+                Log.info("update: the Nook's", to, "updated")
+            else
+                if out then os.remove(tmp) end
+                Log.warn("update: the Nook's", to, "not updated (kept as it was)")
+            end
+        end
+    end
     Log.info("update installed", Update.currentVersion(), "items", #done)
     return true
 end
@@ -355,13 +445,14 @@ function Update.run()
             UIManager:show(InfoMessage:new{ text = T(_("Couldn't check for updates:\n%1"), tostring(err)) })
             return
         end
-        if Update.compare(info.version, Update.currentVersion()) <= 0 then
+        if not Update.isNewer(info) then
             UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 is up to date."), Update.currentVersion()), timeout = 4 })
             return
         end
         local notes = info.notes ~= "" and ("\n\n" .. info.notes:sub(1, 600)) or ""
         UIManager:show(ConfirmBox:new{
-            text = T(_("GZreader %1 is available (installed: %2).%3\n\nYour settings, books and reading progress are kept."),
+            text = T(info.beta and _("Test build %1 is available (installed: %2).%3\n\nYour settings, books and reading progress are kept.")
+                    or _("GZreader %1 is available (installed: %2).%3\n\nYour settings, books and reading progress are kept."),
                 info.version, Update.currentVersion(), notes),
             ok_text = _("Update"),
             ok_callback = function()
@@ -460,6 +551,15 @@ function Update.showChangelog()
     UIManager:show(TextViewer:new{ title = _("GZreader changelog"), text = table.concat(parts, "\n") })
 end
 
+--- Test builds on or off: the next check looks at the other source at once.
+function Update.setBeta(on)
+    G_reader_settings:saveSetting("gzreader_update_beta", on and true or false)
+    G_reader_settings:saveSetting("gzreader_update_last_check", 0)
+    G_reader_settings:delSetting("gzreader_update_latest")
+    Update.state = { has_update = false }
+    Log.info("update: test builds", on and "on" or "off")
+end
+
 --- Menu items (used for ZenOS's Settings → Updates section and the Grimmory menu).
 function Update.menuItems()
     return {
@@ -479,12 +579,20 @@ function Update.menuItems()
             callback = function() G_reader_settings:flipNilOrTrue("gzreader_update_auto") end,
         },
         {
+            text = _("Test builds"),
+            help_text = _("Get test builds instead of releases: what's waiting to be tried, before it's released. They update over Wi-Fi like releases. Turn it off to go back to releases: the next release is then offered."),
+            checked_func = function() return Update.betaEnabled() end,
+            callback = function() Update.setBeta(not Update.betaEnabled()) end,
+        },
+        {
             text = _("Changelog"),
             keep_menu_open = true,
             callback = function() Update.showChangelog() end,
         },
         {
-            text = T(_("Update source: %1"), "github.com/" .. Update.REPO),
+            text_func = function()
+                return T(_("Update source: %1"), "github.com/" .. Update.REPO .. (Update.betaEnabled() and " (test builds)" or ""))
+            end,
             enabled = false,
         },
     }
