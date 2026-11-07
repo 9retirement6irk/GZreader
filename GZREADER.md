@@ -6,7 +6,7 @@ Paperwhite 3 (touch), that reads books, pulls them from a [Grimmory](https://gri
 and keeps reading position, bookmarks, highlights and notes in sync with it. ZenOS is the
 interface. Releases and updates: <https://github.com/9retirement6irk/GZreader>.
 
-Based on KOReader `v2026.07.1` and ZenOS `4.2.0`. Version: see `GZREADER_VERSION`.
+Based on KOReader `v2026.07.1` and ZenOS `4.3.0`. Version: see `GZREADER_VERSION`.
 
 ## What's in it
 

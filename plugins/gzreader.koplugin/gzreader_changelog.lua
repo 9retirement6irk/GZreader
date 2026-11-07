@@ -2,6 +2,12 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before.",
+        },
+    },
+    {
         version = "1.26.7",
         changes = {
             "Nook 1st Edition: Wi‑Fi much more reliable. The start script left the Wi‑Fi chip's power saving on, so it napped between packets: 2 pings in 5 were lost and sign-ins to Grimmory timed out. It's now turned off while GZreader runs (Android manages it itself).",

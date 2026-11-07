@@ -54,7 +54,7 @@ the same version and overlays GZreader's Lua code, plugins and dictionary.
 | Part | Role |
 | --- | --- |
 | [`plugins/gzreader.koplugin`](plugins/gzreader.koplugin) | GZreader itself: Grimmory sign-in, browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updater |
-| [`plugins/zenos.koplugin`](plugins/zenos.koplugin) | ZenOS 4.2.0 interface, adapted for GZreader and the Kindle keyboard |
+| [`plugins/zenos.koplugin`](plugins/zenos.koplugin) | ZenOS 4.3.0 interface, adapted for GZreader and the Kindle keyboard |
 | `frontend/`, `reader.lua` | KOReader v2026.07.1 with GZreader changes (branding, keyboard, sleep screen, speed fixes) |
 | [`tools/grimmory`](tools/grimmory) | Packaging, dictionary builder, release script |
 

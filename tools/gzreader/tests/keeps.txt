@@ -72,7 +72,6 @@
 1 plugins/zenos.koplugin/modules/menu/patches/zen_mode.lua
 2 plugins/zenos.koplugin/modules/reader/end_book.lua
 1 plugins/zenos.koplugin/modules/reader/patches/opening_banner.lua
-1 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua
 2 plugins/zenos.koplugin/modules/settings/sections/advanced_settings.lua
 4 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
 2 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
