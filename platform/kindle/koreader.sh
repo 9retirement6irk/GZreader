@@ -320,6 +320,24 @@ if [ "${FROM_KUAL}" = "yes" ]; then
     eips_print_bottom_centered "Starting GZreader . . ." 1
 fi
 
+# GZreader: what the last "Sync with computer" step-aside went through (kept
+# in /var/local so a reboot doesn't lose it), into the crash log
+if [ -s /var/local/gzreader-usb.log ]; then
+    {
+        echo "===== last USB drive step-aside ====="
+        tail -n 60 /var/local/gzreader-usb.log
+        gz_boot_then=$(sed -n 's/.* boot \([^,]*\), up.*/\1/p' /var/local/gzreader-usb.log | head -n 1)
+        if [ -n "${gz_boot_then}" ]; then
+            if [ "${gz_boot_then}" = "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)" ]; then
+                echo "(the Kindle hasn't restarted since; up $(cut -d' ' -f1 /proc/uptime 2>/dev/null) s)"
+            else
+                echo "(the Kindle restarted since: up $(cut -d' ' -f1 /proc/uptime 2>/dev/null) s)"
+            fi
+        fi
+    } >>crash.log 2>/dev/null
+fi
+rm -f /var/local/gzreader-usb.log
+
 # we keep at most 500KB worth of crash log
 if [ -e crash.log ]; then
     tail -c 500000 crash.log >crash.log.new
@@ -341,8 +359,19 @@ if pidof reader.lua >/dev/null 2>&1; then
     killall -TERM reader.lua
 fi
 
+# GZreader: stepping aside for the USB drive (exit 86) with the framework
+# stopped (firmware 2.x/3.x): volumd stays paused until the framework that
+# starts below has finished booting. Resumed at once, it shares the drive
+# with the computer (the cable is usually in already) while the framework is
+# still starting, and a Kindle DX then restarted over and over when the
+# drive was ejected. See the step-aside below.
+GZ_VOLUMD_LATER="no"
+if [ "${RETURN_VALUE}" -eq 86 ] && [ "${VOLUMD_STOPPED}" = "yes" ] && [ "${STOP_FRAMEWORK}" = "yes" ] && [ "${INIT_TYPE}" = "sysv" ]; then
+    GZ_VOLUMD_LATER="yes"
+fi
+
 # Resume volumd, if need be
-if [ "${VOLUMD_STOPPED}" = "yes" ]; then
+if [ "${VOLUMD_STOPPED}" = "yes" ] && [ "${GZ_VOLUMD_LATER}" = "no" ]; then
     logmsg "Resuming volumd . . ."
     killall -CONT volumd
 fi
@@ -359,6 +388,13 @@ fi
 # GZreader: say in crash.log how GZreader ended and how the Kindle's own
 # interface came back (the diagnostic log shows it)
 echo "GZreader: exited with ${RETURN_VALUE} (Kindle interface stopped: ${STOP_FRAMEWORK}, ${INIT_TYPE}) at $(date)" >>"${KOREADER_DIR}/crash.log" 2>/dev/null
+
+# GZreader: stepping aside for the USB drive (exit 86): what GZreader wrote
+# reaches the drive before it goes to the computer (a DX came back with its
+# settings file corrupted)
+if [ "${RETURN_VALUE}" -eq 86 ]; then
+    sync
+fi
 
 # Restart framework (if need be)
 if [ "${STOP_FRAMEWORK}" = "yes" ]; then
@@ -438,8 +474,73 @@ fi
 # once the drive has been shared and is back (ejected, unplugged), GZreader
 # starts again and takes in what the computer brought. No USB mode within 15
 # minutes: it stops waiting (start GZreader as usual).
+# The framework runs again first (above): on firmware 2.x it's what hands the
+# drive to the computer (a Kindle DX without it unmounted the drive and the
+# computer never saw it).
 gz_drive_here() {
     grep -qE " /mnt/(base-)?us " /proc/mounts
+}
+# (a trace of the step-aside, outside the drive: the next start puts it in crash.log)
+gz_usb_log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ${1}" >>/var/local/gzreader-usb.log 2>/dev/null
+}
+# Processes that still use the drive (it can't be shared while they do). The
+# kernel on the Kindle 2/DX has no close-on-exec, so anything GZreader
+# started inherited its open files (crash.log among them): GZreader's own
+# leftovers (holding files in its folder) are stopped; the others are listed.
+gz_drive_users() {
+    for gz_p in /proc/[0-9]*; do
+        gz_pid="${gz_p#/proc/}"
+        [ "${gz_pid}" = "$$" ] && continue
+        gz_on=$(ls -l "${gz_p}/cwd" "${gz_p}/exe" "${gz_p}/fd" 2>/dev/null | grep -E -- "-> /mnt/(base-)?us(/|$)")
+        [ -n "${gz_on}" ] || continue
+        gz_cmd=$(tr '\000' ' ' <"${gz_p}/cmdline" 2>/dev/null | cut -c1-80)
+        if echo "${gz_on}" | grep -q -- "-> /mnt/us/koreader/"; then
+            kill "${gz_pid}" 2>/dev/null
+            gz_usb_log "stopped GZreader leftover ${gz_pid}: ${gz_cmd}"
+        else
+            gz_usb_log "uses the drive: ${gz_pid}: ${gz_cmd}"
+        fi
+    done
+}
+# Has the framework finished booting? Its Java VM (cvm) works flat out while
+# it starts: booted once it has been there 45 s and used under half a second
+# of CPU in each of two 5 s spells. At most 4 minutes (then: go on anyway).
+gz_framework_settled() {
+    gz_fw_t=0
+    gz_fw_calm=0
+    gz_fw_last=""
+    gz_fw_seen=""
+    gz_fw_cpu=""
+    while [ ${gz_fw_t} -lt 240 ]; do
+        sleep 5
+        gz_fw_t=$((gz_fw_t + 5))
+        gz_cvm=$(pidof cvm 2>/dev/null | awk '{print $1}')
+        if [ -z "${gz_cvm}" ]; then
+            gz_fw_last=""
+            gz_fw_calm=0
+            gz_fw_seen=""
+            gz_fw_cpu="${gz_fw_cpu} -"
+            continue
+        fi
+        [ -n "${gz_fw_seen}" ] || gz_fw_seen=${gz_fw_t}
+        gz_fw_ticks=$(awk '{print $14 + $15}' "/proc/${gz_cvm}/stat" 2>/dev/null)
+        if [ -n "${gz_fw_last}" ] && [ -n "${gz_fw_ticks}" ]; then
+            gz_fw_cpu="${gz_fw_cpu} $((gz_fw_ticks - gz_fw_last))"
+            if [ $((gz_fw_ticks - gz_fw_last)) -lt 50 ]; then gz_fw_calm=$((gz_fw_calm + 1)); else gz_fw_calm=0; fi
+        else
+            gz_fw_cpu="${gz_fw_cpu} ?"
+            gz_fw_calm=0
+        fi
+        gz_fw_last="${gz_fw_ticks}"
+        # (calm twice in a row, and cvm there for 45 s: a DX framework takes over a minute)
+        if [ ${gz_fw_calm} -ge 2 ] && [ $((gz_fw_t - gz_fw_seen)) -ge 45 ]; then
+            gz_usb_log "the Kindle interface is up (after ${gz_fw_t} s; cvm CPU per 5 s, 1/100 s:${gz_fw_cpu})"
+            return 0
+        fi
+    done
+    gz_usb_log "the Kindle interface still busy after ${gz_fw_t} s: going on (cvm CPU per 5 s, 1/100 s:${gz_fw_cpu})"
+    return 1
 }
 # (only the latest of these waits goes on: a GZreader started meanwhile may ask again)
 gz_latest_wait() {
@@ -448,27 +549,62 @@ gz_latest_wait() {
 if [ "${RETURN_VALUE}" -eq 86 ]; then
     cd / || true
     echo "$$" >/var/tmp/gzreader-usbwait
+    rm -f /var/local/gzreader-usb.log
+    gz_usb_log "stepping aside for the USB drive (${INIT_TYPE}, $(uname -r), Kindle interface stopped: ${STOP_FRAMEWORK})"
+    # (which boot this is: the next start says whether the Kindle restarted
+    # meanwhile; and who this wait belongs to)
+    gz_usb_log "boot $(cat /proc/sys/kernel/random/boot_id 2>/dev/null), up $(cut -d' ' -f1 /proc/uptime 2>/dev/null) s; wait $$ (group $(awk '{print $5}' /proc/$$/stat 2>/dev/null)), started by $PPID: $(tr '\000' ' ' </proc/$PPID/cmdline 2>/dev/null | cut -c1-60)"
+    # This wait mustn't hold the drive either: what it inherited from its
+    # launcher (output, log files) may be on it, and a process using the drive
+    # can be stopped when the drive goes to the computer. Listed, then let go.
+    gz_mine=$(ls -l /proc/$$/fd 2>/dev/null | grep -E -- "-> /mnt/(base-)?us(/|$)" | sed 's/.*-> //' | tr '\n' ' ')
+    [ -n "${gz_mine}" ] && gz_usb_log "this wait had open on the drive: ${gz_mine}(let go)"
+    gz_drive_users
     eips_print_bottom_centered "Plug the Kindle into the computer (or replug the cable)" 2
     eips_print_bottom_centered "GZreader comes back after you eject it" 1
+    exec </dev/null >/dev/null 2>&1
+    # (asked to stop by the Kindle: say so in the trace, and keep waiting;
+    # only SIGKILL can't be caught: then the trace just ends)
+    for gz_sig in HUP INT QUIT TERM USR1 USR2 PIPE ALRM; do
+        # shellcheck disable=SC2064
+        trap "gz_usb_log 'got SIG${gz_sig}: going on waiting'" ${gz_sig}
+    done
+    if [ "${GZ_VOLUMD_LATER}" = "yes" ]; then
+        # the drive goes to the computer once the framework is up (see above)
+        gz_framework_settled
+        killall -CONT volumd
+        gz_usb_log "the Kindle's USB drive service runs again"
+    fi
     GZ_WAITED=0
     while gz_drive_here && gz_latest_wait && [ ${GZ_WAITED} -lt 900 ]; do
         sleep 2
         GZ_WAITED=$((GZ_WAITED + 2))
+        [ $((GZ_WAITED % 60)) -eq 0 ] && gz_usb_log "waiting for the USB drive mode (${GZ_WAITED} s)"
     done
     if ! gz_drive_here && gz_latest_wait; then
-        logmsg "GZreader: the drive is shared over USB, waiting for it to come back . . ."
+        gz_usb_log "the drive is shared over USB (after ${GZ_WAITED} s)"
+        GZ_GONE=0
         while ! gz_drive_here; do
             sleep 2
+            GZ_GONE=$((GZ_GONE + 2))
+            # (a heartbeat: where the trace stops is where this wait was stopped)
+            [ $((GZ_GONE % 60)) -eq 0 ] && gz_usb_log "the drive is still shared (${GZ_GONE} s)"
         done
-        # (the drive settles: fsck, the Kindle's indexer)
-        sleep 5
+        gz_usb_log "the drive is back (after ${GZ_GONE} s)"
+        # (the drive settles: fsck, the Kindle's indexer taking in the new
+        # books; GZreader stops the framework again when it starts)
+        sleep 15
         if gz_latest_wait && [ -f /mnt/us/koreader/koreader.sh ] && ! pidof reader.lua >/dev/null 2>&1; then
             rm -f /var/tmp/gzreader-usbwait
+            gz_usb_log "starting GZreader again"
             echo "GZreader: back from USB drive mode at $(date)" >>/mnt/us/koreader/crash.log 2>/dev/null
             rm -f /var/tmp/fbink
             # shellcheck disable=SC2086
             exec /bin/sh /mnt/us/koreader/koreader.sh ${REEXEC_FLAGS}
         fi
+        gz_usb_log "not starting GZreader again (another start, or GZreader is gone from the drive)"
+    else
+        gz_usb_log "no USB drive mode (waited ${GZ_WAITED} s)"
     fi
 fi
 

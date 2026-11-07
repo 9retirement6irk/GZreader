@@ -7,6 +7,8 @@ class at 824 × 1200), dxg (DX Graphite), k4 (Kindle 4: 5-way, no keyboard,
 8-bit inverted framebuffer), kt (Kindle Touch: touch, Home button) or pw3
 (Paperwhite 3: touch, 1072 × 1448 at 300 dpi), with that model's serial,
 framebuffer and key codes; scripted taps and swipes on the touch models.
+k2, dx and dxg have no Wi-Fi (off and offline; asking for it is counted in
+E.wifi_asked), like the real ones.
 
   tools/gzreader/emulator/run.sh <script.lua> <outdir> [cpu %]   (see README.md)
 
@@ -460,11 +462,18 @@ table.insert(package.loaders, 2, function(name)
     if name ~= "device" then return nil end
     return function()
         local dev = dofile("frontend/device.lua")
+        -- the Kindle 2 and DX have no Wi-Fi at all: off, offline, and turning
+        -- it on does nothing (E.no_wifi; GZreader syncs through a computer)
+        local no_wifi = MODEL == "k2" or MODEL == "dx" or MODEL == "dxg"
+        E.no_wifi = no_wifi
         dev.initNetworkManager = function(_self, NM)
-            NM.isWifiOn = function() return true end
-            NM.isConnected = function() return true end
-            NM.isOnline = function() return true end
-            NM.turnOnWifi = function(_s, cb) if cb then cb() end return true end
+            NM.isWifiOn = function() return not no_wifi end
+            NM.isConnected = function() return not no_wifi end
+            NM.isOnline = function() return not no_wifi end
+            NM.turnOnWifi = function(_s, cb)
+                if no_wifi then print("[emu] Wi-Fi asked for on a Kindle without Wi-Fi"); E.wifi_asked = (E.wifi_asked or 0) + 1; return false end
+                if cb then cb() end return true
+            end
             NM.turnOffWifi = function(_s, cb) if cb then cb() end end
             NM.getNetworkInterfaceName = function() return "eth0" end
             NM.restoreWifiAsync = function() end

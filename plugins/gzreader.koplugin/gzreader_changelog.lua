@@ -2,6 +2,14 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "next",
+        changes = {
+            "Sync with a computer, Kindle 2/3/DX/4: the Kindle's USB drive service waits until the Kindle's own interface has finished starting before the drive goes to the computer (at most 4 minutes), what GZreader wrote is saved to the drive first, and the wait for the drive to come back no longer holds files on it or stops when asked to; after the drive is back it gives the Kindle 15 s before GZreader starts again. (A Kindle DX still restarts while the drive is shared: being worked on.)",
+            "The diagnostic log has a \"last USB drive step-aside\" section (each step, a line a minute while waiting, and what still used the drive; kept through a restart), and the Kindle 2/DX's own settings for restarting the Kindle and for USB drive mode.",
+            "Kindle 2 and DX: the Kindle's screen is restored after leaving GZreader (the helper used head -c, which their older system doesn't have).",
+        },
+    },
+    {
         version = "1.26.5",
         changes = {
             "Kindle 2 and DX: Read aloud works. Their speech service refused the text file GZreader handed it (\"wrong file\"); Find the Kindle voice now first uses the Kindle's own speech pipe (/var/tmp/ttsUSFifo, the way the Kindle's own reader feeds it), and each sentence is written into it. If that fails too, the diagnostic log lists the files and paths the speech service knows about.",
