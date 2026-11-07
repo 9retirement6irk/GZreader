@@ -169,14 +169,6 @@ function LCD:onInputEvent(input, ev)
     end
     local down = t.down_flag
     if down == nil then down = (t.pressure or 0) > 0 end
-    -- (the first touches' raw frames in the log: finding out how the panel reports them)
-    if down ~= t.was_down then
-        t.was_down = down
-        self.logged_frames = (self.logged_frames or 0) + 1
-        if self.logged_frames <= 60 then
-            logger.info("nook: touch", down and "down" or "up", "raw", t.rx, t.ry, "pressure", t.pressure, "finger", t.down_flag)
-        end
-    end
     local now = time.timeval(ev.time)
     if down and t.rx and t.ry then
         local x, y = self:map(t.rx, t.ry)
@@ -203,7 +195,7 @@ function LCD:onInputEvent(input, ev)
         t.pressure, t.down_flag = nil, nil
         -- (the first touches in the log: the panel's own numbers, to set its orientation)
         self.logged_touches = (self.logged_touches or 0) + 1
-        if self.logged_touches <= 40 then
+        if self.logged_touches <= 5 then
             logger.info("nook: touch", g.kind, "raw", t.rx0, t.ry0, "->", t.x0, t.y0,
                 "(swap", self.swap_xy, "flip", self.flip_x, self.flip_y, ")")
         end

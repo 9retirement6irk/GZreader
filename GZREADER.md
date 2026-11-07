@@ -218,16 +218,22 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 ## Nook 1st Edition (test build)
 
 GZreader also runs on Barnes & Noble's first Nook (2009): a 6" e-ink page
-with a small colour touchscreen under it. **This is a test build:** it has
-been checked in GZreader's emulator only, not yet on a real Nook. Try it on
-a Nook you're prepared to restore, and send back what happens (below).
+with a small colour touchscreen under it. **This is a test build:** it runs
+on a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1): the setup
+guide, Home, the colour screen's controls, Wi‑Fi, downloading books. Each
+e-ink update is still a full refresh (below). Try it on a Nook you're
+prepared to restore, and send back what happens (below).
 
-How it works: the Nook's processor runs the same programs as a Kindle 3, so
-GZreader uses the Kindle 2/3/DX build plus what the Nook's Android 1.5 lacks
-(a Linux C library and BusyBox, from Debian 7). A start script pauses the
-Nook's own software while GZreader runs (Wi‑Fi stays connected) and resumes
-it when you exit. Nothing on the Nook's system is changed for good: the
-script's changes are undone by exiting or restarting the Nook.
+How it works: the Nook's processor is the same family as a Kindle 3's, but
+its kernel has the floating-point unit switched off and stops programs that
+read unaligned memory, so the Nook gets its own build of KOReader's programs
+(`gzreader-nook-1st-edition-<version>.zip`: floating point in software, no
+unaligned reads), plus what the Nook's Android 1.5 lacks (a Linux C library
+and BusyBox, from Debian 7). A start script pauses the Nook's own software
+while GZreader runs and resumes it when you exit. It also wakes what Android
+had put to sleep: the colour screen, its touch panel and Wi‑Fi. Nothing on
+the Nook's system is changed for good: the script's changes are undone by
+exiting or restarting the Nook.
 
 ### Both screens
 

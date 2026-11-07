@@ -2,6 +2,16 @@
 -- Add an entry (and bump GZREADER_VERSION) for every release.
 return {
     {
+        version = "1.26.4",
+        changes = {
+            "Nook 1st Edition: a build of its own, gzreader-nook-1st-edition-<version>.zip, that runs on a real Nook. Its kernel has the floating-point unit switched off and stops programs that read unaligned memory, so KOReader's programs are built for that (the Kindle build stopped at once).",
+            "Nook 1st Edition: the colour screen and its touch panel are woken and drawn directly (Android leaves them asleep; this Nook's kernel has no 2D engine to copy the picture), touches land where you tap, and B&N's Home strip on the panel is off while GZreader runs.",
+            "Nook 1st Edition: Wi‑Fi comes on by itself with the networks saved on the Nook (Android switches it off when its screen goes off), and goes off again when you exit GZreader.",
+            "Nook: books go to the microSD card when there is one; GZreader won't start while the Nook is a USB drive on a computer (it explains why).",
+            "Nook 1st Edition: e-ink updates go through the Nook's own refresh (every update a full refresh for now); sending them straight to the e-ink controller froze a Nook.",
+        },
+    },
+    {
         version = "1.26.3",
         changes = {
             "Sync with a computer: your own sleep screen pictures. On the sync page (Content), add pictures: they're made to fit the Kindle's screen, in grey, and put in its screensavers folder with the sync. Take off ones that are there, and choose when they show: the book's cover while reading and a picture elsewhere, or a picture always.",
