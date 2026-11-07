@@ -85,6 +85,11 @@ start)
     start_helper
     ;;
 run)
+    # Nothing it was started with stays open: adb's shell hands its children
+    # its own connection on many descriptors (3, 7-30 on a Nook), and adb
+    # waits for every copy to close, so "install" never returned.
+    fd=3
+    while [ $fd -lt 64 ]; do eval "exec $fd>&-" 2>/dev/null; fd=$((fd + 1)); done
     [ -x "$BB" ] || chmod 755 "$BB"
     $BB mkdir -p "$GZ/launch"
     # the icon (an app, not root) must reach the pipe: through the folders,

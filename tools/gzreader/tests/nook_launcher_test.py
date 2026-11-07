@@ -42,6 +42,13 @@ def wait_for(cond, seconds=8.0):
     return cond()
 
 
+def _eof(fd):
+    try:
+        return os.read(fd, 100) == b""
+    except BlockingIOError:
+        return False
+
+
 def main():
     work = tempfile.mkdtemp(prefix="gz-launcher-")
     gz = os.path.join(work, "gzreader")
@@ -107,8 +114,20 @@ def main():
 
     try:
         print("Nook launcher helper")
-        r = launcher("install")
-        check(r.returncode == 0 and "Tap GZreader" in r.stdout, "install: done, says how to start it (%s%s)" % (r.stdout.strip(), r.stderr.strip()))
+        # (adb's shell hands its children its connection on more descriptors:
+        # adb waits until every copy is closed)
+        conn_r, conn_w = os.pipe()
+        extra = [os.dup(conn_w) for _ in range(3)]
+        p = subprocess.Popen(["bash", os.path.join(gz, "launcher.sh"), "install"], env=env, pass_fds=[conn_w] + extra,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out, err = p.communicate(timeout=30)
+        for fd in [conn_w] + extra:
+            os.close(fd)
+        check(p.returncode == 0 and "Tap GZreader" in out, "install: done, says how to start it (%s%s)" % (out.strip(), err.strip()))
+        os.set_blocking(conn_r, False)
+        closed = wait_for(lambda: _eof(conn_r), 5)
+        os.close(conn_r)
+        check(closed, "…and returns for good: the helper keeps none of the connection it was started from open")
         text = open(hook).read()
         check(text.startswith(original) and text.count("# GZreader launcher helper") == 1
               and ("[ -f %s/launcher.sh ] && /system/bin/sh %s/launcher.sh start" % (gz, gz)) in text,
