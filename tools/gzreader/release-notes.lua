@@ -57,6 +57,8 @@ local function notes(changelog, version, tags)
             out[#out + 1] = ""
         end
         for _j, change in ipairs(entry.changes or {}) do
+            -- (a line is a string, or { short = …, text = … }: the full text here)
+            if type(change) == "table" then change = change.text or change[1] or change.short or "" end
             out[#out + 1] = "- " .. tostring(change):gsub("\n", " ")
         end
     end

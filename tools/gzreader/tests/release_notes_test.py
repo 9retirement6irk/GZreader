@@ -34,7 +34,7 @@ def main():
         open(cl, "w").write('return {\n'
                             '  { version = "next", changes = { "Not released yet." } },\n'
                             '  { version = "1.10.2", changes = { "Ten two, a fix.", "Ten two, a feature\\nover two lines." } },\n'
-                            '  { version = "1.10.1", changes = { "Ten one." } },\n'
+                            '  { version = "1.10.1", changes = { "Ten one.", { short = "Short", text = "Ten one, the long text." } } },\n'
                             '  { version = "1.9.0", changes = { "Nine." } },\n'
                             '  { version = "1.8.5", changes = { "Eight five." } },\n'
                             '}\n')
@@ -48,6 +48,8 @@ def main():
         check("gzreader-kindle-legacy-1.10.2.zip" in out and "gzreader-nook-1st-edition-1.10.2.zip" in out,
               "which package to download, by name")
         rc, out, _ = notes("1.10.1", "v1.10.2", "v1.10.1", "v1.9.0", changelog=cl)
+        check(rc == 0 and "- Ten one, the long text." in out and "Short" not in out,
+              "a { short, text } line: its full text")
         check(rc == 0 and "- Ten one." in out and "###  1.10.1" not in out and "Ten two" not in out and "Nine." not in out,
               "only its own entry when the release before it is the version before it")
         rc, out, _ = notes("1.9.0", changelog=cl)
