@@ -32,5 +32,19 @@ check(run() == "needed" and run("", " ") == "needed", "nothing known to have cha
 check(run("tools/gzreader/emulator/keeps.lua") == "needed" and run("plugins/zenos.koplugin/main.lua") == "needed",
       "the emulator's checks, ZenOS: it runs")
 
+ci = [".github/workflows/gzreader-nook.yml", ".github/workflows/gzreader-beta.yml", "tools/gzreader/publish-updates.sh",
+      "tools/gzreader/tests/publish_updates_test.py"]
+check(run(*ci) == "skip", "publishing updates and the Nook build's workflow, with their tests: no emulator runs")
+check(run(".github/workflows/gzreader-beta-combine.yml", "tools/gzreader/beta-combine.sh", "tools/gzreader/beta_resolve.py",
+          ".github/workflows/gzreader-release-notes.yml", "tools/gzreader/release-notes.lua",
+          ".github/workflows/gzreader-release.yml", "tools/gzreader/publish-github-release.sh",
+          ".github/workflows/gzreader-upstream.yml", "tools/gzreader/upstream.sh") == "skip",
+      "the beta branch, releases and their notes, upstream checks: no emulator runs")
+check(run(*ci, "tools/gzreader/package-kindle.sh") == "needed" and run("tools/gzreader/package-nook.sh") == "needed"
+      and run("tools/gzreader/nook-runtime.sh") == "needed" and run("tools/gzreader/nook-softfloat/build-koreader.sh") == "needed",
+      "…but what a device installs (the packaging scripts, the Nook's build): it runs")
+check(run(*ci, ".github/workflows/gzreader-tests.yml") == "needed" and run(".github/workflows/build.yml") == "needed",
+      "the tests' own workflow, KOReader's build: it runs")
+
 print("\n%d passed, %d failed" % (passed, failed))
 sys.exit(1 if failed else 0)
