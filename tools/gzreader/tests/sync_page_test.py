@@ -126,6 +126,11 @@ OUTBOX = {
         {"id": "m:3", "kind": "mark", "op": "highlight~", "method": "PUT", "path": "/api/v1/annotations/{id}", "ref": "usb-2",
          "body": {"color": "#F87171", "style": "highlight", "note": "from the Kindle"}},
         {"id": "m:4", "kind": "mark", "op": "bookmark-", "method": "DELETE", "path": "/api/v1/bookmarks/{id}", "ref": "9999"},
+        # a book put on a shelf on the Kindle; one put on someone else's shelf (Grimmory refuses it)
+        {"id": "sh:3:5", "kind": "shelf", "book": 3, "method": "POST", "path": "/api/v1/books/shelves",
+         "body": {"bookIds": [3], "shelvesToAssign": [6], "shelvesToUnassign": []}},
+        {"id": "sh:5:6", "kind": "shelf", "book": 5, "method": "POST", "path": "/api/v1/books/shelves",
+         "body": {"bookIds": [5], "shelvesToAssign": [7], "shelvesToUnassign": []}},
     ],
     "disk": {"total": 1500000000, "available": 900000000},
     "queue": [
@@ -206,7 +211,7 @@ with sync_playwright() as pw:
     check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
     page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
-    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "9 reading updates" in page.locator("#k-sub").inner_text()
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "11 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
           "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
@@ -585,6 +590,11 @@ check(set(inbox.get("done", [])) >= {"p:1:7", "s:1:2026-11-05T10:00:00Z", "r:2:4
 check(state["progress"].get("1", {}).get("progressPercent") == 42.5 and state["progress"]["1"]["positionData"] == "epubcfi(/6/4!/4/2)"
       and any(s["durationSeconds"] == 1800 for s in state["sessions"]) and state["ratings"].get("2") == 8,
       "Grimmory got the position (with its CFI), the reading time and the rating")
+own = {str(x["id"]): x.get("own") for x in lib.get("shelves", []) if not x.get("magic")}
+check({"sh:3:5", "sh:5:6"} <= set(inbox.get("done", [])) and 3 in state["shelves"]["6"] and 5 not in state["shelves"]["7"]
+      and 3 in lib["lists"]["shelf"].get("6", []),
+      "shelves: the book put on a shelf on the Kindle is on it in Grimmory and in the copy; someone else's shelf: refused, done")
+check(own == {"4": True, "6": True, "7": False}, "library copy: your own shelves marked (someone else's public one not) " + str(own))
 check(any(f["id"] == "p:999:3" and f["error"].startswith("http_4") for f in inbox.get("failed", [])),
       "a position for a book Grimmory doesn't have: refused, reported (the Kindle drops it)")
 check(len(lib.get("books", [])) == 35 and lib["server"] == "http://127.0.0.1:%d" % GP and "1" in lib.get("full", {})

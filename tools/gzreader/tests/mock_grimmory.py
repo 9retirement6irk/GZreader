@@ -48,7 +48,23 @@ BOOKS = [
      "primaryFileId": 1000 + i}
     for i, t in enumerate(["EPUB"] * 30 + ["AUDIOBOOK"] * 3 + ["PDF"] * 2, start=1)
 ]
-SHELVES = {4: [10, 11, 12]}
+SHELVES = {4: [10, 11, 12], 6: [], 7: [3], 8: []}
+# the regular shelves (ShelfEntity): yours (user 1) and someone else's (user 2):
+# 7 is public (you see it, can't put books on it), 8 private (you never see it)
+SHELF_INFO = {4: {"name": "Kindle", "userId": 1, "publicShelf": False},
+              6: {"name": "Beach reads", "userId": 1, "publicShelf": False},
+              7: {"name": "Club picks", "userId": 2, "publicShelf": True},
+              8: {"name": "Not yours", "userId": 2, "publicShelf": False}}
+
+
+def shelf_dto(sid):  # ShelfMapper.toShelf
+    i = SHELF_INFO[sid]
+    return {"id": sid, "name": i["name"], "userId": i["userId"], "publicShelf": i["publicShelf"], "bookCount": len(SHELVES[sid])}
+
+
+def shelves_of(bid, me=1):  # BookUtils.filterShelvesByUserId: public ones or yours
+    return [shelf_dto(sid) for sid in sorted(SHELVES) if bid in SHELVES[sid]
+            and (SHELF_INFO[sid]["publicShelf"] or SHELF_INFO[sid]["userId"] == me)]
 SUBTITLES = {3: "Old School", 2: "Rodrick Rules"}
 DESCRIPTIONS = {32: "<p>A <b>folder</b> audiobook &amp; its tracks.</p><p>Second paragraph.</p>"}
 BOOK_BYTES = b"PK\x03\x04 fake epub bytes " * 200
@@ -251,6 +267,24 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/v1/auth/logout":
             self._body()
             return self._json(200, {})
+        if u.path == "/api/v1/books/shelves":  # BookController.addBookToShelf -> BookUpdateService.assignShelvesToBooks
+            if not self._user():
+                return self._json(401)
+            if STATE["offline"]:
+                return self._json(503)
+            b = self._body()
+            STATE["last_shelves_body"] = b
+            add, rem = b.get("shelvesToAssign"), b.get("shelvesToUnassign")
+            if not isinstance(b.get("bookIds"), list) or not isinstance(add, list) or not isinstance(rem, list):
+                return self._json(400, {"message": "bookIds, shelvesToAssign and shelvesToUnassign must be lists"})
+            if any(SHELF_INFO.get(int(x), {}).get("userId") != 1 for x in add + rem):   # validateShelfOwnership
+                return self._json(403, {"message": "Cannot assign shelves that do not belong to the user."})
+            for bid in (int(x) for x in b["bookIds"]):
+                for sid in rem:
+                    if bid in SHELVES[int(sid)]: SHELVES[int(sid)].remove(bid)
+                for sid in add:
+                    if bid not in SHELVES[int(sid)]: SHELVES[int(sid)].append(bid)
+            return self._json(200, [{"id": int(x), "shelves": shelves_of(int(x))} for x in b["bookIds"]])
         if u.path == "/api/v1/books/reset-personal-rating":  # BookController.resetPersonalRating
             if STATE["offline"]:
                 return self._json(503)
@@ -395,7 +429,7 @@ class H(BaseHTTPRequestHandler):
                 return self._json(404)
             out = {"id": bid, "title": book["title"], "primaryFile": {"id": book["primaryFileId"]},
                    "metadata": {"title": book["title"], "subtitle": SUBTITLES.get(bid), "description": DESCRIPTIONS.get(bid)},
-                   "personalRating": STATE["ratings"].get(bid)}
+                   "personalRating": STATE["ratings"].get(bid), "shelves": shelves_of(bid)}
             fp = STATE["progress"].get(bid)
             if fp:  # ReadingProgressService.setBookProgressFromFileProgress (EPUB)
                 if book["primaryFileType"] == "AUDIOBOOK":  # setBookProgressFromFileProgress (AUDIOBOOK)
@@ -493,8 +527,16 @@ class H(BaseHTTPRequestHandler):
             bid = int(m.group(1))
             items = [x for x in STATE["sessions"] if int(x.get("bookId") or 0) == bid]
             return self._json(200, {"content": items, "page": {"number": 0, "size": 100, "totalElements": len(items)}})
+        if u.path == "/api/v1/shelves":   # ShelfService.getShelves: yours and public ones
+            if not self._user():
+                return self._json(401)
+            return self._json(200, [shelf_dto(sid) for sid in sorted(SHELVES)
+                                    if SHELF_INFO[sid]["userId"] == 1 or SHELF_INFO[sid]["publicShelf"]])
         if u.path == "/api/v1/app/shelves":
-            return self._json(200, [{"id": 4, "name": "Kindle", "bookCount": len(SHELVES[4]), "publicShelf": False}])
+            # (AppShelfController.getShelves: yours and public ones, no owner in them)
+            return self._json(200, [{"id": sid, "name": SHELF_INFO[sid]["name"], "bookCount": len(SHELVES[sid]),
+                                     "publicShelf": SHELF_INFO[sid]["publicShelf"]} for sid in sorted(SHELVES)
+                                    if SHELF_INFO[sid]["userId"] == 1 or SHELF_INFO[sid]["publicShelf"]])
         if u.path == "/api/v1/app/shelves/magic":
             return self._json(200, [{"id": 9, "name": "Unread fantasy", "publicShelf": False}])
         if u.path == "/api/v1/app/books":
@@ -659,11 +701,17 @@ if __name__ == "__main__":
                 else: STATE["ratings"].pop(bid, None)
             if u.path == "/delbm":
                 STATE["bookmarks"].pop(int(q["id"][0]), None)
+            if u.path == "/shelf":  # the web app puts book on (add=) or takes it off (remove=) a shelf
+                bid = int(q["book"][0])
+                for sid in (int(x) for x in q.get("add", [])):
+                    if bid not in SHELVES[sid]: SHELVES[sid].append(bid)
+                for sid in (int(x) for x in q.get("remove", [])):
+                    if bid in SHELVES[sid]: SHELVES[sid].remove(bid)
             if u.path == "/reset_ko":
                 STATE["kouser"].clear()
             if u.path == "/expire_refresh":
                 STATE["refresh"].clear(); STATE["access"].clear()
-            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}}).encode()
+            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     ctl = ThreadingHTTPServer(("127.0.0.1", port + 1), C)
     threading.Thread(target=ctl.serve_forever, daemon=True).start()

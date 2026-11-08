@@ -4,7 +4,8 @@ GZreader: sync with computer (https://9retirement6irk.github.io/GZreader/sync/).
 For Kindles without Wi-Fi. GZreader leaves .gzsync/outbox.json in its folder
 on the Kindle (what to send to Grimmory, the sync queue, what's on the
 Kindle); this page, with the Kindle plugged in:
-  1. sends the outbox's jobs to Grimmory (positions, reading time, ratings);
+  1. sends the outbox's jobs to Grimmory (positions, reading time, ratings,
+     bookmarks and highlights, books put on or taken off your shelves);
   2. leaves a copy of the library (library.json, small covers, book pages);
   3. brings what's in the sync queue (books, audiobooks) and the auto-download
      shelf's new books;
@@ -1129,6 +1130,15 @@ gets a password or token.
     var shelves = [];
     try { shelves = (await G.json("/api/v1/app/shelves")) || []; } catch (e) {}
     try { (await G.json("/api/v1/app/shelves/magic") || []).forEach(function (s) { s.magic = true; shelves.push(s); }); } catch (e) {}
+    // which regular shelves are yours (own): the Kindle puts books only on those
+    // (Grimmory refuses someone else's public shelf; /app/shelves has no owner)
+    try {
+      var me = await G.json("/api/v1/users/me"), owner = {};
+      ((await G.json("/api/v1/shelves")) || []).forEach(function (s) { owner[String(s.id)] = s.userId; });
+      shelves.forEach(function (s) {
+        if (!s.magic && me && me.id != null && owner[String(s.id)] != null) s.own = String(owner[String(s.id)]) === String(me.id);
+      });
+    } catch (e) {}
     var lists = { shelf: {}, magic: {}, continue: [], recent: [] };
     phase("Reading your shelves…");
     for (var i = 0; i < shelves.length; i++) {

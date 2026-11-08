@@ -97,7 +97,7 @@ What a sync does:
 
 | | Kindle → computer | Computer → Kindle |
 | --- | --- | --- |
-| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves, Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
+| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
 | Downloads | The **sync queue**: in the Grimmory tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |

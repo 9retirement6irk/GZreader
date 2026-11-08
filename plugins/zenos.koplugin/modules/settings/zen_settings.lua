@@ -137,7 +137,10 @@ function M.build(plugin)
         library_item,
         IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
         interface_item,
-        IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
+        -- GZreader: no Extras section. General takes its Schedules and Sleep
+        -- and Interface its Custom icons (above); the rest (Stats tab widgets,
+        -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
+        -- its saved value or default, with nothing to set.
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
         -- GZreader: what's on the Kindle (books, audiobooks, music, notes,
         -- calendar) and the biggest of each
