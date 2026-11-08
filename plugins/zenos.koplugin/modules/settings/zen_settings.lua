@@ -86,7 +86,7 @@ function M.build(plugin)
     local general_items   = general_section.build(ctx, extras_items)
 
     -- GZreader: Wi-Fi only when needed under Wi-Fi; diagnostics (logging,
-    -- remote debugging, usage statistics, sending the log) before Advanced;
+    -- usage statistics, sending the log) before Advanced;
     -- read aloud and the audiobook test at the end of Reader.
     local gz_general = gz_section("general")
     if gz_general.wifi then

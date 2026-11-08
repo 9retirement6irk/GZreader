@@ -453,9 +453,14 @@ function Grimmory:sectionItems(section)
                         self:save()
                     end,
                 }),
-                -- (no Wi-Fi: nothing a phone could reach; the log is saved for the USB drive)
-                not Net.usb and icon("connect", require("gzreader_remote").menuItems(self)) or nil,
                 icon("settings_stats", require("gzreader_usage").menuItems()),
+                not Net.usb and icon("send", {
+                    text = _("Send diagnostic log to the developer"),
+                    callback = function(touchmenu)
+                        closeTouchMenu(touchmenu)
+                        self:sendLogToDeveloper()
+                    end,
+                }) or nil,
                 not Net.usb and icon("send", {
                     text = _("Send diagnostic log to a browser (QR code)"),
                     callback = function(touchmenu)
@@ -605,6 +610,12 @@ function Grimmory:showDiagnostics()
             UIManager:nextTick(function() self:shareLog() end)
         end } }
     end
+    if not Net.usb then
+        buttons[#buttons + 1] = { { text = label("send", _("Send to the developer")), align = "left", callback = function()
+            UIManager:close(dialog)
+            UIManager:nextTick(function() self:sendLogToDeveloper() end)
+        end } }
+    end
     buttons[#buttons + 1] = { { text = label("save", _("Save to the Kindle (copy over USB)")), align = "left", callback = function()
         UIManager:close(dialog)
         UIManager:nextTick(function() self:exportLog() end)
@@ -619,6 +630,37 @@ function Grimmory:showDiagnostics()
     if add then pcall(add, dialog) end
     UIManager:show(dialog)
     return dialog
+end
+
+--- Diagnostics → Send to the developer: the diagnostic log to the
+--- developer's feed (gzreader_remote.lua; test builds: the test feed).
+function Grimmory:sendLogToDeveloper()
+    if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
+    if not Net.connected() and Net.enabled() then
+        return Net.run(function() self:sendLogToDeveloper() end, { reason = "sending the log" })
+    end
+    local tmp = DataStorage:getDataDir() .. "/cache"
+    require("libs/libkoreader-lfs").mkdir(tmp)
+    Log.probe_device = Device:isKindle()
+    local busy = InfoMessage:new{ text = _("Sending the diagnostic log to the developer…"), timeout = 0 }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    local dest, err = Log.exportTo(tmp, DataStorage:getDataDir() .. "/crash.log")
+    local parts
+    if dest then
+        Net.hold("debug log")
+        parts, err = require("gzreader_remote").sendLogs(dest)
+        Net.release("debug log")
+        os.remove(dest)
+    end
+    UIManager:close(busy)
+    if parts then
+        UIManager:show(InfoMessage:new{ text = _("Diagnostic log sent to the developer. Thank you!"), timeout = 4 })
+    else
+        Log.warn("debug log not sent:", err)
+        UIManager:show(InfoMessage:new{ text = T(_("Couldn't send the log (%1). Check Wi-Fi and try again, or save it to the Kindle."),
+            tostring(err)) })
+    end
 end
 
 --- Send the diagnostic log to a phone over Wi-Fi: the Kindle serves it on a
