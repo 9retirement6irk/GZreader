@@ -82,7 +82,7 @@
 3 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
-55 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+60 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 5 reader.lua

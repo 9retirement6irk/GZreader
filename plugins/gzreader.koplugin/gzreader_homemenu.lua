@@ -389,8 +389,8 @@ function HomeMenu.items(plugin)
     return list
 end
 
---- ZenOS's Settings page (Home, Library, Reader, Interface, Extras, General,
---- KOReader). opts.path opens a section.
+--- ZenOS's Settings page (Home, Library, Reader, Interface, General, Storage,
+--- Connections, KOReader, About). opts.path opens a section.
 function HomeMenu.settings(opts)
     local f = fm()
     local zen = (f and f.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
