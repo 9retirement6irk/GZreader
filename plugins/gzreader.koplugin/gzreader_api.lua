@@ -62,11 +62,12 @@ been idle at most IDLE_MAX seconds. A request on a kept connection that fails
 takes a kept connection (it isn't sent twice). Downloads (opts.sink) and the
 main process don't use it.
 ]]
-local Pool = { on = false, idle = {}, IDLE_MAX = 4, made = 0, reused = 0, requests = 0 }
+local Pool = { on = false, idle = {}, IDLE_MAX = 4, made = 0, reused = 0, requests = 0, helped = 0 }
 Api.pool = Pool
 
 function Api.poolBegin()
     Pool.on, Pool.idle, Pool.made, Pool.reused, Pool.requests, Pool.broken = true, {}, 0, 0, 0, false
+    Pool.helped = 0
     -- (off: a file named gz-no-keepalive in the koreader folder)
     if lfs.attributes("gz-no-keepalive", "mode") == "file" then Pool.on = false end
 end
@@ -74,7 +75,14 @@ end
 function Api.poolEnd()
     for _k, c in pairs(Pool.idle) do pcall(c.sock.close, c.sock) end
     Pool.idle, Pool.on = {}, false
-    if Pool.requests > 1 then Log.info("http:", Pool.requests, "requests on", Pool.made, "connection(s)") end
+    if Pool.requests > 1 then
+        if Pool.helped > 0 then
+            -- (through the request helper, which keeps its own connections: none here)
+            Log.info("http:", Pool.requests, "requests,", Pool.helped, "through the request helper,", Pool.made, "connection(s) here")
+        else
+            Log.info("http:", Pool.requests, "requests on", Pool.made, "connection(s)")
+        end
+    end
 end
 
 local Conn = {}
@@ -219,6 +227,7 @@ local function rawRequest(method, full_url, opts)
     local t0 = socket.gettime()
     if pooled then Pool.requests = Pool.requests + 1 end
     local pcall_ok, code, resp_headers, status, reused, via_helper = attempt(method ~= "POST")
+    if pooled and via_helper == true and pcall_ok and type(code) == "number" then Pool.helped = Pool.helped + 1 end
     if via_helper == true and (not pcall_ok or type(code) ~= "number") and tostring(code):find("refused", 1, true) then
         -- (the helper isn't there after all: nothing was sent; directly, and not again in this process)
         pcall(function() require("gzreader_reqhelper").dead = true end)

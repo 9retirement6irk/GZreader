@@ -1989,7 +1989,13 @@ print("The request helper (opt-in): connections kept between background processe
     if port then
         Api.poolBegin() -- (a background process)
         local u1, u2 = upconn("/n"), upconn("/n")
+        local glog = require("gzreader_log")
+        local lines_seen, was_info = {}, glog.info
+        glog.info = function(...) lines_seen[#lines_seen + 1] = table.concat({ ... }, " ") end
         Api.poolEnd()
+        glog.info = was_info
+        check(lines_seen[1] == "http: 2 requests, 2 through the request helper, 0 connection(s) here",
+            "the log says the requests went through the helper (" .. tostring(lines_seen[1]) .. ")")
         Api.poolBegin() -- (the next one, a moment later)
         local u3 = upconn("/n")
         local up = upconn("/n", "POST")
@@ -2006,7 +2012,11 @@ print("The request helper (opt-in): connections kept between background processe
         check(line:find(" 403 ", 1, true), "without its token: refused (" .. line .. ")")
         Api.poolEnd()
         -- stopped: requests go directly
+        local stop_lines, was_info2 = {}, require("gzreader_log").info
+        require("gzreader_log").info = function(...) stop_lines[#stop_lines + 1] = table.concat({ ... }, " ") end
         Helper.stop()
+        require("gzreader_log").info = was_info2
+        check(stop_lines[1] == "request helper: stopped (Wi-Fi off)", "stopping it is logged")
         for _i = 1, 30 do if not io.open(hdir .. "/stop") then break end hsock.sleep(0.1) end
         Api.poolBegin()
         check(Helper.endpoint() == nil and upconn("/n") ~= nil, "stopped: requests go directly again")

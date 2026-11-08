@@ -173,6 +173,7 @@ function H.stop()
     local f = io.open(H.dir() .. "/stop", "wb")
     if f then f:write("stop"); f:close() end
     os.remove(H.dir() .. "/endpoint")
+    pcall(function() require("gzreader_log").info("request helper: stopped (Wi-Fi off)") end)
 end
 
 return H
