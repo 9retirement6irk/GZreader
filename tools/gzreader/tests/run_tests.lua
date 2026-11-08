@@ -4772,7 +4772,8 @@ print("What's new after an update: GZreader's version and short points")
     local text = src and src:read("*a") or ""
     if src then src:close() end
     check(text:find('pcall(require, "gzreader_whatsnew")', 1, true) and text:find("is_update = gz_new ~= nil", 1, true)
-        and text:find('"v" .. (gz_new and gz_new.version or current_ver)', 1, true),
+        and text:find('"v" .. (gz_new and gz_new.version or current_ver)', 1, true)
+        and text:find("hide_logo   = gz_new ~= nil", 1, true),
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 

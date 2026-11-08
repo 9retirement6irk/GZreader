@@ -555,6 +555,8 @@ function ZenUI:init()
                 UIManager:show(ZenScreen:new{
                     title       = _("ZenOS"),
                     title_icon  = true,
+                    -- GZreader: no big logo under the header (it's in the title)
+                    hide_logo   = gz_new ~= nil,
                     subtitle    = T(_("Updated to %1"), "v" .. (gz_new and gz_new.version or current_ver)),
                     changelog   = (type(changelog_to_show) == "table" and #changelog_to_show > 0)
                         and changelog_to_show or nil,
