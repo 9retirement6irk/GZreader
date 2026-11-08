@@ -1445,29 +1445,39 @@ function Grimmory:onReaderReady()
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
     self.sync = Sync:new(self, self.ui, entry, book_id)
-    self.sync:onReady()
+    self.sync:onReady() -- (then openSync, below: a moment after the first page)
     self.bookmarks = Bookmarks:new(self.sync)
-    UIManager:scheduleIn(4, function()
-        if self.bookmarks and self.sync and self.ui.document then pcall(self.bookmarks.reconcile, self.bookmarks) end
-    end)
-    local anno = Mod.Annotations:new(self.sync)
-    self.annotations = anno
-    UIManager:scheduleIn(6, function()
-        if self.annotations == anno then pcall(anno.run, anno) end
-    end)
+    self.annotations = Mod.Annotations:new(self.sync)
     if self:syncEnabled() and self.api:isPaired() and not Net.connected() then
         -- Wi-Fi only when needed: bring it up quietly to sync this book
         Net.run(function() self:syncOpenBook() end, { quiet = true, reason = "sync on open" })
     end
 end
 
+--- A book's sync when it opens (Sync:onReady, a moment after the first
+--- page): its place, then queued updates, bookmarks and highlights, all in
+--- one background process (Async.together) instead of four at 1, 2, 4 and
+--- 6 s, each a fork of GZreader and a secure connection (seconds of a
+--- Kindle 3's CPU each, while you turn the first pages).
+function Grimmory:openSync(sync, saved)
+    if self.sync ~= sync or not self.ui.document then return end
+    require("gzreader_async").together(function()
+        if self:syncEnabled() then sync:pull(false, saved) end
+        self:flushPending()
+        if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+        if self.annotations then pcall(self.annotations.run, self.annotations) end
+    end)
+end
+
 --- Pull position, send queued updates and bookmarks for the open book.
 function Grimmory:syncOpenBook()
     if not (self.sync and self.ui.document) then return end
-    self:flushPending()
-    self.sync:pull(false)
-    if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
-    if self.annotations then pcall(self.annotations.run, self.annotations) end
+    require("gzreader_async").together(function()
+        self:flushPending()
+        self.sync:pull(false)
+        if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+        if self.annotations then pcall(self.annotations.run, self.annotations) end
+    end)
 end
 
 function Grimmory:hasPending()
@@ -1498,10 +1508,12 @@ function Grimmory:onGrimmorySyncNow()
     end
     Net.run(function()
         if not self.sync then return end
-        self.sync:push(true)
-        self.sync:pull(true)
-        if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
-        if self.annotations then pcall(self.annotations.run, self.annotations) end
+        require("gzreader_async").together(function()
+            self.sync:push(true)
+            self.sync:pull(true)
+            if self.bookmarks then pcall(self.bookmarks.reconcile, self.bookmarks) end
+            if self.annotations then pcall(self.annotations.run, self.annotations) end
+        end)
     end, { reason = "sync now" })
     return true
 end
