@@ -1323,6 +1323,8 @@ function Grimmory:flushPending()
 end
 
 function Grimmory:onNetworkConnected()
+    -- the request helper (opt-in: a file named gz-request-helper; gzreader_reqhelper.lua)
+    pcall(function() require("gzreader_reqhelper").start(self.path) end)
     UIManager:scheduleIn(2, function()
         -- books rated in the file browser (not opened) since GZreader started
         if self.api:isPaired() and self:syncEnabled() and not self._ratings_swept then
@@ -1516,6 +1518,13 @@ function Grimmory:onGrimmorySyncNow()
         end)
     end, { reason = "sync now" })
     return true
+end
+
+function Grimmory:onNetworkDisconnected()
+    pcall(function()
+        local Helper = package.loaded["gzreader_reqhelper"]
+        if Helper and Helper.endpoint() then Helper.stop() end
+    end)
 end
 
 function Grimmory:onSuspend()
