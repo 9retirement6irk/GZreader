@@ -9,6 +9,11 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens its menu. The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
 
+Home's status bar (clock, Wi‑Fi, battery) sits beside the book you're
+reading. Before you've read a book (or after clearing your reading history),
+it runs across the top of Home as on the other tabs, and moves back beside
+the book once you open one.
+
 - **Downloads** has as many shelves as the screen holds, a page at a time
   (on the DX four, so the books are bigger). Folders stand as light grey
   spines with a tab on top. A book that finishes downloading while

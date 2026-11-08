@@ -29,6 +29,7 @@
 5 platform/kindle/launchpad/koreader.ini
 9 plugins/zenos.koplugin/common/cover_disk_cache.lua
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
+1 plugins/zenos.koplugin/common/gz_home_status.lua
 7 plugins/zenos.koplugin/common/gz_view.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 6 plugins/zenos.koplugin/common/paths.lua
@@ -56,7 +57,7 @@
 8 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/stats_triplet.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
-43 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
+57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 16 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
 10 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua

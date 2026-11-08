@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Home shows the status bar (clock, battery, Wi-Fi) even before you've read a book", text = "Home shows the status bar across the top, like the other tabs, when there's no recently read book to show (a new Kindle, or after clearing your reading history): it used to have none, because Home's status bar sits beside the book you're reading. Once you open a book, it moves back beside it." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

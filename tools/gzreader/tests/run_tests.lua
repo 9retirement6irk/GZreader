@@ -4674,6 +4674,47 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
     package.path = saved_path
 end)()
 
+print("Home's status bar with no book to show (as on the other tabs)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_home_status"] = nil
+    local S = require("common/gz_home_status")
+    local rows = { { id = "datetime" }, { id = "featured" }, { id = "strip" } }
+    local function preset(home_bar, book_bar)
+        return { show_status_bar = home_bar, modules = { featured = { show_status_bar = book_bar } } }
+    end
+    local asked = 0
+    local function book(yes) return function() asked = asked + 1; return yes end end
+    -- the presets: Home's bar off, the book widget carries it
+    check(S.wanted(preset(false, true), rows, book(true)) == false,
+        "a book on Home: the status bar stays inside the book widget")
+    check(S.wanted(preset(false, true), rows, book(false)) == true,
+        "no recently read book: Home shows the status bar across the top")
+    check(S.wanted(preset(false, true), { { id = "strip" } }, book(true)) == true,
+        "the book widget off: Home shows the status bar across the top")
+    asked = 0
+    check(S.wanted(preset(true, false), rows, book(false)) == true and S.wanted(preset(nil, false), rows, book(false)) == true
+        and asked == 0, "Home's own status bar on: shown, no book looked up")
+    check(S.wanted(preset(false, false), rows, book(false)) == false and asked == 0,
+        "the status bar turned off on Home (not in the book widget): stays off")
+    check(S.wanted(preset(false, true), rows, function() error("boom") end) == false
+        and S.wanted(preset(false, true), rows, nil) == false,
+        "can't tell whether there's a book: as before (the book widget's bar)")
+    -- Home uses it: built with it, rebuilt when it changes, no second bar
+    local src = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/home_page.lua", "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    local _n, uses = text:gsub("home_status_bar_wanted%(dcfg, rows, data_provider%)", "")
+    check(text:find("local show_status_bar = home_status_bar_wanted(dcfg, rows, data_provider)", 1, true)
+        and text:find("show_status_bar = menu._zen_home_status_bar_wanted(dcfg)", 1, true)
+        and text:find('return false, "status_bar_changed"', 1, true) and uses == 4
+        and text:find("buildStatusRow = menu._zen_home_show_status_bar == false", 1, true),
+        "Home: built with it, built again when a book appears or goes, no second bar in the book widget")
+    package.loaded["common/gz_home_status"] = nil
+    package.path = saved_path
+end)()
+
 print("Audiobook player: go to a time, skips gathered, the cassette")
 ;(function()
     local AB = require("gzreader_audiobook")
