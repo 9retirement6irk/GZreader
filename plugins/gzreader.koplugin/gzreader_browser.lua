@@ -341,7 +341,9 @@ function Browser:pagedItems(st)
         }
     end
     if #items == n_header and n_header > 0 then
-        items[#items + 1] = { text = spec.empty_text or _("Nothing here yet."), select_enabled = false }
+        -- (a search that found nothing: gz_kind "nothing_found", empty
+        -- ledges with cobwebs in the Bookshelf view: gzreader_shopviews.lua)
+        items[#items + 1] = { text = spec.empty_text or _("Nothing here yet."), select_enabled = false, gz_kind = spec.empty_kind }
     end
     items.gz_reopen = spec.reopen -- (a new sort order: opened again with it)
     return items
@@ -353,7 +355,7 @@ function Browser:pagedState(spec, data)
         next_of = { [0] = data.hasNext == true }, total = tonumber(data.totalPages) }
 end
 
---- spec = { title, fetch = function(page) -> data, err end, to_item, header, key, empty_text }
+--- spec = { title, fetch = function(page) -> data, err end, to_item, header, key, empty_text, empty_kind }
 --- With a key, the first page is saved and shown at once next time.
 function Browser:openList(spec)
     self:openCached{
@@ -524,6 +526,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
         key = not opts.search and require("gzreader_listcache").key("paged", params) or nil,
         header = header,
         empty_text = opts.empty_text,
+        empty_kind = opts.search and "nothing_found" or nil,
         reopen = function() self:openPaged(title, base_params, with_series_number, opts) end,
         fetch = function(page)
             local p = { page = page, size = PAGE_SIZE, fileType = self.api.READABLE_TYPES }
@@ -758,7 +761,7 @@ function Browser:search(q, scope)
     self:openPaged(title, params, false, {
         search = q,
         header = { { gz_action = "search", text = _("Search again…"), callback = function() self:promptSearch(scope, q) end } },
-        empty_text = T(_("No books match “%1”."), q),
+        empty_text = T(_("No books found containing “%1”"), q),
     })
 end
 

@@ -9,6 +9,7 @@ local DecodeCache = require("common/cover_decode_cache")
 local RenderCache = require("common/cover_render_cache")
 local HomeQuotes = require("modules/filebrowser/patches/home/home_quotes")
 local HomePresets = require("modules/filebrowser/patches/home/home_presets")
+local GzHomeStatus = require("common/gz_home_status") -- GZreader
 local LanguageName = require("common/language_name")
 local MemoryPolicy = require("common/memory_policy")
 local OptionalProvider = require("common/optional_provider")
@@ -677,7 +678,6 @@ local DEFAULT_ROW_ORDER = {
     "datetime",
     "featured",
     "grimmory_stats",
-    "stats_triplet",
     "reading_goals",
     "strip",
     "quotes",
@@ -3374,7 +3374,8 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
         end
     end
 
-    local show_status_bar = dcfg.show_status_bar ~= false
+    -- GZreader: as the shell was built (also on with no book: gz_home_status)
+    local show_status_bar = menu._zen_home_show_status_bar ~= false
     local tb = menu.title_bar
     local tb_h = show_status_bar and tb and tb:getSize().h or 0
     local menu_h = menu.height or (menu.inner_dimen and menu.inner_dimen.h or menu.dimen.h)
@@ -3614,7 +3615,9 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
             end,
             shiftStrip = shift_strip,
             openTopMenu = open_top_menu,
-            buildStatusRow = _zen_shared and _zen_shared.buildStatusRow,
+            -- GZreader: not a second status bar under Home's own
+            buildStatusRow = menu._zen_home_show_status_bar == false
+                and _zen_shared and _zen_shared.buildStatusRow or nil,
             statusRowRefreshRegions = _zen_shared and _zen_shared.statusRowRefreshRegions,
             registerClockRefresh = function(refresh, widget, keys)
                 if type(refresh) == "function" then
@@ -3906,9 +3909,26 @@ local function rows_have_component(rows, component_id)
     return false
 end
 
+-- GZreader: Home's status bar also when the book widget's own isn't drawn
+-- (no book to show): common/gz_home_status.lua
+local function home_status_bar_wanted(dcfg, rows, data_provider)
+    local has_book
+    if data_provider and type(data_provider.getFeaturedBook) == "function" then
+        has_book = function()
+            local mcfg = dcfg.modules.featured
+            return data_provider:getFeaturedBook(
+                HomePresets.featuredSourceKey(mcfg.default_source), "default", true) ~= nil
+        end
+    end
+    return GzHomeStatus.wanted(dcfg, rows, has_book)
+end
+
 local function home_shell_is_compatible(menu, dcfg)
     if not (menu and type(dcfg) == "table") then return false end
     local show_status_bar = dcfg.show_status_bar ~= false
+    if type(menu._zen_home_status_bar_wanted) == "function" then -- GZreader
+        show_status_bar = menu._zen_home_status_bar_wanted(dcfg)
+    end
     if menu._zen_home_show_status_bar ~= show_status_bar then return false end
     if not show_status_bar then
         local has_clock_refreshers = rows_have_clock_refreshers(resolve_rows(dcfg), dcfg)
@@ -3955,7 +3975,11 @@ function M.showHomeView(injectNavbar, initial_refresh_type)
     local cfg = load_zen_config()
     if type(cfg) ~= "table" then return end
     local dcfg = ensure_home_cfg()
-    local show_status_bar = dcfg.show_status_bar ~= false
+    -- GZreader: the rows and books first, to know whether there's a book to
+    -- carry the status bar (home_status_bar_wanted)
+    local rows = resolve_rows(dcfg)
+    local data_provider = build_data_provider(cfg, dcfg, _home_strip_page_state)
+    local show_status_bar = home_status_bar_wanted(dcfg, rows, data_provider)
     local Screen = require("device").screen
 
     local menu = StandalonePage.create_menu{
@@ -3978,12 +4002,13 @@ function M.showHomeView(injectNavbar, initial_refresh_type)
         })
     end
     menu._zen_home_show_status_bar = show_status_bar
+    menu._zen_home_status_bar_wanted = function(next_dcfg) -- GZreader
+        return home_status_bar_wanted(next_dcfg, resolve_rows(next_dcfg), data_provider)
+    end
     menu._zen_home_screen_width = Screen:getWidth()
     menu._zen_home_screen_height = Screen:getHeight()
 
-    local rows = resolve_rows(dcfg)
     menu._zen_home_has_strip = rows_have_component(rows, "strip")
-    local data_provider = build_data_provider(cfg, dcfg, _home_strip_page_state)
     local function remember_strip_pages()
         if data_provider and type(data_provider.getStripPageState) == "function" then
             _home_strip_page_state = data_provider:getStripPageState()
@@ -4210,6 +4235,13 @@ function M.showHomeView(injectNavbar, initial_refresh_type)
         has_date_dependent = rows_have_date_dependent(rows)
         self._zen_home_has_clock_refreshers = has_clock_refreshers
         rebuild(refresh_stats == true, refresh_type)
+        -- GZreader: a book to show now, or none any more: the status bar
+        -- moves (between the book and the top), so Home is built again
+        if self._zen_home_show_status_bar ~= home_status_bar_wanted(dcfg, rows, data_provider) then
+            UIManager:nextTick(function()
+                if rawequal(_home_menu, self) and not self._zen_home_closing then M.rebuildActive() end
+            end)
+        end
         return true
     end
 
@@ -4266,6 +4298,12 @@ function M.showHomeView(injectNavbar, initial_refresh_type)
         if (day_changed or quote_refresh) and data_provider
                 and type(data_provider.clearQuote) == "function" then
             data_provider:clearQuote()
+        end
+
+        -- GZreader: a book to show now (the first one read), or none any
+        -- more: the status bar moves, so Home is built again
+        if self._zen_home_show_status_bar ~= home_status_bar_wanted(dcfg, rows, data_provider) then
+            return false, "status_bar_changed"
         end
 
         local needs_rebuild = reload_config
