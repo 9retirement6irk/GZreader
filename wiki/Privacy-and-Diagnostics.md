@@ -30,9 +30,10 @@ General → Diagnostic logging); while it's on, the quick panel has
 the Kindle awake and a read-only audio/speech survey into one
 `gzreader-log-<date>.txt`, and:
 
-- **Send to the developer:** straight to GZreader's developer over Wi‑Fi
-  (see [Remote debugging](#remote-debugging)). Also Settings → General → Send diagnostic log to
-  the developer.
+- **Send to the developer:** first a box asks what you were doing and what
+  went wrong (type as much as helps, or nothing), then that and the log go
+  straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)). Also
+  Settings → General → Send diagnostic log to the developer.
 - **Send to a browser (QR code):** scan the code (same Wi‑Fi), tap
   Download, then attach the file wherever you need it. Also the setup
   page's Diagnostics tab and Settings → General.
@@ -79,10 +80,14 @@ with each GZreader process's state, CPU over 2 s, memory and wait channel.
 
 **Send to the developer** (Diagnostics in the quick panel; Settings →
 General → Send diagnostic log to the developer)
-sends the whole diagnostic log, the same file "Save to the Kindle" writes,
-to the same feed at any usage level: in parts of 60 KB, at most the newest
-480 KB, each an event "Debug log from <model>-<id> (n/m)". `<id>` is the
-start of usage statistics' random ID (not the serial number).
+asks what you were doing and what went wrong, then sends that with the
+whole diagnostic log (the same file "Save to the Kindle" writes) to a feed
+of its own (`R.REPORT_FEED`, the same for releases and test builds), at
+any usage level: in parts of 60 KB, at most the newest 480 KB, each an
+event "Debug report from <model>-<id> (n/m)"; the first is named after
+what you typed and starts with it ("What happened: …"; a password or token
+typed there is redacted like the log's). `<id>` is the start of usage
+statistics' random ID (not the serial number).
 
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
 the clock jump after waking). Log lines are redacted (no passwords or

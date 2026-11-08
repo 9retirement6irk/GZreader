@@ -3460,14 +3460,24 @@ print("Remote debugging (with Full usage statistics)")
     local posts = {}
     local was_part, was_max = R.PART, R.MAX_PARTS
     R.PART, R.MAX_PARTS = 20000, 3
-    local n = R.sendLogs(logf, nil, function(url, body) posts[#posts + 1] = { url = url, body = json.decode(body) }; return 201 end)
+    local typed = "  The book froze when I turned the page, then the Kindle restarted. My token is Bearer abc123def  "
+    local n = R.sendLogs(logf, typed, function(url, body) posts[#posts + 1] = { url = url, body = json.decode(body) }; return 201 end)
     local whole = ""
     for _i, p in ipairs(posts) do whole = whole .. p.body.eventContent end
     local valid = true
     for _i, p in ipairs(posts) do if p.body.eventContent:find("^[\128-\191]") then valid = false end end
-    check(n == 3 and #posts == 3 and posts[1].url == R.feedUrl() .. "/send" and posts[1].body.eventName:match("^Debug log from .* %(1/3%)$")
-        and posts[3].body.eventName:match("%(3/3%)$") and posts[1].body.tags[3] == "debug-log",
-        "the log goes to this build's feed, in parts, numbered")
+    check(n == 3 and #posts == 3 and posts[1].url == R.REPORT_FEED .. "/send" and R.reportUrl() == R.REPORT_FEED
+        and R.REPORT_FEED:match("/open/feed/cmw7f51fm0e318o2f94o54020$") and R.REPORT_FEED ~= R.FEED and R.REPORT_FEED ~= R.TEST_FEED
+        and posts[1].body.eventName:match("^Debug report from .* %(1/3%): The book froze")
+        and posts[3].body.eventName:match("%(3/3%)$") and posts[1].body.tags[3] == "debug-log" and posts[1].body.tags[5] == "with-comment",
+        "the log goes to the report feed (releases and test builds alike), in parts, numbered; the first named after what was typed")
+    check(posts[1].body.eventContent:match("What happened: The book froze when I turned the page, then the Kindle restarted%.")
+        and not posts[1].body.eventContent:find("abc123def", 1, true) and not posts[2].body.eventContent:find("What happened", 1, true),
+        "what was typed is at the top of the first part (a token in it redacted)")
+    local quiet = {}
+    R.sendLogs(logf, "", function(_u, body) quiet[#quiet + 1] = json.decode(body); return 201 end)
+    check(quiet[1] and quiet[1].eventName:match("%(1/3%)$") and quiet[1].eventContent:match("What happened: %(nothing typed%)")
+        and quiet[1].tags[5] == nil, "nothing typed: sent anyway, and says so")
     check(whole:match("line 03000") and not whole:match("line 00001") and whole:match("The last %d+ KB of %d+ KB") and valid,
         "a long log: its newest part (says so), never cut inside a character")
     local failed = { R.sendLogs(logf, nil, function() return 500 end) }
@@ -3486,6 +3496,26 @@ print("Remote debugging (with Full usage statistics)")
     check(not text:find("gzreader_remote\").menuItems", 1, true) and R.menuItems == nil
         and text:find('_("Send to the developer")', 1, true) and text:find("function Grimmory:sendLogToDeveloper", 1, true),
         "no Remote debugging settings; Diagnostics has Send to the developer")
+    -- the box for what happened, then the send with what was typed
+    local was_send = plugin.sendLogToDeveloper
+    local sent_with
+    local UIManager = require("ui/uimanager")
+    local orig_tick, orig_show, orig_close = UIManager.nextTick, UIManager.show, UIManager.close
+    UIManager.nextTick = function(_self, fn) fn() end
+    UIManager.show = function() end
+    UIManager.close = function() end
+    plugin.sendLogToDeveloper = function(_self, c) sent_with = c end
+    -- (a stand-in dialog: the real one needs a screen)
+    local real_input = package.loaded["ui/widget/inputdialog"]
+    package.loaded["ui/widget/inputdialog"] = { new = function(_self, o) o.onShowKeyboard = function() end; return o end }
+    local dlg = plugin:askReportComment()
+    package.loaded["ui/widget/inputdialog"] = real_input
+    dlg.getInputText = function() return "the calendar was empty" end
+    for _i, row in ipairs(dlg.buttons) do for _j, b in ipairs(row) do if b.text == "Send" then b.callback() end end end
+    plugin.sendLogToDeveloper = was_send
+    UIManager.nextTick, UIManager.show, UIManager.close = orig_tick, orig_show, orig_close
+    check(dlg.title == "Send to the developer" and dlg.allow_newline and sent_with == "the calendar was empty",
+        "Send to the developer asks what happened first, and sends what was typed")
 end)()
 
 print("Slow-operation tracing")

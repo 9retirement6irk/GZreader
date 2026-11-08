@@ -22,7 +22,9 @@ Messages wait in a folder and are sent by the watchdog when Wi-Fi is on;
 GZreader never turns Wi-Fi on for them.
 
 Diagnostics → Send to the developer (R.sendLogs) sends the whole diagnostic
-log at once, to the same feed, whatever the usage level.
+log at once, with what the user typed about what happened, to its own feed
+(R.REPORT_FEED, for releases and test builds alike), whatever the usage
+level.
 ]]
 
 local DataStorage = require("datastorage")
@@ -36,6 +38,8 @@ local R = {
     HEARTBEAT = 15, BATCH = 60, seq = 0,
     FEED = "https://in.wxcyber.com/open/feed/cmvtvoj3j1dpb5zr7b1dj3zen", -- releases
     TEST_FEED = "https://in.wxcyber.com/open/feed/cmw79imiu09sx8o2f27uihqar", -- test builds
+    -- Diagnostics → Send to the developer (releases and test builds alike)
+    REPORT_FEED = "https://in.wxcyber.com/open/feed/cmw7f51fm0e318o2f94o54020",
     PART = 60 * 1024, -- a diagnostic log is sent in parts of this size…
     MAX_PARTS = 8, -- …at most this many (its newest part)
 }
@@ -73,6 +77,13 @@ function R.feedUrl(version)
     local env = os.getenv("GZ_REMOTE_FEED")
     if env and R.normalize(env) then return R.normalize(env) end
     return R.testBuild(version) and R.TEST_FEED or R.FEED
+end
+
+--- The feed Send to the developer posts to (GZ_REMOTE_FEED: the emulator's).
+function R.reportUrl()
+    local env = os.getenv("GZ_REMOTE_FEED")
+    if env and R.normalize(env) then return R.normalize(env) end
+    return R.REPORT_FEED
 end
 
 --- On with Full usage statistics, on a Kindle with Wi-Fi (without it the
@@ -335,13 +346,15 @@ end
 
 --- Diagnostics → Send to the developer: the diagnostic log (as saved for
 --- USB: GZreader's log, crash.log's end, what keeps the Kindle awake) in
---- events of PART bytes, its newest MAX_PARTS. Returns the number of parts
---- sent, or nil, error. `post(url, body)` → HTTP code (tests); else LuaSocket.
+--- events of PART bytes, its newest MAX_PARTS, to R.REPORT_FEED. `note`: what
+--- the user typed (what they were doing, what went wrong), at the top of the
+--- first event and in its name. Returns the number of parts sent, or nil,
+--- error. `post(url, body)` → HTTP code (tests); else LuaSocket.
 function R.sendLogs(path, note, post)
     local s = readFile(path)
     if not s or s == "" then return nil, "no log" end
     local version = R.version()
-    local url = R.feedUrl(version) .. "/send"
+    local url = R.reportUrl() .. "/send"
     local device = R.device or R.deviceName()
     local total = #s
     local function lead(i) -- (never in the middle of a UTF-8 character)
@@ -376,14 +389,20 @@ function R.sendLogs(path, note, post)
         socketutil:reset_timeout()
         return ok and tonumber(code) or nil
     end
-    local head = string.format("GZreader %s on %s, %s. %s%s", version, device, os.date("%Y-%m-%d %H:%M"),
-        first > 1 and string.format("The last %d KB of %d KB. ", math.floor((total - first + 1) / 1024), math.floor(total / 1024)) or "",
-        note and ("\n" .. note) or "")
+    -- (what the user typed: passwords or tokens in it are redacted like the log's)
+    note = type(note) == "string" and Log.redact(note):gsub("^%s+", ""):gsub("%s+$", "") or ""
+    local head = string.format("GZreader %s on %s, %s. %s\n\nWhat happened: %s", version, device, os.date("%Y-%m-%d %H:%M"),
+        first > 1 and string.format("The last %d KB of %d KB of the log.", math.floor((total - first + 1) / 1024), math.floor(total / 1024)) or "",
+        note ~= "" and note or "(nothing typed)")
+    local summary = note:gsub("%s+", " ")
+    if #summary > 80 then summary = (summary:sub(1, 79):match("^(.*) ") or summary:sub(1, 79)) .. "…" end
     for k, part in ipairs(parts) do
         local body = JSON.encode({
-            eventName = string.format("Debug log from %s (%d/%d)", device, k, #parts),
+            eventName = string.format("Debug report from %s (%d/%d)%s", device, k, #parts,
+                (k == 1 and summary ~= "") and (": " .. summary) or ""),
             eventContent = (k == 1 and (head .. "\n\n") or "") .. part,
-            tags = { "gzreader", device, "debug-log", R.testBuild(version) and "test-build" or "release" },
+            tags = { "gzreader", device, "debug-log", R.testBuild(version) and "test-build" or "release",
+                note ~= "" and "with-comment" or nil },
             source = "gzreader",
             important = false,
         })

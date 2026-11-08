@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
+        },
+    },
+    {
         version = "1.26.8",
         changes = {
             { short = "Updated to ZenOS 4.3.0: quicker, new reading controls on touch Kindles, a new end-of-book screen", text = "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before." },

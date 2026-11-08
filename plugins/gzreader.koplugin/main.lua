@@ -632,12 +632,15 @@ function Grimmory:showDiagnostics()
     return dialog
 end
 
---- Diagnostics → Send to the developer: the diagnostic log to the
---- developer's feed (gzreader_remote.lua; test builds: the test feed).
-function Grimmory:sendLogToDeveloper()
+--- Diagnostics → Send to the developer: asks what happened (what you were
+--- doing, what failed), then sends it with the diagnostic log to the
+--- developer's report feed (gzreader_remote.lua R.sendLogs). `comment`: what
+--- was typed (nil: ask first).
+function Grimmory:sendLogToDeveloper(comment)
     if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
+    if comment == nil then return self:askReportComment() end
     if not Net.connected() and Net.enabled() then
-        return Net.run(function() self:sendLogToDeveloper() end, { reason = "sending the log" })
+        return Net.run(function() self:sendLogToDeveloper(comment) end, { reason = "sending the log" })
     end
     local tmp = DataStorage:getDataDir() .. "/cache"
     require("libs/libkoreader-lfs").mkdir(tmp)
@@ -649,7 +652,7 @@ function Grimmory:sendLogToDeveloper()
     local parts
     if dest then
         Net.hold("debug log")
-        parts, err = require("gzreader_remote").sendLogs(dest)
+        parts, err = require("gzreader_remote").sendLogs(dest, comment)
         Net.release("debug log")
         os.remove(dest)
     end
@@ -661,6 +664,31 @@ function Grimmory:sendLogToDeveloper()
         UIManager:show(InfoMessage:new{ text = T(_("Couldn't send the log (%1). Check Wi-Fi and try again, or save it to the Kindle."),
             tostring(err)) })
     end
+end
+
+--- What happened, typed before Send to the developer (it goes with the log).
+function Grimmory:askReportComment()
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Send to the developer"),
+        description = _("What were you doing, and what went wrong? It's sent with the diagnostic log (passwords and tokens are never in it)."),
+        input_hint = _("e.g. the book froze when I turned the page"),
+        allow_newline = true,
+        text_height = Device.screen:scaleBySize(110), -- (about four lines)
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Send"), is_enter_default = true, callback = function()
+                local text = dialog:getInputText() or ""
+                UIManager:close(dialog)
+                UIManager:nextTick(function() self:sendLogToDeveloper(text) end)
+            end },
+        }},
+    }
+    self.report_dialog = dialog
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+    return dialog
 end
 
 --- Send the diagnostic log to a phone over Wi-Fi: the Kindle serves it on a
