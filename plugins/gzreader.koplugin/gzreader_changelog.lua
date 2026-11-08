@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Choose the quick panel's tiles: Settings → Interface → Quick panel", text = "Settings → Interface → Quick panel lists the tiles of the quick panel's Controls, Home and This book groups: untick a tile to take it off the panel, or Show every tile to bring them all back. Home, Settings and Exit to Kindle always stay. It replaces Interface's Controls and Launcher, which set up ZenOS's touch menu (the quick panel took its place); Blur menu background is still in Interface." },
+            { short = "Zen mode is always on", text = "Zen mode (ZenOS's own tabs only) is always on: its switch is gone from Settings → Interface, and it's turned back on if it was off." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
