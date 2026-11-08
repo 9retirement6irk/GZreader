@@ -14,8 +14,8 @@
 
 <p align="center">
   <a href="https://github.com/9retirement6irk/GZreader/releases/latest"><b>Download the latest release</b></a> ·
-  <a href="https://github.com/9retirement6irk/GZreader/wiki">Wiki</a> ·
-  <a href="GZREADER.md">Full guide</a> ·
+  <a href="https://github.com/9retirement6irk/GZreader/wiki"><b>Wiki</b></a> ·
+  <a href="https://github.com/9retirement6irk/GZreader/wiki/Installing">Install</a> ·
   <a href="plugins/gzreader.koplugin/gzreader_changelog.lua">Changelog</a>
 </p>
 
@@ -84,7 +84,10 @@ haven't been tried.
 - 🎧 **Audiobooks** from Grimmory, with your place kept.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
-All the details: **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)** ([feature overview](https://github.com/9retirement6irk/GZreader/wiki/Feature-Overview), [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility)), or everything on one page: [the full guide](GZREADER.md).
+All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)**:
+[feature overview](https://github.com/9retirement6irk/GZreader/wiki/Feature-Overview),
+[device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility),
+[what's changed from KOReader and ZenOS](https://github.com/9retirement6irk/GZreader/wiki/Changes-from-KOReader-and-ZenOS).
 
 ## Install
 
@@ -115,13 +118,14 @@ for each package, uninstalling and the Nooks: [Installing](https://github.com/9r
 ## Privacy
 
 Passwords and tokens stay on the Kindle and are never written to its log.
-GZreader sends anonymous usage statistics (no titles, addresses or accounts) to
-help fix problems; choose Basic, Full or Off in the setup guide or Settings →
-General → Usage statistics ([what's sent](GZREADER.md#usage-statistics)).
+GZreader sends anonymous usage statistics (no addresses or accounts) to help
+fix problems; Full also sends debug reports, whose log lines can name a book.
+Choose Basic, Full or Off in the setup guide or Settings → General → Usage
+statistics ([what's sent](https://github.com/9retirement6irk/GZreader/wiki/Privacy-and-Diagnostics#usage-statistics)).
 
 ## More
 
-- [The wiki](https://github.com/9retirement6irk/GZreader/wiki) · [The full guide](GZREADER.md) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
+- [The wiki](https://github.com/9retirement6irk/GZreader/wiki) ([edit it in `wiki/`](wiki/)) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
 - [Developing GZreader](DEVELOPING.md): building, tests, releases, keeping up with KOReader and ZenOS
 
 ## Credits and license

@@ -69,7 +69,7 @@ local function notes(changelog, version, tags)
     out[#out + 1] = ""
     out[#out + 1] = "### Download"
     out[#out + 1] = ""
-    out[#out + 1] = "Already on GZreader: Settings → Updates (Kindles without Wi‑Fi: the sync page). To install, see GZREADER.md:"
+    out[#out + 1] = "Already on GZreader: Settings → Updates (Kindles without Wi‑Fi: the sync page). To install: https://github.com/9retirement6irk/GZreader/wiki/Installing"
     out[#out + 1] = ""
     out[#out + 1] = "- `gzreader-kindle-legacy-" .. version .. ".zip`: Kindle 2, DX, Kindle Keyboard"
     out[#out + 1] = "- `gzreader-kindle-" .. version .. ".zip`: Kindle 4, Kindle Touch"

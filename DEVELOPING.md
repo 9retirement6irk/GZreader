@@ -1,10 +1,10 @@
 # Developing GZreader
 
-For people changing GZreader itself. Using it: [README](README.md), [the wiki](https://github.com/9retirement6irk/GZreader/wiki), [the full guide](GZREADER.md).
+For people changing GZreader itself. Using it: [README](README.md), [the wiki](https://github.com/9retirement6irk/GZreader/wiki).
 
 ## Documentation
 
-User documentation is in two places: `GZREADER.md` (everything on one page) and `wiki/` (the same, split into pages, plus the install pages per package, jailbreaking, device compatibility and what's changed from KOReader and ZenOS). A user-facing change goes in both. `wiki/` is published to the GitHub wiki by the "GZreader wiki" workflow on every push to `main` that changes it (the wiki's own page editor is overwritten: edit `wiki/`). Links between wiki pages are `[text](Page-Name)` or `[text](Page-Name#heading)`; `tools/gzreader/tests/wiki_test.py` checks them and that every page is in `_Sidebar.md`. GitHub only creates a wiki's repository once its first page is saved by hand: if the workflow says so, open the Wiki tab, create a page, then run the workflow again.
+User documentation is the wiki, kept in `wiki/` (features, the install pages per package, jailbreaking, device compatibility, what's changed from KOReader and ZenOS); the one-page `GZREADER.md` it was made from was removed after 1.26.8. A user-facing change goes in the matching wiki page. `wiki/` is published to the GitHub wiki by the "GZreader wiki" workflow on every push to `main` that changes it (the wiki's own page editor is overwritten: edit `wiki/`). Links between wiki pages are `[text](Page-Name)` or `[text](Page-Name#heading)`; `tools/gzreader/tests/wiki_test.py` checks them and that every page is in `_Sidebar.md`. GitHub only creates a wiki's repository once its first page is saved by hand: if the workflow says so, open the Wiki tab, create a page, then run the workflow again.
 
 ## Publishing a release
 

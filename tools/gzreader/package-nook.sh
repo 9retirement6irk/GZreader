@@ -6,7 +6,7 @@
 #
 # Usage: tools/gzreader/package-nook.sh <gzreader-kindle-legacy-X.zip> <runtime-dir> [out-dir]
 # Output: gzreader-nook-<version>.zip with one folder, gzreader/, to copy to
-# /data/gzreader on the Nook (see GZREADER.md, "Nook 1st Edition").
+# /data/gzreader on the Nook (see the wiki's Install-Nook-1st-Edition page).
 set -euo pipefail
 
 SRC_ZIP=${1:?gzreader-kindle-legacy-X.zip}
@@ -48,8 +48,8 @@ An icon in the Nook's app list (Nook 1st Edition), once:
     adb shell sh /data/gzreader/launcher.sh install
 
 Full steps (rooting, installing, what to try, what to send back):
-https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-1st-edition-test-build
-https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#nook-simple-touch-test-build
+https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-1st-Edition
+https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-Simple-Touch
 TXT
 
 # (GZ_NOOK_NAME=gzreader-nook-1st-edition: the build without VFP, gzreader-nook.yml)
