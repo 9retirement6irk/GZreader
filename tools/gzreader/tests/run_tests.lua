@@ -3447,7 +3447,7 @@ print("Remote debugging (with Full usage statistics)")
     local hb = io.open(dir .. "/heartbeat"):read("*a")
     check(hb:match("^%d+ run "), "heartbeat written")
     -- the 15 s beat: to the RAM disk; the kept one only when the status changes or every KEEP s
-    local function rd(p) local f = io.open(p, "rb"); local t = f and f:read("*a"); if f then f:close() end; return t end
+    local function rd(p) local h = io.open(p, "rb"); local t = h and h:read("*a"); if h then h:close() end; return t end
     check(R.livePath():match("/live/gzreader%-heartbeat%.%d+$") and (rd(R.livePath()) or ""):match("^%d+ run "),
         "the beat goes to the live file (/tmp on a Kindle: no flash write)")
     local kept = io.open(dir .. "/heartbeat", "wb"); kept:write("100 run the kept one"); kept:close()
@@ -3459,11 +3459,11 @@ print("Remote debugging (with Full usage statistics)")
     check((rd(dir .. "/heartbeat") or ""):match("^%d+ run ") and rd(dir .. "/heartbeat") ~= "100 run the kept one",
         "…and every " .. R.KEEP .. " s the kept one too (when it was last seen, after a hard reboot)")
     -- a live beat left by a previous process (no reboot since): newer than the kept one, so it counts
-    local other = R.LIVE_DIR .. "/gzreader-heartbeat.999999"
-    kept = io.open(other, "wb"); kept:write((os.time() + 5) .. " run reading late.epub p.9"); kept:close()
+    local prev_live = R.LIVE_DIR .. "/gzreader-heartbeat.999999"
+    kept = io.open(prev_live, "wb"); kept:write((os.time() + 5) .. " run reading late.epub p.9"); kept:close()
     local prevb = R.previousBeat(dir)
-    check(prevb and prevb:match("late%.epub p%.9") and not io.open(other, "rb"), "the previous run's live beat is used and removed")
-    kept = io.open(other, "wb"); kept:write("50 run older"); kept:close()
+    check(prevb and prevb:match("late%.epub p%.9") and not io.open(prev_live, "rb"), "the previous run's live beat is used and removed")
+    kept = io.open(prev_live, "wb"); kept:write("50 run older"); kept:close()
     check(not R.previousBeat(dir):match("older"), "…unless the kept one is newer")
     -- the watchdog reads the newer of the two
     local wsrc = rd(PLUGIN .. "/gzreader_watchdog.lua") or ""
@@ -3550,16 +3550,16 @@ end)()
 print("The log: lines written together, not one write per line")
 ;(function()
     local Log = require("gzreader_log")
-    local path = WORK .. "/buffered.log"
+    local bpath = WORK .. "/buffered.log"
     local keep_path, keep_main = Log.path, Log.main_pid
-    local function rd() local f = io.open(path, "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
-    os.remove(path)
+    local function rd() local fh = io.open(bpath, "rb"); local t = fh and fh:read("*a") or ""; if fh then fh:close() end; return t end
+    os.remove(bpath)
     Log.init(WORK)
-    Log.path = path
-    local UI = require("ui/uimanager")
-    local real_in = UI.scheduleIn
+    Log.path = bpath
+    local LUI = require("ui/uimanager")
+    local real_in = LUI.scheduleIn
     local timers = {}
-    UI.scheduleIn = function(_ui, s, fn) timers[#timers + 1] = { s = s, fn = fn } end
+    LUI.scheduleIn = function(_ui, s, fn) timers[#timers + 1] = { s = s, fn = fn } end
     Log.buffered = true
     Log.info("first line")
     Log.info("second line")
@@ -3597,10 +3597,10 @@ print("The log: lines written together, not one write per line")
     if msrc then msrc:close() end
     check(mtext:find("Log.flush()\n        Log.buffered = false\n        return orig_quit", 1, true)
         and select(2, mtext:gsub("Log%.flush%(%)", "")) >= 3, "flushed on exit (then every line at once), sleep and settings flush")
-    UI.scheduleIn = real_in
+    LUI.scheduleIn = real_in
     Log.buffered = false
     Log.path, Log.main_pid = keep_path, keep_main
-    os.remove(path)
+    os.remove(bpath)
 end)()
 
 print("Slow-operation tracing")
