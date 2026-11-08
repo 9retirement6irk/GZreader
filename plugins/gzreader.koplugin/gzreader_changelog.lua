@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The clock at the top of a book no longer disappears after Layout", text = "The reader's top status bar (Settings → Reader → Appearance → Top status bar: the clock, by default) no longer disappears while the layout menu (the quick panel's Layout tile) is open or after it closes. It was drawn only while nothing else was open over the book, so it stayed missing until the next page turn or the next minute." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

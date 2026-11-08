@@ -4933,6 +4933,29 @@ print("Downloads tab: its name in the title bar, like the other tabs")
     package.path = saved_path
 end)()
 
+print("The reader's top status bar stays drawn under KOReader's layout menu")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_header_overlay"] = nil
+    local O = require("common/gz_header_overlay")
+    local dialog, a_window = { name = "ConfigDialog" }, { name = "a window" }
+    local view = { ui = { config = { config_dialog = dialog } } }
+    check(O.leavesHeader(view, dialog) == true, "the book's open layout menu leaves the bar in view")
+    check(O.leavesHeader(view, a_window) == false, "another window over the book: the bar isn't drawn (as before)")
+    local closed = { ui = { config = {} } }
+    check(O.leavesHeader(closed, dialog) == false, "a layout menu that was closed doesn't count")
+    check(O.leavesHeader({ ui = {} }, dialog) == false and O.leavesHeader(nil, dialog) == false
+        and O.leavesHeader(view, nil) == false, "no reader config, no view or no window: false")
+    local tf = io.open(PLUGIN .. "/../zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua")
+    local src = tf and tf:read("*a") or ""
+    if tf then tf:close() end
+    local fn = src:match("local function is_view_active_top%(view%)(.-)\n    end\n") or ""
+    check(fn:find('require("common/gz_header_overlay").leavesHeader(view, top_widget)', 1, true) ~= nil,
+        "ZenOS's top bar asks it when the book isn't the topmost window")
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
