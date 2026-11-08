@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings has no Extras section any more: less to wade through", text = "Settings no longer has an Extras section. Its Schedules and Sleep were already in General and Custom icons in Interface, and they stay there. The rest (Stats tab widgets, ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) is no longer offered: GZreader doesn't use them or works best with their defaults. Anything you had changed there keeps your choice." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
