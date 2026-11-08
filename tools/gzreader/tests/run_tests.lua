@@ -1021,6 +1021,29 @@ gsettings.home_dir = "/somewhere/else"                     -- an older build's "
 Grimmory:new{ ui = { menu = { registerToMainMenu = function() end }, active_widgets = {} } }
 check(gsettings.home_dir == libdir, "the home folder is always the GZreader folder: set back at the next start")
 gsettings.home_dir = libdir
+do -- Settings → Library → Folders has no Home folder menu (Set / Lock / Additional home folders)
+    local lf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings.lua", "rb")
+    local lsrc = lf and lf:read("*a") or ""
+    if lf then lf:close() end
+    check(lsrc:find("local folders_item = {", 1, true) and lsrc:find('text = _("Hide up folder")', 1, true),
+        "the Folders settings are still there (Hide up folder)")
+    check(not lsrc:find('_("Home folder")', 1, true) and not lsrc:find('_("Lock home folder")', 1, true)
+        and not lsrc:find('_("Additional home folders")', 1, true) and not lsrc:find("settings_home_folder", 1, true),
+        "Settings → Library → Folders: no Home folder menu, so the home folder can't be changed there")
+    local function koSource(rel)
+        local kf = io.open(KOROOT .. "/frontend/apps/filemanager/" .. rel, "rb")
+        local ksrc = kf and kf:read("*a") or ""
+        if kf then kf:close() end
+        return ksrc
+    end
+    local fmmenu, fm = koSource("filemanagermenu.lua"), koSource("filemanager.lua")
+    check(fmmenu:find('_("Show parent folder")', 1, true) and not fmmenu:find('_("Home folder settings")', 1, true)
+        and not fmmenu:find('_("Set home folder")', 1, true) and not fmmenu:find('_("Shorten home folder")', 1, true)
+        and not fmmenu:find('_("Lock home folder")', 1, true),
+        "KOReader's file manager menu: no Home folder settings (Set / Shorten / Lock home folder)")
+    check(fm:find('_("Go to HOME folder")', 1, true) and not fm:find('_("Set as HOME folder")', 1, true),
+        "KOReader's file manager: no Set as HOME folder button (folder hold, + menu); Go to HOME folder stays")
+end
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 
 print("Update wiped the settings (books stay in the folder)")

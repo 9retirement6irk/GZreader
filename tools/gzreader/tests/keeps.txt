@@ -1,4 +1,6 @@
 # GZreader's marks in upstream files (tools/gzreader/tests/keeps.py --update)
+4 frontend/apps/filemanager/filemanager.lua
+3 frontend/apps/filemanager/filemanagermenu.lua
 1 frontend/apps/reader/modules/readerback.lua
 3 frontend/device.lua
 1 frontend/device/input.lua
