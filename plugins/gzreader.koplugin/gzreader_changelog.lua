@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Books open sooner: reading statistics are looked up after the first page", text = "Opening a book: the reading statistics' lookups (the book's record and its reading time so far, slower the more you've read it) now run just after the first page is on the screen instead of before it. The time-left estimate uses the totals saved with the book until then." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
