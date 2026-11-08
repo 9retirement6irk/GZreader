@@ -55,4 +55,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - ZenOS's icon font is no longer registered with the book renderer (it
   failed every time).
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
-  seen for a large book). Later opens use the cache.
+  seen for a large book). Later opens use the cache. While the Kindle charges and
+  Home is on screen, downloaded books not opened yet are laid out in a
+  background process at the lowest priority (`gzreader_layout.lua`; Settings
+  → Reader → *Lay out new books while charging*), the way the reader would
+  open them, so that cache is there for their first open. It stops when the
+  charger is unplugged or a book is opened; the books don't show as opened
+  (no history, no book settings). Not on Kindles with 128 MB or less.

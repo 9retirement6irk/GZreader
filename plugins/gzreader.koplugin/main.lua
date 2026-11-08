@@ -68,6 +68,8 @@ function Grimmory:init()
         Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
             "device", tostring(Device.model))
         pcall(function() require("gzreader_timezone").apply() end)
+        -- new books laid out in the background while charging (gzreader_layout.lua)
+        pcall(function() require("gzreader_layout").schedule(self) end)
     end
     pcall(Net.start)
     if not Grimmory.usage_scheduled then
@@ -507,6 +509,17 @@ function Grimmory:sectionItems(section)
             keep_menu_open = true,
             callback = function() require("gzreader_jack").test() end,
         })
+        if require("gzreader_layout").possible() then
+            items[#items + 1] = icon("check", {
+                text = _("Lay out new books while charging"),
+                help_text = _("While the Kindle charges and Home is on screen, books you haven't opened yet are laid out in the background, so the first time you open one it opens as quickly as a book you've read before. Stops as soon as you unplug or open a book."),
+                checked_func = function() return require("gzreader_layout").enabled() end,
+                callback = function()
+                    local L = require("gzreader_layout")
+                    G_reader_settings:saveSetting(L.SETTING, not L.enabled())
+                end,
+            })
+        end
         return items
     elseif section == "interface" then
         local items = {

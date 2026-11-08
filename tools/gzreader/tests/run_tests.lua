@@ -253,6 +253,8 @@ local s2 = socket.tcp(); s2:settimeout(0.5)
 check(s2:connect("127.0.0.1", tonumber(base:match(":(%d+)$"))) == nil, "page port closed afterwards")
 s2:close()
 for f, delay in pairs(UI.scheduled) do if delay <= 15 then UI.scheduled[f] = nil end end -- (start-up checks: Wi-Fi, usage statistics)
+-- (and the look for books to lay out while charging: gzreader_layout.lua)
+if require("gzreader_layout").loop then UI.scheduled[require("gzreader_layout").loop] = nil end
 check(next(UI.scheduled) == nil, "expiry timer cancelled")
 
 print("Setup from a browser: the Kindle's address and PIN")
@@ -1000,6 +1002,84 @@ check(captured.info and captured.info:match("Downloaded “Second”. The downlo
 check(require("gzreader_tasks").status() == nil and require("gzreader_tasks").count() == 0, "title bar item empty again when done")
 ctl("/set?dl_big=false")
 
+print("New books laid out in the background while charging")
+;(function()
+    local L = require("gzreader_layout")
+    local lfs = require("lfs")
+    local dir = WORK .. "/layout"
+    os.execute("mkdir -p '" .. dir .. "'")
+    local function mk(name) local h = io.open(dir .. "/" .. name, "wb"); h:write("x"); h:close(); return dir .. "/" .. name end
+    local fake = { store = { downloads = {
+        ["1"] = { path = mk("old.epub") }, ["2"] = { path = mk("new.epub") }, ["3"] = { path = mk("read.epub") },
+        ["4"] = { path = mk("scan.pdf") }, ["5"] = { path = dir .. "/gone.epub" }, ["6"] = { path = mk("done.epub"), laid_out = 1 },
+        ["7"] = { path = mk("failed.epub"), layout_tries = 2 } } }, saves = 0 }
+    function fake:saveSoon() self.saves = self.saves + 1 end
+    lfs.touch(dir .. "/old.epub", os.time() - 100, os.time() - 100)
+    local charge, reader, forks = true, false, {}
+    local saved = { L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork }
+    L.isCharging = function() return charge end
+    L.readerOpen = function() return reader end
+    L.hasSidecar = function(bp) return bp:find("read.epub", 1, true) ~= nil end
+    L.memTotalKB = function() return 252364 end
+    L.fork = function(bpath)
+        local fk = { path = bpath, line = nil, stopped = false }
+        forks[#forks + 1] = fk
+        return { poll = function() return fk.line end, stop = function() fk.stopped = true end }
+    end
+    local LUI = require("ui/uimanager")
+    local real_in = LUI.scheduleIn
+    local timers = {}
+    LUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+    local c = L.candidate(fake)
+    check(c and c.id == "2", "the next book: the newest never opened (not a PDF, a gone file, one opened, laid out or failed twice)")
+    L.memTotalKB = function() return 124532 end
+    check(not L.possible() and L.tick(fake) == nil and #forks == 0, "a DX (128 MB): never")
+    L.memTotalKB = function() return 252364 end
+    charge = false
+    check(L.tick(fake) == nil and #forks == 0, "not charging: nothing")
+    charge, reader = true, true
+    check(L.tick(fake) == nil and #forks == 0, "a book open: nothing")
+    reader = false
+    G_reader_settings:saveSetting(L.SETTING, false)
+    check(L.tick(fake) == nil and #forks == 0, "turned off in Settings: nothing")
+    G_reader_settings:delSetting(L.SETTING)
+    local job = L.tick(fake)
+    check(job and #forks == 1 and forks[1].path == dir .. "/new.epub" and L.running == job, "charging on Home: the book laid out in a background process")
+    check(L.tick(fake) == nil and #forks == 1, "…one at a time")
+    forks[1].line = "ok 312 41"
+    timers[#timers].fn()
+    check(not L.running and fake.store.downloads["2"].laid_out and fake.saves == 1, "done: remembered (not again)")
+    job = L.tick(fake)
+    check(job and forks[2].path == dir .. "/old.epub", "then the next one")
+    charge = false
+    timers[#timers].fn()
+    check(forks[2].stopped and not L.running and not fake.store.downloads["1"].laid_out and (fake.store.downloads["1"].layout_tries or 0) == 0,
+        "unplugged: stopped at once (tried again another time)")
+    charge = true
+    L.tick(fake)
+    reader = true
+    timers[#timers].fn()
+    check(forks[3].stopped and not L.running, "a book opened: stopped at once")
+    reader = false
+    L.tick(fake)
+    forks[4].line = ""
+    timers[#timers].fn()
+    L.tick(fake)
+    forks[5].line = "err not a book the engine lays out"
+    timers[#timers].fn()
+    check(fake.store.downloads["1"].layout_tries == 2 and L.candidate(fake) == nil, "failed twice (the process died, an error): not tried again")
+    local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
+    local ltext = src and src:read("*a") or ""
+    if src then src:close() end
+    check(ltext:find('require("readhistory").addItem = function() end', 1, true) and ltext:find('require("docsettings").flush = function() end', 1, true)
+        and ltext:find("oom_score_adj", 1, true) and ltext:find("lowerPriority(19)", 1, true),
+        "the background process: no history or book settings written, lowest priority, the first to go if memory runs out")
+    LUI.scheduleIn = real_in
+    L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork = saved[1], saved[2], saved[3], saved[4], saved[5]
+    L.running = nil
+    os.execute("rm -rf '" .. dir .. "'")
+end)()
+
 print("Diagnostic log")
 local logf = io.open(WORK .. "/gzreader.log", "rb"); local logtxt = logf and logf:read("*a") or ""; if logf then logf:close() end
 check(logtxt:match("download start") and logtxt:match("download done") and logtxt:match("download stopped: cancelled")
@@ -1194,8 +1274,8 @@ do
     local d = texts(gen.diagnostics)
     check(d:match("|Diagnostic logging|Usage statistics|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
         "General: logging, usage statistics, send (to the developer or a browser) and save the log " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Reader: Read aloud, Test audiobook playback, the headphones")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Reader: Read aloud, Test audiobook playback, the headphones, laying out new books while charging")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
@@ -1267,8 +1347,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones, laying out new books")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"

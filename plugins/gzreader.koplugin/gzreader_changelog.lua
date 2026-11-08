@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "New books are laid out while the Kindle charges, so their first open is quick", text = "While the Kindle charges and Home is on screen, GZreader lays out downloaded books you haven't opened yet in the background (Settings → Reader → Lay out new books while charging, on by default), so the first time you open one it opens like a book you've read before instead of taking 10–30 seconds on a Kindle 3. It stops as soon as you unplug or open a book, and the books don't show as opened. Not on the Kindle 2 and DX (not enough memory)." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
