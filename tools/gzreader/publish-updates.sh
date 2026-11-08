@@ -13,9 +13,8 @@
 #
 #   tools/gzreader/publish-updates.sh release|beta|nook-koreader <zip> <version> [commit]
 # REMOTE: the repository to push to (default: this GitHub repository, with
-# GH_TOKEN). LEGACY_BETA_BRANCH=1: also the old "beta-updates" branch (test
-# builds before 1.26.6 read it there; until devices have one that reads
-# "updates").
+# GH_TOKEN). (Test builds before 1.26.6 read an older "beta-updates" branch;
+# it's no longer written.)
 # Two workflows can publish at once (a push to beta starts both the test build
 # and the Nook build): the push only replaces the commit this run started from,
 # and if another run got there first, it starts again from that one.
@@ -81,12 +80,4 @@ until publish; do
     sleep $((tries * 5))
 done
 
-if [ "$KIND" = beta ] && [ "${LEGACY_BETA_BRANCH:-}" = 1 ]; then
-    mkdir "$W/legacy"
-    cp "$W/out/$FILE" "$W/legacy/gzreader-update.zip"
-    sed 's/"file":"gzreader-beta-update.zip"/"file":"gzreader-update.zip"/' "$W/out/$JSON" > "$W/legacy/latest.json"
-    (cd "$W/legacy" && git init -q -b beta-updates && git add -A \
-        && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -qm "GZreader updates: $KIND $VERSION" && git push -q -f "$REMOTE" beta-updates)
-fi
 echo "updates: $KIND $VERSION published"

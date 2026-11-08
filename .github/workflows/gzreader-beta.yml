@@ -46,6 +46,4 @@ jobs:
           GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-v*.zip out
       - name: To the updates branch (gzreader-beta-update.zip, latest-beta.json)
         # (the job's concurrency: one publish to "updates" at a time, the release's too)
-        # LEGACY_BETA_BRANCH: devices on test builds before 1.26.6 read the old
-        # beta-updates branch: kept until theirs read "updates"
-        run: LEGACY_BETA_BRANCH=1 tools/gzreader/publish-updates.sh beta out/gzreader-update.zip "$VERSION" "$GITHUB_SHA"
+        run: tools/gzreader/publish-updates.sh beta out/gzreader-update.zip "$VERSION" "$GITHUB_SHA"
