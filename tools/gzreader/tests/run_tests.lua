@@ -1030,6 +1030,19 @@ do -- Settings → Library → Folders has no Home folder menu (Set / Lock / Add
     check(not lsrc:find('_("Home folder")', 1, true) and not lsrc:find('_("Lock home folder")', 1, true)
         and not lsrc:find('_("Additional home folders")', 1, true) and not lsrc:find("settings_home_folder", 1, true),
         "Settings → Library → Folders: no Home folder menu, so the home folder can't be changed there")
+    local function koSource(rel)
+        local kf = io.open(KOROOT .. "/frontend/apps/filemanager/" .. rel, "rb")
+        local ksrc = kf and kf:read("*a") or ""
+        if kf then kf:close() end
+        return ksrc
+    end
+    local fmmenu, fm = koSource("filemanagermenu.lua"), koSource("filemanager.lua")
+    check(fmmenu:find('_("Show parent folder")', 1, true) and not fmmenu:find('_("Home folder settings")', 1, true)
+        and not fmmenu:find('_("Set home folder")', 1, true) and not fmmenu:find('_("Shorten home folder")', 1, true)
+        and not fmmenu:find('_("Lock home folder")', 1, true),
+        "KOReader's file manager menu: no Home folder settings (Set / Shorten / Lock home folder)")
+    check(fm:find('_("Go to HOME folder")', 1, true) and not fm:find('_("Set as HOME folder")', 1, true),
+        "KOReader's file manager: no Set as HOME folder button (folder hold, + menu); Go to HOME folder stays")
 end
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 

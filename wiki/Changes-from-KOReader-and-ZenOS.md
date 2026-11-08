@@ -25,6 +25,7 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 | Book layout (`frontend/document/credocument.lua`) | A bigger crengine cache (256 MB instead of 64) |
 | Sleep screen (`frontend/ui/screensaver.lua`) | "Custom image or cover" shows the book's cover while reading and the image elsewhere |
 | Menus (`frontend/ui/widget/touchmenu.lua`, menu orders) | Letter keys in KOReader's menus; GZreader's items in place of removed plugins' |
+| Home folder (`frontend/apps/filemanager/`) | No Home folder settings (Set, Shorten, Lock) in the file manager's menu and no "Set as HOME folder" buttons: the home folder is always the GZreader folder |
 | Back key (`readerback.lua`), translations (`gettext.lua`), plugin loading | Small fixes for the trimmed build |
 
 ## Compared with ZenOS
@@ -37,7 +38,7 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 - **Tabs:** Grimmory, Notes (in Favorites' place) and Calendar, Music on request.
 - **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with usage statistics.
 - **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).
-- **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes).
+- **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes). Library → Folders has no Home folder menu (the home folder is always the GZreader folder).
 - **Covers:** pre-sized and cached on disk, made in a background process. → [Performance](Performance)
 - **Nooks:** paths for a Nook's microSD card, Bluetooth stubbed out, Wi‑Fi switching adapted.
 - **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.

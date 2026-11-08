@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "The home folder can no longer be changed in Settings", text = "Settings → Library → Folders no longer has a Home folder menu (Lock home folder, Additional home folders). GZreader relies on the home folder being the GZreader folder, where downloads and books sent from your browser go, so it can't be changed or locked there any more." },
+            { short = "No more home folder settings: the home folder is always the GZreader folder", text = "Settings → Library → Folders no longer has a Home folder menu (Lock home folder, Additional home folders), KOReader's menu no longer has Home folder settings (Set, Shorten, Lock home folder), and holding a folder or the + menu in KOReader's file manager no longer offers Set as HOME folder. GZreader relies on the home folder being the GZreader folder, where downloads and books sent from your browser go, and set it back at every start anyway, so these did nothing lasting." },
         },
     },
     {
