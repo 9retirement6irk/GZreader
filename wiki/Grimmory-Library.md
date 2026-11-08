@@ -34,6 +34,11 @@ books have "Search in <name>…", which searches only there. Older Grimmory
 servers whose book list ignores `search=` get their own search endpoint
 instead (the whole library, newest first).
 
+A search that finds nothing says "No books found containing “…”" with what
+you searched for. In the Bookshelf view it's the same shelves a search's books
+stand on, empty, with cobwebs on them and the message on a card; "Search
+again…" stays at the top, with what you typed already filled in.
+
 Big libraries: a book list keeps at most 8 pages (200 books) of Grimmory's
 results. "Load more" past that lets the earliest page go, and "Earlier books"
 at the top brings it back. Each book keeps only the dozen fields GZreader

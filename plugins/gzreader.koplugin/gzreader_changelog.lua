@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A Grimmory search that finds nothing shows empty shelves with cobwebs", text = "A search in the Grimmory tab that finds nothing now says \"No books found containing “…”\" with what you searched for. In the Bookshelf view it's the same shelves a search's books stand on, empty, with cobwebs on them and the message on a card; Search again… stays at the top." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

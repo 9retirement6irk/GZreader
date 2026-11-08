@@ -14,7 +14,9 @@ The Grimmory tab's lists in the Bookshelf view, in the bookshop's style
   shelves say so, never their rules;
 - series: piles of books lying flat, one per series, a card under each;
 - audiobooks: a tape rack, a cassette's spine for each (▶ when it's on the
-  Kindle).
+  Kindle);
+- a search that found nothing: the same display ledges as its results,
+  empty, cobwebs on each, and a card between them saying so.
 
 A search or Refresh line at the top of a list is a slip pinned above it
 (and a sign beside it); on later pages a sign shows the list's name. Every
@@ -50,6 +52,7 @@ local function Shelf() return require("modules/filebrowser/patches/home/widgets/
 function Views.kindOf(items)
     for _i, e in ipairs(type(items) == "table" and items or {}) do
         if type(e) == "table" then
+            if e.gz_kind == "nothing_found" then return "ledges" end -- (empty, cobwebs)
             if type(e.book) == "table" then return e.cover_kind == "audiobook" and "tapes" or "ledges" end
             if e.gz_kind == "series" then return "piles" end
             if e.gz_kind == "library" or e.gz_kind == "shelf" or e.gz_kind == "author" then return "bay" end
@@ -224,6 +227,7 @@ function Page:paintLedges(bb, x, y)
     local Sh = Shelf()
     local L = self.L
     local p = S(Sh.PAGES)
+    local nothing -- (a search that found nothing)
     -- the ledges, one per row (drawn after the books: the books stand on them)
     local ledges = {}
     for r = 1, L.rows do
@@ -277,9 +281,34 @@ function Page:paintLedges(bb, x, y)
             if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
             local side = (sl.letter and self.menu.is_enable_shortcut) and S(18) or 0
             if side > 0 then D.badge(bb, self.menu, sl.letter, cx + math.floor((slot.w - side) / 2), led.y + led.h + S(8), side) end
+        elseif e.gz_kind == "nothing_found" then
+            nothing = e
         else
             message(bb, e.text or "", x + L.slots[1].x, bottom - math.floor(L.box_h / 2), self.w - 2 * L.slots[1].x)
         end
+    end
+    if nothing then
+        -- a search that found nothing: every ledge empty, cobwebs on each
+        -- (alternating corners), the message on a card between them
+        local web = Shelf().cobweb
+        for r = 1, L.rows do
+            local top = y + L.slots[(r - 1) * L.cols + 1].y
+            local led = ledges[r]
+            local rad = math.max(S(20), math.min(S(70), math.floor((led.y - top) * 0.6)))
+            local left, right = led.x + S(2), led.x + led.w - S(3)
+            if web then
+                if r % 2 == 1 then
+                    web(bb, left, top, 1, 1, rad)
+                    web(bb, right, led.y - 1, -1, -1, math.floor(rad * 0.7))
+                else
+                    web(bb, right, top, -1, 1, rad)
+                    web(bb, left, led.y - 1, 1, -1, math.floor(rad * 0.7))
+                end
+            end
+        end
+        local mid = math.ceil(L.rows / 2)
+        local top = y + L.slots[(mid - 1) * L.cols + 1].y
+        Views.paintNothingCard(bb, nothing.text or "", x, top, self.w, ledges[mid].y - top)
     end
     for r = 1, L.rows do D.ledge(bb, ledges[r]) end
 end
@@ -349,6 +378,32 @@ function Page:paintBay(bb, x, y)
             if sl.hot then sl.hot.dimen = Geom:new{ x = sx, y = sy, w = slot.w, h = slot.h } end
         end
     end
+end
+
+--- Where the "nothing found" card goes in the area cx, cy, cw, ch (tw, th:
+--- the message's size): in its middle, never wider. Pure: run_tests.lua.
+function Views.nothingCard(cx, cy, cw, ch, tw, th, s)
+    s = s or S
+    local w = math.min(cw - s(40), tw + s(48))
+    local h = th + s(36)
+    return { x = cx + math.floor((cw - w) / 2), y = cy + math.floor((ch - h) / 2), w = w, h = h }
+end
+
+--- The card pinned in the middle of the area, with the message.
+function Views.paintNothingCard(bb, msg, cx, cy, cw, ch)
+    local D = Shop().draw
+    local TextWidget = require("ui/widget/textwidget")
+    local face = hand(22)
+    local probe = TextWidget:new{ text = msg, face = face }
+    local sz = probe:getSize()
+    probe:free()
+    local r = Views.nothingCard(cx, cy, cw, ch, sz.w, sz.h)
+    bb:paintRect(r.x + S(3), r.y + S(3), r.w, r.h, D.gray(0.35))
+    bb:paintRect(r.x, r.y, r.w, r.h, Blitbuffer.COLOR_WHITE)
+    bb:paintBorder(r.x, r.y, r.w, r.h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+    D.clip(bb, r.x + math.floor(r.w / 2), r.y, S(24))
+    D.text(bb, msg, face, r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2) + S(4),
+        { center = true, middle = true, max_width = r.w - S(24) })
 end
 
 function Page:paintPiles(bb, x, y)

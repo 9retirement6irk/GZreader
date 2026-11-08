@@ -524,7 +524,12 @@ do
     check(n > 0, "search finds authors too")
     b:search("nothing like this")
     t = b.menu.item_table
-    check(#t == 2 and t[2].text == "No books match “nothing like this”." and t[2].select_enabled == false, "search: nothing found")
+    check(#t == 2 and t[2].text == "No books found containing “nothing like this”" and t[2].select_enabled == false
+        and t[2].gz_kind == "nothing_found", "search: nothing found (says what was searched for; marked for the empty ledges)")
+    b:search("nothing like this", { title = "fiction", params = { libraryId = 2, sort = "title", dir = "asc" } })
+    t = b.menu.item_table
+    check(#t == 2 and t[2].gz_kind == "nothing_found" and t[2].text == "No books found containing “nothing like this”",
+        "search in a library that found nothing: the same")
     -- in a library: the library's own search
     b:openPaged("fiction", { libraryId = 2, sort = "title", dir = "asc" })
     t = b.menu.item_table
@@ -664,8 +669,9 @@ do
     check(Views.kindOf({ { text = "Search…", gz_action = "search" }, { book = { id = 1 } } }) == "ledges"
         and Views.kindOf({ { book = { id = 1 }, cover_kind = "audiobook" } }) == "tapes"
         and Views.kindOf({ { gz_kind = "series" } }) == "piles" and Views.kindOf({ { gz_kind = "author" } }) == "bay"
-        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil,
-        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments")
+        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil
+        and Views.kindOf({ { gz_action = "search" }, { text = "No books found containing “q”", gz_kind = "nothing_found" } }) == "ledges",
+        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments, nothing found: the same ledges, empty")
     check(Views.headerCount({ { gz_action = "search" }, { gz_action = "refresh" }, { gz_kind = "author" } }) == 2
         and Views.headerCount({ { gz_kind = "author" }, { gz_action = "search" } }) == 0, "lists: search and refresh above the list")
     local vfits = true
@@ -678,6 +684,20 @@ do
         end
     end
     check(vfits, "lists: their places fit the page, below the search")
+    local cw_ok = true
+    for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 } }) do
+        -- the card between the middle row's ledge and the row above
+        local L = Views.layout("ledges", size[1], size[2], true, one)
+        local s1 = L.slots[(math.ceil(L.rows / 2) - 1) * L.cols + 1]
+        local c = { x = 0, y = s1.y, w = size[1], h = s1.h - L.fixed }
+        -- a short message: its card in the middle; a long one: no wider than the page
+        for _k, tw in ipairs({ 200, 5000 }) do
+            local r = Views.nothingCard(c.x, c.y, c.w, c.h, tw, 30, one)
+            cw_ok = cw_ok and r.x >= c.x and r.x + r.w <= c.x + c.w and r.y >= c.y and r.y + r.h <= c.y + c.h
+                and math.abs((r.x + r.w / 2) - (c.x + c.w / 2)) <= 1
+        end
+    end
+    check(cw_ok, "nothing found: the card in the middle, between the ledges, never wider than the page")
     local K3 = Views.layout("ledges", 600, 574, true, one)
     check(K3.rows == 3 and K3.cols == 3, "ledges on a Kindle 3: 3 rows of 3 (tags wide enough for their bigger type) " .. K3.rows .. "x" .. K3.cols)
     check(Views.bookLabel({ personalRating = 8 }) == "★★★★☆" and Views.bookLabel({ readProgress = 33.6 }) == "34%"
