@@ -102,6 +102,16 @@ Covers: Grimmory doesn't let other web pages read its covers (only show
 them), so the page takes an EPUB's cover from the book itself and an
 audiobook's from its audio cover; PDFs and comics have no cover in the copy.
 
+Big pictures in EPUBs (*Big pictures in EPUBs made the Kindle's size*, on
+by default): before a book is copied, each JPEG or PNG in it over 64 KB is
+made at most the Kindle's screen size and grey, in its own format and under
+its own name, if that makes it smaller. Nothing else in the book changes
+(text, pages, reading positions and highlights stay as they are), Grimmory
+keeps the original, and the page's log says how much smaller each book got.
+Picture-heavy books (scans, comics as EPUB, photo books) open much faster on
+a Kindle 3 or DX, which otherwise decode and scale every picture each time
+they lay the book out.
+
 Calendars: many calendar servers (Google, Proton) don't let a web page read
 their links, and most CalDAV servers don't either. The page says so; then
 save the calendar as an `.ics` file and add the file instead (the page

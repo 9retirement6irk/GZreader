@@ -476,6 +476,56 @@ with sync_playwright() as pw:
         await walk(root, '');
         return files;
     }""")
+    # slim EPUB copies: big pictures made the Kindle's size, everything else byte for byte
+    slim_pics = page.evaluate("""async () => {
+        async function noise(w, h, type) {
+            const c = new OffscreenCanvas(w, h), x = c.getContext('2d'), d = x.createImageData(w, h);
+            for (let i = 0; i < d.data.length; i++) d.data[i] = (i % 4 === 3) ? 255 : (Math.random() * 256) | 0;
+            x.putImageData(d, 0, 0);
+            const b = new Uint8Array(await (await c.convertToBlob({ type, quality: 0.95 })).arrayBuffer());
+            let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+            return btoa(s);
+        }
+        return { big: await noise(1600, 2400, 'image/jpeg'), png: await noise(900, 1400, 'image/png'), small: await noise(60, 60, 'image/jpeg') };
+    }""")
+    import io as _io
+    slim_zb = _io.BytesIO()
+    slim_xhtml = ("<html><body>" + "words " * 3000 + "</body></html>").encode()
+    with zipfile.ZipFile(slim_zb, "w") as z:
+        z.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr("META-INF/container.xml", "<container/>", compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/chapter1.xhtml", slim_xhtml, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/images/scan.jpg", base64.b64decode(slim_pics["big"]), compress_type=zipfile.ZIP_STORED)
+        z.writestr("OEBPS/images/plate.png", base64.b64decode(slim_pics["png"]), compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/images/icon.jpg", base64.b64decode(slim_pics["small"]), compress_type=zipfile.ZIP_STORED)
+    slim_epub = slim_zb.getvalue()
+    slim_res = page.evaluate("""async (b64) => {
+        const bin = atob(b64), u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        const r = await GZSync.Slim.epub(new Blob([u]), { w: 600, h: 800 });
+        const dims = {};
+        for (const e of await GZSync.Slim.entries(r.blob)) {
+            if (/\.(jpg|png)$/.test(e.name)) { const im = await createImageBitmap(await GZSync.Slim.data(r.blob, e)); dims[e.name] = [im.width, im.height]; }
+        }
+        const b = new Uint8Array(await r.blob.arrayBuffer());
+        let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+        const notZip = await GZSync.Slim.epub(new Blob(['not a zip']), { w: 600, h: 800 });
+        return { changed: r.changed, data: btoa(s), dims, notZip: notZip === null };
+    }""", base64.b64encode(slim_epub).decode())
+    slim_out = base64.b64decode(slim_res["data"])
+    with zipfile.ZipFile(_io.BytesIO(slim_out)) as z2, zipfile.ZipFile(_io.BytesIO(slim_epub)) as z1:
+        infos = z2.infolist()
+        check(z2.testzip() is None and [i.filename for i in infos] == [i.filename for i in z1.infolist()]
+              and infos[0].filename == "mimetype" and infos[0].compress_type == zipfile.ZIP_STORED
+              and z2.read("mimetype") == b"application/epub+zip", "slim EPUB: a valid zip, same files in the same order, mimetype first and stored")
+        check(slim_res["changed"] == 2 and len(slim_out) < len(slim_epub) and z2.read("OEBPS/chapter1.xhtml") == slim_xhtml
+              and z2.read("OEBPS/images/icon.jpg") == z1.read("OEBPS/images/icon.jpg"),
+              "slim EPUB: the two big pictures replaced; the text and a small picture byte for byte (%d → %d KB)" % (len(slim_epub) // 1024, len(slim_out) // 1024))
+        sd = slim_res["dims"]
+        check(sd["OEBPS/images/scan.jpg"][0] <= 600 and sd["OEBPS/images/scan.jpg"][1] <= 800 and sd["OEBPS/images/scan.jpg"][1] >= 790
+              and sd["OEBPS/images/plate.png"][1] <= 800 and z2.read("OEBPS/images/scan.jpg")[:3] == b"\xff\xd8\xff"
+              and z2.read("OEBPS/images/plate.png")[:4] == b"\x89PNG", "slim EPUB: at most the screen's size, a JPEG still a JPEG, a PNG a PNG (%s)" % sd)
+        check(slim_res["notZip"], "not a zip: left as it is")
     # test mode (?test): a pretend Kindle in the browser, no drive to choose
     page.goto("about:blank")
     page.evaluate("() => 0")
