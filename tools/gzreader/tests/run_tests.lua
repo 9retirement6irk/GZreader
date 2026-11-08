@@ -2828,7 +2828,7 @@ local _ = before
 print("ZenOS's updater: not loaded (GZreader's in its place, on first use)")
 ;(function()
     local Z = PLUGIN .. "/../zenos.koplugin/"
-    local function src(rel) local f = io.open(Z .. rel, "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
+    local function src(rel) local h = io.open(Z .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
     local callers = { "main.lua", "modules/settings/zen_settings.lua", "modules/settings/zen_bugreporter.lua",
         "modules/settings/sections/updates_settings.lua" }
     local loads_zen, used = {}, {}
