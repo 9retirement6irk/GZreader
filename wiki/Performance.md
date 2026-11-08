@@ -11,6 +11,17 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   (`tools/gzreader/emulator/shadow_test.lua`); in the emulator everyday keys
   take about a third less CPU and start-up is faster. Off: a file named
   `gz-no-shadow-screen` in the `koreader` folder.
+  The packing reads four pixels at a time where the rows are aligned (one
+  32-bit read and one 16-bit write per four pixels): about a third less
+  time than two at a time, byte for byte the same.
+- **Fewer wake-ups while reading:** GZreader's own timers (usage
+  statistics, the remote-debugging heartbeat, the Wi‑Fi idle check) fire on
+  the clock's quarter minutes, together, instead of each at its own offset
+  (`gzreader_ticks.lua`). On the Kindles without REAGL (2, DX, 3, 4) the
+  clock and battery at the top of a book are updated with the page instead
+  of by a partial refresh of their own every minute (the clock shows the time
+  of the last page turn; `gzreader_reader_clock_minute = true` in
+  `settings.reader.lua` brings back the minute updates).
 - **Night mode works again**, at no cost: it's done while packing (the device
   reports hardware inversion), so drawing is the same as by day.
 - **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when

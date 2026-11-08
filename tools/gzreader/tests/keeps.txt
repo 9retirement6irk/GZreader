@@ -82,3 +82,4 @@
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 5 reader.lua
+3 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2, DX, 3 and 4: the clock in a book updates with the page, not every minute", text = "On the Kindles without REAGL, the clock and battery at the top of a book are updated when you turn a page instead of with a refresh of their own every minute while nobody's reading (the clock shows the time of the last page turn). GZreader's own timers (usage statistics, the remote-debugging heartbeat, the Wi-Fi idle check) now fire together on the quarter minutes, so the Kindle wakes less often, and the Kindle 2, 3 and DX pack the screen four pixels at a time (about a third less time per refresh)." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
