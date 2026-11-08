@@ -32,6 +32,7 @@
 9 plugins/zenos.koplugin/common/cover_disk_cache.lua
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
 1 plugins/zenos.koplugin/common/gz_home_status.lua
+5 plugins/zenos.koplugin/common/gz_tab_title.lua
 7 plugins/zenos.koplugin/common/gz_view.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 6 plugins/zenos.koplugin/common/paths.lua
@@ -62,7 +63,7 @@
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
 57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 16 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
-10 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
+14 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
 1 plugins/zenos.koplugin/modules/global/global.lua
 1 plugins/zenos.koplugin/modules/global/patches/nonblocking_wifi.lua
