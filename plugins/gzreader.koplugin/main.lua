@@ -230,6 +230,8 @@ function Grimmory:init()
             require("gzreader_homemenu").manageBook(plugin, { path = path, context = context })
             return true
         end)
+        -- …and in the Downloads tab (the file list is laid out after this)
+        require("gzreader_homemenu").hookHold()
     end
     if not self.ui.document and type(self.ui.active_widgets) == "table" then
         -- Dispatcher actions (e.g. ZenOS's Grimmory tab) are sent to the top

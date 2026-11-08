@@ -1895,6 +1895,8 @@ return function(ctx, self_fc, item)
                 text = icons.edit .. "  " .. _("Edit") .. "  " .. submenu_arrow,
                 align = "left",
                 callback = showEditSubmenu,
+                -- GZreader: not in Manage (it has Delete from this Kindle)
+                _gz_manage_hide = true,
             },
         })
     end
