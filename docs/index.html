@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GZreader – Grimmory and KOReader for Kindle</title>
-<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer. Notes from Memos, CalDAV calendars, audiobooks, read aloud. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
+<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer; Nook 1st Edition and Simple Touch as test builds. Notes from Memos, CalDAV calendars, audiobooks, read aloud. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
 <meta name="keywords" content="Grimmory, BookLore, Kindle, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
 <link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:type" content="website">
@@ -66,6 +66,7 @@
   tr:last-child td { border-bottom: 0; }
   th { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   code { font: 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+  td code { white-space: normal; overflow-wrap: anywhere; }
   ol { padding-left: 22px; } ol li { margin: 6px 0; }
   .pill { display: inline-block; margin-top: 18px; padding: 7px 14px; border-radius: 999px; background: var(--card);
     border: 1px solid var(--line); font-size: 15px; text-decoration: none; color: var(--muted); }
@@ -113,7 +114,7 @@
     <div class="cta">
       <a class="btn primary" href="https://github.com/9retirement6irk/GZreader/releases/latest">Download the latest release</a>
       <a class="btn" href="https://github.com/9retirement6irk/GZreader">Source on GitHub</a>
-      <a class="btn" href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md">Full guide</a>
+      <a class="btn" href="https://github.com/9retirement6irk/GZreader/wiki">Wiki</a>
     </div>
     <a class="pill" href="#sync">New: no Wi‑Fi? The Kindle 2 and DX sync through your computer →</a>
   </header>
@@ -129,7 +130,8 @@
   <p>GZreader is <a href="https://github.com/koreader/koreader">KOReader</a> trimmed down to reading, with the
     <a href="https://github.com/xZenLabs/zen-os">ZenOS</a> interface and a built-in connection to your self-hosted
     <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) book server. It runs on jailbroken Kindles,
-    from the Kindle 2 and Kindle Keyboard to the Paperwhite and newer.</p>
+    from the Kindle 2 and Kindle Keyboard to the Paperwhite and newer, and, as test builds, on rooted Nooks:
+    the Nook 1st Edition and the Nook Simple Touch.</p>
 
   <div class="features">
     <div class="feature"><h3>Grimmory sync</h3><p>Browse and search your library, download in the background, and keep reading position, bookmarks, highlights and ratings in sync.</p></div>
@@ -174,7 +176,7 @@
       </ol>
       <div class="cta left">
         <a class="btn primary" href="sync/">Open the sync page</a>
-        <a class="btn" href="https://github.com/9retirement6irk/GZreader/blob/main/GZREADER.md#sync-with-a-computer">How it works</a>
+        <a class="btn" href="https://github.com/9retirement6irk/GZreader/wiki/Sync-with-a-Computer">How it works</a>
       </div>
       <p class="fine">Runs in your browser: it talks only to your own servers and writes to the Kindle. Sign-ins are kept
         on the Kindle, encrypted with its PIN, so any computer can sync it. Any Kindle can sync this way too.
@@ -209,22 +211,28 @@
 
   <h2>Which package</h2>
   <table>
-    <thead><tr><th>Kindle</th><th>Package</th></tr></thead>
+    <thead><tr><th>Device</th><th>Package</th></tr></thead>
     <tbody>
-      <tr><td>Kindle 2, Kindle Keyboard (3), DX</td><td><code>gzreader-kindle-legacy</code></td></tr>
-      <tr><td>Kindle 4, Kindle Touch</td><td><code>gzreader-kindle</code></td></tr>
-      <tr><td>Firmware 5.16.3 or newer: Paperwhite 3 and later, Kindle 2019–2024, Oasis, Scribe, Colorsoft</td><td><code>gzreader-kindlehf</code></td></tr>
-      <tr><td>Paperwhite 2 and newer on firmware 5.16.2 or older</td><td><code>gzreader-kindlepw2</code></td></tr>
+      <tr><td>Kindle 2, Kindle Keyboard (3), DX</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle-Legacy"><code>gzreader-kindle-legacy</code></a></td></tr>
+      <tr><td>Kindle 4, Kindle Touch</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle"><code>gzreader-kindle</code></a></td></tr>
+      <tr><td>Firmware 5.16.3 or newer: Paperwhite 3 and later, Kindle 2019–2024, Oasis, Scribe, Colorsoft</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle-HF"><code>gzreader-kindlehf</code></a></td></tr>
+      <tr><td>Paperwhite 2 and newer on firmware 5.16.2 or older</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Kindle-PW2"><code>gzreader-kindlepw2</code></a></td></tr>
+      <tr><td>Nook 1st Edition (2009, with the colour touchscreen) — test build</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-1st-Edition"><code>gzreader-nook-1st-edition</code></a></td></tr>
+      <tr><td>Nook Simple Touch, with or without GlowLight — test build</td><td><a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-Simple-Touch"><code>gzreader-nook</code></a></td></tr>
     </tbody>
   </table>
+  <p class="fine">Each package is for those devices only; the name links to its install steps.
+    Which have been tested: <a href="https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility">device compatibility</a>.</p>
 
   <h2>Install</h2>
   <ol>
-    <li>Jailbreak the Kindle and install KUAL (<a href="https://kindlemodding.org/jailbreaking/">kindlemodding.org</a>;
-      Kindle 2, 3, DX, 4 and Touch: <a href="https://www.mobileread.com/forums/forumdisplay.php?f=150">MobileRead</a>).</li>
+    <li>Jailbreak the Kindle (and install KUAL on the Kindle 2, 3, DX, 4 and Touch), or root the Nook:
+      <a href="https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting">jailbreaking and rooting</a>.</li>
     <li>Download your package from the <a href="https://github.com/9retirement6irk/GZreader/releases/latest">latest release</a>.</li>
-    <li>Unzip it and copy its folders to the top of the Kindle's USB drive. Eject.</li>
-    <li>Start GZreader from KUAL, or from the GZreader item on a touch Kindle's home screen. The setup guide shows a QR code
+    <li>Kindles: unzip it and copy its folders to the top of the Kindle's USB drive, then eject.
+      Nooks: unzip it and copy it to the Nook with adb (<a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-1st-Edition">1st Edition</a>,
+      <a href="https://github.com/9retirement6irk/GZreader/wiki/Install-Nook-Simple-Touch">Simple Touch</a>).</li>
+    <li>Start GZreader from KUAL, from the GZreader item on a touch Kindle's home screen, or from its icon on the Nook 1st Edition. The setup guide shows a QR code
       (on a Kindle 2 or DX, how to <a href="#sync">sync with your computer</a> instead).</li>
   </ol>
 
