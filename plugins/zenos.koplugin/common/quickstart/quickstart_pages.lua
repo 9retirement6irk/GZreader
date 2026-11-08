@@ -299,7 +299,7 @@ local function buildContextMenuBB(slot_w, slot_h, cover_info)
     local buttons = {
         {{ text = icons.details .. "  " .. _("Details"),                              align = "left", callback = function() end }},
         {{ text = icons.move .. "  " .. _("Move"),                                 align = "left", callback = function() end }},
-        {{ text = icons.fav_add .. "  " .. _("Add to collection") .. "  " .. icons.arrow_right, align = "left", callback = function() end }},
+        {{ text = icons.fav_add .. "  " .. _("Add to shelf") .. "  " .. icons.arrow_right, align = "left", callback = function() end }}, -- GZreader: Grimmory shelves
         {{ text = icons.read_status .. "  " .. _("Read status") .. "  " .. icons.arrow_right,       align = "left", callback = function() end }},
         {{ text = icons.edit .. "  " .. _("Edit") .. "  " .. icons.arrow_right,              align = "left", callback = function() end }},
     }

@@ -38,8 +38,14 @@ local function rss()
     return kb and math.floor(kb / 1024)
 end
 
---- A book starts opening.
+--- A book starts opening. With diagnostic logging off nothing is measured:
+--- the line would be thrown away, so no /proc reads and no timing (every
+--- wrapper below does nothing while OT.cur is nil).
 function OT.start(file)
+    if not Log.enabled then
+        OT.cur = nil
+        return
+    end
     local free, cached = meminfo()
     local lfs = require("libs/libkoreader-lfs")
     OT.cur = {
