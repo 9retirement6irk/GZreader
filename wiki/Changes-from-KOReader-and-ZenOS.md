@@ -32,11 +32,12 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and changes:
 
 - **Keys:** letter keys in every list and dialog (`__ZEN_DIALOG_SHORTCUTS`, the context menu), tab keys (Z, X, C, V, B) on keyboard Kindles, the 5-way on the Kindle 4. ZenOS was made for touch.
-- **The quick panel** instead of ZenOS's touch menu (its Zen Mode button and tabs), on every device; ZenOS's first-run menu tour is replaced by one of the quick panel, which closes it before the page browser tip. Settings → Interface has **Quick panel** (which tiles it shows) in place of ZenOS's Controls and Launcher, which set up the menu GZreader replaces.
-- **Zen mode is always on** (ZenOS's own tabs only): there's no Zen mode switch in Settings → Interface, and it's turned back on if it was off.
+- **The quick panel** instead of ZenOS's touch menu (its Zen Mode button and tabs), on every device; ZenOS's first-run menu tour is replaced by one of the quick panel, which closes it before the page browser tip.
 - **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats and a notebook-page stats widget, two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
 - **Tabs:** Grimmory, Notes (in Favorites' place) and Calendar, Music on request.
 - **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with usage statistics.
+- **Settings → Interface → Quick panel:** which tiles the quick panel shows, in place of ZenOS's Controls and Launcher (they set up the touch menu GZreader replaces).
+- **Zen mode is always on** (ZenOS's own tabs only): there's no Zen mode switch in Settings → Interface, and it's turned back on if it was off.
 - **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).
 - **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes).
 - **Covers:** pre-sized and cached on disk, made in a background process. → [Performance](Performance)
