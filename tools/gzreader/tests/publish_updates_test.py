@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """publish-updates.sh against a local repository: the release and the test
 build share the "updates" branch, each publish keeping the other's files,
-one commit each time; the old beta-updates branch while it's still wanted."""
+one commit each time; the old beta-updates branch no longer written."""
 import json
 import os
 import shutil
@@ -29,13 +29,11 @@ def main():
         remote = os.path.join(w, "remote.git")
         git(w, "init", "-q", "--bare", remote)
         env = dict(os.environ, REMOTE=remote)
-        env.pop("LEGACY_BETA_BRANCH", None)
 
-        def publish(kind, content, version, legacy=False):
+        def publish(kind, content, version):
             z = os.path.join(w, "u.zip")
             open(z, "wb").write(content)
-            e = dict(env, LEGACY_BETA_BRANCH="1") if legacy else env
-            return subprocess.run(["bash", TOOL, kind, z, version, "abc123"], cwd=w, env=e, capture_output=True, text=True)
+            return subprocess.run(["bash", TOOL, kind, z, version, "abc123"], cwd=w, env=env, capture_output=True, text=True)
 
         def files(branch):
             out = os.path.join(w, "look")
@@ -51,15 +49,14 @@ def main():
         meta = json.loads(f.get("latest.json", b"{}"))
         check(r.returncode == 0 and sorted(f) == ["gzreader-update.zip", "latest.json"] and meta["version"] == "1.26.5"
               and meta["file"] == "gzreader-update.zip" and meta["size"] == 8, "a release: gzreader-update.zip and latest.json " + r.stderr[-200:])
-        r = publish("beta", b"BETA-1", "1.26.5-beta.aaa", legacy=True)
+        r = publish("beta", b"BETA-1", "1.26.5-beta.aaa")
         f, n = files("updates")
         bmeta = json.loads(f.get("latest-beta.json", b"{}"))
         check(r.returncode == 0 and f.get("gzreader-update.zip") == b"RELEASE1" and f.get("gzreader-beta-update.zip") == b"BETA-1"
               and bmeta["file"] == "gzreader-beta-update.zip" and bmeta["version"] == "1.26.5-beta.aaa" and bmeta["commit"] == "abc123"
               and n == "1", "a test build: gzreader-beta-update.zip and latest-beta.json next to the release's, one commit")
-        lf, _ = files("beta-updates")
-        check(lf.get("gzreader-update.zip") == b"BETA-1" and json.loads(lf["latest.json"])["file"] == "gzreader-update.zip",
-              "…and still on the old beta-updates branch, as test builds before this one read it")
+        heads = git(w, "ls-remote", "--heads", remote)
+        check("beta-updates" not in heads, "the old beta-updates branch isn't written any more")
         publish("release", b"RELEASE2", "1.26.6")
         f, n = files("updates")
         check(f.get("gzreader-update.zip") == b"RELEASE2" and json.loads(f["latest.json"])["version"] == "1.26.6"
