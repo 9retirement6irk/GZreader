@@ -56,3 +56,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   failed every time).
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
   seen for a large book). Later opens use the cache.
+- On a Kindle without Wi‑Fi (Kindle 2, DX), the sync page's outbox is written
+  on every save. It's filled from GZreader's own settings, without loading the
+  calendar, updater, copying, automatic shelf or Plex code just for a field
+  or two; the version and this Kindle's name are worked out once per start.

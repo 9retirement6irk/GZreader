@@ -403,21 +403,47 @@ function Usb.handOverUsage(plugin)
     return n
 end
 
+--- Use a module for one answer and, if nothing else had loaded it, let it go
+--- again (the outbox is written on every save on a Kindle without Wi-Fi: it
+--- shouldn't keep big modules in memory to fill a field or two).
+local function borrow(name, fn)
+    local had = package.loaded[name] ~= nil
+    local ok, v1, v2 = pcall(function() return fn(require(name)) end)
+    if not had then package.loaded[name] = nil end
+    if ok then return v1, v2 end
+end
+
+--- What the outbox needs from other modules, worked out once per run (none
+--- of it changes while GZreader runs: the version, this Kindle's name).
+Usb.fixed = nil
+function Usb.fixedFields(plugin)
+    if Usb.fixed and Usb.fixed.store == plugin.store then return Usb.fixed end
+    local f = { store = plugin.store }
+    f.version = borrow("gzreader_update", function(Update) return Update.currentVersion() end)
+    f.name, f.id = borrow("gzreader_copy", function(Copy) return Copy.deviceName(plugin), Copy.deviceId(plugin) end)
+    Usb.fixed = f
+    return f
+end
+
+--- Read straight from the store, as gzreader_calendar.lua's prefs(),
+--- gzreader_shelfsync.lua's shelf() and gzreader_plex.lua's quality() would
+--- (the tests check they agree), without loading those modules.
+function Usb.calendarDays(store)
+    local p = store.calendar_prefs or {}
+    return tonumber(p.days_back) or 14, tonumber(p.days_ahead) or 90
+end
+function Usb.musicQuality(store)
+    local s = type(store.plex) == "table" and store.plex or {}
+    return { bitrate = tonumber(s.bitrate) or 192, shrink = s.shrink == true }
+end
+
 function Usb.outbox(plugin)
     local store = plugin.store
-    local Copy = require("gzreader_copy")
-    local version
-    pcall(function() version = require("gzreader_update").currentVersion() end)
-    local cal_from, cal_to
-    pcall(function()
-        local p = require("gzreader_calendar").prefs(plugin)
-        cal_from, cal_to = p.days_back, p.days_ahead
-    end)
-    local shelf
-    pcall(function()
-        local s = require("gzreader_shelfsync").shelf(plugin)
-        if s then shelf = { id = s.id, magic = s.magic == true, name = s.name } end
-    end)
+    local fixed = Usb.fixedFields(plugin)
+    local version = fixed.version
+    local cal_from, cal_to = Usb.calendarDays(store)
+    local s = store.auto_shelf
+    local shelf = type(s) == "table" and { id = s.id, magic = s.magic == true, name = s.name } or nil
     local memos = store.memos or {}
     local notes_queue = {}
     for _i, q in ipairs(memos.queue or {}) do
@@ -436,17 +462,16 @@ function Usb.outbox(plugin)
         end)
         return list
     end)
-    local name, id
-    pcall(function() name, id = Copy.deviceName(plugin), Copy.deviceId(plugin) end)
+    local name, id = fixed.name, fixed.id
     return {
         format = Usb.FORMAT,
         gzreader = version,
         -- (Settings → Updates → Test builds: the page then brings those)
-        test_builds = require("gzreader_update").betaEnabled() or nil,
+        test_builds = G_reader_settings:isTrue("gzreader_update_beta") or nil, -- (gzreader_update.betaEnabled)
         kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true,
             screen = Usb.screenSize() },
         -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
-        music_quality = require("gzreader_plex").quality(store),
+        music_quality = Usb.musicQuality(store),
         grimmory = store.server and { server = store.server, user = store.username } or nil,
         jobs = jsonList(Usb.jobs(plugin)),
         queue = jsonList(queue(plugin)),
