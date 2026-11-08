@@ -4,6 +4,7 @@ return {
     {
         version = "next",
         changes = {
+            "Touch Kindles: the first-time tour after the setup guide now shows GZreader's quick panel (how to open and close it, Settings, the Home or This book tiles) instead of pointing at ZenOS's menu, which GZreader replaces. It closes the panel when it ends, so the page browser tip on the first book is no longer hidden under it.",
             "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before.",
         },
     },

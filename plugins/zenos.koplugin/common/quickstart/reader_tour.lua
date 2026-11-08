@@ -20,6 +20,14 @@ function M.start(plugin, ui, open_page_browser)
         return false
     end
 
+    -- GZreader: after the quick panel's tour (it starts this one when it
+    -- ends), and never under the quick panel
+    local ok_gz, GzTour = pcall(require, "gzreader_tour")
+    if ok_gz then
+        if meta.quickstart_menu_tour_pending == true or GzTour.active then return false end
+        GzTour.closePanel()
+    end
+
     local UIManager = require("ui/uimanager")
     local Coachmark = require("common/quickstart/menu_coachmark")
     active = true

@@ -455,7 +455,13 @@ run the same GZreader with ZenOS's touch interface:
   GZreader. It replaces ZenOS's "ZenOS" one from earlier versions.
 - **Reading:** tap the right side for the next page, the left side for the
   previous one, the top for the menu (contents, bookmarks, search, fonts…);
-  swipe up for the page browser. ZenOS shows a few tips the first time.
+  swipe up for the page browser.
+- **The first-time tour:** after the setup guide, a short tour opens the
+  quick panel and shows how to open and close it, Settings and the Home
+  tiles (on the first book, if it didn't run at Home: This book's tiles). It
+  closes the panel when it ends. On the first book, a tip then shows the
+  swipe up for the page browser. Both come again after Settings → About →
+  Setup Guide.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
   close (Settings → Reader → Test audiobook playback finds what works on
