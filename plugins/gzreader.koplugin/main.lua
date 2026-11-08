@@ -75,6 +75,15 @@ function Grimmory:init()
         UIManager:scheduleIn(15, function() pcall(function() require("gzreader_usage").start() end) end)
     end
     self.settings = Grimmory.shared_settings
+    -- a book opening (this instance is its reader's): the library copy let go
+    -- before the book is laid out (gzreader_offlineapi.lua)
+    if self.ui and self.ui.document and package.loaded["gzreader_offlineapi"] then
+        local OA = package.loaded["gzreader_offlineapi"]
+        if OA.held() then
+            OA.forget()
+            Log.info("library copy: let go while a book opens")
+        end
+    end
     require("gzreader_audioengine").root = self.path
     if Device.gz_menu_perpage and not Grimmory.dx_lists then
         -- (the DX: more to a list's page, the text as big as 14 to a page on a 6" Kindle)

@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Kindle 2 and DX: the library copy no longer stays in memory while you read", text = "On Kindles that sync through a computer, the copy of your Grimmory library is read into memory when the Grimmory tab or a sync needs it and let go a minute later, and as soon as a book starts to open, instead of staying in memory the whole time (several MB for a big library). The sync page also writes each book's bookmarks and highlights to a file of its own, read only for that book." },
             { short = "Less processor time for GZreader's data: the library, lists, sync and the outbox", text = "GZreader now reads and writes its data (Grimmory's lists, the library index, the library copy on Kindles without Wi-Fi, the outbox, background results, saved lists) with KOReader's built-in C library for JSON instead of its Lua one, which was 5 to 10 times slower on a library's worth of books. Nothing changes in what's stored or sent." },
         },
     },

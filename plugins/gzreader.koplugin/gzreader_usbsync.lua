@@ -458,6 +458,9 @@ function Usb.outbox(plugin)
         last_import = store.usb_last and store.usb_last.at or nil,
         -- the sleep screen's pictures (the page makes new ones for this screen)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
+        -- (the library copy: each book's bookmarks and highlights in a file of
+        -- its own, marks/<id>.json, not in library.json: gzreader_offlineapi.lua)
+        copy = { marks_files = true },
         -- usage statistics (gzreader_usage.lua): the page sends what's in usage/
         usage = Usb.usageInfo(),
         -- (how much room is left on the Kindle, for the page)

@@ -110,7 +110,8 @@ remembers it and reads it again at each sync: keep it up to date where it is).
 How it works: GZreader writes `documents/GZreader/.gzsync/outbox.json`
 whenever it saves its settings (the requests to send to Grimmory, ready-made,
 the queue, what's on the Kindle, the notes written here). The page writes the
-library copy (`library.json`, `covers/`, `details/`), the books and audio
+library copy (`library.json`, `covers/`, `details/`, and `marks/`: each
+book's bookmarks and highlights in a file of its own), the books and audio
 under `in/`, and `inbox.json` last; at the next start GZreader takes them in,
 moves the books into the GZreader folder, prepares M4B/M4A audio (as for a
 download) and deletes the inbox. The page prepares M4B/M4A audiobooks and
@@ -119,6 +120,9 @@ Kindle has nothing to convert; only if that fails does the file go to the
 Kindle as it is, for GZreader to prepare. The download waits in the
 browser's own storage meanwhile, so leave some room on the computer (as much
 as the biggest audiobook). Syncing twice before starting GZreader adds
-to the same inbox. Nothing is sent anywhere but your own servers (and
+to the same inbox. On the Kindle, the library copy is read into memory only
+while it's used (browsing the Grimmory tab, a book's sync) and let go a minute
+after, and as soon as a book starts to open, so a DX keeps that memory for
+the book. Nothing is sent anywhere but your own servers (and
 plex.tv for the Plex sign-in). The page is plain HTML and JavaScript in
 `docs/sync/` and can be hosted anywhere on HTTPS.

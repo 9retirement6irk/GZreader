@@ -137,6 +137,8 @@ OUTBOX = {
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
+    # (each book's bookmarks and highlights in a file of its own, marks/<id>.json)
+    "copy": {"marks_files": True},
     # usage statistics: the page sends what the Kindle left in usage/
     "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
 }
@@ -508,7 +510,10 @@ check(inbox.get("test_builds") is False and inbox["update"].get("beta") is False
       "test builds switched off on the page: the Kindle is told (it remembers it in its update settings)")
 check(any(b["id"] == 5 for b in inbox.get("books", [])) and any(a["id"] == 33 for a in inbox.get("audiobooks", [])),
       "what was chosen on the page came too (a book and an audiobook)")
-marks = lib.get("marks", {}).get("1", {})
+mfile = json.loads(files.get(G + "marks/1.json", b"{}"))
+check(lib.get("marks_files") is True and lib.get("marks") == {} and mfile.get("written_at") == lib.get("written_at"),
+      "the copy: bookmarks and highlights in marks/<id>.json (with the copy's time), not in library.json")
+marks = mfile
 hl = [a for a in state["annotations"] if a["text"] == "Hello"]
 check(set(inbox.get("created", {})) == {"usb-1", "usb-2"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
       and any(b.get("title") == "Kindle" for b in state["bookmarks"]) and {"m:1", "m:2", "m:3", "m:4"} <= set(inbox["done"]),

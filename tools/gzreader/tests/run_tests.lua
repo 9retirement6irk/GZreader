@@ -5276,6 +5276,53 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     local readable = api:listBooks{ fileType = api.READABLE_TYPES, libraryId = 1, sort = "addedOn", dir = "desc" }
     check(readable.totalElements == 2 and readable.content[1].id == 1 and readable.content[2].id == 4,
         "copy: by type and library; newest first, undated last")
+    -- kept in memory only while it's used (a DX's memory goes to the book)
+    do
+        local t, timers = 1000, {}
+        local real_clock = OfflineApi.clock
+        local OUI = require("ui/uimanager")
+        local real_in, real_un = OUI.scheduleIn, OUI.unschedule
+        OUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+        OUI.unschedule = function() end
+        OfflineApi.clock = function() return t end
+        OfflineApi.forget()
+        local n0 = OfflineApi.decoded or 0
+        api:listBooks{}
+        check(OfflineApi.held() and #timers == 1 and timers[1].s == OfflineApi.IDLE, "the copy decoded, and let go after " .. OfflineApi.IDLE .. " s unused")
+        t = t + 40
+        api:listBooks{}
+        t = t + 20
+        timers[1].fn()
+        check(OfflineApi.held() and #timers == 2 and timers[2].s > 30 and timers[2].s < 45, "used again meanwhile: kept for a while more")
+        t = t + 45
+        timers[2].fn()
+        check(not OfflineApi.held() and (OfflineApi.decoded or 0) == n0 + 1, "unused for a minute: let go (decoded once until then)")
+        api:listBooks{}
+        check(OfflineApi.held() and (OfflineApi.decoded or 0) == n0 + 2, "needed again: decoded again")
+        OfflineApi.clock = real_clock
+        OUI.scheduleIn, OUI.unschedule = real_in, real_un
+        local msrc = io.open(PLUGIN .. "/main.lua", "rb")
+        local mt = msrc and msrc:read("*a") or ""
+        if msrc then msrc:close() end
+        check(mt:find('if self.ui and self.ui.document and package.loaded["gzreader_offlineapi"] then', 1, true)
+            and mt:find("OA.forget()", 1, true), "a book opening: let go before it's laid out")
+        OfflineApi.forget()
+    end
+    -- each book's bookmarks and highlights in a file of its own (the outbox asks the page for it)
+    do
+        local copy_text = read(lib .. "/.gzsync/library.json")
+        put(lib .. "/.gzsync/library.json", JSON.encode({ format = 1, written_at = 500, books = books, marks_files = true, marks = {} }))
+        put(lib .. "/.gzsync/marks/4.json", JSON.encode({ written_at = 500, bookmarks = { { id = 41, title = "here" } }, annotations = {} }))
+        put(lib .. "/.gzsync/marks/2.json", JSON.encode({ written_at = 499, bookmarks = { { id = 21 } }, annotations = {} }))
+        OfflineApi.forget()
+        local bm4 = api:listBookmarks(4)
+        check(bm4 and #bm4 == 1 and bm4[1].title == "here", "a book's bookmarks from marks/<id>.json")
+        check(api:listBookmarks(2) == nil, "…but not from a file an older sync left (it would make bookmarks look deleted)")
+        check(Usb.outbox(fake).copy.marks_files == true, "the outbox asks the page for those files")
+        put(lib .. "/.gzsync/library.json", copy_text)
+        os.remove(lib .. "/.gzsync/marks/4.json"); os.remove(lib .. "/.gzsync/marks/2.json")
+        OfflineApi.forget()
+    end
     check(api:listBooks{ shelfId = 7 }.totalElements == 2 and api:listBooks{ magicShelfId = 8 }.content[1].id == 2
         and api:listBooks{ status = { "READING" } }.content[1].id == 1 and api:listBooks{ authors = "Jane Austen" }.totalElements == 2,
         "copy: shelves, magic shelves, reading status, author")
