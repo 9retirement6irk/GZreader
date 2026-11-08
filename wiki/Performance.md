@@ -13,6 +13,13 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   `gz-no-shadow-screen` in the `koreader` folder.
 - **Night mode works again**, at no cost: it's done while packing (the device
   reports hardware inversion), so drawing is the same as by day.
+- **New books laid out while charging** (`gzreader_layout.lua`; Settings →
+  Reader → *Lay out new books while charging*): while the Kindle charges and
+  Home is on screen, downloaded books not opened yet are laid out in a
+  background process at the lowest priority, the way the reader would open
+  them, so the layout cache is there for their first open. It stops when the
+  charger is unplugged or a book is opened; the books don't show as opened
+  (no history, no book settings). Not on Kindles with 128 MB or less.
 - **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when
   the Lua files are source (an update from GitHub's source archive, a
   development copy), each module's bytecode is kept in
@@ -55,10 +62,4 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - ZenOS's icon font is no longer registered with the book renderer (it
   failed every time).
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
-  seen for a large book). Later opens use the cache. While the Kindle charges and
-  Home is on screen, downloaded books not opened yet are laid out in a
-  background process at the lowest priority (`gzreader_layout.lua`; Settings
-  → Reader → *Lay out new books while charging*), the way the reader would
-  open them, so that cache is there for their first open. It stops when the
-  charger is unplugged or a book is opened; the books don't show as opened
-  (no history, no book settings). Not on Kindles with 128 MB or less.
+  seen for a large book). Later opens use the cache.

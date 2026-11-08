@@ -68,10 +68,13 @@ function Grimmory:init()
         Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
             "device", tostring(Device.model))
         pcall(function() require("gzreader_timezone").apply() end)
-        -- new books laid out in the background while charging (gzreader_layout.lua)
-        pcall(function() require("gzreader_layout").schedule(self) end)
     end
     pcall(Net.start)
+    if not Grimmory.layout_scheduled then
+        -- new books laid out in the background while charging (gzreader_layout.lua)
+        Grimmory.layout_scheduled = true
+        pcall(function() require("gzreader_layout").schedule(self) end)
+    end
     if not Grimmory.usage_scheduled then
         Grimmory.usage_scheduled = true
         UIManager:scheduleIn(15, function() pcall(function() require("gzreader_usage").start() end) end)
