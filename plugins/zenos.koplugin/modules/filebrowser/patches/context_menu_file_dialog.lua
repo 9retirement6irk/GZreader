@@ -1455,7 +1455,35 @@ return function(ctx, self_fc, item)
             })
         end
 
-        if not item._zen_collection_name then
+        -- GZreader: a book from Grimmory goes on your Grimmory shelves instead
+        -- (Add to shelf; Remove from shelf/shelves when it's on any); other
+        -- books keep Add to collection (gzreader_shelves.lua)
+        local gz_shelf_buttons
+        pcall(function()
+            for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
+                local okm, cls = pcall(require, mod)
+                local gz = okm and type(cls) == "table" and type(cls.instance) == "table" and cls.instance.gzreader
+                if type(gz) == "table" and type(gz.shelfButtons) == "function" then
+                    gz_shelf_buttons = gz:shelfButtons(file, function() UIManager:nextTick(invalidate_home_book) end)
+                    return
+                end
+            end
+        end)
+        for _i, spec in ipairs(gz_shelf_buttons or {}) do
+            table.insert(buttons, {
+                {
+                    text = (spec.kind == "remove" and icons.fav_remove or icons.fav_add) .. "  " .. spec.text
+                        .. (spec.submenu and "  " .. submenu_arrow or ""),
+                    align = "left",
+                    callback = function()
+                        close_dialog()
+                        UIManager:nextTick(spec.callback)
+                    end,
+                },
+            })
+        end
+
+        if not item._zen_collection_name and not gz_shelf_buttons then
             table.insert(buttons, {
                 {
                     text = icons.fav_add .. "  " .. _("Add to collection") .. "  " .. submenu_arrow,

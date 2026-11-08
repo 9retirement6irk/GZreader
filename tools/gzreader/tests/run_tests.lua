@@ -2070,6 +2070,96 @@ do
     readerui.doc_settings = nil
 end
 
+print("Grimmory shelves from the book menu (Add to shelf / Remove from shelf)")
+do
+    local S = require("gzreader_shelves")
+    local entry = rplugin.store.downloads["3"]
+    local path = entry.path
+    entry.shelves = nil
+    rplugin.store.grimmory_user = nil
+    local function openBook() rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    local changed = 0
+    local function buttons() return rplugin:shelfButtons(path, function() changed = changed + 1 end) end
+    local function shelvesOf3()
+        local st = json.decode(ctl("/state"))
+        local on = {}
+        for sid, ids in pairs(st.shelves) do for _i, b in ipairs(ids) do if b == 3 then on[#on + 1] = tonumber(sid) end end end
+        table.sort(on)
+        return table.concat(on, ","), st
+    end
+    openBook()
+    check(entry.shelves == nil and shelvesOf3() == "7", "book 3 is only on someone else's public shelf: none of yours kept")
+    local b = buttons()
+    check(b and #b == 1 and b[1].kind == "add" and b[1].text == "Add to shelf" and b[1].submenu,
+        "a Grimmory book: Add to shelf (instead of Add to collection), no Remove")
+    check(rplugin:shelfButtons("/mnt/us/documents/sideloaded.epub") == nil, "a book not from Grimmory: none (Add to collection stays)")
+    local saved_api = rplugin.api
+    rplugin.api = setmetatable({ offline = true }, { __index = saved_api })
+    check(rplugin:shelfButtons(path) == nil, "a Kindle without Wi-Fi (Grimmory through the sync page): none (Add to collection stays)")
+    rplugin.api = saved_api
+
+    S.menu = nil
+    b[1].callback()
+    local m = S.menu
+    check(m and m.title == "Add to shelf" and #m.item_table == 2 and m.item_table[1].text == "Beach reads"
+        and m.item_table[2].text == "Kindle" and not m.item_table[1].dim,
+        "Add to shelf lists your own shelves by name (not someone else's public one, not smart shelves)")
+    check(rplugin.store.grimmory_user and rplugin.store.grimmory_user.id == 1, "your Grimmory user id kept, for this account")
+    m.onMenuSelect(m, m.item_table[2])
+    local on, st = shelvesOf3()
+    check(on == "4,7" and json.encode(st.last_shelves_body.shelvesToUnassign) == "[]"
+        and json.encode(st.last_shelves_body.bookIds) == "[3]", "picked Kindle: the book is on it in Grimmory (lists sent as JSON lists)")
+    check(entry.shelves and #entry.shelves == 1 and entry.shelves[1].id == 4 and entry.shelves[1].name == "Kindle"
+        and captured.info == "Added to “Kindle”." and changed == 1, "kept with the download, said so, the menu told")
+    b = buttons()
+    check(#b == 2 and b[2].kind == "remove" and b[2].text == "Remove from shelf" and not b[2].submenu, "now on one of your shelves: Remove from shelf")
+    b[1].callback()
+    m = S.menu
+    check(m.item_table[2].dim and m.item_table[2].text == "Kindle  ✓" and not m.item_table[1].dim, "Add to shelf again: Kindle ticked and greyed out")
+    local posts = #json.decode(ctl("/state")).log
+    m.onMenuSelect(m, m.item_table[2])
+    check(#json.decode(ctl("/state")).log == posts, "picking a shelf it's already on does nothing")
+
+    ctl("/shelf?book=3&add=6")
+    openBook()
+    b = buttons()
+    check(#entry.shelves == 2 and entry.shelves[1].name == "Beach reads" and b[2].text == "Remove from shelves" and b[2].submenu,
+        "put on another shelf in Grimmory's web app: seen when the book opens, Remove from shelves")
+    S.menu = nil
+    b[2].callback()
+    m = S.menu
+    check(m and m.title == "Remove from shelf" and #m.item_table == 3 and m.item_table[1].text == "Beach reads"
+        and m.item_table[2].text == "Kindle" and m.item_table[3].text == "All 2 shelves", "Remove from shelves: which one, or all")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf3() == "4,7" and #entry.shelves == 1 and entry.shelves[1].id == 4 and captured.info == "Removed from “Beach reads”.",
+        "took it off Beach reads only")
+    S.menu = nil
+    buttons()[2].callback()
+    check(S.menu == nil and shelvesOf3() == "7" and entry.shelves == nil and captured.info == "Removed from “Kindle”."
+        and #buttons() == 1, "on one shelf: Remove from shelf takes it straight off; Remove goes away")
+
+    ctl("/shelf?book=3&add=4&add=6")
+    openBook()
+    buttons()[2].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[3])
+    check(shelvesOf3() == "7" and entry.shelves == nil and captured.info == "Removed from 2 shelves.", "All 2 shelves: off both")
+
+    ctl("/shelf?book=3&add=4")
+    openBook()
+    ctl("/shelf?book=3&remove=4")
+    S.menu = nil
+    buttons()[2].callback()
+    check(S.menu == nil and entry.shelves == nil and captured.info == "This book isn't on any of your shelves in Grimmory now.",
+        "taken off in the web app meanwhile: says so, Remove goes away")
+
+    S.change(rplugin, "3", { 7 }, {}, "Club picks")
+    check(shelvesOf3() == "7" and captured.info == "Grimmory returned an error (403).", "someone else's shelf: Grimmory's refusal shown")
+
+    local src = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/context_menu_file_dialog.lua"):read("*a")
+    check(src:find("gz:shelfButtons(file,", 1, true) and src:find("if not item._zen_collection_name and not gz_shelf_buttons then", 1, true),
+        "ZenOS's book menu asks GZreader for the shelf buttons and drops Add to collection when it gets them")
+end
+
 print("Wi-Fi back without KOReader noticing")
 rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
 NET.connected = false

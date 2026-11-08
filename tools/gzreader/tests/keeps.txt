@@ -45,6 +45,7 @@
 2 plugins/zenos.koplugin/main.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/automatic_series_grouping.lua
 5 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua
+9 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu_file_dialog.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/cover_decode_cache.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/empty_library.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/components/registry.lua

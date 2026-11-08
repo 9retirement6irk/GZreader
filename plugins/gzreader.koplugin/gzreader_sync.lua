@@ -453,6 +453,8 @@ function Sync:applyRemote(book, interactive, err)
     pcall(function()
         require("gzreader_ratings").reconcile(self.plugin, self.book_id, self.entry, self.ui.doc_settings, book)
     end)
+    -- which of your Grimmory shelves it's on (the book menu's Remove from shelf)
+    pcall(function() require("gzreader_shelves").remember(self.plugin, self.book_id, book) end)
     local remote = self:remotePosition(book)
     local here = self:localPosition()
     if not remote or remote.pct <= 0 then

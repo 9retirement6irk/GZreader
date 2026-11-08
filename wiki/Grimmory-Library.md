@@ -96,6 +96,31 @@ when Wi-Fi connects (at most every 30 minutes) and with "Download new books
 from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
 krisboho/connecto-library's Shelf Sync.)
 
+## Putting a book on a shelf
+
+For a book that came from Grimmory, the book menu (quick panel → **Manage
+“book”** for the highlighted book, or hold a book on a touch Kindle) has
+**Add to shelf** where it had Add to collection. It lists your own Grimmory shelves by name; the ones
+the book is already on are ticked and greyed out. Pick one and the book goes
+on it in Grimmory ("Added to “Kindle”."). Wi‑Fi is turned on for it if
+needed.
+
+When the book is on one of your shelves, the menu also has **Remove from
+shelf**: it takes the book off that shelf straight away. On several, it's
+**Remove from shelves**, which asks which one, or **All** of them.
+
+- Only your own regular shelves: smart (magic) shelves fill themselves from
+  their rules, and Grimmory doesn't let you put books on someone else's
+  public shelf. Make new shelves in Grimmory's web app.
+- Which shelves a book is on comes from Grimmory each time its book opens,
+  and whenever you add or remove one here. A change made in the web app
+  shows in the menu after the book is next opened; Add to shelf and Remove
+  ask Grimmory first, so what they list is always up to date.
+- Books not from Grimmory keep **Add to collection** (KOReader's
+  collections, on the Kindle only), and so do the Kindles without Wi‑Fi
+  (Kindle 2, DX), which reach Grimmory through the [sync page](Sync-with-a-Computer).
+  Selecting several books (Select) also keeps Add to collection.
+
 ## Book covers when downloading
 
 Picking a book in the Grimmory browser asks whether to download it and shows

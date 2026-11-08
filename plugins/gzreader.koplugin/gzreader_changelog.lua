@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A Grimmory book's menu has Add to shelf and Remove from shelf (your Grimmory shelves)", text = "For a book from Grimmory, the book menu's Add to collection is now Add to shelf: it lists your own Grimmory shelves (not smart shelves, not other people's) and puts the book on the one you pick. When the book is on one or more of your shelves, Remove from shelf (or Remove from shelves, which asks which one or all) takes it off. Which shelves a book is on comes from Grimmory when the book opens and after each change. Books not from Grimmory, and the Kindle 2 and DX, keep Add to collection." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

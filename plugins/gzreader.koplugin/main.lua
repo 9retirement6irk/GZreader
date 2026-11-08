@@ -1345,6 +1345,13 @@ function Grimmory:entryForPath(path)
     end
 end
 
+--- The book menu's Add to shelf / Remove from shelf for a Grimmory book (ZenOS's
+--- context_menu_file_dialog.lua), or nil: that menu keeps Add to collection.
+function Grimmory:shelfButtons(path, on_change)
+    local ok, buttons = pcall(function() return require("gzreader_shelves").buttons(self, path, on_change) end)
+    return ok and buttons or nil
+end
+
 function Grimmory:setupReader()
     -- Read aloud (any reflowable book) and the keyboard Reading menu.
     if Mod.Touch.tts() then self.tts = Mod.TTS.Reader:new(self.ui) end
@@ -1883,6 +1890,10 @@ function Grimmory:downloadAndOpen(book, menu, opts)
                 if p and self.store.downloads[key] == entry and not (self.sync and self.sync.book_id == key) then
                     entry.grimmory_progress = p
                     self:save()
+                end
+                -- (and which of your shelves it's on: the book menu's Remove from shelf)
+                if self.store.downloads[key] == entry then
+                    pcall(function() require("gzreader_shelves").remember(self, key, full) end)
                 end
             end, "download progress", { nice = true })
         end
