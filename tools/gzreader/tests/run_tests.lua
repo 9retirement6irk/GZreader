@@ -770,6 +770,16 @@ do -- Refresh list from Grimmory: Wi-Fi on first (it may have gone off while the
     find(b.menu.item_table, "^Refresh").callback()
     Net.run, Index.build = was_run, was_build
     check(reason == "refreshing the Grimmory list" and built == true, "Refresh list from Grimmory turns Wi-Fi on first, then rebuilds")
+    -- Check for updates says why it turns Wi-Fi on (the log read "turning on for ?")
+    local Upd = require("gzreader_update")
+    local was_check = Upd.check
+    local checked
+    reason = nil
+    Net.run = function(fn, opts) reason = opts and opts.reason; fn() end
+    Upd.check = function() checked = true; return nil, "test" end
+    Upd.run()
+    Net.run, Upd.check = was_run, was_check
+    check(reason == "checking for updates" and checked == true, "Check for updates gives its reason for turning Wi-Fi on")
 end
 find(b.menu.item_table, "^Author 1$").callback()
 local auth_ok, an = true, 0

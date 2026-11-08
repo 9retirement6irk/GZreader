@@ -628,7 +628,7 @@ function Update.run()
                 require("gzreader_net").run(function() Update.download(info) end, { reason = "update" })
             end,
         })
-    end)
+    end, { reason = "checking for updates" })
 end
 
 function Update.download(info)

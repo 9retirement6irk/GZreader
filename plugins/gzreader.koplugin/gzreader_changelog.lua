@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Refresh list from Grimmory works when Wi-Fi has gone off", text = "Authors and Series open from the list saved on the Kindle, without Wi-Fi, so with Wi-Fi only when needed it was often off again by the time you chose Refresh list from Grimmory, which then said it couldn't reach the server. Refresh now turns Wi-Fi on first, like the rest of the Grimmory tab." },
+            { short = "Refresh list from Grimmory works when Wi-Fi has gone off", text = "Authors and Series open from the list saved on the Kindle, without Wi-Fi, so with Wi-Fi only when needed it was often off again by the time you chose Refresh list from Grimmory, which then said it couldn't reach the server. Refresh now turns Wi-Fi on first, like the rest of the Grimmory tab. (The diagnostic log also now says why Check for updates turned Wi-Fi on, instead of a question mark.)" },
         },
     },
     {
