@@ -80,6 +80,10 @@ echo "== CI: which changes skip the emulator"
 timeout 60 python3 "$T/ci_paths_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== CI's CPU budgets (the emulator perf run)"
+timeout 60 python3 "$T/perf_check_test.py" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== the wiki's links"
 timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

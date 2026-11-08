@@ -31,6 +31,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   one refresh.
 - Lua is shipped as precompiled bytecode (see [Building](Building)): no parsing
   at start (~4x faster loading overall, up to 15x for big files).
+- **CPU budgets in CI** (`tools/gzreader/emulator/perf.lua`): every pull
+  request that reaches the emulator times a Kindle 3's start, opening a
+  book, 20 page turns, the quick panel and moves on Home, against
+  `perf_baseline.json` (more than 50% more CPU fails the check).
 
 - Covers are pre-sized (Settings → Interface → Pre-size covers). ZenOS scales
   every cover to the exact size of where it's shown; on the Kindle 3 that took
