@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Refresh list from Grimmory works when Wi-Fi has gone off", text = "Authors and Series open from the list saved on the Kindle, without Wi-Fi, so with Wi-Fi only when needed it was often off again by the time you chose Refresh list from Grimmory, which then said it couldn't reach the server. Refresh now turns Wi-Fi on first, like the rest of the Grimmory tab." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },
