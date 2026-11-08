@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Choose the quick panel's tiles: Settings → Interface → Quick panel", text = "Settings → Interface → Quick panel lists the tiles of the quick panel's Controls, Home and This book groups: untick a tile to take it off the panel, or Show every tile to bring them all back. Home, Settings and Exit to Kindle always stay. It replaces Interface's Controls and Launcher, which set up ZenOS's touch menu (the quick panel took its place); Blur menu background is still in Interface." },
+            { short = "The quick panel's Layout tile works on touch Kindles", text = "In a book, the quick panel's Layout tile (font size, margins, spacing) did nothing on touch Kindles such as the Paperwhite: Zen mode blocked it. It opens the layout menu again." },
             { short = "Zen mode is always on", text = "Zen mode (ZenOS's own tabs only) is always on: its switch is gone from Settings → Interface, and it's turned back on if it was off." },
         },
     },

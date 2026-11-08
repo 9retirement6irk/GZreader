@@ -1115,6 +1115,16 @@ do
     Panel.setShown("book", "gotopage", false)
     check(not labels(Panel.bookTiles(hplug, fakeui)):match("Go to page") and labels(Panel.bookTiles(hplug, fakeui)):match("|Contents|"),
         "a book's tiles hidden too")
+    -- Layout opens KOReader's bottom menu with force: ZenOS's Zen mode blocks a
+    -- plain ShowConfigMenu on touch Kindles (the tile did nothing on a Paperwhite)
+    local forced, sent = nil, {}
+    local layoutui = { handleEvent = function(_s, ev) sent[#sent + 1] = ev.handler end, view = {},
+        document = { info = { has_pages = true } },
+        config = { onShowConfigMenu = function(_s, force) forced = force; return true end } }
+    for _i, t in ipairs(Panel.bookTiles(hplug, layoutui)) do
+        if t.id == "layout" then t.run() end
+    end
+    check(forced == true and #sent == 0, "Layout tile: the layout menu opened with force (Zen mode on a touch Kindle doesn't block it)")
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
