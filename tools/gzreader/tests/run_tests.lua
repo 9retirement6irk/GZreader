@@ -1155,6 +1155,24 @@ do
     Awake.exec = exec
 end
 
+print("Book-open timing only while diagnostic logging is on")
+do
+    local Log = require("gzreader_log")
+    local OT = require("gzreader_opentiming")
+    local saved_enabled, saved_cur = Log.enabled, OT.cur
+    local opened = WORK .. "/timed-book.epub"
+    local tbf = io.open(opened, "wb"); tbf:write("x"); tbf:close()
+    Log.enabled = false
+    OT.cur = { file = "an earlier book" }
+    OT.start(opened)
+    check(OT.cur == nil, "logging off: a book opening isn't measured (no /proc reads, no timing)")
+    Log.enabled = true
+    OT.start(opened)
+    check(OT.cur and OT.cur.file == opened and OT.cur.size == 1 and OT.cur.t0, "logging on: the book opening is measured")
+    Log.enabled, OT.cur = saved_enabled, saved_cur
+    os.remove(opened)
+end
+
 print("Shelves")
 do
     local list = plugin.api:listShelves()
