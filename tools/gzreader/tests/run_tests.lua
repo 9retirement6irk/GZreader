@@ -4967,10 +4967,10 @@ print("Headphones")
     Jack.shells = 0
     files["lipc:headphoneState"] = "1"
     local sched = {}
-    local UI = require("ui/uimanager")
-    local real_in, real_un = UI.scheduleIn, UI.unschedule
-    UI.scheduleIn = function(_ui, s, fn) sched[#sched + 1] = { s = s, fn = fn } end
-    UI.unschedule = function() end
+    local JUI = require("ui/uimanager")
+    local real_in, real_un = JUI.scheduleIn, JUI.unschedule
+    JUI.scheduleIn = function(_ui, s, fn) sched[#sched + 1] = { s = s, fn = fn } end
+    JUI.unschedule = function() end
     paused = 0
     Jack.watch("audiobook", function() paused = paused + 1 end)
     check(Jack.inProcess() and sched[1] and sched[1].s == Jack.INTERVAL, "lipc in the process: a look every second")
@@ -4988,7 +4988,7 @@ print("Headphones")
         "no lipc library: looks with a shell every " .. tostring(Jack.SHELL_INTERVAL) .. " s, not every second")
     Jack.unwatch("audiobook")
     check(Jack.handle == nil, "stopped: nothing kept open")
-    UI.scheduleIn, UI.unschedule = real_in, real_un
+    JUI.scheduleIn, JUI.unschedule = real_in, real_un
     Jack.lipc_open = nil
     Jack.handle = nil
     G_reader_settings:delSetting(Jack.SETTING)
