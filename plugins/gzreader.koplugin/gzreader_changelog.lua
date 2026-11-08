@@ -10,7 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Diagnostic log files no longer pile up on the Kindle", text = "Send to a browser (and the setup page's Diagnostics tab) left a copy of the log (about 700 KB) next to the GZreader folder every time. The log is now built in the cache and deleted once it's sent, as Send to the developer already did. Save to the Kindle keeps only the newest three saved logs there; older ones (also the ones earlier versions left) are deleted." },
-            { short = "The diagnostic log is ready in seconds instead of half a minute", text = "Diagnostics (Send to the developer, Send to a browser, Save to the Kindle) put the log together in a second or two instead of about 25 seconds on a Kindle 3. Most of that time went on a survey of the Kindle's audio and speech system, whose answers only change with the firmware or GZreader's version: they are now kept after the first time and reused. The log also notes how long it took." },
+            { short = "The diagnostic log is ready in seconds instead of half a minute", text = "Diagnostics (Send to the developer, Send to a browser, Save to the Kindle) put the log together in a second or two instead of about 25 seconds on a Kindle 3. Most of that time went on a survey of the Kindle's audio and speech system, whose answers only change with the Kindle's firmware: they are now kept after the first time and reused, also across GZreader updates. The log also notes how long it took." },
         },
     },
     {

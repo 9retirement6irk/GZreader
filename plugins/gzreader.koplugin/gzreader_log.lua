@@ -231,7 +231,7 @@ function Log.awakeReport()
 end
 
 -- Commands whose answer changes while the Kindle runs: run at every export.
--- The others only change with the firmware or GZreader, so their output is
+-- The others only change with the firmware, so their output is
 -- kept (Log.probeCachePath) and reused: running them all took ~25 s on a
 -- Kindle 3, most of it waiting on `strings` and `ls -R`.
 Log.PROBE_LIVE = {
@@ -240,6 +240,7 @@ Log.PROBE_LIVE = {
     ["ps 2>/dev/null | awk 'tolower($0) ~ /audioserver|gst|aplay/' | grep -v awk"] = true,
     ["awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40"] = true,
     ["for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done"] = true,
+    ["ls -la /usr/lib/liblipc* common/*lipc* libs/*lipc* 2>&1"] = true, -- (GZreader's own files too)
 }
 
 local function readFile(path)
@@ -250,15 +251,20 @@ local function readFile(path)
     return s
 end
 
---- What the kept probe answers depend on: GZreader's version, the firmware
---- and the commands themselves.
+--- The firmware's version files (what the kept probe answers depend on).
+function Log.firmwareText()
+    return (readFile("/etc/prettyversion.txt") or "") .. (readFile("/etc/version.txt") or "")
+end
+
+--- What the kept probe answers depend on: the firmware and the commands
+--- themselves. (Not GZreader's version: a test build every few minutes
+--- would run the whole probe each time; the one command that looks at
+--- GZreader's own files runs every time instead.)
 function Log.probeKey()
-    local ok, version = pcall(function() return require("gzreader_update").currentVersion() end)
-    local firmware = (readFile("/etc/prettyversion.txt") or "") .. (readFile("/etc/version.txt") or "")
     local h = 5381
     local cmds = table.concat(Log.PROBE_COMMANDS, "\n")
     for i = 1, #cmds do h = (h * 33 + cmds:byte(i)) % 4294967296 end
-    return table.concat({ ok and tostring(version) or "?", (firmware:gsub("%s+", " ")), string.format("%08x", h) }, " | ")
+    return (Log.firmwareText():gsub("%s+", " ")) .. " | " .. string.format("%08x", h)
 end
 
 function Log.probeCachePath()
@@ -308,7 +314,7 @@ function Log.deviceProbe()
     local kept = loadProbeCache(path, key)
     local parts, fresh = {}, {}
     if kept then
-        parts[1] = "(the unchanging part kept from " .. tostring(kept.at) .. ", for this firmware and GZreader version)"
+        parts[1] = "(the unchanging part kept from " .. tostring(kept.at) .. ", for this firmware)"
     end
     for _, cmd in ipairs(Log.PROBE_COMMANDS) do
         parts[#parts + 1] = "$ " .. cmd

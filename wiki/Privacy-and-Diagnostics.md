@@ -49,10 +49,10 @@ it, and the start script trims it to 500 KB.
 
 Putting the bundle together is quick after the first time: the audio/speech
 survey runs about thirty system commands (around 25 s on a Kindle 3), so
-the answers that only change with the Kindle's firmware or GZreader's
-version are kept in `koreader/cache/gz-device-probe.lua` and reused; the
-few that change while the Kindle runs (memory, running programs, Wi‑Fi
-state) are run each time.
+the answers that only change with the Kindle's firmware are kept in
+`koreader/cache/gz-device-probe.lua` and reused; the few that change while
+the Kindle runs (memory, running programs, Wi‑Fi state, GZreader's own
+files) are run each time.
 
 No log files pile up on the Kindle: Send to the developer and Send to a
 browser (and the setup page's Diagnostics tab) build the file in
