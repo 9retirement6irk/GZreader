@@ -4720,6 +4720,8 @@ print("The first tour on a touch Kindle: GZreader's quick panel")
     if src then src:close() end
     check(text:find("meta.quickstart_menu_tour_pending == true or GzTour.active then return false end", 1, true)
         and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
+end)()
+
 print("Flash on every page turn (Settings → Reader → Appearance)")
 ;(function()
     local Eink = require("gzreader_eink")
