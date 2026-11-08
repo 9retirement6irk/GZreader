@@ -154,8 +154,15 @@ once a day (Settings → General → Updates, or Grimmory menu → GZreader
 updates; the changelog is there too). Publishing an update is just making a
 GitHub release:
 
+After an update, GZreader opens a **What's new** screen once: "Updated to
+v<version>" and a short point for each change (for a test build, what it
+brings; for a release after a skipped one, both). Press Get Started (or the
+5-way centre) to go on; the full text of each change stays in the changelog.
+
 1. Bump `GZREADER_VERSION` and add an entry to
-   `plugins/gzreader.koplugin/gzreader_changelog.lua`, push.
+   `plugins/gzreader.koplugin/gzreader_changelog.lua`, push. Each line is
+   `{ short = "…", text = "…" }`: `short` for the What's new screen (a few
+   words), `text` for the changelog and the release notes.
 2. On GitHub: Releases → Draft a new release → tag `v<version>` (for
    example `v1.0.4`; `v.1.0.4` also works) → Publish.
 

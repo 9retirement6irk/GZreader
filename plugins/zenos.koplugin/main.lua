@@ -436,6 +436,24 @@ function ZenUI:init()
             "from_updater=", from_updater,
             "is_update=", is_update,
             "channel=", update_channel)
+        -- GZreader: the update screen is GZreader's, for every GZreader
+        -- update, with GZreader's version and short points from its
+        -- changelog (gzreader_whatsnew.lua), not ZenOS's version and list.
+        local gz_new
+        local ok_gz_new, GzNew = pcall(require, "gzreader_whatsnew")
+        if ok_gz_new then
+            if shown_ver == false then
+                GzNew.markSeen() -- (a first start: the setup guide instead)
+            else
+                local ok_p, p = pcall(GzNew.pending)
+                gz_new = ok_p and p or nil
+            end
+            if is_update then
+                self.config._meta.quickstart_shown_for_version = current_ver
+                self:saveConfig()
+            end
+            is_update = gz_new ~= nil
+        end
         if shown_ver == false then
             local ok_pages, pages_mod = pcall(require, "common/quickstart/quickstart_pages")
             if ok_pages then
@@ -444,6 +462,8 @@ function ZenUI:init()
                     config = self.config,
                 })
             end
+        elseif gz_new then
+            changelog_to_show = gz_new.items
         elseif is_update then
             local ok_pages, pages_mod = pcall(require, "common/quickstart/quickstart_pages")
             if ok_pages then
@@ -535,7 +555,9 @@ function ZenUI:init()
                 UIManager:show(ZenScreen:new{
                     title       = _("ZenOS"),
                     title_icon  = true,
-                    subtitle    = T(_("Updated to %1"), "v" .. current_ver),
+                    -- GZreader: no big logo under the header (it's in the title)
+                    hide_logo   = gz_new ~= nil,
+                    subtitle    = T(_("Updated to %1"), "v" .. (gz_new and gz_new.version or current_ver)),
                     changelog   = (type(changelog_to_show) == "table" and #changelog_to_show > 0)
                         and changelog_to_show or nil,
                     scroll_text = build_update_changelog_scroll_text(changelog_to_show),

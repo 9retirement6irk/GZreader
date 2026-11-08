@@ -4745,6 +4745,61 @@ print("The first tour on a touch Kindle: GZreader's quick panel")
         and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
 end)()
 
+print("What's new after an update: GZreader's version and short points")
+;(function()
+    local New = require("gzreader_whatsnew")
+    local log = {
+        { version = "next", changes = { { short = "Next A", text = "Next A, long." }, "Next B. More about B." } },
+        { version = "1.26.8", changes = { { short = "Eight", text = "Eight, long." } } },
+        { version = "1.26.7", changes = { "Seven: it does this. And more.", { text = "Seven two. Long." } } },
+        { version = "1.26.6", changes = { "Six." } },
+    }
+    local function same(a, b) return table.concat(a, "|") == table.concat(b, "|") end
+    check(same(New.items(log, "1.26.8", "1.26.7"), { "Eight" }), "a release: its own points (short ones), not the older versions'")
+    check(same(New.items(log, "1.26.8", "1.26.6"), { "Eight", "Seven: it does this.", "Seven two." }),
+        "versions skipped since the last one shown come along; a line without a short point gives its first sentence")
+    check(same(New.items(log, "1.26.8", nil), { "Eight" }), "nothing shown before (the first update with this screen): its own points")
+    -- (a test build carries the last release's number: 1.26.7-beta.<commit> until 1.26.8 is out)
+    check(same(New.items(log, "1.26.7-beta.abc1234", "1.26.7"), { "Next A", "Next B." })
+        and same(New.items(log, "1.26.7-beta.def5678", "1.26.7-beta.abc1234"), { "Next A", "Next B." }),
+        "a test build: what it brings (the next entry), each test build")
+    check(same(New.items(log, "1.26.8", "1.26.7-beta.abc1234"), { "Eight" }), "from a test build to the release: the release's points")
+    local long = New.firstSentence(string.rep("word ", 40))
+    check(#long <= New.MAX_LEN + 2 and long:match("…$") and New.text({ short = "s", text = "t" }) == "t" and New.text("plain") == "plain",
+        "a long first sentence is cut at a word; the full text stays for the changelog")
+    -- pending(): marks seen, once per version
+    local real_cur, seen_was = New.current, G_reader_settings:readSetting(New.SEEN)
+    local cur = "1.26.8"
+    New.current = function() return cur end
+    local real_log = package.loaded["gzreader_changelog"]
+    package.loaded["gzreader_changelog"] = log
+    G_reader_settings:saveSetting(New.SEEN, "1.26.7")
+    local p = New.pending()
+    check(p and p.version == "1.26.8" and same(p.items, { "Eight" }) and New.pending() == nil
+        and G_reader_settings:readSetting(New.SEEN) == "1.26.8", "shown once after the update, then not again")
+    cur = "0.0.0"
+    check(New.pending() == nil, "a tree without a version (development): nothing")
+    package.loaded["gzreader_changelog"] = real_log
+    New.current = real_cur
+    if seen_was == nil then G_reader_settings:delSetting(New.SEEN) else G_reader_settings:saveSetting(New.SEEN, seen_was) end
+    -- the real changelog: every line of the next entry has a short point
+    local real = dofile(debug.getinfo(New.items, "S").source:sub(2):gsub("gzreader_whatsnew%.lua$", "gzreader_changelog.lua"))
+    local ok_next = real[1].version ~= "next" or #real[1].changes > 0
+    for _i, c in ipairs(real[1].version == "next" and real[1].changes or {}) do
+        if not (type(c) == "table" and type(c.short) == "string" and #c.short <= New.MAX_LEN and type(c.text) == "string") then ok_next = false end
+    end
+    check(ok_next, "the changelog's next lines each have a short point (for the screen) and a text")
+    -- ZenOS's update screen asks GZreader's
+    local src = io.open(debug.getinfo(New.items, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_whatsnew%.lua$",
+        "zenos.koplugin/main.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(text:find('pcall(require, "gzreader_whatsnew")', 1, true) and text:find("is_update = gz_new ~= nil", 1, true)
+        and text:find('"v" .. (gz_new and gz_new.version or current_ver)', 1, true)
+        and text:find("hide_logo   = gz_new ~= nil", 1, true),
+        "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
+end)()
+
 print("Flash on every page turn (Settings → Reader → Appearance)")
 ;(function()
     local Eink = require("gzreader_eink")
