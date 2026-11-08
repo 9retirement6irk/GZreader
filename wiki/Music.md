@@ -1,0 +1,47 @@
+Albums and playlists from your Plex server, on Kindles with a speaker or headphone jack.
+
+Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
+playlists from your Plex Media Server, played while you read.
+
+The **Music tab** is off until you turn it on: Settings → Interface → Navbar → Tabs →
+Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
+is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
+in a book.
+
+While music plays, *Now playing* is a portable CD player with headphones: the
+album's cover on the disc, the track and time on its little display, then the
+track, the controls (Q previous, W play / pause, E next, A shuffle, S repeat,
+D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ and
+Press, or tap a track, to play it).
+
+Sign in, either way:
+- on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
+  phone or computer and enter the 4 letters shown;
+- on the setup page: Music → *Sign in with Plex*.
+
+GZreader then uses your own Plex server (the one on the same Wi‑Fi first, or
+another you choose). Browse **Artists**, **Albums**, **Playlists**, or
+**Search**. An album or playlist: *Play*, *Shuffle*, *Download for offline*
+(or *Delete the download*), and its tracks. *Play* on one that isn't
+downloaded downloads it in order and starts as soon as the first track is in;
+Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
+(`.music` in the GZreader folder); *Shuffle all downloaded* plays it all. Each
+downloaded album or playlist is also in Downloads → **Music** (on the
+bookshelf, the CD player), like audiobooks: open one to play it.
+
+Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
+is downloaded and repacked on the Kindle (like audiobooks), anything else
+(FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or
+320 kbps: *Plex: you · server* in the Music tab). To save room, **Make bigger
+MP3 and AAC smaller** (in the same place) has Plex convert MP3 and AAC tracks
+of a higher quality to MP3 at that quality too (more than 15 % above it, so a
+file at about that quality stays as it is); music already downloaded stays as
+it is. The sync page (Kindles without Wi‑Fi) shows the same two choices with
+the Plex connection and uses them; changed there, the Kindle keeps them. Converting uses Plex's
+transcoder; if your server refuses it, those tracks say so.
+
+*Now playing*: pause, next, previous, shuffle, repeat (off, all, this track),
+the queue. Music, audiobooks and read aloud play one at a time: starting one
+pauses the others, and sleep pauses music. The Kindle's volume keys work
+everywhere. The Plex token is kept like the other sign-ins and never logged
+(it's sent as a header, never in an address).

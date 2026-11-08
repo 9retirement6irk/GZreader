@@ -1,4 +1,4 @@
-# GZreader — Grimmory + ZenOS + KOReader for the Kindle Keyboard
+# GZreader — Grimmory + ZenOS + KOReader for older Kindles and Nooks
 
 A trimmed KOReader for older Kindles: the Kindle 2, Kindle Keyboard (3) and
 DX (keyboard), the Kindle 4 (5-way, no keyboard), the Kindle Touch and the
@@ -8,6 +8,11 @@ interface. Releases and updates: <https://github.com/9retirement6irk/GZreader>.
 
 Based on KOReader `v2026.07.1` and ZenOS `4.3.0`. Version: see `GZREADER_VERSION`.
 
+This is the whole guide on one page. The same, split into pages with a page
+per package to install and how to jailbreak or root first, is the
+[wiki](https://github.com/9retirement6irk/GZreader/wiki) (published from the
+repository's `wiki/` folder).
+
 ## What's in it
 
 | Kept | Why |
@@ -16,40 +21,45 @@ Based on KOReader `v2026.07.1` and ZenOS `4.3.0`. Version: see `GZREADER_VERSION
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), library browser, downloads, progress, bookmark and highlight sync, Reading menu, read aloud, updates. |
+| `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), library browser, downloads, progress, bookmark and highlight sync, the quick panel, read aloud, updates. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB).
 
-Removed: the other 32 bundled plugins (including KOReader's own progress
+Removed: all of KOReader's other bundled plugins (34 in the Kindle 2/3/DX package; including KOReader's own progress
 sync), SSH/SFTP binaries, KOReader's OTA updater (it would replace this
 build with stock KOReader), the 16 MB CJK fallback font, UI translations and
 KOReader's first-run quickstart document (ZenOS's setup guide replaces it).
 
 ## Install
 
-You need a **jailbroken** Kindle with **KUAL** (the Kindle Unified Application
-Launcher), a computer with a USB cable, and about 100 MB free on the Kindle.
+You need a **jailbroken** Kindle (with **KUAL**, the Kindle Unified Application
+Launcher, on the Kindle 2, 3, DX and 4), a computer with a USB cable, and about
+100 MB free on the Kindle.
 (Nooks, test build: see the steps for the [1st Edition](GZREADER.md#nook-1st-edition-test-build) and the [Simple Touch](GZREADER.md#nook-simple-touch-test-build).)
 
-### 1. Jailbreak the Kindle and install KUAL
+### 1. Jailbreak the Kindle (and install KUAL on older Kindles)
 
 Turn on **airplane mode** first, so the Kindle doesn't update itself to a firmware the
-jailbreak can't handle.
+jailbreak can't handle. [kindlemodding.org](https://kindlemodding.org/jailbreaking/)
+keeps the current methods; its [Jailbreak Wizard](https://kindlemodding.org/jailbreak-wizard.html)
+picks the one for your Kindle from its serial number and firmware (Settings →
+Device Options → Device Info).
 
-| Kindle | Jailbreak | KUAL file |
+| Kindle | Jailbreak | Then |
 | --- | --- | --- |
-| Kindle 2, Kindle Keyboard (3), DX | the legacy jailbreak for its firmware ([MobileRead Kindle Developer's Corner](https://www.mobileread.com/forums/forumdisplay.php?f=150)) | `KUAL-KDK-1.0.azw` → `documents` folder |
-| Kindle 4, Kindle Touch | the legacy jailbreak for its firmware (same forum) | `KUAL-KDK-1.0.azw2` → `documents` folder (Kindle Touch: or the KUAL booklet with MRPI) |
-| Paperwhite 3 (7th gen) | [kindlemodding.org](https://kindlemodding.org/jailbreaking/): LanguageBreak for firmware 5.14.3 – 5.16.2.1.1, older methods for older firmware | `Update_KUALBooklet_HDRepack.bin` installed with MRPI |
+| Kindle 2, Kindle Keyboard (3), DX | [NiLuJe's K2/DX/DXG/K3 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K2DXDXGK3-Jailbreak/) (an update file: Menu → Settings → Menu → Update Your Kindle) | KUAL: `KUAL-KDK-1.0.azw2` → `documents` ([Installing KUAL & MRPI](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/installing-kual-mrpi/)) |
+| Kindle 4 | [NiLuJe's K4 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K4-Jailbreak/) (diagnostics mode) | KUAL: `KUAL-KDK-1.0.azw2` → `documents` |
+| Kindle Touch | [NiLuJe's K5 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K5-Jailbreak/) | KUAL and MRPI ([Installing KUAL & MRPI](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/installing-kual-mrpi/)) |
+| Paperwhite 3 and newer | the method the [Jailbreak Wizard](https://kindlemodding.org/jailbreak-wizard.html) names for its firmware (e.g. [WinterBreak](https://kindlemodding.org/jailbreaking/WinterBreak/), below firmware 5.18.1) | nothing more: GZreader starts from its `documents/GZreader.sh` item |
 
-On the Paperwhite, see your firmware in **Settings → Device Options → Device Info**.
-There is no software jailbreak for firmware **5.16.3 or newer**: a Paperwhite already on
-it can only be used if it was jailbroken before updating. After jailbreaking, follow
-kindlemodding.org's steps to install KUAL and MRPI
-([guide](https://kindlemodding.org/jailbreaking/post-jailbreak/installing-kual-mrpi/))
-and its hotfix, so a firmware update doesn't undo the jailbreak.
+A firmware update can be patched against a jailbreak: if the wizard finds none
+for yours, wait for a new one (a Kindle can't be downgraded without one). Older
+methods (LanguageBreak, WatchThis…) are under kindlemodding.org's
+[Legacy](https://kindlemodding.org/jailbreaking/) section, with a
+[hotfix](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/setting-up-a-hotfix/)
+so a firmware update doesn't undo them.
 
-When it works, a **KUAL** book appears in the Kindle's library.
+When it works, the Kindle's library shows the jailbreak's book or a **KUAL** book.
 
 ### 2. Download GZreader
 
@@ -79,16 +89,16 @@ take the package for your Kindle (the others won't start on it):
 
 ### 4. Start GZreader
 
-- **Any Kindle:** open the **KUAL** book, then **GZreader → Start GZreader**. (*Start
+- **Kindles with KUAL:** open the **KUAL** book, then **GZreader → Start GZreader**. (*Start
   GZreader (no framework)* stops the Kindle's own software while GZreader runs: more
   free memory, and the Kindle restarts its home screen when you exit.)
 - **Kindle 2, 3, DX** also: press **Shift, G, G** (the last book), **Shift, G, L** (the
   library) or **Shift, G, N** (without the Kindle's framework).
-- **Kindle Touch, Paperwhite and newer:** a **GZreader** item with GZreader's logo
-  is on the Kindle's own home screen (`documents/GZreader.sh` from the package; on a
-  Kindle that can run these launchers, e.g. with kindlemodding.org's jailbreak and
-  hotfix); tapping it starts GZreader. If it isn't there, start from KUAL once: GZreader
-  puts it back.
+- **Paperwhite and newer** (and a Kindle Touch whose jailbreak runs scriptlets):
+  a **GZreader** item with GZreader's logo is on the Kindle's own home screen
+  (`documents/GZreader.sh` from the package, a *scriptlet*: modern jailbreaks run
+  these; older ones with their hotfix); tapping it starts GZreader. If it isn't
+  there and the Kindle has KUAL, start from KUAL once: GZreader puts it back.
 
 ### 5. The first start
 
@@ -126,8 +136,9 @@ with your books stays until you delete it.
   as the Kindle, and the Kindle's Wi‑Fi must be on. Type the address exactly as the
   Kindle shows it (with `:8642` if it shows one), starting `http://` if the browser
   insists on `https://`.
-- **Something else:** Settings → General → **Send diagnostic log to a browser** (or
-  *Save diagnostic log*, which puts it on the drive) and attach it to an issue.
+- **Something else:** quick panel → **Diagnostics** → **Send to the developer**
+  (or Settings → General → Send diagnostic log to the developer), or *Send to
+  a browser* / *Save to the Kindle* and attach the file to an issue.
 
 ## Usage statistics
 
@@ -152,14 +163,15 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 ## Updates
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
-once a day (Settings → General → Updates, or Grimmory menu → GZreader
-updates; the changelog is there too). Publishing an update is just making a
-GitHub release:
+once a day (Settings → General → Updates, or the quick panel → Updates;
+the changelog is in Settings → General → Updates too).
 
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
 brings; for a release after a skipped one, both). Press Get Started (or the
 5-way centre) to go on; the full text of each change stays in the changelog.
+
+Publishing an update is just making a GitHub release:
 
 1. Bump `GZREADER_VERSION` and add an entry to
    `plugins/gzreader.koplugin/gzreader_changelog.lua`, push. Each line is
@@ -267,9 +279,9 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 GZreader also runs on Barnes & Noble's first Nook (2009): a 6" e-ink page
 with a small colour touchscreen under it. **This is a test build:** it runs
 on a real Nook (firmware 1.0.0 with nookDevs' Softroot 2.5.1): the setup
-guide, Home, the colour screen's controls, Wi‑Fi, downloading books. Each
-e-ink update is still a full refresh (below). Try it on a Nook you're
-prepared to restore, and send back what happens (below).
+guide, Home, the colour screen's controls, Wi‑Fi, downloading books,
+updates over Wi‑Fi, and a GZreader icon in the Nook's app list. Try it on a
+Nook you're prepared to restore, and send back what happens (below).
 
 How it works: the Nook's processor is the same family as a Kindle 3's, but
 its kernel has the floating-point unit switched off and stops programs that
@@ -330,9 +342,8 @@ off while GZreader runs: with it on, the chip naps between packets, loses
 some, and sign-ins time out. (`GZ_NOOK_WIFI=off` leaves Wi‑Fi alone.)
 
 Not in the test build: audiobooks and read aloud (the Nook has a speaker,
-but GZreader plays audio with the Kindle's player), switching Wi‑Fi on and
-off from GZreader's menus, and a launcher icon (start it with adb or a
-terminal app, below).
+but GZreader plays audio with the Kindle's player), and switching Wi‑Fi on
+and off from GZreader's menus.
 
 ### Root the Nook
 
@@ -429,10 +440,10 @@ saw on both screens. And the touch test's numbers if the touch was off.
 
 ## Nook Simple Touch (test build)
 
-The same package runs on the Nook Simple Touch and the Simple Touch with
-GlowLight (2011–2012): GZreader tells the Nooks apart by their screens.
-Like the 1st Edition build, it has only been tried in GZreader's emulator so
-far.
+**`gzreader-nook-<version>.zip`** runs on the Nook Simple Touch and the
+Simple Touch with GlowLight (2011–2012); GZreader tells the Nooks apart by
+their screens. Unlike the 1st Edition build, it has only been tried in
+GZreader's emulator so far.
 
 On the Simple Touch GZreader works **by touch, like on a Kindle Touch**:
 ZenOS's tabs at the bottom, tap to turn pages, swipe down from the top for
@@ -455,8 +466,10 @@ turning Wi‑Fi on and off (connect before starting GZreader).
 2. Connect adb (over USB, or Wi‑Fi: `adb connect <the Nook's IP>`) and
    check that `adb shell id` says root (or that `su` works).
 3. Install as for the 1st Edition: `adb push gzreader /data/gzreader`.
-   GZreader's folder, `GZreader`, goes on the Nook's own storage (the
-   **NOOK** drive over USB).
+   GZreader's folder, `GZreader`, goes on the **microSD card** when one is
+   in, else on the Nook's own storage (the **NOOK** drive over USB). As on
+   the 1st Edition, the first start moves what GZreader only reads (about
+   55 MB) out of the Nook's small app storage to the same place.
 4. Start: `adb shell sh /data/gzreader/gzreader.sh`, or
    `su -c "sh /data/gzreader/gzreader.sh"` in a terminal app. Exit to Nook in the
    quick panel brings back the Nook's own software (press **n** if its
@@ -515,11 +528,13 @@ touch Kindle, swipe down from the top). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 
-- **Controls:** Wi‑Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
-  Settings, Diagnostics (when diagnostics is on in Settings) and Exit to Kindle
-  (Exit to Nook).
+- **Controls:** Wi‑Fi (on the Kindle 2 and DX: **Sync**, [with a
+  computer](#sync-with-a-computer)), Night mode, Rotate, Restart, Sleep, Home,
+  Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
+  General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
-  History, View, Sort and Music.
+  History, View, Sort and Music; **Audiobook** while one plays, and
+  **Downloads (N)** while something downloads.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
   margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud and
@@ -544,7 +559,6 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
 | Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). |
 | Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, font, layout, fit pictures, read aloud, music. |
-| Reading | Hold Menu | ZenOS page browser. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |
@@ -611,7 +625,7 @@ plugged in over USB: <https://9retirement6irk.github.io/GZreader/sync/>
 write to a USB drive). Any other Kindle can sync this way too: Settings →
 Connections → Sync through a computer.
 
-1. On the Kindle: Menu → Sync → **Connect to computer**. KOReader turns the
+1. On the Kindle: Menu (the quick panel) → **Sync** → **Connect to computer (USB drive)**. KOReader turns the
    Kindle's USB drive off while it runs, so GZreader steps aside and waits;
    after you eject the Kindle it starts again by itself. (Or Menu → Exit to
    the Kindle.)
@@ -691,7 +705,7 @@ The Grimmory tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a
 queued book offers to take it off; Settings → Connections → Sync through a
-computer → Sync queue lists them). Menu → **Sync with computer** shows the
+computer → Sync queue lists them). The quick panel's **Sync** tile shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 
 Bookmarks and highlights sync as with Wi-Fi, a sync later: what you add,
@@ -883,7 +897,7 @@ API to `/api` are found too.
   Memos on your home network.
 - **Board:** Q–Y open a note, ◀ ▶ (or the page keys) turn pages, the 5-way
   moves around the notes. **N** new note, **F** filter, **M** for refresh,
-  connect again and disconnect (the Menu key opens the Home menu in tab views).
+  connect again and disconnect (the Menu key opens the quick panel in tab views).
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
@@ -970,10 +984,10 @@ Fastmail (`https://caldav.fastmail.com`), Google
 Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
 playlists from your Plex Media Server, played while you read.
 
-The **Music tab** is off until you turn it on: Settings → Navbar → Tabs →
+The **Music tab** is off until you turn it on: Settings → Interface → Navbar → Tabs →
 Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
-is also in the Home menu and the Reading menu (what's playing, or *Music*),
-and in the quick panel (*Music*).
+is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
+in a book.
 
 While music plays, *Now playing* is a portable CD player with headphones: the
 album's cover on the disc, the track and time on its little display, then the
@@ -1060,9 +1074,8 @@ edited yourself are left alone.
 
 ## Downloads screen and title bar
 
-While anything downloads, **Downloads (N)** is the first entry of the GZreader
-menu (Menu key on Home) and is in the Reading menu; it's always in Settings →
-GZreader (`gzreader_tasks.lua`). It lists the current book download, the
+While anything downloads, **Downloads (N)** is a tile in the quick panel's
+Home tiles (`gzreader_tasks.lua`). It lists the current book download, the
 queue, audiobook downloads and the audiobook preparing step: reopen a
 progress bar, stop the download, take a book out of the queue, empty the
 queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
@@ -1073,8 +1086,9 @@ percentage and the number waiting, refreshed every 10 s while active.
 
 Picking a book in the Grimmory browser asks whether to download it and shows
 Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
-fetched in the background and kept in `koreader/cache/grimmory-thumbs/`
-(renewed when the cover changes in Grimmory).
+fetched in the background and kept in `koreader/cache/gzreader-thumbs/`
+(renewed when the cover changes in Grimmory). The Grimmory lists and a
+book's page use `cache/gzreader-covers/`.
 
 ## Reading stats on Home
 
@@ -1204,7 +1218,8 @@ other devices), both ways, including deletions. EPUB bookmarks are converted
 between KOReader's XPointers and Grimmory's EPUB CFIs using the book's own
 XHTML (paragraph precision); PDF/comic bookmarks use the page number.
 Bookmarks made offline are sent later. Synced on open and with "Sync with
-Grimmory now". Switch: Grimmory menu → Sync bookmarks.
+Grimmory" (quick panel, in a book). Switch: Settings → Connections →
+Grimmory → Sync bookmarks.
 
 crengine makes a DocFragment for every spine item, image and SVG pages
 included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
@@ -1248,8 +1263,8 @@ tally is written to `gzreader-remote/profile` every ~5 s of CPU, also while
 GZreader is stuck in one long call, and goes into the watchdog's reports,
 with each GZreader process's state, CPU over 2 s, memory and wait channel.
 
-**Send to the developer** (Diagnostics in the quick panel, Home and
-Reading menus; Settings → General → Send diagnostic log to the developer)
+**Send to the developer** (Diagnostics in the quick panel; Settings →
+General → Send diagnostic log to the developer)
 sends the whole diagnostic log, the same file "Save to the Kindle" writes,
 to the same feed at any usage level: in parts of 60 KB, at most the newest
 480 KB, each an event "Debug log from <model>-<id> (n/m)". `<id>` is the
@@ -1304,26 +1319,26 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   Grimmory's hex colours; styles: highlight, underline, strikeout, squiggly.
 - Runs a few seconds after a Grimmory EPUB opens, a few seconds after you add,
   change or delete a highlight or note (when Wi‑Fi is on), with "Sync with
-  Grimmory now", and when the book closes with changes still waiting.
+  Grimmory" (quick panel), and when the book closes with changes still waiting.
 - The chapter parsing, conversions and requests run in one low-priority
   background process; only the merge into the open book happens on screen.
   Highlights already linked keep their conversion, so only new ones parse
   their chapters, and chapters are parsed once per pass.
-- Page bookmarks stay with bookmark sync. Switch: Grimmory menu → Sync
-  highlights and notes.
+- Page bookmarks stay with bookmark sync. Switch: Settings → Connections →
+  Grimmory → Sync highlights and notes.
 
 ## Read aloud (Kindle 2, 3, DX text-to-speech)
 
 Uses the Kindle's own voice (Amazon's speech service, reached over lipc
 with the Kindle's `lipc-hash-prop` tool, run in the background so the screen
 never waits; KOReader's lipc library doesn't load on the Kindle 3).
-Shift + Sym (or Reading menu → Read aloud) starts and stops. The sentence
+Shift + Sym (or the quick panel → Read aloud, in a book) starts and stops. The sentence
 being read is highlighted and pages turn by themselves. EPUB/FB2/MOBI/AZW3
 and text only.
 
 Amazon never documented the request format. The speech daemon (`ttsd`)
 writes which field it's missing to the system log ("unable to read id"), so
-Reading menu → Read-aloud settings → Find the Kindle voice adds the missing
+Settings → Reader → Read aloud → Find the Kindle voice (test) adds the missing
 fields one by one until `ttsd` accepts the request, plays "Voice test" and
 asks whether you heard it; the request shape is then saved. Text goes to the voice a
 sentence at a time (split only when a sentence passes 30 words at a comma,
@@ -1333,7 +1348,7 @@ page, the page turns part-way through, at the share of the sentence's
 characters already said. The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
-settings → Slower / Faster). The diagnostic log records every step.
+settings: Settings → Reader → Read aloud → Slower / Faster). The diagnostic log records every step.
 
 Kindle 2 and DX (firmware 2.x): there's no `lipc-hash-prop` and the speech
 service has an older interface (`com.lab126.tts`: `playFile`). Find the Kindle
@@ -1419,7 +1434,7 @@ text back on the page.
 GZreader then adds a book style tweak (`img { height: 100%; width: auto;
 max-width: 100% }`, no margins/padding), sets the book's page margins to 0
 and turns on smooth image scaling, keeping the old settings for when it's
-turned off (Reading menu → Fit pictures to the screen). Checked with the
+turned off (the quick panel → Fit pictures, in a book). Checked with the
 Kindle's own crengine.
 
 `100%` is the page area between the top and bottom margins (ZenOS adds its
@@ -1463,11 +1478,12 @@ Wi-Fi you turned on yourself is never turned off. Going to sleep turns off
 Wi-Fi GZreader turned on.
 
 
-Wi‑Fi you turn off yourself (Wi‑Fi menu, quick panel, Home menu: KOReader's
-interactive switch) stays off for background work (syncs when a book opens
+Wi‑Fi you turn off yourself (the quick panel's Wi‑Fi tile or KOReader's Wi‑Fi
+menu: its interactive switch) stays off for background work (syncs when a book opens
 or closes, after waking, Notes, Calendar, the auto-download shelf) until you
 turn it on again, also after a restart (`gzreader_wifi_kept_off`). Things you
 ask for still connect.
+
 ## Speed on the Kindle 3
 
 - **Drawing with the C blitter** (`frontend/device/kindle/shadowfb.lua`).
@@ -1529,17 +1545,23 @@ ask for still connect.
 
 ## Diagnostic log
 
-**Send it to a browser:** the Diagnostics tab of the setup page (quick panel →
-Send books), Diagnostics in the quick panel, or Settings → General → Send
-diagnostic log to a browser (QR code). Scan the code (same Wi-Fi), tap
-Download, then attach the file wherever you need it.
-
-
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
-tokens are never written. Grimmory → Save diagnostic log copies it, the tail
-of `crash.log` and a read-only audio/speech survey next to the Grimmory
-folder.
+tokens are never written. Diagnostic logging is on by default (Settings →
+General → Diagnostic logging); while it's on, the quick panel has
+**Diagnostics**, which bundles the log, the tail of `crash.log`, what keeps
+the Kindle awake and a read-only audio/speech survey into one
+`gzreader-log-<date>.txt`, and:
+
+- **Send to the developer:** straight to GZreader's developer over Wi‑Fi
+  (see Remote debugging). Also Settings → General → Send diagnostic log to
+  the developer.
+- **Send to a browser (QR code):** scan the code (same Wi‑Fi), tap
+  Download, then attach the file wherever you need it. Also the setup
+  page's Diagnostics tab and Settings → General.
+- **Save to the Kindle:** next to the GZreader folder, to copy over USB
+  (the only choice on Kindles without Wi‑Fi). Also Settings → General →
+  Save diagnostic log (USB).
 
 ## Rebuild the package
 

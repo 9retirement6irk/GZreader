@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/9retirement6irk/GZreader/releases/latest"><b>Download the latest release</b></a> ·
+  <a href="https://github.com/9retirement6irk/GZreader/wiki">Wiki</a> ·
   <a href="GZREADER.md">Full guide</a> ·
   <a href="plugins/gzreader.koplugin/gzreader_changelog.lua">Changelog</a>
 </p>
@@ -76,20 +77,20 @@ haven't been tried.
   day, week, month.
 - 🎵 **Music** *(new, Kindles with audio)*: albums and playlists from **Plex**, played
   while you read, all in a portable CD player: browse, download and play there. Turn the
-  Music tab on in Settings → Navbar → Tabs.
+  Music tab on in Settings → Interface → Navbar → Tabs.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
   read to you in the Kindle's own voice, the sentence being spoken highlighted and the
   pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.
 - 🎧 **Audiobooks** from Grimmory, with your place kept.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
-All the details: **[the full guide](GZREADER.md)**.
+All the details: **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)** ([feature overview](https://github.com/9retirement6irk/GZreader/wiki/Feature-Overview), [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility)), or everything on one page: [the full guide](GZREADER.md).
 
 ## Install
 
-1. **Jailbreak** the Kindle and install **KUAL**
-   ([kindlemodding.org](https://kindlemodding.org/jailbreaking/); Kindle 2, 3, DX, 4,
-   Touch: [MobileRead](https://www.mobileread.com/forums/forumdisplay.php?f=150)).
+1. **Jailbreak** the Kindle (and install **KUAL** on the Kindle 2, 3, DX, 4 and Touch):
+   [Jailbreaking and rooting](https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting),
+   or [kindlemodding.org's Jailbreak Wizard](https://kindlemodding.org/jailbreak-wizard.html).
 2. **Download** the package for your Kindle from the
    [latest release](https://github.com/9retirement6irk/GZreader/releases/latest):
 
@@ -104,12 +105,12 @@ All the details: **[the full guide](GZREADER.md)**.
 
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
    with what's there (your books stay). Eject.
-4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Kindle Touch,
-   Paperwhite or newer the **GZreader** item on the Kindle's home screen. The setup
+4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Paperwhite or
+   newer the **GZreader** item on the Kindle's home screen. The setup
    guide shows a QR code for your phone, and an address and PIN for any browser.
 
-Updates come by themselves (Settings → General → Updates). Step-by-step help,
-uninstalling and the Nooks: [Install in the full guide](GZREADER.md#install).
+Updates come by themselves (Settings → General → Updates). Step-by-step help
+for each package, uninstalling and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
 
 ## Privacy
 
@@ -120,7 +121,7 @@ General → Usage statistics ([what's sent](GZREADER.md#usage-statistics)).
 
 ## More
 
-- [The full guide](GZREADER.md) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
+- [The wiki](https://github.com/9retirement6irk/GZreader/wiki) · [The full guide](GZREADER.md) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
 - [Developing GZreader](DEVELOPING.md): building, tests, releases, keeping up with KOReader and ZenOS
 
 ## Credits and license

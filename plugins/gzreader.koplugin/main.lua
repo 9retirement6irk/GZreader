@@ -595,7 +595,7 @@ function Grimmory:exportLog()
     end
 end
 
---- "Diagnostics" (Home and Reading menus): send the log to a phone or save
+--- "Diagnostics" (the quick panel): send the log to the developer or a phone, or save
 --- it on the Kindle for USB.
 function Grimmory:showDiagnostics()
     local ButtonDialog = require("ui/widget/buttondialog")
