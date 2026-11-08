@@ -96,6 +96,43 @@ when Wi-Fi connects (at most every 30 minutes) and with "Download new books
 from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
 krisboho/connecto-library's Shelf Sync.)
 
+## Putting a book on a shelf
+
+The book menu (quick panel → **Manage “book”** for the highlighted book, or
+hold a book on a touch Kindle) has **Add to shelf** where ZenOS had Add to
+collection; so does the menu for several selected books (Select). GZreader
+has no Add to collection anywhere.
+
+- **Add to shelf** lists your own Grimmory shelves by name; the ones the
+  book is already on are ticked and greyed out. Pick one and the book is on
+  it ("Added to “Kindle”.").
+- **Remove from shelf** appears when the book is on one of your shelves and
+  takes it off straight away. On several, it's **Remove from shelves**,
+  which asks which one, or **All** of them.
+- Only your own regular shelves: smart (magic) shelves fill themselves from
+  their rules, and Grimmory doesn't let you put books on someone else's
+  public shelf. Make new shelves in Grimmory's web app.
+- Not signed in to Grimmory: Add to shelf is there and says to sign in
+  first. A book not from Grimmory (copied onto the Kindle another way) can't
+  go on a Grimmory shelf, and Add to shelf says so.
+
+**Your shelves are kept on the Kindle**: every one of your shelves and every
+book on it, also books that aren't on the Kindle, so the menus work without
+a network and show at once.
+
+- **With Wi‑Fi**, a change goes to Grimmory straight away. Without a
+  connection it waits on the Kindle (the menus already show it) and goes
+  when Wi‑Fi connects. The shelves are read again from Grimmory when Wi‑Fi
+  connects (at most every 30 minutes) and after each change, and a book's
+  shelves whenever it opens, so changes made in Grimmory's web app show up
+  on the Kindle.
+- **Kindle 2 and DX** (and any Kindle set to sync through a computer): a
+  change waits on the Kindle and the [sync page](Sync-with-a-Computer) sends
+  it to Grimmory at the next sync, then brings your shelves back with the
+  library copy, with changes made in Grimmory since.
+- Only the shelves you changed are sent, so a change made meanwhile in the
+  web app to another shelf stays.
+
 ## Book covers when downloading
 
 Picking a book in the Grimmory browser asks whether to download it and shows

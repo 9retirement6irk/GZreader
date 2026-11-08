@@ -1335,6 +1335,8 @@ function Grimmory:onNetworkConnected()
     end)
     -- auto-download shelf (at most every 30 min)
     UIManager:scheduleIn(6, function() pcall(require("gzreader_shelfsync").run, self) end)
+    -- your shelves: changes made here sent, the shelves kept again (at most every 30 min)
+    UIManager:scheduleIn(8, function() pcall(require("gzreader_shelves").sync, self) end)
 end
 
 ---------------------------------------------------------------- reader integration
@@ -1345,6 +1347,19 @@ function Grimmory:entryForPath(path)
     for id, entry in pairs(self.store.downloads) do
         if type(entry) == "table" and entry.path == path then return id, entry end
     end
+end
+
+--- The book menu's Add to shelf / Remove from shelf (ZenOS's
+--- context_menu_file_dialog.lua, in place of Add to collection; gzreader_shelves.lua).
+function Grimmory:shelfButtons(path, on_change)
+    local ok, buttons = pcall(function() return require("gzreader_shelves").buttons(self, path, on_change) end)
+    if not ok then Log.warn("shelves: book menu:", tostring(buttons)) end
+    return ok and buttons or nil
+end
+
+--- Add to shelf for several selected books (ZenOS's context_menu.lua).
+function Grimmory:shelfAddMany(paths, on_change)
+    require("gzreader_shelves").showAdd(self, paths, on_change)
 end
 
 function Grimmory:setupReader()
@@ -1885,6 +1900,10 @@ function Grimmory:downloadAndOpen(book, menu, opts)
                 if p and self.store.downloads[key] == entry and not (self.sync and self.sync.book_id == key) then
                     entry.grimmory_progress = p
                     self:save()
+                end
+                -- (and which of your shelves it's on: gzreader_shelves.lua)
+                if self.store.downloads[key] == entry then
+                    pcall(function() require("gzreader_shelves").remember(self, key, full) end)
                 end
             end, "download progress", { nice = true })
         end

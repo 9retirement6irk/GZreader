@@ -34,7 +34,7 @@
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 6 plugins/zenos.koplugin/common/paths.lua
 3 plugins/zenos.koplugin/common/quickstart/menu_tour.lua
-70 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
+76 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
 6 plugins/zenos.koplugin/common/quickstart/quickstart_screen.lua
 2 plugins/zenos.koplugin/common/quickstart/reader_tour.lua
 1 plugins/zenos.koplugin/common/ui/book_progress.lua
@@ -45,8 +45,8 @@
 2 plugins/zenos.koplugin/kindle-launcher/GZreader.sh
 2 plugins/zenos.koplugin/main.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/automatic_series_grouping.lua
-6 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua
-2 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu_file_dialog.lua
+8 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua
+7 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu_file_dialog.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/cover_decode_cache.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/empty_library.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/components/registry.lua
@@ -78,8 +78,8 @@
 4 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
 2 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
-3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
+3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 55 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua

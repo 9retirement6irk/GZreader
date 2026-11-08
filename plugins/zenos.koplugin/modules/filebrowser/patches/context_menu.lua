@@ -745,20 +745,26 @@ local function apply_context_menu()
                     enabled = enabled,
                     callback = show_status_menu,
                 }},
+                -- GZreader: Add to shelf (your Grimmory shelves) instead of Add to collection
                 {{
-                    text = icons.fav_add .. "  " .. _("Add to collection") .. "  " .. submenu_arrow,
+                    text = icons.fav_add .. "  " .. _("Add to shelf") .. "  " .. submenu_arrow,
                     align = "left",
                     enabled = enabled,
                     callback = function()
                         close_actions()
-                        show_collection_picker(files, function()
-                            file_chooser:refreshPath()
-                            -- Collection membership is per book; skip the full TBR library rescan.
-                            local home = zen_plugin and SharedState.get(zen_plugin, "home")
-                            if home and home.invalidateBookCache then
-                                for file in pairs(files) do home.invalidateBookCache(file) end
-                            end
-                        end)
+                        local book_paths = {}
+                        for file in pairs(files) do book_paths[#book_paths + 1] = file end
+                        table.sort(book_paths)
+                        local okm, FM = pcall(require, "apps/filemanager/filemanager")
+                        local gz = okm and FM.instance and FM.instance.gzreader
+                        if type(gz) == "table" and type(gz.shelfAddMany) == "function" then
+                            gz:shelfAddMany(book_paths, function()
+                                local home = zen_plugin and SharedState.get(zen_plugin, "home")
+                                if home and home.invalidateBookCache then
+                                    for file in pairs(files) do home.invalidateBookCache(file) end
+                                end
+                            end)
+                        end
                     end,
                 }},
                 {{

@@ -1176,7 +1176,7 @@ end
 print("Shelves")
 do
     local list = plugin.api:listShelves()
-    check(list and #list == 2 and list[1].name == "Kindle" and list[2].magic == true, "shelves and smart shelves listed")
+    check(list and #list == 4 and list[1].name == "Kindle" and list[4].magic == true, "shelves and smart shelves listed")
     local SS = require("gzreader_shelfsync")
     SS.set(plugin, list[1])
     ctl("/set?dl_slow=false&dl_big=false")
@@ -2154,6 +2154,161 @@ do
     st = json.decode(ctl("/state"))
     check(st.ratings["3"] == nil and entry.rating_synced == 0 and next(rplugin.store.pending.ratings) == nil, "and Grimmory's rating removed when Wi-Fi returns")
     readerui.doc_settings = nil
+end
+
+print("Grimmory shelves on the Kindle (Add to shelf / Remove from shelf, kept, queued)")
+do
+    local S = require("gzreader_shelves")
+    local entry = rplugin.store.downloads["3"]
+    local path = entry.path
+    local path10 = rplugin.store.downloads["10"] and rplugin.store.downloads["10"].path
+    local side = "/mnt/us/documents/sideloaded.epub"
+    rplugin.store.shelf_cache = nil
+    rplugin.store.grimmory_user = nil
+    rplugin.store.pending.shelves = nil
+    local function openBook() rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    local function wifiBack()
+        UI.scheduled = {}
+        rplugin:onNetworkConnected()
+        local due = {}
+        for f in pairs(UI.scheduled) do due[#due + 1] = f end
+        UI.scheduled = {}
+        for _i, f in ipairs(due) do f() end
+    end
+    local changed = 0
+    local function buttons(p) return rplugin:shelfButtons(p or path, function() changed = changed + 1 end) end
+    local function shelvesOf(bk)
+        local st = json.decode(ctl("/state"))
+        local on = {}
+        for sid, ids in pairs(st.shelves) do for _i, b in ipairs(ids) do if b == bk then on[#on + 1] = tonumber(sid) end end end
+        table.sort(on)
+        return table.concat(on, ","), st
+    end
+    local function names(list) local t = {} for _i, x in ipairs(list) do t[#t + 1] = x.text or x.name end return table.concat(t, "|") end
+
+    -- not signed in / not a Grimmory book: the menu is there and says why it can't
+    local saved_api = rplugin.api
+    rplugin.api = setmetatable({ isPaired = function() return false end }, { __index = saved_api })
+    local b = buttons()
+    check(b and #b == 1 and b[1].text == "Add to shelf", "not signed in: the book menu still has Add to shelf")
+    captured.info = nil; S.menu = nil
+    b[1].callback()
+    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Connections → Grimmory.",
+        "…which says to sign in to Grimmory to continue")
+    rplugin.api = setmetatable({ offline = true, isPaired = function() return false end }, { __index = saved_api })
+    buttons()[1].callback()
+    check(captured.info and captured.info:find("sync with the sync page", 1, true), "a Kindle without Wi-Fi, never synced: says to sync through a computer")
+    rplugin.api = saved_api
+    b = buttons(side)
+    check(#b == 1 and b[1].text == "Add to shelf", "a book not from Grimmory: Add to shelf too (no Add to collection)")
+    b[1].callback()
+    check(S.menu == nil and captured.info:find("isn't from your Grimmory library", 1, true), "…which says it can't go on a Grimmory shelf")
+
+    -- a Grimmory book, nothing kept yet: your shelves (and their books) from Grimmory, then the list
+    openBook() -- (its record says: on none of your shelves; that alone isn't all your shelves)
+    check(S.mine(rplugin) == nil or not rplugin.store.shelf_cache.full, "a book's own record alone: not taken for all your shelves")
+    b = buttons()
+    check(#b == 1 and b[1].submenu, "a Grimmory book on none of your shelves: Add to shelf only")
+    b[1].callback()
+    local m = S.menu
+    check(m and m.title == "Add to shelf" and names(m.item_table) == "Beach reads|Kindle",
+        "Add to shelf: your own shelves by name (not someone else's public one, not smart shelves)")
+    check(S.isOn(rplugin, 10, 4) and S.isOn(rplugin, 12, 4) and not S.isOn(rplugin, 3, 4) and rplugin.store.grimmory_user.id == 1,
+        "every book on your shelves kept on the Kindle (not only downloaded ones), and your user id")
+    m.onMenuSelect(m, m.item_table[2])
+    local on, st = shelvesOf(3)
+    check(on == "4,7" and json.encode(st.last_shelves_body.shelvesToUnassign) == "[]" and json.encode(st.last_shelves_body.bookIds) == "[3]",
+        "picked Kindle with Wi-Fi: on it in Grimmory straight away (JSON lists)")
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4) and captured.info == "Added to “Kindle”." and changed == 1,
+        "nothing left queued, kept, said so")
+    b = buttons()
+    check(#b == 2 and b[2].text == "Remove from shelf" and not b[2].submenu, "now on one of your shelves: Remove from shelf")
+    b[1].callback()
+    check(S.menu.item_table[2].dim and S.menu.item_table[2].text == "Kindle  ✓", "Add to shelf again: Kindle ticked and greyed out")
+
+    -- no Wi-Fi: queued, shown at once, sent when Wi-Fi is back
+    NET.connected = false
+    b[2].callback()
+    check(not S.isOn(rplugin, 3, 4) and #buttons() == 1 and shelvesOf(3) == "4,7"
+        and captured.info == "Removed from “Kindle”.\nGrimmory gets it when Wi-Fi is on.",
+        "Remove from shelf without Wi-Fi: off at once on the Kindle, queued for Grimmory")
+    local jobs = S.jobs(rplugin)
+    check(#jobs == 1 and jobs[1].kind == "shelf" and jobs[1].path == "/api/v1/books/shelves"
+        and json.encode(jobs[1].body.shelvesToAssign) == "[]" and json.encode(jobs[1].body.shelvesToUnassign) == "[4]",
+        "the queue as a job for the sync page (lists as JSON lists)")
+    buttons()[1].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[2]) -- Kindle again: back to how Grimmory has it
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4), "put back on before it was sent: nothing to send")
+    buttons()[2].callback()
+    NET.connected = true
+    wifiBack()
+    check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and not S.isOn(rplugin, 3, 4), "Wi-Fi back: the change sent, the queue empty")
+
+    -- changed in Grimmory's web app: the book's record when it opens, and the 30-minute refresh
+    ctl("/shelf?book=3&add=6")
+    openBook()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 6) and b[2].text == "Remove from shelf", "put on a shelf in the web app: kept when the book opens")
+    ctl("/shelf?book=3&add=4")
+    ctl("/shelf?book=11&remove=4")
+    wifiBack()
+    check(not S.isOn(rplugin, 3, 4) and S.isOn(rplugin, 11, 4), "…not again before 30 minutes")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 4) and not S.isOn(rplugin, 11, 4) and b[2].text == "Remove from shelves" and b[2].submenu,
+        "after 30 minutes, with Wi-Fi: every shelf again from Grimmory (a book not opened too)")
+    S.menu = nil
+    b[2].callback()
+    m = S.menu
+    check(m and names(m.item_table) == "Beach reads|Kindle|All 2 shelves", "Remove from shelves: which one, or all")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "4,7" and captured.info == "Removed from “Beach reads”.", "took it off Beach reads only")
+    ctl("/shelf?book=3&add=6")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    buttons()[2].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[3])
+    check(shelvesOf(3) == "7" and captured.info == "Removed from 2 shelves." and #buttons() == 1, "All 2 shelves: off both")
+
+    -- changed again while a send is under way (the requests in the background): that's sent too
+    do
+        local Async = require("gzreader_async")
+        ctl("/shelf?book=3&add=4&add=6")
+        rplugin.store.shelf_cache.at = 0
+        wifiBack()
+        Async.sync = false
+        S.set(rplugin, { 3 }, 6, false)
+        S.set(rplugin, { 3 }, 4, false)
+        runLoop(function() return not S.running and not S.hasPending(rplugin) and next(Async.queue) == nil and not Async.busy end, 30)
+        Async.sync = true
+        check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and #S.on(rplugin, 3) == 0,
+            "two changes, the second while the first was being sent: both reach Grimmory")
+    end
+
+    -- several selected books
+    S.menu = nil
+    rplugin:shelfAddMany({ path, path10, side }, function() changed = changed + 1 end)
+    m = S.menu
+    check(m and m.title == "Add 2 books to shelf" and not m.item_table[2].dim, "selected books: Add to shelf for the Grimmory ones")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "6,7" and shelvesOf(10) == "4,6" and captured.info == "Added 2 books to “Beach reads”.\n1 not from Grimmory left out.",
+        "both on Beach reads in Grimmory; the sideloaded one left out, said so")
+    ctl("/shelf?book=3&remove=6"); ctl("/shelf?book=10&remove=6")
+
+    -- someone else's shelf: Grimmory refuses it for good; not sent again
+    S.set(rplugin, { 3 }, 7, false)
+    check(not S.hasPending(rplugin) and shelvesOf(3) == "7", "someone else's shelf: refused by Grimmory, off the queue")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+
+    local function src(f) return io.open(PLUGIN .. "/../zenos.koplugin/" .. f):read("*a") end
+    local dialog, multi, guide = src("modules/filebrowser/patches/context_menu_file_dialog.lua"),
+        src("modules/filebrowser/patches/context_menu.lua"), src("common/quickstart/quickstart_pages.lua")
+    check(dialog:find("gz:shelfButtons(file,", 1, true) and not dialog:find('_("Add to collection")', 1, true)
+        and multi:find("gz:shelfAddMany(book_paths,", 1, true) and not multi:find('text = icons.fav_add .. "  " .. _("Add to collection")', 1, true)
+        and not guide:find('_("Add to collection")', 1, true),
+        "ZenOS: Add to shelf in the book menu, for selected books and in the setup guide's picture; no Add to collection")
 end
 
 print("Wi-Fi back without KOReader noticing")
@@ -5631,7 +5786,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
             pending = { progress = {
                 ["1"] = { gz_seq = 7, fileProgress = { bookFileId = 1001, progressPercent = 42.5 } },
                 ["999"] = { gz_seq = 3, fileProgress = { bookFileId = 1, progressPercent = 1 } },
-            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 } },
+            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 },
+                -- (books put on shelves here: the page's jobs sh:3:5 and sh:5:6)
+                shelves = { ["3"] = { seq = 5, set = { ["6"] = true } }, ["5"] = { seq = 6, set = { ["7"] = true } } } },
             memos = { queue = { { id = "q1", op = "create", content = "Written on the Kindle #kindle" } } },
             usb_queue = { { id = 3, kind = "book", title = "Book 03" }, { id = 32, kind = "audiobook", title = "Book 32" } } } }
         local f = io.open(lib .. "/book1.epub", "wb"); f:write("x"); f:close()
@@ -5652,6 +5809,15 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         Usb.SCREENSAVER_DIR = lib .. "/screensavers"
         local r = Usb.import(fake, function() ready = true end)
         local left = Usb.journal(fake)
+        do
+            local S = require("gzreader_shelves")
+            local mine = S.mine(fake)
+            local names = {}
+            for _i, sh in ipairs(mine or {}) do names[#names + 1] = sh.name end
+            check(next(fake.store.pending.shelves) == nil and table.concat(names, ",") == "Beach reads,Kindle"
+                and S.isOn(fake, 3, 6) and S.isOn(fake, 10, 4) and not S.isOn(fake, 5, 7),
+                "e2e: shelf changes sent by the page are off the queue; your shelves (not someone else's) kept from the copy, with their books")
+        end
         local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
         local phead = pf and pf:read(24)
         if pf then pf:close() end
@@ -5674,7 +5840,7 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local anns = api2:listAnnotations(1) or {}
         check(#anns == 1 and anns[1].note == "later" and anns[1].color == "#F87171",
             "e2e: highlights as GZreader sees them: Grimmory's (from the copy) with the journal's change on top")
-        check(r and r.sent == 3 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
+        check(r and r.sent == 5 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
             and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
         local b = fake.store.downloads["3"]
         check(b and b.path == lib .. "/book3.epub" and b.subtitle == "Old School" and #fake.store.usb_queue == 0,
