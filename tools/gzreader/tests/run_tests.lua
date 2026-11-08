@@ -2637,6 +2637,57 @@ do
     package.loaded["ffi/archiver"] = nil -- the real one can't load here
 end
 
+print("Highlights that show on both the Kindle and the web reader")
+;(function()
+    local AnnotationSync = require("gzreader_annosync")
+    local fake_cfi = { xpointerRangeToCFI = function() return "epubcfi(/6/4!/4/2,/1:0,/1:5)" end }
+    local function sentColor(annotation)
+        annotation.pos0, annotation.pos1, annotation.text = "/body/p[1]/text().0", "/body/p[1]/text().5", "Hello"
+        local out = AnnotationSync.fromLocal({ annotation }, fake_cfi, 1)
+        return out[1] and out[1].body.color
+    end
+    check(sentColor({ color = "gray", drawer = "lighten" }) == "#FFC107", "a Kindle's grey highlight goes to Grimmory as the web reader's yellow")
+    check(sentColor({ color = "gray", drawer = "lighten", grimmory_id = 7, grimmory_color = "#AAAAAA", grimmory_local_color = "gray" }) == "#AAAAAA",
+        "a grey highlight already in Grimmory keeps its colour there")
+    check(sentColor({ color = "green", drawer = "lighten" }) == "#4ADE80", "other colours as before")
+    local back = AnnotationSync.toLocal({ id = 8, cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", color = "#FFC107", style = "highlight" },
+        { cfiRangeToXPointers = function() return "/body/p[1]/text().0", "/body/p[1]/text().5" end })
+    local grey = AnnotationSync.toLocal({ id = 9, cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", color = "#AAAAAA", style = "highlight" },
+        { cfiRangeToXPointers = function() return "/body/p[1]/text().0", "/body/p[1]/text().5" end })
+    check(back and back.color == "yellow" and grey and grey.color == "gray", "Grimmory's yellow comes back yellow, its grey grey")
+
+    -- drawing on the Kindle: too-light colours drawn like the grey highlight
+    local HL = require("gzreader_hlcolor")
+    local yellow, orange, blue = { r = 255, g = 255, b = 51 }, { r = 255, g = 136, b = 0 }, { r = 0, g = 102, b = 255 }
+    check(HL.tooLight(yellow, 0.2) and not HL.tooLight(orange, 0.2) and not HL.tooLight(blue, 0.2) and not HL.tooLight(nil, 0.2),
+        "KOReader's yellow is too light on a greyscale screen; orange and blue aren't")
+    local saved = { rv = package.loaded["apps/reader/modules/readerview"], dev = package.loaded["device"],
+        bb = package.loaded["ffi/blitbuffer"], installed = HL.installed }
+    local drawn = {}
+    local FakeView = { drawHighlightRect = function(_self, _bb, _x, _y, _rect, drawer, color) drawn[#drawn + 1] = { drawer, color } end }
+    local colour_screen = false
+    package.loaded["apps/reader/modules/readerview"] = FakeView
+    package.loaded["device"] = { screen = { isColorEnabled = function() return colour_screen end } }
+    package.loaded["ffi/blitbuffer"] = { isColor8 = function(c) return c and c.grey ~= nil end }
+    HL.installed = false
+    HL.install()
+    local view = setmetatable({ highlight = { lighten_factor = 0.2 } }, { __index = FakeView })
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", orange)
+    view:drawHighlightRect(nil, 0, 0, {}, "underscore", yellow)
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", nil)
+    colour_screen = true
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    check(drawn[1][2] == nil and drawn[2][2] == orange and drawn[3][2] == yellow and drawn[4][2] == nil and drawn[5][2] == yellow,
+        "greyscale: yellow drawn as the grey highlight, orange and underlines as they were; a colour screen: unchanged")
+    view.highlight.lighten_factor = 0.05
+    colour_screen = false
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    check(drawn[6][2] == yellow, "a lighter grey highlight chosen in KOReader's settings: yellow is drawn as before")
+    package.loaded["apps/reader/modules/readerview"], package.loaded["device"], package.loaded["ffi/blitbuffer"] = saved.rv, saved.dev, saved.bb
+    HL.installed = saved.installed
+end)()
+
 print("Picture books")
 do
     local PB = require("gzreader_picturebook")

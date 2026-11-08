@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Highlights show on both sides: web reader yellow is visible on the Kindle, Kindle highlights are yellow on the web", text = "Highlights made in Grimmory's web reader are yellow by default, which on a Kindle's grey screen came out almost white. On a greyscale Kindle a highlight colour too light to see is now drawn like the Kindle's own grey highlight (darker colours and underlines are unchanged). The other way, the Kindle's grey highlights were a dark smudge in the web reader: new ones now go to Grimmory as the web reader's yellow. Highlights already in Grimmory keep their colour there; change one in the web reader to yellow if you want it to match." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

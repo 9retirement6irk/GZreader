@@ -17,6 +17,12 @@ local TO_LOCAL_COLOR = {}
 for local_name, server_name in pairs(TO_SERVER_COLOR) do
     TO_LOCAL_COLOR[server_name] = local_name
 end
+-- GZreader: a greyscale Kindle highlights in grey, which is a dark smudge in
+-- the web reader (#AAAAAA, worse on its dark theme); send it as the web
+-- reader's own yellow. (Grimmory's grey still comes back as grey, and
+-- highlights already in Grimmory keep their colour: see grimmory_color below.)
+TO_SERVER_COLOR.gray = TO_SERVER_COLOR.yellow
+AnnotationSync.TO_SERVER_COLOR, AnnotationSync.TO_LOCAL_COLOR = TO_SERVER_COLOR, TO_LOCAL_COLOR
 
 local TO_SERVER_STYLE = {
     lighten = "highlight", underscore = "underline",
