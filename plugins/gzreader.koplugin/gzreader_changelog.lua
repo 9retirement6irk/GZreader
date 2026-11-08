@@ -12,6 +12,7 @@ return {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },
             { short = "Holding a book in Downloads opens Manage book, as on Home", text = "Holding a book in the Downloads tab opens Manage book (Open, Delete from this Kindle, then the book's menu), as holding a book on Home does. Other folders keep the book's own menu." },
             { short = "With diagnostic logging off, book openings aren't timed", text = "With diagnostic logging off (Settings → General), GZreader no longer times each book as it opens (the \"book open:\" line in the log, which was then thrown away), so opening a book does no work for the log at all." },
+            { short = "Home shows the status bar (clock, battery, Wi-Fi) even before you've read a book", text = "Home shows the status bar across the top, like the other tabs, when there's no recently read book to show (a new Kindle, or after clearing your reading history): it used to have none, because Home's status bar sits beside the book you're reading. Once you open a book, it moves back beside it." },
         },
     },
     {
