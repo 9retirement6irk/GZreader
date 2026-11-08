@@ -83,6 +83,15 @@ add({ fn = function()
     check(listed and cfg.show_tabs.ct_music ~= true and not shownText():find("Music", 1, true),
         "the Music tab: listed in Settings, off by default")
 end, after = 1 })
+add({ fn = function()
+    -- JSON through KOReader's rapidjson (gzreader_json.lua), with LuaJSON's results
+    local Json = require("gzreader_json")
+    local okd, d = pcall(Json.decode, '{"a":null,"b":[1,null,3],"c":{"d":null,"e":"x"},"id":12,"f":0.42}')
+    check(Json.fast and okd and d.a == nil and d.c.d == nil and d.c.e == "x" and d.b[1] == 1 and d.b[2] == nil
+        and d.b[3] == 3 and d.id == 12 and d.f == 0.42, "JSON: rapidjson in use, null decoded as nil")
+    check(Json.encode({ x = Json.list() }) == '{"x":[]}' and Json.encode({}) == "{}" and Json.encode({ id = 12 }) == '{"id":12}'
+        and not pcall(Json.decode, "not json"), "JSON: [] for marked lists, {} otherwise, whole numbers, bad text raises")
+end, after = 1 })
 add({ shot = "keeps-home" })
 
 -- 2. the quick panel (the Menu key, or a swipe down from the top)

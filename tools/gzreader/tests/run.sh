@@ -53,6 +53,10 @@ grep "FAIL" "$WORK/out.txt"
 tail -1 "$WORK/out.txt"
 [ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/out.txt"; }
 
+echo "== JSON (rapidjson, or LuaJSON)"
+(cd "$T" && luajit json_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== ZenOS setup guide"
 (cd "$T" && luajit qs_test.lua "$REPO/plugins/zenos.koplugin" "$REPO/plugins/gzreader.koplugin") 2>&1 | tail -3
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

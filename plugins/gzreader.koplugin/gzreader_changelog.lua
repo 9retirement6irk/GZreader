@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Less processor time for GZreader's data: the library, lists, sync and the outbox", text = "GZreader now reads and writes its data (Grimmory's lists, the library index, the library copy on Kindles without Wi-Fi, the outbox, background results, saved lists) with KOReader's built-in C library for JSON instead of its Lua one, which was 5 to 10 times slower on a library's worth of books. Nothing changes in what's stored or sent." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

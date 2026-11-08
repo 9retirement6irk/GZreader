@@ -41,7 +41,7 @@ local Mod = setmetatable({}, { __index = function(t, k)
 end })
 local Log = require("gzreader_log")
 local Index = require("gzreader_index")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Bookmarks = require("gzreader_bookmarks")
 
 local PAIR_TIMEOUT_S = 10 * 60

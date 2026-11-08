@@ -30,7 +30,7 @@ level.
 local DataStorage = require("datastorage")
 local Device = require("device")
 local UIManager = require("ui/uimanager")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 

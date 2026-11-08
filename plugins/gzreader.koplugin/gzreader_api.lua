@@ -7,7 +7,7 @@ device; the account password is never written to disk.
 ]]
 
 local Gzip = require("gzreader_gzip")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local http = require("socket.http")
 local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
