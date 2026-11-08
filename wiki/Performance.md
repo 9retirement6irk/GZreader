@@ -57,6 +57,13 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   glyph made KOReader try to load it again (dozens of errors per screen in
   the log). Missing fallbacks are now dropped at start.
 - ZenOS's Home "quotes" row (about 0.5 s per Home rebuild) is off by default.
+- **Saving** (`Grimmory:save`): a save whose download list, audiobooks,
+  music, shelves and sign-in are unchanged writes only the rest of GZreader's
+  state, to `settings/gzreader_recent.lua` (a few KB), instead of the whole
+  of `settings/gzreader.lua` (250 KB with 500 books). The whole file is
+  written when those change, when the Kindle sleeps, on exit and at least
+  hourly; at start the recent part is laid over it. Without rapidjson (to
+  tell "unchanged" quickly) every save is a whole one, as before.
 - ZenOS's icon font is no longer registered with the book renderer (it
   failed every time).
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s

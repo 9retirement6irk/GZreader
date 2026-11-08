@@ -107,6 +107,13 @@ function Grimmory:init()
         pcall(function() require("gzreader_opentiming").install() end)
     end
     self.store = self.settings:readSetting("state", {})
+    if not Grimmory.recent_applied then
+        Grimmory.recent_applied = true
+        local ok_r, applied = pcall(Grimmory.applyRecent, self.store)
+        -- (written to gzreader.lua at the first save, so a stale recent part can't come back)
+        if ok_r and applied then Grimmory.full_due, Grimmory.recent_written = true, true end
+    end
+    Grimmory.last_instance = self -- (every instance shares the store: the exit's last save)
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
     self.store.pending.ratings = self.store.pending.ratings or {}
@@ -240,14 +247,98 @@ function Grimmory:init()
     end
 end
 
+--[[ Saving GZreader's state.
+settings/gzreader.lua holds all of it (`state`). Most saves only change small
+things (a queued position, what was sent), but writing that file dumps the
+whole state, sorted and indented, the download list and audiobooks included:
+about 0.15–0.3 s of a Kindle 3's CPU per save with 500 books, plus a 250 KB
+synced write. So:
+- a save whose big parts (BIG_KEYS) and sign-in (FULL_KEYS) are as last
+  written writes only the rest to settings/gzreader_recent.lua (`state`,
+  `seq`), a few KB;
+- otherwise, and on sleep, on exit and at least every FULL_EVERY seconds, the
+  whole of gzreader.lua is written, and gzreader_recent.lua is removed.
+At start, gzreader_recent.lua is laid over gzreader.lua when its `seq` is newer.
+"As last written" is a fingerprint of those parts in rapidjson (fast); where
+rapidjson isn't there, every save writes gzreader.lua, as before. gzreader.lua
+stays complete, so an older GZreader (after switching test builds off) reads
+it as it always did: at most what changed since the last sleep is older there.
+]]
+Grimmory.BIG_KEYS = { "downloads", "audiobooks", "music_stubs", "shelves_cache", "shelf_cache", "usb_idmap" }
+Grimmory.FULL_KEYS = { "server", "username", "refresh_token", "client_id", "device_id" }
+Grimmory.FULL_EVERY = 3600
+local BIG = {}
+for _i, k in ipairs(Grimmory.BIG_KEYS) do BIG[k] = true end
+
+function Grimmory.recentPath() return DataStorage:getSettingsDir() .. "/gzreader_recent.lua" end
+
+--- A fingerprint of the parts that make a save a full one, or nil (no fast
+--- JSON: every save is full).
+function Grimmory.fingerprint(store)
+    local Json = require("gzreader_json")
+    if not Json.rapidjson then return nil end
+    local part = {}
+    for _i, k in ipairs(Grimmory.BIG_KEYS) do part[k] = store[k] end
+    for _i, k in ipairs(Grimmory.FULL_KEYS) do part[k] = store[k] end
+    local ok, s = pcall(Json.rapidjson.encode, part)
+    return ok and type(s) == "string" and s or nil
+end
+
+--- At start: what gzreader_recent.lua has, if it was written after gzreader.lua.
+function Grimmory.applyRecent(store)
+    local ok, rs = pcall(LuaSettings.open, LuaSettings, Grimmory.recentPath())
+    if not ok or not rs then return false end
+    local seq, small = rs:readSetting("seq"), rs:readSetting("state")
+    if type(seq) ~= "number" or type(small) ~= "table" or seq <= (tonumber(store.save_seq) or 0) then return false end
+    for k in pairs(store) do
+        if not BIG[k] and small[k] == nil then store[k] = nil end
+    end
+    for k, v in pairs(small) do
+        if not BIG[k] then store[k] = v end
+    end
+    store.save_seq = seq
+    Log.info("state: the recent part laid over gzreader.lua (save", seq, ")")
+    return true
+end
+
 function Grimmory:save()
     if Grimmory.save_soon then UIManager:unschedule(Grimmory.save_soon); Grimmory.save_soon = nil end
     local usb = Net.usb and require("gzreader_usbsync") or nil
     if usb then pcall(usb.number, self) end -- (queued positions numbered before they're saved)
-    self.settings:saveSetting("state", self.store)
-    self.settings:flush()
+    local store = self.store
+    store.save_seq = (tonumber(store.save_seq) or 0) + 1
+    local fp = Grimmory.fingerprint(store)
+    local now = os.time()
+    if Grimmory.full_due or not fp or fp ~= Grimmory.full_fp or now - (Grimmory.full_at or 0) >= Grimmory.FULL_EVERY then
+        self.settings:saveSetting("state", store)
+        self.settings:flush()
+        Grimmory.full_fp, Grimmory.full_at, Grimmory.full_due = fp, now, false
+        if Grimmory.recent_written then
+            Grimmory.recent_written = false
+            os.remove(Grimmory.recentPath())
+            os.remove(Grimmory.recentPath() .. ".old")
+        end
+        Grimmory.saves_full = (Grimmory.saves_full or 0) + 1
+    else
+        local small = {}
+        for k, v in pairs(store) do
+            if not BIG[k] then small[k] = v end
+        end
+        Grimmory.recent = Grimmory.recent or LuaSettings:open(Grimmory.recentPath())
+        Grimmory.recent:saveSetting("seq", store.save_seq)
+        Grimmory.recent:saveSetting("state", small)
+        Grimmory.recent:flush()
+        Grimmory.recent_written = true
+        Grimmory.saves_small = (Grimmory.saves_small or 0) + 1
+    end
     -- syncing through a computer: what it should send and bring, next to the books
     if usb then usb.writeOutbox(self) end
+end
+
+--- Sleep and exit: the whole file, so that gzreader.lua alone is up to date.
+function Grimmory:saveFull()
+    Grimmory.full_due = true
+    self:save()
 end
 
 --- Save within a few seconds (once, however many changes come meanwhile):
@@ -287,6 +378,19 @@ end
 
 function Grimmory:syncEnabled()
     return self.store.sync_disabled ~= true and self.api:isPaired()
+end
+
+-- exit: the next save is a whole one, and there is one if only the recent part
+-- was written (wraps the "leaving GZreader" save above, which then saves whole)
+do
+    local orig_quit = UIManager.quit
+    UIManager.quit = function(um, ...)
+        if Grimmory.recent_written or Grimmory.save_soon then
+            Grimmory.full_due = true
+            if not Grimmory.save_soon and Grimmory.last_instance then pcall(Grimmory.last_instance.save, Grimmory.last_instance) end
+        end
+        return orig_quit(um, ...)
+    end
 end
 
 function Grimmory:onDispatcherRegisterActions()
@@ -1507,7 +1611,7 @@ function Grimmory:onGrimmorySyncNow()
 end
 
 function Grimmory:onSuspend()
-    if Grimmory.save_soon then pcall(self.save, self) end
+    if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
     local ok_ab, Audiobook = pcall(require, "gzreader_audiobook")

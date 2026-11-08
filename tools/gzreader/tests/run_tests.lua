@@ -1037,6 +1037,89 @@ local linked = plugin:relinkLibrary(Index.load(plugin.store))
 check(linked == 1 and plugin:localPathFor(7) == libdir .. "/book7.epub" and plugin.store.downloads["7"].file_id == 1007,
     "relinked to its Grimmory book by file name (with file id for sync)")
 
+print("Saving: a small change doesn't rewrite the whole state")
+do
+    local real_fp = Grimmory.fingerprint
+    local dumpf = require("dump")
+    -- (rapidjson isn't here: the same parts, through KOReader's dump)
+    Grimmory.fingerprint = function(store)
+        local part = {}
+        for _i, k in ipairs(Grimmory.BIG_KEYS) do part[k] = store[k] end
+        for _i, k in ipairs(Grimmory.FULL_KEYS) do part[k] = store[k] end
+        return dumpf(part, nil, true)
+    end
+    -- (LuaSettings is a stand-in here: what each file would hold, at each flush)
+    local LS = require("luasettings")
+    local files = { main = plugin.settings, recent = LS:open(Grimmory.recentPath()) }
+    local writes, last, orig = { main = 0, recent = 0 }, {}, {}
+    for name, obj in pairs(files) do
+        orig[name] = obj.flush
+        obj.flush = function(o) writes[name] = writes[name] + 1; last[name] = dumpf(o.data, nil, true); return orig[name](o) end
+    end
+    local function fileState(name) return load("return " .. last[name])().state end
+    local function counts() return writes.main, writes.recent end
+    local pend = plugin.store.pending.progress
+    plugin:saveFull()
+    local m0, r0 = counts()
+    check(m0 == 1 and r0 == 0 and fileState("main").downloads["3"] and not Grimmory.recent_written,
+        "a full save: gzreader.lua, with the downloads; no recent part")
+    pend["999"] = { gz_note = "small change" }
+    plugin:save()
+    local m1, r1 = counts()
+    check(m1 == 1 and r1 == 1 and last.recent:find("small change", 1, true) and not last.recent:find("book3.epub", 1, true),
+        "a queued position: only gzreader_recent.lua, without the download list")
+    local fresh = fileState("main")
+    check(fresh.pending.progress["999"] == nil and fresh.downloads["3"], "gzreader.lua alone is complete, a little older (what an older GZreader reads)")
+    check(Grimmory.applyRecent(fresh) and fresh.pending.progress["999"] and fresh.downloads["3"] and fresh.save_seq == plugin.store.save_seq,
+        "at start: the recent part laid over it, downloads kept")
+    plugin.store.gz_test_key = "x"
+    plugin:saveFull()
+    plugin.store.gz_test_key = nil
+    plugin:save()
+    fresh = fileState("main")
+    check(fresh.gz_test_key == "x" and Grimmory.applyRecent(fresh) and fresh.gz_test_key == nil, "…and what was removed since stays removed")
+    local m2 = counts()
+    plugin.store.downloads["998"] = { path = WORK .. "/none.epub", file_id = 1 }
+    plugin:save()
+    check(counts() == m2 + 1 and fileState("main").downloads["998"] and not Grimmory.recent_written,
+        "a download: the whole file again, the recent part removed")
+    plugin:save()
+    check(Grimmory.recent_written, "(then small again)")
+    local tok = plugin.store.refresh_token
+    plugin.store.refresh_token = "rt-changed"
+    plugin:save()
+    check(not Grimmory.recent_written and fileState("main").refresh_token == "rt-changed", "a new sign-in token: the whole file (an older GZreader stays signed in)")
+    plugin.store.refresh_token = tok
+    -- a recent part written before the last full save is never laid over
+    files.recent.data.seq = 1
+    files.recent.data.state = { server = "https://old.example.com" }
+    fresh = fileState("main")
+    check(not Grimmory.applyRecent(fresh) and fresh.server ~= "https://old.example.com", "an older recent part: ignored")
+    -- a while without a full save: one anyway
+    plugin:save()
+    Grimmory.full_at = os.time() - Grimmory.FULL_EVERY
+    pend["996"] = { gz_note = "an hour later" }
+    plugin:save()
+    check(last.main:find("an hour later", 1, true) and not Grimmory.recent_written, "every " .. Grimmory.FULL_EVERY .. " s: the whole file anyway")
+    local msf = io.open(PLUGIN .. "/main.lua", "rb")
+    local msrc = msf and msf:read("*a") or ""
+    if msf then msf:close() end
+    check(msrc:find("if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end", 1, true)
+        and msrc:find("if Grimmory.recent_written or Grimmory.save_soon then\n            Grimmory.full_due = true", 1, true), "sleep and exit: the whole file")
+    -- no rapidjson: every save is a full one, as before
+    Grimmory.fingerprint = real_fp
+    local m3, r3 = counts()
+    pend["995"] = { gz_note = "no rapidjson" }
+    plugin:save()
+    plugin:save()
+    local m4, r4 = counts()
+    check(m4 == m3 + 2 and r4 == r3, "without rapidjson: gzreader.lua every time, as before")
+    for _i, k in ipairs({ "999", "996", "995" }) do pend[k] = nil end
+    plugin.store.downloads["998"] = nil
+    plugin:saveFull()
+    for name, obj in pairs(files) do obj.flush = orig[name] end
+end
+
 print("Tab action reaches the plugin from ZenOS Home")
 local fmui = { menu = { registerToMainMenu = function() end }, active_widgets = {} }
 local fmplug = Grimmory:new{ ui = fmui }
