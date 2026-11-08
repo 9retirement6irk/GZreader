@@ -1478,6 +1478,26 @@ do
     check(ctx_called, "Manage opens ZenOS's own book menu")
     check(type(prepend) == "table" and #prepend == 2 and prepend[1].text:match("Open$")
         and prepend[2].text:match("Delete from this Kindle$"), "…with Open and Delete added at the top")
+    local rows = { { { text = "Mark as read" } }, { { text = "Edit  >", _gz_manage_hide = true } },
+        { { text = "More  >" } }, { { text = "Book information" } } }
+    check(type(prepend.filter) == "function" and prepend.filter(rows) == rows and #rows == 3
+        and rows[1][1].text == "Mark as read" and rows[2][1].text == "More  >" and rows[3][1].text == "Book information",
+        "…and without ZenOS's Edit submenu (Delete is already there); the other rows stay, in order")
+    do
+        local zen = debug.getinfo(HM.manage, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_homemenu%.lua$",
+            "zenos.koplugin/modules/filebrowser/patches/")
+        local function read(name)
+            local fh = io.open(zen .. name, "rb")
+            local t = fh and fh:read("*a") or ""
+            if fh then fh:close() end
+            return t
+        end
+        local dialog_src, menu_src = read("context_menu_file_dialog.lua"), read("context_menu.lua")
+        local at = dialog_src:find("callback = showEditSubmenu,", 1, true)
+        check(at and dialog_src:sub(at, at + 160):find("_gz_manage_hide = true,", 1, true)
+            and menu_src:find("prepend.filter(options.buttons)", 1, true),
+            "ZenOS marks its Edit row and lets Manage filter the menu")
+    end
     captured.confirm = nil
     prepend[2].callback()
     check(captured.confirm and captured.confirm.text:match("Grimmory keeps the book"), "delete asks first (and says Grimmory keeps it)")

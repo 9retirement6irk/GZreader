@@ -129,6 +129,8 @@ local function apply_context_menu()
         local dialog
         if type(prepend) == "table" and type(options.buttons) == "table" then
             rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+            -- GZreader: Manage leaves out some of the menu's rows (Edit)
+            if type(prepend.filter) == "function" then prepend.filter(options.buttons) end
             for i = #prepend, 1, -1 do
                 local spec = prepend[i]
                 table.insert(options.buttons, 1, {{

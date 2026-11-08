@@ -193,13 +193,27 @@ function HomeMenu.manageBook(plugin, book)
     UIManager:show(d)
 end
 
---- ZenOS's menu for the highlighted book, with Open and Delete at the top.
+--- Takes out of a book menu's rows those ZenOS marks _gz_manage_hide (its
+--- Edit submenu: Manage has Delete from this Kindle already).
+function HomeMenu.manageRows(rows)
+    for i = #rows, 1, -1 do
+        local row = rows[i]
+        if type(row) == "table" and type(row[1]) == "table" and row[1]._gz_manage_hide then
+            table.remove(rows, i)
+        end
+    end
+    return rows
+end
+
+--- ZenOS's menu for the highlighted book, with Open and Delete at the top
+--- and without its Edit submenu.
 function HomeMenu.manage(book, open, delete)
     local ok, icons = pcall(require, "common/inline_icon_map")
     local function label(icon, text) return (ok and icon) and (icon .. "  " .. text) or text end
     rawset(_G, "__GZ_CONTEXT_PREPEND", {
         { text = label(icons and icons.reading, _("Open")), callback = open },
         { text = label(icons and icons.delete, _("Delete from this Kindle")), callback = delete },
+        filter = HomeMenu.manageRows,
     })
     local okc, err = pcall(book.context)
     if not okc then Log.warn("book menu:", err) end
