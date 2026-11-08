@@ -47,9 +47,9 @@ Grimmory user needs permission to see statistics (Grimmory → user settings →
 permissions); without it the widget shows dashes and the diagnostic log says
 why.
 
-**Local reading stats** (the earlier widget: pages and time today, this
-Kindle only) is still there: turn it on in Settings → Home → Widgets, and the
-Grimmory one off, to go back.
+The earlier **Local reading stats** widget (pages and time today, this
+Kindle only) is gone from Home and from Settings → Home → Widgets; a Home that
+still showed it keeps its other widgets.
 
 The book you're reading shows its progress as the book's page edges, read
 pages darker, with a ribbon bookmark where you are.

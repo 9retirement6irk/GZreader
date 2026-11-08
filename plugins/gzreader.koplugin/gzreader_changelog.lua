@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Home: no Local reading stats widget (Grimmory's reading stats stay)", text = "The Local reading stats widget (pages and time today, this Kindle only) is no longer on Home or in Settings → Home → Widgets; Grimmory's reading stats are the ones on Home. If your Home still showed it, it goes and your other widgets stay where they were." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
