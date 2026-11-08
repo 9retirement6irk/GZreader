@@ -4676,6 +4676,75 @@ print("Kindles without REAGL: flash when the screen changes")
         "the note editor: typing doesn't flash the screen at every key (only its opening and closing do)")
 end)()
 
+print("The first tour on a touch Kindle: GZreader's quick panel")
+;(function()
+    local Tour = require("gzreader_tour")
+    local UIManager = require("ui/uimanager")
+    local Device = require("device")
+    local was_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end }
+    -- a stand-in panel: 10 Controls tiles (Settings the 8th), 6 Home tiles
+    local function tile(label) return { label = label, w = 100, h = 100 } end
+    local placed, controls = {}, {}
+    for i = 1, 10 do
+        controls[i] = {}
+        placed[i] = { tile = tile(i == 8 and "Settings" or ("c" .. i)), x = 16 + ((i - 1) % 5) * 110, y = 70 + math.floor((i - 1) / 5) * 110 }
+    end
+    for i = 1, 6 do
+        placed[10 + i] = { tile = tile("h" .. i), x = 16 + ((i - 1) % 5) * 110, y = 320 + math.floor((i - 1) / 5) * 110 }
+    end
+    local panel = { placed = placed, controls = controls, titles = { { y = 40 }, { y = 290 } } }
+    local t = Tour.targets(panel)
+    check(t.controls and t.controls.y == 40 and t.controls.h == 70 + 110 + 100 - 40 and t.controls.w == 600 - 32
+        and t.settings and t.settings.x == 16 + 2 * 110 and t.settings.y == 180
+        and t.section and t.section.y == 290 and t.section.h == 320 + 100 - 290,
+        "points at the panel's own parts: the Controls tiles, Settings, the section's heading and first row")
+    local book, home = Tour.steps(panel, true), Tour.steps(panel, false)
+    check(#book == 3 and book[1].text == Tour.TEXT.panel and book[2].text == Tour.TEXT.settings and book[3].text == Tour.TEXT.book
+        and home[3].text == Tour.TEXT.home, "three steps: the panel (how to open and close it), Settings, This book or Home")
+    -- the tour itself: opens the panel, then on its end closes it and hands over to the page browser tour
+    local Panel = require("gzreader_panel")
+    local shown, closed, reader_tour = {}, {}, 0
+    local orig_show, orig_close, orig_tick = UIManager.show, UIManager.close, UIManager.nextTick
+    UIManager.show = function(_self, w) shown[#shown + 1] = w end
+    UIManager.close = function(_self, w) closed[#closed + 1] = w; if Panel.open == w then Panel.open = nil end end
+    UIManager.nextTick = function(_self, fn) fn() end
+    local real_cm = package.loaded["common/quickstart/menu_coachmark"]
+    package.loaded["common/quickstart/menu_coachmark"] = { new = function(_self, o) return o end }
+    local meta = { quickstart_menu_tour_pending = true, quickstart_reader_tour_pending = true }
+    local saved = 0
+    local plugin = { config = { _meta = meta }, saveConfig = function() saved = saved + 1 end,
+        ui = { document = {}, menu = {
+            onShowMenu = function() Panel.open = panel end,
+            _zen_start_reader_tour = function() reader_tour = reader_tour + 1 end } } }
+    local started = Tour.start(plugin)
+    local mark = shown[#shown]
+    check(started and Panel.open == panel and mark and mark.name == "gzreader tour" and #mark.steps == 3 and Tour.active,
+        "in a book: the quick panel opens and the tour shows on it")
+    check(not Tour.start(plugin), "…once")
+    mark._finished = true
+    mark.on_complete()
+    check(Panel.open == nil and closed[#closed] == panel and meta.quickstart_menu_tour_pending == false and saved == 1
+        and reader_tour == 1 and not Tour.active,
+        "at its end: the panel closes, then the page browser tour (never under the panel)")
+    meta.quickstart_menu_tour_pending, reader_tour = true, 0
+    plugin.ui.document = nil
+    Tour.start(plugin)
+    shown[#shown].on_cancel()
+    check(Panel.open == nil and meta.quickstart_menu_tour_pending == true and reader_tour == 0,
+        "cancelled (the screen turned): the panel closes, the tour waits for the next start")
+    UIManager.show, UIManager.close, UIManager.nextTick = orig_show, orig_close, orig_tick
+    package.loaded["common/quickstart/menu_coachmark"] = real_cm
+    Device.screen = was_screen
+    Panel.open = nil
+    local src = io.open(debug.getinfo(Tour.start, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_tour%.lua$",
+        "zenos.koplugin/common/quickstart/reader_tour.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(text:find("meta.quickstart_menu_tour_pending == true or GzTour.active then return false end", 1, true)
+        and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
+end)()
+
 print("Flash on every page turn (Settings → Reader → Appearance)")
 ;(function()
     local Eink = require("gzreader_eink")
