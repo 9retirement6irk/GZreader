@@ -1056,10 +1056,15 @@ print("Diagnostic log: the device probe's unchanging part is kept between export
         and text2:find("kept from", 1, true) and not text1:find("kept from", 1, true), "the kept answers are in the log, marked as kept")
     local Update = require("gzreader_update")
     local was_version = Update.currentVersion
-    Update.currentVersion = function() return "9.9.9" end
-    local how3 = select(2, Log.deviceProbe())
+    Update.currentVersion = function() return "9.9.9-beta.abc1234" end
+    local how_v = select(2, Log.deviceProbe())
     Update.currentVersion = was_version
-    check(how3 == "run now" and ran() == 2, "another GZreader version: the probe runs again")
+    check(how_v:match("^kept from") and ran() == 1, "another GZreader version (a new test build): still kept")
+    local was_fw = Log.firmwareText
+    Log.firmwareText = function() return "Kindle 3.4.3 (2697260037)" end
+    local how3 = select(2, Log.deviceProbe())
+    Log.firmwareText = was_fw
+    check(how3 == "run now" and ran() == 2, "another firmware: the probe runs again")
     Log.PROBE_COMMANDS = { fixed, live, "echo another" }
     local how4 = select(2, Log.deviceProbe())
     check(how4 == "run now" and ran() == 3, "the probe's commands changed: it runs again")
