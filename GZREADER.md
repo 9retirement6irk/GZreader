@@ -212,6 +212,17 @@ anything fails, the previous files are put back. Then GZreader restarts.
 | Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — | — |
 | Volume buttons | yes | — | — | — | — | — |
 | Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
+| Flash on every page turn | on | on | off | off | off | off |
+
+**Ghosting** (a grey trace of the last pages): the Kindle 2, 3, DX and 4 have
+no REAGL, so a page turn without a flash leaves a trace that adds up.
+Settings → Reader → Appearance → **Flash on every page turn** flashes the
+screen clean at every turn, as the Kindle's own reader does; it's on by
+default on those Kindles and can be turned on on any device. Off: a flash
+every 6 pages (quicker turns). Ticking or unticking it replaces a full
+refresh rate chosen in a book's menu (Screen → E-ink settings), and that
+menu can set one again. Menus, tabs and opening a book flashing clean is a
+separate setting: Settings → Advanced → Flash when the screen changes.
 
 Other Kindles (Paperwhite 1, 2, 4, 5, 6, Voyage, Oasis, Kindle 2014–2024,
 Scribe, Colorsoft) run the `kindle`, `kindlepw2` or `kindlehf` package

@@ -1866,6 +1866,18 @@ function M.build(ctx)
         end,
     }, icons.reader_flash_cbz))
 
+    -- GZreader: every page turn flashes the screen clean (on by default on
+    -- the Kindles without REAGL: Kindle 2, DX, 3, 4; gzreader_eink)
+    local ok_eink, Eink = pcall(require, "gzreader_eink")
+    if ok_eink and Eink.flashPageTurns then
+        table.insert(appearance_items, IconItem.decorate({
+            text = _("Flash on every page turn"),
+            help_text = _("Every page turn flashes the screen clean, as the Kindle's own reader does: no grey trace of the last pages. Off: a flash every 6 pages, quicker turns. On by default on the Kindle 2, DX, 3 and 4. Replaces a full refresh rate chosen in a book's menu (Screen → E-ink settings)."),
+            checked_func = function() return Eink.pageTurnsTicked() end,
+            callback = function() Eink.setFlashPageTurns(not Eink.pageTurnsTicked()) end,
+        }, icons.reader_flash_cbz))
+    end
+
     table.insert(appearance_items, 3, IconItem.decorate({
         text = _("Align status bars with book margins"),
         checked_func = function()
