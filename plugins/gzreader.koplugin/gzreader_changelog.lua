@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Headphone check while playing: no program started every second", text = "While music, an audiobook or read aloud plays, the check for unplugged headphones reads the Kindle's audio service in GZreader itself (KOReader's lipc library) instead of starting lipc-get-prop every second; where that library can't be used, it starts it every 4 seconds instead of every second. Less CPU and battery while listening." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

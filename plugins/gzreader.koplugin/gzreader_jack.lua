@@ -12,6 +12,12 @@ GZreader looks in the places Linux uses for it:
   it asks you to plug in and unplug headphones and keeps the one place that
   changed (a sysfs file, an input switch or an lipc property of
   com.lab126.audio). Until something is found, nothing is paused.
+
+While something plays it looks once a second. An lipc property is read in
+the process through KOReader's lipc library (libopenlipclua, as device.lua
+does for Wi-Fi); only when that doesn't load is it read with lipc-get-prop,
+a shell started for each look (a fork of all of GZreader), and then only
+every SHELL_INTERVAL seconds.
 ]]
 
 local ffi = require("ffi")
@@ -25,11 +31,13 @@ pcall(ffi.cdef, "int ioctl(int fd, unsigned long request, ...);")
 
 local Jack = {
     INTERVAL = 1,
+    SHELL_INTERVAL = 4,
     SW_HEADPHONE_INSERT = 2,
     SETTING = "gzreader_jack",
     watchers = {},
     -- injectable (tests)
     read = nil,
+    lipc_open = nil, -- () -> an lipc handle or nil
     devices_file = "/proc/bus/input/devices",
 }
 
@@ -107,13 +115,61 @@ function Jack.detector()
     return nil
 end
 
+--- KOReader's lipc library, opened once: a handle, or false when it can't.
+function Jack.lipcHandle()
+    if Jack.handle ~= nil then return Jack.handle end
+    local h
+    if Jack.lipc_open then
+        h = Jack.lipc_open()
+    elseif not Jack.read then
+        local ok, lipc = pcall(require, "libopenlipclua")
+        if ok and type(lipc) == "table" and lipc.open_no_name then
+            local okh, handle = pcall(lipc.open_no_name)
+            if okh then h = handle end
+        end
+        if not h then
+            local ok2, lipc2 = pcall(require, "liblipclua")
+            if ok2 and type(lipc2) == "table" and lipc2.init then
+                local okh, handle = pcall(lipc2.init, "com.github.gzreader.jack")
+                if okh then h = handle end
+            end
+        end
+    end
+    Jack.handle = h or false
+    return Jack.handle
+end
+
+function Jack.closeHandle()
+    local h = Jack.handle
+    Jack.handle = nil
+    if h and h.close then pcall(h.close, h) end
+end
+
+--- Can an lipc property be read without a shell?
+function Jack.inProcess() return Jack.lipcHandle() and true or false end
+
 local function lipcGet(prop)
+    local h = Jack.lipcHandle()
+    if h then
+        local ok, v = pcall(h.get_string_property, h, "com.lab126.audio", prop)
+        if ok and v ~= nil then return trim(v) end
+        ok, v = pcall(h.get_int_property, h, "com.lab126.audio", prop)
+        if ok and v ~= nil then return tostring(v) end
+        return nil
+    end
     if Jack.read then return Jack.read("lipc:" .. prop) end
+    Jack.shells = (Jack.shells or 0) + 1
     local p = io.popen("lipc-get-prop com.lab126.audio " .. prop .. " 2>/dev/null")
     if not p then return nil end
     local s = p:read("*a")
     p:close()
     return trim(s)
+end
+
+--- Seconds between looks while something plays.
+function Jack.interval(det)
+    if det and det.kind == "lipc" and not Jack.inProcess() then return Jack.SHELL_INTERVAL end
+    return Jack.INTERVAL
 end
 
 --- true: headphones in; false: out; nil: can't tell on this Kindle.
@@ -143,6 +199,7 @@ function Jack.watch(key, on_unplug)
     if not det then return end
     Jack.watchers[key] = on_unplug
     if Jack.ticker then return end
+    local every = Jack.interval(det)
     Jack.last = Jack.plugged(det)
     Jack.ticker = function()
         Jack.ticker = nil
@@ -157,11 +214,13 @@ function Jack.watch(key, on_unplug)
         Jack.last = now
         if next(Jack.watchers) then
             Jack.ticker = Jack.tick_fn
-            UIManager:scheduleIn(Jack.INTERVAL, Jack.ticker)
+            UIManager:scheduleIn(every, Jack.ticker)
+        else
+            Jack.closeHandle()
         end
     end
     Jack.tick_fn = Jack.ticker
-    UIManager:scheduleIn(Jack.INTERVAL, Jack.ticker)
+    UIManager:scheduleIn(every, Jack.ticker)
 end
 
 function Jack.unwatch(key)
@@ -169,6 +228,7 @@ function Jack.unwatch(key)
     if not next(Jack.watchers) and Jack.ticker then
         UIManager:unschedule(Jack.ticker)
         Jack.ticker = nil
+        Jack.closeHandle()
     end
 end
 

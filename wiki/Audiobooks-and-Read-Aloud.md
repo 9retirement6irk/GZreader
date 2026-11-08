@@ -104,3 +104,9 @@ reports one; if this Kindle doesn't have that, **Settings → Reader → Find th
 headphone jack** asks you to plug in and unplug headphones and keeps the
 place that changed. If nothing changes, the Kindle doesn't tell, and nothing
 is paused (send the log: it lists what was looked at).
+
+While something plays, GZreader looks once a second. When the place it found
+is a property of the Kindle's audio service, it's read through KOReader's own
+lipc library, without starting a program; if that library can't be used on
+this Kindle, it asks with `lipc-get-prop` every 4 seconds instead (each ask
+starts a program, which costs the Kindle 3 a moment of CPU).
