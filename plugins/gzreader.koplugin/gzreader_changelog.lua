@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Kindle 2 and DX: less memory held by GZreader between clean-ups", text = "On Kindles with 128 MB of memory or less (Kindle 2, DX), Lua's garbage collector runs a cycle once memory has grown by 20% since the last one, instead of waiting until it has doubled, so GZreader's peak memory stays lower and more is left for the book." },
             { short = "Kindle 2 and DX: big books open with less waiting for memory", text = "Kindle 2 and DX (128 MB of memory or less): the book engine's in-memory caches are kept to 5 times their base size instead of 40, as KOReader advises for older devices. With 2–3 MB free while a big book opened on a DX, the book file and its saved layout were being read again from storage; they now have room to stay in memory. Kindles with more memory are unchanged, and a size you set yourself (cre_storage_size_factor in settings.reader.lua) still wins." },
         },
     },

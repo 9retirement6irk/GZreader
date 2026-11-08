@@ -1708,6 +1708,12 @@ end
 
 print("Kindles with 128 MB: crengine's caches kept small")
 ;(function()
+    -- the garbage collector starts sooner on those Kindles (a lower peak)
+    local pause_before = collectgarbage("setpause", 200)
+    collectgarbage("setpause", pause_before)
+    check(Grimmory.tuneGC(124532) == 120 and collectgarbage("setpause", pause_before) == 120, "a DX (128 MB): GC pause 120")
+    check(Grimmory.tuneGC(252364) == nil and collectgarbage("setpause", pause_before) == pause_before, "a Kindle 3: Lua's default, untouched")
+    collectgarbage("setpause", pause_before)
     local ko_root = arg[5]
     local LowMem = dofile(ko_root .. "/frontend/gzlowmem.lua")
     local mi = WORK .. "/meminfo"

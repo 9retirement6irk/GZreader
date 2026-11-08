@@ -48,6 +48,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
 
+- On Kindles with 128 MB or less (Kindle 2, DX), Lua's garbage collector
+  starts a cycle once memory has grown by 20% since the last one, instead of
+  Lua's default 100% (`collectgarbage("setpause", 120)`, set when GZreader
+  starts): a lower peak, for a little more CPU.
+
 - Night mode on the Kindle 2, DX and Keyboard is done while packing the
   shadow screen (above). On the Kindle 4 (no shadow screen) it stays off and
   can't be switched on: it has no hardware screen inversion, and KOReader's
