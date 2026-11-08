@@ -4236,6 +4236,34 @@ print("Calendar tab")
     Cal.layout = "month"
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
     check(#Cal.settingsItems(plugin) == 7, "Settings → Connections → Calendar: links, CalDAV account, calendars, layout, week start, range, storage")
+    do -- the bar next to an event is as tall as it's drawn, so a row centres it on the title
+        -- (real geometry and HorizontalGroup here: the rest of this file has stand-ins)
+        local REAL = { "ui/geometry", "ui/widget/eventlistener", "ui/widget/widget",
+            "ui/widget/container/widgetcontainer", "ui/widget/horizontalgroup" }
+        local saved = { gzreader_calendar = package.loaded["gzreader_calendar"], ["ui/bidi"] = package.loaded["ui/bidi"],
+            optmath = package.loaded["optmath"] }
+        for _i, n in ipairs(REAL) do saved[n] = package.loaded[n] end
+        local Dev = require("device")
+        local was_screen = Dev.screen
+        local scr = magic()
+        scr.scaleBySize = function(_, v) return v end
+        local ok_m, res = pcall(function()
+            Dev.screen = scr
+            package.loaded["ui/bidi"] = { mirroredUILayout = function() return false end }
+            package.loaded["optmath"] = { round = function(x) return math.floor(x + 0.5) end }
+            for _i, n in ipairs(REAL) do package.loaded[n] = dofile(KOROOT .. "/frontend/" .. n .. ".lua") end
+            package.loaded["gzreader_calendar"] = nil
+            local Cal2 = require("gzreader_calendar")
+            local mk = Cal2.marker({ title = "Rent" }, 40)
+            local row = package.loaded["ui/widget/horizontalgroup"]:new{ align = "center", mk, Cal2.marker({ title = "x" }, 54) }
+            local size = row:getSize()
+            return { h = mk:getSize().h, w = mk:getSize().w, top = math.floor((size.h - row._offsets[1].y) / 2) }
+        end)
+        Dev.screen = was_screen
+        for n, v in pairs(saved) do package.loaded[n] = v end
+        check(ok_m and res.h == 40 and res.w == 3 and res.top == 7,
+            "the event's calendar bar is centred on its row: " .. (ok_m and (res.w .. "x" .. res.h .. " from y " .. res.top) or tostring(res)))
+    end
 
     -- calendar links (webcal / ICS): a Proton-style feed with two time zones
     local FPORT = PORT + 5

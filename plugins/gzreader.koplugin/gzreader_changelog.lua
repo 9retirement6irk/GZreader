@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Calendar: the bar beside each event lines up with it", text = "The short bar in an event's row (its calendar's shade) started halfway down the title and hung below it. It's now centred on the event, as it was meant to be." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },
