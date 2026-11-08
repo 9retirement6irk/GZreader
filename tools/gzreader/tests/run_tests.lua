@@ -5264,7 +5264,7 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         local loaded = {}
         for _i, m in ipairs(heavy) do if package.loaded[m] then loaded[#loaded + 1] = m end end
         check(#loaded == 0, "outbox: none of " .. table.concat(heavy, ", ") .. " left loaded (" .. table.concat(loaded, ", ") .. ")")
-        local Cal, SS, Plex, Copy, Update = require("gzreader_calendar"), require("gzreader_shelfsync"), require("gzreader_plex"),
+        local Cal, SS, Plex, Copy, Upd = require("gzreader_calendar"), require("gzreader_shelfsync"), require("gzreader_plex"),
             require("gzreader_copy"), require("gzreader_update")
         local cp = Cal.prefs(fake)
         local sh = SS.shelf(fake)
@@ -5273,7 +5273,7 @@ print("Sync through a computer (Kindles without Wi-Fi)")
             and o1.auto_shelf.id == sh.id and o1.auto_shelf.magic == true and o1.auto_shelf.name == sh.name
             and o1.music_quality.bitrate == q.bitrate and o1.music_quality.shrink == q.shrink,
             "…and what it writes is what those modules say (calendar range, automatic shelf, music quality)")
-        check(o1.gzreader == Update.currentVersion() and o1.kindle.name == Copy.deviceName(fake) and o1.kindle.id == Copy.deviceId(fake),
+        check(o1.gzreader == Upd.currentVersion() and o1.kindle.name == Copy.deviceName(fake) and o1.kindle.id == Copy.deviceId(fake),
             "…the version and this Kindle's name too (worked out once)")
         fake.store.calendar_prefs, fake.store.auto_shelf, fake.store.plex = {}, nil, nil
         local o2 = Usb.outbox(fake)
