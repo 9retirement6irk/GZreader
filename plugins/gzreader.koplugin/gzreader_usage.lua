@@ -507,7 +507,7 @@ function U.start()
             return orig_quit(...)
         end
     end
-    UIManager:scheduleIn(require("gzreader_ticks").untilNext(U.TICK), tick) -- (with the other timers: gzreader_ticks.lua)
+    UIManager:scheduleIn(U.TICK, tick)
     -- the slow-operation timer (cheap; without the profiler) feeds Basic
     if on() then
         local okt, Trace = pcall(require, "gzreader_slowtrace")
