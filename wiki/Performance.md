@@ -20,6 +20,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   faster to load after that). Release packages are precompiled already, and
   then it does nothing. Off: a file named `gz-no-bytecode` in the `koreader`
   folder.
+- **Kindles with 128 MB or less** (Kindle 2, DX; `frontend/gzlowmem.lua`):
+  crengine's in-memory caches may grow to 5 times their base size instead of
+  KOReader's 40 (`cre_storage_size_factor`, as KOReader advises for older
+  devices), leaving memory for the book file and its layout cache. A
+  `cre_storage_size_factor` you set in `settings.reader.lua` still wins.
 - **Opening books**: each open logs a timing line (`gzreader_opentiming.lua`:
   closing the file manager, opening and laying out the document, each
   module's ReaderReady, screen refreshes, free memory). The crengine layout

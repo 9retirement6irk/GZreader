@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2 and DX: big books open with less waiting for memory", text = "Kindle 2 and DX (128 MB of memory or less): the book engine's in-memory caches are kept to 5 times their base size instead of 40, as KOReader advises for older devices. With 2–3 MB free while a big book opened on a DX, the book file and its saved layout were being read again from storage; they now have room to stay in memory. Kindles with more memory are unchanged, and a size you set yourself (cre_storage_size_factor in settings.reader.lua) still wins." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
