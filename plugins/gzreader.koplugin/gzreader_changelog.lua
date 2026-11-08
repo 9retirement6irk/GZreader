@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Swiping down for the quick panel in a book no longer changes the light", text = "Touch Kindles with a frontlight: opening the quick panel in a book by swiping down from the top changed the light to wherever the finger crossed the light slider. The slider now only moves when you tap it or put your finger down on it and drag." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
