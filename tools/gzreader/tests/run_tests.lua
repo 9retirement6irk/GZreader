@@ -198,6 +198,9 @@ rawset(_G, "GZ_NO_PB_PREPARE", true)
 local PairServer = require("gzreader_pairserver")
 PairServer.port = PORT + 10
 require("gzreader_phone").PORT80 = false -- (the PIN part turns it on, on another port)
+-- most sections read gzreader.log right after logging: lines written at once
+-- (the log's own section turns buffering on)
+require("gzreader_log").buffered = false
 
 local plugin = Grimmory:new{ ui = { menu = { registerToMainMenu = function() end } } }
 
@@ -3420,6 +3423,8 @@ print("Remote debugging (with Full usage statistics)")
     check(not R.on and started == 0 and plugin.store.remote_url == nil and plugin.store.remote_profile == nil,
         "Basic: nothing sent, no watchdog; the old hand-set feed is gone")
     -- Full: on; the previous run didn't close normally
+    R.LIVE_DIR = WORK .. "/live"
+    lfs.mkdir(R.LIVE_DIR)
     local dir = R.dir()
     os.execute("rm -f '" .. dir .. "'/spool/*")
     local fh = io.open(dir .. "/heartbeat", "wb"); fh:write((os.time() - 600) .. " run reading big.epub p.40"); fh:close()
@@ -3441,6 +3446,29 @@ print("Remote debugging (with Full usage statistics)")
     check(bodies[1].tags[1] == "gzreader" and bodies[1].source == "gzreader", "tagged")
     local hb = io.open(dir .. "/heartbeat"):read("*a")
     check(hb:match("^%d+ run "), "heartbeat written")
+    -- the 15 s beat: to the RAM disk; the kept one only when the status changes or every KEEP s
+    local function rd(p) local f = io.open(p, "rb"); local t = f and f:read("*a"); if f then f:close() end; return t end
+    check(R.livePath():match("/live/gzreader%-heartbeat%.%d+$") and (rd(R.livePath()) or ""):match("^%d+ run "),
+        "the beat goes to the live file (/tmp on a Kindle: no flash write)")
+    local kept = io.open(dir .. "/heartbeat", "wb"); kept:write("100 run the kept one"); kept:close()
+    R.beat("run")
+    check(rd(dir .. "/heartbeat") == "100 run the kept one" and (rd(R.livePath()) or ""):match("^%d+ run "),
+        "a beat while still running: only the live file is written")
+    R.kept_at = os.time() - R.KEEP
+    R.beat("run")
+    check((rd(dir .. "/heartbeat") or ""):match("^%d+ run ") and rd(dir .. "/heartbeat") ~= "100 run the kept one",
+        "…and every " .. R.KEEP .. " s the kept one too (when it was last seen, after a hard reboot)")
+    -- a live beat left by a previous process (no reboot since): newer than the kept one, so it counts
+    local other = R.LIVE_DIR .. "/gzreader-heartbeat.999999"
+    kept = io.open(other, "wb"); kept:write((os.time() + 5) .. " run reading late.epub p.9"); kept:close()
+    local prevb = R.previousBeat(dir)
+    check(prevb and prevb:match("late%.epub p%.9") and not io.open(other, "rb"), "the previous run's live beat is used and removed")
+    kept = io.open(other, "wb"); kept:write("50 run older"); kept:close()
+    check(not R.previousBeat(dir):match("older"), "…unless the kept one is newer")
+    -- the watchdog reads the newer of the two
+    local wsrc = rd(PLUGIN .. "/gzreader_watchdog.lua") or ""
+    check(wsrc:find('live_dir .. "/gzreader-heartbeat." .. ppid', 1, true) and (rd(PLUGIN .. "/gzreader_remote.lua") or ""):find("q(R.LIVE_DIR)", 1, true),
+        "the watchdog is told where the live beat is, and reads it")
     -- warnings are gathered
     require("gzreader_log").warn("something odd")
     check(R.pending and #R.pending == 1 and R.pending[1]:match("something odd"), "warnings gathered for one report")
@@ -3452,6 +3480,7 @@ print("Remote debugging (with Full usage statistics)")
     for name in require("libs/libkoreader-lfs").dir(dir .. "/spool") do if name:match("%.json$") then left = left + 1 end end
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ off") and left == 0 and not R.on and require("gzreader_log").on_line == nil,
         "back to Basic: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
+    check(not io.open(R.livePath(), "rb"), "…and the live beat is gone")
     -- Diagnostics → Send to the developer
     local logf = WORK .. "/devlog.txt"
     local big = {}
@@ -3516,6 +3545,62 @@ print("Remote debugging (with Full usage statistics)")
     UIManager.nextTick, UIManager.show, UIManager.close = orig_tick, orig_show, orig_close
     check(dlg.title == "Send to the developer" and dlg.allow_newline and sent_with == "the calendar was empty",
         "Send to the developer asks what happened first, and sends what was typed")
+end)()
+
+print("The log: lines written together, not one write per line")
+;(function()
+    local Log = require("gzreader_log")
+    local path = WORK .. "/buffered.log"
+    local keep_path, keep_main = Log.path, Log.main_pid
+    local function rd() local f = io.open(path, "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
+    os.remove(path)
+    Log.init(WORK)
+    Log.path = path
+    local UI = require("ui/uimanager")
+    local real_in = UI.scheduleIn
+    local timers = {}
+    UI.scheduleIn = function(_ui, s, fn) timers[#timers + 1] = { s = s, fn = fn } end
+    Log.buffered = true
+    Log.info("first line")
+    Log.info("second line")
+    check(rd() == "" and #timers == 1 and timers[1].s == Log.FLUSH_AFTER, "INFO lines wait in memory; one write planned")
+    timers[1].fn()
+    local t = rd()
+    check(t:match("first line\n.*second line\n$"), "…written together, in order, a few seconds later")
+    Log.info("before a warning")
+    Log.warn("a warning")
+    check(rd():match("before a warning\n.*a warning\n$"), "a warning: written at once, with what came before it")
+    Log.info("waiting at sleep")
+    Log.flush()
+    check(rd():match("waiting at sleep\n$"), "Log.flush (sleep, exit, export) writes what's waiting")
+    local was_max = Log.MAX_BUFFER
+    Log.MAX_BUFFER = 200
+    for k = 1, 6 do Log.info(string.rep("x", 40), k) end
+    check(rd():match("x+ %d\n$"), "a lot waiting: written without waiting for the timer")
+    Log.MAX_BUFFER = was_max
+    -- a background process (another pid) writes at once and drops the parent's lines
+    Log.info("the parent's line")
+    Log.main_pid = -1
+    Log.info("the child's line")
+    t = rd()
+    check(t:match("the child's line\n$") and not t:find("the parent's line", 1, true), "a background process: its own lines at once, not the parent's")
+    Log.main_pid = keep_main
+    -- export includes what's waiting
+    Log.info("just before export")
+    local dest = Log.exportTo(WORK)
+    local ef = dest and io.open(dest, "rb")
+    local et = ef and ef:read("*a") or ""
+    if ef then ef:close(); os.remove(dest) end
+    check(et:find("just before export", 1, true), "Save/Send the log: includes the lines still waiting")
+    local msrc = io.open(PLUGIN .. "/main.lua", "rb")
+    local mtext = msrc and msrc:read("*a") or ""
+    if msrc then msrc:close() end
+    check(mtext:find("Log.flush()\n        Log.buffered = false\n        return orig_quit", 1, true)
+        and select(2, mtext:gsub("Log%.flush%(%)", "")) >= 3, "flushed on exit (then every line at once), sleep and settings flush")
+    UI.scheduleIn = real_in
+    Log.buffered = false
+    Log.path, Log.main_pid = keep_path, keep_main
+    os.remove(path)
 end)()
 
 print("Slow-operation tracing")

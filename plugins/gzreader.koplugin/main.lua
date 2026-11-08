@@ -267,6 +267,7 @@ end
 
 function Grimmory:onFlushSettings()
     if Grimmory.save_soon then self:save() end
+    Log.flush()
 end
 
 -- leaving GZreader (exit, restart, update): a save still waiting is written first
@@ -281,6 +282,9 @@ do
             pcall(usb.handOverUsage, usb.plugin)
             pcall(usb.plugin.save, usb.plugin)
         elseif pending then pcall(pending) end
+        -- the log: what's waiting now, and every line after this at once
+        Log.flush()
+        Log.buffered = false
         return orig_quit(um, ...)
     end
 end
@@ -1522,6 +1526,7 @@ function Grimmory:onSuspend()
     pcall(function() require("gzreader_remote").onSuspend() end)
     Net.onSuspend()
     pcall(function() require("gzreader_usage").onSuspend() end)
+    Log.flush()
 end
 
 Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after a long sleep

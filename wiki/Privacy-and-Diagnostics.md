@@ -24,7 +24,10 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
-tokens are never written. Diagnostic logging is on by default (Settings →
+tokens are never written. Ordinary lines are written a few at a time (at most
+5 seconds late; warnings and errors at once, and everything waiting when the
+Kindle goes to sleep, on exit and when you save or send the log), so a burst
+of sync logging is one write to the Kindle's storage, not one per line. Diagnostic logging is on by default (Settings →
 General → Diagnostic logging); while it's on, the quick panel has
 **Diagnostics**, which bundles the log, the tail of `crash.log`, what keeps
 the Kindle awake and a read-only audio/speech survey into one
@@ -54,7 +57,10 @@ General → Remote debugging, with your own feed; that setting is gone.)
 `gzreader_remote.lua` queues messages as JSON files in
 `koreader/gzreader-remote/spool`; `gzreader_watchdog.lua`, a separate
 low-priority LuaJIT process, sends them when Wi‑Fi is on (GZreader never turns
-Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s:
+Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s (to
+`/tmp`, which is in memory, so it doesn't wear the Kindle's storage; the copy
+in `gzreader-remote/heartbeat` is updated when GZreader starts, sleeps, wakes
+or exits, and every 10 minutes):
 
 | Report | When |
 | --- | --- |

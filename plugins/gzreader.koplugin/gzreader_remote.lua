@@ -36,6 +36,11 @@ local Log = require("gzreader_log")
 
 local R = {
     HEARTBEAT = 15, BATCH = 60, seq = 0,
+    -- The 15 s beat goes to LIVE_DIR (a RAM disk on Kindles: no flash write);
+    -- <dir>/heartbeat, on the Kindle's own storage, only when the status
+    -- changes (run, sleep, exit, off) and every KEEP seconds, so that after a
+    -- hard reboot the next start can still say roughly when it was last seen.
+    LIVE_DIR = "/tmp", KEEP = 600,
     FEED = "https://in.wxcyber.com/open/feed/cmvtvoj3j1dpb5zr7b1dj3zen", -- releases
     TEST_FEED = "https://in.wxcyber.com/open/feed/cmw79imiu09sx8o2f27uihqar", -- test builds
     -- Diagnostics → Send to the developer (releases and test builds alike)
@@ -179,12 +184,48 @@ function R.activity()
     return (what:gsub("[\n\r]", " "))
 end
 
+local function myPid()
+    if not R.pid then R.pid = tonumber((readFile("/proc/self/stat") or ""):match("^(%d+)")) end
+    return R.pid
+end
+
+--- The 15 s beat's file, for GZreader's process pid (also the watchdog's).
+function R.livePath(pid) return string.format("%s/gzreader-heartbeat.%s", R.LIVE_DIR, tostring(pid or myPid())) end
+
 function R.beat(status)
     if not R.on then return end
+    status = status or "run"
     local cpu = R.trace and R.trace.cpu
     local ui = R.trace and R.trace.uiState and ("; " .. R.trace.uiState() .. "; on screen: " .. R.trace.windows()) or ""
-    writeFile(R.dir() .. "/heartbeat", string.format("%d %s %s%s%s", os.time(), status or "run", R.activity(),
-        cpu and string.format(" (CPU %d%%)", cpu) or "", (ui:gsub("[\n\r]", " "))))
+    local now = os.time()
+    local line = string.format("%d %s %s%s%s", now, status, R.activity(),
+        cpu and string.format(" (CPU %d%%)", cpu) or "", (ui:gsub("[\n\r]", " ")))
+    local live_ok = myPid() and writeFile(R.livePath(), line)
+    if not live_ok or status ~= R.kept_status or now - (R.kept_at or 0) >= R.KEEP then
+        writeFile(R.dir() .. "/heartbeat", line)
+        R.kept_status, R.kept_at = status, now
+    end
+end
+
+--- The newest beat a previous run left (the kept one or a live one, if this
+--- Kindle didn't restart since); the live files are removed.
+function R.previousBeat(dir)
+    local best = readFile(dir .. "/heartbeat")
+    local best_t = tonumber((best or ""):match("^(%d+)")) or -1
+    local me = tostring(myPid())
+    pcall(function()
+        for name in lfs.dir(R.LIVE_DIR) do
+            local pid = name:match("^gzreader%-heartbeat%.(%d+)$")
+            if pid and pid ~= me then
+                local p = R.LIVE_DIR .. "/" .. name
+                local s = readFile(p)
+                local t = tonumber((s or ""):match("^(%d+)"))
+                if t and t > best_t then best, best_t = s, t end
+                os.remove(p)
+            end
+        end
+    end)
+    return best
 end
 
 ---------------------------------------------------------------- watchdog
@@ -203,8 +244,8 @@ function R.startWatchdog(plugin_path)
     local Audiobook = require("gzreader_audiobook")
     local script = (plugin_path or "plugins/gzreader.koplugin") .. "/gzreader_watchdog.lua"
     local q = function(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
-    os.execute(string.format("(nice -n 5 %s %s %s %s >/dev/null 2>&1 &) >/dev/null 2>&1",
-        Audiobook.luajit(), q(script), q(R.dir()), pid))
+    os.execute(string.format("(nice -n 5 %s %s %s %s %s >/dev/null 2>&1 &) >/dev/null 2>&1",
+        Audiobook.luajit(), q(script), q(R.dir()), pid, q(R.LIVE_DIR)))
     Log.info("remote debugging: watchdog started")
 end
 
@@ -235,7 +276,7 @@ function R.start(plugin)
     R.device = R.deviceName()
     local dir = R.dir()
     -- how did the previous run end?
-    local prev = readFile(dir .. "/heartbeat")
+    local prev = R.previousBeat(dir)
     local t, status, what = (prev or ""):match("^(%d+) (%a+) ?(.*)$")
     local version = R.version()
     writeFile(dir .. "/config", R.feedUrl(version) .. "\n" .. R.device .. "\n")
@@ -313,6 +354,8 @@ function R.stop()
     R.on = false
     Log.on_line = nil
     writeFile(R.dir() .. "/heartbeat", string.format("%d off", os.time()))
+    R.kept_status = "off"
+    os.remove(R.livePath())
     local spool = R.dir() .. "/spool"
     pcall(function()
         for name in lfs.dir(spool) do
