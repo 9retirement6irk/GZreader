@@ -73,8 +73,8 @@ run the same GZreader with ZenOS's touch interface:
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light
   slider on Kindles with a frontlight. A tap below it closes it.
-- **Hold a book** at Home or in Downloads for its options (Open, Delete,
-  More options).
+- **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
+  this Kindle, then the book's menu).
 - **Notes:** New note, Filter and More are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;

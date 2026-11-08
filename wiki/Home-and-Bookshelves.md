@@ -6,7 +6,8 @@ Books stand on bookshelves by default, on Home and in Downloads: spines out
 (title, author, number in a series, a letter key at the foot), rounded and
 shaded, casting shadows, on shelves with depth. The book the 5-way is on, or
 that you tap, turns to show its cover; tap it again, Press or its letter opens
-it, and holding it opens its menu. The book you're reading (top of Home) is
+it, and holding it opens Manage book (Open, Delete from this Kindle, then
+the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
 
 - **Downloads** has as many shelves as the screen holds, a page at a time

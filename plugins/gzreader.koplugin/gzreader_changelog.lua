@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },
+            { short = "Holding a book in Downloads opens Manage book, as on Home", text = "Holding a book in the Downloads tab opens Manage book (Open, Delete from this Kindle, then the book's menu), as holding a book on Home does. Other folders keep the book's own menu." },
         },
     },
     {

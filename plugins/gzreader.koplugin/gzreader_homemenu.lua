@@ -193,6 +193,43 @@ function HomeMenu.manageBook(plugin, book)
     UIManager:show(d)
 end
 
+--- A hold on a book in the Downloads tab: Manage it, as a hold on Home does.
+--- true when it did; otherwise (another folder, a folder, select mode) the
+--- caller shows ZenOS's own menu as before.
+function HomeMenu.manageHold(plugin, fc, item)
+    if type(item) ~= "table" or item.is_file == false or item.is_go_up then return false end
+    local path = item.path or item.file
+    if type(path) ~= "string" or lfs.attributes(path, "mode") ~= "file" then return false end
+    local f = fm()
+    if f and f.selected_files then return false end -- select mode: KOReader's own
+    if not (plugin and plugin.downloadsTabShowing and plugin:downloadsTabShowing()) then return false end
+    HomeMenu.manageBook(plugin, { path = path, context = function() fc:showFileDialog(item) end })
+    return true
+end
+
+--- Every file list the file manager lays out (again after a rotation): a
+--- hold on a book goes through manageHold first. Once per run.
+function HomeMenu.hookHold()
+    local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
+    if not ok or type(FileManager) ~= "table" or FileManager._gz_hold_hooked then return false end
+    FileManager._gz_hold_hooked = true
+    local orig = FileManager.setupLayout
+    FileManager.setupLayout = function(f, ...)
+        local r = orig(f, ...)
+        local fc = f.file_chooser
+        if type(fc) == "table" and not fc._gz_hold then
+            fc._gz_hold = true
+            local orig_hold = fc.onFileHold
+            fc.onFileHold = function(self_fc, item)
+                if HomeMenu.manageHold(f.gzreader, self_fc, item) then return true end
+                if orig_hold then return orig_hold(self_fc, item) end
+            end
+        end
+        return r
+    end
+    return true
+end
+
 --- Takes out of a book menu's rows those ZenOS marks _gz_manage_hide (its
 --- Edit submenu: Manage has Delete from this Kindle already).
 function HomeMenu.manageRows(rows)

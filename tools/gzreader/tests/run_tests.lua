@@ -1513,6 +1513,54 @@ do
     check(not HM.items(plugin)[1].text or not HM.items(plugin)[1].text:match("^Open “"), "nothing highlighted: no book section")
 end
 
+print("Holding a book in the Downloads tab: Manage, as on Home")
+do
+    local HM = require("gzreader_homemenu")
+    local bookpath = WORK .. "/home/GZreader/hold-me.epub"
+    local fh = io.open(bookpath, "wb"); fh:write("x"); fh:close()
+    local was_fm, was_showing = package.loaded["apps/filemanager/filemanager"], rawget(plugin, "downloadsTabShowing")
+    local own_hold, dialog_item, prepend_then
+    local FakeFM = { setupLayout = function(f)
+        f.file_chooser = {
+            onFileHold = function(_fc, item) own_hold = item end,
+            showFileDialog = function(_fc, item) dialog_item = item; prepend_then = rawget(_G, "__GZ_CONTEXT_PREPEND") end,
+        }
+    end }
+    package.loaded["apps/filemanager/filemanager"] = FakeFM
+    check(HM.hookHold() == true and HM.hookHold() == false, "hooked into the file manager's layout once")
+    local fmi = { gzreader = plugin }
+    FakeFM.setupLayout(fmi)
+    local fc = fmi.file_chooser
+    local showing = true
+    plugin.downloadsTabShowing = function() return showing end
+    local book = { path = bookpath, is_file = true, text = "hold-me.epub" }
+    check(fc:onFileHold(book) == true and own_hold == nil and dialog_item == book
+        and type(prepend_then) == "table" and prepend_then[2].text:match("Delete from this Kindle$")
+        and type(prepend_then.filter) == "function",
+        "a book in Downloads: Manage (Open and Delete at the top of ZenOS's menu for that book, without Edit)")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    dialog_item = nil
+    showing = false
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "another folder: ZenOS's own menu, as before")
+    own_hold = nil
+    showing = true
+    local folder = { path = WORK .. "/home/GZreader", is_file = false }
+    fc:onFileHold(folder)
+    check(own_hold == folder and dialog_item == nil, "a folder in Downloads: its own menu")
+    own_hold = nil
+    FakeFM.instance = { selected_files = { [bookpath] = true } }
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "select mode: KOReader's own (the selection's menu)")
+    FakeFM.instance, own_hold = nil, nil
+    FakeFM.setupLayout(fmi) -- laid out again (a rotation): a new file list
+    check(fmi.file_chooser ~= fc and fmi.file_chooser:onFileHold(book) == true and dialog_item == book and own_hold == nil,
+        "laid out again (rotation): still Manage")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    package.loaded["apps/filemanager/filemanager"], plugin.downloadsTabShowing = was_fm, was_showing
+    os.remove(bookpath)
+end
+
 print("Login refreshed in the background process")
 do
     AsyncMod.sync = false
