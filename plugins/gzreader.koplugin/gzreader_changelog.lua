@@ -1,12 +1,18 @@
 -- GZreader changelog, newest first. Shown in Settings → Updates → Changelog.
 -- Add an entry (and bump GZREADER_VERSION) for every release.
+-- A line is { short = "…", text = "…" }: `short`, a few words, on the screen
+-- after an update (gzreader_whatsnew.lua); `text`, the full explanation, here
+-- in Settings → Updates → Changelog and in the release notes. Keep each line
+-- on one line (the beta branch combines "next" lines). A plain string is the
+-- text alone (the screen shows its first sentence).
 return {
     {
         version = "next",
         changes = {
-            "Touch Kindles: the first-time tour after the setup guide now shows GZreader's quick panel (how to open and close it, Settings, the Home or This book tiles) instead of pointing at ZenOS's menu, which GZreader replaces. It closes the panel when it ends, so the page browser tip on the first book is no longer hidden under it.",
-            "Flash on every page turn is its own setting now: Settings → Reader → Appearance. On by default on the Kindle 2, DX, 3 and 4 (no grey trace of the last pages, as before), off elsewhere, and it can be turned on on any device. It used to go with Settings → Advanced → Flash when the screen changes, which is now only for menus, tabs and opening a book (if you had turned that off, page turns stay as they were). Ticking or unticking it replaces a full refresh rate chosen in a book's menu.",
-            "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before.",
+            { short = "After an update, a screen shows what's new in GZreader (it showed ZenOS's version)", text = "After every update, GZreader shows its version and a short list of what changed (the full text stays in Settings → Updates → Changelog). With ZenOS 4.3 that screen showed ZenOS's version and ZenOS's own list, and only when ZenOS itself changed." },
+            { short = "Touch Kindles: the first-time tour now shows GZreader's quick panel and closes it when it's done", text = "Touch Kindles: the first-time tour after the setup guide now shows GZreader's quick panel (how to open and close it, Settings, the Home or This book tiles) instead of pointing at ZenOS's menu, which GZreader replaces. It closes the panel when it ends, so the page browser tip on the first book is no longer hidden under it." },
+            { short = "Flash on every page turn is its own setting (Reader → Appearance), on by default on the Kindle 2, DX, 3 and 4", text = "Flash on every page turn is its own setting now: Settings → Reader → Appearance. On by default on the Kindle 2, DX, 3 and 4 (no grey trace of the last pages, as before), off elsewhere, and it can be turned on on any device. It used to go with Settings → Advanced → Flash when the screen changes, which is now only for menus, tabs and opening a book (if you had turned that off, page turns stay as they were). Ticking or unticking it replaces a full refresh rate chosen in a book's menu." },
+            { short = "Updated to ZenOS 4.3.0: quicker, new reading controls on touch Kindles, a new end-of-book screen", text = "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before." },
         },
     },
     {

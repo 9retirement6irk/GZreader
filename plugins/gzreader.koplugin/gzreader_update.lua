@@ -702,7 +702,9 @@ function Update.showChangelog()
     local parts = {}
     for _i, entry in ipairs(ok and log or {}) do
         parts[#parts + 1] = "GZreader " .. entry.version .. (entry.date and ("  (" .. entry.date .. ")") or "")
-        for _j, line in ipairs(entry.changes or {}) do parts[#parts + 1] = "  • " .. line end
+        for _j, line in ipairs(entry.changes or {}) do
+            parts[#parts + 1] = "  • " .. require("gzreader_whatsnew").text(line)
+        end
         parts[#parts + 1] = ""
     end
     parts[#parts + 1] = T(_("Full release notes: %1"), Update.pageUrl())
