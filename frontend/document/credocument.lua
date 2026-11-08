@@ -101,9 +101,16 @@ function CreDocument.cacheInit()
     if not G_reader_settings:has("cre_storage_size_factor") then
         logger.info("GZreader: crengine cache size factor", default_cre_storage_size_factor)
     end
+    -- GZreader: the layout cache uncompressed on the old, slow Kindles (2, DX, 3, 4): see gzlowmem.lua
+    local compress_cache = require("gzlowmem").creCompressCache()
+    if G_reader_settings:has("cre_compress_cached_data") then
+        compress_cache = G_reader_settings:isTrue("cre_compress_cached_data")
+    else
+        logger.info("GZreader: crengine layout cache compressed:", compress_cache)
+    end
     cre.initCache(DataStorage:getDataDir() .. "/cache/cr3cache",
         (G_reader_settings:readSetting("cre_disk_cache_max_size") or default_cre_disk_cache_max_size)*1024*1024,
-        G_reader_settings:nilOrTrue("cre_compress_cached_data"),
+        compress_cache,
         G_reader_settings:readSetting("cre_storage_size_factor") or default_cre_storage_size_factor)
 end
 

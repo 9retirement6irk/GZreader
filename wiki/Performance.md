@@ -25,6 +25,13 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   KOReader's 40 (`cre_storage_size_factor`, as KOReader advises for older
   devices), leaving memory for the book file and its layout cache. A
   `cre_storage_size_factor` you set in `settings.reader.lua` still wins.
+- **Uncompressed layout cache on the old Kindles** (Kindle 2, DX, DX
+  Graphite, 3, 4; `frontend/gzlowmem.lua`): crengine keeps each book's layout
+  (`cache/cr3cache`) uncompressed, so their slow processors don't decompress
+  it on every open, page turn and close (KOReader's own switch, added for
+  this: koreader#3670). The files are bigger; the cache stays capped at
+  256 MB. The first open of each book after updating lays it out again once.
+  `cre_compress_cached_data` set in `settings.reader.lua` still wins.
 - **Opening books**: each open logs a timing line (`gzreader_opentiming.lua`:
   closing the file manager, opening and laying out the document, each
   module's ReaderReady, screen refreshes, free memory). The crengine layout

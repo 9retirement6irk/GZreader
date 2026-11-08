@@ -1725,6 +1725,16 @@ print("Kindles with 128 MB: crengine's caches kept small")
     local fh = io.open(ko_root .. "/frontend/document/credocument.lua"); local src = fh:read("*a"); fh:close()
     check(src:find('readSetting("cre_storage_size_factor") or default_cre_storage_size_factor', 1, true)
         and src:find('require("gzlowmem").creStorageFactor()', 1, true), "credocument: the default from gzlowmem, your setting first")
+    -- the layout cache uncompressed on the old, slow Kindles (koreader#3670)
+    check(LowMem.creCompressCache("Kindle3") == false and LowMem.creCompressCache("Kindle2") == false
+        and LowMem.creCompressCache("KindleDXG") == false and LowMem.creCompressCache("Kindle4") == false,
+        "Kindle 2, DX, DX Graphite, 3, 4: layout cache uncompressed")
+    check(LowMem.creCompressCache("KindleTouch") == true and LowMem.creCompressCache("KindlePaperWhite3") == true
+        and LowMem.creCompressCache("Kobo_whatever") == true, "Kindle Touch, Paperwhite and others: compressed, as KOReader")
+    check(src:find('compress_cache = require("gzlowmem").creCompressCache()', 1, true)
+        and src:find('if G_reader_settings:has("cre_compress_cached_data") then\n        compress_cache = G_reader_settings:isTrue("cre_compress_cached_data")', 1, true)
+        and src:find("        compress_cache,\n", 1, true) and not src:find('nilOrTrue("cre_compress_cached_data")', 1, true),
+        "credocument: that default, your setting first")
 end)()
 
 print("Kindle DX: four shelves in Downloads, two on Home")

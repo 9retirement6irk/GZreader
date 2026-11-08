@@ -12,12 +12,22 @@ RAM, so on those Kindles they're read again from storage while a book opens
   older devices that run short of memory. On these Kindles it's 5; on a
   Kindle 3 (256 MB) and newer, KOReader's 40. Your own
   setting (settings.reader.lua: "cre_storage_size_factor") still wins.
+
+Also, for the old Kindles with a slow ARM11 processor (Kindle 2, DX, DX
+Graphite, Kindle 3, Kindle 4), whatever their memory:
+
+- crengine's layout cache (cr3cache) is kept uncompressed. KOReader added the
+  switch because decompressing it slows opening, page turns and closing big
+  books (koreader#3670); the files are bigger (the cache is capped at 256 MB
+  anyway). Your own setting ("cre_compress_cached_data") still wins.
 ]]
 
 local GzLowMem = {
     LIMIT_KB = 160 * 1024, -- a Kindle 3 has 256 MB, a DX 128 MB
     CRE_STORAGE_FACTOR = 5,
     CRE_STORAGE_FACTOR_DEFAULT = 40, -- KOReader's
+    -- KOReader's model names (frontend/device/kindle/device.lua; the DX runs as Kindle2)
+    SLOW_MODELS = { Kindle2 = true, KindleDXG = true, Kindle3 = true, Kindle4 = true },
 }
 
 --- The device's memory (MemTotal, in KB) from `path` (/proc/meminfo), or nil.
@@ -37,7 +47,37 @@ end
 
 --- crengine's cache size factor, unless one was set.
 function GzLowMem.creStorageFactor(total_kb)
-    return GzLowMem.isLow(total_kb) and GzLowMem.CRE_STORAGE_FACTOR or GzLowMem.CRE_STORAGE_FACTOR_DEFAULT
+    --- An old Kindle with a slow processor (model: KOReader's Device.model; read
+--- from the device when nil).
+function GzLowMem.isSlow(model)
+    if model == nil then
+        local ok, Device = pcall(require, "device")
+        model = ok and Device and Device.model
+    end
+    return GzLowMem.SLOW_MODELS[tostring(model)] == true
+end
+
+--- Whether crengine compresses its layout cache, unless it was set.
+function GzLowMem.creCompressCache(model)
+    return not GzLowMem.isSlow(model)
+end
+
+return GzLowMem.isLow(total_kb) and GzLowMem.CRE_STORAGE_FACTOR or GzLowMem.CRE_STORAGE_FACTOR_DEFAULT
+end
+
+--- An old Kindle with a slow processor (model: KOReader's Device.model; read
+--- from the device when nil).
+function GzLowMem.isSlow(model)
+    if model == nil then
+        local ok, Device = pcall(require, "device")
+        model = ok and Device and Device.model
+    end
+    return GzLowMem.SLOW_MODELS[tostring(model)] == true
+end
+
+--- Whether crengine compresses its layout cache, unless it was set.
+function GzLowMem.creCompressCache(model)
+    return not GzLowMem.isSlow(model)
 end
 
 return GzLowMem
