@@ -51,7 +51,7 @@ function M.build(ctx)
     if ok_eink and Eink.applies() then
         table.insert(items, {
             text = _("Flash when the screen changes"),
-            help_text = _("Less ghosting: switching tabs, opening or closing a menu or a book, and turning pages flash the screen clean. Off: quicker, but a grey trace of the last screen stays until the next flash."),
+            help_text = _("Less ghosting: switching tabs and opening or closing a menu or a book flash the screen clean. Off: quicker, but a grey trace of the last screen stays until the next flash. Page turns: Settings → Reader → Appearance → Flash on every page turn."),
             checked_func = function() return Eink.enabled() end,
             callback = function() Eink.setEnabled(not Eink.enabled()) end,
         })

@@ -4720,6 +4720,51 @@ print("The first tour on a touch Kindle: GZreader's quick panel")
     if src then src:close() end
     check(text:find("meta.quickstart_menu_tour_pending == true or GzTour.active then return false end", 1, true)
         and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
+print("Flash on every page turn (Settings → Reader → Appearance)")
+;(function()
+    local Eink = require("gzreader_eink")
+    local UIManager = require("ui/uimanager")
+    local real_applies, keep_count = Eink.applies, UIManager.FULL_REFRESH_COUNT
+    local keys = { Eink.PAGE_SETTING, Eink.SETTING, "full_refresh_count", "night_mode" }
+    local saved = {}
+    for _i, k in ipairs(keys) do saved[k] = G_reader_settings:readSetting(k); G_reader_settings:delSetting(k) end
+    local legacy = true
+    Eink.applies = function() return legacy end
+    Eink.pageRate()
+    check(Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 1,
+        "Kindle 2, DX, 3, 4: on by default, every page turn flashes")
+    legacy = false
+    Eink.pageRate()
+    check(not Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 6, "other devices: off by default (KOReader's every 6 pages)")
+    Eink.setFlashPageTurns(true)
+    check(Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 1 and Eink.pageTurnsTicked(), "…and can be turned on there too")
+    G_reader_settings:delSetting(Eink.PAGE_SETTING)
+    legacy = true
+    G_reader_settings:saveSetting(Eink.SETTING, false)
+    check(not Eink.flashPageTurns(), "a Kindle 3 that had turned off \"Flash when the screen changes\" (it did both until now): stays off")
+    Eink.setFlashPageTurns(true)
+    check(Eink.flashPageTurns() and Eink.enabled() == false, "…and the two are separate now")
+    G_reader_settings:saveSetting("full_refresh_count", 8)
+    UIManager.FULL_REFRESH_COUNT = 8
+    Eink.pageRate()
+    check(UIManager.FULL_REFRESH_COUNT == 8 and not Eink.pageTurnsTicked(),
+        "a rate chosen in a book's menu (every 8 pages) is kept, and the box shows it isn't every page")
+    Eink.setFlashPageTurns(true)
+    check(UIManager.FULL_REFRESH_COUNT == 1 and G_reader_settings:readSetting("full_refresh_count") == nil and Eink.pageTurnsTicked(),
+        "ticking the box replaces that rate: every page")
+    Eink.setFlashPageTurns(false)
+    check(UIManager.FULL_REFRESH_COUNT == 6 and not Eink.pageTurnsTicked(), "unticked: every 6 pages")
+    local f = io.open(debug.getinfo(Eink.promote, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_eink%.lua$",
+        "zenos.koplugin/modules/settings/sections/reader_settings.lua"), "rb")
+    local src = f and f:read("*a") or ""
+    if f then f:close() end
+    check(src:find('table.insert(appearance_items, IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → Reader → Appearance, on every device")
+    Eink.applies = real_applies
+    UIManager.FULL_REFRESH_COUNT = keep_count
+    for _i, k in ipairs(keys) do
+        if saved[k] == nil then G_reader_settings:delSetting(k) else G_reader_settings:saveSetting(k, saved[k]) end
+    end
 end)()
 
 print("Headphones")
