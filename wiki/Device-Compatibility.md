@@ -10,8 +10,8 @@ GZreader runs on the Kindles KOReader supports and on two Nooks. Each kind of de
 | **Kindle Keyboard (3)** (2010) | `kindle-legacy` | keyboard, 5-way | real device, emulator |
 | **Kindle DX**, DX Graphite | `kindle-legacy` | keyboard, 5-way | real device (DX), emulator (both) |
 | **Kindle 4** (2011) | `kindle` | 5-way and Menu | real device, emulator |
-| **Kindle Touch** (2011) | `kindle` | touch | emulator |
-| **Paperwhite 3** (2015) | `kindlepw2` or `kindlehf` (by firmware) | touch | emulator |
+| **Kindle Touch** (2011) | `kindle` | touch | real device, emulator |
+| **Paperwhite 3** (2015) | `kindlepw2` or `kindlehf` (by firmware) | touch | real device, emulator |
 | **Nook 1st Edition** (2009) — *test build* | `nook-1st-edition` | the colour touchscreen | real device (firmware 1.0.0, Softroot 2.5.1), emulator |
 | **Nook Simple Touch**, with GlowLight (2011–2012) — *test build* | `nook` | touch | emulator only |
 
