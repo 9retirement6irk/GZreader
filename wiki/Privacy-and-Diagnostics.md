@@ -41,6 +41,12 @@ the Kindle awake and a read-only audio/speech survey into one
   (the only choice on Kindles without Wi‑Fi). Also Settings → General →
   Save diagnostic log (USB).
 
+With diagnostic logging **off**, GZreader writes nothing to `gzreader.log`
+and doesn't time book openings either (the `book open:` line), so it spends
+no time on its log. The diagnostic bundle is only put together when you send
+or save it. KOReader's own `crash.log` is separate: KOReader always writes
+it, and the start script trims it to 500 KB.
+
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:

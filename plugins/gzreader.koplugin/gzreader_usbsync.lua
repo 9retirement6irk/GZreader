@@ -26,7 +26,7 @@ stops the Kindle's USB service while it runs): exit GZreader first.
 Format 1:
   outbox = { format, written_at, gzreader, kindle = { model, name, id, audio },
     grimmory = { server, user },
-    jobs = { { id, kind = "progress"|"session"|"rating", book, method, path, body } },
+    jobs = { { id, kind = "progress"|"session"|"rating"|"mark"|"shelf", book, method, path, body } },
     queue = { { id, kind = "book"|"audiobook", title, authors, format, file_id, name, size_kb } },
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
@@ -272,6 +272,8 @@ function Usb.jobs(plugin)
             or { id = Usb.jobId("rating", id, stars), kind = "rating", book = tonumber(id) or id,
                 method = "POST", path = "/api/v1/books/reset-personal-rating", body = { tonumber(id) } }
     end
+    -- books put on or taken off your shelves here (gzreader_shelves.lua)
+    for _i, j in ipairs(require("gzreader_shelves").jobs(plugin)) do jobs[#jobs + 1] = j end
     -- bookmarks and highlights, in the order they were made (the journal:
     -- gzreader_offlineapi.lua); "{id}" in a path and temp/ref ids are for
     -- the page to fill in
@@ -547,6 +549,7 @@ function Usb.applyDone(plugin, done)
             if entry then entry.rating_synced = stars end
         end
     end
+    n = n + require("gzreader_shelves").applyDone(plugin, done)
     return n
 end
 
@@ -961,6 +964,11 @@ function Usb.import(plugin, on_prepared)
         books = r.books, audiobooks = r.audiobooks, music = r.music, sent = r.sent }
     -- the library copy may be new: lists and the index from it
     pcall(function() require("gzreader_offlineapi").forget() end)
+    -- your shelves and the books on them, from the copy (gzreader_shelves.lua)
+    pcall(function()
+        local snap = require("gzreader_offlineapi"):new(plugin.store, nil, base):snapshot()
+        if snap then require("gzreader_shelves").takeCopy(plugin, snap) end
+    end)
     pcall(function()
         local Index = require("gzreader_index")
         Index.data = nil

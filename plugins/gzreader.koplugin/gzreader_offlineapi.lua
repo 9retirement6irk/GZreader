@@ -13,7 +13,7 @@ the outbox carries them to the sync page.
 The copy, as the page writes it:
   { format = 1, written_at, server, user,
     books = { app book summaries: books and audiobooks },
-    libraries = {…}, shelves = {… magic = true for magic shelves},
+    libraries = {…}, shelves = {… magic = true for magic shelves, own = true for yours},
     lists = { shelf = { [id] = { book ids } }, magic = { [id] = {…} },
               continue = { ids }, recent = { ids } },
     full = { [id] = GET /api/v1/books/{id} (books on the Kindle: positions) },

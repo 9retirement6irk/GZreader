@@ -562,6 +562,14 @@ local function apply_status_bar()
             in_subfolder = true
         end
 
+        -- GZreader: the Downloads tab (the home folder, always the GZreader
+        -- folder) names itself in the title bar, as History, Collections and
+        -- the Grimmory tab do; the navbar's own label for it wins if set.
+        if not nav_title and file_manager then
+            nav_title = require("common/gz_tab_title").downloads(
+                norm_path, home_dir, zen_plugin.config.navbar, in_series_view, _)
+        end
+
         local home_locked = paths.isHomeLocked()
         local features = zen_plugin.config.features
         local navbar = zen_plugin.config.navbar
