@@ -105,6 +105,15 @@ function Grimmory:init()
         pcall(function() require("gzreader_audioctl").install() end)
         -- a log line per book opened: where the time went
         pcall(function() require("gzreader_opentiming").install() end)
+        -- background processes wait while a book opens (released in onReaderReady)
+        pcall(function()
+            local ReaderUI = require("apps/reader/readerui")
+            local orig_show = ReaderUI.showReader
+            ReaderUI.showReader = function(rui, ...)
+                pcall(require("gzreader_async").pause, "a book opens")
+                return orig_show(rui, ...)
+            end
+        end)
     end
     self.store = self.settings:readSetting("state", {})
     self.store.downloads = self.store.downloads or {}
@@ -1446,6 +1455,8 @@ local function nookChange()
 end
 
 function Grimmory:onReaderReady()
+    -- the first page is drawn next: then the paused background work carries on
+    UIManager:scheduleIn(1, function() require("gzreader_async").resume("the book is open") end)
     if not self.ui.document then return end
     nookChange()
     pcall(self.setupReader, self)

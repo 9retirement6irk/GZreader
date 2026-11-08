@@ -26,6 +26,12 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   cache is 256 MB instead of 64 (a dropped layout means a full re-layout on
   the next open), and `LuaSettings:flush` skips writing a file whose content
   hasn't changed (opening a book wrote `settings.reader.lua` twice).
+  While a book opens, GZreader's background work waits: a sync already
+  running (the calendar, Notes, Grimmory) is paused until the first page is
+  up, and new requests start after it (at most 30 s). On a Kindle 3 a
+  calendar sync running beside an open made it take 23.5 s instead of 6.
+  The log says `async: paused … while a book opens` and `async: resumed
+  after … s`.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.

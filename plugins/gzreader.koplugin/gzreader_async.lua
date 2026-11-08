@@ -22,6 +22,11 @@ and the result comes back a moment later.
 - Results travel back as JSON (plain values only).
 - `Async.sync = true` runs everything inline (tests; and where a result is
   needed right away, e.g. while going to sleep).
+- While a book opens (Async.pause / Async.resume), the background
+  processes running are paused and no new request starts: a Kindle 3 has
+  one core and little memory, and a calendar sync running beside a book
+  open made it take 23.5 s instead of 6 (2026-11-08). They carry on once
+  the first page is up, their time limits moved on by the pause.
 ]]
 
 local UIManager = require("ui/uimanager")
@@ -200,7 +205,7 @@ local function takeBatch()
 end
 
 pump = function()
-    if Async.busy or Async.held > 0 then return end
+    if Async.busy or Async.held > 0 or Async.paused then return end
     local jobs = takeBatch()
     if not jobs then return end
     Async.busy = true
@@ -264,7 +269,8 @@ pump = function()
         for i, job in ipairs(jobs) do names[i] = job.name or "?" end
         Log.info("async: one background process for", #jobs, "requests:", table.concat(names, ", "))
     end
-    local started = os.time()
+    local run = { started = os.time() }
+    Async.running[pid] = run
     local out = Async.reader(fd)
     local buf, next_job = "", 1
     -- the results that have arrived, each to its job
@@ -291,7 +297,8 @@ pump = function()
         out:drain()
         dispatch(out:take())
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > timeout then
+            if not Async.paused and os.time() - run.started > timeout then
+                Async.running[pid] = nil
                 Log.warn("async request took too long, stopped:", jobs[next_job] and jobs[next_job].name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
@@ -303,11 +310,61 @@ pump = function()
             end
             return UIManager:scheduleIn(Async.POLL, poll)
         end
+        Async.running[pid] = nil
         dispatch(out:finish() .. "\n")
         rest("background request failed")
         batchDone()
     end
     UIManager:scheduleIn(Async.POLL, poll)
+end
+
+---------------------------------------------------------------- while a book opens
+
+Async.running = {} -- pid -> { started = os.time() }: the background processes running now
+Async.paused = nil -- { reason, at, count, timer }: while a book opens
+Async.PAUSE_MAX = 30 -- s: carry on anyway (a book that never finished opening)
+
+--- A signal to a background process and anything it started (its group;
+--- the process itself too, in case it hasn't made its group yet).
+local SIGSTOP, SIGCONT = 19, 18
+local function signal(pid, sig)
+    return pcall(function()
+        local ffi = require("ffi")
+        require("ffi/posix_h")
+        ffi.C.kill(pid, sig)
+        ffi.C.kill(-pid, sig)
+    end)
+end
+
+--- A book starts opening: pause the background processes running now, and
+--- start no new request until Async.resume() (or PAUSE_MAX seconds).
+function Async.pause(reason)
+    if Async.sync or Async.paused then return end
+    local p = { reason = reason or "?", at = os.time(), count = 0 }
+    Async.paused = p
+    for pid in pairs(Async.running) do
+        signal(pid, SIGSTOP)
+        p.count = p.count + 1
+    end
+    if p.count > 0 then Log.info("async: paused", p.count, "background process(es) while", p.reason) end
+    p.timer = function() Async.resume("still not done after " .. Async.PAUSE_MAX .. " s") end
+    UIManager:scheduleIn(Async.PAUSE_MAX, p.timer)
+end
+
+--- The book is open: the paused processes carry on (their time limits moved
+--- on by the pause), and waiting requests start.
+function Async.resume(why)
+    local p = Async.paused
+    if not p then return end
+    Async.paused = nil
+    UIManager:unschedule(p.timer)
+    local paused_for = os.time() - p.at
+    for pid, run in pairs(Async.running) do
+        run.started = run.started + paused_for
+        signal(pid, SIGCONT)
+    end
+    if p.count > 0 then Log.info("async: resumed after", paused_for, "s", why and ("(" .. why .. ")") or "") end
+    UIManager:nextTick(pump)
 end
 
 --- Run fn(api) in the background; on_done(...) gets what it returned.
@@ -366,8 +423,11 @@ function Async.background(fn, on_done, name, opts)
         return on_done(nil, "busy")
     end
     Async.local_jobs = Async.local_jobs + 1
-    local started = os.time()
+    local run = { started = os.time() }
+    Async.running[pid] = run
+    if Async.paused then signal(pid, SIGSTOP) end -- (it waits for the book too)
     local function done(...)
+        Async.running[pid] = nil
         Async.local_jobs = Async.local_jobs - 1
         local ok, err = pcall(on_done, ...)
         if not ok then Log.warn("async callback failed:", tostring(err)) end
@@ -376,7 +436,7 @@ function Async.background(fn, on_done, name, opts)
     local function poll()
         out:drain()
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > (opts.timeout or 600) then
+            if not Async.paused and os.time() - run.started > (opts.timeout or 600) then
                 Log.warn("background job took too long, stopped:", name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()

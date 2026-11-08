@@ -11,6 +11,7 @@ return {
         changes = {
             { short = "Opening a book syncs in one background process instead of four", text = "When a Grimmory book opens, its place, queued updates, bookmarks and highlights are now synced together a moment after the first page, in one background process, instead of four started at 1, 2, 4 and 6 seconds. On a Kindle 3 each one was a copy of GZreader and a secure connection: seconds of processor time while you turned the first pages. Sync now and syncing after Wi-Fi comes on work the same way." },
             { short = "Smoother page turns while GZreader syncs in the background", text = "Syncing, downloads, the library index, update checks and usage statistics now run their background processes at a lower priority than the screen. Each request's secure connection takes seconds of processor time on a Kindle 3, and opening a book starts several; page turns no longer wait for them." },
+            { short = "Books open quicker while something syncs in the background", text = "When you open a book, GZreader's background work now waits: a sync that's already running (the calendar, Notes, Grimmory) is paused until the first page is up, and nothing new starts before then (30 s at most). On a Kindle 3 a calendar sync running at the same time made a book take 23.5 s to open instead of 6." },
         },
     },
     {
