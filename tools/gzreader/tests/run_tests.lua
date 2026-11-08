@@ -4242,7 +4242,7 @@ print("Calendar tab")
             "ui/widget/container/widgetcontainer", "ui/widget/horizontalgroup" }
         local saved = { gzreader_calendar = package.loaded["gzreader_calendar"], ["ui/bidi"] = package.loaded["ui/bidi"],
             optmath = package.loaded["optmath"] }
-        for _i, n in ipairs(REAL) do saved[n] = package.loaded[n] end
+        for _i, rn in ipairs(REAL) do saved[rn] = package.loaded[rn] end
         local Dev = require("device")
         local was_screen = Dev.screen
         local scr = magic()
@@ -4251,7 +4251,7 @@ print("Calendar tab")
             Dev.screen = scr
             package.loaded["ui/bidi"] = { mirroredUILayout = function() return false end }
             package.loaded["optmath"] = { round = function(x) return math.floor(x + 0.5) end }
-            for _i, n in ipairs(REAL) do package.loaded[n] = dofile(KOROOT .. "/frontend/" .. n .. ".lua") end
+            for _i, rn in ipairs(REAL) do package.loaded[rn] = dofile(arg[5] .. "/frontend/" .. rn .. ".lua") end -- (arg[5]: KOReader)
             package.loaded["gzreader_calendar"] = nil
             local Cal2 = require("gzreader_calendar")
             local mk = Cal2.marker({ title = "Rent" }, 40)
@@ -4260,7 +4260,7 @@ print("Calendar tab")
             return { h = mk:getSize().h, w = mk:getSize().w, top = math.floor((size.h - row._offsets[1].y) / 2) }
         end)
         Dev.screen = was_screen
-        for n, v in pairs(saved) do package.loaded[n] = v end
+        for rn, v in pairs(saved) do package.loaded[rn] = v end
         check(ok_m and res.h == 40 and res.w == 3 and res.top == 7,
             "the event's calendar bar is centred on its row: " .. (ok_m and (res.w .. "x" .. res.h .. " from y " .. res.top) or tostring(res)))
     end
