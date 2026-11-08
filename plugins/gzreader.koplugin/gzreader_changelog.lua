@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2/DX: Send to the developer, through the sync page", text = "Kindle 2 and DX (no Wi-Fi): Diagnostics → Send to the developer asks what happened, as on a Wi-Fi Kindle, and saves the log with it; the sync page sends it to the developer at your next sync. The page's Sync tab also has a Diagnostics box to send the Kindle's log with a note of your own. With diagnostic logging on, pressing Sync on the Kindle first exports a fresh log for it." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

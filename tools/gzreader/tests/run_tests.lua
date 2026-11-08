@@ -5467,8 +5467,75 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) nbtn = #o.buttons; return o end }
     plugin:showDiagnostics()
     package.loaded["ui/widget/buttondialog"] = orig_bd
-    check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
-        and nbtn == 2, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone (" .. table.concat(labels, ", ") .. ")")
+    check(gen.wifi == nil and #labels == 4 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
+        and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
+        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
+    -- Send to the developer without Wi-Fi: the report waits in .gzsync/reports/ for the sync page (gzreader_usbreport.lua)
+    do
+        local Rep = require("gzreader_usbreport")
+        local RemoteM = require("gzreader_remote")
+        local rlfs = require("libs/libkoreader-lfs")
+        local LogM = require("gzreader_log")
+        local rdir = Rep.dir(plugin)
+        local function rexists(p) return rlfs.attributes(p, "mode") == "file" end
+        local function slurp(p) local fh = io.open(p, "rb"); local t = fh and fh:read("*a"); if fh then fh:close() end; return t end
+        local n_export = 0
+        local function fakeExport(into)
+            n_export = n_export + 1
+            local p = into .. "/gzreader-log-test-" .. n_export .. ".txt"
+            local fh = io.open(p, "wb"); fh:write("exported log " .. n_export .. "\n"); fh:close()
+            return p
+        end
+        local stamp = Rep.save(plugin, "  froze at https://books.example.com/x?password=hunter2  ", fakeExport)
+        local meta = stamp and JSON.decode(slurp(rdir .. "/report-" .. stamp .. ".json") or "null") or {}
+        check(stamp and slurp(rdir .. "/report-" .. stamp .. ".txt") == "exported log 1\n"
+            and meta.note == "froze at https://books.example.com/x?password=<redacted>" and meta.device == RemoteM.deviceName()
+            and type(meta.at) == "number" and meta.version and meta.test_build ~= nil and not rexists(rdir .. "/gzreader-log-test-1.txt"),
+            "no Wi-Fi: Send to the developer saves the log and what was typed (redacted) for the sync page")
+        for _i = 1, 4 do Rep.save(plugin, "", fakeExport) end
+        local rsaved = Rep.saved(plugin)
+        local txts = 0
+        for rname in rlfs.dir(rdir) do if rname:match("^report%-.*%.txt$") then txts = txts + 1 end end
+        check(#rsaved == Rep.KEEP and txts == Rep.KEEP and rsaved[1]:match("^0003%-") and rsaved[#rsaved]:match("^0005%-")
+            and not rexists(rdir .. "/report-" .. stamp .. ".json"),
+            "…the newest " .. Rep.KEEP .. " kept (an old Kindle's drive is small): " .. table.concat(rsaved, ", "))
+        local box = Usb.outbox(plugin).report or {}
+        check(box.feed == RemoteM.reportUrl() and box.device == RemoteM.deviceName() and box.test_build ~= nil,
+            "the outbox tells the page the report feed and the Kindle's name, as a Wi-Fi Kindle sends them")
+        local was_enabled = LogM.enabled
+        LogM.enabled = true
+        local latest = Rep.exportForPage(plugin, fakeExport)
+        local fresh = latest and slurp(latest)
+        LogM.enabled = false
+        Rep.exportForPage(plugin, fakeExport)
+        local gone = not rexists(rdir .. "/latest.txt")
+        LogM.enabled = was_enabled
+        check(latest == rdir .. "/latest.txt" and fresh and fresh:match("^exported log") and gone,
+            "Sync with diagnostic logging on: a fresh log for the page's Diagnostics box; logging off: none (an old one deleted)")
+        local usrc = slurp(debug.getinfo(Usb.show, "S").source:sub(2)) or ""
+        check(usrc:find('Usb.writeOutbox(plugin)\n    -- (diagnostic logging on: a fresh log for the page', 1, true)
+            and usrc:find('require("gzreader_usbreport").exportForPage(plugin)', 1, true),
+            "the Sync window (the quick panel's Sync) exports that log when it opens")
+        -- the Kindle's own Send to the developer: the box, then saved (not sent: no Wi-Fi)
+        local UIM2 = require("ui/uimanager")
+        local orig_show2, orig_close2, orig_rp = UIM2.show, UIM2.close, UIM2.forceRePaint
+        local shown_text
+        UIM2.show = function(_s, w) if w and w.text then shown_text = w.text end end
+        UIM2.close = function() end
+        UIM2.forceRePaint = function() end
+        local orig_exp = LogM.exportTo
+        LogM.exportTo = function(into) return fakeExport(into) end
+        local before_n = #Rep.saved(plugin)
+        local rstamp = plugin:sendLogToDeveloper("the sync page said nothing")
+        LogM.exportTo = orig_exp
+        UIM2.show, UIM2.close, UIM2.forceRePaint = orig_show2, orig_close2, orig_rp
+        local last = Rep.saved(plugin)
+        local lmeta = JSON.decode(slurp(rdir .. "/report-" .. last[#last] .. ".json") or "null") or {}
+        check(rstamp and last[#last] == rstamp and #last == math.min(Rep.KEEP, before_n + 1) and lmeta.note == "the sync page said nothing"
+            and tostring(shown_text):match("next sync"),
+            "no Wi-Fi: Diagnostics → Send to the developer saves the report and says it goes at the next sync (" .. tostring(shown_text) .. ")")
+        os.execute("rm -rf '" .. rdir .. "'")
+    end
     local Notes = require("gzreader_notes")
     local err
     Notes.refresh(fake, function(_ok, e) err = e end)

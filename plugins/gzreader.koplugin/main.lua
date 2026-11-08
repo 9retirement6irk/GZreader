@@ -454,8 +454,8 @@ function Grimmory:sectionItems(section)
                     end,
                 }),
                 icon("settings_stats", require("gzreader_usage").menuItems()),
-                not Net.usb and icon("send", {
-                    text = _("Send diagnostic log to the developer"),
+                icon("send", {
+                    text = Net.usb and _("Send diagnostic log to the developer (at the next sync)") or _("Send diagnostic log to the developer"),
                     callback = function(touchmenu)
                         closeTouchMenu(touchmenu)
                         self:sendLogToDeveloper()
@@ -610,12 +610,12 @@ function Grimmory:showDiagnostics()
             UIManager:nextTick(function() self:shareLog() end)
         end } }
     end
-    if not Net.usb then
-        buttons[#buttons + 1] = { { text = label("send", _("Send to the developer")), align = "left", callback = function()
-            UIManager:close(dialog)
-            UIManager:nextTick(function() self:sendLogToDeveloper() end)
-        end } }
-    end
+    -- (no Wi-Fi: saved for the sync page, which sends it at the next sync: gzreader_usbreport.lua)
+    buttons[#buttons + 1] = { { text = label("send", Net.usb and _("Send to the developer (at the next sync)") or _("Send to the developer")),
+        align = "left", callback = function()
+        UIManager:close(dialog)
+        UIManager:nextTick(function() self:sendLogToDeveloper() end)
+    end } }
     buttons[#buttons + 1] = { { text = label("save", _("Save to the Kindle (copy over USB)")), align = "left", callback = function()
         UIManager:close(dialog)
         UIManager:nextTick(function() self:exportLog() end)
@@ -637,8 +637,8 @@ end
 --- developer's report feed (gzreader_remote.lua R.sendLogs). `comment`: what
 --- was typed (nil: ask first).
 function Grimmory:sendLogToDeveloper(comment)
-    if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
     if comment == nil then return self:askReportComment() end
+    if Net.usb then return self:saveReportForSync(comment) end -- (no Wi-Fi: the sync page sends it)
     if not Net.connected() and Net.enabled() then
         return Net.run(function() self:sendLogToDeveloper(comment) end, { reason = "sending the log" })
     end
@@ -666,13 +666,33 @@ function Grimmory:sendLogToDeveloper(comment)
     end
 end
 
+--- Kindle 2/DX (no Wi-Fi): the report waits on the Kindle for the sync page
+--- (gzreader_usbreport.lua), which sends it at the next sync.
+function Grimmory:saveReportForSync(comment)
+    Log.probe_device = Device:isKindle()
+    local busy = InfoMessage:new{ text = _("Saving the diagnostic log for the developer…"), timeout = 0 }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    local stamp, err = require("gzreader_usbreport").save(self, comment)
+    UIManager:close(busy)
+    if stamp then
+        UIManager:show(InfoMessage:new{ text = _("Saved for the developer, with what you typed. It's sent from the computer at your next sync (the sync page)."), timeout = 6 })
+    else
+        Log.warn("debug report not saved:", err)
+        UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log (%1)."), tostring(err)) })
+    end
+    return stamp
+end
+
 --- What happened, typed before Send to the developer (it goes with the log).
 function Grimmory:askReportComment()
     local InputDialog = require("ui/widget/inputdialog")
     local dialog
     dialog = InputDialog:new{
         title = _("Send to the developer"),
-        description = _("What were you doing, and what went wrong? It's sent with the diagnostic log (passwords and tokens are never in it)."),
+        description = Net.usb
+            and _("What were you doing, and what went wrong? It's sent with the diagnostic log from the computer at your next sync (passwords and tokens are never in it).")
+            or _("What were you doing, and what went wrong? It's sent with the diagnostic log (passwords and tokens are never in it)."),
         input_hint = _("e.g. the book froze when I turned the page"),
         allow_newline = true,
         text_height = Device.screen:scaleBySize(110), -- (about four lines)
