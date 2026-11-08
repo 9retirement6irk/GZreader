@@ -678,7 +678,6 @@ local DEFAULT_ROW_ORDER = {
     "datetime",
     "featured",
     "grimmory_stats",
-    "stats_triplet",
     "reading_goals",
     "strip",
     "quotes",

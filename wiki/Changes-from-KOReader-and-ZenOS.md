@@ -34,7 +34,7 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 
 - **Keys:** letter keys in every list and dialog (`__ZEN_DIALOG_SHORTCUTS`, the context menu), tab keys (Z, X, C, V, B) on keyboard Kindles, the 5-way on the Kindle 4. ZenOS was made for touch.
 - **The quick panel** instead of ZenOS's touch menu (its Zen Mode button and tabs), on every device; ZenOS's first-run menu tour is replaced by one of the quick panel, which closes it before the page browser tip.
-- **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats and a notebook-page stats widget, two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
+- **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats on a notebook page in place of ZenOS's local reading stats widget (no longer offered), two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
 - **Tabs:** Grimmory, Notes (in Favorites' place) and Calendar, Music on request.
 - **The book menu:** Add to shelf and Remove from shelf (your Grimmory shelves, kept on the Kindle, changes sent over Wi‑Fi or by the sync page) instead of Add to collection, also for several selected books; no Add to collection anywhere.
 - **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with usage statistics.

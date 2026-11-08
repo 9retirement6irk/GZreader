@@ -5219,6 +5219,49 @@ print("Flash on every page turn (Settings → Reader → Appearance)")
     end
 end)()
 
+print("No Local reading stats widget on Home (Settings → Home → Widgets)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local WDIR = "modules/filebrowser/patches/home/widgets/"
+    local stubs = { "datetime", "featured", "stats_triplet", "grimmory_stats", "reading_goals", "strip", "quotes" }
+    local kept = {}
+    for _i, id in ipairs(stubs) do
+        kept[id] = package.loaded[WDIR .. id]
+        package.loaded[WDIR .. id] = { id = id, label = id, size = "s", build = function() end }
+    end
+    local RP = "modules/filebrowser/patches/home/components/registry"
+    package.loaded[RP] = nil
+    local loaded, Registry = pcall(require, RP)
+    check(loaded, "ZenOS's Home widget registry loads " .. tostring(not loaded and Registry or ""))
+    if loaded then
+        local function has(list, id) for _i, v in ipairs(list) do if v == id then return true end end end
+        local rows = Registry.normalizeRows({}, { "datetime", "featured", "grimmory_stats", "stats_triplet", "strip" },
+            { featured = true, grimmory_stats = true, stats_triplet = true, strip = true })
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and has(rows.order, "grimmory_stats") and rows.enabled.grimmory_stats == true,
+            "a new Home: Grimmory's reading stats, no Local reading stats (not in Widgets, not on Home)")
+        rows = Registry.normalizeRows({ order = { "stats_triplet", "featured", "strip" },
+            enabled = { stats_triplet = true, featured = true, strip = true } }, {}, {})
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and rows.enabled.featured == true and rows.order[1] == "featured",
+            "an older build's Home that showed them: gone, the other widgets kept in their order")
+        rows = Registry.normalizeRows({ enabled = { stats_triplet = true } }, {}, { featured = true })
+        check(rows.enabled.stats_triplet == nil and rows.enabled.featured == true,
+            "a Home with only them: the default widgets instead of an empty Home")
+        check(Registry.get("stats_triplet") ~= nil, "still there for the end-of-book page's stats")
+    end
+    package.loaded[RP] = nil
+    for _i, id in ipairs(stubs) do package.loaded[WDIR .. id] = kept[id] end
+    local sf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua", "rb")
+    local src = sf and sf:read("*a") or ""
+    if sf then sf:close() end
+    local order = src:match("local DEFAULT_ORDER = (%b{})") or ""
+    check(order:find('"grimmory_stats"', 1, true) and not order:find('"stats_triplet"', 1, true),
+        "Settings → Home → Widgets' default list has no Local reading stats")
+    package.path = saved_path
+end)()
+
 print("Headphones")
 ;(function()
     local Jack = require("gzreader_jack")
