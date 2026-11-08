@@ -215,6 +215,9 @@ pump = function()
     end
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
         Async.lowerPriority(Async.NICE) -- the screen goes first (see NICE)
+        -- one kept connection for this process's requests (gzreader_api.lua)
+        local okp, ApiMod = pcall(require, "gzreader_api")
+        if okp then ApiMod.poolBegin() end
         local store = api.store or {}
         local before = {}
         for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end
@@ -250,6 +253,7 @@ pump = function()
             if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
                 pcall(api.writePending, store, before.refresh_token)
             end
+            if i == #jobs and okp then ApiMod.poolEnd() end
             send(res, i == #jobs)
         end
     end, true)

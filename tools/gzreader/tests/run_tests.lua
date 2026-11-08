@@ -1765,6 +1765,69 @@ do
     check(#json.decode(ctl("/state")).sessions == after + 1 and #plugin.store.pending.sessions == 0, "a new session is sent normally")
 end
 
+print("Keep-alive inside a background process (one connection for several requests)")
+;(function()
+    local Api = require("gzreader_api")
+    local KPORT = PORT + 70
+    os.execute("python3 -I keepalive_server.py " .. KPORT .. " >/dev/null 2>&1 & echo $! > '" .. WORK .. "/keepalive.pid'")
+    local sock = require("socket")
+    local kbase = "http://127.0.0.1:" .. KPORT
+    for _i = 1, 40 do
+        local c = sock.tcp(); c:settimeout(0.2)
+        if c:connect("127.0.0.1", KPORT) then c:close(); break end
+        c:close(); sock.sleep(0.1)
+    end
+    local function conn(kpath, method)
+        local kcode, kdata = Api.rawRequest(method or "GET", kbase .. kpath, method == "POST" and { body = { x = 1 } } or nil)
+        return kcode == 200 and type(kdata) == "table" and kdata.conn or nil
+    end
+    -- outside a background process: a connection per request, as before
+    local ka, kb = conn("/n"), conn("/n")
+    check(ka and kb and ka ~= kb, "the main process: a new connection for each request (" .. tostring(ka) .. ", " .. tostring(kb) .. ")")
+    Api.poolBegin()
+    local c1, c2, c3 = conn("/n"), conn("/n"), conn("/n")
+    check(c1 and c1 == c2 and c2 == c3 and Api.pool.made == 1 and Api.pool.reused == 2, "in a background process: three requests, one connection")
+    local kp1 = conn("/n", "POST")
+    local after_post = conn("/n")
+    check(kp1 and kp1 ~= c3 and after_post == kp1, "a POST takes a new connection (never sent twice), and leaves it for the next")
+    local cl = conn("/close")
+    local after_close = conn("/n")
+    check(cl == kp1 and after_close and after_close ~= cl, "\"Connection: close\": not kept")
+    local d = conn("/drop")
+    local after_drop = conn("/n")
+    check(d and after_drop and after_drop ~= d, "closed by the server without saying so: sent again on a new connection")
+    local idle_was = Api.pool.IDLE_MAX
+    Api.pool.IDLE_MAX = 0
+    local i1 = conn("/n")
+    sock.sleep(0.05)
+    local i2 = conn("/n")
+    check(i1 and i2 and i1 ~= i2, "idle too long: not used again (the server may have closed it)")
+    Api.pool.IDLE_MAX = idle_was
+    -- a fault in the keep-alive code itself: the request as before, and keep-alive off for the process
+    local Conn = Api._Conn
+    local orig = Conn.connect
+    Conn.connect = function() error("gzreader_api.lua:1: a fault for the test") end
+    local f1 = conn("/n")
+    Conn.connect = orig
+    local f2, f3 = conn("/n"), conn("/n")
+    check(f1 and Api.pool.broken and f2 ~= f3, "a fault in keep-alive itself: the request still goes, keep-alive off after that")
+    Api.pool.broken = false
+    local before_end = Api.pool.requests
+    Api.poolEnd()
+    local x, y = conn("/n"), conn("/n")
+    check(before_end >= 10 and not Api.pool.on and x ~= y and next(Api.pool.idle) == nil, "after the process's last request: closed, and off")
+    local src = io.open(PLUGIN .. "/gzreader_async.lua", "rb")
+    local at = src and src:read("*a") or ""
+    if src then src:close() end
+    local isrc = io.open(PLUGIN .. "/gzreader_index.lua", "rb")
+    local it = isrc and isrc:read("*a") or ""
+    if isrc then isrc:close() end
+    check(at:find("ApiMod.poolBegin()", 1, true) and at:find("ApiMod.poolEnd()", 1, true) and it:find("Api.poolBegin()", 1, true)
+        and it:find("Api.poolEnd()", 1, true), "background requests and the library index use it")
+    local pf = io.open(WORK .. "/keepalive.pid")
+    if pf then os.execute("kill " .. (pf:read("*l") or "") .. " 2>/dev/null"); pf:close(); os.remove(WORK .. "/keepalive.pid") end
+end)()
+
 print("Compressed replies")
 check((json.decode(ctl("/state")).gzip_replies or 0) > 0, "JSON lists arrive gzip-compressed and are unpacked (lists above worked)")
 
