@@ -372,6 +372,43 @@ function Api:listShelves()
     return out
 end
 
+--- The signed-in user (GET /api/v1/users/me: id, username, name…), or nil, err.
+function Api:me()
+    local code, data, err = self:call("GET", "/api/v1/users/me", { timeouts = { 8, 15 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- Your own regular shelves (GET /api/v1/shelves: yours and other people's
+--- public ones, each with its userId; Grimmory only lets you put books on
+--- your own). me: your user id (nil: the ones that aren't public).
+function Api:listMyShelves(me)
+    local code, data, err = self:call("GET", "/api/v1/shelves", { timeouts = { 10, 20 } })
+    if code ~= 200 or type(data) ~= "table" then return nil, err or ("http_" .. tostring(code)) end
+    local own = require("gzreader_shelves").own
+    local out = {}
+    for _i, s in ipairs(data) do
+        if own(s, me) then
+            out[#out + 1] = { id = s.id, name = str(s.name) or ("#" .. tostring(s.id)), bookCount = tonumber(s.bookCount) }
+        end
+    end
+    return out
+end
+
+--- Put book `book_id` on shelves `add` and take it off shelves `remove`
+--- (lists of shelf ids; POST /api/v1/books/shelves). Returns Grimmory's
+--- record of the book afterwards (with its shelves), or nil, err.
+function Api:setBookShelves(book_id, add, remove)
+    local list = require("gzreader_shelves").list
+    local code, data, err = self:call("POST", "/api/v1/books/shelves", {
+        body = { bookIds = list{ tonumber(book_id) or book_id }, shelvesToAssign = list(add), shelvesToUnassign = list(remove) },
+        timeouts = { 10, 20 } })
+    if code == 200 or code == 204 then
+        return type(data) == "table" and type(data[1]) == "table" and data[1] or {}
+    end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
 --- GET /api/v1/app/authors (paged; sort=name|bookCount..., search=...)
 function Api:listAuthors(params)
     local code, data, err = self:call("GET", "/api/v1/app/authors" .. query(params))
