@@ -10,7 +10,6 @@ local restart = require("common/restart")
 local PresetStore = require("config/preset_store")
 local utils = require("modules/settings/zen_settings_utils")
 local icons = require("common/inline_icon_map")
-local IconItem = require("common/ui/icon_menu_item")
 
 -- Disables the built-in autowarmth plugin if it's running, then prompts restart.
 -- Uses the same dialog style as incompatible_plugins_check.
@@ -392,6 +391,7 @@ function M.build(ctx)
 
     -- Search section
     local search_item = {
+        icon_glyph = icons.search,
         text = _("Zen Search"),
         help_text = _("Use Zen Search in the file browser and reader. Disable to use KOReader's default search."),
         checked_func = function()
@@ -429,6 +429,7 @@ function M.build(ctx)
 
     -- Night mode schedule
     table.insert(items, {
+        icon_glyph = icons.schedule_night,
         text = _("Night mode schedule"),
         sub_item_table = {
             {
@@ -501,6 +502,7 @@ function M.build(ctx)
 
     -- Brightness
     table.insert(items, {
+        icon_glyph = icons.schedule_brightness,
         text = _("Brightness"),
         sub_item_table = {
             {
@@ -655,6 +657,7 @@ function M.build(ctx)
 
     -- Warmth
     table.insert(items, {
+        icon_glyph = icons.schedule_warmth,
         text = _("Warmth"),
         enabled_func = function() return Device:hasNaturalLight() end,
         sub_item_table = {
@@ -809,6 +812,7 @@ function M.build(ctx)
 
     -- Sleep
     table.insert(items, {
+        icon_glyph = icons.settings_sleep,
         text = _("Sleep"),
         enabled_func = function()
             local ok, Dev = pcall(require, "device")
@@ -854,6 +858,7 @@ function M.build(ctx)
 
     -- Lockdown mode
     table.insert(items, {
+        icon_glyph = icons.settings_lockdown,
         text = _("Lockdown mode"),
         sub_item_table = {
             {
@@ -966,14 +971,10 @@ function M.build_extras_items(ctx)
     local sleep_item = global_items[5]
     local lockdown_item = global_items[6]
 
-    IconItem.decorate(night_schedule_item, icons.schedule_night)
-    IconItem.decorate(brightness_schedule_item, icons.schedule_brightness)
-    IconItem.decorate(warmth_schedule_item, icons.schedule_warmth)
-    IconItem.decorate(sleep_item, icons.settings_sleep)
-
     local items = {
         search_item,
         {
+            icon_glyph = icons.tbr,
             text = _("Schedules"),
             sub_item_table = {
                 brightness_schedule_item,
@@ -984,6 +985,7 @@ function M.build_extras_items(ctx)
         sleep_item,
         lockdown_item,
         {
+            icon_glyph = icons.keyboard,
             text = _("Zen Keyboard"),
             help_text = _("Enable ZenOS keyboard improvements."),
             checked_func = function()
@@ -999,10 +1001,6 @@ function M.build_extras_items(ctx)
             end,
         },
     }
-    IconItem.decorate(items[1], icons.search)
-    IconItem.decorate(items[2], icons.tbr)
-    IconItem.decorate(items[4], icons.settings_lockdown)
-    IconItem.decorate(items[5], icons.keyboard)
     return items
 end
 

@@ -5,6 +5,7 @@ return {
         version = "next",
         changes = {
             "Nook 1st Edition and Simple Touch: most of GZreader moves to the microSD card (or, without one, the Nook's own storage), leaving the Nook's small app disk, shared with Android, with room to spare. Its Lua code, fonts, hyphenation, translations and cache (about 55 MB) are moved at the first start (a minute or two) and mounted back into its folder while it runs; its programs, libraries and settings stay on the Nook (about 30 MB). Leave the card in: without it GZreader asks for it. Updates write each part where it lives.",
+            "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before.",
         },
     },
     {
