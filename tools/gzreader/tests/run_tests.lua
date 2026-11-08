@@ -3399,6 +3399,57 @@ print("Usage statistics")
     gsettings.gzreader_usage = nil
 end)()
 
+print("Full usage statistics: how quickly pages turn and Home answers keys")
+;(function()
+    local U = require("gzreader_usage")
+    local got = {}
+    U.testing_sink = function(item) got[#got + 1] = item end
+    local t = 100000
+    local real_now, real_where = U.nowMs, U.whereNow
+    U.nowMs = function() return t end
+    local where = "reader"
+    U.whereNow = function() return where end
+    gsettings.gzreader_usage = "full"
+    U.lat_on = true
+    for _i, k in ipairs({ "turn", "home", "open" }) do U.lat[k] = {} end
+    local pn, p50, p95 = U.percentiles({ 5, 1, 4, 2, 3, 10, 9, 8, 7, 6, 100, 11, 12, 13, 14, 15, 16, 17, 18, 19 })
+    check(pn == 20 and p50 == 10 and p95 == 19, "percentiles: the middle and the slowest 5% (nearest rank)")
+    -- page turns: key → page changed → refresh
+    for _i, ms in ipairs({ 300, 320, 310, 900 }) do
+        U.inputSeen(); U.pageTurned(); t = t + ms; U.screenRefreshed()
+    end
+    -- a key that changed nothing, then a refresh much later (a clock tick): not counted
+    U.inputSeen(); t = t + 5000; U.screenRefreshed()
+    check(#U.lat.turn == 4 and #U.lat.home == 0, "page turns timed from the key to the refresh; a refresh long after a key isn't its answer")
+    -- keys on Home
+    where = "home"
+    U.inputSeen(); t = t + 150; U.screenRefreshed()
+    U.inputSeen(); t = t + 250; U.screenRefreshed()
+    check(#U.lat.home == 2 and #U.lat.turn == 4, "Home: keys timed to the refresh (not as page turns)")
+    U.bookOpened(9.84)
+    -- the reading event carries them
+    U.reading = { t = os.time() - 120, pages = 4, format = "epub", picture_book = false }
+    U.readEnd("closed")
+    local ev = got[#got] and got[#got].payload
+    check(ev and ev.name == "reading" and ev.data.page_turn_n == 4 and ev.data.page_turn_ms_p50 == 310 and ev.data.page_turn_ms_p95 == 900
+        and ev.data.book_open_n == 1 and ev.data.book_open_ms_p50 == 9840 and #U.lat.turn == 0,
+        "the reading event: page turns' middle and slowest (ms) and the book's open time; then started again")
+    local sv = U.summarize(U.lat.home, "home_key", {})
+    check(sv.home_key_n == 2 and sv.home_key_ms_p50 == 150 and sv.home_key_ms_p95 == 250, "the screens summary: how quickly Home answered keys")
+    -- not Full: nothing measured
+    U.setLevel("basic")
+    U.inputSeen()
+    check(not U.lat_on and U.input_at == nil, "Basic or Off: nothing measured")
+    local usrc = io.open(PLUGIN .. "/gzreader_usage.lua", "rb")
+    local utext = usrc and usrc:read("*a") or ""
+    if usrc then usrc:close() end
+    check(utext:find("how quickly pages turn and Home answers keys, and how long books take to open (times only)", 1, true),
+        "Settings → General → Usage statistics says Full sends these")
+    U.nowMs, U.whereNow = real_now, real_where
+    U.testing_sink = nil
+    gsettings.gzreader_usage = nil
+end)()
+
 print("Remote debugging (with Full usage statistics)")
 ;(function()
     local R = require("gzreader_remote")

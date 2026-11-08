@@ -10,7 +10,7 @@ and fixed. You choose the level in the setup guide or in
 | Level | What's sent |
 | --- | --- |
 | **Basic** (default) | GZreader's version, the Kindle model and firmware at each start; whether the previous run ended without closing normally; downloads that worked or failed; slow operations; keys the screen didn't answer |
-| **Full** | Basic, plus time on Home, Downloads, Grimmory, in books and menus; menu entries used; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size, speed and resumes; sync results and Grimmory's answer times; Wi‑Fi on-time; and **debug reports** (see [Remote debugging](Privacy-and-Diagnostics#remote-debugging)): starts, warnings and errors from GZreader's log, freezes and crashes |
+| **Full** | Basic, plus time on Home, Downloads, Grimmory, in books and menus; menu entries used; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size, speed and resumes; sync results and Grimmory's answer times; Wi‑Fi on-time; how quickly the Kindle answers (page turns and keys on Home, from the key or tap to the screen refresh: the middle and slowest 5% of a session in milliseconds, and how long books took to open); and **debug reports** (see [Remote debugging](Privacy-and-Diagnostics#remote-debugging)): starts, warnings and errors from GZreader's log, freezes and crashes |
 | **Off** | Nothing is recorded or sent |
 
 Never sent in the statistics: book titles, authors, file names, your Grimmory

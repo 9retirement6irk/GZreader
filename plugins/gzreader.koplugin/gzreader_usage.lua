@@ -10,7 +10,10 @@ Settings → General → Usage statistics:
   which menu entries are used, reading sessions (format, picture book or
   not, minutes, pages, pages per minute, battery use per hour), read aloud,
   download size, speed and resumes, how syncs with Grimmory go (count,
-  failures, time), and how long Wi-Fi is on.
+  failures, time), how long Wi-Fi is on, and how quick the Kindle answers:
+  page turns and keys on Home (from the key or tap to the screen refresh:
+  the middle and the slowest 5% of a session, in ms) and how long a book
+  took to open (the book-open line's total).
   Full also turns on remote debugging (gzreader_remote.lua): starts,
   warnings, errors, freezes and crashes go to the developer's feed.
 - Off: nothing is recorded or sent.
@@ -55,6 +58,7 @@ end
 
 function U.setLevel(v)
     G_reader_settings:saveSetting("gzreader_usage", v)
+    U.lat_on = v == "full" and U.lat_installed or false
     if v == "off" then U.dropQueue() end
     Log.info("usage statistics:", v)
     -- Full also sends the debug reports (gzreader_remote.lua)
@@ -354,7 +358,11 @@ function U.summary(reason)
         local screens = {}
         local any = false
         for k, v in pairs(agg.screens) do screens[k] = math.floor(v / 60 * 10 + 0.5) / 10; any = true end
-        if any then U.event("time on screens", { minutes = screens, wifi_minutes = math.floor(agg.wifi / 60 + 0.5), reason = reason }, true) end
+        if any then
+            local ev = { minutes = screens, wifi_minutes = math.floor(agg.wifi / 60 + 0.5), reason = reason }
+            U.summarize(U.lat.home, "home_key", ev) -- (how quickly Home answers keys)
+            U.event("time on screens", ev, true)
+        end
         if next(agg.sync) then
             local sync = {}
             for k, s in pairs(agg.sync) do
@@ -401,6 +409,88 @@ local function tick()
     UIManager:scheduleIn(U.TICK, tick)
 end
 
+---------------------------------------------------------------- how quick (Full)
+-- From a key press or tap (UIManager.sendEvent) to the next screen refresh
+-- (Screen.refreshPartialImp/refreshFullImp, as the book-open line measures
+-- them): a page turn if the page changed meanwhile (pageTurned), a key on
+-- Home if Home is on screen. A refresh more than WINDOW_MS after the key
+-- isn't its answer (a key that changed nothing; a clock tick later).
+U.Lat = { MAX = 400, WINDOW_MS = 3000 }
+local lat = { turn = {}, home = {}, open = {} }
+U.lat = lat
+function U.nowMs() local T = require("ui/time"); return T.to_ms(T.now()) end
+local function nowMs() return U.nowMs() end
+
+local function push(list, v)
+    if #list >= U.Lat.MAX then table.remove(list, 1) end
+    list[#list + 1] = v
+end
+
+--- n, p50, p95 of a list of numbers (nearest rank), or nil.
+function U.percentiles(list)
+    if type(list) ~= "table" or #list == 0 then return nil end
+    local sorted = {}
+    for i, v in ipairs(list) do sorted[i] = v end
+    table.sort(sorted)
+    local function at(p) return sorted[math.max(1, math.ceil(p * #sorted))] end
+    return #sorted, math.floor(at(0.5) + 0.5), math.floor(at(0.95) + 0.5)
+end
+
+function U.inputSeen() if U.lat_on then U.input_at = nowMs() end end
+
+function U.screenRefreshed()
+    local t0 = U.input_at
+    if not t0 then return end
+    U.input_at = nil
+    local ms = nowMs() - t0
+    local turned = U.turned
+    U.turned = nil
+    if ms < 0 or ms > U.Lat.WINDOW_MS then return end
+    if turned then push(lat.turn, ms)
+    elseif U.whereNow() == "home" then push(lat.home, ms) end
+end
+
+--- A book opened (the book-open line's total, gzreader_opentiming.lua).
+function U.bookOpened(seconds)
+    if U.lat_on and type(seconds) == "number" then push(lat.open, math.floor(seconds * 1000 + 0.5)) end
+end
+
+--- p50/p95 of a list, as fields of an event (and the list emptied).
+local function summarize(list, prefix, into)
+    local n, p50, p95 = U.percentiles(list)
+    for i = #list, 1, -1 do list[i] = nil end
+    if not n then return into end
+    into = into or {}
+    into[prefix .. "_n"], into[prefix .. "_ms_p50"], into[prefix .. "_ms_p95"] = n, p50, p95
+    return into
+end
+U.summarize = summarize
+
+--- Start measuring (Full only; cheap: a time stamp per key and per refresh).
+function U.installLatency()
+    U.lat_on = on(true)
+    if U.lat_installed then return end
+    U.lat_installed = true
+    local orig_send = UIManager.sendEvent
+    if type(orig_send) == "function" then
+        UIManager.sendEvent = function(um, ev, ...)
+            if U.lat_on and type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onGesture") then U.input_at = nowMs() end
+            return orig_send(um, ev, ...)
+        end
+    end
+    local Screen = Device.screen
+    for _i, name in ipairs({ "refreshPartialImp", "refreshFullImp" }) do
+        local orig = Screen and Screen[name]
+        if type(orig) == "function" then
+            Screen[name] = function(self, ...)
+                local r = { orig(self, ...) }
+                if U.input_at then pcall(U.screenRefreshed) end
+                return unpack(r)
+            end
+        end
+    end
+end
+
 ---------------------------------------------------------------- reading
 
 function U.readStart(ui)
@@ -417,6 +507,7 @@ end
 
 function U.pageTurned()
     if U.reading then U.reading.pages = U.reading.pages + 1 end
+    if U.input_at then U.turned = true end
 end
 
 function U.readEnd(reason)
@@ -429,13 +520,17 @@ function U.readEnd(reason)
     local b = battery()
     local mins = secs / 60
     local drop = (r.battery and b) and (r.battery - b) or nil
-    U.event("reading", {
+    local ev = {
         format = r.format, picture_book = r.picture_book, minutes = math.floor(mins * 10 + 0.5) / 10,
         pages = r.pages, pages_per_minute = math.floor(r.pages / mins * 10 + 0.5) / 10,
         battery_start = r.battery, battery_end = b,
         battery_per_hour = (drop and secs >= 600) and math.floor(drop / secs * 3600 * 10 + 0.5) / 10 or nil,
         reason = reason,
-    }, true)
+    }
+    -- how quickly pages turned, and how long the book took to open
+    summarize(lat.turn, "page_turn", ev)
+    summarize(lat.open, "book_open", ev)
+    U.event("reading", ev, true)
 end
 
 function U.ttsStart() U.tts_at = os.time() end
@@ -504,6 +599,7 @@ function U.start()
         end
     end
     UIManager:scheduleIn(U.TICK, tick)
+    pcall(U.installLatency)
     -- the slow-operation timer (cheap; without the profiler) feeds Basic
     if on() then
         local okt, Trace = pcall(require, "gzreader_slowtrace")
@@ -551,7 +647,7 @@ function U.menuItems()
             item(_("Basic (starts, downloads, problems)"), "basic",
                 _("Sends GZreader's version, the Kindle model and firmware when GZreader starts, whether the last run ended without closing normally, downloads that worked or failed, slow operations, and keys the screen didn't answer. No book titles, file names, account or anything you type.")),
             item(_("Full (also how GZreader is used)"), "full",
-                _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on. Still no titles, file names or account.") .. (U.noWifi() and "" or ("\n\n" .. _("Full also sends debug reports to the developer: GZreader's starts, warnings and errors from its log, freezes and crashes. Log lines can name the book or file GZreader was working on; they never have passwords or tokens.")))),
+                _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on; how quickly pages turn and Home answers keys, and how long books take to open (times only). Still no titles, file names or account.") .. (U.noWifi() and "" or ("\n\n" .. _("Full also sends debug reports to the developer: GZreader's starts, warnings and errors from its log, freezes and crashes. Log lines can name the book or file GZreader was working on; they never have passwords or tokens.")))),
             item(_("Off (send nothing)"), "off", _("Nothing is recorded or sent. What was waiting is deleted.")),
         },
         help_text = U.noWifi() and _("This Kindle has no Wi-Fi: the statistics wait on the Kindle and the sync page sends them from the computer when you sync.") or nil,

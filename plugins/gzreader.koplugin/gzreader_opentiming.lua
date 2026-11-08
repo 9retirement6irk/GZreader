@@ -96,6 +96,8 @@ local function finish()
     parts[#parts + 1] = string.format("book %.1f MB, free memory %s MB (+ %s MB cache) before, %s MB (+ %s) after, GZreader %s MB",
         (cur.size or 0) / 1048576, tostring(cur.free), tostring(cur.cached), tostring(free), tostring(cached), tostring(rss()))
     Log.info(table.concat(parts, " | "))
+    -- (Full usage statistics: how long books take to open)
+    pcall(function() require("gzreader_usage").bookOpened(total) end)
 end
 
 function OT.install()
