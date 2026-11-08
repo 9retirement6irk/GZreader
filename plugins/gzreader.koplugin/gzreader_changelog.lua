@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The diagnostic log is ready in seconds instead of half a minute", text = "Diagnostics (Send to the developer, Send to a browser, Save to the Kindle) put the log together in a second or two instead of about 25 seconds on a Kindle 3. Most of that time went on a survey of the Kindle's audio and speech system, whose answers only change with the firmware or GZreader's version: they are now kept after the first time and reused. The log also notes how long it took." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

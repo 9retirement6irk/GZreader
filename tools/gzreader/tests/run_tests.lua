@@ -1031,6 +1031,52 @@ check(logtxt:match("/pair/<token>") or not logtxt:match("/pair/%x%x%x%x"), "pair
 plugin:exportLog()
 check(captured.info and captured.info:match("gzreader%-log%-%d+%-%d+%.txt"), "Save diagnostic log -> file in the books folder")
 
+print("Diagnostic log: the device probe's unchanging part is kept between exports")
+;(function()
+    local Log = require("gzreader_log")
+    local saved_cmds, saved_live, saved_cache = Log.PROBE_COMMANDS, Log.PROBE_LIVE, Log.probe_cache
+    local counts = WORK .. "/probe-counts"
+    os.remove(counts)
+    local fixed = "echo s >> " .. counts .. "; echo fixed-answer"
+    local live = "echo l >> " .. counts .. "; echo live-answer"
+    Log.PROBE_COMMANDS, Log.PROBE_LIVE = { fixed, live }, { [live] = true }
+    Log.probe_cache = WORK .. "/probe-cache/gz-device-probe.lua"
+    os.remove(Log.probe_cache)
+    local function ran()
+        local fh = io.open(counts, "rb"); local txt = fh and fh:read("*a") or ""; if fh then fh:close() end
+        local _, s_runs = txt:gsub("s", ""); local _, l_runs = txt:gsub("l", "")
+        return s_runs, l_runs
+    end
+    local text1, how1 = Log.deviceProbe()
+    local text2, how2 = Log.deviceProbe()
+    local s_runs, l_runs = ran()
+    check(how1 == "run now" and how2:match("^kept from") and s_runs == 1 and l_runs == 2,
+        "the second export reuses the kept answers; the live commands run each time (" .. s_runs .. ", " .. l_runs .. ")")
+    check(text1:find("fixed-answer", 1, true) and text2:find("fixed-answer", 1, true) and text2:find("live-answer", 1, true)
+        and text2:find("kept from", 1, true) and not text1:find("kept from", 1, true), "the kept answers are in the log, marked as kept")
+    local Update = require("gzreader_update")
+    local was_version = Update.currentVersion
+    Update.currentVersion = function() return "9.9.9" end
+    local how3 = select(2, Log.deviceProbe())
+    Update.currentVersion = was_version
+    check(how3 == "run now" and ran() == 2, "another GZreader version: the probe runs again")
+    Log.PROBE_COMMANDS = { fixed, live, "echo another" }
+    local how4 = select(2, Log.deviceProbe())
+    check(how4 == "run now" and ran() == 3, "the probe's commands changed: it runs again")
+    local fh = io.open(Log.probe_cache, "wb"); fh:write("return {{{"); fh:close()
+    local probe_ok, _text5, how5 = pcall(Log.deviceProbe)
+    check(probe_ok and _text5 and how5 == "run now", "a damaged kept file: the probe runs again, no error")
+    -- the export says how long it took and how the probe was made
+    local saved_probe = Log.probe_device
+    Log.probe_device = true
+    local dest = Log.exportTo(WORK, nil)
+    Log.probe_device = saved_probe
+    local lf = io.open(Log.path, "rb"); local logged = lf and lf:read("*a") or ""; if lf then lf:close() end
+    check(dest and logged:match("log built in [%d.]+ s %(device probe: kept from [^)]+%)\n$"), "the export logs how long it took")
+    if dest then os.remove(dest) end
+    Log.PROBE_COMMANDS, Log.PROBE_LIVE, Log.probe_cache = saved_cmds, saved_live, saved_cache
+end)()
+
 print("Grimmory folder is the home folder")
 local libdir = WORK .. "/home/GZreader"
 check(plugin.store.library_dir == libdir, "Grimmory folder created under the device's documents folder")
