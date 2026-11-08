@@ -68,6 +68,67 @@ def main():
         f, n = files("updates")
         check(f.get("gzreader-beta-update.zip") == b"BETA-2" and f.get("gzreader-update.zip") == b"RELEASE2",
               "the next test build: the release kept")
+
+        print("the Nook's KOReader (no VFP) on the same branch")
+
+        def publish_ko(name, content, version):
+            z = os.path.join(w, name)
+            open(z, "wb").write(content)
+            return subprocess.run(["bash", TOOL, "nook-koreader", z, version, "abc123"], cwd=w, env=env, capture_output=True, text=True)
+
+        r = publish_ko("koreader-kindle-legacy-v2026.07.1.zip", b"KO-1", "v2026.07.1")
+        f, n = files("updates")
+        kmeta = json.loads(f.get("nook-koreader.json", b"{}"))
+        check(r.returncode == 0 and f.get("koreader-kindle-legacy-v2026.07.1.zip") == b"KO-1"
+              and kmeta.get("file") == "koreader-kindle-legacy-v2026.07.1.zip" and kmeta.get("version") == "v2026.07.1"
+              and f.get("gzreader-update.zip") == b"RELEASE2" and f.get("gzreader-beta-update.zip") == b"BETA-2"
+              and "latest.json" in f and "latest-beta.json" in f and n == "1",
+              "added next to the release and the test build, one commit " + r.stderr[-200:])
+        publish_ko("koreader-kindle-legacy-v2026.07.2.zip", b"KO-2", "v2026.07.2")
+        f, n = files("updates")
+        check(f.get("koreader-kindle-legacy-v2026.07.2.zip") == b"KO-2" and "koreader-kindle-legacy-v2026.07.1.zip" not in f
+              and f.get("gzreader-update.zip") == b"RELEASE2", "a newer KOReader replaces the old one")
+        publish("beta", b"BETA-3", "1.26.6-beta.ccc")
+        publish("release", b"RELEASE3", "1.26.7")
+        f, n = files("updates")
+        check(f.get("koreader-kindle-legacy-v2026.07.2.zip") == b"KO-2" and "nook-koreader.json" in f
+              and f.get("gzreader-beta-update.zip") == b"BETA-3" and f.get("gzreader-update.zip") == b"RELEASE3",
+              "test builds and releases keep it")
+        r = publish_ko("something.zip", b"X", "v1")
+        check(r.returncode != 0, "nook-koreader takes only koreader-kindle-legacy-<tag>.zip")
+
+        print("two publishes at once")
+        # (a pre-receive hook refuses the first push once)
+        hook = os.path.join(remote, "hooks", "pre-receive")
+        flag = os.path.join(w, "raced")
+        open(hook, "w").write("#!/bin/sh\n"
+                              "if [ ! -f '%s' ]; then touch '%s'\n"
+                              "  exit 1\nfi\n" % (flag, flag))
+        os.chmod(hook, 0o755)
+        # (first push refused, as if another run had moved the branch: the
+        # publish clones again and pushes)
+        r = publish("beta", b"BETA-4", "1.26.7-beta.ddd")
+        os.remove(hook)
+        f, n = files("updates")
+        check(r.returncode == 0 and f.get("gzreader-beta-update.zip") == b"BETA-4" and "again" in r.stderr
+              and f.get("koreader-kindle-legacy-v2026.07.2.zip") == b"KO-2", "a refused push is tried again " + r.stderr[-200:])
+        # a real race: the branch replaced after the clone → the lease refuses
+        # the stale commit, the retry keeps the newcomer's files
+        out = os.path.join(w, "o2")
+        git(w, "clone", "-q", "-b", "updates", remote, out)
+        lease_tool = os.path.join(w, "slow.sh")
+        src = open(TOOL).read().replace('    cp "$ZIP" "$W/out/$FILE"\n',
+                                         '    cp "$ZIP" "$W/out/$FILE"\n    [ -n "${GZ_TEST_RACE:-}" ] && { sh -c "$GZ_TEST_RACE"; GZ_TEST_RACE=; }\n', 1)
+        open(lease_tool, "w").write(src)
+        race = ("cd '%s' && echo NEW > newcomer.txt && git add newcomer.txt && "
+                "git -c user.name=t -c user.email=t@example.com commit -qm n && git push -q '%s' updates" % (out, remote))
+        z = os.path.join(w, "u.zip")
+        open(z, "wb").write(b"BETA-5")
+        r = subprocess.run(["bash", lease_tool, "beta", z, "1.26.7-beta.eee", "abc123"], cwd=w,
+                           env=dict(env, GZ_TEST_RACE=race), capture_output=True, text=True)
+        f, n = files("updates")
+        check(r.returncode == 0 and f.get("newcomer.txt") == b"NEW\n" and f.get("gzreader-beta-update.zip") == b"BETA-5"
+              and n == "1", "the branch changed meanwhile: not overwritten, published again on top " + r.stderr[-200:])
     finally:
         shutil.rmtree(w, ignore_errors=True)
     print("%d passed, %d failed" % (passed, failed))

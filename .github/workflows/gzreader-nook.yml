@@ -129,14 +129,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
           sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
-      - name: The build, for trying it elsewhere (branch nook-softfloat-out, one commit)
+      - name: The build, for trying it elsewhere (on the updates branch, next to the updates)
         if: github.event_name == 'push'
         continue-on-error: true
         run: |
-          mkdir -p o && cp dl/koreader-kindle-legacy-*.zip o/
-          cd o && git init -q -b nook-softfloat-out && git add . \
-            && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "KOReader kindle-legacy without VFP" \
-            && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" nook-softfloat-out
+          Z=$(ls dl/koreader-kindle-legacy-*.zip | head -n 1)
+          V=$(basename "$Z" .zip); V=${V#koreader-kindle-legacy-}
+          tools/gzreader/publish-updates.sh nook-koreader "$Z" "$V" "$GITHUB_SHA"
       - name: No VFP in KOReader's programs
         run: |
           mkdir -p chk && unzip -q dl/koreader-kindle-legacy-*.zip -d chk
