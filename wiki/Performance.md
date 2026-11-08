@@ -74,8 +74,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   on a new connection). Grimmory's book lists come in pages of 50 at most,
   so a 2,000-book index is 40 requests: now on one connection. Off: a file
   named `gz-no-keepalive` in the `koreader` folder.
-- **Request helper (experimental, opt-in)** (`gzreader_reqhelper.lua`): with
-  a file named `gz-request-helper` in the `koreader` folder, a small
+- **Request helper (experimental, off by default)** (`gzreader_reqhelper.lua`):
+  with Settings → Connections → Grimmory → Keep connections open
+  (experimental) ticked (or a file named `gz-request-helper` in the
+  `koreader` folder; not offered on Kindles without Wi‑Fi), a small
   separate LuaJIT process runs while Wi‑Fi is on and keeps the connections
   to your servers open *between* background processes: they send their
   requests to it on 127.0.0.1 (with a random token, as to an HTTP proxy)

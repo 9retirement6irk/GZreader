@@ -1,6 +1,7 @@
 --[[--
-A long-lived request helper (experimental, off unless a file named
-gz-request-helper is in the koreader folder).
+A long-lived request helper (experimental, off by default: Settings →
+Connections → Grimmory → Keep connections open, or a file named
+gz-request-helper in the koreader folder).
 
 Background requests run in forked processes (gzreader_async.lua); each keeps
 its connections only while it lives (gzreader_api.lua's pool), so browsing the
@@ -140,9 +141,24 @@ function H.dir()
     return d
 end
 
+--- Settings → Connections → Grimmory → Keep connections open (off by default).
+function H.setting()
+    local ok, on = pcall(function() return G_reader_settings:isTrue("gzreader_request_helper") end)
+    return ok and on == true
+end
+
+function H.setSetting(on)
+    pcall(function()
+        if on then G_reader_settings:saveSetting("gzreader_request_helper", true)
+        else G_reader_settings:delSetting("gzreader_request_helper") end
+    end)
+end
+
+--- On in Settings, or (as before the setting) a file named gz-request-helper
+--- in the koreader folder.
 function H.enabled()
     if H.force ~= nil then return H.force end
-    return require("libs/libkoreader-lfs").attributes(H.FLAG, "mode") == "file"
+    return H.setting() or require("libs/libkoreader-lfs").attributes(H.FLAG, "mode") == "file"
 end
 
 --- The running helper's port and token, or nil (read once per process).

@@ -1250,6 +1250,7 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
+    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|"), "Grimmory section: Keep connections open, after the sync switches")
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
     local d = texts(gen.diagnostics)
@@ -1961,6 +1962,21 @@ print("The request helper (opt-in): connections kept between background processe
 ;(function()
     local Api = require("gzreader_api")
     local Helper = require("gzreader_reqhelper")
+    -- Settings → Connections → Grimmory → Keep connections open: off by default
+    local was_force = Helper.force
+    Helper.force = nil
+    check(not Helper.enabled() and not Helper.setting(), "the helper is off by default")
+    local item
+    for _i, it in ipairs(plugin:menuItems()) do if it.text == "Keep connections open (experimental)" then item = it end end
+    local started, was_start = 0, Helper.start
+    Helper.start = function() started = started + 1 end
+    item.callback()
+    check(Helper.enabled() and Helper.setting() and item.checked_func() and gsettings.gzreader_request_helper == true,
+        "Settings → Keep connections open: on (kept in KOReader's settings)")
+    item.callback()
+    check(not Helper.enabled() and not item.checked_func() and gsettings.gzreader_request_helper == nil, "and off again")
+    Helper.start = was_start
+    Helper.force = was_force
     local hsock = require("socket")
     local UP = PORT + 71
     os.execute("python3 -I keepalive_server.py " .. UP .. " >/dev/null 2>&1 & echo $! > '" .. WORK .. "/keepalive2.pid'")
