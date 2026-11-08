@@ -1021,6 +1021,16 @@ gsettings.home_dir = "/somewhere/else"                     -- an older build's "
 Grimmory:new{ ui = { menu = { registerToMainMenu = function() end }, active_widgets = {} } }
 check(gsettings.home_dir == libdir, "the home folder is always the GZreader folder: set back at the next start")
 gsettings.home_dir = libdir
+do -- Settings → Library → Folders has no Home folder menu (Set / Lock / Additional home folders)
+    local lf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings.lua", "rb")
+    local lsrc = lf and lf:read("*a") or ""
+    if lf then lf:close() end
+    check(lsrc:find("local folders_item = {", 1, true) and lsrc:find('text = _("Hide up folder")', 1, true),
+        "the Folders settings are still there (Hide up folder)")
+    check(not lsrc:find('_("Home folder")', 1, true) and not lsrc:find('_("Lock home folder")', 1, true)
+        and not lsrc:find('_("Additional home folders")', 1, true) and not lsrc:find("settings_home_folder", 1, true),
+        "Settings → Library → Folders: no Home folder menu, so the home folder can't be changed there")
+end
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 
 print("Update wiped the settings (books stay in the folder)")

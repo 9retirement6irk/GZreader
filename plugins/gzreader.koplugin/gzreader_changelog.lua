@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The home folder can no longer be changed in Settings", text = "Settings → Library → Folders no longer has a Home folder menu (Lock home folder, Additional home folders). GZreader relies on the home folder being the GZreader folder, where downloads and books sent from your browser go, so it can't be changed or locked there any more." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
