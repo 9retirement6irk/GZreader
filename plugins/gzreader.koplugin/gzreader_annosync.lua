@@ -87,7 +87,9 @@ end
 function AnnotationSync.fromLocal(annotations, cfi, book_id)
     local out, rejected = {}, {}
     for index, annotation in ipairs(annotations or {}) do
-        if annotation.pos0 ~= nil and annotation.pos1 ~= nil then
+        -- GZreader: (a note made in Grimmory's web reader, with no highlight there:
+        -- gzreader_notesync keeps it; not sent back as a highlight)
+        if annotation.pos0 ~= nil and annotation.pos1 ~= nil and not annotation.grimmory_note_only then
             local ok, range_or_err = pcall(cfi.xpointerRangeToCFI,
                 annotation.pos0, annotation.pos1)
             if ok and type(range_or_err) == "string" then

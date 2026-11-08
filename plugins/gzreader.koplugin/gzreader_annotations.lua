@@ -69,8 +69,79 @@ function Anno.openReader(_path) return nil end -- nil: grimmory_cfi opens it wit
 
 local function key(p0, p1) return tostring(p0) .. "\n" .. tostring(p1) end
 
+--- Notes (gzreader_notesync), in the background job after the highlights.
+--- items: AS.fromLocal's records (their CFIs); xps: conversions already made.
+function Anno.workNotes(api, book_id, locals, items, rejected, shadow, CFI, xps)
+    local NS = require("gzreader_notesync")
+    -- (no Wi-Fi: the sync page's journal has no notes yet; they go with Wi-Fi)
+    if api.offline or not api.listBookNotes then return { skipped = true } end
+    local remote_list, lerr = api:listBookNotes(book_id)
+    if type(remote_list) ~= "table" then return { error = "list: " .. tostring(lerr) } end
+    local here, cfi_of = {}, {}
+    local function add(a, cfi)
+        if not here[cfi] or (not here[cfi].note and NS.text(a.note)) then
+            here[cfi] = { note = NS.text(a.note), text = type(a.text) == "string" and a.text or nil,
+                chapter = type(a.chapter) == "string" and a.chapter or nil }
+        end
+        cfi_of[key(a.pos0, a.pos1)] = cfi
+    end
+    for _i, it in ipairs(items) do
+        local a = locals[it.index]
+        if a then add(a, it.body.cfi); here[it.body.cfi].color = it.body.color end
+    end
+    for _i, a in ipairs(locals) do
+        if isHighlight(a) then
+            if a.grimmory_note_only and type(a.grimmory_note_cfi) == "string" then add(a, a.grimmory_note_cfi)
+            elseif type(a.grimmory_cfi) == "string" and not here[a.grimmory_cfi] then add(a, a.grimmory_cfi) end
+        end
+    end
+    local plan = NS.plan(here, NS.byCfi(remote_list), shadow)
+    -- a highlight here we couldn't place: don't take its missing note for a deletion
+    if #rejected > 0 then
+        for _i, d in ipairs(plan.deletes) do plan.conflicts[d.cfi] = true end
+        plan.deletes = {}
+    end
+    local errors, counts = {}, { created = 0, updated = 0, deleted = 0 }
+    for _i, d in ipairs(plan.deletes) do
+        if api:deleteBookNote(d.id) then counts.deleted = counts.deleted + 1
+        else errors[#errors + 1] = "delete " .. tostring(d.id); plan.conflicts[d.cfi] = true end
+    end
+    for _i, u in ipairs(plan.updates) do
+        if api:updateBookNote(u.id, u.body) then counts.updated = counts.updated + 1
+        else errors[#errors + 1] = "update " .. tostring(u.id); plan.conflicts[u.cfi] = true end
+    end
+    for _i, c in ipairs(plan.creates) do
+        c.body.bookId = tonumber(book_id)
+        local col = c.body.color
+        if type(col) ~= "string" or not col:match("^#%x%x%x%x%x%x$") then c.body.color = nil end
+        local made, _e, code = api:createBookNote(c.body)
+        if made or code == 409 then counts.created = counts.created + 1
+        else errors[#errors + 1] = "create " .. tostring(code or _e); plan.conflicts[c.cfi] = true end
+    end
+    local final = remote_list
+    if #plan.deletes + #plan.updates + #plan.creates > 0 then
+        local f, ferr = api:listBookNotes(book_id)
+        if type(f) ~= "table" then return { error = "final list: " .. tostring(ferr) } end
+        final = f
+    end
+    local remote = NS.byCfi(final)
+    local nxps = {}
+    for cfi in pairs(remote) do
+        if not here[cfi] then
+            local x = xps[cfi]
+            if not x then
+                local okc, p0, p1, cerr = pcall(CFI.cfiRangeToXPointers, cfi)
+                if okc and p0 and p1 then x = { p0, p1 } else x = { false, tostring(okc and cerr or p0) } end
+            end
+            nxps[cfi] = x
+        end
+    end
+    return { remote = remote, conflicts = plan.conflicts, errors = errors, counts = counts,
+        cfi_of = cfi_of, xps = nxps }
+end
+
 --- Runs in the background process. Plain values in, plain values out.
-function Anno.work(api, file, book_id, locals, shadow)
+function Anno.work(api, file, book_id, locals, shadow, note_shadow)
     local Real = require("gzreader_cfi")
     local AS = require("gzreader_annosync")
     local ok, err = Real.initBook(file, Anno.openReader(file))
@@ -144,6 +215,10 @@ function Anno.work(api, file, book_id, locals, shadow)
         end
         result = { remote = final, conflicts = conflicts, errors = errors, rejected = #rejected,
             cfi_of = cfi_of, xps = xps, counts = counts }
+        -- notes: Grimmory's own note records (its web reader's Notes tab)
+        local nok, nres = pcall(Anno.workNotes, api, book_id, locals, items, rejected, note_shadow, CFI, xps)
+        if nok then result.notes = nres
+        else result.notes = { error = "crash: " .. tostring(nres) } end
     end)
     Real.clearCache()
     if not done then return nil, "crash: " .. tostring(crash) end
@@ -228,8 +303,19 @@ function Anno:apply(res)
     end
     local conflicts = type(res.conflicts) == "table" and res.conflicts or {}
     local merged, conv_errors = AS.mergeLocal(live, res.remote, answers(res, open and ui.document), conflicts)
+    local notes_changed, notes = false, type(res.notes) == "table" and res.notes or {}
+    if type(notes.remote) == "table" then
+        local done, changed, nerrs = pcall(self.mergeNotes, self, merged, res, open and ui.document)
+        if done then
+            notes_changed = changed
+            for _i, e in ipairs(nerrs or {}) do conv_errors[#conv_errors + 1] = e end
+        else
+            Log.warn("notes merge failed:", tostring(changed))
+            notes.remote = nil
+        end
+    end
     local saved = true
-    if differs(merged, live) then saved = self:saveLocal(merged) end
+    if notes_changed or differs(merged, live) then saved = self:saveLocal(merged) end
     local shadow = AS.shadowFor(res.remote)
     for id in pairs(conflicts) do shadow[id] = self.entry.anno_shadow[id] end
     self.entry.anno_shadow = shadow
@@ -238,6 +324,20 @@ function Anno:apply(res)
     self.entry.anno_dirty = (not saved or #(res.errors or {}) > 0 or (res.rejected or 0) > 0
         or #conv_errors > 0 or nconf > 0) or nil
     self.entry.anno_conflicts = nconf > 0 and nconf or nil
+    if type(notes.remote) == "table" then
+        local NS = require("gzreader_notesync")
+        self.entry.note_shadow = NS.shadowFor(notes.remote, self.entry.note_shadow, notes.conflicts)
+        local nn = 0
+        for _cfi in pairs(notes.conflicts or {}) do nn = nn + 1 end
+        if nn > 0 or #(notes.errors or {}) > 0 then self.entry.anno_dirty = true end
+        local nc = notes.counts or {}
+        Log.info("notes synced", self.book_id, "sent: new", nc.created or 0, "changed", nc.updated or 0,
+            "deleted", nc.deleted or 0, "conflicts", nn,
+            #(notes.errors or {}) > 0 and ("errors: " .. table.concat(notes.errors, ", ")) or "")
+    elseif notes.error then
+        Log.warn("notes not synced:", tostring(notes.error))
+        self.entry.anno_dirty = true
+    end
     self.plugin:save()
     local c = res.counts or {}
     local n_here = 0
@@ -247,6 +347,29 @@ function Anno:apply(res)
         "conflicts", nconf, "not convertible", #conv_errors + (res.rejected or 0),
         #(res.errors or {}) > 0 and ("errors: " .. table.concat(res.errors, ", ")) or "")
     return merged
+end
+
+--- Grimmory's notes into the merged list (in place). Returns changed, errors.
+function Anno:mergeNotes(merged, res, doc)
+    local NS = require("gzreader_notesync")
+    local notes = res.notes
+    local function cfi_of(a)
+        if a.grimmory_note_only and type(a.grimmory_note_cfi) == "string" then return a.grimmory_note_cfi end
+        if type(a.grimmory_cfi) == "string" then return a.grimmory_cfi end
+        local k = key(a.pos0, a.pos1)
+        return (notes.cfi_of and notes.cfi_of[k]) or (res.cfi_of and res.cfi_of[k])
+    end
+    local function to_xp(cfi)
+        local x = notes.xps and notes.xps[cfi]
+        if not x then return nil, nil, "not converted" end
+        if not x[1] then return nil, nil, x[2] end
+        if doc and doc.isXPointerInDocument
+                and not (doc:isXPointerInDocument(x[1]) and doc:isXPointerInDocument(x[2])) then
+            return nil, nil, "not in this copy of the book"
+        end
+        return x[1], x[2]
+    end
+    return NS.merge(merged, notes.remote, self.entry.note_shadow, notes.conflicts, cfi_of, to_xp)
 end
 
 --- Does our reading of the book's spine match crengine's? (checked once)
@@ -272,9 +395,9 @@ function Anno:run(on_done)
     self.busy, self.again, self.touched = true, false, false
     local snapshot = self:snapshot()
     self.last_snapshot = snapshot
-    local file, book_id, shadow = self.file, self.book_id, self.entry.anno_shadow
+    local file, book_id, shadow, note_shadow = self.file, self.book_id, self.entry.anno_shadow, self.entry.note_shadow
     require("gzreader_async").run(self.api, function(api)
-        return Anno.work(api, file, book_id, snapshot, shadow)
+        return Anno.work(api, file, book_id, snapshot, shadow, note_shadow)
     end, function(res, err)
         self.busy = false
         local ok = false
@@ -314,10 +437,30 @@ function Anno:onAnnotationsModified(items)
     UIManager:scheduleIn(Anno.DEBOUNCE, self.pending)
 end
 
+--- A note changed here since the last pass? (KOReader says nothing when an
+--- existing note is edited: only when a highlight gets or loses its note.)
+function Anno:notesChanged()
+    local NS = require("gzreader_notesync")
+    local shadow = type(self.entry.note_shadow) == "table" and self.entry.note_shadow or {}
+    for _i, a in ipairs(self.ui.annotation and self.ui.annotation.annotations or {}) do
+        if isHighlight(a) then
+            local cfi = (a.grimmory_note_only and a.grimmory_note_cfi) or a.grimmory_cfi
+            if type(cfi) ~= "string" then
+                if NS.text(a.note) then return true end -- a note on a highlight not synced yet
+            else
+                local b = shadow[cfi]
+                if NS.text(a.note) ~= (type(b) == "table" and NS.text(b.note) or nil) then return true end
+            end
+        end
+    end
+    return false
+end
+
 --- The book is closing: send what's waiting (Wi-Fi only when needed: brought up quietly).
 function Anno:onClose()
     if self.pending then UIManager:unschedule(self.pending); self.pending = nil end
     self.closed = true
+    if not self.entry.anno_dirty and self:enabled() and self:notesChanged() then self.entry.anno_dirty = true end
     if not self.entry.anno_dirty or not self:enabled() then return end
     local Net = require("gzreader_net")
     self:spineOk() -- while the book is still open

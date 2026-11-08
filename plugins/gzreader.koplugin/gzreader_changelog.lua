@@ -7,6 +7,13 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Bookmarks from Grimmory no longer wipe the Kindle's bookmarks", text = "Bookmark sync took every bookmark Grimmory sent for an audiobook bookmark (Grimmory marks the audio time as empty, and GZreader read empty as set): opening a book again removed the bookmarks already synced from the Kindle and brought none in, not even ones added in the web reader. Now they're all kept on both sides; the ones that went missing come back from Grimmory the next time the book opens. A bookmark deleted from the bookmark list is now deleted in Grimmory too." },
+            { short = "Your notes now show in Grimmory's Notes tab, both ways", text = "Grimmory's web reader doesn't show a highlight's note, only the notes in its Notes tab, so notes made on the Kindle seemed not to sync. Each note is now also kept there (at its highlight, with the words and colour), and notes made, changed or deleted in the web reader come to the Kindle. An edited note is sent when the book closes." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
