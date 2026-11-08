@@ -1520,8 +1520,8 @@ do
     local fh = io.open(bookpath, "wb"); fh:write("x"); fh:close()
     local was_fm, was_showing = package.loaded["apps/filemanager/filemanager"], rawget(plugin, "downloadsTabShowing")
     local own_hold, dialog_item, prepend_then
-    local FakeFM = { setupLayout = function(f)
-        f.file_chooser = {
+    local FakeFM = { setupLayout = function(layout_fm)
+        layout_fm.file_chooser = {
             onFileHold = function(_fc, item) own_hold = item end,
             showFileDialog = function(_fc, item) dialog_item = item; prepend_then = rawget(_G, "__GZ_CONTEXT_PREPEND") end,
         }
