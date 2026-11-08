@@ -1077,6 +1077,29 @@ print("Diagnostic log: the device probe's unchanging part is kept between export
     Log.PROBE_COMMANDS, Log.PROBE_LIVE, Log.probe_cache = saved_cmds, saved_live, saved_cache
 end)()
 
+print("Diagnostic log files don't pile up")
+;(function()
+    local Log = require("gzreader_log")
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = WORK .. "/saved-logs"
+    lfs.mkdir(dir)
+    local function touch(name) local fh = io.open(dir .. "/" .. name, "wb"); fh:write("x"); fh:close() end
+    for _i, name in ipairs({ "gzreader-log-20261101-100000.txt", "gzreader-log-20261102-100000.txt", "gzreader-log-20261103-100000.txt",
+            "gzreader-log-20261104-100000.txt", "gzreader-log-19700101-000500.txt", "notes.txt" }) do touch(name) end
+    local removed = Log.pruneExports(dir, 3, dir .. "/gzreader-log-19700101-000500.txt")
+    local left = {}
+    for name in lfs.dir(dir) do if name:sub(1, 1) ~= "." then left[#left + 1] = name end end
+    table.sort(left)
+    check(removed == 2 and table.concat(left, " ") == "gzreader-log-19700101-000500.txt gzreader-log-20261103-100000.txt gzreader-log-20261104-100000.txt notes.txt",
+        "only the newest 3 saved logs stay; the one just written always does (a 1970 clock); other files untouched: " .. table.concat(left, " "))
+    check(Log.pruneExports(WORK .. "/no-such-dir") == 0, "no folder: nothing to do, no error")
+    local text, name = Log.exportText(dir, nil)
+    local after = 0
+    for fname in lfs.dir(dir) do if fname:match("^gzreader%-log%-") then after = after + 1 end end
+    check(text and text:find("Grimmory plugin log", 1, true) and name:match("^gzreader%-log%-%d+%-%d+%.txt$") and after == 3,
+        "the log as text for sending: its file is deleted again")
+end)()
+
 print("Grimmory folder is the home folder")
 local libdir = WORK .. "/home/GZreader"
 check(plugin.store.library_dir == libdir, "Grimmory folder created under the device's documents folder")
@@ -3636,7 +3659,16 @@ gsettings.gzreader_audio_players = nil
 print("Send the diagnostic log to a phone")
 PS.new = function(self, o) screen = o; return o end
 plugin.pairing = nil
+local function savedLogs()
+    local count = 0
+    for _i, logdir in ipairs({ plugin:libraryDir():match("^(.+)/[^/]+$"), require("datastorage"):getDataDir() .. "/cache" }) do
+        pcall(function() for fname in require("libs/libkoreader-lfs").dir(logdir) do if fname:match("^gzreader%-log%-") then count = count + 1 end end end)
+    end
+    return count
+end
+local saved_before = savedLogs()
 plugin:shareLog()
+check(savedLogs() <= math.min(saved_before, 3), "sharing leaves no log file behind (" .. saved_before .. " -> " .. savedLogs() .. ")")
 check(screen and screen.url:match("^http://%d+%.%d+%.%d+%.%d+:%d+/log/%x+$") and screen.title:match("diagnostic log"), "QR screen with a one-off log address")
 local lbase = "http://127.0.0.1:" .. UI.zmqs[1].port
 local lpath = screen.url:match("(/log/%x+)$")

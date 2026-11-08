@@ -124,6 +124,44 @@ function Log.exportTo(dir, crash_log_path)
     return dest
 end
 
+--- How many saved logs ("Save to the Kindle") stay next to the GZreader folder.
+Log.KEEP_EXPORTS = 3
+
+--- Delete older gzreader-log-<date>-<time>.txt files in `dir`, keeping the
+--- newest `keep` (Log.KEEP_EXPORTS) by name. `except` (the file just written)
+--- always stays and counts as one of them: a Kindle whose clock went back to
+--- 1970 names it as the oldest. Returns how many were deleted.
+function Log.pruneExports(dir, keep, except)
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok or type(dir) ~= "string" then return 0 end
+    local except_name = except and except:match("[^/]+$")
+    local names = {}
+    pcall(function()
+        for name in lfs.dir(dir) do
+            if name ~= except_name and name:match("^gzreader%-log%-%d+%-%d+%.txt$") then names[#names + 1] = name end
+        end
+    end)
+    table.sort(names)
+    local allowed = math.max(0, (keep or Log.KEEP_EXPORTS) - (except_name and 1 or 0))
+    local removed = 0
+    for i = 1, #names - allowed do
+        if os.remove(dir .. "/" .. names[i]) then removed = removed + 1 end
+    end
+    return removed
+end
+
+--- The log bundle as text, built in `tmp_dir` and deleted there (for sending
+--- it somewhere: nothing is left behind). Returns text, file name; or nil, err.
+function Log.exportText(tmp_dir, crash_log_path)
+    local dest, err = Log.exportTo(tmp_dir, crash_log_path)
+    local f = dest and io.open(dest, "rb")
+    if not f then return nil, err or "couldn't read the log" end
+    local content = f:read("*a")
+    f:close()
+    os.remove(dest)
+    return content, dest:match("[^/]+$")
+end
+
 -- Read-only survey used to plan text-to-speech: where the Kindle's own speech
 -- engine lives, whether it is reachable over lipc, and what audio playback
 -- exists. Only lists/reads; never changes anything. Kept to quick commands

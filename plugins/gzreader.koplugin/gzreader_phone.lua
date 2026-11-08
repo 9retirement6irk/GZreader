@@ -573,12 +573,12 @@ function Phone.open(plugin, opts)
         if plugin.store.logging_disabled == true then return 404, "text/plain", "Not found" end
         local lib = plugin:libraryDir()
         Log.probe_device = require("device"):isKindle()
-        local dest, err = Log.exportTo(lib:match("^(.+)/[^/]+$") or lib, require("datastorage"):getDataDir() .. "/crash.log")
-        local f = dest and io.open(dest, "rb")
-        if not f then return 500, "text/plain", "Couldn't save the log: " .. tostring(err) end
-        local content = f:read("*a")
-        f:close()
-        local filename = dest:match("[^/]+$")
+        -- built in the cache and deleted there (nothing left next to the GZreader folder)
+        local data_dir = require("datastorage"):getDataDir()
+        pcall(function() require("libs/libkoreader-lfs").mkdir(data_dir .. "/cache") end)
+        local content, filename = Log.exportText(data_dir .. "/cache", data_dir .. "/crash.log")
+        if not content then return 500, "text/plain", "Couldn't save the log: " .. tostring(filename) end
+        Log.pruneExports(lib:match("^(.+)/[^/]+$") or lib) -- (logs earlier versions left there: the newest few stay)
         Log.info("log sent to the browser", filename, #content, "bytes")
         return 200, "text/plain", content, { ["Content-Disposition"] = 'attachment; filename="' .. filename .. '"' }
     end
