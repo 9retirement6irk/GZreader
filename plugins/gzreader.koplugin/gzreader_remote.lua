@@ -1,12 +1,12 @@
 --[[--
-Remote debugging: GZreader reports to a feed (Tianji-style
+Remote debugging: GZreader reports to the developer's feed (Tianji
 /open/feed/<id>/send and /state/upsert) so problems are visible even when
 the Kindle can't be reached afterwards.
 
-Off until a feed address is set: Settings → General → Remote debugging, or
-a file `gzreader-remote.txt` on the Kindle's USB drive with the address on
-its first line (read when GZreader starts). The address isn't in GZreader's
-code: the project is public and anyone with it could post to the feed.
+On when usage statistics are Full (Settings → General → Usage statistics,
+or the setup guide), on Kindles with Wi-Fi. Releases report to one feed,
+test builds (a version like 1.26.7-beta.abc1234) to another. GZ_REMOTE_FEED
+(environment) points it elsewhere, for the emulator's feed.py.
 
 What is sent (log lines are already redacted: no passwords or tokens):
 - "started": version, battery, free memory, how the previous run ended;
@@ -20,6 +20,9 @@ What is sent (log lines are already redacted: no passwords or tokens):
 
 Messages wait in a folder and are sent by the watchdog when Wi-Fi is on;
 GZreader never turns Wi-Fi on for them.
+
+Diagnostics → Send to the developer (R.sendLogs) sends the whole diagnostic
+log at once, to the same feed, whatever the usage level.
 ]]
 
 local DataStorage = require("datastorage")
@@ -29,7 +32,13 @@ local JSON = require("json")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 
-local R = { HEARTBEAT = 15, BATCH = 60, seq = 0 }
+local R = {
+    HEARTBEAT = 15, BATCH = 60, seq = 0,
+    FEED = "https://in.wxcyber.com/open/feed/cmvtvoj3j1dpb5zr7b1dj3zen", -- releases
+    TEST_FEED = "https://in.wxcyber.com/open/feed/cmw79imiu09sx8o2f27uihqar", -- test builds
+    PART = 60 * 1024, -- a diagnostic log is sent in parts of this size…
+    MAX_PARTS = 8, -- …at most this many (its newest part)
+}
 
 function R.dir()
     local d = DataStorage:getDataDir() .. "/gzreader-remote"
@@ -47,8 +56,32 @@ function R.normalize(url)
     return url
 end
 
-function R.enabled(store)
-    return store and store.remote_url ~= nil and store.remote_disabled ~= true
+function R.version()
+    local ok, v = pcall(function() return require("gzreader_update").currentVersion() end)
+    return ok and v or "0.0.0"
+end
+
+--- A test build: a version with something after the number (1.26.7-beta.abc1234).
+function R.testBuild(version)
+    version = tostring(version or R.version()):gsub("^v", "")
+    local rest = version:match("^%d[%d%.]*%d(.*)$")
+    return rest ~= nil and rest ~= ""
+end
+
+--- The feed this build reports to.
+function R.feedUrl(version)
+    local env = os.getenv("GZ_REMOTE_FEED")
+    if env and R.normalize(env) then return R.normalize(env) end
+    return R.testBuild(version) and R.TEST_FEED or R.FEED
+end
+
+--- On with Full usage statistics, on a Kindle with Wi-Fi (without it the
+--- watchdog could never send).
+function R.enabled()
+    local okn, Net = pcall(require, "gzreader_net")
+    if okn and Net.usb then return false end
+    local oku, U = pcall(require, "gzreader_usage")
+    return oku and U.level() == "full"
 end
 
 local function writeFile(p, s)
@@ -166,40 +199,35 @@ end
 
 ---------------------------------------------------------------- start
 
---- Read gzreader-remote.txt from the USB drive (first line: the feed address).
-function R.importFile(store)
-    for _i, p in ipairs({ "/mnt/us/gzreader-remote.txt", (Device.home_dir or "") .. "/../gzreader-remote.txt",
-            DataStorage:getDataDir() .. "/gzreader-remote.txt" }) do
-        local s = readFile(p)
-        local url = s and R.normalize(s:match("^[^\n]*"))
-        if url then
-            if store.remote_url ~= url then
-                store.remote_url = url
-                store.remote_disabled = nil
-                Log.info("remote debugging: address read from", p)
-                return true
-            end
-            return false
-        end
-    end
-    return false
+--- "Kindle3-1a2b3c": the model and the start of usage statistics' random ID
+--- (not the serial number), so reports from two Kindles can be told apart.
+function R.deviceName()
+    local model = tostring(Device.model or "Kindle"):gsub("%s", "")
+    local ok, id = pcall(function() return require("gzreader_usage").id() end)
+    id = ok and type(id) == "string" and id:gsub("[^%w]", ""):sub(1, 6) or ""
+    return id ~= "" and (model .. "-" .. id) or model
 end
 
 --- Once per run (from the first GZreader instance).
 function R.start(plugin)
     if R.started then return end
     R.started = true
+    R.plugin = plugin
     local store = plugin.store
-    if R.importFile(store) then plugin:save() end
-    if not R.enabled(store) then return end
+    -- (up to 1.26.7 the feed was set by hand: Settings → Remote debugging)
+    if store.remote_url or store.remote_disabled or store.remote_profile or store.remote_device then
+        store.remote_url, store.remote_disabled, store.remote_profile, store.remote_device = nil, nil, nil, nil
+        pcall(plugin.save, plugin)
+    end
+    if not R.enabled() then return end
     R.on = true
-    R.device = store.remote_device or (tostring(Device.model or "Kindle"):gsub("%s", ""))
+    R.device = R.deviceName()
     local dir = R.dir()
     -- how did the previous run end?
     local prev = readFile(dir .. "/heartbeat")
     local t, status, what = (prev or ""):match("^(%d+) (%a+) ?(.*)$")
-    writeFile(dir .. "/config", store.remote_url .. "\n" .. R.device .. "\n")
-    local version = (readFile("gzreader-version") or "?"):gsub("%s", "")
+    local version = R.version()
+    writeFile(dir .. "/config", R.feedUrl(version) .. "\n" .. R.device .. "\n")
     local how = "first start with remote debugging"
     if status == "exit" then how = "closed normally"
     elseif status == "sleep" then how = "it was asleep (battery ran out or restarted while asleep)"
@@ -224,7 +252,7 @@ function R.start(plugin)
     local okt, Trace = pcall(require, "gzreader_slowtrace")
     if okt then
         R.trace = Trace
-        pcall(Trace.install, dir, { profile = store.remote_profile == true })
+        pcall(Trace.install, dir, {})
     end
     local function tick()
         if R.trace then
@@ -296,75 +324,75 @@ function R.onResume() if R.on then R.beat("run"); R.startWatchdog() end end
 
 ---------------------------------------------------------------- settings
 
-function R.menuItems(plugin)
-    local _ = require("gettext")
-    local T = require("ffi/util").template
-    local store = plugin.store
-    return {
-        text = _("Remote debugging"),
-        sub_item_table = {
-            {
-                text = _("Send reports to my feed"),
-                help_text = _("Sends GZreader's start, crashes, freezes, warnings and errors (no passwords or tokens) to the feed address below, so you can see what happened even when the Kindle had to be hard rebooted."),
-                enabled_func = function() return store.remote_url ~= nil end,
-                checked_func = function() return R.enabled(store) end,
-                callback = function()
-                    store.remote_disabled = (store.remote_disabled ~= true) or nil
-                    plugin:save()
-                    if R.enabled(store) then R.started = false; R.start(plugin) else R.stop() end
-                end,
-            },
-            {
-                text_func = function()
-                    return store.remote_url and T(_("Feed address: %1"), store.remote_url:match("^https?://([^/]+)") or "?")
-                        or _("Set the feed address…")
-                end,
-                keep_menu_open = true,
-                callback = function(touchmenu)
-                    local InputDialog = require("ui/widget/inputdialog")
-                    local dlg
-                    dlg = InputDialog:new{
-                        title = _("Feed address (…/open/feed/<id>)"),
-                        input = store.remote_url or "https://",
-                        buttons = {{
-                            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
-                            { text = _("Save"), is_enter_default = true, callback = function()
-                                local url = R.normalize(dlg:getInputText())
-                                UIManager:close(dlg)
-                                if not url then return end
-                                store.remote_url, store.remote_disabled = url, nil
-                                plugin:save()
-                                R.started = false
-                                R.start(plugin)
-                                if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end
-                            end },
-                        }},
-                    }
-                    UIManager:show(dlg)
-                    dlg:onShowKeyboard()
-                end,
-            },
-            {
-                text = _("Detailed timing (slower)"),
-                help_text = _("Also samples where GZreader spends its CPU time (LuaJIT's profiler) and adds it to slow and freeze reports. Off by default: it uses timer signals all the time. Takes effect after a restart."),
-                enabled_func = function() return R.enabled(store) end,
-                checked_func = function() return store.remote_profile == true end,
-                callback = function()
-                    store.remote_profile = (store.remote_profile ~= true) or nil
-                    plugin:save()
-                end,
-            },
-            {
-                text = _("Send a test report"),
-                enabled_func = function() return R.enabled(store) end,
-                callback = function()
-                    R.event("Test report", "Remote debugging works. " .. memFree() .. ", battery " .. battery() .. "%.", { "test" }, false)
-                    local InfoMessage = require("ui/widget/infomessage")
-                    UIManager:show(InfoMessage:new{ text = _("Test report queued: it's sent within a few seconds while Wi-Fi is on."), timeout = 3 })
-                end,
-            },
-        },
-    }
+--- The usage level changed: start or stop.
+function R.apply()
+    if R.enabled() then
+        if not R.on and R.plugin then R.started = false; R.start(R.plugin) end
+    else
+        R.stop()
+    end
+end
+
+--- Diagnostics → Send to the developer: the diagnostic log (as saved for
+--- USB: GZreader's log, crash.log's end, what keeps the Kindle awake) in
+--- events of PART bytes, its newest MAX_PARTS. Returns the number of parts
+--- sent, or nil, error. `post(url, body)` → HTTP code (tests); else LuaSocket.
+function R.sendLogs(path, note, post)
+    local s = readFile(path)
+    if not s or s == "" then return nil, "no log" end
+    local version = R.version()
+    local url = R.feedUrl(version) .. "/send"
+    local device = R.device or R.deviceName()
+    local total = #s
+    local function lead(i) -- (never in the middle of a UTF-8 character)
+        while i <= total do
+            local b = s:byte(i)
+            if b < 0x80 or b >= 0xC0 then break end
+            i = i + 1
+        end
+        return i
+    end
+    local first = lead(math.max(1, total - R.PART * R.MAX_PARTS + 1))
+    local parts = {}
+    local i = first
+    while i <= total do
+        local j = lead(i + R.PART)
+        parts[#parts + 1] = s:sub(i, j - 1)
+        i = j
+    end
+    post = post or function(u, body)
+        local http = require("socket.http")
+        local ltn12 = require("ltn12")
+        local socketutil = require("socketutil")
+        socketutil:set_timeout(20, 60)
+        local ok, code = pcall(function()
+            return select(2, http.request{
+                url = u, method = "POST",
+                headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#body),
+                    ["User-Agent"] = "GZreader/" .. version },
+                source = ltn12.source.string(body), sink = ltn12.sink.null(),
+            })
+        end)
+        socketutil:reset_timeout()
+        return ok and tonumber(code) or nil
+    end
+    local head = string.format("GZreader %s on %s, %s. %s%s", version, device, os.date("%Y-%m-%d %H:%M"),
+        first > 1 and string.format("The last %d KB of %d KB. ", math.floor((total - first + 1) / 1024), math.floor(total / 1024)) or "",
+        note and ("\n" .. note) or "")
+    for k, part in ipairs(parts) do
+        local body = JSON.encode({
+            eventName = string.format("Debug log from %s (%d/%d)", device, k, #parts),
+            eventContent = (k == 1 and (head .. "\n\n") or "") .. part,
+            tags = { "gzreader", device, "debug-log", R.testBuild(version) and "test-build" or "release" },
+            source = "gzreader",
+            important = false,
+        })
+        local code = post(url, body)
+        if not code then return nil, "unreachable" end
+        if code >= 400 then return nil, "http_" .. code end
+    end
+    Log.info("debug log sent to the developer:", #parts, "part(s)")
+    return #parts
 end
 
 return R

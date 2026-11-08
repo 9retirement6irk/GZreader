@@ -1192,8 +1192,8 @@ do
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Remote debugging|Usage statistics|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
-        "General: logging, remote debugging, usage statistics, send and save the log " .. d)
+    check(d:match("|Diagnostic logging|Usage statistics|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
+        "General: logging, usage statistics, send (to the developer or a browser) and save the log " .. d)
     check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
         "Reader: Read aloud, Test audiobook playback, the headphones")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
@@ -3399,29 +3399,36 @@ print("Usage statistics")
     gsettings.gzreader_usage = nil
 end)()
 
-print("Remote debugging")
+print("Remote debugging (with Full usage statistics)")
 ;(function()
     local R = require("gzreader_remote")
+    local U = require("gzreader_usage")
     local lfs = require("libs/libkoreader-lfs")
     check(R.normalize(" https://in.example.com/open/feed/abc/send \n") == "https://in.example.com/open/feed/abc", "feed address: /send etc. trimmed")
     check(R.normalize("nonsense") == nil, "not an address: refused")
+    check(not R.testBuild("1.26.7") and R.testBuild("1.26.7-beta.abc1234") and R.feedUrl("1.26.7") == R.FEED
+        and R.feedUrl("1.26.7-beta.abc1234") == R.TEST_FEED and R.FEED ~= R.TEST_FEED
+        and R.FEED:match("/open/feed/%w+$") and R.TEST_FEED:match("/open/feed/%w+$"),
+        "releases report to one feed, test builds to another")
     local started = 0
     R.startWatchdog = function() started = started + 1 end
-    -- off until an address is set
+    -- Basic (the default): off; a feed set by hand before is forgotten
+    gsettings.gzreader_usage = "basic"
+    plugin.store.remote_url, plugin.store.remote_profile = "https://in.example.com/open/feed/old", true
     R.started = false
-    plugin.store.remote_url = nil
     R.start(plugin)
-    check(not R.on and started == 0, "no address: nothing sent, no watchdog")
-    -- address from the USB drive file; previous run didn't close normally
+    check(not R.on and started == 0 and plugin.store.remote_url == nil and plugin.store.remote_profile == nil,
+        "Basic: nothing sent, no watchdog; the old hand-set feed is gone")
+    -- Full: on; the previous run didn't close normally
     local dir = R.dir()
     os.execute("rm -f '" .. dir .. "'/spool/*")
     local fh = io.open(dir .. "/heartbeat", "wb"); fh:write((os.time() - 600) .. " run reading big.epub p.40"); fh:close()
     fh = io.open(WORK .. "/gzreader.log.prev", "wb"); fh:write("2026 [INFO] the line before the freeze\n"); fh:close()
-    fh = io.open(WORK .. "/gzreader-remote.txt", "wb"); fh:write("https://in.example.com/open/feed/xyz/send\n"); fh:close()
-    R.started = false
-    R.start(plugin)
-    check(plugin.store.remote_url == "https://in.example.com/open/feed/xyz" and R.on, "address read from gzreader-remote.txt")
-    check(started == 1, "watchdog started")
+    U.setLevel("full") -- (starts it: R.apply)
+    check(R.on and started == 1, "Full: on at once, watchdog started")
+    local cfg = io.open(dir .. "/config"):read("*a")
+    check(cfg:sub(1, #R.feedUrl() + 1) == R.feedUrl() .. "\n" and cfg:match("\n" .. R.deviceName():gsub("%-", "%%-") .. "\n"),
+        "the watchdog reports to this build's feed")
     local names = {}
     for n in lfs.dir(dir .. "/spool") do if n:match("%.json$") then names[#names + 1] = n end end
     table.sort(names)
@@ -3440,15 +3447,45 @@ print("Remote debugging")
     R.onSuspend()
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ sleep "), "asleep: the watchdog doesn't call it a freeze")
     R.event("queued before turning it off", "x")
-    R.stop()
+    U.setLevel("basic") -- (stops it)
     local left = 0
     for name in require("libs/libkoreader-lfs").dir(dir .. "/spool") do if name:match("%.json$") then left = left + 1 end end
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ off") and left == 0 and not R.on and require("gzreader_log").on_line == nil,
-        "turned off: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
+        "back to Basic: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
+    -- Diagnostics → Send to the developer
+    local logf = WORK .. "/devlog.txt"
+    local big = {}
+    for k = 1, 3000 do big[#big + 1] = string.format("line %05d é a GZreader log line\n", k) end
+    fh = io.open(logf, "wb"); fh:write(table.concat(big)); fh:close()
+    local posts = {}
+    local was_part, was_max = R.PART, R.MAX_PARTS
+    R.PART, R.MAX_PARTS = 20000, 3
+    local n = R.sendLogs(logf, nil, function(url, body) posts[#posts + 1] = { url = url, body = json.decode(body) }; return 201 end)
+    local whole = ""
+    for _i, p in ipairs(posts) do whole = whole .. p.body.eventContent end
+    local valid = true
+    for _i, p in ipairs(posts) do if p.body.eventContent:find("^[\128-\191]") then valid = false end end
+    check(n == 3 and #posts == 3 and posts[1].url == R.feedUrl() .. "/send" and posts[1].body.eventName:match("^Debug log from .* %(1/3%)$")
+        and posts[3].body.eventName:match("%(3/3%)$") and posts[1].body.tags[3] == "debug-log",
+        "the log goes to this build's feed, in parts, numbered")
+    check(whole:match("line 03000") and not whole:match("line 00001") and whole:match("The last %d+ KB of %d+ KB") and valid,
+        "a long log: its newest part (says so), never cut inside a character")
+    local failed = { R.sendLogs(logf, nil, function() return 500 end) }
+    local offline = { R.sendLogs(logf, nil, function() return nil end) }
+    check(failed[1] == nil and failed[2] == "http_500" and offline[2] == "unreachable" and R.sendLogs(WORK .. "/none.txt") == nil,
+        "not sent: says why")
+    R.PART, R.MAX_PARTS = was_part, was_max
+    os.remove(logf)
     R.on = false
     require("gzreader_log").on_line = nil
-    plugin.store.remote_url = nil
-    os.remove(WORK .. "/gzreader-remote.txt")
+    gsettings.gzreader_usage = nil
+    -- the menus
+    local src = io.open(debug.getinfo(R.start, "S").source:sub(2):gsub("gzreader_remote%.lua$", "main.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(not text:find("gzreader_remote\").menuItems", 1, true) and R.menuItems == nil
+        and text:find('_("Send to the developer")', 1, true) and text:find("function Grimmory:sendLogToDeveloper", 1, true),
+        "no Remote debugging settings; Diagnostics has Send to the developer")
 end)()
 
 print("Slow-operation tracing")

@@ -45,7 +45,8 @@ Press/Back answer), and the order things happen in on a first start.
 2. `qemu-arm-static` and the ARM loader in `/usr/arm-linux-gnueabi`.
 3. The mock Grimmory: `python3 mock_grimmory.py 18080` (test suite).
 4. Optional remote debugging: `python3 feed.py 18091 feed.log` and
-   `echo http://127.0.0.1:18091/open/feed/test > /mnt/us/gzreader-remote.txt`.
+   `GZ_REMOTE_FEED=http://127.0.0.1:18091/open/feed/test` in the environment
+   (and usage statistics set to Full).
 
 ## E-ink ghosting and the Kindle's Wi-Fi services
 

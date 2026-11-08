@@ -1031,7 +1031,7 @@ function M.build_install_pages(ctx)
             title       = _("Usage Statistics"),
             description = _("Anonymous, and sent only when Wi‑Fi is on: never titles, files, accounts or what you type.") .. "\n"
                 .. _("Basic: version, Kindle model, failed downloads, freezes.") .. "\n"
-                .. _("Full: also screens, menus and reading time."),
+                .. _("Full: also screens, menus, reading time, and debug logs (errors, freezes; these can name a book)."),
             choice_type = "radio",
             choices     = (function()
                 local cur = G_reader_settings:readSetting("gzreader_usage")

@@ -11,6 +11,8 @@ Settings → General → Usage statistics:
   not, minutes, pages, pages per minute, battery use per hour), read aloud,
   download size, speed and resumes, how syncs with Grimmory go (count,
   failures, time), and how long Wi-Fi is on.
+  Full also turns on remote debugging (gzreader_remote.lua): starts,
+  warnings, errors, freezes and crashes go to the developer's feed.
 - Off: nothing is recorded or sent.
 
 Never sent: book titles, authors, file names, your Grimmory address or
@@ -55,6 +57,8 @@ function U.setLevel(v)
     G_reader_settings:saveSetting("gzreader_usage", v)
     if v == "off" then U.dropQueue() end
     Log.info("usage statistics:", v)
+    -- Full also sends the debug reports (gzreader_remote.lua)
+    pcall(function() require("gzreader_remote").apply() end)
 end
 
 local function on(full)
@@ -547,7 +551,7 @@ function U.menuItems()
             item(_("Basic (starts, downloads, problems)"), "basic",
                 _("Sends GZreader's version, the Kindle model and firmware when GZreader starts, whether the last run ended without closing normally, downloads that worked or failed, slow operations, and keys the screen didn't answer. No book titles, file names, account or anything you type.")),
             item(_("Full (also how GZreader is used)"), "full",
-                _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on. Still no titles, file names or account.")),
+                _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on. Still no titles, file names or account.") .. (U.noWifi() and "" or ("\n\n" .. _("Full also sends debug reports to the developer: GZreader's starts, warnings and errors from its log, freezes and crashes. Log lines can name the book or file GZreader was working on; they never have passwords or tokens.")))),
             item(_("Off (send nothing)"), "off", _("Nothing is recorded or sent. What was waiting is deleted.")),
         },
         help_text = U.noWifi() and _("This Kindle has no Wi-Fi: the statistics wait on the Kindle and the sync page sends them from the computer when you sync.") or nil,
