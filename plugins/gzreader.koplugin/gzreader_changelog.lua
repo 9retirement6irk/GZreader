@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes and Calendar icons show again (pin, file, picture, tag)", text = "The icons on notes (pinned, place, file, picture, tag) and the Calendar's come from ZenOS's icon font, which GZreader asked for by the wrong path: it was never found (an error in the log at every size), and the pin, file, picture and tag icons were missing. It's found now." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

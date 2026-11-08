@@ -3953,6 +3953,21 @@ print("Notes (Memos v0.31)")
     local Log = require("gzreader_log")
     local function logtxt() local f = io.open(WORK .. "/gzreader.log", "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
 
+    do -- the icon font (pin, place, file, image, tag, date) is found where Font:getFace looks: <fonts folder>/<name>
+        local ko = arg[5]
+        local function opens(dir, name)
+            local fh = io.open(dir .. "/" .. name, "rb")
+            if fh then fh:close() end
+            return fh ~= nil
+        end
+        local rel = Sticky.iconFontName("./fonts")
+        local abs = Sticky.iconFontName(ko .. "/fonts", ko)
+        check(rel == "../plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf" and opens(ko .. "/fonts", rel),
+            "Notes icons: the icon font is found from KOReader's fonts folder (" .. rel .. ")")
+        check(opens(ko .. "/fonts", abs) and not opens(ko .. "/fonts", "./plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf"),
+            "…and from a fonts folder given in full (the old path wasn't found: " .. abs .. ")")
+    end
+
     -- Markdown, as the sticky notes show it
     local md = "## Trip\n\nPlan **the** _route_ and [map](https://x.y).\n- [ ] permit\n- [x] map\n* bullet\n![pic](/file/attachments/abc/p.png)\n\n"
     local ls = Sticky.lines(md)
