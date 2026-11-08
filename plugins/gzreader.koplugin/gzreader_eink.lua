@@ -19,16 +19,20 @@ Small updates (the clock, typing) don't, nor does anything the 5-way's arrows
 do (moving along the tab bar, around the quick panel or a list: those redraw
 the whole screen but flashing at every step is too much). Inside the
 audiobook and music players (gz_player windows) and the note editor
-(gz_no_flash: typing) nothing flashes but opening and closing them. Page
-turns flash
-every page, as the Kindle's own reader does, unless a rate was chosen in the
-book's menu (Screen → E-ink settings → Full refresh rate; KOReader's default
-is every 6 pages, which left a grey trace of the last pages on the page).
+(gz_no_flash: typing) nothing flashes but opening and closing them.
+
+Page turns are their own setting (Settings → Reader → Appearance → Flash on
+every page turn; on by default on those Kindles, off elsewhere, offered on
+every device): on, every page turn flashes, as the Kindle's own reader does;
+off, KOReader's every 6 pages (which left a grey trace of the last pages on
+a Kindle 3). A rate chosen in the book's menu (Screen → E-ink settings →
+Full refresh rate) wins until the setting is changed again.
 ]]
 
 local Eink = {
     AREA = 0.6,          -- the share of the screen an update must cover to flash
     SETTING = "gzreader_eink_flash",
+    PAGE_SETTING = "gzreader_flash_page_turns",
     LEGACY = { Kindle2 = true, KindleDXG = true, Kindle3 = true, Kindle4 = true },
 }
 
@@ -44,14 +48,44 @@ end
 
 function Eink.setEnabled(on)
     G_reader_settings:saveSetting(Eink.SETTING, on and true or false)
+end
+
+--- Every page turn flashes: the setting, or by default on the Kindles
+--- without REAGL (Kindle 2, DX, 3, 4). Until 1.26.7 it went with
+--- "Flash when the screen changes"; turned off there, it stays off here.
+function Eink.flashPageTurns()
+    local on = G_reader_settings:readSetting(Eink.PAGE_SETTING)
+    if on ~= nil then return on == true end
+    if Eink.applies() and G_reader_settings:readSetting(Eink.SETTING) == false then return false end
+    return Eink.applies()
+end
+
+--- The setting's tick: also right when a rate was chosen in a book's menu
+--- (ticked for "every page").
+function Eink.pageTurnsTicked()
+    if Eink.rateChosen() then return G_reader_settings:readSetting("full_refresh_count") == 1 end
+    return Eink.flashPageTurns()
+end
+
+--- Turning it on or off also drops a rate chosen in a book's menu (the
+--- latest choice counts; that menu can set one again).
+function Eink.setFlashPageTurns(on)
+    G_reader_settings:saveSetting(Eink.PAGE_SETTING, on and true or false)
+    G_reader_settings:delSetting("full_refresh_count")
     Eink.pageRate()
 end
 
---- Page turns: every one flashes (unless a rate was chosen in the book's menu).
+--- A refresh rate chosen in the book's menu: it wins over the setting.
+function Eink.rateChosen()
+    return G_reader_settings:readSetting("full_refresh_count") ~= nil
+end
+
+--- Page turns: every one flashes, or KOReader's every 6 (unless a rate was
+--- chosen in the book's menu, or night mode sets its own).
 function Eink.pageRate()
-    if G_reader_settings:readSetting("full_refresh_count") ~= nil or G_reader_settings:isTrue("night_mode") then return end
+    if Eink.rateChosen() or G_reader_settings:isTrue("night_mode") then return end
     local UIManager = require("ui/uimanager")
-    UIManager.FULL_REFRESH_COUNT = Eink.enabled() and 1 or 6
+    UIManager.FULL_REFRESH_COUNT = Eink.flashPageTurns() and 1 or 6
 end
 
 local QUIET = { ui = true, ["[ui]"] = true, partial = true, ["[partial]"] = true }
@@ -94,8 +128,11 @@ function Eink.flashesFor(widget, stack)
 end
 
 function Eink.install()
-    if Eink.installed or not Eink.applies() then return end
+    if Eink.installed then return end
     Eink.installed = true
+    -- (every device: page turns can flash anywhere)
+    Eink.pageRate()
+    if not Eink.applies() then return end
     local UIManager = require("ui/uimanager")
     local Screen = require("device").screen
     local time = require("ui/time")
@@ -111,7 +148,6 @@ function Eink.install()
         end
         return orig_refresh(self, mode, region, dither)
     end
-    Eink.pageRate()
     -- the last key: an arrow (focus moving: no flash) or not
     local orig_input = UIManager.handleInputEvent
     UIManager.handleInputEvent = function(self, ev, ...)

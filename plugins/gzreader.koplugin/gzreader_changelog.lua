@@ -4,6 +4,7 @@ return {
     {
         version = "next",
         changes = {
+            "Flash on every page turn is its own setting now: Settings → Reader → Appearance. On by default on the Kindle 2, DX, 3 and 4 (no grey trace of the last pages, as before), off elsewhere, and it can be turned on on any device. It used to go with Settings → Advanced → Flash when the screen changes, which is now only for menus, tabs and opening a book (if you had turned that off, page turns stay as they were). Ticking or unticking it replaces a full refresh rate chosen in a book's menu.",
             "Updated to ZenOS 4.3.0 (was 4.2.0): quicker (its parts load when they're first used); on touch Kindles, new reading controls (a page browser, a viewer for highlights, notes and pinned pages); better reading themes; coloured underlines and strikethrough; a new end-of-book screen. ZenOS sets the top and bottom page margins to its default (15) once, if you use its reading preset. GZreader's own changes to ZenOS are kept: letter keys in menus, the tab keys, the bookshelf, Grimmory's stats, text sizes as before.",
         },
     },
