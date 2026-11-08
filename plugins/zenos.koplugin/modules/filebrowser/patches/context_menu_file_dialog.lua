@@ -33,7 +33,6 @@ return function(ctx, self_fc, item)
     local zen_plugin, logger = ctx.zen_plugin, ctx.logger
     local file_chooser, file_manager = ctx.file_chooser, ctx.file_manager
     local orig_showFileDialog, MoveChooser = ctx.orig_showFileDialog, ctx.MoveChooser
-    local show_collection_picker = ctx.show_collection_picker
     local archive_context_row = ctx.archive_context_row
     local apply_button_group_font = ctx.apply_button_group_font
     local new_context_menu_dialog = ctx.new_context_menu_dialog
@@ -1455,16 +1454,19 @@ return function(ctx, self_fc, item)
             })
         end
 
-        -- GZreader: a book from Grimmory goes on your Grimmory shelves instead
-        -- (Add to shelf; Remove from shelf/shelves when it's on any); other
-        -- books keep Add to collection (gzreader_shelves.lua)
+        -- GZreader: your Grimmory shelves instead of collections (no Add to
+        -- collection anywhere): Add to shelf; Remove from shelf/shelves when
+        -- the book is on any (gzreader_shelves.lua)
         local gz_shelf_buttons
         pcall(function()
             for _i, mod in ipairs({ "apps/reader/readerui", "apps/filemanager/filemanager" }) do
                 local okm, cls = pcall(require, mod)
                 local gz = okm and type(cls) == "table" and type(cls.instance) == "table" and cls.instance.gzreader
                 if type(gz) == "table" and type(gz.shelfButtons) == "function" then
-                    gz_shelf_buttons = gz:shelfButtons(file, function() UIManager:nextTick(invalidate_home_book) end)
+                    gz_shelf_buttons = gz:shelfButtons(file, function()
+                        if item._zen_collection_refresh then UIManager:nextTick(item._zen_collection_refresh) end
+                        UIManager:nextTick(invalidate_home_book)
+                    end)
                     return
                 end
             end
@@ -1478,24 +1480,6 @@ return function(ctx, self_fc, item)
                     callback = function()
                         close_dialog()
                         UIManager:nextTick(spec.callback)
-                    end,
-                },
-            })
-        end
-
-        if not item._zen_collection_name and not gz_shelf_buttons then
-            table.insert(buttons, {
-                {
-                    text = icons.fav_add .. "  " .. _("Add to collection") .. "  " .. submenu_arrow,
-                    align = "left",
-                    callback = function()
-                        close_dialog()
-                        show_collection_picker({ [file] = true }, function()
-                            if item._zen_collection_refresh then
-                                UIManager:nextTick(item._zen_collection_refresh)
-                            end
-                            UIManager:nextTick(invalidate_home_book)
-                        end)
                     end,
                 },
             })

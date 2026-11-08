@@ -528,7 +528,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, [shelf_dto(sid) for sid in sorted(SHELVES)
                                     if SHELF_INFO[sid]["userId"] == 1 or SHELF_INFO[sid]["publicShelf"]])
         if u.path == "/api/v1/app/shelves":
-            return self._json(200, [{"id": 4, "name": "Kindle", "bookCount": len(SHELVES[4]), "publicShelf": False}])
+            # (AppShelfController.getShelves: yours and public ones, no owner in them)
+            return self._json(200, [{"id": sid, "name": SHELF_INFO[sid]["name"], "bookCount": len(SHELVES[sid]),
+                                     "publicShelf": SHELF_INFO[sid]["publicShelf"]} for sid in sorted(SHELVES)
+                                    if SHELF_INFO[sid]["userId"] == 1 or SHELF_INFO[sid]["publicShelf"]])
         if u.path == "/api/v1/app/shelves/magic":
             return self._json(200, [{"id": 9, "name": "Unread fantasy", "publicShelf": False}])
         if u.path == "/api/v1/app/books":

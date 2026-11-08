@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "A Grimmory book's menu has Add to shelf and Remove from shelf (your Grimmory shelves)", text = "For a book from Grimmory, the book menu's Add to collection is now Add to shelf: it lists your own Grimmory shelves (not smart shelves, not other people's) and puts the book on the one you pick. When the book is on one or more of your shelves, Remove from shelf (or Remove from shelves, which asks which one or all) takes it off. Which shelves a book is on comes from Grimmory when the book opens and after each change. Books not from Grimmory, and the Kindle 2 and DX, keep Add to collection." },
+            { short = "Add to shelf / Remove from shelf (your Grimmory shelves) replace Add to collection, also on the Kindle 2 and DX", text = "The book menu's Add to collection is now Add to shelf, also for several selected books: it lists your own Grimmory shelves (not smart shelves, not other people's) and puts the book on the one you pick. A book on one or more of your shelves also has Remove from shelf (or Remove from shelves: one of them, or all). Your shelves and the books on them are kept on the Kindle, so this works without a network: with Wi-Fi a change goes to Grimmory straight away (or when Wi-Fi connects), and on the Kindle 2 and DX the sync page sends it at the next sync. Changes made in Grimmory come to the Kindle when Wi-Fi connects, when a book opens, or with the sync page's library copy. Not signed in, Add to shelf says to sign in to Grimmory first." },
         },
     },
     {

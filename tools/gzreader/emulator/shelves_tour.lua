@@ -4,7 +4,8 @@
 --   GZ_EMU_TREE=<tree>/koreader run.sh shelves_tour.lua <out>
 -- Shots: manage (Add to shelf where Add to collection was), shelves (your
 -- shelves), added, manage-remove (Remove from shelf), manage-two (Remove
--- from shelves), remove-which, removed.
+-- from shelves), remove-which, removed, sideloaded (a book not from
+-- Grimmory: Add to shelf, no Add to collection).
 local s = { start = 12 }
 local function add(t) s[#s + 1] = t end
 local BOOK = "/mnt/us/GZreader/Book 03.epub"
@@ -59,7 +60,7 @@ add({ shot = "shelves" })
 add({ fn = function(E) menuLines(E, "add to shelf") end, after = 1 })
 add({ key = "W", after = 8 }) -- Kindle
 add({ shot = "added" })
-add({ fn = function(E) E.say("on shelves: " .. tostring(#(plugin().store.downloads["3"].shelves or {}))) end, after = 4 })
+add({ fn = function(E) E.say("on shelves: " .. tostring(#require("gzreader_shelves").on(plugin(), "3"))) end, after = 4 })
 add({ fn = bookMenu(), after = 5 })
 add({ shot = "manage-remove" })
 add({ fn = function(E) menuLines(E, "book menu") end, after = 1 })
@@ -75,5 +76,15 @@ add({ shot = "remove-which" })
 add({ fn = function(E) menuLines(E, "remove from shelf") end, after = 1 })
 add({ key = "E", after = 8 }) -- All 2 shelves
 add({ shot = "removed" })
-add({ fn = function(E) E.say("on shelves: " .. tostring(#(plugin().store.downloads["3"].shelves or {}))) end, after = 1 })
+add({ fn = function(E) E.say("on shelves: " .. tostring(#require("gzreader_shelves").on(plugin(), "3"))) end, after = 1 })
+-- a book not from Grimmory: still Add to shelf (it says why it can't)
+add({ fn = function()
+    os.execute("cp '" .. (os.getenv("GZ_EMU_BOOK") or "book.epub") .. "' /mnt/us/documents/sideloaded.epub")
+    local fc = require("apps/filemanager/filemanager").instance.file_chooser
+    fc:showFileDialog({ path = "/mnt/us/documents/sideloaded.epub", is_file = true, text = "sideloaded.epub" })
+end, after = 5 })
+add({ shot = "sideloaded" })
+add({ fn = function(E) menuLines(E, "sideloaded book menu") end, after = 1 })
+add({ key = "W", after = 4 })
+add({ shot = "sideloaded-add" })
 return s

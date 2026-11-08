@@ -406,7 +406,7 @@ function Api:setBookShelves(book_id, add, remove)
     if code == 200 or code == 204 then
         return type(data) == "table" and type(data[1]) == "table" and data[1] or {}
     end
-    return nil, err or ("http_" .. tostring(code))
+    return nil, err or ("http_" .. tostring(code)), code
 end
 
 --- GET /api/v1/app/authors (paged; sort=name|bookCount..., search=...)
