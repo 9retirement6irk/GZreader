@@ -36,7 +36,7 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Any list or menu | Q, W, E, … | Pick the entry with that letter (shown next to it), in lists, the ZenOS settings and KOReader's menus. |
 | KOReader's menus | Alt + Q, W, E, … | Switch the menu's tabs. |
 | Home / lists | Menu | The quick panel (Controls and Home tiles; see *The quick panel*). Each tile has a letter. Menu or Back closes it. |
-| Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), More options (ZenOS's book menu). |
+| Home / Downloads, book highlighted | Menu → Q | Manage book: Open, Delete from this Kindle (asks first; Grimmory keeps it), then ZenOS's book menu (without its Edit submenu: Delete is already there). |
 | Reading | Menu | The quick panel with This book: sync, contents, bookmark, bookmarks, go to page, search, font, layout, fit pictures, read aloud, music. |
 | Reading | AA | Fonts and layout. |
 | Reading | Shift + Sym | Read aloud / stop. |
@@ -73,8 +73,8 @@ run the same GZreader with ZenOS's touch interface:
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light
   slider on Kindles with a frontlight. A tap below it closes it.
-- **Hold a book** at Home or in Downloads for its options (Open, Delete,
-  More options).
+- **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
+  this Kindle, then the book's menu).
 - **Notes:** New note, Filter and More are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
