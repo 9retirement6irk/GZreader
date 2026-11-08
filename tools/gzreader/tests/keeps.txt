@@ -1,4 +1,6 @@
 # GZreader's marks in upstream files (tools/gzreader/tests/keeps.py --update)
+4 frontend/apps/filemanager/filemanager.lua
+3 frontend/apps/filemanager/filemanagermenu.lua
 1 frontend/apps/reader/modules/readerback.lua
 3 frontend/device.lua
 1 frontend/device/input.lua
@@ -29,11 +31,13 @@
 5 platform/kindle/launchpad/koreader.ini
 9 plugins/zenos.koplugin/common/cover_disk_cache.lua
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
+1 plugins/zenos.koplugin/common/gz_home_status.lua
+5 plugins/zenos.koplugin/common/gz_tab_title.lua
 7 plugins/zenos.koplugin/common/gz_view.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 6 plugins/zenos.koplugin/common/paths.lua
 3 plugins/zenos.koplugin/common/quickstart/menu_tour.lua
-70 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
+76 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
 6 plugins/zenos.koplugin/common/quickstart/quickstart_screen.lua
 2 plugins/zenos.koplugin/common/quickstart/reader_tour.lua
 1 plugins/zenos.koplugin/common/ui/book_progress.lua
@@ -44,7 +48,8 @@
 2 plugins/zenos.koplugin/kindle-launcher/GZreader.sh
 2 plugins/zenos.koplugin/main.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/automatic_series_grouping.lua
-5 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua
+8 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu.lua
+7 plugins/zenos.koplugin/modules/filebrowser/patches/context_menu_file_dialog.lua
 2 plugins/zenos.koplugin/modules/filebrowser/patches/cover_decode_cache.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/empty_library.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/components/registry.lua
@@ -56,9 +61,9 @@
 8 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/stats_triplet.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
-43 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
+57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 16 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
-10 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
+14 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
 1 plugins/zenos.koplugin/modules/global/global.lua
 1 plugins/zenos.koplugin/modules/global/patches/nonblocking_wifi.lua
@@ -76,9 +81,9 @@
 4 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
 2 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
-3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
-55 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
+60 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 5 reader.lua

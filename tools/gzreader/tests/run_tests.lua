@@ -524,7 +524,12 @@ do
     check(n > 0, "search finds authors too")
     b:search("nothing like this")
     t = b.menu.item_table
-    check(#t == 2 and t[2].text == "No books match “nothing like this”." and t[2].select_enabled == false, "search: nothing found")
+    check(#t == 2 and t[2].text == "No books found containing “nothing like this”" and t[2].select_enabled == false
+        and t[2].gz_kind == "nothing_found", "search: nothing found (says what was searched for; marked for the empty ledges)")
+    b:search("nothing like this", { title = "fiction", params = { libraryId = 2, sort = "title", dir = "asc" } })
+    t = b.menu.item_table
+    check(#t == 2 and t[2].gz_kind == "nothing_found" and t[2].text == "No books found containing “nothing like this”",
+        "search in a library that found nothing: the same")
     -- in a library: the library's own search
     b:openPaged("fiction", { libraryId = 2, sort = "title", dir = "asc" })
     t = b.menu.item_table
@@ -664,8 +669,9 @@ do
     check(Views.kindOf({ { text = "Search…", gz_action = "search" }, { book = { id = 1 } } }) == "ledges"
         and Views.kindOf({ { book = { id = 1 }, cover_kind = "audiobook" } }) == "tapes"
         and Views.kindOf({ { gz_kind = "series" } }) == "piles" and Views.kindOf({ { gz_kind = "author" } }) == "bay"
-        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil,
-        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments")
+        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil
+        and Views.kindOf({ { gz_action = "search" }, { text = "No books found containing “q”", gz_kind = "nothing_found" } }) == "ledges",
+        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments, nothing found: the same ledges, empty")
     check(Views.headerCount({ { gz_action = "search" }, { gz_action = "refresh" }, { gz_kind = "author" } }) == 2
         and Views.headerCount({ { gz_kind = "author" }, { gz_action = "search" } }) == 0, "lists: search and refresh above the list")
     local vfits = true
@@ -678,6 +684,20 @@ do
         end
     end
     check(vfits, "lists: their places fit the page, below the search")
+    local cw_ok = true
+    for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 } }) do
+        -- the card between the middle row's ledge and the row above
+        local L = Views.layout("ledges", size[1], size[2], true, one)
+        local s1 = L.slots[(math.ceil(L.rows / 2) - 1) * L.cols + 1]
+        local c = { x = 0, y = s1.y, w = size[1], h = s1.h - L.fixed }
+        -- a short message: its card in the middle; a long one: no wider than the page
+        for _k, tw in ipairs({ 200, 5000 }) do
+            local r = Views.nothingCard(c.x, c.y, c.w, c.h, tw, 30, one)
+            cw_ok = cw_ok and r.x >= c.x and r.x + r.w <= c.x + c.w and r.y >= c.y and r.y + r.h <= c.y + c.h
+                and math.abs((r.x + r.w / 2) - (c.x + c.w / 2)) <= 1
+        end
+    end
+    check(cw_ok, "nothing found: the card in the middle, between the ledges, never wider than the page")
     local K3 = Views.layout("ledges", 600, 574, true, one)
     check(K3.rows == 3 and K3.cols == 3, "ledges on a Kindle 3: 3 rows of 3 (tags wide enough for their bigger type) " .. K3.rows .. "x" .. K3.cols)
     check(Views.bookLabel({ personalRating = 8 }) == "★★★★☆" and Views.bookLabel({ readProgress = 33.6 }) == "34%"
@@ -1021,6 +1041,29 @@ gsettings.home_dir = "/somewhere/else"                     -- an older build's "
 Grimmory:new{ ui = { menu = { registerToMainMenu = function() end }, active_widgets = {} } }
 check(gsettings.home_dir == libdir, "the home folder is always the GZreader folder: set back at the next start")
 gsettings.home_dir = libdir
+do -- Settings → Library → Folders has no Home folder menu (Set / Lock / Additional home folders)
+    local lf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings.lua", "rb")
+    local lsrc = lf and lf:read("*a") or ""
+    if lf then lf:close() end
+    check(lsrc:find("local folders_item = {", 1, true) and lsrc:find('text = _("Hide up folder")', 1, true),
+        "the Folders settings are still there (Hide up folder)")
+    check(not lsrc:find('_("Home folder")', 1, true) and not lsrc:find('_("Lock home folder")', 1, true)
+        and not lsrc:find('_("Additional home folders")', 1, true) and not lsrc:find("settings_home_folder", 1, true),
+        "Settings → Library → Folders: no Home folder menu, so the home folder can't be changed there")
+    local function koSource(rel)
+        local kf = io.open(KOROOT .. "/frontend/apps/filemanager/" .. rel, "rb")
+        local ksrc = kf and kf:read("*a") or ""
+        if kf then kf:close() end
+        return ksrc
+    end
+    local fmmenu, fm = koSource("filemanagermenu.lua"), koSource("filemanager.lua")
+    check(fmmenu:find('_("Show parent folder")', 1, true) and not fmmenu:find('_("Home folder settings")', 1, true)
+        and not fmmenu:find('_("Set home folder")', 1, true) and not fmmenu:find('_("Shorten home folder")', 1, true)
+        and not fmmenu:find('_("Lock home folder")', 1, true),
+        "KOReader's file manager menu: no Home folder settings (Set / Shorten / Lock home folder)")
+    check(fm:find('_("Go to HOME folder")', 1, true) and not fm:find('_("Set as HOME folder")', 1, true),
+        "KOReader's file manager: no Set as HOME folder button (folder hold, + menu); Go to HOME folder stays")
+end
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 
 print("Update wiped the settings (books stay in the folder)")
@@ -1155,10 +1198,28 @@ do
     Awake.exec = exec
 end
 
+print("Book-open timing only while diagnostic logging is on")
+do
+    local Log = require("gzreader_log")
+    local OT = require("gzreader_opentiming")
+    local saved_enabled, saved_cur = Log.enabled, OT.cur
+    local opened = WORK .. "/timed-book.epub"
+    local tbf = io.open(opened, "wb"); tbf:write("x"); tbf:close()
+    Log.enabled = false
+    OT.cur = { file = "an earlier book" }
+    OT.start(opened)
+    check(OT.cur == nil, "logging off: a book opening isn't measured (no /proc reads, no timing)")
+    Log.enabled = true
+    OT.start(opened)
+    check(OT.cur and OT.cur.file == opened and OT.cur.size == 1 and OT.cur.t0, "logging on: the book opening is measured")
+    Log.enabled, OT.cur = saved_enabled, saved_cur
+    os.remove(opened)
+end
+
 print("Shelves")
 do
     local list = plugin.api:listShelves()
-    check(list and #list == 2 and list[1].name == "Kindle" and list[2].magic == true, "shelves and smart shelves listed")
+    check(list and #list == 4 and list[1].name == "Kindle" and list[4].magic == true, "shelves and smart shelves listed")
     local SS = require("gzreader_shelfsync")
     SS.set(plugin, list[1])
     ctl("/set?dl_slow=false&dl_big=false")
@@ -1478,6 +1539,26 @@ do
     check(ctx_called, "Manage opens ZenOS's own book menu")
     check(type(prepend) == "table" and #prepend == 2 and prepend[1].text:match("Open$")
         and prepend[2].text:match("Delete from this Kindle$"), "…with Open and Delete added at the top")
+    local rows = { { { text = "Mark as read" } }, { { text = "Edit  >", _gz_manage_hide = true } },
+        { { text = "More  >" } }, { { text = "Book information" } } }
+    check(type(prepend.filter) == "function" and prepend.filter(rows) == rows and #rows == 3
+        and rows[1][1].text == "Mark as read" and rows[2][1].text == "More  >" and rows[3][1].text == "Book information",
+        "…and without ZenOS's Edit submenu (Delete is already there); the other rows stay, in order")
+    do
+        local zen = debug.getinfo(HM.manage, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_homemenu%.lua$",
+            "zenos.koplugin/modules/filebrowser/patches/")
+        local function read(name)
+            local fh = io.open(zen .. name, "rb")
+            local t = fh and fh:read("*a") or ""
+            if fh then fh:close() end
+            return t
+        end
+        local dialog_src, menu_src = read("context_menu_file_dialog.lua"), read("context_menu.lua")
+        local at = dialog_src:find("callback = showEditSubmenu,", 1, true)
+        check(at and dialog_src:sub(at, at + 160):find("_gz_manage_hide = true,", 1, true)
+            and menu_src:find("prepend.filter(options.buttons)", 1, true),
+            "ZenOS marks its Edit row and lets Manage filter the menu")
+    end
     captured.confirm = nil
     prepend[2].callback()
     check(captured.confirm and captured.confirm.text:match("Grimmory keeps the book"), "delete asks first (and says Grimmory keeps it)")
@@ -1491,6 +1572,54 @@ do
     os.remove(bookpath)
     HM.context = nil
     check(not HM.items(plugin)[1].text or not HM.items(plugin)[1].text:match("^Open “"), "nothing highlighted: no book section")
+end
+
+print("Holding a book in the Downloads tab: Manage, as on Home")
+do
+    local HM = require("gzreader_homemenu")
+    local bookpath = WORK .. "/home/GZreader/hold-me.epub"
+    local fh = io.open(bookpath, "wb"); fh:write("x"); fh:close()
+    local was_fm, was_showing = package.loaded["apps/filemanager/filemanager"], rawget(plugin, "downloadsTabShowing")
+    local own_hold, dialog_item, prepend_then
+    local FakeFM = { setupLayout = function(layout_fm)
+        layout_fm.file_chooser = {
+            onFileHold = function(_fc, item) own_hold = item end,
+            showFileDialog = function(_fc, item) dialog_item = item; prepend_then = rawget(_G, "__GZ_CONTEXT_PREPEND") end,
+        }
+    end }
+    package.loaded["apps/filemanager/filemanager"] = FakeFM
+    check(HM.hookHold() == true and HM.hookHold() == false, "hooked into the file manager's layout once")
+    local fmi = { gzreader = plugin }
+    FakeFM.setupLayout(fmi)
+    local fc = fmi.file_chooser
+    local showing = true
+    plugin.downloadsTabShowing = function() return showing end
+    local book = { path = bookpath, is_file = true, text = "hold-me.epub" }
+    check(fc:onFileHold(book) == true and own_hold == nil and dialog_item == book
+        and type(prepend_then) == "table" and prepend_then[2].text:match("Delete from this Kindle$")
+        and type(prepend_then.filter) == "function",
+        "a book in Downloads: Manage (Open and Delete at the top of ZenOS's menu for that book, without Edit)")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    dialog_item = nil
+    showing = false
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "another folder: ZenOS's own menu, as before")
+    own_hold = nil
+    showing = true
+    local folder = { path = WORK .. "/home/GZreader", is_file = false }
+    fc:onFileHold(folder)
+    check(own_hold == folder and dialog_item == nil, "a folder in Downloads: its own menu")
+    own_hold = nil
+    FakeFM.instance = { selected_files = { [bookpath] = true } }
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "select mode: KOReader's own (the selection's menu)")
+    FakeFM.instance, own_hold = nil, nil
+    FakeFM.setupLayout(fmi) -- laid out again (a rotation): a new file list
+    check(fmi.file_chooser ~= fc and fmi.file_chooser:onFileHold(book) == true and dialog_item == book and own_hold == nil,
+        "laid out again (rotation): still Manage")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    package.loaded["apps/filemanager/filemanager"], plugin.downloadsTabShowing = was_fm, was_showing
+    os.remove(bookpath)
 end
 
 print("Login refreshed in the background process")
@@ -2177,6 +2306,161 @@ do
     st = json.decode(ctl("/state"))
     check(st.ratings["3"] == nil and entry.rating_synced == 0 and next(rplugin.store.pending.ratings) == nil, "and Grimmory's rating removed when Wi-Fi returns")
     readerui.doc_settings = nil
+end
+
+print("Grimmory shelves on the Kindle (Add to shelf / Remove from shelf, kept, queued)")
+do
+    local S = require("gzreader_shelves")
+    local entry = rplugin.store.downloads["3"]
+    local path = entry.path
+    local path10 = rplugin.store.downloads["10"] and rplugin.store.downloads["10"].path
+    local side = "/mnt/us/documents/sideloaded.epub"
+    rplugin.store.shelf_cache = nil
+    rplugin.store.grimmory_user = nil
+    rplugin.store.pending.shelves = nil
+    local function openBook() rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    local function wifiBack()
+        UI.scheduled = {}
+        rplugin:onNetworkConnected()
+        local due = {}
+        for f in pairs(UI.scheduled) do due[#due + 1] = f end
+        UI.scheduled = {}
+        for _i, f in ipairs(due) do f() end
+    end
+    local changed = 0
+    local function buttons(p) return rplugin:shelfButtons(p or path, function() changed = changed + 1 end) end
+    local function shelvesOf(bk)
+        local st = json.decode(ctl("/state"))
+        local on = {}
+        for sid, ids in pairs(st.shelves) do for _i, b in ipairs(ids) do if b == bk then on[#on + 1] = tonumber(sid) end end end
+        table.sort(on)
+        return table.concat(on, ","), st
+    end
+    local function names(list) local t = {} for _i, x in ipairs(list) do t[#t + 1] = x.text or x.name end return table.concat(t, "|") end
+
+    -- not signed in / not a Grimmory book: the menu is there and says why it can't
+    local saved_api = rplugin.api
+    rplugin.api = setmetatable({ isPaired = function() return false end }, { __index = saved_api })
+    local b = buttons()
+    check(b and #b == 1 and b[1].text == "Add to shelf", "not signed in: the book menu still has Add to shelf")
+    captured.info = nil; S.menu = nil
+    b[1].callback()
+    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Connections → Grimmory.",
+        "…which says to sign in to Grimmory to continue")
+    rplugin.api = setmetatable({ offline = true, isPaired = function() return false end }, { __index = saved_api })
+    buttons()[1].callback()
+    check(captured.info and captured.info:find("sync with the sync page", 1, true), "a Kindle without Wi-Fi, never synced: says to sync through a computer")
+    rplugin.api = saved_api
+    b = buttons(side)
+    check(#b == 1 and b[1].text == "Add to shelf", "a book not from Grimmory: Add to shelf too (no Add to collection)")
+    b[1].callback()
+    check(S.menu == nil and captured.info:find("isn't from your Grimmory library", 1, true), "…which says it can't go on a Grimmory shelf")
+
+    -- a Grimmory book, nothing kept yet: your shelves (and their books) from Grimmory, then the list
+    openBook() -- (its record says: on none of your shelves; that alone isn't all your shelves)
+    check(S.mine(rplugin) == nil or not rplugin.store.shelf_cache.full, "a book's own record alone: not taken for all your shelves")
+    b = buttons()
+    check(#b == 1 and b[1].submenu, "a Grimmory book on none of your shelves: Add to shelf only")
+    b[1].callback()
+    local m = S.menu
+    check(m and m.title == "Add to shelf" and names(m.item_table) == "Beach reads|Kindle",
+        "Add to shelf: your own shelves by name (not someone else's public one, not smart shelves)")
+    check(S.isOn(rplugin, 10, 4) and S.isOn(rplugin, 12, 4) and not S.isOn(rplugin, 3, 4) and rplugin.store.grimmory_user.id == 1,
+        "every book on your shelves kept on the Kindle (not only downloaded ones), and your user id")
+    m.onMenuSelect(m, m.item_table[2])
+    local on, st = shelvesOf(3)
+    check(on == "4,7" and json.encode(st.last_shelves_body.shelvesToUnassign) == "[]" and json.encode(st.last_shelves_body.bookIds) == "[3]",
+        "picked Kindle with Wi-Fi: on it in Grimmory straight away (JSON lists)")
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4) and captured.info == "Added to “Kindle”." and changed == 1,
+        "nothing left queued, kept, said so")
+    b = buttons()
+    check(#b == 2 and b[2].text == "Remove from shelf" and not b[2].submenu, "now on one of your shelves: Remove from shelf")
+    b[1].callback()
+    check(S.menu.item_table[2].dim and S.menu.item_table[2].text == "Kindle  ✓", "Add to shelf again: Kindle ticked and greyed out")
+
+    -- no Wi-Fi: queued, shown at once, sent when Wi-Fi is back
+    NET.connected = false
+    b[2].callback()
+    check(not S.isOn(rplugin, 3, 4) and #buttons() == 1 and shelvesOf(3) == "4,7"
+        and captured.info == "Removed from “Kindle”.\nGrimmory gets it when Wi-Fi is on.",
+        "Remove from shelf without Wi-Fi: off at once on the Kindle, queued for Grimmory")
+    local jobs = S.jobs(rplugin)
+    check(#jobs == 1 and jobs[1].kind == "shelf" and jobs[1].path == "/api/v1/books/shelves"
+        and json.encode(jobs[1].body.shelvesToAssign) == "[]" and json.encode(jobs[1].body.shelvesToUnassign) == "[4]",
+        "the queue as a job for the sync page (lists as JSON lists)")
+    buttons()[1].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[2]) -- Kindle again: back to how Grimmory has it
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4), "put back on before it was sent: nothing to send")
+    buttons()[2].callback()
+    NET.connected = true
+    wifiBack()
+    check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and not S.isOn(rplugin, 3, 4), "Wi-Fi back: the change sent, the queue empty")
+
+    -- changed in Grimmory's web app: the book's record when it opens, and the 30-minute refresh
+    ctl("/shelf?book=3&add=6")
+    openBook()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 6) and b[2].text == "Remove from shelf", "put on a shelf in the web app: kept when the book opens")
+    ctl("/shelf?book=3&add=4")
+    ctl("/shelf?book=11&remove=4")
+    wifiBack()
+    check(not S.isOn(rplugin, 3, 4) and S.isOn(rplugin, 11, 4), "…not again before 30 minutes")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 4) and not S.isOn(rplugin, 11, 4) and b[2].text == "Remove from shelves" and b[2].submenu,
+        "after 30 minutes, with Wi-Fi: every shelf again from Grimmory (a book not opened too)")
+    S.menu = nil
+    b[2].callback()
+    m = S.menu
+    check(m and names(m.item_table) == "Beach reads|Kindle|All 2 shelves", "Remove from shelves: which one, or all")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "4,7" and captured.info == "Removed from “Beach reads”.", "took it off Beach reads only")
+    ctl("/shelf?book=3&add=6")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    buttons()[2].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[3])
+    check(shelvesOf(3) == "7" and captured.info == "Removed from 2 shelves." and #buttons() == 1, "All 2 shelves: off both")
+
+    -- changed again while a send is under way (the requests in the background): that's sent too
+    do
+        local Async = require("gzreader_async")
+        ctl("/shelf?book=3&add=4&add=6")
+        rplugin.store.shelf_cache.at = 0
+        wifiBack()
+        Async.sync = false
+        S.set(rplugin, { 3 }, 6, false)
+        S.set(rplugin, { 3 }, 4, false)
+        runLoop(function() return not S.running and not S.hasPending(rplugin) and next(Async.queue) == nil and not Async.busy end, 30)
+        Async.sync = true
+        check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and #S.on(rplugin, 3) == 0,
+            "two changes, the second while the first was being sent: both reach Grimmory")
+    end
+
+    -- several selected books
+    S.menu = nil
+    rplugin:shelfAddMany({ path, path10, side }, function() changed = changed + 1 end)
+    m = S.menu
+    check(m and m.title == "Add 2 books to shelf" and not m.item_table[2].dim, "selected books: Add to shelf for the Grimmory ones")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "6,7" and shelvesOf(10) == "4,6" and captured.info == "Added 2 books to “Beach reads”.\n1 not from Grimmory left out.",
+        "both on Beach reads in Grimmory; the sideloaded one left out, said so")
+    ctl("/shelf?book=3&remove=6"); ctl("/shelf?book=10&remove=6")
+
+    -- someone else's shelf: Grimmory refuses it for good; not sent again
+    S.set(rplugin, { 3 }, 7, false)
+    check(not S.hasPending(rplugin) and shelvesOf(3) == "7", "someone else's shelf: refused by Grimmory, off the queue")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+
+    local function src(f) return io.open(PLUGIN .. "/../zenos.koplugin/" .. f):read("*a") end
+    local dialog, multi, guide = src("modules/filebrowser/patches/context_menu_file_dialog.lua"),
+        src("modules/filebrowser/patches/context_menu.lua"), src("common/quickstart/quickstart_pages.lua")
+    check(dialog:find("gz:shelfButtons(file,", 1, true) and not dialog:find('_("Add to collection")', 1, true)
+        and multi:find("gz:shelfAddMany(book_paths,", 1, true) and not multi:find('text = icons.fav_add .. "  " .. _("Add to collection")', 1, true)
+        and not guide:find('_("Add to collection")', 1, true),
+        "ZenOS: Add to shelf in the book menu, for selected books and in the setup guide's picture; no Add to collection")
 end
 
 print("Wi-Fi back without KOReader noticing")
@@ -4734,6 +5018,30 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("Downloads tab: its name in the title bar, like the other tabs")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_tab_title"] = nil
+    local T = require("common/gz_tab_title")
+    local home = "/mnt/us/documents/GZreader"
+    check(T.downloads(home, home, nil, false) == "Downloads", "the home folder (the Downloads tab): \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "" }, false) == "Downloads", "an empty navbar label: still \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "My books" }, false) == "My books", "the navbar's own label for the tab wins")
+    check(T.downloads(home, home, nil, false, function(s) return "[" .. s .. "]" end) == "[Downloads]", "translated")
+    check(T.downloads(home .. "/Series", home, nil, false) == nil, "a folder inside it: ZenOS's folder name stays")
+    check(T.downloads(home, home, nil, true) == nil, "a series group open: ZenOS's own title stays")
+    check(T.downloads("/mnt/us/documents", home, nil, false) == nil, "another folder (Folder tab, archive): nothing added")
+    check(T.downloads(nil, home, nil, false) == nil and T.downloads(home, nil, nil, false) == nil,
+        "no path (collections) or no home folder: nothing added")
+    local sbf = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/status_bar.lua")
+    local src = sbf and sbf:read("*a") or ""
+    if sbf then sbf:close() end
+    check(src:find('require("common/gz_tab_title").downloads(', 1, true) ~= nil,
+        "ZenOS's status row asks it when nothing else names the view")
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
@@ -4780,6 +5088,47 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
     package.preload["liblipclua"] = nil
     package.loaded["libopenlipclua"] = nil
     package.loaded["modules/menu/network_adapters/kindle"] = nil
+    package.path = saved_path
+end)()
+
+print("Home's status bar with no book to show (as on the other tabs)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_home_status"] = nil
+    local S = require("common/gz_home_status")
+    local rows = { { id = "datetime" }, { id = "featured" }, { id = "strip" } }
+    local function preset(home_bar, book_bar)
+        return { show_status_bar = home_bar, modules = { featured = { show_status_bar = book_bar } } }
+    end
+    local asked = 0
+    local function book(yes) return function() asked = asked + 1; return yes end end
+    -- the presets: Home's bar off, the book widget carries it
+    check(S.wanted(preset(false, true), rows, book(true)) == false,
+        "a book on Home: the status bar stays inside the book widget")
+    check(S.wanted(preset(false, true), rows, book(false)) == true,
+        "no recently read book: Home shows the status bar across the top")
+    check(S.wanted(preset(false, true), { { id = "strip" } }, book(true)) == true,
+        "the book widget off: Home shows the status bar across the top")
+    asked = 0
+    check(S.wanted(preset(true, false), rows, book(false)) == true and S.wanted(preset(nil, false), rows, book(false)) == true
+        and asked == 0, "Home's own status bar on: shown, no book looked up")
+    check(S.wanted(preset(false, false), rows, book(false)) == false and asked == 0,
+        "the status bar turned off on Home (not in the book widget): stays off")
+    check(S.wanted(preset(false, true), rows, function() error("boom") end) == false
+        and S.wanted(preset(false, true), rows, nil) == false,
+        "can't tell whether there's a book: as before (the book widget's bar)")
+    -- Home uses it: built with it, rebuilt when it changes, no second bar
+    local src = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/home_page.lua", "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    local _n, uses = text:gsub("home_status_bar_wanted%(dcfg, rows, data_provider%)", "")
+    check(text:find("local show_status_bar = home_status_bar_wanted(dcfg, rows, data_provider)", 1, true)
+        and text:find("show_status_bar = menu._zen_home_status_bar_wanted(dcfg)", 1, true)
+        and text:find('return false, "status_bar_changed"', 1, true) and uses == 4
+        and text:find("buildStatusRow = menu._zen_home_show_status_bar == false", 1, true),
+        "Home: built with it, built again when a book appears or goes, no second bar in the book widget")
+    package.loaded["common/gz_home_status"] = nil
     package.path = saved_path
 end)()
 
@@ -5021,6 +5370,49 @@ print("Flash on every page turn (Settings → Reader → Appearance)")
     for _i, k in ipairs(keys) do
         if saved[k] == nil then G_reader_settings:delSetting(k) else G_reader_settings:saveSetting(k, saved[k]) end
     end
+end)()
+
+print("No Local reading stats widget on Home (Settings → Home → Widgets)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local WDIR = "modules/filebrowser/patches/home/widgets/"
+    local stubs = { "datetime", "featured", "stats_triplet", "grimmory_stats", "reading_goals", "strip", "quotes" }
+    local kept = {}
+    for _i, id in ipairs(stubs) do
+        kept[id] = package.loaded[WDIR .. id]
+        package.loaded[WDIR .. id] = { id = id, label = id, size = "s", build = function() end }
+    end
+    local RP = "modules/filebrowser/patches/home/components/registry"
+    package.loaded[RP] = nil
+    local loaded, Registry = pcall(require, RP)
+    check(loaded, "ZenOS's Home widget registry loads " .. tostring(not loaded and Registry or ""))
+    if loaded then
+        local function has(list, id) for _i, v in ipairs(list) do if v == id then return true end end end
+        local rows = Registry.normalizeRows({}, { "datetime", "featured", "grimmory_stats", "stats_triplet", "strip" },
+            { featured = true, grimmory_stats = true, stats_triplet = true, strip = true })
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and has(rows.order, "grimmory_stats") and rows.enabled.grimmory_stats == true,
+            "a new Home: Grimmory's reading stats, no Local reading stats (not in Widgets, not on Home)")
+        rows = Registry.normalizeRows({ order = { "stats_triplet", "featured", "strip" },
+            enabled = { stats_triplet = true, featured = true, strip = true } }, {}, {})
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and rows.enabled.featured == true and rows.order[1] == "featured",
+            "an older build's Home that showed them: gone, the other widgets kept in their order")
+        rows = Registry.normalizeRows({ enabled = { stats_triplet = true } }, {}, { featured = true })
+        check(rows.enabled.stats_triplet == nil and rows.enabled.featured == true,
+            "a Home with only them: the default widgets instead of an empty Home")
+        check(Registry.get("stats_triplet") ~= nil, "still there for the end-of-book page's stats")
+    end
+    package.loaded[RP] = nil
+    for _i, id in ipairs(stubs) do package.loaded[WDIR .. id] = kept[id] end
+    local sf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua", "rb")
+    local src = sf and sf:read("*a") or ""
+    if sf then sf:close() end
+    local order = src:match("local DEFAULT_ORDER = (%b{})") or ""
+    check(order:find('"grimmory_stats"', 1, true) and not order:find('"stats_triplet"', 1, true),
+        "Settings → Home → Widgets' default list has no Local reading stats")
+    package.path = saved_path
 end)()
 
 print("Headphones")
@@ -5613,7 +6005,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
             pending = { progress = {
                 ["1"] = { gz_seq = 7, fileProgress = { bookFileId = 1001, progressPercent = 42.5 } },
                 ["999"] = { gz_seq = 3, fileProgress = { bookFileId = 1, progressPercent = 1 } },
-            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 } },
+            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 },
+                -- (books put on shelves here: the page's jobs sh:3:5 and sh:5:6)
+                shelves = { ["3"] = { seq = 5, set = { ["6"] = true } }, ["5"] = { seq = 6, set = { ["7"] = true } } } },
             memos = { queue = { { id = "q1", op = "create", content = "Written on the Kindle #kindle" } } },
             usb_queue = { { id = 3, kind = "book", title = "Book 03" }, { id = 32, kind = "audiobook", title = "Book 32" } } } }
         local f = io.open(lib .. "/book1.epub", "wb"); f:write("x"); f:close()
@@ -5634,6 +6028,15 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         Usb.SCREENSAVER_DIR = lib .. "/screensavers"
         local r = Usb.import(fake, function() ready = true end)
         local left = Usb.journal(fake)
+        do
+            local S = require("gzreader_shelves")
+            local mine = S.mine(fake)
+            local names = {}
+            for _i, sh in ipairs(mine or {}) do names[#names + 1] = sh.name end
+            check(next(fake.store.pending.shelves) == nil and table.concat(names, ",") == "Beach reads,Kindle"
+                and S.isOn(fake, 3, 6) and S.isOn(fake, 10, 4) and not S.isOn(fake, 5, 7),
+                "e2e: shelf changes sent by the page are off the queue; your shelves (not someone else's) kept from the copy, with their books")
+        end
         local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
         local phead = pf and pf:read(24)
         if pf then pf:close() end
@@ -5656,7 +6059,7 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local anns = api2:listAnnotations(1) or {}
         check(#anns == 1 and anns[1].note == "later" and anns[1].color == "#F87171",
             "e2e: highlights as GZreader sees them: Grimmory's (from the copy) with the journal's change on top")
-        check(r and r.sent == 3 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
+        check(r and r.sent == 5 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
             and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
         local b = fake.store.downloads["3"]
         check(b and b.path == lib .. "/book3.epub" and b.subtitle == "Old School" and #fake.store.usb_queue == 0,
