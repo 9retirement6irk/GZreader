@@ -33,7 +33,7 @@
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
 1 plugins/zenos.koplugin/common/gz_home_status.lua
 5 plugins/zenos.koplugin/common/gz_tab_title.lua
-7 plugins/zenos.koplugin/common/gz_view.lua
+14 plugins/zenos.koplugin/common/gz_view.lua
 10 plugins/zenos.koplugin/common/kindle_launcher.lua
 6 plugins/zenos.koplugin/common/paths.lua
 3 plugins/zenos.koplugin/common/quickstart/menu_tour.lua
@@ -62,6 +62,7 @@
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
 57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
+4 plugins/zenos.koplugin/modules/filebrowser/patches/metadata_editor.lua
 16 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
@@ -80,10 +81,10 @@
 2 plugins/zenos.koplugin/modules/settings/sections/advanced_settings.lua
 4 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
 2 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
-3 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
+8 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
-60 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+61 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 5 reader.lua

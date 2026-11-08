@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Square cover corners in the Bookshelf view", text = "In the Bookshelf view covers have square corners: Settings → Downloads → Appearance → Covers → Rounded cover corners is off and greyed out there. Your choice for the other views (Tiles, the lists) is kept and comes back when you pick one of them in the quick panel's View." },
+            { short = "Settings: Library is now called Downloads", text = "Settings: the Library section is now called Downloads, like the tab it sets up (Appearance, Folders, Books, Context menu: unchanged inside)." },
+            { short = "Settings: no Metadata menu (book details come from Grimmory)", text = "Settings → Downloads → Books no longer has a Metadata menu (ZenOS's online sources, Hardcover and Google Books keys, match selection, EPUB backup): your downloads' title, authors and series come from Grimmory. Saved values still apply to ZenOS's Edit metadata (a book's Edit menu outside Downloads), which looks books up on Open Library (and on Hardcover or Google Books only if a key was saved before)." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

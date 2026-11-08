@@ -13,7 +13,6 @@ local defaults = require("config/defaults")
 local LibraryFontPath = require("common/library_font_path")
 local Accent = require("common/ui/accent")
 
-local metadata_section    = require("modules/settings/sections/library_settings/metadata_settings")
 local settings_apply      = require("modules/settings/zen_settings_apply")
 
 local M = {}
@@ -696,6 +695,13 @@ function M.build(ctx)
             },
             {
                 text = _("Rounded cover corners"),
+                -- GZreader: square corners in the Bookshelf view (common/gz_view.lua's
+                -- applyCorners keeps the other views' choice)
+                enabled_func = function()
+                    local ok, on = pcall(function() return require("common/gz_view").isBookshelf() end)
+                    return not (ok and on)
+                end,
+                help_text = _("Off in the Bookshelf view: covers there have square corners."),
                 checked_func = function()
                     return type(config.features) == "table"
                         and config.features.browser_cover_rounded_corners == true
@@ -1171,7 +1177,8 @@ function M.build(ctx)
         end,
     }, icons.refresh))
 
-    table.insert(book_items, 2, metadata_section.build(ctx))
+    -- GZreader: no Metadata menu (ZenOS's online lookup sources for its metadata
+    -- editor): a book's title, authors and series come from Grimmory.
     table.insert(book_items, IconItem.decorate({
         text = _("Show all files from subfolders"),
         checked_func = function()

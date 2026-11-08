@@ -177,6 +177,13 @@ function Grimmory:init()
             SV.plugin = plugin_ref -- (the authors Grimmory has, for spines whose files have none)
             rawset(_G, "__GZ_GRIMMORY_AUTHORS", SV.grimmoryAuthors) -- (Home's shelf too: shelf.lua)
             SV.install()
+            -- square covers in the Bookshelf view (also when it was chosen earlier)
+            local GV = require("common/gz_view")
+            if GV.applyCorners() then
+                local FM = require("apps/filemanager/filemanager").instance
+                if FM and FM.file_chooser then FM.file_chooser:updateItems() end
+                GV.redrawHome()
+            end
         end) end)
         -- downloads from before 1.22.4 don't know their Grimmory authors yet
         UIManager:scheduleIn(15, function() pcall(self.backfillAuthors, self) end)

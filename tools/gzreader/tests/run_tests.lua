@@ -1894,6 +1894,49 @@ do
     check(#json.decode(ctl("/state")).sessions == after + 1 and #plugin.store.pending.sessions == 0, "a new session is sent normally")
 end
 
+print("Bookshelf view: square cover corners")
+do
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local okg, GV = pcall(require, "common/gz_view")
+    package.path = saved_path
+    check(okg, "gz_view loads " .. tostring(not okg and GV or ""))
+    if okg then
+        local saves = 0
+        local function save() saves = saves + 1 end
+        local cfg = { features = { browser_cover_rounded_corners = true } }
+        check(GV.applyCorners(true, cfg, save) and cfg.features.browser_cover_rounded_corners == false
+            and cfg.features.gz_rounded_outside_shelf == true and saves == 1,
+            "Bookshelf view: rounded corners off, the other views' choice kept, saved")
+        check(not GV.applyCorners(true, cfg, save) and saves == 1, "again in the Bookshelf view: nothing to change, not saved")
+        check(GV.applyCorners(false, cfg, save) and cfg.features.browser_cover_rounded_corners == true
+            and cfg.features.gz_rounded_outside_shelf == nil and saves == 2,
+            "another view: rounded corners back on")
+        local off = { features = { browser_cover_rounded_corners = false } }
+        check(not GV.applyCorners(true, off, save) and off.features.gz_rounded_outside_shelf == nil
+            and not GV.applyCorners(false, off, save) and off.features.browser_cover_rounded_corners == false,
+            "corners off already: they stay off in every view")
+        local fresh = {}
+        check(not GV.applyCorners(false, fresh, save) and type(fresh.features) == "table", "no features table yet: no error")
+        -- choosing the view through the quick panel's View (M.set) does it too
+        local zen = { config = { features = { browser_cover_rounded_corners = true } }, saved = 0 }
+        function zen:saveConfig() self.saved = self.saved + 1 end
+        local was_zen = rawget(_G, "__ZEN_UI_PLUGIN")
+        rawset(_G, "__ZEN_UI_PLUGIN", zen)
+        local was_view = G_reader_settings:readSetting("gzreader_view")
+        pcall(GV.set, "bookshelf")
+        check(zen.config.features.browser_cover_rounded_corners == false and zen.saved == 1,
+            "View → Bookshelf: square corners, saved in ZenOS's settings")
+        pcall(GV.set, "mosaic_image")
+        check(zen.config.features.browser_cover_rounded_corners == true and zen.saved == 2,
+            "View → Tiles: rounded corners again")
+        rawset(_G, "__ZEN_UI_PLUGIN", was_zen)
+        G_reader_settings:saveSetting("gzreader_view", was_view)
+    end
+    check(io.open(PLUGIN .. "/main.lua"):read("*a"):find("GV.applyCorners()", 1, true) ~= nil,
+        "at start: corners set for the view chosen earlier")
+end
+
 print("Compressed replies")
 check((json.decode(ctl("/state")).gzip_replies or 0) > 0, "JSON lists arrive gzip-compressed and are unpacked (lists above worked)")
 

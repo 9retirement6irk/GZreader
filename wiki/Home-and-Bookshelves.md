@@ -9,6 +9,9 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens Manage book (Open, Delete from this Kindle, then
 the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
+Covers have square corners in this view: Settings → Downloads → Appearance →
+Covers → Rounded cover corners is greyed out while it's on, and your choice
+for the tiles and lists comes back when you switch to one of them.
 
 Home's status bar (clock, Wi‑Fi, battery) sits beside the book you're
 reading. Before you've read a book (or after clearing your reading history),
