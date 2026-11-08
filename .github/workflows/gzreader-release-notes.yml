@@ -1,0 +1,54 @@
+# Release notes from GZreader's changelog, for a release published without
+# any (GitHub then shows the tagged commit's message instead, its first line
+# cut off at about 70 characters: "GZreader 1.26.7: Nook Wi-Fi power saving
+# off (#16), test builds read …"). Every version since the previous release,
+# then which package to download (tools/gzreader/release-notes.lua). Notes
+# written by hand are left as they are.
+#
+# By hand: Actions → this workflow → Run, with a release's tag (for releases
+# published before this existed), and "overwrite" to replace notes already
+# there.
+name: GZreader release notes
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.26.7"
+        required: true
+      overwrite:
+        description: "Replace the release's notes even if it has some"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      OVERWRITE: ${{ inputs.overwrite && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+      - name: Write the notes
+        run: |
+          BODY=$(gh release view "$TAG" --repo "${{ github.repository }}" --json body -q .body)
+          if [ -n "$BODY" ] && [ -z "$OVERWRITE" ]; then
+            echo "$TAG has notes already: left as they are"; exit 0
+          fi
+          TAGS=$(gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 200 --json tagName -q '.[].tagName')
+          # (the tag's own changelog; this script from main, so old tags get it too)
+          git fetch -q origin main
+          git show origin/main:tools/gzreader/release-notes.lua > /tmp/release-notes.lua
+          luajit /tmp/release-notes.lua plugins/gzreader.koplugin/gzreader_changelog.lua "$TAG" $TAGS > notes.md
+          cat notes.md
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file notes.md
