@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The Downloads tab says Downloads in its title bar", text = "The Downloads tab names itself in the title bar (between the clock and the battery), as History, Collections, Grimmory and the other tabs do; a tab you renamed in Settings → Interface → Navbar shows that name. Inside a folder the title is still the folder's name." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

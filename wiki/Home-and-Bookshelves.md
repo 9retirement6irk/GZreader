@@ -12,7 +12,10 @@ drawn as a book too: its pages behind the cover and a drop shadow.
 - **Downloads** has as many shelves as the screen holds, a page at a time
   (on the DX four, so the books are bigger). Folders stand as light grey
   spines with a tab on top. A book that finishes downloading while
-  Downloads is on screen appears in it straight away.
+  Downloads is on screen appears in it straight away. Its title bar says
+  *Downloads* between the clock and the battery, as the other tabs name
+  themselves (or the tab's own name, if you renamed it in Settings →
+  Interface → Navbar); inside a folder it shows the folder's name.
 - **Home** has one shelf of your most recent books; the DX's taller screen
   has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a

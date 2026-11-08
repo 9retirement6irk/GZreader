@@ -4625,6 +4625,30 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("Downloads tab: its name in the title bar, like the other tabs")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_tab_title"] = nil
+    local T = require("common/gz_tab_title")
+    local home = "/mnt/us/documents/GZreader"
+    check(T.downloads(home, home, nil, false) == "Downloads", "the home folder (the Downloads tab): \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "" }, false) == "Downloads", "an empty navbar label: still \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "My books" }, false) == "My books", "the navbar's own label for the tab wins")
+    check(T.downloads(home, home, nil, false, function(s) return "[" .. s .. "]" end) == "[Downloads]", "translated")
+    check(T.downloads(home .. "/Series", home, nil, false) == nil, "a folder inside it: ZenOS's folder name stays")
+    check(T.downloads(home, home, nil, true) == nil, "a series group open: ZenOS's own title stays")
+    check(T.downloads("/mnt/us/documents", home, nil, false) == nil, "another folder (Folder tab, archive): nothing added")
+    check(T.downloads(nil, home, nil, false) == nil and T.downloads(home, nil, nil, false) == nil,
+        "no path (collections) or no home folder: nothing added")
+    local sbf = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/status_bar.lua")
+    local src = sbf and sbf:read("*a") or ""
+    if sbf then sbf:close() end
+    check(src:find('require("common/gz_tab_title").downloads(', 1, true) ~= nil,
+        "ZenOS's status row asks it when nothing else names the view")
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
