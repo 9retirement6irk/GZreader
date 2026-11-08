@@ -1,0 +1,45 @@
+GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currently `v2026.07.1`) with [ZenOS](https://github.com/xZenLabs/zen-os) (currently `4.3.0`) as its interface. Most of what it adds is its own plugin, `gzreader.koplugin`; where it had to change KOReader or ZenOS, the changes are marked in the code and checked by a test (`tools/gzreader/tests/keeps.py`), so an upstream update can't drop them unnoticed. Upstream updates are merged with `tools/gzreader/upstream.sh`.
+
+## Compared with KOReader
+
+**Left out** ([What's in GZreader](Whats-in-GZreader)): all bundled plugins except Cover browser, Statistics and Auto suspend (KOReader's own progress sync, OPDS, news downloader, SSH, terminal and the rest); KOReader's OTA updater; the CJK fallback font; UI translations; the first-run quickstart document.
+
+**Added:**
+
+- **Grimmory**: library browser, background downloads, sync of position, bookmarks, highlights, notes, ratings and reading sessions through Grimmory's own API (not its KOReader-compatible endpoint), audiobooks. → [Grimmory library](Grimmory-Library), [Grimmory sync](Grimmory-Sync)
+- **The setup page** served by the device, copying connections between devices, sync with a computer for Kindles without Wi‑Fi. → [Setup page and connections](Setup-Page-and-Connections), [Sync with a computer](Sync-with-a-Computer)
+- **Notes (Memos), Calendar (links and CalDAV), Music (Plex)**, read aloud with the Kindle's own voice.
+- **Updates from GitHub** (its own updater), usage statistics and diagnostics. → [Updates](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
+- **The quick panel**, replacing KOReader's top and bottom menus and ZenOS's touch menu on every device. → [Using GZreader](Using-GZreader)
+- An English dictionary.
+
+**Changed in KOReader's own code:**
+
+| Where | What |
+| --- | --- |
+| Kindle 2, DX, 3, 4 drawing (`frontend/device/kindle/shadowfb.lua`, `device.lua`) | A shadow screen: KOReader draws with its fast C blitter into an 8-bit buffer that's packed into the 4-bit (or inverted 8-bit) framebuffer before each refresh; night mode is done while packing. → [Performance](Performance) |
+| Kindle start script (`platform/kindle/koreader.sh`) | Restarts, stepping aside for the Kindle's USB drive and coming back after it ("Connect to computer"), the Kindle 2/DX's framework for USB drive mode |
+| Nook devices (`frontend/device/nook/`) | The Nook 1st Edition's e-ink page (refreshed through the kernel without a flash) and colour touchscreen (controls, reading info, a keyboard), the Simple Touch's e-ink waveforms and touch; the Nook start script and launcher (`platform/nook/`). → [Nook 1st Edition](Nook-1st-Edition) |
+| Loading (`frontend/gzbytecode.lua`, `luasettings.lua`) | A bytecode cache for source installs; settings files are only written when they changed |
+| Fonts (`frontend/ui/font.lua`) | Missing fallback fonts (the removed CJK one) are dropped at start instead of failing on every glyph |
+| Book layout (`frontend/document/credocument.lua`) | A bigger crengine cache (256 MB instead of 64) |
+| Sleep screen (`frontend/ui/screensaver.lua`) | "Custom image or cover" shows the book's cover while reading and the image elsewhere |
+| Menus (`frontend/ui/widget/touchmenu.lua`, menu orders) | Letter keys in KOReader's menus; GZreader's items in place of removed plugins' |
+| Back key (`readerback.lua`), translations (`gettext.lua`), plugin loading | Small fixes for the trimmed build |
+
+## Compared with ZenOS
+
+GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and changes:
+
+- **Keys:** letter keys in every list and dialog (`__ZEN_DIALOG_SHORTCUTS`, the context menu), tab keys (Z, X, C, V, B) on keyboard Kindles, the 5-way on the Kindle 4. ZenOS was made for touch.
+- **The quick panel** instead of ZenOS's touch menu (its Zen Mode button and tabs), on every device; ZenOS's first-run menu tour is replaced by one of the quick panel, which closes it before the page browser tip.
+- **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats and a notebook-page stats widget, two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
+- **Tabs:** Grimmory, Notes (in Favorites' place) and Calendar, Music on request.
+- **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with usage statistics.
+- **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).
+- **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes).
+- **Covers:** pre-sized and cached on disk, made in a background process. → [Performance](Performance)
+- **Nooks:** paths for a Nook's microSD card, Bluetooth stubbed out, Wi‑Fi switching adapted.
+- **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.
+
+The full list of changed upstream files is `tools/gzreader/tests/keeps.txt` in the repository.

@@ -1,0 +1,48 @@
+# The GitHub wiki (https://github.com/9retirement6irk/GZreader/wiki) is
+# published from the wiki/ folder: every push to main that changes it
+# replaces the wiki's pages with the folder's (a page removed from the folder
+# is removed from the wiki). Edit the wiki in wiki/, not on GitHub: an edit
+# made there is overwritten by the next publish.
+#
+# GitHub creates a wiki's repository only when its first page is saved: once,
+# open the repository's Wiki tab, "Create the first page", and save it as it
+# is; then run this workflow (Actions → GZreader wiki → Run workflow).
+name: GZreader wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ["wiki/**", ".github/workflows/gzreader-wiki.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gzreader-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish wiki/ to the wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          if ! git clone -q --depth 1 "$url" wiki-repo 2>/dev/null; then
+            echo "::error::The wiki has no pages yet, so GitHub hasn't made its repository: open the Wiki tab, create the first page (any text), save, and run this workflow again."
+            exit 1
+          fi
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r wiki/. wiki-repo/
+          cd wiki-repo
+          git add -A
+          if git diff --cached --quiet; then echo "The wiki is up to date."; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Wiki from ${GITHUB_SHA::7}"
+          git push -q origin HEAD
+          echo "Published $(ls ../wiki | wc -l) pages."

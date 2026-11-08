@@ -1,0 +1,115 @@
+Browsing your Grimmory library on the device, and downloading books. Keeping them in sync with Grimmory: [Grimmory sync](Grimmory-Sync).
+
+## Browsing Grimmory
+
+**Search Grimmory…** (first in the tab), Continue reading, Recently added,
+All books (A–Z), **Libraries**, **Authors** (with search), **Series** (in
+series order, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
+readable books (built in the background, refreshed daily), so authors or
+series with only audiobooks don't appear, and the lists open instantly.
+If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
+on some installs), the web app's library list is used instead.
+
+Saved lists (`gzreader_listcache.lua`): the first page of every list fetched
+(Continue reading, Recently added, All books, a library, shelf, author or
+series, the library and shelf lists, Audiobooks) is kept on the Kindle, per
+server and account (`cache/grimmory-lists`, newest 60). The Grimmory tab
+opens at once, without waiting for Wi‑Fi; a list with a saved copy appears
+straight away (its title ends in "· saved"), Wi‑Fi comes up quietly in the
+background, and the fresh list replaces it in place (same page) when it
+arrives, unless you've moved on. With no Wi‑Fi the saved copies are what you
+get. "Load more" and Search always ask Grimmory.
+
+The 5-way's selection stays on the book (or card) you moved to when the page
+is drawn again: when the fresh copy of a list or the first page's Continue
+reading / Recently added arrive, when covers come in, and after Download on a
+book's page. (Before, each of these put it back on the first book.) A book's
+page shows the same cover as the list; one not on the Kindle yet is fetched
+into the same cache.
+
+Search looks for the words in a book's title, series or authors (Grimmory's
+book list with `search=`, readable formats only, A–Z, paged like All books).
+All books has "Search Grimmory…" at the top; a library, shelf or author's
+books have "Search in <name>…", which searches only there. Older Grimmory
+servers whose book list ignores `search=` get their own search endpoint
+instead (the whole library, newest first).
+
+Big libraries: a book list keeps at most 8 pages (200 books) of Grimmory's
+results. "Load more" past that lets the earliest page go, and "Earlier books"
+at the top brings it back. Each book keeps only the dozen fields GZreader
+uses (Grimmory sends about forty). Covers shown on the page being drawn are
+never freed (1.12.2 and older could free one still on screen).
+
+The Grimmory tab is part of ZenOS's tab bar while it's open: the bar stays
+at the bottom with the Grimmory tab underlined, and the title shows ZenOS's
+status bar (clock, battery, Wi‑Fi, downloads) with the list's name and, in
+a sub-list, a back arrow.
+
+## Home folder and downloads
+
+The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
+**Downloads** tab shows it. Books sent from your browser (quick panel → Send
+books) go there too. Books download in a background process with a
+progress bar (percentage, MB received of the total; the Kindle stays awake
+until it's done). Picking more books while one downloads queues them; they
+download one after another (lists show "queued"; the download options can
+empty the queue) (press any key for Stop / Continue in background / Keep
+watching); a transfer that stalls for 90 s is stopped.
+
+A backup list of downloaded books (`.gzreader-library.json`) is kept in the
+GZreader folder. If KOReader's settings are lost (for example the `koreader`
+folder was replaced), the books are re-linked to Grimmory from it, or by file
+name from the library index, so progress sync and "on Kindle" marks keep
+working.
+
+## Downloads screen and title bar
+
+While anything downloads, **Downloads (N)** is a tile in the quick panel's
+Home tiles (`gzreader_tasks.lua`). It lists the current book download, the
+queue, audiobook downloads and the audiobook preparing step: reopen a
+progress bar, stop the download, take a book out of the queue, empty the
+queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
+(added once; movable/removable in its settings): a download icon with the
+percentage and the number waiting, refreshed every 10 s while active.
+
+## Unfinished downloads
+
+Every book download (running or queued) and every audiobook download and
+"preparing the audio" is noted when it starts and crossed off when it ends
+(`gzreader_recovery.lua`). If GZreader stops in between (battery ran out,
+the Kindle slept or restarted, a crash), it asks about each one a few
+seconds after the next start: **Continue** (books continue from the part
+already downloaded with an HTTP Range request; audiobooks continue
+downloading their tracks and preparing the ones not yet converted, after
+stopping any conversion still running from before), **Delete** (removes
+the part) or **Ignore** (stops asking, keeps the part: downloading it again
+later still continues from there). A stalled download now also keeps its
+part. Stopping a download yourself, taking it out of the queue, or a "not
+found" from Grimmory clears it.
+
+## Shelves and auto-download
+
+Grimmory tab → **Shelves** lists your shelves and smart (magic) shelves.
+Settings → Connections → Grimmory → **Auto-download shelf** picks one: books on it that
+aren't on the Kindle download in the background through the download queue
+when Wi-Fi connects (at most every 30 minutes) and with "Download new books
+from the shelf now". Books taken off the shelf stay on the Kindle. (Idea from
+krisboho/connecto-library's Shelf Sync.)
+
+## Book covers when downloading
+
+Picking a book in the Grimmory browser asks whether to download it and shows
+Grimmory's cover thumbnail (250 x 350, `/api/v1/media/book/<id>/thumbnail`),
+fetched in the background and kept in `koreader/cache/gzreader-thumbs/`
+(renewed when the cover changes in Grimmory). The Grimmory lists and a
+book's page use `cache/gzreader-covers/`.
+
+## Subtitles
+
+Grimmory's subtitle is added to the title ("Diary of a Wimpy Kid: Old
+School") in the Grimmory lists and, for downloaded books, as KOReader custom
+metadata (`.sdr/custom_metadata.lua`, like Book information → edit title),
+so Home, Downloads, history and the reader show it. The app API's lists have
+no subtitles, so they come from the library index (Grimmory's web book list,
+`/api/v1/books/page`) and from the book itself after a download. Titles you
+edited yourself are left alone.

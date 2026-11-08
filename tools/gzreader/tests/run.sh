@@ -67,6 +67,7 @@ timeout 120 python3 "$T/nook_launcher_test.py" 2>&1 | grep -E "FAIL|passed|BusyB
 
 echo "== release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 echo "== Nook: GZreader's files on the card"
 timeout 120 python3 "$T/nook_app_test.py" 2>&1 | grep -E "FAIL|passed|shell"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
@@ -77,6 +78,10 @@ echo "== beta branch (labelled pull requests combined)"
 
 echo "== CI: which changes skip the emulator"
 timeout 60 python3 "$T/ci_paths_test.py" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== the wiki's links"
+timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== $failed suite(s) failed"
