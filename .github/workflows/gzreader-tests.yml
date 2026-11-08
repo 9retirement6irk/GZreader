@@ -4,7 +4,8 @@ name: GZreader tests
 # the emulator on a Kindle 3, a Nook 1st Edition and a Nook Simple Touch
 # (tools/gzreader/ci-test.sh), on every push to main and every pull request.
 # A pull request that changes only what the emulator can't be affected by
-# (the sync and landing pages, tests, Markdown, the changelog:
+# (the sync and landing pages, tests, Markdown, the changelog, the workflows
+# and scripts that publish updates and releases:
 # tools/gzreader/ci_emulator_needed.py) gets the tests without the emulator
 # runs: a few minutes instead of half an hour. The same check, so nothing
 # that waits for it changes.
@@ -35,7 +36,7 @@ jobs:
           printf '%s\n' "$changed"
           if [ "$(printf '%s\n' "$changed" | python3 tools/gzreader/ci_emulator_needed.py)" = skip ]; then
             echo "GZ_CI_MODELS=none" >> "$GITHUB_ENV"
-            echo "Only web pages, tests, Markdown or the changelog changed: the emulator runs are skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "Only web pages, tests, Markdown, the changelog or publishing scripts changed: the emulator runs are skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Tools
         run: |
