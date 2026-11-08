@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Smoother page turns while GZreader syncs in the background", text = "Syncing, downloads, the library index, update checks and usage statistics now run their background processes at a lower priority than the screen. Each request's secure connection takes seconds of processor time on a Kindle 3, and opening a book starts several; page turns no longer wait for them." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },
