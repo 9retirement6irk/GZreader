@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Diagnostics: a line in the log for each start", text = "The diagnostic log has a line for each start, like the one for each book opened: how long until Home (or a book) was on the screen, the processor time, when GZreader's own part started and how long it took, modules loaded, memory used and free. Send the log after a few starts to show where a slow start goes." },
+        },
+    },
+    {
         version = "1.26.9",
         changes = {
             { short = "Send to the developer asks what happened, and sends it with the log", text = "Diagnostics → Send to the developer (quick panel, or Settings → General) first asks what you were doing and what went wrong; what you type goes with the diagnostic log, at the top, so the developer knows what to look for. Leaving it empty still sends the log. Reports from releases and test builds now go to the same place." },

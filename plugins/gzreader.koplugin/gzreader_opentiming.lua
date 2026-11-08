@@ -14,7 +14,7 @@ again), or the e-ink panel.
 local Log = require("gzreader_log")
 local time = require("ui/time")
 
-local OT = { installed = false, LIMIT = 90 }
+local OT = { installed = false, LIMIT = 90, BOOT_FALLBACK = 60 }
 
 local function now() return time.now() end
 local function secs(d) return time.to_s(d) end
@@ -98,6 +98,110 @@ local function finish()
     Log.info(table.concat(parts, " | "))
 end
 
+---------------------------------------------------------------- the start
+-- One line per start, like the book-open one:
+--
+--   start: Home on screen 14.2 s after the program started (CPU 9.1 s) |
+--   GZreader started at 6.3 s, set up in 0.7 s | modules loaded 905,
+--   Lua memory 15.3 MB | free memory 98 MB (+ 31 MB cache), GZreader 44 MB
+--
+-- "GZreader started at": KOReader and the plugins before GZreader's (ZenOS,
+-- the file manager); "set up in": GZreader's own start; the rest, up to
+-- the first refresh with Home (or a book) on screen: ZenOS's Home, covers,
+-- the first drawing.
+
+--- Seconds since this process started, from /proc/self/stat (its start, in
+--- clock ticks since boot) and /proc/uptime; `stat`/`uptime` (text) for tests.
+function OT.processAge(stat, uptime, hz)
+    if not stat then
+        local f = io.open("/proc/self/stat", "rb")
+        stat = f and f:read("*a"); if f then f:close() end
+    end
+    if not uptime then
+        local f = io.open("/proc/uptime", "rb")
+        uptime = f and f:read("*a"); if f then f:close() end
+    end
+    if type(stat) ~= "string" or type(uptime) ~= "string" then return nil end
+    -- (the command name, in brackets, may hold spaces: fields count from after it)
+    local rest = stat:match("^.*%)%s+(.*)$")
+    local up = tonumber(uptime:match("^%s*([%d.]+)"))
+    if not rest or not up then return nil end
+    local fields = {}
+    for x in rest:gmatch("%S+") do fields[#fields + 1] = x end
+    local start_ticks = tonumber(fields[20]) -- field 22 of the whole line: starttime
+    if not start_ticks then return nil end
+    local age = up - start_ticks / (hz or 100)
+    return age >= 0 and age or nil
+end
+
+--- The log line for a start (pure: run_tests.lua).
+function OT.startupLine(b)
+    local function n(v, fmt) return v and string.format(fmt, v) or "?" end
+    return table.concat({
+        string.format("start: %s on screen %s s after the program started (CPU %s s)",
+            b.what or "the first screen", n(b.shown, "%.1f"), n(b.cpu, "%.1f")),
+        string.format("GZreader started at %s s, set up in %s s", n(b.plugin_at, "%.1f"), n(b.setup, "%.1f")),
+        string.format("modules loaded %s, Lua memory %s MB", tostring(b.modules or "?"), n(b.lua_mb, "%.1f")),
+        string.format("free memory %s MB (+ %s MB cache), GZreader %s MB",
+            tostring(b.free or "?"), tostring(b.cached or "?"), tostring(b.rss or "?")),
+    }, " | ")
+end
+
+--- GZreader's plugin starts (the first instance of a run).
+function OT.bootBegin()
+    if OT.boot ~= nil then return end
+    OT.boot = { plugin_at = OT.processAge(), t0 = now() }
+end
+
+--- GZreader's plugin is set up: from here, the first refresh with Home (or a
+--- book) on screen ends the start; a refresh with neither BOOT_FALLBACK s
+--- later ends it too (you start on the file browser, say).
+function OT.bootReady()
+    local b = OT.boot
+    if type(b) ~= "table" or b.ready then return end
+    b.ready = true
+    b.setup = secs(now() - b.t0)
+end
+
+local function windowIs(stack)
+    for i = #(stack or {}), 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if type(w) == "table" then
+            if rawget(w, "_zen_home_focus_targets") ~= nil or w._zen_home_focus_targets ~= nil then return "Home" end
+            if w.name == "ReaderUI" then return "a book" end
+        end
+    end
+end
+OT.windowIs = windowIs
+
+--- A screen refresh while the start is being timed (`stack`: UIManager's windows).
+function OT.bootRefresh(stack)
+    local b = OT.boot
+    if type(b) ~= "table" or not b.ready then return end
+    b.last_refresh = OT.processAge() or b.last_refresh
+    local what = windowIs(stack)
+    if what then return OT.bootFinish(what) end
+    if secs(now() - b.t0) > OT.BOOT_FALLBACK then return OT.bootFinish("the first screen") end
+end
+
+function OT.bootFinish(what)
+    local b = OT.boot
+    if type(b) ~= "table" then return end
+    OT.boot = false -- (once a run)
+    if not what then return end
+    local free, cached = meminfo()
+    local n = 0
+    for _k in pairs(package.loaded) do n = n + 1 end
+    b.what = what
+    b.shown = what == "the first screen" and b.last_refresh or OT.processAge()
+    b.cpu = os.clock()
+    b.modules = n
+    b.lua_mb = collectgarbage("count") / 1024
+    b.free, b.cached, b.rss = free, cached, rss()
+    Log.info(OT.startupLine(b))
+    return b
+end
+
 function OT.install()
     if OT.installed then return end
     OT.installed = true
@@ -151,13 +255,17 @@ function OT.install()
         if type(orig) == "function" then
             Screen[name] = function(self, ...)
                 local cur = OT.cur
-                if not cur then return orig(self, ...) end
+                if not cur and not OT.boot then return orig(self, ...) end
                 local t = now()
                 local r = { orig(self, ...) }
-                cur.refreshes = cur.refreshes + 1
-                cur.refresh_time = cur.refresh_time + (now() - t)
-                if cur.ready then pcall(finish) end
-                if OT.cur and secs(now() - OT.cur.t0) > OT.LIMIT then OT.cur = nil end
+                -- (the start being timed: this refresh may be the first with Home)
+                if OT.boot then pcall(OT.bootRefresh, require("ui/uimanager")._window_stack) end
+                if cur then
+                    cur.refreshes = cur.refreshes + 1
+                    cur.refresh_time = cur.refresh_time + (now() - t)
+                    if cur.ready then pcall(finish) end
+                    if OT.cur and secs(now() - OT.cur.t0) > OT.LIMIT then OT.cur = nil end
+                end
                 return unpack(r)
             end
         end

@@ -62,6 +62,8 @@ function Grimmory:init()
     -- creates a new plugin instance for each FileManager/ReaderUI, and a
     -- background download or queued sync data must not be written to a stale copy.
     if not Grimmory.shared_settings then
+        -- how long this start takes (a log line once Home is on screen: gzreader_opentiming.lua)
+        pcall(function() require("gzreader_opentiming").bootBegin() end)
         Grimmory.shared_settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/gzreader.lua")
         Log.init(DataStorage:getDataDir())
         pcall(function() require("gzreader_remote").keepPreviousLog() end)
@@ -237,6 +239,10 @@ function Grimmory:init()
         -- active widget lets our events still reach us. File manager only, so
         -- reader events are never delivered twice.
         table.insert(self.ui.active_widgets, self)
+    end
+    if not Grimmory.boot_timed then
+        Grimmory.boot_timed = true
+        pcall(function() require("gzreader_opentiming").bootReady() end)
     end
 end
 
