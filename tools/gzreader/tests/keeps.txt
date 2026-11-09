@@ -34,6 +34,7 @@
 2 plugins/zenos.koplugin/common/cover_render_cache.lua
 2 plugins/zenos.koplugin/common/db_library.lua
 1 plugins/zenos.koplugin/common/dispatch_action.lua
+1 plugins/zenos.koplugin/common/gz_header_overlay.lua
 1 plugins/zenos.koplugin/common/gz_home_status.lua
 5 plugins/zenos.koplugin/common/gz_tab_title.lua
 7 plugins/zenos.koplugin/common/gz_view.lua

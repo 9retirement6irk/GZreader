@@ -90,6 +90,8 @@ local function apply_reader_top_status_bar()
         end
         local highlight = view.ui.highlight
         if highlight and top_widget == highlight.highlight_dialog then return true end
+        -- GZreader: KOReader's layout menu (at the bottom) leaves the bar in view.
+        if require("common/gz_header_overlay").leavesHeader(view, top_widget) then return true end
         local parent = top_widget.show_parent
         return parent ~= nil and (parent == view.ui or parent == view.ui.show_parent)
     end
