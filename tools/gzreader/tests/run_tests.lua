@@ -5803,10 +5803,6 @@ print("Music (Plex): the server, downloads, the player")
             { text = "Music/", path = mdir }, { text = "Other/", path = plugin:libraryDir() .. "/Other" },
             { text = "Audiobooks/", path = plugin:libraryDir() .. "/Audiobooks" } }
         SV.specialsFirst(items)
-        check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
-            "Audiobooks and Music come first, whatever the sort")
-        check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
-            "the walkman and the CD player drawn to one scale (the CD player lower)")
         local cdf = io.open(PLUGIN .. "/icons/shelf/cdplayer.svg", "rb")
         local cd = cdf and cdf:read("*a") or ""
         if cdf then cdf:close() end
@@ -5816,6 +5812,10 @@ print("Music (Plex): the server, downloads, the player")
             and math.abs(SV.SPECIAL.Music.height - tonumber(vh) / 160) < 0.001
             and tonumber(ecy) and tonumber(ecy) + tonumber(ery) >= tonumber(vh) - 2,
             "the CD player lies on the shelf: the bottom of its edge is the bottom of the picture, its size as the picture's")
+        check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
+            "Audiobooks and Music come first, whatever the sort")
+        check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
+            "the walkman and the CD player drawn to one scale (the CD player lower)")
         G_reader_settings:saveSetting("home_dir", saved_home)
     end
     -- the player
