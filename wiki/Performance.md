@@ -86,6 +86,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in
   the log). Missing fallbacks are now dropped at start.
+- **Statistics after the first page** (GZreader's copy of the statistics
+  plugin): the book's database row and its reading totals are looked up
+  just after the first page is drawn; the totals kept with the book
+  (`gz_read_pages`, `gz_read_time` in its `stats`) give the time-left
+  estimate until then.
 - ZenOS's Home "quotes" row (about 0.5 s per Home rebuild) is off by default.
 - **Saving** (`Grimmory:save`): a save whose download list, audiobooks,
   music, shelves and sign-in are unchanged writes only the rest of GZreader's
