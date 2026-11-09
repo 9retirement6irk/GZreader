@@ -62,11 +62,12 @@ been idle at most IDLE_MAX seconds. A request on a kept connection that fails
 takes a kept connection (it isn't sent twice). Downloads (opts.sink) and the
 main process don't use it.
 ]]
-local Pool = { on = false, idle = {}, IDLE_MAX = 4, made = 0, reused = 0, requests = 0 }
+local Pool = { on = false, idle = {}, IDLE_MAX = 4, made = 0, reused = 0, requests = 0, helped = 0 }
 Api.pool = Pool
 
 function Api.poolBegin()
     Pool.on, Pool.idle, Pool.made, Pool.reused, Pool.requests, Pool.broken = true, {}, 0, 0, 0, false
+    Pool.helped = 0
     -- (off: a file named gz-no-keepalive in the koreader folder)
     if lfs.attributes("gz-no-keepalive", "mode") == "file" then Pool.on = false end
 end
@@ -74,7 +75,14 @@ end
 function Api.poolEnd()
     for _k, c in pairs(Pool.idle) do pcall(c.sock.close, c.sock) end
     Pool.idle, Pool.on = {}, false
-    if Pool.requests > 1 then Log.info("http:", Pool.requests, "requests on", Pool.made, "connection(s)") end
+    if Pool.requests > 1 then
+        if Pool.helped > 0 then
+            -- (through the request helper, which keeps its own connections: none here)
+            Log.info("http:", Pool.requests, "requests,", Pool.helped, "through the request helper,", Pool.made, "connection(s) here")
+        else
+            Log.info("http:", Pool.requests, "requests on", Pool.made, "connection(s)")
+        end
+    end
 end
 
 local Conn = {}
@@ -176,7 +184,13 @@ local function rawRequest(method, full_url, opts)
     else
         pooled = false
     end
-    local function attempt(may_reuse)
+    -- the request helper (gzreader_reqhelper.lua: opt-in), as an HTTP proxy on 127.0.0.1
+    local helper_port, helper_token
+    if pooled then
+        local okh, Helper = pcall(require, "gzreader_reqhelper")
+        if okh then helper_port, helper_token = Helper.endpoint() end
+    end
+    local function attempt(may_reuse, direct)
         local request = {
             url = full_url,
             method = method,
@@ -184,6 +198,17 @@ local function rawRequest(method, full_url, opts)
             source = body and ltn12.source.string(body) or nil,
             sink = sink,
         }
+        if helper_port and not direct then
+            local h2 = {}
+            for k, v in pairs(headers) do h2[k] = v end
+            h2["X-Gz-Helper"], h2["Connection"] = helper_token, nil
+            request.headers, request.proxy = h2, "http://127.0.0.1:" .. helper_port
+            local ok, c, h, st = pcall(function() return socket.skip(1, http.request(request)) end)
+            if ok and c == 502 and type(h) == "table" and h["x-gz-helper-error"] then
+                return true, h["x-gz-helper-error"], nil, nil, false, "answered" -- (the server's error, through the helper)
+            end
+            return ok, c, h, st, false, true
+        end
         local conn
         if pooled then
             conn = setmetatable({ scheme = scheme, params = request, may_reuse = may_reuse }, Conn)
@@ -201,7 +226,15 @@ local function rawRequest(method, full_url, opts)
     pcall(function() require("gzreader_net").touch() end)
     local t0 = socket.gettime()
     if pooled then Pool.requests = Pool.requests + 1 end
-    local pcall_ok, code, resp_headers, status, reused = attempt(method ~= "POST")
+    local pcall_ok, code, resp_headers, status, reused, via_helper = attempt(method ~= "POST")
+    if pooled and via_helper == true and pcall_ok and type(code) == "number" then Pool.helped = Pool.helped + 1 end
+    if via_helper == true and (not pcall_ok or type(code) ~= "number") and tostring(code):find("refused", 1, true) then
+        -- (the helper isn't there after all: nothing was sent; directly, and not again in this process)
+        pcall(function() require("gzreader_reqhelper").dead = true end)
+        chunks = {}
+        sink = socketutil.table_sink(chunks)
+        pcall_ok, code, resp_headers, status, reused = attempt(method ~= "POST", true)
+    end
     if reused and (not pcall_ok or type(code) ~= "number") and not opts.sink then
         -- (the server closed the kept connection meanwhile: once more, on a new one)
         Log.info("HTTP", method, shown_url, "kept connection closed by the server: again on a new one")
@@ -229,7 +262,7 @@ local function rawRequest(method, full_url, opts)
     end
     local raw = table.concat(chunks)
     local enc = type(resp_headers) == "table" and (resp_headers["content-encoding"] or resp_headers["Content-Encoding"])
-    if gzip and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
+    if gzip and not opts.no_inflate and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
         local plain, zerr = Gzip.inflate(raw)
         if plain then raw = plain else Log.warn("HTTP", method, shown_url, "gzip:", tostring(zerr)) end
     end

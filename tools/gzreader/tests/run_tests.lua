@@ -1525,6 +1525,7 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
+    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|"), "Grimmory section: Keep connections open, after the sync switches")
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
     local d = texts(gen.diagnostics)
@@ -2230,6 +2231,100 @@ print("Keep-alive inside a background process (one connection for several reques
         and it:find("Api.poolEnd()", 1, true), "background requests and the library index use it")
     local pf = io.open(WORK .. "/keepalive.pid")
     if pf then os.execute("kill " .. (pf:read("*l") or "") .. " 2>/dev/null"); pf:close(); os.remove(WORK .. "/keepalive.pid") end
+end)()
+
+print("The request helper (opt-in): connections kept between background processes")
+;(function()
+    local Api = require("gzreader_api")
+    local Helper = require("gzreader_reqhelper")
+    -- Settings → Connections → Grimmory → Keep connections open: off by default
+    local was_force = Helper.force
+    Helper.force = nil
+    check(not Helper.enabled() and not Helper.setting(), "the helper is off by default")
+    local item
+    for _i, it in ipairs(plugin:menuItems()) do if it.text == "Keep connections open (experimental)" then item = it end end
+    local started, was_start = 0, Helper.start
+    Helper.start = function() started = started + 1 end
+    item.callback()
+    check(Helper.enabled() and Helper.setting() and item.checked_func() and gsettings.gzreader_request_helper == true,
+        "Settings → Keep connections open: on (kept in KOReader's settings)")
+    item.callback()
+    check(not Helper.enabled() and not item.checked_func() and gsettings.gzreader_request_helper == nil, "and off again")
+    Helper.start = was_start
+    Helper.force = was_force
+    local hsock = require("socket")
+    local UP = PORT + 71
+    os.execute("python3 -I keepalive_server.py " .. UP .. " >/dev/null 2>&1 & echo $! > '" .. WORK .. "/keepalive2.pid'")
+    local hdir = WORK .. "/reqhelper"
+    os.execute("rm -rf '" .. hdir .. "'; mkdir -p '" .. hdir .. "'")
+    Helper.dir_override = hdir
+    local me = tonumber((io.open("/proc/self/stat"):read("*l") or ""):match("^(%d+)"))
+    local function q(x) return "'" .. tostring(x):gsub("'", "'\\''") .. "'" end
+    os.execute(string.format("LUA_PATH=%s LUA_CPATH=%s GZ_HELPER_NO_KOENV=1 luajit %s %s %d > %s 2>&1 & echo $! > %s",
+        q(package.path), q(package.cpath), q(PLUGIN .. "/gzreader_reqhelper.lua"), q(hdir), me, q(WORK .. "/reqhelper.log"), q(WORK .. "/reqhelper.pid")))
+    for _i = 1, 50 do
+        local c = hsock.tcp(); c:settimeout(0.2)
+        local up = c:connect("127.0.0.1", UP); c:close()
+        if up and Helper.endpoint() then break end
+        hsock.sleep(0.1)
+    end
+    local port = Helper.endpoint()
+    local lf = io.open(WORK .. "/reqhelper.log")
+    check(port ~= nil, "the helper started: listening on 127.0.0.1 " .. tostring(port) .. (port and "" or (" " .. (lf and lf:read("*a") or ""))))
+    if lf then lf:close() end
+    local base2 = "http://127.0.0.1:" .. UP
+    local function upconn(hpath, method)
+        local c, d = Api.rawRequest(method or "GET", base2 .. hpath, method == "POST" and { body = { y = 2 } } or nil)
+        return c == 200 and type(d) == "table" and d.conn or nil
+    end
+    if port then
+        Api.poolBegin() -- (a background process)
+        local u1, u2 = upconn("/n"), upconn("/n")
+        local glog = require("gzreader_log")
+        local lines_seen, was_info = {}, glog.info
+        glog.info = function(...) lines_seen[#lines_seen + 1] = table.concat({ ... }, " ") end
+        Api.poolEnd()
+        glog.info = was_info
+        check(lines_seen[1] == "http: 2 requests, 2 through the request helper, 0 connection(s) here",
+            "the log says the requests went through the helper (" .. tostring(lines_seen[1]) .. ")")
+        Api.poolBegin() -- (the next one, a moment later)
+        local u3 = upconn("/n")
+        local up = upconn("/n", "POST")
+        check(u1 and u1 == u2 and u2 == u3, "requests from two background processes: one connection to the server, kept by the helper")
+        check(up ~= nil, "a POST through it too")
+        local c4 = Api.rawRequest("GET", "http://127.0.0.1:" .. (PORT + 72) .. "/nothing")
+        check(type(c4) ~= "number", "the server unreachable: a network error, as without the helper (" .. tostring(c4) .. ")")
+        -- someone without the token
+        local s = hsock.tcp(); s:settimeout(2)
+        s:connect("127.0.0.1", port)
+        s:send("GET " .. base2 .. "/n HTTP/1.1\r\nHost: x\r\nX-Gz-Helper: wrong\r\n\r\n")
+        local line = s:receive("*l") or ""
+        s:close()
+        check(line:find(" 403 ", 1, true), "without its token: refused (" .. line .. ")")
+        Api.poolEnd()
+        -- stopped: requests go directly
+        local stop_lines, was_info2 = {}, require("gzreader_log").info
+        require("gzreader_log").info = function(...) stop_lines[#stop_lines + 1] = table.concat({ ... }, " ") end
+        Helper.stop()
+        require("gzreader_log").info = was_info2
+        check(stop_lines[1] == "request helper: stopped (Wi-Fi off)", "stopping it is logged")
+        for _i = 1, 30 do if not io.open(hdir .. "/stop") then break end hsock.sleep(0.1) end
+        Api.poolBegin()
+        check(Helper.endpoint() == nil and upconn("/n") ~= nil, "stopped: requests go directly again")
+        Api.poolEnd()
+    end
+    -- an endpoint that isn't there (the helper died): directly, and not tried again in that process
+    local ef = io.open(hdir .. "/endpoint", "wb"); ef:write(string.format("%d %s %d\n", PORT + 73, "abcd", me)); ef:close()
+    Api.poolBegin()
+    local direct = upconn("/n")
+    check(direct ~= nil and Helper.dead == true, "a helper that doesn't answer: the request goes directly (" .. tostring(direct) .. ")")
+    Api.poolEnd()
+    Helper.dead, Helper.dir_override = nil, nil
+    os.remove(hdir .. "/endpoint")
+    for _i, pf in ipairs({ WORK .. "/keepalive2.pid", WORK .. "/reqhelper.pid" }) do
+        local h = io.open(pf)
+        if h then os.execute("kill " .. (h:read("*l") or "") .. " 2>/dev/null"); h:close(); os.remove(pf) end
+    end
 end)()
 
 print("Compressed replies")

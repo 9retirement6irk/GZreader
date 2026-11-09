@@ -492,6 +492,18 @@ function Grimmory:menuItems()
                 if self.annotations and not self.store.annotation_sync_disabled then self.annotations:run() end
             end,
         },
+        not Net.usb and {
+            text = _("Keep connections open (experimental)"),
+            help_text = _("While Wi-Fi is on, a small helper keeps the connections to your servers open between requests, so browsing Grimmory and syncing skip setting up a secure connection each time (seconds on a Kindle 3). It uses a few MB of memory while Wi-Fi is on. Off by default."),
+            checked_func = function() return require("gzreader_reqhelper").enabled() end,
+            callback = function()
+                local Helper = require("gzreader_reqhelper")
+                local on = not Helper.setting()
+                Helper.setSetting(on)
+                if on and Net.connected() then Helper.start(self.path)
+                elseif not Helper.enabled() and Helper.endpoint() then Helper.stop() end
+            end,
+        } or nil,
         {
             text = paired and _("Reconnect from your browser (QR code)") or _("Connect from your browser (QR code)"),
             help_text = _("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle."),
@@ -517,7 +529,7 @@ function Grimmory:menuItems()
             callback = function() self:confirmDisconnect() end,
         },
     }
-    for _, item in ipairs(more) do table.insert(items, item) end
+    for i = 1, table.maxn(more) do if more[i] then table.insert(items, more[i]) end end
     return items
 end
 
@@ -1429,6 +1441,8 @@ function Grimmory:flushPending()
 end
 
 function Grimmory:onNetworkConnected()
+    -- the request helper (opt-in: a file named gz-request-helper; gzreader_reqhelper.lua)
+    pcall(function() require("gzreader_reqhelper").start(self.path) end)
     UIManager:scheduleIn(2, function()
         -- books rated in the file browser (not opened) since GZreader started
         if self.api:isPaired() and self:syncEnabled() and not self._ratings_swept then
@@ -1637,6 +1651,13 @@ function Grimmory:onGrimmorySyncNow()
         end)
     end, { reason = "sync now" })
     return true
+end
+
+function Grimmory:onNetworkDisconnected()
+    pcall(function()
+        local Helper = package.loaded["gzreader_reqhelper"]
+        if Helper and Helper.endpoint() then Helper.stop() end
+    end)
 end
 
 function Grimmory:onSuspend()
