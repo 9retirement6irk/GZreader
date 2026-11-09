@@ -82,8 +82,8 @@ While a book downloads, the Grimmory tab still comes first: when it (or
 anything else) asks Grimmory for something, a book's details and cover say,
 the download waits until that's answered (its process is paused; 20 s at
 most each time) and then carries on. On a Kindle 3 a download took the Wi‑Fi
-and the processor, and the tab's requests timed out. The log's `download
-done` line says how long it waited.
+and the processor, and the tab's requests timed out. The log says how long
+each download waited (`download book=… waited … s`).
 
 ## Unfinished downloads
 

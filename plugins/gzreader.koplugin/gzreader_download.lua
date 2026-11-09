@@ -167,6 +167,9 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         UIManager:unschedule(job.poll)
         closeDialog()
         local secs = os.time() - job.started
+        if job.yields > 0 then
+            Log.info("download book=" .. tostring(book.id), "waited", job.yielded_s, "s for", job.yields, "other request(s)")
+        end
         if result_ok or result_err == "cancelled" or tostring(result_err):match("^http_4") then
             pcall(require("gzreader_recovery").bookDone, plugin, book.id) -- else: offered after a restart
         end
@@ -181,8 +184,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 UIManager:nextTick(startNext)
                 return
             end
-            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s",
-                job.yields > 0 and string.format("(waited %d s for %d other request(s))", job.yielded_s, job.yields) or "")
+            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
         else
             if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
