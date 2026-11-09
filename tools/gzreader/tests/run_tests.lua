@@ -782,6 +782,26 @@ check(b.menu.title == "Authors", "second time: opens instantly from the saved in
 index_requests = 0
 for _, e in ipairs(json.decode(ctl("/state")).log) do if e[2]:match("^/api/v1/app/books%?") then index_requests = index_requests + 1 end end
 check(index_requests == before, "no network request for a fresh index")
+do -- Refresh list from Grimmory: Wi-Fi on first (it may have gone off while the saved list was open)
+    local Net = require("gzreader_net")
+    local was_run, was_build = Net.run, Index.build
+    local reason, built
+    Net.run = function(fn, opts) reason = opts and opts.reason; fn() end
+    Index.build = function(_plugin, show) built = show end
+    find(b.menu.item_table, "^Refresh").callback()
+    Net.run, Index.build = was_run, was_build
+    check(reason == "refreshing the Grimmory list" and built == true, "Refresh list from Grimmory turns Wi-Fi on first, then rebuilds")
+    -- Check for updates says why it turns Wi-Fi on (the log read "turning on for ?")
+    local Upd = require("gzreader_update")
+    local was_check = Upd.check
+    local checked
+    reason = nil
+    Net.run = function(fn, opts) reason = opts and opts.reason; fn() end
+    Upd.check = function() checked = true; return nil, "test" end
+    Upd.run()
+    Net.run, Upd.check = was_run, was_check
+    check(reason == "checking for updates" and checked == true, "Check for updates gives its reason for turning Wi-Fi on")
+end
 find(b.menu.item_table, "^Author 1$").callback()
 local auth_ok, an = true, 0
 for _, it in ipairs(b.menu.item_table) do if it.book then an = an + 1; auth_ok = auth_ok and it.book.authors[1] == "Author 1" end end
