@@ -40,6 +40,7 @@ return {
             { short = "Refresh list from Grimmory works when Wi-Fi has gone off", text = "Authors and Series open from the list saved on the Kindle, without Wi-Fi, so with Wi-Fi only when needed it was often off again by the time you chose Refresh list from Grimmory, which then said it couldn't reach the server. Refresh now turns Wi-Fi on first, like the rest of the Grimmory tab. (The diagnostic log also now says why Check for updates turned Wi-Fi on, instead of a question mark.)" },
             { short = "Calendar: the bar beside each event lines up with it", text = "The short bar in an event's row (its calendar's shade) started halfway down the title and hung below it. It's now centred on the event, as it was meant to be." },
             { short = "Books open quicker while something syncs in the background", text = "When you open a book, GZreader's background work now waits: a sync that's already running (the calendar, Notes, Grimmory) is paused until the first page is up, and nothing new starts before then (30 s at most). On a Kindle 3 a calendar sync running at the same time made a book take 23.5 s to open instead of 6." },
+            { short = "Notes and Calendar icons show again (pin, file, picture, tag)", text = "The icons on notes (pinned, place, file, picture, tag) and the Calendar's come from ZenOS's icon font, which GZreader asked for by the wrong path: it was never found (an error in the log at every size), and the pin, file, picture and tag icons were missing. It's found now." },
         },
     },
     {
