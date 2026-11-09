@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Catalog → Audiobooks: search, All audiobooks, Authors, Shelves and Series", text = "The Catalog's Audiobooks page is laid out like the Books page: Search audiobooks at the top (titles, authors and series, audiobooks only), then All audiobooks, Authors, Shelves and Series, drawn as a bookcase with cassettes in the Bookshelf view. Authors and Series list only those with audiobooks, with how many; Shelves leaves out your shelves with no audiobook on them. An author's, series' or shelf's list has its own search." },
             { short = "The Grimmory tab is now the Catalog: Books, Audiobooks and Music pages", text = "The Grimmory tab is renamed Catalog and has pages: Books (as before), Audiobooks (Grimmory's audiobooks) and Music (Plex), on Kindles with a speaker or headphone jack. Swipe left or right, tap the next page's name under the title, or use the page-turn buttons; the title says which page you're on, and dots under it show where you are and what's next. The tab always opens on Books. On the Books page the bookcase's last compartment is now Downloaded books on every Kindle (Audiobooks have their own page). A tab you had renamed keeps its name." },
         },
     },

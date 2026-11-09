@@ -711,12 +711,12 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     m.page, m.page_num = 1, 1
     m:onNextPage()
     check(cb.section == "audiobooks" and m.title == "Audiobooks" and m.item_table.gz_catalog == "audiobooks"
-        and m.item_table[1].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
+        and m.item_table[2].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
     m:onNextPage()
     local music = m.item_table
     check(cb.section == "music" and m.title == "Music" and music.gz_catalog == "music" and #music > 0 and not music.gz_root,
         "and again: the Music page (Plex; not drawn as the bookshop)")
-    check(Browser.rootItems({ section = "audiobooks" })[1].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
+    check(Browser.rootItems({ section = "audiobooks" })[2].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
         "the Audiobooks page: All audiobooks")
     m:onNextPage()
     check(cb.section == "music" and m.item_table == music, "nothing past Music")
@@ -758,6 +758,83 @@ print("Catalog tab: Books, Audiobooks and Music pages")
         and c3.navbar.custom_tabs[1].label == "Catalog" and c1.navbar.custom_tabs[2].label == "Notes"
         and migrate(c4) == false and c4.navbar.custom_tabs[1].label == "Grimmory",
         "the tab's label: Grimmory becomes Catalog once; a name of your own stays")
+end)()
+
+print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
+;(function()
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local g = Browser.groupAudiobooks({ { id = 1, authors = { "A", "B" }, seriesName = "S" }, { id = 2, authors = { "A" }, seriesName = "S" },
+        { id = 3, authors = { "C" } } })
+    check(g.authors.A == 2 and g.authors.B == 1 and g.authors.C == 1 and g.series.S.count == 2
+        and table.concat(g.series.S.authors, ",") == "A,B" and next(Browser.groupAudiobooks(nil).authors) == nil,
+        "audiobooks grouped by author and series")
+    local ab = Browser:new(plugin)
+    ab:show({ section = "audiobooks" })
+    local m = ab.menu
+    local ids = {}
+    for _i, it in ipairs(m.item_table) do ids[#ids + 1] = it.gz_id end
+    check(table.concat(ids, ",") == "ab_search,ab_all,ab_authors,ab_shelves,ab_series" and m.item_table[1].gz_action == "search"
+        and m.item_table[2].gz_kind == "section" and m.item_table[2].gz_contents == "tapes",
+        "the page: search at the top, then All audiobooks, Authors, Shelves, Series " .. table.concat(ids, ","))
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Views = require("gzreader_shopviews")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    check(Views.kindOf(m.item_table) == "bay" and Views.headerCount(m.item_table) == 1 and Views.cardOf(m.item_table[3]) == m.item_table[3].mandatory,
+        "the Bookshelf view: a search slip above a bookcase, a compartment each")
+    check(Views.cardOf({ gz_kind = "author", gz_audio = true, gz_count = 2 }) == "2 audiobooks"
+        and Views.cardOf({ gz_kind = "collection", gz_audio = true, gz_count = 1 }) == "1 audiobook"
+        and Views.kindOf({ { gz_kind = "collection" } }) == "bay", "an author's or series' card counts audiobooks")
+    local function lastRequest(pat)
+        local last
+        for _i, e in ipairs(json.decode(ctl("/state")).log) do if e[2]:match(pat) then last = e[2] end end
+        return last
+    end
+    ab:openAudioAuthors()
+    local names = {}
+    for _i, it in ipairs(m.item_table) do names[#names + 1] = it.text .. "=" .. tostring(it.gz_count) end
+    check(table.concat(names, ",") == "Audio Author=2,Author 1=1" and m.item_table[1].gz_audio and m.item_table[1].gz_contents == "tapes",
+        "Authors: the audiobooks' authors only, with how many " .. table.concat(names, ","))
+    m.item_table[1].callback()
+    local books = {}
+    for _i, it in ipairs(m.item_table) do if it.book then books[#books + 1] = it.book.title .. ":" .. tostring(it.cover_kind) end end
+    local req = lastRequest("^/api/v1/app/books%?")
+    check(table.concat(books, ",") == "Book 32:audiobook,Book 33:audiobook" and req and req:match("fileType=AUDIOBOOK") and req:match("authors=Audio")
+        and m.item_table[1].text == "Search in Audio Author…", "an author: their audiobooks (Grimmory's list, audiobooks only) " .. tostring(req))
+    ab:openSection("audiobooks")
+    check(m.item_table[2].mandatory == "3 audiobooks" and m.item_table[3].mandatory == "2 · A–Z" and m.item_table[5].mandatory == "2 series",
+        "the page's cards count what's known (from the list Authors fetched)")
+    ab:openAudioSeries()
+    local series = {}
+    for _i, it in ipairs(m.item_table) do series[#series + 1] = it.text end
+    check(table.concat(series, ",") == "Audio Only Saga — Audio Author,Saga / Part One — Author 1", "Series: the audiobooks' series " .. table.concat(series, ","))
+    m.item_table[1].callback()
+    req = lastRequest("^/api/v1/app/books%?")
+    check(req and req:match("series=Audio") and req:match("fileType=AUDIOBOOK") and req:match("sort=seriesNumber"), "a series: in series order " .. tostring(req))
+    ab:openSection("audiobooks")
+    m.item_table[4].callback()
+    check(m.title == "Shelves" and m.item_table[1].gz_kind == "shelf" and m.item_table[1].gz_audio, "Shelves: your shelves, each opening to its audiobooks")
+    m.item_table[1].callback()
+    req = lastRequest("^/api/v1/app/books%?")
+    check(req and req:match("fileType=AUDIOBOOK") and (req:match("shelfId=") or req:match("magicShelfId=")), "a shelf: the audiobooks on it " .. tostring(req))
+    ab:openSection("audiobooks")
+    ab:search("saga", Browser.audioScope())
+    local found = {}
+    for _i, it in ipairs(m.item_table) do if it.book then found[#found + 1] = it.book.title end end
+    req = lastRequest("^/api/v1/app/books%?")
+    check(m.title == "Audiobooks: “saga”" and #found > 0 and req:match("fileType=AUDIOBOOK") and req:match("search=saga"),
+        "Search audiobooks: audiobooks only " .. table.concat(found, ","))
+    ab:search("zzz", Browser.audioScope())
+    check(m.item_table[#m.item_table].text == "No audiobooks found containing “zzz”", "a search that finds nothing says so")
+    -- an author's audiobooks and books aren't the same saved list
+    local Cache = require("gzreader_listcache")
+    check(Cache.key("paged-audio", { authors = "X" }) ~= Cache.key("paged", { authors = "X" }), "saved lists: audiobooks and books kept apart")
+    require("gzreader_touch").audio = saved_audio
 end)()
 
 print("Libraries, authors, series (local index of readable books)")
