@@ -259,22 +259,31 @@ function BookPage.show(browser, book)
     local page = BookPage:new{ browser = browser, book = book }
     UIManager:show(page)
     if book.id and browser.api then
-        local Async = require("gzreader_async")
-        Async.call(browser.api, "getBookDetail", { book.id }, function(detail)
-            if page.closed then return end
-            if type(detail) == "table" then page.detail = detail else page.failed = true end
-            page:refresh()
-        end)
-        -- not on the Kindle yet: into the list's cover cache (the list then
-        -- has it too)
-        local Covers = require("gzreader_covers")
-        if Covers.state(book.id) == "missing" and not lfs.attributes(require("gzreader_browser").thumbPath(book), "size") then
-            Async.call(browser.api, "downloadThumbnail", { book.id, Covers.path(book.id) }, function(ok)
-                if ok and not page.closed then page:refresh() end
-            end)
-        end
+        -- (the list opens from what's saved on the Kindle, so Wi-Fi may be off:
+        -- on first, as the rest of the Grimmory tab does)
+        require("gzreader_net").run(function() BookPage.fetch(page, browser, book) end,
+            { reason = "a book's details", usb = true })
     end
     return page
+end
+
+--- The book's details and, if it isn't on the Kindle yet, its cover.
+function BookPage.fetch(page, browser, book)
+    if page.closed then return end
+    local Async = require("gzreader_async")
+    Async.call(browser.api, "getBookDetail", { book.id }, function(detail)
+        if page.closed then return end
+        if type(detail) == "table" then page.detail = detail else page.failed = true end
+        page:refresh()
+    end)
+    -- not on the Kindle yet: into the list's cover cache (the list then
+    -- has it too)
+    local Covers = require("gzreader_covers")
+    if Covers.state(book.id) == "missing" and not lfs.attributes(require("gzreader_browser").thumbPath(book), "size") then
+        Async.call(browser.api, "downloadThumbnail", { book.id, Covers.path(book.id) }, function(ok)
+            if ok and not page.closed then page:refresh() end
+        end)
+    end
 end
 
 return BookPage

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A book's page and Download turn Wi-Fi on first", text = "The Grimmory tab's lists open from what's saved on the Kindle, so with Wi-Fi only when needed Wi-Fi was often off when you opened a book's page: its description and cover didn't come, and Download failed at once (\"temporary failure in name resolution\"). Both now turn Wi-Fi on first, like the rest of the Grimmory tab." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },

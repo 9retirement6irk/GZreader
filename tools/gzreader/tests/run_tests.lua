@@ -2161,6 +2161,27 @@ do
             "the Grimmory tab's cached cover is the page's cover (a copy, sized for the page), whatever the old cache has")
         os.remove(Covers.path(9071))
         Covers.image = orig_image
+        -- Wi-Fi off (the list opens from what's on the Kindle): on first, for the page and for Download
+        local Net = require("gzreader_net")
+        local was_run, was_new, was_fetch, was_conn = Net.run, rawget(BP, "new"), BP.fetch, Net.connected
+        local why, fetched = {}, nil
+        Net.run = function(fn, o) why[#why + 1] = o and o.reason; fn() end
+        BP.new = function(_s, o) return o end
+        BP.fetch = function(pg) fetched = pg end
+        local shown = BP.show({ api = plugin.api }, { id = 5, title = "Book 05" })
+        check(why[1] == "a book's details" and fetched == shown, "a book's page turns Wi-Fi on before asking for its details and cover")
+        local Dl = require("gzreader_download")
+        local was_start, started = Dl.start, nil
+        Dl.start = function(_p, book) started = book end
+        Net.connected = function() return false end
+        plugin:downloadAndOpen({ id = 9072, title = "Offline", primaryFileName = "offline.epub", primaryFileType = "EPUB" }, nil)
+        check(why[2] == "downloading a book" and started and started.id == 9072, "Download with Wi-Fi off: on first, then the download starts")
+        why, started = {}, nil
+        Net.connected = function() return true end
+        plugin:downloadAndOpen({ id = 9073, title = "Online", primaryFileName = "online.epub", primaryFileType = "EPUB" }, nil)
+        check(#why == 0 and started and started.id == 9073, "Wi-Fi on: straight to the download")
+        Net.run, BP.fetch, Net.connected, Dl.start = was_run, was_fetch, was_conn, was_start
+        rawset(BP, "new", was_new)
     end
 end
 

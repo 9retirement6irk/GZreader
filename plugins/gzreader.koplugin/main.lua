@@ -2028,6 +2028,15 @@ function Grimmory:downloadAndOpen(book, menu, opts)
         -- no Wi-Fi: into the sync queue; the next sync with the computer brings it
         return require("gzreader_usbsync").queuedMessage(self, book)
     end
+    if not opts.gz_net and not Net.connected() then
+        -- (the book's page opens from what's saved on the Kindle, so Wi-Fi may
+        -- be off: the download failed at once with "temporary failure in name
+        -- resolution" until 1.27.0)
+        local again = {}
+        for k, v in pairs(opts) do again[k] = v end
+        again.gz_net = true
+        return Net.run(function() self:downloadAndOpen(book, menu, again) end, { reason = "downloading a book" })
+    end
     if opts.no_open then
         local quiet = {}
         for k, v in pairs(book) do quiet[k] = v end
