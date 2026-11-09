@@ -88,14 +88,18 @@ function Browser:bookItem(book, with_series_number)
 end
 
 --- The Catalog tab (gzreader_catalog.lua): its pages are Books, Audiobooks
---- and Music; `opts.section` opens on another than Books.
+--- and Music; `opts.section` opens on another than Books, `opts.tab_id`
+--- underlines another tab (the Audiobooks tab: ct_audiobooks).
 function Browser:show(opts)
+    local tab_id = opts and opts.tab_id or Browser.TAB_ID
     -- the Notes or Calendar tab, if it's open underneath (ZenOS opens action tabs on top)
-    pcall(function() require("gzreader_tabs").closeOthers(Browser.TAB_ID) end)
+    pcall(function() require("gzreader_tabs").closeOthers(tab_id) end)
     Browser.current = self
     local Catalog = require("gzreader_catalog")
     local section = opts and opts.section
     self.section = (section and Catalog.step(Catalog.sections(), section, 0)) or "books"
+    -- (the Audiobooks tab: that page alone, nothing to turn to)
+    self.only = opts and opts.only and self.section or nil
     self.menu = Menu:new{
         title = Catalog.title(self.section),
         item_table = self:rootItems(),
@@ -103,8 +107,8 @@ function Browser:show(opts)
         is_borderless = true,
         is_popout = false,
         title_bar_fm_style = true,
-        -- ZenOS: show its tab bar with the Grimmory tab underlined
-        _gz_navbar_tab_id = Browser.TAB_ID,
+        -- ZenOS: show its tab bar with the Catalog (or Audiobooks) tab underlined
+        _gz_navbar_tab_id = tab_id,
     }
     -- ZenOS's status bar (clock, battery, Wi-Fi) in the title, like other tabs
     pcall(self.decorate, self, Catalog.title(self.section))
@@ -205,10 +209,16 @@ function Browser:rootItems()
     return items
 end
 
+--- The pages this Catalog turns through (one when opened on a page alone).
+function Browser:sections()
+    if self.only then return { self.only } end
+    return require("gzreader_catalog").sections()
+end
+
 --- Turn to the page `dir` (+1, -1) from this one: false at an end.
 function Browser:turnSection(dir)
     local Catalog = require("gzreader_catalog")
-    local to = Catalog.step(Catalog.sections(), self.section or "books", dir)
+    local to = Catalog.step(self:sections(), self.section or "books", dir)
     if not to or not self.menu then return false end
     self:openSection(to)
     return true

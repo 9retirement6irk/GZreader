@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "An Audiobooks tab, if you want one", text = "A new Audiobooks tab (off until you turn it on in Settings → Interface → Navbar → Tabs, or in the setup guide's tab page; Kindles with a speaker or headphone jack) opens the Catalog's Audiobooks page on its own, with that tab underlined. The Music tab stays as it was." },
             { short = "The Grimmory tab is now the Catalog: Books, Audiobooks and Music pages", text = "The Grimmory tab is renamed Catalog and has pages: Books (as before), Audiobooks (Grimmory's audiobooks) and Music (Plex), on Kindles with a speaker or headphone jack. Swipe left or right, tap the next page's name under the title, or use the page-turn buttons; the title says which page you're on, and dots under it show where you are and what's next. The tab always opens on Books. On the Books page the bookcase's last compartment is now Downloaded books on every Kindle (Audiobooks have their own page). A tab you had renamed keeps its name." },
         },
     },

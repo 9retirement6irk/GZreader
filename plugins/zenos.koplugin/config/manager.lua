@@ -1269,6 +1269,32 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.27.x: an Audiobooks tab (the Catalog's Audiobooks page):
+    -- listed in Settings → Navbar → Tabs, off.
+    if cfg._meta.gz_audiobooks_tab_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb then
+            nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+            local has = false
+            for _i, t in ipairs(nb.custom_tabs) do
+                if type(t) == "table" and t.id == "ct_audiobooks" then has = true end
+            end
+            if not has then
+                table.insert(nb.custom_tabs, { id = "ct_audiobooks", type = "action",
+                    action = { gzreader_audiobooks = true }, label = "Audiobooks", icon = "tab_audiobooks" })
+            end
+            nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+            if nb.show_tabs.ct_audiobooks == nil then nb.show_tabs.ct_audiobooks = false end
+            if type(nb.tab_order) == "table" then
+                local seen = false
+                for _i, id in ipairs(nb.tab_order) do if id == "ct_audiobooks" then seen = true end end
+                if not seen then table.insert(nb.tab_order, "ct_audiobooks") end
+            end
+        end
+        cfg._meta.gz_audiobooks_tab_migrated = true
+        changed = true
+    end
+
     -- GZreader 1.16.2: 1.16.0 gave the end-of-book page the bookshelf and the
     -- notebook stats by mistake (they're Home's): back to its own look.
     if cfg._meta.gz_end_book_look_fixed ~= true then
