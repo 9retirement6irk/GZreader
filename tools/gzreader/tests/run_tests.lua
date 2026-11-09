@@ -5306,6 +5306,77 @@ print("No Local reading stats widget on Home (Settings → Home → Widgets)")
     package.path = saved_path
 end)()
 
+print("Headphones: the Kindle 3's audioHS message")
+;(function()
+    local Jack = require("gzreader_jack")
+    local files, cmds, killed = {}, {}, {}
+    files["/proc/bus/input/devices"] = "" -- (nothing that can be looked at: the Kindle 3)
+    files[Jack.SYSLOG] = "Nov  8 18:00:00 kindle powerd: older line\n"
+    Jack.read = function(p) return files[p] end
+    Jack.exec = function(c) cmds[#cmds + 1] = c; files[Jack.EVENTS_FILE] = ""; files[Jack.EVENTS_FILE .. ".pid"] = "4242\n" end
+    Jack.kill = function(pid) killed[#killed + 1] = pid end
+    local was_info = package.loaded["ui/widget/infomessage"] -- (stand-ins above replaced it)
+    package.loaded["ui/widget/infomessage"] = { new = function(_, o) captured.info = o.text; return o end }
+    G_reader_settings:delSetting(Jack.SETTING)
+    -- the guided test: the listener hears audioHS 1 plugging in, audioHS 0 unplugging
+    Jack.test()
+    check(cmds[1] and cmds[1]:find("lipc-wait-event -m com.lab126.hal audioHS > " .. Jack.EVENTS_FILE, 1, true),
+        "Find the headphone jack listens to the Kindle's hardware service (" .. tostring(cmds[1]) .. ")")
+    files[Jack.EVENTS_FILE] = "audioHS 1\n"
+    captured.confirm.ok_callback()
+    files[Jack.EVENTS_FILE] = "audioHS 1\naudioHS 0\n"
+    captured.confirm.ok_callback()
+    local det = G_reader_settings:readSetting(Jack.SETTING)
+    check(type(det) == "table" and det.kind == "event" and det.name == "audioHS" and det.on == "1" and det.off == "0",
+        "…and keeps the message that changed: audioHS 1 in, 0 out")
+    check(killed[1] == 4242 and Jack.listening == nil, "the listener is stopped after the test")
+    check(tostring(captured.info):find("com.lab126.hal audioHS", 1, true), "it says what it found: " .. tostring(captured.info))
+    -- no listener output: the system log's lipc-send-event lines (as in a Kindle 3's log)
+    G_reader_settings:delSetting(Jack.SETTING)
+    Jack.exec = function(c) cmds[#cmds + 1] = c end
+    files[Jack.EVENTS_FILE], files[Jack.EVENTS_FILE .. ".pid"] = nil, nil
+    Jack.test()
+    files[Jack.SYSLOG] = files[Jack.SYSLOG] .. "261108:235055 lipc-send-event[4467]: I lipc:evts:name=audioHS, origin=com.lab126.hal, fparam=1:Event sent\n"
+    captured.confirm.ok_callback()
+    files[Jack.SYSLOG] = files[Jack.SYSLOG] .. "261108:235058 lipc-send-event[4473]: I lipc:evts:name=audioHS, origin=com.lab126.hal, fparam=0:Event sent\n"
+    captured.confirm.ok_callback()
+    det = G_reader_settings:readSetting(Jack.SETTING)
+    check(type(det) == "table" and det.kind == "event" and det.on == "1" and det.off == "0", "…or from the system log")
+    -- nothing heard: nothing kept (as before)
+    G_reader_settings:delSetting(Jack.SETTING)
+    Jack.test()
+    captured.confirm.ok_callback()
+    captured.confirm.ok_callback()
+    check(G_reader_settings:readSetting(Jack.SETTING) == nil and tostring(captured.info):find("Nothing on this Kindle changed", 1, true),
+        "no message either: nothing kept")
+    check(Jack.fromEvents({ { name = "audioHS", value = "1" } }, { { name = "audioHS", value = "1" } }) == nil,
+        "the same message both times isn't the jack")
+    -- while playing: one listener, its file read each second, paused on audioHS 0
+    G_reader_settings:saveSetting(Jack.SETTING, { kind = "event", source = "com.lab126.hal", name = "audioHS", on = "1", off = "0" })
+    check(Jack.plugged() == nil, "a message isn't a state: plugged() can't tell")
+    cmds, killed = {}, {}
+    Jack.exec = function(c) cmds[#cmds + 1] = c; files[Jack.EVENTS_FILE] = ""; files[Jack.EVENTS_FILE .. ".pid"] = "5151\n" end
+    local paused = 0
+    UI.scheduled = {}
+    Jack.watch("music", function() paused = paused + 1 end)
+    Jack.watch("tts", function() paused = paused + 1 end)
+    check(#cmds == 1, "one listener for everything that plays (" .. #cmds .. " started)")
+    local function runDue() local due = {}; for fn in pairs(UI.scheduled) do due[#due + 1] = fn end; UI.scheduled = {}; for _i, fn in ipairs(due) do fn() end end
+    for _i = 1, 3 do runDue() end
+    check(paused == 0 and #cmds == 1, "nothing heard: playing on, and no shell started for each look")
+    files[Jack.EVENTS_FILE] = "audioHS 0\n"
+    runDue()
+    check(paused == 2 and next(Jack.watchers) == nil and killed[1] == 5151, "audioHS 0: everything playing pauses, and the listener stops")
+    -- stopped by hand
+    Jack.watch("audiobook", function() paused = paused + 1 end)
+    Jack.unwatch("audiobook")
+    check(Jack.listening == nil and Jack.event_ticker == nil and #killed == 2, "playback stopped: the listener stops")
+    G_reader_settings:delSetting(Jack.SETTING)
+    UI.scheduled = {}
+    Jack.read, Jack.exec, Jack.kill = nil, nil, nil
+    package.loaded["ui/widget/infomessage"] = was_info
+end)()
+
 print("Headphones")
 ;(function()
     local Jack = require("gzreader_jack")

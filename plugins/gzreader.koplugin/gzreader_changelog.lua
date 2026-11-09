@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 3: pausing when headphones are unplugged can work", text = "Find the headphone jack (Settings → Reader) found nothing on a Kindle 3: it shows headphones in none of the places GZreader looked. It also listens now for the message the Kindle's hardware service sends when headphones go in and out (audioHS), and when that's what changed, music, audiobooks and read aloud pause on it, with one listener while something plays." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

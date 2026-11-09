@@ -102,5 +102,9 @@ unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
 where they show the jack: GZreader looks for a headphone switch the way Linux
 reports one; if this Kindle doesn't have that, **Settings → Reader → Find the
 headphone jack** asks you to plug in and unplug headphones and keeps the
-place that changed. If nothing changes, the Kindle doesn't tell, and nothing
-is paused (send the log: it lists what was looked at).
+place that changed. It also listens for the message the Kindle 3's hardware
+service sends when headphones go in or out (`audioHS` from `com.lab126.hal`),
+since that Kindle shows the jack nowhere it could be looked at; then, while
+something plays, one small listener waits for that message. If nothing
+changes and nothing is heard, the Kindle doesn't tell, and nothing is paused
+(send the log: it lists what was looked at and the messages heard).
