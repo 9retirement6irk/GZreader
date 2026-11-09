@@ -4333,6 +4333,57 @@ check(#UI.zmqs == 0 and not plugin.pairing, "Back stops sharing")
 PS.new = orig_new
 
 
+print("A line in the log for each start: how long until Home is on screen")
+;(function()
+    local OT = require("gzreader_opentiming")
+    -- /proc/self/stat: the command name may hold spaces and brackets; starttime is field 22
+    local stat = "4242 (lua jit (x)) S 1 4242 4242 0 -1 4194304 100 0 0 0 50 10 0 0 20 0 1 0 12345 1000 200"
+    check(math.abs((OT.processAge(stat, "135.95 400.00", 100) or -1) - 12.5) < 1e-6,
+        "the program's age: uptime minus its start (12.5 s)")
+    check(OT.processAge("garbage", "10.0 0") == nil and OT.processAge(stat, "100.0 0", 100) == nil,
+        "unreadable or impossible: no age")
+    check(type(OT.processAge()) == "number", "this process's own age, from /proc")
+    local line = OT.startupLine({ what = "Home", shown = 14.21, cpu = 9.06, plugin_at = 6.3, setup = 0.71,
+        modules = 905, lua_mb = 15.32, free = 98, cached = 31, rss = 44 })
+    check(line == "start: Home on screen 14.2 s after the program started (CPU 9.1 s) | GZreader started at 6.3 s, "
+        .. "set up in 0.7 s | modules loaded 905, Lua memory 15.3 MB | free memory 98 MB (+ 31 MB cache), GZreader 44 MB",
+        "the start's line: " .. line)
+    check(OT.startupLine({}):find("^start: the first screen on screen %? s"), "missing figures: \"?\", not an error")
+    -- the run: begun, set up, then refreshes until one has Home (or a book) on screen
+    local Log = require("gzreader_log")
+    local logged = {}
+    local orig_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_boot = OT.boot
+    OT.boot = nil
+    OT.bootBegin()
+    OT.bootRefresh({ { widget = { _zen_home_focus_targets = {} } } })
+    check(#logged == 0, "a refresh before GZreader is set up: not the end of the start")
+    OT.bootReady()
+    OT.bootRefresh({ { widget = { name = "filemanager" } } })
+    check(#logged == 0, "the file manager alone: still starting (Home comes over it)")
+    OT.bootRefresh({ { widget = { name = "filemanager" } }, { widget = { _zen_home_focus_targets = {} } } })
+    check(#logged == 1 and logged[1]:find("^start: Home on screen [%d.]+ s") and logged[1]:find("modules loaded %d+"),
+        "Home on screen: one line (" .. tostring(logged[1]) .. ")")
+    OT.bootRefresh({ { widget = { _zen_home_focus_targets = {} } } })
+    OT.bootBegin()
+    check(#logged == 1 and OT.boot == false, "once a run")
+    OT.boot = nil
+    OT.bootBegin(); OT.bootReady()
+    OT.bootRefresh({ { widget = { name = "ReaderUI" } } })
+    check(#logged == 2 and logged[2]:find("^start: a book on screen"), "a book opened at start ends it too")
+    OT.boot = nil
+    OT.bootBegin(); OT.bootReady()
+    local saved_fb = OT.BOOT_FALLBACK
+    OT.BOOT_FALLBACK = -1 -- (a minute has gone by)
+    OT.bootRefresh({ { widget = { name = "filemanager" } } })
+    OT.BOOT_FALLBACK = saved_fb
+    check(#logged == 3 and logged[3]:find("^start: the first screen on screen [%d.]+ s"),
+        "neither Home nor a book within a minute: the start ends at that refresh")
+    Log.info = orig_info
+    OT.boot = saved_boot
+end)()
+
 print("Usage statistics")
 ;(function()
     local U = require("gzreader_usage")

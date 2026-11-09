@@ -37,6 +37,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   cache is 256 MB instead of 64 (a dropped layout means a full re-layout on
   the next open), and `LuaSettings:flush` skips writing a file whose content
   hasn't changed (opening a book wrote `settings.reader.lua` twice).
+- **Starting**: each start logs a timing line too (`gzreader_opentiming.lua`):
+  how long until Home (or a book) is on screen, the CPU time, when
+  GZreader's own part started and how long it took, modules loaded, Lua
+  memory, free memory and GZreader's size.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
