@@ -711,12 +711,12 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     m.page, m.page_num = 1, 1
     m:onNextPage()
     check(cb.section == "audiobooks" and m.title == "Audiobooks" and m.item_table.gz_catalog == "audiobooks"
-        and m.item_table[2].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
+        and m.item_table[4].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
     m:onNextPage()
     local music = m.item_table
     check(cb.section == "music" and m.title == "Music" and music.gz_catalog == "music" and #music > 0 and not music.gz_root,
         "and again: the Music page (Plex; not drawn as the bookshop)")
-    check(Browser.rootItems({ section = "audiobooks" })[2].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
+    check(Browser.rootItems({ section = "audiobooks" })[4].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
         "the Audiobooks page: All audiobooks")
     m:onNextPage()
     check(cb.section == "music" and m.item_table == music, "nothing past Music")
@@ -774,9 +774,11 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local m = ab.menu
     local ids = {}
     for _i, it in ipairs(m.item_table) do ids[#ids + 1] = it.gz_id end
-    check(table.concat(ids, ",") == "ab_search,ab_all,ab_authors,ab_shelves,ab_series" and m.item_table[1].gz_action == "search"
-        and m.item_table[2].gz_kind == "section" and m.item_table[2].gz_contents == "tapes",
-        "the page: search at the top, then All audiobooks, Authors, Shelves, Series " .. table.concat(ids, ","))
+    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_downloaded"
+        and m.item_table[1].gz_action == "search" and m.item_table[4].gz_kind == "section" and m.item_table[4].gz_contents == "tapes"
+        and m.item_table.gz_root,
+        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series, On this Kindle " .. table.concat(ids, ","))
+    local function abItem(id) for _i, it in ipairs(m.item_table) do if it.gz_id == id then return it end end end
     local saved_w = {}
     local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
     for _i, wm in ipairs(widget_mods) do
@@ -785,8 +787,25 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     end
     local Views = require("gzreader_shopviews")
     for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
-    check(Views.kindOf(m.item_table) == "bay" and Views.headerCount(m.item_table) == 1 and Views.cardOf(m.item_table[3]) == m.item_table[3].mandatory,
-        "the Bookshelf view: a search slip above a bookcase, a compartment each")
+    local Shop = require("gzreader_bookshop")
+    local ps = Shop.pageSpec("audiobooks")
+    local comp = {}
+    for _i, c in ipairs(ps.compartments) do comp[#comp + 1] = tostring(c.id) end
+    check(ps.ledges[1].id == "ab_continue" and ps.ledges[1].label == "Continue listening" and ps.ledges[2].id == "ab_recent"
+        and #ps.compartments == 6 and table.concat(comp, ","):match("^ab_all,ab_authors,ab_shelves,ab_series,ab_downloaded") and ps.cover_kind == "audiobook"
+        and Shop.pageSpec("books").ledges[1].id == "continue" and Views.cardOf(m.item_table[5]) == m.item_table[5].mandatory,
+        "the Bookshelf view: the books' shop, with Continue listening and Recently added ledges, then a compartment each")
+    -- Continue listening: what you've listened to on the Kindle first
+    local AB = require("gzreader_audiobook")
+    local saved_load, saved_store = AB.load, plugin.store.audiobooks
+    AB.load = function(_p, id) if tostring(id) == "41" or tostring(id) == "42" then return { files = {}, tracks = {}, durationMs = 1000000 } end end
+    plugin.store.audiobooks = { [41] = { title = "Older", pos_ms = 1000, updated = 10 }, [42] = { title = "Newer", pos_ms = 500, updated = 20 },
+        [43] = { title = "Gone", pos_ms = 5, updated = 30 } }
+    local lis = Shop.listening(plugin)
+    check(#lis == 2 and lis[1].title == "Newer" and lis[2].title == "Older" and lis[1].primaryFileType == "AUDIOBOOK",
+        "Continue listening: the Kindle's audiobooks in progress, latest first (not ones whose audio is gone)")
+    check(#Browser.audiobooksHere(plugin) == 2, "On this Kindle: the audiobooks whose audio is here")
+    AB.load, plugin.store.audiobooks = saved_load, saved_store
     check(Views.cardOf({ gz_kind = "author", gz_audio = true, gz_count = 2 }) == "2 audiobooks"
         and Views.cardOf({ gz_kind = "collection", gz_audio = true, gz_count = 1 }) == "1 audiobook"
         and Views.kindOf({ { gz_kind = "collection" } }) == "bay", "an author's or series' card counts audiobooks")
@@ -807,7 +826,7 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     check(table.concat(books, ",") == "Book 32:audiobook,Book 33:audiobook" and req and req:match("fileType=AUDIOBOOK") and req:match("authors=Audio")
         and m.item_table[1].text == "Search in Audio Author…", "an author: their audiobooks (Grimmory's list, audiobooks only) " .. tostring(req))
     ab:openSection("audiobooks")
-    check(m.item_table[2].mandatory == "3 audiobooks" and m.item_table[3].mandatory == "2 · A–Z" and m.item_table[5].mandatory == "2 series",
+    check(abItem("ab_all").mandatory == "3 audiobooks" and abItem("ab_authors").mandatory == "2 · A–Z" and abItem("ab_series").mandatory == "2 series",
         "the page's cards count what's known (from the list Authors fetched)")
     ab:openAudioSeries()
     local series = {}
@@ -817,7 +836,7 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     req = lastRequest("^/api/v1/app/books%?")
     check(req and req:match("series=Audio") and req:match("fileType=AUDIOBOOK") and req:match("sort=seriesNumber"), "a series: in series order " .. tostring(req))
     ab:openSection("audiobooks")
-    m.item_table[4].callback()
+    abItem("ab_shelves").callback()
     check(m.title == "Shelves" and m.item_table[1].gz_kind == "shelf" and m.item_table[1].gz_audio, "Shelves: your shelves, each opening to its audiobooks")
     m.item_table[1].callback()
     req = lastRequest("^/api/v1/app/books%?")
