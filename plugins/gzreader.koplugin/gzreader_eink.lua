@@ -42,6 +42,18 @@ function Eink.applies()
     return ok and Device.isKindle and Device:isKindle() and Eink.LEGACY[Device.model] == true or false
 end
 
+--- In a book, ZenOS's top bar updates the clock and battery every minute (a
+--- partial e-ink refresh while nobody turns a page). On the Kindles without
+--- REAGL they're updated with each page instead (every turn repaints the bar;
+--- the clock shows the time of the last turn). G_reader_settings
+--- "gzreader_reader_clock_minute": true/false to choose.
+Eink.CLOCK_SETTING = "gzreader_reader_clock_minute"
+function Eink.minuteClock()
+    local v = G_reader_settings:readSetting(Eink.CLOCK_SETTING)
+    if v ~= nil then return v == true end
+    return not Eink.applies()
+end
+
 function Eink.enabled()
     return Eink.applies() and G_reader_settings:readSetting(Eink.SETTING) ~= false
 end

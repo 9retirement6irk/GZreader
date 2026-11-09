@@ -6,13 +6,25 @@ Books stand on bookshelves by default, on Home and in Downloads: spines out
 (title, author, number in a series, a letter key at the foot), rounded and
 shaded, casting shadows, on shelves with depth. The book the 5-way is on, or
 that you tap, turns to show its cover; tap it again, Press or its letter opens
-it, and holding it opens its menu. The book you're reading (top of Home) is
+it, and holding it opens Manage book (Open, Delete from this Kindle, then
+the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
+Covers have square corners in this view: Settings → Downloads → Appearance →
+Covers → Rounded cover corners is greyed out while it's on, and your choice
+for the tiles and lists comes back when you switch to one of them.
+
+Home's status bar (clock, Wi‑Fi, battery) sits beside the book you're
+reading. Before you've read a book (or after clearing your reading history),
+it runs across the top of Home as on the other tabs, and moves back beside
+the book once you open one.
 
 - **Downloads** has as many shelves as the screen holds, a page at a time
   (on the DX four, so the books are bigger). Folders stand as light grey
   spines with a tab on top. A book that finishes downloading while
-  Downloads is on screen appears in it straight away.
+  Downloads is on screen appears in it straight away. Its title bar says
+  *Downloads* between the clock and the battery, as the other tabs name
+  themselves (or the tab's own name, if you renamed it in Settings →
+  Interface → Navbar); inside a folder it shows the folder's name.
 - **Home** has one shelf of your most recent books; the DX's taller screen
   has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a
@@ -47,9 +59,9 @@ Grimmory user needs permission to see statistics (Grimmory → user settings →
 permissions); without it the widget shows dashes and the diagnostic log says
 why.
 
-**Local reading stats** (the earlier widget: pages and time today, this
-Kindle only) is still there: turn it on in Settings → Home → Widgets, and the
-Grimmory one off, to go back.
+The earlier **Local reading stats** widget (pages and time today, this
+Kindle only) is gone from Home and from Settings → Home → Widgets; a Home that
+still showed it keeps its other widgets.
 
 The book you're reading shows its progress as the book's page edges, read
 pages darker, with a ribbon bookmark where you are.

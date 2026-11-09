@@ -15,7 +15,7 @@ and new notes, edits and checklist ticks made without Wi-Fi wait in a queue
 ]]
 
 local DataStorage = require("datastorage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 
