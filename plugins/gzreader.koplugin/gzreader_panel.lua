@@ -349,7 +349,7 @@ function Panel.bookTiles(plugin, ui)
     if ui.font and ui.font.face_table and ui.document and not ui.document.info.has_pages then
         list[#list + 1] = { id = "font", icon = "font", label = _("Font"), run = function() Panel.showFonts(ui) end }
     end
-    list[#list + 1] = { id = "layout", icon = "layout", label = _("Layout"), run = send("ShowConfigMenu") }
+    list[#list + 1] = { id = "layout", icon = "layout", label = _("Layout"), run = function() Panel.showLayout(ui) end }
     if ui.document and not ui.document.info.has_pages and ui.styletweak then
         local PB = require("gzreader_picturebook")
         local item = PB.menuItem(ui)
@@ -362,6 +362,14 @@ function Panel.bookTiles(plugin, ui)
     local m = musicTile(plugin)
     if m then m.id = "music"; list[#list + 1] = m end
     return shown("book", list)
+end
+
+--- The layout panel (KOReader's bottom config menu: size, margins, spacing…).
+--- Opened with force: ZenOS's Zen mode blocks a plain ShowConfigMenu on touch
+--- Kindles (meant for the bottom swipe), as its own reader controls do.
+function Panel.showLayout(ui)
+    if ui.config and ui.config.onShowConfigMenu then return ui.config:onShowConfigMenu(true) end
+    ui:handleEvent(Event:new("ShowConfigMenu"))
 end
 
 --- The fonts, as a list (the one in use ticked): picking one sets it.
