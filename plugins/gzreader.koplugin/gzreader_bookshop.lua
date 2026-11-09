@@ -164,7 +164,7 @@ function Shop.pageSpec(section)
                 { id = "ab_shelves", kind = "faceout" },
                 { id = "ab_series", kind = "piles" },
                 { id = "ab_downloaded", kind = "tapes" },
-                { kind = "empty" },
+                { id = "ab_plex", kind = "none" }, -- (audiobooks from Plex: which library; Grimmory's: cobwebs)
             },
             cover_kind = "audiobook",
         }
@@ -404,7 +404,10 @@ end
 --- The Audiobooks page's two ledges: Continue listening (the Kindle's, then
 --- Grimmory's in progress) and Recently added, saved like the Books page's.
 function Shop.audioLists(browser)
+    local plex_sec = require("gzreader_plexaudio").section(browser.plugin)
+    if plex_sec then return Shop.plexAudioLists(browser, plex_sec) end
     local st = browser._shop_audio or {}
+    if st.plex then st = {} end -- (Plex's lists were showing)
     browser._shop_audio = st
     local Cache = require("gzreader_listcache")
     for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
@@ -426,6 +429,65 @@ function Shop.audioLists(browser)
         Shop.fetchAudio(browser)
     end
     return st
+end
+
+--- The Audiobooks page's shelves with audiobooks from a Plex library:
+--- Continue listening (what you've listened to on the Kindle, then the
+--- library's albums played last, by any Plex player) and Recently added.
+function Shop.plexAudioLists(browser, sec)
+    local st = browser._shop_audio or {}
+    if st.plex ~= sec.key then st = { plex = sec.key } end
+    browser._shop_audio = st
+    local Cache = require("gzreader_listcache")
+    local PA = require("gzreader_plexaudio")
+    for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+        if st[id .. "_remote"] == nil then st[id .. "_remote"] = Cache.get(cacheKey(browser, "shop:p" .. id .. ":" .. tostring(sec.key))) end
+    end
+    local seen, cont = {}, {}
+    for _i, src in ipairs({ Shop.listening(browser.plugin), PA.books(st.ab_continue_remote) }) do
+        for _j, b in ipairs(src) do
+            if type(b) == "table" and b.id ~= nil and not seen[tostring(b.id)] then
+                seen[tostring(b.id)] = true
+                cont[#cont + 1] = b
+            end
+        end
+    end
+    st.ab_continue = cont
+    st.ab_recent = PA.books(st.ab_recent_remote)
+    if not st.asked then
+        st.asked = true
+        Shop.fetchPlexAudio(browser, sec)
+    end
+    return st
+end
+
+function Shop.fetchPlexAudio(browser, sec)
+    local st = browser._shop_audio
+    local plex = require("gzreader_music").plex(browser.plugin)
+    if not plex:isConnected() then return end
+    local Net = require("gzreader_net")
+    local function go()
+        st.loading = true
+        require("gzreader_async").run(nil, function()
+            return { ab_continue = plex:recentAlbums(sec.key, "played", Shop.LIST_LIMIT), ab_recent = plex:recentAlbums(sec.key, "added", Shop.LIST_LIMIT) }
+        end, function(res)
+            st.loading = false
+            if type(res) == "table" then
+                local Cache = require("gzreader_listcache")
+                for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+                    if type(res[id]) == "table" then
+                        st[id .. "_remote"] = res[id]
+                        Cache.put(cacheKey(browser, "shop:p" .. id .. ":" .. tostring(sec.key)), res[id])
+                    end
+                end
+            end
+            st.fetched = true
+            local m = browser.menu
+            if m and not browser.closed and Shop.applies(m) and m.item_table.gz_catalog == "audiobooks" then pcall(m.updateItems, m) end
+        end, "plex audiobook shelves")
+    end
+    if Net.connected() then return go() end
+    Net.run(go, { quiet = true, reason = "Catalog: audiobooks" })
 end
 
 function Shop.fetchAudio(browser)

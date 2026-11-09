@@ -24,7 +24,7 @@ def media(name):
     with open(os.path.join(MEDIA, name), "rb") as f:
         return f.read()
 MP3, M4A, TS = media("tone.mp3"), media("tone.m4a"), media("tone.ts")
-STATE = {"pins": {}, "next_pin": 1000, "log": [], "auto": False, "claimed": set(), "slow": 0}
+STATE = {"pins": {}, "next_pin": 1000, "log": [], "auto": False, "claimed": set(), "slow": 0, "progress": {}}
 
 def track(k, title, idx, album_key, album, container, codec, kbps):
     return {"ratingKey": str(k), "type": "track", "title": title, "index": idx, "duration": 3000,
@@ -47,6 +47,31 @@ ARTIST = {"ratingKey": "101", "type": "artist", "title": "The Tones"}
 LIVE = {"ratingKey": "205", "type": "album", "title": "Live Album", "parentTitle": "The Band", "year": 2019, "addedAt": 1700000400, "leafCount": 1}
 LIVE_ARTIST = {"ratingKey": "105", "type": "artist", "title": "The Band"}
 TRACKS = {t["ratingKey"]: t for a in ALBUMS.values() for t in a["tracks"]}
+
+# an audiobook library (key 5, a music library as Plex keeps audiobooks): an
+# album per book, its author as the artist
+AB_AUTHOR = {"ratingKey": "106", "type": "artist", "title": "Narr Author"}
+def abtrack(k, title, idx, album_key, album, container, codec):
+    t = track(k, title, idx, album_key, album, container, codec, 128)
+    t["grandparentTitle"] = "Narr Author"
+    return t
+AUDIOBOOKS = {
+    "206": {"ratingKey": "206", "type": "album", "title": "Two Part Book", "parentTitle": "Narr Author", "year": 2018,
+            "summary": "<p>A book in two parts.</p>", "thumb": "/library/metadata/206/thumb/1", "addedAt": 1700000500,
+            "tracks": [abtrack(306, "Part 1", 1, 206, "Two Part Book", "mp3", "mp3"), abtrack(307, "Part 2", 2, 206, "Two Part Book", "mp3", "mp3")]},
+    "207": {"ratingKey": "207", "type": "album", "title": "One File Book", "parentTitle": "Narr Author", "year": 2017, "addedAt": 1700000450,
+            "tracks": [abtrack(308, "One File Book", 1, 207, "One File Book", "mp4", "aac")]},
+}
+TRACKS.update({t["ratingKey"]: t for a in AUDIOBOOKS.values() for t in a["tracks"]})
+CHAPTERS = {"308": [{"tag": "Opening", "startTimeOffset": 0, "endTimeOffset": 1500}, {"tag": "Closing", "startTimeOffset": 1500, "endTimeOffset": 3000}]}
+
+def with_progress(t):
+    pr = STATE["progress"].get(t["ratingKey"])
+    if not pr: return t
+    t = dict(t, lastViewedAt=pr["at"])
+    if pr.get("done"): t["viewCount"] = 1
+    else: t["viewOffset"] = pr["offset"]
+    return t
 
 def album_meta(a):
     return {k: v for k, v in a.items() if k != "tracks"} | {"leafCount": len(a["tracks"])}
@@ -108,6 +133,10 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, STATE.get("transcodes", []))
         if p == "/ctl/log":
             return self.send(200, STATE["log"])
+        if p == "/ctl/progress":   # what /:/progress was told; ?key=&offset=&at=[&done=1]: another player's
+            if "key" in q:
+                STATE["progress"][q["key"][0]] = {"offset": int(q.get("offset", ["0"])[0]), "at": int(q["at"][0]), "done": "done" in q}
+            return self.send(200, STATE["progress"])
         # plex.tv
         if p == "/api/v2/pins" and method == "POST":
             STATE["next_pin"] += 1
@@ -144,7 +173,15 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"MediaContainer": {"machineIdentifier": "srv1"}})
         if p == "/library/sections":
             return self.send(200, {"MediaContainer": {"Directory": [{"key": "1", "type": "artist", "title": "Music"}, {"key": "2", "type": "movie", "title": "Films"},
-                                                                 {"key": "4", "type": "artist", "title": "Concerts"}]}})
+                                                                 {"key": "4", "type": "artist", "title": "Concerts"},
+                                                                 {"key": "5", "type": "artist", "title": "Audiobooks"}]}})
+        if p == "/library/sections/5/all":
+            start = int(self.headers.get("X-Plex-Container-Start", "0"))
+            size = int(self.headers.get("X-Plex-Container-Size", "50"))
+            items = [album_meta(a) for a in AUDIOBOOKS.values()] if q.get("type") == ["9"] else [AB_AUTHOR]
+            items.sort(key=lambda m: m["title"])
+            if q.get("sort") == ["addedAt:desc"]: items.sort(key=lambda m: -(m.get("addedAt") or 0))
+            return self.mc(items[start:start + size], len(items))
         if p == "/library/sections/4/all":
             return self.mc([LIVE] if q.get("type") == ["9"] else [LIVE_ARTIST])
         if p == "/library/sections/1/all":
@@ -160,7 +197,21 @@ class H(BaseHTTPRequestHandler):
             k = p.split("/")[3]
             if k == "101": return self.mc([album_meta(a) for a in ALBUMS.values()])
             if k in ALBUMS: return self.mc(ALBUMS[k]["tracks"])
+            if k == "106": return self.mc([album_meta(a) for a in AUDIOBOOKS.values()])
+            if k in AUDIOBOOKS: return self.mc([with_progress(t) for t in AUDIOBOOKS[k]["tracks"]])
             return self.send(404, {})
+        if p.startswith("/library/metadata/") and p.count("/") == 3:
+            k = p.split("/")[3]
+            if k in AUDIOBOOKS: return self.mc([album_meta(AUDIOBOOKS[k])])
+            if k in TRACKS:
+                t = dict(TRACKS[k])
+                if q.get("includeChapters") == ["1"] and k in CHAPTERS: t["Chapter"] = CHAPTERS[k]
+                return self.mc([t])
+            return self.send(404, {})
+        if p == "/:/progress":
+            if q.get("identifier") != ["com.plexapp.plugins.library"] or "key" not in q: return self.send(400, {})
+            STATE["progress"][q["key"][0]] = {"offset": int(q["time"][0]), "at": int(time.time()), "state": q.get("state", [""])[0]}
+            return self.send(200, b"", "text/plain")
         if p == "/playlists":
             # (sectionID: the playlists with that library's music; Mix is library 1's)
             if q.get("sectionID", ["1"]) != ["1"]: return self.mc([])
@@ -169,6 +220,8 @@ class H(BaseHTTPRequestHandler):
             return self.mc([TRACKS["302"], TRACKS["303"]])
         if p == "/hubs/search":
             ql = q.get("query", [""])[0].lower()
+            if q.get("sectionId", ["1"]) == ["5"]:
+                return self.send(200, {"MediaContainer": {"Hub": [{"type": "album", "Metadata": [album_meta(a) for a in AUDIOBOOKS.values() if ql in a["title"].lower()]}]}})
             if q.get("sectionId", ["1"]) == ["4"]:
                 return self.send(200, {"MediaContainer": {"Hub": [{"type": "album", "Metadata": [LIVE] if ql in LIVE["title"].lower() else []}]}})
             hubs = [{"type": "artist", "Metadata": [ARTIST] if ql in "the tones" else []},

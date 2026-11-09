@@ -5940,7 +5940,8 @@ print("Music (Plex): the server, downloads, the player")
     check(plex:connect("wrong") == nil, "Plex: a bad token is refused")
     plex:connect(token)
     local secs = plex:musicSections()
-    check(secs and #secs == 2 and secs[1].key == "1" and secs[2].key == "4" and secs[2].title == "Concerts", "Plex: the music libraries (not the films)")
+    check(secs and #secs == 3 and secs[1].key == "1" and secs[2].key == "4" and secs[2].title == "Concerts" and secs[3].title == "Audiobooks",
+        "Plex: the music libraries (not the films)")
     do -- the music library to browse: the one chosen in Settings (on this server), else the server's first
         local MusicTab = require("gzreader_musictab")
         local Cache = require("gzreader_listcache")
@@ -5949,7 +5950,7 @@ print("Music (Plex): the server, downloads, the player")
         plugin.save = function() end
         px.music_section = nil
         local first, all0 = plex:musicSection()
-        check(first and first.key == "1" and #all0 == 2 and MusicTab.libraryText(plugin) == "Music library: the server's first"
+        check(first and first.key == "1" and #all0 == 3 and MusicTab.libraryText(plugin) == "Music library: the server's first"
             and MusicTab.only(plex) == "1", "Plex: nothing chosen: the first music library (playlists and search kept to it, the server has two)")
         local ckey = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|shop:mu_recent"
         Cache.put(ckey, { { type = "album", key = "201" } })
@@ -5962,13 +5963,13 @@ print("Music (Plex): the server, downloads, the player")
         runLoop(function() return dlg ~= nil end, 15)
         local labels = {}
         for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
-        check(dlg and dlg.title == "Music library" and table.concat(labels, ",") == "\u{2713} Music,Concerts",
+        check(dlg and dlg.title == "Music library" and table.concat(labels, ",") == "\u{2713} Music,Concerts,Audiobooks",
             "Plex: Music library offers the server's music libraries, the one in use ticked " .. table.concat(labels, ","))
         if dlg then dlg.buttons[2][1].callback() end
         require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
         local chosen, all = plex:musicSection()
         local albums4 = plex:list(chosen.key, "albums", 0)
-        check(picked and px.music_section.key == "4" and px.music_section.server == px.server.id and chosen.key == "4" and #all == 2
+        check(picked and px.music_section.key == "4" and px.music_section.server == px.server.id and chosen.key == "4" and #all == 3
             and albums4[1].title == "Live Album" and MusicTab.libraryText(plugin) == "Music library: Concerts",
             "Plex: Concerts chosen: kept for this server, its albums listed")
         local rec = Cache.get(ckey)
@@ -5980,6 +5981,147 @@ print("Music (Plex): the server, downloads, the player")
             and Plex1.pickSection(all, { server = px.server.id, key = "9" }, px.server).key == "1",
             "Plex: a library chosen on another server, or one that's gone: the server's first")
         px.music_section, plugin.save = saved_ms, saved_save
+    end
+    do -- audiobooks from a Plex library (Settings → Connections → Plex → Audiobooks)
+        local MusicTab = require("gzreader_musictab")
+        local PA = require("gzreader_plexaudio")
+        local ABk = require("gzreader_audiobook")
+        local px = plugin.store.plex
+        local saved_ab, saved_save = px.audiobook_section, plugin.save
+        plugin.save = function() end
+        px.audiobook_section = nil
+        check(PA.section(plugin) == nil and MusicTab.audiobooksText(plugin) == "Audiobooks: from Grimmory", "Plex audiobooks: Grimmory's until a Plex library is chosen")
+        local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
+        local dlg
+        require("gzreader_net").run = function(fn) fn() end
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) dlg = o; return o end }
+        MusicTab.chooseAudiobooks(plugin)
+        runLoop(function() return dlg ~= nil end, 15)
+        local labels = {}
+        for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
+        check(table.concat(labels, ",") == "\u{2713} Grimmory,Plex: Music,Plex: Concerts,Plex: Audiobooks",
+            "Plex audiobooks: Audiobooks from offers Grimmory and the server's music libraries " .. table.concat(labels, ","))
+        if dlg then dlg.buttons[4][1].callback() end
+        require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
+        local sec = PA.section(plugin)
+        check(sec and sec.key == "5" and px.audiobook_section.server == px.server.id and MusicTab.audiobooksText(plugin) == "Audiobooks: from Plex (Audiobooks)",
+            "Plex audiobooks: the Audiobooks library chosen, for this server")
+        local Plex1 = require("gzreader_plex")
+        local mfirst = plex:musicSection()
+        px.audiobook_section = { server = px.server.id, key = "1", title = "Music" }
+        local mskip = plex:musicSection()
+        px.audiobook_section = { server = px.server.id, key = "5", title = "Audiobooks" }
+        check(mfirst.key == "1" and mskip.key == "4" and Plex1.audiobookSection({ audiobook_section = px.audiobook_section, server = px.server }) == nil,
+            "Plex: music skips the audiobook library when nothing's chosen for music; signed out: Grimmory's audiobooks")
+        -- a book: its tracks, chapters, summary
+        local pinfo = plex:audiobookInfo("206")
+        local one = plex:audiobookInfo("207")
+        local pbk = pinfo and ABk.describe("plex-206", pinfo)
+        local pbk1 = one and ABk.describe("plex-207", one)
+        check(pbk and #pbk.tracks == 2 and pbk.tracks[2].start == 3000 and pbk.tracks[2].plex_key == "307" and pbk.files[1] == "track-001.mp3"
+            and pbk.plex.key == "206" and pbk.plex.thumb == "/library/metadata/206/thumb/1" and pbk.author == "Narr Author" and pbk.description == "A book in two parts."
+            and pbk.chapters[2].title == "Part 2", "Plex audiobook: an album's tracks as its files and chapters, the summary as its description")
+        check(pbk1 and #pbk1.tracks == 1 and pbk1.files[1] == "track-001.m4a" and #pbk1.chapters == 2 and pbk1.chapters[2].title == "Closing"
+            and pbk1.chapters[2].startTimeMs == 1500, "Plex audiobook: one M4B/M4A file with Plex's chapters")
+        -- where it was listened to last (any Plex player)
+        local LL = Plex1.lastListened
+        local llp = LL({ { key = "1", viewed = 10, views = 1 }, { key = "2", viewed = 20, offset = 500 } })
+        local lf = LL({ { key = "1", viewed = 30, views = 1 }, { key = "2" } })
+        check(LL({ { key = "1" } }) == false and llp.track == "2" and llp.offset == 500 and lf.track == "1" and lf.finished,
+            "Plex audiobook: the place is the track listened to last (in it, or after it when played through)")
+        check(ABk.plexMs(pbk, { track = "307", offset = 700 }) == 3700 and ABk.plexMs(pbk, { track = "306", offset = 0, finished = true }) == 3000
+            and ABk.plexMs(pbk, { track = "999" }) == nil and ABk.plexMs(pbk, false) == nil, "Plex audiobook: Plex's place as a time in the book")
+        -- download it
+        local summary = PA.book({ type = "album", key = "206", title = "Two Part Book", artist = "Narr Author", thumb = "/library/metadata/206/thumb/1" })
+        check(summary.id == "plex-206" and summary.primaryFileType == "AUDIOBOOK" and summary.authors[1] == "Narr Author", "Plex audiobook: an album as an audiobook summary")
+        local got
+        ABk.download(plugin, summary, function(bk, err) got = bk or err or false end)
+        runLoop(function() return got ~= nil end, 30)
+        local mp3 = io.open(PLUGIN .. "/../../tools/gzreader/tests/media/tone.mp3", "rb"):read("*a")
+        local f2 = type(got) == "table" and io.open(got.dir .. "/track-002.mp3", "rb")
+        local d2 = f2 and f2:read("*a"); if f2 then f2:close() end
+        check(type(got) == "table" and got.plex.key == "206" and d2 == mp3 and require("libs/libkoreader-lfs").attributes(got.dir .. "/cover.jpg", "mode") == "file"
+            and plugin.store.audiobooks["plex-206"].plex_thumb == "/library/metadata/206/thumb/1" and ABk.load(plugin, "plex-206") ~= nil,
+            "Plex audiobook downloaded: its tracks, Plex's cover, kept like Grimmory's " .. tostring(type(got) ~= "table" and got or ""))
+        -- the place goes to Plex, and comes from it
+        if type(got) == "table" then
+            local PlA = ABk.Player:new(plugin, got)
+            PlA.pos = 4200
+            PlA:push()
+            PlA:save()
+            local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/progress"); local pr = json.decode(pp:read("*a")); pp:close()
+            check(pr["307"] and pr["307"].offset == 1200 and pr["307"].state == "stopped" and pr["306"] == nil,
+                "Plex audiobook: the place sent to Plex as the track's position (1.2 s into part 2)")
+            os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/progress?key=306&offset=2500&at=" .. (os.time() + 100) .. "' >/dev/null")
+            local PlB = ABk.Player:new(plugin, got)
+            local offered
+            PlB.offerRemote = function(_s, ms, from_plex, done) offered = { ms, from_plex }; done() end
+            local plx_pulled
+            PlB:pull(function() plx_pulled = true end)
+            runLoop(function() return plx_pulled end, 10)
+            check(plx_pulled and offered and offered[1] == 2500 and offered[2] == true,
+                "Plex audiobook: Plex's place offered (another player's, part 1 at 2.5 s)")
+            local PlC = ABk.Player:new(plugin, got)
+            PlC.pos = 0
+            PlC:offerRemote(120000, true, function() end)
+            check(PlC.pos == 120000, "Plex audiobook: nothing listened to here: Plex's place, no question")
+        end
+        -- the Catalog's Audiobooks page with Plex's
+        local saved_audio = require("gzreader_touch").audio
+        require("gzreader_touch").audio = function() return true end
+        local Brw = require("gzreader_browser")
+        local ab = Brw:new(plugin)
+        ab:show({ section = "audiobooks" })
+        local ids = {}
+        for _i, it in ipairs(ab.menu.item_table) do ids[#ids + 1] = it.gz_id end
+        local last = ab.menu.item_table[#ab.menu.item_table]
+        check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_downloaded,ab_plex" and last.mandatory == "Audiobooks"
+            and ab.menu.item_table.gz_root, "Catalog → Audiobooks from Plex: search, the shelves, All, Authors, On this Kindle, the library " .. table.concat(ids, ","))
+        local Shop = require("gzreader_bookshop")
+        Shop.audioLists(ab) -- (asks Plex)
+        local sst = Shop.audioLists(ab)
+        local rk = {}
+        for _i, x in ipairs(sst.ab_recent or {}) do rk[#rk + 1] = x.id end
+        check(sst.plex == "5" and table.concat(rk, ",") == "plex-206,plex-207" and sst.ab_continue[1] and sst.ab_continue[1].id == "plex-206",
+            "Plex audiobooks: Recently added from Plex, Continue listening with what was listened to " .. table.concat(rk, ","))
+        PA.openAll(ab, sec)
+        local alltexts = {}
+        for _i, it in ipairs(ab.menu.item_table) do alltexts[#alltexts + 1] = tostring(it.text) .. (it.mandatory and (" [" .. it.mandatory .. "]") or "") end
+        local tx = table.concat(alltexts, " | ")
+        check(tx:find("One File Book — Narr Author", 1, true) and tx:find("Two Part Book — Narr Author [on Kindle]", 1, true) and tx:find("Search audiobooks", 1, true),
+            "Plex audiobooks: All audiobooks, the one downloaded marked " .. tx)
+        local line
+        for _i, it in ipairs(ab.menu.item_table) do if it.book and it.book.id == "plex-207" then line = it end end
+        check(line and line.book.plex.key == "207" and line.cover_kind == "audiobook", "Plex audiobooks: a line carries its Plex album")
+        ab:search("one", PA.scope(sec))
+        local found = {}
+        for _i, it in ipairs(ab.menu.item_table) do if it.book then found[#found + 1] = it.book.id end end
+        check(table.concat(found, ",") == "plex-207", "Plex audiobooks: search keeps to the audiobook library " .. table.concat(found, ","))
+        PA.openAuthors(ab, sec)
+        local au = ab.menu.item_table
+        local author
+        for _i, it in ipairs(au) do if it.text == "Narr Author" then author = it end end
+        if author then author.callback() end
+        local nbooks = 0
+        for _i, it in ipairs(ab.menu.item_table) do if it.book then nbooks = nbooks + 1 end end
+        check(author and nbooks == 2, "Plex audiobooks: Authors, and an author's audiobooks")
+        -- covers from Plex, never Grimmory
+        local Covers = require("gzreader_covers")
+        local cpath = Covers.path("plex-206", "audiobook")
+        os.remove(cpath)
+        Covers.plex_tried = {}
+        local cgot
+        Covers.fetch(plugin, { { id = "plex-206", kind = "audiobook" }, { id = "plex-207", kind = "audiobook" } }, function(got_n) cgot = got_n end)
+        runLoop(function() return cgot ~= nil end, 10)
+        check(cgot == 1 and require("libs/libkoreader-lfs").attributes(cpath, "mode") == "file" and Covers.state("plex-207", "audiobook") == "missing",
+            "Plex audiobooks: covers from Plex (one with no picture there isn't asked of Grimmory)")
+        ab.closed = true
+        require("gzreader_touch").audio = saved_audio
+        -- the outbox: which library (the sync page lists it)
+        check(require("gzreader_usbsync").audiobookLibrary(plugin.store).key == "5"
+            and require("gzreader_usbsync").audiobookLibrary({ plex = {} }) == nil, "outbox: the Plex audiobook library, for the sync page")
+        ABk.delete(plugin, "plex-206")
+        px.audiobook_section, plugin.save = saved_ab, saved_save
     end
     local artists, total = plex:list("1", "artists", 0)
     local albums = plex:list("1", "albums", 0)
@@ -6224,9 +6366,9 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Audiobooks: from Grimmory | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
         "Settings → Connections → Plex: account, server, music library, quality, downloads, sign out: " .. st)
-    local q = si[4].sub_item_table_func()
+    local q = si[5].sub_item_table_func()
     q[3].callback()
     check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
         "Settings → Plex: the conversion quality")
@@ -7615,6 +7757,10 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
             "e2e: the folder audiobook plays from its two tracks")
+        local pab = require("gzreader_audiobook").load(fake, "plex-206")
+        check(pab and pab.plex and pab.plex.key == "206" and #pab.files == 2 and pab.files[2] == "track-002.mp3" and pab.tracks[2].plex_key == "307"
+            and pab.tracks[2].start == 3000 and pab.description == "A book in two parts." and fake.store.audiobooks["plex-206"].title == "Two Part Book",
+            "e2e: a Plex audiobook the page brought: its tracks, and where its place goes in Plex")
         local ab33 = require("gzreader_audiobook").load(fake, "33")
         local d33 = ab33 and require("gzreader_audiobook").dir(fake, "33")
         local lfs = require("libs/libkoreader-lfs")

@@ -51,7 +51,9 @@ Plex → **Music library** (or *Plex: you · server* in the Music tab). Artists,
 Albums, Recently added and Recently played come from the one picked; with
 more than one music library on the server, Playlists and Search keep to it
 too. The choice is kept per server, and the sync page (Kindles without
-Wi‑Fi) lists the same library's albums.
+Wi‑Fi) lists the same library's albums. A library picked for
+[audiobooks](Audiobooks-and-Read-Aloud#audiobooks-from-plex) is skipped
+when nothing is picked here.
 
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else

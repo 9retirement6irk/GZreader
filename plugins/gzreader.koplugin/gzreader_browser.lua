@@ -303,6 +303,8 @@ function Browser:audiobookItem(book)
     local Audiobook = require("gzreader_audiobook")
     local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
     local here = Audiobook.load(self.plugin, book.id) ~= nil
+    -- (a Plex audiobook's cover comes from Plex: gzreader_plexaudio.lua)
+    if type(book.plex) == "table" then require("gzreader_covers").notePlex(book.id, book.plex.thumb) end
     return {
         text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
         book = book, cover_kind = "audiobook", -- the square audiobook cover in the cover views
@@ -378,6 +380,10 @@ end
 --- The Audiobooks page: search, then a compartment each (gz_kind "section";
 --- gz_contents: what stands in it in the Bookshelf view).
 function Browser:audiobookItems()
+    -- (audiobooks from a Plex library instead: Settings → Connections → Plex → Audiobooks)
+    local PA = require("gzreader_plexaudio")
+    local plex_sec = PA.section(self.plugin)
+    if plex_sec then return PA.items(self, plex_sec) end
     local Cache = require("gzreader_listcache")
     local all = self.plugin and Cache.get(Browser.savedKey(self, "audio-all"))
     local listed = self.plugin and Cache.get(Browser.savedKey(self, "audiobooks"))
@@ -1080,6 +1086,7 @@ end
 --- Grimmory's books whose title, series or an author contains q (readable
 --- formats, A–Z, paged like All books), in the whole library or in `scope`.
 function Browser:search(q, scope)
+    if scope and scope.plex then return require("gzreader_plexaudio").search(self, q, scope) end
     local params = { search = q, sort = "title", dir = "asc" }
     for k, v in pairs(scope and scope.params or {}) do
         if k ~= "sort" and k ~= "dir" then params[k] = v end

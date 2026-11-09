@@ -482,6 +482,61 @@ function Tab.chooseLibrary(plugin, after)
     end, { reason = "Plex's libraries" })
 end
 
+--- What the Audiobooks line says: Grimmory's, or which Plex library.
+function Tab.audiobooksText(plugin)
+    local sec = require("gzreader_plex").audiobookSection(plugin.store.plex)
+    if sec then return T(_("Audiobooks: from Plex (%1)"), sec.title or "?") end
+    return _("Audiobooks: from Grimmory")
+end
+
+--- Pick where the Catalog's audiobooks come from: Grimmory, or one of the
+--- Plex server's music libraries (Plex keeps audiobooks in a music library:
+--- an album per book, the author as its artist). after(): once picked.
+function Tab.chooseAudiobooks(plugin, after)
+    require("gzreader_net").run(function()
+        local msg = busy(_("Asking Plex for its libraries…"))
+        local plex = Music().plex(plugin)
+        Async().run(nil, function() return plex:musicSections() end, function(list, err)
+            UIManager:close(msg)
+            if not list then return UIManager:show(InfoMessage:new{ text = why(err) }) end
+            local cur = require("gzreader_plex").audiobookSection(plugin.store.plex)
+            local ButtonDialog = require("ui/widget/buttondialog")
+            local dialog
+            local function pick(sec)
+                UIManager:close(dialog)
+                Tab.setAudiobooks(plugin, sec)
+                if after then after() end
+            end
+            local buttons = { { { text = (cur and "" or "\u{2713} ") .. _("Grimmory"), callback = function() pick(nil) end } } }
+            for _i, sec in ipairs(list) do
+                buttons[#buttons + 1] = { { text = ((cur and cur.key == sec.key) and "\u{2713} " or "") .. T(_("Plex: %1"), sec.title),
+                    callback = function() pick(sec) end } }
+            end
+            dialog = ButtonDialog:new{ title = _("Audiobooks from"), buttons = buttons }
+            local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+            if add then pcall(add, dialog) end
+            UIManager:show(dialog)
+        end, "plex libraries")
+    end, { reason = "Plex's libraries" })
+end
+
+--- Audiobooks from Plex library `sec` ({ key, title }) on this server, or
+--- from Grimmory (nil). The Catalog's audiobook shelves (and the music
+--- library left to be the server's first, which skips this one) start again.
+function Tab.setAudiobooks(plugin, sec)
+    local s = plugin.store.plex or {}
+    plugin.store.plex = s
+    local before = type(s.audiobook_section) == "table" and s.audiobook_section.key
+    s.audiobook_section = sec and { server = (s.server or {}).id, key = sec.key, title = sec.title } or nil
+    plugin:save()
+    if before ~= (sec and sec.key) then
+        pcall(function() require("gzreader_bookshop").forgetMusic(plugin) end)
+        local B = package.loaded["gzreader_browser"]
+        if type(B) == "table" and type(B.current) == "table" then B.current._shop_audio = nil end
+    end
+    Log.info("plex: audiobooks from", sec and "a Plex library" or "Grimmory")
+end
+
 --- Keep `sec` ({ key, title }) as the music library of this server; the
 --- Catalog's Music shelves (the old library's) are asked for again.
 function Tab.setLibrary(plugin, sec)
@@ -735,6 +790,12 @@ function Tab:openAccount()
             self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
         end)
     end }
+    items[#items + 1] = { text = Tab.audiobooksText(plugin), callback = function()
+        Tab.chooseAudiobooks(plugin, function()
+            if self.closed then return end
+            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+        end)
+    end }
     for _i, srv in ipairs(s.servers or {}) do
         if srv.id ~= (s.server or {}).id then
             items[#items + 1] = { text = T(_("Use the server “%1”"), srv.name or "?"), callback = function()
@@ -816,6 +877,14 @@ function Tab.settingsItems(plugin)
           keep_menu_open = true,
           callback = function(touchmenu)
               Tab.chooseLibrary(plugin, function()
+                  if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
+              end)
+          end },
+        { text_func = function() return Tab.audiobooksText(plugin) end,
+          help_text = _("Where the Catalog's audiobooks come from: Grimmory, or a library of this Plex server (Plex keeps audiobooks in a music library: an album per book, the author as its artist). Listening positions go to the same place. Audiobooks already on the Kindle stay and play as before."),
+          keep_menu_open = true,
+          callback = function(touchmenu)
+              Tab.chooseAudiobooks(plugin, function()
                   if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
               end)
           end },
