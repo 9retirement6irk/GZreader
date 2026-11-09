@@ -66,4 +66,5 @@ jobs:
             ci-out/summary.md
             ci-out/keeps-*/*.png
             ci-out/keeps-*/keeps.txt
+            ci-out/perf-*/perf.json
           retention-days: 14

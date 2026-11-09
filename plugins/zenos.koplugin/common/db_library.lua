@@ -21,7 +21,9 @@
 local logger = require("common/zen_logger").new("db_library")
 local paths = require("common/paths")
 local lfs = require("libs/libkoreader-lfs")
-local Rakuyomi = require("modules/filebrowser/patches/rakuyomi")
+-- GZreader: loaded only when a finished .cbz is counted (Rakuyomi, a manga
+-- plugin GZreader doesn't ship, was loaded at every start for this)
+local Rakuyomi = setmetatable({}, { __index = function(_t, k) return require("modules/filebrowser/patches/rakuyomi")[k] end })
 
 local LibraryDB = {}
 

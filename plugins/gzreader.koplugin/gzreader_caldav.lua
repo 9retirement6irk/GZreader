@@ -698,7 +698,7 @@ function CalDAV.cachePath() return require("datastorage"):getSettingsDir() .. "/
 function CalDAV.loadCache()
     local f = io.open(CalDAV.cachePath(), "rb")
     if not f then return nil end
-    local ok, data = pcall(require("json").decode, f:read("*a"))
+    local ok, data = pcall(require("gzreader_json").decode, f:read("*a"))
     f:close()
     return ok and type(data) == "table" and data or nil
 end
@@ -707,7 +707,7 @@ function CalDAV.saveCache(data)
     local path = CalDAV.cachePath()
     local f = io.open(path .. ".tmp", "wb")
     if not f then return end
-    f:write(require("json").encode(data))
+    f:write(require("gzreader_json").encode(data))
     f:close()
     os.rename(path .. ".tmp", path)
 end

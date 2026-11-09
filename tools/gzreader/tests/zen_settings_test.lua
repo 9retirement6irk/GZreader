@@ -17,7 +17,10 @@ local real = {
     ["modules/settings/sections/general_settings"] = true,
     ["modules/settings/sections/interface_settings"] = true,
     ["modules/settings/zen_settings_utils"] = true,
+    ["modules/settings/sections/library_settings"] = true,
+    ["modules/settings/sections/library_settings/metadata_settings"] = true,
 }
+local view = { bookshelf = true }
 local stubs = {
     gettext = function(s) return s end,
     ["ffi/util"] = { template = function(f, ...) local a = { ... }
@@ -27,6 +30,7 @@ local stubs = {
     -- no ZenPM, no Rakuyomi on a Kindle with GZreader
     ["modules/settings/zenpm_installer"] = { build_item = function() return nil end },
     ["modules/filebrowser/patches/rakuyomi"] = { is_available = function() return false end },
+    ["common/gz_view"] = { isBookshelf = function() return view.bookshelf end },
 }
 table.insert(package.loaders, 2, function(name)
     if stubs[name] ~= nil then local v = stubs[name]; return function() return v end end
@@ -62,8 +66,27 @@ check(okb and type(root) == "table", "ZenOS's settings build " .. tostring(not o
 if okb then
     local items = root.sub_item_table
     local top = texts(items)
-    check(top == "|Home|Library|Reader|Interface|General|Storage|Connections|KOReader|About|",
-        "Settings: Home, Library, Reader, Interface, General, Storage, Connections, KOReader, About; no Extras " .. top)
+    check(top == "|Home|Downloads|Reader|Interface|General|Storage|Connections|KOReader|About|",
+        "Settings: Home, Downloads, Reader, Interface, General, Storage, Connections, KOReader, About; no Extras " .. top)
+    -- Downloads (ZenOS's Library section): Books has no Metadata menu
+    local dl = sub(items, "Downloads")
+    print("    Downloads: " .. texts(dl))
+    local books = texts(sub(dl, "Books"))
+    check(books:find("|", 2, true) and not books:find("|Metadata|", 1, true),
+        "Downloads → Books: no Metadata menu (details come from Grimmory) " .. books)
+    -- Appearance → Covers → Rounded cover corners: off in the Bookshelf view
+    local covers = sub(sub(dl, "Appearance"), "Covers")
+    local rounded
+    for _i, it in ipairs(covers or {}) do
+        if rawget(it, "text") == "Rounded cover corners" then rounded = it end
+    end
+    check(rounded and type(rounded.enabled_func) == "function", "Covers: Rounded cover corners has an enabled_func")
+    if rounded and rounded.enabled_func then
+        view.bookshelf = true
+        check(rounded.enabled_func() == false, "Rounded cover corners: greyed out in the Bookshelf view")
+        view.bookshelf = false
+        check(rounded.enabled_func() == true, "Rounded cover corners: can be changed in the other views")
+    end
     local gen = texts(sub(items, "General"))
     check(gen:find("|Schedules|", 1, true) and gen:find("|Sleep|", 1, true),
         "General still has Schedules and Sleep (built with the Extras items) " .. gen)

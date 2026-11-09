@@ -7,6 +7,9 @@
   the "next" entry at the top: both sides' lines are kept (ours first).
 - tools/gzreader/tests/keeps.txt: "<count> <file>" lines: every file kept,
   with the higher count.
+- docs/sync/index.html: when the two sides differ only in gzsync.js's ?v=
+  (every PR that changes the sync page's script changes it), the hash of the
+  combined docs/sync/gzsync.js.
 
     beta_resolve.py <conflicted file>...
 """
@@ -42,9 +45,37 @@ def keeps(text):
     return "\n".join(head + ["%d %s" % (body[p], p) for p in sorted(body)]) + "\n"
 
 
+VPAT = re.compile(r"gzsync\.js\?v=[0-9a-f]+")
+
+
+def sync_page(text):
+    import hashlib
+    try:
+        with open("docs/sync/gzsync.js", "rb") as f:
+            v = "gzsync.js?v=" + hashlib.sha256(f.read()).hexdigest()[:10]
+    except OSError:
+        return None
+
+    class Other(Exception):
+        pass
+
+    def merge(m):
+        if VPAT.sub("", m.group(1)) != VPAT.sub("", m.group(2)):
+            raise Other()
+        return VPAT.sub(v, m.group(1))
+    try:
+        out = HUNK.sub(merge, text)
+    except Other:
+        return None
+    if "<<<<<<<" in out or ">>>>>>>" in out:
+        return None
+    return VPAT.sub(v, out)
+
+
 RULES = {
     "plugins/gzreader.koplugin/gzreader_changelog.lua": changelog,
     "tools/gzreader/tests/keeps.txt": keeps,
+    "docs/sync/index.html": sync_page,
 }
 
 

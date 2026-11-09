@@ -9,7 +9,7 @@ saved to settings/gzreader_index.json, and refreshed when older than a day.
 ]]
 
 local DataStorage = require("datastorage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local ProgressbarDialog = require("ui/widget/progressbardialog")
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
@@ -17,7 +17,7 @@ local Log = require("gzreader_log")
 local _ = require("gettext")
 
 local MAX_AGE = 24 * 3600
-local PAGE = 50
+local PAGE = 50 -- (Grimmory's most: AppBookService.MAX_PAGE_SIZE)
 
 local Index = {
     data = nil,      -- { built_at, server, user, authors = {name=count}, series = {name={count, authors}}, libraries = {id=count}, total }
@@ -142,11 +142,16 @@ function Index.build(plugin, show, on_done)
     Log.info("index build start")
 
     local pid, read_fd = ffiutil.runInSubProcess(function(_pid, write_fd)
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         api.no_refresh = true
+        -- (Grimmory's pages are 50 books at most: one kept connection for all of them)
+        local Api = require("gzreader_api")
+        Api.poolBegin()
         local data, cerr = collect(api, function(page, pages)
             local f = io.open(prog, "wb")
             if f then f:write(page, " ", pages); f:close() end
         end)
+        Api.poolEnd()
         if data then
             data.built_at = os.time()
             data.server, data.user = store.server, store.username

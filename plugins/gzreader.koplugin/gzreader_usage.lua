@@ -31,7 +31,7 @@ drive), which sends them from the computer.
 local DataStorage = require("datastorage")
 local Device = require("device")
 local UIManager = require("ui/uimanager")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 
@@ -211,6 +211,7 @@ function U.maybeSend(force)
     local server = U.SERVER
     local agent = "GZreader/" .. version() .. " (" .. osName() .. ")"
     local pid = ffiutil.runInSubProcess(function()
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         local http = require("socket.http")
         local ltn12 = require("ltn12")
         local socketutil = require("socketutil")
@@ -383,13 +384,17 @@ function U.whereNow()
 end
 
 local function tick()
+    -- (the time since the last tick: lined up on the clock, the first one is shorter)
+    local now = os.time()
+    local elapsed = math.max(0, math.min(now - (U.last_tick or (now - U.TICK)), 2 * U.TICK))
+    U.last_tick = now
     if on() then
         if on(true) then
             local where = U.whereNow()
             U.screen = where
-            agg.screens[where] = (agg.screens[where] or 0) + U.TICK
+            agg.screens[where] = (agg.screens[where] or 0) + elapsed
             local okn, NetworkMgr = pcall(require, "ui/network/manager")
-            if okn and NetworkMgr:isWifiOn() then agg.wifi = agg.wifi + U.TICK end
+            if okn and NetworkMgr:isWifiOn() then agg.wifi = agg.wifi + elapsed end
         end
         -- keys the screen didn't answer (also without remote debugging)
         local okt, Trace = pcall(require, "gzreader_slowtrace")
@@ -398,7 +403,7 @@ local function tick()
         if os.time() - agg.since >= U.SUMMARY_EVERY then U.summary("periodic") end
         U.maybeSend() -- only does something when Wi-Fi is on and it's time
     end
-    UIManager:scheduleIn(U.TICK, tick)
+    UIManager:scheduleIn(require("gzreader_ticks").untilNext(U.TICK), tick) -- (with the other timers: gzreader_ticks.lua)
 end
 
 ---------------------------------------------------------------- reading
