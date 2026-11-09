@@ -29,7 +29,7 @@ the book once you open one.
   has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with headphones, and **Music** (downloaded from Plex) as a
-  CD player with headphones. In lists and tiles both folders are always first,
+  CD player lying on the shelf with its headphones resting on it. In lists and tiles both folders are always first,
   whatever the sort.
 - **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,
   author, series, date downloaded, reading progress, size or file name;

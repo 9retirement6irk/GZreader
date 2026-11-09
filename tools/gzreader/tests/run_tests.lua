@@ -5807,6 +5807,15 @@ print("Music (Plex): the server, downloads, the player")
             "Audiobooks and Music come first, whatever the sort")
         check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
             "the walkman and the CD player drawn to one scale (the CD player lower)")
+        local cdf = io.open(PLUGIN .. "/icons/shelf/cdplayer.svg", "rb")
+        local cd = cdf and cdf:read("*a") or ""
+        if cdf then cdf:close() end
+        local vw, vh = cd:match('viewBox="0 0 (%d+) (%d+)"')
+        local ecy, ery = cd:match('<ellipse cx="85" cy="(%d+)" rx="74" ry="(%d+)" fill="url%(#edge%)"')
+        check(tonumber(vw) and math.abs(tonumber(vw) / tonumber(vh) - SV.SPECIAL.Music.ratio) < 0.001
+            and math.abs(SV.SPECIAL.Music.height - tonumber(vh) / 160) < 0.001
+            and tonumber(ecy) and tonumber(ecy) + tonumber(ery) >= tonumber(vh) - 2,
+            "the CD player lies on the shelf: the bottom of its edge is the bottom of the picture, its size as the picture's")
         G_reader_settings:saveSetting("home_dir", saved_home)
     end
     -- the player
