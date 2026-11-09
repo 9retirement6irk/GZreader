@@ -1139,6 +1139,94 @@ do
     end
     check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings tile -> Settings page")
     package.loaded["modules/settings/zen_settings_page"] = nil; package.loaded["apps/filemanager/filemanager"] = nil
+    -- Settings → Interface → Quick panel: tiles shown or hidden, by group
+    Panel.showAll()
+    Panel.setShown("controls", "rotate", false)
+    Panel.setShown("home", "sort", false)
+    Panel.setShown("home", "send", false)
+    for _i, id in ipairs({ "home", "settings", "exit" }) do Panel.setShown("controls", id, false) end
+    local c2, h2 = labels(Panel.controls(hplug)), labels(Panel.homeTiles(hplug, nil))
+    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Send books|") and h2:match("|Continue|"),
+        "hidden tiles aren't on the panel; the others are… " .. c2 .. " " .. h2)
+    check(c2:match("|Home|") and c2:match("|Settings|") and c2:match("|Exit to Kindle|") and Panel.isShown("controls", "settings"),
+        "Home, Settings and Exit to Kindle can't be hidden")
+    local hidden = G_reader_settings:readSetting("gzreader_panel_hidden") or {}
+    check(hidden["controls:rotate"] and hidden["home:sort"] and not hidden["controls:settings"] and not hidden["controls:home"],
+        "kept as group:tile, only the hideable ones")
+    check(Panel.isShown("book", "music") and not Panel.isShown("home", "sort"), "Music in a book is its own tick (Home's Music is separate)")
+    local fakeui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } } }
+    Panel.setShown("book", "gotopage", false)
+    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Go to page") and labels(Panel.bookTiles(hplug, fakeui)):match("|Contents|"),
+        "a book's tiles hidden too")
+    local item = Panel.settingsItem()
+    local subs = {}
+    for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
+    check(item.text == "Quick panel" and table.concat(subs, "|") == "Controls|Home|This book|Show every tile",
+        "the settings: Quick panel → Controls, Home, This book, Show every tile… " .. table.concat(subs, "|"))
+    local function row(group_i, label)
+        for _i, r in ipairs(item.sub_item_table[group_i].sub_item_table) do
+            if r.text == label or r.text:match("^" .. label:gsub("%-", "%%-") .. " %(") then return r end
+        end
+    end
+    local exit_row, rot_row, diag_row = row(1, "Exit to Kindle"), row(1, "Rotate"), row(1, "Diagnostics")
+    check(exit_row and exit_row.enabled_func() == false and exit_row.checked_func() and rot_row and rot_row.enabled_func() and not rot_row.checked_func()
+        and diag_row and diag_row.text:match("while logging is on"),
+        "fixed tiles ticked and greyed out; the others tick; a tile that only sometimes shows says when")
+    rot_row.callback()
+    check(Panel.isShown("controls", "rotate") and labels(Panel.controls(hplug)):match("|Rotate|"), "ticking a tile puts it back")
+    exit_row.callback()
+    check(Panel.isShown("controls", "exit"), "…and a fixed one stays")
+    local NetM = require("gzreader_net"); local was_usb = NetM.usb
+    NetM.usb = true
+    local usb_item = Panel.settingsItem()
+    local usb_rows = {}
+    for _i, r in ipairs(usb_item.sub_item_table[1].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
+    for _i, r in ipairs(usb_item.sub_item_table[2].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
+    usb_rows = "|" .. table.concat(usb_rows, "|") .. "|"
+    NetM.usb = was_usb
+    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
+        "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
+    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks" }) do Panel.setShown("home", id, false) end
+    check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")
+    item.sub_item_table[4].callback()
+    check(G_reader_settings:readSetting("gzreader_panel_hidden") == nil and labels(Panel.homeTiles(hplug, nil)):match("|Sort|"),
+        "Show every tile: all back")
+    -- in ZenOS's Settings → Interface: Quick panel in place of Controls and Launcher, no Zen mode toggle
+    local zroot = debug.getinfo(Panel.controls, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_panel%.lua$", "zenos.koplugin/")
+    local function src(rel)
+        local zf = io.open(zroot .. rel, "rb")
+        local s = zf and zf:read("*a") or ""
+        if zf then zf:close() end
+        return s
+    end
+    local iface = src("modules/settings/sections/interface_settings.lua")
+    check(iface:find("GzPanel.settingsItem()", 1, true) and not iface:find("sections/menu_settings", 1, true)
+        and not iface:find("app_launcher_item", 1, true) and not iface:find('text = _("Zen mode")', 1, true)
+        and iface:find('text = _("Blur menu background")', 1, true),
+        "Settings → Interface: Quick panel (no Controls, no Launcher), Blur menu background kept, no Zen mode toggle")
+    check(src("config/manager.lua"):find("if cfg.features.zen_mode ~= true then\n        cfg.features.zen_mode = true", 1, true),
+        "Zen mode turned back on at start if it was off")
+    local da = src("common/dispatch_action.lua")
+    local fn_src = da:match("(function M%.onToggleZenMode%(plugin%).-\nend\n)")
+    local zsaved, zapplied = 0, nil
+    local M = {}
+    local env = setmetatable({ M = M, save_config = function() zsaved = zsaved + 1 end, _ = function(s) return s end,
+        require = function(name)
+            if name == "modules/settings/zen_settings_apply" then return { apply_feature_toggle = function(_p, _k, v) zapplied = v end } end
+            if name == "ui/uimanager" then return { show = function() end } end
+            if name == "ui/widget/infomessage" then return { new = function() return {} end } end
+            return require(name)
+        end }, { __index = _G })
+    local chunk = fn_src and load(fn_src, "onToggleZenMode", "t", env)
+    if chunk then chunk() end
+    local zp = { config = { features = { zen_mode = true } } }
+    if M.onToggleZenMode then M.onToggleZenMode(zp) end
+    local stayed = zp.config.features.zen_mode == true and zsaved == 0
+    zp.config.features.zen_mode = false
+    if M.onToggleZenMode then M.onToggleZenMode(zp) end
+    check(M.onToggleZenMode and stayed and zp.config.features.zen_mode == true and zapplied == true and zsaved == 1,
+        "ZenOS's Toggle Zen Mode action (a gesture) keeps it on, and turns it on if it was off")
+    Panel.showAll()
     -- More: the full Home menu, still without KOReader settings or night mode
     NG.applies = function() return true end
     local items = HomeMenu.items(hplug)

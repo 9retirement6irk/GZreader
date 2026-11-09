@@ -23,6 +23,17 @@ On a touch Kindle with a frontlight the panel also has a light slider (tap or
 drag it; − and + step), and
 holding a book at Home or in Downloads opens Manage book.
 
+### Choosing the tiles
+
+**Settings → Interface → Quick panel** lists the tiles of each group
+(**Controls**, **Home**, **This book**): untick one to take it off the panel,
+tick it to put it back, or **Show every tile** to bring them all back.
+**Home**, **Settings** and **Exit to Kindle** are always there. Tiles that
+only appear sometimes say when (Diagnostics while logging is on, Manage book
+for the book highlighted, and so on). The letters follow the tiles shown, so
+hiding one moves the letters of the tiles after it. A group with every tile
+hidden isn't shown.
+
 ![The quick panel at Home](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/home-menu.png)
 
 ## Keyboard (Kindle 2, 3, DX)

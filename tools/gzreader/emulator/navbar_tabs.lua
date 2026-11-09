@@ -34,11 +34,11 @@ for _i, step in ipairs(readme) do
 end
 add({ fn = function(E) tabs(E, "tabs after the setup guide:") end, after = 1 })
 shot("tabs-3-home-bar")
--- Settings → Interface → Navbar → Tabs
+-- Settings → Interface → Navbar → Tabs (Interface: Quick panel Q, Navbar W)
 key("Menu", 4)
 key("U", 6)
 key("R", 4)
-key("E", 4)
+key("W", 4)
 shot("tabs-4-navbar-settings")
 key("Q", 5)
 shot("tabs-5-tabs-list")
