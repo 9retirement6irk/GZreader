@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindle 2/DX: Send to the developer, through the sync page", text = "Kindle 2 and DX (no Wi-Fi): Diagnostics → Send to the developer asks what happened, as on a Wi-Fi Kindle, and saves the log with it; the sync page sends it to the developer at your next sync. The page's Sync tab also has a Diagnostics box to send the Kindle's log with a note of your own. With diagnostic logging on, pressing Sync on the Kindle first exports a fresh log for it." },
+            { short = "Less processor time for GZreader's data: the library, lists, sync and the outbox", text = "GZreader now reads and writes its data (Grimmory's lists, the library index, the library copy on Kindles without Wi-Fi, the outbox, background results, saved lists) with KOReader's built-in C library for JSON instead of its Lua one, which was 5 to 10 times slower on a library's worth of books. Nothing changes in what's stored or sent." },
         },
     },
     {

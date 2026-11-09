@@ -21,7 +21,7 @@ and the result comes back a moment later.
 
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 
 local Async = {
