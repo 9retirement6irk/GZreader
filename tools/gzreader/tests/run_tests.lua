@@ -492,6 +492,61 @@ print("A stopped background request keeps the login it renewed")
     Async.sync = saved_sync
 end)()
 
+print("While a book opens, background processes wait")
+;(function()
+    local Async = require("gzreader_async")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local Log = require("gzreader_log")
+    local orig_info, logged = Log.info, {}
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function state(pid)
+        local f = io.open("/proc/" .. pid .. "/stat", "rb")
+        if not f then return nil end
+        local st = f:read("*a"):match("%) (%a)")
+        f:close()
+        return st
+    end
+    local function pauseNoTimer(reason)
+        Async.pause(reason)
+        if Async.paused then UI.scheduled[Async.paused.timer] = nil end -- (the stand-in UIManager runs everything at once)
+    end
+    -- a request running: paused, not stopped by its time limit, then finishes
+    local res_a
+    Async.run(nil, function() require("socket").sleep(1); return "a" end, function(r, e) res_a = r or e end, "calendar: sync", { timeout = 2 })
+    local pid = next(Async.running)
+    check(pid ~= nil, "the running request is known (pid " .. tostring(pid) .. ")")
+    pauseNoTimer("a book opens")
+    runLoop(function() return state(pid) == "T" end, 2)
+    check(state(pid) == "T", "a book opens: the running request is paused (state " .. tostring(state(pid)) .. ")")
+    runLoop(function() return res_a ~= nil end, 3.5)
+    check(res_a == nil, "while paused it doesn't finish, and its 2 s limit doesn't stop it (3.5 s)")
+    -- a request asked for meanwhile waits
+    local res_b
+    Async.run(nil, function() return "b" end, function(r) res_b = r end, "later")
+    check(#Async.queue == 1, "a request asked for while the book opens waits")
+    Async.resume("the book is open")
+    runLoop(function() return res_a ~= nil and res_b ~= nil end, 10)
+    check(res_a == "a" and res_b == "b", "the book is open: the paused one carries on and the waiting one runs ("
+        .. tostring(res_a) .. ", " .. tostring(res_b) .. ")")
+    check(next(Async.running) == nil, "and nothing is left running")
+    -- a book that never finishes opening: carry on anyway
+    pauseNoTimer("a book opens")
+    local timer = Async.paused and Async.paused.timer
+    local res_c
+    Async.run(nil, function() return "c" end, function(r) res_c = r end, "later")
+    runLoop(function() return false end, 0.3)
+    check(res_c == nil and timer ~= nil, "held: nothing starts")
+    timer()
+    runLoop(function() return res_c ~= nil end, 10)
+    check(res_c == "c" and Async.paused == nil, "after " .. Async.PAUSE_MAX .. " s without a page: carries on")
+    Log.info = orig_info
+    local log = table.concat(logged, "\n")
+    check(log:find("async: paused 1 background process(es) while a book opens", 1, true)
+        and log:find("async: resumed after", 1, true), "the log says what was paused and for how long")
+    Async.sync = saved_sync
+end)()
+
 print("Library browsing")
 local Browser = require("gzreader_browser")
 local b = Browser:new(plugin)
@@ -2721,10 +2776,23 @@ local readerui = {
 local rplugin = Grimmory:new{ ui = readerui }
 UI.scheduled = {}
 reader.pos = 2000
+local hold_test = { calls = {}, A = require("gzreader_async") } -- (one local: the main chunk is near Lua's 200)
+hold_test.pause, hold_test.resume = hold_test.A.pause, hold_test.A.resume
+hold_test.A.pause = function(why) hold_test.calls[#hold_test.calls + 1] = "pause: " .. tostring(why) end
+hold_test.A.resume = function(why) hold_test.calls[#hold_test.calls + 1] = "resume: " .. tostring(why) end
+do
+    local was_opened = reader_opened
+    require("apps/reader/readerui"):showReader("/books/x.epub")
+    reader_opened = was_opened
+end
 rplugin:onReaderReady()
 check(rplugin.sync ~= nil, "sync attached to Grimmory book")
 check(rplugin.store.downloads["3"].file_id == 1003, "file id looked up for a download that lacked it")
 for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}   -- initial pull (nothing on server)
+hold_test.A.pause, hold_test.A.resume = hold_test.pause, hold_test.resume
+check(hold_test.calls[1] == "pause: a book opens" and hold_test.calls[2] == "resume: the book is open",
+    "background work waits from the book's opening until its first page: " .. table.concat(hold_test.calls, ", "))
+hold_test = nil
 local sp = rplugin.sync:spine()
 check(sp and #sp.frag == 4 and #sp.all == 4, "spine parsed: every item is a crengine fragment, the SVG page too")
 check(sp.frag[1] == "OEBPS/Text/title page.xhtml" and sp.frag[4] == "OEBPS/Text/ch2.xhtml", "hrefs resolved/decoded/normalized")

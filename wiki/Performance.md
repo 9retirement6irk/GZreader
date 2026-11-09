@@ -1,5 +1,11 @@
 What GZreader does to be quick on the Kindle 3 and other old Kindles.
 
+- **While a book opens, background work waits** (`Async.pause`/`resume`):
+  a sync already running (the calendar, Notes, Grimmory) is paused until
+  the first page is up, and new requests start after it (at most 30 s). On a
+  Kindle 3 a calendar sync running beside an open made it take 23.5 s
+  instead of 6. The log says `async: paused … while a book opens` and
+  `async: resumed after … s`.
 - **Drawing with the C blitter** (`frontend/device/kindle/shadowfb.lua`).
   KOReader's fast C blitter doesn't handle the Kindle 2 / DX / 3's 4-bit
   framebuffer, so every glyph, icon and cover was drawn pixel by pixel in
