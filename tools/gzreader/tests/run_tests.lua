@@ -2116,6 +2116,25 @@ do
     AsyncMod.sync = true
 end
 
+print("Background requests run below the screen's priority")
+;(function()
+    local Async = require("gzreader_async")
+    local ffi = require("ffi")
+    pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local function niceOf() return tonumber(ffi.C.getpriority(0, 0)) end
+    local nice_before = niceOf()
+    local plain, long
+    Async.run(nil, niceOf, function(v) plain = v or false end, "nice check")
+    Async.run(nil, niceOf, function(v) long = v or false end, "nice check (long)", { nice = true })
+    runLoop(function() return plain ~= nil and long ~= nil end, 15)
+    check(plain and plain >= Async.NICE and Async.NICE >= 5, "a request's process: nice " .. tostring(plain) .. " (page turns go first)")
+    check(long and long >= Async.NICE_LONG and Async.NICE_LONG > Async.NICE, "long work (opts.nice): nice " .. tostring(long))
+    check(niceOf() == nice_before, "the screen's own process keeps its priority")
+    Async.sync = saved_sync
+end)()
+
 print("Wi-Fi only when needed")
 do
     local Net = require("gzreader_net")

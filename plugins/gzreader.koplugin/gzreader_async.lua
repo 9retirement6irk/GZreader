@@ -28,6 +28,12 @@ local Async = {
     sync = false,
     POLL = 0.2,
     TIMEOUT = 120,
+    -- A request process's priority (nice): it mostly waits on the network,
+    -- but the TLS handshake is seconds of CPU on a Kindle 3, and it ran at
+    -- the screen's own priority, so page turns waited for it (opening a book
+    -- starts several). NICE_LONG: long CPU work (opts.nice).
+    NICE = 5,
+    NICE_LONG = 10,
     queue = {},
     busy = false,
 }
@@ -160,9 +166,9 @@ pump = function()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
     local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
     job.refresh_before = api.store and api.store.refresh_token
-    local nice = job.nice
+    local nice = job.nice and Async.NICE_LONG or Async.NICE
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
-        if nice then Async.lowerPriority(10) end -- long CPU work: let the screen go first
+        Async.lowerPriority(nice) -- the screen goes first (see NICE)
         local store = api.store or {}
         local before = {}
         for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end

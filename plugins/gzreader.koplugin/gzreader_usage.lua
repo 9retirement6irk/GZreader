@@ -211,6 +211,7 @@ function U.maybeSend(force)
     local server = U.SERVER
     local agent = "GZreader/" .. version() .. " (" .. osName() .. ")"
     local pid = ffiutil.runInSubProcess(function()
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         local http = require("socket.http")
         local ltn12 = require("ltn12")
         local socketutil = require("socketutil")

@@ -142,6 +142,7 @@ function Index.build(plugin, show, on_done)
     Log.info("index build start")
 
     local pid, read_fd = ffiutil.runInSubProcess(function(_pid, write_fd)
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         api.no_refresh = true
         local data, cerr = collect(api, function(page, pages)
             local f = io.open(prog, "wb")
