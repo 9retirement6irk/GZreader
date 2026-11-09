@@ -203,6 +203,11 @@ class H(BaseHTTPRequestHandler):
             b = self._body()
             STATE.setdefault("usage", []).extend(b.get("events", []))
             return self._json(200, {"ok": True})
+        if u.path.startswith("/open/feed/") and u.path.endswith("/send"):   # Tianji feed: debug reports
+            b = self._body()
+            b["_channel"] = u.path.split("/")[3]
+            STATE.setdefault("feed", []).append(b)
+            return self._json(200, {"ok": True})
         if u.path == "/api/v1/annotations":
             if not self._user():
                 return self._json(401)
@@ -712,6 +717,10 @@ if __name__ == "__main__":
         def log_message(self, *a): pass
         def do_GET(self):
             u = urlparse(self.path); q = parse_qs(u.query)
+            if u.path == "/feed":  # the debug reports sent to the Tianji feed (/open/feed/<id>/send)
+                body = json.dumps(STATE.get("feed", [])).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+                return self.wfile.write(body)
             if u.path == "/set":
                 for k, v in q.items():
                     STATE[k] = int(v[0]) if v[0].isdigit() else v[0] == "true"

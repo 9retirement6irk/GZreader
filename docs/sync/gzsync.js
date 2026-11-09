@@ -941,7 +941,7 @@ gets a password or token.
     document.querySelectorAll("nav.main button").forEach(function (b) { b.classList.toggle("on", b.dataset.panel === name); });
     document.querySelectorAll("section.panel").forEach(function (p) { p.classList.toggle("hidden", p.dataset.panel !== name); });
     if (name === "content" && !$("#b-results").children.length) Browse.show();
-    if (name === "sync") measure();
+    if (name === "sync") { measure(); Report.render(); }
   }
 
   function showKindle(out) {
@@ -1848,6 +1848,151 @@ gets a password or token.
     if (waiting) log("The Kindle's usage statistics couldn't be sent: they wait for the next sync.");
   }
 
+  // Send to the developer for a Kindle without Wi-Fi: what the Kindle saved in
+  // reports/ (Diagnostics → Send to the developer, gzreader_usbreport.lua) goes
+  // at the sync; the Diagnostics box on the Sync tab sends the Kindle's logs
+  // as they are now, with what's typed there. Both go to the developer's
+  // report feed in the same parts, names and tags as a Wi-Fi Kindle's
+  // (gzreader_remote.lua R.sendLogs).
+  var Report = {
+    FEED: "https://in.wxcyber.com/open/feed/cmw7f51fm0e318o2f94o54020", // (R.REPORT_FEED: older GZreader didn't say)
+    PART: 60 * 1024, MAX_PARTS: 8,
+    SECRET_KEYS: ["password", "accessToken", "refreshToken", "access_token", "refresh_token", "code", "code_verifier",
+      "state", "nonce", "token", "id_token", "passwordMD5"],
+    feed: function (out) {
+      var f = out && out.report && out.report.feed;
+      if (typeof f === "string" && (/^https:\/\/[^\s]+$/.test(f) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(f))) return f.replace(/\/+$/, "");
+      return Report.FEED;
+    },
+    // (Log.redact: passwords and tokens out of what's typed and crash.log)
+    redact: function (s) {
+      s = String(s == null ? "" : s);
+      s = s.replace(/([Bb]earer\s+)[\w\-.~+\/=]+/g, "$1<redacted>").replace(/(\/pair\/)[0-9a-fA-F]+/g, "$1<token>");
+      if (s.indexOf("=") < 0 && s.indexOf('"') < 0) return s;
+      Report.SECRET_KEYS.forEach(function (k) {
+        s = s.replace(new RegExp("([?&]" + k + "=)[^&\\s\"]*", "g"), "$1<redacted>")
+          .replace(new RegExp("^(" + k + "=)[^&\\s\"]*", "gm"), "$1<redacted>")
+          .replace(new RegExp("(\"" + k + "\"\\s*:\\s*\")[^\"]*", "g"), "$1<redacted>");
+      });
+      return s;
+    },
+    // the newest MAX_PARTS × PART bytes, in PART-byte pieces (never inside a character)
+    parts: function (text) {
+      var bytes = new TextEncoder().encode(text), total = bytes.length;
+      function lead(i) { while (i < total && (bytes[i] & 0xC0) === 0x80) i++; return i; }
+      var first = lead(Math.max(0, total - Report.PART * Report.MAX_PARTS)), out = [], dec = new TextDecoder();
+      for (var i = first; i < total;) {
+        var j = lead(Math.min(total, i + Report.PART));
+        out.push(dec.decode(bytes.subarray(i, j)));
+        i = j;
+      }
+      return { parts: out, first: first, total: total };
+    },
+    stamp: function (t) {
+      var d = new Date(t), p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    },
+    // r: { text, note, device, version, test_build, when, how }; throws when the feed can't be reached
+    send: async function (out, r) {
+      var cut = Report.parts(r.text || "");
+      if (!cut.parts.length) throw new Error("the log is empty");
+      var note = Report.redact(r.note || "").trim();
+      var head = "GZreader " + (r.version || "?") + " on " + r.device + ", " + r.when + ". " + r.how + " "
+        + (cut.first > 0 ? "The last " + Math.floor((cut.total - cut.first) / 1024) + " KB of " + Math.floor(cut.total / 1024) + " KB of the log." : "")
+        + "\n\nWhat happened: " + (note || "(nothing typed)");
+      var summary = note.replace(/\s+/g, " ");
+      if (summary.length > 80) summary = (summary.slice(0, 79).match(/^(.*) /) || [null, summary.slice(0, 79)])[1] + "…";
+      var url = Report.feed(out) + "/send";
+      for (var k = 0; k < cut.parts.length; k++) {
+        var tags = ["gzreader", r.device, "debug-log", r.test_build ? "test-build" : "release", "sync-page"];
+        if (note) tags.push("with-comment");
+        var res;
+        try {
+          res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+            eventName: "Debug report from " + r.device + " (" + (k + 1) + "/" + cut.parts.length + ")" + (k === 0 && summary ? ": " + summary : ""),
+            eventContent: (k === 0 ? head + "\n\n" : "") + cut.parts[k],
+            tags: tags, source: "gzreader", important: false,
+          }) });
+        } catch (e) { throw new Error("the developer's feed couldn't be reached"); }
+        if (res.status >= 400) throw new Error("the developer's feed answered " + res.status);
+      }
+      return cut.parts.length;
+    },
+    info: function (out) {
+      var o = out || {}, rep = o.report || {};
+      return { device: rep.device || ((o.kindle || {}).model || "Kindle").replace(/\s/g, ""), version: o.gzreader,
+        test_build: rep.test_build === true || /^\d[\d.]*\d.+$/.test(o.gzreader || "") };
+    },
+    // the reports the Kindle saved, oldest first: [{ stamp, meta }]
+    saved: async function () {
+      var dir = Drive.sync && await Drive.tryDir(Drive.sync, "reports"), out = [];
+      if (!dir) return out;
+      for await (var entry of dir.values()) {
+        var m = entry.kind === "file" && /^report-([\d-]+)\.json$/.exec(entry.name);
+        if (m) out.push({ stamp: m[1], meta: await Drive.readJSON(dir, entry.name) || {} });
+      }
+      out.sort(function (a, b) { return a.stamp < b.stamp ? -1 : a.stamp > b.stamp ? 1 : 0; });
+      return out;
+    },
+    // at the sync: each saved report sent, then deleted (kept for the next sync when it can't be sent)
+    sendSaved: async function (out) {
+      var list = await Report.saved(), sent = 0;
+      if (!list.length) return 0;
+      var dir = await Drive.dir(Drive.sync, "reports"), base = Report.info(out);
+      for (var i = 0; i < list.length; i++) {
+        var meta = list[i].meta, name = "report-" + list[i].stamp;
+        var text = await Drive.readText(dir, name + ".txt");
+        if (text == null) { await Drive.remove(dir, name + ".json"); continue; } // (half a report: nothing to send)
+        try {
+          await Report.send(out, { text: text, note: meta.note, device: meta.device || base.device, version: meta.version || base.version,
+            test_build: meta.test_build != null ? meta.test_build === true : base.test_build,
+            when: meta.at ? Report.stamp(meta.at * 1000) + " (the Kindle's clock)" : "?",
+            how: "Saved on the Kindle, sent from the sync page " + Report.stamp(Date.now()) + "." });
+        } catch (e) {
+          log("The Kindle's report for the developer couldn't be sent (" + e.message + "): it waits for the next sync.");
+          return sent;
+        }
+        await Drive.remove(dir, name + ".json");
+        await Drive.remove(dir, name + ".txt");
+        sent++;
+      }
+      if (sent) log("Sent to the developer: " + sent + " report" + (sent === 1 ? "" : "s") + " from the Kindle's Diagnostics. Thank you!", "ok");
+      return sent;
+    },
+    // the Diagnostics box: the log GZreader exported when Sync was pressed
+    // (reports/latest.txt: diagnostic logging on), else the Kindle's log files
+    // as they are on its drive (put together as Log.exportTo does)
+    readLogs: async function () {
+      var fresh = Drive.sync && await Drive.readText(Drive.sync, "reports/latest.txt");
+      if (fresh != null && fresh !== "") return { text: fresh, exported: true };
+      var ko = Drive.root && await Drive.tryDir(Drive.root, "koreader");
+      if (!ko) return null;
+      var a = await Drive.readText(ko, "gzreader.log.1"), b = await Drive.readText(ko, "gzreader.log");
+      var crash = await Drive.readText(ko, "crash.log");
+      if (a == null && b == null && crash == null) return null;
+      var text = "Grimmory plugin log, read from the Kindle's drive by the sync page " + Report.stamp(Date.now()) + "\n\n" + (a || "") + (b || "");
+      if (crash != null) text += "\n\n===== tail of KOReader crash.log =====\n" + Report.redact(crash.slice(-64 * 1024));
+      return { text: text, exported: false };
+    },
+    sendNow: async function (out, note) {
+      var sent = await Report.sendSaved(out);
+      var logs = await Report.readLogs();
+      if (logs == null) throw new Error("No GZreader logs on this drive (koreader/gzreader.log)");
+      var info = Report.info(out);
+      var n = await Report.send(out, { text: logs.text, note: note, device: info.device, version: info.version, test_build: info.test_build,
+        when: (logs.exported ? "log exported when Sync was pressed, sent " : "log files read ") + Report.stamp(Date.now()),
+        how: "Sent from the sync page (the Kindle has no Wi-Fi)." });
+      if (logs.exported) await Drive.remove(Drive.sync, "reports/latest.txt"); // (sent: not sent twice)
+      return { parts: n, saved: sent, exported: logs.exported };
+    },
+    render: async function () {
+      var list = Drive.sync ? await Report.saved() : [];
+      $("#rep-status").textContent = list.length
+        ? list.length + " report" + (list.length === 1 ? "" : "s") + " saved on the Kindle (Diagnostics → Send to the developer): sent with the next sync, or with the button below."
+        : "On the Kindle: Diagnostics → Send to the developer saves a report, sent at the next sync. Or describe the problem here and send the Kindle's logs now.";
+    },
+  };
+
   // Grimmory's reading stats for the Kindle's Home widget (as GZreader asks
   // for them: gzreader_grimstats.lua), after this sync's reading sessions
   function isoWeekOfYear(d) {
@@ -1923,6 +2068,7 @@ gets a password or token.
       }));
       Picks.prune(out);
       try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
+      try { await Report.sendSaved(out); } catch (e) { log("Reports for the developer: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)
       if (out.gzreader && Update.betaTouched) inbox.test_builds = Update.beta;
@@ -1942,6 +2088,7 @@ gets a password or token.
       Sleep.render();
       $("#b-results").textContent = "";
       measure();
+      Report.render();
     } catch (e) {
       phase("");
       bar.hide();
@@ -2634,6 +2781,21 @@ gets a password or token.
     $("#p-shrink").onchange = qChanged;
     $("#o-beta").onchange = function () { Update.betaTouched = true; Update.file = null; Update.check(); };
     $("#sync").onclick = runSync;
+    $("#rep-send").onclick = busy($("#rep-send"), async function () {
+      var res = $("#rep-result");
+      res.textContent = ""; res.className = "small";
+      try {
+        if (!Drive.sync) throw new Error("Choose the Kindle's drive first.");
+        var r = await Report.sendNow(K.out, $("#rep-note").value);
+        $("#rep-note").value = "";
+        res.textContent = "Sent to the developer" + (r.saved ? " (with " + r.saved + " saved on the Kindle)" : "") + ". Thank you!";
+        res.classList.add("ok");
+      } catch (e) {
+        res.textContent = "Not sent: " + e.message + ".";
+        res.classList.add("bad");
+      }
+      await Report.render();
+    });
     // test mode: the pretend Kindle at once
     if (K.test) {
       show("#testbar", true);
@@ -2651,7 +2813,7 @@ gets a password or token.
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
-    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4,
+    testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
