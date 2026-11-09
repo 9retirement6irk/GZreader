@@ -7,7 +7,7 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
-        version = "next",
+        version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },
             { short = "Kindle 2/DX: Send to the developer, through the sync page", text = "Kindle 2 and DX (no Wi-Fi): Diagnostics → Send to the developer asks what happened, as on a Wi-Fi Kindle, and saves the log with it; the sync page sends it to the developer at your next sync. The page's Sync tab also has a Diagnostics box to send the Kindle's log with a note of your own. With diagnostic logging on, pressing Sync on the Kindle first exports a fresh log for it." },
