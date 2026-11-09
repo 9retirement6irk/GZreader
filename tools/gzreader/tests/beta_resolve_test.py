@@ -16,13 +16,13 @@ def check(cond, msg):
     print("  ok  " if cond else "  FAIL", msg)
 
 
-def run(files):
+def run(files, conflicted=None):
     d = tempfile.mkdtemp()
     for rel, text in files.items():
         os.makedirs(os.path.join(d, os.path.dirname(rel)), exist_ok=True)
         with open(os.path.join(d, rel), "w") as f:
             f.write(text)
-    r = subprocess.run([sys.executable, TOOL] + list(files), cwd=d, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, TOOL] + list(conflicted or files), cwd=d, capture_output=True, text=True)
     out = {rel: open(os.path.join(d, rel)).read() for rel in files}
     return r.returncode, out
 
@@ -34,6 +34,15 @@ check(rc == 0 and '"A",\n            "B",\n            "C",\n        },' in out[
 KT = "tools/gzreader/tests/keeps.txt"
 rc, out = run({KT: "# marks\n1 a.lua\n<<<<<<< HEAD\n5 b.lua\n2 c.lua\n=======\n7 b.lua\n3 d.lua\n>>>>>>> x\n9 e.lua\n"})
 check(rc == 0 and out[KT] == "# marks\n1 a.lua\n7 b.lua\n2 c.lua\n3 d.lua\n9 e.lua\n", "keeps.txt: every file, the higher count")
+import hashlib
+SP, SJ = "docs/sync/index.html", "docs/sync/gzsync.js"
+js = "var combined = 1;\n"
+want = hashlib.sha256(js.encode()).hexdigest()[:10]
+rc, out = run(conflicted=[SP], files={SJ: js, SP: '<p>page</p>\n<<<<<<< HEAD\n<script src="gzsync.js?v=1111111111"></script><!-- note -->\n=======\n<script src="gzsync.js?v=2222222222"></script><!-- note -->\n>>>>>>> x\n<p>end</p>\n'})
+check(rc == 0 and out[SP] == '<p>page</p>\n<script src="gzsync.js?v=%s"></script><!-- note -->\n<p>end</p>\n' % want,
+      "sync page: two PRs' ?v= of gzsync.js: the combined script's hash")
+rc, out = run(conflicted=[SP], files={SJ: js, SP: '<<<<<<< HEAD\n<script src="gzsync.js?v=1111111111"></script><b>a</b>\n=======\n<script src="gzsync.js?v=2222222222"></script><b>b</b>\n>>>>>>> x\n'})
+check(rc == 1, "sync page: anything else different too: not settled")
 rc, out = run({"plugins/gzreader.koplugin/main.lua": "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n"})
 check(rc == 1 and "<<<<<<<" in out["plugins/gzreader.koplugin/main.lua"], "any other file: not settled (the PR is left out), left as it was")
 rc, out = run({CL: "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n", "frontend/x.lua": "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n"})

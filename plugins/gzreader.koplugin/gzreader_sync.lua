@@ -602,20 +602,28 @@ end
 
 ---------------------------------------------------------------- events
 
+Sync.OPEN_SYNC_DELAY = 1
+
 function Sync:onReady()
     self:startSession()
-    UIManager:scheduleIn(2, function() self.plugin:flushPending() end)
+    local saved
     if self.plugin:syncEnabled() then
         -- Grimmory's progress when the book was downloaded: for its first
         -- opening only (afterwards this Kindle has its own place)
-        local saved = type(self.entry) == "table" and self.entry.grimmory_progress or nil
+        saved = type(self.entry) == "table" and self.entry.grimmory_progress or nil
         if saved then
             self.entry.grimmory_progress = nil
             self.plugin:save()
         end
-        -- let the first page render before talking to the network
-        UIManager:scheduleIn(1, function() self:pull(false, saved) end)
     end
+    -- let the first page render before talking to the network; then the
+    -- book's sync in one go (main.lua openSync: one background process for
+    -- its place, queued updates, bookmarks and highlights)
+    UIManager:scheduleIn(Sync.OPEN_SYNC_DELAY, function()
+        if self.plugin.openSync then return self.plugin:openSync(self, saved) end
+        self.plugin:flushPending()
+        if self.plugin:syncEnabled() then self:pull(false, saved) end
+    end)
 end
 
 function Sync:onPageTurned()

@@ -271,9 +271,10 @@ function R.start(plugin)
             pcall(R.trace.checkStuck, function(text) R.event("Screen not answering keys", text, { "freeze" }, false) end)
         end
         R.beat("run")
-        UIManager:scheduleIn(R.HEARTBEAT, tick)
+        UIManager:scheduleIn(require("gzreader_ticks").untilNext(R.HEARTBEAT), tick)
     end
-    UIManager:scheduleIn(R.HEARTBEAT, tick)
+    -- (on the quarter minutes, with GZreader's other timers: gzreader_ticks.lua)
+    UIManager:scheduleIn(require("gzreader_ticks").untilNext(R.HEARTBEAT), tick)
     -- a normal close
     if not R.quit_patched then
         R.quit_patched = true
