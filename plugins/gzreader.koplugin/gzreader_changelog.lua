@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Downloads screen: only the changed lines refresh", text = "The Downloads screen kept its percentages current by redrawing the whole screen every 5 seconds, and went back to its first page each time. Now only the lines that changed are refreshed, on the page you're on, and nothing at all when nothing changed; the whole list is redrawn only when a download finishes or one is added." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },

@@ -1180,6 +1180,41 @@ do
     local hm = require("gzreader_homemenu").items(plugin)
     check(hm[1].text_func():match("^Downloads %(2%)"), "GZreader menu starts with Downloads (2) while downloading")
     Tasks.show()
+    -- the screen kept current: only the lines that changed, on the page shown
+    local function rect(x, y, w, h)
+        local r = { x = x, y = y, w = w, h = h }
+        function r.copy(a) return rect(a.x, a.y, a.w, a.h) end
+        function r.combine(p, q)
+            local x0, y0 = math.min(p.x, q.x), math.min(p.y, q.y)
+            return rect(x0, y0, math.max(p.x + p.w, q.x + q.w) - x0, math.max(p.y + p.h, q.y + q.h) - y0)
+        end
+        return r
+    end
+    local UIM = require("ui/uimanager")
+    local was_dirty, dirty = UIM.setDirty, {}
+    UIM.setDirty = function(_um, w, how) dirty[#dirty + 1] = { w = w, how = how } end
+    local m = { page = 2, perpage = 2, item_group = { { dimen = rect(0, 100, 600, 60) }, { dimen = rect(0, 160, 600, 60) } } }
+    m.item_table = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "5%" }, { text = "d" } }
+    function m.switchItemTable(self, _t, new_list, keep)
+        self.item_table, self.keep = new_list, keep
+        UIM:setDirty(self, function() return "ui", rect(0, 0, 600, 800) end)
+    end
+    local same = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "5%" }, { text = "d" } }
+    check(Tasks.update(m, same) == "same" and #dirty == 0, "Downloads screen: nothing changed, nothing redrawn")
+    local moved = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "9%" }, { text = "d" } }
+    local how, rows = Tasks.update(m, moved)
+    local kind, area
+    if dirty[1] then kind, area = dirty[1].how() end
+    check(how == "rows" and rows[1] == 1 and #rows == 1 and m.keep == -1 and kind == "ui" and area.y == 100 and area.h == 60,
+        "a percentage changed: only its line refreshed, on the same page (" .. tostring(area and area.y) .. "+" .. tostring(area and area.h) .. ")")
+    dirty = {}
+    check(Tasks.update(m, { { text = "a", mandatory = "2%" }, { text = "b" }, { text = "c", mandatory = "9%" }, { text = "d" } }) == "offpage"
+        and #dirty == 0 and m.item_table[1].mandatory == "2%", "a change on another page: kept for when it's shown, nothing redrawn")
+    local all = Tasks.update(m, { { text = "a" } })
+    local full = select(2, (dirty[1] or { how = function() end }).how())
+    check(all == "all" and full and full.h == 800,
+        "the list itself changed (a download done): all of it redrawn")
+    UIM.setDirty = was_dirty
 end
 ctl("/set?dl_slow=false")
 runLoop(function() return plugin.store.downloads["27"] ~= nil end, 40)
