@@ -24,10 +24,7 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
-tokens are never written. Ordinary lines are written a few at a time (at most
-5 seconds late; warnings and errors at once, and everything waiting when the
-Kindle goes to sleep, on exit and when you save or send the log), so a burst
-of sync logging is one write to the Kindle's storage, not one per line. Diagnostic logging is on by default (Settings →
+tokens are never written. Diagnostic logging is on by default (Settings →
 General → Diagnostic logging); while it's on, the quick panel has
 **Diagnostics**, which bundles the log, the tail of `crash.log`, what keeps
 the Kindle awake and a read-only audio/speech survey into one
@@ -51,6 +48,11 @@ and doesn't time book openings either (the `book open:` line), so it spends
 no time on its log. The diagnostic bundle is only put together when you send
 or save it. KOReader's own `crash.log` is separate: KOReader always writes
 it, and the start script trims it to 500 KB.
+
+Ordinary log lines are written a few at a time (at most 5 seconds late;
+warnings and errors at once, and everything waiting when the Kindle goes to
+sleep, on exit and when you save or send the log), so a burst of sync
+logging is one write to the Kindle's storage, not one per line.
 
 Putting the bundle together is quick after the first time: the audio/speech
 survey runs about thirty system commands (around 25 s on a Kindle 3), so
