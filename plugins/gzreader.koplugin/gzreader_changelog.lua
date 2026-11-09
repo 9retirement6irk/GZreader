@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Audiobooks on the bookshelf: the walkman wears its headphones, like the CD player", text = "Downloads, on the bookshelf: the Audiobooks walkman now has its headphones sitting on it (the band over its top, a pad resting on each side), as the Music CD player does, instead of standing beside it." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },

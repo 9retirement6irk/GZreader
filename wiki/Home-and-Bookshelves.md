@@ -28,7 +28,7 @@ the book once you open one.
 - **Home** has one shelf of your most recent books; the DX's taller screen
   has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a
-  cassette walkman with headphones, and **Music** (downloaded from Plex) as a
+  cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
   whatever the sort.
 - **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,

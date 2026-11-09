@@ -5807,6 +5807,23 @@ print("Music (Plex): the server, downloads, the player")
             "Audiobooks and Music come first, whatever the sort")
         check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
             "the walkman and the CD player drawn to one scale (the CD player lower)")
+        do -- the walkman wears its headphones, as the CD player does
+            local fh = io.open(PLUGIN .. "/icons/shelf/walkman.svg", "rb")
+            local svg = fh and fh:read("*a") or ""
+            if fh then fh:close() end
+            local px, pw = svg:match('<rect x="(%d+)" y="66" width="(%d+)" height="92"')
+            px, pw = tonumber(px) or 0, tonumber(pw) or 0
+            local left, right = false, false
+            for cx in svg:gmatch('<ellipse cx="(%d+)"[^>]*url%(#foam%)') do
+                cx = tonumber(cx)
+                if cx < px + 8 then left = true elseif cx > px + pw - 8 then right = true end
+            end
+            local band = svg:find("the headphones' band", 1, true)
+            local player = svg:find("<!-- the player", 1, true)
+            check(svg:match('viewBox="0 0 130 160"') and SV.SPECIAL.Audiobooks.ratio == 130 / 160
+                and left and right and band and player and band < player,
+                "the walkman's headphones sit on it: band behind, a pad on each side")
+        end
         G_reader_settings:saveSetting("home_dir", saved_home)
     end
     -- the player

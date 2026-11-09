@@ -5,30 +5,31 @@
 <linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6e6e6"/><stop offset="1" stop-color="#9c9c9c"/></linearGradient>
 <radialGradient id="foam" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#8a8a8a"/><stop offset=".7" stop-color="#5a5a5a"/><stop offset="1" stop-color="#3c3c3c"/></radialGradient>
 </defs>
-<!-- the player -->
-<rect x="4" y="66" width="74" height="92" rx="3" fill="url(#front)" stroke="#111" stroke-width="1.5"/>
-<rect x="64" y="66" width="14" height="92" rx="2" fill="url(#silver)" stroke="#222"/>
-<rect x="4" y="142" width="60" height="16" rx="2" fill="url(#silver)" stroke="#222"/>
-<rect x="10" y="60" width="9" height="7" rx="1.5" fill="#d0d0d0" stroke="#333"/>
-<rect x="36" y="59" width="6" height="8" rx="1" fill="#2a2a2a"/>
-<rect x="66" y="80" width="10" height="5" rx="1" fill="#8a8a8a"/><rect x="66" y="90" width="10" height="5" rx="1" fill="#8a8a8a"/><rect x="66" y="100" width="10" height="5" rx="1" fill="#8a8a8a"/>
+<!-- the headphones' band, behind the player: over its top from side to side -->
+<path d="M24 82 C18 18 112 18 106 82" fill="none" stroke="#7a7a7a" stroke-width="5" stroke-linecap="round"/>
+<path d="M24 82 C18 20 112 20 106 82" fill="none" stroke="#e8e8e8" stroke-width="1.5"/>
+<!-- the pads' cords, down and round behind the player -->
+<path d="M20 108 C16 130 22 146 40 150 M110 108 C114 130 108 146 92 150" fill="none" stroke="#1e1e1e" stroke-width="1.6"/>
+<!-- the player (in the middle) -->
+<rect x="28" y="66" width="74" height="92" rx="3" fill="url(#front)" stroke="#111" stroke-width="1.5"/>
+<rect x="88" y="66" width="14" height="92" rx="2" fill="url(#silver)" stroke="#222"/>
+<rect x="28" y="142" width="60" height="16" rx="2" fill="url(#silver)" stroke="#222"/>
+<rect x="34" y="60" width="9" height="7" rx="1.5" fill="#d0d0d0" stroke="#333"/>
+<rect x="60" y="59" width="6" height="8" rx="1" fill="#2a2a2a"/>
+<rect x="90" y="80" width="10" height="5" rx="1" fill="#8a8a8a"/><rect x="90" y="90" width="10" height="5" rx="1" fill="#8a8a8a"/><rect x="90" y="100" width="10" height="5" rx="1" fill="#8a8a8a"/>
 <!-- the cassette window: reels one above the other -->
-<rect x="14" y="84" width="22" height="50" rx="2" fill="#1a1a1a" stroke="#777"/>
-<rect x="17" y="88" width="16" height="42" rx="1" fill="#cfcfcf"/>
-<circle cx="25" cy="98" r="6" fill="#4a4a4a"/><circle cx="25" cy="98" r="2.5" fill="#eeeeee"/>
-<circle cx="25" cy="120" r="4" fill="#4a4a4a"/><circle cx="25" cy="120" r="2.5" fill="#eeeeee"/>
-<path d="M50 120 V100 M45 106 L50 99 L55 106" fill="none" stroke="#e6e6e6" stroke-width="2" stroke-linejoin="round"/>
-<rect x="12" y="74" width="40" height="3" rx="1.5" fill="#8a8a8a"/>
-
-<!-- the headphones: a thin metal band, sliders, foam pads (in front) -->
-<path d="M84 74 C80 10 126 6 125 56" fill="none" stroke="#7a7a7a" stroke-width="5" stroke-linecap="round"/>
-<path d="M84 74 C80 12 126 8 125 56" fill="none" stroke="#e8e8e8" stroke-width="1.5"/>
-<rect x="79" y="48" width="9" height="18" rx="2" fill="url(#band)" stroke="#555" transform="rotate(-6 83 57)"/>
-<rect x="118" y="42" width="9" height="18" rx="2" fill="url(#band)" stroke="#555" transform="rotate(6 122 51)"/>
-<ellipse cx="88" cy="86" rx="13" ry="12" fill="url(#foam)" stroke="#2a2a2a"/>
-<ellipse cx="116" cy="76" rx="12" ry="11" fill="url(#foam)" stroke="#2a2a2a"/>
-<g fill="#9a9a9a"><circle cx="83" cy="82" r="1"/><circle cx="90" cy="80" r="1"/><circle cx="94" cy="87" r="1"/><circle cx="85" cy="90" r="1"/><circle cx="112" cy="72" r="1"/><circle cx="118" cy="70" r="1"/><circle cx="121" cy="77" r="1"/><circle cx="113" cy="80" r="1"/></g>
-<path d="M88 98 C92 124 110 126 116 104 M116 87 C118 104 112 112 104 116" fill="none" stroke="#1e1e1e" stroke-width="1.6"/>
-<!-- the cable to the player's jack -->
-<path d="M39 60 C36 34 70 30 82 78" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="38" y="84" width="22" height="50" rx="2" fill="#1a1a1a" stroke="#777"/>
+<rect x="41" y="88" width="16" height="42" rx="1" fill="#cfcfcf"/>
+<circle cx="49" cy="98" r="6" fill="#4a4a4a"/><circle cx="49" cy="98" r="2.5" fill="#eeeeee"/>
+<circle cx="49" cy="120" r="4" fill="#4a4a4a"/><circle cx="49" cy="120" r="2.5" fill="#eeeeee"/>
+<path d="M74 120 V100 M69 106 L74 99 L79 106" fill="none" stroke="#e6e6e6" stroke-width="2" stroke-linejoin="round"/>
+<rect x="36" y="74" width="40" height="3" rx="1.5" fill="#8a8a8a"/>
+<!-- sliders and foam pads, resting against the player's sides -->
+<rect x="18" y="66" width="9" height="16" rx="2" fill="url(#band)" stroke="#555" transform="rotate(-4 22 74)"/>
+<rect x="103" y="66" width="9" height="16" rx="2" fill="url(#band)" stroke="#555" transform="rotate(4 108 74)"/>
+<ellipse cx="22" cy="95" rx="12" ry="14" fill="url(#foam)" stroke="#2a2a2a"/>
+<ellipse cx="108" cy="95" rx="12" ry="14" fill="url(#foam)" stroke="#2a2a2a"/>
+<g fill="#9a9a9a"><circle cx="17" cy="90" r="1"/><circle cx="24" cy="87" r="1"/><circle cx="28" cy="96" r="1"/><circle cx="19" cy="101" r="1"/><circle cx="103" cy="89" r="1"/><circle cx="110" cy="87" r="1"/><circle cx="114" cy="96" r="1"/><circle cx="106" cy="102" r="1"/></g>
+<!-- the cable from the right pad to the player's jack -->
+<path d="M63 59 C63 44 78 44 84 52 C92 62 104 54 108 81" fill="none" stroke="#1e1e1e" stroke-width="2"/>
 </svg>
