@@ -89,28 +89,11 @@ local function build_show_from_book_details()
             and config.metadata or {}
     end
 
-    local function open_metadata_settings()
-        if not zen_plugin then
-            UIManager:show(InfoMessage:new{
-                text = _("Open Zen UI Settings → Library → Metadata to configure providers."),
-            })
-            return
-        end
-        require("modules/settings/zen_settings_page").show(zen_plugin, {
-            path = {
-                { key = "_zen_settings_root", value = "library" },
-                { key = "_zen_metadata_settings", value = true },
-            },
-        })
-    end
-
-    local function offer_metadata_settings(text)
-        local ConfirmBox = require("ui/widget/confirmbox")
-        UIManager:show(ConfirmBox:new{
-            text = text,
-            cancel_text = _("Keep editing"),
-            ok_text = _("Open settings"),
-            ok_callback = open_metadata_settings,
+    -- GZreader: no Metadata settings menu (Grimmory has your books' details), so
+    -- no offer to open it: the lookup uses the sources that need no key.
+    local function offer_metadata_settings(_text)
+        UIManager:show(InfoMessage:new{
+            text = _("This online source isn't set up in GZreader. Your downloads' title, authors and series come from Grimmory."),
         })
     end
 

@@ -144,6 +144,8 @@ OUTBOX = {
     "calendar": {"days_back": 14, "days_ahead": 90},
     # usage statistics: the page sends what the Kindle left in usage/
     "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
+    # Send to the developer: the reports in reports/ go to this feed (gzreader_usbreport.lua)
+    "report": {"feed": "http://127.0.0.1:%d/open/feed/testfeed" % GP, "device": "Kindle2-ab12cd", "test_build": False},
 }
 USAGE_LINES = "\n".join(json.dumps(x) for x in [
     {"type": "identify", "payload": {"application": "test-app", "os": "Kindle2", "language": "en", "data": {"id": "k", "version": "1.25.2"}}},
@@ -183,6 +185,22 @@ with sync_playwright() as pw:
         await u.write(usage); await u.close();
         window.testRoot = root;
     }""", {"outbox": OUTBOX, "usage": USAGE_LINES})
+    # a report saved on the Kindle (Diagnostics → Send to the developer), the log exported when
+    # Sync was pressed, and the log files themselves (gzreader_usbreport.lua)
+    page.evaluate("""async () => {
+        const root = window.testRoot;
+        const sync = await (await (await root.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+        const reports = await sync.getDirectoryHandle('reports', { create: true });
+        async function put(dir, name, text) { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+        await put(reports, 'report-20261108-101500.txt', 'Grimmory plugin log, exported 2026-11-08 10:15:00\\n\\nthe saved report\u2019s log line\\n');
+        await put(reports, 'report-20261108-101500.json', JSON.stringify({ note: 'Sign-in froze at https://books.example.com/login?password=hunter2', at: 1794150900, version: '1.26.9', device: 'Kindle2-ab12cd', test_build: false }));
+        await put(reports, 'report-20261108-101700.txt', 'a report whose .json never got written');
+        await put(reports, 'latest.txt', 'Grimmory plugin log, exported when Sync was pressed\\n\\n===== staying awake =====\\nfresh export line\\n');
+        const ko = await root.getDirectoryHandle('koreader', { create: true });
+        await put(ko, 'gzreader.log.1', 'older log line\\n');
+        await put(ko, 'gzreader.log', 'newer log line\\n');
+        await put(ko, 'crash.log', 'crash line GET /x?access_token=abc123&y=1\\n');
+    }""")
     check(page.locator("#gate").is_visible() and not page.locator("#app").is_visible(), "a Kindle first: nothing to set up before one is chosen")
     page.evaluate("() => GZSync.open(window.testRoot, true)")
     page.wait_for_selector("#unlock:not(.hidden)")
@@ -431,6 +449,52 @@ with sync_playwright() as pw:
         week_of.append(((_d.timetuple().tm_yday - 1) + (_j - 1)) // 7 + (1 if _j <= 4 else 0))
     check(page_weeks == week_of, "reading stats: the page's week numbers match GZreader's around New Year (%s)" % page_weeks)
     print("    (page log)\n      " + log.replace("\n", "\n      "))
+
+    # Send to the developer for a Kindle without Wi-Fi
+    def feed():
+        return json.loads(urllib.request.urlopen("http://127.0.0.1:%d/feed" % (GP + 1)).read())
+    def report_files():
+        return page.evaluate("""async () => {
+            const sync = await (await (await window.testRoot.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+            const d = await sync.getDirectoryHandle('reports'); const out = []; for await (const n of d.keys()) out.push(n); return out.sort();
+        }""")
+    sent = feed()
+    first = sent[0] if sent else {}
+    check(len(sent) == 1 and first.get("_channel") == "testfeed"
+          and first.get("eventName") == "Debug report from Kindle2-ab12cd (1/1): Sign-in froze at https://books.example.com/login?password=<redacted>"
+          and "What happened: Sign-in froze at https://books.example.com/login?password=<redacted>" in first.get("eventContent", "")
+          and "the saved report\u2019s log line" in first.get("eventContent", "") and "hunter2" not in json.dumps(first)
+          and first.get("tags") == ["gzreader", "Kindle2-ab12cd", "debug-log", "release", "sync-page", "with-comment"],
+          "a report saved on the Kindle: sent at the sync, as a Wi-Fi Kindle sends it (name, comment, tags; a password typed in is redacted)… %r" % ([e.get("eventName") for e in sent],))
+    check("Sent to the developer: 1 report" in log and report_files() == ["latest.txt", "report-20261108-101700.txt"],
+          "…then deleted from the Kindle (half a report, without its .json, isn't sent) %r" % (report_files(),))
+    page.fill("#rep-note", "Sync froze at 40%")
+    page.click("#rep-send")
+    page.wait_for_function("document.querySelector('#rep-result').innerText !== ''", timeout=30000)
+    sent = feed()
+    last = sent[-1] if sent else {}
+    check(page.locator("#rep-result").inner_text().startswith("Sent to the developer") and len(sent) == 2
+          and last.get("eventName") == "Debug report from Kindle2-ab12cd (1/1): Sync froze at 40%"
+          and "fresh export line" in last.get("eventContent", "") and "newer log line" not in last.get("eventContent", "")
+          and "sync-page" in last.get("tags", []) and report_files() == ["report-20261108-101700.txt"],
+          "the page's Send to the developer: the log GZreader exported when Sync was pressed, with what's typed; then deleted")
+    page.click("#rep-send")
+    page.wait_for_function("!document.querySelector('#rep-send').disabled", timeout=30000)
+    sent = feed()
+    last = sent[-1] if sent else {}
+    content = last.get("eventContent", "")
+    check(len(sent) == 3 and "What happened: (nothing typed)" in content and content.index("older log line") < content.index("newer log line")
+          and "access_token=<redacted>" in content and "abc123" not in content and "with-comment" not in last.get("tags", []),
+          "…without that export: the log files on the drive (crash.log's tail redacted), nothing typed")
+    cut = page.evaluate("""() => {
+        const text = 'é'.repeat(300000) + 'tail';   // (600 KB of two-byte characters)
+        const r = GZSync.Report.parts(text);
+        const enc = new TextEncoder();
+        return { n: r.parts.length, max: Math.max(...r.parts.map((p) => enc.encode(p).length)), ok: r.parts.join('') === text.slice(text.length - r.parts.join('').length),
+                 tail: r.parts[r.parts.length - 1].endsWith('tail'), bytes: enc.encode(r.parts.join('')).length };
+    }""")
+    check(cut["n"] == 8 and cut["max"] <= 60 * 1024 and cut["ok"] and cut["tail"] and cut["bytes"] <= 480 * 1024,
+          "a long log: its newest 480 KB in 60 KB parts, never inside a character (as gzreader_remote.lua) %r" % (cut,))
 
     # M4B/M4A prepared for the Kindle here: the same files as gzreader_mp4.lua's (short chunks: many of them)
     for src in (os.path.join(HERE, "media", "tone.m4a"), TEST_M4A):

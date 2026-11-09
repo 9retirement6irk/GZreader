@@ -601,10 +601,12 @@ end
 function M.onToggleZenMode(plugin)
     local features = plugin and plugin.config and plugin.config.features
     if type(features) ~= "table" then return false end
-    if features.lockdown_mode == true and features.zen_mode == true then
+    -- GZreader: Zen mode is always on; the toggle (a gesture, an old button)
+    -- only turns it back on if it was off.
+    if features.zen_mode == true then
         return true
     end
-    features.zen_mode = not features.zen_mode
+    features.zen_mode = true
     save_config(plugin)
     require("modules/settings/zen_settings_apply").apply_feature_toggle(
         plugin, "zen_mode", features.zen_mode)

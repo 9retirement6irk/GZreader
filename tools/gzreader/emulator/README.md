@@ -92,6 +92,13 @@ Press/Back answer), and the order things happen in on a first start.
   (`qemu-arm-static -L /usr/arm-linux-gnueabi ./luajit <test>` in the tree):
   the shadow screen gives the same framebuffer bytes as drawing in Lua; the
   bytecode cache.
+- `perf.lua` (`GZ_EMU_BOOK` an EPUB; CI runs it on the Kindle 3) — CPU
+  time of a first start, opening a book, 20 page turns, back to Home, the
+  quick panel three times and ten moves on Home, plus a calibration (a fixed
+  piece of Lua) into `perf.json`. `perf_check.py <perf.json>
+  perf_baseline.json` compares it with the baseline per model (more than 25%
+  more CPU: flagged; 50%: CI fails); `--update` records a run as the
+  baseline, for a change that costs more on purpose.
 - `speed.lua` — CPU time, screen refreshes (mode, share of the screen),
   forks and files opened for everyday keys on Home, the tabs, the Home menu
   and Settings, twice; a sampling profiler shows where the CPU went. Needs

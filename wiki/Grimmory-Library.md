@@ -53,7 +53,7 @@ a sub-list, a back arrow.
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
-**Downloads** tab shows it. It can't be changed: Settings → Library → Folders has no Home folder
+**Downloads** tab shows it. It can't be changed: Settings → Downloads → Folders has no Home folder
 menu and KOReader's menus have no Home folder settings or "Set as HOME folder", since GZreader relies on it (it's set back to the GZreader folder at every start). Books sent from your browser (quick panel → Send
 books) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake

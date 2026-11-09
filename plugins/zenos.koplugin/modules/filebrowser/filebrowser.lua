@@ -221,7 +221,9 @@ function M.init(logger, plugin)
         _G.__ZEN_UI_RUNTIME_PATCHES = runtime_patches
     end
 
-    local rakuyomi_fn = OptionalProvider.call(PATCH_MODULES.rakuyomi, "is_available") and load_patch("rakuyomi") or nil
+    -- GZreader: not even loaded to ask, when the plugin scan found no Rakuyomi
+    local rakuyomi_fn = (not installed or installed.rakuyomi)
+        and OptionalProvider.call(PATCH_MODULES.rakuyomi, "is_available") and load_patch("rakuyomi") or nil
     if rakuyomi_fn then
         local ok = run_feature(logger, plugin, "rakuyomi", rakuyomi_fn)
         if ok then

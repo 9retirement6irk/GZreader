@@ -29,7 +29,7 @@ one pauses the others; sleep (the power switch) and unplugging headphones
 local Awake = require("gzreader_awake")
 local Engine = require("gzreader_audioengine")
 local InfoMessage = require("ui/widget/infomessage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
