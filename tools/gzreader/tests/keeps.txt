@@ -22,7 +22,7 @@
 1 frontend/ui/elements/filemanager_menu_order.lua
 1 frontend/ui/elements/page_overlap.lua
 1 frontend/ui/elements/reader_menu_order.lua
-15 frontend/ui/elements/screensaver_menu.lua
+14 frontend/ui/elements/screensaver_menu.lua
 1 frontend/ui/font.lua
 14 frontend/ui/screensaver.lua
 12 frontend/ui/widget/touchmenu.lua

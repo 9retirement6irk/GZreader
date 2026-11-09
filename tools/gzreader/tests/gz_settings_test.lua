@@ -356,15 +356,22 @@ do
     local okm, menu = pcall(dofile, FRONT .. "/ui/elements/screensaver_menu.lua")
     check(okm and type(menu) == "table", "the Sleep menu loads " .. tostring(not okm and menu or ""))
     local opts = okm and find(menu, "Wallpaper options")
-    local fill = opts and find(opts.sub_item_table, "Scale cover to fill screen")
-    check(fill and true or false, "Wallpaper options has Scale cover to fill screen " .. texts(opts and opts.sub_item_table))
+    local border = opts and find(opts.sub_item_table, "Border fill, rotation, and fit")
+    local fill = border and find(border.sub_item_table, "Scale cover to fill screen")
+    check(fill and true or false, "Border fill, rotation, and fit has Scale cover to fill screen "
+        .. texts(border and border.sub_item_table))
+    check(opts and not find(opts.sub_item_table, "Scale cover to fill screen"),
+        "Scale cover to fill screen isn't also in Wallpaper options itself")
     if fill then
-        local border = find(opts.sub_item_table, "Border fill, rotation, and fit")
-        local stretch
-        for _i, it in ipairs(border and border.sub_item_table or {}) do
-            if rawget(it, "text_func") and text(it):find("Stretch") then stretch = it end
+        local stretch, at = nil, {}
+        for i, it in ipairs(border.sub_item_table) do
+            if rawget(it, "text_func") and text(it):find("Stretch") then stretch, at.stretch = it, i end
+            if it == fill then at.fill = i end
+            if rawget(it, "text") == "Rotate cover for best fit" then at.rotate = i end
         end
-        check(fill.enabled_func() and not fill.checked_func() and stretch and stretch.enabled_func(),
+        check(at.stretch and at.fill and at.rotate and at.stretch < at.fill and at.fill < at.rotate,
+            "between Stretch cover to fit screen and Rotate cover for best fit")
+        check(border.enabled_func() and not fill.checked_func() and stretch and stretch.enabled_func(),
             "off at first; offered with GZreader's sleep screen; Stretch still offered")
         fill.callback()
         check(store[Fit.SETTING] == true and fill.checked_func() and store.screensaver_stretch_images == false
@@ -372,7 +379,7 @@ do
         fill.callback()
         check(store[Fit.SETTING] == nil and not fill.checked_func() and stretch.enabled_func(), "unticking it")
         store.gzreader_sleep_auto, store.screensaver_type = false, "bookstatus"
-        check(not fill.enabled_func(), "greyed out when the sleep screen shows no picture")
+        check(not border.enabled_func(), "greyed out (with its submenu) when the sleep screen shows no picture")
     end
     local ss_src = io.open(FRONT .. "/ui/screensaver.lua"):read("*a")
     check(ss_src:find('isTrue("screensaver_rotate_auto_for_best_fit") or gz_fill then', 1, true)

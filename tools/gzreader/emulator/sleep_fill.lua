@@ -1,4 +1,4 @@
--- Wallpaper options → Scale cover to fill screen (frontend/gzsleepfit.lua):
+-- Wallpaper options → Border fill, rotation, and fit → Scale cover to fill screen (frontend/gzsleepfit.lua):
 -- the sleep screen set to a picture from the screensavers folder (here
 -- a wide mid-grey one), first as it was (fitted, black bars above and
 -- below), then filling the screen. Reads what the e-ink panel shows
