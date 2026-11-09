@@ -5441,6 +5441,46 @@ print("Headphones")
     check(Jack.plugged() == false, "and it's used")
     files["/sys/devices/platform/codec/hp_det"] = "1"
     check(Jack.plugged() == true, "and plugged in again")
+    -- an lipc property: read in the process when KOReader's lipc library opens
+    Jack.unwatch("music")
+    G_reader_settings:saveSetting(Jack.SETTING, { kind = "lipc", prop = "headphoneState", on = "1" })
+    local reads, closed, state = 0, 0, "1"
+    local handle = {
+        get_string_property = function(_h, svc, prop)
+            reads = reads + 1
+            return svc == "com.lab126.audio" and prop == "headphoneState" and state or nil
+        end,
+        close = function() closed = closed + 1 end,
+    }
+    Jack.handle = nil
+    Jack.lipc_open = function() return handle end
+    Jack.shells = 0
+    files["lipc:headphoneState"] = "1"
+    local sched = {}
+    local JUI = require("ui/uimanager")
+    local real_in, real_un = JUI.scheduleIn, JUI.unschedule
+    JUI.scheduleIn = function(_ui, s, fn) sched[#sched + 1] = { s = s, fn = fn } end
+    JUI.unschedule = function() end
+    paused = 0
+    Jack.watch("audiobook", function() paused = paused + 1 end)
+    check(Jack.inProcess() and sched[1] and sched[1].s == Jack.INTERVAL, "lipc in the process: a look every second")
+    Jack.ticker()
+    state = "0"
+    Jack.ticker()
+    check(paused == 1 and reads >= 3 and Jack.shells == 0, "unplugged: paused, with no shell started")
+    check(closed == 1 and Jack.handle == nil, "nothing playing: the lipc handle is closed")
+    -- no lipc library: lipc-get-prop, but only every few seconds
+    Jack.handle = nil
+    Jack.lipc_open = function() return nil end
+    sched = {}
+    Jack.watch("audiobook", function() end)
+    check(not Jack.inProcess() and sched[1] and sched[1].s == Jack.SHELL_INTERVAL and Jack.SHELL_INTERVAL >= 3,
+        "no lipc library: looks with a shell every " .. tostring(Jack.SHELL_INTERVAL) .. " s, not every second")
+    Jack.unwatch("audiobook")
+    check(Jack.handle == nil, "stopped: nothing kept open")
+    JUI.scheduleIn, JUI.unschedule = real_in, real_un
+    Jack.lipc_open = nil
+    Jack.handle = nil
     G_reader_settings:delSetting(Jack.SETTING)
     Jack.read = nil
 end)()
