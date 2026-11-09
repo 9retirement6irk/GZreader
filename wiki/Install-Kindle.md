@@ -1,5 +1,7 @@
 **Package:** `gzreader-kindle-<version>.zip` — for the **Kindle 4** (5-way, no keyboard) and the **Kindle Touch**, and the Paperwhite 1 (untested). Built on KOReader's `kindle` package.
 
+The [setup page](https://9retirement6irk.github.io/GZreader/setup/) does all of this for you, jailbreak included: it puts each file on the Kindle at the right step.
+
 ## 1. Jailbreak and install KUAL
 
 - **Kindle 4:** [Jailbreaking and rooting → Kindle 4](Jailbreaking-and-Rooting#kindle-4)

@@ -1,8 +1,10 @@
 **Package:** `gzreader-kindle-legacy-<version>.zip` — for the **Kindle 2**, **Kindle Keyboard (3)**, **Kindle DX** and **DX Graphite**. Built on KOReader's `kindle-legacy` package.
 
-## 1. Jailbreak and install KUAL
+The [setup page](https://9retirement6irk.github.io/GZreader/setup/) does all of this for you, jailbreak included: it puts each file on the Kindle at the right step.
 
-You need a jailbroken Kindle with KUAL: [Jailbreaking and rooting → Kindle 2, 3, DX](Jailbreaking-and-Rooting#kindle-2-kindle-keyboard-3-dx-dx-graphite). Turn on airplane mode first (the Kindle 2 and DX have no Wi‑Fi to turn off).
+## 1. Jailbreak and install Launchpad
+
+You need a jailbroken Kindle with Launchpad (or KUAL): [Jailbreaking and rooting → Kindle 2, 3, DX](Jailbreaking-and-Rooting#kindle-2-kindle-keyboard-3-dx-dx-graphite). Turn wireless off first (Menu → Turn Wireless Off; the Kindle 2 and DX have 3G instead of Wi‑Fi).
 
 ## 2. Download
 
@@ -17,8 +19,8 @@ From the [latest release](https://github.com/9retirement6irk/GZreader/releases/l
 
 ## 4. Start GZreader
 
-- Open the **KUAL** book, then **GZreader → Start GZreader**. *Start GZreader (no framework)* stops the Kindle's own software while GZreader runs: more free memory, and the Kindle restarts its home screen when you exit.
-- Or press **Shift, G, G** (the last book), **Shift, G, L** (the library) or **Shift, G, N** (without the Kindle's framework): the launchpad shortcuts.
+- Restart the Kindle once (Menu → Settings → Menu → Restart) so Launchpad reads GZreader's shortcuts, then press **Shift, G, G** (the last book), **Shift, G, L** (the library) or **Shift, G, N** (without the Kindle's framework: more free memory, and the Kindle restarts its home screen when you exit).
+- Or, with KUAL: open the **KUAL** book, then **GZreader → Start GZreader** (or *Start GZreader (no framework)*).
 
 The setup guide runs on the first start ([After installing](Installing#after-installing)).
 

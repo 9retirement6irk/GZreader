@@ -94,6 +94,32 @@ def main():
         r = publish_ko("something.zip", b"X", "v1")
         check(r.returncode != 0, "nook-koreader takes only koreader-kindle-legacy-<tag>.zip")
 
+        print("the full Kindle packages, for the setup page")
+        pk = os.path.join(w, "pk")
+        os.makedirs(pk)
+        flavours = ["kindle-legacy", "kindle", "kindlepw2", "kindlehf"]
+        for fl in flavours:
+            open(os.path.join(pk, "gzreader-%s-1.27.0.zip" % fl), "wb").write(("PKG-" + fl).encode())
+        open(os.path.join(pk, "gzreader-update.zip"), "wb").write(b"NOT-A-PACKAGE")
+        r = subprocess.run(["bash", TOOL, "packages", pk, "1.27.0"], cwd=w, env=env, capture_output=True, text=True)
+        f, n = files("updates")
+        pmeta = json.loads(f.get("packages.json", b"{}"))
+        import hashlib
+        check(r.returncode == 0 and all(f.get("gzreader-%s.zip" % fl) == ("PKG-" + fl).encode() for fl in flavours)
+              and pmeta.get("version") == "1.27.0" and sorted(pmeta.get("packages", {})) == sorted(flavours)
+              and pmeta["packages"]["kindlehf"] == {"file": "gzreader-kindlehf.zip", "size": len(b"PKG-kindlehf"),
+                                                    "sha256": hashlib.sha256(b"PKG-kindlehf").hexdigest()}
+              and f.get("gzreader-update.zip") == b"RELEASE3" and f.get("gzreader-beta-update.zip") == b"BETA-3"
+              and f.get("koreader-kindle-legacy-v2026.07.2.zip") == b"KO-2" and n == "1",
+              "gzreader-<flavour>.zip and packages.json next to the rest, one commit " + r.stderr[-200:])
+        publish("release", b"RELEASE4", "1.27.1")
+        f, n = files("updates")
+        check(f.get("gzreader-kindle.zip") == b"PKG-kindle" and "packages.json" in f and f.get("gzreader-update.zip") == b"RELEASE4",
+              "a release's update keeps the packages")
+        os.remove(os.path.join(pk, "gzreader-kindlehf-1.27.0.zip"))
+        r = subprocess.run(["bash", TOOL, "packages", pk, "1.27.0"], cwd=w, env=env, capture_output=True, text=True)
+        check(r.returncode != 0 and "kindlehf" in r.stderr, "packages refuses a folder missing one of the four")
+
         print("two publishes at once")
         # (a pre-receive hook refuses the first push once)
         hook = os.path.join(remote, "hooks", "pre-receive")
@@ -114,8 +140,9 @@ def main():
         out = os.path.join(w, "o2")
         git(w, "clone", "-q", "-b", "updates", remote, out)
         lease_tool = os.path.join(w, "slow.sh")
-        src = open(TOOL).read().replace('    cp "$ZIP" "$W/out/$FILE"\n',
-                                         '    cp "$ZIP" "$W/out/$FILE"\n    [ -n "${GZ_TEST_RACE:-}" ] && { sh -c "$GZ_TEST_RACE"; GZ_TEST_RACE=; }\n', 1)
+        src = open(TOOL).read().replace('        cp "$ZIP" "$W/out/$FILE"\n',
+                                         '        cp "$ZIP" "$W/out/$FILE"\n        [ -n "${GZ_TEST_RACE:-}" ] && { sh -c "$GZ_TEST_RACE"; GZ_TEST_RACE=; }\n', 1)
+        check("GZ_TEST_RACE" in src, "(the race hook found its place in publish-updates.sh)")
         open(lease_tool, "w").write(src)
         race = ("cd '%s' && echo NEW > newcomer.txt && git add newcomer.txt && "
                 "git -c user.name=t -c user.email=t@example.com commit -qm n && git push -q '%s' updates" % (out, remote))

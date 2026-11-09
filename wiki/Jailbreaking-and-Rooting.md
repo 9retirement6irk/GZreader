@@ -4,21 +4,25 @@ GZreader runs next to the device's own software, so a Kindle has to be **jailbro
 
 ## Kindles
 
+**The easy way: the [setup page](https://9retirement6irk.github.io/GZreader/setup/)** (Chrome or Edge on a computer, the Kindle plugged in). It tells the model from the serial number, picks the jailbreak for its firmware, puts each file on the Kindle's drive at the right step (the jailbreak, Launchpad, KUAL, the hotfix, WinterBreak's hidden folder…), checks the drive where a step leaves something to see, and ends by installing the right GZreader package. A Kindle that's already jailbroken goes straight to GZreader. Some files it carries itself (the ones whose licence allows it: NiLuJe's Kindle 2/DX/3 jailbreak, the Universal Hotfix, WinterBreak, the KUAL fix for the DX); for the others it links the exact file and checks the one you drop on it. The steps below are the same, by hand.
+
 **Before anything:** turn on **airplane mode**, so the Kindle doesn't update itself to a firmware the jailbreak can't handle (kindlemodding.org also suggests [filling the storage](https://kindlemodding.org/jailbreaking/prevent-auto-update/) to block updates until the jailbreak is in). Find the firmware version in **Settings → Device Options → Device Info** (older Kindles: Menu → Settings).
 
 [kindlemodding.org](https://kindlemodding.org/jailbreaking/) lists the current methods; its **[Jailbreak Wizard](https://kindlemodding.org/jailbreak-wizard.html)** picks the one for your Kindle from its serial number and firmware. A Kindle can't be downgraded without a jailbreak, and a firmware that's been patched against every method has to wait for a new one.
 
 ### Kindle 2, Kindle Keyboard (3), DX, DX Graphite
 
-1. [NiLuJe's K2/DX/DXG/K3 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K2DXDXGK3-Jailbreak/): copy its `Update_jailbreak_….bin` to the Kindle (delete any other `.bin` or `update.bin.tmp.partial` files there), eject, then **Home → Menu → Settings → Menu → Update Your Kindle**. Error U006 on firmware 2.x is expected.
-2. **KUAL:** put `KUAL-KDK-1.0.azw2` in `documents` ([Installing KUAL & MRPI](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/installing-kual-mrpi/)). A **KUAL** book appears in the library.
+1. [NiLuJe's K2/DX/DXG/K3 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K2DXDXGK3-Jailbreak/): copy its `Update_jailbreak_….bin` for your model to the Kindle (delete any other `.bin` or `update.bin.tmp.partial` files there), eject, then **Home → Menu → Settings → Menu → Update Your Kindle**. Error U006 on firmware 2.x is expected (it worked; don't run it again). Kindle Keyboard: the `_3.0-to-3.2_` file is for firmware **3.2 and older only**; 3.2.1 and newer take the other one (NiLuJe's README; kindlemodding.org's table gives 3.2.1 the wrong one).
+2. **Launchpad** (`update_launchpad_0.0.1d_<model>_install.bin` from `lpad-pkg-001d.zip`, [MobileRead](https://www.mobileread.com/forums/showthread.php?p=1155117)): copy it to the Kindle and run **Update Your Kindle** again. Press Shift three times: a `screenshot.bmp` on the drive means it's running. GZreader starts from Launchpad (**Shift, G, G**), so these Kindles don't need KUAL.
+3. **KUAL (optional):** since the developer keys expired in April 2025, the usual KUAL doesn't open on a Kindle 2/DX ("not signed by a registered developer"), and may not on a Kindle Keyboard. On a DX or DX Graphite use the [KUAL DX fix](https://github.com/9retirement6irk/kual-dx-fix) (re-signed KUAL, keys that don't expire; Shift, K, I installs them).
 
 Then: [install the `kindle-legacy` package](Install-Kindle-Legacy).
 
 ### Kindle 4
 
-1. [NiLuJe's K4 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K4-Jailbreak/): copy its three files (`data.tar.gz`, `ENABLE_DIAGS`, `diagnostic_logs`) to the Kindle, eject, restart it (Menu → Settings → Menu → Restart) into diagnostics mode, then with the 5-way: **D) Exit, Reboot or Disable Diags → R) Reboot System → Q) To continue**. A "You are Jailbroken" book appears.
-2. **KUAL:** `KUAL-KDK-1.0.azw2` in `documents` ([Installing KUAL & MRPI](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/installing-kual-mrpi/)).
+1. [NiLuJe's K4 jailbreak](https://kindlemodding.org/jailbreaking/Legacy/K4-Jailbreak/): copy its three files (`data.tar.gz`, `ENABLE_DIAGS`, `diagnostic_logs`) to the Kindle — not the `…_uninstall.bin` in the same zip, which the next Update Your Kindle would install — eject, restart it (Menu → Settings → Menu → Restart) into diagnostics mode, then with the 5-way: **D) Exit, Reboot or Disable Diags → R) Reboot System → Q) To continue**. A "You are Jailbroken" book appears.
+2. **New developer keys:** the ones the jailbreak installs expired in April 2025. Install NiLuJe's 2025 keys (`Update_mkk-…-install.bin` from the MKK package in [his snapshots](https://www.mobileread.com/forums/showthread.php?t=225030)) with **Update Your Kindle**.
+3. **KUAL:** `KUAL-KDK-1.0.azw2` (2.7.37, April 2025, or newer) in `documents` ([Installing KUAL & MRPI](https://kindlemodding.org/jailbreaking/Legacy/post-jailbreak/installing-kual-mrpi/)).
 
 Then: [install the `kindle` package](Install-Kindle).
 

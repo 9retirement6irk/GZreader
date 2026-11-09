@@ -9,9 +9,14 @@
 #                                                  for the Nook 1st Edition (no
 #                                                  VFP), for trying elsewhere;
 #                                                  devices don't read it
+#   gzreader-<flavour>.zip    + packages.json      the latest release's full
+#                                                  Kindle packages (kindle-legacy,
+#                                                  kindle, kindlepw2, kindlehf),
+#                                                  for the setup page (docs/setup)
 # Each publish keeps the other files as they are.
 #
 #   tools/gzreader/publish-updates.sh release|beta|nook-koreader <zip> <version> [commit]
+#   tools/gzreader/publish-updates.sh packages <dir with gzreader-<flavour>-<version>.zip> <version>
 # REMOTE: the repository to push to (default: this GitHub repository, with
 # GH_TOKEN). (Test builds before 1.26.6 read an older "beta-updates" branch;
 # it's no longer written.)
@@ -29,8 +34,18 @@ case "$KIND" in
     beta) FILE=gzreader-beta-update.zip; JSON=latest-beta.json ;;
     nook-koreader) FILE=$(basename "$ZIP"); JSON=nook-koreader.json
         case "$FILE" in koreader-kindle-legacy-*.zip) ;; *) echo "nook-koreader: koreader-kindle-legacy-<tag>.zip" >&2; exit 1 ;; esac ;;
-    *) echo "release, beta or nook-koreader" >&2; exit 1 ;;
+    packages) FILE=""; JSON=packages.json
+        [ -d "$ZIP" ] || { echo "packages: a folder with the release's gzreader-<flavour>-<version>.zip" >&2; exit 1; } ;;
+    *) echo "release, beta, nook-koreader or packages" >&2; exit 1 ;;
 esac
+# the full Kindle packages (packages): flavour, as named in the release
+FLAVOURS="kindle-legacy kindle kindlepw2 kindlehf"
+pkg() { ls "$ZIP"/gzreader-"$1"-[0-9]*.zip 2>/dev/null | head -n 1; }
+if [ "$KIND" = packages ]; then
+    for fl in $FLAVOURS; do
+        [ -n "$(pkg "$fl")" ] || { echo "packages: no gzreader-$fl-<version>.zip in $ZIP" >&2; exit 1; }
+    done
+fi
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 
@@ -38,6 +53,10 @@ trap 'rm -rf "$W"' EXIT
 mine() {
     [ "$1" = "$FILE" ] || [ "$1" = "$JSON" ] && return 0
     [ "$KIND" = nook-koreader ] && case "$1" in koreader-kindle-legacy-*.zip) return 0 ;; esac
+    if [ "$KIND" = packages ]; then
+        local fl
+        for fl in $FLAVOURS; do [ "$1" = "gzreader-$fl.zip" ] && return 0; done
+    fi
     return 1
 }
 
@@ -59,12 +78,23 @@ publish() {
             mine "$f" || cp "$W/old/$f" "$W/out/"
         done
     fi
-    cp "$ZIP" "$W/out/$FILE"
     local size sha
-    size=$(stat -c %s "$W/out/$FILE")
-    sha=$(sha256sum "$W/out/$FILE" | cut -d' ' -f1)
-    printf '{"version":"%s","size":%s,"sha256":"%s","file":"%s","commit":"%s","notes":%s}\n' \
-        "$VERSION" "$size" "$sha" "$FILE" "$COMMIT" "$NOTES" > "$W/out/$JSON"
+    if [ "$KIND" = packages ]; then
+        local fl list=""
+        for fl in $FLAVOURS; do
+            cp "$(pkg "$fl")" "$W/out/gzreader-$fl.zip"
+            size=$(stat -c %s "$W/out/gzreader-$fl.zip")
+            sha=$(sha256sum "$W/out/gzreader-$fl.zip" | cut -d' ' -f1)
+            list="$list${list:+,}\"$fl\":{\"file\":\"gzreader-$fl.zip\",\"size\":$size,\"sha256\":\"$sha\"}"
+        done
+        printf '{"version":"%s","packages":{%s}}\n' "$VERSION" "$list" > "$W/out/$JSON"
+    else
+        cp "$ZIP" "$W/out/$FILE"
+        size=$(stat -c %s "$W/out/$FILE")
+        sha=$(sha256sum "$W/out/$FILE" | cut -d' ' -f1)
+        printf '{"version":"%s","size":%s,"sha256":"%s","file":"%s","commit":"%s","notes":%s}\n' \
+            "$VERSION" "$size" "$sha" "$FILE" "$COMMIT" "$NOTES" > "$W/out/$JSON"
+    fi
     cat "$W/out/$JSON"
     (cd "$W/out" && git init -q -b updates && git add -A \
         && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
