@@ -41,6 +41,7 @@ return {
             { short = "Calendar: the bar beside each event lines up with it", text = "The short bar in an event's row (its calendar's shade) started halfway down the title and hung below it. It's now centred on the event, as it was meant to be." },
             { short = "Books open quicker while something syncs in the background", text = "When you open a book, GZreader's background work now waits: a sync that's already running (the calendar, Notes, Grimmory) is paused until the first page is up, and nothing new starts before then (30 s at most). On a Kindle 3 a calendar sync running at the same time made a book take 23.5 s to open instead of 6." },
             { short = "Notes and Calendar icons show again (pin, file, picture, tag)", text = "The icons on notes (pinned, place, file, picture, tag) and the Calendar's come from ZenOS's icon font, which GZreader asked for by the wrong path: it was never found (an error in the log at every size), and the pin, file, picture and tag icons were missing. It's found now." },
+            { short = "Kindle 3: pausing when headphones are unplugged can work", text = "Find the headphone jack (Settings → Reader) found nothing on a Kindle 3: it shows headphones in none of the places GZreader looked. It also listens now for the message the Kindle's hardware service sends when headphones go in and out (audioHS), and when that's what changed, music, audiobooks and read aloud pause on it, with one listener while something plays." },
         },
     },
     {

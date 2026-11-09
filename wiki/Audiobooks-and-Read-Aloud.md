@@ -96,6 +96,12 @@ paths the speech service knows about.
 
 ## Headphones
 
+**Kindle 3:** it shows headphones nowhere GZreader can look; its hardware
+service sends a message instead when they go in or out (`audioHS` from
+`com.lab126.hal`). *Find the headphone jack* (below) listens for it, and the
+`headphone test:` line in the log lists the messages heard. When that's what
+it found, one small listener waits for the message while something plays.
+
 When headphones are unplugged while music, an audiobook or read aloud plays,
 GZreader pauses it (Settings → Reader → *Pause when headphones are
 unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
