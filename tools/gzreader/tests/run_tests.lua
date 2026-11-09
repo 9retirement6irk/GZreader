@@ -969,6 +969,79 @@ check(stuck_part > 0, "stalled: the part downloaded is kept, to continue")
 Download.STALL_SECONDS = nil
 ctl("/set?dl_stall=false")
 
+print("The Kindle 2/3/DX's screen: four pixels packed at a time, the same bytes")
+;(function()
+    local ffi = require("ffi")
+    local okb, BB = pcall(require, "ffi/blitbuffer")
+    local okf, ShadowFB = pcall(dofile, PLUGIN .. "/../../frontend/device/kindle/shadowfb.lua")
+    check(okb and okf, "shadowfb.lua loads " .. tostring(not okf and ShadowFB or ""))
+    if not (okb and okf) then return end
+    local function buffers(w, h)
+        local sh = { w = w, h = h, stride = w, data = ffi.new("uint8_t[?]", w * h + 16) }
+        local fb = { w = w, h = h, stride = w / 2, data = ffi.new("uint8_t[?]", w * h / 2 + 16), getType = function() return BB.TYPE_BB4 end }
+        return sh, fb
+    end
+    local seed = 12345
+    local function rnd(m) seed = (seed * 1103515245 + 12345) % 2147483648; return seed % m end
+    local mismatches, cases = 0, 0
+    for _i, size in ipairs({ { 600, 40 }, { 824, 30 }, { 602, 20 } }) do
+        local w, h = size[1], size[2]
+        local sh = buffers(w, h)
+        for k = 0, w * h - 1 do sh.data[k] = rnd(256) end
+        for _c = 1, 60 do
+            local x, y = rnd(w + 20) - 10, rnd(h)
+            local rw, rh = rnd(w) + 1, rnd(h - y) + 1
+            local inv = rnd(2) == 1
+            local fa = select(2, buffers(w, h))
+            local fb2 = select(2, buffers(w, h))
+            for k = 0, w * h / 2 - 1 do local v = rnd(256); fa.data[k] = v; fb2.data[k] = v end
+            ShadowFB.wide = false
+            ShadowFB.pack(sh, fa, x, y, rw, rh, inv)
+            ShadowFB.wide = true
+            ShadowFB.pack(sh, fb2, x, y, rw, rh, inv)
+            if ffi.string(fa.data, w * h / 2) ~= ffi.string(fb2.data, w * h / 2) then mismatches = mismatches + 1 end
+            cases = cases + 1
+        end
+    end
+    check(mismatches == 0 and cases == 180, "four at a time: byte for byte what two at a time gives (" .. cases .. " rectangles, both grey levels, " .. mismatches .. " different)")
+    ShadowFB.wide = true
+end)()
+
+print("Timers on the clock's quarter minutes; the clock in a book on old Kindles follows the pages")
+;(function()
+    local Ticks = require("gzreader_ticks")
+    local real = Ticks.now
+    Ticks.now = function() return 1000000.2 end -- (…:40.2 on the wall clock: 1000000 % 60 = 40)
+    local q1, h1 = Ticks.untilNext(15), Ticks.untilNext(30)
+    Ticks.now = function() return 1000004.9 end
+    local c = Ticks.untilNext(15)
+    Ticks.now = real
+    check(math.abs(q1 - 4.85) < 0.01 and math.abs(h1 - 19.85) < 0.01 and math.abs(c - 0.15) < 0.01 + 15 and c > 15,
+        "the next quarter / half minute (just after it, so they're due together; never less than half a second away)")
+    local function src(rel) local h = io.open(PLUGIN .. "/" .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
+    check(src("gzreader_usage.lua"):find('require("gzreader_ticks").untilNext(U.TICK)', 1, true)
+        and src("gzreader_remote.lua"):find('require("gzreader_ticks").untilNext(R.HEARTBEAT)', 1, true)
+        and src("gzreader_net.lua"):find('require("gzreader_ticks").untilNext(Net.CHECK_EVERY)', 1, true),
+        "usage statistics, the heartbeat and the Wi-Fi idle check use it")
+    local Eink = require("gzreader_eink")
+    local Device = require("device")
+    local was_model, was_kindle = Device.model, Device.isKindle
+    Device.isKindle = function() return true end
+    Device.model = "Kindle3"
+    local k3 = Eink.minuteClock()
+    Device.model = "KindlePaperWhite3"
+    local pw3 = Eink.minuteClock()
+    Device.model = "Kindle3"
+    G_reader_settings:saveSetting(Eink.CLOCK_SETTING, true)
+    local chosen = Eink.minuteClock()
+    G_reader_settings:delSetting(Eink.CLOCK_SETTING)
+    Device.model, Device.isKindle = was_model, was_kindle
+    check(not k3 and pw3 and chosen, "in a book: the clock with the pages on a Kindle 3 (no REAGL), every minute on a Paperwhite; a setting wins")
+    local zt = src("../zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua")
+    check(zt:find("local function gzMinuteRepaints()", 1, true) and zt:find("if not gzMinuteRepaints() then return end", 1, true)
+        and zt:find("if not gzMinuteRepaints() then\n            _autoRefresh = nil", 1, true), "ZenOS's top bar in a book asks before its minute repaint")
+end)()
+
 print("Unfinished downloads after a restart")
 do
     local R = require("gzreader_recovery")

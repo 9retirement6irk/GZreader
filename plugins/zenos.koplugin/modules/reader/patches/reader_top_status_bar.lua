@@ -1069,7 +1069,19 @@ local function apply_reader_top_status_bar()
         end
     end
 
+    -- GZreader: on the Kindles without REAGL (2, DX, 3, 4) the clock and
+    -- battery follow page turns, not the minute (gzreader_eink.lua minuteClock)
+    local function gzMinuteRepaints()
+        local ok, Eink = pcall(require, "gzreader_eink")
+        if not ok or type(Eink) ~= "table" or type(Eink.minuteClock) ~= "function" then return true end
+        return Eink.minuteClock()
+    end
+
     local function autoRefresh()
+        if not gzMinuteRepaints() then
+            _autoRefresh = nil
+            return
+        end
         local view = activeReaderView()
         local cfg2 = zen_plugin and zen_plugin.config and zen_plugin.config.reader_top_status_bar
         if not (view and view.ui and view.ui.document) or not should_show(view)
@@ -1084,6 +1096,7 @@ local function apply_reader_top_status_bar()
 
     local function armAutoRefresh()
         if _autoRefresh then return end -- autoRefresh disarms itself once no minute item is configured
+        if not gzMinuteRepaints() then return end
         local cfg2 = zen_plugin and zen_plugin.config and zen_plugin.config.reader_top_status_bar
         if #slotsContaining(cfg2, MINUTE_REFRESH_ITEMS) == 0 then return end
         _autoRefresh = autoRefresh
