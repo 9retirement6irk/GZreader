@@ -87,5 +87,14 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   1, 2, 4 and 6 s; requests queued together for the same login share a
   process anyway (up to 6, long ones last), each result coming back as soon
   as it's ready.
+- **Kept connections in background processes** (`gzreader_api.lua`, the pool):
+  a background process's requests to the same server share one connection
+  (HTTP keep-alive) instead of a new TCP and TLS connection each; the
+  handshake was most of a request's time on a Kindle 3. A connection idle
+  more than 4 s isn't used again; one the server closed meanwhile is opened
+  again and the request sent once more (never a POST, which always starts
+  on a new connection). Grimmory's book lists come in pages of 50 at most,
+  so a 2,000-book index is 40 requests: now on one connection. Off: a file
+  named `gz-no-keepalive` in the `koreader` folder.
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
   seen for a large book). Later opens use the cache.
