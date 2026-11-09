@@ -3,7 +3,7 @@
 -- Receives ctx: { plugin, config, save_and_apply, settings_apply }
 
 local _ = require("gettext")
-local updater = require("modules/settings/zen_updater")
+local updater = require("modules/settings/gz_updater") -- GZreader: not ZenOS's updater (gz_updater.lua)
 
 local M = {}
 

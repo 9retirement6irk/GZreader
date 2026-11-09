@@ -473,6 +473,11 @@ function M.get(id)
     return builtin_by_id[id] or external_by_id[id]
 end
 
+-- GZreader: widgets Home doesn't offer (Settings → Home → Widgets, Home
+-- itself), also when an older build's settings or a preset name them. They
+-- stay registered: the end-of-book page still uses stats_triplet.
+M.GZ_NOT_ON_HOME = { stats_triplet = true } -- the local reading stats
+
 function M.normalizeRows(rows, default_order, default_enabled)
     rows = type(rows) == "table" and rows or {}
     default_order = type(default_order) == "table" and default_order or {}
@@ -480,6 +485,8 @@ function M.normalizeRows(rows, default_order, default_enabled)
 
     local order = {}
     local seen = {}
+    local hidden = M.GZ_NOT_ON_HOME -- GZreader
+    for id in pairs(hidden) do seen[id] = true end
     for _i, id in ipairs(type(rows.order) == "table" and rows.order or {}) do
         if type(id) == "string" and id ~= "" and not seen[id] then
             order[#order + 1] = id
@@ -490,19 +497,19 @@ function M.normalizeRows(rows, default_order, default_enabled)
     local enabled = {}
     local has_enabled = false
     for id, value in pairs(type(rows.enabled) == "table" and rows.enabled or {}) do
-        if type(id) == "string" and id ~= "" then
+        if type(id) == "string" and id ~= "" and not hidden[id] then -- GZreader
             enabled[id] = value == true
             if value == true then has_enabled = true end
         end
     end
     if not has_enabled then
         for id, value in pairs(default_enabled) do
-            enabled[id] = value == true
+            if not hidden[id] then enabled[id] = value == true end -- GZreader
         end
     end
     local components = M.list()
     for _i, comp in ipairs(components) do
-        if enabled[comp.id] == nil then enabled[comp.id] = false end
+        if enabled[comp.id] == nil and not hidden[comp.id] then enabled[comp.id] = false end -- GZreader
     end
 
     for _i, id in ipairs(default_order) do

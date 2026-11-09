@@ -172,8 +172,35 @@ function ReaderStatistics:initData()
     self.data.pages = self.document:getPageCount()
     -- Update these numbers to what's actually stored in the settings
     self.data.highlights, self.data.notes = self.ui.annotation:getNumberOfHighlightsAndNotes()
+    -- GZreader: the database part (the book's row, then its reading totals:
+    -- a GROUP BY over a view that rescales every row, slower the more the
+    -- book has been read; most of a second of a Kindle 3's book opening) waits
+    -- until the first page is on screen. Until then the totals kept with the
+    -- book (gz_read_pages, gz_read_time) give the average time per page.
+    local cached_pages, cached_time = tonumber(self.data.gz_read_pages), tonumber(self.data.gz_read_time)
+    if cached_pages and cached_time and cached_pages > 0 then
+        self.book_read_pages, self.book_read_time = cached_pages, cached_time
+        self.avg_time = cached_time / cached_pages
+    end
+    self.id_curr_book = nil -- (looked up again below: initData also runs after a new database)
+    local document = self.document
+    local gen = (self._gz_init_gen or 0) + 1
+    self._gz_init_gen = gen
+    UIManager:tickAfterNext(function()
+        -- (the book still open, and no newer initData since)
+        if self.document ~= document or not (self.ui and self.ui.document) or self._gz_init_gen ~= gen then return end
+        self:gzInitDataDB()
+    end)
+end
+
+--- GZreader: initData's database part, after the first page (see above).
+function ReaderStatistics:gzInitDataDB()
+    local before = self.avg_time
     self.id_curr_book = self:getIdBookDB()
-    if not self.id_curr_book then return end
+    if not self.id_curr_book then
+        self.avg_time = nil
+        return
+    end
     self.book_read_pages, self.book_read_time = self:getPageTimeTotalStats(self.id_curr_book)
     if self.book_read_pages > 0 then
         self.avg_time = self.book_read_time / self.book_read_pages
@@ -181,6 +208,10 @@ function ReaderStatistics:initData()
         -- NOTE: Possibly less weird-looking than initializing this to 0?
         self.avg_time = math.floor(0.50 * self.settings.max_sec)
         logger.dbg("ReaderStatistics: Initializing average time per page at 50% of the max value, i.e.,", self.avg_time)
+    end
+    self.data.gz_read_pages, self.data.gz_read_time = self.book_read_pages, self.book_read_time
+    if self.avg_time ~= before and self.view and self.view.footer then
+        self.view.footer:maybeUpdateFooter()
     end
 end
 
@@ -992,6 +1023,8 @@ function ReaderStatistics:insertDB(updated_pagecount)
         self.book_read_time = 0
     end
     self.avg_time = self.book_read_time / self.book_read_pages
+    -- GZreader: kept with the book for its next opening (see initData)
+    self.data.gz_read_pages, self.data.gz_read_time = self.book_read_pages, self.book_read_time
 
     self:resetVolatileStats(cur_page_start_ts)
 end

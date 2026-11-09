@@ -5,7 +5,9 @@
 # Nook 1st Edition and Nook Simple Touch (GZ_CI_MODELS), with KOReader's
 # official Kindle 2/3/DX binaries, checking what makes it GZreader: menus,
 # names, the Menu key, Settings, launcher, picture books, the Nook's colour
-# screen, menu text size (tools/gzreader/emulator/keeps.lua).
+# screen, menu text size (tools/gzreader/emulator/keeps.lua); and CPU
+# budgets for a Kindle 3's everyday work (emulator/perf.lua, perf_check.py
+# against emulator/perf_baseline.json; GZ_CI_PERF=0 skips them).
 #
 #   tools/gzreader/ci-test.sh <koreader-kindle-legacy-vX.zip> <out dir>
 #
@@ -58,5 +60,17 @@ for model in ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst}; do
         echo "- ✅ $model: $(grep -c '^ok' "$k") checks" >> "$SUM"
     fi
 done
+# CPU budgets: a Kindle 3's everyday work (start, a book, page turns, the
+# quick panel, Home) against tools/gzreader/emulator/perf_baseline.json
+# (perf.lua, perf_check.py). GZ_CI_PERF=0 skips it.
+if [ "${GZ_CI_PERF:-1}" = 1 ] && [[ " ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst} " == *" k3 "* ]]; then
+    echo "### CPU budgets (emulator, Kindle 3)" >> "$SUM"
+    rm -rf "$OUT/nook-home/GZreader"
+    GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=k3 EMU_TIMEOUT=420 \
+        bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/perf.lua" "$OUT/perf-k3" > /dev/null 2>&1
+    python3 "$REPO/tools/gzreader/emulator/perf_check.py" "$OUT/perf-k3/perf.json" \
+        "$REPO/tools/gzreader/emulator/perf_baseline.json" >> "$SUM" || failed=$((failed + 1))
+    [ -s "$OUT/perf-k3/perf.json" ] && { echo '```'; cat "$OUT/perf-k3/perf.json"; echo '```'; } >> "$SUM"
+fi
 cat "$SUM"
 exit $failed
