@@ -9,7 +9,7 @@
 # <koreader base dir>: an unzipped official KOReader package's koreader/
 # folder (its ffi/ Lua is used; e.g. koreader-kindle-legacy-vX.zip).
 # Needs: luajit, lua-socket, luacheck, python3 with radicale (pip), curl;
-# for the sync page, Playwright with Chromium. Ports port … port+15, port+40 … port+62.
+# for the sync page, Playwright with Chromium. Ports port … port+15, port+40 … port+63.
 # Exit status: the number of failed suites.
 set -u
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -41,6 +41,17 @@ if python3 -c "import playwright" 2>/dev/null; then
   export GZ_SYNC_DUMP="$WORK/syncdump"
 else
   echo "skipped: no Playwright (pip install playwright; playwright install chromium)"
+fi
+
+echo "== the setup page (jailbreak and install, a browser)"
+if python3 -c "import playwright" 2>/dev/null; then
+  (cd "$T" && timeout 300 python3 setup_page_test.py $((PORT + 63))) > "$WORK/setup.txt" 2>&1
+  rc=$?
+  grep "FAIL" "$WORK/setup.txt"
+  tail -1 "$WORK/setup.txt"
+  [ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/setup.txt"; }
+else
+  echo "skipped: no Playwright"
 fi
 
 echo "== plugin (mock servers)"
