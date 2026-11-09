@@ -23,7 +23,7 @@ The copy, as the page writes it:
 ]]
 
 local Api = require("gzreader_api")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 
 local OfflineApi = setmetatable({}, { __index = Api })

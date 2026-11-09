@@ -51,6 +51,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   shadow screen (above). On the Kindle 4 (no shadow screen) it stays off and
   can't be switched on: it has no hardware screen inversion, and KOReader's
   software inversion is too slow there.
+- **JSON through KOReader's C library** (`gzreader_json.lua`): rapidjson
+  (`common/rapidjson.so`) instead of LuaJSON, 5–10× faster on a library's
+  worth of books; JSON null still decodes to nil, and lists that must stay
+  lists when empty are marked with `Json.list()`. LuaJSON is used if
+  rapidjson doesn't load or refuses something.
 
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in

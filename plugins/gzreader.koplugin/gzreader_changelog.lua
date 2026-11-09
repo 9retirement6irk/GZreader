@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Less processor time for GZreader's data: the library, lists, sync and the outbox", text = "GZreader now reads and writes its data (Grimmory's lists, the library index, the library copy on Kindles without Wi-Fi, the outbox, background results, saved lists) with KOReader's built-in C library for JSON instead of its Lua one, which was 5 to 10 times slower on a library's worth of books. Nothing changes in what's stored or sent." },
+        },
+    },
+    {
         version = "1.26.10",
         changes = {
             { short = "Manage book no longer shows the Edit menu", text = "Manage book (the quick panel's Manage tile, or holding a book at Home) no longer shows ZenOS's Edit submenu: its Delete is already at the top as Delete from this Kindle." },

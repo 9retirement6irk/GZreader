@@ -9,7 +9,7 @@ saved to settings/gzreader_index.json, and refreshed when older than a day.
 ]]
 
 local DataStorage = require("datastorage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local ProgressbarDialog = require("ui/widget/progressbardialog")
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
