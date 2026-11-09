@@ -77,6 +77,9 @@ Press/Back answer), and the order things happen in on a first start.
   the calendar's buttons and an event, a book read by tapping.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
+- `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
+  with 40 books: a page takes as many as fit, none hidden, letters Q to L only,
+  Del opens nothing, L opens its book.
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume
   rocker (VPlus / VMinus) in the player and on Home, D (the description), the
   Home key from the player and Settings, sleep and closing GZreader. Needs a

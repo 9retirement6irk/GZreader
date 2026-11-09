@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Downloads shelves take as many books as fit; letters Q to L", text = "In the bookshelf view, a page of Downloads held as many books as the widest spines would fit, so shelves of narrower books ended with room for two or three more. Now each page takes as many as its books' spines leave room for. On Kindles with a keyboard the letter keys go from Q to L: the books after L have none (the 5-way reaches them) and Del is no longer a book's key." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },

@@ -2299,6 +2299,55 @@ do
     Device.model, Device.screen = was_model, was_screen
 end
 
+print("Downloads in the bookshelf view: shelves filled by the spines' widths, letters Q to L")
+do
+    -- (a fresh copy of the view with a plain screen and a stand-in shelf module: widths from the path)
+    local Device = require("device")
+    local was_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end, scaleBySize = function(_s, v) return v end }
+    local SHELF = "modules/filebrowser/patches/home/widgets/shelf"
+    local saved = {}
+    for _i, m in ipairs({ "gzreader_shelfview", SHELF, "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }) do
+        saved[m] = package.loaded[m]
+    end
+    local narrow = {}
+    package.loaded[SHELF] = { MIN_SPINE = 44, MAX_SPINE = 58, BOARD_H = 14, UNDER_H = 6, PAGES = 6,
+        look = function(book) return { w = narrow[book.path] and 44 or 58, h = 100, shade = 0.5 } end }
+    for _i, m in ipairs({ "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }) do
+        if type(package.loaded[m]) ~= "table" then
+            package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end })
+        end
+    end
+    package.loaded["gzreader_shelfview"] = nil
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local okv, SV = pcall(require, "gzreader_shelfview")
+    package.path = saved_path
+    if okv then
+        local function books(count, narrow_ones)
+            local t = {}
+            for i = 1, count do
+                local p = "/books/" .. i .. ".epub"
+                t[i] = { is_file = true, path = p, text = i .. ".epub" }
+                narrow[p] = narrow_ones and true or nil
+            end
+            return t
+        end
+        local wide = SV.countPerPage(books(60, false), 3, 190, 600)
+        local thin = SV.countPerPage(books(60, true), 3, 190, 600)
+        check(thin > wide and wide >= 18, "narrow spines: more books on a page (" .. thin .. " against " .. wide .. " of the widest)")
+        local all = books(60, true)
+        local fits = true
+        for first = 0, #all - 1, thin do if not SV.pageFits(all, first, thin, 3, 190, 600) then fits = false end end
+        check(fits and not SV.pageFits(all, 0, thin + 4, 3, 190, 600), "every page's books fit on its shelves, and no more than that")
+        check(SV.KEYS == 19, "letters on the shelves: Q to L (19), not Del")
+    else
+        check(false, "the shelf view loads: " .. tostring(SV))
+    end
+    for m, v in pairs(saved) do package.loaded[m] = v end
+    Device.screen = was_screen
+end
+
 print("No duplicate reading sessions")
 do
     local before = #json.decode(ctl("/state")).sessions
