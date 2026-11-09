@@ -49,12 +49,39 @@ function Sticky.hand(size)
 end
 
 -- ZenOS's icon font (Symbols Nerd Font subset): tag, location arrow, file,
--- image, calendar, star (pinned).
-local ICON_FONT = "./plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf"
+-- image, calendar, star (pinned). KOReader's own nerdfonts/symbols.ttf lacks
+-- the pin, file, image and tag.
+Sticky.ICON_FONT = "plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf" -- (from KOReader's folder)
 Sticky.ICONS = { pin = "\u{F04CE}", place = "\u{F124}", attach = "\u{F0224}", pdf = "\u{F0224}",
     image = "\u{F02F5}", tag = "\u{F12F7}", date = "\u{F073}" }
+
+--- The icon font's path as Font:getFace wants it: getFace reads
+--- `<fonts folder>/<name>`, so a path from KOReader's folder ("./plugins/…")
+--- became ./fonts/./plugins/… and failed (logged at every size; the icons
+--- fell back to the UI font, which has no pin, file, image or tag).
+function Sticky.iconFontName(fontdir, cwd)
+    fontdir = fontdir or "./fonts"
+    if fontdir:sub(1, 1) ~= "/" then
+        -- a fonts folder inside KOReader's (./fonts): out of it, then down
+        local depth = 0
+        for part in fontdir:gmatch("[^/]+") do
+            if part == ".." then depth = depth - 1 elseif part ~= "." then depth = depth + 1 end
+        end
+        if depth >= 0 then return string.rep("../", depth) .. Sticky.ICON_FONT end
+    end
+    -- elsewhere: up to / from the fonts folder, then KOReader's folder
+    cwd = cwd or require("libs/libkoreader-lfs").currentdir()
+    local levels = select(2, fontdir:gsub("[^/]+", ""))
+    return string.rep("../", levels) .. (cwd:gsub("^/+", "")) .. "/" .. Sticky.ICON_FONT
+end
+
 function Sticky.iconFace(size)
-    local ok, face = pcall(Font.getFace, Font, ICON_FONT, size)
+    if not Sticky.icon_font_name then
+        local ok, FontList = pcall(require, "fontlist")
+        Sticky.icon_font_name = Sticky.iconFontName(ok and type(FontList) == "table" and type(FontList.fontdir) == "string"
+            and FontList.fontdir or nil)
+    end
+    local ok, face = pcall(Font.getFace, Font, Sticky.icon_font_name, size)
     return ok and face or Font:getFace("cfont", size)
 end
 

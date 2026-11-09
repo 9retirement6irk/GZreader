@@ -7,7 +7,7 @@ device; the account password is never written to disk.
 ]]
 
 local Gzip = require("gzreader_gzip")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local http = require("socket.http")
 local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
@@ -50,6 +50,101 @@ function Api:new(store, on_change)
     return setmetatable({ store = store, on_change = on_change or function() end }, self)
 end
 
+--[[ Keep-alive inside a background process.
+Every request was a new TCP and TLS connection (http.request closes it after
+the reply): on a Kindle 3 the handshake is most of a request's 0.3–3.5 s.
+Between Api.poolBegin() and Api.poolEnd() (a background process's life:
+gzreader_async.lua, gzreader_index.lua) a connection whose reply said it can
+stay open (HTTP/1.1, no "Connection: close", a length or chunked body) is
+kept, and the next request to the same server and port uses it if it has
+been idle at most IDLE_MAX seconds. A request on a kept connection that fails
+(the server closed it meanwhile) is sent once more on a new one; a POST never
+takes a kept connection (it isn't sent twice). Downloads (opts.sink) and the
+main process don't use it.
+]]
+local Pool = { on = false, idle = {}, IDLE_MAX = 4, made = 0, reused = 0, requests = 0, helped = 0 }
+Api.pool = Pool
+
+function Api.poolBegin()
+    Pool.on, Pool.idle, Pool.made, Pool.reused, Pool.requests, Pool.broken = true, {}, 0, 0, 0, false
+    Pool.helped = 0
+    -- (off: a file named gz-no-keepalive in the koreader folder)
+    if lfs.attributes("gz-no-keepalive", "mode") == "file" then Pool.on = false end
+end
+
+function Api.poolEnd()
+    for _k, c in pairs(Pool.idle) do pcall(c.sock.close, c.sock) end
+    Pool.idle, Pool.on = {}, false
+    if Pool.requests > 1 then
+        if Pool.helped > 0 then
+            -- (through the request helper, which keeps its own connections: none here)
+            Log.info("http:", Pool.requests, "requests,", Pool.helped, "through the request helper,", Pool.made, "connection(s) here")
+        else
+            Log.info("http:", Pool.requests, "requests on", Pool.made, "connection(s)")
+        end
+    end
+end
+
+local Conn = {}
+Conn.__index = function(self, k)
+    if Conn[k] then return Conn[k] end
+    local inner = rawget(self, "inner")
+    local v = inner and inner[k]
+    if type(v) == "function" then return function(_s, ...) return v(inner, ...) end end
+    return v
+end
+
+function Conn:settimeout(t, mode)
+    self.timeout = { t, mode }
+    if self.inner then return self.inner:settimeout(t, mode) end
+    return 1
+end
+
+function Conn:connect(host, port)
+    self.key = self.scheme .. "://" .. tostring(host) .. ":" .. tostring(port)
+    local idle = Pool.idle[self.key]
+    if idle and self.may_reuse and socket.gettime() - idle.at <= Pool.IDLE_MAX then
+        Pool.idle[self.key] = nil
+        self.inner, self.reused = idle.sock, true
+        Pool.reused = Pool.reused + 1
+        if self.timeout then self.inner:settimeout(self.timeout[1], self.timeout[2]) end
+        return 1
+    end
+    if idle and socket.gettime() - idle.at > Pool.IDLE_MAX then
+        Pool.idle[self.key] = nil
+        pcall(idle.sock.close, idle.sock)
+    end
+    if self.scheme == "https" then
+        self.inner = require("ssl.https").tcp(self.params)()
+    else
+        self.inner = socket.tcp()
+    end
+    Pool.made = Pool.made + 1
+    if self.timeout then self.inner:settimeout(self.timeout[1], self.timeout[2]) end
+    return self.inner:connect(host, port)
+end
+
+Api._Conn = Conn -- (tests)
+
+--- (http.lua closes after every reply: rawRequest decides, see keepOrClose)
+function Conn:close() return 1 end
+
+local function keepOrClose(conn, code, resp_headers, status)
+    if not conn.inner then return end
+    local h = type(resp_headers) == "table" and resp_headers or {}
+    local connection = tostring(h["connection"] or ""):lower()
+    local framed = tonumber(h["content-length"]) ~= nil or (h["transfer-encoding"] and h["transfer-encoding"] ~= "identity")
+    if type(code) == "number" and type(status) == "string" and status:match("^HTTP/1%.1 ")
+            and not connection:find("close", 1, true) and framed and conn.key then
+        local old = Pool.idle[conn.key]
+        if old and old.sock ~= conn.inner then pcall(old.sock.close, old.sock) end
+        Pool.idle[conn.key] = { sock = conn.inner, at = socket.gettime() }
+    else
+        pcall(conn.inner.close, conn.inner)
+    end
+    conn.inner = nil
+end
+
 --- opts.log_url: what the log shows instead of the address (a secret link,
 --- e.g. a calendar link with its keys in it). opts.want_raw: the body as
 --- text (gzip unpacked) instead of decoded JSON.
@@ -81,21 +176,82 @@ local function rawRequest(method, full_url, opts)
     else
         socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
     end
-    local request = {
-        url = full_url,
-        method = method,
-        headers = headers,
-        source = body and ltn12.source.string(body) or nil,
-        sink = sink,
-    }
+    local pooled = Pool.on and not Pool.broken and not opts.sink
+    local scheme = full_url:match("^(%a+)://")
+    scheme = scheme and scheme:lower()
+    if pooled and (scheme == "https" or scheme == "http") then
+        headers["Connection"] = "keep-alive, TE"
+    else
+        pooled = false
+    end
+    -- the request helper (gzreader_reqhelper.lua: opt-in), as an HTTP proxy on 127.0.0.1
+    local helper_port, helper_token
+    if pooled then
+        local okh, Helper = pcall(require, "gzreader_reqhelper")
+        if okh then helper_port, helper_token = Helper.endpoint() end
+    end
+    local function attempt(may_reuse, direct)
+        local request = {
+            url = full_url,
+            method = method,
+            headers = headers,
+            source = body and ltn12.source.string(body) or nil,
+            sink = sink,
+        }
+        if helper_port and not direct then
+            local h2 = {}
+            for k, v in pairs(headers) do h2[k] = v end
+            h2["X-Gz-Helper"], h2["Connection"] = helper_token, nil
+            request.headers, request.proxy = h2, "http://127.0.0.1:" .. helper_port
+            local ok, c, h, st = pcall(function() return socket.skip(1, http.request(request)) end)
+            if ok and c == 502 and type(h) == "table" and h["x-gz-helper-error"] then
+                return true, h["x-gz-helper-error"], nil, nil, false, "answered" -- (the server's error, through the helper)
+            end
+            return ok, c, h, st, false, true
+        end
+        local conn
+        if pooled then
+            conn = setmetatable({ scheme = scheme, params = request, may_reuse = may_reuse }, Conn)
+            request.create = function() return conn end
+        end
+        -- LuaSocket/LuaSec raise (rather than return) on some failures, e.g. a TLS
+        -- handshake error; treat those like any other network error.
+        local ok, c, h, st = pcall(function()
+            return socket.skip(1, http.request(request))
+        end)
+        if conn then keepOrClose(conn, ok and c, ok and h, ok and st) end
+        return ok, c, h, st, conn and conn.reused
+    end
     logger.dbg("Grimmory:", method, shown_url)
     pcall(function() require("gzreader_net").touch() end)
     local t0 = socket.gettime()
-    -- LuaSocket/LuaSec raise (rather than return) on some failures, e.g. a TLS
-    -- handshake error; treat those like any other network error.
-    local pcall_ok, code, resp_headers, status = pcall(function()
-        return socket.skip(1, http.request(request))
-    end)
+    if pooled then Pool.requests = Pool.requests + 1 end
+    local pcall_ok, code, resp_headers, status, reused, via_helper = attempt(method ~= "POST")
+    if pooled and via_helper == true and pcall_ok and type(code) == "number" then Pool.helped = Pool.helped + 1 end
+    if via_helper == true and (not pcall_ok or type(code) ~= "number") and tostring(code):find("refused", 1, true) then
+        -- (the helper isn't there after all: nothing was sent; directly, and not again in this process)
+        pcall(function() require("gzreader_reqhelper").dead = true end)
+        chunks = {}
+        sink = socketutil.table_sink(chunks)
+        pcall_ok, code, resp_headers, status, reused = attempt(method ~= "POST", true)
+    end
+    if reused and (not pcall_ok or type(code) ~= "number") and not opts.sink then
+        -- (the server closed the kept connection meanwhile: once more, on a new one)
+        Log.info("HTTP", method, shown_url, "kept connection closed by the server: again on a new one")
+        chunks = {}
+        sink = socketutil.table_sink(chunks)
+        pcall_ok, code, resp_headers, status = attempt(false)
+    end
+    if pooled and not pcall_ok and tostring(code):find("%.lua:%d+:") then
+        -- a Lua error, not the network's: keep-alive off for this process, the request as before
+        Pool.broken = true
+        Log.warn("HTTP keep-alive off:", tostring(code))
+        pooled = false
+        chunks = {}
+        sink = socketutil.table_sink(chunks)
+        headers["Connection"] = nil
+        pcall_ok, code, resp_headers, status = attempt(false)
+    end
     socketutil:reset_timeout()
     pcall(function() require("gzreader_net").touch() end)
     local ms = math.floor((socket.gettime() - t0) * 1000)
@@ -106,7 +262,7 @@ local function rawRequest(method, full_url, opts)
     end
     local raw = table.concat(chunks)
     local enc = type(resp_headers) == "table" and (resp_headers["content-encoding"] or resp_headers["Content-Encoding"])
-    if gzip and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
+    if gzip and not opts.no_inflate and raw ~= "" and type(enc) == "string" and enc:lower():find("gzip", 1, true) then
         local plain, zerr = Gzip.inflate(raw)
         if plain then raw = plain else Log.warn("HTTP", method, shown_url, "gzip:", tostring(zerr)) end
     end
@@ -370,6 +526,43 @@ function Api:listShelves()
         end
     end
     return out
+end
+
+--- The signed-in user (GET /api/v1/users/me: id, username, name…), or nil, err.
+function Api:me()
+    local code, data, err = self:call("GET", "/api/v1/users/me", { timeouts = { 8, 15 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code))
+end
+
+--- Your own regular shelves (GET /api/v1/shelves: yours and other people's
+--- public ones, each with its userId; Grimmory only lets you put books on
+--- your own). me: your user id (nil: the ones that aren't public).
+function Api:listMyShelves(me)
+    local code, data, err = self:call("GET", "/api/v1/shelves", { timeouts = { 10, 20 } })
+    if code ~= 200 or type(data) ~= "table" then return nil, err or ("http_" .. tostring(code)) end
+    local own = require("gzreader_shelves").own
+    local out = {}
+    for _i, s in ipairs(data) do
+        if own(s, me) then
+            out[#out + 1] = { id = s.id, name = str(s.name) or ("#" .. tostring(s.id)), bookCount = tonumber(s.bookCount) }
+        end
+    end
+    return out
+end
+
+--- Put book `book_id` on shelves `add` and take it off shelves `remove`
+--- (lists of shelf ids; POST /api/v1/books/shelves). Returns Grimmory's
+--- record of the book afterwards (with its shelves), or nil, err.
+function Api:setBookShelves(book_id, add, remove)
+    local list = require("gzreader_shelves").list
+    local code, data, err = self:call("POST", "/api/v1/books/shelves", {
+        body = { bookIds = list{ tonumber(book_id) or book_id }, shelvesToAssign = list(add), shelvesToUnassign = list(remove) },
+        timeouts = { 10, 20 } })
+    if code == 200 or code == 204 then
+        return type(data) == "table" and type(data[1]) == "table" and data[1] or {}
+    end
+    return nil, err or ("http_" .. tostring(code)), code
 end
 
 --- GET /api/v1/app/authors (paged; sort=name|bookCount..., search=...)
@@ -673,6 +866,34 @@ end
 
 function Api:deleteAnnotation(id)
     local code, _, err = self:call("DELETE", "/api/v1/annotations/" .. tostring(id), { timeouts = { 8, 15 } })
+    if code == 204 or code == 200 or code == 404 then return true, nil, code end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
+--- Grimmory's notes for a book (its web reader's Notes tab; v2: one per CFI range).
+function Api:listBookNotes(book_id)
+    local code, data, err = self:call("GET", "/api/v2/book-notes/book/" .. tostring(book_id),
+        { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: bookId, cfi, noteContent, selectedText, color (#RRGGBB), chapterTitle. 409 = a note at that CFI exists.
+function Api:createBookNote(body)
+    local code, data, err = self:call("POST", "/api/v2/book-notes", { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: noteContent (color, chapterTitle).
+function Api:updateBookNote(id, body)
+    local code, data, err = self:call("PUT", "/api/v2/book-notes/" .. tostring(id), { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+function Api:deleteBookNote(id)
+    local code, _, err = self:call("DELETE", "/api/v2/book-notes/" .. tostring(id), { timeouts = { 8, 15 } })
     if code == 204 or code == 200 or code == 404 then return true, nil, code end
     return false, err or ("http_" .. tostring(code)), code
 end

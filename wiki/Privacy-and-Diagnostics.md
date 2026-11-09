@@ -36,13 +36,34 @@ the Kindle awake and a read-only audio/speech survey into one
 - **Send to the developer:** first a box asks what you were doing and what
   went wrong (type as much as helps, or nothing), then that and the log go
   straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)). Also
-  Settings → General → Send diagnostic log to the developer.
+  Settings → General → Send diagnostic log to the developer. On the
+  Kindle 2 and DX (no Wi‑Fi) it says **(at the next sync)**: the same box,
+  then the log and what you typed wait in `.gzsync/reports/` and the
+  [sync page](Sync-with-a-Computer#sending-diagnostics-to-the-developer) sends them at your next sync.
 - **Send to a browser (QR code):** scan the code (same Wi‑Fi), tap
   Download, then attach the file wherever you need it. Also the setup
   page's Diagnostics tab and Settings → General.
-- **Save to the Kindle:** next to the GZreader folder, to copy over USB
-  (the only choice on Kindles without Wi‑Fi). Also Settings → General →
-  Save diagnostic log (USB).
+- **Save to the Kindle:** next to the GZreader folder, to copy over USB.
+  Also Settings → General → Save diagnostic log (USB).
+
+With diagnostic logging **off**, GZreader writes nothing to `gzreader.log`
+and doesn't time book openings either (the `book open:` line), so it spends
+no time on its log. The diagnostic bundle is only put together when you send
+or save it. KOReader's own `crash.log` is separate: KOReader always writes
+it, and the start script trims it to 500 KB.
+
+Putting the bundle together is quick after the first time: the audio/speech
+survey runs about thirty system commands (around 25 s on a Kindle 3), so
+the answers that only change with the Kindle's firmware are kept in
+`koreader/cache/gz-device-probe.lua` and reused; the few that change while
+the Kindle runs (memory, running programs, Wi‑Fi state, GZreader's own
+files) are run each time.
+
+No log files pile up on the Kindle: Send to the developer and Send to a
+browser (and the setup page's Diagnostics tab) build the file in
+`koreader/cache` and delete it once it's sent, and Save to the Kindle keeps
+only the newest three `gzreader-log-<date>.txt` next to the GZreader folder
+(the one just saved always stays).
 
 ## Remote debugging
 

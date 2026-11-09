@@ -39,7 +39,7 @@
   .status { font-size: 14px; color: var(--muted); margin: 0 0 8px; overflow-wrap: anywhere; }
   .conn.on .status { color: var(--good); }
   label { display: block; font-size: 14px; color: var(--muted); margin: 8px 0 3px; }
-  input[type=text], input[type=url], input[type=password], input[type=search] { width: 100%; padding: 9px 10px; border-radius: 8px;
+  input[type=text], input[type=url], input[type=password], input[type=search], textarea { width: 100%; padding: 9px 10px; border-radius: 8px;
     border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; }
   select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); max-width: 100%; }
   button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 9px; border: 1.5px solid var(--ink);
@@ -302,14 +302,22 @@
       <p id="phase" class="small muted"></p>
       <p id="done" class="done hidden"></p>
       <ol class="log" id="log"></ol>
+
+      <h3 style="margin-top:24px">Diagnostics</h3>
+      <p class="small muted" id="rep-status"></p>
+      <label class="small" for="rep-note">What were you doing, and what went wrong?</label>
+      <textarea id="rep-note" rows="4" placeholder="e.g. the book froze when I turned the page"></textarea>
+      <p class="small muted">Sent to the developer with the Kindle's diagnostic log. Passwords and tokens are never in it; it can name books and files.</p>
+      <button id="rep-send">Send to the developer</button>
+      <p id="rep-result" class="small"></p>
     </section>
   </main>
 
   <footer>
-    Everything here runs in this browser: it talks to your own servers and writes to the Kindle, nothing else.
+    Everything here runs in this browser: it talks to your own servers and writes to the Kindle. Only usage statistics (when on, on the Kindle) and reports you send to the developer go elsewhere: to the developer.
     <a href="../">GZreader</a> · <a href="https://github.com/9retirement6irk/GZreader/wiki/Sync-with-a-Computer">How syncing with a computer works</a>
   </footer>
 </div>
-<script src="gzsync.js?v=2e268d2191"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
+<script src="gzsync.js?v=aa8a24d56b"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
 </body>
 </html>

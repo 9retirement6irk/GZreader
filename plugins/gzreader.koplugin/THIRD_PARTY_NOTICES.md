@@ -6,7 +6,8 @@
 [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader-Client)
 (`grimmory_sync.koplugin/cfi.lua`, `annotations.lua` and `slaxml.lua`, commit
 `560af98`). GZreader's changes, marked "GZreader" in the code: a cache of
-parsed chapters, and archive paths with `%20` and `../` resolved.
+parsed chapters, archive paths with `%20` and `../` resolved, and notes kept
+in Grimmory's Notes tab skipped as highlights (`grimmory_note_only`).
 
 ```
 MIT License

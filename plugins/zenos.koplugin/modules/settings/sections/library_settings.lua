@@ -13,7 +13,6 @@ local defaults = require("config/defaults")
 local LibraryFontPath = require("common/library_font_path")
 local Accent = require("common/ui/accent")
 
-local metadata_section    = require("modules/settings/sections/library_settings/metadata_settings")
 local settings_apply      = require("modules/settings/zen_settings_apply")
 
 local M = {}
@@ -279,23 +278,6 @@ function M.build(ctx)
         plugin:saveConfig()
         rebuild_filechooser()
         schedule_home_rebuild_on_menu_close(plugin)
-    end
-    local function get_home_lock_mode()
-        local cfg = config.browser_hide_up_folder
-        local mode = type(cfg) == "table" and cfg.lock_home_folder
-        if mode == "off" or mode == "zen" or mode == "on" then
-            return mode
-        end
-        return "zen"
-    end
-    local function set_home_lock_mode(mode)
-        if type(config.browser_hide_up_folder) ~= "table" then
-            config.browser_hide_up_folder = {}
-        end
-        config.browser_hide_up_folder.lock_home_folder = mode
-        G_reader_settings:saveSetting("lock_home_folder", mode == "on")
-        plugin:saveConfig()
-        refresh_filechooser()
     end
 
     local appearance_items = {}
@@ -713,6 +695,13 @@ function M.build(ctx)
             },
             {
                 text = _("Rounded cover corners"),
+                -- GZreader: square corners in the Bookshelf view (common/gz_view.lua's
+                -- applyCorners keeps the other views' choice)
+                enabled_func = function()
+                    local ok, on = pcall(function() return require("common/gz_view").isBookshelf() end)
+                    return not (ok and on)
+                end,
+                help_text = _("Off in the Bookshelf view: covers there have square corners."),
                 checked_func = function()
                     return type(config.features) == "table"
                         and config.features.browser_cover_rounded_corners == true
@@ -1039,108 +1028,9 @@ function M.build(ctx)
         sub_item_table = layout_items,
     })
 
-    local function build_additional_home_items()
-        local dirs = type(config.additional_home_dirs) == "table"
-            and config.additional_home_dirs or {}
-        local sub = {}
-        local function refresh(touchmenu_instance)
-            if touchmenu_instance then
-                touchmenu_instance.item_table = build_additional_home_items()
-                touchmenu_instance:updateItems()
-            end
-        end
-        table.insert(sub, {
-            text = _("Add folder…"),
-            keep_menu_open = true,
-            callback = function(touchmenu_instance)
-                local PathChooser = require("ui/widget/pathchooser")
-                local start_path = paths.getHomeDir()
-                    or G_reader_settings:readSetting("lastdir") or "/"
-                UIManager:show(PathChooser:new{
-                    select_file = false,
-                    show_files  = false,
-                    path        = start_path,
-                    onConfirm   = function(dir_path)
-                        if paths.isUnsafeFlatViewRoot(dir_path) then
-                            local InfoMessage = require("ui/widget/infomessage")
-                            UIManager:show(InfoMessage:new{
-                                text = _("Use a narrower books folder instead of the device storage root."),
-                            })
-                            return
-                        end
-                        if type(config.additional_home_dirs) ~= "table" then
-                            config.additional_home_dirs = {}
-                        end
-                        for _i, existing in ipairs(config.additional_home_dirs) do
-                            if existing == dir_path then return end
-                        end
-                        table.insert(config.additional_home_dirs, dir_path)
-                        plugin:saveConfig()
-                        refresh(touchmenu_instance)
-                    end,
-                })
-            end,
-        })
-        for i, dir in ipairs(dirs) do
-            local util = require("util")
-            local name = select(2, util.splitFilePathName(dir))
-            table.insert(sub, {
-                text = name ~= "" and name or dir,
-                keep_menu_open = true,
-                callback = function(touchmenu_instance)
-                    local ConfirmBox = require("ui/widget/confirmbox")
-                    UIManager:show(ConfirmBox:new{
-                        text = _("Remove this folder from additional home folders?") .. "\n" .. dir,
-                        ok_text = _("Remove"),
-                        ok_callback = function()
-                            table.remove(config.additional_home_dirs, i)
-                            plugin:saveConfig()
-                            refresh(touchmenu_instance)
-                        end,
-                    })
-                end,
-            })
-        end
-        return sub
-    end
-
-    table.insert(folders_item.sub_item_table, IconItem.decorate({
-        text = _("Home folder"),
-        sub_item_table = {
-            -- GZreader: no "Set home folder": the home folder is always the
-            -- GZreader folder (GZreader sets it again at every start)
-            {
-                text = _("Lock home folder"),
-                enabled_func = function()
-                    return G_reader_settings:has("home_dir")
-                end,
-                sub_item_table = {
-                    {
-                        text = _("Off"),
-                        radio = true,
-                        checked_func = function() return get_home_lock_mode() == "off" end,
-                        callback = function() set_home_lock_mode("off") end,
-                    },
-                    {
-                        text = _("Only in Zen mode"),
-                        radio = true,
-                        checked_func = function() return get_home_lock_mode() == "zen" end,
-                        callback = function() set_home_lock_mode("zen") end,
-                    },
-                    {
-                        text = _("On"),
-                        radio = true,
-                        checked_func = function() return get_home_lock_mode() == "on" end,
-                        callback = function() set_home_lock_mode("on") end,
-                    },
-                },
-            },
-            {
-                text = _("Additional home folders"),
-                sub_item_table_func = build_additional_home_items,
-            },
-        },
-    }, icons.settings_home_folder))
+    -- GZreader: no Home folder menu (no Set home folder, Lock home folder or
+    -- Additional home folders): GZreader relies on the home folder being the
+    -- GZreader folder, and sets it again at every start.
     table.insert(folders_item.sub_item_table, IconItem.decorate({
         text = _("Hide up folder"),
         checked_func = function() return config.browser_hide_up_folder.hide_up_folder == true end,
@@ -1287,7 +1177,8 @@ function M.build(ctx)
         end,
     }, icons.refresh))
 
-    table.insert(book_items, 2, metadata_section.build(ctx))
+    -- GZreader: no Metadata menu (ZenOS's online lookup sources for its metadata
+    -- editor): a book's title, authors and series come from Grimmory.
     table.insert(book_items, IconItem.decorate({
         text = _("Show all files from subfolders"),
         checked_func = function()
