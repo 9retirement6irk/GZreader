@@ -75,12 +75,12 @@ Press/Back answer), and the order things happen in on a first start.
   page, the setup guide, ZenOS's touch tips, every tab, the launcher
   (GZreader menu, Send books), a note ticked by tapping, the note editor,
   the calendar's buttons and an event, a book read by tapping.
+- `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
+  pages, close.
 - `downloads_status.lua` — the download status in the status bar changing
   (Downloads tab and Home) and a book arriving on the Downloads tab with no key
   pressed: what reaches the screen, after GZreader's e-ink rules (no flash),
   and a tab switch by key (still a flash).
-- `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
-  pages, close.
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume
   rocker (VPlus / VMinus) in the player and on Home, D (the description), the
   Home key from the player and Settings, sleep and closing GZreader. Needs a
