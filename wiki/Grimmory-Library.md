@@ -78,6 +78,13 @@ queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
 (added once; movable/removable in its settings): a download icon with the
 percentage and the number waiting, refreshed every 10 s while active.
 
+While a book downloads, the Grimmory tab still comes first: when it (or
+anything else) asks Grimmory for something, a book's details and cover say,
+the download waits until that's answered (its process is paused; 20 s at
+most each time) and then carries on. On a Kindle 3 a download took the Wi‑Fi
+and the processor, and the tab's requests timed out. The log's `download
+done` line says how long it waited.
+
 ## Unfinished downloads
 
 Every book download (running or queued) and every audiobook download and

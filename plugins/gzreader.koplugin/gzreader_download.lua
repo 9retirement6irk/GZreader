@@ -24,6 +24,7 @@ local _ = require("gettext")
 local T = ffiutil.template
 
 local STALL_SECONDS = 90 -- overridable via Download.STALL_SECONDS (tests)
+local SIGSTOP, SIGCONT = 19, 18
 local POLL_SECONDS = 1
 
 local Download = {
@@ -130,6 +131,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         pid = pid, read_fd = read_fd, started = os.time(), book_id = tostring(book.id),
         title = title, expected = expected,
         last_size = resume_from, last_change = os.time(),
+        yields = 0, yielded_s = 0, -- (Download.yield: waiting for other requests)
         -- (book.gz_quiet: the book page's Download: no progress box, no opening)
         watching = not from_queue and not Download.background and not book.gz_quiet,
         show_dialog = not Download.background and not book.gz_quiet,
@@ -179,7 +181,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 UIManager:nextTick(startNext)
                 return
             end
-            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
+            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s",
+                job.yields > 0 and string.format("(waited %d s for %d other request(s))", job.yielded_s, job.yields) or "")
         else
             if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
@@ -263,6 +266,11 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         if dialog then
             dialog:reportProgress(expected and math.min(size, expected) or size)
         end
+        if job.paused_at then
+            -- waiting for another request (Download.yield): not stalled; on again after YIELD_MAX
+            if os.time() - job.paused_at >= Download.YIELD_MAX then Download.unyield(true) end
+            return UIManager:scheduleIn(POLL_SECONDS, job.poll)
+        end
         if ffiutil.isSubProcessDone(job.pid) then
             local out = job.read_fd and ffiutil.readAllFromFD(job.read_fd) or ""
             job.read_fd = nil
@@ -281,6 +289,52 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         UIManager:scheduleIn(POLL_SECONDS, job.poll)
     end
     UIManager:scheduleIn(POLL_SECONDS, job.poll)
+end
+
+---------------------------------------------------------------- other requests first
+
+--[[ A book downloading takes the Kindle's Wi-Fi and much of its processor
+(TLS). On a Kindle 3, while one downloaded, the Grimmory tab's requests (a
+book's details and cover) took 10-40 s or timed out, so you couldn't browse
+(2026-11-08). While a background request runs (gzreader_async.lua), the
+download's process is paused (SIGSTOP: the server then waits, as for a slow
+reader) and carries on when the requests are done, after YIELD_MAX seconds at
+most each time (then it isn't paused again until the requests are done). ]]
+Download.YIELD_MAX = 20
+
+local function signal(pid, sig)
+    return pcall(function()
+        local ffi = require("ffi")
+        pcall(require, "ffi/posix_h")
+        ffi.C.kill(pid, sig)
+        ffi.C.kill(-pid, sig)
+    end)
+end
+
+--- Something else asks Grimmory: the download waits.
+function Download.yield()
+    local job = Download.active
+    if not job or job.finished or job.paused_at or job.yielded_enough then return end
+    signal(job.pid, SIGSTOP)
+    job.paused_at = os.time()
+    job.yields = job.yields + 1
+end
+
+--- The other requests are done (or it waited YIELD_MAX: `capped`): on again.
+function Download.unyield(capped)
+    local job = Download.active
+    if not job then return end
+    if not capped then job.yielded_enough = nil end
+    if not job.paused_at then return end
+    signal(job.pid, SIGCONT)
+    local waited = os.time() - job.paused_at
+    job.yielded_s = job.yielded_s + waited
+    job.paused_at = nil
+    job.last_change = os.time() -- (the stall check starts again)
+    if capped then
+        job.yielded_enough = true
+        Log.info("download: carried on after waiting", waited, "s for other requests")
+    end
 end
 
 --- Take a waiting book out of the queue.
