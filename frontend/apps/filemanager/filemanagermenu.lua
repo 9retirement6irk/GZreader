@@ -13,7 +13,6 @@ local SpinWidget = require("ui/widget/spinwidget")
 local UIManager = require("ui/uimanager")
 local Screen = Device.screen
 local ffiUtil = require("ffi/util")
-local filemanagerutil = require("apps/filemanager/filemanagerutil")
 local dbg = require("dbg")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
@@ -331,58 +330,8 @@ function FileManagerMenu:setUpdateItemTable()
                     },
                 },
             },
-            {
-                text = _("Home folder settings"),
-                sub_item_table = {
-                    {
-                        text = _("Set home folder"),
-                        callback = function()
-                            local title_header = _("Current home folder:")
-                            local current_path = G_reader_settings:readSetting("home_dir")
-                            local default_path = filemanagerutil.getDefaultDir()
-                            local caller_callback = function(path)
-                                self.ui.folder_shortcuts:updateShortcut("home_dir", path)
-                                G_reader_settings:saveSetting("home_dir", path)
-                                self.ui:updateTitleBarPath()
-                            end
-                            filemanagerutil.showChooseDialog(title_header, caller_callback, current_path, default_path)
-                        end,
-                    },
-                    {
-                        text = _("Shorten home folder"),
-                        checked_func = function()
-                            return G_reader_settings:nilOrTrue("shorten_home_dir")
-                        end,
-                        callback = function()
-                            G_reader_settings:flipNilOrTrue("shorten_home_dir")
-                            self.ui:updateTitleBarPath()
-                        end,
-                        help_text = _([[
-"Shorten home folder" will display the home folder itself as "Home" instead of its full path.
-
-Assuming the home folder is:
-`/mnt/onboard/.books`
-A subfolder will be shortened from:
-`/mnt/onboard/.books/Manga/Cells at Work`
-To:
-`Manga/Cells at Work`.]]),
-                    },
-                    {
-                        text = _("Lock home folder"),
-                        enabled_func = function()
-                            return G_reader_settings:has("home_dir")
-                        end,
-                        checked_func = function()
-                            return G_reader_settings:isTrue("lock_home_folder")
-                        end,
-                        callback = function()
-                            G_reader_settings:flipNilOrFalse("lock_home_folder")
-                            FileChooser:refreshPath()
-                        end,
-                    },
-                },
-                separator = true,
-            },
+            -- GZreader: no Home folder settings (Set / Shorten / Lock home folder):
+            -- GZreader relies on the home folder being the GZreader folder.
             {
                 text = _("Ask to open files"),
                 checked_func = function()

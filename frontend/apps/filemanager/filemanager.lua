@@ -311,15 +311,7 @@ function FileManager:setupLayout()
             end
         else -- folder
             local folder = ffiUtil.realpath(file)
-            table.insert(buttons, {
-                {
-                    text = _("Set as HOME folder"),
-                    callback = function()
-                        UIManager:close(self.file_dialog)
-                        file_manager:setHome(folder)
-                    end
-                },
-            })
+            -- GZreader: no "Set as HOME folder" (the home folder is the GZreader folder)
             table.insert(buttons, {
                 file_manager.folder_shortcuts:genAddRemoveShortcutButton(folder, close_dialog_callback, refresh_callback)
             })
@@ -688,15 +680,7 @@ function FileManager:getPlusDialogButtons()
                     end,
                 },
             },
-            {
-                {
-                    text = _("Set as HOME folder"),
-                    callback = function()
-                        UIManager:close(self.plus_dialog)
-                        self:setHome()
-                    end
-                },
-            },
+            -- GZreader: no "Set as HOME folder" row (the home folder is the GZreader folder)
             {
                 {
                     text = _("Go to HOME folder"),

@@ -28,7 +28,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## Using it
 
-- **The quick panel** — one panel of square tiles on every device (Menu, or swipe down): Wi‑Fi, night mode, sleep, updates, settings, and what fits where you are (Home or the book). → [Using GZreader](Using-GZreader)
+- **The quick panel** — one panel of square tiles on every device (Menu, or swipe down): Wi‑Fi, night mode, sleep, updates, settings, and what fits where you are (Home or the book); choose its tiles in Settings → Interface → Quick panel. → [Using GZreader](Using-GZreader#choosing-the-tiles)
 - **Letter keys everywhere** on keyboard Kindles; the 5-way on the Kindle 4; touch on the others; the colour touchscreen on the Nook 1st Edition. → [Using GZreader](Using-GZreader)
 - **First-time tour** on touch Kindles, showing the quick panel. → [Using GZreader](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
 

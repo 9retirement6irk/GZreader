@@ -1445,6 +1445,14 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader: Zen mode is always on (no toggle in Settings → Interface,
+    -- and ZenOS's toggle action keeps it on): turned back on if it was off.
+    if type(cfg.features) ~= "table" then cfg.features = {} end
+    if cfg.features.zen_mode ~= true then
+        cfg.features.zen_mode = true
+        changed = true
+    end
+
     return cfg, changed
 end
 
