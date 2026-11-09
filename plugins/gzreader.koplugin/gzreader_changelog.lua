@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2/3/DX/4: no flash for what changes by itself; download status every 3 s", text = "On the Kindles without REAGL, GZreader flashes the screen when most of it changes, to clear the grey traces. It did that also for changes nobody asked for: a book finishing its download flashed the whole Downloads tab. Now only what follows a key or a tap (in the last 10 seconds) flashes. The download status in the status bar is updated every 3 seconds instead of 10 (only that item is refreshed)." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },

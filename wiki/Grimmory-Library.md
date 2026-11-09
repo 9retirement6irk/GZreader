@@ -76,7 +76,8 @@ queue, audiobook downloads and the audiobook preparing step: reopen a
 progress bar, stop the download, take a book out of the queue, empty the
 queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
 (added once; movable/removable in its settings): a download icon with the
-percentage and the number waiting, refreshed every 10 s while active.
+percentage and the number waiting, refreshed every 3 s while active (only
+that item is refreshed on the screen, without a flash).
 
 ## Unfinished downloads
 

@@ -10,7 +10,8 @@ queue.
 
 The status bar (ZenOS's title bar on Home and in the library) shows a
 download icon with the current percentage and how many are waiting,
-updated every 10 seconds while something downloads, and nothing otherwise.
+updated every 3 seconds while something downloads (only the item itself is
+refreshed on the screen), and nothing otherwise.
 ]]
 
 local UIManager = require("ui/uimanager")
@@ -18,7 +19,7 @@ local Event = require("ui/event")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local Tasks = { REFRESH = 10 }
+local Tasks = { REFRESH = 3 } -- s between status bar updates while something downloads (was 10)
 
 local ICON = "\xEF\x80\x99" -- Nerd Fonts / Font Awesome "download"
 

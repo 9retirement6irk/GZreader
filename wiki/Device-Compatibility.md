@@ -45,4 +45,6 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 
 **Ghosting** (a grey trace of the last pages): the Kindle 2, 3, DX and 4 have no REAGL, so a page turn without a flash leaves a trace that adds up. Settings → Reader → Appearance → **Flash on every page turn** flashes the screen clean at every turn, as the Kindle's own reader does; it's on by default on those Kindles and can be turned on on any device. Off: a flash every 6 pages (quicker turns).
 
+On the same Kindles, Settings → Advanced → **Flash when the screen changes** flashes when most of the screen changes because of something you did (a key or a tap: a tab, a menu, a list's next page). What changes by itself doesn't flash: a book finishing its download and appearing in Downloads, covers arriving, the download status in the status bar.
+
 KOReader's own device code decides the model from the serial number (the DX runs as KOReader's Kindle 2 class, with its bigger screen); GZreader adapts each screen to keys, the 5-way or touch. More on each: [Using GZreader](Using-GZreader), [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
