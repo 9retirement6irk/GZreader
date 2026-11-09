@@ -128,7 +128,7 @@ function Folder.writeStub(plugin, id)
     pcall(function()
         local jf = io.open(storeDir(plugin, id) .. "/audiobook.json", "rb")
         if jf then
-            info = require("json").decode(jf:read("*a")) or {}
+            info = require("gzreader_json").decode(jf:read("*a")) or {}
             jf:close()
         end
     end)

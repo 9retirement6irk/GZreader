@@ -1,0 +1,25 @@
+{
+ "k3": {
+  "calibration": 0.436821,
+  "phases": {
+   "10 moves on Home": {
+    "cpu": 0.768
+   },
+   "20 page turns": {
+    "cpu": 2.145
+   },
+   "close the book": {
+    "cpu": 0.869
+   },
+   "open a book": {
+    "cpu": 0.871
+   },
+   "quick panel x3": {
+    "cpu": 0.894
+   },
+   "startup": {
+    "cpu": 3.333
+   }
+  }
+ }
+}

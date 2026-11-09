@@ -17,6 +17,12 @@ local TO_LOCAL_COLOR = {}
 for local_name, server_name in pairs(TO_SERVER_COLOR) do
     TO_LOCAL_COLOR[server_name] = local_name
 end
+-- GZreader: a greyscale Kindle highlights in grey, which is a dark smudge in
+-- the web reader (#AAAAAA, worse on its dark theme); send it as the web
+-- reader's own yellow. (Grimmory's grey still comes back as grey, and
+-- highlights already in Grimmory keep their colour: see grimmory_color below.)
+TO_SERVER_COLOR.gray = TO_SERVER_COLOR.yellow
+AnnotationSync.TO_SERVER_COLOR, AnnotationSync.TO_LOCAL_COLOR = TO_SERVER_COLOR, TO_LOCAL_COLOR
 
 local TO_SERVER_STYLE = {
     lighten = "highlight", underscore = "underline",
@@ -87,7 +93,9 @@ end
 function AnnotationSync.fromLocal(annotations, cfi, book_id)
     local out, rejected = {}, {}
     for index, annotation in ipairs(annotations or {}) do
-        if annotation.pos0 ~= nil and annotation.pos1 ~= nil then
+        -- GZreader: (a note made in Grimmory's web reader, with no highlight there:
+        -- gzreader_notesync keeps it; not sent back as a highlight)
+        if annotation.pos0 ~= nil and annotation.pos1 ~= nil and not annotation.grimmory_note_only then
             local ok, range_or_err = pcall(cfi.xpointerRangeToCFI,
                 annotation.pos0, annotation.pos1)
             if ok and type(range_or_err) == "string" then

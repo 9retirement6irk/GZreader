@@ -106,6 +106,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         resume_from > 0 and ("continuing after " .. mb(resume_from)) or "")
 
     local pid, read_fd = ffiutil.runInSubProcess(function(_child_pid, write_fd)
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         -- Child: never refresh or persist tokens here (see header).
         api.no_refresh = true
         local dl_ok, dl_err = api:downloadToFile(book.id, part, true)

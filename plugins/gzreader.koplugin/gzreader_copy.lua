@@ -34,7 +34,7 @@ HTTP on the sender (JSON):
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 local _ = require("gettext")
 local T = require("ffi/util").template

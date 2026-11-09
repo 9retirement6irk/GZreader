@@ -343,11 +343,13 @@ local function badge(letter, side)
     return Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
 end
 
---- The shade marker of an event's calendar (black, greys).
+--- The shade marker of an event's calendar (black, greys), `h` tall.
+--- (A Line, whose size is its own: a FrameContainer's height only paints, so a
+--- row centring it centred a 1-pixel widget and the bar hung below the title.)
 local function marker(ev, h)
-    return FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(3), height = h,
-        VerticalSpan:new{ width = 1 } }
+    return Line:new{ w = S(3), h = h, color = shade(ev) }
 end
+Calendar.marker = marker
 
 local function allDayOn(ev, day)
     return ev.all_day or (ev.start <= day and ev.finish >= addDays(day, 1))
@@ -546,7 +548,7 @@ local function eventRow(plugin, ev, day, w, h, key)
                 HorizontalSpan:new{ width = S(8) },
                 LeftContainer:new{ dimen = Geom:new{ w = time_w, h = h - S(4) }, times },
                 marker(ev, h - S(14)),
-                HorizontalSpan:new{ width = S(10) },
+                HorizontalSpan:new{ width = S(7) }, -- (the marker now takes its own 3 px)
                 title,
             } }, 0, 0)
         return Outline:new{ w = w, h = h, on = focused, c }
@@ -779,7 +781,7 @@ local function renderDay(plugin, w, h)
         local build = function(focused)
             local bsize = math.min(S(22), bh - S(6))
             local b = bsize >= S(14) and badge(key, bsize) or nil
-            local inner_w = bw - S(12) - (b and (bsize + S(4)) or 0)
+            local inner_w = bw - S(15) - (b and (bsize + S(4)) or 0) -- (the marker's 3 px included)
             local label = shortClock(ev.start) .. "  " .. (ev.title or "")
             return FrameContainer:new{
                 width = bw, height = bh, padding = S(3), margin = 0,

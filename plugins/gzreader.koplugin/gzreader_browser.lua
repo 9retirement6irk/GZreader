@@ -561,14 +561,18 @@ local function refreshItem(self, reopen)
         gz_action = "refresh",
         text = _("Refresh list from Grimmory"),
         callback = function()
-            Index.build(self.plugin, true, function(data, err)
-                if data then
-                    table.remove(self.menu.item_table_stack) -- replace, don't stack
-                    reopen()
-                else
-                    self.plugin:showError(err)
-                end
-            end)
+            -- (a list opened from the saved index needs no Wi-Fi, so it may be
+            -- off by now: "Wi-Fi only when needed" turns it off when idle)
+            require("gzreader_net").run(function()
+                Index.build(self.plugin, true, function(data, err)
+                    if data then
+                        table.remove(self.menu.item_table_stack) -- replace, don't stack
+                        reopen()
+                    else
+                        self.plugin:showError(err)
+                    end
+                end)
+            end, { reason = "refreshing the Grimmory list", usb = true })
         end,
     }
 end

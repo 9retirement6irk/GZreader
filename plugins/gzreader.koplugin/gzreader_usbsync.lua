@@ -50,7 +50,7 @@ Format 1:
 
 local DataStorage = require("datastorage")
 local Device = require("device")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 
@@ -467,6 +467,9 @@ function Usb.outbox(plugin)
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
             return ok and type(du) == "table" and du.total and { total = du.total, available = du.available } or nil
         end),
+        -- (Diagnostics → Send to the developer saves reports in reports/: the
+        -- page sends them to this feed, under this name: gzreader_usbreport.lua)
+        report = cached("report", function() return require("gzreader_usbreport").outboxInfo() end),
     }
 end
 
@@ -1151,6 +1154,8 @@ function Usb.show(plugin)
     local _ = require("gettext")
     local T = require("ffi/util").template
     Usb.writeOutbox(plugin)
+    -- (diagnostic logging on: a fresh log for the page's Diagnostics box: gzreader_usbreport.lua)
+    pcall(function() require("gzreader_usbreport").exportForPage(plugin) end)
     local updates, notes = Usb.waiting(plugin)
     local q = queue(plugin)
     local kindle = Device:isKindle()

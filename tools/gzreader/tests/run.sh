@@ -53,6 +53,10 @@ grep "FAIL" "$WORK/out.txt"
 tail -1 "$WORK/out.txt"
 [ $rc -eq 0 ] || { failed=$((failed + 1)); tail -30 "$WORK/out.txt"; }
 
+echo "== JSON (rapidjson, or LuaJSON)"
+(cd "$T" && luajit json_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== ZenOS setup guide"
 (cd "$T" && luajit qs_test.lua "$REPO/plugins/zenos.koplugin" "$REPO/plugins/gzreader.koplugin") 2>&1 | tail -3
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
@@ -69,6 +73,11 @@ echo "== Nook launcher helper"
 timeout 120 python3 "$T/nook_launcher_test.py" 2>&1 | grep -E "FAIL|passed|BusyBox"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== statistics: book-open lookups after the first page"
+(cd "$T" && luajit statistics_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+
 echo "== release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
@@ -82,6 +91,10 @@ echo "== beta branch (labelled pull requests combined)"
 
 echo "== CI: which changes skip the emulator"
 timeout 60 python3 "$T/ci_paths_test.py" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== CI's CPU budgets (the emulator perf run)"
+timeout 60 python3 "$T/perf_check_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== the wiki's links"
