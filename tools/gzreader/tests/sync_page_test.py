@@ -345,6 +345,12 @@ with sync_playwright() as pw:
     picks = page.locator("#picks").inner_text()
     check(page.locator("#picks li").count() == 7 and "the Kindle's queue" in picks and "Book 05" in picks and "Book 33 — Audio Author (audiobook)" in picks
           and "FLAC Album" in picks, "coming with the next sync: the Kindle's queue, then the books, audiobook and albums chosen here")
+    # the music library chosen on the Kindle (Settings → Connections → Plex): its albums
+    page.evaluate("() => { GZSync.K.out.music_library = { key: '4', title: 'Concerts' }; }")
+    page.click("#b-cats button:has-text('Albums')")
+    page.wait_for_selector("#b-results li:has-text('Live Album')")
+    check(page.locator("#b-results li").count() == 1, "Music: Albums from the music library chosen on the Kindle")
+    page.evaluate("() => { delete GZSync.K.out.music_library; }")
     page.click("nav.main button[data-panel=sync]")
     page.wait_for_function("document.querySelector('#storage').innerText.includes('free of')")
     st = page.locator("#storage").inner_text()

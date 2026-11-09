@@ -43,6 +43,9 @@ ALBUMS = {
             "tracks": [track(304, "Tone D", 1, 203, "FLAC Album", "flac", "flac", 900)]},
 }
 ARTIST = {"ratingKey": "101", "type": "artist", "title": "The Tones"}
+# a second music library (key 4): one album, its own artist
+LIVE = {"ratingKey": "205", "type": "album", "title": "Live Album", "parentTitle": "The Band", "year": 2019, "addedAt": 1700000400, "leafCount": 1}
+LIVE_ARTIST = {"ratingKey": "105", "type": "artist", "title": "The Band"}
 TRACKS = {t["ratingKey"]: t for a in ALBUMS.values() for t in a["tracks"]}
 
 def album_meta(a):
@@ -140,7 +143,10 @@ class H(BaseHTTPRequestHandler):
         if p == "/identity":
             return self.send(200, {"MediaContainer": {"machineIdentifier": "srv1"}})
         if p == "/library/sections":
-            return self.send(200, {"MediaContainer": {"Directory": [{"key": "1", "type": "artist", "title": "Music"}, {"key": "2", "type": "movie", "title": "Films"}]}})
+            return self.send(200, {"MediaContainer": {"Directory": [{"key": "1", "type": "artist", "title": "Music"}, {"key": "2", "type": "movie", "title": "Films"},
+                                                                 {"key": "4", "type": "artist", "title": "Concerts"}]}})
+        if p == "/library/sections/4/all":
+            return self.mc([LIVE] if q.get("type") == ["9"] else [LIVE_ARTIST])
         if p == "/library/sections/1/all":
             start = int(self.headers.get("X-Plex-Container-Start", "0"))
             size = int(self.headers.get("X-Plex-Container-Size", "50"))
@@ -156,11 +162,15 @@ class H(BaseHTTPRequestHandler):
             if k in ALBUMS: return self.mc(ALBUMS[k]["tracks"])
             return self.send(404, {})
         if p == "/playlists":
+            # (sectionID: the playlists with that library's music; Mix is library 1's)
+            if q.get("sectionID", ["1"]) != ["1"]: return self.mc([])
             return self.mc([{"ratingKey": "401", "type": "playlist", "title": "Mix", "leafCount": 2}])
         if p == "/playlists/401/items":
             return self.mc([TRACKS["302"], TRACKS["303"]])
         if p == "/hubs/search":
             ql = q.get("query", [""])[0].lower()
+            if q.get("sectionId", ["1"]) == ["4"]:
+                return self.send(200, {"MediaContainer": {"Hub": [{"type": "album", "Metadata": [LIVE] if ql in LIVE["title"].lower() else []}]}})
             hubs = [{"type": "artist", "Metadata": [ARTIST] if ql in "the tones" else []},
                     {"type": "album", "Metadata": [album_meta(a) for a in ALBUMS.values() if ql in a["title"].lower()]},
                     {"type": "track", "Metadata": [t for t in TRACKS.values() if ql in t["title"].lower()]}]

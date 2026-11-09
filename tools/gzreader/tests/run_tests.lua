@@ -5940,7 +5940,47 @@ print("Music (Plex): the server, downloads, the player")
     check(plex:connect("wrong") == nil, "Plex: a bad token is refused")
     plex:connect(token)
     local secs = plex:musicSections()
-    check(secs and #secs == 1 and secs[1].key == "1", "Plex: the music library (not the films)")
+    check(secs and #secs == 2 and secs[1].key == "1" and secs[2].key == "4" and secs[2].title == "Concerts", "Plex: the music libraries (not the films)")
+    do -- the music library to browse: the one chosen in Settings (on this server), else the server's first
+        local MusicTab = require("gzreader_musictab")
+        local Cache = require("gzreader_listcache")
+        local px = plugin.store.plex
+        local saved_ms, saved_save = px.music_section, plugin.save
+        plugin.save = function() end
+        px.music_section = nil
+        local first, all0 = plex:musicSection()
+        check(first and first.key == "1" and #all0 == 2 and MusicTab.libraryText(plugin) == "Music library: the server's first"
+            and MusicTab.only(plex) == "1", "Plex: nothing chosen: the first music library (playlists and search kept to it, the server has two)")
+        local ckey = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|shop:mu_recent"
+        Cache.put(ckey, { { type = "album", key = "201" } })
+        -- the choice, as Settings → Connections → Plex → Music library offers it
+        local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
+        local dlg, picked
+        require("gzreader_net").run = function(fn) fn() end
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) dlg = o; return o end }
+        MusicTab.chooseLibrary(plugin, function() picked = true end)
+        runLoop(function() return dlg ~= nil end, 15)
+        local labels = {}
+        for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
+        check(dlg and dlg.title == "Music library" and table.concat(labels, ",") == "\u{2713} Music,Concerts",
+            "Plex: Music library offers the server's music libraries, the one in use ticked " .. table.concat(labels, ","))
+        if dlg then dlg.buttons[2][1].callback() end
+        require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
+        local chosen, all = plex:musicSection()
+        local albums4 = plex:list(chosen.key, "albums", 0)
+        check(picked and px.music_section.key == "4" and px.music_section.server == px.server.id and chosen.key == "4" and #all == 2
+            and albums4[1].title == "Live Album" and MusicTab.libraryText(plugin) == "Music library: Concerts",
+            "Plex: Concerts chosen: kept for this server, its albums listed")
+        local rec = Cache.get(ckey)
+        check(type(rec) == "table" and #rec == 0, "Plex: another library chosen: the Catalog's Music shelves are asked for again")
+        check(#plex:playlists(MusicTab.only(plex)) == 0 and plex:search("live", MusicTab.only(plex)).albums[1].key == "205"
+            and #plex:search("tone", MusicTab.only(plex)).tracks == 0, "Plex: with two music libraries, playlists and search keep to the one chosen")
+        local Plex1 = require("gzreader_plex")
+        check(Plex1.pickSection(all, px.music_section, { id = "another" }).key == "1"
+            and Plex1.pickSection(all, { server = px.server.id, key = "9" }, px.server).key == "1",
+            "Plex: a library chosen on another server, or one that's gone: the server's first")
+        px.music_section, plugin.save = saved_ms, saved_save
+    end
     local artists, total = plex:list("1", "artists", 0)
     local albums = plex:list("1", "albums", 0)
     check(artists and total == 1 and artists[1].title == "The Tones" and albums and #albums == 3 and albums[1].artist == "The Tones", "Plex: artists and albums")
@@ -6184,9 +6224,9 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
-        "Settings → Connections → Plex: account, server, quality, downloads, sign out: " .. st)
-    local q = si[3].sub_item_table_func()
+    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+        "Settings → Connections → Plex: account, server, music library, quality, downloads, sign out: " .. st)
+    local q = si[4].sub_item_table_func()
     q[3].callback()
     check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
         "Settings → Plex: the conversion quality")
@@ -7170,6 +7210,8 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     check(out.music_quality and out.music_quality.bitrate == ((fake.store.plex or {}).bitrate or 192)
         and out.music_quality.shrink == ((fake.store.plex or {}).shrink == true),
         "outbox: Plex music's quality, for the page")
+    check(Usb.musicLibrary({ plex = { music_section = { server = "s", key = 4, title = "Concerts" } } }).key == "4"
+        and Usb.musicLibrary({ plex = {} }) == nil and Usb.musicLibrary({}) == nil, "outbox: the music library chosen on the Kindle, for the page")
     check(text:find('"music":[]', 1, true) and text:find('"audiobooks":[]', 1, true),
         "outbox: empty lists written as lists ([], not {}: the page reads them as lists)")
     check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),

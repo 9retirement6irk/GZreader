@@ -47,6 +47,7 @@ local WHY = {
     no_server = _("This Plex account has no Plex Media Server."),
     server_unreachable = _("Couldn't reach your Plex Media Server from this Wi-Fi."),
     not_connected = _("Sign in to Plex first."),
+    no_music = _("This Plex server has no music library."),
 }
 local function why(err) return WHY[err] or tostring(err) end
 
@@ -243,10 +244,9 @@ function Tab:openRecent(by)
     end
     local local_played = by == "played" and type(self.plugin.store.music_recent) == "table" and self.plugin.store.music_recent or {}
     self:fetch(_("Loading…"), function(p)
-        local sections, err = p:musicSections()
-        if not sections then return nil, err end
-        if #sections == 0 then return {} end
-        return p:recentAlbums(sections[1].key, by, 50) or {}
+        local sec, err = p:musicSection()
+        if not sec then return err == "no_music" and {} or nil, err end
+        return p:recentAlbums(sec.key, by, 50) or {}
     end, function(list)
         local seen, out = {}, {}
         for _i, src in ipairs({ local_played, list }) do
@@ -434,15 +434,74 @@ local function itemText(it)
     return it.title
 end
 
+--- The chosen music library's key for playlists and search when the server
+--- has more than one (with one: Plex's answer as before). Runs in the
+--- background, like the lists.
+function Tab.only(p)
+    local sec, all = p:musicSection()
+    return sec and type(all) == "table" and #all > 1 and sec.key or nil
+end
+
+--- What the Music library line says: the one chosen, or the server's first.
+function Tab.libraryText(plugin)
+    local s = plugin.store.plex or {}
+    local m = s.music_section
+    if type(m) == "table" and m.title and m.server == (s.server or {}).id then return T(_("Music library: %1"), m.title) end
+    return _("Music library: the server's first")
+end
+
+--- Pick the music library to browse (a server can have several: Artists,
+--- Albums, Recently added/played, and with several libraries Playlists and
+--- Search, all come from that one). Asks Plex for its libraries first.
+--- after(): once one was picked.
+function Tab.chooseLibrary(plugin, after)
+    require("gzreader_net").run(function()
+        local msg = busy(_("Asking Plex for its libraries…"))
+        local plex = Music().plex(plugin)
+        Async().run(nil, function() return plex:musicSections() end, function(list, err)
+            UIManager:close(msg)
+            if not list then return UIManager:show(InfoMessage:new{ text = why(err) }) end
+            if #list == 0 then return UIManager:show(InfoMessage:new{ text = why("no_music") }) end
+            local s = plugin.store.plex or {}
+            local cur = require("gzreader_plex").pickSection(list, s.music_section, s.server)
+            local ButtonDialog = require("ui/widget/buttondialog")
+            local dialog
+            local buttons = {}
+            for _i, sec in ipairs(list) do
+                buttons[#buttons + 1] = { { text = (sec.key == cur.key and "\u{2713} " or "") .. sec.title, callback = function()
+                    UIManager:close(dialog)
+                    Tab.setLibrary(plugin, sec)
+                    if after then after() end
+                end } }
+            end
+            dialog = ButtonDialog:new{ title = _("Music library"), buttons = buttons }
+            local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+            if add then pcall(add, dialog) end
+            UIManager:show(dialog)
+        end, "plex libraries")
+    end, { reason = "Plex's libraries" })
+end
+
+--- Keep `sec` ({ key, title }) as the music library of this server; the
+--- Catalog's Music shelves (the old library's) are asked for again.
+function Tab.setLibrary(plugin, sec)
+    local s = plugin.store.plex or {}
+    plugin.store.plex = s
+    local before = type(s.music_section) == "table" and s.music_section.key
+    s.music_section = { server = (s.server or {}).id, key = sec.key, title = sec.title }
+    plugin:save()
+    if before ~= sec.key then pcall(function() require("gzreader_bookshop").forgetMusic(plugin) end) end
+    Log.info("plex: music library chosen")
+end
+
 function Tab:openSection(kind)
     local plex = Music().plex(self.plugin)
     self:fetch(_("Loading…"), function(p)
-        local sections, err = p:musicSections()
-        if not sections then return nil, err end
-        if #sections == 0 then return nil, _("This Plex server has no music library.") end
-        local list, total = p:list(sections[1].key, kind, 0)
+        local sec, err = p:musicSection()
+        if not sec then return nil, err end
+        local list, total = p:list(sec.key, kind, 0)
         if not list then return nil, total end
-        return { section = sections[1].key, list = list, total = total }
+        return { section = sec.key, list = list, total = total }
     end, function(data)
         self.section = data.section
         self:showPaged(kind == "albums" and _("Albums") or _("Artists"), kind, data.list, data.total, 0)
@@ -509,7 +568,7 @@ function Tab:openItem(it)
 end
 
 function Tab:openPlaylists()
-    self:fetch(_("Loading…"), function(p) return p:playlists() end, function(list)
+    self:fetch(_("Loading…"), function(p) return p:playlists(Tab.only(p)) end, function(list)
         local items = {}
         for _i, pl in ipairs(list) do
             items[#items + 1] = Tab.entry({ text = pl.title, mandatory = pl.count and T(_("%1 tracks"), pl.count) or nil,
@@ -537,7 +596,7 @@ function Tab:promptSearch()
 end
 
 function Tab:search(q)
-    self:fetch(_("Searching…"), function(p) return p:search(q) end, function(res)
+    self:fetch(_("Searching…"), function(p) return p:search(q, Tab.only(p)) end, function(res)
         local items = {}
         local function add(head, list)
             if #list == 0 then return end
@@ -670,6 +729,12 @@ function Tab:openAccount()
             plugin:save()
             self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
         end }
+    items[#items + 1] = { text = Tab.libraryText(plugin), callback = function()
+        Tab.chooseLibrary(plugin, function()
+            if self.closed then return end
+            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+        end)
+    end }
     for _i, srv in ipairs(s.servers or {}) do
         if srv.id ~= (s.server or {}).id then
             items[#items + 1] = { text = T(_("Use the server “%1”"), srv.name or "?"), callback = function()
@@ -745,6 +810,14 @@ function Tab.settingsItems(plugin)
               end
               if #list == 0 then list[1] = { text = _("No other Plex servers on this account."), enabled = false } end
               return list
+          end },
+        { text_func = function() return Tab.libraryText(plugin) end,
+          help_text = _("Artists, Albums and the Catalog's Recently added and Recently played come from this music library. With several music libraries on the server, Playlists and Search keep to it too."),
+          keep_menu_open = true,
+          callback = function(touchmenu)
+              Tab.chooseLibrary(plugin, function()
+                  if touchmenu and touchmenu.updateItems then pcall(touchmenu.updateItems, touchmenu) end
+              end)
           end },
         { text_func = function() return T(_("Quality when converting: %1 kbps"), st().bitrate or 192) end,
           help_text = _("For music the Kindle can't play as it is (FLAC and others), Plex converts it to MP3 at this quality. MP3 and AAC download as they are, unless “Make bigger MP3 and AAC smaller” is on."),

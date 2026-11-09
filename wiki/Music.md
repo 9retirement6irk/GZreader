@@ -45,6 +45,14 @@ Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
 downloaded album or playlist is also in Downloads → **Music** (on the
 bookshelf, the CD player), like audiobooks: open one to play it.
 
+**Music library**: a Plex server can have several music libraries. GZreader
+uses the server's first until you pick another in Settings → Connections →
+Plex → **Music library** (or *Plex: you · server* in the Music tab). Artists,
+Albums, Recently added and Recently played come from the one picked; with
+more than one music library on the server, Playlists and Search keep to it
+too. The choice is kept per server, and the sync page (Kindles without
+Wi‑Fi) lists the same library's albums.
+
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else
 (FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or

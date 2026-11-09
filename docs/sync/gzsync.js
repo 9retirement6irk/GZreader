@@ -2372,9 +2372,12 @@ gets a password or token.
       start = start || 0;
       var music = [];
       var d = await (await P.get("/library/sections")).json();
-      ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x.key); });
+      ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x); });
       if (!music.length) return Browse.note("No music library on this Plex server.");
-      var items = await P.items("/library/sections/" + encodeURIComponent(music[0]) + "/all", { type: 9, sort: "titleSort:asc" },
+      // (the music library chosen on the Kindle, if this server has it: same key and name; else the first)
+      var want = (K.out || {}).music_library, lib = music[0];
+      if (want) music.forEach(function (x) { if (String(x.key) === String(want.key) && x.title === want.title) lib = x; });
+      var items = await P.items("/library/sections/" + encodeURIComponent(lib.key) + "/all", { type: 9, sort: "titleSort:asc" },
         { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "50" });
       if (start === 0) Browse.clear();
       items.forEach(function (x) { x.type = "album"; });
@@ -2812,7 +2815,7 @@ gets a password or token.
   // (tests: a folder standing in for the Kindle, without the folder picker)
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
-    G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
+    G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
