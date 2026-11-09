@@ -3434,6 +3434,66 @@ end
 TTS.exec = nil; TTS.lipc = nil; TTS.now = nil
 local _ = before
 
+print("ZenOS's updater: not loaded (GZreader's in its place, on first use)")
+;(function()
+    local Z = PLUGIN .. "/../zenos.koplugin/"
+    local function src(rel) local h = io.open(Z .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
+    local callers = { "main.lua", "modules/settings/zen_settings.lua", "modules/settings/zen_bugreporter.lua",
+        "modules/settings/sections/updates_settings.lua" }
+    local loads_zen, used = {}, {}
+    for _i, rel in ipairs(callers) do
+        local t = src(rel)
+        if t:find('require("modules/settings/zen_updater")', 1, true) or not t:find('require("modules/settings/gz_updater")', 1, true) then
+            loads_zen[#loads_zen + 1] = rel
+        end
+        -- (the module's functions: `updater.x(`, `zen_updater.x`; not config.updater's fields)
+        for fn in t:gmatch("%f[%w_]updater%.([%w_]+)%(") do used[fn] = true end
+        for fn in t:gmatch("%f[%w_]zen_updater%.([%w_]+)") do used[fn] = true end
+    end
+    check(#loads_zen == 0, "ZenOS's main, settings, bug reporter and Updates section use gz_updater (" .. table.concat(loads_zen, ", ") .. ")")
+    local saved_path = package.path
+    package.path = Z .. "?.lua;" .. package.path
+    local kept = { u = package.loaded["gzreader_update"], z = package.loaded["modules/settings/zen_updater"], ui = package.loaded["ui/uimanager"] }
+    package.loaded["gzreader_update"], package.loaded["modules/settings/gz_updater"], package.loaded["modules/settings/zen_updater"] = nil, nil, nil
+    local okm, U = pcall(require, "modules/settings/gz_updater")
+    check(okm and package.loaded["gzreader_update"] == nil and package.loaded["modules/settings/zen_updater"] == nil,
+        "loading it loads neither ZenOS's updater nor gzreader_update " .. (okm and "" or tostring(U)))
+    local missing = {}
+    for fn in pairs(used) do if fn ~= "_on_update_found" and type(U[fn]) ~= "function" then missing[#missing + 1] = fn end end
+    table.sort(missing)
+    check(okm and #missing == 0, "…and has everything they call (" .. table.concat(missing, ", ") .. ")")
+    U.init_banner()
+    check(U.has_update() == false and package.loaded["gzreader_update"] == nil, "at start: no update known, nothing loaded")
+    -- the check 20 s after start: gzreader_update then
+    local checks, found = 0, 0
+    package.loaded["gzreader_update"] = { state = {}, backgroundCheck = function(cb) checks = checks + 1; package.loaded["gzreader_update"].state = { has_update = true, latest = "9.9.9" }; cb() end,
+        menuItems = function() return { "now", "auto", "changelog", "channel" } end, run = function() end }
+    local timers = {}
+    package.loaded["ui/uimanager"] = { scheduleIn = function(_u, s, fn) timers[#timers + 1] = { s = s, fn = fn } end, unschedule = function() end }
+    U._on_update_found = function() found = found + 1 end
+    U.schedule_wakeup_check()
+    check(#timers == 1 and timers[1].s == 20, "a check 20 s after start or a wake")
+    timers[1].fn()
+    check(checks == 1 and found == 1 and U.has_update() and U.latest_version() == "9.9.9" and U.build_update_available_action({}) ~= nil,
+        "…done by gzreader_update; an update found shows (the Settings icon, the header button)")
+    check(U.build_update_now_item() == "now" and U.build_auto_check_item() == "auto" and U.build_changelog_item() == "changelog"
+        and U.build_channel_item() == "channel" and U.get_channel() == "stable", "the Updates section: GZreader's items")
+    local cfg = { updater = { update_available = true } }
+    U.clear_update_state(cfg)
+    package.loaded["gzreader_update"].state = {}
+    check(cfg.updater.update_available == false and not U.has_update(), "an update noticed elsewhere: cleared")
+    package.loaded["gzreader_update"], package.loaded["modules/settings/zen_updater"], package.loaded["ui/uimanager"] = kept.u, kept.z, kept.ui
+    package.loaded["modules/settings/gz_updater"] = nil
+    package.path = saved_path
+    -- Rakuyomi (a manga plugin GZreader doesn't ship): not loaded at start
+    local dbl, fb = src("common/db_library.lua"), src("modules/filebrowser/filebrowser.lua")
+    check(not dbl:find('\nlocal Rakuyomi = require("modules/filebrowser/patches/rakuyomi")', 1, true)
+        and dbl:find('local Rakuyomi = setmetatable({}, { __index = function(_t, k) return require("modules/filebrowser/patches/rakuyomi")[k] end })', 1, true),
+        "the library counts: Rakuyomi only loaded for a finished .cbz")
+    check(fb:find('(not installed or installed.rakuyomi)\n        and OptionalProvider.call(PATCH_MODULES.rakuyomi, "is_available")', 1, true),
+        "the file browser: not loaded to ask when the plugin scan found none")
+end)()
+
 print("Updates from GitHub releases")
 local Update = require("gzreader_update")
 check(Update.compare("1.10.0", "1.9.2") == 1 and Update.compare("v1.0.0", "1.0.0") == 0 and Update.compare("1.0.0-beta1", "1.0.0") == -1, "version comparison")

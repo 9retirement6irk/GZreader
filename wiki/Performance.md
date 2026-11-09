@@ -29,6 +29,12 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
+- **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
+  lines, unused: GZreader's updater replaces it) isn't loaded at all; a
+  small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is
+  loaded the first time it's needed (the check 20 s after start). The
+  integration for Rakuyomi, a manga plugin GZreader doesn't ship, is loaded
+  only if that plugin is installed (or a finished `.cbz` is counted).
 - Lua is shipped as precompiled bytecode (see [Building](Building)): no parsing
   at start (~4x faster loading overall, up to 15x for big files).
 - **CPU budgets in CI** (`tools/gzreader/emulator/perf.lua`): every pull

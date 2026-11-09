@@ -43,6 +43,7 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 - **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).
 - **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes). Library → Folders has no Home folder menu (the home folder is always the GZreader folder).
 - **Covers:** pre-sized and cached on disk, made in a background process. → [Performance](Performance)
+- **Not loaded:** ZenOS's own updater (GZreader's replaces it; a small stand-in answers ZenOS) and its Rakuyomi manga integration unless that plugin is installed. → [Performance](Performance)
 - **Nooks:** paths for a Nook's microSD card, Bluetooth stubbed out, Wi‑Fi switching adapted.
 - **No Extras section in Settings:** its Schedules and Sleep are in General and Custom icons in Interface (as in ZenOS); the rest (Stats tab widgets, ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) isn't offered, and keeps its default or what was set before.
 - **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.

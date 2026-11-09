@@ -17,6 +17,7 @@ return {
             { short = "The quick panel's Layout tile works on touch Kindles", text = "In a book, the quick panel's Layout tile (font size, margins, spacing) did nothing on touch Kindles such as the Paperwhite: Zen mode blocked it. It opens the layout menu again." },
             { short = "Zen mode is always on", text = "Zen mode (ZenOS's own tabs only) is always on: its switch is gone from Settings → Interface, and it's turned back on if it was off." },
             { short = "Headphone check while playing: no program started every second", text = "While music, an audiobook or read aloud plays, the check for unplugged headphones reads the Kindle's audio service in GZreader itself (KOReader's lipc library) instead of starting lipc-get-prop every second; where that library can't be used, it starts it every 4 seconds instead of every second. Less CPU and battery while listening." },
+            { short = "A quicker start: ZenOS's unused updater and manga plugin code aren't loaded", text = "GZreader no longer loads ZenOS's own updater at every start (about 1,900 lines that GZreader's updater replaces), nor ZenOS's integration for the Rakuyomi manga plugin, which GZreader doesn't ship. GZreader's updater itself is loaded when it's first needed. Less to load and less memory used from the start, most noticeable on the Kindle 2, DX and Keyboard." },
         },
     },
     {
