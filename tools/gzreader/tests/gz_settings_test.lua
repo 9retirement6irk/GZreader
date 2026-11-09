@@ -65,7 +65,11 @@ local stubs = {
     ["gzreader_update"] = { currentVersion = function() return "1.26.10" end },
     version = "v2026.07.1",
     ["gzreader_timezone"] = { label = function() return "UTC−5" end, menuItems = function() return {} end },
-    ["gzreader_storage"] = { show = function(g) storage_shown = g end },
+    ["gzreader_storage"] = { settingsItems = function(g, page)
+        storage_shown = { g = g, page = page }
+        return { { text = "Free on this Kindle" }, { text = "Books", sub_item_table = {} } }
+    end },
+    ["ui/language"] = { getLangMenuTable = function() return { text = "Language", sub_item_table = { { text = "English" } } } end },
     ["ui/elements/common_settings_menu_table"] = { time = { text = "Time and date",
         sub_item_table = { { text = "12-hour clock" }, { text = "Set time" } } } },
 }
@@ -132,16 +136,28 @@ if okb then
     local device = find(about, "Device")
     check(device and not texts(device.sub_item_table):find("|KOReader: ", 1, true), "Device: no KOReader line (it's on the second line)")
     check(find(about, "Report a Bug") == nil, "no ZenOS bug reporter")
-    check(not gen:find("|Time zone", 1, true), "General: no Time zone (it's in About → Device → Time and date)")
-    check(find(items, "Storage") == nil, "no Storage section at the top (it's in About → Device)")
-    local dev = device and device.sub_item_table or {}
-    local storage = find(dev, "Storage")
-    check(storage and type(storage.callback) == "function" and storage.sub_item_table_func == nil,
-        "About → Device → Storage opens GZreader's Storage screen")
-    if storage and storage.callback then storage.callback(); check(storage_shown == gz, "(shown for GZreader's plugin)") end
-    local td = find(dev, "Time and date")
+    check(gen:find("|Sleep|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
+        "General: Time and date, Language and Storage after Sleep " .. gen)
+    check(find(items, "Storage") == nil, "no Storage section at the top")
+    local dev = texts(device and device.sub_item_table)
+    check(not dev:find("|Storage|", 1, true) and not dev:find("|Language|", 1, true) and not dev:find("|Time and date|", 1, true),
+        "About → Device: no Storage, Language or Time and date " .. dev)
+    local storage = find(general, "Storage")
+    check(storage and type(storage.sub_item_table_func) == "function" and storage.callback == nil,
+        "General → Storage is a submenu (rows and arrows), not a screen of its own")
+    if storage and storage.sub_item_table_func then
+        local page = { item_table = nil }
+        local rows = storage.sub_item_table_func(page)
+        check(storage_shown and storage_shown.g == gz and storage_shown.page == page and texts(rows) == "|Free on this Kindle|Books|",
+            "its rows come from gzreader_storage.settingsItems, for this Settings page")
+    end
+    check(read("modules/settings/sections/general_settings.lua"):find("GzSettings.storageItem(), icons.settings_storage", 1, true) ~= nil,
+        "Storage has its icon")
+    local td = find(general, "Time and date")
     check(td and texts(td.sub_item_table) == "|Time zone: UTC−5|12-hour clock|Set time|",
-        "About → Device → Time and date: Time zone first " .. texts(td and td.sub_item_table))
+        "General → Time and date: Time zone first " .. texts(td and td.sub_item_table))
+    local downloads = find(items, "Downloads")
+    check(downloads and downloads.icon_name == "tab_downloaded", "Downloads has the Downloads tab's icon")
     local shared = require("ui/elements/common_settings_menu_table").time
     check(#shared.sub_item_table == 2, "KOReader's own Time and date menu left as it was")
     local bug = find(about, "Report a bug")

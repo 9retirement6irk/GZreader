@@ -81,7 +81,7 @@ function M.timeZoneItem()
     }
 end
 
---- About → Device → Time and date: KOReader's menu (`base`, shared with
+--- General → Time and date: KOReader's menu (`base`, shared with
 --- KOReader's own Settings → Device, so copied, not changed) with Time zone
 --- first.
 function M.timeAndDate(base, tz_item)
@@ -95,16 +95,21 @@ function M.timeAndDate(base, tz_item)
     return item
 end
 
---- About → Device → Storage: GZreader's Storage screen (what's on the
---- Kindle, the biggest of each, the free space) when GZreader is loaded.
-function M.showStorage(touchmenu)
-    local g = M.gzreader()
-    if not g then return false end
-    local ok, Storage = pcall(require, "gzreader_storage")
-    if not (ok and type(Storage) == "table" and type(Storage.show) == "function") then return false end
-    if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
-    Storage.show(g)
-    return true
+--- Settings → General → Storage: what GZreader keeps on the Kindle, as
+--- rows with icons and arrows into the biggest of each (gzreader_storage.lua).
+function M.storageItem()
+    local _ = require("gettext")
+    return {
+        text = _("Storage"),
+        sub_item_table_func = function(page)
+            local g = M.gzreader()
+            local ok, Storage = pcall(require, "gzreader_storage")
+            if g and ok and type(Storage) == "table" and type(Storage.settingsItems) == "function" then
+                return Storage.settingsItems(g, page)
+            end
+            return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+        end,
+    }
 end
 
 --- GZreader's installed version ("0.0.0" when unknown).

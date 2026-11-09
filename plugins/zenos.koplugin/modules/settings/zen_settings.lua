@@ -141,6 +141,7 @@ function M.build(plugin)
         sub_item_table = filebrowser_items,
         _zen_settings_root = "library",
     }, icons.settings_library)
+    library_item.icon_name = "tab_downloaded" -- GZreader: the Downloads tab's own icon
 
     local root_items = {
         home_item,
@@ -152,7 +153,7 @@ function M.build(plugin)
         -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
         -- its saved value or default, with nothing to set.
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
-        -- GZreader: Storage (what's on the Kindle) is in About → Device → Storage
+        -- GZreader: Storage (what's on the Kindle) is in General → Storage
         -- GZreader: Connections: the Grimmory plugin's settings (connection,
         -- sync, audiobooks; KOReader → Tools → Grimmory is left out) and
         -- Memos (the Notes tab: connection, synced tags, storage, limits).

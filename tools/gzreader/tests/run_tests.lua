@@ -6814,6 +6814,29 @@ print("Settings → Storage")
         and #by.Books.sub_item_table == 4 and by.Notes.sub_item_table[1].text:match("No notes")
         and by.Calendar.mandatory == "2 KB" and by["Covers and saved lists"].mandatory == "10.0 MB",
         "storage page: free space, each part's size, the biggest of each")
+    -- Settings → General → Storage: rows with icons, arrows into the biggest
+    local function iconed(it) return it and (it.icon_glyph or it.icon_name or it.icon_file) ~= nil end
+    check(iconed(by["Free on this Kindle"]) and iconed(by.Books) and iconed(by.Books.sub_item_table[1]) and iconed(by.Audiobooks)
+        and by.Music.icon_name == "tab_music" and iconed(by.Notes) and iconed(by["Covers and saved lists"])
+        and by.Books.sub_item_table and not by.Calendar.sub_item_table,
+        "storage rows: an icon on each (the parts and their books), a submenu where there are things in it")
+    local saved_bg, saved_last = St._background, St.last
+    local pending
+    St._background = function(fn, done) pending = done end
+    St.last = nil
+    local spage = { updated = 0 }
+    function spage.updateItems(p) p.updated = p.updated + 1 end
+    local list = St.settingsItems(fake, spage)
+    check(#list == 1 and list[1].text:match("Measuring"), "storage settings: Measuring… until it's measured")
+    spage.item_table = list
+    pending({ disk = { total = 2 * 1024 ^ 3, available = 1024 ^ 3 }, books = b, calendar = { bytes = 10 } })
+    check(spage.updated == 1 and list[1].text == "Free on this Kindle" and list[2].text == "Books" and #list == 3
+        and St.last ~= nil, "storage settings: the same rows filled in where they're shown, then kept")
+    local again = St.settingsItems(fake, spage)
+    check(again[2] and again[2].text == "Books", "storage settings: shown at once the next time (measured again behind)")
+    pending({ disk = { total = 1, available = 1 } })
+    check(spage.updated == 1, "storage settings: a page showing other rows isn't redrawn")
+    St._background, St.last = saved_bg, saved_last
     os.execute("rm -rf '" .. lib .. "'")
 end)()
 

@@ -34,7 +34,6 @@ end
 
 function M.build(ctx)
     local plugin = ctx.plugin
-    local language_setting = require("ui/language"):getLangMenuTable()
     local items = {}
 
     -- GZreader: its own version first, then what it's built on
@@ -77,21 +76,7 @@ function M.build(ctx)
                 end,
                 keep_menu_open = true,
             },
-            IconItem.decorate({
-                -- Translators: Settings menu showing total device storage, with remaining, used, and total storage details.
-                text = _("Storage"),
-                mandatory_func = function()
-                    return usage_size(utils.get_device_disk_usage(), "total")
-                end,
-                -- GZreader: its Storage screen (what's on the Kindle, the
-                -- biggest of each, free space); ZenOS's numbers without GZreader
-                keep_menu_open = GzSettings.gzreader() ~= nil or nil,
-                callback = GzSettings.gzreader() and function() GzSettings.showStorage() end or nil,
-                sub_item_table_func = not GzSettings.gzreader() and function()
-                    -- Translators: Device statistics label for remaining free storage space.
-                    return usage_items(utils.get_device_disk_usage(), _("Remaining"))
-                end or nil,
-            }, icons.settings_storage),
+            -- (GZreader: Storage, Language and Time and date are in General)
             IconItem.decorate({
                 -- Translators: Settings menu showing total RAM, with used, available, and total memory details.
                 text = _("RAM"),
@@ -130,12 +115,6 @@ function M.build(ctx)
                     }
                 end,
             }, icons.settings_cpu),
-            IconItem.decorate({
-                text = language_setting.text,
-                sub_item_table = language_setting.sub_item_table,
-            }, icons.language),
-            -- GZreader: with Time zone first (gz_settings.timeAndDate)
-            IconItem.decorate(GzSettings.timeAndDate(require("ui/elements/common_settings_menu_table").time), icons.tbr),
         },
     })
 

@@ -1,5 +1,5 @@
 --[[--
-Settings → About → Device → Storage: what GZreader keeps on the Kindle, and what's biggest.
+Settings → General → Storage: what GZreader keeps on the Kindle, and what's biggest.
 
 Books (the GZreader folder: book files and their KOReader settings),
 audiobooks (.audiobooks), music (.music), notes (the offline copy and the
@@ -207,27 +207,48 @@ function Storage.measure(plugin)
     return out
 end
 
---- The page's lines (pure: run_tests.lua).
+-- Settings rows' icons, per part: a glyph of ZenOS's common/inline_icon_map.lua,
+-- one of ZenOS's icons (`name`, its icons/ folder) or one of GZreader's (`file`)
+local here = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
+Storage.ICONS = { free = { glyph = "settings_storage" }, books = { glyph = "reading" },
+    audiobooks = { file = here .. "/icons/panel/readaloud.svg" }, music = { name = "tab_music" },
+    notes = { name = "notes" }, calendar = { glyph = "calendar" }, caches = { glyph = "settings_covers" } }
+
+-- `row` with part `key`'s icon
+local function iconed(key, row)
+    local icon = Storage.ICONS[key] or {}
+    if icon.glyph then
+        local ok, map = pcall(require, "common/inline_icon_map")
+        row.icon_glyph = ok and type(map) == "table" and map[icon.glyph] or nil
+    end
+    row.icon_name, row.icon_file = icon.name, icon.file
+    return row
+end
+
+--- The page's lines (pure: run_tests.lua). Each has an icon (`icon_glyph`)
+--- and a part with things in it a submenu, for Settings → General → Storage.
 function Storage.items(r)
     local items = {}
     if r.disk then
-        items[#items + 1] = { text = _("Free on this Kindle"),
-            mandatory = T(_("%1 of %2"), Storage.size(r.disk.available), Storage.size(r.disk.total)), select_enabled = false }
+        items[#items + 1] = iconed("free", { text = _("Free on this Kindle"), keep_menu_open = true,
+            mandatory = T(_("%1 of %2"), Storage.size(r.disk.available), Storage.size(r.disk.total)), select_enabled = false })
     end
     local function group(key, label, counted, none)
         local g = r[key]
         if not g then return end
-        local entry = { text = label, mandatory = Storage.size(g.bytes) }
+        local entry = iconed(key, { text = label, mandatory = Storage.size(g.bytes) })
         if counted and g.count then entry.mandatory = T(counted(g.count), g.count) .. " · " .. entry.mandatory end
         if g.items then
             local sub = {}
             for _i, it in ipairs(g.items) do
-                sub[#sub + 1] = { text = it.name, mandatory = Storage.size(it.bytes), select_enabled = false }
+                sub[#sub + 1] = iconed(key, { text = it.name, mandatory = Storage.size(it.bytes), select_enabled = false,
+                    keep_menu_open = true })
             end
-            if #sub == 0 then sub[1] = { text = none, select_enabled = false } end
+            if #sub == 0 then sub[1] = iconed(key, { text = none, select_enabled = false, keep_menu_open = true }) end
             entry.sub_item_table = sub
         else
             entry.select_enabled = false
+            entry.keep_menu_open = true
         end
         items[#items + 1] = entry
     end
@@ -239,6 +260,48 @@ function Storage.items(r)
     group("calendar", _("Calendar"))
     group("caches", _("Covers and saved lists"))
     return items
+end
+
+--- The last measurement (shown at once the next time, then measured again).
+Storage.last = nil
+--- How the measuring runs (a test replaces it): fn in the background, then done(result, err).
+function Storage._background(fn, done)
+    require("gzreader_async").background(fn, done, "storage")
+end
+
+--- Settings → General → Storage: the parts as Settings rows (icons, sizes,
+--- arrows into the biggest of each). `page` is the Settings page that shows
+--- them: the rows are filled in there when measured (the last measurement,
+--- or "Measuring…", until then).
+function Storage.settingsItems(plugin, page)
+    local list = {}
+    local function fill(items)
+        for i = #list, 1, -1 do list[i] = nil end
+        for i, it in ipairs(items) do list[i] = it end
+        if page and not page._closed and page.item_table == list and page.updateItems then page:updateItems() end
+    end
+    fill(Storage.last and Storage.items(Storage.last)
+        or { iconed("free", { text = _("Measuring…"), select_enabled = false, keep_menu_open = true }) })
+    local tries = 0
+    local function run()
+        Storage._background(function() return Storage.measure(plugin) end, function(r, err)
+            if type(r) ~= "table" then
+                if err == "busy" and tries < 10 then
+                    tries = tries + 1
+                    return require("ui/uimanager"):scheduleIn(2, run)
+                end
+                require("gzreader_log").warn("storage: couldn't measure:", tostring(err))
+                if not Storage.last then
+                    fill({ { text = _("Couldn't measure the storage. Try again."), select_enabled = false, keep_menu_open = true } })
+                end
+                return
+            end
+            Storage.last = r
+            fill(Storage.items(r))
+        end)
+    end
+    run()
+    return list
 end
 
 --- Show the page; fill it in when measured.
