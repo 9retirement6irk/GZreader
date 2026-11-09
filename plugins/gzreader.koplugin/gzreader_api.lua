@@ -714,6 +714,34 @@ function Api:deleteAnnotation(id)
     return false, err or ("http_" .. tostring(code)), code
 end
 
+--- Grimmory's notes for a book (its web reader's Notes tab; v2: one per CFI range).
+function Api:listBookNotes(book_id)
+    local code, data, err = self:call("GET", "/api/v2/book-notes/book/" .. tostring(book_id),
+        { timeouts = { 10, 30 } })
+    if code == 200 and type(data) == "table" then return data end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: bookId, cfi, noteContent, selectedText, color (#RRGGBB), chapterTitle. 409 = a note at that CFI exists.
+function Api:createBookNote(body)
+    local code, data, err = self:call("POST", "/api/v2/book-notes", { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+--- body: noteContent (color, chapterTitle).
+function Api:updateBookNote(id, body)
+    local code, data, err = self:call("PUT", "/api/v2/book-notes/" .. tostring(id), { body = body, timeouts = { 8, 15 } })
+    if code and code >= 200 and code < 300 then return type(data) == "table" and data or true, nil, code end
+    return nil, err or ("http_" .. tostring(code)), code
+end
+
+function Api:deleteBookNote(id)
+    local code, _, err = self:call("DELETE", "/api/v2/book-notes/" .. tostring(id), { timeouts = { 8, 15 } })
+    if code == 204 or code == 200 or code == 404 then return true, nil, code end
+    return false, err or ("http_" .. tostring(code)), code
+end
+
 --- The user's rating of a book: 1-10 (Grimmory's personal rating), or nil
 --- to remove it. PUT /api/v1/books/personal-rating { ids, rating } /
 --- POST /api/v1/books/reset-personal-rating [ id ].

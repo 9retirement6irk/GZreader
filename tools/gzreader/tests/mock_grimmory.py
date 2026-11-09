@@ -39,7 +39,22 @@ STATE = {
     "annotations": {},     # id -> AnnotationResponse
     "an_next": 900,
     "an_lose_reply": False, # create, then drop the connection (reply lost)
+    "notes": {},           # id -> BookNoteV2 (the web reader's Notes tab)
+    "nt_next": 700,
 }
+
+
+def bookmark_dto(i, book, cfi=None, page=None, title=None):
+    """A BookMark as Grimmory sends it: every field, unused ones null."""
+    return {"id": i, "userId": 1, "bookId": book, "cfi": cfi, "positionMs": None, "trackIndex": None,
+            "pageNumber": page, "title": title, "color": None, "notes": None, "priority": 3,
+            "createdAt": "2026-11-08T03:00:00", "updatedAt": "2026-11-08T03:00:00"}
+
+
+def note_dto(i, book, cfi, content, text=None, color="#FFC107", chapter=None):
+    """A BookNoteV2 as Grimmory sends it."""
+    return {"id": i, "userId": 1, "bookId": book, "cfi": cfi, "selectedText": text, "noteContent": content,
+            "color": color, "chapterTitle": chapter, "createdAt": "2026-11-08T03:00:00", "updatedAt": "2026-11-08T03:00:00"}
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 BOOKS = [
     {"id": i, "title": f"Book {i:02d}", "authors": ["Author"], "primaryFileType": t,
@@ -169,6 +184,11 @@ class H(BaseHTTPRequestHandler):
             if STATE["annotations"].pop(aid, None) is None:
                 return self._json(404)
             return self._json(204)
+        if u.path.startswith("/api/v2/book-notes/"):
+            nid = int(u.path.rsplit("/", 1)[1])
+            if STATE["notes"].pop(nid, None) is None:
+                return self._json(404)
+            return self._json(204)
         if u.path.startswith("/api/v1/bookmarks/"):
             bid = int(u.path.rsplit("/", 1)[1])
             if STATE["bookmarks"].pop(bid, None) is None:
@@ -203,6 +223,22 @@ class H(BaseHTTPRequestHandler):
                 self.close_connection = True
                 return
             return self._json(200, a)
+        if u.path == "/api/v2/book-notes":
+            if not self._user():
+                return self._json(401)
+            b = self._body()
+            if not b.get("bookId") or not b.get("cfi") or not b.get("noteContent"):
+                return self._json(400, {"message": "invalid"})
+            if b.get("color") is not None and not re.match(r"^#[0-9A-Fa-f]{6}$", b["color"]):
+                return self._json(400, {"message": "Color must be a valid hex color"})
+            for n in STATE["notes"].values():
+                if n["bookId"] == b["bookId"] and n["cfi"] == b["cfi"]:
+                    return self._json(409, {"message": "Note already exists at this location"})
+            STATE["nt_next"] += 1
+            n = note_dto(STATE["nt_next"], b["bookId"], b["cfi"], b["noteContent"], b.get("selectedText"),
+                         b.get("color") or "#FFC107", b.get("chapterTitle"))
+            STATE["notes"][n["id"]] = n
+            return self._json(200, n)
         if u.path == "/api/v1/bookmarks":
             if not self._user():
                 return self._json(401)
@@ -211,7 +247,7 @@ class H(BaseHTTPRequestHandler):
                 if bm["bookId"] == b.get("bookId") and ((b.get("cfi") and bm.get("cfi") == b.get("cfi")) or (b.get("pageNumber") and bm.get("pageNumber") == b.get("pageNumber"))):
                     return self._json(409, {"message": "Bookmark already exists"})
             STATE["bm_next"] += 1
-            bm = {"id": STATE["bm_next"], "bookId": b.get("bookId"), "cfi": b.get("cfi"), "pageNumber": b.get("pageNumber"), "title": b.get("title")}
+            bm = bookmark_dto(STATE["bm_next"], b.get("bookId"), b.get("cfi"), b.get("pageNumber"), b.get("title"))
             STATE["bookmarks"][bm["id"]] = bm
             return self._json(200, bm)
         if u.path == "/api/v1/auth/login":
@@ -295,6 +331,16 @@ class H(BaseHTTPRequestHandler):
         user = self._user()
         if not user:
             return self._json(401)
+        if u.path.startswith("/api/v2/book-notes/"):
+            n = STATE["notes"].get(int(u.path.rsplit("/", 1)[1]))
+            if not n:
+                return self._json(404)
+            b = self._body()
+            for k in ("noteContent", "color", "chapterTitle"):
+                if b.get(k) is not None:
+                    n[k] = b[k]
+            n["updatedAt"] = "2026-11-08T04:00:00"
+            return self._json(200, n)
         if u.path.startswith("/api/v1/annotations/"):
             aid = int(u.path.rsplit("/", 1)[1])
             a = STATE["annotations"].get(aid)
@@ -397,6 +443,9 @@ class H(BaseHTTPRequestHandler):
         if u.path.startswith("/api/v1/annotations/book/"):
             bk = int(u.path.rsplit("/", 1)[1])
             return self._json(200, sorted([a for a in STATE["annotations"].values() if a["bookId"] == bk], key=lambda a: a["id"]))
+        if u.path.startswith("/api/v2/book-notes/book/"):
+            bk = int(u.path.rsplit("/", 1)[1])
+            return self._json(200, sorted([n for n in STATE["notes"].values() if n["bookId"] == bk], key=lambda n: n["id"]))
         if u.path.startswith("/api/v1/bookmarks/book/"):
             if not self._user():
                 return self._json(401)
@@ -674,7 +723,16 @@ if __name__ == "__main__":
                                           "contentSourceProgressPercent": float(q["cpct"][0]) if "cpct" in q else None}
             if u.path == "/addbm":
                 STATE["bm_next"] += 1
-                STATE["bookmarks"][STATE["bm_next"]] = {"id": STATE["bm_next"], "bookId": int(q["book"][0]), "cfi": q.get("cfi", [None])[0], "title": q.get("title", ["web"])[0]}
+                STATE["bookmarks"][STATE["bm_next"]] = bookmark_dto(STATE["bm_next"], int(q["book"][0]), q.get("cfi", [None])[0], None, q.get("title", ["web"])[0])
+                if "pos" in q:   # an audiobook bookmark (a time)
+                    STATE["bookmarks"][STATE["bm_next"]]["positionMs"] = int(q["pos"][0])
+            if u.path == "/addnote":   # the web reader's Notes: a note on a selection
+                STATE["nt_next"] += 1
+                STATE["notes"][STATE["nt_next"]] = note_dto(STATE["nt_next"], int(q["book"][0]), q["cfi"][0], q["note"][0], q.get("text", [None])[0])
+            if u.path == "/editnote":
+                STATE["notes"][int(q["id"][0])]["noteContent"] = q["note"][0]
+            if u.path == "/delnote":
+                STATE["notes"].pop(int(q["id"][0]), None)
             if u.path == "/addan":
                 STATE["an_next"] += 1
                 STATE["annotations"][STATE["an_next"]] = {"id": STATE["an_next"], "bookId": int(q["book"][0]), "cfi": q["cfi"][0],
@@ -702,7 +760,7 @@ if __name__ == "__main__":
                 STATE["kouser"].clear()
             if u.path == "/expire_refresh":
                 STATE["refresh"].clear(); STATE["access"].clear()
-            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()
+            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "notes": sorted(STATE["notes"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     ctl = ThreadingHTTPServer(("127.0.0.1", port + 1), C)
     threading.Thread(target=ctl.serve_forever, daemon=True).start()

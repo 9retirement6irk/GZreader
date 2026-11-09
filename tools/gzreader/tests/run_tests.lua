@@ -31,7 +31,28 @@ local function preload(name, val) package.preload[name] = function() return val 
 
 preload("logger", { dbg = function() end, info = function() end, warn = function(...) print("    [warn]", ...) end, err = function(...) print("    [err]", ...) end })
 preload("gettext", function(s) return s end)
-preload("json", require("dkjson"))
+-- KOReader's JSON library (LuaJSON) decodes null as a function (a sentinel,
+-- true in Lua) and encodes it back as null: so does this one, so code that
+-- takes Grimmory's nulls for values fails here as on the Kindle.
+do
+    local dk = require("dkjson")
+    local NULL = function() end
+    local function out(v, seen)
+        if v == NULL then return dk.null end
+        if type(v) ~= "table" or v == dk.null then return v end
+        seen = seen or {}
+        if seen[v] then return seen[v] end
+        local c = setmetatable({}, getmetatable(v))
+        seen[v] = c
+        for k, x in pairs(v) do c[k] = out(x, seen) end
+        return c
+    end
+    preload("json", {
+        null = NULL, util = { null = NULL },
+        decode = function(str, pos) return dk.decode(str, pos, NULL) end,
+        encode = function(v, state) return dk.encode(out(v), state) end,
+    })
+end
 package.preload["ffi/sha2"] = function() return dofile(KOROOT .. "/ffi/sha2.lua") end
 local socketutil = {
     LARGE_BLOCK_TIMEOUT = 10, LARGE_TOTAL_TIMEOUT = 30, FILE_BLOCK_TIMEOUT = 15, FILE_TOTAL_TIMEOUT = 60,
@@ -2566,6 +2587,56 @@ table.insert(anns, nb); rplugin:onAnnotationsModified({ nb, index_modified = 2 }
 check(#json.decode(ctl("/state")).bookmarks == 1, "bookmark sync switch off: nothing sent")
 rplugin.store.bookmark_sync_disabled = nil
 
+print("Bookmarks: Grimmory's own replies (nulls), deletes from the list")
+do
+    -- start clean: nothing here, nothing in Grimmory
+    for _i, bm in ipairs(json.decode(ctl("/state")).bookmarks) do ctl("/delbm?id=" .. bm.id) end
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+    rplugin.store.downloads["3"].bookmarks, rplugin.store.downloads["3"].bm_pending = {}, { add = {}, del = {} }
+    local function remote() return json.decode(ctl("/state")).bookmarks end
+    local NULL = require("json").null
+    check(not BM.isAudio({ positionMs = NULL }) and BM.isAudio({ positionMs = 1500 }),
+        "a JSON null positionMs isn't an audiobook bookmark")
+    -- the owner's case (2026-11-08): two made here, the book closed, one added
+    -- in the web reader, the book opened again -> all three on both sides
+    local k1 = { page = "/body/DocFragment[4]/body/p", chapter = "Chapter 2" }
+    local k2 = { page = "/body/DocFragment[4]/body/div/p[2]", chapter = "Chapter 2" }
+    table.insert(anns, k1); rplugin:onAnnotationsModified({ k1, index_modified = #anns })
+    table.insert(anns, k2); rplugin:onAnnotationsModified({ k2, index_modified = #anns })
+    local r = remote()
+    check(#r == 2 and r[1].positionMs == nil and r[1].priority == 3, "two Kindle bookmarks in Grimmory (its full replies, nulls and all)")
+    rplugin:onCloseDocument()
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/4/8)&title=web")
+    UI.scheduled = {}
+    rplugin:onReaderReady()
+    runLoop(function() return #anns >= 3 end, 10)
+    local pages = {}
+    for _i, a in ipairs(anns) do pages[a.page] = (pages[a.page] or 0) + 1 end
+    check(#anns == 3 and pages[k1.page] == 1 and pages[k2.page] == 1 and pages["/body/DocFragment[4]/body/div/p[3]"] == 1,
+        "opened again: both Kindle bookmarks kept and the web one added (none lost, none twice)")
+    check(#remote() == 3, "Grimmory still has all three")
+    local web
+    for _i, a in ipairs(anns) do if a.page == "/body/DocFragment[4]/body/div/p[3]" then web = a end end
+    check(web and web.text == "web", "the web bookmark's title")
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/4/8)&title=nameless") -- (title null in the next one)
+    ctl("/addbm?book=3&pos=61000&title=audio")
+    rplugin.bookmarks:reconcile()
+    check(#anns == 3, "an audiobook bookmark (a time) isn't put in the book")
+    -- deleted from the bookmark list (KOReader sends no event for that)
+    for i, a in ipairs(anns) do if a == k1 then table.remove(anns, i) end end
+    rplugin.bookmarks:reconcile()
+    runLoop(function() return #remote() == 4 end, 5)
+    local left = {}
+    for _i, bm in ipairs(remote()) do left[tostring(bm.cfi)] = true end
+    check(#remote() == 4 and not left["epubcfi(/6/8!/4/6)"] and left["epubcfi(/6/8!/4/4/6)"],
+        "deleted from the bookmark list here: deleted in Grimmory at the next sync")
+    rplugin.bookmarks:reconcile()
+    check(#anns == 2 and #remote() == 4, "…and stays deleted (not brought back)")
+    for _i, bm in ipairs(remote()) do ctl("/delbm?id=" .. bm.id) end
+    rplugin.bookmarks:reconcile()
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+end
+
 print("Highlights and notes: two-way sync")
 do
     package.loaded["ffi/archiver"] = nil -- the real one failed to load earlier (no libarchive here)
@@ -2681,6 +2752,79 @@ do
     rplugin.annotations:run()
     check(#readerui.annotation.annotations == 2, "switch off: nothing synced")
     rplugin.store.annotation_sync_disabled = nil
+    rplugin.store.bookmark_sync_disabled = nil
+    rplugin:onCloseDocument(); UI.scheduled = {}
+end
+
+print("Notes: the web reader's Notes tab (Grimmory's book notes)")
+do
+    local NS = require("gzreader_notesync")
+    -- the merge on its own
+    local p = NS.plan({ a = { note = "x" }, b = { note = "same" }, c = {} },
+        NS.byCfi({ { id = 1, cfi = "b", noteContent = "same" }, { id = 2, cfi = "c", noteContent = "web" },
+            { id = 3, cfi = "d", noteContent = "gone here", selectedText = require("json").null } }),
+        { b = { id = 1, note = "same" }, d = { id = 3, note = "gone here" } })
+    check(#p.creates == 1 and p.creates[1].cfi == "a" and #p.updates == 0 and #p.deletes == 1 and p.deletes[1].id == 3
+        and next(p.conflicts) == nil, "notes plan: new here -> create, deleted here -> delete, new there -> left for the merge")
+    local Anno = require("gzreader_annotations")
+    local CFI = require("gzreader_cfi")
+    local function notes() return json.decode(ctl("/state")).notes end
+    local function hls() return json.decode(ctl("/state")).annotations end
+    for _i, a in ipairs(hls()) do ctl("/delan?id=" .. a.id) end
+    rplugin.store.bookmark_sync_disabled = true
+    rplugin:onReaderReady(); UI.scheduled = {}
+    local note_anns = readerui.annotation.annotations
+    for i = #note_anns, 1, -1 do table.remove(note_anns, i) end
+    local entry = rplugin.store.downloads["3"]
+    entry.anno_shadow, entry.note_shadow, entry.anno_dirty = {}, nil, nil
+    local note_an = rplugin.annotations
+    local P0, P1 = "/body/DocFragment[4]/body/div/p[3]/text().0", "/body/DocFragment[4]/body/div/p[3]/text().5"
+    CFI.initBook("x", Anno.openReader()); local range = CFI.xpointerRangeToCFI(P0, P1); CFI.clearCache()
+    table.insert(note_anns, { pos0 = P0, pos1 = P1, page = P0, text = "three", chapter = "Chapter 2", drawer = "lighten",
+        color = "green", note = "Kindle note", datetime = "2026-11-08 03:00:00" })
+    note_an:run()
+    local nt = notes()
+    check(#nt == 1 and nt[1].cfi == range and nt[1].noteContent == "Kindle note" and nt[1].selectedText == "three"
+        and nt[1].color == "#4ADE80" and nt[1].chapterTitle == "Chapter 2", "a Kindle note is in Grimmory's Notes, at its highlight")
+    check(#hls() == 1 and hls()[1].note == "Kindle note", "…and the highlight keeps it too")
+    note_an:run()
+    check(#notes() == 1 and not entry.anno_dirty, "again: no duplicate, nothing waiting")
+    ctl("/editnote?id=" .. nt[1].id .. "&note=edited%20on%20the%20web")
+    note_an:run()
+    check(note_anns[1].note == "edited on the web", "edited in the web reader: the Kindle's note changes")
+    note_an:run()
+    check(hls()[1].note == "edited on the web" and #notes() == 1, "…the highlight's copy follows")
+    note_anns[1].note = "kindle edit" -- (KOReader sends no event for an edit)
+    check(note_an:notesChanged(), "an edited note is noticed when the book closes")
+    note_an:run()
+    check(notes()[1].noteContent == "kindle edit" and not note_an:notesChanged(), "edited on the Kindle: Grimmory's note changes")
+    -- a note in the web reader where the Kindle has no highlight
+    ctl("/addnote?book=3&note=web%20only&text=two&cfi=epubcfi(/6/8%5Bc2%5D!/4/4/6,/1:0,/1:3)")
+    note_an:run()
+    local only, hl
+    for _i, a in ipairs(note_anns) do if a.grimmory_note_only then only = a else hl = a end end
+    check(#note_anns == 2 and only and only.note == "web only" and only.pos0 == "/body/DocFragment[4]/body/div[1]/p[2]/text()[1].0",
+        "a web note comes to the Kindle at its words")
+    note_an:run()
+    check(#hls() == 1 and #notes() == 2, "…and isn't sent back as a highlight")
+    hl.note = nil
+    note_an:run()
+    nt = notes()
+    check(#nt == 1 and nt[1].noteContent == "web only", "note removed on the Kindle: removed from Grimmory's Notes")
+    ctl("/delnote?id=" .. nt[1].id)
+    note_an:run()
+    check(#note_anns == 1 and not note_anns[1].grimmory_note_only and note_anns[1].text == "three", "deleted in the web reader: gone from the Kindle")
+    -- (a pass puts Grimmory's copy of a synced highlight in its place: note_anns[1] each time)
+    note_anns[1].note = "a"; note_an:run()
+    ctl("/editnote?id=" .. notes()[1].id .. "&note=web%20b"); note_anns[1].note = "kindle c"
+    note_an:run()
+    check(notes()[1].noteContent == "web b" and note_anns[1].note == "kindle c" and entry.anno_dirty,
+        "edited in both places: each keeps its own, tried again later")
+    note_anns[1].note = "web b"; note_an:run()
+    check(not entry.anno_dirty and #notes() == 1, "settles once both agree")
+    for i = #note_anns, 1, -1 do table.remove(note_anns, i) end
+    note_an:run()
+    check(#notes() == 0 and #hls() == 0, "highlight with its note deleted here: both gone in Grimmory")
     rplugin.store.bookmark_sync_disabled = nil
     rplugin:onCloseDocument(); UI.scheduled = {}
 end
