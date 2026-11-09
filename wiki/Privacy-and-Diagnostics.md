@@ -56,6 +56,12 @@ the answers that only change with the Kindle's firmware are kept in
 the Kindle runs (memory, running programs, Wi‑Fi state, GZreader's own
 files) are run each time.
 
+No log files pile up on the Kindle: Send to the developer and Send to a
+browser (and the setup page's Diagnostics tab) build the file in
+`koreader/cache` and delete it once it's sent, and Save to the Kindle keeps
+only the newest three `gzreader-log-<date>.txt` next to the GZreader folder
+(the one just saved always stays).
+
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:

@@ -721,6 +721,9 @@ function Grimmory:exportLog()
     UIManager:close(busy)
     if dest then
         Log.info("log exported to", dest)
+        -- (only the newest few stay: each is ~700 KB)
+        local pruned = Log.pruneExports(dest_dir, nil, dest)
+        if pruned > 0 then Log.info("older saved logs deleted:", pruned) end
         UIManager:show(InfoMessage:new{
             text = T(_("Diagnostic log saved:\n%1\n\nConnect the Kindle over USB to copy it."), dest),
         })
@@ -860,15 +863,16 @@ function Grimmory:shareLog()
     local busy = InfoMessage:new{ text = _("Preparing the diagnostic log…"), timeout = 0 }
     UIManager:show(busy)
     UIManager:forceRePaint()
-    local dest, err = Log.exportTo(dest_dir, DataStorage:getDataDir() .. "/crash.log")
+    -- built in the cache and deleted there: the browser gets the copy in memory
+    local tmp = DataStorage:getDataDir() .. "/cache"
+    require("libs/libkoreader-lfs").mkdir(tmp)
+    local content, filename = Log.exportText(tmp, DataStorage:getDataDir() .. "/crash.log")
     UIManager:close(busy)
-    local f = dest and io.open(dest, "rb")
-    if not f then
-        return UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log: %1"), tostring(err)) })
+    if not content then
+        return UIManager:show(InfoMessage:new{ text = T(_("Couldn't save the log: %1"), tostring(filename)) })
     end
-    local content = f:read("*a")
-    f:close()
-    local filename = dest:match("[^/]+$")
+    -- (logs earlier versions left next to the GZreader folder: only the newest few stay)
+    Log.pruneExports(dest_dir)
     local token = Mod.PairServer.randomToken(16)
     local base = "/log/" .. token
     -- typed into a browser: just the IP (port 80 where it can be used) and
@@ -955,7 +959,7 @@ a.b{display:inline-block;padding:.8em 1.4em;background:#000;color:#fff;border-ra
         address = address,
         pin = pin,
         title = _("Send the diagnostic log"),
-        instructions = T(_("Scan this code with your phone and tap \"Download the log\".\n\nIt's also saved as %1."), dest),
+        instructions = _("Scan this code with your phone and tap \"Download the log\". (It isn't kept on the Kindle: use Save to the Kindle for a copy here.)"),
         footer = _("Press Back when you're done."),
         button_text = _("Done"),
         on_cancel = function() screen = nil; finish() end,
