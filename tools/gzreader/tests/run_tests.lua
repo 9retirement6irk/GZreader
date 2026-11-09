@@ -1574,6 +1574,30 @@ do
         if t.id == "layout" then t.run() end
     end
     check(forced == true and #sent == 0, "Layout tile: the layout menu opened with force (Zen mode on a touch Kindle doesn't block it)")
+    -- Music and Audiobook: only while one plays (or is paused), in both groups; they open its player
+    do
+        local saved_audio = require("gzreader_touch").audio
+        require("gzreader_touch").audio = function() return true end
+        local M, AB = require("gzreader_music"), require("gzreader_audiobook")
+        local saved_m, saved_ab, saved_open, saved_np = M.current, AB.current, AB.open, require("gzreader_musictab").nowPlaying
+        M.current, AB.current = nil, nil
+        local h0, b0 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(not h0:match("Music") and not h0:match("Audiobook") and not b0:match("Music") and not b0:match("Audiobook"),
+            "nothing playing: no Music or Audiobook tile (music and audiobooks are in the Catalog) " .. h0)
+        local opened_p = {}
+        require("gzreader_musictab").nowPlaying = function() opened_p[#opened_p + 1] = "cd" end
+        AB.open = function(_p, book) opened_p[#opened_p + 1] = "ab" .. tostring(book.id) end
+        M.current = { playing = true }
+        AB.current = { book = { id = 7 }, playing = false }
+        local h1, b1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(h1:match("|Music ▶|") and h1:match("|Audiobook|") and b1:match("|Music ▶|") and b1:match("|Audiobook|"),
+            "music playing, an audiobook paused: both tiles, at Home and in a book " .. h1 .. " " .. b1)
+        for _i, t in ipairs(Panel.homeTiles(hplug, nil)) do if t.id == "music" or t.id == "audiobook" then t.run() end end
+        check(table.concat(opened_p, ",") == "cd,ab7", "…each opens its player " .. table.concat(opened_p, ","))
+        M.current, AB.current, AB.open = saved_m, saved_ab, saved_open
+        require("gzreader_musictab").nowPlaying = saved_np
+        require("gzreader_touch").audio = saved_audio
+    end
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end

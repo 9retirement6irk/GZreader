@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Quick panel: Music and Audiobook tiles only while one plays", text = "The quick panel's Music tile is there only while music plays or is paused (it opens Now playing), and the Audiobook tile only while an audiobook plays or is paused (it opens its player), now in a book too. Browsing and downloading music and audiobooks is the Catalog tab's; what's on the Kindle is in Downloads." },
             { short = "The Grimmory tab is now the Catalog: Books, Audiobooks and Music pages", text = "The Grimmory tab is renamed Catalog and has pages: Books (as before), Audiobooks (Grimmory's audiobooks) and Music (Plex), on Kindles with a speaker or headphone jack. Swipe left or right, tap the next page's name under the title, or use the page-turn buttons; the title says which page you're on, and dots under it show where you are and what's next. The tab always opens on Books. On the Books page the bookcase's last compartment is now Downloaded books on every Kindle (Audiobooks have their own page). A tab you had renamed keeps its name." },
         },
     },

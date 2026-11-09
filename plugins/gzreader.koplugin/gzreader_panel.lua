@@ -5,9 +5,14 @@ the top of the screen. Square tiles, in two groups:
   Controls   Wi-Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
-             Search, History, View, Sort, Music
+             Search, History, View, Sort, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Music
+             Search book, Font, Layout, Fit pictures, Read aloud, Music,
+             Audiobook
+
+Music and Audiobook are there only while one plays (or is paused): they
+open its player. Browsing and downloading music and audiobooks is the
+Catalog tab's (gzreader_catalog.lua); what's on the Kindle, Downloads.
 
 With a keyboard each tile shows its letter (Controls: the top row of keys,
 Q to P; the second group: A to L) and the 5-way and Press work too; the
@@ -153,8 +158,8 @@ function Panel.catalog()
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
-            { id = "music", label = _("Music"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one is open"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
         } },
         { id = "book", title = _("This book"), tiles = {
@@ -168,7 +173,8 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
-            { id = "music", label = _("Music"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
         } },
     }
 end
@@ -288,14 +294,29 @@ local function shortTitle(path)
     return t
 end
 
+--- The Music tile, while music plays or is paused (its player: the CD
+--- player). Nothing else: music is browsed in the Catalog.
 local function musicTile(plugin)
     if not Touch.audio() then return nil end
-    local Tab = require("gzreader_musictab")
-    local item = Tab.menuItem(plugin)
     local okm, M = pcall(require, "gzreader_music")
-    local playing = okm and M.current and M.current.playing
-    return { icon = "music", label = playing and _("Music ▶") or _("Music"), on = playing == true, run = item.callback }
+    local cur = okm and M.current
+    if not cur then return nil end
+    local playing = cur.playing == true
+    return { id = "music", icon = "music", label = playing and _("Music ▶") or _("Music"), on = playing,
+        run = function() require("gzreader_musictab").nowPlaying(plugin) end }
 end
+Panel.musicTile = musicTile
+
+--- The Audiobook tile, while one plays or is paused (its player).
+local function audiobookTile(plugin)
+    if not Touch.audio() then return nil end
+    local okA, Audiobook = pcall(require, "gzreader_audiobook")
+    local cur = okA and Audiobook.current
+    if not (cur and cur.book) then return nil end
+    return { id = "audiobook", icon = "readaloud", label = cur.playing and _("Audiobook ▶") or _("Audiobook"), on = cur.playing == true,
+        run = function() Audiobook.open(plugin, cur.book) end }
+end
+Panel.audiobookTile = audiobookTile
 
 --- Home's tiles (the file manager).
 function Panel.homeTiles(plugin, book)
@@ -314,14 +335,8 @@ function Panel.homeTiles(plugin, book)
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { id = "view", icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }
     list[#list + 1] = { id = "sort", icon = "sort", label = _("Sort"), run = function() HomeMenu.showSort() end }
-    local m = musicTile(plugin)
-    if m then m.id = "music"; list[#list + 1] = m end
-    local okA, Audiobook = pcall(require, "gzreader_audiobook")
-    local cur = okA and Audiobook.current
-    if cur and cur.book then
-        list[#list + 1] = { id = "audiobook", icon = "readaloud", label = _("Audiobook"), on = cur.playing == true,
-            run = function() Audiobook.open(plugin, cur.book) end }
-    end
+    list[#list + 1] = musicTile(plugin)
+    list[#list + 1] = audiobookTile(plugin)
     local Tasks = require("gzreader_tasks")
     if Tasks.count() > 0 then
         local item = Tasks.menuItem()
@@ -359,8 +374,8 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
-    local m = musicTile(plugin)
-    if m then m.id = "music"; list[#list + 1] = m end
+    list[#list + 1] = musicTile(plugin)
+    list[#list + 1] = audiobookTile(plugin)
     return shown("book", list)
 end
 
