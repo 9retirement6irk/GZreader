@@ -478,6 +478,10 @@ function PanelWidget:init()
     if light then
         -- drag the slider (pan while moving, then its release; a quick drag is a swipe)
         local strip = function() return Geom:new{ x = 0, y = self.light_y - S(10), w = sw, h = S(64) } end
+        -- (only a drag that starts with a finger put down on the slider: the
+        -- swipe down that opens the panel in a book is still going when it
+        -- appears, and its rest would set the light where the finger passed)
+        self.ges_events.TouchPanel = { GestureRange:new{ ges = "touch", range = whole } }
         self.ges_events.PanLight = { GestureRange:new{ ges = "pan", range = strip } }
         self.ges_events.PanReleaseLight = { GestureRange:new{ ges = "pan_release", range = strip } }
         self.ges_events.SwipeLight = { GestureRange:new{ ges = "swipe", range = strip } }
@@ -496,18 +500,30 @@ function PanelWidget:lightAt(x, final)
     return true
 end
 
+--- A finger put down: the slider follows a drag only if it went down on it.
+function PanelWidget:onTouchPanel(_arg, ges)
+    local y = ges and ges.pos and ges.pos.y
+    self._light_touched = (y and self.light_y and y >= self.light_y - S(10) and y <= self.light_y + S(54)) or false
+    return false
+end
+
 function PanelWidget:onPanLight(_arg, ges)
-    if not (ges and ges.pos) then return true end
+    if not (self._light_touched and ges and ges.pos) then return true end
     return self:lightAt(ges.pos.x)
 end
 
 function PanelWidget:onPanReleaseLight(_arg, ges)
     self._dragged = nil
-    if not (ges and ges.pos) then return true end
+    local touched = self._light_touched
+    self._light_touched = false
+    if not (touched and ges and ges.pos) then return true end
     return self:lightAt(ges.pos.x, true)
 end
 
 function PanelWidget:onSwipeLight(_arg, ges)
+    local touched = self._light_touched
+    self._light_touched = false
+    if not touched then return true end
     if not (ges and ges.pos and (ges.direction == "east" or ges.direction == "west")) then return true end
     -- (pos is where it started: end where it went)
     local x = ges.pos.x + (ges.direction == "east" and 1 or -1) * (ges.distance or 0)
@@ -663,5 +679,7 @@ function Panel.show(plugin)
     UIManager:show(w)
     return true
 end
+
+Panel._Widget = PanelWidget -- (for the tests)
 
 return Panel

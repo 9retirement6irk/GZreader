@@ -29,6 +29,7 @@ return {
             { short = "Smoother page turns while GZreader syncs in the background", text = "Syncing, downloads, the library index, update checks and usage statistics now run their background processes at a lower priority than the screen. Each request's secure connection takes seconds of processor time on a Kindle 3, and opening a book starts several; page turns no longer wait for them." },
             { short = "Diagnostics: a line in the log for each start", text = "The diagnostic log has a line for each start, like the one for each book opened: how long until Home (or a book) was on the screen, the processor time, when GZreader's own part started and how long it took, modules loaded, memory used and free. Send the log after a few starts to show where a slow start goes." },
             { short = "Books open sooner: reading statistics are looked up after the first page", text = "Opening a book: the reading statistics' lookups (the book's record and its reading time so far, slower the more you've read it) now run just after the first page is on the screen instead of before it. The time-left estimate uses the totals saved with the book until then." },
+            { short = "Swiping down for the quick panel in a book no longer changes the light", text = "Touch Kindles with a frontlight: opening the quick panel in a book by swiping down from the top changed the light to wherever the finger crossed the light slider. The slider now only moves when you tap it or put your finger down on it and drag." },
         },
     },
     {

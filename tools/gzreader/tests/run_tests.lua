@@ -5868,6 +5868,52 @@ print("Kindles without REAGL: flash when the screen changes")
         "the note editor: typing doesn't flash the screen at every key (only its opening and closing do)")
 end)()
 
+print("Quick panel's light: the swipe that opens it doesn't move the light")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    -- (the panel's sizes go through the screen it was loaded with: 1:1 here)
+    local Screen = require("device").screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local set = {}
+    local w = setmetatable({ light_y = 40, w = 600 }, { __index = PW })
+    w.lightInfo = function() return nil, 0, 24, 12 end
+    w.setLight = function(_self, v) set[#set + 1] = v end
+    local on_strip = 40 + 20
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    -- the swipe down that opened the panel goes on over the slider, then lets go
+    w:onPanLight(nil, at(100, on_strip))
+    w:onPanLight(nil, at(400, on_strip))
+    w:onPanReleaseLight(nil, at(400, on_strip + 4))
+    w:onSwipeLight(nil, { pos = at(100, on_strip).pos, direction = "east", distance = 300 })
+    check(#set == 0, "the rest of the opening swipe (pans, release, swipe) leaves the light alone")
+    -- a finger put down below the slider (on the tiles) and dragged up over it
+    check(w:onTouchPanel(nil, at(300, 300)) == false, "a touch isn't taken from the tiles")
+    w:onPanLight(nil, at(400, on_strip))
+    w:onPanReleaseLight(nil, at(400, on_strip))
+    check(#set == 0, "a drag that started on the tiles doesn't move the light")
+    -- a finger put down on the slider and dragged
+    w:onTouchPanel(nil, at(200, on_strip))
+    w:onPanLight(nil, at(300, on_strip))
+    w:onPanReleaseLight(nil, at(350, on_strip))
+    check(#set == 2, "a drag on the slider moves the light (" .. #set .. ")")
+    -- then the next gesture needs its own touch
+    w:onPanLight(nil, at(100, on_strip))
+    check(#set == 2, "…and only until that finger lets go")
+    w:onTouchPanel(nil, at(200, on_strip))
+    w:onSwipeLight(nil, { pos = at(200, on_strip).pos, direction = "east", distance = 100 })
+    check(#set == 3, "a quick swipe on the slider moves the light")
+    w:onSwipeLight(nil, { pos = at(200, on_strip).pos, direction = "east", distance = 100 })
+    check(#set == 3, "…once")
+    local pf = io.open(debug.getinfo(PW.onTouchPanel, "S").source:sub(2), "rb")
+    local src = pf and pf:read("*a") or ""
+    if pf then pf:close() end
+    check(src:match('TouchPanel = { GestureRange:new{ ges = "touch", range = whole } }'),
+        "the panel listens for a finger put down (KOReader's touch gesture)")
+    Screen.scaleBySize = was_scale
+end)()
+
 print("The first tour on a touch Kindle: GZreader's quick panel")
 ;(function()
     local Tour = require("gzreader_tour")

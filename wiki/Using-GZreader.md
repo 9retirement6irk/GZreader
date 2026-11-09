@@ -19,7 +19,7 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
   margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud and
   Music.
 
-On a touch Kindle with a frontlight the panel also has a light slider (tap or
+On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and
 holding a book at Home or in Downloads opens Manage book.
 
