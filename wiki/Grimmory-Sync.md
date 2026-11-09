@@ -51,6 +51,13 @@ Bookmarks made offline are sent later. Synced on open and with "Sync with
 Grimmory" (quick panel, in a book). Switch: Settings → Connections →
 Grimmory → Sync bookmarks.
 
+A bookmark you delete from the bookmark list (rather than by tapping the
+page's corner) is deleted in Grimmory at the next sync too. Until the fix
+listed under "next" in the changelog, Grimmory's own bookmarks (and anything
+added in its web reader) were taken for audiobook bookmarks: opening the book
+again removed the bookmarks already synced from the Kindle and brought none
+in. They are still in Grimmory and come back at the next sync.
+
 crengine makes a DocFragment for every spine item, image and SVG pages
 included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
 spine item. Until 1.0.29 GZreader counted only XHTML items; books with
@@ -82,6 +89,12 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   gets 409 "already exists", which counts as sent).
 - Colours: yellow, green, cyan, pink, orange, red, purple, blue, gray, white ⇄
   Grimmory's hex colours; styles: highlight, underline, strikeout, squiggly.
+  A greyscale Kindle highlights in grey, which hardly shows in the web
+  reader, so a new grey highlight goes to Grimmory as the web reader's
+  yellow (one already in Grimmory keeps its colour). On a greyscale screen,
+  a highlight colour too light to see there (yellow, light green) is drawn
+  like the grey highlight; darker colours, underlines and colour screens are
+  unchanged (`gzreader_hlcolor.lua`).
 - Runs a few seconds after a Grimmory EPUB opens, a few seconds after you add,
   change or delete a highlight or note (when Wi‑Fi is on), with "Sync with
   Grimmory" (quick panel), and when the book closes with changes still waiting.
@@ -89,5 +102,18 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   background process; only the merge into the open book happens on screen.
   Highlights already linked keep their conversion, so only new ones parse
   their chapters, and chapters are parsed once per pass.
+- **Notes in Grimmory's Notes tab.** Grimmory keeps a highlight's note in
+  the highlight, but its web reader doesn't show it there: the notes it shows
+  (the Notes tab beside the book) are records of their own. So every note on
+  the Kindle is also kept as one of those, at the highlight's place, with the
+  highlighted words, colour and chapter, and kept the same both ways (three
+  ways, as above: changed on one side, copied; changed on both, each keeps
+  its own until they agree). A note made in the web reader comes to the
+  Kindle on the highlight at that place, or as a highlight of its own (not
+  sent back to Grimmory as a highlight). Deleting a note, or its highlight,
+  on the Kindle deletes it there; deleting it in the web reader deletes it
+  here. Editing a note that already exists is noticed when the book closes
+  (KOReader doesn't announce it) and sent then. Kindle 2 / DX: not through
+  the sync page yet (highlights are).
 - Page bookmarks stay with bookmark sync. Switch: Settings → Connections →
   Grimmory → Sync highlights and notes.

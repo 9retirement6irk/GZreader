@@ -31,6 +31,8 @@ check(run("tools/gzreader/ci-test.sh") == "needed" and run(".github/workflows/gz
 check(run() == "needed" and run("", " ") == "needed", "nothing known to have changed: it runs")
 check(run("tools/gzreader/emulator/keeps.lua") == "needed" and run("plugins/zenos.koplugin/main.lua") == "needed",
       "the emulator's checks, ZenOS: it runs")
+check(run("tools/gzreader/emulator/perf_baseline.json") == "needed" and run("tools/gzreader/emulator/perf_check.py") == "needed",
+      "the CPU budgets (a new baseline, the checker): the emulator runs, so the budgets are checked")
 
 ci = [".github/workflows/gzreader-nook.yml", ".github/workflows/gzreader-beta.yml", "tools/gzreader/publish-updates.sh",
       "tools/gzreader/tests/publish_updates_test.py"]

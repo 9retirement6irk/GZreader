@@ -11,7 +11,7 @@ in. Only the first page is kept; "Load more" always asks Grimmory.
 ]]
 
 local DataStorage = require("datastorage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local lfs = require("libs/libkoreader-lfs")
 local md5 = require("ffi/sha2").md5
 

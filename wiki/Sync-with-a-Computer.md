@@ -50,6 +50,29 @@ on the Kindle; when GZreader steps aside for the USB drive it leaves them in
 `.gzsync/usage/`, and the page sends them at the level chosen on the Kindle,
 then deletes them. Off: nothing is left or sent.
 
+## Sending diagnostics to the developer
+
+A Kindle without Wi‑Fi sends its diagnostic log through the page, the same
+report a Wi‑Fi Kindle sends with **Send to the developer**:
+
+- **On the Kindle:** Diagnostics (quick panel) → **Send to the developer (at
+  the next sync)**, or Settings → General → Advanced → Send diagnostic log to the
+  developer. A box asks what you were doing and what went wrong; the log and
+  what you typed are saved in `.gzsync/reports/` (the newest three). At your
+  next sync the page sends them and deletes them; if it can't reach the
+  developer, they wait for the next sync.
+- **On the page:** the Sync tab's **Diagnostics** box. Type what happened and
+  press **Send to the developer**: the page sends the Kindle's log with it
+  (and any reports the Kindle saved). With diagnostic logging on, pressing
+  **Sync** in the Kindle's quick panel exports a fresh, complete log first
+  (`.gzsync/reports/latest.txt`), and the page sends that one; otherwise it
+  reads `koreader/gzreader.log` and the tail of `crash.log` from the drive.
+  Use this when the Kindle can't get as far as its menus.
+
+Passwords and tokens are never in the log; it can name books and files.
+Reports go to the developer's report feed, like a Wi‑Fi Kindle's, tagged
+`sync-page` ([Privacy and diagnostics](Privacy-and-Diagnostics#diagnostic-log)).
+
 **Test mode**: <https://9retirement6irk.github.io/GZreader/sync/?test> works
 with a pretend Kindle kept in the browser, to try the page (and your
 connections) without a Kindle.
