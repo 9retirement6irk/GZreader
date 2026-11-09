@@ -1674,7 +1674,24 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
-    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|"), "Grimmory section: Keep connections open, after the sync switches")
+    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|Rebuild library|Reconnect"),
+        "Grimmory section: Keep connections open after the sync switches, then Rebuild library " .. g)
+    do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
+        local NetR = require("gzreader_net")
+        local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
+        local was_run, was_build, was_clear = NetR.run, IndexR.build, LCR.clear
+        local why, cleared, built
+        NetR.run = function(fn, o) why = o and o.reason; fn() end
+        LCR.clear = function() cleared = true end
+        IndexR.build = function(_p, show, cb) built = show; cb({ total = 189 }) end
+        captured.info = nil
+        local rb
+        for _i, it in ipairs(plugin:menuItems()) do if it.text == "Rebuild library" then rb = it end end
+        rb.callback()
+        check(why == "rebuilding the library" and cleared and built == true and captured.info == "Library rebuilt: 189 books.",
+            "Rebuild library: Wi-Fi on, saved lists forgotten, the library list built again (" .. tostring(captured.info) .. ")")
+        NetR.run, IndexR.build, LCR.clear = was_run, was_build, was_clear
+    end
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
     local d = texts(gen.diagnostics)
