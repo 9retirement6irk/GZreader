@@ -244,7 +244,8 @@ function M.settingsItems(scope, id)
     for _i, tab in ipairs(items) do
         local title = item_title(tab) or fallback_title(tab.id)
         -- Untitled tabs (e.g. Ink Away's icon-only shortcut) would render as blank rows.
-        if not injected[tab.id] and title ~= "" then
+        if not injected[tab.id] and title ~= ""
+                and require("common/gz_settings").keepKOReaderItem(tab) then -- GZreader
             local setting = tab.id == "setting" or tab.id == "typeset"
                 or tab.id == "filemanager_settings"
             local root = {}

@@ -48,6 +48,14 @@ M.KOREADER_HIDDEN = {
     network_after_wifi_action = true,
     -- the same menu as Settings → Connections → Grimmory
     gzreader = true,
+    -- the whole File browser menu: Sort by, Book status, Reverse, mixed are
+    -- what ZenOS's own Sort and Filter in Downloads set (the same settings),
+    -- and its Settings repeat Downloads' (layout, items per page, hidden
+    -- files, files from subfolders)
+    filemanager_settings = true,
+    -- Tools → Reading statistics: the plugin stays (time left, book details,
+    -- the end-of-book page, Reading goals), its menu goes
+    statistics = true,
 }
 
 --- Whether the KOReader section shows `item` (a KOReader menu item).

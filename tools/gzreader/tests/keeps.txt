@@ -75,7 +75,7 @@
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
 1 plugins/zenos.koplugin/modules/global/global.lua
 1 plugins/zenos.koplugin/modules/global/patches/nonblocking_wifi.lua
-2 plugins/zenos.koplugin/modules/menu/app_launcher/native_menu.lua
+4 plugins/zenos.koplugin/modules/menu/app_launcher/native_menu.lua
 1 plugins/zenos.koplugin/modules/menu/bluetooth/bluetooth.lua
 1 plugins/zenos.koplugin/modules/menu/bluetooth_switcher.lua
 2 plugins/zenos.koplugin/modules/menu/network_adapters/kindle.lua

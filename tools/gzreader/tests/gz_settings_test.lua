@@ -188,6 +188,8 @@ local src = {
     { id = "network_after_wifi_action", text = "Action when done with Wi-Fi" },
     { id = "network_proxy", text = "HTTP proxy" },
     { id = "gzreader", text = "Grimmory" },
+    { id = "statistics", text = "Reading statistics" },
+    { id = "filemanager_settings", text = "File browser" },
     { id = "help", text = "Help", sub_item_table = {
         { id = "quickstart_guide", text = "Quickstart guide" },
         { id = "report_bug", text = "Report a bug" },
@@ -202,6 +204,8 @@ check(texts(copied[4] and copied[4].sub_item_table) == "|Quickstart guide|Versio
 check(texts(copied) == "|Wi-Fi connection|More tools|HTTP proxy|Help|no id|",
     "KOReader section: clashing items left out " .. texts(copied))
 check(texts(copied[2].sub_item_table) == "|Advanced settings|", "and inside submenus " .. texts(copied[2].sub_item_table))
+local n_keep = select(2, read("modules/menu/app_launcher/native_menu.lua"):gsub("keepKOReaderItem", ""))
+check(n_keep == 2, "the KOReader section's top menus (File browser) are filtered too")
 check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem", 1, true) ~= nil,
     "the KOReader menu picker (bottom swipe → KOReader menu) leaves them out too")
 
