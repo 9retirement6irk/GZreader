@@ -26,7 +26,7 @@ reports/latest.txt: the page's Diagnostics box sends that one (the whole
 bundle, as a Wi-Fi Kindle would) with what's typed on the page.
 ]]
 local Log = require("gzreader_log")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 
 local Report = { KEEP = 3, FOLDER = "reports" }
 
