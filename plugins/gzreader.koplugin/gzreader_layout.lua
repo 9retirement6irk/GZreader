@@ -214,9 +214,16 @@ function Layout.opened(doc, entry, id)
     entry.layout_checked = true
     local hash = "?"
     pcall(function() hash = tostring(doc:getDocumentRenderingHash(true)) end)
-    local same = entry.layout_hash and hash == entry.layout_hash
-    Log.info("layout: book", tostring(id), "opened after its background layout:", same and "the same layout, reused"
-        or ("a different layout (" .. tostring(hash) .. ", background " .. tostring(entry.layout_hash) .. "): laid out again"))
+    local verdict
+    if not entry.layout_hash then
+        -- (laid out by a version that kept no hash: the book open line's "laid out" time tells)
+        verdict = "no hash kept by the version that laid it out, so not compared"
+    elseif hash == entry.layout_hash then
+        verdict = "the same layout, reused"
+    else
+        verdict = "a different layout (" .. tostring(hash) .. ", background " .. tostring(entry.layout_hash) .. "): laid out again"
+    end
+    Log.info("layout: book", tostring(id), "opened after its background layout:", verdict)
 end
 
 --- Look every EVERY seconds (and `soon` seconds from now: after a download).

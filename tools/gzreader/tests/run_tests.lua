@@ -1284,8 +1284,11 @@ print("New books laid out in the background while charging")
     L.opened({ getDocumentRenderingHash = function() return "zzz" end }, e8, 8) -- (once per book)
     local e9 = { laid_out = 1, layout_hash = "lay7q2x" }
     L.opened({ getDocumentRenderingHash = function() return "lay9w4k" end }, e9, 9)
+    L.opened({ getDocumentRenderingHash = function() return "lay9w4k" end }, { laid_out = 1 }, 10)
     LogL.info = was_info
-    check(#said == 2 and said[1]:find("the same layout, reused", 1, true) and said[2]:find("a different layout (lay9w4k, background lay7q2x)", 1, true),
+    check(#said == 3 and said[1]:find("the same layout, reused", 1, true) and said[2]:find("a different layout (lay9w4k, background lay7q2x)", 1, true)
+        and said[3]:find("no hash kept by the version that laid it out, so not compared", 1, true)
+        and not said[3]:find("different", 1, true),
         "opened: the log says whether the background layout was the reader's (" .. table.concat(said, " / ") .. ")")
     local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
     local ltext = src and src:read("*a") or ""

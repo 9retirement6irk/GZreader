@@ -41,7 +41,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   opened (no history, no book settings). Not on Kindles with 128 MB or less.
   The log says when such a book opens whether the reader used that layout
   (`layout: book … opened after its background layout: the same layout,
-  reused` or `a different layout … laid out again`).
+  reused` or `a different layout … laid out again`). A book laid out by a
+  beta from before 2026-11-09 says `no hash kept … so not compared`; the
+  `book open:` line's `laid out` time shows whether it was reused (a fraction
+  of a second when it was).
 - **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when
   the Lua files are source (an update from GitHub's source archive, a
   development copy), each module's bytecode is kept in
