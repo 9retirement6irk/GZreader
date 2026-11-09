@@ -108,6 +108,9 @@ function Grimmory:init()
         -- a log line per book opened: where the time went
         pcall(function() require("gzreader_opentiming").install() end)
     end
+    -- a book: highlights too light to see on a greyscale screen (yellow, from
+    -- Grimmory's web reader) are drawn like the grey one (gzreader_hlcolor.lua)
+    if self.ui and self.ui.view then pcall(function() require("gzreader_hlcolor").install() end) end
     self.store = self.settings:readSetting("state", {})
     if not Grimmory.recent_applied then
         Grimmory.recent_applied = true

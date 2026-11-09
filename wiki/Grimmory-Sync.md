@@ -89,6 +89,12 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   gets 409 "already exists", which counts as sent).
 - Colours: yellow, green, cyan, pink, orange, red, purple, blue, gray, white ⇄
   Grimmory's hex colours; styles: highlight, underline, strikeout, squiggly.
+  A greyscale Kindle highlights in grey, which hardly shows in the web
+  reader, so a new grey highlight goes to Grimmory as the web reader's
+  yellow (one already in Grimmory keeps its colour). On a greyscale screen,
+  a highlight colour too light to see there (yellow, light green) is drawn
+  like the grey highlight; darker colours, underlines and colour screens are
+  unchanged (`gzreader_hlcolor.lua`).
 - Runs a few seconds after a Grimmory EPUB opens, a few seconds after you add,
   change or delete a highlight or note (when Wi‑Fi is on), with "Sync with
   Grimmory" (quick panel), and when the book closes with changes still waiting.
