@@ -1258,7 +1258,7 @@ gets a password or token.
       if (index[name] !== stamp && index[name] !== stamp + ":none") todo.push({ id: b.id, name: name, stamp: stamp, audio: audio });
     });
     if (!todo.length) return;
-    phase("Small covers for the Grimmory tab…");
+    phase("Small covers for the Catalog tab…");
     var n = 0, got = 0;
     await pool(todo, 6, async function (t) {
       try {
@@ -2442,7 +2442,7 @@ gets a password or token.
       ul.appendChild(li); rows++;
     });
     $("#picks-size").textContent = bytes ? "· about " + mb(bytes) : "";
-    if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
+    if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Catalog tab."));
   }
 
   // ------------------------------------------------------------ HEIC pictures

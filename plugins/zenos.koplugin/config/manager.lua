@@ -1232,6 +1232,17 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.27.x: the Grimmory tab is the Catalog (books, audiobooks,
+    -- music): its label, unless it was given another name.
+    if cfg._meta.gz_catalog_label_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        for _i, t in ipairs(nb and type(nb.custom_tabs) == "table" and nb.custom_tabs or {}) do
+            if type(t) == "table" and t.id == "ct_grimmory" and (t.label == nil or t.label == "Grimmory") then t.label = "Catalog" end
+        end
+        cfg._meta.gz_catalog_label_migrated = true
+        changed = true
+    end
+
     -- GZreader 1.14.0: the Music tab (Plex): listed in Settings → Navbar →
     -- Tabs, off.
     if cfg._meta.gz_music_tab_migrated ~= true then

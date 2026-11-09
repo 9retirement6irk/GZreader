@@ -708,7 +708,7 @@ function View.buildUI(menu)
     menu._gz_shelves = true
     local note
     if #books == 0 and #devices == 0 and menu.page == 1 then
-        note = { _("No books yet"), _("Books you download from the Grimmory tab appear here.") }
+        note = { _("No books yet"), _("Books you download from the Catalog tab appear here.") }
     end
     for rr = 1, rows do
         local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {},

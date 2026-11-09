@@ -22,7 +22,7 @@ Connections → Sync through a computer.
 4. Three tabs:
    - **Connections**: Grimmory (password or single sign-on), Notes (a Memos
      access token), calendars, Plex.
-   - **Content**: what to bring, browsed as in the Kindle's Grimmory tab:
+   - **Content**: what to bring, browsed as in the Kindle's Catalog tab:
      Books and Audiobooks (Recently added, A–Z, Libraries, Shelves, Authors,
      Series, search) and Music (Plex albums A–Z, playlists, search). Each is
      marked when it's on the Kindle or in its queue already; "Coming with the
@@ -98,7 +98,7 @@ What a sync does:
 | | Kindle → computer | Computer → Kindle |
 | --- | --- | --- |
 | Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
-| Downloads | The **sync queue**: in the Grimmory tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
+| Downloads | The **sync queue**: in the Catalog tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
@@ -106,7 +106,7 @@ What a sync does:
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 
-The Grimmory tab works from the copy: browse, search, Libraries, Shelves,
+The Catalog tab works from the copy: browse, search, Libraries, Shelves,
 Authors and Series, a book's page with its description. Download puts the
 book in the sync queue (a book's page says "Add to sync queue"; selecting a
 queued book offers to take it off; Settings → Connections → Sync through a

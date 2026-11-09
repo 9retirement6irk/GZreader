@@ -87,13 +87,17 @@ function Browser:bookItem(book, with_series_number)
     }
 end
 
-function Browser:show()
-    -- the Notes tab, if it's open underneath (ZenOS opens action tabs on top)
+--- The Catalog tab (gzreader_catalog.lua): its pages are Books, Audiobooks
+--- and Music; `opts.section` opens on another than Books.
+function Browser:show(opts)
     -- the Notes or Calendar tab, if it's open underneath (ZenOS opens action tabs on top)
     pcall(function() require("gzreader_tabs").closeOthers(Browser.TAB_ID) end)
     Browser.current = self
+    local Catalog = require("gzreader_catalog")
+    local section = opts and opts.section
+    self.section = (section and Catalog.step(Catalog.sections(), section, 0)) or "books"
     self.menu = Menu:new{
-        title = _("Grimmory"),
+        title = Catalog.title(self.section),
         item_table = self:rootItems(),
         covers_fullscreen = true,
         is_borderless = true,
@@ -103,7 +107,9 @@ function Browser:show()
         _gz_navbar_tab_id = Browser.TAB_ID,
     }
     -- ZenOS's status bar (clock, battery, Wi-Fi) in the title, like other tabs
-    pcall(self.decorate, self, _("Grimmory"))
+    pcall(self.decorate, self, Catalog.title(self.section))
+    -- the pages: the strip under the title, turning at a page's ends
+    pcall(Catalog.apply, self)
     -- book lists with covers (Menu → Display, as in Downloads)
     pcall(function() require("gzreader_covermenu").apply(self.menu, self.plugin) end)
     -- the first page as a bookshop in the Bookshelf view (gzreader_bookshop.lua)
@@ -116,6 +122,12 @@ function Browser:show()
         if title then pcall(self.decorate, self, title) end
         return r
     end
+    -- the Music page: a download's progress line kept current (as in the Music tab)
+    self.menu.onGzMusicDownload = function(m, st)
+        if self.section ~= "music" then return end
+        local ok, Tab = pcall(require, "gzreader_musictab")
+        if ok and Tab.updateProgress(m.item_table, st) then m:updateItems(m.selected and m.selected.y or nil, true) end
+    end
     -- Wi-Fi only when needed: keep it up while the browser is open
     local Net = require("gzreader_net")
     local net_key = "browser-" .. tostring(self)
@@ -124,6 +136,11 @@ function Browser:show()
     self.menu.onCloseWidget = function(m, ...)
         self.closed = true
         Net.release(net_key)
+        if self.music_tab then self.music_tab.closed = true end
+        if self.music_key then
+            local Music = package.loaded["gzreader_music"]
+            if Music and Music.listeners then Music.listeners[self.music_key] = nil end
+        end
         pcall(function() require("common/clock_timer").unbind(m) end)
         if orig_close then return orig_close(m, ...) end
     end
@@ -176,9 +193,39 @@ function Browser:decorate(title)
     menu._gz_status_title = title
 end
 
---- The first page. gz_id: what the bookshop (gzreader_bookshop.lua) draws
---- for each; gz_root marks the page.
+--- The page showing (Books, Audiobooks or Music): its first list.
 function Browser:rootItems()
+    local section = self.section or "books"
+    local items
+    -- (Browser.x(self): tests call this on a plain table)
+    if section == "audiobooks" then items = Browser.audiobookItems(self)
+    elseif section == "music" then items = Browser.musicItems(self)
+    else items = Browser.bookItems(self) end
+    items.gz_catalog = section
+    return items
+end
+
+--- Turn to the page `dir` (+1, -1) from this one: false at an end.
+function Browser:turnSection(dir)
+    local Catalog = require("gzreader_catalog")
+    local to = Catalog.step(Catalog.sections(), self.section or "books", dir)
+    if not to or not self.menu then return false end
+    self:openSection(to)
+    return true
+end
+
+--- Show page `id`'s first list (the title says which).
+function Browser:openSection(id)
+    self.section = id
+    local m = self.menu
+    m._gz_shop_last = nil
+    m.item_table_stack = {}
+    m:switchItemTable(require("gzreader_catalog").title(id), self:rootItems())
+end
+
+--- The Books page. gz_id: what the bookshop (gzreader_bookshop.lua) draws
+--- for each; gz_root marks the page.
+function Browser:bookItems()
     return {
         gz_root = true,
         { gz_id = "search", gz_action = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
@@ -190,9 +237,39 @@ function Browser:rootItems()
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
         { gz_id = "downloaded", text = _("Downloaded books"), callback = function() self:openDownloaded() end },
-        -- (only on Kindles with a speaker: the Paperwhites have no audio)
-        require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openAudiobooks() end } or nil,
+        -- (the next page, from the list: its letter on keyboard Kindles; the
+        -- bookshop doesn't draw it. Only on Kindles with a speaker.)
+        require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
     }
+end
+
+--- The Audiobooks page (Kindles with a speaker or headphone jack).
+function Browser:audiobookItems()
+    return {
+        { gz_id = "ab_all", text = _("All audiobooks"), callback = function() self:openAudiobooks() end },
+    }
+end
+
+--- The Music page: Plex (gzreader_musictab.lua's lists, here in the tab).
+function Browser:musicItems()
+    local MusicTab = require("gzreader_musictab")
+    local tab = self.music_tab
+    if not tab then
+        tab = MusicTab.new(self.plugin)
+        self.music_tab = tab
+        -- (its lists go on this tab's Menu; Now playing / downloads change
+        -- the Music page while it shows)
+        tab.refreshRoot = function()
+            if self.closed or self.section ~= "music" or not self.menu then return end
+            if require("gzreader_catalog").atRoot(self.menu) then self:openSection("music") end
+        end
+        self.music_key = "catalog-" .. tostring(self)
+        local okm, Music = pcall(require, "gzreader_music")
+        if okm and Music.listeners then Music.listeners[self.music_key] = function() tab:refreshRoot() end end
+    end
+    tab.menu = self.menu
+    tab.closed = false
+    return tab:rootItems(function() self:openSection("music") end)
 end
 
 --- Grimmory's audiobooks (M4B / MP3), to download and listen to.
