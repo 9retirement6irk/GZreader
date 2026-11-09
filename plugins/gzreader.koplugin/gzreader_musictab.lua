@@ -178,6 +178,54 @@ function Tab:refreshRoot()
     self.menu:switchItemTable(nil, self:rootItems())
 end
 
+--- A list line with the Plex item it's for (`gz_music`: the Catalog draws
+--- albums and playlists as CD cases, artists as compartments,
+--- gzreader_shopviews.lua). Tracks stay plain lines.
+function Tab.entry(item, it)
+    if type(it) == "table" and (it.type == "album" or it.type == "playlist" or it.type == "artist") then
+        item.gz_music = { type = it.type, key = it.key, title = it.title, artist = it.artist, year = it.year,
+            thumb = it.thumb, count = it.count }
+        if it.type == "artist" then item.gz_kind, item.gz_contents = "artist", "cds" end
+    end
+    return item
+end
+
+--- The Catalog's Music page (gzreader_catalog.lua): search at the top, then
+--- Playlists, Albums, Artists (and what plays, what's on the Kindle, the
+--- Plex account), each a compartment in the Bookshelf view (gz_kind
+--- "section"). Not signed in: the sign-in lines. `after`: once signed in.
+function Tab:catalogItems(after)
+    local plugin = self.plugin
+    local plex = Music().plex(plugin)
+    if not plex:isConnected() then return self:rootItems(after) end
+    local items = {
+        { gz_id = "mu_search", gz_action = "search", text = _("Search music…"), callback = function() self:promptSearch() end },
+        { gz_id = "mu_playlists", gz_kind = "section", gz_contents = "cds", text = _("Playlists"), mandatory = _("yours on Plex"),
+            callback = function() self:openPlaylists() end },
+        { gz_id = "mu_albums", gz_kind = "section", gz_contents = "cds", text = _("Albums"), mandatory = _("A–Z"),
+            callback = function() self:openSection("albums") end },
+        { gz_id = "mu_artists", gz_kind = "section", gz_contents = "dividers", text = _("Artists"), mandatory = _("A–Z"),
+            callback = function() self:openSection("artists") end },
+    }
+    local now = Music().nowText()
+    if now then
+        items[#items + 1] = { gz_id = "mu_now", gz_kind = "section", gz_contents = "cds", text = _("Now playing"), mandatory = now,
+            callback = function() Tab.nowPlaying(plugin) end }
+    end
+    local list = Music().downloaded(plugin, { any = true })
+    if #list > 0 then
+        items[#items + 1] = { gz_id = "mu_downloaded", gz_kind = "section", gz_contents = "cds", text = _("On this Kindle"),
+            mandatory = #list == 1 and _("1 album or playlist") or T(_("%1 albums and playlists"), #list),
+            callback = function() self:openDownloaded() end }
+        items[#items + 1] = { gz_id = "mu_shuffle", gz_kind = "section", gz_contents = "none", text = _("Shuffle all"),
+            mandatory = _("everything on this Kindle"), callback = function() Music().shuffleAll(plugin) end }
+    end
+    local st = plugin.store.plex or {}
+    items[#items + 1] = { gz_id = "mu_account", gz_kind = "section", gz_contents = "none", text = _("Plex"),
+        mandatory = T(_("%1 · %2"), st.username or "?", (st.server or {}).name or "?"), callback = function() self:openAccount() end }
+    return items
+end
+
 --- The library's first list; `after`: what to do once signed in to Plex
 --- (the Catalog's Music page shows itself again; here, this list).
 function Tab:rootItems(after)
@@ -373,8 +421,8 @@ end
 function Tab:showPaged(title, kind, list, total, start)
     local items = {}
     for _i, it in ipairs(list) do
-        items[#items + 1] = { text = itemText(it), mandatory = it.year and tostring(it.year) or nil,
-            callback = function() self:openItem(it) end }
+        items[#items + 1] = Tab.entry({ text = itemText(it), mandatory = it.year and tostring(it.year) or nil,
+            callback = function() self:openItem(it) end }, it)
     end
     if total and start + #list < total then
         items[#items + 1] = { text = T(_("More (%1 of %2)…"), start + #list, total), callback = function()
@@ -398,7 +446,7 @@ function Tab:openItem(it)
         return self:fetch(_("Loading…"), function(p) return p:children(it.key) end, function(albums)
             local items = {}
             for _i, a in ipairs(albums) do
-                items[#items + 1] = { text = a.title, mandatory = a.year and tostring(a.year) or nil, callback = function() self:openItem(a) end }
+                items[#items + 1] = Tab.entry({ text = a.title, mandatory = a.year and tostring(a.year) or nil, callback = function() self:openItem(a) end }, a)
             end
             self:push(it.title, items)
         end)
@@ -432,8 +480,8 @@ function Tab:openPlaylists()
     self:fetch(_("Loading…"), function(p) return p:playlists() end, function(list)
         local items = {}
         for _i, pl in ipairs(list) do
-            items[#items + 1] = { text = pl.title, mandatory = pl.count and T(_("%1 tracks"), pl.count) or nil,
-                callback = function() self:openItem(pl) end }
+            items[#items + 1] = Tab.entry({ text = pl.title, mandatory = pl.count and T(_("%1 tracks"), pl.count) or nil,
+                callback = function() self:openItem(pl) end }, pl)
         end
         self:push(_("Playlists"), items)
     end)
@@ -463,6 +511,7 @@ function Tab:search(q)
             if #list == 0 then return end
             items[#items + 1] = { text = head, select_enabled = false, bold = true }
             for _i, it in ipairs(list) do
+                -- (artists, albums and tracks together: a plain list, also in the Catalog)
                 items[#items + 1] = { text = itemText(it) .. (it.type == "track" and it.artist and (" — " .. it.artist) or ""),
                     callback = function() self:openItem(it) end }
             end
@@ -561,9 +610,10 @@ function Tab:openDownloaded()
     local plugin = self.plugin
     local items = {}
     for _i, c in ipairs(Music().downloaded(plugin)) do
-        items[#items + 1] = { text = c.title .. (c.artist and (" — " .. c.artist) or ""),
+        items[#items + 1] = Tab.entry({ text = c.title .. (c.artist and (" — " .. c.artist) or ""),
             mandatory = c.have < #c.tracks and T(_("%1 of %2"), c.have, #c.tracks) or T(_("%1 tracks"), #c.tracks),
-            callback = function() self:showCollection(c) end }
+            callback = function() self:showCollection(c) end },
+            { type = c.kind, key = c.key, title = c.title, artist = c.artist, year = c.year, count = #c.tracks })
     end
     self:push(_("Downloaded"), items)
 end

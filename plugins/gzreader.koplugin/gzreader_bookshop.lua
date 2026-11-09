@@ -650,6 +650,25 @@ local function paintContents(bb, kind, room, info)
             tapePile(bb, x + S(20), bottom, 4 + n, "tp" .. n)
             x = x + S(46)
         end
+    elseif kind == "cds" then
+        -- CD cases: one face out, the others' spines standing beside it
+        local cw = math.min(S(46), math.floor(h * 0.7))
+        local ch = math.floor(cw / 1.12)
+        bb:paintRect(x + S(2), bottom - ch + S(2), cw, ch, gray(0.35))
+        bb:paintRect(x, bottom - ch, cw, ch, gray(0.25))
+        bb:paintRect(x, bottom - ch, math.max(3, math.floor(cw * 0.08)), ch, gray(0.55))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.floor(ch * 0.32), gray(0.08))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.max(2, math.floor(ch * 0.08)), gray(0.5))
+        bb:paintBorder(x, bottom - ch, cw, ch, 1, Blitbuffer.COLOR_BLACK)
+        x = x + cw + S(6)
+        local n, sw = 0, math.max(4, S(7))
+        while x + sw <= right and n < 9 do
+            n = n + 1
+            local sh = math.floor(ch * 1.0)
+            bb:paintRect(x, bottom - sh, sw, sh, gray(({ 0.1, 0.7, 0.35, 0.85, 0.2 })[(hash(sd .. "cd" .. n) % 5) + 1]))
+            bb:paintBorder(x, bottom - sh, sw, sh, 1, Blitbuffer.COLOR_BLACK)
+            x = x + sw + 1
+        end
     elseif kind == "downloaded" then
         local _, sp = spines(bb, x, bottom, right, h, "dl")
         spans = sp
