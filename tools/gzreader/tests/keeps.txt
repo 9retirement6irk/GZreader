@@ -70,7 +70,7 @@
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua
 57 plugins/zenos.koplugin/modules/filebrowser/patches/home_page.lua
 4 plugins/zenos.koplugin/modules/filebrowser/patches/metadata_editor.lua
-18 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
+20 plugins/zenos.koplugin/modules/filebrowser/patches/navbar.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/status_bar.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
 1 plugins/zenos.koplugin/modules/global/global.lua

@@ -218,6 +218,12 @@ local n_drop = select(2, nav_settings:gsub("dropHiddenTabs", ""))
 check(n_drop == 2, "Settings → Navbar: not in Tabs nor Default tab")
 check(read("modules/filebrowser/patches/navbar.lua"):find("gz_settings\").HIDDEN_TABS[tab_id]", 1, true) ~= nil,
     "the bar leaves them out even when saved as on")
+do
+    local nav = read("modules/filebrowser/patches/navbar.lua")
+    local fn = nav:match("local function showCurrentDirMenu%(fc%)(.-)\n        end\n")
+    check(fn and fn:find("_is_current_dir = true", 1, true) ~= nil,
+        "keyboard Kindles: holding Press on the tab bar opens the menu with Filter (KOReader's File browser is hidden)")
+end
 check(read("config/manager.lua"):find("gz_debug_logging_off", 1, true) ~= nil,
     "KOReader's verbose log turned off once (no switch for it any more)")
 
