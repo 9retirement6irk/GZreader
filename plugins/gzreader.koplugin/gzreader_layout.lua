@@ -13,8 +13,11 @@ reading history, no settings next to the book, no statistics (the process
 ends as soon as the layout is done, before the reader is ready).
 
 Not on Kindles with 128 MB or less (Kindle 2, DX): a second book engine
-doesn't fit there. It stops at once when the charger is unplugged or a book
-is opened; a book that fails twice isn't tried again. The background process
+doesn't fit there. Not while books download or other background work runs
+(Layout.busy: on a Kindle 3 with many books downloading, the layouts made
+Home and reading slow, memory down to 2-3 MB). It stops at once when the
+charger is unplugged, a book is opened or a download starts; a book that
+fails twice isn't tried again. The background process
 is the one the kernel ends first if memory runs out (oom_score_adj).
 Settings → Reader → Lay out new books while charging.
 ]]
@@ -65,6 +68,17 @@ local function readerOpen()
     return RU ~= nil and RU.instance ~= nil
 end
 
+--- Something else is working: a book downloading or waiting to, or another
+--- background job (a picture-book check, covers): a reason, or nil.
+function Layout.busy()
+    if Layout.isBusy then return Layout.isBusy() end
+    local D = package.loaded["gzreader_download"]
+    if type(D) == "table" and (D.active or (type(D.queue) == "table" and #D.queue > 0)) then return "a download" end
+    local A = package.loaded["gzreader_async"]
+    if type(A) == "table" and (A.local_jobs or 0) > 0 then return "other background work" end
+    return nil
+end
+
 local function hasSidecar(path)
     if Layout.hasSidecar then return Layout.hasSidecar(path) end
     local ok, v = pcall(function() return require("docsettings"):hasSidecarFile(path) end)
@@ -106,8 +120,10 @@ function Layout.child(path, report)
         local r = { orig_render(d, ...) }
         local pages = 0
         pcall(function() pages = d:getPageCount() end)
+        local hash = "?"
+        pcall(function() hash = tostring(d:getDocumentRenderingHash(true)) end)
         pcall(function() d._document:close() end) -- (writes the layout cache)
-        report(string.format("ok %d %d", pages, os.time() - t0))
+        report(string.format("ok %d %d %s", pages, os.time() - t0, hash))
         os.exit(0)
         return unpack(r)
     end
@@ -138,10 +154,11 @@ end
 local function finish(plugin, job, line)
     Layout.running = nil
     local e = job.entry
-    local pages, secs = (line or ""):match("^ok (%d+) (%d+)")
+    local pages, secs, hash = (line or ""):match("^ok (%d+) (%d+) ?(%S*)")
     if pages then
         e.laid_out = os.time()
-        Log.info("layout: book", job.id, "laid out while charging:", pages, "pages in", secs, "s")
+        e.layout_hash = hash ~= "" and hash or nil
+        Log.info("layout: book", job.id, "laid out while charging:", pages, "pages in", secs, "s", hash ~= "" and ("(layout " .. hash .. ")") or "")
     else
         e.layout_tries = (e.layout_tries or 0) + 1
         Log.warn("layout: book", job.id, "not laid out:", line ~= "" and line or "the background process ended (memory?)")
@@ -163,7 +180,9 @@ function Layout.start(plugin, id, entry, on_done, forced)
         if Layout.running ~= job then return end
         local line = p.poll()
         if line then return finish(plugin, job, line) end
+        local busy = Layout.busy()
         local why = (not charging() and not job.forced and "the charger unplugged") or (readerOpen() and "a book opened")
+            or (busy == "a download" and "a download started")
             or (os.time() - job.started > Layout.TIMEOUT and "too long")
         if why then
             p.stop()
@@ -181,10 +200,23 @@ end
 
 --- A look: charging, on Home, a book waiting? Then lay it out.
 function Layout.tick(plugin)
-    if Layout.running or not Layout.enabled() or not Layout.possible() or not charging() or readerOpen() then return nil end
+    if Layout.running or not Layout.enabled() or not Layout.possible() or not charging() or readerOpen() or Layout.busy() then return nil end
     local c = Layout.candidate(plugin)
     if not c then return nil end
     return Layout.start(plugin, c.id, c.entry)
+end
+
+--- A book laid out in the background is opened: was that layout the one the
+--- reader wanted? (The log line says; a different layout means the reader
+--- laid it out again: different settings than the background process saw.)
+function Layout.opened(doc, entry, id)
+    if type(entry) ~= "table" or not entry.laid_out or entry.layout_checked then return end
+    entry.layout_checked = true
+    local hash = "?"
+    pcall(function() hash = tostring(doc:getDocumentRenderingHash(true)) end)
+    local same = entry.layout_hash and hash == entry.layout_hash
+    Log.info("layout: book", tostring(id), "opened after its background layout:", same and "the same layout, reused"
+        or ("a different layout (" .. tostring(hash) .. ", background " .. tostring(entry.layout_hash) .. "): laid out again"))
 end
 
 --- Look every EVERY seconds (and `soon` seconds from now: after a download).

@@ -34,9 +34,14 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   Reader → *Lay out new books while charging*): while the Kindle charges and
   Home is on screen, downloaded books not opened yet are laid out in a
   background process at the lowest priority, the way the reader would open
-  them, so the layout cache is there for their first open. It stops when the
-  charger is unplugged or a book is opened; the books don't show as opened
-  (no history, no book settings). Not on Kindles with 128 MB or less.
+  them, so the layout cache is there for their first open. Not while books
+  download or wait to, or another background job runs (on a Kindle 3 with
+  many downloads, memory went down to 2–3 MB). It stops when the charger is
+  unplugged, a book is opened or a download starts; the books don't show as
+  opened (no history, no book settings). Not on Kindles with 128 MB or less.
+  The log says when such a book opens whether the reader used that layout
+  (`layout: book … opened after its background layout: the same layout,
+  reused` or `a different layout … laid out again`).
 - **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when
   the Lua files are source (an update from GitHub's source archive, a
   development copy), each module's bytecode is kept in

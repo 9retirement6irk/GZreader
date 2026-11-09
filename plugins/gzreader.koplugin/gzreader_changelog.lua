@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "New books are laid out while the Kindle charges, so their first open is quick", text = "While the Kindle charges and Home is on screen, GZreader lays out downloaded books you haven't opened yet in the background (Settings → Reader → Lay out new books while charging, on by default), so the first time you open one it opens like a book you've read before instead of taking 10–30 seconds on a Kindle 3. It stops as soon as you unplug or open a book, and the books don't show as opened. Not on the Kindle 2 and DX (not enough memory)." },
+            { short = "New books are laid out while the Kindle charges, so their first open is quick", text = "While the Kindle charges and Home is on screen, GZreader lays out downloaded books you haven't opened yet in the background (Settings → Reader → Lay out new books while charging, on by default), so the first time you open one it opens like a book you've read before instead of taking 10–30 seconds on a Kindle 3. It waits while books download or other background work runs, stops as soon as you unplug, open a book or start a download, and the books don't show as opened. Not on the Kindle 2 and DX (not enough memory)." },
         },
     },
     {

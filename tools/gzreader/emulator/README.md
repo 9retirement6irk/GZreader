@@ -75,6 +75,9 @@ Press/Back answer), and the order things happen in on a first start.
   page, the setup guide, ZenOS's touch tips, every tab, the launcher
   (GZreader menu, Send books), a note ticked by tapping, the note editor,
   the calendar's buttons and an event, a book read by tapping.
+- `layout_reuse.lua` (`GZ_EMU_BIG` an EPUB) — a book laid out in the
+  background (gzreader_layout.lua) opens without being laid out again: the
+  render time compared with a copy that wasn't.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume

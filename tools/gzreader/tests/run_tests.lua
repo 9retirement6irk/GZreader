@@ -1204,8 +1204,9 @@ print("New books laid out in the background while charging")
         ["7"] = { path = mk("failed.epub"), layout_tries = 2 } } }, saves = 0 }
     function fake:saveSoon() self.saves = self.saves + 1 end
     lfs.touch(dir .. "/old.epub", os.time() - 100, os.time() - 100)
-    local charge, reader, forks = true, false, {}
-    local saved = { L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork }
+    local charge, reader, forks, busy = true, false, {}, nil
+    local saved = { L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork, L.isBusy }
+    L.isBusy = function() return busy end
     L.isCharging = function() return charge end
     L.readerOpen = function() return reader end
     L.hasSidecar = function(bp) return bp:find("read.epub", 1, true) ~= nil end
@@ -1257,6 +1258,35 @@ print("New books laid out in the background while charging")
     forks[5].line = "err not a book the engine lays out"
     timers[#timers].fn()
     check(fake.store.downloads["1"].layout_tries == 2 and L.candidate(fake) == nil, "failed twice (the process died, an error): not tried again")
+    -- downloads first: not while one runs or waits, and stopped when one starts
+    fake.store.downloads["8"] = { path = mk("later.epub") }
+    busy = "a download"
+    check(L.tick(fake) == nil and #forks == 5, "a book downloading (or waiting to): no layout meanwhile")
+    busy = nil
+    L.tick(fake)
+    busy = "a download"
+    timers[#timers].fn()
+    check(forks[6].stopped and not L.running and (fake.store.downloads["8"].layout_tries or 0) == 0,
+        "a download started: the layout stopped at once (tried again later)")
+    busy = "other background work"
+    check(L.tick(fake) == nil and #forks == 6, "other background work running (a picture-book check, covers): no layout either")
+    busy = nil
+    -- the layout it made, and whether the reader used it
+    L.tick(fake)
+    forks[7].line = "ok 120 9 lay7q2x"
+    timers[#timers].fn()
+    local e8 = fake.store.downloads["8"]
+    check(e8.laid_out and e8.layout_hash == "lay7q2x", "done: the layout's hash kept")
+    local LogL = require("gzreader_log")
+    local was_info, said = LogL.info, {}
+    LogL.info = function(...) said[#said + 1] = table.concat({ ... }, " ") end
+    L.opened({ getDocumentRenderingHash = function() return "lay7q2x" end }, e8, 8)
+    L.opened({ getDocumentRenderingHash = function() return "zzz" end }, e8, 8) -- (once per book)
+    local e9 = { laid_out = 1, layout_hash = "lay7q2x" }
+    L.opened({ getDocumentRenderingHash = function() return "lay9w4k" end }, e9, 9)
+    LogL.info = was_info
+    check(#said == 2 and said[1]:find("the same layout, reused", 1, true) and said[2]:find("a different layout (lay9w4k, background lay7q2x)", 1, true),
+        "opened: the log says whether the background layout was the reader's (" .. table.concat(said, " / ") .. ")")
     local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
     local ltext = src and src:read("*a") or ""
     if src then src:close() end
@@ -1264,7 +1294,7 @@ print("New books laid out in the background while charging")
         and ltext:find("oom_score_adj", 1, true) and ltext:find("lowerPriority(19)", 1, true),
         "the background process: no history or book settings written, lowest priority, the first to go if memory runs out")
     LUI.scheduleIn = real_in
-    L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork = saved[1], saved[2], saved[3], saved[4], saved[5]
+    L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork, L.isBusy = saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
     L.running = nil
     os.execute("rm -rf '" .. dir .. "'")
 end)()
