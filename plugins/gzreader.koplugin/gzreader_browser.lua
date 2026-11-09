@@ -390,9 +390,15 @@ function Browser:audiobookItems()
         return c
     end
     local na, ns = count(groups and groups.authors), count(groups and groups.series)
+    local here = Browser.audiobooksHere(self.plugin)
     return {
+        gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
         { gz_id = "ab_search", gz_action = "search", text = _("Search audiobooks…"),
             callback = function() self:promptSearch(Browser.audioScope()) end },
+        { gz_id = "ab_continue", text = _("Continue listening"), callback = function() self:openAudioContinue() end },
+        { gz_id = "ab_recent", text = _("Recently added"), callback = function()
+            self:openPaged(_("Recently added"), { sort = "addedOn", dir = "desc" }, false, { audio = true, keep_order = true })
+        end },
         { gz_id = "ab_all", gz_kind = "section", gz_contents = "tapes", text = _("All audiobooks"),
             mandatory = audioCount(n) or _("M4B and MP3"), callback = function() self:openAudiobooks() end },
         { gz_id = "ab_authors", gz_kind = "section", gz_contents = "dividers", text = _("Authors"),
@@ -402,7 +408,42 @@ function Browser:audiobookItems()
         { gz_id = "ab_series", gz_kind = "section", gz_contents = "piles", text = _("Series"),
             mandatory = ns and ns > 0 and (ns == 1 and _("1 series") or T(_("%1 series"), ns)) or _("in order"),
             callback = function() self:openAudioSeries() end },
+        { gz_id = "ab_downloaded", gz_kind = "section", gz_contents = "tapes", text = _("On this Kindle"),
+            mandatory = #here > 0 and audioCount(#here) or _("none yet"), callback = function() self:openAudioDownloaded() end },
     }
+end
+
+--- The audiobooks on the Kindle (their audio all here), newest listened first.
+function Browser.audiobooksHere(plugin)
+    local out = {}
+    local store = plugin and plugin.store
+    local ok, Audiobook = pcall(require, "gzreader_audiobook")
+    if not (ok and type(store) == "table" and type(store.audiobooks) == "table") then return out end
+    for id, e in pairs(store.audiobooks) do
+        local data = type(e) == "table" and Audiobook.load(plugin, id)
+        if data then
+            out[#out + 1] = { id = id, title = e.title or data.title, authors = (e.author or data.author) and { e.author or data.author } or nil,
+                primaryFileType = "AUDIOBOOK", _updated = tonumber(e.updated) or 0 }
+        end
+    end
+    table.sort(out, function(a, b) return a._updated > b._updated end)
+    return out
+end
+
+--- Continue listening: what you've listened to on the Kindle, then what
+--- Grimmory has in progress (the Audiobooks page's ledge, as a list).
+function Browser:openAudioContinue()
+    local st = require("gzreader_bookshop").audioLists(self)
+    local items = {}
+    for _i, b in ipairs(st.ab_continue or {}) do items[#items + 1] = self:audiobookItem(b) end
+    self:push(_("Continue listening"), items)
+end
+
+--- On this Kindle: the audiobooks downloaded.
+function Browser:openAudioDownloaded()
+    local items = {}
+    for _i, b in ipairs(Browser.audiobooksHere(self.plugin)) do items[#items + 1] = self:audiobookItem(b) end
+    self:push(_("On this Kindle"), items)
 end
 
 --- Audiobooks by author: the authors of every audiobook (fetched once in
