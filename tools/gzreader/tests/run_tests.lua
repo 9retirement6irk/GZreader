@@ -904,10 +904,51 @@ print("Catalog: the Music page (CD cases on the shelves)")
     local ids = {}
     for _i, it in ipairs(mb.menu.item_table) do ids[#ids + 1] = it.gz_id end
     local m1 = mb.menu.item_table
-    check(table.concat(ids, ","):match("^mu_search,mu_playlists,mu_albums,mu_artists,") and m1[1].gz_action == "search"
-        and m1[2].gz_contents == "cds" and m1[#m1].gz_id == "mu_account" and m1[#m1].mandatory == "will · Home Server"
-        and Views.kindOf(m1) == "bay" and Views.headerCount(m1) == 1,
-        "the Music page: search at the top, then Playlists, Albums, Artists… and the Plex account " .. table.concat(ids, ","))
+    check(table.concat(ids, ","):match("^mu_search,mu_played,mu_recent,mu_playlists,mu_albums,mu_artists,") and m1[1].gz_action == "search"
+        and m1[4].gz_contents == "cds" and m1[#m1].gz_id == "mu_account" and m1[#m1].mandatory == "will · Home Server" and m1.gz_root,
+        "the Music page: search, Recently played, Recently added, then Playlists, Albums, Artists… and the Plex account " .. table.concat(ids, ","))
+    local Shop = require("gzreader_bookshop")
+    local mps = Shop.pageSpec("music")
+    check(mps.music and mps.ledges[1].id == "mu_played" and mps.ledges[1].label == "Recently played" and mps.ledges[2].id == "mu_recent"
+        and #mps.compartments == 6 and mps.compartments[1].id == "mu_playlists",
+        "the Bookshelf view: the shop with Recently played and Recently added ledges of CD cases, then a compartment each")
+    -- Recently played: this Kindle's plays first (Plex only knows its own players'), once each
+    local Music = require("gzreader_music")
+    local saved_recent, saved_save = plugin.store.music_recent, plugin.save
+    plugin.save = function() end
+    plugin.store.music_recent = nil
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "playlist", key = "9", title = "P", tracks = {} })
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "all", key = "x" })
+    local rk = {}
+    for _i, it in ipairs(plugin.store.music_recent) do rk[#rk + 1] = it.type .. ":" .. it.key end
+    check(table.concat(rk, ",") == "album:201,playlist:9" and plugin.store.music_recent[1].count == 2,
+        "played here: newest first, each once (not Shuffle all) " .. table.concat(rk, ","))
+    mb._shop_music = { asked = true, mu_played_remote = { { type = "album", key = "203", title = "C" }, { type = "album", key = "201", title = "A" } },
+        mu_recent_remote = { { type = "album", key = "202" } } }
+    local mst = Shop.musicLists(mb)
+    local pk = {}
+    for _i, it in ipairs(mst.mu_played) do pk[#pk + 1] = it.key end
+    check(table.concat(pk, ",") == "201,9,203" and mst.mu_recent[1].key == "202" and #Shop.ledgeBooks(mst.mu_played, function(it) return it.key ~= nil end) == 3,
+        "the ledges: the Kindle's plays, then Plex's; Recently added from Plex " .. table.concat(pk, ","))
+    plugin.store.music_recent, plugin.save = saved_recent, saved_save
+    -- Plex: Recently added / played albums (played: only ones played at all)
+    local Plex = require("gzreader_plex")
+    local px = Plex:new({ server = { uri = "http://127.0.0.1:9" } })
+    local asked
+    px.get = function(_s, path, params, opts)
+        asked = { path = path, params = params, size = opts and opts.headers and opts.headers["X-Plex-Container-Size"] }
+        return 200, { MediaContainer = { Metadata = {
+            { ratingKey = "1", type = "album", title = "One", parentTitle = "X", lastViewedAt = 1700000000, addedAt = 1 },
+            { ratingKey = "2", type = "album", title = "Two", parentTitle = "X", addedAt = 2 } } } }
+    end
+    local added = px:recentAlbums("7", "added", 12)
+    local a_sort, a_size = asked.params.sort, asked.size
+    local played = px:recentAlbums("7", "played", 12)
+    check(#added == 2 and a_sort == "addedAt:desc" and a_size == "12" and asked.params.sort == "lastViewedAt:desc"
+        and #played == 1 and played[1].key == "1" and played[1].viewed == 1700000000 and asked.path == "/library/sections/7/all",
+        "Plex: albums by date added, and by last played (never-played ones left out)")
     plugin.store.plex = saved_plex
     local mb2 = Browser:new(plugin)
     mb2:show({ section = "music" })

@@ -6,9 +6,12 @@ playlists from your Plex Media Server, played while you read.
 Music is the **Catalog** tab's third page: swipe left twice from Books, or
 use the page-turn button ([the Catalog tab](Grimmory-Library#the-catalog-tab)).
 Signed in to Plex, it's laid out like the Books page: **Search music…** at
-the top, then **Playlists**, **Albums** and **Artists** (and *Now playing*,
-*On this Kindle* and *Shuffle all* when there's something to show, and your
-Plex account), a compartment each in the Bookshelf view. Albums and
+the top, two shelves of CD cases, **Recently played** (what you played on
+this Kindle, latest first, then what Plex's own players played) and
+**Recently added** (Plex's newest albums, marked NEW), each ending in a
+bundle that opens the whole list, then a bookcase with **Playlists**,
+**Albums** and **Artists** (and *On this Kindle* and *Now playing* when
+there's something to show, and your Plex account). Albums and
 playlists stand on the shelves as **CD cases**, face out: the album's cover
 under the lid (Plex's own small copy, fetched while the list shows and kept
 with the Catalog's covers; a plain insert with the title until it's here),

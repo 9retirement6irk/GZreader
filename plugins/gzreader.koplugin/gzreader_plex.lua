@@ -276,6 +276,7 @@ function Plex.item(m)
         year = tonumber(m.year), index = tonumber(m.index), duration = tonumber(m.duration),
         thumb = str(m.thumb) or str(m.composite) or str(m.parentThumb), count = tonumber(m.leafCount) or tonumber(m.childCount),
         album_key = str(m.parentRatingKey),
+        added = tonumber(m.addedAt), viewed = tonumber(m.lastViewedAt),
     }
     if t.type == "album" then t.artist = str(m.parentTitle) end
     if t.type == "artist" then t.artist = nil end
@@ -304,6 +305,23 @@ end
 
 --- Artists (type 8) or albums (9) of a music library, A–Z, a page at a time:
 --- list, total, or nil, err.
+--- The Catalog's Music shelves: albums Recently added (`by` "added") or
+--- Recently played ("played": the ones played at all, from any player), at
+--- most `n`: list, or nil, err.
+function Plex:recentAlbums(section, by, n)
+    local _, data, err = self:get("/library/sections/" .. escape(section) .. "/all",
+        { type = 9, sort = by == "played" and "lastViewedAt:desc" or "addedAt:desc" },
+        { headers = { ["X-Plex-Container-Start"] = "0", ["X-Plex-Container-Size"] = tostring(n or 20) } })
+    if err then return nil, err end
+    local list = items(data)
+    if by == "played" then
+        local out = {}
+        for _i, it in ipairs(list) do if (it.viewed or 0) > 0 then out[#out + 1] = it end end
+        list = out
+    end
+    return list
+end
+
 function Plex:list(section, kind, start)
     local _, data, err = self:get("/library/sections/" .. escape(section) .. "/all",
         { type = kind == "albums" and 9 or 8, sort = "titleSort:asc" }, { headers = paged(start) })

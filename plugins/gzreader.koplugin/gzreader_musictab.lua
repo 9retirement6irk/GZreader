@@ -199,7 +199,10 @@ function Tab:catalogItems(after)
     local plex = Music().plex(plugin)
     if not plex:isConnected() then return self:rootItems(after) end
     local items = {
+        gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
         { gz_id = "mu_search", gz_action = "search", text = _("Search music…"), callback = function() self:promptSearch() end },
+        { gz_id = "mu_played", text = _("Recently played"), callback = function() self:openRecent("played") end },
+        { gz_id = "mu_recent", text = _("Recently added"), callback = function() self:openRecent("added") end },
         { gz_id = "mu_playlists", gz_kind = "section", gz_contents = "cds", text = _("Playlists"), mandatory = _("yours on Plex"),
             callback = function() self:openPlaylists() end },
         { gz_id = "mu_albums", gz_kind = "section", gz_contents = "cds", text = _("Albums"), mandatory = _("A–Z"),
@@ -224,6 +227,35 @@ function Tab:catalogItems(after)
     items[#items + 1] = { gz_id = "mu_account", gz_kind = "section", gz_contents = "none", text = _("Plex"),
         mandatory = T(_("%1 · %2"), st.username or "?", (st.server or {}).name or "?"), callback = function() self:openAccount() end }
     return items
+end
+
+--- Recently played (this Kindle's, then Plex's) or Recently added, as a
+--- list of albums and playlists (CD cases in the Catalog).
+function Tab:openRecent(by)
+    local title = by == "played" and _("Recently played") or _("Recently added")
+    local function show(list)
+        local items = {}
+        for _i, it in ipairs(list or {}) do
+            items[#items + 1] = Tab.entry({ text = (it.title or "?") .. (it.artist and (" — " .. it.artist) or ""),
+                mandatory = it.year and tostring(it.year) or nil, callback = function() self:openItem(it) end }, it)
+        end
+        self:push(title, items)
+    end
+    local local_played = by == "played" and type(self.plugin.store.music_recent) == "table" and self.plugin.store.music_recent or {}
+    self:fetch(_("Loading…"), function(p)
+        local sections, err = p:musicSections()
+        if not sections then return nil, err end
+        if #sections == 0 then return {} end
+        return p:recentAlbums(sections[1].key, by, 50) or {}
+    end, function(list)
+        local seen, out = {}, {}
+        for _i, src in ipairs({ local_played, list }) do
+            for _j, it in ipairs(src) do
+                if type(it) == "table" and it.key and not seen[tostring(it.key)] then seen[tostring(it.key)] = true; out[#out + 1] = it end
+            end
+        end
+        show(out)
+    end)
 end
 
 --- The library's first list; `after`: what to do once signed in to Plex
