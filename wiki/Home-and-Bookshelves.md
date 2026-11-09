@@ -78,3 +78,11 @@ as it is); tap one, or press its letter on a Kindle with keys. The cover's
 fill, rotation and fit, when to ignore a book's cover and the wake-up delay
 are in **Wallpaper options** next to it. (There is no custom image to
 choose, and no sleep-screen presets.)
+
+To have the cover fill the whole screen with no bars at the edges, tick
+**Wallpaper options → Scale cover to fill screen**: the cover (or picture)
+keeps its proportions and is scaled up until it covers the screen; the parts
+that don't fit (the top and bottom of a tall cover, the sides of a wide one)
+are cut off. While it's on, **Stretch cover to fit screen** (under Border
+fill, rotation, and fit), which pulls the cover out of shape instead, is
+greyed out.

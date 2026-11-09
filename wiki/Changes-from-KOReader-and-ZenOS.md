@@ -23,7 +23,7 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 | Loading (`frontend/gzbytecode.lua`, `luasettings.lua`) | A bytecode cache for source installs; settings files are only written when they changed |
 | Fonts (`frontend/ui/font.lua`) | Missing fallback fonts (the removed CJK one) are dropped at start instead of failing on every glyph |
 | Book layout (`frontend/document/credocument.lua`) | A bigger crengine cache (256 MB instead of 64) |
-| Sleep screen (`frontend/ui/screensaver.lua`) | "Custom image or cover" shows the book's cover while reading and the image elsewhere |
+| Sleep screen (`frontend/ui/screensaver.lua`) | "Custom image or cover" shows the book's cover while reading and the image elsewhere; Scale cover to fill screen (proportions kept, edges cut off; `frontend/gzsleepfit.lua`) |
 | Menus (`frontend/ui/widget/touchmenu.lua`, menu orders) | Letter keys in KOReader's menus; GZreader's items in place of removed plugins' |
 | Home folder (`frontend/apps/filemanager/`) | No Home folder settings (Set, Shorten, Lock) in the file manager's menu and no "Set as HOME folder" buttons: the home folder is always the GZreader folder |
 | Back key (`readerback.lua`), translations (`gettext.lua`), plugin loading | Small fixes for the trimmed build |

@@ -537,11 +537,13 @@ function Screensaver:show()
             scale_factor = G_reader_settings:isFalse("screensaver_stretch_images") and 0 or nil,
             stretch_limit_percentage = G_reader_settings:readSetting("screensaver_stretch_limit_percentage"),
         }
+        -- GZreader: "Scale cover to fill screen" needs the picture's size (gzsleepfit.lua)
+        local gz_fill = require("gzsleepfit").on(G_reader_settings)
         if self.image then
             widget_settings.image = self.image
             widget_settings.image_disposable = true
         elseif self.image_file then
-            if G_reader_settings:isTrue("screensaver_rotate_auto_for_best_fit") then
+            if G_reader_settings:isTrue("screensaver_rotate_auto_for_best_fit") or gz_fill then
                 -- We need to load the image here to determine whether to rotate
                 if util.getFileNameSuffix(self.image_file) == "svg" then
                     widget_settings.image = RenderImage:renderSVGImageFile(self.image_file, nil, nil, 1)
@@ -564,6 +566,12 @@ function Screensaver:show()
                 angle = angle + (G_reader_settings:isTrue("imageviewer_rotation_landscape_invert") and -90 or 90)
             end
             widget_settings.rotation_angle = angle
+        end
+        if gz_fill and widget_settings.image then
+            -- GZreader: scaled to cover the screen, its middle shown, the rest cut off
+            widget_settings.scale_factor = require("gzsleepfit").factor(widget_settings.image:getWidth(),
+                widget_settings.image:getHeight(), screen_w, screen_h, widget_settings.rotation_angle)
+            widget_settings.stretch_limit_percentage = nil
         end
         widget = ImageWidget:new(widget_settings)
     elseif self.screensaver_type == "bookstatus" then
