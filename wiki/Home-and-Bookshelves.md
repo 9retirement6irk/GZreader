@@ -70,10 +70,11 @@ pages darker, with a ribbon bookmark where you are.
 
 While a book is open: its cover. From Home and menus: a random picture from
 the USB drive's `screensavers` folder (created by the setup guide), falling
-back to the Kindle's own sleep pictures. Chosen in the setup guide; picking
-another option there, choosing a wallpaper in the sleep-screen menu, or
-applying a ZenOS sleep-screen preset switches it off and uses that choice.
-
-"Show custom image (book cover while reading)" (KOReader's "custom image or
-cover"): the chosen image from Home and menus, the open book's cover while
-reading. In KOReader it showed the custom image everywhere.
+back to the Kindle's own sleep pictures. Chosen in the setup guide, or in
+**Settings → General → Sleep → Wallpaper**: each sleep screen is a tile
+showing what it looks like (this one, the last book's cover, a picture from
+the screensavers folder, reading progress, book status, or the screen left
+as it is); tap one, or press its letter on a Kindle with keys. The cover's
+fill, rotation and fit, when to ignore a book's cover and the wake-up delay
+are in **Wallpaper options** next to it. (There is no custom image to
+choose, and no sleep-screen presets.)

@@ -1,5 +1,5 @@
 --[[--
-Settings → Storage: what GZreader keeps on the Kindle, and what's biggest.
+Settings → About → Device → Storage: what GZreader keeps on the Kindle, and what's biggest.
 
 Books (the GZreader folder: book files and their KOReader settings),
 audiobooks (.audiobooks), music (.music), notes (the offline copy and the

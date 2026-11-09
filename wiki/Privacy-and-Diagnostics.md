@@ -25,7 +25,8 @@ minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for t
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
 tokens are never written. Diagnostic logging is on by default (Settings →
-General → Diagnostic logging); while it's on, the quick panel has
+General → Advanced → Diagnostic logging, at the top of Advanced with
+sending and saving the log); while it's on, the quick panel has
 **Diagnostics**, which bundles the log, the tail of `crash.log`, what keeps
 the Kindle awake and a read-only audio/speech survey into one
 `gzreader-log-<date>.txt`, and:
@@ -85,7 +86,8 @@ GZreader is stuck in one long call, and goes into the watchdog's reports,
 with each GZreader process's state, CPU over 2 s, memory and wait channel.
 
 **Send to the developer** (Diagnostics in the quick panel; Settings →
-General → Send diagnostic log to the developer)
+General → Advanced → Send diagnostic log to the developer; Settings →
+About → Report a bug)
 asks what you were doing and what went wrong, then sends that with the
 whole diagnostic log (the same file "Save to the Kindle" writes) to a feed
 of its own (`R.REPORT_FEED`, the same for releases and test builds), at

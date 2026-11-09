@@ -1005,7 +1005,7 @@ function M.build_install_pages(ctx)
         {
             title       = _("Time Format"),
             description = _("Which time format do you prefer?") .. (legacy_clock and ("\n"
-                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
+                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → About → Device → Time and date.")) or ""),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },

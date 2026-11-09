@@ -110,81 +110,11 @@ function M.build(ctx)
         keep_menu_open = true,
     })
 
-    table.insert(items, {
-        text = _("Debug logging"),
-        help_text = _("Enable KOReader verbose debug logging. Logs are written to koreader.log. Takes effect immediately."),
-        checked_func = function()
-            return G_reader_settings:isTrue("debug")
-                and G_reader_settings:isTrue("debug_verbose")
-        end,
-        callback = function()
-            local dbg = require("dbg")
-            local enabling = not (G_reader_settings:isTrue("debug")
-                and G_reader_settings:isTrue("debug_verbose"))
-            if enabling then
-                G_reader_settings:makeTrue("debug")
-                G_reader_settings:makeTrue("debug_verbose")
-                dbg:turnOn()
-                dbg:setVerbose(true)
-            else
-                G_reader_settings:makeFalse("debug")
-                G_reader_settings:makeFalse("debug_verbose")
-                dbg:setVerbose(false)
-                dbg:turnOff()
-            end
-        end,
-        keep_menu_open = true,
-    })
-
-    table.insert(items, {
-        text = _("Clear all gestures"),
-        callback = function()
-            local ConfirmBox = require("ui/widget/confirmbox")
-            UIManager:show(ConfirmBox:new{
-                text = _("Set all gestures to pass-through? Top-right corner in reader will be kept as Toggle bookmark."),
-                ok_text = _("Clear"),
-                ok_callback = function()
-                    local ok_ds, DataStorage = pcall(require, "datastorage")
-                    local ok_ls, LuaSettings = pcall(require, "luasettings")
-                    if not ok_ds or not ok_ls then return end
-                    local gestures_path = DataStorage:getSettingsDir() .. "/gestures.lua"
-                    local settings = LuaSettings:open(gestures_path)
-                    for _i, section in ipairs({ "gesture_fm", "gesture_reader" }) do
-                        if type(settings.data[section]) == "table" then
-                            for k in pairs(settings.data[section]) do
-                                settings.data[section][k] = nil
-                            end
-                        else
-                            settings.data[section] = {}
-                        end
-                        settings.data[section].short_diagonal_swipe = { full_refresh = true }
-                    end
-                    settings.data.gesture_reader.tap_top_right_corner = { toggle_bookmark = true }
-                    settings:flush()
-                    settings_apply.prompt_restart()
-                end,
-            })
-        end,
-        keep_menu_open = true,
-    })
-
-    table.insert(items, {
-        text = _("Plugin management"),
-        sub_item_table_func = function()
-            local ok, PluginLoader = pcall(require, "pluginloader")
-            if ok and PluginLoader and type(PluginLoader.genPluginManagerSubItem) == "function" then
-                return PluginLoader:genPluginManagerSubItem()
-            end
-            return {}
-        end,
-    })
-
-    do
-        local ok, patch_item = pcall(dofile, "frontend/ui/elements/patch_management.lua")
-        if ok and type(patch_item) == "table" then
-            table.insert(items, patch_item)
-        end
-    end
+    -- GZreader: no Debug logging (KOReader's verbose log; GZreader's own
+    -- diagnostic log is at the top of this menu), no Clear all gestures (the
+    -- gestures plugin isn't in GZreader, nothing reads gestures.lua), no
+    -- Plugin management or Patch management (turning off gzreader, zenos or
+    -- coverbrowser breaks GZreader; patches are untested code).
 
     return items
 end

@@ -281,7 +281,8 @@ function M.build(ctx)
         PresetStore.saveSettings("screensaver", capture_sleep_screen_state())
     end
 
-    local function build_preset_items()
+    -- (GZreader: no longer offered in Sleep; kept for a small upstream diff)
+    local function _build_preset_items()
         local all = get_all_presets()
         local preset_items = {}
         if PresetStore.getActivePreset("screensaver")
@@ -317,7 +318,7 @@ function M.build(ctx)
                                 PresetStore.saveSettings("screensaver", state)
                                 PresetStore.setActivePreset("screensaver", name)
                                 if touchmenu_instance then
-                                    touchmenu_instance.item_table = build_preset_items()
+                                    touchmenu_instance.item_table = _build_preset_items()
                                     touchmenu_instance:updateItems()
                                 end
                             end,
@@ -369,7 +370,7 @@ function M.build(ctx)
                                 PresetStore.setActivePreset("screensaver", nil)
                             end
                             if touchmenu_instance then
-                                touchmenu_instance.item_table = build_preset_items()
+                                touchmenu_instance.item_table = _build_preset_items()
                                 touchmenu_instance:updateItems()
                             end
                         end,
@@ -823,10 +824,7 @@ function M.build(ctx)
             local ok, screen_items = pcall(dofile, "frontend/ui/elements/screensaver_menu.lua")
             local sub = (ok and type(screen_items) == "table") and screen_items or {}
             if ok then install_sleep_screen_image_picker(sub) end
-            table.insert(sub, {
-                text = _("Presets"),
-                sub_item_table_func = build_preset_items,
-            })
+            -- (GZreader: no Presets: Wallpaper's tiles choose the sleep screen)
             -- find current UI instance to access plugin instances
             local ok_r, ReaderUI = pcall(require, "apps/reader/readerui")
             local ok_f, FileManager = pcall(require, "apps/filemanager/filemanager")

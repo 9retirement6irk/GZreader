@@ -1716,6 +1716,7 @@ local function apply_navbar()
 
     local function is_tab_enabled(tab_id)
         return config.show_tabs[tab_id] == true
+            and not require("common/gz_settings").HIDDEN_TABS[tab_id] -- GZreader: Manga, News, Calibre Search
             and (tab_id ~= "archive" or paths.getArchiveDir() ~= nil)
             and (tab_id ~= "kindle" or OptionalProvider.call(KINDLE_PROVIDER, "isAvailable") == true)
     end

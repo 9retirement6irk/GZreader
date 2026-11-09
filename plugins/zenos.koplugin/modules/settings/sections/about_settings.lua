@@ -6,7 +6,7 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 local UIManager = require("ui/uimanager")
 local utils = require("modules/settings/zen_settings_utils")
-local bugreporter = require("modules/settings/zen_bugreporter")
+local GzSettings = require("common/gz_settings") -- GZreader
 local icons = require("common/inline_icon_map")
 local IconItem = require("common/ui/icon_menu_item")
 local util = require("util")
@@ -37,10 +37,19 @@ function M.build(ctx)
     local language_setting = require("ui/language"):getLangMenuTable()
     local items = {}
 
+    -- GZreader: its own version first, then what it's built on
     table.insert(items, {
         icon_glyph = icons.details,
         text_func = function()
-            return _("ZenOS") .. ": " .. utils.get_plugin_version(plugin)
+            return (GzSettings.aboutLines(GzSettings.gzreaderVersion()))
+        end,
+        keep_menu_open = true,
+    })
+    table.insert(items, {
+        text_func = function()
+            local _gz, built = GzSettings.aboutLines(GzSettings.gzreaderVersion(),
+                utils.get_plugin_version(plugin), utils.get_koreader_version())
+            return built
         end,
         keep_menu_open = true,
     })
@@ -49,12 +58,7 @@ function M.build(ctx)
         icon_glyph = icons.settings_device,
         text = _("Device"),
         sub_item_table = {
-            {
-                text_func = function()
-                    return _("KOReader") .. ": " .. utils.get_koreader_version()
-                end,
-                keep_menu_open = true,
-            },
+            -- (GZreader: KOReader's version is on About's second line)
             {
                 text_func = function()
                     return _("Device") .. ": " .. utils.get_device_model_name()
@@ -79,10 +83,14 @@ function M.build(ctx)
                 mandatory_func = function()
                     return usage_size(utils.get_device_disk_usage(), "total")
                 end,
-                sub_item_table_func = function()
+                -- GZreader: its Storage screen (what's on the Kindle, the
+                -- biggest of each, free space); ZenOS's numbers without GZreader
+                keep_menu_open = GzSettings.gzreader() ~= nil or nil,
+                callback = GzSettings.gzreader() and function() GzSettings.showStorage() end or nil,
+                sub_item_table_func = not GzSettings.gzreader() and function()
                     -- Translators: Device statistics label for remaining free storage space.
                     return usage_items(utils.get_device_disk_usage(), _("Remaining"))
-                end,
+                end or nil,
             }, icons.settings_storage),
             IconItem.decorate({
                 -- Translators: Settings menu showing total RAM, with used, available, and total memory details.
@@ -126,7 +134,8 @@ function M.build(ctx)
                 text = language_setting.text,
                 sub_item_table = language_setting.sub_item_table,
             }, icons.language),
-            IconItem.decorate(require("ui/elements/common_settings_menu_table").time, icons.tbr),
+            -- GZreader: with Time zone first (gz_settings.timeAndDate)
+            IconItem.decorate(GzSettings.timeAndDate(require("ui/elements/common_settings_menu_table").time), icons.tbr),
         },
     })
 
@@ -167,13 +176,19 @@ function M.build(ctx)
         end,
     })
 
+    -- GZreader: a bug report goes to GZreader's developer (Send to the
+    -- developer: what happened + the diagnostic log), not to ZenOS's issues
+    -- through ZenOS's reporter (zen_bugreporter.lua, no longer reachable)
     table.insert(items, {
         icon_glyph = icons.settings_bug,
-        text      = _("Report a Bug"),
-        callback  = function()
-            bugreporter.show_dialog(ctx)
+        text      = _("Report a bug"),
+        help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer (the same as Settings → General → Advanced → Send diagnostic log to the developer)."),
+        callback  = function(touchmenu)
+            local g = GzSettings.gzreader()
+            if not (g and type(g.sendLogToDeveloper) == "function") then return end
+            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+            g:sendLogToDeveloper()
         end,
-        keep_menu_open = true,
     })
 
     return items

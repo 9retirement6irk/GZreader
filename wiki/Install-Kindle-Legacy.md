@@ -26,7 +26,7 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 
 - **Kindle 2 and DX have no Wi‑Fi:** GZreader notices and syncs through a web page on a computer instead, with the Kindle plugged in. → [Sync with a computer](Sync-with-a-Computer)
 - **Keys:** a letter for everything, shown next to each entry; Menu opens the quick panel. → [Using GZreader](Using-GZreader#keyboard-kindle-2-3-dx)
-- **Clock:** these Kindles keep UTC; set Settings → General → Time zone.
+- **Clock:** these Kindles keep UTC; set Settings → About → Device → Time and date → Time zone.
 - **Flash on every page turn** is on by default against ghosting (Settings → Reader → Appearance).
 - **Audio:** audiobooks, Plex music and read aloud in the Kindle's own voice (Shift + Sym).
 - **DX:** the bigger screen gets two shelves on Home and bigger books in Downloads.

@@ -146,8 +146,9 @@ end
 local function walk(items, allowed, depth, out, seen, visited)
     if type(items) ~= "table" or visited[items] then return end
     visited[items] = true
+    local keep = require("common/gz_settings").keepKOReaderItem -- GZreader
     for _i, item in ipairs(items) do
-        if type(item) == "table" then
+        if type(item) == "table" and keep(item) then
             local children = submenu_items(item, true)
             local title = item_title(item) or fallback_title(item.id)
             if type(item.id) == "string" and allowed[item.id]
