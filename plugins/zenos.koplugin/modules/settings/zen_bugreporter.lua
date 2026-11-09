@@ -11,7 +11,7 @@ local logger = ZenLogger.new("zen_bugreporter")
 local UIManager = require("ui/uimanager")
 local restart = require("common/restart")
 local zen_utils = require("common/utils")
-local updater = require("modules/settings/zen_updater")
+local updater = require("modules/settings/gz_updater") -- GZreader: not ZenOS's updater (gz_updater.lua)
 
 local PROXY_URL       = "https://zen-reporter.misty-mud-afb2.workers.dev/"
 local UPLOAD_URL = PROXY_URL .. "upload"

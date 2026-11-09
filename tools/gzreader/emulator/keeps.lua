@@ -112,6 +112,26 @@ add({ fn = function()
     check(listed and cfg.show_tabs.ct_music ~= true and not shownText():find("Music", 1, true),
         "the Music tab: listed in Settings, off by default")
 end, after = 1 })
+add({ fn = function()
+    -- JSON through KOReader's rapidjson (gzreader_json.lua), with LuaJSON's results
+    local Json = require("gzreader_json")
+    local okd, d = pcall(Json.decode, '{"a":null,"b":[1,null,3],"c":{"d":null,"e":"x"},"id":12,"f":0.42}')
+    check(Json.fast and okd and d.a == nil and d.c.d == nil and d.c.e == "x" and d.b[1] == 1 and d.b[2] == nil
+        and d.b[3] == 3 and d.id == 12 and d.f == 0.42, "JSON: rapidjson in use, null decoded as nil")
+    check(Json.encode({ x = Json.list() }) == '{"x":[]}' and Json.encode({}) == "{}" and Json.encode({ id = 12 }) == '{"id":12}'
+        and not pcall(Json.decode, "not json"), "JSON: [] for marked lists, {} otherwise, whole numbers, bad text raises")
+    -- saving: the fingerprint that lets a small change skip rewriting gzreader.lua (main.lua)
+    local plugin = require("apps/filemanager/filemanager").instance.gzreader
+    local fp = plugin.fingerprint -- (Grimmory.fingerprint)
+    local fp1 = fp(plugin.store)
+    plugin.store.pending.progress["gz-keeps"] = { x = 1 }
+    local fp2 = fp(plugin.store)
+    plugin.store.pending.progress["gz-keeps"] = nil
+    plugin.store.downloads["gz-keeps"] = { path = "/x.epub" }
+    local fp3 = fp(plugin.store)
+    plugin.store.downloads["gz-keeps"] = nil
+    check(type(fp1) == "string" and fp1 == fp2 and fp3 ~= fp1, "saving: rapidjson fingerprints the big parts (a queued position: small save; a download: full)")
+end, after = 1 })
 add({ shot = "keeps-home" })
 
 -- 2. the quick panel (the Menu key, or a swipe down from the top)

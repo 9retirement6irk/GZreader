@@ -2,7 +2,7 @@ local _ = require("gettext")
 local UIManager = require("ui/uimanager")
 
 local settings_apply = require("modules/settings/zen_settings_apply")
-local updater        = require("modules/settings/zen_updater")
+local updater        = require("modules/settings/gz_updater") -- GZreader: not ZenOS's updater (gz_updater.lua)
 local icons          = require("common/inline_icon_map")
 local plugin_root    = require("common/plugin_root")
 local IconItem       = require("common/ui/icon_menu_item")
@@ -126,8 +126,9 @@ function M.build(plugin)
         for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
     end
 
+    -- GZreader: the section is named Downloads, like the tab it sets up
     local library_item = IconItem.decorate({
-        text = _("Library"),
+        text = _("Downloads"),
         sub_item_table = filebrowser_items,
         _zen_settings_root = "library",
     }, icons.settings_library)
@@ -137,7 +138,10 @@ function M.build(plugin)
         library_item,
         IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
         interface_item,
-        IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
+        -- GZreader: no Extras section. General takes its Schedules and Sleep
+        -- and Interface its Custom icons (above); the rest (Stats tab widgets,
+        -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
+        -- its saved value or default, with nothing to set.
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
         -- GZreader: what's on the Kindle (books, audiobooks, music, notes,
         -- calendar) and the biggest of each

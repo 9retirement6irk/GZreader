@@ -32,6 +32,7 @@ local Log = require("gzreader_log")
 
 local Net = {
     IDLE_SECONDS = 60,
+    CHECK_EVERY = 30, -- (until 1.26.9: IDLE_SECONDS / 3, at its own offset)
     holders = {},
     ours = false,      -- we turned Wi-Fi on (so we may turn it off)
     last_use = 0,
@@ -63,7 +64,8 @@ end
 local check
 local function schedule()
     UIManager:unschedule(check)
-    UIManager:scheduleIn(Net.IDLE_SECONDS / 3, check)
+    -- (every half minute, on the clock with GZreader's other timers: gzreader_ticks.lua)
+    UIManager:scheduleIn(require("gzreader_ticks").untilNext(Net.CHECK_EVERY), check)
 end
 
 check = function()

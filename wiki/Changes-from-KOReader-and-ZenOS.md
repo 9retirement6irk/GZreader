@@ -25,6 +25,7 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 | Book layout (`frontend/document/credocument.lua`) | A bigger crengine cache (256 MB instead of 64) |
 | Sleep screen (`frontend/ui/screensaver.lua`) | "Custom image or cover" shows the book's cover while reading and the image elsewhere |
 | Menus (`frontend/ui/widget/touchmenu.lua`, menu orders) | Letter keys in KOReader's menus; GZreader's items in place of removed plugins' |
+| Home folder (`frontend/apps/filemanager/`) | No Home folder settings (Set, Shorten, Lock) in the file manager's menu and no "Set as HOME folder" buttons: the home folder is always the GZreader folder |
 | Back key (`readerback.lua`), translations (`gettext.lua`), plugin loading | Small fixes for the trimmed build |
 
 ## Compared with ZenOS
@@ -33,13 +34,20 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 
 - **Keys:** letter keys in every list and dialog (`__ZEN_DIALOG_SHORTCUTS`, the context menu), tab keys (Z, X, C, V, B) on keyboard Kindles, the 5-way on the Kindle 4. ZenOS was made for touch.
 - **The quick panel** instead of ZenOS's touch menu (its Zen Mode button and tabs), on every device; ZenOS's first-run menu tour is replaced by one of the quick panel, which closes it before the page browser tip.
-- **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats and a notebook-page stats widget, two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
+- **Home:** a bookshelf view (books on shelves, audiobooks as a cassette walkman, music as a CD player), Grimmory reading stats on a notebook page in place of ZenOS's local reading stats widget (no longer offered), two shelves on the DX's taller screen; font sizes in Home widgets and the end-of-book page aren't scaled twice.
 - **Tabs:** Grimmory, Notes (in Favorites' place) and Calendar, Music on request.
+- **The book menu:** Add to shelf and Remove from shelf (your Grimmory shelves, kept on the Kindle, changes sent over Wi‑Fi or by the sync page) instead of Add to collection, also for several selected books; no Add to collection anywhere.
 - **The setup guide:** shorter (fewer pages, GZreader's reading defaults set on a first setup), starting with *Set up from your browser*, ending with usage statistics.
+- **Settings → Interface → Quick panel:** which tiles the quick panel shows, in place of ZenOS's Controls and Launcher (they set up the touch menu GZreader replaces).
+- **Zen mode is always on** (ZenOS's own tabs only): there's no Zen mode switch in Settings → Interface, and it's turned back on if it was off.
 - **The update screen:** GZreader's version and what's new in it, after every GZreader update (ZenOS showed its own version and list, only when ZenOS changed).
-- **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes).
+- **Settings:** GZreader's sections in ZenOS's settings (Storage; Connections: Grimmory, Memos, Calendar, Plex, copying connections, sync through a computer) and its items in ZenOS's own sections (General: Wi‑Fi only when needed, Updates, diagnostics, usage statistics; Reader: read aloud, Flash on every page turn; Interface: Pre-size covers; Advanced: Flash when the screen changes). ZenOS's Library section is called Downloads; its Folders has no Home folder menu (the home folder is always the GZreader folder).
 - **Covers:** pre-sized and cached on disk, made in a background process. → [Performance](Performance)
+- **Not loaded:** ZenOS's own updater (GZreader's replaces it; a small stand-in answers ZenOS) and its Rakuyomi manga integration unless that plugin is installed. → [Performance](Performance)
+- **The reader's top status bar** (Settings → Reader → Appearance → Top status bar: the clock, by default) stays on screen while the layout menu (the quick panel's Layout) is open and after it closes; ZenOS drew it only while nothing else was open over the book, so it went missing until the next page turn.
 - **Nooks:** paths for a Nook's microSD card, Bluetooth stubbed out, Wi‑Fi switching adapted.
+- **No Extras section in Settings:** its Schedules and Sleep are in General and Custom icons in Interface (as in ZenOS); the rest (Stats tab widgets, ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) isn't offered, and keeps its default or what was set before.
+- **No Metadata menu in Settings → Downloads → Books** (ZenOS's online sources for its metadata editor): a download's title, authors and series come from Grimmory. **Square cover corners in the Bookshelf view** (Rounded cover corners is greyed out there; the other views keep their setting).
 - **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.
 
 The full list of changed upstream files is `tools/gzreader/tests/keeps.txt` in the repository.
