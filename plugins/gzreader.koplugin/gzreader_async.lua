@@ -14,6 +14,11 @@ and the result comes back a moment later.
   screen's thread and could freeze it for the whole request, or much longer
   when the network was half down). Nothing here ever does network work on
   the screen's thread.
+- Requests queued together for the same login run in one process, one
+  after another (up to BATCH_MAX; long ones last), each result coming back
+  on its own line as soon as it's ready: a fork of GZreader and a login
+  check are seconds on a Kindle 3, and opening a book started four.
+  Async.together(fn) holds the queue while fn() starts its requests.
 - Results travel back as JSON (plain values only).
 - `Async.sync = true` runs everything inline (tests; and where a result is
   needed right away, e.g. while going to sleep).
@@ -36,6 +41,8 @@ local Async = {
     NICE_LONG = 10,
     queue = {},
     busy = false,
+    held = 0,       -- inside Async.together(): requests wait
+    BATCH_MAX = 6,  -- requests in one background process at most
 }
 
 local function pack(...) return { n = select("#", ...), ... } end
@@ -72,6 +79,12 @@ function Async.reader(fd)
             if not got or got <= 0 then return end
             chunks[#chunks + 1] = ffi.string(buf, got)
         end
+    end
+    --- What has been read since the last take() (and isn't returned again).
+    function r:take()
+        local s = table.concat(chunks)
+        chunks = {}
+        return s
     end
     function r:finish()
         if not fd then return table.concat(chunks) end
@@ -118,13 +131,13 @@ local function netHold(on)
     end)
 end
 
-local function finish(job, res)
-    Async.busy = false
+--- One job's result, in the main process: usage statistics, the login it
+--- may have renewed, then its on_done.
+local function finishJob(job, res)
     pcall(function()
         require("gzreader_usage").request(job.name, res[1] ~= nil and res[1] ~= false,
             job.t0 and math.floor((require("socket").gettime() - job.t0) * 1000) or nil)
     end)
-    netHold(false)
     if res.tokens and job.api and job.api.store then
         -- the login was refreshed in the background process: keep the new tokens
         local store = job.api.store
@@ -154,31 +167,72 @@ local function finish(job, res)
     end
     local ok, err = pcall(job.on_done, unpack(res, 1, res.n))
     if not ok then Log.warn("async callback failed:", tostring(err)) end
+end
+
+--- A background process is done (all its jobs answered): the next one.
+local function batchDone()
+    Async.busy = false
+    netHold(false)
     UIManager:nextTick(pump)
 end
 
+--- The jobs for the next background process: the first queued job and the
+--- ones after it for the same login (up to BATCH_MAX), long ones (opts.nice)
+--- last. One process instead of one each: one fork of GZreader, one login
+--- check (and, later, one connection), on a Kindle 3 seconds each.
+local function takeBatch()
+    local first = table.remove(Async.queue, 1)
+    if not first then return nil end
+    local quick, long = { first }, {}
+    if first.nice then quick, long = {}, { first } end
+    local i = 1
+    while Async.queue[i] and #quick + #long < Async.BATCH_MAX do
+        local j = Async.queue[i]
+        if j.api == first.api then
+            table.remove(Async.queue, i)
+            if j.nice then long[#long + 1] = j else quick[#quick + 1] = j end
+        else
+            i = i + 1
+        end
+    end
+    for _i, j in ipairs(long) do quick[#quick + 1] = j end
+    return quick
+end
+
 pump = function()
-    if Async.busy then return end
-    local job = table.remove(Async.queue, 1)
-    if not job then return end
+    if Async.busy or Async.held > 0 then return end
+    local jobs = takeBatch()
+    if not jobs then return end
     Async.busy = true
-    job.t0 = require("socket").gettime()
+    local t0 = require("socket").gettime()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
-    local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
-    job.refresh_before = api.store and api.store.refresh_token
-    local nice = job.nice and Async.NICE_LONG or Async.NICE
+    local api = jobs[1].api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
+    local refresh_before = api.store and api.store.refresh_token
+    local timeout = 0
+    for _i, job in ipairs(jobs) do
+        job.t0, job.refresh_before = t0, refresh_before
+        timeout = timeout + (job.timeout or Async.TIMEOUT)
+    end
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
-        Async.lowerPriority(nice) -- the screen goes first (see NICE)
+        Async.lowerPriority(Async.NICE) -- the screen goes first (see NICE)
         local store = api.store or {}
         local before = {}
         for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end
         api.no_refresh = false
         api.on_change = function() end -- saved by the main process instead
+        -- each job's result on its own line, as soon as it's ready
+        local function send(res, last)
+            local tokens
+            for _i, k in ipairs(TOKEN_FIELDS) do
+                if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end
+            end
+            if tokens and store.refresh_token == nil then tokens = { cleared = true } end
+            ffiutil.writeToFD(wfd, encode(res, tokens) .. "\n", last)
+        end
         if api.ensureToken then
             local okt, err = api:ensureToken()
             if not okt then
-                local tokens = (store.refresh_token == nil and before.refresh_token ~= nil) and { cleared = true } or nil
-                ffiutil.writeToFD(wfd, encode(pack(nil, err), tokens), true)
+                for i = 1, #jobs do send(pack(nil, err), i == #jobs) end
                 return
             end
             -- a new login: on disk at once (see gzreader_api.lua, writePending)
@@ -186,40 +240,72 @@ pump = function()
                 pcall(api.writePending, store, before.refresh_token)
             end
         end
-        local res = protected(job.fn, api)
-        if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
-            pcall(api.writePending, store, before.refresh_token)
+        local lowered = false
+        for i, job in ipairs(jobs) do
+            if job.nice and not lowered then
+                lowered = true
+                Async.lowerPriority(Async.NICE_LONG) -- long CPU work: lower still
+            end
+            local res = protected(job.fn, api)
+            if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
+                pcall(api.writePending, store, before.refresh_token)
+            end
+            send(res, i == #jobs)
         end
-        local tokens
-        for _i, k in ipairs(TOKEN_FIELDS) do
-            if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end
-        end
-        if tokens and store.refresh_token == nil then tokens = { cleared = true } end
-        ffiutil.writeToFD(wfd, encode(res, tokens), true)
     end, true)
     if not pid then
         -- couldn't fork (low memory?): give up rather than freeze the screen
-        Log.warn("async: couldn't start a background process for", job.name or "?")
-        return finish(job, pack(nil, "busy"))
+        Log.warn("async: couldn't start a background process for", jobs[1].name or "?")
+        for _i, job in ipairs(jobs) do finishJob(job, pack(nil, "busy")) end
+        return batchDone()
+    end
+    if #jobs > 1 then
+        local names = {}
+        for i, job in ipairs(jobs) do names[i] = job.name or "?" end
+        Log.info("async: one background process for", #jobs, "requests:", table.concat(names, ", "))
     end
     local started = os.time()
     local out = Async.reader(fd)
+    local buf, next_job = "", 1
+    -- the results that have arrived, each to its job
+    local function dispatch(text)
+        buf = buf .. text
+        while true do
+            local nl = buf:find("\n", 1, true)
+            if not nl or next_job > #jobs then break end
+            local line = buf:sub(1, nl - 1)
+            buf = buf:sub(nl + 1)
+            local job = jobs[next_job]
+            next_job = next_job + 1
+            finishJob(job, decode(line) or pack(nil, "background request failed"))
+        end
+    end
+    local function rest(why)
+        while next_job <= #jobs do
+            local job = jobs[next_job]
+            next_job = next_job + 1
+            finishJob(job, pack(nil, why))
+        end
+    end
     local function poll()
         out:drain()
+        dispatch(out:take())
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > (job.timeout or Async.TIMEOUT) then
-                Log.warn("async request took too long, stopped:", job.name or "?")
+            if os.time() - started > timeout then
+                Log.warn("async request took too long, stopped:", jobs[next_job] and jobs[next_job].name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
                     if ffiutil.isSubProcessDone(pid) then out:finish() else out:drain(); UIManager:scheduleIn(1, reap) end
                 end
                 UIManager:scheduleIn(1, reap)
-                return finish(job, pack(nil, "timeout"))
+                rest("timeout")
+                return batchDone()
             end
             return UIManager:scheduleIn(Async.POLL, poll)
         end
-        local res = decode(out:finish()) or pack(nil, "background request failed")
-        finish(job, res)
+        dispatch(out:finish() .. "\n")
+        rest("background request failed")
+        batchDone()
     end
     UIManager:scheduleIn(Async.POLL, poll)
 end
@@ -246,6 +332,17 @@ function Async.run(api, fn, on_done, name, opts)
     table.insert(Async.queue, { api = api, fn = fn, on_done = on_done, name = name, nice = opts and opts.nice,
         timeout = opts and opts.timeout })
     pump()
+end
+
+--- Run fn(); the requests it starts wait until it's done and then go in one
+--- background process (when they're for the same login), e.g. a book's sync
+--- when it opens: its place, queued updates, bookmarks and highlights.
+function Async.together(fn)
+    Async.held = Async.held + 1
+    local ok, err = pcall(fn)
+    Async.held = Async.held - 1
+    pump()
+    if not ok then error(err, 0) end
 end
 
 --- Local work (no network, no login) in its own background process, outside

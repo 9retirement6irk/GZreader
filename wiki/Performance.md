@@ -81,5 +81,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   tell "unchanged" quickly) every save is a whole one, as before.
 - ZenOS's icon font is no longer registered with the book renderer (it
   failed every time).
+- **One background process for a book's sync** (`Async.together`,
+  `Grimmory:openSync`): a moment after a book opens, its place, queued
+  updates, bookmarks and highlights go in one process instead of four at
+  1, 2, 4 and 6 s; requests queued together for the same login share a
+  process anyway (up to 6, long ones last), each result coming back as soon
+  as it's ready.
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
   seen for a large book). Later opens use the cache.

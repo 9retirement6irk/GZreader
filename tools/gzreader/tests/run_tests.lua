@@ -2099,6 +2099,96 @@ end
 print("Compressed replies")
 check((json.decode(ctl("/state")).gzip_replies or 0) > 0, "JSON lists arrive gzip-compressed and are unpacked (lists above worked)")
 
+print("Requests queued together run in one background process")
+;(function()
+    local Async = require("gzreader_async")
+    local ffi = require("ffi")
+    require("ffi/posix_h")
+    pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local api = { store = {} }
+    local other = { store = {} }
+    local got, order = {}, {}
+    local function job(name, fn, opts)
+        Async.run(opts and opts.api or api, function() return fn() end, function(...)
+            got[name] = { t = socket.gettime(), ... }
+            order[#order + 1] = name
+        end, name, opts)
+    end
+    local pid = function() return tonumber(ffi.C.getpid()), tonumber(ffi.C.getpriority(0, 0)) end
+    Async.together(function()
+        job("highlights", pid, { nice = true })
+        job("place", pid)
+        job("elsewhere", pid, { api = other })
+        job("slow", function() socket.sleep(2); return pid() end)
+        job("bookmarks", pid)
+        check(#Async.queue == 5 and not Async.busy, "inside together(): queued, nothing started yet")
+    end)
+    runLoop(function() return #order == 5 end, 30)
+    local p = function(key) return got[key] and got[key][1] end
+    check(#order == 5 and p("place") and p("place") == p("slow") and p("slow") == p("bookmarks") and p("bookmarks") == p("highlights"),
+        "the same login's four requests: one process (" .. tostring(p("place")) .. ")")
+    check(p("elsewhere") and p("elsewhere") ~= p("place"), "another login's: its own process, after")
+    check(table.concat(order, ","):find("^place,slow,bookmarks,highlights") ~= nil,
+        "in the order queued, the long one (opts.nice) last: " .. table.concat(order, ","))
+    check(got.place and got.slow and got.slow.t - got.place.t > 1.5, "each result as soon as it's ready (not when all are done)")
+    check(got.place and got.place[2] >= Async.NICE and got.highlights and got.highlights[2] >= Async.NICE_LONG,
+        "nice 5 for requests, 10 from the long one on")
+    -- the login can't be renewed: every request in the process gets the error
+    local denied = { store = {}, ensureToken = function() return false, "signed out" end }
+    local errs = {}
+    Async.together(function()
+        for i = 1, 3 do Async.run(denied, function() return true end, function(res, err) errs[i] = { res, err } end, "d" .. i) end
+    end)
+    runLoop(function() return errs[3] ~= nil end, 15)
+    check(errs[1] and errs[1][1] == nil and errs[1][2] == "signed out" and errs[3] and errs[3][2] == "signed out",
+        "login refused: each request gets the error")
+    -- one alone, as before
+    local alone
+    Async.run(api, function() return "x", 2 end, function(a, second) alone = { a, second } end, "alone")
+    runLoop(function() return alone ~= nil end, 15)
+    check(alone and alone[1] == "x" and alone[2] == 2 and not Async.busy and #Async.queue == 0, "a single request: as before")
+    Async.sync = saved_sync
+end)()
+
+print("A book's sync when it opens: one go, a moment after the first page")
+;(function()
+    local Sync = require("gzreader_sync")
+    local Async = require("gzreader_async")
+    local calls = {}
+    local held_seen = {}
+    local s = { pull = function(_, interactive, saved) calls[#calls + 1] = "pull:" .. tostring(saved); held_seen[#held_seen + 1] = Async.held end }
+    local fake = {
+        sync = s, ui = { document = true }, syncEnabled = function() return true end,
+        flushPending = function() calls[#calls + 1] = "flush"; held_seen[#held_seen + 1] = Async.held end,
+        bookmarks = { reconcile = function() calls[#calls + 1] = "bookmarks" end },
+        annotations = { run = function() calls[#calls + 1] = "highlights" end },
+    }
+    Grimmory.openSync(fake, s, "saved")
+    check(table.concat(calls, ",") == "pull:saved,flush,bookmarks,highlights" and held_seen[1] == 1 and held_seen[2] == 1,
+        "openSync: place, queued updates, bookmarks, highlights, inside Async.together (" .. table.concat(calls, ",") .. ")")
+    calls = {}
+    Grimmory.openSync(fake, { pull = function() end }, nil)
+    check(#calls == 0, "openSync for a book that has closed since: nothing")
+    -- Sync:onReady schedules one sync, OPEN_SYNC_DELAY after the first page
+    local scheduled_before = {}
+    for fn in pairs(UI.scheduled) do scheduled_before[fn] = true end
+    local gz_plugin = { syncEnabled = function() return true end, save = function() end, store = { pending = { progress = {}, sessions = {} } },
+        queue = function() end, flushPending = function() end, api = { isPaired = function() return false end } }
+    local opened
+    gz_plugin.openSync = function(_, sync, saved) opened = { sync, saved } end
+    local entry = { grimmory_progress = { pct = 12 } }
+    local sync = Sync:new(gz_plugin, { document = { file = "x.epub", info = {} } }, entry, 5)
+    sync.startSession = function() end
+    sync:onReady()
+    local new = {}
+    for fn, d in pairs(UI.scheduled) do if not scheduled_before[fn] then new[#new + 1] = d; UI.scheduled[fn] = nil; fn() end end
+    check(#new == 1 and new[1] == Sync.OPEN_SYNC_DELAY, "Sync:onReady: one timer (" .. table.concat(new, ", ") .. " s)")
+    check(opened and opened[1] == sync and opened[2] and opened[2].pct == 12 and entry.grimmory_progress == nil,
+        "…which hands the book's sync to openSync, with Grimmory's progress from the download (once)")
+end)()
+
 print("Requests in the background")
 do
     AsyncMod.sync = false
