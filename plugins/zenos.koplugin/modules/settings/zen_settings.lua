@@ -126,8 +126,9 @@ function M.build(plugin)
         for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
     end
 
+    -- GZreader: the section is named Downloads, like the tab it sets up
     local library_item = IconItem.decorate({
-        text = _("Library"),
+        text = _("Downloads"),
         sub_item_table = filebrowser_items,
         _zen_settings_root = "library",
     }, icons.settings_library)
