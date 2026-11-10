@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Sleep screen: a picture at Home again with \"Book cover while reading, a picture elsewhere\"", text = "Settings → General → Sleep → Wallpaper → Book cover while reading, a picture elsewhere showed whatever sleep screen had been saved before instead: a picture while reading, or (after choosing Book cover once and then this tile again) the book's cover at Home too. It now shows the open book's cover while reading and a picture from the screensavers folder from Home and menus, whatever was chosen before it." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },
