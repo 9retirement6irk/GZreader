@@ -5929,6 +5929,43 @@ print("Music (Plex): the server, downloads, the player")
     os.execute("kill $(cat " .. WORK .. "/plex.pid) 2>/dev/null")
 end)()
 
+print("Music's CD player: the headphones' band reaches both pads");
+(function()
+    local fh = io.open(PLUGIN .. "/icons/shelf/cd_player.svg", "rb")
+    local svg = fh and fh:read("*a") or ""
+    if fh then fh:close() end
+    local x1, y1, r, x2, y2 = svg:match('<path d="M([%d.]+) ([%d.]+) A([%d.]+) [%d.]+ 0 0 1 ([%d.]+) ([%d.]+)" fill="none" stroke="#2a2a2a"')
+    x1, y1, r, x2, y2 = tonumber(x1), tonumber(y1), tonumber(r), tonumber(x2), tonumber(y2)
+    local pads = {}
+    for cx, cy, pr in svg:gmatch('<circle cx="([%d.]+)" cy="([%d.]+)" r="([%d.]+)" fill="url%(#foam%)"') do
+        pads[#pads + 1] = { x = tonumber(cx), y = tonumber(cy), r = tonumber(pr) }
+    end
+    local sliders = {}
+    for sx, sy, sw, sh, a, ax, ay in svg:gmatch('<rect x="([%d.]+)" y="([%d.]+)" width="([%d.]+)" height="([%d.]+)" rx="2" fill="#2a2a2a" transform="rotate%((%-?[%d.]+) ([%d.]+) ([%d.]+)%)"/>') do
+        sliders[#sliders + 1] = { x = tonumber(ax), y = tonumber(ay), len = tonumber(sh), a = math.rad(tonumber(a)) }
+    end
+    local function inside(px, py, pad) return math.sqrt((px - pad.x) ^ 2 + (py - pad.y) ^ 2) < pad.r end
+    check(x2 and #pads == 2 and #sliders == 2, "the band, two pads and two sliders found in cd_player.svg")
+    if x2 and #pads == 2 and #sliders == 2 then
+        -- the band's circle (the arc's centre on the side the sweep goes round)
+        local mx, my, dx, dy = (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1
+        local chord = math.sqrt(dx * dx + dy * dy)
+        local hh = math.sqrt(math.max(0, r * r - (chord / 2) ^ 2))
+        local cx, cy = mx - hh * dy / chord, my + hh * dx / chord
+        local right = pads[1].x > pads[2].x and pads[1] or pads[2]
+        check(inside(x2, y2, right), "the band runs into the right pad (it stopped short of it: a gap under the slider)")
+        for i, slider in ipairs(sliders) do
+            -- a slider's long side, turned by its rotation: both ends, one on the band, one in a pad
+            local ux, uy = -math.sin(slider.a), math.cos(slider.a)
+            local ends = { { slider.x - ux * slider.len / 2, slider.y - uy * slider.len / 2 }, { slider.x + ux * slider.len / 2, slider.y + uy * slider.len / 2 } }
+            local on_band = math.abs(math.sqrt((slider.x - cx) ^ 2 + (slider.y - cy) ^ 2) - r) < 4
+            local in_pad = inside(ends[1][1], ends[1][2], pads[1]) or inside(ends[1][1], ends[1][2], pads[2])
+                or inside(ends[2][1], ends[2][2], pads[1]) or inside(ends[2][1], ends[2][2], pads[2])
+            check(on_band and in_pad, "slider " .. i .. " sits on the band and reaches its pad")
+        end
+    end
+end)()
+
 print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
 ;(function()
     local Net = require("gzreader_net")
