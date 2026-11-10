@@ -6404,6 +6404,10 @@ print("Kindles without REAGL: flash when the screen changes")
     check(Eink.promote("ui", nil, W, H, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, true) == "ui",
         "the 5-way's arrows (along the tab bar, around the quick panel) don't flash, however much they redraw")
     check(Eink.promote("ui", nil, W, H, true, true) == "full", "unless a full-screen window just opened or closed")
+    check(Eink.promote("ui", nil, W, H, false, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, false, true) == "ui"
+        and Eink.promote("ui", nil, W, H, true, false, true) == "full",
+        "nothing you did (no key or tap for a while: a download done, covers arriving): no flash, unless a window opened or closed")
+    check(require("gzreader_tasks").REFRESH == 3, "the download status in the status bar: updated every 3 s")
     local player = { covers_fullscreen = true, gz_player = true }
     local chapters = { covers_fullscreen = true }
     local stack = { { widget = { name = "home" } }, { widget = player } }

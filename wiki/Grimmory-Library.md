@@ -83,7 +83,8 @@ lines that changed are refreshed on the screen, on the page you're on (the
 whole list is redrawn when a download finishes or one is added). ZenOS's
 status bar gets a `gz_downloads` item next to the clock
 (added once; movable/removable in its settings): a download icon with the
-percentage and the number waiting, refreshed every 10 s while active.
+percentage and the number waiting, refreshed every 3 s while active (only
+that item is refreshed on the screen, without a flash).
 
 While a book downloads, the Grimmory tab still comes first: when it (or
 anything else) asks Grimmory for something, a book's details and cover say,
