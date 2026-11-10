@@ -742,6 +742,33 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     local b3 = Browser:new(plugin)
     b3:show({ section = "music" })
     check(b3.section == "books" and b3.menu.onNextPage and not b3:turnSection(1), "no speaker: Books only, nothing to turn to")
+    -- the Audiobooks tab: the Catalog on its Audiobooks page alone, that tab underlined
+    require("gzreader_touch").audio = function() return true end
+    local at = Browser:new(plugin)
+    at:show({ section = "audiobooks", tab_id = "ct_audiobooks", only = true })
+    local am = at.menu
+    am.page, am.page_num = 1, 1
+    am:onNextPage(); am:onPrevPage()
+    check(at.section == "audiobooks" and am._gz_navbar_tab_id == "ct_audiobooks" and am.title == "Audiobooks"
+        and table.concat(at:sections(), ",") == "audiobooks" and not at:turnSection(1) and not at:turnSection(-1),
+        "the Audiobooks tab: the Audiobooks page alone (no Books or Music to swipe to), its tab underlined")
+    local cat = Browser:new(plugin)
+    cat:show()
+    check(cat.menu._gz_navbar_tab_id == "ct_grimmory" and #cat:sections() == 3, "the Catalog tab: its own tab, every page")
+    local opened_with
+    local saved_show = Browser.show
+    Browser.show = function(_s, o) opened_with = o end
+    plugin:onShowGzAudiobooks()
+    Browser.show = saved_show
+    check(type(opened_with) == "table" and opened_with.section == "audiobooks" and opened_with.tab_id == "ct_audiobooks" and opened_with.only,
+        "the tab's action opens the Catalog that way")
+    require("gzreader_touch").audio = function() return false end
+    opened_with, captured.info = nil, nil
+    Browser.show = function(_s, o) opened_with = o end
+    plugin:onShowGzAudiobooks()
+    Browser.show = saved_show
+    check(opened_with == nil and tostring(captured.info):match("no speaker or headphone jack"),
+        "a Kindle without audio: the tab says it can't play audiobooks (no Catalog page)")
     require("gzreader_touch").audio = saved_audio
     -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself
     local mf = io.open(arg[1] .. "/../zenos.koplugin/config/manager.lua", "rb")
@@ -761,6 +788,18 @@ print("Catalog tab: Books, Audiobooks and Music pages")
         and c3.navbar.custom_tabs[1].label == "Catalog" and c1.navbar.custom_tabs[2].label == "Notes"
         and migrate(c4) == false and c4.navbar.custom_tabs[1].label == "Grimmory",
         "the tab's label: Grimmory becomes Catalog once; a name of your own stays")
+    local afrom = msrc:find("if cfg._meta.gz_audiobooks_tab_migrated ~= true then", 1, true)
+    local ato = afrom and select(2, msrc:find("cfg._meta.gz_audiobooks_tab_migrated = true%s+changed = true%s+end", afrom))
+    local amig = afrom and ato and load("return function(cfg) local changed = false\n" .. msrc:sub(afrom, ato) .. "\nreturn changed end",
+        "audiobooks tab migration", "t", { type = type, ipairs = ipairs, table = table })()
+    local acfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
+    local a1 = amig and amig(acfg)
+    acfg._meta.gz_audiobooks_tab_migrated = nil
+    amig(acfg)
+    local n_ab = 0
+    for _i, t in ipairs(acfg.navbar.custom_tabs) do if t.id == "ct_audiobooks" then n_ab = n_ab + 1 end end
+    check(a1 and n_ab == 1 and acfg.navbar.show_tabs.ct_audiobooks == false and table.concat(acfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_audiobooks",
+        "an older config gets the Audiobooks tab listed, off, once")
 end)()
 
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")

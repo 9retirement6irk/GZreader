@@ -443,6 +443,10 @@ function Grimmory:onDispatcherRegisterActions()
         category = "none", event = "ShowGzMusic", title = _("Music (Plex)"),
         general = true,
     })
+    Dispatcher:registerAction("gzreader_audiobooks", {
+        category = "none", event = "ShowGzAudiobooks", title = _("Audiobooks (the Catalog's page)"),
+        general = true,
+    })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true,
@@ -1809,7 +1813,18 @@ end
 
 ---------------------------------------------------------------- library
 
-function Grimmory:onShowGrimmoryLibrary(touchmenu)
+--- The Audiobooks tab: the Catalog, open on its Audiobooks page.
+function Grimmory:onShowGzAudiobooks(touchmenu)
+    if not require("gzreader_touch").audio() then
+        -- (a Kindle without a speaker or headphone jack: no Audiobooks page at all)
+        closeTouchMenu(touchmenu)
+        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker or headphone jack, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can.") })
+        return true
+    end
+    return self:onShowGrimmoryLibrary(touchmenu, { section = "audiobooks", tab_id = "ct_audiobooks", only = true })
+end
+
+function Grimmory:onShowGrimmoryLibrary(touchmenu, opts)
     closeTouchMenu(touchmenu)
     if not self.api:isPaired() and Net.usb then
         -- no copy of the library yet: the first sync brings it
@@ -1829,7 +1844,7 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu)
         return true
     end
     -- open at once: lists come from their saved copies while Wi-Fi connects
-    Mod.Browser:new(self):show()
+    Mod.Browser:new(self):show(type(opts) == "table" and opts or nil)
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true
 end

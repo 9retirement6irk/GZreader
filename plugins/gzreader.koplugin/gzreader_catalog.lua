@@ -115,7 +115,7 @@ function Catalog.Strip()
     function Strip:parts()
         local b = self.browser
         if not (b and b.menu and Catalog.atRoot(b.menu)) then return nil end
-        return Catalog.stripParts(Catalog.sections(), b.section or "books")
+        return Catalog.stripParts(b.sections and b:sections() or Catalog.sections(), b.section or "books")
     end
 
     function Strip:paintTo(bb, x, y)

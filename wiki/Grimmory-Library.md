@@ -28,6 +28,12 @@ swipes turn that list's pages, as before.
 Kept from the Grimmory tab: its place in the tab bar, and a name you gave
 it yourself. If it was still called Grimmory, it's renamed Catalog.
 
+**An Audiobooks tab** (off until you turn it on: Settings → Interface →
+Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
+speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
+its tab is underlined, and there's no strip and nothing to swipe to. The
+Music tab (Settings → Interface → Navbar → Tabs → Music) stays as it was.
+
 ## Browsing Grimmory
 
 **Search Grimmory…** (first on the Books page), Continue reading, Recently added,

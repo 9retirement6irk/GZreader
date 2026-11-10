@@ -177,6 +177,7 @@ local defaults = {
             ct_notes = true,
             ct_calendar = true,
             ct_music = false, -- GZreader: Music (Plex), off until turned on
+            ct_audiobooks = false, -- GZreader: the Catalog's Audiobooks page, off until turned on
         },
         -- Grimmory build: a navbar tab that opens the Grimmory library
         -- (GZreader: the Catalog: books, audiobooks, music; id kept).
@@ -212,10 +213,18 @@ local defaults = {
                 label = "Music",
                 icon = "tab_music",
             },
+            -- GZreader: the Catalog's Audiobooks page (Kindles with audio)
+            {
+                id = "ct_audiobooks",
+                type = "action",
+                action = { gzreader_audiobooks = true },
+                label = "Audiobooks",
+                icon = "tab_audiobooks",
+            },
         },
         tab_order = {
             "home", "books", "ct_grimmory", "ct_notes", "ct_calendar",
-            "continue", "favorites", "ct_music", -- listed (off) so they can be turned on in Settings
+            "continue", "favorites", "ct_music", "ct_audiobooks", -- listed (off) so they can be turned on in Settings
         },
         -- the tab list format the tab bar expects: tab_order lists every tab
         -- in Settings → Navbar → Tabs, show_tabs says which are on. Without

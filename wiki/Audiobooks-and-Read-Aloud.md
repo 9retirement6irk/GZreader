@@ -1,4 +1,4 @@
-Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music).
+Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab).
 
 ## Audiobooks (experimental)
 
