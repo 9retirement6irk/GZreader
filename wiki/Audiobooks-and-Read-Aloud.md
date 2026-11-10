@@ -3,7 +3,23 @@ Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): 
 ## Audiobooks (experimental)
 
 Catalog tab → **Audiobooks** page (swipe left from Books, or the page-turn
-button) → All audiobooks.
+button). It's laid out like the Books page: **Search audiobooks…** at the top
+(titles, authors and series, audiobooks only), two shelves with covers face
+out, **Continue listening** (what you've listened to on this Kindle, latest
+first, then what Grimmory has in progress, with a ribbon and how far you
+are) and **Recently added**, each ending in a bundle that opens the whole
+list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
+**Series** and **On this Kindle** (the cards count what's known).
+
+- **Authors** and **Series** list only the authors and series that have
+  audiobooks, with how many. The first time, GZreader fetches the list of
+  every audiobook in the background (kept on the Kindle like the other saved
+  lists, and fetched again each time you open them).
+- **Shelves**: your shelves and smart shelves; each opens to the audiobooks
+  on it. Once your shelves and the audiobooks are known, shelves with no
+  audiobook on them are left out (smart shelves are always listed).
+- An author's, a series' or a shelf's list has **Search in …** at the top.
+
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
 a cassette walkman with headphones. The cassette's label has the book's title,

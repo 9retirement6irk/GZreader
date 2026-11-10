@@ -243,12 +243,6 @@ function Browser:bookItems()
     }
 end
 
---- The Audiobooks page (Kindles with a speaker or headphone jack).
-function Browser:audiobookItems()
-    return {
-        { gz_id = "ab_all", text = _("All audiobooks"), callback = function() self:openAudiobooks() end },
-    }
-end
 
 --- The Music page: Plex (gzreader_musictab.lua's lists, here in the tab).
 function Browser:musicItems()
@@ -274,27 +268,277 @@ end
 
 --- Grimmory's audiobooks (M4B / MP3), to download and listen to.
 function Browser:openAudiobooks()
-    local Audiobook = require("gzreader_audiobook")
     self:openList{
-        title = _("Audiobooks"),
+        title = _("All audiobooks"),
         key = "audiobooks",
+        header = { {
+            gz_action = "search", text = _("Search audiobooks…"),
+            callback = function() self:promptSearch(Browser.audioScope()) end,
+        } },
         fetch = function(page)
             local sort, dir = Browser.sortParams()
-            return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = sort, dir = dir, fileType = { "AUDIOBOOK" } }
+            return self.api:listBooks{ page = page, size = PAGE_SIZE, sort = sort, dir = dir, fileType = Browser.AUDIO_TYPES }
         end,
         reopen = function() self:openAudiobooks() end,
-        to_item = function(book)
-            local t = type(book.primaryFileType) == "string" and book.primaryFileType:upper() or ""
-            if t ~= "AUDIOBOOK" then return nil end
-            local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
-            local here = Audiobook.load(self.plugin, book.id) ~= nil
-            return {
-                text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
-                book = book, cover_kind = "audiobook", -- the square audiobook cover in the cover views
-                mandatory = here and _("on Kindle")
-                    or (require("gzreader_usbsync").isQueued(self.plugin, book.id) and _("queued")) or nil,
-                callback = function() Audiobook.choose(self.plugin, book) end,
-            }
+        to_item = function(book) return self:audiobookItem(book) end,
+    }
+end
+
+Browser.AUDIO_TYPES = { "AUDIOBOOK" }
+
+local function isAudiobook(book)
+    return type(book) == "table" and type(book.primaryFileType) == "string" and book.primaryFileType:upper() == "AUDIOBOOK"
+end
+Browser.isAudiobook = isAudiobook
+
+--- A search through the audiobooks (Search audiobooks…, Search in <author>…).
+function Browser.audioScope(title, params)
+    return { title = title or _("Audiobooks"), params = params or {}, audio = true }
+end
+
+--- An audiobook's line (a cassette on the tape rack in the Bookshelf view), or
+--- nil for anything else.
+function Browser:audiobookItem(book)
+    if not isAudiobook(book) then return nil end
+    local Audiobook = require("gzreader_audiobook")
+    local authors = type(book.authors) == "table" and table.concat(book.authors, ", ") or ""
+    local here = Audiobook.load(self.plugin, book.id) ~= nil
+    return {
+        text = authors ~= "" and ((book.title or "?") .. " — " .. authors) or (book.title or "?"),
+        book = book, cover_kind = "audiobook", -- the square audiobook cover in the cover views
+        mandatory = here and _("on Kindle")
+            or (require("gzreader_usbsync").isQueued(self.plugin, book.id) and _("queued")) or nil,
+        callback = function() Audiobook.choose(self.plugin, book) end,
+    }
+end
+
+---------------------------------------------------------------- the Audiobooks page
+
+local function byName(list)
+    table.sort(list, function(x, y) return x.sort_key < y.sort_key end)
+    return list
+end
+
+Browser.AUDIO_ALL_PAGES = 40 -- (50 a page: 2,000 audiobooks at most for Authors and Series)
+
+--- Every audiobook Grimmory has (its few fields: authors, series), for the
+--- Authors and Series lists. Runs in the background process.
+function Browser:fetchAllAudiobooks()
+    local all, page, pages = {}, 0, 1
+    while page < pages and page < Browser.AUDIO_ALL_PAGES do
+        local data, err = self.api:listBooks{ page = page, size = 50, sort = "title", dir = "asc", fileType = Browser.AUDIO_TYPES }
+        if not data then return nil, err end
+        pages = tonumber(data.totalPages) or 1
+        for _i, b in ipairs(type(data.content) == "table" and data.content or {}) do
+            if isAudiobook(b) then
+                all[#all + 1] = { id = b.id, authors = type(b.authors) == "table" and b.authors or nil,
+                    seriesName = type(b.seriesName) == "string" and b.seriesName or nil }
+            end
+        end
+        page = page + 1
+    end
+    return { content = all, total = #all }
+end
+
+--- Authors and series of `list` (fetchAllAudiobooks' content):
+--- { authors = { name = count }, series = { name = { count, authors = { names } } } }. Pure.
+function Browser.groupAudiobooks(list)
+    local authors, series = {}, {}
+    for _i, b in ipairs(type(list) == "table" and list or {}) do
+        for _j, a in ipairs(type(b.authors) == "table" and b.authors or {}) do
+            if type(a) == "string" and a ~= "" then authors[a] = (authors[a] or 0) + 1 end
+        end
+        local sn = b.seriesName
+        if type(sn) == "string" and sn ~= "" then
+            local sr = series[sn] or { count = 0, authors = {} }
+            series[sn] = sr
+            sr.count = sr.count + 1
+            for _j, a in ipairs(type(b.authors) == "table" and b.authors or {}) do
+                local seen = false
+                for _k, x in ipairs(sr.authors) do if x == a then seen = true end end
+                if not seen and type(a) == "string" then sr.authors[#sr.authors + 1] = a end
+            end
+        end
+    end
+    return { authors = authors, series = series }
+end
+
+local function audioCount(n)
+    n = tonumber(n)
+    if not n then return nil end
+    return n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), n)
+end
+Browser.audioCount = audioCount
+
+function Browser:savedKey(what)
+    local store = self.plugin and self.plugin.store or {}
+    return tostring(store.server) .. "|" .. tostring(store.username) .. "|" .. what
+end
+
+--- The Audiobooks page: search, then a compartment each (gz_kind "section";
+--- gz_contents: what stands in it in the Bookshelf view).
+function Browser:audiobookItems()
+    local Cache = require("gzreader_listcache")
+    local all = self.plugin and Cache.get(Browser.savedKey(self, "audio-all"))
+    local listed = self.plugin and Cache.get(Browser.savedKey(self, "audiobooks"))
+    local n = type(all) == "table" and tonumber(all.total) or (type(listed) == "table" and tonumber(listed.totalElements)) or nil
+    local groups = type(all) == "table" and Browser.groupAudiobooks(all.content) or nil
+    local function count(map)
+        if not map then return nil end
+        local c = 0
+        for _k in pairs(map) do c = c + 1 end
+        return c
+    end
+    local na, ns = count(groups and groups.authors), count(groups and groups.series)
+    local here = Browser.audiobooksHere(self.plugin)
+    return {
+        gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
+        { gz_id = "ab_search", gz_action = "search", text = _("Search audiobooks…"),
+            callback = function() self:promptSearch(Browser.audioScope()) end },
+        { gz_id = "ab_continue", text = _("Continue listening"), callback = function() self:openAudioContinue() end },
+        { gz_id = "ab_recent", text = _("Recently added"), callback = function()
+            self:openPaged(_("Recently added"), { sort = "addedOn", dir = "desc" }, false, { audio = true, keep_order = true })
+        end },
+        { gz_id = "ab_all", gz_kind = "section", gz_contents = "tapes", text = _("All audiobooks"),
+            mandatory = audioCount(n) or _("M4B and MP3"), callback = function() self:openAudiobooks() end },
+        { gz_id = "ab_authors", gz_kind = "section", gz_contents = "dividers", text = _("Authors"),
+            mandatory = na and na > 0 and T(_("%1 · A–Z"), na) or _("A–Z"), callback = function() self:openAudioAuthors() end },
+        { gz_id = "ab_shelves", gz_kind = "section", gz_contents = "faceout", text = _("Shelves"),
+            mandatory = _("yours and magic"), callback = function() self:openAudioShelves() end },
+        { gz_id = "ab_series", gz_kind = "section", gz_contents = "piles", text = _("Series"),
+            mandatory = ns and ns > 0 and (ns == 1 and _("1 series") or T(_("%1 series"), ns)) or _("in order"),
+            callback = function() self:openAudioSeries() end },
+        { gz_id = "ab_downloaded", gz_kind = "section", gz_contents = "tapes", text = _("On this Kindle"),
+            mandatory = #here > 0 and audioCount(#here) or _("none yet"), callback = function() self:openAudioDownloaded() end },
+    }
+end
+
+--- The audiobooks on the Kindle (their audio all here), newest listened first.
+function Browser.audiobooksHere(plugin)
+    local out = {}
+    local store = plugin and plugin.store
+    local ok, Audiobook = pcall(require, "gzreader_audiobook")
+    if not (ok and type(store) == "table" and type(store.audiobooks) == "table") then return out end
+    for id, e in pairs(store.audiobooks) do
+        local data = type(e) == "table" and Audiobook.load(plugin, id)
+        if data then
+            out[#out + 1] = { id = id, title = e.title or data.title, authors = (e.author or data.author) and { e.author or data.author } or nil,
+                primaryFileType = "AUDIOBOOK", _updated = tonumber(e.updated) or 0 }
+        end
+    end
+    table.sort(out, function(a, b) return a._updated > b._updated end)
+    return out
+end
+
+--- Continue listening: what you've listened to on the Kindle, then what
+--- Grimmory has in progress (the Audiobooks page's ledge, as a list).
+function Browser:openAudioContinue()
+    local st = require("gzreader_bookshop").audioLists(self)
+    local items = {}
+    for _i, b in ipairs(st.ab_continue or {}) do items[#items + 1] = self:audiobookItem(b) end
+    self:push(_("Continue listening"), items)
+end
+
+--- On this Kindle: the audiobooks downloaded.
+function Browser:openAudioDownloaded()
+    local items = {}
+    for _i, b in ipairs(Browser.audiobooksHere(self.plugin)) do items[#items + 1] = self:audiobookItem(b) end
+    self:push(_("On this Kindle"), items)
+end
+
+--- Audiobooks by author: the authors of every audiobook (fetched once in
+--- the background, kept like the other saved lists).
+function Browser:openAudioAuthors()
+    self:openCached{
+        key = "audio-all",
+        title = _("Authors"),
+        fetch = function() return self:fetchAllAudiobooks() end,
+        build = function(data)
+            local items = {}
+            for name, c in pairs(Browser.groupAudiobooks(data and data.content).authors) do
+                items[#items + 1] = {
+                    text = name, sort_key = name:lower(),
+                    gz_kind = "author", gz_contents = "tapes", gz_audio = true, gz_count = c,
+                    mandatory = audioCount(c),
+                    callback = function() self:openPaged(name, { authors = name, sort = "title", dir = "asc" }, false, { audio = true }) end,
+                }
+            end
+            return byName(items)
+        end,
+    }
+end
+
+--- Audiobook series, in series order when opened.
+function Browser:openAudioSeries()
+    self:openCached{
+        key = "audio-all",
+        title = _("Series"),
+        fetch = function() return self:fetchAllAudiobooks() end,
+        build = function(data)
+            local items = {}
+            for name, sr in pairs(Browser.groupAudiobooks(data and data.content).series) do
+                local authors = table.concat(sr.authors, ", ")
+                items[#items + 1] = {
+                    text = authors ~= "" and (name .. " — " .. authors) or name, sort_key = name:lower(),
+                    gz_kind = "collection", gz_contents = "tapes", gz_audio = true, gz_count = sr.count,
+                    mandatory = audioCount(sr.count),
+                    callback = function()
+                        self:openPaged(name, { series = name, sort = "seriesNumber", dir = "asc" }, true, { audio = true })
+                    end,
+                }
+            end
+            return byName(items)
+        end,
+    }
+end
+
+--- Your shelves (and magic ones), each opening to the audiobooks on it.
+--- With your shelves kept on the Kindle and every audiobook known, the
+--- regular shelves with no audiobook on them are left out.
+function Browser:openAudioShelves()
+    local Cache = require("gzreader_listcache")
+    local all = Cache.get(Browser.savedKey(self, "audio-all"))
+    local ids
+    if type(all) == "table" and type(all.content) == "table" then
+        ids = {}
+        for _i, b in ipairs(all.content) do if b.id then ids[tostring(b.id)] = true end end
+    end
+    local kept = {}
+    local sc = self.plugin.store and self.plugin.store.shelf_cache
+    for _i, sh in ipairs(type(sc) == "table" and sc.full and type(sc.shelves) == "table" and sc.shelves or {}) do
+        if type(sh) == "table" and sh.id then kept[tostring(sh.id)] = sh end
+    end
+    self:openCached{
+        key = "shelves",
+        title = _("Shelves"),
+        fetch = function() return self.api:listShelves() end,
+        build = function(shelves)
+            local items = {}
+            for _i, sh in ipairs(type(shelves) == "table" and shelves or {}) do
+                local mine = type(sh) == "table" and sh.id and kept[tostring(sh.id)]
+                local n
+                if mine and ids and not sh.magic then
+                    n = 0
+                    for _j, bid in ipairs(type(mine.books) == "table" and mine.books or {}) do
+                        if ids[tostring(bid)] then n = n + 1 end
+                    end
+                end
+                if type(sh) == "table" and sh.id and n ~= 0 then
+                    local name = type(sh.name) == "string" and sh.name or T(_("Shelf %1"), sh.id)
+                    items[#items + 1] = {
+                        text = name,
+                        sort_key = (sh.magic and "1" or "0") .. name:lower(),
+                        gz_kind = "shelf", gz_contents = "tapes", gz_audio = true, gz_magic = sh.magic and true or nil, gz_count = n,
+                        mandatory = sh.magic and _("smart shelf") or audioCount(n),
+                        callback = function()
+                            local params = { sort = "title", dir = "asc" }
+                            if sh.magic then params.magicShelfId = sh.id else params.shelfId = sh.id end
+                            self:openPaged(name, params, false, { audio = true })
+                        end,
+                    }
+                end
+            end
+            return byName(items)
         end,
     }
 end
@@ -591,22 +835,23 @@ function Browser:openPaged(title, params, with_series_number, opts)
     if not header and not with_series_number then
         -- search this list (a library, a shelf, an author's books…) or everything
         local scoped = params.libraryId or params.shelfId or params.magicShelfId or params.authors
-        local scope = scoped and { title = title, params = params } or nil
+        local scope = scoped and { title = title, params = params, audio = opts.audio }
+            or (opts.audio and Browser.audioScope()) or nil
         header = { {
             gz_action = "search",
-            text = scope and T(_("Search in %1…"), title) or _("Search Grimmory…"),
+            text = scoped and T(_("Search in %1…"), title) or (opts.audio and _("Search audiobooks…") or _("Search Grimmory…")),
             callback = function() self:promptSearch(scope) end,
         } }
     end
     self:openList{
         title = title,
-        key = not opts.search and require("gzreader_listcache").key("paged", params) or nil,
+        key = not opts.search and require("gzreader_listcache").key(opts.audio and "paged-audio" or "paged", params) or nil,
         header = header,
         empty_text = opts.empty_text,
         empty_kind = opts.search and "nothing_found" or nil,
         reopen = function() self:openPaged(title, base_params, with_series_number, opts) end,
         fetch = function(page)
-            local p = { page = page, size = PAGE_SIZE, fileType = self.api.READABLE_TYPES }
+            local p = { page = page, size = PAGE_SIZE, fileType = opts.audio and Browser.AUDIO_TYPES or self.api.READABLE_TYPES }
             for k, v in pairs(params) do p[k] = v end
             local data, err = self.api:listBooks(p)
             if data and opts.search and not matchesSearch(data, opts.search) then
@@ -617,6 +862,7 @@ function Browser:openPaged(title, params, with_series_number, opts)
             return data, err
         end,
         to_item = function(book)
+            if opts.audio then return self:audiobookItem(book) end
             if isReadable(book) then return self:bookItem(book, with_series_number) end
         end,
     }
@@ -841,8 +1087,10 @@ function Browser:search(q, scope)
     local title = scope and T(_("%1: “%2”"), scope.title, q) or T(_("Search: %1"), q)
     self:openPaged(title, params, false, {
         search = q,
+        audio = scope and scope.audio or nil,
         header = { { gz_action = "search", text = _("Search again…"), callback = function() self:promptSearch(scope, q) end } },
-        empty_text = T(_("No books found containing “%1”"), q),
+        empty_text = (scope and scope.audio) and T(_("No audiobooks found containing “%1”"), q)
+            or T(_("No books found containing “%1”"), q),
     })
 end
 

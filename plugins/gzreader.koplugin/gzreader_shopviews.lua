@@ -8,7 +8,9 @@ The Grimmory tab's lists in the Bookshelf view, in the bookshop's style
   you are); a ribbon in the ones you're reading, a tick on the finished ones,
   ON KINDLE on the ones downloaded. Load more / Earlier books are bundles of
   spines tied with a tag;
-- libraries, shelves and authors: bookcase compartments with a card clipped
+- libraries, shelves and authors (and the Catalog's Audiobooks page, its
+  authors, shelves and series, with cassettes in them): bookcase
+  compartments with a card clipped
   to each (name, how many, letter): spines between bookends, a book face
   out with the shelf's name, the author's initial on a divider. Magic
   shelves say so, never their rules;
@@ -56,6 +58,8 @@ function Views.kindOf(items)
             if type(e.book) == "table" then return e.cover_kind == "audiobook" and "tapes" or "ledges" end
             if e.gz_kind == "series" then return "piles" end
             if e.gz_kind == "library" or e.gz_kind == "shelf" or e.gz_kind == "author" then return "bay" end
+            -- (the Catalog's Audiobooks page and its series: compartments too)
+            if e.gz_kind == "section" or e.gz_kind == "collection" then return "bay" end
         end
     end
     return nil
@@ -146,10 +150,13 @@ function Views.bookLabel(book)
     return nil
 end
 
---- A compartment's card for a library, shelf or author.
+--- A compartment's card for a library, shelf or author (or a page's section:
+--- what it says under its name).
 function Views.cardOf(e)
+    if e.gz_kind == "section" then return e.mandatory or "" end
     local n = tonumber(e.gz_count)
-    local count = n and (n == 1 and _("1 book") or T(_("%1 books"), n)) or nil
+    local count = n and (e.gz_audio and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), n))
+        or (n == 1 and _("1 book") or T(_("%1 books"), n))) or nil
     if e.gz_kind == "shelf" and e.gz_magic then
         return count and T(_("magic · %1"), count) or _("magic shelf")
     end
@@ -366,7 +373,7 @@ function Page:paintBay(bb, x, y)
             Shop().paintCompartment(bb, self.menu, sx, sy, slot.w, slot.h, { kind = "empty" })
         elseif sl.entry.gz_kind then
             local e = sl.entry
-            local kind = e.gz_kind == "library" and "spines" or e.gz_kind == "shelf" and "faceout" or "dividers"
+            local kind = e.gz_contents or e.gz_kind == "library" and "spines" or e.gz_kind == "shelf" and "faceout" or "dividers"
             local name = e.text or ""
             local initial = name:match("^[%w]") and name:sub(1, 1):upper() or "·"
             Shop().paintCompartment(bb, self.menu, sx, sy, slot.w, slot.h,
