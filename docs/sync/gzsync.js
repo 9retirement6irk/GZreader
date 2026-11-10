@@ -660,13 +660,24 @@ gets a password or token.
     offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
     latest: null, chosen: true, file: null,
+    // -1, 0, 1, as GZreader's own (gzreader_update.lua): a release is newer
+    // than a test build of the same number (1.27.0 > 1.27.0-beta.5995ce3),
+    // so turning test builds off offers the release. (It compared the numbers
+    // only: a Kindle on a test build of the release's number was offered nothing.)
     compare: function (a, b) {
-      var pa = String(a).replace(/^v\.?/, "").split(/[.-]/), pb = String(b).replace(/^v\.?/, "").split(/[.-]/);
-      for (var i = 0; i < 3; i++) {
-        var x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+      function parts(v) {
+        var m = String(v).replace(/^v\.?/, "").match(/^([\d.]*)(.*)$/);
+        return { n: (m[1] || "0").split("."), pre: m[2] || "" };
+      }
+      var pa = parts(a), pb = parts(b);
+      for (var i = 0; i < Math.max(3, pa.n.length, pb.n.length); i++) {
+        var x = parseInt(pa.n[i], 10) || 0, y = parseInt(pb.n[i], 10) || 0;
         if (x !== y) return x < y ? -1 : 1;
       }
-      return 0;
+      if (pa.pre === pb.pre) return 0;
+      if (pa.pre === "") return 1;
+      if (pb.pre === "") return -1;
+      return pa.pre < pb.pre ? -1 : 1;
     },
     check: async function () {
       Update.latest = null;

@@ -385,6 +385,11 @@ with sync_playwright() as pw:
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
     check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
+    cmp = page.evaluate("""() => [GZSync.Update.compare('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0-beta.5995ce3', '1.27.0'),
+        GZSync.Update.offered('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0', '1.27.0'),
+        GZSync.Update.compare('1.10.0', '1.9.2'), GZSync.Update.compare('v1.26.10', '1.27.0-beta.1')]""")
+    check(cmp == [1, -1, True, 0, 1, -1],
+          "test builds off on a Kindle with a test build of the release's number: the release offered (it was offered nothing) %r" % (cmp,))
 
     # sleep screen pictures: one added (a wide colour picture), one of the Kindle's taken off, always pictures
     import struct, zlib
