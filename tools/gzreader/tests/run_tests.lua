@@ -5299,12 +5299,12 @@ print("Usage statistics")
     U.checkPortion()
     check(U.visit == nil and last("audiobooks tab").data.minutes == 1, "a book opened: the visit underneath ends")
     U.readStart({ document = { file = "/x/book.epub" } })
-    for _i = 1, 12 do U.pageTurned() end
     us.t = us.t + 360
     U.readEnd("closed book")
     ev = last("reader")
-    check(ev and ev.data.minutes == 6 and ev.data.pages == 12 and ev.data.pages_per_minute == 2 and ev.data.format == "epub"
-        and ev.screen == "reader" and ev.data.firmware, "the reader: minutes, pages, pages per minute, format")
+    check(ev and ev.data.minutes == 6 and ev.screen == "reader" and ev.data.firmware
+        and ev.data.pages == nil and ev.data.format == nil and ev.data.picture_book == nil and ev.data.battery_per_hour == nil,
+        "the reader: minutes and the common fields only (no format, pages or battery)")
     -- sleep ends a visit; waking starts one
     UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_calendar" } } }
     us.got = {}
@@ -5345,6 +5345,34 @@ print("Usage statistics")
         and not src("gzreader_usage.lua"):find('U.event("start"', 1, true) and U.menu == nil,
         "no menu events and no start event (how the last run ended: the debug reports)")
     check(src("gzreader_browser.lua"):find('require("gzreader_usage").nudge()', 1, true), "turning a Catalog page is noticed at once")
+    -- battery use per hour: in the summary ("sync"), not while charging, not across sleep
+    us.real_battery, us.real_charging = U.battery, U.charging
+    local pct, charging = 80, false
+    U.battery = function() return pct end
+    U.charging = function() return charging end
+    U.summary("start")
+    us.got = {}
+    us.t = us.t + 3600; pct = 77
+    U.summary("periodic")
+    check(last("sync") and last("sync").data.battery_per_hour == 3, "battery use per hour goes with the diagnostics (3 %/h over an hour)")
+    us.got = {}
+    us.t = us.t + 3600; pct = 77; charging = true
+    U.summary("periodic")
+    check(last("sync") == nil, "charging: no battery use (and nothing else to send: no sync event)")
+    charging = false
+    U.summary("reset")
+    us.got = {}
+    us.t = us.t + 120; pct = 76
+    U.onResume() -- (from waking)
+    us.t = us.t + 1200; pct = 75
+    U.summary("periodic")
+    check(last("sync") and last("sync").data.battery_per_hour == 3, "…counted from waking, not across the sleep (1 % in 20 min)")
+    us.got = {}
+    us.t = us.t + 300; pct = 74
+    U.summary("periodic")
+    check(last("sync") == nil, "under 10 minutes: too coarse to send")
+    U.battery, U.charging = us.real_battery, us.real_charging
+    U.visit = nil
     -- summaries
     U.request("flush", true, 800); U.request("flush", false, 1200); U.request("annotations", true, 500)
     U.slow("a keypress", 4)

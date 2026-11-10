@@ -13,8 +13,7 @@ The events. Every one carries the version, the device, its firmware and
 `minutes` (how long it covers), and this Kindle's random ID:
 - a visit to a part of GZreader, sent when you leave it (shorter than
   MIN_VISIT seconds: not sent; sleep ends a visit, waking starts one):
-  "reader" (a book open: format, picture book or not, pages, pages per
-  minute, battery use per hour), "catalog books", "catalog audiobooks", "catalog music" (the
+  "reader" (a book open), "catalog books", "catalog audiobooks", "catalog music" (the
   Catalog tab's pages), "audiobooks tab", "music tab", "notes",
   "calendar". What's open on top (the quick panel, a book's page, the
   player, a note being written) counts as the part underneath;
@@ -22,7 +21,7 @@ The events. Every one carries the version, the device, its firmware and
   played (pauses and track changes within AUDIO_GAP seconds are one);
 - diagnostics: "download" (done or failed, size, speed, resumed), "slow
   operations", "keys not answered", "sync" (Grimmory's answers, Wi-Fi
-  on-time), every SUMMARY_EVERY.
+  on-time, battery use per hour), every SUMMARY_EVERY and at sleep/exit.
 Each event's `screen` is the part it's about (Tianji counts screens per
 session); `version` is also at the payload's top level, where Tianji reads
 it for its Version chart.
@@ -132,9 +131,16 @@ local function firmware()
     return U.fw
 end
 
-local function battery()
+--- The battery's charge (%), or nil.
+function U.battery()
     local ok, pct = pcall(function() return Device:getPowerDevice():getCapacity() end)
     return ok and tonumber(pct) or nil
+end
+
+--- Charging now?
+function U.charging()
+    local ok, yes = pcall(function() return Device:getPowerDevice():isCharging() end)
+    return ok and yes == true
 end
 
 local function osName()
@@ -359,7 +365,20 @@ end
 
 local agg
 local function resetAgg()
-    agg = { since = os.time(), slow = 0, slow_max = 0, slow_kinds = {}, wifi = 0, sync = {} }
+    agg = { since = os.time(), slow = 0, slow_max = 0, slow_kinds = {}, wifi = 0, sync = {},
+        battery = U.battery(), battery_t = U.clock(), charged = U.charging() }
+end
+U.BATTERY_MIN = 10 * 60 -- (a shorter stretch: the percentage is too coarse)
+
+--- Battery use per hour since the last summary (or wake), or nil: charged
+--- meanwhile, too short, or the battery unknown.
+local function batteryPerHour()
+    local now = U.battery()
+    local secs = U.clock() - (agg.battery_t or 0)
+    if agg.charged or U.charging() or not (agg.battery and now) or secs < U.BATTERY_MIN then return nil end
+    local drop = agg.battery - now
+    if drop < 0 then return nil end
+    return math.floor(drop / secs * 3600 * 10 + 0.5) / 10
 end
 resetAgg()
 
@@ -385,19 +404,19 @@ function U.request(name, ok, ms)
 end
 
 --- Send the aggregates gathered since the last summary: slow operations;
---- "sync" with Grimmory's answers and Wi-Fi on-time.
+--- "sync" with Grimmory's answers, Wi-Fi on-time and battery use per hour.
 function U.summary(reason)
     if not on() then resetAgg(); return end
     local minutes = mins(os.time() - agg.since)
     if agg.slow > 0 then
         U.event("slow operations", { count = agg.slow, longest_s = agg.slow_max, kinds = agg.slow_kinds, minutes = minutes })
     end
-    local ev = { minutes = minutes, wifi_minutes = mins(agg.wifi), reason = reason }
+    local ev = { minutes = minutes, wifi_minutes = mins(agg.wifi), battery_per_hour = batteryPerHour(), reason = reason }
     for k, st in pairs(agg.sync) do
         local n = st.ok + st.failed
         ev[k] = { ok = st.ok, failed = st.failed, avg_ms = n > 0 and math.floor(st.ms / n) or 0 }
     end
-    if next(agg.sync) or agg.wifi > 0 then U.event("sync", ev) end
+    if next(agg.sync) or agg.wifi > 0 or ev.battery_per_hour then U.event("sync", ev) end
     resetAgg()
 end
 
@@ -549,6 +568,7 @@ local function tick()
     if on() then
         pcall(U.checkPortion)
         pcall(U.checkAudio)
+        if U.charging() then agg.charged = true end -- (no battery use for this stretch)
         local okn, NetworkMgr = pcall(require, "ui/network/manager")
         if okn and NetworkMgr:isWifiOn() then agg.wifi = agg.wifi + elapsed end
         -- keys the screen didn't answer (also without remote debugging)
@@ -565,17 +585,8 @@ end
 
 function U.readStart(ui)
     if not on() or not (ui and ui.document) then return end
-    local file = ui.document.file or ""
-    U.reading = {
-        t = U.clock(), pages = 0, battery = battery(),
-        format = (file:match("%.(%w+)$") or "?"):lower(),
-        picture_book = ui.doc_settings and ui.doc_settings:readSetting("gzreader_picture_book") == true or false,
-    }
+    U.reading = { t = U.clock() }
     U.nudge() -- (a Catalog or tab visit underneath ends)
-end
-
-function U.pageTurned()
-    if U.reading then U.reading.pages = U.reading.pages + 1 end
 end
 
 --- The "reader" visit: a book was open (closed, Home, sleep).
@@ -585,16 +596,7 @@ function U.readEnd(reason)
     if not (r and on()) then return end
     local secs = U.clock() - r.t
     if secs < U.MIN_VISIT then return end
-    local b = battery()
-    local drop = (r.battery and b) and (r.battery - b) or nil
-    local ev = {
-        format = r.format, picture_book = r.picture_book, minutes = mins(secs),
-        pages = r.pages, pages_per_minute = math.floor(r.pages / (secs / 60) * 10 + 0.5) / 10,
-        battery_start = r.battery, battery_end = b,
-        battery_per_hour = (drop and secs >= 600) and math.floor(drop / secs * 3600 * 10 + 0.5) / 10 or nil,
-        reason = reason,
-    }
-    U.event("reader", ev, "reader")
+    U.event("reader", { minutes = mins(secs), reason = reason }, "reader")
 end
 
 --- Read aloud (gzreader_tts): how long it spoke.
@@ -685,14 +687,16 @@ function U.onResume()
         local r = U.resume_reading
         U.resume_reading = nil
         if r and on() then
-            U.reading = { t = U.clock(), pages = 0, battery = battery(), format = r.format, picture_book = r.picture_book }
+            U.reading = { t = U.clock() }
         end
+        -- (battery use: from waking, not across the sleep)
+        agg.battery, agg.battery_t, agg.charged = U.battery(), U.clock(), U.charging()
         U.nudge()
     end)
 end
 
 --- What Basic and Full send (Settings → General → Usage statistics).
-U.WHAT_IS_SENT = require("gettext")("Sends, with GZreader's version, the Kindle model and firmware: how long you spend in books, the Catalog's Books, Audiobooks and Music pages, the Audiobooks and Music tabs, Notes and Calendar; reading (format, picture book or not, pages, pages per minute, battery use per hour); how long read aloud, audiobooks and music play; downloads (worked or failed, size, speed); how syncs with Grimmory go; how long Wi-Fi is on; slow operations and keys the screen didn't answer. No book titles, file names, account or anything you type.")
+U.WHAT_IS_SENT = require("gettext")("Sends, with GZreader's version, the Kindle model and firmware: how long you spend in books, the Catalog's Books, Audiobooks and Music pages, the Audiobooks and Music tabs, Notes and Calendar; how long read aloud, audiobooks and music play; downloads (worked or failed, size, speed); how syncs with Grimmory go; how long Wi-Fi is on; battery use per hour; slow operations and keys the screen didn't answer. No book titles, file names, account or anything you type.")
 
 function U.menuItems()
     local _ = require("gettext")
