@@ -168,6 +168,23 @@ function Shop.pageSpec(section)
             },
             cover_kind = "audiobook",
         }
+    elseif section == "music" then
+        return {
+            search = _("Search artists, albums, tracks…"),
+            music = true, -- (the ledges hold CD cases)
+            ledges = {
+                { id = "mu_played", key = "mu_played", kind = "played", label = _("Recently played"), empty = _("Nothing played yet") },
+                { id = "mu_recent", key = "mu_recent", kind = "recent", label = _("Recently added"), empty = _("Nothing new yet") },
+            },
+            compartments = {
+                { id = "mu_playlists", kind = "cds" },
+                { id = "mu_albums", kind = "cds" },
+                { id = "mu_artists", kind = "dividers" },
+                { id = "mu_downloaded", kind = "cds" },
+                { id = "mu_now", kind = "cds" },
+                { id = "mu_account", kind = "none" },
+            },
+        }
     end
     return {
         search = _("Search titles, authors, series…"),
@@ -251,7 +268,8 @@ end
 function Shop.ledgeBooks(list, readable)
     local out = {}
     for _i, b in ipairs(type(list) == "table" and list or {}) do
-        if type(b) == "table" and b.id and (not readable or readable(b)) then out[#out + 1] = b end
+        -- (a book's id, or a Plex album's key on the Music page)
+        if type(b) == "table" and (b.id or b.key) and (not readable or readable(b)) then out[#out + 1] = b end
     end
     return out
 end
@@ -275,6 +293,7 @@ local ENDPOINT = { continue = "continue-reading", recent = "recently-added" }
 --- visit; the page is drawn again when it's back.
 function Shop.lists(browser, section)
     if section == "audiobooks" then return Shop.audioLists(browser) end
+    if section == "music" then return Shop.musicLists(browser) end
     local st = browser._shop or {}
     browser._shop = st
     local Cache = require("gzreader_listcache")
@@ -286,6 +305,67 @@ function Shop.lists(browser, section)
         Shop.fetch(browser)
     end
     return st
+end
+
+--- The Music page's two ledges: Recently played (played on this Kindle,
+--- then on Plex's own players) and Recently added, from Plex, saved like
+--- the other pages' lists (Plex items: { type, key, title, artist, thumb … }).
+function Shop.musicLists(browser)
+    local st = browser._shop_music or {}
+    browser._shop_music = st
+    local Cache = require("gzreader_listcache")
+    for _i, id in ipairs({ "mu_played", "mu_recent" }) do
+        if st[id .. "_remote"] == nil then st[id .. "_remote"] = Cache.get(cacheKey(browser, "shop:" .. id)) end
+    end
+    local store = browser.plugin and browser.plugin.store or {}
+    local seen, played = {}, {}
+    for _i, src in ipairs({ type(store.music_recent) == "table" and store.music_recent or {},
+            type(st.mu_played_remote) == "table" and st.mu_played_remote or {} }) do
+        for _j, it in ipairs(src) do
+            if type(it) == "table" and it.key and not seen[tostring(it.key)] then
+                seen[tostring(it.key)] = true
+                played[#played + 1] = it
+            end
+        end
+    end
+    st.mu_played = played
+    st.mu_recent = st.mu_recent_remote
+    -- (asked once a visit; not yet signed in or no Wi-Fi: asked again next time)
+    if not st.asked then st.asked = Shop.fetchMusic(browser) == true end
+    return st
+end
+
+function Shop.fetchMusic(browser)
+    local st = browser._shop_music
+    local Music = require("gzreader_music")
+    local plex = Music.plex(browser.plugin)
+    if not plex:isConnected() then return false end
+    local function go()
+        st.loading = true
+        require("gzreader_async").run(nil, function()
+            local sections = plex:musicSections()
+            local key = type(sections) == "table" and sections[1] and sections[1].key
+            if not key then return {} end
+            return { mu_played = plex:recentAlbums(key, "played", Shop.LIST_LIMIT), mu_recent = plex:recentAlbums(key, "added", Shop.LIST_LIMIT) }
+        end, function(res)
+            st.loading = false
+            if type(res) == "table" then
+                local Cache = require("gzreader_listcache")
+                for _i, id in ipairs({ "mu_played", "mu_recent" }) do
+                    if type(res[id]) == "table" then
+                        st[id .. "_remote"] = res[id]
+                        Cache.put(cacheKey(browser, "shop:" .. id), res[id])
+                    end
+                end
+            end
+            st.fetched = true
+            local m = browser.menu
+            if m and not browser.closed and Shop.applies(m) and m.item_table.gz_catalog == "music" then pcall(m.updateItems, m) end
+        end, "music shelves")
+    end
+    local Net = require("gzreader_net")
+    if Net.connected() then go() else Net.run(go, { quiet = true, reason = "Catalog: music" }) end
+    return true
 end
 
 --- The audiobooks on the Kindle you've listened to, newest first, as
@@ -767,6 +847,25 @@ local function paintContents(bb, kind, room, info)
             tapePile(bb, x + S(20), bottom, 4 + n, "tp" .. n)
             x = x + S(46)
         end
+    elseif kind == "cds" then
+        -- CD cases: one face out, the others' spines standing beside it
+        local cw = math.min(S(46), math.floor(h * 0.7))
+        local ch = math.floor(cw / 1.12)
+        bb:paintRect(x + S(2), bottom - ch + S(2), cw, ch, gray(0.35))
+        bb:paintRect(x, bottom - ch, cw, ch, gray(0.25))
+        bb:paintRect(x, bottom - ch, math.max(3, math.floor(cw * 0.08)), ch, gray(0.55))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.floor(ch * 0.32), gray(0.08))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.max(2, math.floor(ch * 0.08)), gray(0.5))
+        bb:paintBorder(x, bottom - ch, cw, ch, 1, Blitbuffer.COLOR_BLACK)
+        x = x + cw + S(6)
+        local n, sw = 0, math.max(4, S(7))
+        while x + sw <= right and n < 9 do
+            n = n + 1
+            local sh = math.floor(ch * 1.0)
+            bb:paintRect(x, bottom - sh, sw, sh, gray(({ 0.1, 0.7, 0.35, 0.85, 0.2 })[(hash(sd .. "cd" .. n) % 5) + 1]))
+            bb:paintBorder(x, bottom - sh, sw, sh, 1, Blitbuffer.COLOR_BLACK)
+            x = x + sw + 1
+        end
     elseif kind == "downloaded" then
         local _, sp = spines(bb, x, bottom, right, h, "dl")
         spans = sp
@@ -813,7 +912,28 @@ function Page:paintLedge(bb, ox, oy, i, L)
     for c, item in ipairs(spec.items) do
         local col = led.cols[c]
         local cx = ox + col.x
-        if item.book then
+        if item.music then
+            -- a CD case face out (gzreader_shopviews.lua), ON KINDLE / NEW on it
+            local Views = require("gzreader_shopviews")
+            local MC = require("gzreader_musiccovers")
+            local bw = math.min(led.box_w, col.w - S(4))
+            local bh = math.floor(bw / Views.CD_RATIO)
+            local x, y = cx + math.floor((col.w - bw) / 2), bottom - bh
+            local hw = math.max(3, math.floor(bw * 0.07))
+            local plugin = self.browser and self.browser.plugin
+            Views.paintCase(bb, x, y, bw, bh, item.music, plugin and MC.image(plugin, item.music, bw - hw - S(4), bh - S(4)))
+            item.hot.dimen = Geom:new{ x = x, y = y, w = bw, h = bh }
+            local tag = plugin and MC.downloaded(plugin, item.music) and _("ON KINDLE") or (spec.kind == "recent" and _("NEW")) or nil
+            if tag then
+                local TextWidget = require("ui/widget/textwidget")
+                local t = TextWidget:new{ text = tag, face = Font:getFace("cfont", 8), bold = true, fgcolor = Blitbuffer.COLOR_WHITE }
+                local tsz = t:getSize()
+                bb:paintRect(x + hw + S(4), y + bh - tsz.h - S(5), tsz.w + S(6), tsz.h, Blitbuffer.COLOR_BLACK)
+                t:paintTo(bb, x + hw + S(7), y + bh - tsz.h - S(5))
+                t:free()
+            end
+            if item.hot.focused then focusRing(bb, item.hot.dimen) end
+        elseif item.book then
             local widget, iw, ih = coverImage(item.book, led.box_w, led.box_h, self.cover_kind)
             local x = cx + math.floor((col.w - iw - p) / 2)
             local y = bottom - ih - p
@@ -1007,7 +1127,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local pspec = Shop.pageSpec(section)
     local Covers = require("gzreader_covers")
     Covers.beginPage()
-    local page = Page:new{ w = W, h = H, L = L, menu = m, cover_kind = pspec.cover_kind, search_text = pspec.search }
+    local page = Page:new{ w = W, h = H, L = L, menu = m, cover_kind = pspec.cover_kind, search_text = pspec.search, browser = browser }
     local function hot(entry)
         local h = Hot:new{ menu = m, entry = entry, shop = page }
         page[#page + 1] = h
@@ -1020,13 +1140,14 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     m.layout[1] = { page.search_hot }
     -- the ledges
     local st = Shop.lists(browser, section)
-    local wanted = {}
+    local wanted, music_wanted = {}, {}
     page.ledges = {}
     local Browser_ = require("gzreader_browser")
     local audio = section == "audiobooks"
     for i, lspec in ipairs(pspec.ledges) do
         local root = by[lspec.id]
-        local books = Shop.ledgeBooks(st[lspec.key], audio and Browser_.isAudiobook or browser.isReadable or Browser_.isReadable)
+        local books = Shop.ledgeBooks(st[lspec.key], pspec.music and function(it) return it.key ~= nil end
+            or audio and Browser_.isAudiobook or browser.isReadable or Browser_.isReadable)
         local spec = {
             kind = lspec.kind,
             label = lspec.label,
@@ -1040,11 +1161,20 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         local row = {}
         for k = 1, math.min(Shop.SHOWN, #books) do
             local book = books[k]
-            local entry = audio and browser:audiobookItem(book) or browser:bookItem(book)
-            local item = { book = book, hot = hot(entry) }
+            local item
+            if pspec.music then
+                -- (an album or playlist: opens it, as in its list)
+                local tab = browser.music_tab
+                item = { music = book, hot = hot({ text = book.title, gz_music = book,
+                    callback = function() if tab then tab:openItem(book) end end }) }
+                music_wanted[#music_wanted + 1] = book
+            else
+                local entry = audio and browser:audiobookItem(book) or browser:bookItem(book)
+                item = { book = book, hot = hot(entry) }
+                wanted[#wanted + 1] = { id = book.id, kind = pspec.cover_kind }
+            end
             spec.items[#spec.items + 1] = item
             row[#row + 1] = item.hot
-            wanted[#wanted + 1] = { id = book.id, kind = pspec.cover_kind }
         end
         if #books > 0 then
             local item = { label = Shop.moreText(#books), hot = hot(root and root.entry) }
@@ -1081,8 +1211,15 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
         series = _("Series"), audiobooks = _("Audiobooks"), downloaded = _("Downloaded"),
     }
+    -- (the other pages: the compartments there are now, together; cobwebs after)
+    local comps = pspec.compartments
+    if section ~= "books" then
+        comps = {}
+        for _i, comp in ipairs(pspec.compartments) do if comp.id and by[comp.id] then comps[#comps + 1] = comp end end
+        while #comps < #pspec.compartments do comps[#comps + 1] = { kind = "empty" } end
+    end
     local row
-    for k, comp in ipairs(pspec.compartments) do
+    for k, comp in ipairs(comps) do
         local spec = { kind = comp.kind }
         local root = comp.id and by[comp.id]
         if comp.id and (root or section == "books") then
@@ -1124,6 +1261,11 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     Covers.fetch(browser.plugin, wanted, function(got)
         if got > 0 and m.item_table == items and not m._gz_closed and Shop.applies(m) then pcall(m.updateItems, m) end
     end)
+    if #music_wanted > 0 then
+        require("gzreader_musiccovers").fetch(browser.plugin, music_wanted, function(got)
+            if got > 0 and m.item_table == items and not m._gz_closed and Shop.applies(m) then pcall(m.updateItems, m) end
+        end)
+    end
 end
 
 --- Take over the browser's root page in the bookshelf view.

@@ -859,6 +859,106 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     require("gzreader_touch").audio = saved_audio
 end)()
 
+print("Catalog: the Music page (CD cases on the shelves)")
+;(function()
+    local Tab = require("gzreader_musictab")
+    local e1 = Tab.entry({ text = "A" }, { type = "album", key = "201", title = "A", artist = "X", year = 2020, thumb = "/t/201" })
+    local e2 = Tab.entry({ text = "P" }, { type = "playlist", key = "9", title = "P", count = 12 })
+    local e3 = Tab.entry({ text = "X" }, { type = "artist", key = "5", title = "X" })
+    local e4 = Tab.entry({ text = "T" }, { type = "track", key = "7", title = "T" })
+    check(e1.gz_music.key == "201" and e1.gz_music.thumb == "/t/201" and e2.gz_music.type == "playlist" and e3.gz_kind == "artist"
+        and e3.gz_contents == "cds" and e4.gz_music == nil, "list lines carry their album, playlist or artist (tracks stay plain)")
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    local saved_w = {}
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Views = require("gzreader_shopviews")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    check(Views.kindOf({ e1 }) == "cds" and Views.kindOf({ e2, { text = "More (25 of 80)…", callback = function() end } }) == "cds"
+        and Views.kindOf({ e3 }) == "bay" and Views.kindOf({ e4 }) == nil, "albums and playlists: CD cases; artists: compartments; tracks: a list")
+    local t1, t2 = Views.musicTag(e1.gz_music), Views.musicTag(e2.gz_music)
+    check(t1.title == "A" and t1.authors[1] == "X · 2020" and t2.authors[1] == "12 tracks", "a case's tag: the artist and year, a playlist's tracks")
+    local one = function(x) return x end
+    local fits = true
+    for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 824, 1000 } }) do
+        local L = Views.layout("cds", size[1], size[2], false, one)
+        local fit_ok = L.fits and L.box_w <= L.slots[1].w and L.box_h > 0 and math.abs(L.box_w / L.box_h - Views.CD_RATIO) < 0.05 and L.cols >= 2
+        for _k, sl in ipairs(L.slots) do fit_ok = fit_ok and sl.x >= 0 and sl.x + sl.w <= size[1] and sl.y + sl.h <= size[2] end
+        if not fit_ok then fits = false; print("  (cds don't fit at " .. size[1] .. "x" .. size[2] .. ")") end
+    end
+    check(fits, "CD cases: a little wider than tall, two or more a row, on every Kindle's page")
+    -- covers: asked for once a session, and not at all when they're here
+    local MC = require("gzreader_musiccovers")
+    check(MC.id({ key = "/library/metadata/201" }) == "plex-_library_metadata_201", "a cover's name in the cache")
+    local miss = MC.missing({ { key = "301", thumb = "/t" }, { key = "302" } })
+    MC.tried[MC.id({ key = "301" })] = true
+    check(#miss == 1 and miss[1].key == "301" and #MC.missing({ { key = "301", thumb = "/t" } }) == 0,
+        "covers: only ones with a picture on Plex, each asked for once (one that doesn't come isn't asked for at every redraw)")
+    MC.tried = {}
+    -- the page, signed in
+    local saved_plex = plugin.store.plex
+    plugin.store.plex = { token = "t", username = "will", server = { uri = "http://127.0.0.1:9", name = "Home Server" } }
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local mb = Browser:new(plugin)
+    mb:show({ section = "music" })
+    local ids = {}
+    for _i, it in ipairs(mb.menu.item_table) do ids[#ids + 1] = it.gz_id end
+    local m1 = mb.menu.item_table
+    check(table.concat(ids, ","):match("^mu_search,mu_played,mu_recent,mu_playlists,mu_albums,mu_artists,") and m1[1].gz_action == "search"
+        and m1[4].gz_contents == "cds" and m1[#m1].gz_id == "mu_account" and m1[#m1].mandatory == "will · Home Server" and m1.gz_root,
+        "the Music page: search, Recently played, Recently added, then Playlists, Albums, Artists… and the Plex account " .. table.concat(ids, ","))
+    local Shop = require("gzreader_bookshop")
+    local mps = Shop.pageSpec("music")
+    check(mps.music and mps.ledges[1].id == "mu_played" and mps.ledges[1].label == "Recently played" and mps.ledges[2].id == "mu_recent"
+        and #mps.compartments == 6 and mps.compartments[1].id == "mu_playlists",
+        "the Bookshelf view: the shop with Recently played and Recently added ledges of CD cases, then a compartment each")
+    -- Recently played: this Kindle's plays first (Plex only knows its own players'), once each
+    local Music = require("gzreader_music")
+    local saved_recent, saved_save = plugin.store.music_recent, plugin.save
+    plugin.save = function() end
+    plugin.store.music_recent = nil
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "playlist", key = "9", title = "P", tracks = {} })
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "all", key = "x" })
+    local rk = {}
+    for _i, it in ipairs(plugin.store.music_recent) do rk[#rk + 1] = it.type .. ":" .. it.key end
+    check(table.concat(rk, ",") == "album:201,playlist:9" and plugin.store.music_recent[1].count == 2,
+        "played here: newest first, each once (not Shuffle all) " .. table.concat(rk, ","))
+    mb._shop_music = { asked = true, mu_played_remote = { { type = "album", key = "203", title = "C" }, { type = "album", key = "201", title = "A" } },
+        mu_recent_remote = { { type = "album", key = "202" } } }
+    local mst = Shop.musicLists(mb)
+    local pk = {}
+    for _i, it in ipairs(mst.mu_played) do pk[#pk + 1] = it.key end
+    check(table.concat(pk, ",") == "201,9,203" and mst.mu_recent[1].key == "202" and #Shop.ledgeBooks(mst.mu_played, function(it) return it.key ~= nil end) == 3,
+        "the ledges: the Kindle's plays, then Plex's; Recently added from Plex " .. table.concat(pk, ","))
+    plugin.store.music_recent, plugin.save = saved_recent, saved_save
+    -- Plex: Recently added / played albums (played: only ones played at all)
+    local Plex = require("gzreader_plex")
+    local px = Plex:new({ server = { uri = "http://127.0.0.1:9" } })
+    local asked
+    px.get = function(_s, path, params, opts)
+        asked = { path = path, params = params, size = opts and opts.headers and opts.headers["X-Plex-Container-Size"] }
+        return 200, { MediaContainer = { Metadata = {
+            { ratingKey = "1", type = "album", title = "One", parentTitle = "X", lastViewedAt = 1700000000, addedAt = 1 },
+            { ratingKey = "2", type = "album", title = "Two", parentTitle = "X", addedAt = 2 } } } }
+    end
+    local added = px:recentAlbums("7", "added", 12)
+    local a_sort, a_size = asked.params.sort, asked.size
+    local played = px:recentAlbums("7", "played", 12)
+    check(#added == 2 and a_sort == "addedAt:desc" and a_size == "12" and asked.params.sort == "lastViewedAt:desc"
+        and #played == 1 and played[1].key == "1" and played[1].viewed == 1700000000 and asked.path == "/library/sections/7/all",
+        "Plex: albums by date added, and by last played (never-played ones left out)")
+    plugin.store.plex = saved_plex
+    local mb2 = Browser:new(plugin)
+    mb2:show({ section = "music" })
+    check(mb2.menu.item_table[1].gz_id == nil and tostring(mb2.menu.item_table[1].text):match("Plex"), "not signed in to Plex: the sign-in lines")
+    require("gzreader_touch").audio = saved_audio
+end)()
+
 print("Libraries, authors, series (local index of readable books)")
 local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()

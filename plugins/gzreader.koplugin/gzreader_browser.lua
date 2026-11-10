@@ -263,7 +263,7 @@ function Browser:musicItems()
     end
     tab.menu = self.menu
     tab.closed = false
-    return tab:rootItems(function() self:openSection("music") end)
+    return tab:catalogItems(function() self:openSection("music") end)
 end
 
 --- Grimmory's audiobooks (M4B / MP3), to download and listen to.

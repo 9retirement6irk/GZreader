@@ -34,10 +34,12 @@ def track(k, title, idx, album_key, album, container, codec, kbps):
 
 ALBUMS = {
     "201": {"ratingKey": "201", "type": "album", "title": "MP3 Album", "parentTitle": "The Tones", "year": 2020, "thumb": "/library/metadata/201/thumb/1",
+            "addedAt": 1700000100, "lastViewedAt": 1700500000,
             "tracks": [track(301, "Tone A", 1, 201, "MP3 Album", "mp3", "mp3", 320), track(302, "Tone B", 2, 201, "MP3 Album", "mp3", "mp3", 200)]},
-    "202": {"ratingKey": "202", "type": "album", "title": "AAC Album", "parentTitle": "The Tones", "year": 2021,
+    "202": {"ratingKey": "202", "type": "album", "title": "AAC Album", "parentTitle": "The Tones", "year": 2021, "addedAt": 1700000300,
             "tracks": [track(303, "Tone C", 1, 202, "AAC Album", "mp4", "aac", 160)]},
-    "203": {"ratingKey": "203", "type": "album", "title": "FLAC Album", "parentTitle": "The Tones", "year": 2022,
+    "203": {"ratingKey": "203", "type": "album", "title": "FLAC Album", "parentTitle": "The Tones", "year": 2022, "addedAt": 1700000200,
+            "lastViewedAt": 1700600000,
             "tracks": [track(304, "Tone D", 1, 203, "FLAC Album", "flac", "flac", 900)]},
 }
 ARTIST = {"ratingKey": "101", "type": "artist", "title": "The Tones"}
@@ -143,6 +145,10 @@ class H(BaseHTTPRequestHandler):
             start = int(self.headers.get("X-Plex-Container-Start", "0"))
             size = int(self.headers.get("X-Plex-Container-Size", "50"))
             items = [album_meta(a) for a in ALBUMS.values()] if q.get("type") == ["9"] else [ARTIST]
+            # (Plex's sort: addedAt:desc for Recently added, lastViewedAt:desc for Recently played, never played last)
+            for field in ("addedAt", "lastViewedAt"):
+                if q.get("sort") == [field + ":desc"]:
+                    items.sort(key=lambda m: -(m.get(field) or 0))
             return self.mc(items[start:start + size], len(items))
         if p.startswith("/library/metadata/") and p.endswith("/children"):
             k = p.split("/")[3]
