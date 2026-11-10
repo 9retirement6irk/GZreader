@@ -49,6 +49,11 @@ no time on its log. The diagnostic bundle is only put together when you send
 or save it. KOReader's own `crash.log` is separate: KOReader always writes
 it, and the start script trims it to 500 KB.
 
+Ordinary log lines are written a few at a time (at most 5 seconds late;
+warnings and errors at once, and everything waiting when the Kindle goes to
+sleep, on exit and when you save or send the log), so a burst of sync
+logging is one write to the Kindle's storage, not one per line.
+
 Putting the bundle together is quick after the first time: the audio/speech
 survey runs about thirty system commands (around 25 s on a Kindle 3), so
 the answers that only change with the Kindle's firmware are kept in
@@ -75,7 +80,10 @@ General → Remote debugging, with your own feed; that setting is gone.)
 `gzreader_remote.lua` queues messages as JSON files in
 `koreader/gzreader-remote/spool`; `gzreader_watchdog.lua`, a separate
 low-priority LuaJIT process, sends them when Wi‑Fi is on (GZreader never turns
-Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s:
+Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s (to
+`/tmp`, which is in memory, so it doesn't wear the Kindle's storage; the copy
+in `gzreader-remote/heartbeat` is updated when GZreader starts, sleeps, wakes
+or exits, and every 10 minutes):
 
 | Report | When |
 | --- | --- |
