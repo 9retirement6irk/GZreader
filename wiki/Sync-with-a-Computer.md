@@ -24,7 +24,11 @@ Connections → Sync through a computer.
      access token), calendars, Plex.
    - **Content**: what to bring, browsed as in the Kindle's Catalog tab:
      Books and Audiobooks (Recently added, A–Z, Libraries, Shelves, Authors,
-     Series, search) and Music (Plex albums A–Z, playlists, search). Each is
+     Series, search) and Music (Plex albums A–Z, playlists, search). With
+     audiobooks from Plex on the Kindle (Settings → Connections → Plex →
+     Audiobooks), Audiobooks lists that Plex library (Recently added, A–Z,
+     Authors, search); *Audiobooks from…* switches between Grimmory and the
+     server's libraries on the page. Each is
      marked when it's on the Kindle or in its queue already; "Coming with the
      next sync" lists the Kindle's queue and what was chosen here.
    - **Sync**: how much room is left on the Kindle and what takes it (books,
@@ -102,7 +106,7 @@ What a sync does:
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
-| Music | | The Plex albums and playlists chosen on the page (Kindles with a speaker or headphone jack) |
+| Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker or headphone jack) |
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 

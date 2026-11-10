@@ -56,6 +56,30 @@ The book's description comes from Grimmory with the download (and, for
 audiobooks downloaded before 1.6.2, the next time the player opens online);
 Home's featured book shows it too.
 
+### Audiobooks from Plex
+
+Audiobooks can come from a library on your Plex server instead of Grimmory:
+Settings → Connections → Plex → **Audiobooks** (or *Plex* in the Music tab)
+lists *Grimmory* and the server's music libraries; Plex keeps audiobooks in a
+music library, an album per book with the author as its artist. With a Plex
+library picked, the Catalog's Audiobooks page shows it: **Search
+audiobooks…**, **Continue listening** (what you've listened to on the
+Kindle, then what Plex players played last), **Recently added**, **All
+audiobooks**, **Authors**, **On this Kindle** and **From Plex** (which library;
+pick *Grimmory* there to go back). Covers come from Plex.
+
+A Plex audiobook downloads like Grimmory's, one file per track (MP3 and AAC
+as they are, M4B/M4A converted on the Kindle, other formats converted to MP3
+by Plex at the Music quality setting); a single-file book keeps Plex's
+chapters, a book in tracks has a chapter per track. Its place goes to Plex
+(the track and the time in it) every few minutes while playing, on pause and
+on stop, with Wi‑Fi on; opening it offers the place where any Plex player
+(Plexamp, Prologue, the web app) left it. Audiobooks already on the Kindle
+stay and play whichever you pick. Kindles that sync through a computer choose
+Plex audiobooks on the [sync page](Sync-with-a-Computer) (Content →
+Audiobooks: the library the Kindle uses, or *Audiobooks from…*); they come
+with the next sync. Their place isn't sent back to Plex from those Kindles.
+
 Playback uses what the Kindle 3 has: GStreamer 0.10 (`gst-launch-0.10`)
 with Freescale's hardware decoders `mfw_mp3decoder` and `mfw_aacdecoder`,
 into ALSA. MP3 starts anywhere (the file is fed from the right byte offset).

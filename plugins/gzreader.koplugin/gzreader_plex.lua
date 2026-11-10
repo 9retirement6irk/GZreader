@@ -1,6 +1,9 @@
 --[[--
 Plex (https://plex.tv) client for the Music tab: sign-in, finding your Plex
-Media Server, its music libraries, and the tracks' audio.
+Media Server, its music libraries, and the tracks' audio. Also audiobooks
+from one of its music libraries, when chosen instead of Grimmory's (Settings
+→ Connections → Plex → Audiobooks): an album is a book, its tracks the
+book's files, played by gzreader_audiobook.lua.
 
 Sign-in, two ways (both "PINs" in Plex's API, POST plex.tv/api/v2/pins):
 - on the Kindle: a 4-character code to enter at plex.tv/link on any phone or
@@ -275,18 +278,33 @@ function Plex:musicSection()
     local sections, err = self:musicSections()
     if not sections then return nil, err end
     if #sections == 0 then return nil, "no_music" end
-    return Plex.pickSection(sections, self.store.music_section, self.store.server), sections
+    local ab = Plex.audiobookSection(self.store)
+    return Plex.pickSection(sections, self.store.music_section, self.store.server, ab and ab.key), sections
 end
 
---- Of `sections`, the one `want` names (kept for `server`), else the first.
---- Pure (run_tests.lua).
-function Plex.pickSection(sections, want, server)
+--- Of `sections`, the one `want` names (kept for `server`), else the first
+--- that isn't `skip` (the audiobook library), else the first. Pure
+--- (run_tests.lua).
+function Plex.pickSection(sections, want, server, skip)
     if type(want) == "table" and want.key and want.server == (type(server) == "table" and server.id or nil) then
         for _i, s in ipairs(sections) do
             if s.key == tostring(want.key) then return s end
         end
     end
+    for _i, s in ipairs(sections) do
+        if skip == nil or s.key ~= tostring(skip) then return s end
+    end
     return sections[1]
+end
+
+--- The library audiobooks come from, when it's a Plex one (Settings →
+--- Connections → Plex → Audiobooks): store.audiobook_section = { server,
+--- key, title }, signed in and on that server; else nil (Grimmory's
+--- audiobooks). Pure.
+function Plex.audiobookSection(store)
+    local a = type(store) == "table" and store.audiobook_section
+    if type(a) == "table" and a.key and store.token and type(store.server) == "table" and a.server == store.server.id then return a end
+    return nil
 end
 
 --- A track, album, artist or playlist as GZreader keeps it.
@@ -299,6 +317,7 @@ function Plex.item(m)
         thumb = str(m.thumb) or str(m.composite) or str(m.parentThumb), count = tonumber(m.leafCount) or tonumber(m.childCount),
         album_key = str(m.parentRatingKey),
         added = tonumber(m.addedAt), viewed = tonumber(m.lastViewedAt),
+        offset = tonumber(m.viewOffset), views = tonumber(m.viewCount),
     }
     if t.type == "album" then t.artist = str(m.parentTitle) end
     if t.type == "artist" then t.artist = nil end
@@ -387,6 +406,76 @@ function Plex:search(q, section)
         end
     end
     return out
+end
+
+---------------------------------------------------------------- audiobooks
+
+--- An audiobook (an album of the audiobook library) the way Grimmory
+--- describes one, for gzreader_audiobook.lua's Audiobook.describe: each
+--- track a file of its own, in order, with its length and where it starts;
+--- a single-file book's chapters; the album's summary. Each track also
+--- carries its Plex item (plexTrack: what Plex:downloadTrack takes) and key
+--- (plexKey: where the listening position goes). info, or nil, err.
+function Plex:audiobookInfo(key)
+    local _, adata, aerr = self:get("/library/metadata/" .. escape(key))
+    if aerr then return nil, aerr end
+    local album = (container(adata).Metadata or {})[1]
+    album = type(album) == "table" and album or {}
+    local tracks, err = self:children(key)
+    if not tracks then return nil, err end
+    if #tracks == 0 then return nil, "no_tracks" end
+    local info = { title = str(album.title), author = str(album.parentTitle), folderBased = true, tracks = {}, chapters = {},
+        gz_description = str(album.summary), plexKey = tostring(key), plexThumb = str(album.thumb) }
+    local start = 0
+    for i, t in ipairs(tracks) do
+        local how, ext = Plex.how(t)
+        info.tracks[i] = { index = i - 1, fileName = "track." .. ext, durationMs = t.duration or 0, cumulativeStartMs = start,
+            fileSizeBytes = how ~= "transcode" and t.part and t.part.size or nil, title = t.title, plexKey = t.key, plexTrack = t }
+        start = start + (t.duration or 0)
+    end
+    info.durationMs = start
+    if #tracks == 1 then
+        -- one file (an M4B): its chapters, when Plex has them
+        local _, cdata = self:get("/library/metadata/" .. escape(tracks[1].key), { includeChapters = 1 })
+        local m = (container(cdata).Metadata or {})[1]
+        for i, c in ipairs(type(m) == "table" and type(m.Chapter) == "table" and m.Chapter or {}) do
+            local s, e = tonumber(c.startTimeOffset), tonumber(c.endTimeOffset)
+            if s then info.chapters[#info.chapters + 1] = { title = str(c.tag) or ("Chapter " .. i), startTimeMs = s, durationMs = e and (e - s) or nil } end
+        end
+    end
+    return info
+end
+
+--- Where audiobook `key` (an album) was listened to last, from its tracks'
+--- positions in Plex (any player's): { track = key, offset = ms, finished =
+--- true when that track was played to its end }, false (never listened
+--- to), or nil, err.
+function Plex:audiobookPosition(key)
+    local tracks, err = self:children(key)
+    if not tracks then return nil, err end
+    return Plex.lastListened(tracks)
+end
+
+--- Of `tracks` (Plex items), the one listened to last: see audiobookPosition. Pure.
+function Plex.lastListened(tracks)
+    local best
+    for _i, t in ipairs(tracks or {}) do
+        local at = tonumber(t.viewed) or 0
+        if at > 0 and (not best or at > best.at) then best = { at = at, t = t } end
+    end
+    if not best then return false end
+    local t = best.t
+    if (t.offset or 0) > 0 then return { track = t.key, offset = t.offset } end
+    return { track = t.key, offset = 0, finished = (t.views or 0) > 0 }
+end
+
+--- Tell Plex where in track `key` the listener is (ms): Plex's own players
+--- then continue there. true, or nil, err.
+function Plex:setProgress(key, ms)
+    local _, _, err = self:get("/:/progress", { key = key, identifier = "com.plexapp.plugins.library",
+        time = tostring(math.max(0, math.floor(tonumber(ms) or 0))), state = "stopped" })
+    if err then return nil, err end
+    return true
 end
 
 ---------------------------------------------------------------- audio
