@@ -4027,6 +4027,28 @@ do
     check(not R4.active, "stopped")
     gsettings.gzreader_tts_template = TPL
 end
+-- stopping: only the voice's own properties, and nothing when it wasn't reading
+do
+    local sets, lipc_was, tpl_was = {}, TTS.lipc, gsettings.gzreader_tts_template
+    TTS.lipc = { open_no_name = function()
+        return { set_int_property = function(_h, pub, prop) sets[#sets + 1] = pub .. " " .. prop end, close = function() end }
+    end }
+    TTS.cancel({ target = { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" } })
+    check(#sets == 1 and sets[1] == "com.lab126.tts stop",
+        "Kindle 2/DX voice (playFile): only com.lab126.tts stop (no ttsd there: it failed in the system log) " .. table.concat(sets, ", "))
+    sets = {}
+    TTS.cancel({ target = { pub = "com.lab126.ttsd", prop = "playSnippetNow" } })
+    check(#sets == 2 and sets[1] == "com.lab126.ttsd cancelSnippetPlayback" and sets[2] == "com.lab126.tts stop", "Kindle 3 voice (ttsd): both, as before")
+    sets = {}
+    gsettings.gzreader_tts_template = nil
+    TTS.cancel()
+    check(#sets == 0, "no voice set up: nothing sent")
+    gsettings.gzreader_tts_template = { target = { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" } }
+    local idle = TTS.Reader:new(tts_ui)
+    idle:stop()
+    check(#sets == 0, "a book closing without read aloud: nothing sent (it started lipc-set-prop each time)")
+    TTS.lipc, gsettings.gzreader_tts_template = lipc_was, tpl_was
+end
 TTS.exec = nil; TTS.lipc = nil; TTS.now = nil
 local _ = before
 
