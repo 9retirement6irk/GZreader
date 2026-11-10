@@ -23,11 +23,13 @@
 <path d="M280 176 l10 -6 v12 z" fill="#555"/>
 <circle cx="82" cy="170" r="7" fill="#e2e2e2" stroke="#555"/>
 <!-- the headphones, laid around it: the thin band round the back, a foam pad
-     resting on the rim at each end (lower left, upper right), the cord hanging down -->
-<path d="M64 206 A136 136 0 0 1 300 74" fill="none" stroke="#2a2a2a" stroke-width="5" stroke-linecap="round"/>
-<path d="M64 206 A136 136 0 0 1 300 74" fill="none" stroke="#9a9a9a" stroke-width="1.2"/>
+     resting on the rim at each end (lower left, upper right), the cord hanging down.
+     The band runs into each pad, a slider on it at each end (on the right it
+     stopped short of the slider, which sat off the band: a gap) -->
+<path d="M64 206 A136 136 0 0 1 306.9 84.8" fill="none" stroke="#2a2a2a" stroke-width="5" stroke-linecap="round"/>
+<path d="M64 206 A136 136 0 0 1 306.9 84.8" fill="none" stroke="#9a9a9a" stroke-width="1.2"/>
 <rect x="50" y="176" width="12" height="26" rx="2" fill="#2a2a2a" transform="rotate(20 56 189)"/>
-<rect x="292" y="74" width="12" height="26" rx="2" fill="#2a2a2a" transform="rotate(-50 298 87)"/>
+<rect x="293.2" y="59.9" width="12" height="26" rx="2" fill="#2a2a2a" transform="rotate(-36 299.2 72.9)"/>
 <circle cx="70" cy="214" r="27" fill="url(#foam)" stroke="#555" stroke-width="1.5"/>
 <circle cx="70" cy="214" r="18" fill="none" stroke="#9a9a9a" stroke-width="1"/>
 <circle cx="306" cy="104" r="27" fill="url(#foam)" stroke="#555" stroke-width="1.5"/>
