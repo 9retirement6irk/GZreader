@@ -12,12 +12,13 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
-  History, View, Sort and Music; **Audiobook** while one plays, and
-  **Downloads (N)** while something downloads.
+  History, View and Sort; **Music** and **Audiobook** while one plays or is
+  paused (they open its player: music and audiobooks are browsed in the
+  Catalog tab), and **Downloads (N)** while something downloads.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
-  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud and
-  Music.
+  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud, and
+  Music and Audiobook while one plays or is paused.
 
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and

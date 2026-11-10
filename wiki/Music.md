@@ -21,8 +21,8 @@ to their albums, as CD cases too. Search results stay a list (artists,
 albums and tracks together).
 There is also a **Music tab**, off until you turn it on: Settings → Interface →
 Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds up
-to 7 tabs. Music is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
-in a book.
+to 7 tabs. While music plays or is paused, the quick panel has a **Music**
+tile (*Music ▶* while it plays), at Home and in a book: it opens Now playing.
 
 While music plays, *Now playing* is a portable CD player with headphones: the
 album's cover printed over the whole disc, the track and time on its little display, then the
