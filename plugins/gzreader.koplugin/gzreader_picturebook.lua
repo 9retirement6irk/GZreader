@@ -147,7 +147,7 @@ end
 --- known (also when they couldn't be read: then no picture counts as wide).
 function PB.scanInBackground(ui, lay, on_ready)
     if PB.scanning or not (ui.document and ui.document.file and ui.doc_settings) then return end
-    PB.scanning = true
+    PB.scanning = ui.document.file -- (the book whose pictures are being measured)
     local file, w, h = ui.document.file, lay.avail_w, lay.avail_h
     Log.info("picture book: reading picture sizes in the background")
     require("gzreader_async").background(function()
@@ -159,7 +159,7 @@ function PB.scanInBackground(ui, lay, on_ready)
         r:close()
         return list
     end, function(list, err)
-        PB.scanning = false
+        PB.scanning = nil
         if type(list) ~= "table" then
             Log.info("picture book: picture sizes not read:", tostring(err))
             list = {}
@@ -171,14 +171,20 @@ function PB.scanInBackground(ui, lay, on_ready)
         if cur and cur.document and cur.document.file == file and cur.doc_settings then
             PB.saveWide(cur, cur.doc_settings, list)
             if on_ready then on_ready(cur) end
-            return
+        else
+            -- closed meanwhile: into the book's saved settings
+            local okd, DocSettings = pcall(require, "docsettings")
+            if okd then
+                local ds = DocSettings:open(file)
+                PB.saveWide(nil, ds, list)
+                ds:flush()
+            end
         end
-        -- closed meanwhile: into the book's saved settings
-        local okd, DocSettings = pcall(require, "docsettings")
-        if okd then
-            local ds = DocSettings:open(file)
-            PB.saveWide(nil, ds, list)
-            ds:flush()
+        -- a picture book opened meanwhile, waiting for this one: its turn now
+        local waiting = PB.waiting
+        PB.waiting = nil
+        if waiting and cur and cur.document and cur.document.file == waiting.file and cur.doc_settings and not PB.isOn(cur) then
+            PB.set(cur, true, waiting.opts)
         end
     end, "picture sizes", { timeout = 900 })
 end
@@ -301,7 +307,15 @@ function PB.set(ui, on, opts)
         if type(wide) ~= "table" then
             -- the picture sizes first (wide ones such as a logo or a blank
             -- spacer would otherwise fill a page), then this again
-            if PB.scanning then return true end
+            if PB.scanning == ui.document.file then return true end -- (fitted when that's done)
+            if PB.scanning then
+                -- another book's pictures (opened just before): this one's
+                -- next. (It used to return here and never fit this book: a
+                -- second picture book opened, or Fit pictures to the screen
+                -- tapped, while the first one's were measured did nothing.)
+                PB.waiting = { file = ui.document.file, opts = opts }
+                return true
+            end
             local ok = pcall(PB.scanInBackground, ui, lay, function(cur) PB.set(cur, true, opts) end)
             if ok and PB.scanning then return true end
             wide = {}
@@ -518,7 +532,14 @@ function PB.menuItem(ui)
         text_func = function()
             return PB.isOn(ui) and _("Fit pictures to the screen: on") or _("Fit pictures to the screen (picture books)")
         end,
-        callback = function() PB.set(ui, not PB.isOn(ui)) end,
+        callback = function()
+            local on = not PB.isOn(ui)
+            if PB.set(ui, on) and on and not PB.isOn(ui) then
+                -- (the pictures are measured first, in the background: say so,
+                -- or the tap seems to do nothing for a minute)
+                UIManager:show(Notification:new{ text = _("Picture book: the pages will be fitted to the screen in a moment…") })
+            end
+        end,
     }
 end
 
