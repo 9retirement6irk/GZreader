@@ -18,14 +18,14 @@ model, its firmware and how many minutes it covers:
 
 | Event | When | Also |
 | --- | --- | --- |
-| **reader** | you leave a book (close it, go Home, sleep) | format, picture book or not, pages, pages per minute, battery use per hour, how quickly pages turned and how long the book took to open (times only) |
+| **reader** | you leave a book (close it, go Home, sleep) | format, picture book or not, pages, pages per minute, battery use per hour |
 | **catalog books**, **catalog audiobooks**, **catalog music** | you leave that page of the Catalog tab | |
 | **audiobooks tab**, **music tab** | you leave that tab | |
 | **notes**, **calendar** | you leave Notes or Calendar | |
 | **read aloud** | read aloud stops | |
 | **audiobook playing**, **music playing** | playing stops for a minute, or the Kindle sleeps | how many times it was started |
 | **download** | a download finishes or fails | size, speed, resumed or not |
-| **sync** | every 30 minutes, and at sleep and exit | how syncs with Grimmory went and Grimmory's answer times, Wi‑Fi on-time, how quickly Home answered keys |
+| **sync** | every 30 minutes, and at sleep and exit | how syncs with Grimmory went and Grimmory's answer times, Wi‑Fi on-time |
 | **slow operations**, **keys not answered** | something took 3 s or more; keys the screen didn't answer | |
 
 A visit counts the part of GZreader underneath whatever is open on top (the

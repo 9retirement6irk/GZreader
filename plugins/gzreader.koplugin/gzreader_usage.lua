@@ -14,8 +14,7 @@ The events. Every one carries the version, the device, its firmware and
 - a visit to a part of GZreader, sent when you leave it (shorter than
   MIN_VISIT seconds: not sent; sleep ends a visit, waking starts one):
   "reader" (a book open: format, picture book or not, pages, pages per
-  minute, battery use per hour, how quickly pages turned and the book
-  opened), "catalog books", "catalog audiobooks", "catalog music" (the
+  minute, battery use per hour), "catalog books", "catalog audiobooks", "catalog music" (the
   Catalog tab's pages), "audiobooks tab", "music tab", "notes",
   "calendar". What's open on top (the quick panel, a book's page, the
   player, a note being written) counts as the part underneath;
@@ -23,7 +22,7 @@ The events. Every one carries the version, the device, its firmware and
   played (pauses and track changes within AUDIO_GAP seconds are one);
 - diagnostics: "download" (done or failed, size, speed, resumed), "slow
   operations", "keys not answered", "sync" (Grimmory's answers, Wi-Fi
-  on-time, how quickly Home answered keys), every SUMMARY_EVERY.
+  on-time), every SUMMARY_EVERY.
 Each event's `screen` is the part it's about (Tianji counts screens per
 session); `version` is also at the payload's top level, where Tianji reads
 it for its Version chart.
@@ -72,7 +71,6 @@ end
 
 function U.setLevel(v)
     G_reader_settings:saveSetting("gzreader_usage", v)
-    U.lat_on = v ~= "off" and U.lat_installed or false
     if v == "off" then U.dropQueue() end
     Log.info("usage statistics:", v)
     -- Full also sends the debug reports (gzreader_remote.lua)
@@ -387,8 +385,7 @@ function U.request(name, ok, ms)
 end
 
 --- Send the aggregates gathered since the last summary: slow operations;
---- "sync" with Grimmory's answers, Wi-Fi on-time and how quickly Home
---- answered keys.
+--- "sync" with Grimmory's answers and Wi-Fi on-time.
 function U.summary(reason)
     if not on() then resetAgg(); return end
     local minutes = mins(os.time() - agg.since)
@@ -400,15 +397,14 @@ function U.summary(reason)
         local n = st.ok + st.failed
         ev[k] = { ok = st.ok, failed = st.failed, avg_ms = n > 0 and math.floor(st.ms / n) or 0 }
     end
-    U.summarize(U.lat.home, "home_key", ev) -- (how quickly Home answers keys)
-    if next(agg.sync) or agg.wifi > 0 or ev.home_key_n then U.event("sync", ev) end
+    if next(agg.sync) or agg.wifi > 0 then U.event("sync", ev) end
     resetAgg()
 end
 
 ---------------------------------------------------------------- screens
 
 --- Where the user is now: Home, Downloads, Grimmory, reader, menu, other
---- (the top window; "keys not answered" and #64's Home keys use it).
+--- (the top window; "keys not answered" uses it).
 function U.whereNow()
     local stack = UIManager._window_stack or {}
     local top = stack[#stack] and stack[#stack].widget
@@ -565,88 +561,6 @@ local function tick()
     UIManager:scheduleIn(require("gzreader_ticks").untilNext(U.TICK), tick) -- (with the other timers: gzreader_ticks.lua)
 end
 
----------------------------------------------------------------- how quick (Full)
--- From a key press or tap (UIManager.sendEvent) to the next screen refresh
--- (Screen.refreshPartialImp/refreshFullImp, as the book-open line measures
--- them): a page turn if the page changed meanwhile (pageTurned), a key on
--- Home if Home is on screen. A refresh more than WINDOW_MS after the key
--- isn't its answer (a key that changed nothing; a clock tick later).
-U.Lat = { MAX = 400, WINDOW_MS = 3000 }
-local lat = { turn = {}, home = {}, open = {} }
-U.lat = lat
-function U.nowMs() local T = require("ui/time"); return T.to_ms(T.now()) end
-local function nowMs() return U.nowMs() end
-
-local function push(list, v)
-    if #list >= U.Lat.MAX then table.remove(list, 1) end
-    list[#list + 1] = v
-end
-
---- n, p50, p95 of a list of numbers (nearest rank), or nil.
-function U.percentiles(list)
-    if type(list) ~= "table" or #list == 0 then return nil end
-    local sorted = {}
-    for i, v in ipairs(list) do sorted[i] = v end
-    table.sort(sorted)
-    local function at(p) return sorted[math.max(1, math.ceil(p * #sorted))] end
-    return #sorted, math.floor(at(0.5) + 0.5), math.floor(at(0.95) + 0.5)
-end
-
-function U.inputSeen() if U.lat_on then U.input_at = nowMs() end end
-
-function U.screenRefreshed()
-    local t0 = U.input_at
-    if not t0 then return end
-    U.input_at = nil
-    local ms = nowMs() - t0
-    local turned = U.turned
-    U.turned = nil
-    if ms < 0 or ms > U.Lat.WINDOW_MS then return end
-    if turned then push(lat.turn, ms)
-    elseif U.whereNow() == "home" then push(lat.home, ms) end
-end
-
---- A book opened (the book-open line's total, gzreader_opentiming.lua).
-function U.bookOpened(seconds)
-    if U.lat_on and type(seconds) == "number" then push(lat.open, math.floor(seconds * 1000 + 0.5)) end
-end
-
---- p50/p95 of a list, as fields of an event (and the list emptied).
-local function summarize(list, prefix, into)
-    local n, p50, p95 = U.percentiles(list)
-    for i = #list, 1, -1 do list[i] = nil end
-    if not n then return into end
-    into = into or {}
-    into[prefix .. "_n"], into[prefix .. "_ms_p50"], into[prefix .. "_ms_p95"] = n, p50, p95
-    return into
-end
-U.summarize = summarize
-
---- Start measuring (Basic and Full; cheap: a time stamp per key and per refresh).
-function U.installLatency()
-    U.lat_on = on()
-    if U.lat_installed then return end
-    U.lat_installed = true
-    local orig_send = UIManager.sendEvent
-    if type(orig_send) == "function" then
-        UIManager.sendEvent = function(um, ev, ...)
-            if U.lat_on and type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onGesture") then U.input_at = nowMs() end
-            return orig_send(um, ev, ...)
-        end
-    end
-    local Screen = Device.screen
-    for _i, name in ipairs({ "refreshPartialImp", "refreshFullImp" }) do
-        local orig = Screen and Screen[name]
-        if type(orig) == "function" then
-            Screen[name] = function(self, ...)
-                local r = { orig(self, ...) }
-                if U.input_at then pcall(U.screenRefreshed) end
-                return unpack(r)
-            end
-        end
-    end
-end
-
 ---------------------------------------------------------------- reading
 
 function U.readStart(ui)
@@ -662,7 +576,6 @@ end
 
 function U.pageTurned()
     if U.reading then U.reading.pages = U.reading.pages + 1 end
-    if U.input_at then U.turned = true end
 end
 
 --- The "reader" visit: a book was open (closed, Home, sleep).
@@ -681,9 +594,6 @@ function U.readEnd(reason)
         battery_per_hour = (drop and secs >= 600) and math.floor(drop / secs * 3600 * 10 + 0.5) / 10 or nil,
         reason = reason,
     }
-    -- how quickly pages turned, and how long the book took to open
-    summarize(lat.turn, "page_turn", ev)
-    summarize(lat.open, "book_open", ev)
     U.event("reader", ev, "reader")
 end
 
@@ -749,7 +659,6 @@ function U.start()
     pcall(U.watchWindows)
     U.nudge()
     UIManager:scheduleIn(U.TICK, tick)
-    pcall(U.installLatency)
     -- the slow-operation timer (cheap; without the profiler)
     if on() then
         local okt, Trace = pcall(require, "gzreader_slowtrace")
@@ -783,7 +692,7 @@ function U.onResume()
 end
 
 --- What Basic and Full send (Settings → General → Usage statistics).
-U.WHAT_IS_SENT = require("gettext")("Sends, with GZreader's version, the Kindle model and firmware: how long you spend in books, the Catalog's Books, Audiobooks and Music pages, the Audiobooks and Music tabs, Notes and Calendar; reading (format, picture book or not, pages, pages per minute, battery use per hour); how long read aloud, audiobooks and music play; downloads (worked or failed, size, speed); how syncs with Grimmory go; how long Wi-Fi is on; slow operations and keys the screen didn't answer; how quickly pages turn and Home answers keys, and how long books take to open (times only). No book titles, file names, account or anything you type.")
+U.WHAT_IS_SENT = require("gettext")("Sends, with GZreader's version, the Kindle model and firmware: how long you spend in books, the Catalog's Books, Audiobooks and Music pages, the Audiobooks and Music tabs, Notes and Calendar; reading (format, picture book or not, pages, pages per minute, battery use per hour); how long read aloud, audiobooks and music play; downloads (worked or failed, size, speed); how syncs with Grimmory go; how long Wi-Fi is on; slow operations and keys the screen didn't answer. No book titles, file names, account or anything you type.")
 
 function U.menuItems()
     local _ = require("gettext")
