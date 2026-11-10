@@ -2,7 +2,10 @@ How GZreader updates itself, and how to try changes before they're released. Upd
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
 once a day (Settings → General → Updates, or the quick panel → Updates;
-the changelog is in Settings → General → Updates too).
+the changelog is in Settings → General → Updates too). When a check has
+found a newer version, the quick panel's **Updates** tile reads **Update
+available** and is drawn white on black (also after a restart, until it's
+installed); tap it to see the update and install it.
 
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
