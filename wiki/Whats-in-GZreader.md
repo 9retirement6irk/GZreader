@@ -1,4 +1,4 @@
-GZreader is a package of KOReader with a few of its plugins, ZenOS, and GZreader's own plugin. Based on KOReader `v2026.07.1` and ZenOS `4.3.0` (`tools/gzreader/UPSTREAM` in the repository); the version is in `GZREADER_VERSION`.
+GZreader is a package of KOReader with a few of its plugins, ZenOS, and GZreader's own plugin. Based on KOReader `v2026.07.1` and ZenOS `4.3.1` (`tools/gzreader/UPSTREAM` in the repository); the version is in `GZREADER_VERSION`.
 
 ## What's kept
 
