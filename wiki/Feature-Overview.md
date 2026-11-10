@@ -2,7 +2,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## Reading and your library
 
-- **Grimmory library** — search and browse your [Grimmory](https://grimmory.org) server laid out like a bookshop: Continue reading, Recently added, All books, Libraries, Shelves (and magic shelves), Authors, Series. Lists open at once from a saved copy. → [Grimmory library](Grimmory-Library)
+- **Catalog** — one tab, three pages you swipe between: Books, Audiobooks and Music. Search and browse your [Grimmory](https://grimmory.org) server laid out like a bookshop: Continue reading, Recently added, All books, Libraries, Shelves (and magic shelves), Authors, Series. Lists open at once from a saved copy. → [Grimmory library](Grimmory-Library)
 - **Downloads in the background** — with a progress bar, a queue, resuming after a dropped connection or a restart, and an auto-download shelf. → [Grimmory library](Grimmory-Library#home-folder-and-downloads)
 - **Sync with Grimmory** — reading position (to the exact place, as an EPUB CFI the web reader understands), bookmarks, highlights and notes (both ways, with a three-way merge), ratings and reading sessions. → [Grimmory sync](Grimmory-Sync)
 - **Bookshelves** — books stand on shelves, spines out, the selected one turns to show its cover; audiobooks as a cassette walkman, music as a CD player. Also lists and tiles. → [Home and bookshelves](Home-and-Bookshelves)

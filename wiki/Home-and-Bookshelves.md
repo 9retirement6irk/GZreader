@@ -19,7 +19,10 @@ it runs across the top of Home as on the other tabs, and moves back beside
 the book once you open one.
 
 - **Downloads** has as many shelves as the screen holds, a page at a time
-  (on the DX four, so the books are bigger). Folders stand as light grey
+  (on the DX four, so the books are bigger), each filled with as many books
+  as their spines leave room for. On a Kindle with a keyboard the letter keys
+  go from Q to L (19 books); the books after L on a page have no letter (the
+  5-way reaches them), and Del isn't one of them. Folders stand as light grey
   spines with a tab on top. A book that finishes downloading while
   Downloads is on screen appears in it straight away. Its title bar says
   *Downloads* between the clock and the battery, as the other tabs name
@@ -28,7 +31,7 @@ the book once you open one.
 - **Home** has one shelf of your most recent books; the DX's taller screen
   has two (the first filled before the second).
 - **Audiobooks** stand on the top shelf to the right of the books as a
-  cassette walkman with headphones, and **Music** (downloaded from Plex) as a
+  cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
   whatever the sort.
 - **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,
@@ -70,10 +73,19 @@ pages darker, with a ribbon bookmark where you are.
 
 While a book is open: its cover. From Home and menus: a random picture from
 the USB drive's `screensavers` folder (created by the setup guide), falling
-back to the Kindle's own sleep pictures. Chosen in the setup guide; picking
-another option there, choosing a wallpaper in the sleep-screen menu, or
-applying a ZenOS sleep-screen preset switches it off and uses that choice.
+back to the Kindle's own sleep pictures. Chosen in the setup guide, or in
+**Settings → General → Sleep → Wallpaper**: each sleep screen is a tile
+showing what it looks like (this one, the last book's cover, a picture from
+the screensavers folder, reading progress, book status, or the screen left
+as it is); tap one, or press its letter on a Kindle with keys. The cover's
+fill, rotation and fit, when to ignore a book's cover and the wake-up delay
+are in **Wallpaper options** next to it. (There is no custom image to
+choose, and no sleep-screen presets.)
 
-"Show custom image (book cover while reading)" (KOReader's "custom image or
-cover"): the chosen image from Home and menus, the open book's cover while
-reading. In KOReader it showed the custom image everywhere.
+To have the cover fill the whole screen with no bars at the edges, tick
+**Wallpaper options → Border fill, rotation, and fit → Scale cover to fill
+screen**: the cover (or picture) keeps its proportions and is scaled up until
+it covers the screen; the parts that don't fit (the top and bottom of a tall
+cover, the sides of a wide one) are cut off. While it's on, **Stretch cover
+to fit screen** just above it, which pulls the cover out of shape instead, is
+greyed out.

@@ -72,17 +72,16 @@ function M.build(ctx, extras_items)
         end
     end
 
-    -- GZreader: the Kindle 3 has no time zone setting (its clock is UTC).
+    -- GZreader: Time and date (Time zone first), Language and Storage, here
+    -- rather than in About → Device (gz_settings.lua)
+    local GzSettings = require("common/gz_settings")
+    table.insert(items, IconItem.decorate(GzSettings.timeAndDate(require("ui/elements/common_settings_menu_table").time), icons.tbr))
+    local language_setting = require("ui/language"):getLangMenuTable()
     table.insert(items, IconItem.decorate({
-        text_func = function()
-            local ok, TZ = pcall(require, "gzreader_timezone")
-            return _("Time zone") .. (ok and (": " .. TZ.label()) or "")
-        end,
-        sub_item_table_func = function()
-            local ok, TZ = pcall(require, "gzreader_timezone")
-            return ok and TZ.menuItems() or {}
-        end,
-    }, icons.calendar))
+        text = language_setting.text,
+        sub_item_table = language_setting.sub_item_table,
+    }, icons.language))
+    table.insert(items, IconItem.decorate(GzSettings.storageItem(), icons.settings_storage))
 
     table.insert(items, IconItem.decorate({
         text = _("Battery"),

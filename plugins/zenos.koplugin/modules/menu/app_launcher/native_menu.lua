@@ -146,8 +146,9 @@ end
 local function walk(items, allowed, depth, out, seen, visited)
     if type(items) ~= "table" or visited[items] then return end
     visited[items] = true
+    local keep = require("common/gz_settings").keepKOReaderItem -- GZreader
     for _i, item in ipairs(items) do
-        if type(item) == "table" then
+        if type(item) == "table" and keep(item) then
             local children = submenu_items(item, true)
             local title = item_title(item) or fallback_title(item.id)
             if type(item.id) == "string" and allowed[item.id]
@@ -243,7 +244,8 @@ function M.settingsItems(scope, id)
     for _i, tab in ipairs(items) do
         local title = item_title(tab) or fallback_title(tab.id)
         -- Untitled tabs (e.g. Ink Away's icon-only shortcut) would render as blank rows.
-        if not injected[tab.id] and title ~= "" then
+        if not injected[tab.id] and title ~= ""
+                and require("common/gz_settings").keepKOReaderItem(tab) then -- GZreader
             local setting = tab.id == "setting" or tab.id == "typeset"
                 or tab.id == "filemanager_settings"
             local root = {}

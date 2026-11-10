@@ -70,10 +70,10 @@ end, after = 6 })
 add({ fn = function()
     local t = shownText()
     local tabs = {}
-    for _i, name in ipairs({ "Home", "Downloads", "Grimmory", "Notes", "Calendar" }) do
+    for _i, name in ipairs({ "Home", "Downloads", "Catalog", "Notes", "Calendar" }) do
         if not t:find(name, 1, true) then tabs[#tabs + 1] = name end
     end
-    check(#tabs == 0, "Home's tabs: Home, Downloads, Grimmory, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+    check(#tabs == 0, "Home's tabs: Home, Downloads, Catalog, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
 end, after = 1 })
 -- a new book laid out in the background (gzreader_layout.lua: while charging; here at once)
 local layout = {}

@@ -257,8 +257,18 @@ function Folder.fetchCover(plugin, id, on_done)
         end
     end
     if Folder.fetching then return end
-    if not (plugin.api and plugin.api:isPaired()) then return end
     local ok_net, Net = pcall(require, "gzreader_net")
+    if tostring(id):match("^plex%-") then
+        -- a Plex audiobook: Plex's picture of it (never Grimmory)
+        local plex = e.plex_thumb and ok_net and Net.connected() and require("gzreader_music").plex(plugin)
+        if not (plex and plex:isConnected()) then return end
+        Folder.fetching = true
+        return require("gzreader_async").run(nil, function() return plex:downloadThumb(e.plex_thumb, path, 600) end, function(got)
+            if got then return done() end
+            Folder.fetching = nil
+        end, "plex audiobook cover")
+    end
+    if not (plugin.api and plugin.api:isPaired()) then return end
     if not (ok_net and Net.connected()) then return end
     Folder.fetching = true
     local Async = require("gzreader_async")
@@ -393,7 +403,7 @@ function Folder.open(plugin, id)
     local UIManager = require("ui/uimanager")
     local InfoMessage = require("ui/widget/infomessage")
     local _ = require("gettext")
-    UIManager:show(InfoMessage:new{ text = _("This audiobook's audio isn't on the Kindle any more. Download it again from the Grimmory tab → Audiobooks.") })
+    UIManager:show(InfoMessage:new{ text = _("This audiobook's audio isn't on the Kindle any more. Download it again from the Catalog tab → Audiobooks.") })
 end
 
 --- At start: move old storage, hook opening, make missing stand-ins.

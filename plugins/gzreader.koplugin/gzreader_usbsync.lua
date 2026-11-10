@@ -449,6 +449,10 @@ function Usb.outbox(plugin)
             screen = Usb.screenSize() },
         -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
         music_quality = require("gzreader_plex").quality(store),
+        -- (and its music library, when one was chosen: the page lists that one's albums)
+        music_library = Usb.musicLibrary(store),
+        -- (audiobooks from a Plex library instead of Grimmory's: the page's Audiobooks list that one)
+        audiobook_library = Usb.audiobookLibrary(store),
         grimmory = store.server and { server = store.server, user = store.username } or nil,
         jobs = jsonList(Usb.jobs(plugin)),
         queue = jsonList(queue(plugin)),
@@ -1017,6 +1021,19 @@ function Usb.takeTestBuilds(inbox)
     if inbox.test_builds == Update.betaEnabled() then return false end
     Update.setBeta(inbox.test_builds)
     return true
+end
+
+--- The music library chosen in Settings → Connections → Plex ({ key,
+--- title }), or nil (the server's first).
+function Usb.musicLibrary(store)
+    local m = type(store) == "table" and type(store.plex) == "table" and store.plex.music_section
+    return type(m) == "table" and m.key and { key = tostring(m.key), title = m.title } or nil
+end
+
+--- The Plex library audiobooks come from ({ key, title }), or nil (Grimmory's).
+function Usb.audiobookLibrary(store)
+    local a = type(store) == "table" and require("gzreader_plex").audiobookSection(store.plex)
+    return a and { key = tostring(a.key), title = a.title } or nil
 end
 
 --- Music quality chosen on the page (inbox.music_quality = { bitrate, shrink }):

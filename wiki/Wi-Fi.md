@@ -7,7 +7,7 @@ download or its queue, the library index, a QR screen, an update download).
 
 | When | Wi-Fi |
 | --- | --- |
-| Browsing Grimmory, downloading, connecting, sending the log, checking for / installing updates | turned on ("Connecting to Wi-Fi…") |
+| Browsing Grimmory (a book's page and its Download too, also when the list came from the Kindle), downloading, connecting, sending the log, checking for / installing updates | turned on ("Connecting to Wi-Fi…") |
 | A Grimmory book opens | turned on quietly: pull the position, send queued changes, sync bookmarks, highlights and notes |
 | A book closes with unsent changes (position, session, highlights) | turned on quietly to send them |
 | Wake after 15 min or more with a book open | turned on quietly to pull the position |

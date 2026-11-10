@@ -42,7 +42,12 @@ function M.copyItems(source, owner, setting, copies)
             return M.copyItems(source.refresh_func() or source, owner, setting)
         end
     end
-    for index, original in ipairs(source) do
+    -- GZreader: some of KOReader's items left out (common/gz_settings.lua KOREADER_HIDDEN)
+    local keep = require("common/gz_settings").keepKOReaderItem
+    local index = 0
+    for _n, original in ipairs(source) do
+        if not keep(original) then goto next_item end
+        index = index + 1
         local item = {}
         for key, value in pairs(original) do item[key] = value end
         item._zen_native_owner = owner
@@ -83,6 +88,7 @@ function M.copyItems(source, owner, setting, copies)
             item.sub_item_table = children
         end
         items[index] = item
+        ::next_item::
     end
     return items
 end
