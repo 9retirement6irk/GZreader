@@ -11,9 +11,10 @@ others have the Books page alone (no strip, nothing to turn to).
 
 The tab opens on Books. A page's first list is the page: a swipe left (or
 the list's next-page button, or the page-turn key) on its last page goes to
-the next page, a swipe right on its first page back to the one before. The
-title says which page it is; under it a strip: ‹ the page before, a dot per
-page (this one filled), the next page › (a tap on either side turns to it).
+the next page, a swipe right on its first page back to the one before; the
+pages go round (before Books: Music, after Music: Books). The title says
+which page it is; under it a strip: ‹ the page before, a dot per page (this
+one filled), the next page › (a tap on either side turns to it).
 Inside a page's lists the strip is blank and swipes turn the list's pages,
 as before.
 ]]
@@ -47,10 +48,13 @@ local function indexOf(list, id)
     return nil
 end
 
---- The page `dir` (+1 next, -1 before) from `id` in `list`, or nil at an end.
+--- The page `dir` (+1 next, -1 before) from `id` in `list`, round the ends
+--- (before Books: Music; after Music: Books); nil with only one page.
 function Catalog.step(list, id, dir)
     local i = indexOf(list, id) or 1
-    return list[i + dir]
+    if dir == 0 then return list[i] end
+    if #list < 2 then return nil end
+    return list[(i - 1 + dir) % #list + 1]
 end
 
 --- What the strip says: { left = "‹ Books" or nil, dots = "○ ● ○", right = "Music ›" or nil };
@@ -60,7 +64,7 @@ function Catalog.stripParts(list, id)
     local cur = indexOf(list, id) or 1
     local dots = {}
     for i = 1, #list do dots[i] = i == cur and "●" or "○" end
-    local prev, nxt = list[cur - 1], list[cur + 1]
+    local prev, nxt = Catalog.step(list, list[cur], -1), Catalog.step(list, list[cur], 1)
     return {
         left = prev and ("‹ " .. Catalog.title(prev)) or nil,
         dots = table.concat(dots, " "),
