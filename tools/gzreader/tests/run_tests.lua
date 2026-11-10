@@ -5237,64 +5237,161 @@ end)()
 print("Usage statistics")
 ;(function()
     local U = require("gzreader_usage")
-    local got = {}
-    U.testing_sink = function(item) got[#got + 1] = item end
+    local UIM = require("ui/uimanager")
+    local us = { got = {}, t = 1000, stack = UIM._window_stack, clock = U.clock, browser = package.loaded["gzreader_browser"] }
+    U.testing_sink = function(item) us.got[#us.got + 1] = item end
+    U.clock = function() return us.t end
+    local function last(name)
+        for i = #us.got, 1, -1 do if us.got[i].payload.name == name then return us.got[i].payload end end
+    end
     gsettings.gzreader_usage = nil
     check(U.level() == "basic", "Basic by default")
-    U.event("start", { device = "Kindle3" })
-    U.event("reading", { minutes = 5 }, true)
-    check(#got == 1 and got[1].type == "event" and got[1].payload.application == U.APP and got[1].payload.name == "start"
-        and type(got[1].payload.data.install) == "string" and #got[1].payload.data.install == 32,
-        "Basic: starts are recorded (with this Kindle's random ID); Full-only events aren't")
-    U.download({ ok = false, error = "timeout", bytes = 2048000, seconds = 10, resumed = true })
-    local d = got[#got].payload.data
-    check(got[#got].payload.name == "download" and d.ok == false and d.error == "timeout" and d.kb == nil, "Basic download: done or failed only")
-    gsettings.gzreader_usage = "full"
-    got = {}
-    U.download({ ok = true, bytes = 2048000, seconds = 10, resumed = true })
-    d = got[1].payload.data
-    check(d.ok and d.kb == 2000 and d.kb_per_s == 200 and d.resumed == true, "Full download: size, speed and resume")
-    U.menu("home", "Open \u{201C}Secret Title\u{201D}")
-    check(got[#got].payload.name == "menu" and not got[#got].payload.data.item:find("Secret", 1, true), "menu entries without book titles")
+    U.download({ ok = true, bytes = 2048000, seconds = 90, resumed = true })
+    local ev = us.got[1] and us.got[1].payload
+    local d = ev and ev.data or {}
+    check(ev and us.got[1].type == "event" and ev.application == U.APP and ev.name == "download"
+        and type(d.install) == "string" and #d.install == 32 and d.version and d.device and d.firmware and d.minutes == 1.5,
+        "every event: this Kindle's random ID, version, device, firmware and minutes")
+    check(d.kb == 2000 and d.kb_per_s == 22 and d.resumed == true, "Basic sends what Full sends (download size, speed, resume)")
+    check(ev.version == d.version and ev.sdkVersion == "gzreader", "the version also at the payload's top level (Tianji's Version chart)")
+    U.download({ ok = false, error = "timeout" })
+    check(last("download").data.ok == false and last("download").data.error == "timeout" and last("download").data.minutes == 0,
+        "an event with nothing to time: minutes 0")
+    check(U.agent():match("^GZreader/.+ %(.+; " .. U.id():sub(1, 8) .. "%)$"), "the User-Agent carries the start of the random ID (Tianji's sessions)")
+    -- visits: the part of GZreader on screen, under what's open on top
+    local fm = { name = "filemanager" }
+    local catalog = { _gz_navbar_tab_id = "ct_grimmory" }
+    package.loaded["gzreader_browser"] = { current = { menu = catalog, section = "books" } }
+    local B = package.loaded["gzreader_browser"].current
+    UIM._window_stack = { { widget = fm } }
+    check(U.portion() == nil, "Home / Downloads: not a counted part")
+    UIM._window_stack = { { widget = fm }, { widget = catalog }, { widget = { name = "Quick panel" } } }
+    check(U.portion() == "catalog books", "the Catalog's Books page, with the quick panel on top")
+    us.got = {}
+    U.checkPortion()
+    us.t = us.t + 120
+    B.section = "audiobooks"
+    U.checkPortion()
+    ev = last("catalog books")
+    check(ev and ev.data.minutes == 2 and ev.screen == "catalog books" and #us.got == 1, "a Catalog page turned: the visit to Books is sent (2 minutes)")
+    us.t = us.t + 3
+    B.section = "music"
+    U.checkPortion()
+    check(#us.got == 1, "a visit shorter than " .. U.MIN_VISIT .. " s isn't sent")
+    us.t = us.t + 30
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_audiobooks" } } }
+    U.checkPortion()
+    check(last("catalog music") and last("catalog music").data.minutes == 0.5, "…the Music page's visit")
+    local parts = {}
+    for _i, id in ipairs({ "ct_music", "ct_notes", "ct_calendar", "ct_audiobooks" }) do
+        us.t = us.t + 60
+        UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = id } }, { widget = { name = "NoteEditor" } } }
+        U.checkPortion()
+    end
+    for _i, it in ipairs(us.got) do parts[it.payload.name] = it.payload.data.minutes end
+    check(parts["audiobooks tab"] == 1 and parts["music tab"] == 1 and parts.notes == 1 and parts.calendar == 1,
+        "the Audiobooks tab, the Music tab, Notes and Calendar are their own visits")
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_notes" } }, { widget = { name = "home" } } }
+    check(U.portion() == nil, "Home over a tab: not a counted part")
+    -- the reader: its own event; a visit underneath ends
+    us.t = us.t + 60
+    UIM._window_stack = { { widget = { name = "ReaderUI" } }, { widget = { name = "Quick panel" } } }
+    U.checkPortion()
+    check(U.visit == nil and last("audiobooks tab").data.minutes == 1, "a book opened: the visit underneath ends")
+    U.readStart({ document = { file = "/x/book.epub" } })
+    for _i = 1, 12 do U.pageTurned() end
+    us.t = us.t + 360
+    U.readEnd("closed book")
+    ev = last("reader")
+    check(ev and ev.data.minutes == 6 and ev.data.pages == 12 and ev.data.pages_per_minute == 2 and ev.data.format == "epub"
+        and ev.screen == "reader" and ev.data.firmware, "the reader: minutes, pages, pages per minute, format")
+    -- sleep ends a visit; waking starts one
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_calendar" } } }
+    us.got = {}
+    U.checkPortion()
+    us.t = us.t + 600
+    U.onSuspend()
+    check(last("calendar") and last("calendar").data.minutes == 10 and U.visit == nil, "sleep ends a visit")
+    U.onResume()
+    U.checkPortion()
+    check(U.visit and U.visit.part == "calendar" and U.visit.t == us.t, "…waking starts a new one")
+    U.visit = nil
+    -- read aloud, audiobooks, music: how long they played
+    us.got = {}
+    U.ttsStart(); us.t = us.t + 90; U.ttsStop()
+    check(last("read aloud") and last("read aloud").data.minutes == 1.5, "read aloud: its own event, how long it spoke")
+    U.audioPlay("audiobook"); us.t = us.t + 60; U.audioStop()
+    us.t = us.t + 10
+    U.audioPlay("audiobook"); us.t = us.t + 60; U.audioStop() -- (the next track, or a pause)
+    us.t = us.t + 30; U.checkAudio()
+    check(last("audiobook playing") == nil, "a pause or a track change: the same session")
+    us.t = us.t + U.AUDIO_GAP; U.checkAudio()
+    ev = last("audiobook playing")
+    check(ev and ev.data.minutes == 2 and ev.data.plays == 2, "audiobook playing: sent after " .. U.AUDIO_GAP .. " s stopped (2 minutes, 2 plays)")
+    U.audioPlay("music"); us.t = us.t + 30
+    U.audioPlay("audiobook")
+    check(last("music playing") and last("music playing").data.minutes == 0.5, "music playing: ends when an audiobook starts")
+    us.t = us.t + 45
+    U.onSuspend()
+    check(last("audiobook playing") and last("audiobook playing").data.minutes == 0.8 and U.audio == nil, "…and at sleep")
+    -- the players say what's playing; no menu events, no start event
+    local function src(file_name)
+        local h = io.open(PLUGIN .. "/" .. file_name, "rb"); local x = h and h:read("*a") or ""; if h then h:close() end; return x
+    end
+    check(src("gzreader_audiobook.lua"):find('Engine.play(p, src, "audiobook")', 1, true) and src("gzreader_music.lua"):find('Engine.play(p, src, "music")', 1, true)
+        and select(2, src("gzreader_audioengine.lua"):gsub('require%("gzreader_usage"%)%.audio', "")) == 4,
+        "the audio engine reports play, pause, resume and stop with the kind")
+    check(not (src("gzreader_panel.lua") .. src("gzreader_readmenu.lua") .. src("gzreader_homemenu.lua")):find('usage").menu', 1, true)
+        and not src("gzreader_usage.lua"):find('U.event("start"', 1, true) and U.menu == nil,
+        "no menu events and no start event (how the last run ended: the debug reports)")
+    check(src("gzreader_browser.lua"):find('require("gzreader_usage").nudge()', 1, true), "turning a Catalog page is noticed at once")
+    -- summaries
     U.request("flush", true, 800); U.request("flush", false, 1200); U.request("annotations", true, 500)
     U.slow("a keypress", 4)
-    got = {}
+    us.got = {}
     U.summary("test")
     local names = {}
-    for _i, it in ipairs(got) do names[it.payload.name] = it.payload.data end
+    for _i, it in ipairs(us.got) do names[it.payload.name] = it.payload.data end
     check(names["slow operations"] and names["slow operations"].count == 1 and names.sync and names.sync.position.ok == 1
-        and names.sync.position.failed == 1 and names.sync.position.avg_ms == 1000 and names.sync.highlights.ok == 1,
-        "summaries: slow operations, and sync counts with Grimmory's answer time")
+        and names.sync.position.failed == 1 and names.sync.position.avg_ms == 1000 and names.sync.highlights.ok == 1
+        and names.sync.minutes and names.sync.wifi_minutes,
+        "summaries: slow operations, and sync counts with Grimmory's answer time and Wi-Fi minutes")
     gsettings.gzreader_usage = "off"
-    got = {}
-    U.event("start", {})
+    us.got = {}
     U.download({ ok = true })
-    check(#got == 0, "Off: nothing recorded")
+    U.audioPlay("music"); U.ttsStart()
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_notes" } } }
+    U.checkPortion()
+    check(#us.got == 0 and U.visit == nil and U.audio == nil, "Off: nothing recorded")
+    U.tts_at = nil
+    UIM._window_stack = us.stack
+    package.loaded["gzreader_browser"] = us.browser
+    U.clock = us.clock
     U.testing_sink = nil
     -- the batch really goes out (background process, while Wi-Fi is on)
     gsettings.gzreader_usage = "basic"
     U.SERVER = "http://127.0.0.1:" .. PORT
-    U.event("start", { device = "Kindle3" })
+    U.event("download", { ok = true })
     U.identify()
     U.maybeSend(true)
     runLoop(function() return not U.sending end, 30)
     local usage = json.decode(ctl("/state")).usage or {}
     local seen = {}
     for _i, e in ipairs(usage) do seen[e.type .. ":" .. tostring(e.payload.name)] = true end
-    check(seen["event:start"] and seen["identify:nil"], "sent as one batch to /api/application/batch (event + identify)")
+    check(seen["event:download"] and seen["identify:nil"], "sent as one batch to /api/application/batch (event + identify)")
     local left = 0
     for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
     check(left == 0, "sent batches are removed")
     -- no Wi-Fi: handed to the sync page (the .gzsync folder's usage/)
     local hand = WORK .. "/usage-hand"
     os.execute("rm -rf '" .. hand .. "'")
-    U.event("start", { device = "Kindle2" })
+    U.event("download", { ok = true })
     check(U.handOver(hand) == 1, "no Wi-Fi: what's waiting goes to the sync page's folder")
     local moved, lines = 0, 0
     for name in require("libs/libkoreader-lfs").dir(hand) do
         if name:match("jsonl$") then
             moved = moved + 1
-            for line in io.lines(hand .. "/" .. name) do if json.decode(line).payload.name == "start" then lines = lines + 1 end end
+            for line in io.lines(hand .. "/" .. name) do if json.decode(line).payload.name == "download" then lines = lines + 1 end end
         end
     end
     left = 0
@@ -5338,23 +5435,26 @@ print("Full usage statistics: how quickly pages turn and Home answers keys")
     check(#U.lat.home == 2 and #U.lat.turn == 4, "Home: keys timed to the refresh (not as page turns)")
     U.bookOpened(9.84)
     -- the reading event carries them
-    U.reading = { t = os.time() - 120, pages = 4, format = "epub", picture_book = false }
+    U.reading = { t = U.clock() - 120, pages = 4, format = "epub", picture_book = false }
     U.readEnd("closed")
     local ev = got[#got] and got[#got].payload
-    check(ev and ev.name == "reading" and ev.data.page_turn_n == 4 and ev.data.page_turn_ms_p50 == 310 and ev.data.page_turn_ms_p95 == 900
+    check(ev and ev.name == "reader" and ev.data.page_turn_n == 4 and ev.data.page_turn_ms_p50 == 310 and ev.data.page_turn_ms_p95 == 900
         and ev.data.book_open_n == 1 and ev.data.book_open_ms_p50 == 9840 and #U.lat.turn == 0,
-        "the reading event: page turns' middle and slowest (ms) and the book's open time; then started again")
+        "the reader event: page turns' middle and slowest (ms) and the book's open time; then started again")
     local sv = U.summarize(U.lat.home, "home_key", {})
     check(sv.home_key_n == 2 and sv.home_key_ms_p50 == 150 and sv.home_key_ms_p95 == 250, "the screens summary: how quickly Home answered keys")
-    -- not Full: nothing measured
+    -- Basic measures too; Off doesn't
+    U.lat_installed = true
     U.setLevel("basic")
+    check(U.lat_on, "Basic: measured too (the same events as Full)")
+    U.setLevel("off")
     U.inputSeen()
-    check(not U.lat_on and U.input_at == nil, "Basic or Off: nothing measured")
+    check(not U.lat_on and U.input_at == nil, "Off: nothing measured")
     local usrc = io.open(PLUGIN .. "/gzreader_usage.lua", "rb")
     local utext = usrc and usrc:read("*a") or ""
     if usrc then usrc:close() end
     check(utext:find("how quickly pages turn and Home answers keys, and how long books take to open (times only)", 1, true),
-        "Settings → General → Usage statistics says Full sends these")
+        "Settings → General → Usage statistics says these are sent")
     U.nowMs, U.whereNow = real_now, real_where
     U.testing_sink = nil
     gsettings.gzreader_usage = nil

@@ -518,7 +518,7 @@ function Player:play()
     end
     quietOthers(self.plugin)
     if Music.current and Music.current ~= self then Music.current:stop() end
-    local started = select(2, Engine.play(p, src))
+    local started = select(2, Engine.play(p, src, "music"))
     self.pos = started or 0
     self.playing, self.paused = true, nil
     Music.current = self

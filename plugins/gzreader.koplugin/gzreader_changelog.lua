@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Full usage statistics: how quickly pages turn and Home answers keys", text = "With Full usage statistics, each reading session also reports how quickly pages turned (from the key or tap to the screen refresh: the middle and the slowest 5%, in milliseconds) and how long the book took to open, and the regular summary reports how quickly Home answered keys. Only times, no titles: so a release that makes page turns slower on a Kindle 3 shows up without anyone sending a log." },
+            { short = "Usage statistics: time in each part of GZreader, and what plays", text = "Usage statistics now report how long you spend in books, on the Catalog's Books, Audiobooks and Music pages, in the Audiobooks and Music tabs, in Notes and in Calendar, and how long read aloud, audiobooks and music play, each with GZreader's version, the Kindle model and firmware. Basic and Full send the same statistics; Full also sends the debug reports. No more events for each menu entry chosen or for each start (how the previous run ended is in the debug reports). Still no titles, file names or account." },
         },
     },
     {

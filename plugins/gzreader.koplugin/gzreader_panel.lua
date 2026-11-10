@@ -551,7 +551,6 @@ function PanelWidget:getSize() return self.dimen end
 function PanelWidget:pick(t)
     UIManager:close(self)
     if t.run then UIManager:nextTick(function()
-        pcall(function() require("gzreader_usage").menu(self.section_id, t.label) end)
         t.run()
         if t.full then UIManager:scheduleIn(0.4, function() UIManager:setDirty(nil, "full") end) end
     end) end
