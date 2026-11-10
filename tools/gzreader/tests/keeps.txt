@@ -25,6 +25,7 @@
 14 frontend/ui/elements/screensaver_menu.lua
 1 frontend/ui/font.lua
 14 frontend/ui/screensaver.lua
+4 frontend/ui/widget/inputtext.lua
 12 frontend/ui/widget/touchmenu.lua
 3 platform/kindle/extensions/koreader/config.xml
 11 platform/kindle/extensions/koreader/menu.json

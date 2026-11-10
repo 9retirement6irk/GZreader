@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2, 3, DX: Sym opens a symbols menu, like the Kindle's own", text = "On the Kindles with a keyboard, pressing Sym in a text box (search, Wi-Fi password, server address, notes...) opens a small menu of symbols, as the Kindle's own software does, instead of the whole on-screen keyboard: the 5-way picks a symbol, pressing it types it, Sym or Back closes the menu. It opens on the symbol you used last. Shift + Home still shows the whole on-screen keyboard, and Sym + a letter still types its symbol." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },
