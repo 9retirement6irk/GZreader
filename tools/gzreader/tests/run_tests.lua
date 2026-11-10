@@ -1068,6 +1068,12 @@ do
     check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
         "cards: a magic shelf's rules are never shown")
     check(Shop.cardText("all", {}) == "A–Z" and Shop.cardText("shelves", {}) == "yours and magic", "cards: nothing kept yet")
+    -- (a word as wide as 6 px per letter at size 9, one less per size below)
+    check(Shop.miniLabelSize("Shelves", 42, function(sz, w) return #w * (sz - 3) end) == 9
+        and Shop.miniLabelSize("Shelves", 30, function(sz, w) return #w * (sz - 3) end) == 7
+        and Shop.miniLabelSize("Beach reads", 30, function(sz, w) return #w * (sz - 3) end) == 9
+        and Shop.miniLabelSize("Extraordinarily", 30, function(sz, w) return #w * (sz - 3) end) == 6,
+        "Shelves card: its label's size lets every word fit the little cover (no \"Shelve / s\")")
     -- the lists opened from it, in its style
     local saved_w = {}
     for _i, m in ipairs(widget_mods) do

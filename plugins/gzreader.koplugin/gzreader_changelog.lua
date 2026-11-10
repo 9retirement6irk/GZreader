@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },

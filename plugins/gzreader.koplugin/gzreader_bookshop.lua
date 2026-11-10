@@ -858,13 +858,36 @@ local function cassette(bb, x, y, w, h)
     end
 end
 
+--- The miniature cover's label size: the largest from 9 down to 6 at which
+--- every word of `label` fits `width` (a word wider than the cover is broken
+--- mid-word: "Shelve / s" on the Paperwhite 3's Shelves card). `width_of(size,
+--- word)` measures a word. Pure.
+function Shop.miniLabelSize(label, width, width_of)
+    for size = 9, 6, -1 do
+        local fits = true
+        for word in tostring(label or ""):gmatch("%S+") do
+            if width_of(size, word) > width then fits = false; break end
+        end
+        if fits then return size end
+    end
+    return 6
+end
+
 local function miniCover(bb, x, bottom, w, h, label)
     bb:darkenRect(x + S(3), bottom - h + S(3), w, h - S(3), 0.3)
     bb:paintRect(x, bottom - h, w, h, gray(0.8))
     bb:paintBorder(x, bottom - h, w, h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
     Shelf().shadeRound(bb, x, bottom - h, S(5), h, 0.8)
     local TextBoxWidget = require("ui/widget/textboxwidget")
-    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", 9), bold = true, width = w - S(9),
+    local TextWidget = require("ui/widget/textwidget")
+    local tw = w - S(9)
+    local size = Shop.miniLabelSize(label, tw, function(sz, word)
+        local t = TextWidget:new{ text = word, face = Font:getFace("cfont", sz), bold = true }
+        local ww = t:getWidth()
+        t:free()
+        return ww
+    end)
+    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", size), bold = true, width = tw,
         fgcolor = Blitbuffer.COLOR_WHITE, bgcolor = gray(0.8), height = h - S(8), height_adjust = true, height_overflow_show_ellipsis = true }
     tb:paintTo(bb, x + S(6), bottom - h + S(4))
     tb:free()
