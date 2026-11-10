@@ -21,6 +21,7 @@ return {
             { short = "No Manga, News or Calibre Search tabs", text = "Settings → Interface → Navbar no longer offers the Manga, News and Calibre Search tabs, whose apps (Rakuyomi, QuickRSS, calibre) aren't part of GZreader, and the bar leaves them out if they were on." },
             { short = "Downloads screen: only the changed lines refresh", text = "The Downloads screen kept its percentages current by redrawing the whole screen every 5 seconds, and went back to its first page each time. Now only the lines that changed are refreshed, on the page you're on, and nothing at all when nothing changed; the whole list is redrawn only when a download finishes or one is added." },
             { short = "A book's page and Download turn Wi-Fi on first", text = "The Grimmory tab's lists open from what's saved on the Kindle, so with Wi-Fi only when needed Wi-Fi was often off when you opened a book's page: its description and cover didn't come, and Download failed at once (\"temporary failure in name resolution\"). Both now turn Wi-Fi on first, like the rest of the Grimmory tab." },
+            { short = "Audiobooks on the bookshelf: the walkman wears its headphones, like the CD player", text = "Downloads, on the bookshelf: the Audiobooks walkman now has its headphones sitting on it (the band over its top, a pad resting on each side), as the Music CD player does, instead of standing beside it." },
         },
     },
     {
