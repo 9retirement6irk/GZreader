@@ -19,6 +19,9 @@ with the Catalog's covers; a plain insert with the title until it's here),
 and the artist and year (a playlist: its number of tracks). An artist opens
 to their albums, as CD cases too. Search results stay a list (artists,
 albums and tracks together).
+
+![The Catalog's Music page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-music.png) ![An album playing in the CD player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/cd-player.png)
+
 There is also a **Music tab**, off until you turn it on: Settings → Interface →
 Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds up
 to 7 tabs. While music plays or is paused, the quick panel has a **Music**

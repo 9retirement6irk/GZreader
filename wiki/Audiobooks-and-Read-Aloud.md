@@ -11,6 +11,8 @@ are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
 **Series** and **On this Kindle** (the cards count what's known).
 
+![The Catalog's Audiobooks page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-audiobooks.png) ![The audiobook player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/audiobook-player.png)
+
 - **Authors** and **Series** list only the authors and series that have
   audiobooks, with how many. The first time, GZreader fetches the list of
   every audiobook in the background (kept on the Kindle like the other saved
