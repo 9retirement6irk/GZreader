@@ -1171,6 +1171,53 @@ captured.info = nil
 plugin:downloadAndOpen({ id = 27, title = "Second", primaryFileName = "second.epub", primaryFileType = "EPUB", fileSizeKb = 2048 }, nil)
 check(#Download.queue == 1 and captured.info and captured.info:match("already"), "same book twice: not queued again")
 check(Download.isQueued(26) and Download.isQueued(27) and not Download.isQueued(28), "queued/active books are known (list shows 'queued')")
+do -- other requests first: the download waits while they run
+    local job = Download.active
+    local function state(pid)
+        local fh = io.open("/proc/" .. pid .. "/stat", "rb")
+        if not fh then return nil end
+        local letter = fh:read("*a"):match("%) (%a)")
+        fh:close()
+        return letter
+    end
+    Download.yield()
+    runLoop(function() return state(job.pid) == "T" end, 2)
+    check(job and job.paused_at and state(job.pid) == "T", "a request asks Grimmory: the download's process is paused")
+    local was_stall = Download.STALL_SECONDS
+    Download.STALL_SECONDS = 1
+    runLoop(function() return false end, 1.2) -- (what had arrived before the pause, counted)
+    local size0 = job.last_size
+    runLoop(function() return false end, 1.5)
+    check(Download.active == job and not job.finished and job.last_size == size0,
+        "paused: nothing arrives, and it isn't taken for a stalled download")
+    Download.unyield()
+    Download.STALL_SECONDS = was_stall
+    check(job.paused_at == nil and state(job.pid) ~= "T" and job.yields == 1 and job.yielded_s >= 2, "the requests done: it carries on")
+    -- at most YIELD_MAX at a time, then not again until the requests are done
+    local was_max = Download.YIELD_MAX
+    Download.YIELD_MAX = 1
+    Download.yield()
+    runLoop(function() return job.paused_at == nil end, 5)
+    Download.yield()
+    check(job.paused_at == nil and job.yielded_enough and state(job.pid) ~= "T", "waited YIELD_MAX: carries on, and isn't paused again meanwhile")
+    Download.unyield()
+    Download.YIELD_MAX = was_max
+    -- gzreader_async: a request batch makes it wait, and it goes on after
+    local A = require("gzreader_async")
+    local was_y, was_u, calls = Download.yield, Download.unyield, {}
+    Download.yield = function() calls[#calls + 1] = "wait" end
+    Download.unyield = function() calls[#calls + 1] = "go on" end
+    local saved_sync, res = A.sync, nil
+    A.sync = false
+    A.run(nil, function() return "details" end, function(r) res = r end, "getBookDetail")
+    runLoop(function() return res ~= nil and #calls >= 2 end, 10)
+    A.run(nil, function() return 1 end, function() end, "pre-size covers", { nice = true })
+    runLoop(function() return not A.busy end, 10)
+    A.sync = saved_sync
+    Download.yield, Download.unyield = was_y, was_u
+    check(res == "details" and calls[1] == "wait" and calls[2] == "go on" and #calls == 3,
+        "a background request: the download waits, then goes on; long work (opts.nice) doesn't make it wait (" .. table.concat(calls, ", ") .. ")")
+end
 do
     local Tasks = require("gzreader_tasks")
     plugin:downloadAndOpen({ id = 29, title = "Third", primaryFileName = "third.epub", primaryFileType = "EPUB", fileSizeKb = 2048 }, nil)

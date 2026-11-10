@@ -22,6 +22,7 @@ return {
             { short = "Downloads screen: only the changed lines refresh", text = "The Downloads screen kept its percentages current by redrawing the whole screen every 5 seconds, and went back to its first page each time. Now only the lines that changed are refreshed, on the page you're on, and nothing at all when nothing changed; the whole list is redrawn only when a download finishes or one is added." },
             { short = "A book's page and Download turn Wi-Fi on first", text = "The Grimmory tab's lists open from what's saved on the Kindle, so with Wi-Fi only when needed Wi-Fi was often off when you opened a book's page: its description and cover didn't come, and Download failed at once (\"temporary failure in name resolution\"). Both now turn Wi-Fi on first, like the rest of the Grimmory tab." },
             { short = "Audiobooks on the bookshelf: the walkman wears its headphones, like the CD player", text = "Downloads, on the bookshelf: the Audiobooks walkman now has its headphones sitting on it (the band over its top, a pad resting on each side), as the Music CD player does, instead of standing beside it." },
+            { short = "Browsing Grimmory while a book downloads", text = "While a book downloaded, it took the Kindle's Wi-Fi and processor, so the Grimmory tab's descriptions and covers took 10 to 40 seconds or didn't come at all. Now the download waits while the tab (or anything else) asks Grimmory for something, 20 seconds at most each time, and carries on as soon as that's answered." },
         },
     },
     {
