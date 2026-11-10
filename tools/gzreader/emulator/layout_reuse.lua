@@ -1,7 +1,10 @@
 -- A book laid out in the background (gzreader_layout.lua) opens without
 -- being laid out again: the reader finds the layout the background process
 -- wrote. Opens one copy laid out first and one that wasn't, and compares the
--- time crengine's render took in each.
+-- time crengine's render took in each. Another book is opened and closed
+-- first, as on a Kindle in use: crengine has read its layout cache index by
+-- then, and until Layout.reloadCacheIndex it didn't see the background
+-- process's book in it (laid out again: 1.0 s instead of 0.04 s).
 --   GZ_EMU_BIG=<big.epub> GZ_EMU_TREE=<tree>/koreader ./run.sh layout_reuse.lua <out>
 -- Writes <out>/layout_reuse.txt.
 local s = { start = 12, { key = "Back", after = 4 } }
@@ -24,7 +27,11 @@ end
 local dir = "/mnt/us/GZreader"
 s[#s + 1] = { fn = function()
     os.execute("mkdir -p " .. dir .. " && cp '" .. os.getenv("GZ_EMU_BIG") .. "' " .. dir .. "/laidout.epub && cp '"
-        .. os.getenv("GZ_EMU_BIG") .. "' " .. dir .. "/fresh.epub")
+        .. os.getenv("GZ_EMU_BIG") .. "' " .. dir .. "/fresh.epub && cp '" .. os.getenv("GZ_EMU_BIG") .. "' " .. dir .. "/before.epub")
+    require("apps/reader/readerui"):showReader(dir .. "/before.epub") -- (a book read before)
+end, after = 40 }
+s[#s + 1] = { key = "Back", after = 8 }
+s[#s + 1] = { fn = function()
     local plugin = require("apps/filemanager/filemanager").instance.gzreader
     st.entry = { path = dir .. "/laidout.epub" }
     st.started = require("gzreader_layout").start(plugin, "check", st.entry, function(ok, line) st.done = { ok = ok, line = line } end, true)

@@ -15,7 +15,10 @@ ends as soon as the layout is done, before the reader is ready).
 Not on Kindles with 128 MB or less (Kindle 2, DX): a second book engine
 doesn't fit there. Not while books download or other background work runs
 (Layout.busy: on a Kindle 3 with many books downloading, the layouts made
-Home and reading slow, memory down to 2-3 MB). It stops at once when the
+Home and reading slow, memory down to 2-3 MB), and not before a new book's
+picture-book check: a picture book is laid out with the margins and style
+the check gives it (laid out before, its first open fitted it and laid it
+out again; and the check, run beside a layout, failed for lack of memory). It stops at once when the
 charger is unplugged, a book is opened or a download starts; a book that
 fails twice isn't tried again. The background process
 is the one the kernel ends first if memory runs out (oom_score_adj).
@@ -36,7 +39,7 @@ local Layout = {
     EXTS = { epub = true, fb2 = true, mobi = true, azw = true, azw3 = true, htm = true, html = true, txt = true, rtf = true, doc = true, chm = true },
     running = nil,
     -- injectable (tests)
-    fork = nil, isCharging = nil, readerOpen = nil, hasSidecar = nil, memTotalKB = nil,
+    fork = nil, isCharging = nil, readerOpen = nil, sidecar = nil, memTotalKB = nil,
 }
 
 function Layout.enabled() return G_reader_settings:readSetting(Layout.SETTING) ~= false end
@@ -76,24 +79,53 @@ function Layout.busy()
     if type(D) == "table" and (D.active or (type(D.queue) == "table" and #D.queue > 0)) then return "a download" end
     local A = package.loaded["gzreader_async"]
     if type(A) == "table" and (A.local_jobs or 0) > 0 then return "other background work" end
+    -- (a book waiting for its picture-book check: laid out after it, with the
+    -- settings it writes; laid out before, the fitting threw the layout away)
+    local PB = package.loaded["gzreader_picturebook"]
+    if type(PB) == "table" and type(PB.queue) == "table" and #PB.queue > 0 then return "a picture-book check" end
     return nil
 end
 
-local function hasSidecar(path)
-    if Layout.hasSidecar then return Layout.hasSidecar(path) end
-    local ok, v = pcall(function() return require("docsettings"):hasSidecarFile(path) end)
-    return ok and v
+--- What the settings next to the book say (nil: no settings file): a table
+--- with the keys that matter here.
+local function sidecar(path)
+    if Layout.sidecar then return Layout.sidecar(path) end
+    local ok, v = pcall(function()
+        local DocSettings = require("docsettings")
+        if not DocSettings:hasSidecarFile(path) then return nil end
+        local ds = DocSettings:open(path)
+        local t = {}
+        for _i, k in ipairs({ "last_xpointer", "last_page", "percent_finished", "gzreader_picture_book", "gzreader_pb_fit" }) do
+            t[k] = ds:readSetting(k)
+        end
+        return t
+    end)
+    return ok and v or nil
 end
 
---- The downloaded book to lay out next: never opened (no settings next to
---- it), not laid out yet, not failed twice; the newest first. Or nil.
+--- Why this book isn't laid out now, or nil. Opened already (a reading
+--- position next to it). A picture book recognized but not fitted yet: the
+--- first open fits it (margins, a style tweak) and lays it out again, so a
+--- layout now would be thrown away. (The settings the picture-book check
+--- writes before the first open are no reason: the background process
+--- opens the book with them, so its layout is the one the reader wants.)
+function Layout.notYet(path)
+    local sc = sidecar(path)
+    if not sc then return nil end
+    if sc.last_xpointer ~= nil or sc.last_page ~= nil or sc.percent_finished ~= nil then return "opened" end
+    if sc.gzreader_picture_book == true and sc.gzreader_pb_fit == nil then return "a picture book fitted when it opens" end
+    return nil
+end
+
+--- The downloaded book to lay out next: never opened, not laid out yet, not
+--- failed twice (Layout.notYet); the newest first. Or nil.
 function Layout.candidate(plugin)
     local best, best_t
     for id, e in pairs(plugin.store.downloads or {}) do
         if type(e) == "table" and type(e.path) == "string" and not e.laid_out and (e.layout_tries or 0) < Layout.MAX_TRIES then
             local ext = (e.path:match("%.([%w]+)$") or ""):lower()
             local t = Layout.EXTS[ext] and lfs.attributes(e.path, "modification")
-            if t and not hasSidecar(e.path) and (not best_t or t > best_t) then best, best_t = { id = tostring(id), entry = e }, t end
+            if t and (not best_t or t > best_t) and not Layout.notYet(e.path) then best, best_t = { id = tostring(id), entry = e }, t end
         end
     end
     return best
@@ -120,10 +152,8 @@ function Layout.child(path, report)
         local r = { orig_render(d, ...) }
         local pages = 0
         pcall(function() pages = d:getPageCount() end)
-        local hash = "?"
-        pcall(function() hash = tostring(d:getDocumentRenderingHash(true)) end)
         pcall(function() d._document:close() end) -- (writes the layout cache)
-        report(string.format("ok %d %d %s", pages, os.time() - t0, hash))
+        report(string.format("ok %d %d", pages, os.time() - t0))
         os.exit(0)
         return unpack(r)
     end
@@ -151,14 +181,35 @@ local function fork(path)
     }
 end
 
+--- After a background layout: the reader's book engine reads its layout
+--- cache index again (cache/cr3cache/cr3cache.inx). The index is read once,
+--- when the first book opens, and kept in memory; the background process
+--- adds its book to the index on disk, which this process didn't see, so a
+--- book laid out after another one had been opened was laid out again when
+--- it opened (in the emulator: 1.0 s, against 0.04 s when no book had been
+--- opened first; on a Kindle 3, Steve Jobs: 13.9 s). Not while a book is
+--- open. Nothing to do before the first book opens (crengine not started:
+--- cacheInit errors, and the index is read fresh at that first open).
+function Layout.reloadCacheIndex()
+    if Layout.reloadIndex then return Layout.reloadIndex() end
+    if readerOpen() then return false end
+    local CD = package.loaded["document/credocument"]
+    if type(CD) ~= "table" or type(CD.cacheInit) ~= "function" then return false end
+    local ok = pcall(CD.cacheInit)
+    return ok
+end
+
 local function finish(plugin, job, line)
     Layout.running = nil
     local e = job.entry
-    local pages, secs, hash = (line or ""):match("^ok (%d+) (%d+) ?(%S*)")
+    local pages, secs = (line or ""):match("^ok (%d+) (%d+)")
     if pages then
         e.laid_out = os.time()
-        e.layout_hash = hash ~= "" and hash or nil
-        Log.info("layout: book", job.id, "laid out while charging:", pages, "pages in", secs, "s", hash ~= "" and ("(layout " .. hash .. ")") or "")
+        e.layout_secs = tonumber(secs)
+        e.layout_hash = nil -- (kept by 2026-11-09's beta; it told nothing, see Layout.opened)
+        local reread = Layout.reloadCacheIndex()
+        Log.info("layout: book", job.id, "laid out while charging:", pages, "pages in", secs, "s",
+            reread and "(layout cache index read again)" or "")
     else
         e.layout_tries = (e.layout_tries or 0) + 1
         Log.warn("layout: book", job.id, "not laid out:", line ~= "" and line or "the background process ended (memory?)")
@@ -206,22 +257,31 @@ function Layout.tick(plugin)
     return Layout.start(plugin, c.id, c.entry)
 end
 
---- A book laid out in the background is opened: was that layout the one the
---- reader wanted? (The log line says; a different layout means the reader
---- laid it out again: different settings than the background process saw.)
-function Layout.opened(doc, entry, id)
+--- A book laid out in the background is opened: did the reader use that
+--- layout? crengine can't say: its rendering hash differs between the
+--- background process and the reader even when the reader uses the layout,
+--- and hasCacheFile/isCacheFileStale are true for a book never laid out too
+--- (all seen in the emulator). What tells is the time the reader's layout
+--- took (gzreader_opentiming's "laid out"): a fraction of a second with the
+--- layout cache, seconds without (a 630-page book in the emulator: 0.1 s and
+--- 1.0 s; on a Kindle 3, 0.1-0.4 s and 9-14 s). Written in the log line.
+Layout.REUSED_S = 1
+function Layout.opened(_doc, entry, id, laid_s)
     if type(entry) ~= "table" or not entry.laid_out or entry.layout_checked then return end
     entry.layout_checked = true
-    local hash = "?"
-    pcall(function() hash = tostring(doc:getDocumentRenderingHash(true)) end)
+    if laid_s == nil then
+        local OT = package.loaded["gzreader_opentiming"]
+        local cur = type(OT) == "table" and OT.cur
+        laid_s = cur and cur.phases and cur.phases["laid out"] and require("ui/time").to_s(cur.phases["laid out"])
+    end
+    local bg = entry.layout_secs and string.format(" (in the background: %d s)", entry.layout_secs) or ""
     local verdict
-    if not entry.layout_hash then
-        -- (laid out by a version that kept no hash: the book open line's "laid out" time tells)
-        verdict = "no hash kept by the version that laid it out, so not compared"
-    elseif hash == entry.layout_hash then
-        verdict = "the same layout, reused"
+    if type(laid_s) ~= "number" then
+        verdict = "the reader's layout time not known" .. bg
+    elseif laid_s < Layout.REUSED_S then
+        verdict = string.format("its layout used: laid out in %.1f s%s", laid_s, bg)
     else
-        verdict = "a different layout (" .. tostring(hash) .. ", background " .. tostring(entry.layout_hash) .. "): laid out again"
+        verdict = string.format("laid out again, %.1f s%s: its layout wasn't used (other settings: margins, font, style?)", laid_s, bg)
     end
     Log.info("layout: book", tostring(id), "opened after its background layout:", verdict)
 end

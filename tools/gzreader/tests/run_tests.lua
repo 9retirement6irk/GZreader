@@ -1205,11 +1205,15 @@ print("New books laid out in the background while charging")
     function fake:saveSoon() self.saves = self.saves + 1 end
     lfs.touch(dir .. "/old.epub", os.time() - 100, os.time() - 100)
     local charge, reader, forks, busy = true, false, {}, nil
-    local saved = { L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork, L.isBusy }
+    local saved = { L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy }
     L.isBusy = function() return busy end
     L.isCharging = function() return charge end
     L.readerOpen = function() return reader end
-    L.hasSidecar = function(bp) return bp:find("read.epub", 1, true) ~= nil end
+    local sidecars = {}
+    L.sidecar = function(bp)
+        if bp:find("read.epub", 1, true) then return { last_xpointer = "/body/DocFragment[3]" } end
+        return sidecars[bp:match("[^/]+$")]
+    end
     L.memTotalKB = function() return 252364 end
     L.fork = function(bpath)
         local fk = { path = bpath, line = nil, stopped = false }
@@ -1222,6 +1226,30 @@ print("New books laid out in the background while charging")
     LUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
     local c = L.candidate(fake)
     check(c and c.id == "2", "the next book: the newest never opened (not a PDF, a gone file, one opened, laid out or failed twice)")
+    -- picture books: the settings the check writes before the first open
+    sidecars["new.epub"] = { gzreader_picture_book = true }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == "a picture book fitted when it opens" and c and c.id == "1",
+        "a picture book recognized but not fitted yet: not laid out (its first open fits it and lays it out again)")
+    sidecars["new.epub"] = { gzreader_picture_book = true, gzreader_pb_fit = { top = 40, bottom = 30 } }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == nil and c and c.id == "2",
+        "a picture book fitted before its first open: laid out, with the margins and style it was given")
+    sidecars["new.epub"] = { gzreader_picture_book = false }
+    c = L.candidate(fake)
+    check(c and c.id == "2", "checked and not a picture book: the settings file the check wrote doesn't count as opened")
+    check(L.notYet(dir .. "/read.epub") == "opened", "a reading position next to it: opened")
+    sidecars["new.epub"] = nil
+    -- the real Layout.busy: a book waiting for its picture-book check comes first
+    local was_busy, PBq = L.isBusy, package.loaded["gzreader_picturebook"]
+    L.isBusy = nil
+    package.loaded["gzreader_picturebook"] = { queue = { dir .. "/new.epub" } }
+    local why_pb = L.busy()
+    package.loaded["gzreader_picturebook"].queue = {}
+    local why_none = L.busy()
+    package.loaded["gzreader_picturebook"], L.isBusy = PBq, was_busy
+    check(why_pb == "a picture-book check" and why_none == nil,
+        "a picture-book check waiting: no layout until it's done (" .. tostring(why_pb) .. ", " .. tostring(why_none) .. ")")
     L.memTotalKB = function() return 124532 end
     check(not L.possible() and L.tick(fake) == nil and #forks == 0, "a DX (128 MB): never")
     L.memTotalKB = function() return 252364 end
@@ -1273,23 +1301,38 @@ print("New books laid out in the background while charging")
     busy = nil
     -- the layout it made, and whether the reader used it
     L.tick(fake)
-    forks[7].line = "ok 120 9 lay7q2x"
+    forks[7].line = "ok 120 9"
+    local CD_was, inits = package.loaded["document/credocument"], 0
+    package.loaded["document/credocument"] = { cacheInit = function() inits = inits + 1 end }
     timers[#timers].fn()
     local e8 = fake.store.downloads["8"]
-    check(e8.laid_out and e8.layout_hash == "lay7q2x", "done: the layout's hash kept")
+    check(e8.laid_out and e8.layout_secs == 9, "done: how long the layout took kept")
+    check(inits == 1, "done: the book engine reads its layout cache index again (else a book laid out after another was opened isn't found)")
+    reader = true
+    check(not L.reloadCacheIndex() and inits == 1, "…not under an open book")
+    reader = false
+    package.loaded["document/credocument"] = { cacheInit = function() error("crengine not started") end }
+    check(L.reloadCacheIndex() == false, "…nothing before the first book opened (crengine not started yet)")
+    package.loaded["document/credocument"] = CD_was
     local LogL = require("gzreader_log")
     local was_info, said = LogL.info, {}
     LogL.info = function(...) said[#said + 1] = table.concat({ ... }, " ") end
-    L.opened({ getDocumentRenderingHash = function() return "lay7q2x" end }, e8, 8)
-    L.opened({ getDocumentRenderingHash = function() return "zzz" end }, e8, 8) -- (once per book)
-    local e9 = { laid_out = 1, layout_hash = "lay7q2x" }
-    L.opened({ getDocumentRenderingHash = function() return "lay9w4k" end }, e9, 9)
-    L.opened({ getDocumentRenderingHash = function() return "lay9w4k" end }, { laid_out = 1 }, 10)
+    L.opened(nil, e8, 8, 0.2)
+    L.opened(nil, e8, 8, 30) -- (once per book)
+    L.opened(nil, { laid_out = 1, layout_secs = 40 }, 9, 12.5)
+    local OT_was = package.loaded["gzreader_opentiming"]
+    package.loaded["gzreader_opentiming"] = { cur = { phases = { ["laid out"] = require("ui/time").s(0.3) } } }
+    L.opened(nil, { laid_out = 1 }, 10)
+    package.loaded["gzreader_opentiming"] = { cur = nil }
+    L.opened(nil, { laid_out = 1 }, 11)
+    package.loaded["gzreader_opentiming"] = OT_was
     LogL.info = was_info
-    check(#said == 3 and said[1]:find("the same layout, reused", 1, true) and said[2]:find("a different layout (lay9w4k, background lay7q2x)", 1, true)
-        and said[3]:find("no hash kept by the version that laid it out, so not compared", 1, true)
-        and not said[3]:find("different", 1, true),
-        "opened: the log says whether the background layout was the reader's (" .. table.concat(said, " / ") .. ")")
+    check(#said == 4 and said[1]:find("its layout used: laid out in 0.2 s (in the background: 9 s)", 1, true)
+        and said[2]:find("laid out again, 12.5 s (in the background: 40 s)", 1, true)
+        and said[3]:find("its layout used: laid out in 0.3 s", 1, true)
+        and said[4]:find("the reader's layout time not known", 1, true),
+        "opened: the log says whether the reader used the background layout, from the time its own layout took ("
+            .. table.concat(said, " / ") .. ")")
     local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
     local ltext = src and src:read("*a") or ""
     if src then src:close() end
@@ -1297,7 +1340,7 @@ print("New books laid out in the background while charging")
         and ltext:find("oom_score_adj", 1, true) and ltext:find("lowerPriority(19)", 1, true),
         "the background process: no history or book settings written, lowest priority, the first to go if memory runs out")
     LUI.scheduleIn = real_in
-    L.isCharging, L.readerOpen, L.hasSidecar, L.memTotalKB, L.fork, L.isBusy = saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
+    L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy = saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
     L.running = nil
     os.execute("rm -rf '" .. dir .. "'")
 end)()
@@ -3828,8 +3871,16 @@ do
     Async.background = function(_fn, cb) cb({ yes = false, wide = {} }) end
     PB.PREPARE_DELAY = 0
     rawset(_G, "GZ_NO_PB_PREPARE", nil)
+    -- a book being laid out in the background: the check waits for it
+    local L_was = package.loaded["gzreader_layout"]
+    package.loaded["gzreader_layout"] = { running = { id = "9" } }
     PB.prepare(pg); PB.prepare(pg)
-    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
+    check(DocSettings:open(pg):readSetting("gzreader_picture_book") == nil and #PB.queue == 1,
+        "a background layout running: the picture-book check waits (two book processes ran a Kindle 3 out of memory)")
+    package.loaded["gzreader_layout"] = L_was
+    PB.safeNext()
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
     Async.background = orig_bg2
     check(DocSettings:open(pg):readSetting("gzreader_picture_book") == false and #PB.queue == 0,
         "a book that isn't one: noted (not checked again when it opens)")

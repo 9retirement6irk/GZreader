@@ -439,6 +439,10 @@ end
 function PB.prepareNext()
     local file = PB.queue[1]
     if not file then return end
+    -- a book being laid out in the background (gzreader_layout.lua): after it
+    -- (two book processes at once ran a Kindle 3 out of memory: the check failed)
+    local L = package.loaded["gzreader_layout"]
+    if type(L) == "table" and L.running then return UIManager:scheduleIn(30, PB.safeNext) end
     local okd, DocSettings = pcall(require, "docsettings")
     if not okd or openNow(file) or DocSettings:open(file):readSetting("gzreader_picture_book") ~= nil then
         table.remove(PB.queue, 1)
