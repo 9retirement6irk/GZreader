@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Catalog → Books: Downloaded is now On this Kindle (On this Nook)", text = "The Books page's last compartment and list, Downloaded books, is now called On this Kindle (On this Nook on a Nook), as on the Audiobooks and Music pages; its card counts the books there (\"none yet\" when there are none)." },
             { short = "The Grimmory tab is now the Catalog: Books, Audiobooks and Music pages", text = "The Grimmory tab is renamed Catalog and has pages: Books (as before), Audiobooks (Grimmory's audiobooks) and Music (Plex), on Kindles with a speaker or headphone jack. Swipe left or right, tap the next page's name under the title, or use the page-turn buttons; the title says which page you're on, and dots under it show where you are and what's next. The tab always opens on Books. On the Books page the bookcase's last compartment is now Downloaded books on every Kindle (Audiobooks have their own page). A tab you had renamed keeps its name." },
         },
     },

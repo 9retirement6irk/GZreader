@@ -7,7 +7,7 @@ common/gz_view.lua; the other views keep the list):
   how far you are) and Recently added (a "new" tag), each ending in a tied
   bundle of spines that opens the whole list;
 - a bookcase bay below, a compartment each for All books, Libraries,
-  Shelves, Authors, Series and Downloaded books (Audiobooks have their own
+  Shelves, Authors, Series and On this Kindle (Audiobooks have their own
   page since 1.27.x), each with a card clipped to it: its name, how many,
   its letter. What stands in it says what it is: spines, spines between
   bookends, a book face out, letter dividers, piles lying flat, tapes.
@@ -15,7 +15,7 @@ common/gz_view.lua; the other views keep the list):
 The page draws the browser's own root items (gzreader_browser.lua,
 rootItems: each has a gz_id), so a letter opens what it opened in the list
 (the Menu's shortcuts: Q search, W Continue reading, E Recently added, R All
-books, T Libraries, Y Shelves, U Authors, I Series, O Downloaded books). The 5-way moves between the slip, the covers and the
+books, T Libraries, Y Shelves, U Authors, I Series, O On this Kindle). The 5-way moves between the slip, the covers and the
 compartments; Press or a tap opens. Covers come from gzreader_covers.lua;
 the two lists are Grimmory's (kept like the list views keep them,
 gzreader_listcache.lua) and fetched again each time the tab opens.
@@ -134,7 +134,7 @@ end
 
 --- The compartments, in order: { id, kind } (the kind says what stands in
 --- it). Audiobooks have their own page of the Catalog tab (gzreader_catalog.lua)
---- since 1.27.x: the last one is Downloaded books, on every Kindle.
+--- since 1.27.x: the last one is On this Kindle (or Nook), on every Kindle.
 function Shop.compartments()
     return {
         { id = "all", kind = "spines" },
@@ -209,7 +209,8 @@ function Shop.cardText(id, known)
         return n and n > 0 and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), thousands(n))) or _("M4B and MP3")
     elseif id == "downloaded" then
         local n = tonumber(known.downloaded) or 0
-        return n > 0 and T(_("%1 on this Kindle"), n) or _("on this Kindle")
+        -- (its name says where: On this Kindle / Nook; as the Audiobooks and Music pages' cards)
+        return n > 0 and (n == 1 and _("1 book") or T(_("%1 books"), thousands(n))) or _("none yet")
     end
     return ""
 end
@@ -958,7 +959,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     page.cells = {}
     local names = {
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
-        series = _("Series"), audiobooks = _("Audiobooks"), downloaded = _("Downloaded"),
+        series = _("Series"), audiobooks = _("Audiobooks"), downloaded = require("gzreader_browser").hereText(),
     }
     local row
     for k, comp in ipairs(Shop.compartments()) do
