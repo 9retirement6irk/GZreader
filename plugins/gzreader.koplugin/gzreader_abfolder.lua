@@ -393,7 +393,7 @@ function Folder.open(plugin, id)
     local UIManager = require("ui/uimanager")
     local InfoMessage = require("ui/widget/infomessage")
     local _ = require("gettext")
-    UIManager:show(InfoMessage:new{ text = _("This audiobook's audio isn't on the Kindle any more. Download it again from the Grimmory tab → Audiobooks.") })
+    UIManager:show(InfoMessage:new{ text = _("This audiobook's audio isn't on the Kindle any more. Download it again from the Catalog tab → Audiobooks.") })
 end
 
 --- At start: move old storage, hook opening, make missing stand-ins.

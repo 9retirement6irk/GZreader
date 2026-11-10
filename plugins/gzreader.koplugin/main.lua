@@ -428,7 +428,7 @@ function Grimmory:onDispatcherRegisterActions()
     -- NB: in KOReader's Dispatcher, `reader = true` means "reader only" (the
     -- action is disabled in the file manager). These work everywhere: general.
     Dispatcher:registerAction("grimmory_library", {
-        category = "none", event = "ShowGrimmoryLibrary", title = _("Grimmory library"),
+        category = "none", event = "ShowGrimmoryLibrary", title = _("Catalog (Grimmory and Plex)"),
         general = true,
     })
     Dispatcher:registerAction("gzreader_notes", {
@@ -1103,7 +1103,7 @@ end
 local LAUNCHER = {
     { _("GZreader"), "app_menu", "onGzLauncherMenu" },
     { _("Continue"), "tab_continue", "onGzLauncherContinue", "library" },
-    { _("Grimmory"), "library", "onGzLauncherGrimmory", "library" },
+    { _("Catalog"), "library", "onGzLauncherGrimmory", "library" },
     { _("Search"), "quick_search", "onGzLauncherSearch", "library" },
     { _("History"), "tab_history", "onGzLauncherHistory", "library" },
     { _("Phone"), "quick_connections", "onGzLauncherPhone", "library" },

@@ -178,13 +178,14 @@ local defaults = {
             ct_calendar = true,
             ct_music = false, -- GZreader: Music (Plex), off until turned on
         },
-        -- Grimmory build: a navbar tab that opens the Grimmory library.
+        -- Grimmory build: a navbar tab that opens the Grimmory library
+        -- (GZreader: the Catalog: books, audiobooks, music; id kept).
         custom_tabs = {
             {
                 id = "ct_grimmory",
                 type = "action",
                 action = { grimmory_library = true },
-                label = "Grimmory",
+                label = "Catalog",
                 icon = "library",
             },
             -- GZreader: notes from Memos as sticky notes (replaces Favorites)

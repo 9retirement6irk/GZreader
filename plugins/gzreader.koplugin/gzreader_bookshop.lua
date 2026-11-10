@@ -1,5 +1,5 @@
 --[[--
-The Grimmory tab's first page as a bookshop (the Bookshelf view,
+The Catalog tab's Books page as a bookshop (the Bookshelf view,
 common/gz_view.lua; the other views keep the list):
 
 - a search slip pinned to the wall;
@@ -7,16 +7,15 @@ common/gz_view.lua; the other views keep the list):
   how far you are) and Recently added (a "new" tag), each ending in a tied
   bundle of spines that opens the whole list;
 - a bookcase bay below, a compartment each for All books, Libraries,
-  Shelves, Authors, Series and Audiobooks (Downloaded books on Kindles
-  without a speaker), each with a card clipped to it: its name, how many,
+  Shelves, Authors, Series and Downloaded books (Audiobooks have their own
+  page since 1.27.x), each with a card clipped to it: its name, how many,
   its letter. What stands in it says what it is: spines, spines between
   bookends, a book face out, letter dividers, piles lying flat, tapes.
 
 The page draws the browser's own root items (gzreader_browser.lua,
 rootItems: each has a gz_id), so a letter opens what it opened in the list
 (the Menu's shortcuts: Q search, W Continue reading, E Recently added, R All
-books, T Libraries, Y Shelves, U Authors, I Series, O Downloaded books,
-P Audiobooks). The 5-way moves between the slip, the covers and the
+books, T Libraries, Y Shelves, U Authors, I Series, O Downloaded books). The 5-way moves between the slip, the covers and the
 compartments; Press or a tap opens. Covers come from gzreader_covers.lua;
 the two lists are Grimmory's (kept like the list views keep them,
 gzreader_listcache.lua) and fetched again each time the tab opens.
@@ -134,16 +133,16 @@ end
 ---------------------------------------------------------------- what goes where
 
 --- The compartments, in order: { id, kind } (the kind says what stands in
---- it). Audiobooks only where there's a speaker; Downloaded books otherwise.
-function Shop.compartments(audio)
+--- it). Audiobooks have their own page of the Catalog tab (gzreader_catalog.lua)
+--- since 1.27.x: the last one is Downloaded books, on every Kindle.
+function Shop.compartments()
     return {
         { id = "all", kind = "spines" },
         { id = "libraries", kind = "bookends" },
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        -- (no speaker: no audiobooks; an empty compartment, cobwebs in it)
-        audio and { id = "audiobooks", kind = "tapes" } or { kind = "empty" },
+        { id = "downloaded", kind = "downloaded" },
     }
 end
 
@@ -961,9 +960,8 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
         series = _("Series"), audiobooks = _("Audiobooks"), downloaded = _("Downloaded"),
     }
-    local audio = by.audiobooks ~= nil
     local row
-    for k, comp in ipairs(Shop.compartments(audio)) do
+    for k, comp in ipairs(Shop.compartments()) do
         local spec = { kind = comp.kind }
         if comp.id then
             local root = by[comp.id]

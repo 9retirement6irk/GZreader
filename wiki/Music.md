@@ -3,9 +3,11 @@ Albums and playlists from your Plex server, on Kindles with a speaker or headpho
 Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
 playlists from your Plex Media Server, played while you read.
 
-The **Music tab** is off until you turn it on: Settings → Interface → Navbar → Tabs →
-Music (or in the setup guide's tab page). The tab bar holds up to 7 tabs. Music
-is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
+Music is the **Catalog** tab's third page: swipe left twice from Books, or
+use the page-turn button ([the Catalog tab](Grimmory-Library#the-catalog-tab)).
+There is also a **Music tab**, off until you turn it on: Settings → Interface →
+Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds up
+to 7 tabs. Music is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
 in a book.
 
 While music plays, *Now playing* is a portable CD player with headphones: the

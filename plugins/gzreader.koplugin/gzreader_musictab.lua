@@ -178,7 +178,9 @@ function Tab:refreshRoot()
     self.menu:switchItemTable(nil, self:rootItems())
 end
 
-function Tab:rootItems()
+--- The library's first list; `after`: what to do once signed in to Plex
+--- (the Catalog's Music page shows itself again; here, this list).
+function Tab:rootItems(after)
     local plugin = self.plugin
     if not require("gzreader_touch").audio() then
         return { { text = _("This Kindle has no speaker or headphone jack, so it can't play music. The Kindle 2, Keyboard, DX and Touch can."),
@@ -204,7 +206,7 @@ function Tab:rootItems()
         items[#items + 1] = { text = T(_("Plex: %1 · %2"), s.username or "?", (s.server or {}).name or "?"),
             callback = function() self:openAccount() end }
     else
-        for _i, it in ipairs(Tab.signInItems(plugin, function() self:replace(_("Music"), self:rootItems()) end)) do items[#items + 1] = it end
+        for _i, it in ipairs(Tab.signInItems(plugin, after or function() self:replace(_("Music"), self:rootItems()) end)) do items[#items + 1] = it end
     end
     return items
 end

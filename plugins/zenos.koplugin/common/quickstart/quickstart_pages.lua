@@ -956,7 +956,7 @@ function M.build_install_pages(ctx)
             title       = _("Synced with Grimmory"),
             icon_file   = _plugin_root .. "/icons/library.svg",
             icon_size   = 120,
-            description = _("Books from the Grimmory tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
+            description = _("Books from the Catalog tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
                 .. _("Offline? It syncs when you're back online."),
         },
 

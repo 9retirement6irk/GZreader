@@ -2,7 +2,8 @@ Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): 
 
 ## Audiobooks (experimental)
 
-Grimmory tab → Audiobooks.
+Catalog tab → **Audiobooks** page (swipe left from Books, or the page-turn
+button) → All audiobooks.
 Pick one to download it to `Grimmory/Audiobooks/<id>/` (single M4B file,
 converted for the Kindle, or one file per track for folder audiobooks), then the player opens:
 a cassette walkman with headphones. The cassette's label has the book's title,

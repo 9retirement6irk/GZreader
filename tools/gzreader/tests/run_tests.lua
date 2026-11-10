@@ -683,6 +683,86 @@ do -- Paused books: the app's /continue-reading leaves them out, the web shows t
     b:openSimple("continue-reading", "Continue reading")
 end
 
+print("Catalog tab: Books, Audiobooks and Music pages")
+;(function()
+    local Catalog = require("gzreader_catalog")
+    check(table.concat(Catalog.sections(true), ",") == "books,audiobooks,music" and table.concat(Catalog.sections(false), ",") == "books",
+        "pages: Books, Audiobooks, Music with a speaker; Books alone without")
+    local all = Catalog.sections(true)
+    check(Catalog.step(all, "books", 1) == "audiobooks" and Catalog.step(all, "music", -1) == "audiobooks"
+        and Catalog.step(all, "music", 1) == nil and Catalog.step(all, "books", -1) == nil, "pages: next and before, nothing past the ends")
+    local p1, p2, p3 = Catalog.stripParts(all, "books"), Catalog.stripParts(all, "audiobooks"), Catalog.stripParts(all, "music")
+    check(p1.left == nil and p1.dots == "● ○ ○" and p1.right == "Audiobooks ›" and p2.left == "‹ Books" and p2.dots == "○ ● ○"
+        and p2.right == "Music ›" and p3.left == "‹ Audiobooks" and p3.right == nil and Catalog.stripParts({ "books" }, "books") == nil,
+        "the strip under the title: the page before, a dot a page, the next page (none with one page)")
+    check(Catalog.hit(p1, 590, 0, 600) == 1 and Catalog.hit(p1, 10, 0, 600) == nil and Catalog.hit(p2, 10, 0, 600) == -1
+        and Catalog.hit(p2, 300, 0, 600) == nil and Catalog.hit(p3, 590, 0, 600) == nil, "the strip: a tap on a side turns that way, if there's a page there")
+    check(Catalog.title("books") == "Books" and Catalog.title("audiobooks") == "Audiobooks" and Catalog.title("music") == "Music",
+        "the title says which page")
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local cb = Browser:new(plugin)
+    cb:show()
+    local m = cb.menu
+    check(cb.section == "books" and m.title == "Books" and m.item_table.gz_catalog == "books" and m.item_table[1].gz_id == "search"
+        and m.item_table.gz_root, "the Catalog opens on Books (the bookshop)")
+    local last = m.item_table[#m.item_table]
+    check(last.gz_id == "audiobooks" and last.text == "Audiobooks", "the Books list's last line is the Audiobooks page (its letter on keyboard Kindles)")
+    last.callback()
+    check(cb.section == "audiobooks" and #m.item_table_stack == 0, "…and turns to it (a page, not a list inside Books)")
+    cb:openSection("books")
+    m.page, m.page_num = 1, 1
+    m:onNextPage()
+    check(cb.section == "audiobooks" and m.title == "Audiobooks" and m.item_table.gz_catalog == "audiobooks"
+        and m.item_table[1].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
+    m:onNextPage()
+    local music = m.item_table
+    check(cb.section == "music" and m.title == "Music" and music.gz_catalog == "music" and #music > 0 and not music.gz_root,
+        "and again: the Music page (Plex; not drawn as the bookshop)")
+    check(Browser.rootItems({ section = "audiobooks" })[1].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
+        "the Audiobooks page: All audiobooks")
+    m:onNextPage()
+    check(cb.section == "music" and m.item_table == music, "nothing past Music")
+    m:onPrevPage(); m:onPrevPage()
+    check(cb.section == "books" and m.item_table[1].gz_id == "search", "a swipe right goes back, to Books")
+    -- a page with more than one page of its own turns those first
+    m.page, m.page_num = 1, 2
+    m:onNextPage()
+    check(cb.section == "books", "a page's own second page comes first (the Menu's own turn)")
+    m.page, m.page_num = 1, 1
+    m:onNextPage()
+    cb:push("All audiobooks", { { text = "Book 31" } })
+    m:onNextPage()
+    check(cb.section == "audiobooks" and #m.item_table_stack == 1 and m.item_table[1].text == "Book 31",
+        "inside a list (All audiobooks), page turns stay the list's")
+    local b2 = Browser:new(plugin)
+    b2:show({ section = "music" })
+    check(b2.section == "music" and b2.menu.title == "Music", "the Catalog can open on another page")
+    require("gzreader_touch").audio = function() return false end
+    local b3 = Browser:new(plugin)
+    b3:show({ section = "music" })
+    check(b3.section == "books" and b3.menu.onNextPage and not b3:turnSection(1), "no speaker: Books only, nothing to turn to")
+    require("gzreader_touch").audio = saved_audio
+    -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself
+    local mf = io.open(arg[1] .. "/../zenos.koplugin/config/manager.lua", "rb")
+    local msrc = mf and mf:read("*a") or ""
+    if mf then mf:close() end
+    local from = msrc:find("if cfg._meta.gz_catalog_label_migrated ~= true then", 1, true)
+    local to = from and select(2, msrc:find("cfg._meta.gz_catalog_label_migrated = true%s+changed = true%s+end", from))
+    local migrate = from and to and load("return function(cfg) local changed = false\n" .. msrc:sub(from, to) .. "\nreturn changed end", "catalog migration", "t", { type = type, ipairs = ipairs })()
+    local function cfgWith(label)
+        return { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory", label = label }, { id = "ct_notes", label = "Notes" } } } }
+    end
+    local c1, c2, c3 = cfgWith("Grimmory"), cfgWith("My books"), cfgWith(nil)
+    local ok_m = migrate and migrate(c1) and migrate(c2) and migrate(c3)
+    local c4 = cfgWith("Grimmory")
+    c4._meta.gz_catalog_label_migrated = true
+    check(ok_m and c1.navbar.custom_tabs[1].label == "Catalog" and c2.navbar.custom_tabs[1].label == "My books"
+        and c3.navbar.custom_tabs[1].label == "Catalog" and c1.navbar.custom_tabs[2].label == "Notes"
+        and migrate(c4) == false and c4.navbar.custom_tabs[1].label == "Grimmory",
+        "the tab's label: Grimmory becomes Catalog once; a name of your own stays")
+end)()
+
 print("Libraries, authors, series (local index of readable books)")
 local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
@@ -720,8 +800,8 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments(true)[6].id == "audiobooks" and Shop.compartments(false)[6].id == nil and Shop.compartments(false)[6].kind == "empty",
-        "compartments: Audiobooks with a speaker, an empty one (cobwebs) without")
+    check(Shop.compartments()[6].id == "downloaded" and Shop.compartments()[6].kind == "downloaded" and #Shop.compartments() == 6,
+        "compartments: the last is Downloaded books on every Kindle (Audiobooks are the Catalog's next page)")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
         index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = { count = 3 }, Y = { count = 1 } } },
@@ -1810,7 +1890,8 @@ do
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
     local Browser = require("gzreader_browser")
     local root = texts(Browser.rootItems({}))
-    check(root:match("|Downloaded books|$") and not root:match("Audiobooks"), "Paperwhite: no Audiobooks in the Grimmory tab " .. root)
+    check(root:match("|Downloaded books|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
+        "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }
     local saved_model = package.loaded["modules/menu/app_launcher/model"]

@@ -47,12 +47,12 @@ and tokens are sent once to the Kindle and only Grimmory's login tokens,
 the Memos token and the CalDAV password are kept (never logged).
 
 Where to open it: the setup guide's first page (**Set up from your browser**),
-the quick panel → **Send books**, the Grimmory, Notes and Calendar tabs'
+the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
 
 ## Connect to Grimmory
 
-Open the **Grimmory** tab. Grimmory's options (connection, sync, bookmarks,
+Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
 highlights, auto-download shelf) are in **Settings → Connections → Grimmory**
 ; Memos (the Notes tab) is in **Settings →
 Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi only
