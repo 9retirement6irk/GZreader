@@ -7,6 +7,10 @@ All books (A–Z), **Libraries**, **Authors** (with search), **Series** (in
 series order, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
 readable books (built in the background, refreshed daily), so authors or
 series with only audiobooks don't appear, and the lists open instantly.
+To build it again now (books removed from Grimmory still listed, new ones
+missing): **Refresh list from Grimmory** at the top of Authors or Series, or
+**Settings → Connections → Grimmory → Rebuild library**, which also forgets
+the saved lists below.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
 

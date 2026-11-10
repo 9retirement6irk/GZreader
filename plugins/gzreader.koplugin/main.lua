@@ -466,6 +466,23 @@ local function closeTouchMenu(touchmenu)
     if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
 end
 
+--- Settings → Connections → Grimmory → Rebuild library: the library index
+--- from Grimmory again (as Refresh list from Grimmory does) and the saved
+--- lists forgotten, so books removed there go here too.
+function Grimmory:rebuildLibrary()
+    Net.run(function()
+        Log.info("library: rebuild asked for")
+        pcall(function() require("gzreader_listcache").clear() end)
+        Index.build(self, true, function(data, err)
+            if data then
+                UIManager:show(InfoMessage:new{ text = T(_("Library rebuilt: %1 books."), tostring(data.total or "?")), timeout = 4 })
+            else
+                self:showError(err)
+            end
+        end)
+    end, { reason = "rebuilding the library", usb = true })
+end
+
 function Grimmory:menuItems()
     local paired = self.api:isPaired()
     local items = {
@@ -533,6 +550,14 @@ function Grimmory:menuItems()
                 elseif not Helper.enabled() and Helper.endpoint() then Helper.stop() end
             end,
         } or nil,
+        {
+            text = _("Rebuild library"),
+            help_text = _("Loads the list of your books from Grimmory again (what Authors, Series and searching use) and forgets the saved lists, so books removed from Grimmory disappear here and new ones show. The same as Refresh list from Grimmory in Authors or Series; it's also done by itself once a day."),
+            enabled_func = function() return self.api:isPaired() end,
+            keep_menu_open = true,
+            callback = function() self:rebuildLibrary() end,
+            separator = true,
+        },
         {
             text = paired and _("Reconnect from your browser (QR code)") or _("Connect from your browser (QR code)"),
             help_text = _("Shows a QR code and this Kindle's address: the page they open in a browser (phone or computer) connects Grimmory, Notes and calendars, and sends books to this Kindle."),
