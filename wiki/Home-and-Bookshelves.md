@@ -19,7 +19,10 @@ it runs across the top of Home as on the other tabs, and moves back beside
 the book once you open one.
 
 - **Downloads** has as many shelves as the screen holds, a page at a time
-  (on the DX four, so the books are bigger). Folders stand as light grey
+  (on the DX four, so the books are bigger), each filled with as many books
+  as their spines leave room for. On a Kindle with a keyboard the letter keys
+  go from Q to L (19 books); the books after L on a page have no letter (the
+  5-way reaches them), and Del isn't one of them. Folders stand as light grey
   spines with a tab on top. A book that finishes downloading while
   Downloads is on screen appears in it straight away. Its title bar says
   *Downloads* between the clock and the battery, as the other tabs name

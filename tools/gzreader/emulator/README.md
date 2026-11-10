@@ -112,6 +112,9 @@ Press/Back answer), and the order things happen in on a first start.
   page with its cover, and the Downloads tab taking in a finished download.
 - `dx_shelves.lua` (`GZ_EMU_MODEL=dx`, `GZ_EMU_BOOKS` a folder of EPUBs, e.g.
   the demo library's) — the DX's Home with two shelves and Downloads with four.
+- `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
+  with 40 books: a page takes as many as fit, none hidden, letters Q to L only,
+  Del opens nothing, L opens its book.
 - `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
   `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
   books with real covers) — Lua memory and RSS while paging through All
