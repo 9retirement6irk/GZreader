@@ -12,6 +12,8 @@ servers, in pages:
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
 (Kindle 2, 3, DX, Touch); the others have the Books page alone.
 
+![The Catalog's Books page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-books.png) ![A book's page: Download, or Download & open](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/download-confirm.png)
+
 The title says which page you're on. Under it, a strip shows the page
 before (‹ Books), a dot for each page with the current one filled, and the
 next page (Audiobooks ›). To turn to another page:

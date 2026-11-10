@@ -1,4 +1,4 @@
-GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currently `v2026.07.1`) with [ZenOS](https://github.com/xZenLabs/zen-os) (currently `4.3.0`) as its interface. Most of what it adds is its own plugin, `gzreader.koplugin`; where it had to change KOReader or ZenOS, the changes are marked in the code and checked by a test (`tools/gzreader/tests/keeps.py`), so an upstream update can't drop them unnoticed. Upstream updates are merged with `tools/gzreader/upstream.sh`.
+GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currently `v2026.07.1`) with [ZenOS](https://github.com/xZenLabs/zen-os) (currently `4.3.1`) as its interface. Most of what it adds is its own plugin, `gzreader.koplugin`; where it had to change KOReader or ZenOS, the changes are marked in the code and checked by a test (`tools/gzreader/tests/keeps.py`), so an upstream update can't drop them unnoticed. Upstream updates are merged with `tools/gzreader/upstream.sh`.
 
 ## Compared with KOReader
 
