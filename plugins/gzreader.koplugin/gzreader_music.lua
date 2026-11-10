@@ -691,7 +691,26 @@ end
 --- Play collection c (downloaded, or downloading it now: from the first track).
 function Music.play(plugin, c, start, shuffle)
     local p = Player:new(plugin, c, start, shuffle)
+    pcall(Music.notePlayed, plugin, c)
     return p:play() and p
+end
+
+Music.RECENT = 20 -- (albums and playlists kept for the Catalog's Recently played)
+
+--- Remember an album or playlist played here (newest first, once each) for
+--- the Catalog's Music page: Recently played. Plex only knows what Plex's
+--- own players played.
+function Music.notePlayed(plugin, c)
+    if type(c) ~= "table" or not c.key or (c.kind ~= "album" and c.kind ~= "playlist") then return end
+    local store = plugin.store
+    local list = type(store.music_recent) == "table" and store.music_recent or {}
+    local out = { { type = c.kind, key = c.key, title = c.title, artist = c.artist, year = c.year, thumb = c.thumb,
+        count = type(c.tracks) == "table" and #c.tracks or nil, played = os.time() } }
+    for _i, it in ipairs(list) do
+        if type(it) == "table" and it.key ~= c.key and #out < Music.RECENT then out[#out + 1] = it end
+    end
+    store.music_recent = out
+    if plugin.save then pcall(plugin.save, plugin) end
 end
 
 --- Every downloaded track at random.

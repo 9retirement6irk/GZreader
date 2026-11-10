@@ -13,6 +13,9 @@ Grimmory has no small cover size: its thumbnail is 250 x 350 (audiobooks
   drawn: beginPage() marks where a page starts (1.12.2 could free a cover
   still on screen when several were drawn in the same second, and the
   next screen refresh then read freed memory).
+Plex audiobooks (ids "plex-<key>", gzreader_plexaudio.lua) are kept here too,
+from Plex's own scaled copy of the picture noted for them (notePlex), never
+asked of Grimmory.
 ]]
 
 local DataStorage = require("datastorage")
@@ -26,7 +29,14 @@ local Covers = {
     page_start = 0,        -- the tick at which the page being drawn began
     pending = nil,         -- the request waiting for the running fetch
     running = false,
+    plex_thumbs = {},      -- Plex audiobook id -> Plex's picture (its thumb path)
+    plex_tried = {},       -- (asked for once a session)
 }
+
+--- The Plex picture of Plex audiobook `id`, to fetch when it shows.
+function Covers.notePlex(id, thumb)
+    if id and thumb then Covers.plex_thumbs[tostring(id)] = thumb end
+end
 
 function Covers.dir()
     local dir = DataStorage:getDataDir() .. "/cache/gzreader-covers"
@@ -104,13 +114,20 @@ end
 --- background, then on_done(got). Only when Wi-Fi is already up; one fetch
 --- at a time (a newer request replaces one still waiting).
 function Covers.fetch(plugin, wanted, on_done)
-    local items = {}
+    local items, plex = {}, {}
     for _i, w in ipairs(wanted) do
         if Covers.state(w.id, w.kind) == "missing" then
-            items[#items + 1] = { id = w.id, kind = w.kind, path = Covers.path(w.id, w.kind) }
+            local id = tostring(w.id)
+            if id:match("^plex%-") then
+                local thumb = Covers.plex_thumbs[id]
+                if thumb and not Covers.plex_tried[id] then plex[#plex + 1] = { id = id, thumb = thumb, path = Covers.path(w.id, w.kind) } end
+            else
+                items[#items + 1] = { id = w.id, kind = w.kind, path = Covers.path(w.id, w.kind) }
+            end
         end
     end
-    if #items == 0 then return false end
+    if #plex > 0 then Covers.fetchPlex(plugin, plex, on_done) end
+    if #items == 0 then return #plex > 0 end
     if not (plugin.api and plugin.api:isPaired()) then return false end
     local ok_net, Net = pcall(require, "gzreader_net")
     if not (ok_net and (Net.connected() or plugin.api.offline)) then return false end
@@ -141,6 +158,28 @@ function Covers.fetch(plugin, wanted, on_done)
 end
 
 --- Forget the shrunk covers in memory (e.g. leaving the Grimmory tab).
+--- Plex audiobooks' pictures (Plex scales them: 300 px), in the background.
+function Covers.fetchPlex(plugin, items, on_done)
+    local ok_net, Net = pcall(require, "gzreader_net")
+    if Covers.plex_running or not (ok_net and Net.connected()) then return false end
+    local plex = require("gzreader_music").plex(plugin)
+    if not plex:isConnected() then return false end
+    Covers.plex_running = true
+    for _i, it in ipairs(items) do Covers.plex_tried[it.id] = true end
+    require("gzreader_async").run(nil, function()
+        local got = 0
+        for _i, it in ipairs(items) do
+            local tmp = it.path .. ".part"
+            if plex:downloadThumb(it.thumb, tmp, 300) and os.rename(tmp, it.path) then got = got + 1 else os.remove(tmp) end
+        end
+        return got
+    end, function(got)
+        Covers.plex_running = false
+        if on_done then pcall(on_done, tonumber(got) or 0) end
+    end, "plex audiobook covers")
+    return true
+end
+
 function Covers.release()
     for _k, v in pairs(Covers.memory) do pcall(v.bb.free, v.bb) end
     Covers.memory = {}

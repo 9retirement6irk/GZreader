@@ -22,3 +22,12 @@ picture capped at the screen width was stretched to full height. With `100%`
 crengine keeps each picture's shape. The scans are only ~385 x 625, so
 they're enlarged about 1.3x to fill 800 pixels; that's why they look softer
 than real text. Smooth scaling makes them much less jagged.
+
+Before fitting a book, GZreader measures its pictures once, in the
+background, to find the wide ones (a publisher's logo) and keep them at
+their own size; books recognized before their first open had this done
+then. Only one book is measured at a time: a second picture book opened (or
+**Fit pictures** tapped in it) while the first one is still being measured
+is fitted right after it. Until 2026-11-09's fix it was left as it was, and
+Fit pictures seemed to do nothing. When fitting has to wait for the
+measuring, a note says the pages will be fitted in a moment.

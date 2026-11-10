@@ -54,14 +54,15 @@ local function text(bb, str, face, x, y, max_w, color, bold)
     return s
 end
 
---- A picture scaled to fit w x h (kept: covers are small).
+--- A picture scaled to fit w x h (kept: covers are small); `fill`: to cover
+--- w x h instead (the bigger scale: what sticks out is cut off when drawn).
 local scaled = {}
-local function fit(src, w, h)
+local function fit(src, w, h, fill)
     if not src then return nil end
-    local key = tostring(src) .. w .. "x" .. h
+    local key = tostring(src) .. w .. "x" .. h .. (fill and "f" or "")
     if scaled.key == key then return scaled.bb end
     if scaled.bb then scaled.bb:free() end
-    local k = math.min(w / src:getWidth(), h / src:getHeight())
+    local k = (fill and math.max or math.min)(w / src:getWidth(), h / src:getHeight())
     local ok, bb = pcall(function()
         return require("ui/renderimage"):scaleBlitBuffer(src, math.max(1, math.floor(src:getWidth() * k)),
             math.max(1, math.floor(src:getHeight() * k)), false)
@@ -267,6 +268,9 @@ end
 --- state = { cover_bb, track (number), time (text), playing }
 local CD = WidgetContainer:extend{ w = 300, state = nil }
 Deck.CD = CD
+--- The disc's circles at the drawing's scale (360 wide): the lid's window is
+--- r 80 (cd_player.svg), so the disc fills it and the cover nearly all of it.
+CD.DISC = { disc = 80, label = 77, hub = 15, hole = 9, spindle = 5 }
 
 function CD:getSize() return Geom:new{ w = self.w, h = math.floor(self.w * 300 / 360) } end
 
@@ -279,18 +283,15 @@ function CD:paintTo(bb, x, y)
     local img = body("cd_player", w, h)
     if img then bb:alphablitFrom(img, x, y, 0, 0, img:getWidth(), img:getHeight()) end
     local st = self.state or {}
-    -- the disc, seen through the lid
+    -- the disc, filling the lid's window (cd_player.svg: r 80)
+    local D = CD.DISC
     local dx, dy = x + R(180), y + R(126)
-    bb:paintCircle(dx, dy, R(78), Blitbuffer.gray(0.12))
-    for _i, r in ipairs({ 72, 64, 56 }) do bb:paintCircle(dx, dy, R(r), Blitbuffer.gray(0.3), 1) end
-    for i = 0, R(30) do -- (a shine)
-        local a = math.pi * (1.1 + i / R(30) * 0.35)
-        bb:paintRect(dx + math.floor(math.cos(a) * R(66)), dy + math.floor(math.sin(a) * R(66)), math.max(1, R(3)), math.max(1, R(3)), Blitbuffer.COLOR_WHITE)
-    end
-    -- the label: the album's cover, round
-    local rl = R(44)
+    bb:paintCircle(dx, dy, R(D.disc), Blitbuffer.gray(0.12))
+    -- the label: the album's cover printed over the whole disc, a thin
+    -- silver rim left round it (it was a small label in the middle, 44)
+    local rl = R(D.label)
     bb:paintCircle(dx, dy, rl, Blitbuffer.gray(0.4))
-    local cover = fit(st.cover_bb, 2 * rl, 2 * rl)
+    local cover = fit(st.cover_bb, 2 * rl, 2 * rl, true)
     if cover then
         local cw, ch = cover:getWidth(), cover:getHeight()
         for row = -rl, rl - 1 do
@@ -303,9 +304,17 @@ function CD:paintTo(bb, x, y)
             end
         end
     end
-    bb:paintCircle(dx, dy, R(10), Blitbuffer.gray(0.08))
-    bb:paintCircle(dx, dy, R(10), Blitbuffer.gray(0.5), 1)
-    bb:paintCircle(dx, dy, R(4), Blitbuffer.gray(0.85))
+    bb:paintCircle(dx, dy, rl, Blitbuffer.gray(0.5), 1)
+    for i = 0, R(22) do -- (a shine on the rim)
+        local a = math.pi * (1.15 + i / R(22) * 0.3)
+        local r = R((D.label + D.disc) / 2)
+        bb:paintRect(dx + math.floor(math.cos(a) * r), dy + math.floor(math.sin(a) * r), math.max(1, R(2)), math.max(1, R(2)), Blitbuffer.COLOR_WHITE)
+    end
+    -- the clear ring round the hole, and the player's spindle in it
+    bb:paintCircle(dx, dy, R(D.hub), Blitbuffer.gray(0.08))
+    bb:paintCircle(dx, dy, R(D.hub), Blitbuffer.gray(0.35), 1)
+    bb:paintCircle(dx, dy, R(D.hole), Blitbuffer.gray(0.5), 1)
+    bb:paintCircle(dx, dy, R(D.spindle), Blitbuffer.gray(0.85))
     -- the display: ▶ / ❚❚, the track, the time
     local lx, ly, lw, lh = x + R(146), y + R(226), R(68), R(22)
     local mark = R(9)

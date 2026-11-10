@@ -360,9 +360,17 @@ local function stopFifoWriter()
     os.remove(TTS.FIFO_WRITER_PID)
 end
 
-function TTS.cancel()
-    intProp("com.lab126.ttsd", "cancelSnippetPlayback", 1)
-    intProp("com.lab126.tts", "stop", 1)
+--- Stop what the Kindle's voice is saying. Only the properties this Kindle's
+--- voice has: a Kindle 2/DX (playFile, one sentence at a time) has no
+--- com.lab126.ttsd, and setting its cancelSnippetPlayback failed there, a
+--- line in the system log each time a book closed. No voice set up: nothing
+--- can be speaking, nothing sent.
+function TTS.cancel(template)
+    template = template or TTS.template()
+    if template then
+        if not TTS.oneAtATime(template) then intProp("com.lab126.ttsd", "cancelSnippetPlayback", 1) end
+        intProp("com.lab126.tts", "stop", 1)
+    end
     stopFifoWriter()
 end
 
@@ -908,8 +916,9 @@ function Reader:stop()
     local was_active = self.active
     self.active, self.paused = false, false
     self.queue = {}
-    TTS.cancel()
-    if was_active then TTS.stopEvents(); TTS.cleanup() end
+    -- (only when it was reading: a book closing without read aloud used to
+    -- start lipc-set-prop for nothing, where the lipc library doesn't load)
+    if was_active then TTS.cancel(); TTS.stopEvents(); TTS.cleanup() end
     self.said = nil
     self:clearHighlight()
 end

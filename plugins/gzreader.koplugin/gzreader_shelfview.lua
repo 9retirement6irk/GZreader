@@ -45,6 +45,7 @@ local function S(px) return Screen:scaleBySize(px) end
 local Order = require("gzreader_shelforder")
 local View = {
     ROW_H = 190,     -- a shelf (px at 160 dpi), books and board
+    KEYS = 19,       -- letter keys on the shelves: Q to L (not Del; after L, none)
     SPECIAL = Order.SPECIAL,
     SPECIAL_ORDER = Order.SPECIAL_ORDER,
     specialOf = Order.specialOf,
@@ -89,10 +90,68 @@ local function turnRoom(row_h)
     return math.max(0, face_w - S(Shelf().MIN_SPINE))
 end
 
---- How many spines' room a device takes.
-local function deviceSlots(name, row_h)
-    local w = deviceSize(name, row_h)
-    return math.ceil((w + S(10)) / S(Shelf().MAX_SPINE))
+--- An item's width on a shelf, as buildUI makes it (spines' widths come from
+--- their path: no book needs reading).
+function View.itemWidth(entry)
+    local case = View.caseOf(entry)
+    if case == "tape" then return S(20) elseif case == "cd" then return S(14) end
+    local p = entry.path
+    if not entry.is_file and type(entry.series_items) == "table" and type(entry.series_items[1]) == "table" then
+        p = entry.series_items[1].path or p -- (a series: its first book's spine)
+    end
+    if p then return Shelf().look({ path = p }, S(100)).w end
+    return Shelf().look({ title = (entry.text or ""):gsub("/$", "") }, S(100)).w
+end
+
+--- Do item_table[first + 1 .. first + n] fit on `rows` shelves (the devices
+--- on the first one's right, the room for a turned book on each)?
+function View.pageFits(items, first, n, rows, row_h, width)
+    local device_room, widths = 0, {}
+    for i = first + 1, math.min(#items, first + n) do
+        local e = items[i]
+        local special = View.specialOf(e)
+        if special then
+            device_room = device_room + deviceSize(special, row_h) + S(10)
+        else
+            widths[#widths + 1] = View.itemWidth(e)
+        end
+    end
+    local function limit(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) end
+    local r, x = 1, 0
+    for _i, w in ipairs(widths) do
+        if x + w > limit(r) and x > 0 then
+            if r >= rows then return false end
+            r, x = r + 1, 0
+        end
+        x = x + w
+    end
+    return x <= limit(r) or #widths == 0
+end
+
+--- How many items a page takes: as many as fit on every page, by the books'
+--- own widths (it was rows × the widest spine, so a shelf of narrow spines
+--- ended with room for three more).
+function View.perPage(items, rows, row_h, width)
+    local key = table.concat({ tostring(items), #items, rows, row_h, width }, " ")
+    if View._per_page and View._per_page.key == key then return View._per_page.n end -- (once per list and size)
+    local n = View.countPerPage(items, rows, row_h, width)
+    View._per_page = { key = key, n = n }
+    return n
+end
+
+function View.countPerPage(items, rows, row_h, width)
+    local Sh = Shelf()
+    local least = math.max(1, rows * math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Sh.MAX_SPINE))) - 2)
+    local most = rows * math.max(3, math.floor((width - S(16)) / S(Sh.MIN_SPINE)))
+    if #items == 0 then return least end
+    for n = most, least + 1, -1 do
+        local ok = true
+        for first = 0, #items - 1, n do
+            if not View.pageFits(items, first, n, rows, row_h, width) then ok = false; break end
+        end
+        if ok then return n end
+    end
+    return least
 end
 
 function View.recalculateDimen(menu)
@@ -111,13 +170,7 @@ function View.recalculateDimen(menu)
         if cap then rows = math.min(rows, cap) end
         local row_h = math.floor(avail / rows)
         local per_row = math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Shelf().MAX_SPINE)))
-        -- the special folders at the start of the list: the room they take
-        local extra = 0
-        for i = 1, math.min(#View.SPECIAL_ORDER + 1, #menu.item_table) do
-            local name = View.specialOf(menu.item_table[i])
-            if name then extra = extra + deviceSlots(name, row_h) - 1 end
-        end
-        return rows, row_h, per_row, math.max(1, rows * per_row - extra)
+        return rows, row_h, per_row, View.perPage(menu.item_table or {}, rows, row_h, width)
     end
     local avail = menu.inner_dimen.h - menu.others_height
     local rows, row_h, per_row, perpage = plan(avail)
@@ -339,7 +392,7 @@ local function deviceImage(name, w, h)
 end
 
 local function badge(bb, menu, item, x, y, w, h)
-    local letter = menu.is_enable_shortcut and menu.item_shortcuts and menu.item_shortcuts[item.slot]
+    local letter = item.slot <= View.KEYS and menu.is_enable_shortcut and menu.item_shortcuts and menu.item_shortcuts[item.slot]
     if not letter then return end
     local side = math.min(S(22), w - S(4))
     if side < S(12) then return end
@@ -708,7 +761,7 @@ function View.buildUI(menu)
     menu._gz_shelves = true
     local note
     if #books == 0 and #devices == 0 and menu.page == 1 then
-        note = { _("No books yet"), _("Books you download from the Grimmory tab appear here.") }
+        note = { _("No books yet"), _("Books you download from the Catalog tab appear here.") }
     end
     for rr = 1, rows do
         local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {},
@@ -744,6 +797,20 @@ function View.install()
         return dim(menu, ...)
     end
     if FileChooser._updateItemsBuildUI == build then FileChooser._updateItemsBuildUI = MosaicMenu._updateItemsBuildUI end
+    -- letter keys: Q to L only (KEYS); after L an item has none, and Del and
+    -- the bottom row's letters (the tab bar's) aren't taken for the shelves
+    local select_key = FileChooser.onSelectByShortCut
+    FileChooser.onSelectByShortCut = function(fc, arg, keyevent)
+        if View.applies(fc) and type(keyevent) == "table" then
+            for k, v in ipairs(fc.item_shortcuts or {}) do
+                if v == keyevent.key then
+                    if k > View.KEYS then return false end
+                    break
+                end
+            end
+        end
+        return select_key(fc, arg, keyevent)
+    end
     if FileChooser._recalculateDimen == dim then FileChooser._recalculateDimen = MosaicMenu._recalculateDimen end
     -- Audiobooks and Music first in every view, whatever the sort (the
     -- bookshelf puts them on the right); outermost, after ZenOS's sorting
