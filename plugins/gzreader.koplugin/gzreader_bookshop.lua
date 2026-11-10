@@ -335,6 +335,16 @@ function Shop.musicLists(browser)
     return st
 end
 
+--- Another music library chosen (gzreader_musictab.lua): the Music page's
+--- shelves are the old one's; empty them and ask Plex again.
+function Shop.forgetMusic(plugin)
+    local Cache = require("gzreader_listcache")
+    for _i, id in ipairs({ "mu_played", "mu_recent" }) do Cache.put(cacheKey({ plugin = plugin }, "shop:" .. id), {}) end
+    local B = package.loaded["gzreader_browser"]
+    local cur = type(B) == "table" and B.current
+    if type(cur) == "table" then cur._shop_music = nil end
+end
+
 function Shop.fetchMusic(browser)
     local st = browser._shop_music
     local Music = require("gzreader_music")
@@ -343,8 +353,8 @@ function Shop.fetchMusic(browser)
     local function go()
         st.loading = true
         require("gzreader_async").run(nil, function()
-            local sections = plex:musicSections()
-            local key = type(sections) == "table" and sections[1] and sections[1].key
+            local sec = plex:musicSection()
+            local key = type(sec) == "table" and sec.key
             if not key then return {} end
             return { mu_played = plex:recentAlbums(key, "played", Shop.LIST_LIMIT), mu_recent = plex:recentAlbums(key, "added", Shop.LIST_LIMIT) }
         end, function(res)

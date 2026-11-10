@@ -267,6 +267,28 @@ function Plex:musicSections()
     return out
 end
 
+--- The music library to browse: the one chosen in Settings → Connections →
+--- Plex → Music library (store.music_section = { server, key, title }) while
+--- this server still has it, else the server's first. Returns it ({ key,
+--- title }) and every music library, or nil, err ("no_music": none).
+function Plex:musicSection()
+    local sections, err = self:musicSections()
+    if not sections then return nil, err end
+    if #sections == 0 then return nil, "no_music" end
+    return Plex.pickSection(sections, self.store.music_section, self.store.server), sections
+end
+
+--- Of `sections`, the one `want` names (kept for `server`), else the first.
+--- Pure (run_tests.lua).
+function Plex.pickSection(sections, want, server)
+    if type(want) == "table" and want.key and want.server == (type(server) == "table" and server.id or nil) then
+        for _i, s in ipairs(sections) do
+            if s.key == tostring(want.key) then return s end
+        end
+    end
+    return sections[1]
+end
+
 --- A track, album, artist or playlist as GZreader keeps it.
 function Plex.item(m)
     if type(m) ~= "table" then return nil end
@@ -336,9 +358,9 @@ function Plex:children(key)
     return items(data)
 end
 
---- Audio playlists.
-function Plex:playlists()
-    local _, data, err = self:get("/playlists", { playlistType = "audio" })
+--- Audio playlists (of one library: `section`, when the server has several).
+function Plex:playlists(section)
+    local _, data, err = self:get("/playlists", { playlistType = "audio", sectionID = section })
     if err then return nil, err end
     return items(data)
 end
