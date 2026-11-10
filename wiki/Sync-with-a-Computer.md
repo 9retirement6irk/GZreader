@@ -56,7 +56,7 @@ A Kindle without Wi‑Fi sends its diagnostic log through the page, the same
 report a Wi‑Fi Kindle sends with **Send to the developer**:
 
 - **On the Kindle:** Diagnostics (quick panel) → **Send to the developer (at
-  the next sync)**, or Settings → General → Send diagnostic log to the
+  the next sync)**, or Settings → General → Advanced → Send diagnostic log to the
   developer. A box asks what you were doing and what went wrong; the log and
   what you typed are saved in `.gzsync/reports/` (the newest three). At your
   next sync the page sends them and deletes them; if it can't reach the

@@ -1258,6 +1258,18 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader: Settings has no Debug logging switch any more (KOReader's
+    -- verbose log, slow on an old Kindle): turned off once, from the next start.
+    if cfg._meta.gz_debug_logging_off ~= true then
+        local g = rawget(_G, "G_reader_settings")
+        if g and g.isTrue and g:isTrue("debug_verbose") then
+            g:makeFalse("debug")
+            g:makeFalse("debug_verbose")
+        end
+        cfg._meta.gz_debug_logging_off = true
+        changed = true
+    end
+
     -- GZreader 1.16.2: 1.16.0 gave the end-of-book page the bookshelf and the
     -- notebook stats by mistake (they're Home's): back to its own look.
     if cfg._meta.gz_end_book_look_fixed ~= true then

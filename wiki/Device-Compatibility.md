@@ -39,7 +39,7 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 | Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | — (not yet) | — (no audio) |
 | Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | — | — |
 | Volume buttons | yes | — | — | — | — | — |
-| Clock | UTC: set Settings → General → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
+| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
 | Flash on every page turn (default) | on | on | off | off | off | off |
 | Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | its app icon | adb or a terminal app |
 
