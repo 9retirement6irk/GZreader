@@ -6057,6 +6057,15 @@ print("Music (Plex): the server, downloads, the player")
             { text = "Music/", path = mdir }, { text = "Other/", path = plugin:libraryDir() .. "/Other" },
             { text = "Audiobooks/", path = plugin:libraryDir() .. "/Audiobooks" } }
         SV.specialsFirst(items)
+        local cdf = io.open(PLUGIN .. "/icons/shelf/cdplayer.svg", "rb")
+        local cd = cdf and cdf:read("*a") or ""
+        if cdf then cdf:close() end
+        local vw, vh = cd:match('viewBox="0 0 (%d+) (%d+)"')
+        local ecy, ery = cd:match('<ellipse cx="85" cy="(%d+)" rx="74" ry="(%d+)" fill="url%(#edge%)"')
+        check(tonumber(vw) and math.abs(tonumber(vw) / tonumber(vh) - SV.SPECIAL.Music.ratio) < 0.001
+            and math.abs(SV.SPECIAL.Music.height - tonumber(vh) / 160) < 0.001
+            and tonumber(ecy) and tonumber(ecy) + tonumber(ery) >= tonumber(vh) - 2,
+            "the CD player lies on the shelf: the bottom of its edge is the bottom of the picture, its size as the picture's")
         check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
             "Audiobooks and Music come first, whatever the sort")
         check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
