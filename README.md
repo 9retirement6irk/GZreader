@@ -7,9 +7,9 @@
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for Kindles</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on a Kindle,
-  from the Kindle Keyboard to the Paperwhite: download books, read them
-  or have them read aloud, and keep your place, bookmarks and highlights in sync.
-  Notes, calendars, and books sent from your browser too.
+  from the Kindle Keyboard to the Paperwhite: download books, audiobooks and
+  Plex music from one Catalog, read or listen, and keep your place, bookmarks
+  and highlights in sync. Notes, calendars, and books sent from your browser too.
 </p>
 
 <p align="center">
@@ -49,16 +49,29 @@ same KOReader device support and should work, but their screens and buttons
 haven't been tried.
 
 <table>
-<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-tab.png" alt="Your Grimmory library as a bookshop" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading and your shelf" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-books.png" alt="The Catalog's Books page, laid out like a bookshop" width="200"><br><sub>Catalog: books</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-audiobooks.png" alt="The Catalog's Audiobooks page: Continue listening, Recently added" width="200"><br><sub>Catalog: audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-music.png" alt="The Catalog's Music page: Plex albums as CD cases" width="200"><br><sub>Catalog: music</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/downloads-shelf.png" alt="Downloads on shelves: books, the audiobook walkman and the CD player" width="200"><br><sub>Downloads on shelves</sub></td><td align="center" width="25%"><img src="docs/screenshots/cd-player.png" alt="Music playing in the CD player" width="200"><br><sub>Music from Plex</sub></td><td align="center" width="25%"><img src="docs/screenshots/audiobook-player.png" alt="The audiobook player: a cassette walkman" width="200"><br><sub>Audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td></tr>
 </table>
 
 [More screenshots](docs/screenshots/)
 
 ## What it does
 
-- 📚 **Grimmory:** search and browse your library (laid out like a bookshop: covers on
-  display ledges, a bookcase for libraries, shelves, authors and series), download books in the background,
-  and keep your **place, bookmarks, highlights and ratings in sync** with Grimmory.
+- 📚 **The Catalog:** one tab, three pages you swipe (or page) between, each laid out
+  like a shop: covers on display ledges, then a bookcase of lists. Pick something,
+  and it downloads in the background:
+  - **Books** from Grimmory: Continue reading, Recently added, All books, libraries,
+    shelves, authors, series and search. *Download* or *Download & open*; your
+    **place, bookmarks, highlights and ratings stay in sync** with Grimmory.
+  - **Audiobooks** from Grimmory (or a Plex library): Continue listening, Recently
+    added, authors, shelves, series. *Download & listen* opens the player, and your
+    place is kept.
+  - **Music** from Plex: Recently played, Recently added, playlists, albums and
+    artists as CD cases. *Download for offline*, or *Play*: it starts as soon as the
+    first track is in.
+
+  Audiobooks and Music are on Kindles with a speaker or headphone jack (Kindle 2, 3,
+  DX, Touch); the others have the Books page.
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
   to show its cover. Audiobooks sit on the shelf as a cassette walkman (each one a
   cassette tape inside), music as a CD player (each album a CD). Lists and tiles are a tap away.
@@ -75,13 +88,15 @@ haven't been tried.
   checklists, write and edit, offline too.
 - 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,
   day, week, month.
-- 🎵 **Music** *(new, Kindles with audio)*: albums and playlists from **Plex**, played
-  while you read, all in a portable CD player: browse, download and play there. Turn the
-  Music tab on in Settings → Interface → Navbar → Tabs.
+- 🎵 **Music** *(Kindles with audio)*: albums and playlists from **Plex**, played
+  while you read, in a portable CD player with its queue on the back of the case. The
+  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings →
+  Interface → Navbar → Tabs.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
   read to you in the Kindle's own voice, the sentence being spoken highlighted and the
   pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.
-- 🎧 **Audiobooks** from Grimmory, with your place kept.
+- 🎧 **Audiobooks** *(Kindles with audio)*: a cassette walkman with chapters, a sleep
+  timer and the volume keys; your place syncs with Grimmory's audiobook progress.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
 All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)**:
