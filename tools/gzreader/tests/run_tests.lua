@@ -3665,6 +3665,41 @@ do
     check(cfg.smooth_scaling == 0 and cfg.h_page_margins[1] == 15 and cfg.t_page_margin == 10 and cfg.sync_t_b_page_margins == 1
         and not (ui.styletweak.book_style_tweak or ""):find("picture book", 1, true) and reopened == 3, "off: style, margins and smooth scaling as before, book reopened")
 
+    -- a second picture book opened, or Fit pictures to the screen tapped,
+    -- while another book's pictures are measured: fitted after it (it did nothing)
+    do
+        local cbs = {}
+        Async.background = function(_fn, cb) cbs[#cbs + 1] = cb end
+        local DSm = require("docsettings")
+        local orig_dso = DSm.open
+        local function mkds()
+            local kv = {}
+            return { d = kv, readSetting = function(_s, k) return kv[k] end, saveSetting = function(_s, k, v) kv[k] = v end,
+                delSetting = function(_s, k) kv[k] = nil end, flush = function() end }
+        end
+        DSm.open = function() return mkds() end
+        local function mkui(file)
+            return { doc_settings = mkds(), view = ui.view, styletweak = { updateCssText = function() end },
+                document = { file = file, info = {}, invalidateCacheFile = function() end,
+                    configurable = { smooth_scaling = 0, h_page_margins = { 15, 15 }, t_page_margin = 10, b_page_margin = 10 } },
+                reloadDocument = function(self) self.reloaded = (self.reloaded or 0) + 1 end }
+        end
+        local uA, uB = mkui(WORK .. "/pb-first.epub"), mkui(WORK .. "/pb-second.epub")
+        RUI.instance = uA
+        PB.set(uA, true) -- the first book: its pictures being measured
+        RUI.instance = uB -- the second book opened meanwhile
+        local shown = #UI.shown
+        PB.menuItem(uB).callback() -- (or opened: PB.onOpen's PB.set, the same)
+        check(#cbs == 1 and not PB.isOn(uB) and #UI.shown == shown + 1,
+            "Fit pictures to the screen while another book's pictures are measured: waits, and says the pages will be fitted in a moment")
+        cbs[1]({})
+        check(#cbs == 2 and uA.reloaded == nil, "the first one done (closed: saved with it): the second book's pictures are measured next")
+        cbs[2]({})
+        check(PB.isOn(uB) and uB.reloaded == 1 and uB.document.configurable.h_page_margins[1] == 0,
+            "…and the second book is fitted and reopened")
+        DSm.open, RUI.instance, Async.background = orig_dso, saved_inst, orig_bg
+    end
+
     -- a book fitted by 1.2.x (style v3): fitted again once when it opens
     ds.d.gzreader_picture_book = true
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v3 */ img{} /* GZreader picture book: end */"

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Picture books: Fit pictures works while another book is being measured", text = "A picture book is fitted after GZreader measures its pictures in the background. When a second picture book was opened (or Fit pictures to the screen was tapped in it) while the first one was still being measured, nothing happened: the book was never fitted. Now it's fitted as soon as the first one is done, and a note says the pages will be fitted in a moment." },
+        },
+    },
+    {
         version = "1.27.0",
         changes = {
             { short = "Saving is quicker with a big library: small changes no longer rewrite the download list", text = "Most of GZreader's saves (a reading position queued, something sent) changed only a few small things, but rewrote its whole settings file, download list and audiobooks included: about a quarter of a second of a Kindle 3's time per save with 500 books. Those saves now write only the small part, to a small file of its own; the whole file is written when a download or the sign-in changes, when the Kindle goes to sleep, on exit and at least every hour, so it stays complete for an older GZreader." },
