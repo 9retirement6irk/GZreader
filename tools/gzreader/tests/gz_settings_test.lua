@@ -25,6 +25,7 @@ local real = {
     ["common/gz_settings"] = true,
     ["common/gz_settings_icons"] = true,
     ["common/inline_icon_map"] = true,
+    ["common/gz_wifi_icon"] = true,
     gzreader_sleeppreview = true,
 }
 local PLUGIN = arg[2] -- plugins/gzreader.koplugin (the Wallpaper tiles)
@@ -37,7 +38,10 @@ local gz = {
     sectionItems = function(_self, section)
         if section ~= "general" then return {} end
         return {
-            wifi = { text = "Wi-Fi only when needed" },
+            -- (gzreader_net.lua Net.menuItem)
+            wifi = { text = "Wi-Fi", mandatory_func = function() return "Auto" end, sub_item_table = {
+                { text = "On", radio = true }, { text = "Off", radio = true },
+                { text = "Auto (only when needed)", radio = true, separator = true } } },
             diagnostics = {
                 { text = "Diagnostic logging" },
                 { text = "Usage statistics" },
@@ -136,6 +140,20 @@ if okb then
     local device = find(about, "Device")
     check(device and not texts(device.sub_item_table):find("|KOReader: ", 1, true), "Device: no KOReader line (it's on the second line)")
     check(find(about, "Report a Bug") == nil, "no ZenOS bug reporter")
+    -- Wi-Fi: GZreader's On / Off / Auto menu in place of ZenOS's switch, its network list after them
+    local wifi = find(general, "Wi-Fi")
+    local wifi_rows = texts(wifi and wifi.sub_item_table)
+    check(gen:find("|Updates|Wi-Fi|Bluetooth|", 1, true) and select(2, gen:gsub("|Wi%-Fi", "")) == 1,
+        "General: one Wi-Fi row, where ZenOS's was (no separate \"Wi-Fi only when needed\") " .. gen)
+    check(wifi_rows == "|On|Off|Auto (only when needed)|Networks|" and wifi.mandatory_func() == "Auto",
+        "General → Wi-Fi: On, Off, Auto, then Networks; the row shows the mode " .. wifi_rows)
+    local nets = wifi and wifi.sub_item_table[4]
+    check(nets and type(nets.callback) == "function" and nets._zen_settings_submenu,
+        "Networks opens ZenOS's network list (what its Wi-Fi row opened)")
+    local GzS = require("common/gz_settings")
+    check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
+    check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil).sub_item_table) == "|On|",
+        "no ZenOS row to take the network list from: the modes alone")
     check(gen:find("|Sleep|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
         "General: Time and date, Language and Storage after Sleep " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
@@ -307,6 +325,30 @@ if PLUGIN then
             check(L.tw > 0 and L.ph > L.tw and bottom <= size[2] - 30 and L.cols * L.tw + (L.cols - 1) * L.gap <= size[1],
                 ("tiles fit a %d × %d screen (%d × %d pictures)"):format(size[1], size[2], L.tw, L.ph))
         end
+    end
+end
+
+print("Wi-Fi in the status bars: the auto mark")
+do
+    local WI = require("common/gz_wifi_icon")
+    local net = { mode = function() return "auto" end }
+    package.loaded["gzreader_net"] = net
+    check(WI.mark() == "A", "Auto: \"A\" after the Wi-Fi icon")
+    net.mode = function() return "on" end
+    check(WI.mark() == nil, "On: the icon alone")
+    net.mode = function() return "off" end
+    check(WI.mark() == nil, "Off: the icon alone")
+    net.mode, net.usb = function() return "auto" end, true
+    check(WI.mark() == nil, "a Kindle without Wi-Fi: no mark")
+    net.usb, net.mode = nil, function() error("broken") end
+    check(WI.mark() == nil, "GZreader's mode can't be read: no mark, no error")
+    package.loaded["gzreader_net"] = nil
+    for _i, f in ipairs({ "modules/filebrowser/patches/status_bar.lua", "modules/reader/patches/reader_top_status_bar.lua" }) do
+        local src = read(f)
+        local body = src:match("local function getWifi%a+%(%)(.-)\n    end\n")
+        local _n, marks = (body or ""):gsub("inline_icons%.wifi_o[nf]f?, gz_mark,", "")
+        check(body and body:find('local gz_mark = require("common/gz_wifi_icon").mark()', 1, true) and marks == 3,
+            f .. ": the Wi-Fi item carries the auto mark (searching, on, off)")
     end
 end
 

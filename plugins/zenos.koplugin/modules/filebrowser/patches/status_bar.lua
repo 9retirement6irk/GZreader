@@ -306,13 +306,15 @@ local function apply_status_bar()
 
     local function getWifiInfo()
         local state = WifiState.get()
+        -- GZreader: "A" after the icon while Wi-Fi is on Auto (common/gz_wifi_icon.lua)
+        local gz_mark = require("common/gz_wifi_icon").mark()
         if state == "searching" then
-            return inline_icons.wifi_on, nil, colors.wifi_searching, nil, true
+            return inline_icons.wifi_on, gz_mark, colors.wifi_searching, nil, true
         end
         if state == "on" then
-            return inline_icons.wifi_on, nil, colors.wifi_on
+            return inline_icons.wifi_on, gz_mark, colors.wifi_on
         elseif not config.wifi_hide_when_off then
-            return inline_icons.wifi_off, nil, colors.wifi_off
+            return inline_icons.wifi_off, gz_mark, colors.wifi_off
         end
         return nil
     end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Wi-Fi is On, Off or Auto: the quick panel's Wi-Fi tile goes through them, and the status bar shows an A on Auto", text = "Wi-Fi now has three modes instead of a Wi-Fi switch plus a separate \"Wi-Fi only when needed\" setting. On: Wi-Fi stays on (GZreader turns it back on if it went off by itself). Off: it stays off and syncing waits; things you ask for still turn it on for a minute. Auto (the default, what \"Wi-Fi only when needed\" did): on when something needs it, off after a minute unused. The quick panel's Wi-Fi tile goes on → off → auto; Settings → General → Wi-Fi offers the same three, with Networks under them. On Auto the status bar's Wi-Fi icon has an A after it and still shows whether Wi-Fi is on right now; the tile's icon does the same. Turning Wi-Fi on or off anywhere else chooses On or Off. Your earlier settings carry over." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },

@@ -2,7 +2,7 @@
 GZreader's quick panel: the same panel on every Kindle (and the Nook), at
 the top of the screen. Square tiles, in two groups:
 
-  Controls   Wi-Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
+  Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
              Search, History, View, Sort, Music, Audiobook
@@ -259,13 +259,33 @@ end
 
 ---------------------------------------------------------------- what's on it
 
+--- The Wi-Fi tile: On, Off or Auto (gzreader_net.lua); a tap goes to the
+--- next one (on → off → auto → on). On is drawn inverted; Auto's icon has an
+--- "A" and still shows whether Wi-Fi is on right now.
+function Panel.wifiTile()
+    local Net = require("gzreader_net")
+    local mode = Net.mode()
+    local d = Net.describe(mode)
+    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", run = function()
+        local next_mode = Net.nextMode(mode)
+        local switching = Net.setMode(next_mode)
+        -- (KOReader says "Turning on Wi-Fi…" / "Wi-Fi off." when it switches)
+        if not switching or next_mode == "auto" then
+            local nd = Net.describe(next_mode)
+            pcall(function()
+                UIManager:show(require("ui/widget/infomessage"):new{ text = T(_("Wi-Fi: %1"), nd.name), timeout = 2 })
+            end)
+        end
+    end }
+end
+
 --- The Controls tiles: { id, icon, label, on, run }.
 function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
     local usb = usbOnly()
     local list = {
         usb and { id = "wifi", icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
-            or { id = "wifi", icon = "wifi", label = _("Wi-Fi"), on = NetworkMgr:isWifiOn(), run = function() dispatch("toggle_wifi") end },
+            or Panel.wifiTile(),
     }
     if not nightGuarded() then
         list[#list + 1] = { id = "night", icon = "night", label = _("Night mode"), on = G_reader_settings:isTrue("night_mode"),
@@ -571,7 +591,9 @@ function PanelWidget:paintTo(bb, x, y)
     title:free()
     local okp, powerd = pcall(function() return Device:getPowerDevice() end)
     local cap = okp and powerd and powerd.getCapacity and powerd:getCapacity()
-    local right = (NetworkMgr:isWifiOn() and _("Wi-Fi") or _("Wi-Fi off")) .. (cap and (" · " .. cap .. "%") or "")
+    local wifi = NetworkMgr:isWifiOn() and _("Wi-Fi") or _("Wi-Fi off")
+    if not usbOnly() and require("gzreader_net").mode() == "auto" then wifi = T(_("%1 (auto)"), wifi) end
+    local right = wifi .. (cap and (" · " .. cap .. "%") or "")
     local rt = TextWidget:new{ text = right, face = face }
     rt:paintTo(bb, x + w - S(16) - rt:getSize().w, y + S(10))
     rt:free()
