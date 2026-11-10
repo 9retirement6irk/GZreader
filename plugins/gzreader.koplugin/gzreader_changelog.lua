@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Kindle 2, 3, DX: Sym opens a symbols menu, like the Kindle's own", text = "On the Kindles with a keyboard, pressing Sym in a text box (search, Wi-Fi password, server address, notes...) opens a small menu of symbols, as the Kindle's own software does, instead of the whole on-screen keyboard: the 5-way picks a symbol, pressing it types it, Sym or Back closes the menu. It opens on the symbol you used last. Shift + Home still shows the whole on-screen keyboard, and Sym + a letter still types its symbol." },
+            { short = "Kindle 2, 3, DX: Sym opens a symbols menu, like the Kindle's own", text = "On the Kindles with a keyboard, pressing Sym in a text box (search, Wi-Fi password, server address, notes...) opens a small menu of symbols, as the Kindle's own software does, instead of the whole on-screen keyboard: the 5-way picks a symbol and pressing it types it; the menu stays up for more symbols (letters can be typed too) until you press Sym again (or Back). It opens on the symbol you used last. Shift + Home still shows the whole on-screen keyboard, and Sym + a letter still types its symbol." },
         },
     },
     {

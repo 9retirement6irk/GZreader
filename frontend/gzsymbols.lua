@@ -1,9 +1,10 @@
 -- GZreader: the symbols popup on the Kindles with a keyboard (Kindle 2, 3, DX).
 -- A lone press of the Sym key in a text box opens a small grid of symbols,
 -- as the Kindle's own software does, instead of KOReader's whole on-screen
--- keyboard: the 5-way moves, pressing it types the symbol and closes the
--- popup, Sym or Back closes it. Typing a key while it's open closes it and
--- types that key. Shift + Home still shows the whole on-screen keyboard.
+-- keyboard: the 5-way moves, pressing it types the symbol, and the popup
+-- stays up (for several symbols) until Sym is pressed again (or Back).
+-- Letters typed while it's open go to the text box. Shift + Home still
+-- shows the whole on-screen keyboard.
 -- Called from frontend/ui/widget/inputtext.lua.
 local M = {}
 
@@ -49,8 +50,8 @@ function M.placeY(screen_h, popup_h, field, gap)
 end
 
 --- What a key pressed while the popup is open does: "close" (Sym, Back),
---- "type" (close, then the text box gets the key: letters, Sym + a letter,
---- Del) or nil (the popup's own: the 5-way).
+--- "type" (the text box gets the key, the popup stays: letters, Sym + a
+--- letter, Del) or nil (the popup's own: the 5-way).
 function M.keyAction(key)
     if not key then return nil end
     local name = key.key
@@ -164,7 +165,6 @@ setmetatable(M, { __index = function(t, k)
     function Popup:pick(x, y)
         t.last = { x = x, y = y }
         local sym = t.ROWS[y] and t.ROWS[y][x]
-        self:onClose()
         if sym and self.input then
             self.input:addChars(sym)
         end
@@ -184,7 +184,6 @@ setmetatable(M, { __index = function(t, k)
             return true
         end
         if action == "type" then
-            self:onClose()
             if self.input then
                 self.input:onKeyPress(key)
             end

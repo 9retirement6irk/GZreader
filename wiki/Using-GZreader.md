@@ -54,7 +54,7 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |
 | Settings, audiobook player, tab views | Home | Home (the default tab). The audiobook keeps playing. |
-| Any text box | Sym | The symbols menu, like the Kindle's own: the 5-way picks a symbol, Press types it, Sym or Back closes it (it opens on the one you used last). Sym + a letter still types its symbol (Sym + G #, Sym + Q !…); Shift + Home shows the whole on-screen keyboard. |
+| Any text box | Sym | The symbols menu, like the Kindle's own: the 5-way picks a symbol, Press types it. The menu stays up for more symbols (letters type too) until you press Sym again (or Back); it opens on the one you used last. Sym + a letter still types its symbol (Sym + G #, Sym + Q !…); Shift + Home shows the whole on-screen keyboard. |
 | Anywhere | Volume buttons | Speaker volume for audiobooks and read aloud (a note shows the level). |
 | Note editor | Menu | To the formatting toolbar and back; the cursor stays where it is. |
 
