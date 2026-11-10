@@ -2260,31 +2260,15 @@ do
     UIM._window_stack = was_stack
 end
 
-print("Kindles with 128 MB: crengine's caches kept small")
-;(function()
-    -- the garbage collector starts sooner on those Kindles (a lower peak)
+print("Kindles with 128 MB: the garbage collector starts sooner");
+(function()
+    -- (a lower peak for the Lua heap on the Kindle 2 and DX)
     local pause_before = collectgarbage("setpause", 200)
     collectgarbage("setpause", pause_before)
     check(Grimmory.tuneGC(124532) == 120 and collectgarbage("setpause", pause_before) == 120, "a DX (128 MB): GC pause 120")
-    check(Grimmory.tuneGC(252364) == nil and collectgarbage("setpause", pause_before) == pause_before, "a Kindle 3: Lua's default, untouched")
+    check(Grimmory.tuneGC(252364) == nil and collectgarbage("setpause", pause_before) == pause_before, "a Kindle 3 (256 MB): Lua's default, untouched")
+    check(Grimmory.tuneGC(509000) == nil, "a Paperwhite 3 (512 MB): untouched")
     collectgarbage("setpause", pause_before)
-    local ko_root = arg[5]
-    local LowMem = dofile(ko_root .. "/frontend/gzlowmem.lua")
-    local mi = WORK .. "/meminfo"
-    local function meminfo(kb)
-        local fh = io.open(mi, "w"); fh:write("MemTotal:       " .. kb .. " kB\nMemFree:         2048 kB\n"); fh:close()
-        return LowMem.totalKB(mi)
-    end
-    check(meminfo(124532) == 124532, "MemTotal read from /proc/meminfo")
-    check(LowMem.creStorageFactor(meminfo(124532)) == 5, "a DX (128 MB): factor 5")
-    check(LowMem.creStorageFactor(meminfo(252364)) == 40, "a Kindle 3 (256 MB): KOReader's 40")
-    check(LowMem.creStorageFactor(meminfo(509000)) == 40, "a Paperwhite 3 (512 MB): 40")
-    check(LowMem.totalKB(WORK .. "/no-such-file") == nil, "unreadable: nil")
-    os.remove(mi)
-    -- credocument.lua: a factor you set yourself still wins
-    local fh = io.open(ko_root .. "/frontend/document/credocument.lua"); local src = fh:read("*a"); fh:close()
-    check(src:find('readSetting("cre_storage_size_factor") or default_cre_storage_size_factor', 1, true)
-        and src:find('require("gzlowmem").creStorageFactor()', 1, true), "credocument: the default from gzlowmem, your setting first")
 end)()
 
 print("Kindle DX: four shelves in Downloads, two on Home")

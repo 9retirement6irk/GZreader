@@ -57,15 +57,22 @@ local Grimmory = WidgetContainer:extend{
     is_doc_only = false,
 }
 
---- Kindles with 128 MB or less (Kindle 2, DX: gzlowmem.lua): LuaJIT's
---- garbage collector starts a cycle when the heap has grown to GC_PAUSE % of
---- what was live after the last one (Lua's default 200: twice). There it's
---- 120, so the Lua heap's peak stays lower, for a little more collecting.
---- Returns the pause set, or nil (other Kindles: unchanged).
+--- Kindles with 128 MB or less (Kindle 2, DX; MemTotal at most
+--- LOW_MEM_KB): LuaJIT's garbage collector starts a cycle when the heap has
+--- grown to GC_PAUSE % of what was live after the last one (Lua's default
+--- 200: twice). There it's 120, so the Lua heap's peak stays lower, for a
+--- little more collecting. total_kb: MemTotal (read from /proc/meminfo when
+--- nil). Returns the pause set, or nil (other Kindles: unchanged).
 Grimmory.GC_PAUSE_LOW = 120
+Grimmory.LOW_MEM_KB = 160 * 1024 -- a Kindle 3 has 256 MB, a DX 128 MB
 function Grimmory.tuneGC(total_kb)
-    local ok, low = pcall(function() return require("gzlowmem").isLow(total_kb) end)
-    if not (ok and low) then return nil end
+    if total_kb == nil then
+        local f = io.open("/proc/meminfo", "r")
+        local s = f and f:read("*a") or ""
+        if f then f:close() end
+        total_kb = tonumber(s:match("MemTotal:%s*(%d+)"))
+    end
+    if not total_kb or total_kb > Grimmory.LOW_MEM_KB then return nil end
     collectgarbage("setpause", Grimmory.GC_PAUSE_LOW)
     return Grimmory.GC_PAUSE_LOW
 end

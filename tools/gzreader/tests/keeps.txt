@@ -12,10 +12,9 @@
 4 frontend/device/nook/framebuffer_nst.lua
 2 frontend/device/nook/lcd.lua
 4 frontend/device/nook/touch.lua
-4 frontend/document/credocument.lua
+2 frontend/document/credocument.lua
 9 frontend/gettext.lua
 9 frontend/gzbytecode.lua
-12 frontend/gzlowmem.lua
 5 frontend/luasettings.lua
 1 frontend/pluginloader.lua
 6 frontend/ui/elements/common_info_menu_table.lua
