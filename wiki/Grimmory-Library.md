@@ -74,7 +74,10 @@ While anything downloads, **Downloads (N)** is a tile in the quick panel's
 Home tiles (`gzreader_tasks.lua`). It lists the current book download, the
 queue, audiobook downloads and the audiobook preparing step: reopen a
 progress bar, stop the download, take a book out of the queue, empty the
-queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
+queue. While it's open its percentages are kept current every 5 s: only the
+lines that changed are refreshed on the screen, on the page you're on (the
+whole list is redrawn when a download finishes or one is added). ZenOS's
+status bar gets a `gz_downloads` item next to the clock
 (added once; movable/removable in its settings): a download icon with the
 percentage and the number waiting, refreshed every 10 s while active.
 
