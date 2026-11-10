@@ -1003,7 +1003,21 @@ local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
-check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Downloaded"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Downloaded")
+check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|On this Kindle"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, On this Kindle")
+;(function() -- on a Nook: On this Nook (the list line, its list's title, the bookshop's compartment)
+    local Device = require("device")
+    Device.isNook = function() return true end
+    local nroot = Browser:new(plugin):rootItems()
+    local line
+    for _i, it in ipairs(nroot) do if it.gz_id == "downloaded" then line = it end end
+    local nb = Browser:new(plugin)
+    local pushed
+    nb.push = function(_s, title) pushed = title end
+    nb:openDownloaded()
+    Device.isNook = nil
+    check(line and line.text == "On this Nook" and pushed == "On this Nook" and Browser.hereText() == "On this Kindle",
+        "Nook: the downloaded books are On this Nook (On this Kindle on a Kindle)")
+end)()
 print("Grimmory tab as a bookshop")
 do
     local ids = {}
@@ -1047,7 +1061,9 @@ do
     }
     local cards = {}
     for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks", "downloaded" }) do cards[#cards + 1] = Shop.cardText(id, known) end
-    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks|on this Kindle",
+    check(Shop.cardText("downloaded", { downloaded = 1 }) == "1 book" and Shop.cardText("downloaded", { downloaded = 1200 }) == "1,200 books",
+        "cards: On this Kindle counts its books")
+    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks|none yet",
         "cards: counts from what's kept " .. table.concat(cards, "|"))
     check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
         "cards: a magic shelf's rules are never shown")
@@ -2149,7 +2165,7 @@ do
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
     local Browser = require("gzreader_browser")
     local root = texts(Browser.rootItems({}))
-    check(root:match("|Downloaded books|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
+    check(root:match("|On this Kindle|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
         "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }

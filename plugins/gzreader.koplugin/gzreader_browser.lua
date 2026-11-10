@@ -246,7 +246,7 @@ function Browser:bookItems()
         { gz_id = "shelves", text = _("Shelves"), callback = function() self:openShelves() end },
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
-        { gz_id = "downloaded", text = _("Downloaded books"), callback = function() self:openDownloaded() end },
+        { gz_id = "downloaded", text = Browser.hereText(), callback = function() self:openDownloaded() end },
         -- (the next page, from the list: its letter on keyboard Kindles; the
         -- bookshop doesn't draw it. Only on Kindles with a speaker.)
         require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
@@ -1111,6 +1111,14 @@ function Browser:search(q, scope)
     })
 end
 
+--- What's downloaded here is "On this Kindle" (on a Nook, "On this Nook"),
+--- as on the Audiobooks and Music pages.
+function Browser.hereText()
+    local ok, Device = pcall(require, "device")
+    if ok and type(Device) == "table" and Device.isNook and Device:isNook() then return _("On this Nook") end
+    return _("On this Kindle")
+end
+
 function Browser:openDownloaded()
     local items = {}
     for id, entry in pairs(self.plugin.store.downloads or {}) do
@@ -1125,7 +1133,7 @@ function Browser:openDownloaded()
         end
     end
     table.sort(items, function(a, b) return a.text:lower() < b.text:lower() end)
-    self:push(_("Downloaded books"), items)
+    self:push(Browser.hereText(), items)
 end
 
 function Browser:onBook(book)
