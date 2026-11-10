@@ -144,7 +144,7 @@ function Shop.compartments()
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        { id = "grimmory", kind = "none" },
+        { id = "grimmory", kind = "account" },
     }
 end
 
@@ -164,7 +164,7 @@ function Shop.pageSpec(section)
                 { id = "ab_authors", kind = "dividers" },
                 { id = "ab_shelves", kind = "faceout" },
                 { id = "ab_series", kind = "piles" },
-                { id = "ab_account", kind = "none" }, -- (Grimmory's card, or Plex's when audiobooks come from Plex)
+                { id = "ab_account", kind = "account" }, -- (Grimmory's card, or Plex's when audiobooks come from Plex)
             },
             cover_kind = "audiobook",
         }
@@ -181,7 +181,7 @@ function Shop.pageSpec(section)
                 { id = "mu_albums", kind = "cds" },
                 { id = "mu_artists", kind = "dividers" },
                 { id = "mu_now", kind = "cds" },
-                { id = "mu_account", kind = "none" },
+                { id = "mu_account", kind = "account" },
             },
         }
     end
@@ -193,6 +193,25 @@ function Shop.pageSpec(section)
         },
         compartments = Shop.compartments(),
     }
+end
+
+--- Which compartment goes in each of the bookcase's `cells`: the Books
+--- page (or a page not signed in: `fixed`) each where it goes, the other
+--- pages the ones there now (`here(id)`) together, cobwebs ({ kind =
+--- "empty" }) after; the account card (Grimmory's or Plex's) always in the
+--- last cell, bottom right. Pure.
+function Shop.arrange(compartments, here, fixed, cells)
+    local out, account = {}, nil
+    for _i, comp in ipairs(compartments) do
+        if comp.kind == "account" then
+            if fixed or (comp.id and here(comp.id)) then account = comp end
+        elseif fixed or (comp.id and here(comp.id)) then
+            out[#out + 1] = comp
+        end
+    end
+    while #out < cells - (account and 1 or 0) do out[#out + 1] = { kind = "empty" } end
+    if account then out[#out + 1] = account end
+    return out
 end
 
 local function thousands(n)
@@ -1048,6 +1067,7 @@ end
 --- A compartment of the bookcase (x, y, w, h): its back, its board, what
 --- stands in it and its card (spec = { kind, name, sub, letter, hot }).
 --- kind "empty": nothing, cobwebs in its corners.
+--- kind "account": the Grimmory or Plex card, filling it.
 function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
     -- the back of the compartment, darker at the top (the shelf above's shadow)
     bb:paintRect(x, y, w, h, gray(0.1))
@@ -1056,6 +1076,38 @@ function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
     local by = y + h - board_h
     for i = 0, board_h - 1 do bb:paintRect(x, by + i, w, 1, gray(0.62 - 0.2 * i / board_h)) end
     bb:paintRect(x, by, w, math.max(2, S(3)), gray(0.25))
+    if spec.kind == "account" then
+        -- the account card (Grimmory's, Plex's): the whole compartment
+        local cx, cy = x + S(8), y + S(9)
+        local card_w, card_h = w - S(16), by - cy - S(3)
+        bb:paintRect(cx + S(3), cy + S(3), card_w, card_h, gray(0.35))
+        bb:paintRect(cx, cy, card_w, card_h, Blitbuffer.COLOR_WHITE)
+        bb:paintBorder(cx, cy, card_w, card_h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+        clip(bb, cx + math.floor(card_w / 2), cy, S(20))
+        local side = (spec.letter and menu.is_enable_shortcut) and S(20) or 0
+        local inner = card_w - S(20) - (side > 0 and side + S(6) or 0)
+        -- (the name and the line under it, together in the middle of the card)
+        local TextWidget = require("ui/widget/textwidget")
+        local name_face, sub_face = hand(20), Font:getFace("cfont", 11)
+        local function height(str, face)
+            local t = TextWidget:new{ text = str ~= "" and str or " ", face = face }
+            local hh = t:getSize().h
+            t:free()
+            return hh
+        end
+        local nh, sh = height(spec.name or "", name_face), height(spec.sub or "", sub_face)
+        local ty = cy + math.max(S(2), math.floor((card_h - nh - sh) / 2))
+        text(bb, spec.name or "", name_face, cx + S(10), ty, { max_width = inner })
+        text(bb, spec.sub or "", sub_face, cx + S(10), ty + nh, { color = gray(0.8), max_width = inner })
+        if side > 0 then badge(bb, menu, spec.letter, cx + card_w - side - S(6), cy + card_h - side - S(6), side) end
+        if spec.hot then
+            spec.hot.dimen = Geom:new{ x = x, y = y, w = w, h = h }
+            if spec.hot.focused then
+                bb:paintBorder(cx - S(4), cy - S(4), card_w + S(8), card_h + S(8), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+            end
+        end
+        return
+    end
     if spec.kind == "empty" then
         local Sh = Shelf()
         local r = math.min(S(70), math.floor((h - board_h) * 0.75))
@@ -1279,13 +1331,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
         series = _("Series"), audiobooks = _("Audiobooks"),
     }
-    -- (the other pages: the compartments there are now, together; cobwebs
-    -- after. Not signed in: each where it goes, the others cobwebs.)
-    local comps = {}
-    for _i, comp in ipairs(pspec.compartments) do
-        if section == "books" or signed_out or (comp.id and by[comp.id]) then comps[#comps + 1] = comp end
-    end
-    while #comps < #L.cells do comps[#comps + 1] = { kind = "empty" } end
+    local comps = Shop.arrange(pspec.compartments, function(id) return by[id] ~= nil end, section == "books" or signed_out, #L.cells)
     local row
     for k, comp in ipairs(comps) do
         local spec = { kind = comp.kind }

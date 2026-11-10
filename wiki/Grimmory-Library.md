@@ -38,9 +38,10 @@ and say **Sign in to Grimmory to browse the catalog**. Tap that line (or the
 typing, or copying from another GZreader. Once you're signed in, the page
 fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
 
-**The Grimmory card**, last in the Books page's bookcase (and the
-Audiobooks page's, for Grimmory's audiobooks), shows who you're signed in as
-and where, like the Plex card on the Music page. It opens Rebuild library
+**The Grimmory card** fills the bottom-right compartment of the Books
+page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
+shows who you're signed in as and where, like the Plex card on the Music
+page. It opens Rebuild library
 and reconnecting. What's on the Kindle is in the Downloads tab.
 
 **An Audiobooks tab** (off until you turn it on: Settings → Interface →

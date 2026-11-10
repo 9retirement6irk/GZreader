@@ -976,6 +976,22 @@ print("Catalog: not signed in to Grimmory (it opens all the same)")
     local bsrc = io.open(PLUGIN .. "/gzreader_bookshop.lua"):read("*a")
     check(msrc:find("B.signInChanged", 1, true) and msrc:find("function Grimmory:afterLogin", 1, true) < msrc:find("B.signInChanged", 1, true),
         "any sign-in (QR, typing, SSO) shows the Catalog's page again")
+    -- the account card: the last compartment (bottom right), whatever else is there
+    local function arranged(section, present, fixed)
+        local t = {}
+        for _i, c in ipairs(Shop.arrange(Shop.pageSpec(section).compartments, function(id) return present[id] end, fixed, 6)) do t[#t + 1] = c.id or "-" end
+        return table.concat(t, ",")
+    end
+    local all_ab = { ab_all = true, ab_authors = true, ab_shelves = true, ab_series = true, ab_account = true }
+    check(arranged("books", {}, true) == "all,libraries,shelves,authors,series,grimmory"
+        and arranged("audiobooks", all_ab, false) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
+        and arranged("audiobooks", { ab_all = true, ab_authors = true, ab_account = true }, false) == "ab_all,ab_authors,-,-,-,ab_account"
+        and arranged("audiobooks", {}, true) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
+        and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_account = true }, false) == "mu_playlists,mu_albums,mu_artists,-,-,mu_account"
+        and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_now = true, mu_account = true }, false)
+            == "mu_playlists,mu_albums,mu_artists,mu_now,-,mu_account"
+        and Shop.pageSpec("music").compartments[5].kind == "account" and Shop.pageSpec("audiobooks").compartments[5].kind == "account",
+        "the Grimmory and Plex cards: always the bottom-right compartment, the whole of it")
     check(bsrc:find("by.search or by.ab_search or by.mu_search", 1, true),
         "the Bookshelf view's slip is each page's own search line (the Audiobooks and Music slips did nothing)")
     require("gzreader_touch").audio = saved_audio
@@ -1120,7 +1136,7 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments()[6].id == "grimmory" and Shop.compartments()[6].kind == "none" and #Shop.compartments() == 6,
+    check(Shop.compartments()[6].id == "grimmory" and Shop.compartments()[6].kind == "account" and #Shop.compartments() == 6,
         "compartments: the last is the Grimmory card (Audiobooks are the Catalog's next page; what's here is in Downloads)")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
