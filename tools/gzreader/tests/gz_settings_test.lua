@@ -310,5 +310,83 @@ if PLUGIN then
     end
 end
 
+-- Wallpaper options → Scale cover to fill screen (frontend/gzsleepfit.lua)
+do
+    local FRONT = ZEN .. "/../../frontend"
+    package.path = FRONT .. "/?.lua;" .. package.path
+    real.gzsleepfit = true
+    package.loaded.gzsleepfit, package.loaded.device = nil, nil
+    stubs.device = setmetatable({ isTouchDevice = function() return true end }, { __index = function() return function() end end })
+    local Fit = require("gzsleepfit")
+    local function covers(iw, ih, w, h, angle)
+        local f = Fit.factor(iw, ih, w, h, angle)
+        if angle and angle % 180 ~= 0 then iw, ih = ih, iw end
+        local sw, sh = math.floor(iw * f), math.floor(ih * f)
+        -- covers the screen, and overflows on one side only (no stretching)
+        return sw >= w and sh >= h and (sw <= w + 1 or sh <= h + 1), f
+    end
+    local okc, f = covers(600, 900, 600, 800)
+    check(okc and math.abs(f - 1) < 1e-3, "fill: a tall cover keeps its width, top and bottom cut off")
+    okc, f = covers(1200, 600, 600, 800)
+    check(okc and math.abs(f - 800 / 600) < 1e-3, "fill: a wide picture is scaled to the height, sides cut off")
+    okc, f = covers(300, 400, 824, 1200)
+    check(okc and f > 2.9, "fill: a small cover is scaled up")
+    check((covers(1200, 600, 600, 800, 90)) and math.abs(Fit.factor(1200, 600, 600, 800, 90) - 1) < 1e-3
+        and math.abs(Fit.factor(1200, 600, 600, 800, -90) - 1) < 1e-3, "fill: a turned picture uses its turned size")
+    check(Fit.factor(nil, 600, 600, 800) == 0 and Fit.factor(0, 600, 600, 800) == 0,
+        "fill: an unknown size falls back to best fit")
+    local all = true
+    for iw = 97, 1500, 37 do for ih = 113, 1600, 41 do
+        for _i, s in ipairs({ { 600, 800 }, { 824, 1200 }, { 1072, 1448 }, { 758, 1024 }, { 1200, 824 } }) do
+            if not covers(iw, ih, s[1], s[2]) then all = false end
+        end
+    end end
+    check(all, "fill: never a bar left at the edge, at any cover size on any Kindle screen")
+
+    local store = { screensaver_stretch_images = true }
+    G_reader_settings = {
+        readSetting = function(_s, k) return store[k] end,
+        isTrue = function(_s, k) return store[k] == true end,
+        nilOrTrue = function(_s, k) return store[k] == nil or store[k] == true end,
+        makeFalse = function(_s, k) store[k] = false end,
+        makeTrue = function(_s, k) store[k] = true end,
+        flipNilOrFalse = function(_s, k) if store[k] then store[k] = nil else store[k] = true end end,
+        saveSetting = function(_s, k, v) store[k] = v end,
+    }
+    local okm, menu = pcall(dofile, FRONT .. "/ui/elements/screensaver_menu.lua")
+    check(okm and type(menu) == "table", "the Sleep menu loads " .. tostring(not okm and menu or ""))
+    local opts = okm and find(menu, "Wallpaper options")
+    local border = opts and find(opts.sub_item_table, "Border fill, rotation, and fit")
+    local fill = border and find(border.sub_item_table, "Scale cover to fill screen")
+    check(fill and true or false, "Border fill, rotation, and fit has Scale cover to fill screen "
+        .. texts(border and border.sub_item_table))
+    check(opts and not find(opts.sub_item_table, "Scale cover to fill screen"),
+        "Scale cover to fill screen isn't also in Wallpaper options itself")
+    if fill then
+        local stretch, at = nil, {}
+        for i, it in ipairs(border.sub_item_table) do
+            if rawget(it, "text_func") and text(it):find("Stretch") then stretch, at.stretch = it, i end
+            if it == fill then at.fill = i end
+            if rawget(it, "text") == "Rotate cover for best fit" then at.rotate = i end
+        end
+        check(at.stretch and at.fill and at.rotate and at.stretch < at.fill and at.fill < at.rotate,
+            "between Stretch cover to fit screen and Rotate cover for best fit")
+        check(border.enabled_func() and not fill.checked_func() and stretch and stretch.enabled_func(),
+            "off at first; offered with GZreader's sleep screen; Stretch still offered")
+        fill.callback()
+        check(store[Fit.SETTING] == true and fill.checked_func() and store.screensaver_stretch_images == false
+            and not stretch.enabled_func(), "ticking it turns Stretch off and greys it out")
+        fill.callback()
+        check(store[Fit.SETTING] == nil and not fill.checked_func() and stretch.enabled_func(), "unticking it")
+        store.gzreader_sleep_auto, store.screensaver_type = false, "bookstatus"
+        check(not border.enabled_func(), "greyed out (with its submenu) when the sleep screen shows no picture")
+    end
+    local ss_src = io.open(FRONT .. "/ui/screensaver.lua"):read("*a")
+    check(ss_src:find('isTrue("screensaver_rotate_auto_for_best_fit") or gz_fill then', 1, true)
+        and ss_src:find('require("gzsleepfit").factor(widget_settings.image:getWidth()', 1, true)
+        and ss_src:find("screen_w, screen_h, widget_settings.rotation_angle)", 1, true),
+        "the sleep screen loads the picture to know its size and scales it to fill")
+end
+
 print(ok_count .. " passed, " .. fail .. " failed")
 os.exit(fail == 0 and 0 or 1)

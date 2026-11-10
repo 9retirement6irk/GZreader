@@ -113,11 +113,29 @@ local sub_item_table = {
                             end
                             return _("Stretch cover to fit screen")
                         end,
+                        enabled_func = function() -- (GZreader: not with Scale cover to fill screen)
+                            return not require("gzsleepfit").on(G_reader_settings)
+                        end,
                         checked_func = function()
                             return G_reader_settings:isTrue("screensaver_stretch_images")
                         end,
                         callback = function(touchmenu_instance)
                             Screensaver:setStretchLimit(touchmenu_instance)
+                        end,
+                    },
+                    {
+                        -- GZreader: proportions kept, edges cut off (gzsleepfit.lua)
+                        text = _("Scale cover to fill screen"),
+                        help_text = _("Scales the book cover or picture up until it covers the whole screen, keeping its proportions. No bars at the edges; the parts that don't fit are cut off."),
+                        checked_func = function()
+                            return require("gzsleepfit").on(G_reader_settings)
+                        end,
+                        callback = function()
+                            local Fit = require("gzsleepfit")
+                            G_reader_settings:flipNilOrFalse(Fit.SETTING)
+                            if Fit.on(G_reader_settings) then
+                                G_reader_settings:makeFalse("screensaver_stretch_images")
+                            end
                         end,
                     },
                     {
