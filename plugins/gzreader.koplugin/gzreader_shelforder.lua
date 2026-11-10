@@ -11,7 +11,7 @@ local Order = {
         -- (height: drawn to the same scale, the CD player is lower than the
         -- walkman; 1.21.1 drew both as tall, the CD player much bigger)
         Audiobooks = { icon = "walkman", ratio = 130 / 160, height = 1, label = _("Audiobooks") },
-        Music = { icon = "cdplayer", ratio = 170 / 124, height = 124 / 160, label = _("Music") },
+        Music = { icon = "cdplayer", ratio = 170 / 104, height = 104 / 160, label = _("Music") }, -- (lying flat on the shelf)
     },
     SPECIAL_ORDER = { "Audiobooks", "Music" },
 }

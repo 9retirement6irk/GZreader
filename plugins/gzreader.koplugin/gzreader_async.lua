@@ -175,10 +175,22 @@ local function finishJob(job, res)
 end
 
 --- A background process is done (all its jobs answered): the next one.
+--- A book downloading waits while requests run (gzreader_download.lua, yield).
+local function downloadWaits(on)
+    pcall(function()
+        local D = package.loaded["gzreader_download"]
+        if type(D) ~= "table" then return end
+        if on then if D.yield then D.yield() end elseif D.unyield then D.unyield() end
+    end)
+end
+
 local function batchDone()
     Async.busy = false
     netHold(false)
-    UIManager:nextTick(pump)
+    UIManager:nextTick(function()
+        pump()
+        if not Async.busy then downloadWaits(false) end -- (nothing more asked for: the download goes on)
+    end)
 end
 
 --- The jobs for the next background process: the first queued job and the
@@ -267,6 +279,9 @@ pump = function()
         Log.warn("async: couldn't start a background process for", jobs[1].name or "?")
         for _i, job in ipairs(jobs) do finishJob(job, pack(nil, "busy")) end
         return batchDone()
+    end
+    for _i, job in ipairs(jobs) do
+        if not job.nice then downloadWaits(true); break end -- (long work, opts.nice, doesn't make it wait)
     end
     if #jobs > 1 then
         local names = {}

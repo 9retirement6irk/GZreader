@@ -77,6 +77,10 @@ Press/Back answer), and the order things happen in on a first start.
   the calendar's buttons and an event, a book read by tapping.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
+- `downloads_status.lua` — the download status in the status bar changing
+  (Downloads tab and Home) and a book arriving on the Downloads tab with no key
+  pressed: what reaches the screen, after GZreader's e-ink rules (no flash),
+  and a tab switch by key (still a flash).
 - `audio_keys.lua` — the audiobook player: pause / play again, the volume
   rocker (VPlus / VMinus) in the player and on Home, D (the description), the
   Home key from the player and Settings, sleep and closing GZreader. Needs a
@@ -108,6 +112,9 @@ Press/Back answer), and the order things happen in on a first start.
   page with its cover, and the Downloads tab taking in a finished download.
 - `dx_shelves.lua` (`GZ_EMU_MODEL=dx`, `GZ_EMU_BOOKS` a folder of EPUBs, e.g.
   the demo library's) — the DX's Home with two shelves and Downloads with four.
+- `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
+  with 40 books: a page takes as many as fit, none hidden, letters Q to L only,
+  Del opens nothing, L opens its book.
 - `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
   `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
   books with real covers) — Lua memory and RSS while paging through All

@@ -188,6 +188,9 @@ function M.build(ctx)
         { id = "page_right",  text = _("Next page")     },
         { id = "menu",        text = _("Menu")          },
     }
+    -- GZreader: no Manga, News or Calibre Search tabs (their apps aren't in GZreader)
+    navbar_tab_items = require("common/gz_settings").dropHiddenTabs(navbar_tab_items)
+
     local archive_available = paths.getArchiveDir() ~= nil
     if archive_available then
         table.insert(navbar_tab_items, 2, {
@@ -214,6 +217,7 @@ function M.build(ctx)
         "books", "folder", "kindle", "manga", "news", "history", "favorites",
         "collections", "authors", "series", "languages", "home", "tags", "to_be_read",
     }
+    default_tab_ids = require("common/gz_settings").dropHiddenTabs(default_tab_ids) -- GZreader
     if archive_available then
         table.insert(default_tab_ids, 2, "archive")
     end

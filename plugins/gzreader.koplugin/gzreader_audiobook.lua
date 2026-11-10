@@ -1,6 +1,11 @@
 --[[--
 Grimmory audiobooks on the Kindle: download, listen, chapters, sleep timer,
 progress synced with Grimmory's own audiobook progress (the web player's).
+Or Plex's (Settings → Connections → Plex → Audiobooks): an album of a Plex
+library is a book (id "plex-<album key>", book.plex = { key, thumb }), its
+tracks the book's files (gzreader_plex.lua Plex:audiobookInfo), and the
+listening position goes to the track's place in Plex (Plex:setProgress),
+read back from the track listened to last (Plex:audiobookPosition).
 
 Storage: <GZreader folder>/.audiobooks/<book id>/ with the audio file(s) and
 audiobook.json (Grimmory's info: duration, chapters, tracks). Hidden: a long
@@ -202,7 +207,8 @@ function Audiobook.describe(book_id, info, primary_name)
             local name = string.format("track-%03d.%s", i, extOf(t.fileName, "mp3"))
             files[i] = name
             tracks[i] = { file = name, index = t.index or (i - 1), durationMs = tonumber(t.durationMs) or 0,
-                start = tonumber(t.cumulativeStartMs) or 0, size = tonumber(t.fileSizeBytes), title = t.title }
+                start = tonumber(t.cumulativeStartMs) or 0, size = tonumber(t.fileSizeBytes), title = t.title,
+                plex_key = t.plexKey and tostring(t.plexKey) or nil }
         end
     else
         local name = "audiobook." .. extOf(primary_name, (info.codec or ""):lower():find("mp3") and "mp3" or "m4b")
@@ -218,6 +224,7 @@ function Audiobook.describe(book_id, info, primary_name)
         for i, t in ipairs(tracks) do chapters[i] = { title = t.title or T(_("Track %1"), i), startTimeMs = t.start } end
     end
     return { id = tostring(book_id), title = info.title, author = info.author, narrator = info.narrator,
+        plex = info.plexKey and { key = tostring(info.plexKey), thumb = info.plexThumb } or nil,
         description = Audiobook.plainText(info.gz_description),
         file_id = tonumber(info.bookFileId), folder = info.folderBased == true, durationMs = tonumber(info.durationMs),
         tracks = tracks, chapters = chapters, files = files }
@@ -362,6 +369,14 @@ end
 function Audiobook.download(plugin, summary, on_done, attempt, info)
     attempt = attempt or 1
     local api = plugin.api
+    local plex = type(summary.plex) == "table" and summary.plex.key and require("gzreader_music").plex(plugin) or nil
+    if not info and plex then
+        -- a Plex audiobook: its tracks and details from Plex, in the background
+        return require("gzreader_async").run(nil, function() return plex:audiobookInfo(summary.plex.key) end, function(got, err)
+            if not got then return on_done(nil, err) end
+            Audiobook.download(plugin, summary, on_done, attempt, got)
+        end, "plex audiobook")
+    end
     if not info then
         -- the audiobook's details (and a fresh login) in the background
         return require("gzreader_async").call(api, "audiobookInfo", { summary.id }, function(got, err)
@@ -377,11 +392,18 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
     for _i, t in ipairs(book.tracks) do total = total + (t.size or 0) end
     Log.info("audiobook download start", summary.id, #book.tracks, "files", total, "bytes", "attempt", attempt)
     pcall(require("gzreader_recovery").audioStarted, plugin, summary, "download") -- picked up after a restart
+    local bitrate = plex and require("gzreader_plex").quality(plugin.store).bitrate
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
         api.no_refresh = true
-        for _i, t in ipairs(book.tracks) do
+        for i, t in ipairs(book.tracks) do
             local final = dir .. "/" .. t.file
-            if lfs.attributes(final, "mode") ~= "file" and not readChunks(dir, t) then
+            if plex and lfs.attributes(final, "mode") ~= "file" and not readChunks(dir, t) then
+                local err = Audiobook.fetchPlexTrack(plex, info.tracks[i].plexTrack, final, bitrate)
+                if err then
+                    ffiutil.writeToFD(wfd, "err " .. err, true)
+                    return
+                end
+            elseif lfs.attributes(final, "mode") ~= "file" and not readChunks(dir, t) then
                 local part = final .. ".part"
                 local tries, last_size = 0, -1
                 while true do
@@ -398,6 +420,9 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
                 end
                 os.rename(part, final)
             end
+        end
+        if plex and book.plex and book.plex.thumb and lfs.attributes(dir .. "/cover.jpg", "mode") ~= "file" then
+            pcall(plex.downloadThumb, plex, book.plex.thumb, dir .. "/cover.jpg", 600)
         end
         ffiutil.writeToFD(wfd, "ok", true)
     end, true)
@@ -446,6 +471,7 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
             return on_done(nil, (res:match("^err (.*)$") or res):gsub(" %(resumable%)", ""))
         end
         Log.info("audiobook downloaded", summary.id)
+        if plex then Audiobook.plexFiles(dir, book) end
         pcall(require("gzreader_recovery").audioStarted, plugin, summary, "prepare")
         Audiobook.prepare(dir, book.tracks, book.title, function(pok, perr)
             if not pok then return on_done(nil, T(_("Couldn't prepare the audio for the Kindle: %1"), tostring(perr))) end
@@ -453,7 +479,7 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
             local f = io.open(dir .. "/audiobook.json", "wb")
             if f then f:write(JSON.encode(book)); f:close() end
             plugin.store.audiobooks = plugin.store.audiobooks or {}
-            plugin.store.audiobooks[book.id] = { title = book.title, author = book.author }
+            plugin.store.audiobooks[book.id] = { title = book.title, author = book.author, plex_thumb = book.plex and book.plex.thumb or nil }
             plugin:save()
             -- its tile in Downloads → Audiobooks, then Grimmory's cover for it
             pcall(Folder.writeStub, plugin, book.id)
@@ -463,6 +489,41 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
         end)
     end
     UIManager:scheduleIn(1, poll)
+end
+
+--- A Plex track into `final` (its name says the format Plex.how chose):
+--- nil when it's there, or the error (" (resumable)" when trying again
+--- later can help). Runs in the download's process.
+function Audiobook.fetchPlexTrack(plex, track, final, bitrate)
+    if type(track) ~= "table" then return "no track" end
+    local base = final:gsub("%.[^./]*$", "")
+    local tries, err = 0, nil
+    while tries < 3 do
+        local got, e = plex:downloadTrack(track, base, bitrate)
+        if got then return nil end
+        err = tostring(e)
+        if err == "unauthorized" or err:find("transcode", 1, true) then return err end
+        tries = tries + 1
+        ffiutil.sleep(3 * tries)
+    end
+    return err .. " (resumable)"
+end
+
+--- After a Plex download: a track Plex's transcoder sent as AAC (its own
+--- profile) has a .aac name instead of the .mp3 asked for.
+function Audiobook.plexFiles(dir, book)
+    for i, t in ipairs(book.tracks) do
+        if lfs.attributes(dir .. "/" .. t.file, "mode") ~= "file" and not readChunks(dir, t) then
+            local base = t.file:gsub("%.[^./]*$", "")
+            for _j, ext in ipairs({ "aac", "mp3", "m4a" }) do
+                if lfs.attributes(dir .. "/" .. base .. "." .. ext, "mode") == "file" then
+                    t.file = base .. "." .. ext
+                    book.files[i] = t.file
+                    break
+                end
+            end
+        end
+    end
 end
 
 --- Record converted tracks in the book description (files list -> chunk files).
@@ -522,6 +583,7 @@ function Player:progressBody()
 end
 
 function Player:push()
+    if self.book.plex then return self:pushPlex() end
     if not self.book.file_id or self.plugin.store.sync_disabled or not self.plugin.api:isPaired() then return end
     local body = self:progressBody()
     self.last_push = os.time()
@@ -531,8 +593,48 @@ function Player:push()
     if NetworkMgr:isConnected() and not Audiobook.quitting then self.plugin:flushPending() end
 end
 
+--- A Plex audiobook: where it is goes to the track's place in Plex (in the
+--- background; without Wi-Fi, the next push sends it).
+function Player:pushPlex()
+    if not NetworkMgr:isConnected() or Audiobook.quitting then return end
+    local plex = require("gzreader_music").plex(self.plugin)
+    if not plex:isConnected() then return end
+    local track, in_track = Audiobook.locate(self.book, self:globalPos())
+    local t = self.book.tracks[track]
+    if not (t and t.plex_key) then return end
+    self.last_push = os.time()
+    require("gzreader_async").run(nil, function() return plex:setProgress(t.plex_key, in_track) end, function(ok, err)
+        if not ok then Log.warn("audiobook: Plex position not sent:", tostring(err)) end
+    end, "plex audiobook position")
+end
+
+--- Plex's place for book (Plex:audiobookPosition's answer) as ms from the
+--- book's start, or nil. Pure.
+function Audiobook.plexMs(book, pos)
+    if type(pos) ~= "table" or not pos.track then return nil end
+    for _i, t in ipairs(book.tracks or {}) do
+        if t.plex_key == tostring(pos.track) then
+            if pos.finished then return t.start + (t.durationMs or 0) end
+            return t.start + (tonumber(pos.offset) or 0)
+        end
+    end
+    return nil
+end
+
+--- A Plex audiobook: offer Plex's place (any Plex player's).
+function Player:pullPlex(on_done)
+    local plex = require("gzreader_music").plex(self.plugin)
+    if not (NetworkMgr:isConnected() and plex:isConnected()) then return on_done() end
+    require("gzreader_async").run(nil, function() return plex:audiobookPosition(self.book.plex.key) end, function(pos)
+        local ms = Audiobook.plexMs(self.book, pos)
+        if not ms then return on_done() end
+        self:offerRemote(math.min(ms, math.max(0, Audiobook.total(self.book) - 1000)), true, on_done)
+    end, "plex audiobook position")
+end
+
 --- Offer Grimmory's position when it differs from ours by more than a minute.
 function Player:pull(on_done)
+    if self.book.plex then return self:pullPlex(on_done) end
     -- Grimmory's progress kept when it was downloaded (syncing through a
     -- computer, no Wi-Fi now): the first opening only
     local kept = self.plugin.store.audiobooks and self.plugin.store.audiobooks[self.book.id]
@@ -563,17 +665,25 @@ function Player:pull(on_done)
             if (t.index or 0) == ti then ms = t.start + ms; break end
         end
     end
+    self:offerRemote(ms, false, on_done)
+end
+
+--- The place Grimmory (or Plex) has, ms: taken when nothing was listened to
+--- here yet, offered when it's more than a minute away from ours.
+function Player:offerRemote(ms, plex, on_done)
     if math.abs(ms - self.pos) < 60000 then return on_done() end
     if self.pos < 1000 then
         -- nothing listened to here yet (just downloaded): Grimmory's place, no question
-        Log.info("audiobook", self.book.id, "starts at Grimmory's place", ms)
+        Log.info("audiobook", self.book.id, plex and "starts at Plex's place" or "starts at Grimmory's place", ms)
         self.pos = ms
-        UIManager:show(InfoMessage:new{ text = T(_("Continuing from %1 (Grimmory)."), Audiobook.fmt(ms)), timeout = 2 })
+        UIManager:show(InfoMessage:new{ text = plex and T(_("Continuing from %1 (Plex)."), Audiobook.fmt(ms))
+            or T(_("Continuing from %1 (Grimmory)."), Audiobook.fmt(ms)), timeout = 2 })
         return on_done()
     end
     UIManager:show(ConfirmBox:new{
-        text = T(_("Grimmory has this audiobook at %1 (here: %2). Continue from there?"), Audiobook.fmt(ms), Audiobook.fmt(self.pos)),
-        ok_text = _("Use Grimmory's"), cancel_text = _("Keep this"),
+        text = plex and T(_("Plex has this audiobook at %1 (here: %2). Continue from there?"), Audiobook.fmt(ms), Audiobook.fmt(self.pos))
+            or T(_("Grimmory has this audiobook at %1 (here: %2). Continue from there?"), Audiobook.fmt(ms), Audiobook.fmt(self.pos)),
+        ok_text = plex and _("Use Plex's") or _("Use Grimmory's"), cancel_text = _("Keep this"),
         ok_callback = function() self.pos = ms; on_done() end,
         cancel_callback = function() on_done() end,
     })
@@ -1364,6 +1474,9 @@ function Audiobook.choose(plugin, summary)
     local book = Audiobook.load(plugin, summary.id)
     if book then return Audiobook.open(plugin, book) end
     local size_kb = tonumber(summary.fileSizeKb)
+    if summary.plex and require("gzreader_net").usb then
+        return UIManager:show(InfoMessage:new{ text = _("This Kindle syncs through your computer: choose Plex audiobooks on the sync page (Content → Audiobooks), and they come with the next sync.") })
+    end
     if require("gzreader_net").usb then
         -- no Wi-Fi: the next sync with the computer brings it (gzreader_usbsync.lua)
         local Usb = require("gzreader_usbsync")

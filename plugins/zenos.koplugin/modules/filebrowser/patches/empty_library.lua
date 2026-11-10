@@ -56,7 +56,7 @@ local function apply_empty_library()
                 },
                 VerticalSpan:new{ width = Size.padding.large },
                 TextBoxWidget:new{
-                    text = _("Books you download from the Grimmory tab appear here."),
+                    text = _("Books you download from the Catalog tab appear here."),
                     face = Font:getFace("cfont", 16),
                     width = width - 2 * Size.padding.large,
                     alignment = "center",

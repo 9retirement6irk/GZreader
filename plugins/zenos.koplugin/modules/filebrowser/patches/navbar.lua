@@ -1716,6 +1716,7 @@ local function apply_navbar()
 
     local function is_tab_enabled(tab_id)
         return config.show_tabs[tab_id] == true
+            and not require("common/gz_settings").HIDDEN_TABS[tab_id] -- GZreader: Manga, News, Calibre Search
             and (tab_id ~= "archive" or paths.getArchiveDir() ~= nil)
             and (tab_id ~= "kindle" or OptionalProvider.call(KINDLE_PROVIDER, "isAvailable") == true)
     end
@@ -2857,10 +2858,14 @@ local function apply_navbar()
         -- Show context menu for current directory (navbar hold = blank-space context).
         local function showCurrentDirMenu(fc)
             local item = {
-                path = fc.path,
+                -- GZreader: the real path, as the blank-spot hold passes
+                path = require("ffi/util").realpath(fc.path) or fc.path,
                 is_file = false,
                 is_go_up = false,
                 text = fc.path:match("([^/]+)/?$") or fc.path,
+                -- GZreader: the same menu as a hold on a blank spot (Filter too:
+                -- keyboard Kindles have no other way to it since #85)
+                _is_current_dir = true,
             }
             fc:showFileDialog(item)
         end

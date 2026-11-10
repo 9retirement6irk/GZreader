@@ -96,7 +96,15 @@ do
     local order = table.concat(cfg.navbar.tab_order, ",")
     check(cfg.navbar.show_tabs.favorites == true and cfg.navbar.show_tabs.ct_notes == false and cfg.navbar.show_tabs.ct_grimmory == true,
         "setup tabs: Favorites on, Notes off, Grimmory untouched")
-    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    local ab_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_audiobooks" then ab_tab = t end end
+    check(ab_tab and ab_tab.action.gzreader_audiobooks and ab_tab.icon == "tab_audiobooks" and defaults.navbar.show_tabs.ct_audiobooks == false
+        and (state.ct_audiobooks == nil or state.ct_audiobooks == false),
+        "the Audiobooks tab: defined, off by default (offered on Kindles with audio)")
+    local catalog_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_grimmory" then catalog_tab = t end end
+    check(catalog_tab and catalog_tab.label == "Catalog", "the Grimmory tab is labelled Catalog")
     check(cfg.navbar.show_tabs.ct_calendar == false and cfg.navbar.show_tabs.continue == true, "setup tabs: Calendar off and Continue on when chosen so")
 end
 print(ok_count .. " passed, " .. fail .. " failed")

@@ -879,7 +879,7 @@ function M.build_install_pages(ctx)
             choice_type    = "checkbox",
             -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
             max_selections = (function()
-                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, history = true, favorites = true,
+                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, ct_audiobooks = true, history = true, favorites = true,
                     collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
                 local others = 0
                 local order = type(config.navbar) == "table" and config.navbar.tab_order
@@ -896,6 +896,8 @@ function M.build_install_pages(ctx)
                 { id = "ct_calendar", text = _("Calendar"),    checked = show_tabs["ct_calendar"] ~= false },
                 -- GZreader: Music (Plex), off by default; Kindles with audio only
                 gz_audio() and { id = "ct_music", text = _("Music (Plex)"), checked = show_tabs["ct_music"] == true } or false,
+                -- GZreader: the Catalog's Audiobooks page as a tab of its own, off by default
+                gz_audio() and { id = "ct_audiobooks", text = _("Audiobooks"), checked = show_tabs["ct_audiobooks"] == true } or false,
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -908,7 +910,7 @@ function M.build_install_pages(ctx)
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "ct_audiobooks", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true
@@ -956,7 +958,7 @@ function M.build_install_pages(ctx)
             title       = _("Synced with Grimmory"),
             icon_file   = _plugin_root .. "/icons/library.svg",
             icon_size   = 120,
-            description = _("Books from the Grimmory tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
+            description = _("Books from the Catalog tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
                 .. _("Offline? It syncs when you're back online."),
         },
 
@@ -1005,7 +1007,7 @@ function M.build_install_pages(ctx)
         {
             title       = _("Time Format"),
             description = _("Which time format do you prefer?") .. (legacy_clock and ("\n"
-                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
+                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time and date.")) or ""),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },

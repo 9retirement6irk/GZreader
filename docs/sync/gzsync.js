@@ -660,13 +660,24 @@ gets a password or token.
     offered: function (v, have) { return !!v && (Update.beta ? v !== have : Update.compare(v, have) > 0); },
     RELEASES: "https://github.com/9retirement6irk/GZreader/releases/latest",
     latest: null, chosen: true, file: null,
+    // -1, 0, 1, as GZreader's own (gzreader_update.lua): a release is newer
+    // than a test build of the same number (1.27.0 > 1.27.0-beta.5995ce3),
+    // so turning test builds off offers the release. (It compared the numbers
+    // only: a Kindle on a test build of the release's number was offered nothing.)
     compare: function (a, b) {
-      var pa = String(a).replace(/^v\.?/, "").split(/[.-]/), pb = String(b).replace(/^v\.?/, "").split(/[.-]/);
-      for (var i = 0; i < 3; i++) {
-        var x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+      function parts(v) {
+        var m = String(v).replace(/^v\.?/, "").match(/^([\d.]*)(.*)$/);
+        return { n: (m[1] || "0").split("."), pre: m[2] || "" };
+      }
+      var pa = parts(a), pb = parts(b);
+      for (var i = 0; i < Math.max(3, pa.n.length, pb.n.length); i++) {
+        var x = parseInt(pa.n[i], 10) || 0, y = parseInt(pb.n[i], 10) || 0;
         if (x !== y) return x < y ? -1 : 1;
       }
-      return 0;
+      if (pa.pre === pb.pre) return 0;
+      if (pa.pre === "") return 1;
+      if (pb.pre === "") return -1;
+      return pa.pre < pb.pre ? -1 : 1;
     },
     check: async function () {
       Update.latest = null;
@@ -841,6 +852,7 @@ gets a password or token.
       var books = have.books || {}, audio = asList(have.audiobooks).map(String), music = asList(have.music);
       var b = Picks.d.books.filter(function (p) { var id = String(p.id); return !books[id] && audio.indexOf(id) < 0; });
       var m = Picks.d.music.filter(function (p) {
+        if (p.kind === "audiobook") return audio.indexOf("plex-" + p.key) < 0; // (a Plex audiobook: on the Kindle as plex-<key>)
         return music.indexOf(p.kind + "-" + p.key) < 0 && music.indexOf(safe(p.kind) + "-" + safe(p.key)) < 0;
       });
       var n = Picks.d.books.length - b.length + Picks.d.music.length - m.length;
@@ -1258,7 +1270,7 @@ gets a password or token.
       if (index[name] !== stamp && index[name] !== stamp + ":none") todo.push({ id: b.id, name: name, stamp: stamp, audio: audio });
     });
     if (!todo.length) return;
-    phase("Small covers for the Grimmory tab…");
+    phase("Small covers for the Catalog tab…");
     var n = 0, got = 0;
     await pool(todo, 6, async function (t) {
       try {
@@ -1719,12 +1731,23 @@ gets a password or token.
 
   async function syncMusic(out, inbox) {
     var have = new Set(((out.have || {}).music) || []);
+    var abHave = new Set((((out.have || {}).audiobooks) || []).map(String));
     var todo = picks().filter(function (p) {
+      if (p.kind === "audiobook") return !abHave.has("plex-" + p.key) && !inbox.audiobooks.some(function (a) { return String(a.id) === "plex-" + p.key; });
       var k = safe(p.kind) + "-" + safe(p.key);
       return !have.has(p.kind + "-" + p.key) && !have.has(k) && !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
     });
     for (var i = 0; i < todo.length; i++) {
       var p = todo[i];
+      if (p.kind === "audiobook") {
+        phase("Audiobook: “" + p.title + "”…");
+        try {
+          await bringPlexAudiobook(p, inbox);
+          await saveInbox(inbox);
+          log("“" + p.title + "” (audiobook, Plex) is on its way to the Kindle.", "ok");
+        } catch (e) { log("Audiobook: “" + p.title + "” couldn't be brought: " + e.message, "bad"); }
+        continue;
+      }
       phase("Music: “" + p.title + "”…");
       try {
         var tracks = p.kind === "playlist" ? await playlistTracks(p.key) : await P.items("/library/metadata/" + encodeURIComponent(p.key) + "/children");
@@ -1751,6 +1774,48 @@ gets a password or token.
         log("Music: “" + p.title + "”, " + nt + " track" + (nt === 1 ? "" : "s") + ".", "ok");
       } catch (e) { log("Music: “" + p.title + "” couldn't be brought: " + e.message, "bad"); }
     }
+  }
+
+  // A Plex audiobook (an album of the library the Kindle takes audiobooks
+  // from): its tracks as the book's files, laid out as gzreader_plex.lua's
+  // Plex:audiobookInfo describes it, so the Kindle takes it like Grimmory's
+  // (Usb.takeAudiobook), as plex-<key>.
+  async function bringPlexAudiobook(p, inbox) {
+    var meta = await (await P.get("/library/metadata/" + encodeURIComponent(p.key))).json();
+    var album = ((meta.MediaContainer || {}).Metadata || [])[0] || {};
+    var tracks = (await P.items("/library/metadata/" + encodeURIComponent(p.key) + "/children")).filter(function (t) { return t.type === "track" || t.part; });
+    if (!tracks.length) throw new Error("it has no tracks on Plex");
+    var dir = "in/audio-plex-" + safe(p.key);
+    var info = { title: album.title || p.title, author: album.parentTitle || p.artist, folderBased: true, tracks: [], chapters: [],
+      gz_description: album.summary || undefined, plexKey: String(p.key), plexThumb: album.thumb || p.thumb || undefined };
+    var start = 0;
+    for (var j = 0; j < tracks.length; j++) {
+      var t = tracks[j];
+      bar.set(j, tracks.length);
+      var file = await bringTrack(t, dir, "track-" + ("00" + (j + 1)).slice(-3));
+      info.tracks.push({ index: j, fileName: "track." + extOf(file, "mp3"), durationMs: Number(t.duration) || 0, cumulativeStartMs: start,
+        title: t.title, plexKey: String(t.key) });
+      start += Number(t.duration) || 0;
+    }
+    info.durationMs = start;
+    if (tracks.length === 1) {
+      try { // (one file: its chapters, when Plex has them)
+        var cm = await (await P.get("/library/metadata/" + encodeURIComponent(tracks[0].key), { includeChapters: 1 })).json();
+        var ch = (((cm.MediaContainer || {}).Metadata || [])[0] || {}).Chapter || [];
+        ch.forEach(function (c, i) {
+          if (c.startTimeOffset == null) return;
+          info.chapters.push({ title: c.tag || ("Chapter " + (i + 1)), startTimeMs: Number(c.startTimeOffset),
+            durationMs: c.endTimeOffset != null ? Number(c.endTimeOffset) - Number(c.startTimeOffset) : undefined });
+        });
+      } catch (e) {}
+    }
+    if (info.plexThumb) {
+      try {
+        var c = await P.get("/photo/:/transcode", { url: info.plexThumb, width: 600, height: 600, minSize: 1, upscale: 1, format: "jpeg" });
+        await Drive.write(Drive.sync, dir + "/cover.jpg", await c.blob());
+      } catch (e) {}
+    }
+    inbox.audiobooks.push({ id: "plex-" + p.key, dir: dir, info: info, title: info.title });
   }
 
   async function playlistTracks(key) {
@@ -2152,6 +2217,11 @@ gets a password or token.
   function standing(kind, id) {
     var out = K.out || {}, have = out.have || {}, inbox = K.pending || {};
     id = String(id);
+    if (kind === "audiobook") { // (a Plex audiobook, its album's key: plex-<key> on the Kindle)
+      if ((have.audiobooks || []).some(function (a) { return String(a) === "plex-" + id; })) return "here";
+      if ((inbox.audiobooks || []).some(function (b) { return String(b.id) === "plex-" + id; })) return "brought";
+      return picks().some(function (y) { return y.kind === "audiobook" && String(y.key) === id; }) ? "chosen" : "";
+    }
     if (kind === "album" || kind === "playlist") {
       if ((have.music || []).some(function (m) { return m === kind + "-" + id || m === safe(kind) + "-" + safe(id); })) return "here";
       if ((inbox.music || []).some(function (m) { return m.kind === kind && String(m.key) === id; })) return "brought";
@@ -2183,15 +2253,33 @@ gets a password or token.
       $("#b-search").placeholder = tab === "music" ? "Search albums and playlists" : tab === "audio" ? "Search audiobooks" : "Search books";
       var cats = $("#b-cats");
       cats.textContent = "";
-      Browse.CATS[tab].forEach(function (c) {
+      Browse.cats(tab).forEach(function (c) {
         var b = el("button", { "data-cat": c[0] }, c[1]);
         b.onclick = function () { Browse.open(c[0]); };
         cats.appendChild(b);
       });
-      Browse.open(Browse.CATS[tab][0][0]);
+      Browse.open(Browse.cats(tab)[0][0]);
+    },
+    // Audiobooks from a Plex library: the one the Kindle takes them from
+    // (Settings → Connections → Plex → Audiobooks), or one picked here
+    // ("Audiobooks from…"); audioSrc "grimmory": Grimmory's.
+    audioSrc: null,
+    plexAudio: function () {
+      if (!P.connected() || Browse.audioSrc === "grimmory") return null;
+      if (Browse.audioSrc) return Browse.audioSrc;
+      var a = (K.out || {}).audiobook_library;
+      return a && a.key != null ? a : null;
+    },
+    PLEX_AUDIO_CATS: [["precent", "Recently added"], ["paz", "A–Z"], ["pauthors", "Authors"]],
+    cats: function (tab) {
+      if (tab !== "audio") return Browse.CATS[tab];
+      var list = (Browse.plexAudio() ? Browse.PLEX_AUDIO_CATS : Browse.CATS.audio).slice();
+      if (P.connected()) list.push(["source", "Audiobooks from…"]);
+      return list;
     },
     ready: function () {
       if (Browse.tab !== "books" && (((K.out || {}).kindle) || {}).audio === false) { Browse.note("This Kindle has no speaker or headphone jack."); return false; }
+      if (Browse.tab === "audio" && (Browse.cat === "source" || Browse.plexAudio())) return true;
       if (Browse.tab === "music" && !P.connected()) { Browse.note("Sign in with Plex (Connections) to choose music."); return false; }
       if (Browse.tab !== "music" && !G.connected()) { Browse.note("Sign in to Grimmory (Connections) to choose books."); return false; }
       return true;
@@ -2203,7 +2291,7 @@ gets a password or token.
       document.querySelectorAll("#b-cats button").forEach(function (b) { b.classList.toggle("on", b.dataset.cat === cat); });
       Browse.stack = [];
       if (!Browse.ready()) return;
-      var label = (Browse.CATS[Browse.tab].filter(function (c) { return c[0] === cat; })[0] || [, ""])[1];
+      var label = (Browse.cats(Browse.tab).filter(function (c) { return c[0] === cat; })[0] || [, ""])[1];
       Browse.push(label, Browse.loader(cat));
     },
     loader: function (cat) {
@@ -2214,6 +2302,10 @@ gets a password or token.
       if (cat === "shelves") return Browse.shelves;
       if (cat === "authors") return function (p) { return Browse.named("/api/v1/app/authors", "authors", p); };
       if (cat === "series") return function (p) { return Browse.named("/api/v1/app/series", "series", p); };
+      if (cat === "precent") return function (p) { return Browse.plexAudiobooks({ type: 9, sort: "addedAt:desc" }, p); };
+      if (cat === "paz") return function (p) { return Browse.plexAudiobooks({ type: 9, sort: "titleSort:asc" }, p); };
+      if (cat === "pauthors") return Browse.plexAuthors;
+      if (cat === "source") return Browse.audioSources;
       if (cat === "albums") return Browse.albums;
       if (cat === "playlists") return Browse.playlists;
       return function () { Browse.note(audio ? "" : ""); };
@@ -2350,10 +2442,24 @@ gets a password or token.
     },
     search: async function () {
       var q = $("#b-search").value.trim();
-      if (!q) return Browse.open(Browse.CATS[Browse.tab][0][0]);
+      if (!q) return Browse.open(Browse.cats(Browse.tab)[0][0]);
       document.querySelectorAll("#b-cats button").forEach(function (b) { b.classList.remove("on"); });
       Browse.stack = [];
+      Browse.cat = null;
       if (!Browse.ready()) return;
+      var lib = Browse.tab === "audio" && Browse.plexAudio();
+      if (lib) {
+        return Browse.push("“" + q + "”", async function () {
+          var d = await (await P.get("/hubs/search", { query: q, sectionId: lib.key, limit: 30 })).json();
+          var found = [];
+          ((d.MediaContainer || {}).Hub || []).forEach(function (hub) {
+            if (hub.type === "album") (hub.Metadata || []).forEach(function (m) { var it = P.item(m); if (it && it.key) found.push(it); });
+          });
+          Browse.clear();
+          if (!found.length) Browse.note("Nothing found.");
+          Browse.plexAudioItems(found);
+        });
+      }
       if (Browse.tab === "music") {
         return Browse.push("“" + q + "”", async function () {
           var d = await (await P.get("/hubs/search", { query: q, limit: 30 })).json();
@@ -2372,9 +2478,12 @@ gets a password or token.
       start = start || 0;
       var music = [];
       var d = await (await P.get("/library/sections")).json();
-      ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x.key); });
+      ((d.MediaContainer || {}).Directory || []).forEach(function (x) { if (x.type === "artist") music.push(x); });
       if (!music.length) return Browse.note("No music library on this Plex server.");
-      var items = await P.items("/library/sections/" + encodeURIComponent(music[0]) + "/all", { type: 9, sort: "titleSort:asc" },
+      // (the music library chosen on the Kindle, if this server has it: same key and name; else the first)
+      var want = (K.out || {}).music_library, lib = music[0];
+      if (want) music.forEach(function (x) { if (String(x.key) === String(want.key) && x.title === want.title) lib = x; });
+      var items = await P.items("/library/sections/" + encodeURIComponent(lib.key) + "/all", { type: 9, sort: "titleSort:asc" },
         { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "50" });
       if (start === 0) Browse.clear();
       items.forEach(function (x) { x.type = "album"; });
@@ -2387,6 +2496,71 @@ gets a password or token.
       items.forEach(function (x) { x.type = "playlist"; });
       if (!items.length) return Browse.note("No playlists.");
       Browse.musicItems(items);
+    },
+    // a page of the Plex audiobook library's albums
+    plexAudiobooks: async function (params, start) {
+      start = start || 0;
+      var lib = Browse.plexAudio();
+      var items = await P.items("/library/sections/" + encodeURIComponent(lib.key) + "/all", params,
+        { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "50" });
+      if (start === 0) Browse.clear();
+      if (start === 0 && !items.length) Browse.note("No audiobooks in “" + (lib.title || "this library") + "”.");
+      Browse.plexAudioItems(items);
+      Browse.pageMore(items.length === 50 ? function () { return Browse.plexAudiobooks(params, start + 50); } : null);
+    },
+    plexAuthors: async function (start) {
+      start = start || 0;
+      var lib = Browse.plexAudio();
+      var items = await P.items("/library/sections/" + encodeURIComponent(lib.key) + "/all", { type: 8, sort: "titleSort:asc" },
+        { "X-Plex-Container-Start": String(start), "X-Plex-Container-Size": "50" });
+      if (start === 0) Browse.clear();
+      items.forEach(function (a) {
+        Browse.navItem(a.title, null, null, function () {
+          Browse.push(a.title, async function () {
+            var books = await P.items("/library/metadata/" + encodeURIComponent(a.key) + "/children");
+            Browse.clear();
+            Browse.plexAudioItems(books);
+          });
+        });
+      });
+      if (start === 0 && !items.length) Browse.note("Nothing here.");
+      Browse.pageMore(items.length === 50 ? function () { return Browse.plexAuthors(start + 50); } : null);
+    },
+    // where audiobooks come from on this page: Grimmory or a Plex library
+    audioSources: async function () {
+      var cur = Browse.plexAudio();
+      Browse.clear();
+      var pick = function (src) { Browse.audioSrc = src; Browse.setTab("audio"); };
+      if (G.connected()) Browse.navItem("Grimmory", cur ? null : "in use", null, function () { pick("grimmory"); });
+      var d = await (await P.get("/library/sections")).json();
+      ((d.MediaContainer || {}).Directory || []).forEach(function (x) {
+        if (x.type !== "artist") return;
+        var on = cur && String(cur.key) === String(x.key);
+        Browse.navItem("Plex: " + x.title, on ? "in use" : null, null, function () { pick({ key: String(x.key), title: x.title }); });
+      });
+      $("#b-results").appendChild(el("li", { class: "small muted" },
+        "On the Kindle: Settings → Connections → Plex → Audiobooks. Plex audiobooks come to the Kindle with the next sync, and play there like Grimmory's."));
+    },
+    plexAudioItems: function (items) {
+      items.forEach(function (it) {
+        if (it.type && it.type !== "album") return;
+        var li = el("li", { class: "square" }), ph = el("span", { class: "ph" });
+        li.appendChild(ph);
+        var txt = el("span", { class: "txt" }, it.title);
+        txt.appendChild(el("span", { class: "meta" }, [it.artist, "audiobook", it.year].filter(Boolean).join(" · ")));
+        li.appendChild(txt);
+        li.appendChild(Browse.button("audiobook", it.key, function (on) {
+          var l = picks().filter(function (y) { return !(y.kind === "audiobook" && String(y.key) === String(it.key)); });
+          if (on) l.push({ kind: "audiobook", key: it.key, title: it.title, artist: it.artist, year: it.year, thumb: it.thumb });
+          setPicks(l);
+        }));
+        $("#b-results").appendChild(li);
+        if (it.thumb) {
+          P.get("/photo/:/transcode", { url: it.thumb, width: 96, height: 96, minSize: 1, format: "jpeg" }).then(function (r) { return r.blob(); })
+            .then(function (blob) { if (ph.isConnected) ph.replaceWith(el("img", { src: URL.createObjectURL(blob), alt: "" })); })
+            .catch(function () {});
+        }
+      });
     },
     musicItems: function (items) {
       items.forEach(function (it) {
@@ -2442,7 +2616,7 @@ gets a password or token.
       ul.appendChild(li); rows++;
     });
     $("#picks-size").textContent = bytes ? "· about " + mb(bytes) : "";
-    if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Grimmory tab."));
+    if (!rows) ul.appendChild(el("li", { class: "small muted" }, "Nothing yet: choose above, or with Download in the Kindle's Catalog tab."));
   }
 
   // ------------------------------------------------------------ HEIC pictures
@@ -2812,7 +2986,7 @@ gets a password or token.
   // (tests: a folder standing in for the Kindle, without the folder picker)
   window.GZSync = {
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
-    G: G, M: M, P: P, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
+    G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();

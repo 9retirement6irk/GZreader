@@ -5,7 +5,7 @@ What GZreader keeps the same on the device and in Grimmory (its web reader and y
 Native: Grimmory's own reading-progress API (the web reader's), not its
 KOReader-compatible endpoint.
 
-- Books downloaded through the Grimmory tab, matched by Grimmory book ID.
+- Books downloaded through the Catalog tab, matched by Grimmory book ID.
 - EPUB: the exact place as an EPUB CFI (`positionData`, made from the
   page's crengine XPointer with `gzreader_cfi.lua`), plus the chapter (spine
   file) and the position in it as a fallback. Grimmory's web reader
