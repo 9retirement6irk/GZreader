@@ -23,6 +23,7 @@ end
 --- What goes after the Wi-Fi icon: the auto mark, or nil.
 function M.mark()
     if M.mode() == "auto" then return M.AUTO_MARK end
+    return nil
 end
 
 return M
