@@ -6432,6 +6432,18 @@ print("Audiobook player: go to a time, skips gathered, the cassette")
     check(#seeks == 1 and seeks[1] == 60000 + 3 * AB.SKIP_MS, "skips pressed close together: the player is started once, where they end")
     local Deck = require("gzreader_deck")
     check(Deck.Cassette and Deck.Cassette.RATIO == 0.63, "the player shows the audiobook as a cassette (100 × 63)")
+    -- Music's CD player: the disc fills the lid's window, the cover nearly all of the disc
+    local D = Deck.CD.DISC
+    local svgf = io.open(debug.getinfo(Deck.CD.paintTo, "S").source:sub(2):gsub("gzreader_deck%.lua$", "icons/shelf/cd_player.svg"), "rb")
+    local svg = svgf and svgf:read("*a") or ""
+    if svgf then svgf:close() end
+    local win = tonumber(svg:match('<circle cx="180" cy="126" r="(%d+)" fill="#2a2a2a"/>'))
+    local deck_src = io.open(debug.getinfo(Deck.CD.paintTo, "S").source:sub(2), "rb")
+    local dsrc = deck_src and deck_src:read("*a") or ""
+    if deck_src then deck_src:close() end
+    check(win and D.disc == win and D.label >= D.disc - 4 and D.hub < D.label / 4 and D.spindle < D.hole and D.hole < D.hub
+        and dsrc:find("fit(st.cover_bb, 2 * rl, 2 * rl, true)", 1, true),
+        "the CD player: the album's cover fills the disc, the disc fills the lid's window (it was a small label in the middle)")
     -- the chunk feeder ends with the player
     local Engine = require("gzreader_audioengine")
     local cmd = Engine.command({ pipe = "fakesink" }, { kind = "chunks", dir = "/x", starts = { 0, 15000 }, offset_ms = 0 })

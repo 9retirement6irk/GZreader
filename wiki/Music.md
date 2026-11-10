@@ -9,7 +9,7 @@ is also in the quick panel (*Music*, or *Music ▶* while it plays), at Home and
 in a book.
 
 While music plays, *Now playing* is a portable CD player with headphones: the
-album's cover on the disc, the track and time on its little display, then the
+album's cover printed over the whole disc, the track and time on its little display, then the
 track, the controls (Q previous, W play / pause, E next, A shuffle, S repeat,
 D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ and
 Press, or tap a track, to play it).
