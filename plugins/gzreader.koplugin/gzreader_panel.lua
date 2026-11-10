@@ -259,19 +259,6 @@ end
 
 ---------------------------------------------------------------- what's on it
 
---- The Updates tile: "Update available", drawn inverted, once a check (the
---- daily one, or one from Settings) found a newer version. Nothing is
---- fetched here; gzreader_update is only loaded when a check was saved.
-function Panel.updatesTile()
-    local latest
-    if package.loaded["gzreader_update"] or G_reader_settings:readSetting("gzreader_update_latest") then
-        local ok, Update = pcall(require, "gzreader_update")
-        latest = ok and type(Update.known) == "function" and Update.known() or nil
-    end
-    return { id = "updates", icon = "updates", label = latest and _("Update available") or _("Updates"), on = latest ~= nil,
-        run = function() require("gzreader_update").run() end }
-end
-
 --- The Controls tiles: { id, icon, label, on, run }.
 function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
@@ -305,6 +292,19 @@ local function shortTitle(path)
         or path:match("([^/]+)%.[^.]+$") or path
     if #t > 18 then t = t:sub(1, 16):gsub("[\128-\191]*$", ""):gsub("[\192-\255]$", "") .. "…" end
     return t
+end
+
+--- The Updates tile: "Update available", drawn inverted, once a check (the
+--- daily one, or one from Settings) found a newer version. Nothing is
+--- fetched here; gzreader_update is only loaded when a check was saved.
+function Panel.updatesTile()
+    local latest
+    if package.loaded["gzreader_update"] or G_reader_settings:readSetting("gzreader_update_latest") then
+        local ok, Update = pcall(require, "gzreader_update")
+        latest = ok and type(Update.known) == "function" and Update.known() or nil
+    end
+    return { id = "updates", icon = "updates", label = latest and _("Update available") or _("Updates"), on = latest ~= nil,
+        run = function() require("gzreader_update").run() end }
 end
 
 --- The Music tile, while music plays or is paused (its player: the CD
