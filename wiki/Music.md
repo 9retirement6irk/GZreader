@@ -34,7 +34,7 @@ D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ 
 Press, or tap a track, to play it).
 
 Sign in, either way:
-- on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
+- on the Kindle: *Plex: sign in with a code*: go to **plex.tv/link** on a
   phone or computer and enter the 4 letters shown;
 - on the setup page: Music → *Sign in with Plex*.
 
@@ -50,7 +50,7 @@ bookshelf, the CD player), like audiobooks: open one to play it.
 
 **Music library**: a Plex server can have several music libraries. GZreader
 uses the server's first until you pick another in Settings → Connections →
-Plex → **Music library** (or *Plex: you · server* in the Music tab). Artists,
+Plex → **Music library** (or *Plex* in the Music tab, which shows you · server). Artists,
 Albums, Recently added and Recently played come from the one picked; with
 more than one music library on the server, Playlists and Search keep to it
 too. The choice is kept per server, and the sync page (Kindles without
@@ -61,7 +61,7 @@ when nothing is picked here.
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else
 (FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or
-320 kbps: *Plex: you · server* in the Music tab). To save room, **Make bigger
+320 kbps: *Plex* in the Music tab). To save room, **Make bigger
 MP3 and AAC smaller** (in the same place) has Plex convert MP3 and AAC tracks
 of a higher quality to MP3 at that quality too (more than 15 % above it, so a
 file at about that quality stays as it is); music already downloaded stays as

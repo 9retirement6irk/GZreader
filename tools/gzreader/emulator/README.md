@@ -85,6 +85,11 @@ Press/Back answer), and the order things happen in on a first start.
   rocker (VPlus / VMinus) in the player and on Home, D (the description), the
   Home key from the player and Settings, sleep and closing GZreader. Needs a
   stand-in `gst-launch-0.10` (see the script).
+- `menu_rows.lua` (any model) — GZreader's menus as ZenOS rows: the
+  Calendar and Notes connect lists, Music's Plex sign-in (a model with a
+  speaker), Downloads with a made-up queue, copying from another GZreader;
+  a shot of each, and a check that every row is a ZenOS row with its label
+  not cut off.
 - `note_toolbar.lua` — the note editor's Menu key: to the toolbar and back,
   the cursor kept in place.
 - `screen_check.lua` — what the panel shows (the emulator's framebuffer is

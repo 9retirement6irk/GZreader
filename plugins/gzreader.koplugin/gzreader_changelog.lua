@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Menus look like ZenOS's: an icon, an arrow, short labels", text = "GZreader's menus look like ZenOS's Settings: the Calendar and Notes tabs' connect lists, Plex's sign-in and the Music list, Downloads, the sync queue, copying from another GZreader, the Notes filters, the font list and Add to shelf now have an icon on the left of each row, an arrow on the right of each row that does something and ZenOS's spacing. Labels are shorter so none is cut off at the edge of the screen; the longer explanations moved behind an About row (About calendar links, About Memos, About Plex music). Downloads shows each title with where it's at on the right (38% of 77.0 MB, waiting), and copying from another GZreader has a switch per connection." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },

@@ -397,10 +397,12 @@ function Panel.showFonts(ui)
         if it.menu_item_id and it.callback then
             local on = it.checked_func and it.checked_func()
             if on then current = #items + 1 end
+            -- (ZenOS rows: the font icon, the one in use ticked on the right)
             items[#items + 1] = { text = it.text_func and it.text_func() or it.text or it.menu_item_id,
-                mandatory = on and "\u{2713}" or nil, gz_run = it.callback }
+                mandatory = on and "\u{2713}" or nil, gz_run = it.callback, gz_icon = "font" }
         end
     end
+    require("gzreader_rows").mark(items)
     local menu
     menu = Menu:new{ title = _("Font"), item_table = items, covers_fullscreen = true, is_borderless = true,
         width = Screen:getWidth(), height = Screen:getHeight(),
@@ -410,6 +412,7 @@ function Panel.showFonts(ui)
             if item.gz_run then UIManager:nextTick(item.gz_run) end
             return true
         end }
+    require("gzreader_rows").apply(menu)
     -- open at the page with the font in use
     pcall(function() menu:onGotoPage(math.ceil(current / menu.perpage)) end)
     UIManager:show(menu)

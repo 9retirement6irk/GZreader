@@ -123,6 +123,7 @@ function Tab.showList(plugin)
     }
     self.menu.key_events.LeftButtonTap = nil
     pcall(self.decorate, self, _("Music"))
+    require("gzreader_rows").apply(self.menu)
     local orig_switch = self.menu.switchItemTable
     self.menu.switchItemTable = function(m, title, ...)
         local r = orig_switch(m, title, ...)
@@ -262,47 +263,49 @@ end
 --- (the Catalog's Music page shows itself again; here, this list).
 function Tab:rootItems(after)
     local plugin = self.plugin
+    local Rows = require("gzreader_rows")
     if not require("gzreader_touch").audio() then
-        return { { text = _("This Kindle has no speaker or headphone jack, so it can't play music. The Kindle 2, Keyboard, DX and Touch can."),
-            select_enabled = false } }
+        return Rows.mark({ Rows.about(_("No speaker on this Kindle"),
+            _("This Kindle has no speaker or headphone jack, so it can't play music. The Kindle 2, Keyboard, DX and Touch can.")) })
     end
     local plex = Music().plex(plugin)
     local items = {}
     local now = Music().nowText()
     if now then
-        items[#items + 1] = { text = T(_("Now playing: %1"), now), bold = true, callback = function() Tab.nowPlaying(plugin) end }
+        items[#items + 1] = { text = _("Now playing"), mandatory = now, bold = true, gz_icon = Rows.FILE.music,
+            callback = function() Tab.nowPlaying(plugin) end }
     end
     local list = Music().downloaded(plugin)
     if #list > 0 then
-        items[#items + 1] = { text = _("Downloaded"), mandatory = tostring(#list), callback = function() self:openDownloaded() end }
-        items[#items + 1] = { text = _("Shuffle all downloaded"), callback = function() Music().shuffleAll(plugin) end }
+        items[#items + 1] = { text = _("Downloaded"), mandatory = tostring(#list), gz_icon = "download", callback = function() self:openDownloaded() end }
+        items[#items + 1] = { text = _("Shuffle all downloaded"), gz_icon = "enable", callback = function() Music().shuffleAll(plugin) end }
     end
     if plex:isConnected() then
-        items[#items + 1] = { text = _("Artists"), callback = function() self:openSection("artists") end }
-        items[#items + 1] = { text = _("Albums"), callback = function() self:openSection("albums") end }
-        items[#items + 1] = { text = _("Playlists"), callback = function() self:openPlaylists() end }
-        items[#items + 1] = { text = _("Search…"), callback = function() self:promptSearch() end }
+        items[#items + 1] = { text = _("Artists"), gz_icon = "authors", callback = function() self:openSection("artists") end }
+        items[#items + 1] = { text = _("Albums"), gz_icon = "name:tab_music", callback = function() self:openSection("albums") end }
+        items[#items + 1] = { text = _("Playlists"), gz_icon = "view_list", callback = function() self:openPlaylists() end }
+        items[#items + 1] = { text = _("Search"), gz_icon = "search", callback = function() self:promptSearch() end }
         local s = plugin.store.plex
-        items[#items + 1] = { text = T(_("Plex: %1 · %2"), s.username or "?", (s.server or {}).name or "?"),
-            callback = function() self:openAccount() end }
+        items[#items + 1] = { text = _("Plex"), mandatory = T(_("%1 · %2"), s.username or "?", (s.server or {}).name or "?"),
+            gz_icon = "connect", callback = function() self:openAccount() end }
     else
         for _i, it in ipairs(Tab.signInItems(plugin, after or function() self:replace(_("Music"), self:rootItems()) end)) do items[#items + 1] = it end
     end
-    return items
+    return Rows.mark(items)
 end
 
 --- Sign-in choices (here and in Settings). after() once signed in.
 function Tab.signInItems(plugin, after)
-    return {
-        { text = _("Sign in to Plex with a code (plex.tv/link)"), callback = function() Tab.linkSignIn(plugin, after) end },
-        { text = _("Sign in to Plex from your browser (QR code)"), callback = function()
+    local Rows = require("gzreader_rows")
+    return Rows.mark({
+        { text = _("Plex: sign in with a code"), gz_icon = "keyboard", callback = function() Tab.linkSignIn(plugin, after) end },
+        { text = _("Plex: sign in with QR code"), gz_icon = "send", callback = function()
             require("gzreader_net").run(function()
                 require("gzreader_phone").open(plugin, { section = "music", on_close = function() if after then after() end end })
             end, { reason = "connecting to Plex" })
         end },
-        { text = _("Music from your Plex Media Server: download albums and playlists and play them while you read. The Kindle plays MP3 and AAC; Plex converts FLAC and others to MP3."),
-          select_enabled = false },
-    }
+        Rows.about(_("About Plex music"), _("Music from your Plex Media Server: download albums and playlists and play them while you read. The Kindle plays MP3 and AAC; Plex converts FLAC and others to MP3.\n\nSign in with a code: go to plex.tv/link on a phone or computer and enter the code the Kindle shows. With QR code: open the page on your phone and sign in to Plex there.")),
+    })
 end
 
 ---------------------------------------------------------------- sign-in on the Kindle
@@ -839,7 +842,8 @@ function Tab.settingsItems(plugin)
         for _i, it in ipairs(Tab.signInItems(plugin)) do
             local cb = it.callback
             items[#items + 1] = { text = it.text, enabled = cb ~= nil,
-                callback = cb and function(touchmenu) closeTouchMenu(touchmenu); cb() end or nil }
+                -- (About keeps Settings open)
+            callback = cb and function(touchmenu) if not it.gz_about then closeTouchMenu(touchmenu) end cb() end or nil }
         end
         items[#items + 1] = { text = _("Then turn the Music tab on: Settings → Navbar → Tabs."), enabled = false }
         return items

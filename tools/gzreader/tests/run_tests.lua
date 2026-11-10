@@ -6794,7 +6794,7 @@ print("Music (Plex): the server, downloads, the player")
     local saved_plex = plugin.store.plex
     plugin.store.plex = { client_id = saved_plex.client_id }
     st = texts(Tab.settingsItems(plugin))
-    check(st:match("^Sign in to Plex with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
+    check(st:match("^Plex: sign in with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
     plugin.store.plex = saved_plex
     -- no token in an address (the mock refuses those) or the log
     local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/log"); local lg = json.decode(pp:read("*a")); pp:close()
@@ -6927,6 +6927,111 @@ print("Downloads tab: its name in the title bar, like the other tabs")
     check(src:find('require("common/gz_tab_title").downloads(', 1, true) ~= nil,
         "ZenOS's status row asks it when nothing else names the view")
     package.path = saved_path
+end)()
+
+print("Menus drawn as ZenOS rows: an icon, short labels, an arrow")
+;(function()
+    local Rows = require("gzreader_rows")
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local saved_map = package.loaded["common/inline_icon_map"]
+    package.loaded["common/inline_icon_map"] = nil
+    local okm, map = pcall(require, "common/inline_icon_map")
+    local rows = Rows.mark({
+        { text = "Action", gz_icon = "download", callback = function() end },
+        { text = "Info", select_enabled = false },
+        { text = "Switch", checked_func = function() return true end, callback = function() end },
+        { text = "Pick", gz_pick = true, gz_icon = "name:usb" },
+        { text = "Picked", gz_pick = true, dim = true, gz_icon = "/x/music.svg" },
+        { text = "Bold", bold = true, gz_no_arrow = true, callback = function() end },
+    })
+    package.path = saved_path
+    package.loaded["common/inline_icon_map"] = saved_map
+    check(Rows.isRows(rows) and rows[1]._zen_settings_row and rows[2]._zen_settings_row and rows[6]._zen_settings_row,
+        "every row marked as ZenOS's Settings row, the list too")
+    check(rows[1]._zen_has_submenu and rows[1]._zen_caret_icon == "chevron.right" and not rows[2]._zen_has_submenu
+        and not rows[3]._zen_has_submenu and rows[4]._zen_has_submenu and not rows[5]._zen_has_submenu and not rows[6]._zen_has_submenu,
+        "an arrow on rows that do something; none on a line of text, a switch, a greyed-out choice or when asked")
+    check(okm and rows[1].icon_glyph == map.download and rows[4].icon_name == "usb" and rows[5].icon_file == "/x/music.svg",
+        "icons: ZenOS's glyphs, its icons by name, a file")
+    check(rows[6]._zen_primary_bold, "bold stays bold")
+    check(not Rows.isRows({ { text = "a book" } }), "other lists aren't touched")
+    -- the long explanations behind About, shown when it's tapped
+    local saved_info = package.loaded["ui/widget/infomessage"]
+    local UIM = require("ui/uimanager")
+    local real_show, shown = UIM.show, {}
+    package.loaded["ui/widget/infomessage"] = { new = function(_s, o) return o end }
+    UIM.show = function(_um, w) shown[#shown + 1] = w and w.text end
+    local about = Rows.mark({ Rows.about("About it", "The whole story.") })[1]
+    about.callback()
+    check(shown[1] == "The whole story." and about._zen_has_submenu and about.icon_glyph ~= false, "About: the explanation in a message")
+    -- the menus: short labels (they were cut off at the screen's edge), every row a ZenOS row
+    local Net = require("gzreader_net")
+    local was_usb = Net.usb
+    local function short(list, name)
+        local long = {}
+        for _i, it in ipairs(list) do
+            local t = it.text or ""
+            if #t > 30 or not it._zen_settings_row then long[#long + 1] = t end
+        end
+        check(Rows.isRows(list) and #list > 1 and #long == 0, name .. ": short labels, ZenOS rows " .. table.concat(long, " | "))
+    end
+    for _i, usb in ipairs({ false, true }) do
+        Net.usb = usb
+        local how = usb and " (no Wi-Fi)" or ""
+        short(require("gzreader_calendar").connectItems(plugin), "Calendar's connect list" .. how)
+        short(require("gzreader_notes").connectItems(plugin), "Notes' connect list" .. how)
+    end
+    Net.usb = was_usb
+    local cal = require("gzreader_calendar").connectItems(plugin)
+    shown = {}
+    cal[#cal].callback()
+    check(cal[1].text == "Add with QR code" and tostring(shown[1]):match("Proton") and tostring(shown[1]):match("app password"),
+        "Calendar: About calendar links says what was cut off before")
+    local Tab = require("gzreader_musictab")
+    short(Tab.signInItems(plugin), "Plex's sign-in")
+    local Touch = require("gzreader_touch")
+    local was_audio = Touch.audio
+    Touch.audio = function() return false end
+    local tab = Tab.new(plugin)
+    local mute = tab:rootItems()
+    Touch.audio = was_audio
+    check(#mute == 1 and mute[1].text == "No speaker on this Kindle" and mute[1].gz_about:match("headphone jack"),
+        "Music on a Kindle without a speaker: a short line, the reason behind it")
+    UIM.show = real_show
+    package.loaded["ui/widget/infomessage"] = saved_info
+    -- Downloads: the title, where it's at on the right, an icon for what's happening
+    local Tasks = require("gzreader_tasks")
+    local dl = { Tasks.line({ kind = "book", title = "Diper Överlöde", done = 30 * 1048576, total = 77 * 1048576 }) }
+    local wq = { Tasks.line({ kind = "queued", title = "Hot Mess" }) }
+    local mu = { Tasks.line({ kind = "music", title = "Album", status = "track 3 of 12 · 41%" }) }
+    check(dl[1] == "Diper Överlöde" and dl[2] == "38% of 77.0 MB" and dl[3] == "download" and wq[1] == "Hot Mess" and wq[2] == "waiting"
+        and wq[3] == "tbr" and mu[2] == "track 3 of 12 · 41%" and mu[3] == Rows.FILE.music,
+        "Downloads: the title alone, a short status, an icon (" .. tostring(dl[2]) .. ")")
+    -- ZenOS's row height for the lists made so, the Menu's own for others
+    local saved_ii = package.loaded["common/ui/icon_menu_item"]
+    package.loaded["common/ui/icon_menu_item"] = { getSettingsRowHeight = function() return 69 end, getSettingsFontSize = function() return 22 end }
+    local m = { page = 1, item_table = rows, updated = 0 }
+    function m._recalculateDimen(self) self.perpage, self.font_size, self.available_height, self.item_dimen = 14, 19, 700, { h = 50 } end
+    function m.getPageNumber(self, count) return math.max(1, math.ceil(count / self.perpage)) end
+    function m.updateItems(self) self.updated = self.updated + 1; self:_recalculateDimen() end
+    Rows.apply(m)
+    check(m.updated == 1 and m.perpage == 10 and m.item_dimen.h == 69 and m.font_size == 22 and m.page_num == 1,
+        "a Menu with such a list: ZenOS's row height and font, as many rows as fit")
+    m.item_table = { { text = "a book" } }
+    m:_recalculateDimen()
+    check(m.perpage == 14 and m.item_dimen.h == 50, "…and its other lists keep the Menu's own")
+    Rows.apply(m)
+    check(m.updated == 1, "applied once")
+    package.loaded["common/ui/icon_menu_item"] = saved_ii
+    -- the lists use it
+    for _i, mod in ipairs({ "gzreader_calendar", "gzreader_notes", "gzreader_musictab", "gzreader_tasks", "gzreader_usbsync",
+            "gzreader_copy", "gzreader_panel", "gzreader_shelves", "gzreader_browser" }) do
+        local fh = io.open(PLUGIN .. "/" .. mod .. ".lua")
+        local src = fh and fh:read("*a") or ""
+        if fh then fh:close() end
+        check(src:find('require("gzreader_rows")', 1, true) and src:find("apply(", 1, true), mod .. ": its menu drawn with ZenOS rows")
+    end
 end)()
 
 print("The reader's top status bar stays drawn under KOReader's layout menu")
