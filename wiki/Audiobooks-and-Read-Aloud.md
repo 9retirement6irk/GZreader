@@ -9,7 +9,9 @@ out, **Continue listening** (what you've listened to on this Kindle, latest
 first, then what Grimmory has in progress, with a ribbon and how far you
 are) and **Recently added**, each ending in a bundle that opens the whole
 list, then a bookcase with **All audiobooks**, **Authors**, **Shelves**,
-**Series** and **On this Kindle** (the cards count what's known).
+**Series** (the cards count what's known) and the **Grimmory** card (your
+account). Audiobooks on the Kindle are in the Downloads tab. Not signed in
+to Grimmory, the page's shelves are empty and it says to sign in.
 
 ![The Catalog's Audiobooks page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-audiobooks.png) ![The audiobook player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/audiobook-player.png)
 
@@ -67,8 +69,10 @@ music library, an album per book with the author as its artist. With a Plex
 library picked, the Catalog's Audiobooks page shows it: **Search
 audiobooks…**, **Continue listening** (what you've listened to on the
 Kindle, then what Plex players played last), **Recently added**, **All
-audiobooks**, **Authors**, **On this Kindle** and **From Plex** (which library;
-pick *Grimmory* there to go back). Covers come from Plex.
+audiobooks**, **Authors** and the **Plex** card (the library and server; it
+opens the Plex settings, where *Audiobooks* goes back to *Grimmory*). Covers
+come from Plex. Grimmory isn't needed for these: they show signed in to
+Grimmory or not.
 
 A Plex audiobook downloads like Grimmory's, one file per track (MP3 and AAC
 as they are, M4B/M4A converted on the Kindle, other formats converted to MP3

@@ -1044,6 +1044,9 @@ function Grimmory:afterLogin(previous)
         self:save()
     end
     self:flushPending()
+    -- (the Catalog, if it's open saying to sign in: its page again)
+    local B = package.loaded["gzreader_browser"]
+    if B and B.signInChanged then UIManager:nextTick(B.signInChanged) end
 end
 
 function Grimmory:onGrimmoryPair(touchmenu)
@@ -1831,19 +1834,9 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu, opts)
         require("gzreader_usbsync").show(self)
         return true
     end
-    if not self.api:isPaired() then
-        UIManager:show(ConfirmBox:new{
-            -- (connected before: Grimmory stopped taking its login)
-            text = self.store.server and self.store.username
-                and T(_("Grimmory signed this Kindle out (%1 at %2). Your books and progress are still here. Connect again?"),
-                    self.store.username, (self.store.server:gsub("^https?://", "")))
-                or _("This Kindle isn't connected to Grimmory yet. Connect now with a QR code?"),
-            ok_text = _("Connect"),
-            ok_callback = function() self:onGrimmoryPair() end,
-        })
-        return true
-    end
-    -- open at once: lists come from their saved copies while Wi-Fi connects
+    -- open at once: lists come from their saved copies while Wi-Fi connects.
+    -- Not signed in to Grimmory: it opens all the same (Music and Plex
+    -- audiobooks don't need it); the Books and Audiobooks pages say to sign in.
     Mod.Browser:new(self):show(type(opts) == "table" and opts or nil)
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true

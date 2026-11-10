@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The Catalog opens without Grimmory; Grimmory and Plex cards instead of On this Kindle", text = "The Catalog tab opens even when you aren't signed in to Grimmory: the Music page, and audiobooks from Plex, work as usual, and the Books page (and the Audiobooks page, for Grimmory's audiobooks) has empty shelves and says \"Sign in to Grimmory to browse the catalog\"; tap it for the ways to sign in, and the page fills in once you are. The Books and Audiobooks pages' last card is now Grimmory (who you're signed in as, and where; it opens Rebuild library and reconnecting), like Plex's on the Music page; with audiobooks from Plex, the Audiobooks page has the Plex card instead. The On this Kindle cards are gone from the Books, Audiobooks and Music pages: what's on the Kindle is in the Downloads tab. Also fixed: in the Bookshelf view, tapping the Audiobooks and Music pages' search slip did nothing, and back from a change in the Plex card's list showed an empty list." },
+        },
+    },
+    {
         version = "1.28.0",
         changes = {
             { short = "Fewer writes to the Kindle's storage: the log and the remote-debugging heartbeat", text = "GZreader's diagnostic log writes ordinary lines a few at a time (at most 5 seconds late; warnings, errors, sleep, exit and saving or sending the log write at once) instead of opening the file for every line. With Full usage statistics, the 15-second heartbeat goes to /tmp (memory) instead of the Kindle's storage, which is now written only when GZreader starts, sleeps, wakes or exits and every 10 minutes: about 150 writes a day instead of 5,760." },

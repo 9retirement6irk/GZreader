@@ -135,7 +135,8 @@ end
 
 --- The compartments, in order: { id, kind } (the kind says what stands in
 --- it). Audiobooks have their own page of the Catalog tab (gzreader_catalog.lua)
---- since 1.27.x: the last one is On this Kindle (or Nook), on every Kindle.
+--- since 1.27.x; the last one is the Grimmory card (the account, as Plex's on
+--- the Music page). What's on the Kindle is in the Downloads tab.
 function Shop.compartments()
     return {
         { id = "all", kind = "spines" },
@@ -143,7 +144,7 @@ function Shop.compartments()
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        { id = "downloaded", kind = "downloaded" },
+        { id = "grimmory", kind = "none" },
     }
 end
 
@@ -163,8 +164,7 @@ function Shop.pageSpec(section)
                 { id = "ab_authors", kind = "dividers" },
                 { id = "ab_shelves", kind = "faceout" },
                 { id = "ab_series", kind = "piles" },
-                { id = "ab_downloaded", kind = "tapes" },
-                { id = "ab_plex", kind = "none" }, -- (audiobooks from Plex: which library; Grimmory's: cobwebs)
+                { id = "ab_account", kind = "none" }, -- (Grimmory's card, or Plex's when audiobooks come from Plex)
             },
             cover_kind = "audiobook",
         }
@@ -180,7 +180,6 @@ function Shop.pageSpec(section)
                 { id = "mu_playlists", kind = "cds" },
                 { id = "mu_albums", kind = "cds" },
                 { id = "mu_artists", kind = "dividers" },
-                { id = "mu_downloaded", kind = "cds" },
                 { id = "mu_now", kind = "cds" },
                 { id = "mu_account", kind = "none" },
             },
@@ -211,7 +210,7 @@ end
 
 --- What a compartment's card says under its name. `known`: what GZreader
 --- keeps (index = the library index, libraries / shelves / audiobooks = the
---- saved lists, downloaded = how many books are on the Kindle). Pure.
+--- saved lists). Pure.
 function Shop.cardText(id, known)
     known = known or {}
     local idx = known.index
@@ -257,10 +256,6 @@ function Shop.cardText(id, known)
     elseif id == "audiobooks" then
         local n = tonumber(known.audiobooks)
         return n and n > 0 and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), thousands(n))) or _("M4B and MP3")
-    elseif id == "downloaded" then
-        local n = tonumber(known.downloaded) or 0
-        -- (its name says where: On this Kindle / Nook; as the Audiobooks and Music pages' cards)
-        return n > 0 and (n == 1 and _("1 book") or T(_("%1 books"), thousands(n))) or _("none yet")
     end
     return ""
 end
@@ -290,11 +285,19 @@ end
 
 local ENDPOINT = { continue = "continue-reading", recent = "recently-added" }
 
+--- Not signed in to Grimmory: its pages' shelves stay empty (nothing
+--- saved from an account before is shown).
+local function signedOut(browser)
+    return not require("gzreader_browser").signedIn(browser)
+end
+Shop.signedOut = signedOut
+
 --- The two ledges' books now (saved copies), and a fresh fetch once per
 --- visit; the page is drawn again when it's back.
 function Shop.lists(browser, section)
     if section == "audiobooks" then return Shop.audioLists(browser) end
     if section == "music" then return Shop.musicLists(browser) end
+    if signedOut(browser) then return { fetched = true } end
     local st = browser._shop or {}
     browser._shop = st
     local Cache = require("gzreader_listcache")
@@ -407,6 +410,7 @@ end
 function Shop.audioLists(browser)
     local plex_sec = require("gzreader_plexaudio").section(browser.plugin)
     if plex_sec then return Shop.plexAudioLists(browser, plex_sec) end
+    if signedOut(browser) then return { fetched = true } end
     local st = browser._shop_audio or {}
     if st.plex then st = {} end -- (Plex's lists were showing)
     browser._shop_audio = st
@@ -575,12 +579,6 @@ function Shop.readKnown(browser)
     known.shelves = Cache.get(cacheKey(browser, "shelves"))
     local ab = Cache.get(cacheKey(browser, "audiobooks"))
     known.audiobooks = type(ab) == "table" and tonumber(ab.totalElements) or nil
-    local lfs = require("libs/libkoreader-lfs")
-    local n = 0
-    for _id, e in pairs(browser.plugin.store and browser.plugin.store.downloads or {}) do
-        if type(e) == "table" and e.path and lfs.attributes(e.path, "mode") == "file" then n = n + 1 end
-    end
-    known.downloaded = n
     return known
 end
 
@@ -939,14 +937,6 @@ local function paintContents(bb, kind, room, info)
             bb:paintBorder(x, bottom - sh, sw, sh, 1, Blitbuffer.COLOR_BLACK)
             x = x + sw + 1
         end
-    elseif kind == "downloaded" then
-        local _, sp = spines(bb, x, bottom, right, h, "dl")
-        spans = sp
-        -- a bookmark in the first one
-        if sp[1] then
-            local s = sp[1]
-            bb:paintRect(s.x + math.floor(s.w / 2) - S(2), bottom - s.h - S(10), S(4), S(14), Blitbuffer.COLOR_BLACK)
-        end
     end
     if #spans > 0 then pcall(Shelf().paintDepth, bb, bottom, spans) end
 end
@@ -978,8 +968,8 @@ function Page:paintLedge(bb, ox, oy, i, L)
     local bottom = ledge.y
     local Sh = Shelf()
     local p = S(Sh.PAGES)
-    if #spec.books == 0 then
-        local msg = spec.loading and _("Fetching from Grimmory…") or spec.empty
+    local msg = #spec.books == 0 and (spec.loading and _("Fetching from Grimmory…") or spec.empty) or ""
+    if msg ~= "" then
         text(bb, msg, hand(20), ox + math.floor(L.w / 2), bottom - math.floor(led.cover_h / 2), { center = true, middle = true, color = gray(0.7) })
     end
     for c, item in ipairs(spec.items) do
@@ -1198,16 +1188,21 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local by = entryById(m)
     local section = m.item_table.gz_catalog or "books"
     local pspec = Shop.pageSpec(section)
+    -- (not signed in to Grimmory: the slip says so, the shelves stay empty)
+    local signed_out = m.item_table.gz_signed_out and true or false
+    -- (each page's own search line: 1.28.0's Audiobooks and Music slips
+    -- looked only for the Books page's and did nothing when tapped)
+    local search = by.search or by.ab_search or by.mu_search
     local Covers = require("gzreader_covers")
     Covers.beginPage()
-    local page = Page:new{ w = W, h = H, L = L, menu = m, cover_kind = pspec.cover_kind, search_text = pspec.search, browser = browser }
+    local page = Page:new{ w = W, h = H, L = L, menu = m, cover_kind = pspec.cover_kind, browser = browser,
+        search_text = signed_out and search and search.entry.text or pspec.search }
     local function hot(entry)
         local h = Hot:new{ menu = m, entry = entry, shop = page }
         page[#page + 1] = h
         return h
     end
     -- the slip
-    local search = by.search
     page.search_hot = hot(search and search.entry)
     page.search_letter = search and letterOf(m, search.idx)
     m.layout[1] = { page.search_hot }
@@ -1228,7 +1223,7 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
             letter = root and letterOf(m, root.idx),
             books = books, items = {},
             loading = st.loading and not st.fetched,
-            empty = lspec.empty,
+            empty = signed_out and "" or lspec.empty,
         }
         spec.sign_hot = hot(root and root.entry)
         local row = {}
@@ -1282,20 +1277,20 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     page.cells = {}
     local names = {
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
-        series = _("Series"), audiobooks = _("Audiobooks"), downloaded = require("gzreader_browser").hereText(),
+        series = _("Series"), audiobooks = _("Audiobooks"),
     }
-    -- (the other pages: the compartments there are now, together; cobwebs after)
-    local comps = pspec.compartments
-    if section ~= "books" then
-        comps = {}
-        for _i, comp in ipairs(pspec.compartments) do if comp.id and by[comp.id] then comps[#comps + 1] = comp end end
-        while #comps < #pspec.compartments do comps[#comps + 1] = { kind = "empty" } end
+    -- (the other pages: the compartments there are now, together; cobwebs
+    -- after. Not signed in: each where it goes, the others cobwebs.)
+    local comps = {}
+    for _i, comp in ipairs(pspec.compartments) do
+        if section == "books" or signed_out or (comp.id and by[comp.id]) then comps[#comps + 1] = comp end
     end
+    while #comps < #L.cells do comps[#comps + 1] = { kind = "empty" } end
     local row
     for k, comp in ipairs(comps) do
         local spec = { kind = comp.kind }
         local root = comp.id and by[comp.id]
-        if comp.id and (root or section == "books") then
+        if comp.id and (root or (section == "books" and not signed_out)) then
             -- (Books: its names and counts from what's kept; the other pages: the line's own)
             local e = root and root.entry
             spec.name = names[comp.id] or (e and e.text)
@@ -1314,12 +1309,16 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     m._gz_shop = page
     -- start on the first cover (or what's there); back from a list: on
     -- what opened it
-    local fx, fy = 1, m.layout[2] and 2 or 1
+    -- (not signed in: on the slip, which signs in)
+    local fx, fy = 1, (m.layout[2] and not signed_out) and 2 or 1
     local back = m._gz_shop_last or (select_number and m.item_table[select_number])
     if back then
         for y, r in ipairs(m.layout) do
             for x, h in ipairs(r) do
-                if h.entry == back then fx, fy = x, y end
+                -- (or the same card on a page made again)
+                if h.entry == back or (type(back) == "table" and back.gz_id and type(h.entry) == "table" and h.entry.gz_id == back.gz_id) then
+                    fx, fy = x, y
+                end
             end
         end
     end

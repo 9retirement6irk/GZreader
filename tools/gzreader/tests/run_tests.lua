@@ -719,7 +719,8 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     local music = m.item_table
     check(cb.section == "music" and m.title == "Music" and music.gz_catalog == "music" and #music > 0 and not music.gz_root,
         "and again: the Music page (Plex; not drawn as the bookshop)")
-    check(Browser.rootItems({ section = "audiobooks" })[4].text == "All audiobooks" and Browser.rootItems({ section = "audiobooks" }).gz_catalog == "audiobooks",
+    local plain = { section = "audiobooks", api = plugin.api } -- (signed in)
+    check(Browser.rootItems(plain)[4].text == "All audiobooks" and Browser.rootItems(plain).gz_catalog == "audiobooks",
         "the Audiobooks page: All audiobooks")
     m:onNextPage()
     check(cb.section == "music" and m.item_table == music, "nothing past Music")
@@ -816,10 +817,13 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local m = ab.menu
     local ids = {}
     for _i, it in ipairs(m.item_table) do ids[#ids + 1] = it.gz_id end
-    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_downloaded"
+    local ab_card = m.item_table[#m.item_table]
+    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_account"
         and m.item_table[1].gz_action == "search" and m.item_table[4].gz_kind == "section" and m.item_table[4].gz_contents == "tapes"
-        and m.item_table.gz_root,
-        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series, On this Kindle " .. table.concat(ids, ","))
+        and m.item_table.gz_root and not m.item_table.gz_signed_out and ab_card.text == "Grimmory" and ab_card.gz_contents == "none"
+        and ab_card.mandatory == plugin.store.username .. " · " .. plugin.store.server:gsub("^https?://", ""),
+        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series and the Grimmory card (no On this Kindle) "
+        .. table.concat(ids, ",") .. " / " .. tostring(ab_card.mandatory))
     local function abItem(id) for _i, it in ipairs(m.item_table) do if it.gz_id == id then return it end end end
     local saved_w = {}
     local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
@@ -834,7 +838,7 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local comp = {}
     for _i, c in ipairs(ps.compartments) do comp[#comp + 1] = tostring(c.id) end
     check(ps.ledges[1].id == "ab_continue" and ps.ledges[1].label == "Continue listening" and ps.ledges[2].id == "ab_recent"
-        and #ps.compartments == 6 and table.concat(comp, ","):match("^ab_all,ab_authors,ab_shelves,ab_series,ab_downloaded") and ps.cover_kind == "audiobook"
+        and table.concat(comp, ",") == "ab_all,ab_authors,ab_shelves,ab_series,ab_account" and ps.cover_kind == "audiobook"
         and Shop.pageSpec("books").ledges[1].id == "continue" and Views.cardOf(m.item_table[5]) == m.item_table[5].mandatory,
         "the Bookshelf view: the books' shop, with Continue listening and Recently added ledges, then a compartment each")
     -- Continue listening: what you've listened to on the Kindle first
@@ -846,7 +850,6 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     local lis = Shop.listening(plugin)
     check(#lis == 2 and lis[1].title == "Newer" and lis[2].title == "Older" and lis[1].primaryFileType == "AUDIOBOOK",
         "Continue listening: the Kindle's audiobooks in progress, latest first (not ones whose audio is gone)")
-    check(#Browser.audiobooksHere(plugin) == 2, "On this Kindle: the audiobooks whose audio is here")
     AB.load, plugin.store.audiobooks = saved_load, saved_store
     check(Views.cardOf({ gz_kind = "author", gz_audio = true, gz_count = 2 }) == "2 audiobooks"
         and Views.cardOf({ gz_kind = "collection", gz_audio = true, gz_count = 1 }) == "1 audiobook"
@@ -895,6 +898,86 @@ print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, S
     -- an author's audiobooks and books aren't the same saved list
     local Cache = require("gzreader_listcache")
     check(Cache.key("paged-audio", { authors = "X" }) ~= Cache.key("paged", { authors = "X" }), "saved lists: audiobooks and books kept apart")
+    require("gzreader_touch").audio = saved_audio
+end)()
+
+print("Catalog: not signed in to Grimmory (it opens all the same)")
+;(function()
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local out_api = setmetatable({ isPaired = function() return false end }, { __index = plugin.api })
+    local function idsOf(list) local t = {} for _i, it in ipairs(list) do t[#t + 1] = tostring(it.gz_id) end return table.concat(t, ",") end
+    local b = Browser:new(plugin)
+    b.api = out_api
+    b.section = "books"
+    local items = b:rootItems()
+    check(items.gz_root and items.gz_signed_out and idsOf(items) == "search,grimmory,audiobooks"
+        and items[1].text == "Sign in to Grimmory to browse the catalog" and items[2].text == "Grimmory" and items[2].mandatory == "signed out",
+        "Books, not signed in: the shelves empty, the slip says to sign in, the Grimmory card " .. idsOf(items) .. " / " .. tostring(items[2].mandatory))
+    local saved_user = plugin.store.username
+    plugin.store.username = nil
+    check(Browser.grimmoryItem(b, "grimmory").mandatory == "not signed in", "…never signed in: \"not signed in\"")
+    plugin.store.username = saved_user
+    b.section = "audiobooks"
+    items = b:rootItems()
+    check(items.gz_signed_out and idsOf(items) == "ab_search,ab_account" and items[1].text == "Sign in to Grimmory to browse the catalog"
+        and items[2].text == "Grimmory", "Audiobooks (Grimmory's), not signed in: the same " .. idsOf(items))
+    -- nothing saved from the account before is shown
+    -- (saved under a server of its own: the other blocks' saved lists untouched)
+    local saved_server = plugin.store.server
+    plugin.store.server = "https://signed-out.example.com"
+    local Cache = require("gzreader_listcache")
+    local key = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|"
+    Cache.put(key .. "simple:continue-reading", { { id = 1, title = "Kept", primaryFileType = "EPUB" } })
+    Cache.put(key .. "shop:ab_recent", { { id = 2, title = "Kept audio", primaryFileType = "AUDIOBOOK" } })
+    local Shop = require("gzreader_bookshop")
+    local st, ast = Shop.lists(b, "books"), Shop.lists(b, "audiobooks")
+    check(st.fetched and st.continue == nil and st.recent == nil and ast.ab_recent == nil and ast.ab_continue == nil and not st.loading,
+        "not signed in: the shelves stay empty (no saved lists from before)")
+    local signed_in = Browser:new(plugin)
+    signed_in._shop = { asked = true } -- (no fetch)
+    check(#(Shop.lists(signed_in, "books").continue or {}) == 1, "signed in: the saved list as before")
+    plugin.store.server = saved_server
+    -- the Grimmory card's list
+    local pushed
+    b.push = function(_s, title, list) pushed = { title = title, list = list } end
+    b:openGrimmory()
+    local texts = {}
+    for _i, it in ipairs(pushed and pushed.list or {}) do texts[#texts + 1] = it.text end
+    local tx = table.concat(texts, " | ")
+    check(pushed and pushed.title == "Grimmory" and tx:find("Signed out of " .. plugin.store.username .. " at " .. (plugin.store.server:gsub("^https?://", "")), 1, true) and tx:find("Connect from your browser (QR code)", 1, true)
+        and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true) and not tx:find("Rebuild", 1, true),
+        "the Grimmory card, not signed in: the ways to sign in " .. tx)
+    signed_in.push = b.push
+    signed_in:openGrimmory()
+    texts = {}
+    for _i, it in ipairs(pushed.list) do texts[#texts + 1] = it.text end
+    tx = table.concat(texts, " | ")
+    check(tx:find("Signed in as " .. plugin.store.username .. " at ", 1, true) and tx:find("Rebuild library", 1, true)
+        and tx:find("Reconnect from your browser (QR code)", 1, true), "the Grimmory card, signed in: the account " .. tx)
+    -- the Catalog opens, signed out, from its tab (it used to ask to connect instead)
+    local Net = require("gzreader_net")
+    local saved_run, saved_api = Net.run, plugin.api
+    Net.run = function() end
+    plugin.api = out_api
+    Browser.current = nil
+    plugin:onShowGrimmoryLibrary()
+    local open = Browser.current
+    check(open and open.menu and open.menu.item_table.gz_signed_out and open.section == "books", "the Catalog tab opens without Grimmory")
+    -- signed in while it shows: its page again
+    plugin.api = saved_api
+    if open then open.api = saved_api end
+    Browser.signInChanged()
+    check(open and not open.menu.item_table.gz_signed_out and idsOf(open.menu.item_table):match("^search,continue,recent,"),
+        "signed in while it's open: the page with Grimmory's shelves")
+    if open then open.closed = true end
+    Net.run = saved_run
+    local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
+    local bsrc = io.open(PLUGIN .. "/gzreader_bookshop.lua"):read("*a")
+    check(msrc:find("B.signInChanged", 1, true) and msrc:find("function Grimmory:afterLogin", 1, true) < msrc:find("B.signInChanged", 1, true),
+        "any sign-in (QR, typing, SSO) shows the Catalog's page again")
+    check(bsrc:find("by.search or by.ab_search or by.mu_search", 1, true),
+        "the Bookshelf view's slip is each page's own search line (the Audiobooks and Music slips did nothing)")
     require("gzreader_touch").audio = saved_audio
 end)()
 
@@ -951,9 +1034,11 @@ print("Catalog: the Music page (CD cases on the shelves)")
         "the Music page: search, Recently played, Recently added, then Playlists, Albums, Artists… and the Plex account " .. table.concat(ids, ","))
     local Shop = require("gzreader_bookshop")
     local mps = Shop.pageSpec("music")
+    local mcomp = {}
+    for _i, c in ipairs(mps.compartments) do mcomp[#mcomp + 1] = tostring(c.id) end
     check(mps.music and mps.ledges[1].id == "mu_played" and mps.ledges[1].label == "Recently played" and mps.ledges[2].id == "mu_recent"
-        and #mps.compartments == 6 and mps.compartments[1].id == "mu_playlists",
-        "the Bookshelf view: the shop with Recently played and Recently added ledges of CD cases, then a compartment each")
+        and table.concat(mcomp, ",") == "mu_playlists,mu_albums,mu_artists,mu_now,mu_account" and not table.concat(ids, ","):find("mu_downloaded", 1, true),
+        "the Bookshelf view: the shop with Recently played and Recently added ledges of CD cases, then a compartment each (no On this Kindle)")
     -- Recently played: this Kindle's plays first (Plex only knows its own players'), once each
     local Music = require("gzreader_music")
     local saved_recent, saved_save = plugin.store.music_recent, plugin.save
@@ -1003,26 +1088,12 @@ local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
-check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|On this Kindle"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, On this Kindle")
-;(function() -- on a Nook: On this Nook (the list line, its list's title, the bookshop's compartment)
-    local Device = require("device")
-    Device.isNook = function() return true end
-    local nroot = Browser:new(plugin):rootItems()
-    local line
-    for _i, it in ipairs(nroot) do if it.gz_id == "downloaded" then line = it end end
-    local nb = Browser:new(plugin)
-    local pushed
-    nb.push = function(_s, title) pushed = title end
-    nb:openDownloaded()
-    Device.isNook = nil
-    check(line and line.text == "On this Nook" and pushed == "On this Nook" and Browser.hereText() == "On this Kindle",
-        "Nook: the downloaded books are On this Nook (On this Kindle on a Kindle)")
-end)()
+check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Grimmory"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Grimmory")
 print("Grimmory tab as a bookshop")
 do
     local ids = {}
     for _i, it in ipairs(root) do ids[#ids + 1] = tostring(it.gz_id) end
-    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,downloaded"
+    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,grimmory"
         .. (#root > 9 and ",audiobooks" or ""), "root items: marked for the bookshop " .. table.concat(ids, ","))
     -- (its drawing only: its widgets stay stubs here)
     local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
@@ -1049,21 +1120,19 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments()[6].id == "downloaded" and Shop.compartments()[6].kind == "downloaded" and #Shop.compartments() == 6,
-        "compartments: the last is Downloaded books on every Kindle (Audiobooks are the Catalog's next page)")
+    check(Shop.compartments()[6].id == "grimmory" and Shop.compartments()[6].kind == "none" and #Shop.compartments() == 6,
+        "compartments: the last is the Grimmory card (Audiobooks are the Catalog's next page; what's here is in Downloads)")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
         index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = { count = 3 }, Y = { count = 1 } } },
         libraries = { { id = 1, name = "Fiction" }, { id = 2, name = "Audio only" }, { id = 3, name = "Classics" } },
         shelves = { { id = 1, name = "Favourites" }, { id = 2, name = "Book club" },
             { id = 9, name = "Unread sci-fi", magic = true, filter = { rules = { { field = "genre", value = "Science fiction" } } } } },
-        audiobooks = 48, downloaded = 0,
+        audiobooks = 48,
     }
     local cards = {}
-    for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks", "downloaded" }) do cards[#cards + 1] = Shop.cardText(id, known) end
-    check(Shop.cardText("downloaded", { downloaded = 1 }) == "1 book" and Shop.cardText("downloaded", { downloaded = 1200 }) == "1,200 books",
-        "cards: On this Kindle counts its books")
-    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks|none yet",
+    for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks" }) do cards[#cards + 1] = Shop.cardText(id, known) end
+    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks",
         "cards: counts from what's kept " .. table.concat(cards, "|"))
     check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
         "cards: a magic shelf's rules are never shown")
@@ -2164,8 +2233,8 @@ do
     check(texts(plugin:sectionItems("reader")) == "||", "Paperwhite: no Read aloud or audiobook test in Settings")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
     local Browser = require("gzreader_browser")
-    local root = texts(Browser.rootItems({}))
-    check(root:match("|On this Kindle|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
+    local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
+    check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
         "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }
@@ -6465,8 +6534,39 @@ print("Music (Plex): the server, downloads, the player")
         local ids = {}
         for _i, it in ipairs(ab.menu.item_table) do ids[#ids + 1] = it.gz_id end
         local last = ab.menu.item_table[#ab.menu.item_table]
-        check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_downloaded,ab_plex" and last.mandatory == "Audiobooks"
-            and ab.menu.item_table.gz_root, "Catalog → Audiobooks from Plex: search, the shelves, All, Authors, On this Kindle, the library " .. table.concat(ids, ","))
+        check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_account" and last.text == "Plex"
+            and tostring(last.mandatory):match("^Audiobooks · ") and ab.menu.item_table.gz_root,
+            "Catalog → Audiobooks from Plex: search, the shelves, All, Authors and the Plex card (no On this Kindle) " .. table.concat(ids, ",") .. " / " .. tostring(last.mandatory))
+        ;(function() -- not signed in to Grimmory: Plex's audiobooks all the same
+            local nb = Brw:new(plugin)
+            nb.api = setmetatable({ isPaired = function() return false end }, { __index = plugin.api })
+            nb.section = "audiobooks"
+            local items = nb:rootItems()
+            check(not items.gz_signed_out and #items == 6 and items[6].text == "Plex" and items[1].text == "Search audiobooks…",
+                "Plex audiobooks: not signed in to Grimmory, the page is Plex's as usual")
+        end)()
+        ;(function() -- the Plex card: its list, a change shown in place, back to the page made again
+            local m = ab.menu
+            local root_before, saved_br = m.item_table, px.bitrate
+            m.onClose = function(menu)
+                local t = table.remove(menu.item_table_stack)
+                if t then menu:switchItemTable(t.title, t) end
+            end
+            last.callback()
+            local opened = m.title == "Plex" and #m.item_table_stack == 1
+            local q
+            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then q = it end end
+            if q then q.callback() end
+            local in_place = m.title == "Plex" and #m.item_table_stack == 1 and m.item_table_stack[1] == root_before
+                and q and tostring(m.item_table[1].text):match("kbps")
+            local mark
+            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then mark = it.mandatory end end
+            m:onClose()
+            check(opened and in_place and mark == "\u{2713}" and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
+                and m.item_table ~= root_before and m.item_table[#m.item_table].text == "Plex" and not ab._refresh_root,
+                "the Plex card: its list; a change shows it again in place (1.28.0 left an empty list behind it); back: the page made again")
+            m.onClose, px.bitrate = nil, saved_br
+        end)()
         local Shop = require("gzreader_bookshop")
         Shop.audioLists(ab) -- (asks Plex)
         local sst = Shop.audioLists(ab)
