@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 72">
+  <defs>
+    <radialGradient id="pk" cx="0.35" cy="0.25" r="0.85"><stop offset="0" stop-color="#ffc98a"/><stop offset="0.35" stop-color="#ee8c36"/><stop offset="0.8" stop-color="#b9541a"/><stop offset="1" stop-color="#6b2c0a"/></radialGradient>
+    <radialGradient id="pkd" cx="0.3" cy="0.25" r="0.9"><stop offset="0" stop-color="#f2a257"/><stop offset="0.5" stop-color="#cf6a22"/><stop offset="1" stop-color="#5a2408"/></radialGradient>
+    <linearGradient id="st" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8fae5a"/><stop offset="0.4" stop-color="#5d7e34"/><stop offset="1" stop-color="#23340f"/></linearGradient>
+  </defs>
+  <ellipse cx="18" cy="45" rx="16" ry="23" fill="url(#pkd)" stroke="#4a2408" stroke-width="0.9"/>
+  <ellipse cx="70" cy="45" rx="16" ry="23" fill="url(#pkd)" stroke="#4a2408" stroke-width="0.9"/>
+  <ellipse cx="30" cy="45" rx="15" ry="25.5" fill="url(#pk)" stroke="#4a2408" stroke-width="0.9"/>
+  <ellipse cx="58" cy="45" rx="15" ry="25.5" fill="url(#pkd)" stroke="#4a2408" stroke-width="0.9"/>
+  <ellipse cx="44" cy="45" rx="12.5" ry="26.5" fill="url(#pk)" stroke="#4a2408" stroke-width="0.9"/>
+  <path d="M26 28 C23 36 23 50 26 60" fill="none" stroke="#fff3dc" stroke-width="2.4" opacity="0.45" stroke-linecap="round"/>
+  <ellipse cx="44" cy="20.5" rx="13" ry="3.2" fill="#000" fill-opacity="0.28"/>
+  <path d="M40 21 C39 12 42 6 50 2 L55 8 C49 10 47 15 48 21 Z" fill="url(#st)" stroke="#1f2e10" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M50 2 L55 8" stroke="#c9d7a0" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M47 17 C52 6 66 8 74 18 C66 16 56 17 47 19 Z" fill="url(#st)" stroke="#1f2e10" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M49 17 C56 12 64 12 72 17" fill="none" stroke="#dbe8b4" stroke-width="0.7" opacity="0.7"/>
+</svg>

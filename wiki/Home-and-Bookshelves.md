@@ -61,6 +61,8 @@ the book once you open one.
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
     keep its background transparent. Bold, dark shapes read best on e-ink.
+    A shaded picture should be a PNG: the Kindle draws an SVG's gradients
+    far too dark (flat colours in an SVG are fine).
 
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a

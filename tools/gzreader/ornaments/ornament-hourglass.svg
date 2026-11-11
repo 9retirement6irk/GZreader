@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 94">
+  <defs>
+    <linearGradient id="wd" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6b4a1c"/><stop offset="0.25" stop-color="#c79a58"/><stop offset="0.55" stop-color="#8a6230"/><stop offset="1" stop-color="#2e1f0a"/></linearGradient>
+    <linearGradient id="gl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c2d3dd"/><stop offset="0.25" stop-color="#ffffff"/><stop offset="0.6" stop-color="#e6eef2"/><stop offset="1" stop-color="#8fa3af"/></linearGradient>
+    <linearGradient id="sd" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f0cf80"/><stop offset="0.4" stop-color="#d7a84a"/><stop offset="1" stop-color="#7a5a1c"/></linearGradient>
+  </defs>
+  <rect x="7" y="9" width="3.4" height="76" fill="url(#wd)" stroke="#2e1f0a" stroke-width="0.6"/>
+  <rect x="47.6" y="9" width="3.4" height="76" fill="url(#wd)" stroke="#2e1f0a" stroke-width="0.6"/>
+  <path d="M13 10 H45 C45 30 32 39 32 47 C32 55 45 64 45 84 H13 C13 64 26 55 26 47 C26 39 13 30 13 10 Z" fill="url(#gl)" stroke="#4a5a64" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M17.5 24 H40.5 C37 33 31 38 29 45 C27 38 21 33 17.5 24 Z" fill="url(#sd)" stroke="#6b4a1c" stroke-width="0.6"/>
+  <ellipse cx="29" cy="24" rx="11.5" ry="2" fill="#f6dfa0" stroke="#6b4a1c" stroke-width="0.5"/>
+  <path d="M29 47 L29 72" stroke="#d7a84a" stroke-width="1.5"/>
+  <path d="M15.5 84 C16.5 73 23 67 29 65 C35 67 41.5 73 42.5 84 Z" fill="url(#sd)" stroke="#6b4a1c" stroke-width="0.6"/>
+  <path d="M17 14 C17.5 26 23 34 27 41" fill="none" stroke="#fff" stroke-width="1.8" opacity="0.85" stroke-linecap="round"/>
+  <path d="M18 80 C18 70 22 62 26 56" fill="none" stroke="#fff" stroke-width="1.6" opacity="0.7" stroke-linecap="round"/>
+  <path d="M41 16 C41 26 37 33 33 40" fill="none" stroke="#5a6a74" stroke-width="1" opacity="0.35" stroke-linecap="round"/>
+  <rect x="3" y="1" width="52" height="9" rx="2.2" fill="url(#wd)" stroke="#2e1f0a" stroke-width="1"/>
+  <rect x="5" y="2.4" width="48" height="1.6" rx="0.8" fill="#fff" fill-opacity="0.3"/>
+  <rect x="11" y="10" width="36" height="2.6" fill="#000" fill-opacity="0.3"/>
+  <rect x="3" y="84" width="52" height="9" rx="2.2" fill="url(#wd)" stroke="#2e1f0a" stroke-width="1"/>
+  <rect x="5" y="85.4" width="48" height="1.6" rx="0.8" fill="#fff" fill-opacity="0.3"/>
+</svg>

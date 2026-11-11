@@ -141,22 +141,27 @@ do
         -- the two that come with it, measured from their files
         Theme.today = { 6, 10 }
         local list = Theme.list()
-        check(#list == 10 and list[1].name == "ornament-plant.svg" and math.abs(list[1].aspect - 60 / 106) < 0.001 and list[2].name == "ornament-cactus.svg",
-            "ten ornaments come with GZreader, Bookshelf's potted plant and cactus first (their shape from their viewBox)")
+        check(#list == 10 and list[1].name == "ornament-plant.png" and math.abs(list[1].aspect - 60 / 104) < 0.01 and list[2].name == "ornament-cactus.png",
+            "ten ornaments come with GZreader, Bookshelf's potted plant and cactus first (their shape from the picture's header)")
+        -- each is rendered from a drawing kept in tools/gzreader/ornaments (the Kindle's SVG renderer draws gradients too dark)
         for i, e in ipairs(list) do
-            local f = io.open(e.path, "r")
-            local text = f:read("*a")
-            f:close()
+            local src = REPO .. "/tools/gzreader/ornaments/" .. e.name:gsub("%.png$", ".svg")
+            local f = io.open(src, "r")
+            local text = f and f:read("*a") or ""
+            if f then f:close() end
+            local head = io.open(e.path, "rb")
+            local magic = head and head:read(4) or ""
+            if head then head:close() end
             if i <= 2 then
-                check(text:find("From Bookshelf by AndyHazz", 1, true) and text:find("AGPL-3.0", 1, true), e.name .. " says where it's from and its licence")
+                check(magic == "\137PNG" and text:find("Bookshelf by AndyHazz", 1, true) and text:find("AGPL-3.0", 1, true), e.name .. ": its drawing says where it's from and its licence")
             else
-                check(text:find("GZreader shelf ornament", 1, true) and not text:find("<text", 1, true) and not text:find("<filter", 1, true)
-                    and e.aspect > 0.3 and e.aspect < 2, e.name .. ": GZreader's own drawing, nothing the Kindle's renderer can't draw")
+                check(magic == "\137PNG" and text:find("GZreader shelf ornament", 1, true) and text:find("Gradient", 1, true)
+                    and e.aspect > 0.3 and e.aspect < 2, e.name .. ": GZreader's own drawing, shaded")
             end
         end
         -- seasons
         local tree
-        for _i, e in ipairs(list) do if e.name == "ornament-christmas-tree.svg" then tree = e end end
+        for _i, e in ipairs(list) do if e.name == "ornament-christmas-tree.png" then tree = e end end
         check(Theme.inSeason({ 11, 20, 1, 6 }, 12, 25) and Theme.inSeason({ 11, 20, 1, 6 }, 1, 6) and Theme.inSeason({ 11, 20, 1, 6 }, 11, 20)
             and not Theme.inSeason({ 11, 20, 1, 6 }, 1, 7) and not Theme.inSeason({ 11, 20, 1, 6 }, 11, 19)
             and Theme.inSeason({ 3, 1, 5, 31 }, 4, 15) and not Theme.inSeason({ 3, 1, 5, 31 }, 6, 1) and Theme.inSeason(nil, 6, 1),
@@ -204,7 +209,7 @@ do
         -- sizes: 80% of the books' room, narrower when the room is, never under 2/3
         local plant = list[1]
         local w, h = Theme.size(plant, 150, 400)
-        check(h == 120 and w == math.floor(120 * 60 / 106), "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
+        check(h == 120 and math.abs(w - 120 * 60 / 104) <= 1, "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
         local w2, h2 = Theme.size(plant, 150, 70)
         check(w2 == 50 and h2 and h2 < 120 and h2 >= 80, "less room: smaller, its shape kept (" .. tostring(w2) .. " x " .. tostring(h2) .. ")")
         check(Theme.size(plant, 150, 50) == nil and Theme.size(plant, 20, 400) == nil, "too little room, or a tiny shelf: none")

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 74">
+  <defs>
+    <linearGradient id="bx" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c9483a"/><stop offset="0.35" stop-color="#e06a58"/><stop offset="1" stop-color="#6e1a12"/></linearGradient>
+    <linearGradient id="ld" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d95a4a"/><stop offset="0.3" stop-color="#f08a78"/><stop offset="1" stop-color="#82241a"/></linearGradient>
+    <linearGradient id="rb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cdbb86"/><stop offset="0.4" stop-color="#fffbe8"/><stop offset="1" stop-color="#a8935a"/></linearGradient>
+    <linearGradient id="dn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+    <radialGradient id="bw" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stop-color="#fffdf0"/><stop offset="0.6" stop-color="#e6d7a6"/><stop offset="1" stop-color="#8f7a42"/></radialGradient>
+  </defs>
+  <rect x="9" y="34" width="62" height="39" fill="url(#bx)" stroke="#3a0e09" stroke-width="1"/>
+  <rect x="34" y="34" width="12" height="39" fill="url(#rb)" stroke="#5a4a22" stroke-width="0.6"/>
+  <rect x="9" y="34" width="62" height="9" fill="url(#dn)"/>
+  <rect x="5" y="22" width="70" height="13" fill="url(#ld)" stroke="#3a0e09" stroke-width="1"/>
+  <rect x="34" y="22" width="12" height="13" fill="url(#rb)" stroke="#5a4a22" stroke-width="0.6"/>
+  <rect x="5" y="22" width="70" height="2.2" fill="#fff" fill-opacity="0.3"/>
+  <path d="M40 22 C30 2 8 6 16 17 C21 23 32 23 40 22 Z" fill="url(#bw)" stroke="#5a4a22" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M40 22 C50 2 72 6 64 17 C59 23 48 23 40 22 Z" fill="url(#bw)" stroke="#5a4a22" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M38 21 C30 12 22 10 19 14 C22 17 30 19 38 21 Z" fill="#000" fill-opacity="0.22"/>
+  <path d="M42 21 C50 12 58 10 61 14 C58 17 50 19 42 21 Z" fill="#000" fill-opacity="0.3"/>
+  <path d="M37 22 L31 33 L37 31 Z M43 22 L49 33 L43 31 Z" fill="url(#bw)" stroke="#5a4a22" stroke-width="0.7" stroke-linejoin="round"/>
+  <ellipse cx="40" cy="21" rx="4.6" ry="4" fill="url(#bw)" stroke="#5a4a22" stroke-width="1"/>
+</svg>

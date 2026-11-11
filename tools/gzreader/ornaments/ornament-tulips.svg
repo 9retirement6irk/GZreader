@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 114">
+  <defs>
+    <linearGradient id="pr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b9304a"/><stop offset="0.35" stop-color="#f58aa0"/><stop offset="1" stop-color="#6e1226"/></linearGradient>
+    <linearGradient id="py" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d6a520"/><stop offset="0.35" stop-color="#ffe58a"/><stop offset="1" stop-color="#8a6510"/></linearGradient>
+    <linearGradient id="lf" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7fb86a"/><stop offset="1" stop-color="#22502a"/></linearGradient>
+    <linearGradient id="vz" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3f6584"/><stop offset="0.25" stop-color="#a9cbe4"/><stop offset="0.5" stop-color="#5f87a8"/><stop offset="1" stop-color="#162736"/></linearGradient>
+  </defs>
+  <path d="M34 80 L34 36 M25 82 L18 46 M43 82 L51 48" fill="none" stroke="#2f5a2a" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M28 78 C16 68 15 58 19 51 C26 59 29 68 31 78 Z" fill="url(#lf)" stroke="#1d3318" stroke-width="0.8" stroke-linejoin="round"/>
+  <path d="M39 78 C50 70 52 62 49 55 C42 61 39 70 37 78 Z" fill="url(#lf)" stroke="#1d3318" stroke-width="0.8" stroke-linejoin="round"/>
+  <path d="M10 46 C8 33 13 27 18 23 C23 28 27 34 25 46 C22 51 13 51 10 46 Z" fill="url(#py)" stroke="#4a3a08" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M18 23 C15 32 15 42 18 49 C21 42 21 32 18 23 Z" fill="#fff" fill-opacity="0.3"/>
+  <path d="M44 48 C42 35 47 29 52 25 C57 30 61 36 59 48 C56 53 47 53 44 48 Z" fill="url(#py)" stroke="#4a3a08" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M52 25 C49 34 49 44 52 51 C55 44 55 34 52 25 Z" fill="#000" fill-opacity="0.12"/>
+  <path d="M25 36 C23 21 29 15 34 11 C39 15 45 21 43 36 C40 42 28 42 25 36 Z" fill="url(#pr)" stroke="#3d1019" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M34 11 C30 21 30 32 34 40 C38 32 38 21 34 11 Z" fill="#fff" fill-opacity="0.28"/>
+  <path d="M19 78 H49 L53 94 C54 104 47 113 34 113 C21 113 14 104 15 94 Z" fill="url(#vz)" stroke="#1c2c3a" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M22 84 C20 92 20 100 24 106" fill="none" stroke="#fff" stroke-width="2.2" opacity="0.6" stroke-linecap="round"/>
+  <ellipse cx="34" cy="78" rx="15" ry="3.2" fill="#1f3446" stroke="#1c2c3a" stroke-width="0.9"/>
+  <path d="M17 92 Q34 99 51 92" fill="none" stroke="#e8f1f8" stroke-width="1.6" opacity="0.8"/>
+</svg>

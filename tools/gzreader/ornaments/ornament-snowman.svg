@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 114">
+  <defs>
+    <radialGradient id="sn" cx="0.34" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e9eef3"/><stop offset="0.85" stop-color="#aab6c2"/><stop offset="1" stop-color="#7d8996"/></radialGradient>
+    <linearGradient id="ht" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3a3f46"/><stop offset="0.3" stop-color="#6a717b"/><stop offset="0.6" stop-color="#22262b"/><stop offset="1" stop-color="#0b0d10"/></linearGradient>
+    <linearGradient id="sc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d95a4a"/><stop offset="0.4" stop-color="#e87a66"/><stop offset="1" stop-color="#7a1c14"/></linearGradient>
+    <radialGradient id="co" cx="0.3" cy="0.3" r="0.8"><stop offset="0" stop-color="#70757c"/><stop offset="1" stop-color="#0b0d10"/></radialGradient>
+    <linearGradient id="nz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb060"/><stop offset="1" stop-color="#b3540f"/></linearGradient>
+  </defs>
+  <path d="M19 52 L4 40 M9 44 L7 37 M10 45 L3 46" fill="none" stroke="#4a3320" stroke-width="2" stroke-linecap="round"/>
+  <path d="M53 52 L68 40 M63 44 L65 37 M62 45 L69 46" fill="none" stroke="#2e1f12" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="36" cy="88" r="25.5" fill="url(#sn)" stroke="#55606b" stroke-width="1"/>
+  <ellipse cx="36" cy="68" rx="15" ry="4" fill="#000" fill-opacity="0.16"/>
+  <circle cx="36" cy="53" r="18" fill="url(#sn)" stroke="#55606b" stroke-width="1"/>
+  <ellipse cx="36" cy="40" rx="10" ry="3" fill="#000" fill-opacity="0.16"/>
+  <circle cx="36" cy="27" r="13" fill="url(#sn)" stroke="#55606b" stroke-width="1"/>
+  <path d="M24 38 Q36 45 48 38 L48 44 Q36 51 24 44 Z" fill="url(#sc)" stroke="#3a0e09" stroke-width="0.8"/>
+  <path d="M43 43 L50 60 L44 61 L39 46 Z" fill="url(#sc)" stroke="#3a0e09" stroke-width="0.8"/>
+  <path d="M44.5 57 l4.5 -1 M44 54 l4.4 -1" stroke="#3a0e09" stroke-width="0.6"/>
+  <ellipse cx="36" cy="16" rx="16" ry="3" fill="url(#ht)" stroke="#0b0d10" stroke-width="0.8"/>
+  <path d="M26 15 L26 3 A10 2.2 0 0 1 46 3 L46 15 A10 2.2 0 0 1 26 15 Z" fill="url(#ht)" stroke="#0b0d10" stroke-width="0.8"/>
+  <path d="M26 10.5 A10 2.2 0 0 0 46 10.5 L46 14 A10 2.2 0 0 1 26 14 Z" fill="url(#sc)"/>
+  <ellipse cx="36" cy="3" rx="10" ry="2.2" fill="#4a5058"/>
+  <circle cx="31.3" cy="25" r="1.9" fill="url(#co)"/><circle cx="40.5" cy="25" r="1.9" fill="url(#co)"/>
+  <path d="M36 28 L49 31.5 L36 33 Z" fill="url(#nz)" stroke="#5a2d0a" stroke-width="0.7" stroke-linejoin="round"/>
+  <circle cx="36" cy="56" r="2.2" fill="url(#co)"/><circle cx="36" cy="78" r="2.2" fill="url(#co)"/><circle cx="36" cy="92" r="2.2" fill="url(#co)"/>
+</svg>

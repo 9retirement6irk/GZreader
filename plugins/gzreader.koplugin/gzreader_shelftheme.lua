@@ -2,12 +2,13 @@
 The bookshelves' theme and ornaments (Home's shelf, Downloads in the
 Bookshelf view, the Catalog's ledges): after AndyHazz's Bookshelf plugin
 (https://github.com/AndyHazz/bookshelf.koplugin, AGPL-3.0), whose oak plank
-and two ornaments (a potted plant, a cactus) are here:
-icons/shelf/plank-oak.png (its plank's top and front, in greys),
-ornament-plant.svg and ornament-cactus.svg. The other ornaments are
-GZreader's own drawings (icons/shelf/CREDITS.md), some of them seasonal: a
-Christmas tree, a present and a snowman in winter, a pumpkin in autumn,
-tulips in spring.
+is icons/shelf/plank-oak.png (its top and front, in greys), and whose two
+ornaments (a potted plant, a cactus) are redrawn here. The ornaments are
+shaded drawings (light from the upper left), GZreader's own but for those
+two, some of them seasonal: a Christmas tree, a present and a snowman in
+winter, a pumpkin in autumn, tulips in spring. They ship as pictures
+(icons/shelf/ornament-*.png) rendered from tools/gzreader/ornaments/*.svg:
+the Kindle's SVG renderer draws gradients far too dark.
 
 - A theme is the plank the books stand on: Plain (drawn in flat greys, as
   before), Oak (the wood's grain) or Walnut (the same wood, darker).
@@ -50,16 +51,16 @@ local Theme = {
 --- season: { from month, day, to month, day }: it stands only then, unless
 --- ticked by hand (Settings).
 Theme.BUILT_IN = {
-    { file = "ornament-plant.svg", label = _("Potted plant") },
-    { file = "ornament-cactus.svg", label = _("Cactus") },
-    { file = "ornament-globe.svg", label = _("Globe"), tall = 0.72 },
-    { file = "ornament-hourglass.svg", label = _("Hourglass"), tall = 0.6 },
-    { file = "ornament-cat.svg", label = _("Cat"), tall = 0.62 },
-    { file = "ornament-tulips.svg", label = _("Tulips"), season = { 3, 1, 5, 31 }, when = _("March to May") },
-    { file = "ornament-pumpkin.svg", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November") },
-    { file = "ornament-christmas-tree.svg", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January") },
-    { file = "ornament-present.svg", label = _("Present"), tall = 0.42, season = { 12, 1, 1, 6 }, when = _("December to 6 January") },
-    { file = "ornament-snowman.svg", label = _("Snowman"), tall = 0.8, season = { 12, 1, 2, 28 }, when = _("December to February") },
+    { file = "ornament-plant.png", label = _("Potted plant") },
+    { file = "ornament-cactus.png", label = _("Cactus") },
+    { file = "ornament-globe.png", label = _("Globe"), tall = 0.72 },
+    { file = "ornament-hourglass.png", label = _("Hourglass"), tall = 0.6 },
+    { file = "ornament-cat.png", label = _("Cat"), tall = 0.62 },
+    { file = "ornament-tulips.png", label = _("Tulips"), season = { 3, 1, 5, 31 }, when = _("March to May") },
+    { file = "ornament-pumpkin.png", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November") },
+    { file = "ornament-christmas-tree.png", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January") },
+    { file = "ornament-present.png", label = _("Present"), tall = 0.42, season = { 12, 1, 1, 6 }, when = _("December to 6 January") },
+    { file = "ornament-snowman.png", label = _("Snowman"), tall = 0.8, season = { 12, 1, 2, 28 }, when = _("December to February") },
 }
 
 local root = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"

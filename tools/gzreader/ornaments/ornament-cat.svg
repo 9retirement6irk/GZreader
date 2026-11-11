@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. Light from the upper left. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 98">
+  <defs>
+    <linearGradient id="fur" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#34343b"/><stop offset="0.28" stop-color="#7c7c88"/><stop offset="0.55" stop-color="#3e3e46"/><stop offset="1" stop-color="#0e0e12"/></linearGradient>
+    <radialGradient id="hd" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#8a8a96"/><stop offset="0.5" stop-color="#45454d"/><stop offset="1" stop-color="#101014"/></radialGradient>
+    <linearGradient id="ch" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d8d2c4"/><stop offset="0.4" stop-color="#ffffff"/><stop offset="1" stop-color="#a39c8c"/></linearGradient>
+    <radialGradient id="ey" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#fff8c0"/><stop offset="1" stop-color="#b79a20"/></radialGradient>
+  </defs>
+  <path d="M54 95 C72 95 75 81 68 71 C64 65 66 59 71 57" fill="none" stroke="#0e0e12" stroke-width="7" stroke-linecap="round"/>
+  <path d="M54 94 C70 94 72 81 66 72 C62 65 64 59 70 56.5" fill="none" stroke="#5a5a64" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M17 97 C8 80 10 60 23 46 L53 46 C65 60 65 82 58 97 Z" fill="url(#fur)" stroke="#0a0a0d" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M31 97 C29 82 31 68 38 61 C45 68 47 82 45 97 Z" fill="url(#ch)" stroke="#0a0a0d" stroke-width="0.7"/>
+  <path d="M22 97 C18 90 22 84 28 86 L28 97 Z M54 97 C58 90 54 84 48 86 L48 97 Z" fill="#000" fill-opacity="0.3"/>
+  <ellipse cx="38" cy="47" rx="15" ry="3.4" fill="#000" fill-opacity="0.4"/>
+  <path d="M19 41 C13 31 15 19 19 6 L30 17 C35 15 41 15 46 17 L57 6 C61 19 63 31 57 41 C52 49 24 49 19 41 Z" fill="url(#hd)" stroke="#0a0a0d" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M21 12 L27 18.5 L22 22 Z" fill="#d9a3a3" fill-opacity="0.7"/><path d="M55 12 L49 18.5 L54 22 Z" fill="#8a5a5a" fill-opacity="0.7"/>
+  <ellipse cx="30" cy="30" rx="3.8" ry="4.8" fill="url(#ey)" stroke="#0a0a0d" stroke-width="0.7"/>
+  <ellipse cx="46" cy="30" rx="3.8" ry="4.8" fill="url(#ey)" stroke="#0a0a0d" stroke-width="0.7"/>
+  <ellipse cx="30" cy="30" rx="1" ry="4" fill="#0a0a0d"/><ellipse cx="46" cy="30" rx="1" ry="4" fill="#0a0a0d"/>
+  <circle cx="28.8" cy="27.6" r="0.9" fill="#fff"/><circle cx="44.8" cy="27.6" r="0.9" fill="#fff"/>
+  <path d="M36 37 H40 L38 40 Z" fill="#e8a0a0" stroke="#0a0a0d" stroke-width="0.5"/>
+  <path d="M38 40 C36 43 33 43 32 41 M38 40 C40 43 43 43 44 41" fill="none" stroke="#0a0a0d" stroke-width="0.7"/>
+  <path d="M22 38 L9 35 M22 41 L9 43 M54 38 L67 35 M54 41 L67 43" fill="none" stroke="#f1ede4" stroke-width="0.8" stroke-linecap="round"/>
+</svg>
