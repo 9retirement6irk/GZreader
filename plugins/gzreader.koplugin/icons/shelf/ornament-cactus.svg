@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- From Bookshelf by AndyHazz (https://github.com/AndyHazz/bookshelf.koplugin), AGPL-3.0. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 106">
+  <path d="M14 74 H46 L42 97 A12 2.6 0 0 1 18 97 Z" fill="#a4512c" stroke="#4a2a17" stroke-width="1.2" stroke-linejoin="round"/>
+  <ellipse cx="30" cy="72" rx="17" ry="3.6" fill="#3a2114"/>
+  <path d="M30 56 H19 A5 5 0 0 1 14 51 V36" stroke="#1f3a22" stroke-width="10.4" stroke-linecap="round" fill="none"/>
+  <path d="M30 44 H41 A5 5 0 0 0 46 39 V28" stroke="#1f3a22" stroke-width="10.4" stroke-linecap="round" fill="none"/>
+  <rect x="24" y="18" width="12" height="56" rx="6" fill="#3f8a45" stroke="#1f3a22" stroke-width="1.2"/>
+  <path d="M30 56 H19 A5 5 0 0 1 14 51 V36" stroke="#3f8a45" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M30 44 H41 A5 5 0 0 0 46 39 V28" stroke="#3f8a45" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M27 26 l-3 -2 M33 26 l3 -2 M27 40 l-3 -2 M33 40 l3 -2 M27 64 l-3 -2 M33 64 l3 -2 M12 42 l-3 -1 M48 34 l3 -1" stroke="#f3e9b8" stroke-width="1.2" fill="none"/>
+  <path d="M13 72 A17 3.6 0 0 0 47 72 V76 A17 3.6 0 0 1 13 76 Z" fill="#c8693d" stroke="#4a2a17" stroke-width="1.2" stroke-linejoin="round"/>
+</svg>

@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Bookshelf themes (Oak, Walnut, Plain) and ornaments on the shelves", text = "Settings → Downloads → Appearance → Bookshelf theme: the plank the books stand on, on Home, in Downloads and on the Catalog's ledges, is Oak to begin with (the plank of AndyHazz's Bookshelf plugin, in greys), or Walnut (darker), or Plain (flat greys, as before). Ornaments, Bookshelf's potted plant and cactus, stand on a shelf's free end: where there's room (to begin with), on every page (the bottom shelf keeps room for one), or not at all. Your own: PNG or SVG pictures in koreader/settings/gzreader/ornaments." },
             { short = "Bookshelves with more depth: page tops, title and author along the spine, shadows on the wall", text = "The bookshelves (Home, Downloads, and the spines in the Catalog) are drawn after AndyHazz's Bookshelf plugin: seen from a little above, so each book shows the top of its page block between its boards; the title runs along the spine with the author after it in smaller type where both fit (on shorter spines the author stays under the title), and a book's number in its series stands level at the foot. The books cast a soft shadow on the wall behind them, and the board shows its top, darker at the back." },
         },
     },

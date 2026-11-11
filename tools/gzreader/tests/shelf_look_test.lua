@@ -21,7 +21,7 @@ do
     local was_screen = Device.screen
     Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end, scaleBySize = function(_s, v) return v end }
     local SHELF = "modules/filebrowser/patches/home/widgets/shelf"
-    local names = { SHELF, "ffi/blitbuffer", "ui/font", "ui/geometry", "ui/gesturerange", "ui/widget/container/inputcontainer",
+    local names = { SHELF, "ui/font", "ui/geometry", "ui/gesturerange", "ui/widget/container/inputcontainer",
         "ui/widget/textwidget", "ui/widget/container/widgetcontainer", "modules/filebrowser/patches/home/widgets/cover_common", "common/cover_utils" }
     local saved = {}
     for _i, m in ipairs(names) do saved[m] = package.loaded[m] end
@@ -85,6 +85,110 @@ do
     end
     for _i, m in ipairs(names) do package.loaded[m] = saved[m] end
     Device.screen = was_screen
+end
+
+print("The shelves' theme and ornaments (gzreader_shelftheme.lua)")
+do
+    local settings = {}
+    G_reader_settings = { -- luacheck: ignore
+        readSetting = function(_s, k) return settings[k] end,
+        saveSetting = function(_s, k, v) settings[k] = v end,
+    }
+    local Device = require("device")
+    Device.screen = { scaleBySize = function(_s, v) return v end }
+    local dir_files
+    package.loaded["libs/libkoreader-lfs"] = {
+        attributes = function(path) return dir_files and path:match("/ornaments$") and "directory" or nil end,
+        dir = function() local i = 0; return function() i = i + 1; return dir_files[i] end end,
+        mkdir = function() end,
+    }
+    package.preload["gettext"] = function() return function(str) return str end end
+    local WORK = os.getenv("TMPDIR") or "/tmp"
+    local udir = WORK .. "/gz-orn-test"
+    os.execute("rm -rf '" .. udir .. "' && mkdir -p '" .. udir .. "/gzreader/ornaments'")
+    package.loaded["datastorage"] = { getSettingsDir = function() return udir end }
+    local ok, Theme = pcall(dofile, REPO .. "/plugins/gzreader.koplugin/gzreader_shelftheme.lua")
+    check(ok, "gzreader_shelftheme loads " .. tostring(not ok and Theme or ""))
+    if ok then
+        Theme.changed = function() Theme.planks, Theme.images, Theme.found = {}, {}, nil end
+        check(Theme.get() == "oak" and Theme.ornaments() == "room", "to begin with: the Oak plank, ornaments where there's room")
+        check(Theme.set("walnut") and Theme.get() == "walnut" and not Theme.set("marble") and Theme.get() == "walnut", "a theme is one of Plain, Oak, Walnut")
+        settings[Theme.SETTING] = "nonsense"
+        check(Theme.get() == "oak", "a theme this version doesn't know: Oak")
+        check(Theme.setOrnaments("always") and Theme.ornaments() == "always" and not Theme.setOrnaments("lots"), "ornaments: off, where there's room, or on every page")
+        Theme.set("plain")
+        check(Theme.plank(600, 8, 9) == nil, "Plain: no picture for the plank (the board is drawn in greys)")
+        -- the two that come with it, measured from their files
+        local list = Theme.list()
+        check(#list == 2 and list[1].name == "ornament-plant.svg" and math.abs(list[1].aspect - 60 / 106) < 0.001 and list[2].name == "ornament-cactus.svg",
+            "Bookshelf's potted plant and cactus, their shape from their viewBox")
+        for _i, e in ipairs(list) do
+            local f = io.open(e.path, "r")
+            local text = f:read("*a")
+            f:close()
+            check(text:find("From Bookshelf by AndyHazz", 1, true) and text:find("AGPL-3.0", 1, true), e.name .. " says where it's from and its licence")
+        end
+        -- the reader's own: PNG and SVG files, by name, others left out
+        local function write(name, data) local f = io.open(udir .. "/gzreader/ornaments/" .. name, "wb"); f:write(data); f:close() end
+        write("globe.png", "\137PNG\r\n\26\n\0\0\0\13IHDR\0\0\0\200\0\0\0\100" .. string.rep("\0", 16))
+        write("Vase.SVG", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 80"></svg>')
+        write("notes.txt", "x")
+        write("broken.svg", "<svg></svg>")
+        dir_files = { ".", "..", "notes.txt", "globe.png", "broken.svg", "Vase.SVG", ".hidden.png" }
+        Theme.found = nil
+        list = Theme.list()
+        check(#list == 4 and list[3].name == "Vase.SVG" and list[3].aspect == 0.5 and list[4].name == "globe.png" and list[4].aspect == 2,
+            "your own PNG and SVG files join them (their shape from the file); other files and broken ones don't (" .. #list .. ")")
+        check(Theme.userDir(false) == udir .. "/gzreader/ornaments", "…from koreader/settings/gzreader/ornaments")
+        -- which one stands where: the same every time
+        local a, b = Theme.pick("downloads:1:3"), Theme.pick("downloads:1:3")
+        local seen = {}
+        for i = 1, 40 do seen[Theme.pick("downloads:" .. i .. ":1").name] = true end
+        local kinds = 0
+        for _k in pairs(seen) do kinds = kinds + 1 end
+        check(a == b and kinds == 4, "the same place has the same ornament every time; different places, different ones (" .. kinds .. " of 4)")
+        -- sizes: 80% of the books' room, narrower when the room is, never under 2/3
+        local plant = list[1]
+        local w, h = Theme.size(plant, 150, 400)
+        check(h == 120 and w == math.floor(120 * 60 / 106), "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
+        local w2, h2 = Theme.size(plant, 150, 70)
+        check(w2 == 50 and h2 and h2 < 120 and h2 >= 80, "less room: smaller, its shape kept (" .. tostring(w2) .. " x " .. tostring(h2) .. ")")
+        check(Theme.size(plant, 150, 50) == nil and Theme.size(plant, 20, 400) == nil, "too little room, or a tiny shelf: none")
+        check(Theme.reserve(150) == 120 + 20, "an ornament on every page: the bottom shelf keeps room for the widest (a square at most)")
+        Theme.setOrnaments("room")
+        check(Theme.reserve(150) == 0, "where there's room: nothing is kept for them")
+        Theme.setOrnaments("off")
+        local BB = require("ffi/blitbuffer")
+        local wall = BB.new(300, 200, BB.TYPE_BB8)
+        wall:fill(BB.COLOR_WHITE)
+        check(Theme.paintOrnament(wall, "x", 0, 300, 180, 150) == nil and wall:getPixel(250, 181):getColor8().a == 255, "no ornaments: nothing is drawn")
+        -- Settings: the themes, the ornaments, your own
+        local item = Theme.settingsItem()
+        local texts = {}
+        for i, it in ipairs(item.sub_item_table) do texts[i] = it.text end
+        check(item.text == "Bookshelf theme" and table.concat(texts, " | ") == "Plain | Oak | Walnut | No ornaments | Ornaments where there's room | An ornament on every page | Your own ornaments…",
+            "Settings: " .. table.concat(texts, " | "))
+        item.sub_item_table[2].callback()
+        item.sub_item_table[6].callback()
+        check(Theme.get() == "oak" and item.sub_item_table[2].checked_func() and not item.sub_item_table[1].checked_func()
+            and Theme.ornaments() == "always" and item.sub_item_table[6].checked_func(), "choosing one sets it, and ticks it")
+    end
+    os.execute("rm -rf '" .. udir .. "'")
+    -- where it's asked for
+    local function slurp(path) local fh = io.open(REPO .. "/" .. path, "r"); local t = fh and fh:read("*a"); if fh then fh:close() end; return t or "" end
+    check(slurp("plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):find('Theme.plank(w, top_h, front_h)', 1, true)
+        and slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):find('Theme.plank(r.w, top_h, r.h - top_h)', 1, true),
+        "the boards (Home, Downloads) and the Catalog's ledges ask for the theme's plank")
+    check(select(2, slurp("plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):gsub('paintOrnament%(', "")) == 1
+        and select(2, slurp("plugins/gzreader.koplugin/gzreader_shelfview.lua"):gsub('paintOrnament%(', "")) == 1
+        and select(2, slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):gsub('paintOrnament%(', "")) == 1,
+        "Home's shelf, Downloads' shelves and the Catalog's ledges stand an ornament on their free end")
+    check(slurp("plugins/zenos.koplugin/modules/settings/sections/library_settings.lua"):find('ShelfTheme.settingsItem()', 1, true),
+        "Settings → Downloads → Appearance has Bookshelf theme")
+    local png = io.open(REPO .. "/plugins/gzreader.koplugin/icons/shelf/plank-oak.png", "rb")
+    local head = png and png:read(24) or ""
+    if png then png:close() end
+    check(head:sub(1, 4) == "\137PNG" and head:byte(20) == 480 % 256 and head:byte(24) == 32, "the oak plank's picture: 480 x 32 (24 rows of its top, 8 of its front)")
 end
 
 print(string.format("\n%d passed, %d failed", pass, fail))

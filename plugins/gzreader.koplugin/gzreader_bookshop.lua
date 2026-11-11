@@ -707,7 +707,15 @@ local function paintSign(bb, menu, sign, label, count, letter)
 end
 
 local function paintLedge(bb, r)
-    for i = 0, r.h - 1 do bb:paintRect(r.x, r.y + i, r.w, 1, gray(0.10 + 0.32 * i / r.h)) end
+    -- the theme's plank (gzreader_shelftheme.lua: oak, walnut), or flat greys
+    local okt, Theme = pcall(require, "gzreader_shelftheme")
+    local top_h = math.max(1, math.floor(r.h * 0.6))
+    local wood = okt and r.h >= 4 and Theme.plank(r.w, top_h, r.h - top_h) or nil
+    if wood then
+        bb:blitFrom(wood, r.x, r.y, 0, 0, r.w, r.h)
+    else
+        for i = 0, r.h - 1 do bb:paintRect(r.x, r.y + i, r.w, 1, gray(0.10 + 0.32 * i / r.h)) end
+    end
     bb:paintBorder(r.x, r.y, r.w, r.h, math.max(1, S(1)), gray(0.85))
     -- its shadow on the wall, and the covers' on its top
     for i = 0, S(4) - 1 do bb:darkenRect(r.x + S(4), r.y + r.h + i, r.w - S(8), 1, 0.35 * (1 - i / S(4))) end
@@ -1085,6 +1093,15 @@ function Page:paintLedge(bb, ox, oy, i, L)
         end
     end
     paintLedge(bb, ledge)
+    -- an ornament where the ledge has a place free (fewer books than places)
+    local free = led.cols[#spec.items + 1]
+    local last = led.cols[#led.cols]
+    if free and last and msg == "" then
+        pcall(function()
+            require("gzreader_shelftheme").paintOrnament(bb, "catalog:" .. tostring(spec.kind) .. ":" .. tostring(i),
+                ox + free.x, ox + last.x + last.w, bottom, led.box_h)
+        end)
+    end
 end
 
 --- A compartment of the bookcase (x, y, w, h): its back, its board, what

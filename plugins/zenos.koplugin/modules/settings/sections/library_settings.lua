@@ -1206,6 +1206,14 @@ function M.build(ctx)
             settings_apply.prompt_restart()
         end,
     }, icons.settings_subfolders))
+    -- GZreader: the bookshelves' plank and ornaments (gzreader_shelftheme.lua)
+    do
+        local ok_theme, ShelfTheme = pcall(require, "gzreader_shelftheme")
+        local ok_item, theme_item = pcall(function() return ok_theme and ShelfTheme.settingsItem() or nil end)
+        if ok_item and theme_item then
+            table.insert(appearance_items, IconItem.decorate(theme_item, icons.navbar_styling))
+        end
+    end
     return {
         IconItem.decorate({ text = _("Appearance"), sub_item_table = appearance_items }, icons.navbar_styling),
         IconItem.decorate(folders_item, icons.settings_folders),

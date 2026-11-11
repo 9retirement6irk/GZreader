@@ -39,6 +39,21 @@ the book once you open one.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
+- **Theme and ornaments** (Settings → Downloads → Appearance → **Bookshelf
+  theme**), for Home's shelf, Downloads and the Catalog's ledges:
+  - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
+    **Walnut** (darker) or **Plain** (flat greys);
+  - ornaments, standing on a shelf's free end like a plant on a half-empty
+    shelf: **where there's room** (to begin with: no book moves for them, so
+    a full shelf has none), **on every page** (the bottom shelf keeps room
+    for one, so a page holds a book or two fewer), or **none**. Bookshelf's
+    potted plant and cactus come with GZreader. Which one stands where
+    stays the same each time you see the page;
+  - **your own ornaments**: connect the Kindle to a computer and put PNG or
+    SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
+    the folder and makes it). A picture's bottom edge stands on the plank;
+    keep its background transparent. Bold, dark shapes read best on e-ink.
+
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,

@@ -382,6 +382,23 @@ function M.paintBoard(bb, x, board_y, w)
     local top_h, front_h = S(5) + stand, S(M.BOARD_H) - S(5)
     local y0 = board_y - stand
     local base = M.PLANK
+    -- GZreader: the theme's plank (gzreader_shelftheme.lua: oak, walnut) in
+    -- place of the flat greys
+    local okt, Theme = pcall(require, "gzreader_shelftheme")
+    local wood = okt and Theme.plank(w, top_h, front_h) or nil
+    if wood then
+        bb:blitFrom(wood, x, y0, 0, 0, w, top_h + front_h)
+        -- (still darker at the back, where the books' shadow falls)
+        for i = 0, top_h - 1 do
+            local band = math.floor(i * M.PLANK_BANDS / top_h) / (M.PLANK_BANDS - 1)
+            bb:darkenRect(x, y0 + i, w, 1, 0.35 * (1 - band))
+        end
+        local under = S(M.UNDER_H)
+        for i = 0, under - 1 do
+            bb:darkenRect(x + S(4), y0 + top_h + front_h + i, w - S(8), 1, 0.45 * (1 - i / under))
+        end
+        return
+    end
     for i = 0, top_h - 1 do
         local inset = math.floor((top_h - i) * S(6) / top_h)
         local band = math.floor(i * M.PLANK_BANDS / top_h) / (M.PLANK_BANDS - 1)
@@ -617,6 +634,12 @@ function Shelf:paintTo(bb, x, y)
         if i ~= picked and slot.cover then slot.cover:free(); slot.cover = nil end
     end
     M.paintDepth(bb, board_y, spans)
+    -- GZreader: an ornament on the shelf's free end (gzreader_shelftheme.lua)
+    if not self.empty_text then
+        pcall(function()
+            require("gzreader_shelftheme").paintOrnament(bb, "home:" .. tostring(self.row or 1), x + px, x + self.w - S(4), board_y, area_h)
+        end)
+    end
 end
 
 function Shelf:free()
@@ -647,11 +670,18 @@ function M.build(books, opts)
     local menu = ctx.menu
     for r = 1, rows do
         local shelf = Shelf:new{ w = width, h = row_h, area_h = area_h, slots = {}, menu = menu,
-            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and r == 1 and opts.empty_text or nil }
+            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and r == 1 and opts.empty_text or nil, row = r }
         local x = S(8)
+        -- (an ornament on every page: the last shelf keeps room for one)
+        local keep = 0
+        if r == rows then
+            local okt, Theme = pcall(require, "gzreader_shelftheme")
+            if okt then keep = Theme.reserve(area_h) end
+        end
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)
+            if x + look.w > width - S(4) - keep and #shelf.slots > 0 then break end
             if x + look.w > width - S(4) then break end
             local slot = { x = x, w = look.w, h = look.h, book = book }
             local spine = Spine:new{ w = look.w, h = look.h, book = book, shade = look.shade }
