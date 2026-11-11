@@ -1098,7 +1098,13 @@ function M.build(ctx)
         },
     }
     double_tap_item.checkmark_callback = double_tap_item.callback
-    table.insert(book_items, IconItem.decorate(double_tap_item, icons.double_tap))
+    -- GZreader: only on a touch screen (the Kindle 2, 3, DX and 4 open books
+    -- with keys or the 5-way: there's nothing to tap)
+    local ok_dev, Device = pcall(require, "device")
+    if not (ok_dev and type(Device) == "table" and type(Device.isTouchDevice) == "function")
+            or Device:isTouchDevice() then
+        table.insert(book_items, IconItem.decorate(double_tap_item, icons.double_tap))
+    end
 
     local context_item = IconItem.decorate({
         text = _("Context menu"),
