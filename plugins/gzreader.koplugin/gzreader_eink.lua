@@ -8,7 +8,7 @@ of its other screens update without one, so on a Kindle 3 a menu, a tab or
 the quick panel left a grey copy of itself behind (the emulator's
 GZ_EMU_GHOST=1 shows it: 10–25 % of the screen).
 
-Here, on those Kindles (Settings → Advanced → Flash when the screen changes;
+Here, on those Kindles (Settings → General → Screen refresh → Flash when the screen changes;
 on by default):
 - an update of most of the screen (60 % or more) that isn't a page turn
   flashes: switching tabs, opening or closing a menu, the quick panel, a list's

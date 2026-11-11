@@ -31,11 +31,9 @@ Format 1:
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
-    usage = { level, server, app } (absent when off),
     screensavers = { names, mode = "auto"|"always"|"other" }; kindle.screen = { w, h } }
-- usage/*.jsonl (the Kindle, when it steps aside for the USB drive): usage
-  statistics waiting to be sent (gzreader_usage.lua); the page sends them
-  to usage.server and deletes each file it sent.
+- usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
+  the page deletes them without sending (no usage statistics since).
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
     books = { { id, file, name, title, authors, format, file_id, subtitle, progress } },
     audiobooks = { { id, dir, info, primaryFileName, title, progress } },
@@ -391,20 +389,6 @@ function Usb.screenSize()
     return { w = w, h = h }
 end
 
-function Usb.usageInfo()
-    local ok, U = pcall(require, "gzreader_usage")
-    if not ok or not U.on() then return nil end
-    return { level = U.level(), server = U.SERVER, app = U.APP }
-end
-
---- Usage statistics waiting on the Kindle: into .gzsync/usage/ for the page
---- (when GZreader steps aside for the USB drive).
-function Usb.handOverUsage(plugin)
-    local n = require("gzreader_usage").handOver(Usb.dir(plugin) .. "/usage")
-    if n > 0 then Log.info("sync: usage statistics for the sync page:", n, "file(s)") end
-    return n
-end
-
 function Usb.outbox(plugin)
     local store = plugin.store
     local Copy = require("gzreader_copy")
@@ -464,8 +448,6 @@ function Usb.outbox(plugin)
         last_import = store.usb_last and store.usb_last.at or nil,
         -- the sleep screen's pictures (the page makes new ones for this screen)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
-        -- usage statistics (gzreader_usage.lua): the page sends what's in usage/
-        usage = Usb.usageInfo(),
         -- (how much room is left on the Kindle, for the page)
         disk = cached("disk", function()
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)

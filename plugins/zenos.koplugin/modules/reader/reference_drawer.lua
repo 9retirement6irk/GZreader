@@ -838,9 +838,9 @@ function Drawer:showMenu()
     add{ text = _("Settings"), icon = GlyphIcons.iconPath(GlyphIcons.SVG.settings), callback = function()
         self:onClose()
         require("modules/settings/zen_settings_page").show(self.plugin, {
-            path = { { key = "text", value = _("Reader") },
-                { key = "text", value = _("Footnotes and pinned pages") },
-                { key = "text", value = _("Pinned page options") } },
+            -- GZreader: through Reader's group (gz_reader_groups)
+            path = require("modules/settings/sections/gz_reader_groups").path(_("Footnotes and pinned pages"),
+                _("Pinned page options")),
         })
     end }
     dialog = require("common/ui/zen_anchored_menu").new{

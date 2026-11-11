@@ -891,7 +891,7 @@ function Player:tick()
         if self.ticker then UIManager:unschedule(self.ticker); self.ticker = nil end
         self:save()
         UIManager:show(InfoMessage:new{ text = played < 4000
-            and _("The audio didn't play. Run Test audiobook playback (Settings → Reader), then send the log (Menu → Diagnostics) if it still fails.")
+            and _("The audio didn't play. Run Test audiobook playback (Settings → General → Audio), then send the log (Menu → Diagnostics) if it still fails.")
             or _("The audio stopped unexpectedly. Your place is kept. If it keeps happening, send the log (Menu → Diagnostics).") })
         if self.screen then self.screen:refresh() end
         return

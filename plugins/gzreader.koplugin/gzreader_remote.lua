@@ -3,8 +3,10 @@ Remote debugging: GZreader reports to the developer's feed (Tianji
 /open/feed/<id>/send and /state/upsert) so problems are visible even when
 the Kindle can't be reached afterwards.
 
-On when usage statistics are Full (Settings → General → Usage statistics,
-or the setup guide), on Kindles with Wi-Fi. Releases report to one feed,
+On with "Send debug reports automatically" (Settings → General, or the
+setup guide's Debug Reports page; off unless chosen), on Kindles with
+Wi-Fi. (Until 1.28.1 it came with Full usage statistics; GZreader sends no
+usage statistics since: R.setting carries a Full choice over.) Releases report to one feed,
 test builds (a version like 1.26.7-beta.abc1234) to another. GZ_REMOTE_FEED
 (environment) points it elsewhere, for the emulator's feed.py.
 
@@ -23,8 +25,8 @@ GZreader never turns Wi-Fi on for them.
 
 Diagnostics → Send to the developer (R.sendLogs) sends the whole diagnostic
 log at once, with what the user typed about what happened, to its own feed
-(R.REPORT_FEED, for releases and test builds alike), whatever the usage
-level.
+(R.REPORT_FEED, for releases and test builds alike), whether automatic
+reports are on or not.
 ]]
 
 local DataStorage = require("datastorage")
@@ -91,13 +93,84 @@ function R.reportUrl()
     return R.REPORT_FEED
 end
 
---- On with Full usage statistics, on a Kindle with Wi-Fi (without it the
---- watchdog could never send).
-function R.enabled()
+R.SETTING = "gzreader_debug_reports"
+
+--- Send debug reports automatically? (the user's choice; off unless chosen.
+--- Until 1.28.1 they came with Full usage statistics, "gzreader_usage" =
+--- "full": that choice carries over.)
+function R.setting()
+    local gs = G_reader_settings
+    if not gs then return false end
+    local v = gs:readSetting(R.SETTING)
+    if v == nil then return gs:readSetting("gzreader_usage") == "full" end
+    return v == true
+end
+
+--- Kindles without Wi-Fi (Kindle 2, DX) can't: the watchdog could never send.
+function R.possible()
     local okn, Net = pcall(require, "gzreader_net")
-    if okn and Net.usb then return false end
-    local oku, U = pcall(require, "gzreader_usage")
-    return oku and U.level() == "full"
+    return not (okn and Net.usb)
+end
+
+--- On: chosen, on a Kindle with Wi-Fi.
+function R.enabled()
+    return R.possible() and R.setting()
+end
+
+--- The user's choice (Settings, the setup guide): starts or stops at once.
+function R.setSetting(on)
+    G_reader_settings:saveSetting(R.SETTING, on == true)
+    G_reader_settings:delSetting("gzreader_usage") -- (the old levels: usage statistics are gone)
+    Log.info("debug reports:", on == true and "on" or "off")
+    R.apply()
+end
+
+--- What it sends (the Settings item's help, the setup guide's page).
+R.WHAT_IS_SENT = require("gettext")("When GZreader starts, how the previous run ended; warnings and errors from its log; freezes and crashes. Sent to the developer only while Wi-Fi is on. Log lines can name the book or file GZreader was working on; never passwords or tokens.")
+
+--- Settings → General: "Send debug reports automatically" (nil on a Kindle
+--- without Wi-Fi: Send diagnostic log to the developer still works there,
+--- at the next sync).
+function R.menuItem()
+    if not R.possible() then return nil end
+    local _ = require("gettext")
+    return {
+        text = _("Send debug reports automatically"),
+        help_text = R.WHAT_IS_SENT,
+        checked_func = function() return R.setting() end,
+        callback = function() R.setSetting(not R.setting()) end,
+        separator = true,
+    }
+end
+
+--- GZreader's usage statistics (until 1.28.1): their queue and the old level
+--- are deleted once. The random ID stays: it names this Kindle in reports.
+function R.forgetUsage()
+    local gs = G_reader_settings
+    if gs and gs:readSetting(R.SETTING) == nil and gs:readSetting("gzreader_usage") ~= nil then
+        gs:saveSetting(R.SETTING, gs:readSetting("gzreader_usage") == "full")
+    end
+    if gs then gs:delSetting("gzreader_usage") end
+    local d = DataStorage:getDataDir() .. "/gzreader-usage"
+    if lfs.attributes(d, "mode") == "directory" then
+        for name in lfs.dir(d) do
+            if name ~= "." and name ~= ".." then os.remove(d .. "/" .. name) end
+        end
+        os.remove(d)
+    end
+end
+
+--- A random ID for this Kindle (not its serial number), made once.
+function R.id()
+    local gs = G_reader_settings
+    local id = gs and gs:readSetting("gzreader_usage_id") -- (the key it had with usage statistics)
+    if type(id) == "string" and #id == 32 then return id end
+    local f = io.open("/dev/urandom", "rb")
+    local bytes = f and f:read(16) or tostring(os.time()) .. tostring(math.random())
+    if f then f:close() end
+    id = (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end)):sub(1, 32)
+    if gs then gs:saveSetting("gzreader_usage_id", id) end
+    return id
 end
 
 local function writeFile(p, s)
@@ -251,11 +324,11 @@ end
 
 ---------------------------------------------------------------- start
 
---- "Kindle3-1a2b3c": the model and the start of usage statistics' random ID
+--- "Kindle3-1a2b3c": the model and the start of this Kindle's random ID
 --- (not the serial number), so reports from two Kindles can be told apart.
 function R.deviceName()
     local model = tostring(Device.model or "Kindle"):gsub("%s", "")
-    local ok, id = pcall(function() return require("gzreader_usage").id() end)
+    local ok, id = pcall(R.id)
     id = ok and type(id) == "string" and id:gsub("[^%w]", ""):sub(1, 6) or ""
     return id ~= "" and (model .. "-" .. id) or model
 end
@@ -379,7 +452,7 @@ function R.onResume() if R.on then R.beat("run"); R.startWatchdog() end end
 
 ---------------------------------------------------------------- settings
 
---- The usage level changed: start or stop.
+--- The choice changed: start or stop.
 function R.apply()
     if R.enabled() then
         if not R.on and R.plugin then R.started = false; R.start(R.plugin) end

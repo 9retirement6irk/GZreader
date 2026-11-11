@@ -34,28 +34,9 @@ function M.build(ctx)
         keep_menu_open = true,
     })
 
-    table.insert(items, {
-        text = _("Partial pages refresh"),
-        help_text = _("Flash the screen in the library when a page is not full of books to prevent ghosting."),
-        checked_func = function()
-            return config.features.partial_page_repaint == true
-        end,
-        callback = function()
-            config.features.partial_page_repaint = config.features.partial_page_repaint ~= true
-            plugin:saveConfig()
-        end,
-    })
-
-    -- GZreader: Kindles without REAGL (Kindle 3 …): flash on screen changes
-    local ok_eink, Eink = pcall(require, "gzreader_eink")
-    if ok_eink and Eink.applies() then
-        table.insert(items, {
-            text = _("Flash when the screen changes"),
-            help_text = _("Less ghosting: switching tabs and opening or closing a menu or a book flash the screen clean. Off: quicker, but a grey trace of the last screen stays until the next flash. Page turns: Settings → Reader → Appearance → Flash on every page turn."),
-            checked_func = function() return Eink.enabled() end,
-            callback = function() Eink.setEnabled(not Eink.enabled()) end,
-        })
-    end
+    -- GZreader: Partial pages refresh and GZreader's Flash when the screen
+    -- changes (gzreader_eink, the Kindles without REAGL) are in General →
+    -- Screen refresh (sections/gz_screen_refresh.lua).
 
     table.insert(items, {
         text = _("Allow dragging reader modals"),

@@ -133,10 +133,10 @@ for each package, uninstalling and the Nooks: [Installing](https://github.com/9r
 ## Privacy
 
 Passwords and tokens stay on the Kindle and are never written to its log.
-GZreader sends anonymous usage statistics (no addresses or accounts) to help
-fix problems; Full also sends debug reports, whose log lines can name a book.
-Choose Basic, Full or Off in the setup guide or Settings → General → Usage
-statistics ([what's sent](https://github.com/9retirement6irk/GZreader/wiki/Privacy-and-Diagnostics#usage-statistics)).
+GZreader sends no usage statistics. It can send debug reports (errors,
+freezes, crashes; their log lines can name a book) to help fix problems,
+only if you choose: the setup guide or Settings → General → Send debug
+reports automatically ([what's sent](https://github.com/9retirement6irk/GZreader/wiki/Privacy-and-Diagnostics#debug-reports)).
 
 ## More
 

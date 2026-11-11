@@ -2,8 +2,8 @@
 GZreader's periodic timers, lined up on the clock.
 
 While you read, the Kindle sleeps between events; every timer that fires on
-its own wakes it. GZreader's own (usage statistics every 30 s, the remote
-debugging heartbeat every 15 s, the Wi-Fi idle check while its Wi-Fi is on)
+its own wakes it. GZreader's own (the debug reports' heartbeat every 15 s,
+the Wi-Fi idle check while its Wi-Fi is on; until 1.28.1 usage statistics too)
 used to fire at their own offsets, each a wake-up. Lined up on the wall
 clock's quarter minutes (:00, :15, :30, :45), they fire together, also with
 ZenOS's clock, which ticks on the minute.
