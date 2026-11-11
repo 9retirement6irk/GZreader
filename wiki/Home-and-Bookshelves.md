@@ -30,6 +30,16 @@ the book once you open one.
   Interface → Navbar); inside a folder it shows the folder's name.
 - **Home** has one shelf of your most recent books; the DX's taller screen
   has two (the first filled before the second).
+- **The spines** are drawn after
+  [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin), AndyHazz's
+  KOReader plugin: the shelf is seen from a little above, so each book shows
+  the top of its page block between its boards. The whole title runs along the
+  spine: a long one takes two or three lines of smaller type instead of
+  being cut off. The author comes after it in smaller type, or on a line of
+  its own where there's no room after the title.
+  A book's number in its series is level at the foot of the spine. The books
+  cast a soft shadow on the wall behind them, and the board shows its top.
+
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
