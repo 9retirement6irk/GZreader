@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindles with keys: no Double-tap to open a book in Settings", text = "Settings → Downloads → Books → Double-tap to open a book (and Single tap to open context menu under it) shows only on the touch Kindles. The Kindle 2, 3, DX and 4 open books with keys or the 5-way, so it did nothing there." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },

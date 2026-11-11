@@ -52,6 +52,7 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 - **No Extras section in Settings:** its Schedules and Sleep are in General and Custom icons in Interface (as in ZenOS); the rest (Stats tab widgets, ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) isn't offered, and keeps its default or what was set before.
 - **GZreader's menus look like ZenOS's Settings:** the Calendar and Notes tabs' connect lists, Plex's sign-in and the Music list, Downloads, the sync queue, copying from another GZreader, the Notes filters, the font list and Add to shelf have ZenOS's rows: an icon on the left, an arrow on the right of each row that does something, ZenOS's spacing, and short labels (longer explanations behind an **About …** row). Lists of books, albums and tracks keep their own look.
 - **No Metadata menu in Settings → Downloads → Books** (ZenOS's online sources for its metadata editor): a download's title, authors and series come from Grimmory. **Square cover corners in the Bookshelf view** (Rounded cover corners is greyed out there; the other views keep their setting).
+- **No Double-tap to open a book on the Kindle 2, 3, DX and 4** (Settings → Downloads → Books): they open books with keys or the 5-way, so there's nothing to tap; the touch Kindles still have it.
 - **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.
 
 The full list of changed upstream files is `tools/gzreader/tests/keeps.txt` in the repository.
