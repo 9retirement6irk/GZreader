@@ -30,6 +30,27 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   `settings.reader.lua` brings back the minute updates).
 - **Night mode works again**, at no cost: it's done while packing (the device
   reports hardware inversion), so drawing is the same as by day.
+- **New books laid out while charging** (`gzreader_layout.lua`; Settings →
+  Reader → *Lay out new books while charging*): while the Kindle charges and
+  Home is on screen, downloaded books not opened yet are laid out in a
+  background process at the lowest priority, the way the reader would open
+  them, so the layout cache is there for their first open. Not while books
+  download or wait to, or another background job runs (on a Kindle 3 with
+  many downloads, memory went down to 2–3 MB), and a new book only after its
+  picture-book check: a picture book is laid out with the margins and style
+  the check fits it with (laid out before, fitting it made that layout
+  useless), and the check waits while a layout runs (side by side, it failed
+  for lack of memory). A picture book recognized but not fitted yet (the
+  first one on a Kindle) isn't laid out: its first open fits it. It stops
+  when the charger is unplugged, a book is opened or a download starts; the
+  books don't show as opened (no history, no book settings). Not on Kindles
+  with 128 MB or less. After each layout the book engine reads its layout
+  cache index again: it reads the index once, at the first book opened, and
+  before 2026-11-09's fix didn't see the books laid out after that (laid out
+  again when opened). The log says when such a book opens whether the
+  reader used that layout, from the time its own layout took
+  (`layout: book … opened after its background layout: its layout used:
+  laid out in 0.1 s (in the background: 88 s)`, or `laid out again, …`).
 - **Bytecode cache for source installs** (`frontend/gzbytecode.lua`): when
   the Lua files are source (an update from GitHub's source archive, a
   development copy), each module's bytecode is kept in
