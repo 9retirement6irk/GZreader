@@ -121,8 +121,15 @@ function Browser:show(opts)
     -- the selection stays where it is when the page is drawn again (keys)
     pcall(function() require("gzreader_focus").apply(self.menu, require("device"):hasDPad()) end)
     local orig_switch = self.menu.switchItemTable
-    self.menu.switchItemTable = function(m, title, ...)
-        local r = orig_switch(m, title, ...)
+    self.menu.switchItemTable = function(m, title, items, ...)
+        -- (back to the page after something that changes it, e.g. the Plex
+        -- card's list: the page made again)
+        if self._refresh_root and type(items) == "table" and items.gz_catalog and #(m.item_table_stack or {}) == 0 then
+            self._refresh_root = nil
+            local ok, fresh = pcall(self.rootItems, self)
+            if ok and type(fresh) == "table" then items = fresh end
+        end
+        local r = orig_switch(m, title, items, ...)
         if title then pcall(self.decorate, self, title) end
         return r
     end
@@ -233,9 +240,86 @@ function Browser:openSection(id)
     m:switchItemTable(require("gzreader_catalog").title(id), self:rootItems())
 end
 
+--- Signed in to Grimmory? (Browser.x(self): tests call these on a plain table.)
+function Browser:signedIn()
+    local api = self.api or (self.plugin and self.plugin.api)
+    return type(api) == "table" and type(api.isPaired) == "function" and api:isPaired() == true
+end
+
+--- The server's name for a card: its host.
+local function hostOf(server)
+    return type(server) == "string" and (server:gsub("^https?://", ""):gsub("/+$", "")) or "?"
+end
+
+--- The Grimmory card (last in the Books and Audiobooks pages' bookcase, as
+--- Plex's is on the Music page): who you are, or that you aren't signed in.
+function Browser:grimmoryItem(gz_id)
+    local store = self.plugin and self.plugin.store or {}
+    local sub
+    if Browser.signedIn(self) then
+        sub = T(_("%1 · %2"), store.username or "?", hostOf(store.server))
+    else
+        sub = (store.server and store.username) and _("signed out") or _("not signed in")
+    end
+    return { gz_id = gz_id, gz_kind = "section", gz_contents = "none", text = _("Grimmory"), mandatory = sub,
+        callback = function() self:openGrimmory() end }
+end
+
+--- A page (Books, or Grimmory's Audiobooks) while not signed in to Grimmory:
+--- its shelves empty, the search slip saying to sign in, and the Grimmory card.
+function Browser:signedOutItems(section)
+    local audio = section == "audiobooks"
+    return {
+        gz_root = true, gz_signed_out = true,
+        { gz_id = audio and "ab_search" or "search", gz_action = "search", text = _("Sign in to Grimmory to browse the catalog"),
+            callback = function() self:openGrimmory() end },
+        Browser.grimmoryItem(self, audio and "ab_account" or "grimmory"),
+        (not audio and require("gzreader_touch").audio()) and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
+    }
+end
+
+--- The Grimmory card's list: the account and what to do with it; signed
+--- out, the ways to sign in (as Settings → Connections → Grimmory).
+function Browser:openGrimmory()
+    local plugin = self.plugin
+    local store = plugin.store or {}
+    local items = {}
+    local function add(text, fn) items[#items + 1] = { text = text, callback = fn } end
+    if Browser.signedIn(self) then
+        items[1] = { text = T(_("Signed in as %1 at %2"), store.username or "?", hostOf(store.server)), select_enabled = false }
+        add(_("Rebuild library"), function() plugin:rebuildLibrary() end)
+        if not require("gzreader_net").usb then
+            add(_("Reconnect from your browser (QR code)"), function() plugin:onGrimmoryPair() end)
+            add(_("Connect by typing"), function() plugin:keyboardLogin() end)
+        end
+    elseif require("gzreader_net").usb then
+        -- (a Kindle without Wi-Fi signs in through the sync page)
+        items[1] = { text = _("Sign in on the sync page (with a computer)"), select_enabled = false }
+        add(_("Sync with a computer"), function() require("gzreader_usbsync").show(plugin) end)
+    else
+        -- (one line: the list cuts longer ones off)
+        items[1] = { text = (store.server and store.username)
+            and T(_("Signed out of %1 at %2"), store.username, hostOf(store.server))
+            or _("Not signed in to Grimmory"), select_enabled = false }
+        add(_("Connect from your browser (QR code)"), function() plugin:onGrimmoryPair() end)
+        add(_("Connect by typing"), function() plugin:keyboardLogin() end)
+        add(_("Copy from another GZreader"), function() require("gzreader_copy").receive(plugin, { only = "grimmory" }) end)
+    end
+    self:push(_("Grimmory"), items)
+end
+
+--- Signed in (or out) while the Catalog is open: its page again, from the top.
+function Browser.signInChanged()
+    local b = Browser.current
+    if not (b and not b.closed and b.menu) then return end
+    b._shop, b._shop_audio = nil, nil
+    b:openSection(b.section or "books")
+end
+
 --- The Books page. gz_id: what the bookshop (gzreader_bookshop.lua) draws
---- for each; gz_root marks the page.
+--- for each; gz_root marks the page. Not signed in: signedOutItems.
 function Browser:bookItems()
+    if not Browser.signedIn(self) then return Browser.signedOutItems(self, "books") end
     return {
         gz_root = true,
         { gz_id = "search", gz_action = "search", text = _("Search Grimmory…"), callback = function() self:promptSearch() end },
@@ -246,7 +330,7 @@ function Browser:bookItems()
         { gz_id = "shelves", text = _("Shelves"), callback = function() self:openShelves() end },
         { gz_id = "authors", text = _("Authors"), callback = function() self:openAuthors() end },
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
-        { gz_id = "downloaded", text = Browser.hereText(), callback = function() self:openDownloaded() end },
+        Browser.grimmoryItem(self, "grimmory"),
         -- (the next page, from the list: its letter on keyboard Kindles; the
         -- bookshop doesn't draw it. Only on Kindles with a speaker.)
         require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
@@ -254,8 +338,8 @@ function Browser:bookItems()
 end
 
 
---- The Music page: Plex (gzreader_musictab.lua's lists, here in the tab).
-function Browser:musicItems()
+--- The Music page's lists (gzreader_musictab.lua's, on this tab's Menu).
+function Browser:musicTab()
     local MusicTab = require("gzreader_musictab")
     local tab = self.music_tab
     if not tab then
@@ -267,13 +351,22 @@ function Browser:musicItems()
             if self.closed or self.section ~= "music" or not self.menu then return end
             if require("gzreader_catalog").atRoot(self.menu) then self:openSection("music") end
         end
+        -- (signed out of Plex from its card: the page showing, made again)
+        tab.after_sign_out = function()
+            if not self.closed and self.menu then self:openSection(self.section or "music") end
+        end
         self.music_key = "catalog-" .. tostring(self)
         local okm, Music = pcall(require, "gzreader_music")
         if okm and Music.listeners then Music.listeners[self.music_key] = function() tab:refreshRoot() end end
     end
     tab.menu = self.menu
     tab.closed = false
-    return tab:catalogItems(function() self:openSection("music") end)
+    return tab
+end
+
+--- The Music page: Plex (gzreader_musictab.lua's lists, here in the tab).
+function Browser:musicItems()
+    return Browser.musicTab(self):catalogItems(function() self:openSection("music") end)
 end
 
 --- Grimmory's audiobooks (M4B / MP3), to download and listen to.
@@ -394,6 +487,7 @@ function Browser:audiobookItems()
     local PA = require("gzreader_plexaudio")
     local plex_sec = PA.section(self.plugin)
     if plex_sec then return PA.items(self, plex_sec) end
+    if not Browser.signedIn(self) then return Browser.signedOutItems(self, "audiobooks") end
     local Cache = require("gzreader_listcache")
     local all = self.plugin and Cache.get(Browser.savedKey(self, "audio-all"))
     local listed = self.plugin and Cache.get(Browser.savedKey(self, "audiobooks"))
@@ -406,7 +500,6 @@ function Browser:audiobookItems()
         return c
     end
     local na, ns = count(groups and groups.authors), count(groups and groups.series)
-    local here = Browser.audiobooksHere(self.plugin)
     return {
         gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
         { gz_id = "ab_search", gz_action = "search", text = _("Search audiobooks…"),
@@ -424,26 +517,8 @@ function Browser:audiobookItems()
         { gz_id = "ab_series", gz_kind = "section", gz_contents = "piles", text = _("Series"),
             mandatory = ns and ns > 0 and (ns == 1 and _("1 series") or T(_("%1 series"), ns)) or _("in order"),
             callback = function() self:openAudioSeries() end },
-        { gz_id = "ab_downloaded", gz_kind = "section", gz_contents = "tapes", text = _("On this Kindle"),
-            mandatory = #here > 0 and audioCount(#here) or _("none yet"), callback = function() self:openAudioDownloaded() end },
+        Browser.grimmoryItem(self, "ab_account"),
     }
-end
-
---- The audiobooks on the Kindle (their audio all here), newest listened first.
-function Browser.audiobooksHere(plugin)
-    local out = {}
-    local store = plugin and plugin.store
-    local ok, Audiobook = pcall(require, "gzreader_audiobook")
-    if not (ok and type(store) == "table" and type(store.audiobooks) == "table") then return out end
-    for id, e in pairs(store.audiobooks) do
-        local data = type(e) == "table" and Audiobook.load(plugin, id)
-        if data then
-            out[#out + 1] = { id = id, title = e.title or data.title, authors = (e.author or data.author) and { e.author or data.author } or nil,
-                primaryFileType = "AUDIOBOOK", _updated = tonumber(e.updated) or 0 }
-        end
-    end
-    table.sort(out, function(a, b) return a._updated > b._updated end)
-    return out
 end
 
 --- Continue listening: what you've listened to on the Kindle, then what
@@ -453,13 +528,6 @@ function Browser:openAudioContinue()
     local items = {}
     for _i, b in ipairs(st.ab_continue or {}) do items[#items + 1] = self:audiobookItem(b) end
     self:push(_("Continue listening"), items)
-end
-
---- On this Kindle: the audiobooks downloaded.
-function Browser:openAudioDownloaded()
-    local items = {}
-    for _i, b in ipairs(Browser.audiobooksHere(self.plugin)) do items[#items + 1] = self:audiobookItem(b) end
-    self:push(_("On this Kindle"), items)
 end
 
 --- Audiobooks by author: the authors of every audiobook (fetched once in
@@ -1109,31 +1177,6 @@ function Browser:search(q, scope)
         empty_text = (scope and scope.audio) and T(_("No audiobooks found containing “%1”"), q)
             or T(_("No books found containing “%1”"), q),
     })
-end
-
---- What's downloaded here is "On this Kindle" (on a Nook, "On this Nook"),
---- as on the Audiobooks and Music pages.
-function Browser.hereText()
-    local ok, Device = pcall(require, "device")
-    if ok and type(Device) == "table" and Device.isNook and Device:isNook() then return _("On this Nook") end
-    return _("On this Kindle")
-end
-
-function Browser:openDownloaded()
-    local items = {}
-    for id, entry in pairs(self.plugin.store.downloads or {}) do
-        if type(entry) == "table" and entry.path and lfs.attributes(entry.path, "mode") == "file" then
-            items[#items + 1] = {
-                text = (entry.title and require("gzreader_titles").full(entry.title, require("gzreader_titles").subtitle(self.plugin, id)))
-                    or entry.path:match("[^/]+$"),
-                mandatory = entry.format,
-                callback = function() self.plugin:openBook(entry.path, self.menu) end,
-                id = id,
-            }
-        end
-    end
-    table.sort(items, function(a, b) return a.text:lower() < b.text:lower() end)
-    self:push(Browser.hereText(), items)
 end
 
 function Browser:onBook(book)

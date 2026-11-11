@@ -10,8 +10,8 @@ the top, two shelves of CD cases, **Recently played** (what you played on
 this Kindle, latest first, then what Plex's own players played) and
 **Recently added** (Plex's newest albums, marked NEW), each ending in a
 bundle that opens the whole list, then a bookcase with **Playlists**,
-**Albums** and **Artists** (and *On this Kindle* and *Now playing* when
-there's something to show, and your Plex account). Albums and
+**Albums** and **Artists** (and *Now playing* when something plays), and
+your Plex account's card in the bottom-right compartment. Music on the Kindle is in the Downloads tab. Albums and
 playlists stand on the shelves as **CD cases**, face out: the album's cover
 under the lid (Plex's own small copy, fetched while the list shows and kept
 with the Catalog's covers; a plain insert with the title until it's here),

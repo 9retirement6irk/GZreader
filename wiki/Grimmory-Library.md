@@ -30,6 +30,20 @@ swipes turn that list's pages, as before.
 Kept from the Grimmory tab: its place in the tab bar, and a name you gave
 it yourself. If it was still called Grimmory, it's renamed Catalog.
 
+**Not signed in to Grimmory?** The Catalog opens all the same: Music, and
+audiobooks from Plex, don't need Grimmory. The Books page, and the
+Audiobooks page when your audiobooks come from Grimmory, have empty shelves
+and say **Sign in to Grimmory to browse the catalog**. Tap that line (or the
+**Grimmory** card) for the ways to sign in: a QR code for your browser,
+typing, or copying from another GZreader. Once you're signed in, the page
+fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
+
+**The Grimmory card** fills the bottom-right compartment of the Books
+page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
+shows who you're signed in as and where, like the Plex card on the Music
+page. It opens Rebuild library
+and reconnecting. What's on the Kindle is in the Downloads tab.
+
 **An Audiobooks tab** (off until you turn it on: Settings → Interface →
 Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
 speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
@@ -78,10 +92,6 @@ A search that finds nothing says "No books found containing “…”" with what
 you searched for. In the Bookshelf view it's the same shelves a search's books
 stand on, empty, with cobwebs on them and the message on a card; "Search
 again…" stays at the top, with what you typed already filled in.
-
-**On this Kindle** (**On this Nook** on a Nook), last on the Books page,
-lists the books downloaded here; its card in the Bookshelf view counts them,
-as the Audiobooks and Music pages' On this Kindle do.
 
 Big libraries: a book list keeps at most 8 pages (200 books) of Grimmory's
 results. "Load more" past that lets the earliest page go, and "Earlier books"

@@ -192,8 +192,8 @@ function Tab.entry(item, it)
 end
 
 --- The Catalog's Music page (gzreader_catalog.lua): search at the top, then
---- Playlists, Albums, Artists (and what plays, what's on the Kindle, the
---- Plex account), each a compartment in the Bookshelf view (gz_kind
+--- Playlists, Albums, Artists (and what plays, Shuffle all, the Plex
+--- account), each a compartment in the Bookshelf view (gz_kind
 --- "section"). Not signed in: the sign-in lines. `after`: once signed in.
 function Tab:catalogItems(after)
     local plugin = self.plugin
@@ -216,11 +216,9 @@ function Tab:catalogItems(after)
         items[#items + 1] = { gz_id = "mu_now", gz_kind = "section", gz_contents = "cds", text = _("Now playing"), mandatory = now,
             callback = function() Tab.nowPlaying(plugin) end }
     end
+    -- (what's on the Kindle is in the Downloads tab; Shuffle all plays it)
     local list = Music().downloaded(plugin, { any = true })
     if #list > 0 then
-        items[#items + 1] = { gz_id = "mu_downloaded", gz_kind = "section", gz_contents = "cds", text = _("On this Kindle"),
-            mandatory = #list == 1 and _("1 album or playlist") or T(_("%1 albums and playlists"), #list),
-            callback = function() self:openDownloaded() end }
         items[#items + 1] = { gz_id = "mu_shuffle", gz_kind = "section", gz_contents = "none", text = _("Shuffle all"),
             mandatory = _("everything on this Kindle"), callback = function() Music().shuffleAll(plugin) end }
     end
@@ -766,34 +764,43 @@ end
 
 ---------------------------------------------------------------- account
 
+--- The Plex card's list (the account, quality, libraries, servers).
 function Tab:openAccount()
+    self:push(_("Plex"), self:accountItems())
+end
+
+--- Its lines; a change shows them again in place (back still goes to the
+--- page it was opened from: 1.28.0 left an empty list there).
+function Tab:accountItems()
     local plugin = self.plugin
     local s = plugin.store.plex
     local items = {}
+    local function again()
+        if self.closed then return end
+        self:replace(_("Plex"), self:accountItems())
+    end
     for _i, b in ipairs(Music().BITRATES) do
         items[#items + 1] = { text = T(_("Quality when converting: %1 kbps"), b), mandatory = ((s.bitrate or 192) == b) and "\u{2713}" or nil,
             callback = function()
                 s.bitrate = b
                 plugin:save()
-                self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+                again()
             end }
     end
     items[#items + 1] = { text = s.shrink and _("Bigger MP3 and AAC made smaller: on") or _("Bigger MP3 and AAC made smaller: off"),
         callback = function()
             s.shrink = not s.shrink or nil
             plugin:save()
-            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+            again()
         end }
     items[#items + 1] = { text = Tab.libraryText(plugin), callback = function()
         Tab.chooseLibrary(plugin, function()
-            if self.closed then return end
-            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+            again()
         end)
     end }
     items[#items + 1] = { text = Tab.audiobooksText(plugin), callback = function()
         Tab.chooseAudiobooks(plugin, function()
-            if self.closed then return end
-            self:replace(_("Plex"), {}); table.remove(self.menu.item_table_stack); self:openAccount()
+            again()
         end)
     end }
     for _i, srv in ipairs(s.servers or {}) do
@@ -817,11 +824,12 @@ function Tab:openAccount()
                 Music().plex(plugin):signOut()
                 plugin:save()
                 self.menu:onClose()
-                self:replace(_("Music"), self:rootItems())
+                -- (in the Catalog: its page again; the Music tab: its list)
+                if self.after_sign_out then self.after_sign_out() else self:replace(_("Music"), self:rootItems()) end
             end,
         })
     end }
-    self:push(_("Plex"), items)
+    return items
 end
 
 ---------------------------------------------------------------- Settings
