@@ -72,6 +72,11 @@ function Grimmory:init()
         pcall(function() require("gzreader_timezone").apply() end)
     end
     pcall(Net.start)
+    if not Grimmory.layout_scheduled then
+        -- new books laid out in the background while charging (gzreader_layout.lua)
+        Grimmory.layout_scheduled = true
+        pcall(function() require("gzreader_layout").schedule(self) end)
+    end
     if not Grimmory.usage_scheduled then
         Grimmory.usage_scheduled = true
         -- (usage statistics, sent up to 1.28.1: what's left of them deleted; Full becomes debug reports on)
@@ -681,6 +686,17 @@ function Grimmory:sectionItems(section)
             keep_menu_open = true,
             callback = function() require("gzreader_jack").test() end,
         })
+        if require("gzreader_layout").possible() then
+            items[#items + 1] = icon("check", {
+                text = _("Lay out new books while charging"),
+                help_text = _("While the Kindle charges and Home is on screen, books you haven't opened yet are laid out in the background, so the first time you open one it opens as quickly as a book you've read before. Stops as soon as you unplug or open a book."),
+                checked_func = function() return require("gzreader_layout").enabled() end,
+                callback = function()
+                    local L = require("gzreader_layout")
+                    G_reader_settings:saveSetting(L.SETTING, not L.enabled())
+                end,
+            })
+        end
         return items
     elseif section == "interface" then
         local items = {
@@ -1663,6 +1679,7 @@ function Grimmory:onReaderReady()
         end)
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
+    pcall(function() require("gzreader_layout").opened(self.ui.document, entry, book_id) end)
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady() -- (then openSync, below: a moment after the first page)
     self.bookmarks = Bookmarks:new(self.sync)

@@ -163,6 +163,18 @@ later still continues from there). A stalled download now also keeps its
 part. Stopping a download yourself, taking it out of the queue, or a "not
 found" from Grimmory clears it.
 
+## The first open of a new book
+
+The first time a big book is opened, the Kindle lays the whole book out
+(10–30 s on a Kindle 3) and keeps the result for the next opens. While the
+Kindle charges and Home is on screen, GZreader does that in the background
+for downloaded books you haven't opened yet, one at a time and at the lowest
+priority, so their first open is as quick as any other (Settings → Reader →
+**Lay out new books while charging**, on by default; not on the Kindle 2 and
+DX, which don't have the memory for it). It waits while books download,
+stops as soon as you unplug the Kindle, open a book or start a download, and
+the books don't show as opened or read.
+
 ## Shelves and auto-download
 
 Catalog tab → Books → **Shelves** lists your shelves and smart (magic) shelves.

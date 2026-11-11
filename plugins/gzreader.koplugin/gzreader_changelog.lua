@@ -13,6 +13,12 @@ return {
         },
     },
     {
+        version = "1.28.2",
+        changes = {
+            { short = "New books are laid out while the Kindle charges, so their first open is quick", text = "While the Kindle charges and Home is on screen, GZreader lays out downloaded books you haven't opened yet in the background (Settings → Reader → Lay out new books while charging, on by default), so the first time you open one it opens like a book you've read before instead of taking 10–30 seconds on a Kindle 3. It waits while books download or other background work runs, and for a new book's picture-book check (a picture book is laid out the way it will be fitted), stops as soon as you unplug, open a book or start a download, and the books don't show as opened. Not on the Kindle 2 and DX (not enough memory)." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
