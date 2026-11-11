@@ -5072,6 +5072,48 @@ do
     check(Update.compare("1.4.0", "1.4.0-beta.12") > 0 and Update.compare("1.3.9", "1.4.0-beta.12") < 0,
         "after test builds: the release of that version is newer, an older release isn't")
 end
+-- The quick panel's Updates tile: what a check already found, nothing fetched
+;(function()
+    local Panel = require("gzreader_panel")
+    local kept = { state = Update.state, latest = gsettings.gzreader_update_latest, last = gsettings.gzreader_update_last_check,
+        beta = gsettings.gzreader_update_beta, request = Update.request, version = rf(KO .. "/gzreader-version") }
+    wf(KO .. "/gzreader-version", "1.0.0\n")
+    local fetched = 0
+    Update.request = function() fetched = fetched + 1; return 404 end
+    gsettings.gzreader_update_beta = false
+    local function tile() local t = Panel.updatesTile(); return t.label .. (t.on and " (on)" or "") end
+    Update.state = { has_update = false }; gsettings.gzreader_update_latest = nil
+    check(Update.known() == nil and tile() == "Updates", "Updates tile: no check yet, plain Updates " .. tile())
+    gsettings.gzreader_update_latest = "1.1.0" -- (a check before this start: the daily one)
+    check(Update.known() == "1.1.0" and tile() == "Update available (on)",
+        "…a check before a restart found 1.1.0 (installed 1.0.0): Update available, drawn inverted " .. tile())
+    gsettings.gzreader_update_latest = "1.0.0"
+    check(Update.known() == nil and tile() == "Updates", "…the saved check found the installed version: plain Updates")
+    gsettings.gzreader_update_latest = "1.1.0"; gsettings.gzreader_update_last_check = os.time()
+    Update.backgroundCheck()
+    check(Update.state.has_update and Update.known() == "1.1.0" and tile() == "Update available (on)",
+        "…the daily check, already done today: its result shown without asking again")
+    Update.state = { has_update = false, latest = "1.0.0" }
+    check(Update.known() == nil and tile() == "Updates", "…a check in this session found nothing: it wins over the saved one")
+    Update.state = { has_update = true, latest = "1.2.0" }
+    check(Update.known() == "1.2.0" and tile() == "Update available (on)", "…a check in this session found 1.2.0")
+    gsettings.gzreader_update_beta = true; Update.state = { has_update = false }; gsettings.gzreader_update_latest = "1.0.0-beta.3"
+    check(Update.known() == "1.0.0-beta.3", "…test builds: another test build than the installed one")
+    check(fetched == 0, "…nothing fetched to draw the tile")
+    local kept_mod = package.loaded["gzreader_update"]
+    package.loaded["gzreader_update"] = nil; gsettings.gzreader_update_latest = nil
+    check(tile() == "Updates" and package.loaded["gzreader_update"] == nil, "…before any check, the panel doesn't load the updater")
+    package.loaded["gzreader_update"] = kept_mod
+    local ran = 0
+    local kept_run = Update.run
+    Update.run = function() ran = ran + 1 end
+    Panel.updatesTile().run()
+    Update.run = kept_run
+    check(ran == 1, "…a tap checks and offers it, as before")
+    Update.state, Update.request = kept.state, kept.request
+    gsettings.gzreader_update_latest, gsettings.gzreader_update_last_check, gsettings.gzreader_update_beta = kept.latest, kept.last, kept.beta
+    if kept.version then wf(KO .. "/gzreader-version", kept.version) end
+end)()
 Update.request = function() return 404 end
 local none, nerr = Update.check()
 check(none == nil and nerr:match("No GZreader release"), "no release yet -> clear message")

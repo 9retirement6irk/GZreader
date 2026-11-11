@@ -19,7 +19,7 @@ Q to P; the second group: A to L) and the 5-way and Press work too; the
 Kindle 4 (no letter keys) has the 5-way; touch Kindles tap, and have the
 light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
-playing) is drawn inverted. Touch Kindles: tap or drag the light's slider.
+playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap or drag the light's slider.
 
 Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
@@ -295,7 +295,7 @@ function Panel.controls(plugin)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
-    if not usb then list[#list + 1] = { id = "updates", icon = "updates", label = _("Updates"), run = function() require("gzreader_update").run() end } end
+    if not usb then list[#list + 1] = Panel.updatesTile() end
     -- (a full page over the panel: a full refresh after it, or touch Kindles keep a ghost of the panel)
     list[#list + 1] = { id = "settings", icon = "settings", label = _("Settings"), full = true, run = function() require("gzreader_homemenu").settings() end }
     if plugin and plugin.store and plugin.store.logging_disabled ~= true then
@@ -312,6 +312,19 @@ local function shortTitle(path)
         or path:match("([^/]+)%.[^.]+$") or path
     if #t > 18 then t = t:sub(1, 16):gsub("[\128-\191]*$", ""):gsub("[\192-\255]$", "") .. "…" end
     return t
+end
+
+--- The Updates tile: "Update available", drawn inverted, once a check (the
+--- daily one, or one from Settings) found a newer version. Nothing is
+--- fetched here; gzreader_update is only loaded when a check was saved.
+function Panel.updatesTile()
+    local latest
+    if package.loaded["gzreader_update"] or G_reader_settings:readSetting("gzreader_update_latest") then
+        local ok, Update = pcall(require, "gzreader_update")
+        latest = ok and type(Update.known) == "function" and Update.known() or nil
+    end
+    return { id = "updates", icon = "updates", label = latest and _("Update available") or _("Updates"), on = latest ~= nil,
+        run = function() require("gzreader_update").run() end }
 end
 
 --- The Music tile, while music plays or is paused (its player: the CD
