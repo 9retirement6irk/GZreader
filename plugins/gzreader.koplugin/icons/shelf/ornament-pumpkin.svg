@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GZreader shelf ornament. The bottom of the viewBox stands on the plank. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 70">
+  <ellipse cx="42" cy="43" rx="40" ry="26" fill="#d9742a" stroke="#4a2408" stroke-width="1.5"/>
+  <ellipse cx="42" cy="43" rx="26" ry="26" fill="#e58a3a" stroke="#4a2408" stroke-width="1.2"/>
+  <ellipse cx="42" cy="43" rx="11" ry="26" fill="#eea052" stroke="#4a2408" stroke-width="1.1"/>
+  <path d="M39 18 C38 10 41 5 48 2 L52 7 C47 9 45 13 46 18 Z" fill="#4c6a2c" stroke="#1f2e10" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M46 14 C56 8 66 12 70 20 C62 18 54 18 46 17 Z" fill="#5d8236" stroke="#1f2e10" stroke-width="1.1" stroke-linejoin="round"/>
+</svg>

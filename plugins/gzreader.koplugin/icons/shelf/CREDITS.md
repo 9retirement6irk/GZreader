@@ -11,4 +11,7 @@ under too (`COPYING` at the top of this repository):
   seeds (`lib/bookshelf_ornaments.lua`: template.svg, cactus.svg), without
   their how-to comments.
 
-The other pictures here are GZreader's own.
+The other pictures here are GZreader's own, the other ornaments among them
+(`ornament-christmas-tree.svg`, `-present`, `-snowman`, `-pumpkin`, `-tulips`,
+`-globe`, `-hourglass`, `-cat`): drawn for GZreader, not taken from
+Bookshelf's theme packs.

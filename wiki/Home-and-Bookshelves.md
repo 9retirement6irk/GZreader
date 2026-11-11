@@ -47,9 +47,16 @@ the book once you open one.
   - ornaments, standing on a shelf's free end like a plant on a half-empty
     shelf: **where there's room** (to begin with: no book moves for them, so
     a full shelf has none), **on every page** (the bottom shelf keeps room
-    for one, so a page holds a book or two fewer), or **none**. Bookshelf's
-    potted plant and cactus come with GZreader. Which one stands where
-    stays the same each time you see the page;
+    for one, so a page holds a book or two fewer), or **none**. Which one
+    stands where stays the same each time you see the page;
+  - **which ornaments**: ten come with GZreader. Bookshelf's potted plant
+    and cactus, a globe, an hourglass and a cat stand all year. Seasonal
+    ones stand in their season, and then take about two places of three: a
+    **Christmas tree** (20 November to 6 January), a present (December to
+    6 January), a snowman (December to February), a pumpkin (mid-September
+    to November), tulips (March to May). **Which ornaments** has a tick for
+    each: tick a seasonal one to have it all year, untick any to never see
+    it; *Seasonal ones in their season again* undoes that;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
