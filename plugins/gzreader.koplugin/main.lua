@@ -600,7 +600,7 @@ end
 
 --- GZreader's settings that live in ZenOS's other Settings sections
 --- (zenos modules/settings/zen_settings.lua puts them there):
----   "general"   { wifi = item, diagnostics = { items } }
+---   "general"   { wifi = item (Wi-Fi: On, Off, Auto), diagnostics = { items } }
 ---   "reader"    { items }
 ---   "interface" { items }
 function Grimmory:sectionItems(section)
@@ -612,12 +612,7 @@ function Grimmory:sectionItems(section)
     end
     if section == "general" then
         return {
-            wifi = not Net.usb and icon("wifi_off", {
-                text = _("Wi-Fi only when needed"),
-                help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
-                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
-                callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
-            }) or nil, -- (no Wi-Fi: nothing to turn on)
+            wifi = not Net.usb and icon("wifi_on", Net.menuItem()) or nil, -- (no Wi-Fi: nothing to turn on)
             diagnostics = packed(5, {
                 icon("settings_bug", {
                     text = _("Diagnostic logging"),
@@ -818,7 +813,7 @@ end
 function Grimmory:sendLogToDeveloper(comment)
     if comment == nil then return self:askReportComment() end
     if Net.usb then return self:saveReportForSync(comment) end -- (no Wi-Fi: the sync page sends it)
-    if not Net.connected() and Net.enabled() then
+    if not Net.connected() then
         return Net.run(function() self:sendLogToDeveloper(comment) end, { reason = "sending the log" })
     end
     local tmp = DataStorage:getDataDir() .. "/cache"
@@ -896,7 +891,7 @@ end
 function Grimmory:shareLog()
     if self.pairing then return end
     if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
-    if not Net.connected() and Net.enabled() then
+    if not Net.connected() then
         return Net.run(function() self:shareLog() end, { reason = "sending the log" })
     end
     local lib = self:libraryDir()

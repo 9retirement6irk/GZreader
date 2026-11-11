@@ -25,7 +25,7 @@ Edition and Nook Simple Touch.
 - [Grimmory library](Grimmory-Library) and [Grimmory sync](Grimmory-Sync): browsing, downloads, progress, bookmarks, highlights
 - [Home and bookshelves](Home-and-Bookshelves), [Picture books](Picture-Books)
 - [Notes](Notes), [Calendar](Calendar), [Music](Music), [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
-- [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi only when needed](Wi-Fi)
+- [Sync with a computer](Sync-with-a-Computer) (Kindles without Wi‑Fi), [Wi‑Fi: on, off, auto](Wi-Fi)
 - [Updates and test builds](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
 - Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch)
 - Under the hood: [Performance](Performance), [Building](Building)

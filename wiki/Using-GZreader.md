@@ -7,8 +7,8 @@ touch Kindle, swipe down from the top). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 
-- **Controls:** Wi‑Fi (on the Kindle 2 and DX: **Sync**, [with a
-  computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
+- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi); on the Kindle 2
+  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
