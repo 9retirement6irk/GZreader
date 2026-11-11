@@ -9,16 +9,37 @@ and fixed. You choose the level in the setup guide or in
 
 | Level | What's sent |
 | --- | --- |
-| **Basic** (default) | GZreader's version, the Kindle model and firmware at each start; whether the previous run ended without closing normally; downloads that worked or failed; slow operations; keys the screen didn't answer |
-| **Full** | Basic, plus time on Home, Downloads, Grimmory, in books and menus; menu entries used; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size, speed and resumes; sync results and Grimmory's answer times; Wi‑Fi on-time; and **debug reports** (see [Remote debugging](Privacy-and-Diagnostics#remote-debugging)): starts, warnings and errors from GZreader's log, freezes and crashes |
+| **Basic** (default) | The usage statistics below |
+| **Full** | The same, plus **debug reports** (see [Remote debugging](Privacy-and-Diagnostics#remote-debugging)): starts and how the previous run ended, warnings and errors from GZreader's log, freezes and crashes |
 | **Off** | Nothing is recorded or sent |
+
+What Basic and Full send. Every event carries GZreader's version, the Kindle
+model, its firmware and how many minutes it covers:
+
+| Event | When | Also |
+| --- | --- | --- |
+| **reader** | you leave a book (close it, go Home, sleep) | |
+| **catalog books**, **catalog audiobooks**, **catalog music** | you leave that page of the Catalog tab | |
+| **audiobooks tab**, **music tab** | you leave that tab | |
+| **notes**, **calendar** | you leave Notes or Calendar | |
+| **read aloud** | read aloud stops | |
+| **audiobook playing**, **music playing** | playing stops for a minute, or the Kindle sleeps | how many times it was started |
+| **download** | a download finishes or fails | size, speed, resumed or not |
+| **sync** | every 30 minutes, and at sleep and exit | how syncs with Grimmory went and Grimmory's answer times, Wi‑Fi on-time, battery use per hour (over at least 10 minutes without charging) |
+| **slow operations**, **keys not answered** | something took 3 s or more; keys the screen didn't answer | |
+
+A visit counts the part of GZreader underneath whatever is open on top (the
+quick panel, a book's page, the player, a note being written). Visits under 5
+seconds aren't sent, and sleep ends a visit (waking starts a new one).
 
 Never sent in the statistics: book titles, authors, file names, your Grimmory
 address or account, or anything you type. Full's debug reports carry lines of
 GZreader's log, which can name the book or file it was working on (never
 passwords or tokens). Each Kindle is counted by a random ID, not its serial
-number. Statistics wait in a small file and go out in one batch at most every 15
-minutes, only while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for them.
+number (its first 8 characters are also in the statistics' User-Agent, so the
+server can tell two Kindles on the same Wi‑Fi apart). Statistics wait in a
+small file and go out in one batch at most every 15 minutes, only while Wi‑Fi
+is already on; GZreader never turns Wi‑Fi on for them.
 
 ## Diagnostic log
 

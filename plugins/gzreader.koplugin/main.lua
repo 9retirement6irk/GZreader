@@ -1705,7 +1705,6 @@ end
 function Grimmory:onPageUpdate()
     nookChange()
     if self.sync then self.sync:onPageTurned() end
-    pcall(function() require("gzreader_usage").pageTurned() end)
     if self.tts then self.tts:onManualPageTurn() end
 end
 

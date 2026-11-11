@@ -763,7 +763,7 @@ function Player:play()
     -- (one thing at a time: music pauses)
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
-    local started = select(2, Engine.play(p, src))
+    local started = select(2, Engine.play(p, src, "audiobook"))
     self.pos = t.start + (started or 0)
     self.track = track
     self.playing = true
