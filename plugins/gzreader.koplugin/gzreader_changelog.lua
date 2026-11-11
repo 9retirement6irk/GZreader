@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → KOReader: no rows that GZreader has elsewhere", text = "Settings → KOReader leaves out what GZreader already has in its own place: Language, Time and date, Sleep screen, Autosuspend timeout and Wi-Fi connection (Settings → General), History, Favorites and Collections (they're tabs), End of document action (Reader → End of book), Night mode, Rotation and the Exit menu with Restart and Sleep (quick panel tiles), Version, About and KOReader's Quickstart guide (Settings → About), and Cloud storage. Nothing else changes: End of book keeps its End of document action." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
