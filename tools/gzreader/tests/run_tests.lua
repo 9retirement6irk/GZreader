@@ -5480,6 +5480,8 @@ print("No usage statistics (since 1.28.1); debug reports have their own setting"
     R.forgetUsage()
     check(gsettings.gzreader_debug_reports == true and gsettings.gzreader_usage == nil and not lfs.attributes(udir, "mode"),
         "at start: Full becomes debug reports on, the old level and the waiting statistics are deleted")
+    check((rd(PLUGIN .. "/main.lua") or ""):find('require("gzreader_remote").forgetUsage()', 1, true),
+        "…once a run, 15 s after start (main.lua)")
     gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, "off"
     R.forgetUsage()
     check(gsettings.gzreader_debug_reports == false and gsettings.gzreader_usage == nil, "…Off (or Basic): debug reports off")

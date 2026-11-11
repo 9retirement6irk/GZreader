@@ -72,6 +72,11 @@ function Grimmory:init()
         pcall(function() require("gzreader_timezone").apply() end)
     end
     pcall(Net.start)
+    if not Grimmory.usage_scheduled then
+        Grimmory.usage_scheduled = true
+        -- (usage statistics, sent up to 1.28.1: what's left of them deleted; Full becomes debug reports on)
+        UIManager:scheduleIn(15, function() pcall(function() require("gzreader_remote").forgetUsage() end) end)
+    end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
     if Device.gz_menu_perpage and not Grimmory.dx_lists then

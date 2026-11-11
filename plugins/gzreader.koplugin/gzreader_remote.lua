@@ -344,7 +344,6 @@ function R.start(plugin)
         store.remote_url, store.remote_disabled, store.remote_profile, store.remote_device = nil, nil, nil, nil
         pcall(plugin.save, plugin)
     end
-    pcall(R.forgetUsage) -- (usage statistics, until 1.28.1)
     if not R.enabled() then return end
     R.on = true
     R.device = R.deviceName()
