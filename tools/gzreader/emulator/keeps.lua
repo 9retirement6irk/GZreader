@@ -70,10 +70,39 @@ end, after = 6 })
 add({ fn = function()
     local t = shownText()
     local tabs = {}
-    for _i, name in ipairs({ "Home", "Downloads", "Grimmory", "Notes", "Calendar" }) do
+    for _i, name in ipairs({ "Home", "Downloads", "Catalog", "Notes", "Calendar" }) do
         if not t:find(name, 1, true) then tabs[#tabs + 1] = name end
     end
-    check(#tabs == 0, "Home's tabs: Home, Downloads, Grimmory, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+    check(#tabs == 0, "Home's tabs: Home, Downloads, Catalog, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+end, after = 1 })
+-- a new book laid out in the background (gzreader_layout.lua: while charging; here at once)
+local layout = {}
+add({ fn = function()
+    local big = os.getenv("GZ_EMU_BIG")
+    if not big then layout.skip = true; return end
+    local DataStorage = require("datastorage")
+    local path = DataStorage:getDataDir() .. "/layout-check.epub"
+    os.execute("cp '" .. big .. "' '" .. path .. "'")
+    local function count()
+        local n = 0
+        pcall(function() for f in require("libs/libkoreader-lfs").dir(DataStorage:getDataDir() .. "/cache/cr3cache") do if f:match("%.cr3$") then n = n + 1 end end end)
+        return n
+    end
+    layout.count, layout.before = count, count()
+    local plugin = require("apps/filemanager/filemanager").instance.gzreader
+    layout.entry = { path = path }
+    layout.started = require("gzreader_layout").start(plugin, "check", layout.entry, function(ok, line) layout.done = { ok = ok, line = line } end, true)
+end, after = 1 })
+add({ wait_for = function() return layout.skip or layout.done ~= nil end, timeout = 120 })
+add({ fn = function()
+    if layout.skip then return end
+    check(layout.started and layout.done and layout.done.ok and layout.entry.laid_out and layout.count() > layout.before,
+        "a new book laid out in the background: its layout cache written (" .. tostring(layout.done and layout.done.line) .. ", "
+        .. tostring(layout.before) .. " → " .. tostring(layout.count()) .. " cache files)")
+    local okh, hist = pcall(function() return require("readhistory").hist end)
+    local in_hist = false
+    for _i, h in ipairs(okh and hist or {}) do if h.file and h.file:find("layout-check.epub", 1, true) then in_hist = true end end
+    check(not in_hist and not require("docsettings"):hasSidecarFile(layout.entry.path), "…without it showing as opened (no history, no book settings)")
 end, after = 1 })
 add({ fn = function()
     -- the Music tab: in Settings → Navbar → Tabs' list, off until turned on

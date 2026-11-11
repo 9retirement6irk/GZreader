@@ -879,7 +879,7 @@ function M.build_install_pages(ctx)
             choice_type    = "checkbox",
             -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
             max_selections = (function()
-                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, history = true, favorites = true,
+                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, ct_audiobooks = true, history = true, favorites = true,
                     collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
                 local others = 0
                 local order = type(config.navbar) == "table" and config.navbar.tab_order
@@ -896,6 +896,8 @@ function M.build_install_pages(ctx)
                 { id = "ct_calendar", text = _("Calendar"),    checked = show_tabs["ct_calendar"] ~= false },
                 -- GZreader: Music (Plex), off by default; Kindles with audio only
                 gz_audio() and { id = "ct_music", text = _("Music (Plex)"), checked = show_tabs["ct_music"] == true } or false,
+                -- GZreader: the Catalog's Audiobooks page as a tab of its own, off by default
+                gz_audio() and { id = "ct_audiobooks", text = _("Audiobooks"), checked = show_tabs["ct_audiobooks"] == true } or false,
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -908,7 +910,7 @@ function M.build_install_pages(ctx)
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "ct_audiobooks", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true
@@ -956,7 +958,7 @@ function M.build_install_pages(ctx)
             title       = _("Synced with Grimmory"),
             icon_file   = _plugin_root .. "/icons/library.svg",
             icon_size   = 120,
-            description = _("Books from the Grimmory tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
+            description = _("Books from the Catalog tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
                 .. _("Offline? It syncs when you're back online."),
         },
 
@@ -1005,7 +1007,7 @@ function M.build_install_pages(ctx)
         {
             title       = _("Time Format"),
             description = _("Which time format do you prefer?") .. (legacy_clock and ("\n"
-                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
+                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time and date.")) or ""),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },
@@ -1026,27 +1028,28 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- GZreader: usage statistics (Basic by default; can be turned off)
+        -- GZreader: automatic debug reports (off unless chosen; GZreader
+        -- sends no usage statistics after 1.28.1: gzreader_remote.lua)
         {
-            title       = _("Usage Statistics"),
-            description = _("Anonymous, and sent only when Wi‑Fi is on: never titles, files, accounts or what you type.") .. "\n"
-                .. _("Basic: version, Kindle model, failed downloads, freezes.") .. "\n"
-                .. _("Full: also screens, menus, reading time, and debug logs (errors, freezes; these can name a book)."),
+            title       = _("Debug Reports"),
+            gz_debug_reports = true,
+            description = _("When something goes wrong (an error, a freeze, a crash), GZreader can tell its developer by itself, while Wi‑Fi is on.") .. "\n"
+                .. _("Reports have GZreader's version, the Kindle model and lines from its log, which can name a book or file. Never passwords, tokens or what you type."),
             choice_type = "radio",
             choices     = (function()
-                local cur = G_reader_settings:readSetting("gzreader_usage")
-                cur = (cur == "off" or cur == "full") and cur or "basic"
+                local okr, R = pcall(require, "gzreader_remote")
+                local on = okr and type(R) == "table" and type(R.setting) == "function" and R.setting() == true
                 return {
-                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
-                    { id = "full",  text = _("Full"),                checked = cur == "full" },
-                    { id = "off",   text = _("Off"),                 checked = cur == "off" },
+                    { id = "on",  text = _("Send debug reports automatically"), checked = on },
+                    { id = "off", text = _("Don't send them"),                  checked = not on },
                 }
             end)(),
             on_apply = function(sel)
-                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
-                if not v then return end
-                local ok, U = pcall(require, "gzreader_usage")
-                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
+                local v
+                if sel["on"] then v = true elseif sel["off"] then v = false else return end
+                local okr, R = pcall(require, "gzreader_remote")
+                if okr and type(R) == "table" and type(R.setSetting) == "function" then R.setSetting(v)
+                else G_reader_settings:saveSetting("gzreader_debug_reports", v) end
             end,
         },
 
@@ -1070,6 +1073,15 @@ function M.build_install_pages(ctx)
 
     local accent_page = M.build_accent_page(ctx)
     if accent_page then table.insert(pages, 3, accent_page) end
+
+    -- GZreader: a Kindle without Wi-Fi can't send debug reports by itself
+    -- (Send diagnostic log to the developer goes at the next sync there)
+    local okn, Net = pcall(require, "gzreader_net")
+    if okn and type(Net) == "table" and Net.usb == true then
+        for i = #pages, 1, -1 do
+            if pages[i].gz_debug_reports then table.remove(pages, i) end
+        end
+    end
 
     -- Grimmory build: no "Home Folder" question. The home folder is the
     -- Grimmory folder the plugin creates (downloads land there).

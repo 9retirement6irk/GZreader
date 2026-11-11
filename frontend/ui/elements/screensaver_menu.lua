@@ -1,29 +1,12 @@
 local Device = require("device")
 local Screensaver = require("ui/screensaver")
-local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
 local is_touch_device = Device:isTouchDevice() or nil
 local ui = require("apps/reader/readerui").instance or require("apps/filemanager/filemanager").instance
 
-local function hasLastFile()
-    local last_file = G_reader_settings:readSetting("lastfile")
-    return last_file and lfs.attributes(last_file, "mode") == "file"
-end
-
-local function isReaderProgressEnabled()
-    return ui.statistics ~= nil
-end
-
-local function allowRandomImageFolder()
-    local may_ignore_book_cover = G_reader_settings:isTrue("screensaver_exclude_on_hold_books")
-        or G_reader_settings:isTrue("screensaver_exclude_finished_books")
-        or G_reader_settings:isTrue("screensaver_hide_cover_in_filemanager")
-        or Screensaver.isExcluded(ui)
-    return G_reader_settings:readSetting("screensaver_type") == "random_image"
-            or (G_reader_settings:readSetting("screensaver_type") == "cover" and may_ignore_book_cover)
-end
+-- (GZreader: which sleep screens can be chosen now is gzreader_sleeppreview.lua's)
 
 local function genMenuItem(text, setting, value, enabled_func, separator, help_text)
     return {
@@ -49,24 +32,22 @@ local exit_help_text = _("The 'Exit sleep screen' action is located in the Devic
 
 local sub_item_table = {
     {
+        -- GZreader: the choices are tiles, each a preview of what it shows
+        -- (gzreader_sleeppreview.lua); their other settings are under
+        -- Wallpaper options. No custom image (nothing to choose it with).
         text = _("Wallpaper"),
+        help_text = _("Shows each sleep screen as a small preview; tap or press one to use it."),
+        keep_menu_open = true,
+        callback = function(touchmenu_instance)
+            local ok, Preview = pcall(require, "gzreader_sleeppreview")
+            if ok then Preview.show(function()
+                if touchmenu_instance and touchmenu_instance.updateItems then touchmenu_instance:updateItems() end
+            end) end
+        end,
+    },
+    {
+        text = _("Wallpaper options"),
         sub_item_table = {
-            -- GZreader's own (the default; the setup guide's "Cover or screensavers")
-            {
-                text = _("Book cover while reading, a picture from the screensavers folder elsewhere"),
-                help_text = _("While a book is open, its cover. From Home and menus, a picture from the screensavers folder on the Kindle's drive (the sync page can add some), else one of the Kindle's own."),
-                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_sleep_auto") end,
-                callback = function() G_reader_settings:makeTrue("gzreader_sleep_auto") end,
-                radio = true,
-            },
-            genMenuItem(_("Show book cover on sleep screen"), "screensaver_type", "cover", hasLastFile),
-            genMenuItem(_("Show custom image (book cover while reading)"), "screensaver_type", "document_cover", nil, nil,
-                _("From Home and menus the sleep screen shows the image you choose. While a book is open it shows that book's cover.")),
-            genMenuItem(_("Show random image from folder on sleep screen"), "screensaver_type", "random_image"),
-            genMenuItem(_("Show reading progress on sleep screen"), "screensaver_type", "readingprogress", isReaderProgressEnabled),
-            genMenuItem(_("Show book status on sleep screen"), "screensaver_type", "bookstatus", hasLastFile),
-            genMenuItem(_("Leave screen as-is"), "screensaver_type", "disable", nil, true),
-            -- separator
             {
                 text = _("Ignore book cover"),
                 help_text = _("Choose when to ignore showing book covers on the sleep screen."),
@@ -116,7 +97,8 @@ local sub_item_table = {
                 text = _("Border fill, rotation, and fit"),
                 enabled_func = function()
                     local screensaver_type = G_reader_settings:readSetting("screensaver_type")
-                    return screensaver_type == "cover" or screensaver_type == "document_cover" or screensaver_type == "random_image"
+                    return G_reader_settings:nilOrTrue("gzreader_sleep_auto") -- (GZreader's: a cover or a picture)
+                        or screensaver_type == "cover" or screensaver_type == "document_cover" or screensaver_type == "random_image"
                 end,
                 sub_item_table = {
                     genMenuItem(_("Black fill"), "screensaver_img_background", "black"),
@@ -131,11 +113,29 @@ local sub_item_table = {
                             end
                             return _("Stretch cover to fit screen")
                         end,
+                        enabled_func = function() -- (GZreader: not with Scale cover to fill screen)
+                            return not require("gzsleepfit").on(G_reader_settings)
+                        end,
                         checked_func = function()
                             return G_reader_settings:isTrue("screensaver_stretch_images")
                         end,
                         callback = function(touchmenu_instance)
                             Screensaver:setStretchLimit(touchmenu_instance)
+                        end,
+                    },
+                    {
+                        -- GZreader: proportions kept, edges cut off (gzsleepfit.lua)
+                        text = _("Scale cover to fill screen"),
+                        help_text = _("Scales the book cover or picture up until it covers the whole screen, keeping its proportions. No bars at the edges; the parts that don't fit are cut off."),
+                        checked_func = function()
+                            return require("gzsleepfit").on(G_reader_settings)
+                        end,
+                        callback = function()
+                            local Fit = require("gzsleepfit")
+                            G_reader_settings:flipNilOrFalse(Fit.SETTING)
+                            if Fit.on(G_reader_settings) then
+                                G_reader_settings:makeFalse("screensaver_stretch_images")
+                            end
                         end,
                     },
                     {
@@ -180,40 +180,6 @@ local sub_item_table = {
                         keep_menu_open = true,
                         callback = function()
                             Screensaver:setMessage(true)
-                        end,
-                    },
-                },
-            },
-            {
-                text = _("Custom images"),
-                enabled_func = function()
-                    return allowRandomImageFolder() or G_reader_settings:readSetting("screensaver_type") == "document_cover"
-                end,
-                sub_item_table = {
-                    {
-                        text = _("Choose image or document cover"),
-                        enabled_func = function()
-                            return G_reader_settings:readSetting("screensaver_type") == "document_cover"
-                        end,
-                        keep_menu_open = true,
-                        callback = Screensaver.chooseFile,
-                    },
-                    {
-                        text = _("Choose random image folder"),
-                        enabled_func = allowRandomImageFolder,
-                        keep_menu_open = true,
-                        callback = Screensaver.chooseFolder,
-                        separator = true,
-                    },
-                    {
-                        text = _("Cycle through images in order"),
-                        help_text = _("When enabled, all images (up to 256) will be displayed at least once on the sleep screen in sequence before repeating the cycle."),
-                        enabled_func = allowRandomImageFolder,
-                        checked_func = function()
-                            return G_reader_settings:isTrue("screensaver_cycle_images_alphabetically")
-                        end,
-                        callback = function()
-                            G_reader_settings:flipNilOrFalse("screensaver_cycle_images_alphabetically")
                         end,
                     },
                 },

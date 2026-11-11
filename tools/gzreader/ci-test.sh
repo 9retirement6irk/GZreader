@@ -44,10 +44,11 @@ if [ "${GZ_CI_MODELS:-}" = none ]; then
 fi
 python3 "$REPO/tools/gzreader/tests/make_epub.py" "$OUT/book.epub"
 python3 "$REPO/tools/gzreader/tests/make_epub.py" --pictures "$OUT/pictures.epub"
+python3 "$REPO/tools/gzreader/tests/make_epub.py" --big "$OUT/big.epub"
 mkdir -p "$OUT/nook-home"
 for model in ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst}; do
     rm -rf "$OUT/nook-home/GZreader"
-    GZ_NOOK_HOME="$OUT/nook-home" GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_PICTURES="$OUT/pictures.epub" \
+    GZ_NOOK_HOME="$OUT/nook-home" GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_PICTURES="$OUT/pictures.epub" GZ_EMU_BIG="$OUT/big.epub" \
         GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \
         bash "$REPO/tools/gzreader/emulator/run.sh" "$REPO/tools/gzreader/emulator/keeps.lua" "$OUT/keeps-$model" > /dev/null 2>&1
     k="$OUT/keeps-$model/keeps.txt"

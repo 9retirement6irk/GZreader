@@ -85,22 +85,47 @@ function M.build(plugin)
     local about_items     = about_section.build(ctx)
     local general_items   = general_section.build(ctx, extras_items)
 
-    -- GZreader: Wi-Fi only when needed under Wi-Fi; diagnostics (logging,
-    -- usage statistics, sending the log) before Advanced;
+    -- GZreader: Wi-Fi is a menu (On, Off, Auto, then ZenOS's network list:
+    -- gz_settings.wifiItem) in place of ZenOS's switch; debug reports before
+    -- Advanced, and the diagnostic log's items (logging, sending, saving) at
+    -- the top of Advanced (gz_settings.splitDiagnostics);
     -- read aloud and the audiobook test at the end of Reader.
     local gz_general = gz_section("general")
     if gz_general.wifi then
-        table.insert(general_items, (index_of(general_items, _("Wi-Fi")) or 0) + 1, gz_general.wifi)
+        local at = index_of(general_items, _("Wi-Fi"))
+        local item = require("common/gz_settings").wifiItem(gz_general.wifi, at and general_items[at])
+        if at then general_items[at] = item else table.insert(general_items, 1, item) end
     end
     if type(gz_general.diagnostics) == "table" and #gz_general.diagnostics > 0 then
-        local at = index_of(general_items, _("Advanced")) or (#general_items + 1)
-        general_items[at - 1].separator = true
-        for i, item in ipairs(gz_general.diagnostics) do
-            table.insert(general_items, at + i - 1, item)
+        local stay, advanced = require("common/gz_settings").splitDiagnostics(gz_general.diagnostics)
+        local at = index_of(general_items, _("Advanced"))
+        local adv = at and general_items[at].sub_item_table
+        if type(adv) ~= "table" then stay, advanced = gz_general.diagnostics, {} end
+        at = at or (#general_items + 1)
+        if #stay > 0 then
+            general_items[at - 1].separator = true
+            for i, item in ipairs(stay) do table.insert(general_items, at + i - 1, item) end
+            stay[#stay].separator = true
         end
-        gz_general.diagnostics[#gz_general.diagnostics].separator = true
+        if #advanced > 0 then
+            for i, item in ipairs(advanced) do table.insert(adv, i, item) end
+            advanced[#advanced].separator = true
+        end
     end
     local gz_reader = gz_section("reader")
+    -- GZreader: read aloud, the audiobook test and the headphone jack are for
+    -- music and audiobooks too: General → Audio, before Time and date
+    -- (gz_settings.splitAudio); anything else of GZreader's stays in Reader.
+    local gz_audio, gz_rest = require("common/gz_settings").splitAudio(gz_reader)
+    if type(gz_audio) == "table" and type(gz_rest) == "table" then gz_reader = gz_rest else gz_audio = {} end
+    if #gz_audio > 0 then
+        local at = index_of(general_items, _("Time and date")) or index_of(general_items, _("Advanced"))
+        table.insert(general_items, at or (#general_items + 1), {
+            text = _("Audio"),
+            icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_music"),
+            sub_item_table = gz_audio,
+        })
+    end
     if #gz_reader > 0 then
         reader_items[#reader_items].separator = true
         for _i, item in ipairs(gz_reader) do reader_items[#reader_items + 1] = item end
@@ -132,6 +157,7 @@ function M.build(plugin)
         sub_item_table = filebrowser_items,
         _zen_settings_root = "library",
     }, icons.settings_library)
+    library_item.icon_name = "tab_downloaded" -- GZreader: the Downloads tab's own icon
 
     local root_items = {
         home_item,
@@ -143,19 +169,9 @@ function M.build(plugin)
         -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
         -- its saved value or default, with nothing to set.
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
-        -- GZreader: what's on the Kindle (books, audiobooks, music, notes,
-        -- calendar) and the biggest of each
-        {
-            text = _("Storage"),
-            icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "database"),
-            keep_menu_open = true,
-            callback = function()
-                local g = gzreader()
-                if g then require("gzreader_storage").show(g) end
-            end,
-        },
+        -- GZreader: Storage (what's on the Kindle) is in General → Storage
         -- GZreader: Connections: the Grimmory plugin's settings (connection,
-        -- sync, audiobooks; also under KOReader → Tools → Grimmory) and
+        -- sync, audiobooks; KOReader → Tools → Grimmory is left out) and
         -- Memos (the Notes tab: connection, synced tags, storage, limits).
         IconItem.decorate({
             text = _("Connections"),

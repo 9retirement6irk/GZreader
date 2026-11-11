@@ -30,7 +30,7 @@
 - [Music](Music)
 - [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
 - [Sync with a computer](Sync-with-a-Computer)
-- [Wi‑Fi only when needed](Wi-Fi)
+- [Wi‑Fi: on, off, auto](Wi-Fi)
 - [Updates and test builds](Updates-and-Test-Builds)
 - [Privacy and diagnostics](Privacy-and-Diagnostics)
 - [Nook 1st Edition](Nook-1st-Edition)

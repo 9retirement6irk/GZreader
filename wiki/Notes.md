@@ -52,4 +52,4 @@ API to `/api` are found too.
   (`settings/gzreader-notes.json`); new notes, edits, ticks and pins made
   without Wi‑Fi wait in a queue and are sent the next time the Notes tab can
   reach Memos ("not sent yet" on the note meanwhile). The Notes tab keeps
-  Wi‑Fi up while it's open (Wi‑Fi only when needed).
+  Wi‑Fi up while it's open (Wi‑Fi on Auto).
