@@ -799,6 +799,16 @@ function InputText:onKeyPress(key)
 
     -- A lone Sym or ScreenKB key press toggles the on-screen keyboard, same as Shift/ScreenKB + Home.
     if key["SymPress"] or key["ScreenKBPress"] then
+        -- GZreader: on the Kindles with a keyboard, a lone Sym opens the symbols
+        -- popup (as the Kindle's own software does) instead of the whole
+        -- on-screen keyboard; Shift + Home still toggles that one.
+        if key["SymPress"] and self.keyboard and not self:isKeyboardVisible() then
+            local GzSymbols = require("gzsymbols")
+            if GzSymbols.wanted(Device) then
+                GzSymbols.show(self)
+                return true
+            end
+        end
         self:toggleKeyboard()
         return self.keyboard ~= nil -- readonly fields have no keyboard: let the event bubble
     end
