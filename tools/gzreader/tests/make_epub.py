@@ -4,6 +4,8 @@
   make_epub.py <out.epub>             a few chapters of text
   make_epub.py --pictures <out.epub>  a "picture book": every page a scanned
                                        picture (385 x 625 PNG), no text
+  make_epub.py --big <out.epub>       30 chapters of text (~430 KB: big
+                                       enough for crengine to keep a layout cache)
 """
 import struct, sys, zipfile, zlib
 
@@ -24,9 +26,10 @@ def png(w, h, seed):
 
 
 pictures = sys.argv[1] == "--pictures"
+big = sys.argv[1] == "--big"
 out = sys.argv[-1]
-n_ch = 6 if pictures else 3
-title = "Picture Book" if pictures else "Smoke Test"
+n_ch = 6 if pictures else (30 if big else 3)
+title = "Picture Book" if pictures else ("Big Book" if big else "Smoke Test")
 with zipfile.ZipFile(out, "w") as z:
     z.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip")
     z.writestr("META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')

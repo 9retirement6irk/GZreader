@@ -20,8 +20,11 @@ The CalDAV account: Nextcloud
 Fastmail (`https://caldav.fastmail.com`), Google
 (`https://apidata.googleusercontent.com/caldav/v2/`), Radicale, Baïkal…
 
-- **Connect:** Connect with QR code (the setup page: address, user name and
-  password; it also shows or hides each calendar) or Connect by typing. Use an app password where the server
+- **Connect:** before any calendar is added, the tab lists the ways: *Add
+  with QR code* (the setup page: links, or a CalDAV account's address, user
+  name and password; it also shows or hides each calendar), *Type a calendar
+  link*, *Add from calendars.txt*, *Type a CalDAV account*, *Copy from another
+  GZreader*, and *About calendar links* for the details. Use an app password where the server
   has them; it's kept in GZreader's settings like the Memos token and never
   logged (the log has addresses only, and passwords are redacted from it).
   Discovery follows RFC 6764: the address → `current-user-principal` →

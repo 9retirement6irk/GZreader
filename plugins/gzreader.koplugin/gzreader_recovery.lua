@@ -27,7 +27,7 @@ local T = require("ffi/util").template
 
 local R = { DELAY = 6, checked = false }
 
-local BOOK_FIELDS = { "id", "title", "authors", "primaryFileName", "primaryFileType", "primaryFileId", "fileSizeKb" }
+local BOOK_FIELDS = { "id", "title", "authors", "primaryFileName", "primaryFileType", "primaryFileId", "fileSizeKb", "plex" }
 
 local function slim(book)
     local out = {}

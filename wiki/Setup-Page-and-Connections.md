@@ -36,7 +36,7 @@ you came from; without JavaScript they're one under the other):
   space.
 - **Access**: the key for a Cloudflare rule (below).
 - **Diagnostics** (while diagnostic logging is on, Settings → General →
-  Diagnostic logging): download the diagnostic log.
+  Advanced → Diagnostic logging): download the diagnostic log.
 
 Each change shows a short note on the Kindle, and the page shows what
 happened and stays open for the next thing. Press **Back** on the Kindle when
@@ -47,16 +47,17 @@ and tokens are sent once to the Kindle and only Grimmory's login tokens,
 the Memos token and the CalDAV password are kept (never logged).
 
 Where to open it: the setup guide's first page (**Set up from your browser**),
-the quick panel → **Send books**, the Grimmory, Notes and Calendar tabs'
+the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
 
 ## Connect to Grimmory
 
-Open the **Grimmory** tab. Grimmory's options (connection, sync, bookmarks,
+Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
 highlights, auto-download shelf) are in **Settings → Connections → Grimmory**
-(also KOReader → Tools → Grimmory); Memos (the Notes tab) is in **Settings →
-Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi only
-when needed and the diagnostic log in Settings → General; updates in Settings
+; Memos (the Notes tab) is in **Settings →
+Connections → Memos (Notes)**. Read aloud is in Settings → General → Audio; Wi‑Fi only
+when needed in Settings → General, the diagnostic log in Settings → General →
+Advanced; updates in Settings
 → General → Updates.
 
 - **Connect with QR code**: opens the setup page (above) at its Grimmory

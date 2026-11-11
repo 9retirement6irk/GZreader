@@ -10,7 +10,7 @@ What the Kindle 3 has (from its diagnostic log, firmware 3.4.3):
 - Amazon's audioServer (com.lab126.audio over lipc): playbin-based, needs
   absolute file paths.
 
-"Test audiobook playback" (Settings → Reader) plays a short MP3 and an AAC tune (converted on the
+"Test audiobook playback" (Settings → General → Audio) plays a short MP3 and an AAC tune (converted on the
 Kindle from the bundled M4A, which also tests the converter) through each
 candidate pipeline, logs what the Kindle says, asks which you heard and
 remembers the pipeline per format.
@@ -218,7 +218,8 @@ function Engine.stopStrayAtStart()
 end
 
 --- Start playing `src` with `p`. Returns true, position started at (ms).
-function Engine.play(p, src)
+--- `kind`: "audiobook" or "music" (kept with what plays).
+function Engine.play(p, src, kind)
     -- (a skip: just our own player to stop, one shell fewer)
     local had = current ~= nil
     Engine.stop()
@@ -235,7 +236,7 @@ function Engine.play(p, src)
         UIManager:scheduleIn(1.5, Engine.applyVolume)
         UIManager:scheduleIn(4, Engine.applyVolume)
     end
-    current = { p = p, src = src, offset_ms = started_ms, first_offset_ms = started_ms, started_at = Engine.clock() }
+    current = { p = p, src = src, offset_ms = started_ms, first_offset_ms = started_ms, started_at = Engine.clock(), kind = kind }
     Log.info("audio play", p.id, src.path or src.dir, "from", started_ms, "ms")
     return true, started_ms
 end

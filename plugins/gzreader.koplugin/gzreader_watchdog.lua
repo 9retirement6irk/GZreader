@@ -2,12 +2,15 @@
 GZreader remote-debugging watchdog: a small separate LuaJIT process.
 
 Started by gzreader_remote.lua (run from the koreader folder):
-  ./luajit plugins/gzreader.koplugin/gzreader_watchdog.lua <dir> <koreader pid>
+  ./luajit plugins/gzreader.koplugin/gzreader_watchdog.lua <dir> <koreader pid> [<live dir>]
 
 <dir> holds:
   config        line 1: feed base URL (…/open/feed/<id>), line 2: device name
-  heartbeat     "<epoch> <run|sleep|exit> <what GZreader is doing>", rewritten
-                by GZreader every 15 s
+  heartbeat     "<epoch> <run|sleep|exit|off> <what GZreader is doing>",
+                rewritten when the status changes and every 10 minutes
+<live dir>/gzreader-heartbeat.<pid>  the same line, rewritten every 15 s
+                (/tmp: a RAM disk, so the beat doesn't write to flash);
+                the newer of the two counts
   spool/        messages GZreader wants sent: <n>-send.json, <n>-state.json,
                 <n>-resolve.json (the request body, ready to POST)
   watchdog.pid
@@ -25,7 +28,7 @@ A frozen kernel or a dead battery stops it too; GZreader then reports the
 previous run's end when it starts again.
 ]]
 
-local dir, ppid = arg[1], tonumber(arg[2])
+local dir, ppid, live_dir = arg[1], tonumber(arg[2]), arg[3]
 if not dir or not ppid then
     io.stderr:write("usage: gzreader_watchdog.lua <dir> <pid>\n")
     os.exit(1)
@@ -181,6 +184,8 @@ end
 
 local function heartbeat()
     local s = readFile(dir .. "/heartbeat") or ""
+    local live = live_dir and readFile(live_dir .. "/gzreader-heartbeat." .. ppid)
+    if live and (tonumber(live:match("^(%d+)")) or 0) > (tonumber(s:match("^(%d+)")) or 0) then s = live end
     local t, status, what = s:match("^(%d+) (%a+) ?(.*)$")
     return tonumber(t), status, what
 end

@@ -2,7 +2,9 @@
 """The wiki (wiki/, published by .github/workflows/gzreader-wiki.yml): every
 link to another page goes to a page that exists, every #anchor to a heading
 on it, every page is in the sidebar, and no page points at GZREADER.md's
-own anchors (which don't exist in the wiki)."""
+own anchors (which don't exist in the wiki), and the KOReader and ZenOS
+versions the pages (and README and the landing page) name are the ones in
+tools/gzreader/UPSTREAM: an upstream merge has to update them."""
 import os
 import re
 import sys
@@ -47,6 +49,25 @@ def main():
     sidebar = set(re.findall(r"\]\(([^)#\s]+)", pages.get("_Sidebar", "")))
     missing = sorted(set(pages) - sidebar - {"Home", "_Sidebar", "_Footer"})
     check(not missing, "every page is in the sidebar " + ", ".join(missing))
+    # the versions the pages name match what GZreader is built on
+    upstream = dict(l.split()[:2] for l in open(os.path.join(WIKI, "..", "tools", "gzreader", "UPSTREAM"))
+                    if l.strip() and not l.startswith("#"))
+    # (the wiki, README and the landing page: the places an upstream merge must update)
+    root = os.path.join(WIKI, "..")
+    texts = dict(pages)
+    for f in ("README.md", os.path.join("docs", "index.html")):
+        texts[f] = open(os.path.join(root, f), encoding="utf-8").read()
+    named, wrong = 0, []
+    for p, text in texts.items():
+        found = re.findall(r"\b(KOReader|ZenOS)\b[^`\n<]{0,80}?(?:`|<code>)(v?\d+\.\d+(?:\.\d+)?)(?:`|</code>)", text)
+        found += [("KOReader", v) for v in re.findall(r"koreader-kindle[a-z0-9-]*-(v\d+\.\d+\.\d+)\.zip", text)]
+        for name, ver in found:
+            named += 1
+            if ver.lstrip("v") != upstream[name.lower()].lstrip("v"):
+                wrong.append("%s: %s %s (UPSTREAM: %s)" % (p, name, ver, upstream[name.lower()]))
+    check(named >= 3 and not wrong,
+          "KOReader/ZenOS versions in the wiki, README and landing page match tools/gzreader/UPSTREAM "
+          + "; ".join(wrong))
     print("%d passed, %d failed" % (passed, failed))
     return 1 if failed else 0
 

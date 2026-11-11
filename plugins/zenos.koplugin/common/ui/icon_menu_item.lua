@@ -258,6 +258,11 @@ local function settings_control_widget(item, enabled)
 end
 
 local function settings_icon_widget(item, height, face)
+    -- GZreader: every Settings row has an icon (common/gz_settings_icons.lua)
+    if not (item.icon_glyph or item.icon_file or item.icon_name) then
+        local ok, glyph = pcall(function() return require("common/gz_settings_icons").glyphFor(item) end)
+        if ok and glyph then item = setmetatable({ icon_glyph = glyph }, { __index = item }) end
+    end
     local file = settings_svg_path(item) or (not item.icon_glyph and item.icon_file)
     if file then
         local size = M.getSettingsIconFace(face).size

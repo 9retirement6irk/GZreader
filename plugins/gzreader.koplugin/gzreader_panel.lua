@@ -2,19 +2,24 @@
 GZreader's quick panel: the same panel on every Kindle (and the Nook), at
 the top of the screen. Square tiles, in two groups:
 
-  Controls   Wi-Fi, Night mode, Rotate, Restart, Sleep, Home, Updates,
+  Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
-             Search, History, View, Sort, Music
+             Search, History, View, Sort, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Music
+             Search book, Font, Layout, Fit pictures, Read aloud, Music,
+             Audiobook
+
+Music and Audiobook are there only while one plays (or is paused): they
+open its player. Browsing and downloading music and audiobooks is the
+Catalog tab's (gzreader_catalog.lua); what's on the Kindle, Downloads.
 
 With a keyboard each tile shows its letter (Controls: the top row of keys,
 Q to P; the second group: A to L) and the 5-way and Press work too; the
 Kindle 4 (no letter keys) has the 5-way; touch Kindles tap, and have the
 light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
-playing) is drawn inverted. Touch Kindles: tap or drag the light's slider.
+playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap or drag the light's slider.
 
 Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
@@ -153,8 +158,8 @@ function Panel.catalog()
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
-            { id = "music", label = _("Music"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one is open"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
         } },
         { id = "book", title = _("This book"), tiles = {
@@ -168,7 +173,8 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
-            { id = "music", label = _("Music"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
         } },
     }
 end
@@ -253,13 +259,33 @@ end
 
 ---------------------------------------------------------------- what's on it
 
+--- The Wi-Fi tile: On, Off or Auto (gzreader_net.lua); a tap goes to the
+--- next one (on → off → auto → on). On is drawn inverted; Auto's icon has an
+--- "A" and still shows whether Wi-Fi is on right now.
+function Panel.wifiTile()
+    local Net = require("gzreader_net")
+    local mode = Net.mode()
+    local d = Net.describe(mode)
+    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", run = function()
+        local next_mode = Net.nextMode(mode)
+        local switching = Net.setMode(next_mode)
+        -- (KOReader says "Turning on Wi-Fi…" / "Wi-Fi off." when it switches)
+        if not switching or next_mode == "auto" then
+            local nd = Net.describe(next_mode)
+            pcall(function()
+                UIManager:show(require("ui/widget/infomessage"):new{ text = T(_("Wi-Fi: %1"), nd.name), timeout = 2 })
+            end)
+        end
+    end }
+end
+
 --- The Controls tiles: { id, icon, label, on, run }.
 function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
     local usb = usbOnly()
     local list = {
         usb and { id = "wifi", icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
-            or { id = "wifi", icon = "wifi", label = _("Wi-Fi"), on = NetworkMgr:isWifiOn(), run = function() dispatch("toggle_wifi") end },
+            or Panel.wifiTile(),
     }
     if not nightGuarded() then
         list[#list + 1] = { id = "night", icon = "night", label = _("Night mode"), on = G_reader_settings:isTrue("night_mode"),
@@ -269,7 +295,7 @@ function Panel.controls(plugin)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
-    if not usb then list[#list + 1] = { id = "updates", icon = "updates", label = _("Updates"), run = function() require("gzreader_update").run() end } end
+    if not usb then list[#list + 1] = Panel.updatesTile() end
     -- (a full page over the panel: a full refresh after it, or touch Kindles keep a ghost of the panel)
     list[#list + 1] = { id = "settings", icon = "settings", label = _("Settings"), full = true, run = function() require("gzreader_homemenu").settings() end }
     if plugin and plugin.store and plugin.store.logging_disabled ~= true then
@@ -288,14 +314,42 @@ local function shortTitle(path)
     return t
 end
 
+--- The Updates tile: "Update available", drawn inverted, once a check (the
+--- daily one, or one from Settings) found a newer version. Nothing is
+--- fetched here; gzreader_update is only loaded when a check was saved.
+function Panel.updatesTile()
+    local latest
+    if package.loaded["gzreader_update"] or G_reader_settings:readSetting("gzreader_update_latest") then
+        local ok, Update = pcall(require, "gzreader_update")
+        latest = ok and type(Update.known) == "function" and Update.known() or nil
+    end
+    return { id = "updates", icon = "updates", label = latest and _("Update available") or _("Updates"), on = latest ~= nil,
+        run = function() require("gzreader_update").run() end }
+end
+
+--- The Music tile, while music plays or is paused (its player: the CD
+--- player). Nothing else: music is browsed in the Catalog.
 local function musicTile(plugin)
     if not Touch.audio() then return nil end
-    local Tab = require("gzreader_musictab")
-    local item = Tab.menuItem(plugin)
     local okm, M = pcall(require, "gzreader_music")
-    local playing = okm and M.current and M.current.playing
-    return { icon = "music", label = playing and _("Music ▶") or _("Music"), on = playing == true, run = item.callback }
+    local cur = okm and M.current
+    if not cur then return nil end
+    local playing = cur.playing == true
+    return { id = "music", icon = "music", label = playing and _("Music ▶") or _("Music"), on = playing,
+        run = function() require("gzreader_musictab").nowPlaying(plugin) end }
 end
+Panel.musicTile = musicTile
+
+--- The Audiobook tile, while one plays or is paused (its player).
+local function audiobookTile(plugin)
+    if not Touch.audio() then return nil end
+    local okA, Audiobook = pcall(require, "gzreader_audiobook")
+    local cur = okA and Audiobook.current
+    if not (cur and cur.book) then return nil end
+    return { id = "audiobook", icon = "readaloud", label = cur.playing and _("Audiobook ▶") or _("Audiobook"), on = cur.playing == true,
+        run = function() Audiobook.open(plugin, cur.book) end }
+end
+Panel.audiobookTile = audiobookTile
 
 --- Home's tiles (the file manager).
 function Panel.homeTiles(plugin, book)
@@ -314,14 +368,8 @@ function Panel.homeTiles(plugin, book)
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { id = "view", icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }
     list[#list + 1] = { id = "sort", icon = "sort", label = _("Sort"), run = function() HomeMenu.showSort() end }
-    local m = musicTile(plugin)
-    if m then m.id = "music"; list[#list + 1] = m end
-    local okA, Audiobook = pcall(require, "gzreader_audiobook")
-    local cur = okA and Audiobook.current
-    if cur and cur.book then
-        list[#list + 1] = { id = "audiobook", icon = "readaloud", label = _("Audiobook"), on = cur.playing == true,
-            run = function() Audiobook.open(plugin, cur.book) end }
-    end
+    list[#list + 1] = musicTile(plugin)
+    list[#list + 1] = audiobookTile(plugin)
     local Tasks = require("gzreader_tasks")
     if Tasks.count() > 0 then
         local item = Tasks.menuItem()
@@ -359,8 +407,8 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
-    local m = musicTile(plugin)
-    if m then m.id = "music"; list[#list + 1] = m end
+    list[#list + 1] = musicTile(plugin)
+    list[#list + 1] = audiobookTile(plugin)
     return shown("book", list)
 end
 
@@ -382,10 +430,12 @@ function Panel.showFonts(ui)
         if it.menu_item_id and it.callback then
             local on = it.checked_func and it.checked_func()
             if on then current = #items + 1 end
+            -- (ZenOS rows: the font icon, the one in use ticked on the right)
             items[#items + 1] = { text = it.text_func and it.text_func() or it.text or it.menu_item_id,
-                mandatory = on and "\u{2713}" or nil, gz_run = it.callback }
+                mandatory = on and "\u{2713}" or nil, gz_run = it.callback, gz_icon = "font" }
         end
     end
+    require("gzreader_rows").mark(items)
     local menu
     menu = Menu:new{ title = _("Font"), item_table = items, covers_fullscreen = true, is_borderless = true,
         width = Screen:getWidth(), height = Screen:getHeight(),
@@ -395,6 +445,7 @@ function Panel.showFonts(ui)
             if item.gz_run then UIManager:nextTick(item.gz_run) end
             return true
         end }
+    require("gzreader_rows").apply(menu)
     -- open at the page with the font in use
     pcall(function() menu:onGotoPage(math.ceil(current / menu.perpage)) end)
     UIManager:show(menu)
@@ -536,7 +587,6 @@ function PanelWidget:getSize() return self.dimen end
 function PanelWidget:pick(t)
     UIManager:close(self)
     if t.run then UIManager:nextTick(function()
-        pcall(function() require("gzreader_usage").menu(self.section_id, t.label) end)
         t.run()
         if t.full then UIManager:scheduleIn(0.4, function() UIManager:setDirty(nil, "full") end) end
     end) end
@@ -556,7 +606,9 @@ function PanelWidget:paintTo(bb, x, y)
     title:free()
     local okp, powerd = pcall(function() return Device:getPowerDevice() end)
     local cap = okp and powerd and powerd.getCapacity and powerd:getCapacity()
-    local right = (NetworkMgr:isWifiOn() and _("Wi-Fi") or _("Wi-Fi off")) .. (cap and (" · " .. cap .. "%") or "")
+    local wifi = NetworkMgr:isWifiOn() and _("Wi-Fi") or _("Wi-Fi off")
+    if not usbOnly() and require("gzreader_net").mode() == "auto" then wifi = T(_("%1 (auto)"), wifi) end
+    local right = wifi .. (cap and (" · " .. cap .. "%") or "")
     local rt = TextWidget:new{ text = right, face = face }
     rt:paintTo(bb, x + w - S(16) - rt:getSize().w, y + S(10))
     rt:free()

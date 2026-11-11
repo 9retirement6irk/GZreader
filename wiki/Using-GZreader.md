@@ -7,17 +7,18 @@ touch Kindle, swipe down from the top). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 
-- **Controls:** Wi‑Fi (on the Kindle 2 and DX: **Sync**, [with a
-  computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
+- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi); on the Kindle 2
+  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
-  History, View, Sort and Music; **Audiobook** while one plays, and
-  **Downloads (N)** while something downloads.
+  History, View and Sort; **Music** and **Audiobook** while one plays or is
+  paused (they open its player: music and audiobooks are browsed in the
+  Catalog tab), and **Downloads (N)** while something downloads.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
-  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud and
-  Music.
+  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud, and
+  Music and Audiobook while one plays or is paused.
 
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and
@@ -53,6 +54,7 @@ The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.
 | Reading | Shift + Sym | Read aloud / stop. |
 | Reading | Back | Return from a followed link or TOC jump; otherwise go to Home. |
 | Settings, audiobook player, tab views | Home | Home (the default tab). The audiobook keeps playing. |
+| Any text box | Sym | The symbols menu, like the Kindle's own: the 5-way picks a symbol, Press types it. The menu stays up for more symbols (letters type too) until you press Sym again (or Back); it opens on the one you used last. Sym + a letter still types its symbol (Sym + G #, Sym + Q !…); Shift + Home shows the whole on-screen keyboard. |
 | Anywhere | Volume buttons | Speaker volume for audiobooks and read aloud (a note shows the level). |
 | Note editor | Menu | To the formatting toolbar and back; the cursor stays where it is. |
 
@@ -110,7 +112,7 @@ run the same GZreader with ZenOS's touch interface:
   Setup Guide.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
-  close (Settings → Reader → Test audiobook playback finds what works on
+  close (Settings → General → Audio → Test audiobook playback finds what works on
   its firmware). It also reads aloud with the Kindle's voice: in a book,
   swipe down from the top and tap **Listen** in the quick panel (again to
   stop); the first time, a short test finds the Kindle's voice. The

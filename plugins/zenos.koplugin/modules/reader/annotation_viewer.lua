@@ -722,7 +722,8 @@ function M.showMenu(pbw)
             callback = launch(function()
                 pbw:onClose()
                 require("modules/settings/zen_settings_page").show(pbw._zen_plugin, {
-                    path = { { key = "text", value = _("Reader") }, { key = "text", value = _("Annotation viewer") } },
+                    -- GZreader: through Reader's group (gz_reader_groups)
+                    path = require("modules/settings/sections/gz_reader_groups").path(_("Annotation viewer")),
                 })
             end) }},
     }

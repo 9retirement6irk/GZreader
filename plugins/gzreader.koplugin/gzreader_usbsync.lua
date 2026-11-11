@@ -31,11 +31,9 @@ Format 1:
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
-    usage = { level, server, app } (absent when off),
     screensavers = { names, mode = "auto"|"always"|"other" }; kindle.screen = { w, h } }
-- usage/*.jsonl (the Kindle, when it steps aside for the USB drive): usage
-  statistics waiting to be sent (gzreader_usage.lua); the page sends them
-  to usage.server and deletes each file it sent.
+- usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
+  the page deletes them without sending (no usage statistics since).
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
     books = { { id, file, name, title, authors, format, file_id, subtitle, progress } },
     audiobooks = { { id, dir, info, primaryFileName, title, progress } },
@@ -391,20 +389,6 @@ function Usb.screenSize()
     return { w = w, h = h }
 end
 
-function Usb.usageInfo()
-    local ok, U = pcall(require, "gzreader_usage")
-    if not ok or not U.on() then return nil end
-    return { level = U.level(), server = U.SERVER, app = U.APP }
-end
-
---- Usage statistics waiting on the Kindle: into .gzsync/usage/ for the page
---- (when GZreader steps aside for the USB drive).
-function Usb.handOverUsage(plugin)
-    local n = require("gzreader_usage").handOver(Usb.dir(plugin) .. "/usage")
-    if n > 0 then Log.info("sync: usage statistics for the sync page:", n, "file(s)") end
-    return n
-end
-
 function Usb.outbox(plugin)
     local store = plugin.store
     local Copy = require("gzreader_copy")
@@ -449,6 +433,10 @@ function Usb.outbox(plugin)
             screen = Usb.screenSize() },
         -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
         music_quality = require("gzreader_plex").quality(store),
+        -- (and its music library, when one was chosen: the page lists that one's albums)
+        music_library = Usb.musicLibrary(store),
+        -- (audiobooks from a Plex library instead of Grimmory's: the page's Audiobooks list that one)
+        audiobook_library = Usb.audiobookLibrary(store),
         grimmory = store.server and { server = store.server, user = store.username } or nil,
         jobs = jsonList(Usb.jobs(plugin)),
         queue = jsonList(queue(plugin)),
@@ -460,8 +448,6 @@ function Usb.outbox(plugin)
         last_import = store.usb_last and store.usb_last.at or nil,
         -- the sleep screen's pictures (the page makes new ones for this screen)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
-        -- usage statistics (gzreader_usage.lua): the page sends what's in usage/
-        usage = Usb.usageInfo(),
         -- (how much room is left on the Kindle, for the page)
         disk = cached("disk", function()
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
@@ -1027,6 +1013,19 @@ function Usb.takeTestBuilds(inbox)
     return true
 end
 
+--- The music library chosen in Settings → Connections → Plex ({ key,
+--- title }), or nil (the server's first).
+function Usb.musicLibrary(store)
+    local m = type(store) == "table" and type(store.plex) == "table" and store.plex.music_section
+    return type(m) == "table" and m.key and { key = tostring(m.key), title = m.title } or nil
+end
+
+--- The Plex library audiobooks come from ({ key, title }), or nil (Grimmory's).
+function Usb.audiobookLibrary(store)
+    local a = type(store) == "table" and require("gzreader_plex").audiobookSection(store.plex)
+    return a and { key = tostring(a.key), title = a.title } or nil
+end
+
 --- Music quality chosen on the page (inbox.music_quality = { bitrate, shrink }):
 --- the Kindle's Plex settings follow (Music tab → Plex: you · server).
 function Usb.takeMusicQuality(plugin, inbox)
@@ -1255,6 +1254,7 @@ function Usb.showQueue(plugin)
                 text = (q.title or "?") .. (authors ~= "" and (" — " .. authors) or ""),
                 mandatory = (q.kind == "audiobook" and _("audiobook") or (q.format or ""))
                     .. (q.size_kb and string.format(" · %.1f MB", q.size_kb / 1024) or ""),
+                gz_icon = q.kind == "audiobook" and require("gzreader_rows").FILE.readaloud or "reading",
                 callback = function()
                     UIManager:show(ConfirmBox:new{
                         text = T(_("Take “%1” off the sync queue?"), q.title or ""),
@@ -1267,11 +1267,12 @@ function Usb.showQueue(plugin)
                 end,
             }
         end
-        if #out == 0 then out[1] = { text = _("The sync queue is empty."), select_enabled = false } end
-        return out
+        if #out == 0 then out[1] = { text = _("The sync queue is empty."), gz_icon = "sync", select_enabled = false } end
+        return require("gzreader_rows").mark(out)
     end
     menu = Menu:new{ title = _("Sync queue"), item_table = items(), covers_fullscreen = true, is_borderless = true,
         is_popout = false, title_bar_fm_style = true, name = "gz_usb_queue" }
+    require("gzreader_rows").apply(menu)
     UIManager:show(menu)
     return menu
 end

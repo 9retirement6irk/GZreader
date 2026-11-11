@@ -8,7 +8,7 @@ GZreader looks in the places Linux uses for it:
 - an input device with a headphone switch (EV_SW, SW_HEADPHONE_INSERT: the
   state comes from the EVIOCGSW ioctl, without taking its events);
 - a switch in sysfs (/sys/class/switch/*/state, as Android kernels have);
-- what "Find the headphone jack" (Settings → Reader) found on this Kindle:
+- what "Find the headphone jack" (Settings → General → Audio) found on this Kindle:
   it asks you to plug in and unplug headphones and keeps the one place that
   changed (a sysfs file, an input switch or an lipc property of
   com.lab126.audio). Until something is found, nothing is paused.

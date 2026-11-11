@@ -5,14 +5,31 @@ Written to <koreader dir>/gzreader.log (on a Kindle: /mnt/us/koreader/gzreader.l
 visible over USB). Rotates to gzreader.log.1 at ~512 KB. Secrets are redacted
 before anything is written: passwords, access/refresh tokens, OIDC codes,
 PKCE verifiers, states and the pairing URL token never reach the file.
+
+INFO lines are kept in memory and written together (one open, one write)
+FLUSH_AFTER seconds after the first of them, as soon as a warning or an
+error comes, when MAX_BUFFER bytes are waiting, and on Log.flush() (the
+plugin calls it when the Kindle goes to sleep, on exit and before the log is
+exported). A burst of sync logging is then one write to the Kindle's flash
+instead of one per line. Background processes (forks) write each line at
+once, and drop what the parent hadn't written yet (it's the parent's).
 ]]
+
+local ffi = require("ffi")
+pcall(ffi.cdef, "int getpid(void);")
 
 local MAX_BYTES = 512 * 1024
 
 local Log = {
     enabled = true,
     path = nil,
+    buffered = true,
+    FLUSH_AFTER = 5,
+    MAX_BUFFER = 16 * 1024,
 }
+
+local buf, buf_bytes, flush_scheduled = {}, 0, false
+local function pid() return ffi.C.getpid() end
 
 -- Size tracked in memory (checked on disk once per run), so a log line is
 -- one open + write, not two opens.
@@ -21,6 +38,7 @@ local size_known
 function Log.init(dir)
     Log.path = dir .. "/gzreader.log"
     size_known = nil
+    Log.main_pid = pid()
 end
 
 local SECRET_KEYS = {
@@ -59,6 +77,38 @@ local function rotateIfNeeded(adding)
     end
 end
 
+local function append(text)
+    pcall(function()
+        rotateIfNeeded(#text)
+        local f = io.open(Log.path, "ab")
+        if f then
+            f:write(text)
+            f:close()
+        end
+    end)
+end
+
+--- Write the lines waiting in memory (in a background process: drop them,
+--- they're the parent's to write).
+function Log.flush()
+    if #buf == 0 then return end
+    local lines = buf
+    buf, buf_bytes = {}, 0
+    if not Log.path or (Log.main_pid and pid() ~= Log.main_pid) then return end
+    append(table.concat(lines))
+end
+
+local function scheduleFlush()
+    if flush_scheduled then return end
+    local ok, UIManager = pcall(require, "ui/uimanager")
+    if not ok or not UIManager or not UIManager.scheduleIn then return Log.flush() end
+    flush_scheduled = true
+    UIManager:scheduleIn(Log.FLUSH_AFTER, function()
+        flush_scheduled = false
+        Log.flush()
+    end)
+end
+
 local function write(level, ...)
     if not Log.enabled or not Log.path then return end
     local parts = {}
@@ -69,14 +119,17 @@ local function write(level, ...)
     local line = string.format("%s [%s] %s\n", os.date("%Y-%m-%d %H:%M:%S"), level,
         Log.redact(table.concat(parts, " ")))
     if Log.on_line and level ~= "INFO" then pcall(Log.on_line, level, line) end -- remote debugging
-    pcall(function()
-        rotateIfNeeded(#line)
-        local f = io.open(Log.path, "ab")
-        if f then
-            f:write(line)
-            f:close()
-        end
-    end)
+    if not Log.buffered or (Log.main_pid and pid() ~= Log.main_pid) then
+        if #buf > 0 then Log.flush() end -- (a fork: drops the parent's)
+        return append(line)
+    end
+    buf[#buf + 1] = line
+    buf_bytes = buf_bytes + #line
+    if level ~= "INFO" or buf_bytes >= Log.MAX_BUFFER then
+        Log.flush()
+    else
+        scheduleFlush()
+    end
 end
 
 function Log.info(...) write("INFO", ...) end
@@ -91,6 +144,7 @@ local function now()
 end
 
 function Log.exportTo(dir, crash_log_path)
+    Log.flush()
     local started = now()
     local stamp = os.date("%Y%m%d-%H%M%S")
     local dest = string.format("%s/gzreader-log-%s.txt", dir, stamp)

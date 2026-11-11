@@ -40,7 +40,10 @@ jobs:
           ref: ${{ env.TAG }}
       - name: Tools
         # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
+        # (an older tag has no ci-apt.sh)
+        run: |
+          if [ -f tools/gzreader/ci-apt.sh ]; then bash tools/gzreader/ci-apt.sh dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
+          else sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross; fi
       - name: Official KOReader Kindle releases (native binaries)
         run: |
           for p in kindle-legacy kindle kindlehf kindlepw2; do
