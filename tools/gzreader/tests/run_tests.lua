@@ -7777,7 +7777,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → Reader → Appearance)")
+print("Flash on every page turn (Settings → General → Screen refresh)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -7812,11 +7812,11 @@ print("Flash on every page turn (Settings → Reader → Appearance)")
     Eink.setFlashPageTurns(false)
     check(UIManager.FULL_REFRESH_COUNT == 6 and not Eink.pageTurnsTicked(), "unticked: every 6 pages")
     local f = io.open(debug.getinfo(Eink.promote, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_eink%.lua$",
-        "zenos.koplugin/modules/settings/sections/reader_settings.lua"), "rb")
+        "zenos.koplugin/modules/settings/sections/gz_screen_refresh.lua"), "rb")
     local src = f and f:read("*a") or ""
     if f then f:close() end
-    check(src:find('table.insert(appearance_items, IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → Reader → Appearance, on every device")
+    check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen refresh, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do

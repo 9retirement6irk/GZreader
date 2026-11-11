@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → General → Screen refresh: every flash setting in one place", text = "Settings → General → Screen refresh holds every setting about when the screen flashes clean: Flash on every page turn and Flash on every CBZ page turn (they were in Reader → Appearance), Flash when the screen changes (the Kindle 2, 3, DX and 4; it was in General → Advanced) and Partial pages refresh (also from Advanced). They work as before and keep what you had set." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
