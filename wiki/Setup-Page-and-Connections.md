@@ -55,7 +55,7 @@ the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
 Open the **Catalog** tab. Grimmory's options (connection, sync, bookmarks,
 highlights, auto-download shelf) are in **Settings → Connections → Grimmory**
 ; Memos (the Notes tab) is in **Settings →
-Connections → Memos (Notes)**. Read aloud is in Settings → Reader; Wi‑Fi only
+Connections → Memos (Notes)**. Read aloud is in Settings → General → Audio; Wi‑Fi only
 when needed in Settings → General, the diagnostic log in Settings → General →
 Advanced; updates in Settings
 → General → Updates.

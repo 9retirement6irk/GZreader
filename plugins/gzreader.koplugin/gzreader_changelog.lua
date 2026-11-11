@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → General → Audio: read aloud, the audiobook test and the headphone settings", text = "Settings → General → Audio (the Kindle 2, 3, DX and Touch) holds Read aloud, Test audiobook playback, Pause when headphones are unplugged and Find the headphone jack. They were at the end of Settings → Reader, but they're for music and audiobooks too. They work as before and keep what you had set." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
