@@ -1028,27 +1028,28 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- GZreader: usage statistics (Basic by default; can be turned off)
+        -- GZreader: automatic debug reports (off unless chosen; GZreader
+        -- sends no usage statistics after 1.28.1: gzreader_remote.lua)
         {
-            title       = _("Usage Statistics"),
-            description = _("Anonymous, and sent only when Wi‑Fi is on: never titles, files, accounts or what you type.") .. "\n"
-                .. _("Basic: version, Kindle model, time in books, Catalog, Notes and Calendar, what plays, downloads, freezes.") .. "\n"
-                .. _("Full: the same, and debug logs (errors, freezes; these can name a book)."),
+            title       = _("Debug Reports"),
+            gz_debug_reports = true,
+            description = _("When something goes wrong (an error, a freeze, a crash), GZreader can tell its developer by itself, while Wi‑Fi is on.") .. "\n"
+                .. _("Reports have GZreader's version, the Kindle model and lines from its log, which can name a book or file. Never passwords, tokens or what you type."),
             choice_type = "radio",
             choices     = (function()
-                local cur = G_reader_settings:readSetting("gzreader_usage")
-                cur = (cur == "off" or cur == "full") and cur or "basic"
+                local okr, R = pcall(require, "gzreader_remote")
+                local on = okr and type(R) == "table" and type(R.setting) == "function" and R.setting() == true
                 return {
-                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
-                    { id = "full",  text = _("Full"),                checked = cur == "full" },
-                    { id = "off",   text = _("Off"),                 checked = cur == "off" },
+                    { id = "on",  text = _("Send debug reports automatically"), checked = on },
+                    { id = "off", text = _("Don't send them"),                  checked = not on },
                 }
             end)(),
             on_apply = function(sel)
-                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
-                if not v then return end
-                local ok, U = pcall(require, "gzreader_usage")
-                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
+                local v
+                if sel["on"] then v = true elseif sel["off"] then v = false else return end
+                local okr, R = pcall(require, "gzreader_remote")
+                if okr and type(R) == "table" and type(R.setSetting) == "function" then R.setSetting(v)
+                else G_reader_settings:saveSetting("gzreader_debug_reports", v) end
             end,
         },
 
@@ -1072,6 +1073,15 @@ function M.build_install_pages(ctx)
 
     local accent_page = M.build_accent_page(ctx)
     if accent_page then table.insert(pages, 3, accent_page) end
+
+    -- GZreader: a Kindle without Wi-Fi can't send debug reports by itself
+    -- (Send diagnostic log to the developer goes at the next sync there)
+    local okn, Net = pcall(require, "gzreader_net")
+    if okn and type(Net) == "table" and Net.usb == true then
+        for i = #pages, 1, -1 do
+            if pages[i].gz_debug_reports then table.remove(pages, i) end
+        end
+    end
 
     -- Grimmory build: no "Home Folder" question. The home folder is the
     -- Grimmory folder the plugin creates (downloads land there).

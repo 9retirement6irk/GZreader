@@ -136,13 +136,9 @@ local function netHold(on)
     end)
 end
 
---- One job's result, in the main process: usage statistics, the login it
---- may have renewed, then its on_done.
+--- One job's result, in the main process: the login it may have renewed,
+--- then its on_done.
 local function finishJob(job, res)
-    pcall(function()
-        require("gzreader_usage").request(job.name, res[1] ~= nil and res[1] ~= false,
-            job.t0 and math.floor((require("socket").gettime() - job.t0) * 1000) or nil)
-    end)
     if res.tokens and job.api and job.api.store then
         -- the login was refreshed in the background process: keep the new tokens
         local store = job.api.store

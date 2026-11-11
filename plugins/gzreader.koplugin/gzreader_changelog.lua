@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },
+        },
+    },
+    {
         version = "1.28.2",
         changes = {
             { short = "New books are laid out while the Kindle charges, so their first open is quick", text = "While the Kindle charges and Home is on screen, GZreader lays out downloaded books you haven't opened yet in the background (Settings → Reader → Lay out new books while charging, on by default), so the first time you open one it opens like a book you've read before instead of taking 10–30 seconds on a Kindle 3. It waits while books download or other background work runs, and for a new book's picture-book check (a picture book is laid out the way it will be fitted), stops as soon as you unplug, open a book or start a download, and the books don't show as opened. Not on the Kindle 2 and DX (not enough memory)." },

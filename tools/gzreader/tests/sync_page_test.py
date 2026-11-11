@@ -142,7 +142,7 @@ OUTBOX = {
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
-    # usage statistics: the page sends what the Kindle left in usage/
+    # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
     "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
     # Send to the developer: the reports in reports/ go to this feed (gzreader_usbreport.lua)
     "report": {"feed": "http://127.0.0.1:%d/open/feed/testfeed" % GP, "device": "Kindle2-ab12cd", "test_build": False},
@@ -679,8 +679,8 @@ check(added2[0].get("name") == "Beach.png" and len(sst.get("add") or []) == 2 an
       and struct.unpack(">II", pdata2[16:24]) == (824, 1200),
       "sleep screen pictures: the HEIC photo brought as a PNG too")
 usage = state.get("usage", [])
-check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
-      "usage statistics the Kindle left: sent from the computer, then deleted")
+check(len(usage) == 0 and not [k for k in files if k.startswith(G + "usage/")],
+      "usage statistics an older GZreader left: deleted, not sent (GZreader sends none since 1.28.1)")
 mus = {m["key"]: m for m in inbox.get("music", [])}
 def col(key):
     m = mus.get(key)

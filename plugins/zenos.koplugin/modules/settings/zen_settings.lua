@@ -86,7 +86,7 @@ function M.build(plugin)
     local general_items   = general_section.build(ctx, extras_items)
 
     -- GZreader: Wi-Fi is a menu (On, Off, Auto, then ZenOS's network list:
-    -- gz_settings.wifiItem) in place of ZenOS's switch; usage statistics before
+    -- gz_settings.wifiItem) in place of ZenOS's switch; debug reports before
     -- Advanced, and the diagnostic log's items (logging, sending, saving) at
     -- the top of Advanced (gz_settings.splitDiagnostics);
     -- read aloud and the audiobook test at the end of Reader.

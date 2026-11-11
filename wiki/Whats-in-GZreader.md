@@ -8,7 +8,7 @@ GZreader is a package of KOReader with a few of its plugins, ZenOS, and GZreader
 | `coverbrowser.koplugin` | Required by ZenOS's library views. |
 | `statistics.koplugin` | Feeds ZenOS's Home reading-stats widgets. |
 | `autosuspend.koplugin` | Battery. |
-| `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), the Grimmory library browser, downloads, progress, bookmark and highlight sync, the quick panel, Notes, Calendar, Music, audiobooks, read aloud, sync with a computer, updates, usage statistics and diagnostics. |
+| `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), the Grimmory library browser, downloads, progress, bookmark and highlight sync, the quick panel, Notes, Calendar, Music, audiobooks, read aloud, sync with a computer, updates, debug reports and diagnostics. |
 
 Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB), and GZreader's launchers for each Kindle (KUAL, the Kindle 2/3/DX launchpad, a home-screen item on touch Kindles, an app icon on the Nook 1st Edition).
 

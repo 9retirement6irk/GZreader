@@ -236,7 +236,6 @@ end
 --- Show page `id`'s first list (the title says which).
 function Browser:openSection(id)
     self.section = id
-    pcall(function() require("gzreader_usage").nudge() end) -- (a visit to another page)
     local m = self.menu
     m._gz_shop_last = nil
     m.item_table_stack = {}
