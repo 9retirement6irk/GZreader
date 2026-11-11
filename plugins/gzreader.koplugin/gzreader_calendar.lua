@@ -1435,23 +1435,31 @@ function Calendar.removeFeed(plugin, index)
     Calendar.events, Calendar.cached_at, Calendar.range = {}, nil, nil
 end
 
-function Calendar.showConnect(plugin)
-    local items = require("gzreader_net").usb and {
+--- The Calendar tab before any calendar is added: the ways to add some
+--- (ZenOS rows: short labels, the explanation behind About).
+function Calendar.connectItems(plugin)
+    local Rows = require("gzreader_rows")
+    if require("gzreader_net").usb then
         -- no Wi-Fi: the sync page brings the calendars (gzreader_usbsync.lua)
-        { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end },
-        { text = _("Calendars come through your computer: add calendar links, a CalDAV account or .ics files on the sync page, then sync."),
-          select_enabled = false },
-    } or {
-        { text = _("Add calendars with QR code: links (webcal / ICS, e.g. Proton) or a CalDAV account"), callback = function()
+        return Rows.mark({
+            { text = _("Sync with computer"), gz_icon = Rows.FILE.usb, callback = function() require("gzreader_usbsync").show(plugin) end },
+            Rows.about(_("About calendars"), _("Calendars come through your computer: add calendar links, a CalDAV account or .ics files on the sync page, then sync.")),
+        })
+    end
+    return Rows.mark({
+        { text = _("Add with QR code"), gz_icon = "send", callback = function()
             require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
         end },
-        { text = _("Add a calendar link by typing"), callback = function() Calendar.typeAddLink(plugin) end },
-        { text = _("Add links from calendars.txt (USB drive)"), callback = function() Calendar.importFileUI(plugin) end },
-        { text = _("Connect a CalDAV account by typing"), callback = function() Calendar.typeConnect(plugin) end },
-        { text = _("Copy from another GZreader"), callback = function() Calendar.copyConnect(plugin) end },
-        { text = _("Calendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password."),
-          select_enabled = false },
-    }
+        { text = _("Type a calendar link"), gz_icon = "connect", callback = function() Calendar.typeAddLink(plugin) end },
+        { text = _("Add from calendars.txt"), gz_icon = Rows.FILE.usb, callback = function() Calendar.importFileUI(plugin) end },
+        { text = _("Type a CalDAV account"), gz_icon = "keyboard", callback = function() Calendar.typeConnect(plugin) end },
+        { text = _("Copy from another GZreader"), gz_icon = "copy", callback = function() Calendar.copyConnect(plugin) end },
+        Rows.about(_("About calendar links"), _("Add with QR code: open the page on your phone to add calendar links (webcal / ICS, e.g. Proton) or a CalDAV account.\n\nCalendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password.\n\ncalendars.txt: one link per line (\"Name | link\" to give it a name), in the GZreader folder or at the top of the Kindle's USB drive.")),
+    })
+end
+
+function Calendar.showConnect(plugin)
+    local items = Calendar.connectItems(plugin)
     local menu
     menu = Menu:new{
         title = _("Calendar: add calendars"), item_table = items, covers_fullscreen = true, is_borderless = true,
@@ -1460,6 +1468,7 @@ function Calendar.showConnect(plugin)
     }
     menu.key_events.LeftButtonTap = nil
     pcall(require("gzreader_tabs").decorate, menu, _("Calendar"))
+    require("gzreader_rows").apply(menu)
     Calendar.connect_menu = menu
     UIManager:show(menu)
     return menu

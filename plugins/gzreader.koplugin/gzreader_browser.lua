@@ -118,6 +118,8 @@ function Browser:show(opts)
     pcall(function() require("gzreader_covermenu").apply(self.menu, self.plugin) end)
     -- the first page as a bookshop in the Bookshelf view (gzreader_bookshop.lua)
     pcall(function() require("gzreader_bookshop").apply(self) end)
+    -- menu lists (Plex's sign-in on the Music page): ZenOS rows (gzreader_rows.lua)
+    pcall(function() require("gzreader_rows").apply(self.menu) end)
     -- the selection stays where it is when the page is drawn again (keys)
     pcall(function() require("gzreader_focus").apply(self.menu, require("device"):hasDPad()) end)
     local orig_switch = self.menu.switchItemTable
