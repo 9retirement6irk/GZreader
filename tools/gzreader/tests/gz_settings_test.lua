@@ -18,6 +18,7 @@ local real = {
     ["modules/settings/sections/global_settings"] = true,
     ["modules/settings/sections/general_settings"] = true,
     ["modules/settings/sections/advanced_settings"] = true,
+    ["modules/settings/sections/gz_screen_refresh"] = true,
     ["modules/settings/sections/about_settings"] = true,
     ["modules/settings/sections/interface_settings"] = true,
     ["modules/settings/zen_settings_utils"] = true,
@@ -129,9 +130,55 @@ if okb then
     for _i, gone in ipairs({ "Debug logging", "Clear all gestures", "Plugin management", "Patch management" }) do
         check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced: " .. gone)
     end
-    for _i, kept in ipairs({ "Partial pages refresh", "Show hidden files", "Extract metadata" }) do
+    for _i, kept in ipairs({ "Show hidden files", "Extract metadata" }) do
         check(adv:find("|" .. kept .. "|", 1, true) ~= nil, "Advanced still has " .. kept)
     end
+    -- General → Screen refresh: every flash setting in one place
+    for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
+        check(not adv:find("|" .. moved .. "|", 1, true), "not in General → Advanced any more: " .. moved)
+    end
+    check(gen:find("|Sleep|Screen refresh|", 1, true) ~= nil, "General: Screen refresh, just after Sleep")
+    local refresh = find(general, "Screen refresh")
+    local rt = texts(refresh and refresh.sub_item_table)
+    print("    Screen refresh: " .. rt)
+    check(rt == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
+        "Screen refresh: page turns, CBZ page turns, screen changes, partial pages (a Kindle 3)")
+    local rsrc = read("modules/settings/sections/reader_settings.lua")
+    check(not rsrc:find('_("Flash on every', 1, true), "Reader → Appearance: no flash settings left")
+    local asrc = read("modules/settings/sections/advanced_settings.lua")
+    check(not asrc:find('_("Partial pages refresh")', 1, true) and not asrc:find('_("Flash when the screen changes")', 1, true),
+        "General → Advanced: no flash settings left")
+    -- what each Kindle sees (gzreader_eink: page turns on every Kindle, screen changes without REAGL)
+    local function refreshTexts(eink)
+        local keep = package.loaded["gzreader_eink"]
+        package.loaded["gzreader_eink"] = eink or nil
+        -- (none: requiring it fails, as without GZreader's plugin)
+        package.preload["gzreader_eink"] = not eink and function() error("no gzreader_eink") end or nil
+        local list = require("modules/settings/sections/gz_screen_refresh").build({ config = config, plugin = plugin })
+        package.loaded["gzreader_eink"], package.preload["gzreader_eink"] = keep, nil
+        return texts(list)
+    end
+    local function eink(reagl)
+        return { flashPageTurns = function() return not reagl end, pageTurnsTicked = function() return not reagl end,
+            setFlashPageTurns = function() end, applies = function() return not reagl end,
+            enabled = function() return true end, setEnabled = function() end }
+    end
+    check(refreshTexts(eink(true)) == "|Flash on every page turn|Flash on every CBZ page turn|Partial pages refresh|",
+        "a Paperwhite (REAGL): no Flash when the screen changes")
+    check(refreshTexts(eink(false)) == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
+        "a Kindle 3: all four")
+    check(refreshTexts(false) == "|Flash on every CBZ page turn|Partial pages refresh|", "without GZreader's e-ink module: ZenOS's two")
+    -- ticking them changes what they did before
+    local cbz, partial
+    for _i, it in ipairs(require("modules/settings/sections/gz_screen_refresh").build({ config = config, plugin = plugin })) do
+        if text(it) == "Flash on every CBZ page turn" then cbz = it elseif text(it) == "Partial pages refresh" then partial = it end
+    end
+    config.features.reader_flash_cbz, config.features.partial_page_repaint = nil, nil
+    cbz.callback(); partial.callback()
+    check(config.features.reader_flash_cbz == true and cbz.checked_func() and config.features.partial_page_repaint == true and partial.checked_func(),
+        "Flash on every CBZ page turn and Partial pages refresh still set ZenOS's own settings")
+    cbz.callback(); partial.callback()
+    check(not cbz.checked_func() and not partial.checked_func(), "…and untick them")
 
     local about = find(items, "About").sub_item_table
     print("    About: " .. texts(about))
@@ -155,8 +202,8 @@ if okb then
     check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
     check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil).sub_item_table) == "|On|",
         "no ZenOS row to take the network list from: the modes alone")
-    check(gen:find("|Sleep|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
-        "General: Time and date, Language and Storage after Sleep " .. gen)
+    check(gen:find("|Sleep|Screen refresh|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
+        "General: Time and date, Language and Storage after Sleep (and Screen refresh) " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
     local dev = texts(device and device.sub_item_table)
     check(not dev:find("|Storage|", 1, true) and not dev:find("|Language|", 1, true) and not dev:find("|Time and date|", 1, true),
