@@ -58,19 +58,20 @@ the book once you open one.
       (the books start after it), or *Scattered*: the first on the right,
       the next on the left, then the right again. In the Catalog an ornament
       stands in a ledge's free place, on the right, whatever this says;
-  - **which ornaments**: sixteen photorealistic ones stand all year
-    (pictures of [Poly Haven](https://polyhaven.com)'s CC0 objects): three
+  - **which ornaments**: seventeen photorealistic ones stand all year:
+    pictures of [Poly Haven](https://polyhaven.com)'s CC0 objects (three
     potted plants, a stone cat, a marble bust, a porcelain horse, an alarm
     clock and a mantel clock, two vases, a storm lantern, a candlestick, a
-    model ship, binoculars, a seashell and a flowered jug. Seasonal ones,
-    drawn with shading, stand in their season and then take about two
-    places of three: a **Christmas tree** (20 November to 6 January), a
-    present (December to 6 January), a snowman (December to February), a
-    pumpkin (mid-September to November), tulips (March to May). Five more
-    drawn ones (plant, cactus, globe, hourglass, cat) are off until you
-    tick them. **Which ornaments** has a tick for each: tick a seasonal one
-    to have it all year, untick any to never see it; *Seasonal ones in
-    their season again* undoes that;
+    model ship, binoculars, a seashell, a flowered jug) and a tabby cat.
+    Seasonal ones stand in their season and then take about two places of
+    three: a **Christmas tree** (a photograph; 20 November to 6 January), a
+    pumpkin (a photograph; mid-September to November), and a drawn present
+    (December to 6 January), snowman (December to February) and tulips
+    (March to May). Seven drawn ones (plant, cactus, globe, hourglass, cat,
+    Christmas tree, pumpkin) are off until you tick them. **Which
+    ornaments** has a tick for each: tick a seasonal one to have it all
+    year, untick any to never see it; *Seasonal ones in their season again*
+    undoes that;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;

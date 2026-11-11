@@ -141,8 +141,8 @@ do
         -- the two that come with it, measured from their files
         Theme.today = { 6, 10 }
         local list = Theme.list()
-        check(#list == 26 and list[17].name == "ornament-plant.png" and math.abs(list[17].aspect - 60 / 104) < 0.01 and list[18].name == "ornament-cactus.png",
-            "26 ornaments come with GZreader (their shape from the picture's header)")
+        check(#list == 29 and list[18].name == "ornament-plant.png" and math.abs(list[18].aspect - 60 / 104) < 0.01 and list[19].name == "ornament-cactus.png",
+            "29 ornaments come with GZreader (their shape from the picture's header)")
         local photos = 0
         for _i, e in ipairs(list) do
             if e.photo then
@@ -150,16 +150,20 @@ do
                 local head = io.open(e.path, "rb")
                 local magic = head and head:read(4) or ""
                 if head then head:close() end
-                if magic ~= "\137PNG" or e.season or e.off then photos = -100 end
+                if magic ~= "\137PNG" or e.off then photos = -100 end
             end
         end
         local credits = io.open(REPO .. "/plugins/gzreader.koplugin/icons/shelf/CREDITS.md", "r"):read("*a")
-        check(photos == 16 and list[1].photo and list[16].photo and not list[17].photo, "the first 16 are photorealistic pictures, standing all year")
+        check(photos == 19 and list[1].photo and list[17].photo and not list[18].photo and list[17].label == "Tabby cat",
+            "19 are photorealistic pictures: 17 standing all year (the first in the list), and the Christmas tree and the pumpkin")
+        check(credits:find("ornament-photo-christmas-tree", 1, true) and credits:find("supplied by the owner", 1, true),
+            "…the three the owner supplied are listed as his, their source not recorded")
         check(credits:find("Poly Haven", 1, true) and credits:find("CC0", 1, true) and credits:find("concrete_cat_statue", 1, true) and credits:find("dutch_ship_medium", 1, true),
             "…credited: Poly Haven's objects, CC0, by name")
         -- each is rendered from a drawing kept in tools/gzreader/ornaments (the Kindle's SVG renderer draws gradients too dark)
-        for i = 17, #list do
+        for i = 18, #list do
             local e = list[i]
+            if e.photo then goto next_one end
             local src = REPO .. "/tools/gzreader/ornaments/" .. e.name:gsub("%.png$", ".svg")
             local f = io.open(src, "r")
             local text = f and f:read("*a") or ""
@@ -167,31 +171,32 @@ do
             local head = io.open(e.path, "rb")
             local magic = head and head:read(4) or ""
             if head then head:close() end
-            if i <= 18 then
+            if i <= 19 then
                 check(magic == "\137PNG" and text:find("Bookshelf by AndyHazz", 1, true) and text:find("AGPL-3.0", 1, true), e.name .. ": its drawing says where it's from and its licence")
             else
                 check(magic == "\137PNG" and text:find("GZreader shelf ornament", 1, true) and text:find("Gradient", 1, true)
                     and e.aspect > 0.3 and e.aspect < 2, e.name .. ": GZreader's own drawing, shaded")
             end
+            ::next_one::
         end
         -- seasons
         local tree
-        for _i, e in ipairs(list) do if e.name == "ornament-christmas-tree.png" then tree = e end end
+        for _i, e in ipairs(list) do if e.name == "ornament-photo-christmas-tree.png" then tree = e end end
         check(Theme.inSeason({ 11, 20, 1, 6 }, 12, 25) and Theme.inSeason({ 11, 20, 1, 6 }, 1, 6) and Theme.inSeason({ 11, 20, 1, 6 }, 11, 20)
             and not Theme.inSeason({ 11, 20, 1, 6 }, 1, 7) and not Theme.inSeason({ 11, 20, 1, 6 }, 11, 19)
             and Theme.inSeason({ 3, 1, 5, 31 }, 4, 15) and not Theme.inSeason({ 3, 1, 5, 31 }, 6, 1) and Theme.inSeason(nil, 6, 1),
             "a season runs from a day to a day, over New Year too")
         local function names(t) local o = {}; for i, e in ipairs(t) do o[i] = e.label end; return table.concat(o, ", ") end
-        check(#(Theme.standing()) == 16 and (Theme.standing())[1].photo and (Theme.standing())[16].label == "Flowered jug",
-            "in June: the 16 photorealistic ones (the drawn plant, cactus, globe, hourglass and cat are off until ticked)")
+        check(#(Theme.standing()) == 17 and (Theme.standing())[1].photo and (Theme.standing())[17].label == "Tabby cat",
+            "in June: the 17 photorealistic ones (the drawn plant, cactus, globe, hourglass and cat are off until ticked)")
         local drawn_cat
         for _i, e in ipairs(list) do if e.name == "ornament-cat.png" then drawn_cat = e end end
         Theme.setOn(drawn_cat, true)
-        check(#(Theme.standing()) == 17 and Theme.isOn(drawn_cat), "…ticking the drawn cat adds it")
+        check(#(Theme.standing()) == 18 and Theme.isOn(drawn_cat), "…ticking the drawn cat adds it")
         Theme.resetChosen()
         Theme.today = { 12, 10 }
         local on, seasonal = Theme.standing()
-        check(#on == 19 and names(seasonal) == "Christmas tree, Present, Snowman", "in December: the Christmas tree, a present and a snowman join them")
+        check(#on == 20 and names(seasonal) == "Christmas tree, Present, Snowman", "in December: the Christmas tree, a present and a snowman join them")
         local festive = 0
         for i = 1, 300 do if Theme.pick("downloads:" .. i .. ":2").season then festive = festive + 1 end end
         check(festive > 180 and festive < 270, "…and take about two places of three (" .. festive .. " of 300)")
@@ -201,7 +206,7 @@ do
         check(names(select(2, Theme.standing())) == "Tulips", "in April: tulips")
         Theme.today = { 6, 10 }
         Theme.setOn(tree, true)
-        check(Theme.isOn(tree) and #select(2, Theme.standing()) == 0 and #(Theme.standing()) == 17, "ticked by hand: the Christmas tree stands in June too, as one among the others")
+        check(Theme.isOn(tree) and #select(2, Theme.standing()) == 0 and #(Theme.standing()) == 18, "ticked by hand: the Christmas tree stands in June too, as one among the others")
         Theme.today = { 12, 10 }
         Theme.setOn(tree, false)
         check(not Theme.isOn(tree) and names(select(2, Theme.standing())) == "Present, Snowman", "unticked by hand: not even at Christmas")
@@ -217,7 +222,7 @@ do
         dir_files = { ".", "..", "notes.txt", "globe.png", "broken.svg", "Vase.SVG", ".hidden.png" }
         Theme.found = nil
         list = Theme.list()
-        check(#list == 28 and list[27].name == "Vase.SVG" and list[27].aspect == 0.5 and list[27].label == "Vase" and list[28].name == "globe.png" and list[28].aspect == 2,
+        check(#list == 31 and list[30].name == "Vase.SVG" and list[30].aspect == 0.5 and list[30].label == "Vase" and list[31].name == "globe.png" and list[31].aspect == 2,
             "your own PNG and SVG files join them (their shape from the file); other files and broken ones don't (" .. #list .. ")")
         check(Theme.userDir(false) == udir .. "/gzreader/ornaments", "…from koreader/settings/gzreader/ornaments")
         -- which one stands where: the same every time
@@ -228,7 +233,7 @@ do
         for _k in pairs(seen) do kinds = kinds + 1 end
         check(a == b and kinds >= 12, "the same place has the same ornament every time; different places, different ones (" .. kinds .. " of 18)")
         -- sizes: 80% of the books' room, narrower when the room is, never under 2/3
-        local plant = list[17]
+        local plant = list[18]
         local w, h = Theme.size(plant, 150, 400)
         check(h == 120 and math.abs(w - 120 * 60 / 104) <= 1, "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
         local w2, h2 = Theme.size(plant, 150, 70)
@@ -339,11 +344,11 @@ do
         local which = item.sub_item_table[8].sub_item_table_func()
         local wt = {}
         for i, it in ipairs(which) do wt[i] = it.text or it.text_func() end
-        check(#which == 29 and wt[24] == "Christmas tree (20 November to 6 January)" and wt[1] == "Potted plant" and wt[17] == "Potted plant (drawn)" and wt[27] == "Vase"
-            and wt[29] == "Seasonal ones in their season again" and which[1].checked_func() and not which[17].checked_func() and not which[24].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[24]) .. ")")
-        which[24].callback()
-        check(which[24].checked_func() and which[24].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
-        which[29].callback()
+        check(#which == 32 and wt[26] == "Christmas tree (20 November to 6 January)" and wt[27] == "Christmas tree (drawn)" and wt[1] == "Potted plant" and wt[18] == "Potted plant (drawn)" and wt[30] == "Vase"
+            and wt[32] == "Seasonal ones in their season again" and which[1].checked_func() and not which[18].checked_func() and not which[26].checked_func() and not which[27].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[26]) .. ")")
+        which[26].callback()
+        check(which[26].checked_func() and which[26].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
+        which[32].callback()
         check(Theme.get() == "oak" and item.sub_item_table[2].checked_func() and not item.sub_item_table[1].checked_func()
             and Theme.ornaments() == "always" and item.sub_item_table[6].checked_func(), "choosing one sets it, and ticks it")
     end

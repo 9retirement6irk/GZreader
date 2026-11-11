@@ -43,4 +43,14 @@ Credit is given gladly; the file names keep Poly Haven's:
 | `lambis-shell` | lambis_shell | Kuutti Siitonen |
 | `jug-01` | jug_01 | Kuutti Siitonen |
 
+## Pictures supplied by the owner
+
+`ornament-photo-christmas-tree.png`, `ornament-photo-pumpkin.png` and
+`ornament-photo-tabby-cat.png` were supplied by the owner of this repository
+(2026-11-11) and cut out and turned to greys for GZreader. Where they come
+from and their licences are **not recorded here**: add the source and
+licence of each, or replace the picture, before relying on them being free
+to redistribute. The drawn Christmas tree and pumpkin (below) can stand in
+for them: they are GZreader's own.
+
 The other pictures here are GZreader's own.

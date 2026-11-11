@@ -74,6 +74,8 @@ Theme.BUILT_IN = {
     { file = "ornament-photo-vintage-binocular.png", label = _("Binoculars"), tall = 0.45, photo = true },
     { file = "ornament-photo-lambis-shell.png", label = _("Seashell"), tall = 0.36, photo = true },
     { file = "ornament-photo-jug-01.png", label = _("Flowered jug"), tall = 0.55, photo = true },
+    -- (the owner's pictures: this one, and the Christmas tree and pumpkin below)
+    { file = "ornament-photo-tabby-cat.png", label = _("Tabby cat"), tall = 0.7, photo = true },
     -- drawn (off until ticked: `off`), after Bookshelf's two and GZreader's own
     { file = "ornament-plant.png", label = _("Potted plant (drawn)"), off = true },
     { file = "ornament-cactus.png", label = _("Cactus (drawn)"), off = true },
@@ -82,8 +84,10 @@ Theme.BUILT_IN = {
     { file = "ornament-cat.png", label = _("Cat (drawn)"), tall = 0.62, off = true },
     -- seasonal (drawn)
     { file = "ornament-tulips.png", label = _("Tulips"), season = { 3, 1, 5, 31 }, when = _("March to May") },
-    { file = "ornament-pumpkin.png", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November") },
-    { file = "ornament-christmas-tree.png", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January") },
+    { file = "ornament-photo-pumpkin.png", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November"), photo = true },
+    { file = "ornament-pumpkin.png", label = _("Pumpkin (drawn)"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November"), off = true },
+    { file = "ornament-photo-christmas-tree.png", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January"), photo = true },
+    { file = "ornament-christmas-tree.png", label = _("Christmas tree (drawn)"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January"), off = true },
     { file = "ornament-present.png", label = _("Present"), tall = 0.42, season = { 12, 1, 1, 6 }, when = _("December to 6 January") },
     { file = "ornament-snowman.png", label = _("Snowman"), tall = 0.8, season = { 12, 1, 2, 28 }, when = _("December to February") },
 }
@@ -639,7 +643,7 @@ function Theme.settingsItem()
             for _i, e in ipairs(Theme.list()) do
                 which[#which + 1] = {
                     text_func = function()
-                        if e.season and chosen()[e.name] == nil then
+                        if e.season and not e.off and chosen()[e.name] == nil then
                             return e.label .. " (" .. e.when .. ")"
                         end
                         return e.label
