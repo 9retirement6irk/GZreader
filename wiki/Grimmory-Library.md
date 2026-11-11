@@ -23,6 +23,9 @@ next page (Audiobooks ›). To turn to another page:
 - **Keys**: the page-turn buttons (or the next-page arrow at the bottom of a
   list view).
 
+The pages go round: turning back from Books goes to Music, and on from Music
+to Books (the strip shows ‹ Music on Books and Books › on Music).
+
 A page whose list is longer than one screen turns through its own screens
 first. Inside a page's lists (All books, an author…) the strip is blank and
 swipes turn that list's pages, as before.

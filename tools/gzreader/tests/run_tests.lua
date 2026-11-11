@@ -690,13 +690,15 @@ print("Catalog tab: Books, Audiobooks and Music pages")
         "pages: Books, Audiobooks, Music with a speaker; Books alone without")
     local all = Catalog.sections(true)
     check(Catalog.step(all, "books", 1) == "audiobooks" and Catalog.step(all, "music", -1) == "audiobooks"
-        and Catalog.step(all, "music", 1) == nil and Catalog.step(all, "books", -1) == nil, "pages: next and before, nothing past the ends")
+        and Catalog.step(all, "music", 1) == "books" and Catalog.step(all, "books", -1) == "music" and Catalog.step(all, "audiobooks", 0) == "audiobooks"
+        and Catalog.step({ "books" }, "books", 1) == nil and Catalog.step({ "books" }, "books", -1) == nil,
+        "pages: next and before, round the ends (after Music: Books; before Books: Music); nothing to turn to with one page")
     local p1, p2, p3 = Catalog.stripParts(all, "books"), Catalog.stripParts(all, "audiobooks"), Catalog.stripParts(all, "music")
-    check(p1.left == nil and p1.dots == "● ○ ○" and p1.right == "Audiobooks ›" and p2.left == "‹ Books" and p2.dots == "○ ● ○"
-        and p2.right == "Music ›" and p3.left == "‹ Audiobooks" and p3.right == nil and Catalog.stripParts({ "books" }, "books") == nil,
-        "the strip under the title: the page before, a dot a page, the next page (none with one page)")
-    check(Catalog.hit(p1, 590, 0, 600) == 1 and Catalog.hit(p1, 10, 0, 600) == nil and Catalog.hit(p2, 10, 0, 600) == -1
-        and Catalog.hit(p2, 300, 0, 600) == nil and Catalog.hit(p3, 590, 0, 600) == nil, "the strip: a tap on a side turns that way, if there's a page there")
+    check(p1.left == "‹ Music" and p1.dots == "● ○ ○" and p1.right == "Audiobooks ›" and p2.left == "‹ Books" and p2.dots == "○ ● ○"
+        and p2.right == "Music ›" and p3.left == "‹ Audiobooks" and p3.right == "Books ›" and Catalog.stripParts({ "books" }, "books") == nil,
+        "the strip under the title: the page before, a dot a page, the next page, round the ends (none with one page)")
+    check(Catalog.hit(p1, 590, 0, 600) == 1 and Catalog.hit(p1, 10, 0, 600) == -1 and Catalog.hit(p2, 10, 0, 600) == -1
+        and Catalog.hit(p2, 300, 0, 600) == nil and Catalog.hit(p3, 590, 0, 600) == 1, "the strip: a tap on either side turns that way")
     check(Catalog.title("books") == "Books" and Catalog.title("audiobooks") == "Audiobooks" and Catalog.title("music") == "Music",
         "the title says which page")
     local saved_audio = require("gzreader_touch").audio
@@ -723,7 +725,9 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     check(Browser.rootItems(plain)[4].text == "All audiobooks" and Browser.rootItems(plain).gz_catalog == "audiobooks",
         "the Audiobooks page: All audiobooks")
     m:onNextPage()
-    check(cb.section == "music" and m.item_table == music, "nothing past Music")
+    check(cb.section == "books" and m.item_table[1].gz_id == "search" and m.title == "Books", "past Music (a swipe left): Books again")
+    m:onPrevPage()
+    check(cb.section == "music" and m.title == "Music", "before Books (a swipe right): Music")
     m:onPrevPage(); m:onPrevPage()
     check(cb.section == "books" and m.item_table[1].gz_id == "search", "a swipe right goes back, to Books")
     -- a page with more than one page of its own turns those first
