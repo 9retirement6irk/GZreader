@@ -55,5 +55,6 @@ GZreader keeps ZenOS's Home, tabs, library views, settings and setup guide, and 
 - **No Metadata menu in Settings → Downloads → Books** (ZenOS's online sources for its metadata editor): a download's title, authors and series come from Grimmory. **Square cover corners in the Bookshelf view** (Rounded cover corners is greyed out there; the other views keep their setting).
 - **No Double-tap to open a book on the Kindle 2, 3, DX and 4** (Settings → Downloads → Books): they open books with keys or the 5-way, so there's nothing to tap; the touch Kindles still have it.
 - **Branding:** GZreader's name and logo; a "GZreader" item on the touch Kindles' home screen instead of ZenOS's.
+- **Settings → KOReader without what GZreader has elsewhere:** no Language, Time and date, Sleep screen, Autosuspend timeout or Wi‑Fi connection (Settings → General), History, Favorites or Collections (tabs), End of document action (Reader → End of book, where it still is), Night mode, Rotation or Exit (Restart, Sleep, Exit: quick panel tiles), Version, About or Quickstart guide (Settings → About and its Setup Guide), and no Cloud storage.
 
 The full list of changed upstream files is `tools/gzreader/tests/keeps.txt` in the repository.

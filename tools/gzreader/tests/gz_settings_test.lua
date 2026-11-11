@@ -275,6 +275,46 @@ check(n_keep == 2, "the KOReader section's top menus (File browser) are filtered
 check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem", 1, true) ~= nil,
     "the KOReader menu picker (bottom swipe → KOReader menu) leaves them out too")
 
+-- the KOReader section without what GZreader has elsewhere (KOREADER_DUPLICATES)
+;(function()
+    local GzS = require("common/gz_settings")
+    for _i, id in ipairs({ "language", "time", "screensaver", "autosuspend", "network_wifi", "history", "favorites",
+            "collections", "document_end_action", "night_mode", "screen_rotation", "exit_menu", "version", "about",
+            "quickstart_guide", "cloud_storage" }) do
+        check(GzS.KOREADER_DUPLICATES[id] == true and not GzS.KOREADER_HIDDEN[id], "KOReader section: " .. id .. " left out there only")
+    end
+    local refreshed = 0
+    local section = {
+        { id = "night_mode", text = "Night mode" },
+        { id = "network", text = "Network", sub_item_table = {
+            { id = "network_wifi", text = "Wi-Fi connection" }, { id = "network_info", text = "Network info" } } },
+        { id = "device", text = "Device", sub_item_table_func = function() return {
+            { id = "time", text = "Time and date" }, { id = "keyboard_layout", text = "Keyboard" },
+            { id = "autosuspend", text = "Autosuspend timeout" } } end },
+        { id = "main", text = "Main menu", sub_item_table = {
+            { id = "history", text = "History" }, { id = "bookmark_browser", text = "Bookmark browser" },
+            { id = "help", text = "Help", sub_item_table = { { id = "quickstart_guide", text = "Quickstart guide" },
+                { id = "search_menu", text = "Menu search" }, { id = "version", text = "Version" }, { id = "about", text = "About" } } },
+            { id = "exit_menu", text = "Exit", sub_item_table = { { id = "restart_koreader", text = "Restart" } } } } },
+        { text = "no id" },
+    }
+    section._zen_refresh = function() refreshed = refreshed + 1; return { { id = "language", text = "Language" }, { id = "units", text = "Units" } } end
+    local out = GzS.dropKOReaderDuplicates(section)
+    check(texts(out) == "|Network|Device|Main menu|no id|", "KOReader section: Night mode left out " .. texts(out))
+    check(texts(out[1].sub_item_table) == "|Network info|", "…and Wi-Fi connection inside Network")
+    check(texts(out[2].sub_item_table_func()) == "|Keyboard|", "…and Time and date, Autosuspend inside a built-later submenu")
+    check(texts(out[3].sub_item_table) == "|Bookmark browser|Help|", "…History and Exit (Restart, Sleep, Exit) from Main menu")
+    check(texts(out[3].sub_item_table[2].sub_item_table) == "|Menu search|", "…Quickstart guide, Version, About from Help")
+    check(texts(out._zen_refresh()) == "|Units|" and refreshed == 1, "…and again after the page refreshes")
+    check(GzS.dropKOReaderDuplicates(nil) == nil, "nil: nil")
+    local nm = read("modules/menu/app_launcher/native_menu.lua")
+    check(nm:find('dropKOReaderDuplicates(\n                        Settings.copyItems(children, menu, setting))', 1, true) ~= nil
+        and select(2, nm:gsub("dropKOReaderDuplicates", "")) == 1,
+        "only the KOReader section drops them (not settingsItems(scope, id): End of book's End of document action)")
+    check(read("modules/settings/sections/end_book_settings.lua"):find('settingsItems("active", "document_end_action")', 1, true) ~= nil,
+        "End of book still takes End of document action by its id")
+end)()
+
 -- navbar tabs
 local GS = require("common/gz_settings")
 local kept = GS.dropHiddenTabs({ { id = "books" }, { id = "manga" }, "news", { id = "calibre_search" }, "home", { id = "folder" } })

@@ -63,6 +63,57 @@ function M.keepKOReaderItem(item)
     return not (type(item) == "table" and type(item.id) == "string" and M.KOREADER_HIDDEN[item.id])
 end
 
+--- KOReader menu items the Settings → KOReader section leaves out because
+--- GZreader has them elsewhere. Unlike KOREADER_HIDDEN they still work where
+--- GZreader takes one by its id (Reader → End of book's End of document
+--- action), so only the section drops them (native_menu.settingsItems).
+M.KOREADER_DUPLICATES = {
+    -- Settings → General: Language, Time and date, Sleep (and its Automatic
+    -- suspend), Wi-Fi
+    language = true, time = true, screensaver = true, autosuspend = true, network_wifi = true,
+    -- the History, Favorites and Collections tabs
+    history = true, favorites = true, collections = true,
+    -- Settings → Reader → End of book
+    document_end_action = true,
+    -- the quick panel's Night mode, Rotate, Restart, Sleep and Exit tiles
+    -- (exit_menu: Restart, Sleep, Exit)
+    night_mode = true, screen_rotation = true, exit_menu = true,
+    -- Settings → About (GZreader's version), About → Setup Guide
+    version = true, about = true, quickstart_guide = true,
+    -- not used by GZreader
+    cloud_storage = true,
+}
+
+--- `list` (rows copied from KOReader's menu for the KOReader section) without
+--- KOREADER_DUPLICATES, inside submenus too, and again after a refresh.
+function M.dropKOReaderDuplicates(list)
+    if type(list) ~= "table" then return list end
+    local out = {}
+    for key, value in pairs(list) do
+        if type(key) ~= "number" then out[key] = value end
+    end
+    for _i, refresh in ipairs({ "_zen_refresh", "refresh_func" }) do
+        if type(list[refresh]) == "function" then
+            local f = list[refresh]
+            out[refresh] = function(...) return M.dropKOReaderDuplicates(f(...)) end
+        end
+    end
+    for _i, item in ipairs(list) do
+        if not (type(item) == "table" and type(item.id) == "string" and M.KOREADER_DUPLICATES[item.id]) then
+            if type(item) == "table" then
+                if type(item.sub_item_table) == "table" then
+                    item.sub_item_table = M.dropKOReaderDuplicates(item.sub_item_table)
+                elseif type(item.sub_item_table_func) == "function" then
+                    local f = item.sub_item_table_func
+                    item.sub_item_table_func = function(...) return M.dropKOReaderDuplicates(f(...)) end
+                end
+            end
+            out[#out + 1] = item
+        end
+    end
+    return out
+end
+
 --- About's first two lines: GZreader's version, then what it's built on.
 function M.aboutLines(gz_version, zen_version, ko_version)
     local _ = require("gettext")
