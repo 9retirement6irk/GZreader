@@ -7,16 +7,6 @@ rows above the front's, at 480 x 32. Bookshelf is under the AGPL-3.0, the
 licence GZreader and KOReader are under too (`COPYING` at the top of this
 repository).
 
-The ornaments (`ornament-*.png`) are rendered from the drawings in
-`tools/gzreader/ornaments/` (`make.sh` there):
-
-- `ornament-plant`, `ornament-cactus`: after the two ornaments Bookshelf
-  seeds (`lib/bookshelf_ornaments.lua`: template.svg, cactus.svg), AGPL-3.0,
-  redrawn with shading for GZreader.
-- the others (`-christmas-tree`, `-present`, `-snowman`, `-pumpkin`,
-  `-tulips`, `-globe`, `-hourglass`, `-cat`) are GZreader's own drawings,
-  not taken from Bookshelf's theme packs.
-
 ## Photorealistic ornaments (`ornament-photo-*.png`)
 
 Renders of objects from [Poly Haven](https://polyhaven.com) (its own preview
@@ -50,7 +40,6 @@ Credit is given gladly; the file names keep Poly Haven's:
 (2026-11-11) and cut out and turned to greys for GZreader. Where they come
 from and their licences are **not recorded here**: add the source and
 licence of each, or replace the picture, before relying on them being free
-to redistribute. The drawn Christmas tree and pumpkin (below) can stand in
-for them: they are GZreader's own.
+to redistribute.
 
 The other pictures here are GZreader's own.

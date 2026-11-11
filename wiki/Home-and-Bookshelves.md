@@ -63,12 +63,9 @@ the book once you open one.
     potted plants, a stone cat, a marble bust, a porcelain horse, an alarm
     clock and a mantel clock, two vases, a storm lantern, a candlestick, a
     model ship, binoculars, a seashell, a flowered jug) and a tabby cat.
-    Seasonal ones stand in their season and then take about two places of
-    three: a **Christmas tree** (a photograph; 20 November to 6 January), a
-    pumpkin (a photograph; mid-September to November), and a drawn present
-    (December to 6 January), snowman (December to February) and tulips
-    (March to May). Seven drawn ones (plant, cactus, globe, hourglass, cat,
-    Christmas tree, pumpkin) are off until you tick them. **Which
+    Two seasonal ones stand in their season and then take about two places
+    of three: a **Christmas tree** (20 November to 6 January) and a pumpkin
+    (mid-September to November). **Which
     ornaments** has a tick for each: tick a seasonal one to have it all
     year, untick any to never see it; *Seasonal ones in their season again*
     undoes that;

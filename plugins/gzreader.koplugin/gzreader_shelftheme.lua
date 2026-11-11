@@ -2,15 +2,11 @@
 The bookshelves' theme and ornaments (Home's shelf, Downloads in the
 Bookshelf view, the Catalog's ledges): after AndyHazz's Bookshelf plugin
 (https://github.com/AndyHazz/bookshelf.koplugin, AGPL-3.0), whose oak plank
-is icons/shelf/plank-oak.png (its top and front, in greys), and whose two
-ornaments (a potted plant, a cactus) are redrawn here. The ornaments that
-stand all year are photorealistic: Poly Haven's renders of its CC0 objects
-(plants, a stone cat, a bust, clocks, vases, a lantern, a model ship…). The
-seasonal ones are shaded drawings (a Christmas tree, a present and a snowman
-in winter, a pumpkin in autumn, tulips in spring), as are five more that are
-off until ticked. The drawings ship as pictures
-(icons/shelf/ornament-*.png) rendered from tools/gzreader/ornaments/*.svg:
-the Kindle's SVG renderer draws gradients far too dark.
+is icons/shelf/plank-oak.png (its top and front, in greys). The ornaments
+are all photorealistic pictures (icons/shelf/ornament-photo-*.png, in greys
+with transparency): Poly Haven's renders of its CC0 objects (plants, a stone
+cat, a bust, clocks, vases, a lantern, a model ship…), a tabby cat, and two
+seasonal ones, a Christmas tree in winter and a pumpkin in autumn.
 
 - A theme is the plank the books stand on: Plain (drawn in flat greys, as
   before), Oak (the wood's grain) or Walnut (the same wood, darker).
@@ -76,20 +72,9 @@ Theme.BUILT_IN = {
     { file = "ornament-photo-jug-01.png", label = _("Flowered jug"), tall = 0.55, photo = true },
     -- (the owner's pictures: this one, and the Christmas tree and pumpkin below)
     { file = "ornament-photo-tabby-cat.png", label = _("Tabby cat"), tall = 0.7, photo = true },
-    -- drawn (off until ticked: `off`), after Bookshelf's two and GZreader's own
-    { file = "ornament-plant.png", label = _("Potted plant (drawn)"), off = true },
-    { file = "ornament-cactus.png", label = _("Cactus (drawn)"), off = true },
-    { file = "ornament-globe.png", label = _("Globe (drawn)"), tall = 0.72, off = true },
-    { file = "ornament-hourglass.png", label = _("Hourglass (drawn)"), tall = 0.6, off = true },
-    { file = "ornament-cat.png", label = _("Cat (drawn)"), tall = 0.62, off = true },
-    -- seasonal (drawn)
-    { file = "ornament-tulips.png", label = _("Tulips"), season = { 3, 1, 5, 31 }, when = _("March to May") },
+    -- seasonal
     { file = "ornament-photo-pumpkin.png", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November"), photo = true },
-    { file = "ornament-pumpkin.png", label = _("Pumpkin (drawn)"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November"), off = true },
     { file = "ornament-photo-christmas-tree.png", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January"), photo = true },
-    { file = "ornament-christmas-tree.png", label = _("Christmas tree (drawn)"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January"), off = true },
-    { file = "ornament-present.png", label = _("Present"), tall = 0.42, season = { 12, 1, 1, 6 }, when = _("December to 6 January") },
-    { file = "ornament-snowman.png", label = _("Snowman"), tall = 0.8, season = { 12, 1, 2, 28 }, when = _("December to February") },
 }
 
 local root = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
@@ -314,7 +299,7 @@ function Theme.list()
         local aspect = Theme.aspectOf(path)
         if aspect then
             out[#out + 1] = { path = path, aspect = aspect, name = def.file, label = def.label, tall = def.tall, season = def.season,
-                when = def.when, off = def.off, photo = def.photo }
+                when = def.when, photo = def.photo }
         end
     end
     local dir = Theme.userDir(false)
@@ -361,7 +346,6 @@ end
 function Theme.isOn(entry)
     local by_hand = chosen()[entry.name]
     if by_hand ~= nil then return by_hand == true end
-    if entry.off then return false end -- (one of the drawn ones: until it's ticked)
     local month, day = Theme.date()
     return Theme.inSeason(entry.season, month, day)
 end
@@ -643,7 +627,7 @@ function Theme.settingsItem()
             for _i, e in ipairs(Theme.list()) do
                 which[#which + 1] = {
                     text_func = function()
-                        if e.season and not e.off and chosen()[e.name] == nil then
+                        if e.season and chosen()[e.name] == nil then
                             return e.label .. " (" .. e.when .. ")"
                         end
                         return e.label

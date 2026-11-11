@@ -141,8 +141,8 @@ do
         -- the two that come with it, measured from their files
         Theme.today = { 6, 10 }
         local list = Theme.list()
-        check(#list == 29 and list[18].name == "ornament-plant.png" and math.abs(list[18].aspect - 60 / 104) < 0.01 and list[19].name == "ornament-cactus.png",
-            "29 ornaments come with GZreader (their shape from the picture's header)")
+        check(#list == 19 and list[1].name == "ornament-photo-potted-plant-01.png" and list[1].aspect > 0.3 and list[1].aspect < 0.6 and list[19].name == "ornament-photo-christmas-tree.png",
+            "19 ornaments come with GZreader (their shape from the picture's header)")
         local photos = 0
         for _i, e in ipairs(list) do
             if e.photo then
@@ -150,35 +150,20 @@ do
                 local head = io.open(e.path, "rb")
                 local magic = head and head:read(4) or ""
                 if head then head:close() end
-                if magic ~= "\137PNG" or e.off then photos = -100 end
+                if magic ~= "\137PNG" then photos = -100 end
             end
         end
         local credits = io.open(REPO .. "/plugins/gzreader.koplugin/icons/shelf/CREDITS.md", "r"):read("*a")
-        check(photos == 19 and list[1].photo and list[17].photo and not list[18].photo and list[17].label == "Tabby cat",
-            "19 are photorealistic pictures: 17 standing all year (the first in the list), and the Christmas tree and the pumpkin")
+        local shipped = 0
+        local ls = io.popen("ls '" .. REPO .. "/plugins/gzreader.koplugin/icons/shelf'")
+        for name in ls:lines() do if name:match("^ornament%-") then shipped = shipped + (name:match("^ornament%-photo%-.*%.png$") and 1 or -100) end end
+        ls:close()
+        check(photos == 19 and shipped == 19 and list[17].label == "Tabby cat" and not list[17].season and list[18].label == "Pumpkin" and list[18].season,
+            "all are photorealistic pictures (no drawn ones, none left in the folder): 17 standing all year, and the pumpkin and the Christmas tree")
         check(credits:find("ornament-photo-christmas-tree", 1, true) and credits:find("supplied by the owner", 1, true),
             "…the three the owner supplied are listed as his, their source not recorded")
         check(credits:find("Poly Haven", 1, true) and credits:find("CC0", 1, true) and credits:find("concrete_cat_statue", 1, true) and credits:find("dutch_ship_medium", 1, true),
             "…credited: Poly Haven's objects, CC0, by name")
-        -- each is rendered from a drawing kept in tools/gzreader/ornaments (the Kindle's SVG renderer draws gradients too dark)
-        for i = 18, #list do
-            local e = list[i]
-            if e.photo then goto next_one end
-            local src = REPO .. "/tools/gzreader/ornaments/" .. e.name:gsub("%.png$", ".svg")
-            local f = io.open(src, "r")
-            local text = f and f:read("*a") or ""
-            if f then f:close() end
-            local head = io.open(e.path, "rb")
-            local magic = head and head:read(4) or ""
-            if head then head:close() end
-            if i <= 19 then
-                check(magic == "\137PNG" and text:find("Bookshelf by AndyHazz", 1, true) and text:find("AGPL-3.0", 1, true), e.name .. ": its drawing says where it's from and its licence")
-            else
-                check(magic == "\137PNG" and text:find("GZreader shelf ornament", 1, true) and text:find("Gradient", 1, true)
-                    and e.aspect > 0.3 and e.aspect < 2, e.name .. ": GZreader's own drawing, shaded")
-            end
-            ::next_one::
-        end
         -- seasons
         local tree
         for _i, e in ipairs(list) do if e.name == "ornament-photo-christmas-tree.png" then tree = e end end
@@ -188,28 +173,23 @@ do
             "a season runs from a day to a day, over New Year too")
         local function names(t) local o = {}; for i, e in ipairs(t) do o[i] = e.label end; return table.concat(o, ", ") end
         check(#(Theme.standing()) == 17 and (Theme.standing())[1].photo and (Theme.standing())[17].label == "Tabby cat",
-            "in June: the 17 photorealistic ones (the drawn plant, cactus, globe, hourglass and cat are off until ticked)")
-        local drawn_cat
-        for _i, e in ipairs(list) do if e.name == "ornament-cat.png" then drawn_cat = e end end
-        Theme.setOn(drawn_cat, true)
-        check(#(Theme.standing()) == 18 and Theme.isOn(drawn_cat), "…ticking the drawn cat adds it")
-        Theme.resetChosen()
+            "in June: the 17 that stand all year")
         Theme.today = { 12, 10 }
         local on, seasonal = Theme.standing()
-        check(#on == 20 and names(seasonal) == "Christmas tree, Present, Snowman", "in December: the Christmas tree, a present and a snowman join them")
+        check(#on == 18 and names(seasonal) == "Christmas tree", "in December: the Christmas tree joins them")
         local festive = 0
         for i = 1, 300 do if Theme.pick("downloads:" .. i .. ":2").season then festive = festive + 1 end end
-        check(festive > 180 and festive < 270, "…and take about two places of three (" .. festive .. " of 300)")
+        check(festive > 180 and festive < 270, "…and takes about two places of three (" .. festive .. " of 300)")
         Theme.today = { 10, 31 }
         check(names(select(2, Theme.standing())) == "Pumpkin", "in October: the pumpkin")
         Theme.today = { 4, 2 }
-        check(names(select(2, Theme.standing())) == "Tulips", "in April: tulips")
+        check(#select(2, Theme.standing()) == 0 and #(Theme.standing()) == 17, "in April: no seasonal one")
         Theme.today = { 6, 10 }
         Theme.setOn(tree, true)
         check(Theme.isOn(tree) and #select(2, Theme.standing()) == 0 and #(Theme.standing()) == 18, "ticked by hand: the Christmas tree stands in June too, as one among the others")
         Theme.today = { 12, 10 }
         Theme.setOn(tree, false)
-        check(not Theme.isOn(tree) and names(select(2, Theme.standing())) == "Present, Snowman", "unticked by hand: not even at Christmas")
+        check(not Theme.isOn(tree) and #select(2, Theme.standing()) == 0 and #(Theme.standing()) == 17, "unticked by hand: not even at Christmas")
         Theme.resetChosen()
         check(Theme.isOn(tree), "\"Seasonal ones in their season again\": back to its season")
         Theme.today = { 6, 10 }
@@ -222,7 +202,7 @@ do
         dir_files = { ".", "..", "notes.txt", "globe.png", "broken.svg", "Vase.SVG", ".hidden.png" }
         Theme.found = nil
         list = Theme.list()
-        check(#list == 31 and list[30].name == "Vase.SVG" and list[30].aspect == 0.5 and list[30].label == "Vase" and list[31].name == "globe.png" and list[31].aspect == 2,
+        check(#list == 21 and list[20].name == "Vase.SVG" and list[20].aspect == 0.5 and list[20].label == "Vase" and list[21].name == "globe.png" and list[21].aspect == 2,
             "your own PNG and SVG files join them (their shape from the file); other files and broken ones don't (" .. #list .. ")")
         check(Theme.userDir(false) == udir .. "/gzreader/ornaments", "…from koreader/settings/gzreader/ornaments")
         -- which one stands where: the same every time
@@ -231,18 +211,18 @@ do
         for i = 1, 40 do seen[Theme.pick("downloads:" .. i .. ":1").name] = true end
         local kinds = 0
         for _k in pairs(seen) do kinds = kinds + 1 end
-        check(a == b and kinds >= 12, "the same place has the same ornament every time; different places, different ones (" .. kinds .. " of 18)")
+        check(a == b and kinds >= 12, "the same place has the same ornament every time; different places, different ones (" .. kinds .. " of 19)")
         -- sizes: 80% of the books' room, narrower when the room is, never under 2/3
-        local plant = list[18]
+        local plant = list[1]
         local w, h = Theme.size(plant, 150, 400)
-        check(h == 120 and math.abs(w - 120 * 60 / 104) <= 1, "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
-        local w2, h2 = Theme.size(plant, 150, 70)
-        check(w2 == 50 and h2 and h2 < 120 and h2 >= 80, "less room: smaller, its shape kept (" .. tostring(w2) .. " x " .. tostring(h2) .. ")")
+        check(h == 120 and math.abs(w - 120 * plant.aspect) <= 1, "an ornament stands 80% as tall as the books' room (" .. tostring(w) .. " x " .. tostring(h) .. ")")
+        local w2, h2 = Theme.size(plant, 150, 60)
+        check(w2 == 40 and h2 and h2 < 120 and h2 >= 80, "less room: smaller, its shape kept (" .. tostring(w2) .. " x " .. tostring(h2) .. ")")
         check(Theme.size(plant, 150, 50) == nil and Theme.size(plant, 20, 400) == nil, "too little room, or a tiny shelf: none")
         check(Theme.reserve(150) == 120 + 20, "an ornament on every page: the bottom shelf keeps room for the widest (as wide as the usual height at most)")
-        local globe
-        for _i, e in ipairs(list) do if e.label == "Globe (drawn)" then globe = e end end
-        check(select(2, Theme.size(globe, 150, 400)) == 108 and select(2, Theme.size(tree, 150, 400)) == 142, "some stand shorter or taller than the rest: a globe 72% of the books' room, the tree 95%")
+        local vase
+        for _i, e in ipairs(list) do if e.label == "Blue and white vase" then vase = e end end
+        check(select(2, Theme.size(vase, 150, 400)) == 108 and select(2, Theme.size(tree, 150, 400)) == 142, "some stand shorter or taller than the rest: a vase 72% of the books' room, the tree 95%")
         -- an ornament stands on its lowest drawn row
         local pic = { getWidth = function() return 20 end, getHeight = function() return 30 end,
             getPixel = function(_s, x, y) return { alpha = (y <= 24 and x >= 8 and x <= 12) and 255 or 0 } end }
@@ -316,7 +296,7 @@ do
         Theme.today = { 12, 10 }
         local festive3 = 0
         for pg = 1, pages do for k = 1, 3 do if Theme.pick("downloads:" .. pg, k).season then festive3 = festive3 + 1 end end end
-        check(festive3 == 2 * pages, "…in December two of the three are seasonal (" .. festive3 .. " of " .. 3 * pages .. ")")
+        check(festive3 == pages, "…in December one of the three is the Christmas tree (" .. festive3 .. " on " .. pages .. " pages)")
         Theme.today = { 6, 10 }
         Theme.setOrnaments("off")
         local BB = require("ffi/blitbuffer")
@@ -344,11 +324,11 @@ do
         local which = item.sub_item_table[8].sub_item_table_func()
         local wt = {}
         for i, it in ipairs(which) do wt[i] = it.text or it.text_func() end
-        check(#which == 32 and wt[26] == "Christmas tree (20 November to 6 January)" and wt[27] == "Christmas tree (drawn)" and wt[1] == "Potted plant" and wt[18] == "Potted plant (drawn)" and wt[30] == "Vase"
-            and wt[32] == "Seasonal ones in their season again" and which[1].checked_func() and not which[18].checked_func() and not which[26].checked_func() and not which[27].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[26]) .. ")")
-        which[26].callback()
-        check(which[26].checked_func() and which[26].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
-        which[32].callback()
+        check(#which == 22 and wt[19] == "Christmas tree (20 November to 6 January)" and wt[18] == "Pumpkin (mid-September to November)" and wt[1] == "Potted plant" and wt[17] == "Tabby cat" and wt[20] == "Vase"
+            and wt[22] == "Seasonal ones in their season again" and which[1].checked_func() and which[17].checked_func() and not which[18].checked_func() and not which[19].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[19]) .. ")")
+        which[19].callback()
+        check(which[19].checked_func() and which[19].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
+        which[22].callback()
         check(Theme.get() == "oak" and item.sub_item_table[2].checked_func() and not item.sub_item_table[1].checked_func()
             and Theme.ornaments() == "always" and item.sub_item_table[6].checked_func(), "choosing one sets it, and ticks it")
     end
