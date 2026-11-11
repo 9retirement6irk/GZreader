@@ -88,9 +88,12 @@
 5 plugins/zenos.koplugin/modules/menu/patches/app_launcher.lua
 8 plugins/zenos.koplugin/modules/menu/patches/quick_settings.lua
 1 plugins/zenos.koplugin/modules/menu/patches/zen_mode.lua
+3 plugins/zenos.koplugin/modules/reader/annotation_viewer.lua
 2 plugins/zenos.koplugin/modules/reader/end_book.lua
+3 plugins/zenos.koplugin/modules/reader/page_browser_widget.lua
 1 plugins/zenos.koplugin/modules/reader/patches/opening_banner.lua
 12 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua
+3 plugins/zenos.koplugin/modules/reader/reference_drawer.lua
 15 plugins/zenos.koplugin/modules/settings/gz_updater.lua
 3 plugins/zenos.koplugin/modules/settings/koreader_settings.lua
 17 plugins/zenos.koplugin/modules/settings/sections/about_settings.lua

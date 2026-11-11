@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → Reader is shorter: Gestures and controls, Notes and footnotes", text = "Settings → Reader has six rows instead of nine: Gestures and controls holds Bottom swipe gesture, Reader controls and Page Browser, and Notes and footnotes holds Annotation viewer and Footnotes and pinned pages. The Settings buttons in the page browser, the annotation viewer and the footnotes drawer still open their page." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },
