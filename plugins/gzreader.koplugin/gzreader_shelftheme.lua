@@ -3,10 +3,12 @@ The bookshelves' theme and ornaments (Home's shelf, Downloads in the
 Bookshelf view, the Catalog's ledges): after AndyHazz's Bookshelf plugin
 (https://github.com/AndyHazz/bookshelf.koplugin, AGPL-3.0), whose oak plank
 is icons/shelf/plank-oak.png (its top and front, in greys), and whose two
-ornaments (a potted plant, a cactus) are redrawn here. The ornaments are
-shaded drawings (light from the upper left), GZreader's own but for those
-two, some of them seasonal: a Christmas tree, a present and a snowman in
-winter, a pumpkin in autumn, tulips in spring. They ship as pictures
+ornaments (a potted plant, a cactus) are redrawn here. The ornaments that
+stand all year are photorealistic: Poly Haven's renders of its CC0 objects
+(plants, a stone cat, a bust, clocks, vases, a lantern, a model ship…). The
+seasonal ones are shaded drawings (a Christmas tree, a present and a snowman
+in winter, a pumpkin in autumn, tulips in spring), as are five more that are
+off until ticked. The drawings ship as pictures
 (icons/shelf/ornament-*.png) rendered from tools/gzreader/ornaments/*.svg:
 the Kindle's SVG renderer draws gradients far too dark.
 
@@ -54,11 +56,31 @@ local Theme = {
 --- season: { from month, day, to month, day }: it stands only then, unless
 --- ticked by hand (Settings).
 Theme.BUILT_IN = {
-    { file = "ornament-plant.png", label = _("Potted plant") },
-    { file = "ornament-cactus.png", label = _("Cactus") },
-    { file = "ornament-globe.png", label = _("Globe"), tall = 0.72 },
-    { file = "ornament-hourglass.png", label = _("Hourglass"), tall = 0.6 },
-    { file = "ornament-cat.png", label = _("Cat"), tall = 0.62 },
+    -- photorealistic: Poly Haven's renders of its scanned and modelled
+    -- objects (CC0; icons/shelf/CREDITS.md)
+    { file = "ornament-photo-potted-plant-01.png", label = _("Potted plant"), photo = true },
+    { file = "ornament-photo-potted-plant-02.png", label = _("Leafy plant in a clay pot"), tall = 0.85, photo = true },
+    { file = "ornament-photo-potted-plant-04.png", label = _("Succulent"), tall = 0.62, photo = true },
+    { file = "ornament-photo-concrete-cat-statue.png", label = _("Stone cat"), tall = 0.7, photo = true },
+    { file = "ornament-photo-marble-bust-01.png", label = _("Marble bust"), tall = 0.78, photo = true },
+    { file = "ornament-photo-horse-statue-01.png", label = _("Porcelain horse"), tall = 0.82, photo = true },
+    { file = "ornament-photo-lantern-01.png", label = _("Storm lantern"), tall = 0.9, photo = true },
+    { file = "ornament-photo-alarm-clock-01.png", label = _("Alarm clock"), tall = 0.55, photo = true },
+    { file = "ornament-photo-mantel-clock-01.png", label = _("Mantel clock"), tall = 0.5, photo = true },
+    { file = "ornament-photo-antique-ceramic-vase-01.png", label = _("Blue and white vase"), tall = 0.72, photo = true },
+    { file = "ornament-photo-brass-vase-01.png", label = _("Brass vase"), tall = 0.78, photo = true },
+    { file = "ornament-photo-wooden-candlestick.png", label = _("Candlestick"), tall = 0.72, photo = true },
+    { file = "ornament-photo-dutch-ship-medium.png", label = _("Model ship"), tall = 0.9, photo = true },
+    { file = "ornament-photo-vintage-binocular.png", label = _("Binoculars"), tall = 0.45, photo = true },
+    { file = "ornament-photo-lambis-shell.png", label = _("Seashell"), tall = 0.36, photo = true },
+    { file = "ornament-photo-jug-01.png", label = _("Flowered jug"), tall = 0.55, photo = true },
+    -- drawn (off until ticked: `off`), after Bookshelf's two and GZreader's own
+    { file = "ornament-plant.png", label = _("Potted plant (drawn)"), off = true },
+    { file = "ornament-cactus.png", label = _("Cactus (drawn)"), off = true },
+    { file = "ornament-globe.png", label = _("Globe (drawn)"), tall = 0.72, off = true },
+    { file = "ornament-hourglass.png", label = _("Hourglass (drawn)"), tall = 0.6, off = true },
+    { file = "ornament-cat.png", label = _("Cat (drawn)"), tall = 0.62, off = true },
+    -- seasonal (drawn)
     { file = "ornament-tulips.png", label = _("Tulips"), season = { 3, 1, 5, 31 }, when = _("March to May") },
     { file = "ornament-pumpkin.png", label = _("Pumpkin"), tall = 0.42, season = { 9, 15, 11, 30 }, when = _("mid-September to November") },
     { file = "ornament-christmas-tree.png", label = _("Christmas tree"), tall = 0.95, season = { 11, 20, 1, 6 }, when = _("20 November to 6 January") },
@@ -287,7 +309,8 @@ function Theme.list()
         local path = root .. "/icons/shelf/" .. def.file
         local aspect = Theme.aspectOf(path)
         if aspect then
-            out[#out + 1] = { path = path, aspect = aspect, name = def.file, label = def.label, tall = def.tall, season = def.season, when = def.when }
+            out[#out + 1] = { path = path, aspect = aspect, name = def.file, label = def.label, tall = def.tall, season = def.season,
+                when = def.when, off = def.off, photo = def.photo }
         end
     end
     local dir = Theme.userDir(false)
@@ -334,6 +357,7 @@ end
 function Theme.isOn(entry)
     local by_hand = chosen()[entry.name]
     if by_hand ~= nil then return by_hand == true end
+    if entry.off then return false end -- (one of the drawn ones: until it's ticked)
     local month, day = Theme.date()
     return Theme.inSeason(entry.season, month, day)
 end

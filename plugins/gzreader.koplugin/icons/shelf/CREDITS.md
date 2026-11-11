@@ -17,4 +17,30 @@ The ornaments (`ornament-*.png`) are rendered from the drawings in
   `-tulips`, `-globe`, `-hourglass`, `-cat`) are GZreader's own drawings,
   not taken from Bookshelf's theme packs.
 
+## Photorealistic ornaments (`ornament-photo-*.png`)
+
+Renders of objects from [Poly Haven](https://polyhaven.com) (its own preview
+pictures of its 3D models), in greys with transparency. Poly Haven's assets
+are CC0: free for any purpose, no credit required (https://polyhaven.com/license).
+Credit is given gladly; the file names keep Poly Haven's:
+
+| File | Poly Haven model | Authors |
+|---|---|---|
+| `potted-plant-01` | potted_plant_01 | Rico Cilliers |
+| `potted-plant-02` | potted_plant_02 | Rico Cilliers |
+| `potted-plant-04` | potted_plant_04 | James Ray Cock |
+| `concrete-cat-statue` | concrete_cat_statue | Rico Cilliers, Riley Queen |
+| `marble-bust-01` | marble_bust_01 | Rico Cilliers |
+| `horse-statue-01` | horse_statue_01 | Rico Cilliers |
+| `lantern-01` | Lantern_01 | Rajil Jose Macatangay |
+| `alarm-clock-01` | alarm_clock_01 | Yann Kervran, James Ray Cock |
+| `mantel-clock-01` | mantel_clock_01 | Yann Kervran, Rico Cilliers |
+| `antique-ceramic-vase-01` | antique_ceramic_vase_01 | James Ray Cock |
+| `brass-vase-01` | brass_vase_01 | Rico Cilliers |
+| `wooden-candlestick` | wooden_candlestick | Josh Dean |
+| `dutch-ship-medium` | dutch_ship_medium | James Ray Cock, Rico Cilliers, Nicolò Zubbini |
+| `vintage-binocular` | vintage_binocular | Luke |
+| `lambis-shell` | lambis_shell | Kuutti Siitonen |
+| `jug-01` | jug_01 | Kuutti Siitonen |
+
 The other pictures here are GZreader's own.
