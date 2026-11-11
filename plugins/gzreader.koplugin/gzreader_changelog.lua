@@ -7,7 +7,7 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
-        version = "next",
+        version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },
             { short = "Bookshelves with more depth: page tops, title and author along the spine, shadows on the wall", text = "The bookshelves (Home, Downloads, and the spines in the Catalog) are drawn after AndyHazz's Bookshelf plugin: seen from a little above, so each book shows the top of its page block between its boards; the whole title runs along the spine (a long one in two or three lines of smaller type instead of being cut off) with the author after it in smaller type, or on its own line where there's no room after it, and a book's number in its series stands level at the foot. The books cast a soft shadow on the wall behind them, and the board shows its top, darker at the back." },
