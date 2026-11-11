@@ -3,21 +3,34 @@ Usage statistics, sent to GZreader's Tianji server (application tracking,
 tianji.dev/docs/application/tracking: POST /api/application/batch).
 
 Settings → General → Usage statistics:
-- Basic (default): GZreader starts (version, device, firmware), whether the
-  previous run ended without closing normally, downloads (done or failed),
-  slow operations and keys the screen didn't answer.
-- Full: also time spent on Home, Downloads, Grimmory, in books and menus,
-  which menu entries are used, reading sessions (format, picture book or
-  not, minutes, pages, pages per minute, battery use per hour), read aloud,
-  download size, speed and resumes, how syncs with Grimmory go (count,
-  failures, time), and how long Wi-Fi is on.
-  Full also turns on remote debugging (gzreader_remote.lua): starts,
-  warnings, errors, freezes and crashes go to the developer's feed.
+- Basic (default) and Full send the same events (below).
+- Full also turns on remote debugging (gzreader_remote.lua): starts,
+  how the previous run ended, warnings, errors, freezes and crashes go to
+  the developer's feed.
 - Off: nothing is recorded or sent.
+
+The events. Every one carries the version, the device, its firmware and
+`minutes` (how long it covers), and this Kindle's random ID:
+- a visit to a part of GZreader, sent when you leave it (shorter than
+  MIN_VISIT seconds: not sent; sleep ends a visit, waking starts one):
+  "reader" (a book open), "catalog books", "catalog audiobooks", "catalog music" (the
+  Catalog tab's pages), "audiobooks tab", "music tab", "notes",
+  "calendar". What's open on top (the quick panel, a book's page, the
+  player, a note being written) counts as the part underneath;
+- "read aloud", "audiobook playing", "music playing": how long it spoke or
+  played (pauses and track changes within AUDIO_GAP seconds are one);
+- diagnostics: "download" (done or failed, size, speed, resumed), "slow
+  operations", "keys not answered", "sync" (Grimmory's answers, Wi-Fi
+  on-time, battery use per hour), every SUMMARY_EVERY and at sleep/exit.
+Each event's `screen` is the part it's about (Tianji counts screens per
+session); `version` is also at the payload's top level, where Tianji reads
+it for its Version chart.
 
 Never sent: book titles, authors, file names, your Grimmory address or
 account, anything you type. Each Kindle has a random ID (not tied to you
-or the device's serial number) so its starts can be counted.
+or the device's serial number) so its events can be told apart; its first
+8 characters are also in the User-Agent, because Tianji tells sessions
+apart by address + User-Agent.
 
 Cost on a Kindle 3: recording an event appends one line to a small file;
 events are sent in one batch from a background process, at most every 15
@@ -41,6 +54,8 @@ local U = {
     SEND_EVERY = 15 * 60,
     SUMMARY_EVERY = 30 * 60,
     TICK = 30,
+    MIN_VISIT = 5,
+    AUDIO_GAP = 60,
     MAX_LINES = 400,
     lines = nil,
 }
@@ -61,10 +76,10 @@ function U.setLevel(v)
     pcall(function() require("gzreader_remote").apply() end)
 end
 
-local function on(full)
-    local l = U.level()
-    if l == "off" then return false end
-    return not full or l == "full"
+--- Recording at all (Basic and Full record the same events; Full also
+--- sends the debug reports: gzreader_remote.lua).
+local function on()
+    return U.level() ~= "off"
 end
 U.on = on
 
@@ -106,15 +121,26 @@ local function version()
     return ((readFile("gzreader-version") or "?"):gsub("%s", ""))
 end
 
+--- The firmware (read once: it only changes with a Kindle update, and every
+--- event carries it).
 local function firmware()
+    if U.fw then return U.fw end
     local s = readFile("/etc/prettyversion.txt") or readFile("/etc/version.txt") or ""
     local v = s:match("Kindle ([%d%.]+)") or s:match("^([^\n]*)") or ""
-    return v ~= "" and v:sub(1, 30) or "?"
+    U.fw = v ~= "" and v:sub(1, 30) or "?"
+    return U.fw
 end
 
-local function battery()
+--- The battery's charge (%), or nil.
+function U.battery()
     local ok, pct = pcall(function() return Device:getPowerDevice():getCapacity() end)
     return ok and tonumber(pct) or nil
+end
+
+--- Charging now?
+function U.charging()
+    local ok, yes = pcall(function() return Device:getPowerDevice():isCharging() end)
+    return ok and yes == true
 end
 
 local function osName()
@@ -149,23 +175,35 @@ local function append(item)
     U.lines = U.lines + 1
 end
 
---- Record an event. full = true: only at the Full level.
-function U.event(name, data, full)
-    if not on(full) then return end
+--- Minutes to one decimal.
+local function mins(seconds) return math.floor((seconds or 0) / 60 * 10 + 0.5) / 10 end
+U.mins = mins
+
+--- Record an event: every one carries the version, device, firmware and
+--- `minutes` (how long it covers; 0 when nothing). `screen`: the part of
+--- GZreader it's about (default: where the user is now).
+function U.event(name, data, screen)
+    if not on() then return end
     data = data or {}
     data.install = U.id()
     data.version = data.version or version()
+    data.device = osName()
+    data.firmware = firmware()
+    data.minutes = tonumber(data.minutes) or 0
     data.level = U.level()
     append({ type = "event", payload = {
         application = U.APP, name = tostring(name):sub(1, 50), data = data,
-        screen = U.screen, os = osName(), language = "en",
+        screen = screen or U.portion() or U.whereNow(), os = osName(), language = "en",
+        -- (Tianji's Version chart reads these here, not from data)
+        version = data.version, sdkVersion = "gzreader",
     } })
     if countLines() >= 50 then UIManager:scheduleIn(5, U.maybeSend) end
 end
 
 function U.identify()
     if not on() then return end
-    append({ type = "identify", payload = { application = U.APP, os = osName(), language = "en", data = {
+    append({ type = "identify", payload = { application = U.APP, os = osName(), language = "en",
+        version = version(), sdkVersion = "gzreader", data = {
         id = U.id(), version = version(), device = osName(), firmware = firmware(),
         level = U.level(), sdkVersion = "gzreader",
     } } })
@@ -180,6 +218,12 @@ function U.dropQueue()
 end
 
 ---------------------------------------------------------------- sending
+
+--- The User-Agent: Tianji tells sessions apart by address + User-Agent, so
+--- it carries the start of the random ID (two Kindles on one Wi-Fi).
+function U.agent()
+    return "GZreader/" .. version() .. " (" .. osName() .. "; " .. U.id():sub(1, 8) .. ")"
+end
 
 --- Syncing through a computer (no Wi-Fi): the sync page sends them.
 function U.noWifi()
@@ -209,7 +253,7 @@ function U.maybeSend(force)
     Net.hold("usage")
     local ffiutil = require("ffi/util")
     local server = U.SERVER
-    local agent = "GZreader/" .. version() .. " (" .. osName() .. ")"
+    local agent = U.agent()
     local pid = ffiutil.runInSubProcess(function()
         require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first)
         local http = require("socket.http")
@@ -309,17 +353,32 @@ function U.networkUsed()
     end)
 end
 
----------------------------------------------------------------- run state
+---------------------------------------------------------------- the clock
 
-local function stateWrite(status)
-    writeFile(U.dir() .. "/state", string.format("%d %s %s", os.time(), status, U.activity or "on Home"))
+--- Seconds on a monotonic clock (the Nook's wall clock jumps when it's set).
+function U.clock()
+    local T = require("ui/time")
+    return T.to_s(T.monotonic())
 end
 
 ---------------------------------------------------------------- aggregates
 
 local agg
 local function resetAgg()
-    agg = { since = os.time(), slow = 0, slow_max = 0, slow_kinds = {}, screens = {}, wifi = 0, sync = {} }
+    agg = { since = os.time(), slow = 0, slow_max = 0, slow_kinds = {}, wifi = 0, sync = {},
+        battery = U.battery(), battery_t = U.clock(), charged = U.charging() }
+end
+U.BATTERY_MIN = 10 * 60 -- (a shorter stretch: the percentage is too coarse)
+
+--- Battery use per hour since the last summary (or wake), or nil: charged
+--- meanwhile, too short, or the battery unknown.
+local function batteryPerHour()
+    local now = U.battery()
+    local secs = U.clock() - (agg.battery_t or 0)
+    if agg.charged or U.charging() or not (agg.battery and now) or secs < U.BATTERY_MIN then return nil end
+    local drop = agg.battery - now
+    if drop < 0 then return nil end
+    return math.floor(drop / secs * 3600 * 10 + 0.5) / 10
 end
 resetAgg()
 
@@ -336,7 +395,7 @@ local SYNC_KIND = { flush = "position", pull = "position", bookmarks = "bookmark
 
 --- A background request finished (gzreader_async).
 function U.request(name, ok, ms)
-    if not on(true) then return end
+    if not on() then return end
     local kind = SYNC_KIND[name] or "library"
     local s = agg.sync[kind] or { ok = 0, failed = 0, ms = 0 }
     if ok then s.ok = s.ok + 1 else s.failed = s.failed + 1 end
@@ -344,33 +403,27 @@ function U.request(name, ok, ms)
     agg.sync[kind] = s
 end
 
---- Send the aggregates gathered since the last summary.
+--- Send the aggregates gathered since the last summary: slow operations;
+--- "sync" with Grimmory's answers, Wi-Fi on-time and battery use per hour.
 function U.summary(reason)
     if not on() then resetAgg(); return end
-    local mins = math.floor((os.time() - agg.since) / 60 + 0.5)
+    local minutes = mins(os.time() - agg.since)
     if agg.slow > 0 then
-        U.event("slow operations", { count = agg.slow, longest_s = agg.slow_max, kinds = agg.slow_kinds, minutes = mins })
+        U.event("slow operations", { count = agg.slow, longest_s = agg.slow_max, kinds = agg.slow_kinds, minutes = minutes })
     end
-    if on(true) then
-        local screens = {}
-        local any = false
-        for k, v in pairs(agg.screens) do screens[k] = math.floor(v / 60 * 10 + 0.5) / 10; any = true end
-        if any then U.event("time on screens", { minutes = screens, wifi_minutes = math.floor(agg.wifi / 60 + 0.5), reason = reason }, true) end
-        if next(agg.sync) then
-            local sync = {}
-            for k, s in pairs(agg.sync) do
-                local n = s.ok + s.failed
-                sync[k] = { ok = s.ok, failed = s.failed, avg_ms = n > 0 and math.floor(s.ms / n) or 0 }
-            end
-            U.event("sync", sync, true)
-        end
+    local ev = { minutes = minutes, wifi_minutes = mins(agg.wifi), battery_per_hour = batteryPerHour(), reason = reason }
+    for k, st in pairs(agg.sync) do
+        local n = st.ok + st.failed
+        ev[k] = { ok = st.ok, failed = st.failed, avg_ms = n > 0 and math.floor(st.ms / n) or 0 }
     end
+    if next(agg.sync) or agg.wifi > 0 or ev.battery_per_hour then U.event("sync", ev) end
     resetAgg()
 end
 
 ---------------------------------------------------------------- screens
 
---- Where the user is now: Home, Downloads, Grimmory, reader, menu, other.
+--- Where the user is now: Home, Downloads, Grimmory, reader, menu, other
+--- (the top window; "keys not answered" uses it).
 function U.whereNow()
     local stack = UIManager._window_stack or {}
     local top = stack[#stack] and stack[#stack].widget
@@ -383,19 +436,141 @@ function U.whereNow()
     return "other"
 end
 
+-- GZreader's tabs (their _gz_navbar_tab_id) and the visit each is
+local TAB_PART = { ct_notes = "notes", ct_calendar = "calendar", ct_music = "music tab", ct_audiobooks = "audiobooks tab" }
+-- full screens that aren't a counted part: Home, the Downloads tab, Settings
+local NOT_A_PART = { home = true, filemanager = true, KOReader = true, zen_settings = true }
+
+--- The part of GZreader on screen: "reader", "catalog books", "catalog
+--- audiobooks", "catalog music", "audiobooks tab", "music tab", "notes",
+--- "calendar", or nil (Home, Downloads, Settings…). Looks down the window
+--- stack past what's open on top of a part (the quick panel, dialogs, a
+--- book's page, the players, the note editor).
+function U.portion()
+    local stack = UIManager._window_stack or {}
+    for i = #stack, 1, -1 do
+        local w = stack[i].widget
+        if type(w) == "table" then
+            if w.name == "ReaderUI" then return "reader" end
+            local id = w._gz_navbar_tab_id
+            if id == "ct_grimmory" then
+                local B = package.loaded["gzreader_browser"]
+                local b = B and B.current
+                local section = (b and b.menu == w and b.section) or "books"
+                return "catalog " .. section
+            end
+            if id and TAB_PART[id] then return TAB_PART[id] end
+            if NOT_A_PART[w.name] then return nil end
+        end
+    end
+    return nil
+end
+
+---------------------------------------------------------------- visits
+
+--- A visit ended: sent if it lasted MIN_VISIT seconds (the reader sends its
+--- own, richer event: readEnd).
+local function endVisit(reason)
+    local v = U.visit
+    U.visit = nil
+    if not v or not on() then return end
+    local secs = U.clock() - v.t
+    if secs < U.MIN_VISIT then return end
+    U.event(v.part, { minutes = mins(secs), reason = reason }, v.part)
+end
+
+--- See whether the part on screen changed: ends the visit to the last one,
+--- starts one to the new one. Cheap (a walk down the window stack): every
+--- tick, and soon after GZreader's tabs open or close and Catalog pages turn.
+function U.checkPortion()
+    if not on() then U.visit = nil; return end
+    local part = U.portion()
+    if part == "reader" then part = nil end -- (readStart/readEnd)
+    if U.visit and U.visit.part == part then return end
+    endVisit("left")
+    if part then U.visit = { part = part, t = U.clock() } end
+end
+
+--- Check again in a moment (after a window opened or closed).
+function U.nudge()
+    if U.nudged then return end
+    U.nudged = true
+    UIManager:scheduleIn(0.5, function()
+        U.nudged = false
+        pcall(U.checkPortion)
+    end)
+end
+
+local function isPartWindow(w)
+    return type(w) == "table" and (w.name == "ReaderUI" or (w._gz_navbar_tab_id ~= nil))
+end
+
+--- Notice GZreader's tabs and books opening and closing (UIManager.show and
+--- close: one table lookup per window shown).
+function U.watchWindows()
+    if U.windows_watched then return end
+    U.windows_watched = true
+    local orig_show, orig_close = UIManager.show, UIManager.close
+    UIManager.show = function(um, w, ...)
+        if isPartWindow(w) then U.nudge() end
+        return orig_show(um, w, ...)
+    end
+    UIManager.close = function(um, w, ...)
+        if isPartWindow(w) then U.nudge() end
+        return orig_close(um, w, ...)
+    end
+end
+
+---------------------------------------------------------------- audio
+
+--- Playing time of audiobooks and music (gzreader_audioengine: kind
+--- "audiobook" or "music"). A pause or a track change shorter than
+--- AUDIO_GAP seconds is the same session.
+local function endAudio(reason)
+    local a = U.audio
+    U.audio = nil
+    if not a or not on() then return end
+    if a.since then a.played = a.played + (U.clock() - a.since) end
+    if a.played < U.MIN_VISIT then return end
+    U.event(a.kind .. " playing", { minutes = mins(a.played), plays = a.plays, reason = reason }, U.portion())
+end
+U.endAudio = endAudio
+
+function U.audioPlay(kind)
+    if not on() or (kind ~= "audiobook" and kind ~= "music") then return end
+    local a = U.audio
+    if a and a.kind ~= kind then endAudio("switched"); a = nil end
+    if not a then a = { kind = kind, played = 0, plays = 0 }; U.audio = a end
+    a.plays = a.plays + 1
+    a.stopped = nil
+    if not a.since then a.since = U.clock() end
+end
+
+function U.audioStop()
+    local a = U.audio
+    if not a or not a.since then return end
+    a.played = a.played + (U.clock() - a.since)
+    a.since = nil
+    a.stopped = U.clock()
+end
+
+--- (every tick) a session stopped for AUDIO_GAP seconds has ended.
+function U.checkAudio()
+    local a = U.audio
+    if a and not a.since and a.stopped and U.clock() - a.stopped >= U.AUDIO_GAP then endAudio("stopped") end
+end
+
 local function tick()
     -- (the time since the last tick: lined up on the clock, the first one is shorter)
     local now = os.time()
     local elapsed = math.max(0, math.min(now - (U.last_tick or (now - U.TICK)), 2 * U.TICK))
     U.last_tick = now
     if on() then
-        if on(true) then
-            local where = U.whereNow()
-            U.screen = where
-            agg.screens[where] = (agg.screens[where] or 0) + elapsed
-            local okn, NetworkMgr = pcall(require, "ui/network/manager")
-            if okn and NetworkMgr:isWifiOn() then agg.wifi = agg.wifi + elapsed end
-        end
+        pcall(U.checkPortion)
+        pcall(U.checkAudio)
+        if U.charging() then agg.charged = true end -- (no battery use for this stretch)
+        local okn, NetworkMgr = pcall(require, "ui/network/manager")
+        if okn and NetworkMgr:isWifiOn() then agg.wifi = agg.wifi + elapsed end
         -- keys the screen didn't answer (also without remote debugging)
         local okt, Trace = pcall(require, "gzreader_slowtrace")
         local okr, R = pcall(require, "gzreader_remote")
@@ -409,53 +584,29 @@ end
 ---------------------------------------------------------------- reading
 
 function U.readStart(ui)
-    if not on(true) or not (ui and ui.document) then return end
-    local file = ui.document.file or ""
-    U.reading = {
-        t = os.time(), pages = 0, battery = battery(),
-        format = (file:match("%.(%w+)$") or "?"):lower(),
-        picture_book = ui.doc_settings and ui.doc_settings:readSetting("gzreader_picture_book") == true or false,
-    }
-    U.activity = "reading"
-    stateWrite("run")
+    if not on() or not (ui and ui.document) then return end
+    U.reading = { t = U.clock() }
+    U.nudge() -- (a Catalog or tab visit underneath ends)
 end
 
-function U.pageTurned()
-    if U.reading then U.reading.pages = U.reading.pages + 1 end
-end
-
+--- The "reader" visit: a book was open (closed, Home, sleep).
 function U.readEnd(reason)
     local r = U.reading
     U.reading = nil
-    U.activity = "on Home"
-    if not (r and on(true)) then return end
-    local secs = os.time() - r.t
-    if secs < 30 then return end
-    local b = battery()
-    local mins = secs / 60
-    local drop = (r.battery and b) and (r.battery - b) or nil
-    U.event("reading", {
-        format = r.format, picture_book = r.picture_book, minutes = math.floor(mins * 10 + 0.5) / 10,
-        pages = r.pages, pages_per_minute = math.floor(r.pages / mins * 10 + 0.5) / 10,
-        battery_start = r.battery, battery_end = b,
-        battery_per_hour = (drop and secs >= 600) and math.floor(drop / secs * 3600 * 10 + 0.5) / 10 or nil,
-        reason = reason,
-    }, true)
+    if not (r and on()) then return end
+    local secs = U.clock() - r.t
+    if secs < U.MIN_VISIT then return end
+    U.event("reader", { minutes = mins(secs), reason = reason }, "reader")
 end
 
-function U.ttsStart() U.tts_at = os.time() end
+--- Read aloud (gzreader_tts): how long it spoke.
+function U.ttsStart() U.tts_at = U.clock() end
 function U.ttsStop()
-    if U.tts_at then
-        U.event("read aloud", { seconds = os.time() - U.tts_at }, true)
-        U.tts_at = nil
-    end
-end
-
---- A menu entry was chosen (no book titles: quoted text is dropped).
-function U.menu(menu, text)
-    if not on(true) or type(text) ~= "string" then return end
-    text = text:gsub("“.-”", "…"):gsub("\".-\"", "…"):gsub("%s+%(.-%)$", ""):gsub("%s+", " ")
-    U.event("menu", { menu = menu, item = text:sub(1, 60) }, true)
+    local t = U.tts_at
+    U.tts_at = nil
+    if not t then return end
+    local secs = U.clock() - t
+    if secs >= U.MIN_VISIT then U.event("read aloud", { minutes = mins(secs) }, U.portion()) end
 end
 
 --- A book download finished (gzreader_download).
@@ -463,53 +614,54 @@ function U.download(info)
     if not on() then return end
     local data = { ok = info.ok == true, error = (not info.ok) and tostring(info.error or "?"):sub(1, 40) or nil,
         kind = info.kind or "book" }
-    if on(true) then
-        data.kb = info.bytes and math.floor(info.bytes / 1024) or nil
-        data.seconds = info.seconds
-        data.kb_per_s = (info.bytes and info.seconds and info.seconds > 0) and math.floor(info.bytes / 1024 / info.seconds) or nil
-        data.resumed = info.resumed == true
-    end
+    data.kb = info.bytes and math.floor(info.bytes / 1024) or nil
+    data.seconds = info.seconds
+    data.minutes = info.seconds and mins(info.seconds) or 0
+    data.kb_per_s = (info.bytes and info.seconds and info.seconds > 0) and math.floor(info.bytes / 1024 / info.seconds) or nil
+    data.resumed = info.resumed == true
     U.event("download", data)
 end
 
 --- Keys arrived but the screen didn't change (gzreader_slowtrace).
 function U.stuck(seconds, windows)
-    U.event("keys not answered", { seconds = seconds, screen = U.whereNow(), windows = tostring(windows):sub(1, 120) })
+    U.event("keys not answered", { seconds = seconds, minutes = mins(seconds), screen = U.whereNow(),
+        windows = tostring(windows):sub(1, 120) })
 end
 
 ---------------------------------------------------------------- start / sleep
 
+--- Everything under way ends (exit, sleep): visits, the book, read aloud,
+--- audio, the summaries.
+local function endAll(reason)
+    U.readEnd(reason)
+    endVisit(reason)
+    U.ttsStop()
+    endAudio(reason)
+    U.summary(reason)
+end
+
 function U.start()
     if U.started then return end
     U.started = true
-    local prev = readFile(U.dir() .. "/state")
-    local t, status, what = (prev or ""):match("^(%d+) (%a+) ?(.*)$")
+    -- (how the previous run ended: the debug reports, gzreader_remote.lua)
+    os.remove(U.dir() .. "/state") -- (written until 1.28)
     if not on() then
         U.dropQueue()
     else
         U.identify()
-        local previous = status == nil and "first start" or status == "exit" and "closed normally"
-            or status == "sleep" and "was asleep" or "ended without closing normally"
-        U.event("start", { device = osName(), firmware = firmware(), previous = previous })
-        if status == "run" then
-            U.event("restart without closing", { last_seen = tonumber(t), was = what ~= "" and what or nil })
-        end
     end
-    stateWrite("run")
     if not U.quit_patched then
         U.quit_patched = true
         local orig_quit = UIManager.quit
         UIManager.quit = function(...)
-            pcall(function()
-                U.readEnd("closed")
-                U.summary("closed")
-                stateWrite("exit")
-            end)
+            pcall(endAll, "closed")
             return orig_quit(...)
         end
     end
+    pcall(U.watchWindows)
+    U.nudge()
     UIManager:scheduleIn(U.TICK, tick)
-    -- the slow-operation timer (cheap; without the profiler) feeds Basic
+    -- the slow-operation timer (cheap; without the profiler)
     if on() then
         local okt, Trace = pcall(require, "gzreader_slowtrace")
         if okt and not Trace.installed then
@@ -518,6 +670,7 @@ function U.start()
     end
 end
 
+--- Sleep ends what's under way (a new visit starts on waking).
 function U.onSuspend()
     pcall(function()
         if U.reading then
@@ -525,21 +678,25 @@ function U.onSuspend()
             U.readEnd("sleep")
             U.resume_reading = ui_reading
         end
-        U.summary("sleep")
-        stateWrite("sleep")
+        endAll("sleep")
     end)
 end
 
 function U.onResume()
     pcall(function()
-        stateWrite("run")
         local r = U.resume_reading
         U.resume_reading = nil
-        if r and on(true) then
-            U.reading = { t = os.time(), pages = 0, battery = battery(), format = r.format, picture_book = r.picture_book }
+        if r and on() then
+            U.reading = { t = U.clock() }
         end
+        -- (battery use: from waking, not across the sleep)
+        agg.battery, agg.battery_t, agg.charged = U.battery(), U.clock(), U.charging()
+        U.nudge()
     end)
 end
+
+--- What Basic and Full send (Settings → General → Usage statistics).
+U.WHAT_IS_SENT = require("gettext")("Sends, with GZreader's version, the Kindle model and firmware: how long you spend in books, the Catalog's Books, Audiobooks and Music pages, the Audiobooks and Music tabs, Notes and Calendar; how long read aloud, audiobooks and music play; downloads (worked or failed, size, speed); how syncs with Grimmory go; how long Wi-Fi is on; battery use per hour; slow operations and keys the screen didn't answer. No book titles, file names, account or anything you type.")
 
 function U.menuItems()
     local _ = require("gettext")
@@ -553,10 +710,10 @@ function U.menuItems()
     return {
         text = _("Usage statistics"),
         sub_item_table = {
-            item(_("Basic (starts, downloads, problems)"), "basic",
-                _("Sends GZreader's version, the Kindle model and firmware when GZreader starts, whether the last run ended without closing normally, downloads that worked or failed, slow operations, and keys the screen didn't answer. No book titles, file names, account or anything you type.")),
-            item(_("Full (also how GZreader is used)"), "full",
-                _("Basic, plus: time on Home, Downloads, Grimmory, in books and menus; which menu entries you use; reading sessions (format, picture book or not, minutes, pages, pages per minute, battery use per hour); read aloud; download size and speed; how syncs with Grimmory go; how long Wi-Fi is on. Still no titles, file names or account.") .. (U.noWifi() and "" or ("\n\n" .. _("Full also sends debug reports to the developer: GZreader's starts, warnings and errors from its log, freezes and crashes. Log lines can name the book or file GZreader was working on; they never have passwords or tokens.")))),
+            item(_("Basic (how GZreader is used)"), "basic",
+                U.WHAT_IS_SENT),
+            item(_("Full (also debug reports)"), "full",
+                _("The same as Basic.") .. (U.noWifi() and "" or ("\n\n" .. _("Full also sends debug reports to the developer: GZreader's starts and how the previous run ended, warnings and errors from its log, freezes and crashes. Log lines can name the book or file GZreader was working on; they never have passwords or tokens.")))),
             item(_("Off (send nothing)"), "off", _("Nothing is recorded or sent. What was waiting is deleted.")),
         },
         help_text = U.noWifi() and _("This Kindle has no Wi-Fi: the statistics wait on the Kindle and the sync page sends them from the computer when you sync.") or nil,

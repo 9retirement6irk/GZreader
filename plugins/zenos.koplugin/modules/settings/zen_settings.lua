@@ -85,13 +85,16 @@ function M.build(plugin)
     local about_items     = about_section.build(ctx)
     local general_items   = general_section.build(ctx, extras_items)
 
-    -- GZreader: Wi-Fi only when needed under Wi-Fi; usage statistics before
+    -- GZreader: Wi-Fi is a menu (On, Off, Auto, then ZenOS's network list:
+    -- gz_settings.wifiItem) in place of ZenOS's switch; usage statistics before
     -- Advanced, and the diagnostic log's items (logging, sending, saving) at
     -- the top of Advanced (gz_settings.splitDiagnostics);
     -- read aloud and the audiobook test at the end of Reader.
     local gz_general = gz_section("general")
     if gz_general.wifi then
-        table.insert(general_items, (index_of(general_items, _("Wi-Fi")) or 0) + 1, gz_general.wifi)
+        local at = index_of(general_items, _("Wi-Fi"))
+        local item = require("common/gz_settings").wifiItem(gz_general.wifi, at and general_items[at])
+        if at then general_items[at] = item else table.insert(general_items, 1, item) end
     end
     if type(gz_general.diagnostics) == "table" and #gz_general.diagnostics > 0 then
         local stay, advanced = require("common/gz_settings").splitDiagnostics(gz_general.diagnostics)

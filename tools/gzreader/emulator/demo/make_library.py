@@ -5,7 +5,10 @@ covers.
 
   make_library.py <gutenberg txt dir> <fonts dir> <out dir>
 
-Writes <out>/<id>.epub, <out>/<id>.jpg and <out>/library.json.
+Writes <out>/<id>.epub, <out>/<id>.jpg and <out>/library.json; and for the
+Catalog's other pages, made-up audiobooks (square covers <out>/a<id>.jpg,
+audio from the test suite's tone) and Plex albums (<out>/plex-<key>.jpg) in
+<out>/audio.json, read by demo_grimmory.py and demo_plex.py.
 """
 import json, os, re, sys, zipfile, io
 from PIL import Image, ImageDraw, ImageFont
@@ -31,6 +34,27 @@ BOOKS = [
     (14, "shakespeare-caesar.txt", "Julius Caesar", "William Shakespeare", None, None, "Plays", 95),
     (15, "whitman-leaves.txt", "Leaves of Grass", "Walt Whitman", None, None, "Poetry", 135),
     (16, "blake-poems.txt", "Poems", "William Blake", None, None, "Poetry", 160),
+]
+
+# id, title, author, narrator, chapters, cover tone, in progress (%)
+AUDIOBOOKS = [
+    (101, "Pride and Prejudice", "Jane Austen", "Ruth Harlow", 6, 200, 42.0),
+    (102, "Treasure Island", "Robert Louis Stevenson", "Tom Ashby", 5, 45, None),
+    (103, "The Wind in the Willows", "Kenneth Grahame", "Clara Penn", 5, 160, 12.0),
+    (104, "The Time Machine", "H. G. Wells", "Owen Marsh", 4, 25, None),
+    (105, "Little Women", "Louisa May Alcott", "Ruth Harlow", 6, 130, None),
+    (106, "The Hound of the Baskervilles", "Arthur Conan Doyle", "Owen Marsh", 5, 70, None),
+]
+# Plex albums by made-up artists: key, title, artist, year, tracks, cover tone, pattern
+ALBUMS = [
+    ("501", "Night Trains", "The Lantern Club", 2019, ["Platform Nine", "Sleeper Car", "Signal Box", "Last Stop"], 30, "rings"),
+    ("502", "Paper Boats", "Mira Holt", 2021, ["Paper Boats", "Rainwater", "Harbour Lights"], 190, "waves"),
+    ("503", "Nocturnes", "Elena Varga", 2016, ["No. 1 in B-flat minor", "No. 2 in E-flat", "No. 3 in B"], 60, "bars"),
+    ("504", "Low Tide", "The Gullwings", 2022, ["Low Tide", "Sandbar", "Saltwater Radio", "Gulls"], 150, "waves"),
+    ("505", "Morning Pages", "Ada Finch", 2020, ["Coffee First", "Morning Pages", "Window Seat"], 220, "sun"),
+    ("506", "The Four Seasons", "Riverside Chamber Players", 2015, ["Spring", "Summer", "Autumn", "Winter"], 100, "bars"),
+    ("507", "Old Roads", "The Hollow Pines", 2018, ["Old Roads", "Pinewood", "County Line"], 80, "rings"),
+    ("508", "City at Dusk", "Northbound", 2023, ["Overpass", "Neon", "City at Dusk", "Home Late"], 15, "grid"),
 ]
 
 
@@ -132,3 +156,69 @@ for bid, fname, title, author, series, num, library, tone in BOOKS:
                 "library": library, "size": len(data)})
 json.dump(lib, open(os.path.join(OUT, "library.json"), "w"), indent=1)
 print(len(lib), "books in", OUT)
+
+
+def square(title, by, tone, pattern=None):
+    """A square cover: an audiobook's (title and author in a frame) or an
+    album's (a pattern, title and artist under it)."""
+    S = 600
+    im = Image.new("L", (S, S), tone)
+    d = ImageDraw.Draw(im)
+    ink = 255 if tone < 120 else 15
+    if pattern is None:
+        d.rectangle([30, 30, S - 30, S - 30], outline=ink, width=3)
+        d.arc([S / 2 - 49, 70, S / 2 + 49, 168], 180, 360, fill=ink, width=6)   # headphones
+        d.rectangle([S / 2 - 58, 120, S / 2 - 40, 170], fill=ink)
+        d.rectangle([S / 2 + 40, 120, S / 2 + 58, 170], fill=ink)
+        tf = font("NotoSerif-Bold.ttf", 56 if len(title) < 18 else 46)
+        y = 210
+    else:
+        mid = 230
+        if pattern == "rings":
+            for r in range(40, 200, 26):
+                d.ellipse([S / 2 - r, mid - r, S / 2 + r, mid + r], outline=ink, width=5)
+        elif pattern == "waves":
+            for k in range(7):
+                yy = 80 + k * 42
+                d.arc([20, yy, 300, yy + 60], 200, 340, fill=ink, width=6)
+                d.arc([300, yy, 580, yy + 60], 200, 340, fill=ink, width=6)
+        elif pattern == "bars":
+            for k in range(11):
+                h = 60 + (k * 53) % 230
+                d.rectangle([60 + k * 44, 390 - h, 88 + k * 44, 390], fill=ink)
+        elif pattern == "sun":
+            d.ellipse([S / 2 - 90, mid - 90, S / 2 + 90, mid + 90], fill=ink)
+            for k in range(16):
+                import math
+                a = k * math.pi / 8
+                d.line([S / 2 + 115 * math.cos(a), mid + 115 * math.sin(a), S / 2 + 170 * math.cos(a), mid + 170 * math.sin(a)], fill=ink, width=8)
+        elif pattern == "grid":
+            for k in range(9):
+                for j in range(6):
+                    if (k * 7 + j * 3) % 5:
+                        d.rectangle([70 + k * 52, 80 + j * 52, 104 + k * 52, 114 + j * 52], fill=ink)
+        tf = font("NotoSerif-Bold.ttf", 44)
+        y = 420
+    for line in wrap(d, title, tf, S - 100):
+        w = d.textlength(line, font=tf)
+        d.text(((S - w) / 2, y), line, fill=ink, font=tf)
+        y += tf.size + 10
+    af = font("NotoSerif-Italic.ttf", 32)
+    w = d.textlength(by, font=af)
+    d.text(((S - w) / 2, S - 90), by, fill=ink, font=af)
+    small = im.convert("RGB").resize((300, 300))
+    buf = io.BytesIO()
+    small.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
+audio = {"audiobooks": [], "albums": []}
+for bid, title, author, narrator, chapters_n, tone, progress in AUDIOBOOKS:
+    open(os.path.join(OUT, "a%d.jpg" % bid), "wb").write(square(title, author, tone))
+    audio["audiobooks"].append({"id": bid, "title": title, "author": author, "narrator": narrator,
+                                "chapters": chapters_n, "progress": progress})
+for key, title, artist, year, tracks, tone, pattern in ALBUMS:
+    open(os.path.join(OUT, "plex-%s.jpg" % key), "wb").write(square(title, artist, tone, pattern))
+    audio["albums"].append({"key": key, "title": title, "artist": artist, "year": year, "tracks": tracks})
+json.dump(audio, open(os.path.join(OUT, "audio.json"), "w"), indent=1)
+print(len(audio["audiobooks"]), "audiobooks and", len(audio["albums"]), "albums in", OUT)

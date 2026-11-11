@@ -106,12 +106,21 @@ function Tasks.installStatusBar()
     end
 end
 
-local function line(t)
+--- A line of the Downloads screen: the title, what it's at on the right,
+--- and an icon for what's happening (downloading, preparing, waiting).
+--- (short enough for the right of a row: "39% of 76.8 MB")
+function Tasks.line(t)
     local Progress = require("gzreader_progress")
+    local Rows = require("gzreader_rows")
     local name = t.title or "?"
-    if t.kind == "queued" then return T(_("Waiting: %1"), name) end
-    local what = t.kind == "prepare" and _("Preparing") or _("Downloading")
-    return T("%1: %2", what, name), t.status or Progress.status(t.done or 0, t.total)
+    if t.kind == "queued" then return name, _("waiting"), "tbr" end
+    local status = t.status
+    if not status then
+        local p = pct(t.done, t.total)
+        status = p and T(_("%1% of %2"), p, Progress.size(t.total)) or T(_("%1 so far"), Progress.size(t.done or 0))
+    end
+    if t.kind == "prepare" then return name, status, "refresh" end
+    return name, status, (t.kind == "music" and Rows.FILE.music) or (t.kind == "audiobook" and Rows.FILE.readaloud) or "download"
 end
 
 --- Which lines of the page shown changed between two lists: their numbers
@@ -178,9 +187,9 @@ function Tasks.show()
     local function items()
         local list, out = Tasks.list(), {}
         for _i, t in ipairs(list) do
-            local text, status = line(t)
+            local text, status, icon = Tasks.line(t)
             out[#out + 1] = {
-                text = text, mandatory = status,
+                text = text, mandatory = status, gz_icon = icon,
                 callback = function()
                     local buttons = {}
                     if t.open then
@@ -206,19 +215,20 @@ function Tasks.show()
         end
         local D = Download()
         if D and #D.queue > 1 then
-            out[#out + 1] = { text = T(_("Empty the queue (%1 waiting)"), #D.queue), callback = function()
+            out[#out + 1] = { text = _("Empty the queue"), mandatory = T(_("%1 waiting"), #D.queue), gz_icon = "delete", callback = function()
                 D.queue = {}
                 Tasks.changed()
                 menu:switchItemTable(nil, items())
             end }
         end
-        if #out == 0 then out[1] = { text = _("Nothing is downloading."), select_enabled = false } end
-        return out
+        if #out == 0 then out[1] = { text = _("Nothing is downloading."), gz_icon = "download", select_enabled = false } end
+        return require("gzreader_rows").mark(out)
     end
     menu = Menu:new{
         title = _("Downloads"), item_table = items(),
         is_borderless = true, is_popout = false, covers_fullscreen = true, title_bar_fm_style = true,
     }
+    require("gzreader_rows").apply(menu)
     -- keep the percentages current while it's open: only lines that changed,
     -- on the page shown (was: the whole screen redrawn every 5 s, back to page 1)
     local function refresh()

@@ -1264,6 +1264,7 @@ function Usb.showQueue(plugin)
                 text = (q.title or "?") .. (authors ~= "" and (" — " .. authors) or ""),
                 mandatory = (q.kind == "audiobook" and _("audiobook") or (q.format or ""))
                     .. (q.size_kb and string.format(" · %.1f MB", q.size_kb / 1024) or ""),
+                gz_icon = q.kind == "audiobook" and require("gzreader_rows").FILE.readaloud or "reading",
                 callback = function()
                     UIManager:show(ConfirmBox:new{
                         text = T(_("Take “%1” off the sync queue?"), q.title or ""),
@@ -1276,11 +1277,12 @@ function Usb.showQueue(plugin)
                 end,
             }
         end
-        if #out == 0 then out[1] = { text = _("The sync queue is empty."), select_enabled = false } end
-        return out
+        if #out == 0 then out[1] = { text = _("The sync queue is empty."), gz_icon = "sync", select_enabled = false } end
+        return require("gzreader_rows").mark(out)
     end
     menu = Menu:new{ title = _("Sync queue"), item_table = items(), covers_fullscreen = true, is_borderless = true,
         is_popout = false, title_bar_fm_style = true, name = "gz_usb_queue" }
+    require("gzreader_rows").apply(menu)
     UIManager:show(menu)
     return menu
 end

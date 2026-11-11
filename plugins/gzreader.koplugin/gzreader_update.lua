@@ -267,6 +267,17 @@ end
 
 function Update.autoCheckEnabled() return G_reader_settings:nilOrTrue("gzreader_update_auto") end
 
+--- The version a check already found to be worth installing, or nil.
+--- Nothing is fetched: this session's last check, or else the one saved
+--- by an earlier check (the daily one, possibly before a restart).
+function Update.known()
+    local st = Update.state
+    if type(st) == "table" and st.latest then return st.has_update and st.latest or nil end
+    local latest = G_reader_settings:readSetting("gzreader_update_latest")
+    if latest and Update.isNewer({ version = latest, beta = Update.betaEnabled() }) then return latest end
+    return nil
+end
+
 --- Once a day, when online, check quietly in a subprocess. on_found(info).
 function Update.backgroundCheck(on_found)
     if not Update.autoCheckEnabled() then return end

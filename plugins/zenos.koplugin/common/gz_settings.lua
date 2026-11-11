@@ -42,7 +42,7 @@ M.KOREADER_HIDDEN = {
     filemanager_display_mode = true,
     -- GZreader starts at Home (Settings → Interface → Navbar → Default tab)
     start_with = true,
-    -- Wi-Fi only when needed turns Wi-Fi on and off by itself (Settings → General)
+    -- Wi-Fi on Auto turns Wi-Fi on and off by itself (Settings → General → Wi-Fi)
     network_restore = true,
     network_before_wifi_action = true,
     network_after_wifi_action = true,
@@ -144,6 +144,26 @@ function M.splitDiagnostics(items)
         end
     end
     return stay, advanced
+end
+
+--- Settings → General → Wi-Fi as GZreader has it: GZreader's item (On, Off,
+--- Auto; gzreader_net.lua Net.menuItem) with ZenOS's network list after
+--- them, in place of ZenOS's Wi-Fi switch. `zen_item`: ZenOS's Wi-Fi row (its
+--- callback opens the network list), or nil.
+function M.wifiItem(gz_item, zen_item)
+    if type(gz_item) ~= "table" then return zen_item end
+    local items = {}
+    for _i, item in ipairs(gz_item.sub_item_table or {}) do items[#items + 1] = item end
+    if type(zen_item) == "table" and type(zen_item.callback) == "function" then
+        items[#items + 1] = {
+            text = require("gettext")("Networks"),
+            _zen_settings_submenu = true,
+            keep_menu_open = true,
+            callback = zen_item.callback,
+        }
+    end
+    gz_item.sub_item_table = items
+    return gz_item
 end
 
 return M
