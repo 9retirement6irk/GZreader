@@ -10,7 +10,7 @@ What the Kindle 3 has (from its diagnostic log, firmware 3.4.3):
 - Amazon's audioServer (com.lab126.audio over lipc): playbin-based, needs
   absolute file paths.
 
-"Test audiobook playback" (Settings → Reader) plays a short MP3 and an AAC tune (converted on the
+"Test audiobook playback" (Settings → General → Audio) plays a short MP3 and an AAC tune (converted on the
 Kindle from the bundled M4A, which also tests the converter) through each
 candidate pipeline, logs what the Kindle says, asks which you heard and
 remembers the pipeline per format.
@@ -218,7 +218,7 @@ function Engine.stopStrayAtStart()
 end
 
 --- Start playing `src` with `p`. Returns true, position started at (ms).
---- `kind`: "audiobook" or "music" (usage statistics: how long each plays).
+--- `kind`: "audiobook" or "music" (kept with what plays).
 function Engine.play(p, src, kind)
     -- (a skip: just our own player to stop, one shell fewer)
     local had = current ~= nil
@@ -237,7 +237,6 @@ function Engine.play(p, src, kind)
         UIManager:scheduleIn(4, Engine.applyVolume)
     end
     current = { p = p, src = src, offset_ms = started_ms, first_offset_ms = started_ms, started_at = Engine.clock(), kind = kind }
-    pcall(function() require("gzreader_usage").audioPlay(kind) end)
     Log.info("audio play", p.id, src.path or src.dir, "from", started_ms, "ms")
     return true, started_ms
 end
@@ -274,7 +273,6 @@ function Engine.pause()
     current.offset_ms = Engine.position()
     current.paused_at = Engine.clock()
     signal("STOP")
-    pcall(function() require("gzreader_usage").audioStop() end)
 end
 
 function Engine.resume()
@@ -282,8 +280,6 @@ function Engine.resume()
     current.paused_at = nil
     current.started_at = Engine.clock()
     signal("CONT")
-    local kind = current.kind
-    pcall(function() require("gzreader_usage").audioPlay(kind) end)
 end
 
 function Engine.stop()
@@ -292,7 +288,6 @@ function Engine.stop()
     if pid then run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid)) end
     os.remove(PID_FILE)
     current = nil
-    pcall(function() require("gzreader_usage").audioStop() end)
 end
 
 function Engine.isPaused() return current ~= nil and current.paused_at ~= nil end

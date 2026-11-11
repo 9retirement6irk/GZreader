@@ -245,7 +245,8 @@ function M.settingsItems(scope, id)
         local title = item_title(tab) or fallback_title(tab.id)
         -- Untitled tabs (e.g. Ink Away's icon-only shortcut) would render as blank rows.
         if not injected[tab.id] and title ~= ""
-                and require("common/gz_settings").keepKOReaderItem(tab) then -- GZreader
+                and require("common/gz_settings").keepKOReaderItem(tab) -- GZreader
+                and not require("common/gz_settings").KOREADER_DUPLICATES[tab.id] then
             local setting = tab.id == "setting" or tab.id == "typeset"
                 or tab.id == "filemanager_settings"
             local root = {}
@@ -262,7 +263,9 @@ function M.settingsItems(scope, id)
                 root.sub_item_table_func = function(page)
                     local children = tab.sub_item_table_func and tab.sub_item_table_func(page)
                         or tab.sub_item_table or tab
-                    return Settings.copyItems(children, menu, setting)
+                    -- GZreader: without what GZreader has elsewhere (gz_settings KOREADER_DUPLICATES)
+                    return require("common/gz_settings").dropKOReaderDuplicates(
+                        Settings.copyItems(children, menu, setting))
                 end
             end
             roots[#roots + 1] = root

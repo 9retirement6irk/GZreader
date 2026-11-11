@@ -72,6 +72,13 @@ function M.build(ctx, extras_items)
         end
     end
 
+    -- GZreader: Screen refresh, after Sleep: every setting about when the
+    -- screen flashes clean (they were in Reader → Appearance and Advanced)
+    table.insert(items, IconItem.decorate({
+        text = _("Screen refresh"),
+        sub_item_table = require("modules/settings/sections/gz_screen_refresh").build(ctx),
+    }, icons.refresh))
+
     -- GZreader: Time and date (Time zone first), Language and Storage, here
     -- rather than in About → Device (gz_settings.lua)
     local GzSettings = require("common/gz_settings")

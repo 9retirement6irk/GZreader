@@ -86,7 +86,7 @@ function M.build(plugin)
     local general_items   = general_section.build(ctx, extras_items)
 
     -- GZreader: Wi-Fi is a menu (On, Off, Auto, then ZenOS's network list:
-    -- gz_settings.wifiItem) in place of ZenOS's switch; usage statistics before
+    -- gz_settings.wifiItem) in place of ZenOS's switch; debug reports before
     -- Advanced, and the diagnostic log's items (logging, sending, saving) at
     -- the top of Advanced (gz_settings.splitDiagnostics);
     -- read aloud and the audiobook test at the end of Reader.
@@ -113,6 +113,19 @@ function M.build(plugin)
         end
     end
     local gz_reader = gz_section("reader")
+    -- GZreader: read aloud, the audiobook test and the headphone jack are for
+    -- music and audiobooks too: General → Audio, before Time and date
+    -- (gz_settings.splitAudio); anything else of GZreader's stays in Reader.
+    local gz_audio, gz_rest = require("common/gz_settings").splitAudio(gz_reader)
+    if type(gz_audio) == "table" and type(gz_rest) == "table" then gz_reader = gz_rest else gz_audio = {} end
+    if #gz_audio > 0 then
+        local at = index_of(general_items, _("Time and date")) or index_of(general_items, _("Advanced"))
+        table.insert(general_items, at or (#general_items + 1), {
+            text = _("Audio"),
+            icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_music"),
+            sub_item_table = gz_audio,
+        })
+    end
     if #gz_reader > 0 then
         reader_items[#reader_items].separator = true
         for _i, item in ipairs(gz_reader) do reader_items[#reader_items + 1] = item end

@@ -1872,45 +1872,14 @@ gets a password or token.
     return base + "." + ext;
   }
 
-  // Usage statistics the Kindle left in usage/ (it has no Wi-Fi to send them:
-  // gzreader_usage.lua), sent from here at the level chosen on the Kindle
-  async function sendUsage(out) {
+  // Usage statistics GZreader up to 1.28.1 left in usage/: deleted, not sent
+  // (GZreader sends no usage statistics since).
+  async function dropUsage() {
     var dir = await Drive.tryDir(Drive.sync, "usage");
     if (!dir) return;
     var names = [];
-    for await (var entry of dir.values()) if (entry.kind === "file" && /\.jsonl$/.test(entry.name)) names.push(entry.name);
-    if (!names.length) return;
-    var u = out.usage;
-    if (!u || !u.server || u.level === "off") {
-      // (turned off on the Kindle: nothing is sent)
-      for (var d = 0; d < names.length; d++) await dir.removeEntry(names[d]);
-      return;
-    }
-    var server = String(u.server).replace(/\/+$/, "");
-    if (!/^https:\/\//.test(server) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(server)) return;
-    names.sort();
-    var sent = 0, waiting = false;
-    for (var i = 0; i < names.length && !waiting; i++) {
-      var text = await (await (await dir.getFileHandle(names[i])).getFile()).text();
-      var items = [];
-      text.split("\n").forEach(function (line) {
-        if (!line.trim()) return;
-        try { var it = JSON.parse(line); if (it && /^(event|identify)$/.test(it.type) && it.payload) items.push(it); } catch (e) {}
-      });
-      for (var k = 0; k < items.length; k += 100) {
-        var r = null;
-        try {
-          r = await fetch(server + "/api/application/batch", { method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ events: items.slice(k, k + 100) }) });
-        } catch (e) { r = null; }
-        if (!r || r.status >= 500) { waiting = true; break; } // (offline or server trouble: the next sync)
-      }
-      if (waiting) break;
-      await dir.removeEntry(names[i]); // sent (or refused for good)
-      sent += items.length;
-    }
-    if (sent) log("Usage statistics sent for the Kindle (" + sent + " event" + (sent === 1 ? "" : "s") + ").", "ok");
-    if (waiting) log("The Kindle's usage statistics couldn't be sent: they wait for the next sync.");
+    for await (var entry of dir.values()) if (entry.kind === "file") names.push(entry.name);
+    for (var i = 0; i < names.length; i++) await dir.removeEntry(names[i]);
   }
 
   // Send to the developer for a Kindle without Wi-Fi: what the Kindle saved in
@@ -2132,7 +2101,7 @@ gets a password or token.
         return !inbox.music.some(function (m) { return m.kind === p.kind && String(m.key) === String(p.key); });
       }));
       Picks.prune(out);
-      try { await sendUsage(out); } catch (e) { log("Usage statistics: " + e.message); }
+      try { await dropUsage(); } catch (e) {}
       try { await Report.sendSaved(out); } catch (e) { log("Reports for the developer: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)

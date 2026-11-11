@@ -120,7 +120,7 @@ and text only.
 
 Amazon never documented the request format. The speech daemon (`ttsd`)
 writes which field it's missing to the system log ("unable to read id"), so
-Settings → Reader → Read aloud → Find the Kindle voice (test) adds the missing
+Settings → General → Audio → Read aloud → Find the Kindle voice (test) adds the missing
 fields one by one until `ttsd` accepts the request, plays "Voice test" and
 asks whether you heard it; the request shape is then saved. Text goes to the voice a
 sentence at a time (split only when a sentence passes 30 words at a comma,
@@ -130,7 +130,7 @@ page, the page turns part-way through, at the share of the sentence's
 characters already said. The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
-settings: Settings → Reader → Read aloud → Slower / Faster). The diagnostic log records every step.
+settings: Settings → General → Audio → Read aloud → Slower / Faster). The diagnostic log records every step.
 
 Kindle 2 and DX (firmware 2.x): there's no `lipc-hash-prop` and the speech
 service has an older interface (`com.lab126.tts`: `playFile`). Find the Kindle
@@ -150,11 +150,11 @@ service sends a message instead when they go in or out (`audioHS` from
 it found, one small listener waits for the message while something plays.
 
 When headphones are unplugged while music, an audiobook or read aloud plays,
-GZreader pauses it (Settings → Reader → *Pause when headphones are
-unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
+GZreader pauses it (Settings → General → Audio → *Pause when headphones
+are unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
 where they show the jack: GZreader looks for a headphone switch the way Linux
-reports one; if this Kindle doesn't have that, **Settings → Reader → Find the
-headphone jack** asks you to plug in and unplug headphones and keeps the
+reports one; if this Kindle doesn't have that, **Settings → General → Audio → Find
+the headphone jack** asks you to plug in and unplug headphones and keeps the
 place that changed. If nothing changes, the Kindle doesn't tell, and nothing
 is paused (send the log: it lists what was looked at).
 
@@ -163,3 +163,11 @@ is a property of the Kindle's audio service, it's read through KOReader's own
 lipc library, without starting a program; if that library can't be used on
 this Kindle, it asks with `lipc-get-prop` every 4 seconds instead (each ask
 starts a program, which costs the Kindle 3 a moment of CPU).
+
+## Audio settings
+
+**Settings → General → Audio** (the Kindle 2, 3, DX and Touch: the Kindles
+with a speaker or a headphone jack) has Read aloud (volume, speed, the
+Kindle voice), Test audiobook playback, Pause when headphones are unplugged
+and Find the headphone jack. They were at the end of Settings → Reader before; they
+are for music and audiobooks too.

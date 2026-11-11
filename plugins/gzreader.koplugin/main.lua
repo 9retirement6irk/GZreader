@@ -94,9 +94,15 @@ function Grimmory:init()
         if pause then Log.info("memory: 128 MB Kindle, garbage collector pause", pause) end
     end
     pcall(Net.start)
+    if not Grimmory.layout_scheduled then
+        -- new books laid out in the background while charging (gzreader_layout.lua)
+        Grimmory.layout_scheduled = true
+        pcall(function() require("gzreader_layout").schedule(self) end)
+    end
     if not Grimmory.usage_scheduled then
         Grimmory.usage_scheduled = true
-        UIManager:scheduleIn(15, function() pcall(function() require("gzreader_usage").start() end) end)
+        -- (usage statistics, sent up to 1.28.1: what's left of them deleted; Full becomes debug reports on)
+        UIManager:scheduleIn(15, function() pcall(function() require("gzreader_remote").forgetUsage() end) end)
     end
     self.settings = Grimmory.shared_settings
     require("gzreader_audioengine").root = self.path
@@ -419,7 +425,6 @@ do
         if usb and usb.plugin then
             -- syncing through a computer: the open book's exact place, and the outbox, now
             pcall(usb.finishCfis, usb.plugin)
-            pcall(usb.handOverUsage, usb.plugin)
             pcall(usb.plugin.save, usb.plugin)
         elseif pending then pcall(pending) end
         -- the log: what's waiting now, and every line after this at once
@@ -646,7 +651,10 @@ function Grimmory:sectionItems(section)
                         self:save()
                     end,
                 }),
-                icon("settings_stats", require("gzreader_usage").menuItems()),
+                (function() -- (nil on a Kindle without Wi-Fi)
+                    local item = require("gzreader_remote").menuItem()
+                    return item and icon("settings_bug", item)
+                end)(),
                 icon("send", {
                     text = Net.usb and _("Send diagnostic log to the developer (at the next sync)") or _("Send diagnostic log to the developer"),
                     callback = function(touchmenu)
@@ -700,6 +708,17 @@ function Grimmory:sectionItems(section)
             keep_menu_open = true,
             callback = function() require("gzreader_jack").test() end,
         })
+        if require("gzreader_layout").possible() then
+            items[#items + 1] = icon("check", {
+                text = _("Lay out new books while charging"),
+                help_text = _("While the Kindle charges and Home is on screen, books you haven't opened yet are laid out in the background, so the first time you open one it opens as quickly as a book you've read before. Stops as soon as you unplug or open a book."),
+                checked_func = function() return require("gzreader_layout").enabled() end,
+                callback = function()
+                    local L = require("gzreader_layout")
+                    G_reader_settings:saveSetting(L.SETTING, not L.enabled())
+                end,
+            })
+        end
         return items
     elseif section == "interface" then
         local items = {
@@ -1672,7 +1691,6 @@ function Grimmory:onReaderReady()
     nookChange()
     pcall(self.setupReader, self)
     pcall(function() require("gzreader_picturebook").onOpen(self.ui) end)
-    pcall(function() require("gzreader_usage").readStart(self.ui) end)
     local book_id, entry = self:entryForPath(self.ui.document.file)
     if not book_id then return end
     if not entry.file_id and self.api:isPaired() and NetworkMgr:isConnected() then
@@ -1683,6 +1701,7 @@ function Grimmory:onReaderReady()
         end)
     end
     Log.info("opened Grimmory book", book_id, "file_id", tostring(entry.file_id), "format", tostring(entry.format))
+    pcall(function() require("gzreader_layout").opened(self.ui.document, entry, book_id) end)
     self.sync = Sync:new(self, self.ui, entry, book_id)
     self.sync:onReady() -- (then openSync, below: a moment after the first page)
     self.bookmarks = Bookmarks:new(self.sync)
@@ -1778,7 +1797,6 @@ function Grimmory:onSuspend()
     self.suspended_at = os.time()
     pcall(function() require("gzreader_remote").onSuspend() end)
     Net.onSuspend()
-    pcall(function() require("gzreader_usage").onSuspend() end)
     Log.flush()
 end
 
@@ -1786,7 +1804,6 @@ Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after
 
 function Grimmory:onResume()
     pcall(function() require("gzreader_remote").onResume() end)
-    pcall(function() require("gzreader_usage").onResume() end)
     Net.onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)
     if self.sync then
@@ -1811,7 +1828,6 @@ end
 function Grimmory:onCloseDocument()
     nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end
-    pcall(function() require("gzreader_usage").readEnd("closed book") end)
     self.bookmarks = nil
     if self.annotations then
         pcall(self.annotations.onClose, self.annotations)

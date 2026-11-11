@@ -46,7 +46,7 @@ Press/Back answer), and the order things happen in on a first start.
 3. The mock Grimmory: `python3 mock_grimmory.py 18080` (test suite).
 4. Optional remote debugging: `python3 feed.py 18091 feed.log` and
    `GZ_REMOTE_FEED=http://127.0.0.1:18091/open/feed/test` in the environment
-   (and usage statistics set to Full).
+   (and debug reports on: `GZ_EMU_DEBUG_REPORTS=1`).
 
 ## E-ink ghosting and the Kindle's Wi-Fi services
 
@@ -75,6 +75,9 @@ Press/Back answer), and the order things happen in on a first start.
   page, the setup guide, ZenOS's touch tips, every tab, the launcher
   (GZreader menu, Send books), a note ticked by tapping, the note editor,
   the calendar's buttons and an event, a book read by tapping.
+- `layout_reuse.lua` (`GZ_EMU_BIG` an EPUB) — a book laid out in the
+  background (gzreader_layout.lua) opens without being laid out again: the
+  render time compared with a copy that wasn't.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
 - `downloads_status.lua` — the download status in the status bar changing

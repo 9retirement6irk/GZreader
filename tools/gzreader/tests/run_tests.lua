@@ -277,6 +277,8 @@ local s2 = socket.tcp(); s2:settimeout(0.5)
 check(s2:connect("127.0.0.1", tonumber(base:match(":(%d+)$"))) == nil, "page port closed afterwards")
 s2:close()
 for f, delay in pairs(UI.scheduled) do if delay <= 15 then UI.scheduled[f] = nil end end -- (start-up checks: Wi-Fi, usage statistics)
+-- (and the look for books to lay out while charging: gzreader_layout.lua)
+if require("gzreader_layout").loop then UI.scheduled[require("gzreader_layout").loop] = nil end
 check(next(UI.scheduled) == nil, "expiry timer cancelled")
 
 print("Setup from a browser: the Kindle's address and PIN")
@@ -1523,10 +1525,9 @@ print("Timers on the clock's quarter minutes; the clock in a book on old Kindles
     check(math.abs(q1 - 4.85) < 0.01 and math.abs(h1 - 19.85) < 0.01 and math.abs(c - 0.15) < 0.01 + 15 and c > 15,
         "the next quarter / half minute (just after it, so they're due together; never less than half a second away)")
     local function src(rel) local h = io.open(PLUGIN .. "/" .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
-    check(src("gzreader_usage.lua"):find('require("gzreader_ticks").untilNext(U.TICK)', 1, true)
-        and src("gzreader_remote.lua"):find('require("gzreader_ticks").untilNext(R.HEARTBEAT)', 1, true)
+    check(src("gzreader_remote.lua"):find('require("gzreader_ticks").untilNext(R.HEARTBEAT)', 1, true)
         and src("gzreader_net.lua"):find('require("gzreader_ticks").untilNext(Net.CHECK_EVERY)', 1, true),
-        "usage statistics, the heartbeat and the Wi-Fi idle check use it")
+        "the debug reports' heartbeat and the Wi-Fi idle check use it")
     local Eink = require("gzreader_eink")
     local Device = require("device")
     local was_model, was_kindle = Device.model, Device.isKindle
@@ -1699,6 +1700,160 @@ check(plugin.store.downloads["27"] ~= nil and Download.active == nil and #Downlo
 check(captured.info and captured.info:match("Downloaded “Second”. The download queue is done."), "queued completion: short notice, no Open prompt per book")
 check(require("gzreader_tasks").status() == nil and require("gzreader_tasks").count() == 0, "title bar item empty again when done")
 ctl("/set?dl_big=false")
+
+print("New books laid out in the background while charging")
+;(function()
+    local L = require("gzreader_layout")
+    local lfs = require("lfs")
+    local dir = WORK .. "/layout"
+    os.execute("mkdir -p '" .. dir .. "'")
+    local function mk(name) local h = io.open(dir .. "/" .. name, "wb"); h:write("x"); h:close(); return dir .. "/" .. name end
+    local fake = { store = { downloads = {
+        ["1"] = { path = mk("old.epub") }, ["2"] = { path = mk("new.epub") }, ["3"] = { path = mk("read.epub") },
+        ["4"] = { path = mk("scan.pdf") }, ["5"] = { path = dir .. "/gone.epub" }, ["6"] = { path = mk("done.epub"), laid_out = 1 },
+        ["7"] = { path = mk("failed.epub"), layout_tries = 2 } } }, saves = 0 }
+    function fake:saveSoon() self.saves = self.saves + 1 end
+    lfs.touch(dir .. "/old.epub", os.time() - 100, os.time() - 100)
+    local charge, reader, forks, busy = true, false, {}, nil
+    local saved = { L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy }
+    L.isBusy = function() return busy end
+    L.isCharging = function() return charge end
+    L.readerOpen = function() return reader end
+    local sidecars = {}
+    L.sidecar = function(bp)
+        if bp:find("read.epub", 1, true) then return { last_xpointer = "/body/DocFragment[3]" } end
+        return sidecars[bp:match("[^/]+$")]
+    end
+    L.memTotalKB = function() return 252364 end
+    L.fork = function(bpath)
+        local fk = { path = bpath, line = nil, stopped = false }
+        forks[#forks + 1] = fk
+        return { poll = function() return fk.line end, stop = function() fk.stopped = true end }
+    end
+    local LUI = require("ui/uimanager")
+    local real_in = LUI.scheduleIn
+    local timers = {}
+    LUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+    local c = L.candidate(fake)
+    check(c and c.id == "2", "the next book: the newest never opened (not a PDF, a gone file, one opened, laid out or failed twice)")
+    -- picture books: the settings the check writes before the first open
+    sidecars["new.epub"] = { gzreader_picture_book = true }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == "a picture book fitted when it opens" and c and c.id == "1",
+        "a picture book recognized but not fitted yet: not laid out (its first open fits it and lays it out again)")
+    sidecars["new.epub"] = { gzreader_picture_book = true, gzreader_pb_fit = { top = 40, bottom = 30 } }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == nil and c and c.id == "2",
+        "a picture book fitted before its first open: laid out, with the margins and style it was given")
+    sidecars["new.epub"] = { gzreader_picture_book = false }
+    c = L.candidate(fake)
+    check(c and c.id == "2", "checked and not a picture book: the settings file the check wrote doesn't count as opened")
+    check(L.notYet(dir .. "/read.epub") == "opened", "a reading position next to it: opened")
+    sidecars["new.epub"] = nil
+    -- the real Layout.busy: a book waiting for its picture-book check comes first
+    local was_busy, PBq = L.isBusy, package.loaded["gzreader_picturebook"]
+    L.isBusy = nil
+    package.loaded["gzreader_picturebook"] = { queue = { dir .. "/new.epub" } }
+    local why_pb = L.busy()
+    package.loaded["gzreader_picturebook"].queue = {}
+    local why_none = L.busy()
+    package.loaded["gzreader_picturebook"], L.isBusy = PBq, was_busy
+    check(why_pb == "a picture-book check" and why_none == nil,
+        "a picture-book check waiting: no layout until it's done (" .. tostring(why_pb) .. ", " .. tostring(why_none) .. ")")
+    L.memTotalKB = function() return 124532 end
+    check(not L.possible() and L.tick(fake) == nil and #forks == 0, "a DX (128 MB): never")
+    L.memTotalKB = function() return 252364 end
+    charge = false
+    check(L.tick(fake) == nil and #forks == 0, "not charging: nothing")
+    charge, reader = true, true
+    check(L.tick(fake) == nil and #forks == 0, "a book open: nothing")
+    reader = false
+    G_reader_settings:saveSetting(L.SETTING, false)
+    check(L.tick(fake) == nil and #forks == 0, "turned off in Settings: nothing")
+    G_reader_settings:delSetting(L.SETTING)
+    local job = L.tick(fake)
+    check(job and #forks == 1 and forks[1].path == dir .. "/new.epub" and L.running == job, "charging on Home: the book laid out in a background process")
+    check(L.tick(fake) == nil and #forks == 1, "…one at a time")
+    forks[1].line = "ok 312 41"
+    timers[#timers].fn()
+    check(not L.running and fake.store.downloads["2"].laid_out and fake.saves == 1, "done: remembered (not again)")
+    job = L.tick(fake)
+    check(job and forks[2].path == dir .. "/old.epub", "then the next one")
+    charge = false
+    timers[#timers].fn()
+    check(forks[2].stopped and not L.running and not fake.store.downloads["1"].laid_out and (fake.store.downloads["1"].layout_tries or 0) == 0,
+        "unplugged: stopped at once (tried again another time)")
+    charge = true
+    L.tick(fake)
+    reader = true
+    timers[#timers].fn()
+    check(forks[3].stopped and not L.running, "a book opened: stopped at once")
+    reader = false
+    L.tick(fake)
+    forks[4].line = ""
+    timers[#timers].fn()
+    L.tick(fake)
+    forks[5].line = "err not a book the engine lays out"
+    timers[#timers].fn()
+    check(fake.store.downloads["1"].layout_tries == 2 and L.candidate(fake) == nil, "failed twice (the process died, an error): not tried again")
+    -- downloads first: not while one runs or waits, and stopped when one starts
+    fake.store.downloads["8"] = { path = mk("later.epub") }
+    busy = "a download"
+    check(L.tick(fake) == nil and #forks == 5, "a book downloading (or waiting to): no layout meanwhile")
+    busy = nil
+    L.tick(fake)
+    busy = "a download"
+    timers[#timers].fn()
+    check(forks[6].stopped and not L.running and (fake.store.downloads["8"].layout_tries or 0) == 0,
+        "a download started: the layout stopped at once (tried again later)")
+    busy = "other background work"
+    check(L.tick(fake) == nil and #forks == 6, "other background work running (a picture-book check, covers): no layout either")
+    busy = nil
+    -- the layout it made, and whether the reader used it
+    L.tick(fake)
+    forks[7].line = "ok 120 9"
+    local CD_was, inits = package.loaded["document/credocument"], 0
+    package.loaded["document/credocument"] = { cacheInit = function() inits = inits + 1 end }
+    timers[#timers].fn()
+    local e8 = fake.store.downloads["8"]
+    check(e8.laid_out and e8.layout_secs == 9, "done: how long the layout took kept")
+    check(inits == 1, "done: the book engine reads its layout cache index again (else a book laid out after another was opened isn't found)")
+    reader = true
+    check(not L.reloadCacheIndex() and inits == 1, "…not under an open book")
+    reader = false
+    package.loaded["document/credocument"] = { cacheInit = function() error("crengine not started") end }
+    check(L.reloadCacheIndex() == false, "…nothing before the first book opened (crengine not started yet)")
+    package.loaded["document/credocument"] = CD_was
+    local LogL = require("gzreader_log")
+    local was_info, said = LogL.info, {}
+    LogL.info = function(...) said[#said + 1] = table.concat({ ... }, " ") end
+    L.opened(nil, e8, 8, 0.2)
+    L.opened(nil, e8, 8, 30) -- (once per book)
+    L.opened(nil, { laid_out = 1, layout_secs = 40 }, 9, 12.5)
+    local OT_was = package.loaded["gzreader_opentiming"]
+    package.loaded["gzreader_opentiming"] = { cur = { phases = { ["laid out"] = require("ui/time").s(0.3) } } }
+    L.opened(nil, { laid_out = 1 }, 10)
+    package.loaded["gzreader_opentiming"] = { cur = nil }
+    L.opened(nil, { laid_out = 1 }, 11)
+    package.loaded["gzreader_opentiming"] = OT_was
+    LogL.info = was_info
+    check(#said == 4 and said[1]:find("its layout used: laid out in 0.2 s (in the background: 9 s)", 1, true)
+        and said[2]:find("laid out again, 12.5 s (in the background: 40 s)", 1, true)
+        and said[3]:find("its layout used: laid out in 0.3 s", 1, true)
+        and said[4]:find("the reader's layout time not known", 1, true),
+        "opened: the log says whether the reader used the background layout, from the time its own layout took ("
+            .. table.concat(said, " / ") .. ")")
+    local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
+    local ltext = src and src:read("*a") or ""
+    if src then src:close() end
+    check(ltext:find('require("readhistory").addItem = function() end', 1, true) and ltext:find('require("docsettings").flush = function() end', 1, true)
+        and ltext:find("oom_score_adj", 1, true) and ltext:find("lowerPriority(19)", 1, true),
+        "the background process: no history or book settings written, lowest priority, the first to go if memory runs out")
+    LUI.scheduleIn = real_in
+    L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy = saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
+    L.running = nil
+    os.execute("rm -rf '" .. dir .. "'")
+end)()
 
 print("Diagnostic log")
 local logf = io.open(WORK .. "/gzreader.log", "rb"); local logtxt = logf and logf:read("*a") or ""; if logf then logf:close() end
@@ -2230,10 +2385,10 @@ do
     local gen = plugin:sectionItems("general")
     check(gen.wifi and gen.wifi.text == "Wi-Fi" and #gen.wifi.sub_item_table == 3, "General: Wi-Fi (On, Off, Auto)")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Usage statistics|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
-        "General: logging, usage statistics, send (to the developer or a browser) and save the log " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Reader: Read aloud, Test audiobook playback, the headphones")
+    check(d:match("|Diagnostic logging|Send debug reports automatically|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
+        "General: logging, automatic debug reports, send (to the developer or a browser) and save the log (no usage statistics) " .. d)
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Reader: Read aloud, Test audiobook playback, the headphones, laying out new books while charging")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
@@ -2306,8 +2461,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones, laying out new books")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -4466,8 +4621,16 @@ do
     Async.background = function(_fn, cb) cb({ yes = false, wide = {} }) end
     PB.PREPARE_DELAY = 0
     rawset(_G, "GZ_NO_PB_PREPARE", nil)
+    -- a book being laid out in the background: the check waits for it
+    local L_was = package.loaded["gzreader_layout"]
+    package.loaded["gzreader_layout"] = { running = { id = "9" } }
     PB.prepare(pg); PB.prepare(pg)
-    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
+    check(DocSettings:open(pg):readSetting("gzreader_picture_book") == nil and #PB.queue == 1,
+        "a background layout running: the picture-book check waits (two book processes ran a Kindle 3 out of memory)")
+    package.loaded["gzreader_layout"] = L_was
+    PB.safeNext()
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
     Async.background = orig_bg2
     check(DocSettings:open(pg):readSetting("gzreader_picture_book") == false and #PB.queue == 0,
         "a book that isn't one: noted (not checked again when it opens)")
@@ -5464,210 +5627,62 @@ print("A line in the log for each start: how long until Home is on screen")
     OT.boot = saved_boot
 end)()
 
-print("Usage statistics")
-;(function()
-    local U = require("gzreader_usage")
-    local UIM = require("ui/uimanager")
-    local us = { got = {}, t = 1000, stack = UIM._window_stack, clock = U.clock, browser = package.loaded["gzreader_browser"] }
-    U.testing_sink = function(item) us.got[#us.got + 1] = item end
-    U.clock = function() return us.t end
-    local function last(name)
-        for i = #us.got, 1, -1 do if us.got[i].payload.name == name then return us.got[i].payload end end
-    end
-    gsettings.gzreader_usage = nil
-    check(U.level() == "basic", "Basic by default")
-    U.download({ ok = true, bytes = 2048000, seconds = 90, resumed = true })
-    local ev = us.got[1] and us.got[1].payload
-    local d = ev and ev.data or {}
-    check(ev and us.got[1].type == "event" and ev.application == U.APP and ev.name == "download"
-        and type(d.install) == "string" and #d.install == 32 and d.version and d.device and d.firmware and d.minutes == 1.5,
-        "every event: this Kindle's random ID, version, device, firmware and minutes")
-    check(d.kb == 2000 and d.kb_per_s == 22 and d.resumed == true, "Basic sends what Full sends (download size, speed, resume)")
-    check(ev.version == d.version and ev.sdkVersion == "gzreader", "the version also at the payload's top level (Tianji's Version chart)")
-    U.download({ ok = false, error = "timeout" })
-    check(last("download").data.ok == false and last("download").data.error == "timeout" and last("download").data.minutes == 0,
-        "an event with nothing to time: minutes 0")
-    check(U.agent():match("^GZreader/.+ %(.+; " .. U.id():sub(1, 8) .. "%)$"), "the User-Agent carries the start of the random ID (Tianji's sessions)")
-    -- visits: the part of GZreader on screen, under what's open on top
-    local fm = { name = "filemanager" }
-    local catalog = { _gz_navbar_tab_id = "ct_grimmory" }
-    package.loaded["gzreader_browser"] = { current = { menu = catalog, section = "books" } }
-    local B = package.loaded["gzreader_browser"].current
-    UIM._window_stack = { { widget = fm } }
-    check(U.portion() == nil, "Home / Downloads: not a counted part")
-    UIM._window_stack = { { widget = fm }, { widget = catalog }, { widget = { name = "Quick panel" } } }
-    check(U.portion() == "catalog books", "the Catalog's Books page, with the quick panel on top")
-    us.got = {}
-    U.checkPortion()
-    us.t = us.t + 120
-    B.section = "audiobooks"
-    U.checkPortion()
-    ev = last("catalog books")
-    check(ev and ev.data.minutes == 2 and ev.screen == "catalog books" and #us.got == 1, "a Catalog page turned: the visit to Books is sent (2 minutes)")
-    us.t = us.t + 3
-    B.section = "music"
-    U.checkPortion()
-    check(#us.got == 1, "a visit shorter than " .. U.MIN_VISIT .. " s isn't sent")
-    us.t = us.t + 30
-    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_audiobooks" } } }
-    U.checkPortion()
-    check(last("catalog music") and last("catalog music").data.minutes == 0.5, "…the Music page's visit")
-    local parts = {}
-    for _i, id in ipairs({ "ct_music", "ct_notes", "ct_calendar", "ct_audiobooks" }) do
-        us.t = us.t + 60
-        UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = id } }, { widget = { name = "NoteEditor" } } }
-        U.checkPortion()
-    end
-    for _i, it in ipairs(us.got) do parts[it.payload.name] = it.payload.data.minutes end
-    check(parts["audiobooks tab"] == 1 and parts["music tab"] == 1 and parts.notes == 1 and parts.calendar == 1,
-        "the Audiobooks tab, the Music tab, Notes and Calendar are their own visits")
-    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_notes" } }, { widget = { name = "home" } } }
-    check(U.portion() == nil, "Home over a tab: not a counted part")
-    -- the reader: its own event; a visit underneath ends
-    us.t = us.t + 60
-    UIM._window_stack = { { widget = { name = "ReaderUI" } }, { widget = { name = "Quick panel" } } }
-    U.checkPortion()
-    check(U.visit == nil and last("audiobooks tab").data.minutes == 1, "a book opened: the visit underneath ends")
-    U.readStart({ document = { file = "/x/book.epub" } })
-    us.t = us.t + 360
-    U.readEnd("closed book")
-    ev = last("reader")
-    check(ev and ev.data.minutes == 6 and ev.screen == "reader" and ev.data.firmware
-        and ev.data.pages == nil and ev.data.format == nil and ev.data.picture_book == nil and ev.data.battery_per_hour == nil,
-        "the reader: minutes and the common fields only (no format, pages or battery)")
-    -- sleep ends a visit; waking starts one
-    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_calendar" } } }
-    us.got = {}
-    U.checkPortion()
-    us.t = us.t + 600
-    U.onSuspend()
-    check(last("calendar") and last("calendar").data.minutes == 10 and U.visit == nil, "sleep ends a visit")
-    U.onResume()
-    U.checkPortion()
-    check(U.visit and U.visit.part == "calendar" and U.visit.t == us.t, "…waking starts a new one")
-    U.visit = nil
-    -- read aloud, audiobooks, music: how long they played
-    us.got = {}
-    U.ttsStart(); us.t = us.t + 90; U.ttsStop()
-    check(last("read aloud") and last("read aloud").data.minutes == 1.5, "read aloud: its own event, how long it spoke")
-    U.audioPlay("audiobook"); us.t = us.t + 60; U.audioStop()
-    us.t = us.t + 10
-    U.audioPlay("audiobook"); us.t = us.t + 60; U.audioStop() -- (the next track, or a pause)
-    us.t = us.t + 30; U.checkAudio()
-    check(last("audiobook playing") == nil, "a pause or a track change: the same session")
-    us.t = us.t + U.AUDIO_GAP; U.checkAudio()
-    ev = last("audiobook playing")
-    check(ev and ev.data.minutes == 2 and ev.data.plays == 2, "audiobook playing: sent after " .. U.AUDIO_GAP .. " s stopped (2 minutes, 2 plays)")
-    U.audioPlay("music"); us.t = us.t + 30
-    U.audioPlay("audiobook")
-    check(last("music playing") and last("music playing").data.minutes == 0.5, "music playing: ends when an audiobook starts")
-    us.t = us.t + 45
-    U.onSuspend()
-    check(last("audiobook playing") and last("audiobook playing").data.minutes == 0.8 and U.audio == nil, "…and at sleep")
-    -- the players say what's playing; no menu events, no start event
-    local function src(file_name)
-        local h = io.open(PLUGIN .. "/" .. file_name, "rb"); local x = h and h:read("*a") or ""; if h then h:close() end; return x
-    end
-    check(src("gzreader_audiobook.lua"):find('Engine.play(p, src, "audiobook")', 1, true) and src("gzreader_music.lua"):find('Engine.play(p, src, "music")', 1, true)
-        and select(2, src("gzreader_audioengine.lua"):gsub('require%("gzreader_usage"%)%.audio', "")) == 4,
-        "the audio engine reports play, pause, resume and stop with the kind")
-    check(not (src("gzreader_panel.lua") .. src("gzreader_readmenu.lua") .. src("gzreader_homemenu.lua")):find('usage").menu', 1, true)
-        and not src("gzreader_usage.lua"):find('U.event("start"', 1, true) and U.menu == nil,
-        "no menu events and no start event (how the last run ended: the debug reports)")
-    check(src("gzreader_browser.lua"):find('require("gzreader_usage").nudge()', 1, true), "turning a Catalog page is noticed at once")
-    -- battery use per hour: in the summary ("sync"), not while charging, not across sleep
-    us.real_battery, us.real_charging = U.battery, U.charging
-    local pct, charging = 80, false
-    U.battery = function() return pct end
-    U.charging = function() return charging end
-    U.summary("start")
-    us.got = {}
-    us.t = us.t + 3600; pct = 77
-    U.summary("periodic")
-    check(last("sync") and last("sync").data.battery_per_hour == 3, "battery use per hour goes with the diagnostics (3 %/h over an hour)")
-    us.got = {}
-    us.t = us.t + 3600; pct = 77; charging = true
-    U.summary("periodic")
-    check(last("sync") == nil, "charging: no battery use (and nothing else to send: no sync event)")
-    charging = false
-    U.summary("reset")
-    us.got = {}
-    us.t = us.t + 120; pct = 76
-    U.onResume() -- (from waking)
-    us.t = us.t + 1200; pct = 75
-    U.summary("periodic")
-    check(last("sync") and last("sync").data.battery_per_hour == 3, "…counted from waking, not across the sleep (1 % in 20 min)")
-    us.got = {}
-    us.t = us.t + 300; pct = 74
-    U.summary("periodic")
-    check(last("sync") == nil, "under 10 minutes: too coarse to send")
-    U.battery, U.charging = us.real_battery, us.real_charging
-    U.visit = nil
-    -- summaries
-    U.request("flush", true, 800); U.request("flush", false, 1200); U.request("annotations", true, 500)
-    U.slow("a keypress", 4)
-    us.got = {}
-    U.summary("test")
-    local names = {}
-    for _i, it in ipairs(us.got) do names[it.payload.name] = it.payload.data end
-    check(names["slow operations"] and names["slow operations"].count == 1 and names.sync and names.sync.position.ok == 1
-        and names.sync.position.failed == 1 and names.sync.position.avg_ms == 1000 and names.sync.highlights.ok == 1
-        and names.sync.minutes and names.sync.wifi_minutes,
-        "summaries: slow operations, and sync counts with Grimmory's answer time and Wi-Fi minutes")
-    gsettings.gzreader_usage = "off"
-    us.got = {}
-    U.download({ ok = true })
-    U.audioPlay("music"); U.ttsStart()
-    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_notes" } } }
-    U.checkPortion()
-    check(#us.got == 0 and U.visit == nil and U.audio == nil, "Off: nothing recorded")
-    U.tts_at = nil
-    UIM._window_stack = us.stack
-    package.loaded["gzreader_browser"] = us.browser
-    U.clock = us.clock
-    U.testing_sink = nil
-    -- the batch really goes out (background process, while Wi-Fi is on)
-    gsettings.gzreader_usage = "basic"
-    U.SERVER = "http://127.0.0.1:" .. PORT
-    U.event("download", { ok = true })
-    U.identify()
-    U.maybeSend(true)
-    runLoop(function() return not U.sending end, 30)
-    local usage = json.decode(ctl("/state")).usage or {}
-    local seen = {}
-    for _i, e in ipairs(usage) do seen[e.type .. ":" .. tostring(e.payload.name)] = true end
-    check(seen["event:download"] and seen["identify:nil"], "sent as one batch to /api/application/batch (event + identify)")
-    local left = 0
-    for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
-    check(left == 0, "sent batches are removed")
-    -- no Wi-Fi: handed to the sync page (the .gzsync folder's usage/)
-    local hand = WORK .. "/usage-hand"
-    os.execute("rm -rf '" .. hand .. "'")
-    U.event("download", { ok = true })
-    check(U.handOver(hand) == 1, "no Wi-Fi: what's waiting goes to the sync page's folder")
-    local moved, lines = 0, 0
-    for name in require("libs/libkoreader-lfs").dir(hand) do
-        if name:match("jsonl$") then
-            moved = moved + 1
-            for line in io.lines(hand .. "/" .. name) do if json.decode(line).payload.name == "download" then lines = lines + 1 end end
-        end
-    end
-    left = 0
-    for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
-    check(moved == 1 and lines == 1 and left == 0, "…moved, not copied")
-    gsettings.gzreader_usage = "off"
-    check(U.handOver(hand) == 0 and require("gzreader_usbsync").usageInfo() == nil, "Off: nothing handed over, no server in the outbox")
-    gsettings.gzreader_usage = "basic"
-    local ui = require("gzreader_usbsync").usageInfo()
-    check(ui and ui.level == "basic" and ui.server == U.SERVER, "the outbox tells the page where to send them")
-    os.execute("rm -rf '" .. hand .. "'")
-    gsettings.gzreader_usage = nil
-end)()
-
-print("Remote debugging (with Full usage statistics)")
+print("No usage statistics (since 1.28.1); debug reports have their own setting")
 ;(function()
     local R = require("gzreader_remote")
-    local U = require("gzreader_usage")
+    local lfs = require("libs/libkoreader-lfs")
+    local function rd(p) local h = io.open(p, "rb"); local t = h and h:read("*a"); if h then h:close() end; return t end
+    -- nothing records or sends usage statistics any more
+    local uses = {}
+    for name in lfs.dir(PLUGIN) do
+        if name:match("%.lua$") and (rd(PLUGIN .. "/" .. name) or ""):find('require("gzreader_usage")', 1, true) then uses[#uses + 1] = name end
+    end
+    local Usb = require("gzreader_usbsync")
+    check(not rd(PLUGIN .. "/gzreader_usage.lua") and #uses == 0 and Usb.usageInfo == nil and Usb.handOverUsage == nil
+        and not (rd(PLUGIN .. "/gzreader_usbsync.lua") or ""):find("usage = ", 1, true),
+        "no usage statistics: the module is gone, nothing calls it, the outbox has no usage " .. table.concat(uses, ","))
+    -- debug reports: off unless chosen; a Full level carries over once, the rest is deleted
+    local saved_dr, saved_u = gsettings.gzreader_debug_reports, gsettings.gzreader_usage
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, nil
+    check(R.setting() == false and R.SETTING == "gzreader_debug_reports", "debug reports: off by default")
+    gsettings.gzreader_usage = "basic"
+    check(R.setting() == false, "…off after Basic usage statistics")
+    gsettings.gzreader_usage = "full"
+    check(R.setting() == true, "…on after Full (Full sent them)")
+    local udir = WORK .. "/gzreader-usage"
+    lfs.mkdir(udir)
+    local fh = io.open(udir .. "/queue.jsonl", "wb"); fh:write('{"type":"event"}\n'); fh:close()
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == true and gsettings.gzreader_usage == nil and not lfs.attributes(udir, "mode"),
+        "at start: Full becomes debug reports on, the old level and the waiting statistics are deleted")
+    check((rd(PLUGIN .. "/main.lua") or ""):find('require("gzreader_remote").forgetUsage()', 1, true),
+        "…once a run, 15 s after start (main.lua)")
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, "off"
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == false and gsettings.gzreader_usage == nil, "…Off (or Basic): debug reports off")
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == false, "…once: a choice made since stays")
+    -- the random ID stays (it names this Kindle in reports)
+    local id = gsettings.gzreader_usage_id
+    gsettings.gzreader_usage_id = string.rep("ab", 16)
+    check(R.id() == string.rep("ab", 16) and R.deviceName():match("%-ababab$"), "the Kindle's random ID is kept: reports name it as before")
+    gsettings.gzreader_usage_id = id
+    -- Settings → General: the switch
+    local item = R.menuItem()
+    check(item and item.text == "Send debug reports automatically" and not item.checked_func()
+        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords or tokens", 1, true),
+        "Settings → General → Send debug reports automatically (says what it sends)")
+    local Net = require("gzreader_net")
+    local was_usb = Net.usb
+    Net.usb = true
+    check(R.menuItem() == nil and not R.enabled(), "a Kindle without Wi-Fi: no switch (it couldn't send)")
+    Net.usb = was_usb
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = saved_dr, saved_u
+end)()
+
+print("Remote debugging (debug reports on)")
+;(function()
+    local R = require("gzreader_remote")
     local lfs = require("libs/libkoreader-lfs")
     check(R.normalize(" https://in.example.com/open/feed/abc/send \n") == "https://in.example.com/open/feed/abc", "feed address: /send etc. trimmed")
     check(R.normalize("nonsense") == nil, "not an address: refused")
@@ -5677,22 +5692,22 @@ print("Remote debugging (with Full usage statistics)")
         "releases report to one feed, test builds to another")
     local started = 0
     R.startWatchdog = function() started = started + 1 end
-    -- Basic (the default): off; a feed set by hand before is forgotten
-    gsettings.gzreader_usage = "basic"
+    -- off (the default): nothing; a feed set by hand before is forgotten
+    gsettings.gzreader_debug_reports = false
     plugin.store.remote_url, plugin.store.remote_profile = "https://in.example.com/open/feed/old", true
     R.started = false
     R.start(plugin)
     check(not R.on and started == 0 and plugin.store.remote_url == nil and plugin.store.remote_profile == nil,
-        "Basic: nothing sent, no watchdog; the old hand-set feed is gone")
-    -- Full: on; the previous run didn't close normally
+        "off: nothing sent, no watchdog; the old hand-set feed is gone")
+    -- on: the previous run didn't close normally
     R.LIVE_DIR = WORK .. "/live"
     lfs.mkdir(R.LIVE_DIR)
     local dir = R.dir()
     os.execute("rm -f '" .. dir .. "'/spool/*")
     local fh = io.open(dir .. "/heartbeat", "wb"); fh:write((os.time() - 600) .. " run reading big.epub p.40"); fh:close()
     fh = io.open(WORK .. "/gzreader.log.prev", "wb"); fh:write("2026 [INFO] the line before the freeze\n"); fh:close()
-    U.setLevel("full") -- (starts it: R.apply)
-    check(R.on and started == 1, "Full: on at once, watchdog started")
+    R.menuItem().callback() -- (Settings: on; starts it: R.apply)
+    check(R.on and started == 1 and gsettings.gzreader_debug_reports == true, "turned on: on at once, watchdog started")
     local cfg = io.open(dir .. "/config"):read("*a")
     check(cfg:sub(1, #R.feedUrl() + 1) == R.feedUrl() .. "\n" and cfg:match("\n" .. R.deviceName():gsub("%-", "%%-") .. "\n"),
         "the watchdog reports to this build's feed")
@@ -5737,11 +5752,11 @@ print("Remote debugging (with Full usage statistics)")
     R.onSuspend()
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ sleep "), "asleep: the watchdog doesn't call it a freeze")
     R.event("queued before turning it off", "x")
-    U.setLevel("basic") -- (stops it)
+    R.setSetting(false) -- (Settings or the setup guide: off; stops it)
     local left = 0
     for name in require("libs/libkoreader-lfs").dir(dir .. "/spool") do if name:match("%.json$") then left = left + 1 end end
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ off") and left == 0 and not R.on and require("gzreader_log").on_line == nil,
-        "back to Basic: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
+        "turned off: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
     check(not io.open(R.livePath(), "rb"), "…and the live beat is gone")
     -- Diagnostics → Send to the developer
     local logf = WORK .. "/devlog.txt"
@@ -5779,7 +5794,7 @@ print("Remote debugging (with Full usage statistics)")
     os.remove(logf)
     R.on = false
     require("gzreader_log").on_line = nil
-    gsettings.gzreader_usage = nil
+    gsettings.gzreader_debug_reports = nil
     -- the menus
     local src = io.open(debug.getinfo(R.start, "S").source:sub(2):gsub("gzreader_remote%.lua$", "main.lua"), "rb")
     local text = src and src:read("*a") or ""
@@ -7788,7 +7803,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → Reader → Appearance)")
+print("Flash on every page turn (Settings → General → Screen refresh)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -7823,11 +7838,11 @@ print("Flash on every page turn (Settings → Reader → Appearance)")
     Eink.setFlashPageTurns(false)
     check(UIManager.FULL_REFRESH_COUNT == 6 and not Eink.pageTurnsTicked(), "unticked: every 6 pages")
     local f = io.open(debug.getinfo(Eink.promote, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_eink%.lua$",
-        "zenos.koplugin/modules/settings/sections/reader_settings.lua"), "rb")
+        "zenos.koplugin/modules/settings/sections/gz_screen_refresh.lua"), "rb")
     local src = f and f:read("*a") or ""
     if f then f:close() end
-    check(src:find('table.insert(appearance_items, IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → Reader → Appearance, on every device")
+    check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen refresh, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do
@@ -8567,9 +8582,9 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) nbtn = #o.buttons; return o end }
     plugin:showDiagnostics()
     package.loaded["ui/widget/buttondialog"] = orig_bd
-    check(gen.wifi == nil and #labels == 4 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
-        and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
-        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
+    check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
+        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
+        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
     -- Send to the developer without Wi-Fi: the report waits in .gzsync/reports/ for the sync page (gzreader_usbreport.lua)
     do
         local Rep = require("gzreader_usbreport")

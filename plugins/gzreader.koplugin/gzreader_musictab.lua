@@ -944,7 +944,7 @@ function Tab.settingsItems(plugin)
                 end,
             })
         end },
-        { text = _("The Music tab: Settings → Navbar → Tabs. Headphones: Settings → Reader."), enabled = false },
+        { text = _("The Music tab: Settings → Navbar → Tabs. Headphones: Settings → General → Audio."), enabled = false },
     }
     return items
 end

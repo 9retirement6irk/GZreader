@@ -18,6 +18,7 @@ local real = {
     ["modules/settings/sections/global_settings"] = true,
     ["modules/settings/sections/general_settings"] = true,
     ["modules/settings/sections/advanced_settings"] = true,
+    ["modules/settings/sections/gz_screen_refresh"] = true,
     ["modules/settings/sections/about_settings"] = true,
     ["modules/settings/sections/interface_settings"] = true,
     ["modules/settings/zen_settings_utils"] = true,
@@ -44,7 +45,7 @@ local gz = {
                 { text = "Auto (only when needed)", radio = true, separator = true } } },
             diagnostics = {
                 { text = "Diagnostic logging" },
-                { text = "Usage statistics" },
+                { text = "Send debug reports automatically" },
                 { text = "Send diagnostic log to the developer" },
                 { text = "Send diagnostic log to a browser (QR code)" },
                 { text = "Save diagnostic log (USB)" },
@@ -121,16 +122,63 @@ if okb then
     check(adv:find("^|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|") ~= nil,
         "General → Advanced starts with the diagnostic log's items")
     check(advanced.sub_item_table[4].separator == true, "a line under them")
-    check(gen:find("|Usage statistics|Advanced|", 1, true) ~= nil, "Usage statistics stays in General, just above Advanced")
+    check(gen:find("|Send debug reports automatically|Advanced|", 1, true) ~= nil and not gen:find("Usage statistics", 1, true),
+        "Send debug reports automatically stays in General, just above Advanced (no Usage statistics)")
     for _i, gone in ipairs({ "Diagnostic logging", "Send diagnostic log to the developer", "Save diagnostic log (USB)" }) do
         check(not gen:find("|" .. gone .. "|", 1, true), "not in General itself: " .. gone)
     end
     for _i, gone in ipairs({ "Debug logging", "Clear all gestures", "Plugin management", "Patch management" }) do
         check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced: " .. gone)
     end
-    for _i, kept in ipairs({ "Partial pages refresh", "Show hidden files", "Extract metadata" }) do
+    for _i, kept in ipairs({ "Show hidden files", "Extract metadata" }) do
         check(adv:find("|" .. kept .. "|", 1, true) ~= nil, "Advanced still has " .. kept)
     end
+    -- General → Screen refresh: every flash setting in one place
+    for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
+        check(not adv:find("|" .. moved .. "|", 1, true), "not in General → Advanced any more: " .. moved)
+    end
+    check(gen:find("|Sleep|Screen refresh|", 1, true) ~= nil, "General: Screen refresh, just after Sleep")
+    local refresh = find(general, "Screen refresh")
+    local rt = texts(refresh and refresh.sub_item_table)
+    print("    Screen refresh: " .. rt)
+    check(rt == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
+        "Screen refresh: page turns, CBZ page turns, screen changes, partial pages (a Kindle 3)")
+    local rsrc = read("modules/settings/sections/reader_settings.lua")
+    check(not rsrc:find('_("Flash on every', 1, true), "Reader → Appearance: no flash settings left")
+    local asrc = read("modules/settings/sections/advanced_settings.lua")
+    check(not asrc:find('_("Partial pages refresh")', 1, true) and not asrc:find('_("Flash when the screen changes")', 1, true),
+        "General → Advanced: no flash settings left")
+    -- what each Kindle sees (gzreader_eink: page turns on every Kindle, screen changes without REAGL)
+    local function refreshTexts(eink)
+        local keep = package.loaded["gzreader_eink"]
+        package.loaded["gzreader_eink"] = eink or nil
+        -- (none: requiring it fails, as without GZreader's plugin)
+        package.preload["gzreader_eink"] = not eink and function() error("no gzreader_eink") end or nil
+        local list = require("modules/settings/sections/gz_screen_refresh").build({ config = config, plugin = plugin })
+        package.loaded["gzreader_eink"], package.preload["gzreader_eink"] = keep, nil
+        return texts(list)
+    end
+    local function eink(reagl)
+        return { flashPageTurns = function() return not reagl end, pageTurnsTicked = function() return not reagl end,
+            setFlashPageTurns = function() end, applies = function() return not reagl end,
+            enabled = function() return true end, setEnabled = function() end }
+    end
+    check(refreshTexts(eink(true)) == "|Flash on every page turn|Flash on every CBZ page turn|Partial pages refresh|",
+        "a Paperwhite (REAGL): no Flash when the screen changes")
+    check(refreshTexts(eink(false)) == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
+        "a Kindle 3: all four")
+    check(refreshTexts(false) == "|Flash on every CBZ page turn|Partial pages refresh|", "without GZreader's e-ink module: ZenOS's two")
+    -- ticking them changes what they did before
+    local cbz, partial
+    for _i, it in ipairs(require("modules/settings/sections/gz_screen_refresh").build({ config = config, plugin = plugin })) do
+        if text(it) == "Flash on every CBZ page turn" then cbz = it elseif text(it) == "Partial pages refresh" then partial = it end
+    end
+    config.features.reader_flash_cbz, config.features.partial_page_repaint = nil, nil
+    cbz.callback(); partial.callback()
+    check(config.features.reader_flash_cbz == true and cbz.checked_func() and config.features.partial_page_repaint == true and partial.checked_func(),
+        "Flash on every CBZ page turn and Partial pages refresh still set ZenOS's own settings")
+    cbz.callback(); partial.callback()
+    check(not cbz.checked_func() and not partial.checked_func(), "…and untick them")
 
     local about = find(items, "About").sub_item_table
     print("    About: " .. texts(about))
@@ -154,8 +202,8 @@ if okb then
     check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
     check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil).sub_item_table) == "|On|",
         "no ZenOS row to take the network list from: the modes alone")
-    check(gen:find("|Sleep|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
-        "General: Time and date, Language and Storage after Sleep " .. gen)
+    check(gen:find("|Sleep|Screen refresh|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
+        "General: Time and date, Language and Storage after Sleep (and Screen refresh) " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
     local dev = texts(device and device.sub_item_table)
     check(not dev:find("|Storage|", 1, true) and not dev:find("|Language|", 1, true) and not dev:find("|Time and date|", 1, true),
@@ -226,6 +274,46 @@ local n_keep = select(2, read("modules/menu/app_launcher/native_menu.lua"):gsub(
 check(n_keep == 2, "the KOReader section's top menus (File browser) are filtered too")
 check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem", 1, true) ~= nil,
     "the KOReader menu picker (bottom swipe → KOReader menu) leaves them out too")
+
+-- the KOReader section without what GZreader has elsewhere (KOREADER_DUPLICATES)
+;(function()
+    local GzS = require("common/gz_settings")
+    for _i, id in ipairs({ "language", "time", "screensaver", "autosuspend", "network_wifi", "history", "favorites",
+            "collections", "document_end_action", "night_mode", "screen_rotation", "exit_menu", "version", "about",
+            "quickstart_guide", "cloud_storage" }) do
+        check(GzS.KOREADER_DUPLICATES[id] == true and not GzS.KOREADER_HIDDEN[id], "KOReader section: " .. id .. " left out there only")
+    end
+    local refreshed = 0
+    local section = {
+        { id = "night_mode", text = "Night mode" },
+        { id = "network", text = "Network", sub_item_table = {
+            { id = "network_wifi", text = "Wi-Fi connection" }, { id = "network_info", text = "Network info" } } },
+        { id = "device", text = "Device", sub_item_table_func = function() return {
+            { id = "time", text = "Time and date" }, { id = "keyboard_layout", text = "Keyboard" },
+            { id = "autosuspend", text = "Autosuspend timeout" } } end },
+        { id = "main", text = "Main menu", sub_item_table = {
+            { id = "history", text = "History" }, { id = "bookmark_browser", text = "Bookmark browser" },
+            { id = "help", text = "Help", sub_item_table = { { id = "quickstart_guide", text = "Quickstart guide" },
+                { id = "search_menu", text = "Menu search" }, { id = "version", text = "Version" }, { id = "about", text = "About" } } },
+            { id = "exit_menu", text = "Exit", sub_item_table = { { id = "restart_koreader", text = "Restart" } } } } },
+        { text = "no id" },
+    }
+    section._zen_refresh = function() refreshed = refreshed + 1; return { { id = "language", text = "Language" }, { id = "units", text = "Units" } } end
+    local out = GzS.dropKOReaderDuplicates(section)
+    check(texts(out) == "|Network|Device|Main menu|no id|", "KOReader section: Night mode left out " .. texts(out))
+    check(texts(out[1].sub_item_table) == "|Network info|", "…and Wi-Fi connection inside Network")
+    check(texts(out[2].sub_item_table_func()) == "|Keyboard|", "…and Time and date, Autosuspend inside a built-later submenu")
+    check(texts(out[3].sub_item_table) == "|Bookmark browser|Help|", "…History and Exit (Restart, Sleep, Exit) from Main menu")
+    check(texts(out[3].sub_item_table[2].sub_item_table) == "|Menu search|", "…Quickstart guide, Version, About from Help")
+    check(texts(out._zen_refresh()) == "|Units|" and refreshed == 1, "…and again after the page refreshes")
+    check(GzS.dropKOReaderDuplicates(nil) == nil, "nil: nil")
+    local nm = read("modules/menu/app_launcher/native_menu.lua")
+    check(nm:find('dropKOReaderDuplicates(\n                        Settings.copyItems(children, menu, setting))', 1, true) ~= nil
+        and select(2, nm:gsub("dropKOReaderDuplicates", "")) == 1,
+        "only the KOReader section drops them (not settingsItems(scope, id): End of book's End of document action)")
+    check(read("modules/settings/sections/end_book_settings.lua"):find('settingsItems("active", "document_end_action")', 1, true) ~= nil,
+        "End of book still takes End of document action by its id")
+end)()
 
 -- navbar tabs
 local GS = require("common/gz_settings")

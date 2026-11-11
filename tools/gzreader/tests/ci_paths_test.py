@@ -49,6 +49,7 @@ check(run(*ci, "tools/gzreader/package-kindle.sh") == "needed" and run("tools/gz
       "…but what a device installs (the packaging scripts, the Nook's build): it runs")
 check(run(*ci, ".github/workflows/gzreader-tests.yml") == "needed" and run(".github/workflows/build.yml") == "needed",
       "the tests' own workflow, KOReader's build: it runs")
+check(run(*ci, "tools/gzreader/ci-apt.sh") == "needed", "the tests' package installer (ci-apt.sh): it runs")
 
 print("\n%d passed, %d failed" % (passed, failed))
 sys.exit(1 if failed else 0)
