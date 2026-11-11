@@ -16,6 +16,7 @@
 9 frontend/gettext.lua
 9 frontend/gzbytecode.lua
 2 frontend/gzsleepfit.lua
+6 frontend/gzsleepmode.lua
 5 frontend/luasettings.lua
 1 frontend/pluginloader.lua
 6 frontend/ui/elements/common_info_menu_table.lua

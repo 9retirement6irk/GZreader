@@ -359,21 +359,18 @@ function Screensaver:setup(event, event_message)
     end
 
     self.show_message = G_reader_settings:isTrue("screensaver_show_message")
-    self.screensaver_type = G_reader_settings:readSetting("screensaver_type")
-    -- GZreader sleep screen (on by default): the book's cover while a book is
-    -- open, a picture from the screensavers folder from Home and menus.
-    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then
-        self.screensaver_type = self.ui.document and "cover" or "random_image"
-    end
     local screensaver_img_background = G_reader_settings:readSetting("screensaver_img_background")
     local screensaver_msg_background = G_reader_settings:readSetting("screensaver_msg_background")
 
     -- These 2 (optional) parameters are to support poweroff and reboot actions on Kobo (c.f., UIManager)
     self.prefix = event and event .. "_" or "" -- "", "poweroff_" or "reboot_"
     self.event_message = event_message
-    if G_reader_settings:has(self.prefix .. "screensaver_type") then
-        self.screensaver_type = G_reader_settings:readSetting(self.prefix .. "screensaver_type")
-    else
+    -- GZreader sleep screen (on by default): the book's cover while a book is
+    -- open, a picture from the screensavers folder from Home and menus; a
+    -- saved screensaver_type no longer overrides gzreader_sleep_auto
+    -- (frontend/gzsleepmode.lua).
+    self.screensaver_type = require("gzsleepmode").type(G_reader_settings, self.prefix, self.ui.document ~= nil)
+    if not G_reader_settings:has(self.prefix .. "screensaver_type") then
         if event and G_reader_settings:isFalse("screensaver_hide_fallback_msg") then
             -- Display the provided event_message over the screensaver,
             -- so the user can distinguish between suspend (no overlay),

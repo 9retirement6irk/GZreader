@@ -388,5 +388,59 @@ do
         "the sleep screen loads the picture to know its size and scales it to fill")
 end
 
+-- Wallpaper → "Book cover while reading, a picture elsewhere" whatever was
+-- chosen before it (frontend/gzsleepmode.lua). A saved screensaver_type used
+-- to override it: a picture while reading, or the cover at Home after
+-- Book cover was chosen once and GZreader's own again.
+do
+    local FRONT = ZEN .. "/../../frontend"
+    real.gzsleepmode = true
+    package.loaded.gzsleepmode = nil
+    local Mode = require("gzsleepmode")
+    local store = {}
+    G_reader_settings = {
+        readSetting = function(_s, k) return store[k] end,
+        saveSetting = function(_s, k, v) store[k] = v end,
+        has = function(_s, k) return store[k] ~= nil end,
+        nilOrTrue = function(_s, k) return store[k] == nil or store[k] == true end,
+        makeTrue = function(_s, k) store[k] = true end,
+        makeFalse = function(_s, k) store[k] = false end,
+    }
+    local S = G_reader_settings
+    store.screensaver_type = "disable" -- (screensaver.lua's first-start default)
+    check(Mode.type(S, "", true) == "cover" and Mode.type(S, "", false) == "random_image",
+        "GZreader's own at first: the cover while reading, a picture at Home")
+    store.screensaver_type = "random_image"
+    check(Mode.type(S, "", true) == "cover", "a saved picture choice doesn't show while reading")
+    store.screensaver_type = "cover"
+    check(Mode.type(S, "", false) == "random_image", "a saved Book cover choice doesn't show at Home")
+    store.gzreader_sleep_auto = false
+    check(Mode.type(S, "", false) == "cover" and Mode.type(S, "", true) == "cover", "Book cover chosen: the cover everywhere")
+    store.screensaver_type = "random_image"
+    check(Mode.type(S, "", true) == "random_image", "a picture chosen: a picture while reading too")
+    store.gzreader_sleep_auto, store.poweroff_screensaver_type = nil, "message"
+    check(Mode.type(S, "poweroff_", false) == "message" and Mode.type(S, "reboot_", false) == "random_image",
+        "KOReader's own power-off type still comes first; reboot without one: GZreader's")
+    store.poweroff_screensaver_type = nil
+    if PLUGIN then
+        local okp, P = pcall(require, "gzreader_sleeppreview")
+        if okp then
+            store.gzreader_sleep_auto, store.screensaver_type = nil, "random_image"
+            P.choose("cover"); P.choose("auto")
+            check(P.current() == "auto" and Mode.type(S, "", false) == "random_image" and Mode.type(S, "", true) == "cover",
+                "tiles: Book cover, then GZreader's own again: a picture at Home, the cover while reading")
+            P.choose("random_image"); P.choose("auto")
+            check(Mode.type(S, "", true) == "cover" and Mode.type(S, "", false) == "random_image",
+                "tiles: a picture, then GZreader's own again: the cover while reading")
+        end
+    end
+    local src = io.open(FRONT .. "/ui/screensaver.lua"):read("*a")
+    local setup = src:match("function Screensaver:setup%(.-\nend\n") or ""
+    local at = setup:find('require("gzsleepmode").type(G_reader_settings, self.prefix, self.ui.document ~= nil)', 1, true)
+    local prefix_at = setup:find('self.prefix = event and event .. "_" or ""', 1, true)
+    check(at and prefix_at and prefix_at < at and not setup:find("self.screensaver_type = G_reader_settings:readSetting", 1, true),
+        "the sleep screen asks gzsleepmode once the prefix is known, and nothing reads the saved type over it")
+end
+
 print(ok_count .. " passed, " .. fail .. " failed")
 os.exit(fail == 0 and 0 or 1)
