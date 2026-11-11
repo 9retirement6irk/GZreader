@@ -39,13 +39,26 @@ local tl = table.concat(titles, "|")
 check(tl:match("Your keyboard") and tl:match("Synced with Grimmory"), "GZreader pages: keyboard, sync")
 check(not tl:match("Zen Mode") and not tl:match("|Reader|") and not tl:match("While reading") and not tl:match("Settings & Updates"),
     "setup guide 1.23.13: no Zen mode, Reader, While reading or Settings & Updates pages")
-check(titles[#titles] == "You're All Set" and titles[#titles - 1] == "Usage Statistics", "usage statistics just before the end")
+check(titles[#titles] == "You're All Set" and titles[#titles - 1] == "Debug Reports" and not tl:match("Usage Statistics"),
+    "debug reports just before the end (no usage statistics page)")
+local dbg = pages[#pages - 1]
+check(dbg.choices[1].id == "on" and dbg.choices[2].id == "off" and dbg.choices[2].checked and not dbg.choices[1].checked
+    and dbg.description:match("freeze") and dbg.description:match("Never passwords"),
+    "debug reports: send automatically or not, off unless chosen; says what a report has")
+package.loaded["gzreader_remote"] = { setSetting = function(v) DEBUG_SET = v end }
+dbg.on_apply({ on = true })
+local first = DEBUG_SET
+dbg.on_apply({ off = true })
+package.loaded["gzreader_remote"] = nil
+check(first == true and DEBUG_SET == false, "the choice is saved through gzreader_remote (starts or stops them at once)")
 local kbp, syncp for _, pg in ipairs(pages) do if pg.title == "Your keyboard" then kbp = pg elseif pg.title == "Synced with Grimmory" then syncp = pg end end
 check(kbp.icon_file:match("keyboard%.svg$") and syncp.icon_file:match("library%.svg$"), "keyboard and Grimmory icons")
 -- a Kindle without Wi-Fi (Kindle 2, DX): how to sync with a computer instead
 package.loaded["gzreader_net"] = { usb = true }
 local usb_pages = build(false)
 package.loaded["gzreader_net"] = nil
+local usb_titles = {} for _, pg in ipairs(usb_pages) do usb_titles[#usb_titles + 1] = pg.title end
+check(not table.concat(usb_titles, "|"):match("Debug Reports"), "no Wi-Fi: no debug reports page (it couldn't send them)")
 check(usb_pages[1].title == "Sync with a computer" and usb_pages[1].description:match("GZreader/sync")
     and not usb_pages[1].choices and usb_pages[1].icon_file:match("usb%.svg$"),
     "no Wi-Fi: the guide starts with syncing through a computer (the page's address)")
@@ -96,7 +109,15 @@ do
     local order = table.concat(cfg.navbar.tab_order, ",")
     check(cfg.navbar.show_tabs.favorites == true and cfg.navbar.show_tabs.ct_notes == false and cfg.navbar.show_tabs.ct_grimmory == true,
         "setup tabs: Favorites on, Notes off, Grimmory untouched")
-    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    local ab_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_audiobooks" then ab_tab = t end end
+    check(ab_tab and ab_tab.action.gzreader_audiobooks and ab_tab.icon == "tab_audiobooks" and defaults.navbar.show_tabs.ct_audiobooks == false
+        and (state.ct_audiobooks == nil or state.ct_audiobooks == false),
+        "the Audiobooks tab: defined, off by default (offered on Kindles with audio)")
+    local catalog_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_grimmory" then catalog_tab = t end end
+    check(catalog_tab and catalog_tab.label == "Catalog", "the Grimmory tab is labelled Catalog")
     check(cfg.navbar.show_tabs.ct_calendar == false and cfg.navbar.show_tabs.continue == true, "setup tabs: Calendar off and Continue on when chosen so")
 end
 print(ok_count .. " passed, " .. fail .. " failed")

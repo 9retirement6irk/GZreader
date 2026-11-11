@@ -1077,9 +1077,11 @@ local function count(n) return n == 1 and _("1 note") or T(_("%1 notes"), n) end
 local function listPicker(title, entries, on_pick)
     local items = {}
     for _i, e in ipairs(entries) do
-        items[#items + 1] = { text = e.text, mandatory = e.mandatory, callback = function() on_pick(e) end }
+        items[#items + 1] = { text = e.text, mandatory = e.mandatory, gz_icon = e.icon, callback = function() on_pick(e) end }
     end
     if #items == 0 then items[1] = { text = _("Nothing here yet."), select_enabled = false } end
+    local Rows = require("gzreader_rows")
+    Rows.mark(items)
     local menu
     menu = Menu:new{ title = title, item_table = items, covers_fullscreen = true, is_borderless = true, is_popout = false,
         title_bar_fm_style = true, name = "gz_notes_picker", -- (a name: no tab bar)
@@ -1090,6 +1092,7 @@ local function listPicker(title, entries, on_pick)
     menu.key_events.LeftButtonTap = nil
     menu.key_events.GzClose = { { "Menu" } }
     menu.onGzClose = function() UIManager:close(menu); return true end
+    Rows.apply(menu)
     UIManager:show(menu)
     return menu
 end
@@ -1104,7 +1107,7 @@ function Notes.showFilter(plugin)
         { { text = mark("tag", _("Tag…")), align = "left", callback = pick(function()
             local entries = {}
             for _i, t in ipairs(Notes.allTags()) do
-                entries[#entries + 1] = { text = "#" .. t.tag, mandatory = count(t.count), tag = t.tag }
+                entries[#entries + 1] = { text = "#" .. t.tag, mandatory = count(t.count), tag = t.tag, icon = "label" }
             end
             listPicker(_("Filter by tag"), entries, function(e) Notes.setFilter(plugin, { kind = "tag", value = e.tag }) end)
         end) } },
@@ -1121,7 +1124,7 @@ function Notes.showFilter(plugin)
         { { text = mark("place", _("Place…")), align = "left", callback = pick(function()
             local entries = {}
             for _i, p in ipairs(allPlaces()) do
-                entries[#entries + 1] = { text = p.place, mandatory = count(p.count), place = p.place }
+                entries[#entries + 1] = { text = p.place, mandatory = count(p.count), place = p.place, icon = "name:globe" }
             end
             listPicker(_("Filter by place"), entries, function(e) Notes.setFilter(plugin, { kind = "place", value = e.place }) end)
         end) } },
@@ -1218,21 +1221,28 @@ function Notes.connect(plugin, server_input, token)
 end
 
 --- Not connected yet: how to connect (in the Notes tab).
-function Notes.showConnect(plugin, again)
-    local items = require("gzreader_net").usb and {
+--- The ways to connect (ZenOS rows: short labels, the explanation behind About).
+function Notes.connectItems(plugin)
+    local Rows = require("gzreader_rows")
+    if require("gzreader_net").usb then
         -- no Wi-Fi: the sync page connects to Memos (gzreader_usbsync.lua)
-        { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end },
-        { text = _("Notes come from Memos through your computer: connect Memos on the sync page, then sync. Notes you write here go back with the next sync."),
-          select_enabled = false },
-    } or {
-        { text = _("Connect with QR code (enter it on your phone)"), callback = function()
+        return Rows.mark({
+            { text = _("Sync with computer"), gz_icon = Rows.FILE.usb, callback = function() require("gzreader_usbsync").show(plugin) end },
+            Rows.about(_("About notes"), _("Notes come from Memos through your computer: connect Memos on the sync page, then sync. Notes you write here go back with the next sync.")),
+        })
+    end
+    return Rows.mark({
+        { text = _("Connect with QR code"), gz_icon = "send", callback = function()
             require("gzreader_net").run(function() Notes.qrConnect(plugin) end, { reason = "connecting to Memos" })
         end },
-        { text = _("Connect by typing"), callback = function() Notes.typeConnect(plugin) end },
-        { text = _("Copy from another GZreader"), callback = function() Notes.copyConnect(plugin) end },
-        { text = _("You need your Memos address and an access token: in Memos, open Settings → Access Tokens and create one."),
-          select_enabled = false },
-    }
+        { text = _("Connect by typing"), gz_icon = "keyboard", callback = function() Notes.typeConnect(plugin) end },
+        { text = _("Copy from another GZreader"), gz_icon = "copy", callback = function() Notes.copyConnect(plugin) end },
+        Rows.about(_("About Memos"), _("Connect with QR code: a code to open on your phone, where you enter the address and token.\n\nYou need your Memos address and an access token: in Memos, open Settings → Access Tokens and create one.")),
+    })
+end
+
+function Notes.showConnect(plugin, again)
+    local items = Notes.connectItems(plugin)
     local menu
     menu = Menu:new{
         title = _("Notes: connect to Memos"), item_table = items, covers_fullscreen = true, is_borderless = true,
@@ -1241,6 +1251,7 @@ function Notes.showConnect(plugin, again)
     }
     menu.key_events.LeftButtonTap = nil
     if not again then pcall(Notes.decorate, menu, _("Notes")) end
+    require("gzreader_rows").apply(menu)
     Notes.connect_menu = menu
     UIManager:show(menu)
     return menu

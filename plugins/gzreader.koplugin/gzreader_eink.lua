@@ -8,13 +8,17 @@ of its other screens update without one, so on a Kindle 3 a menu, a tab or
 the quick panel left a grey copy of itself behind (the emulator's
 GZ_EMU_GHOST=1 shows it: 10–25 % of the screen).
 
-Here, on those Kindles (Settings → Advanced → Flash when the screen changes;
+Here, on those Kindles (Settings → General → Screen refresh → Flash when the screen changes;
 on by default):
 - an update of most of the screen (60 % or more) that isn't a page turn
   flashes: switching tabs, opening or closing a menu, the quick panel, a list's
   next page;
 - the first update after a full-screen window opens or closes (a book, a
   full-screen menu) flashes, page or not.
+Only what you did flashes: an update with no key or tap in the last INPUT_S
+seconds (a book finishing its download and the Downloads tab showing it,
+covers arriving, the download status) doesn't, whatever its size; on a
+Kindle 3 the whole screen flashed as downloads finished (2026-11-08).
 Small updates (the clock, typing) don't, nor does anything the 5-way's arrows
 do (moving along the tab bar, around the quick panel or a list: those redraw
 the whole screen but flashing at every step is too much). Inside the
@@ -31,6 +35,7 @@ Full refresh rate) wins until the setting is changed again.
 
 local Eink = {
     AREA = 0.6,          -- the share of the screen an update must cover to flash
+    INPUT_S = 10,        -- s: an update this long after a key or tap is still its doing
     SETTING = "gzreader_eink_flash",
     PAGE_SETTING = "gzreader_flash_page_turns",
     LEGACY = { Kindle2 = true, KindleDXG = true, Kindle3 = true, Kindle4 = true },
@@ -108,10 +113,11 @@ Eink.ARROW_S = 1.5   -- how long after an arrow a big update is still its doing
 
 --- The mode an update gets (pure: run_tests.lua). `region` nil: the whole
 --- screen; `pending`: a full-screen window just opened or closed; `arrow`:
---- an arrow key was just pressed (moving the focus).
-function Eink.promote(mode, region, screen_w, screen_h, pending, arrow)
+--- an arrow key was just pressed (moving the focus); `background`: no key or
+--- tap for INPUT_S seconds (nothing you did: no flash).
+function Eink.promote(mode, region, screen_w, screen_h, pending, arrow, background)
     if not QUIET[mode] then return mode, false end
-    if arrow and not pending then return mode, false end
+    if (arrow or background) and not pending then return mode, false end
     local big = not region or (region.w * region.h >= Eink.AREA * screen_w * screen_h)
     if not big then return mode, false end
     local page_turn = region == nil and (mode == "partial" or mode == "[partial]")
@@ -154,7 +160,8 @@ function Eink.install()
             local pending = Eink.pending and os.time() - Eink.pending <= 3   -- (an opened window's own update)
             local arrow = Eink.arrow_at and time.to_s(time.now() - Eink.arrow_at) < Eink.ARROW_S
                 or Eink.inPlayer(self._window_stack)   -- (in a player: only its own opening flashes)
-            local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow)
+            local background = not (Eink.input_at and time.to_s(time.now() - Eink.input_at) < Eink.INPUT_S)
+            local promoted, flashed = Eink.promote(mode, region, Screen:getWidth(), Screen:getHeight(), pending, arrow, background)
             if flashed then Eink.pending = nil end
             mode = promoted
         end
@@ -163,6 +170,7 @@ function Eink.install()
     -- the last key: an arrow (focus moving: no flash) or not
     local orig_input = UIManager.handleInputEvent
     UIManager.handleInputEvent = function(self, ev, ...)
+        if type(ev) == "table" and ev.handler ~= "onKeyRelease" then Eink.input_at = time.now() end -- (a key or a tap)
         if type(ev) == "table" and (ev.handler == "onKeyPress" or ev.handler == "onKeyRepeat") then
             local key = type(ev.args) == "table" and ev.args[1]
             Eink.arrow_at = type(key) == "table" and Eink.ARROWS[key.key] and time.now() or nil

@@ -443,6 +443,12 @@ end
 local function picker(title, items, on_pick)
     local UIManager = require("ui/uimanager")
     local Menu = require("ui/widget/menu")
+    local Rows = require("gzreader_rows")
+    for _i, it in ipairs(items) do
+        it.gz_icon = it.gz_icon or (it.gz_all and "delete") or "settings_library"
+        it.gz_pick = true
+    end
+    Rows.mark(items)
     local menu
     menu = Menu:new{
         title = title,
@@ -457,6 +463,7 @@ local function picker(title, items, on_pick)
         end,
         close_callback = function() UIManager:close(menu) end,
     }
+    Rows.apply(menu)
     UIManager:show(menu)
     Shelves.menu = menu
     return menu

@@ -144,7 +144,7 @@ OUTBOX = {
     "calendar": {"days_back": 14, "days_ahead": 90},
     # (each book's bookmarks and highlights in a file of its own, marks/<id>.json)
     "copy": {"marks_files": True},
-    # usage statistics: the page sends what the Kindle left in usage/
+    # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
     "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
     # Send to the developer: the reports in reports/ go to this feed (gzreader_usbreport.lua)
     "report": {"feed": "http://127.0.0.1:%d/open/feed/testfeed" % GP, "device": "Kindle2-ab12cd", "test_build": False},
@@ -347,6 +347,34 @@ with sync_playwright() as pw:
     picks = page.locator("#picks").inner_text()
     check(page.locator("#picks li").count() == 7 and "the Kindle's queue" in picks and "Book 05" in picks and "Book 33 — Audio Author (audiobook)" in picks
           and "FLAC Album" in picks, "coming with the next sync: the Kindle's queue, then the books, audiobook and albums chosen here")
+    # the music library chosen on the Kindle (Settings → Connections → Plex): its albums
+    page.evaluate("() => { GZSync.K.out.music_library = { key: '4', title: 'Concerts' }; }")
+    page.click("#b-cats button:has-text('Albums')")
+    page.wait_for_selector("#b-results li:has-text('Live Album')")
+    check(page.locator("#b-results li").count() == 1, "Music: Albums from the music library chosen on the Kindle")
+    page.evaluate("() => { delete GZSync.K.out.music_library; }")
+    # audiobooks from a Plex library (the Kindle's Settings → Connections → Plex → Audiobooks): its albums, chosen like music
+    page.evaluate("() => { GZSync.K.out.audiobook_library = { key: '5', title: 'Audiobooks' }; }")
+    page.click(".tabs button[data-tab=audio]")
+    page.wait_for_selector("#b-results li:has-text('Two Part Book') button")
+    cats = page.locator("#b-cats button").all_inner_texts()
+    titles = page.locator("#b-results li .txt").all_inner_texts()
+    check(cats == ["Recently added", "A–Z", "Authors", "Audiobooks from…"] and len(titles) == 2 and titles[0].startswith("Two Part Book")
+          and "Narr Author" in titles[0], "Audiobooks from the Kindle's Plex library: its albums, newest first %r" % (cats,))
+    page.locator("#b-results li", has_text="Two Part Book").locator("button").click()
+    page.fill("#b-search", "one file")
+    page.click("#b-go")
+    page.wait_for_function("document.querySelectorAll('#b-results li').length === 1 && document.querySelector('#b-results li').innerText.includes('One File Book')")
+    page.click("#b-cats button:has-text('Audiobooks from')")
+    page.wait_for_selector("#b-results li.nav:has-text('Plex: Concerts')")
+    srcs = page.locator("#b-results li.nav").all_inner_texts()
+    check(srcs[0].startswith("Grimmory") and any(x.startswith("Plex: Audiobooks") and "in use" in x for x in srcs) and len(srcs) == 4,
+          "Audiobooks from…: Grimmory or the Plex server's music libraries, the one in use marked %r" % (srcs,))
+    page.locator("#b-results li.nav", has_text="Grimmory").click()
+    page.wait_for_selector("#b-results li:has-text('Book 33')")
+    check(page.evaluate("() => GZSync.Browse.plexAudio() === null"), "Audiobooks from Grimmory again, on this page")
+    page.evaluate("() => { GZSync.Browse.audioSrc = null; delete GZSync.K.out.audiobook_library; }")
+    check("Two Part Book — Narr Author (audiobook)" in page.locator("#picks").inner_text(), "a Plex audiobook in what comes with the next sync")
     page.click("nav.main button[data-panel=sync]")
     page.wait_for_function("document.querySelector('#storage').innerText.includes('free of')")
     st = page.locator("#storage").inner_text()
@@ -387,6 +415,11 @@ with sync_playwright() as pw:
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
     check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
+    cmp = page.evaluate("""() => [GZSync.Update.compare('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0-beta.5995ce3', '1.27.0'),
+        GZSync.Update.offered('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0', '1.27.0'),
+        GZSync.Update.compare('1.10.0', '1.9.2'), GZSync.Update.compare('v1.26.10', '1.27.0-beta.1')]""")
+    check(cmp == [1, -1, True, 0, 1, -1],
+          "test builds off on a Kindle with a test build of the release's number: the release offered (it was offered nothing) %r" % (cmp,))
 
     # sleep screen pictures: one added (a wide colour picture), one of the Kindle's taken off, always pictures
     import struct, zlib
@@ -651,8 +684,8 @@ check(added2[0].get("name") == "Beach.png" and len(sst.get("add") or []) == 2 an
       and struct.unpack(">II", pdata2[16:24]) == (824, 1200),
       "sleep screen pictures: the HEIC photo brought as a PNG too")
 usage = state.get("usage", [])
-check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
-      "usage statistics the Kindle left: sent from the computer, then deleted")
+check(len(usage) == 0 and not [k for k in files if k.startswith(G + "usage/")],
+      "usage statistics an older GZreader left: deleted, not sent (GZreader sends none since 1.28.1)")
 mus = {m["key"]: m for m in inbox.get("music", [])}
 def col(key):
     m = mus.get(key)
@@ -672,6 +705,13 @@ check(ab33 and G + ab33["dir"] + "/audiobook.m4b" not in files and files.get(d33
       and all(files.get(d33 + n) == b for n, b in want.items()),
       "audiobook: the M4B prepared for the Kindle here (its chunks, not the M4B)")
 check(not [k for k in files if k.startswith("gzsync-prepare/")], "…and nothing left in the browser's own storage")
+abp = next((a for a in inbox.get("audiobooks", []) if a["id"] == "plex-206"), None)
+abi = (abp or {}).get("info") or {}
+check(abp and [t["fileName"] for t in abi.get("tracks", [])] == ["track.mp3", "track.mp3"] and abi.get("plexKey") == "206"
+      and abi["tracks"][1]["cumulativeStartMs"] == 3000 and abi["tracks"][1]["plexKey"] == "307" and abi.get("folderBased")
+      and files.get(G + abp["dir"] + "/track-002.mp3") == open(os.path.join(HERE, "media", "tone.mp3"), "rb").read()
+      and G + abp["dir"] + "/cover.jpg" in files and abi.get("gz_description") == "<p>A book in two parts.</p>",
+      "a Plex audiobook: its tracks as the book's files, laid out as the Kindle's own Plex download")
 f3 = c3 and c3["tracks"][0].get("file")
 check(f3 and files.get(G + mus["203"]["dir"] + "/" + f3, b"")[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xfa") or (f3 and len(files.get(G + mus["203"]["dir"] + "/" + f3, b"")) > 1000),
       "music: FLAC made into MP3 by Plex, its MPEG-TS taken apart in the browser")

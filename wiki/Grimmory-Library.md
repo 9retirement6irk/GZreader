@@ -1,19 +1,76 @@
 Browsing your Grimmory library on the device, and downloading books. Keeping them in sync with Grimmory: [Grimmory sync](Grimmory-Sync).
 
+## The Catalog tab
+
+The **Catalog** tab (called Grimmory before 1.27.x) holds what's on your
+servers, in pages:
+
+1. **Books**: your Grimmory books (below). The tab always opens here.
+2. **Audiobooks**: Grimmory's audiobooks ([Audiobooks](Audiobooks-and-Read-Aloud)).
+3. **Music**: your Plex music ([Music](Music)).
+
+Audiobooks and Music are only on Kindles with a speaker or headphone jack
+(Kindle 2, 3, DX, Touch); the others have the Books page alone.
+
+![The Catalog's Books page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-books.png) ![A book's page: Download, or Download & open](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/download-confirm.png)
+
+The title says which page you're on. Under it, a strip shows the page
+before (‹ Books), a dot for each page with the current one filled, and the
+next page (Audiobooks ›). To turn to another page:
+
+- **Touch**: swipe left for the next page, right for the one before, or tap
+  the page's name on the strip;
+- **Keys**: the page-turn buttons (or the next-page arrow at the bottom of a
+  list view).
+
+The pages go round: turning back from Books goes to Music, and on from Music
+to Books (the strip shows ‹ Music on Books and Books › on Music).
+
+A page whose list is longer than one screen turns through its own screens
+first. Inside a page's lists (All books, an author…) the strip is blank and
+swipes turn that list's pages, as before.
+
+Kept from the Grimmory tab: its place in the tab bar, and a name you gave
+it yourself. If it was still called Grimmory, it's renamed Catalog.
+
+**Not signed in to Grimmory?** The Catalog opens all the same: Music, and
+audiobooks from Plex, don't need Grimmory. The Books page, and the
+Audiobooks page when your audiobooks come from Grimmory, have empty shelves
+and say **Sign in to Grimmory to browse the catalog**. Tap that line (or the
+**Grimmory** card) for the ways to sign in: a QR code for your browser,
+typing, or copying from another GZreader. Once you're signed in, the page
+fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
+
+**The Grimmory card** fills the bottom-right compartment of the Books
+page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
+shows who you're signed in as and where, like the Plex card on the Music
+page. It opens Rebuild library
+and reconnecting. What's on the Kindle is in the Downloads tab.
+
+**An Audiobooks tab** (off until you turn it on: Settings → Interface →
+Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
+speaker or headphone jack) opens the Catalog's Audiobooks page on its own:
+its tab is underlined, and there's no strip and nothing to swipe to. The
+Music tab (Settings → Interface → Navbar → Tabs → Music) stays as it was.
+
 ## Browsing Grimmory
 
-**Search Grimmory…** (first in the tab), Continue reading, Recently added,
+**Search Grimmory…** (first on the Books page), Continue reading, Recently added,
 All books (A–Z), **Libraries**, **Authors** (with search), **Series** (in
 series order, with search). Audiobooks are left out everywhere: Authors, Series and Libraries come from a local index of the
 readable books (built in the background, refreshed daily), so authors or
 series with only audiobooks don't appear, and the lists open instantly.
+To build it again now (books removed from Grimmory still listed, new ones
+missing): **Refresh list from Grimmory** at the top of Authors or Series, or
+**Settings → Connections → Grimmory → Rebuild library**, which also forgets
+the saved lists below.
 If Grimmory's `/app/libraries` endpoint fails (HTTP 500, a server bug seen
 on some installs), the web app's library list is used instead.
 
 Saved lists (`gzreader_listcache.lua`): the first page of every list fetched
 (Continue reading, Recently added, All books, a library, shelf, author or
 series, the library and shelf lists, Audiobooks) is kept on the Kindle, per
-server and account (`cache/grimmory-lists`, newest 60). The Grimmory tab
+server and account (`cache/grimmory-lists`, newest 60). The Catalog tab
 opens at once, without waiting for Wi‑Fi; a list with a saved copy appears
 straight away (its title ends in "· saved"), Wi‑Fi comes up quietly in the
 background, and the fresh list replaces it in place (same page) when it
@@ -45,8 +102,8 @@ at the top brings it back. Each book keeps only the dozen fields GZreader
 uses (Grimmory sends about forty). Covers shown on the page being drawn are
 never freed (1.12.2 and older could free one still on screen).
 
-The Grimmory tab is part of ZenOS's tab bar while it's open: the bar stays
-at the bottom with the Grimmory tab underlined, and the title shows ZenOS's
+The Catalog tab is part of ZenOS's tab bar while it's open: the bar stays
+at the bottom with the Catalog tab underlined, and the title shows ZenOS's
 status bar (clock, battery, Wi‑Fi, downloads) with the list's name and, in
 a sub-list, a back arrow.
 
@@ -72,11 +129,24 @@ working.
 
 While anything downloads, **Downloads (N)** is a tile in the quick panel's
 Home tiles (`gzreader_tasks.lua`). It lists the current book download, the
-queue, audiobook downloads and the audiobook preparing step: reopen a
-progress bar, stop the download, take a book out of the queue, empty the
-queue. ZenOS's status bar gets a `gz_downloads` item next to the clock
+queue, audiobook downloads and the audiobook preparing step, one row each:
+an icon for what's happening (downloading, preparing, a clock while
+waiting), the title, and on the right where it's at (*38% of 77.0 MB*,
+*waiting*). Select a row to reopen its progress bar, stop the download or
+take a book out of the queue; the last row empties the queue. While it's open its percentages are kept current every 5 s: only the
+lines that changed are refreshed on the screen, on the page you're on (the
+whole list is redrawn when a download finishes or one is added). ZenOS's
+status bar gets a `gz_downloads` item next to the clock
 (added once; movable/removable in its settings): a download icon with the
-percentage and the number waiting, refreshed every 10 s while active.
+percentage and the number waiting, refreshed every 3 s while active (only
+that item is refreshed on the screen, without a flash).
+
+While a book downloads, the Grimmory tab still comes first: when it (or
+anything else) asks Grimmory for something, a book's details and cover say,
+the download waits until that's answered (its process is paused; 20 s at
+most each time) and then carries on. On a Kindle 3 a download took the Wi‑Fi
+and the processor, and the tab's requests timed out. The log says how long
+each download waited (`download book=… waited … s`).
 
 ## Unfinished downloads
 
@@ -93,9 +163,21 @@ later still continues from there). A stalled download now also keeps its
 part. Stopping a download yourself, taking it out of the queue, or a "not
 found" from Grimmory clears it.
 
+## The first open of a new book
+
+The first time a big book is opened, the Kindle lays the whole book out
+(10–30 s on a Kindle 3) and keeps the result for the next opens. While the
+Kindle charges and Home is on screen, GZreader does that in the background
+for downloaded books you haven't opened yet, one at a time and at the lowest
+priority, so their first open is as quick as any other (Settings → Reader →
+**Lay out new books while charging**, on by default; not on the Kindle 2 and
+DX, which don't have the memory for it). It waits while books download,
+stops as soon as you unplug the Kindle, open a book or start a download, and
+the books don't show as opened or read.
+
 ## Shelves and auto-download
 
-Grimmory tab → **Shelves** lists your shelves and smart (magic) shelves.
+Catalog tab → Books → **Shelves** lists your shelves and smart (magic) shelves.
 Settings → Connections → Grimmory → **Auto-download shelf** picks one: books on it that
 aren't on the Kindle download in the background through the download queue
 when Wi-Fi connects (at most every 30 minutes) and with "Download new books
