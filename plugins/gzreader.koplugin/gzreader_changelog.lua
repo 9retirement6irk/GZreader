@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Bookshelves with more depth: page tops, title and author along the spine, shadows on the wall", text = "The bookshelves (Home, Downloads, and the spines in the Catalog) are drawn after AndyHazz's Bookshelf plugin: seen from a little above, so each book shows the top of its page block between its boards; the title runs along the spine with the author after it in smaller type where both fit (on shorter spines the author stays under the title), and a book's number in its series stands level at the foot. The books cast a soft shadow on the wall behind them, and the board shows its top, darker at the back." },
+        },
+    },
+    {
         version = "1.28.1",
         changes = {
             { short = "Catalog: the Shelves card's label on one line on the Paperwhite", text = "Catalog → Books: the little cover on the Shelves card (and a shelf's name there) no longer breaks a word in two, as \"Shelve / s\" on the Paperwhite 3: its label gets smaller until every word fits." },

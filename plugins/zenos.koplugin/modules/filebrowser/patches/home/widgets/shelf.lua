@@ -3,10 +3,12 @@
 -- is on, or that was tapped, is pulled out and shows its cover. Tap it (or
 -- Press, or its letter) to open it. One shelf of the most recent books (two on the DX).
 --
--- Drawn with rectangles and text (e-ink greys), with some depth: spines are
--- rounded with light from the left (darker edges, a highlight), cast a shadow
--- on the wall, and the board has a top, a front edge and a shadow below. A
--- spine is drawn once and kept (spine_cache) until the shelf changes size.
+-- Drawn with rectangles and text (e-ink greys), with depth in the manner of
+-- AndyHazz's Bookshelf plugin: the shelf is seen from a little above, so each
+-- book shows the top of its page block, the title and author run along the
+-- spine, the books cast a shadow on the wall behind them, and the board has a
+-- top (darker at the back), a front and a shadow below. A spine is drawn once
+-- and kept (spine_cache) until the shelf changes size.
 -- Downloads' bookshelf (gzreader_shelfview.lua) uses the same spines and boards.
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -157,64 +159,162 @@ function M.spineType(w, two)
     return 15, nil, 15
 end
 
+--- The look of a spine and its shelf follows AndyHazz's Bookshelf plugin
+--- (https://github.com/AndyHazz/bookshelf.koplugin, AGPL-3.0;
+--- lib/bookshelf_spine_shelf.lua): seen from a little above (12 degrees), so
+--- each book shows the top of its page block between its boards; the title
+--- runs along the spine with the author after it in smaller type, the number
+--- in a series level at the foot; the spine a touch darker at its left edge
+--- than its right. Redrawn here for GZreader's greys and letter keys.
+M.VIEW_SIN = 0.208      -- sin(12 deg): a depth d shows as d * this
+M.COVER_ASPECT = 1.5    -- a cover's height to its width
+M.TOP_MAX = 0.2         -- the page block's top: at most this much of the book,
+M.TOP_MOST = 13         -- and this many px (at 160 dpi): GZreader's spines are short, the room is the title's
+M.RAMP = 0.13           -- how much darker the left edge is, lighter the right
+M.BOARD_SHADE = 0.55    -- the boards and the outline: this much darker than the cloth
+M.ONE_LINE_MIN = 14     -- title and author share a line down to this type size; then two lines
+
+--- How tall the top of a book h tall shows (0 for a short one): its depth
+--- into the shelf is its cover's width.
+function M.topEdge(h)
+    if h < S(60) then return 0 end
+    local e = math.floor(h / M.COVER_ASPECT * M.VIEW_SIN)
+    return math.max(S(5), math.min(e, math.floor(h * M.TOP_MAX), S(M.TOP_MOST)))
+end
+
+--- The boards' and outline's darkness for a cloth of `shade`.
+function M.boardShade(shade) return math.min(1, shade + (1 - shade) * M.BOARD_SHADE) end
+
+--- The top of the page block (w x edge) at x, y on a spine of `shade`: the
+--- boards up the sides, a row above the paper (their outer corners left to
+--- whatever is behind: Spine:paintTo doesn't copy them), fine page lines.
+function M.paintTop(bb, x, y, w, edge, shade)
+    if edge <= 1 then return end
+    local board = Blitbuffer.gray(M.boardShade(shade))
+    local bw = math.max(2, math.min(S(3), math.floor(w * 0.1)))
+    local inner_w = w - 2 * bw
+    bb:paintRect(x, y, w, edge, board)
+    if inner_w > 2 then
+        -- (the row above the paper, between the boards: the wall's shadow)
+        bb:paintRect(x + bw, y, inner_w, 1, Blitbuffer.gray(0.55))
+        bb:paintRect(x + bw, y + 1, inner_w, edge - 1, Blitbuffer.gray(0.06))
+        local pitch = math.max(2, math.floor(S(1.4)))
+        local cx = x + bw + 1
+        while cx < x + bw + inner_w - 1 do
+            local lw = math.min(1 + ((cx * 73 + 41) % pitch), x + bw + inner_w - cx)
+            bb:paintRect(cx, y + 1, lw, edge - 1, Blitbuffer.gray(0.34))
+            cx = cx + pitch + 1
+        end
+        -- (where the boards meet the spine they turn in: a pixel each side)
+        bb:paintRect(x + bw, y + edge - 1, 1, 1, board)
+        bb:paintRect(x + bw + inner_w - 1, y + edge - 1, 1, 1, board)
+    end
+end
+
+--- The cloth's light across a spine (w x h at x, y): darker at the left
+--- edge, lighter at the right.
+function M.shadeRamp(bb, x, y, w, h)
+    if w < 3 then return end
+    for i = 0, w - 1 do
+        local f = M.RAMP * (2 * i / (w - 1) - 1)
+        if f < -0.02 then bb:darkenRect(x + i, y, 1, h, -f)
+        elseif f > 0.02 then bb:lightenRect(x + i, y, 1, h, f * 0.8) end
+    end
+end
+
 local function draw_spine(book, w, h, shade)
-    -- drawn lying down (h wide, w tall), then stood up
+    -- drawn lying down (h wide, w tall; its left end is the book's top), then stood up
     local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
     local dark = shade >= 0.5
     local ink = dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     lying:fill(Blitbuffer.gray(shade))
-    -- the top: the headband over the pages; bands near each end (the bottom
-    -- one above the letter key's square)
-    local cap = math.max(3, S(5))
-    lying:paintRect(0, 0, cap, w, Blitbuffer.gray(math.max(0, shade - 0.25)))
-    lying:paintRect(cap, 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.25)))
+    local edge = M.topEdge(h)
     local foot = S(M.foot())
-    for _i, bx in ipairs({ cap + S(5), h - foot + S(6) }) do
-        lying:paintRect(bx, 0, 1, w, Blitbuffer.gray(math.max(0, shade - 0.3)))
-        lying:paintRect(bx + 1, 0, S(2), w, ink)
-        lying:paintRect(bx + 1 + S(2), 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.3)))
-    end
-    -- the top of the spine: its number in the series, then the title and
-    -- author; the bottom is kept for the letter key's square
+    -- the number in a series: level at the foot (above the letter key's square)
     local num = book_number(book)
-    local x0 = cap + S(12)
+    local n_widget, n_size
     if num then
-        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 15), bold = true, fgcolor = ink }
-        local ns = n:getSize()
-        n:paintTo(lying, x0, math.floor((w - ns.h) / 2))
-        x0 = x0 + ns.w + S(8)
-        n:free()
+        n_widget = TextWidget:new{ text = num, face = Font:getFace("cfont", 14), bold = true, fgcolor = ink, max_width = w - S(4) }
+        n_size = n_widget:getSize()
     end
-    local room = h - x0 - foot
-    local author = book_author(book)
-    -- (every spine with an author shows it; the type is as big as the
-    -- spine's width allows (1.22.6), a long title a little smaller so more
-    -- of it shows)
-    local two = author ~= ""
-    local t_size, a_size, t_min = M.spineType(w, two)
-    local text = book_title(book)
-    local title
-    for size = t_size, t_min, -1 do
-        if title then title:free() end
-        title = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = true, fgcolor = ink, max_width = room }
-        if title:getSize().w < room - 1 and not title:isTruncated() then break end
+    -- the title along the spine, the author after it in smaller type; both
+    -- centred in the run between the page block and the foot
+    local x0 = edge + S(6)
+    local x1 = h - foot - (n_size and (n_size.h + S(2)) or 0)
+    local room = x1 - x0
+    local across = w - S(4)
+    local gap = S(10)
+    local text, author = book_title(book), book_author(book)
+    local function tw(str, size, bold, max_w)
+        return TextWidget:new{ text = str, face = Font:getFace("cfont", size), bold = bold, fgcolor = ink, max_width = max_w }
     end
-    local th = title:getSize().h
-    if two then
-        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", a_size), fgcolor = ink, max_width = room }
-        local ah = auth:getSize().h
-        local t = tuck(a_size)
-        local top = math.floor((w - th - ah + t) / 2)
-        title:paintTo(lying, x0, top)
-        auth:paintTo(lying, x0, top + th - t)
-        auth:free()
-    else
-        title:paintTo(lying, x0, math.floor((w - th) / 2))
+    -- one line, as a printed spine sets it: the title, then the author in
+    -- smaller type, in the biggest type that fits across the spine and shows
+    -- the whole title (and at least a good piece of the author)
+    local done = false
+    for size = M.spineType(w, false), M.ONE_LINE_MIN, -1 do
+        local title = tw(text, size, true, room)
+        local ts = title:getSize()
+        if ts.h <= across and not title:isTruncated() then
+            local auth, as
+            if author ~= "" then
+                local left = room - ts.w - gap
+                if left >= S(28) then
+                    auth = tw(author, math.max(10, size - 4), false, left)
+                    as = auth:getSize()
+                    if auth:isTruncated() and as.w < S(60) then auth:free(); auth = nil; as = nil end
+                end
+            end
+            if author == "" or auth then
+                local lw = ts.w + (auth and (gap + as.w) or 0)
+                local lx = x0 + math.max(0, math.floor((room - lw) / 2))
+                local top = math.floor((w - ts.h) / 2)
+                title:paintTo(lying, lx, top)
+                if auth then
+                    auth:paintTo(lying, lx + ts.w + gap, top + math.floor((ts.h - as.h) / 2) + S(1))
+                    auth:free()
+                end
+                done = true
+            end
+        end
+        title:free()
+        if done then break end
     end
-    title:free()
+    if not done then
+        -- too long for one line: the title over the author, two lines across
+        -- the spine (a long title a little smaller, so more of it shows)
+        local two = author ~= ""
+        local t_size, a_size, t_min = M.spineType(w, two)
+        local title
+        for size = t_size, t_min, -1 do
+            if title then title:free() end
+            title = tw(text, size, true, room)
+            if title:getSize().w < room - 1 and not title:isTruncated() then break end
+        end
+        local ts = title:getSize()
+        local tx = x0 + math.max(0, math.floor((room - ts.w) / 2))
+        if two then
+            local auth = tw(author, a_size, false, room)
+            local as = auth:getSize()
+            local t = tuck(a_size)
+            local top = math.floor((w - ts.h - as.h + t) / 2)
+            title:paintTo(lying, tx, top)
+            auth:paintTo(lying, x0 + math.max(0, math.floor((room - as.w) / 2)), top + ts.h - t)
+            auth:free()
+        else
+            title:paintTo(lying, tx, math.floor((w - ts.h) / 2))
+        end
+        title:free()
+    end
     local stood = lying:rotatedCopy(270)
     lying:free()
-    M.shadeRound(stood, 0, 0, w, h)
+    M.shadeRamp(stood, 0, edge, w, h - edge)
+    if n_widget then
+        n_widget:paintTo(stood, math.floor((w - n_size.w) / 2), h - foot - n_size.h)
+        n_widget:free()
+    end
+    stood:paintBorder(0, edge, w, h - edge, 1, Blitbuffer.gray(M.boardShade(shade)))
+    M.paintTop(stood, 0, 0, w, edge, shade)
     return stood
 end
 
@@ -232,14 +332,34 @@ local function spine_bb(book, w, h, shade)
     return bb
 end
 
---- A spine (w x h), its edge drawn darker.
+--- Forget the spines drawn (the look changed).
+function M.forgetSpines()
+    for k, v in pairs(spine_cache) do v:free(); spine_cache[k] = nil end
+    spine_cache_n = 0
+end
+
+--- A spine (w x h) standing with its foot on the board.
 local Spine = WidgetContainer:extend{ w = 0, h = 0, book = nil, shade = 0.5 }
 function Spine:getSize() return Geom:new{ w = self.w, h = self.h } end
 function Spine:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
     local img = spine_bb(self.book, self.w, self.h, self.shade)
-    bb:blitFrom(img, x, y, 0, 0, self.w, self.h)
-    bb:paintBorder(x, y, self.w, self.h, 1, Blitbuffer.gray(0.9))
+    local w, h = self.w, self.h
+    if M.topEdge(h) > 1 and w > 4 then
+        -- the boards' tips: their outer corners aren't drawn (what's behind shows)
+        local bw = math.max(2, math.min(S(3), math.floor(w * 0.1)))
+        bb:blitFrom(img, x + 1, y, 1, 0, bw - 1, 1)
+        bb:blitFrom(img, x + w - bw, y, w - bw, 0, bw - 1, 1)
+        bb:blitFrom(img, x, y + 1, 0, 1, w, h - 1)
+    else
+        bb:blitFrom(img, x, y, 0, 0, w, h)
+    end
+    -- the foot's corners take the board's tone below them: a slightly
+    -- rounded foot, as a real book's
+    if y + h < bb:getHeight() and w > 4 then
+        bb:blitFrom(bb, x, y + h - 1, x, y + h, 1, 1)
+        bb:blitFrom(bb, x + w - 1, y + h - 1, x + w - 1, y + h, 1, 1)
+    end
 end
 function Spine:free() end -- (the picture stays in spine_cache)
 
@@ -250,36 +370,99 @@ end
 
 ---------------------------------------------------------------- depth
 
---- The board under the books at board_y, `w` wide: a top seen from above
---- (narrower at the back), a front edge, and its shadow on the wall.
+M.STAND = 3        -- how far back from its front edge the books stand on the board's top
+M.PLANK_BANDS = 5  -- the top is drawn in this many steps (what e-ink can show)
+M.PLANK = 0.52     -- the plank's darkness (its front)
+
+--- The board under the books at board_y, `w` wide: its top seen from above,
+--- darkest at the back and lighter towards the front edge (narrower at the
+--- back), a bright line along the edge, the front, and its shadow on the wall.
 function M.paintBoard(bb, x, board_y, w)
-    local top_h, front_h = S(5), S(M.BOARD_H) - S(5)
+    local stand = S(M.STAND)
+    local top_h, front_h = S(5) + stand, S(M.BOARD_H) - S(5)
+    local y0 = board_y - stand
+    local base = M.PLANK
     for i = 0, top_h - 1 do
         local inset = math.floor((top_h - i) * S(6) / top_h)
-        bb:paintRect(x + inset, board_y + i, w - 2 * inset, 1, Blitbuffer.gray(0.16 + 0.12 * i / top_h))
+        local band = math.floor(i * M.PLANK_BANDS / top_h) / (M.PLANK_BANDS - 1)
+        -- (lit 0.50 at the back to 0.95 at the front, of the plank's own tone)
+        local lit = (1 - base) * (0.50 + 0.45 * band)
+        bb:paintRect(x + inset, y0 + i, w - 2 * inset, 1, Blitbuffer.gray(1 - lit))
     end
-    local fy = board_y + top_h
-    bb:paintRect(x, fy, w, front_h, Blitbuffer.gray(0.58))
-    bb:paintRect(x, fy, w, 1, Blitbuffer.gray(0.30))
-    bb:paintRect(x, fy + front_h - 1, w, 1, Blitbuffer.gray(0.85))
+    local fy = y0 + top_h
+    bb:paintRect(x, fy, w, front_h, Blitbuffer.gray(base))
+    bb:paintRect(x, fy, w, 1, Blitbuffer.gray(base * 0.45))
+    bb:paintRect(x, fy + front_h - 1, w, 1, Blitbuffer.gray(math.min(1, base + 0.3)))
     local under = S(M.UNDER_H)
     for i = 0, under - 1 do
         bb:darkenRect(x + S(4), fy + front_h + i, w - S(8), 1, 0.45 * (1 - i / under))
     end
 end
 
---- Where the books stand: a contact shadow on the board's top, and each
---- spine's shadow on the wall beside a shorter neighbour (light from the left).
+M.RECESS_MAX = 0.26   -- the books' shadow on the wall behind them: at their feet
+M.RECESS_TOP = 0.5    -- what's left of it at their tops
+M.RECESS_HALO = 6     -- how far it shows above them (px at 160 dpi)
+M.RECESS_SIDE = 14    -- and past the ends of a run
+
+--- How tall the shadow stands at px: the tallest of each book's height less
+--- the distance to it (a book's shadow leans over what's beside it and falls
+--- away at 45 degrees), within `reach`.
+function M.recessHorizon(spans, px, reach)
+    local best = 0
+    for _i, sp in ipairs(spans) do
+        local d
+        if px < sp.x then d = sp.x - px elseif px >= sp.x + sp.w then d = px - (sp.x + sp.w) + 1 else d = 0 end
+        if d <= reach and sp.h - d > best then best = sp.h - d end
+    end
+    return best
+end
+
+--- Where the books stand: their shadow on the wall behind them (a little
+--- above their tops, leaning over a shorter neighbour, and past the ends of
+--- the row) and where they touch the board.
 --- spans = { { x, w, h }, ... } in order, standing on board_y.
 function M.paintDepth(bb, board_y, spans)
-    for k, sp in ipairs(spans) do
-        bb:darkenRect(sp.x, board_y, sp.w + S(2), S(3), 0.35)
-        local nxt = spans[k + 1]
-        local drop = sp.h - (nxt and nxt.x == sp.x + sp.w and nxt.h or 0)
-        if drop > S(6) then
-            bb:darkenRect(sp.x + sp.w, board_y - sp.h + S(5), S(5), drop - S(5), 0.30)
-            bb:darkenRect(sp.x + sp.w + S(5), board_y - sp.h + S(8), S(3), drop - S(8), 0.15)
+    if #spans == 0 then return end
+    local halo, reach = S(M.RECESS_HALO), S(M.RECESS_SIDE)
+    local foot_y = board_y - S(M.STAND)
+    local bw = bb:getWidth()
+    -- the wall beside and above shorter books: slices, each from where the
+    -- book under it ends up to the horizon
+    local step = math.max(2, S(2))
+    local function slice(px, from_h, dist)
+        if px < 0 or px + step > bw then return end
+        local top_h = M.recessHorizon(spans, px, reach) + (from_h > 0 and halo or 0)
+        if top_h <= from_h then return end
+        local fade = 1 - 0.85 * math.min(1, dist / reach)
+        local bands = 6
+        local span_h = top_h - from_h
+        for b = 0, bands - 1 do
+            local y1 = from_h + math.floor(span_h * b / bands)
+            local y2 = from_h + math.floor(span_h * (b + 1) / bands)
+            -- (strongest at the foot, gone at its top edge)
+            local t = (b + 0.5) / bands
+            local strength = M.RECESS_MAX * (1 - (1 - M.RECESS_TOP) * (y1 + y2) / 2 / math.max(1, top_h)) * fade * (1 - t) ^ 1.5
+            if y2 > y1 and strength > 0.02 then bb:darkenRect(px, foot_y - y2, step, y2 - y1, strength) end
         end
+    end
+    local first, last = spans[1], spans[#spans]
+    for px = first.x - reach, first.x - 1, step do slice(px, 0, first.x - px) end
+    for px = last.x + last.w, last.x + last.w + reach, step do slice(px, 0, px - (last.x + last.w)) end
+    for k, sp in ipairs(spans) do
+        local nxt = spans[k + 1]
+        -- a gap after it (a cover turned out, an ornament): its shadow falls into the gap
+        if nxt and nxt.x > sp.x + sp.w then
+            for px = sp.x + sp.w, math.min(nxt.x - 1, sp.x + sp.w + reach), step do slice(px, 0, px - (sp.x + sp.w)) end
+            for px = math.max(sp.x + sp.w + reach + 1, nxt.x - reach), nxt.x - 1, step do slice(px, 0, nxt.x - px) end
+        end
+        -- a little of it shows above the book's top
+        for b = 0, 2 do
+            local y2 = sp.h + math.floor(halo * (b + 1) / 3)
+            local y1 = sp.h + math.floor(halo * b / 3)
+            bb:darkenRect(sp.x, foot_y - y2, sp.w, y2 - y1, M.RECESS_MAX * M.RECESS_TOP * (1 - (b + 0.5) / 3) ^ 2.2)
+        end
+        -- where it touches the board
+        bb:darkenRect(sp.x, board_y, sp.w + S(1), S(2), 0.30)
     end
 end
 
