@@ -185,6 +185,8 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 return
             end
             Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
+            -- (laid out in the background if the Kindle is charging: gzreader_layout.lua)
+            pcall(function() require("gzreader_layout").schedule(plugin, 60) end)
         else
             if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
             Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
