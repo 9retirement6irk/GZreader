@@ -34,6 +34,10 @@ the book once you open one.
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
   whatever the sort.
+- **Inside Audiobooks and Music** each audiobook is a cassette and each album
+  or playlist a CD, always facing out with its cover showing, and its name on
+  a little plate on the shelf under it. A tap (or Press, or its letter) opens
+  it straight away; the one the 5-way is on has a frame around it.
 - **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,
   author, series, date downloaded, reading progress, size or file name;
   *Last read* puts the most recent first.
