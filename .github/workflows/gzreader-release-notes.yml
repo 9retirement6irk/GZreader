@@ -38,7 +38,10 @@ jobs:
         with:
           ref: ${{ env.TAG }}
       - name: Tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+        # (an older tag has no ci-apt.sh)
+        run: |
+          if [ -f tools/gzreader/ci-apt.sh ]; then bash tools/gzreader/ci-apt.sh luajit
+          else sudo apt-get update -qq && sudo apt-get install -y -qq luajit; fi
       - name: Write the notes
         run: |
           BODY=$(gh release view "$TAG" --repo "${{ github.repository }}" --json body -q .body)
