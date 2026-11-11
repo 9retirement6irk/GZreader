@@ -605,7 +605,7 @@ end
 
 --- GZreader's settings that live in ZenOS's other Settings sections
 --- (zenos modules/settings/zen_settings.lua puts them there):
----   "general"   { wifi = item, diagnostics = { items } }
+---   "general"   { wifi = item (Wi-Fi: On, Off, Auto), diagnostics = { items } }
 ---   "reader"    { items }
 ---   "interface" { items }
 function Grimmory:sectionItems(section)
@@ -617,12 +617,7 @@ function Grimmory:sectionItems(section)
     end
     if section == "general" then
         return {
-            wifi = not Net.usb and icon("wifi_off", {
-                text = _("Wi-Fi only when needed"),
-                help_text = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync. Wi-Fi you turn on yourself stays on."),
-                checked_func = function() return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand") end,
-                callback = function() G_reader_settings:flipNilOrTrue("gzreader_wifi_on_demand") end,
-            }) or nil, -- (no Wi-Fi: nothing to turn on)
+            wifi = not Net.usb and icon("wifi_on", Net.menuItem()) or nil, -- (no Wi-Fi: nothing to turn on)
             diagnostics = packed(5, {
                 icon("settings_bug", {
                     text = _("Diagnostic logging"),
@@ -834,7 +829,7 @@ end
 function Grimmory:sendLogToDeveloper(comment)
     if comment == nil then return self:askReportComment() end
     if Net.usb then return self:saveReportForSync(comment) end -- (no Wi-Fi: the sync page sends it)
-    if not Net.connected() and Net.enabled() then
+    if not Net.connected() then
         return Net.run(function() self:sendLogToDeveloper(comment) end, { reason = "sending the log" })
     end
     local tmp = DataStorage:getDataDir() .. "/cache"
@@ -912,7 +907,7 @@ end
 function Grimmory:shareLog()
     if self.pairing then return end
     if Net.usb then return self:exportLog() end -- (no Wi-Fi: saved for the USB drive)
-    if not Net.connected() and Net.enabled() then
+    if not Net.connected() then
         return Net.run(function() self:shareLog() end, { reason = "sending the log" })
     end
     local lib = self:libraryDir()
@@ -1060,6 +1055,9 @@ function Grimmory:afterLogin(previous)
         self:save()
     end
     self:flushPending()
+    -- (the Catalog, if it's open saying to sign in: its page again)
+    local B = package.loaded["gzreader_browser"]
+    if B and B.signInChanged then UIManager:nextTick(B.signInChanged) end
 end
 
 function Grimmory:onGrimmoryPair(touchmenu)
@@ -1724,7 +1722,6 @@ end
 function Grimmory:onPageUpdate()
     nookChange()
     if self.sync then self.sync:onPageTurned() end
-    pcall(function() require("gzreader_usage").pageTurned() end)
     if self.tts then self.tts:onManualPageTurn() end
 end
 
@@ -1848,19 +1845,9 @@ function Grimmory:onShowGrimmoryLibrary(touchmenu, opts)
         require("gzreader_usbsync").show(self)
         return true
     end
-    if not self.api:isPaired() then
-        UIManager:show(ConfirmBox:new{
-            -- (connected before: Grimmory stopped taking its login)
-            text = self.store.server and self.store.username
-                and T(_("Grimmory signed this Kindle out (%1 at %2). Your books and progress are still here. Connect again?"),
-                    self.store.username, (self.store.server:gsub("^https?://", "")))
-                or _("This Kindle isn't connected to Grimmory yet. Connect now with a QR code?"),
-            ok_text = _("Connect"),
-            ok_callback = function() self:onGrimmoryPair() end,
-        })
-        return true
-    end
-    -- open at once: lists come from their saved copies while Wi-Fi connects
+    -- open at once: lists come from their saved copies while Wi-Fi connects.
+    -- Not signed in to Grimmory: it opens all the same (Music and Plex
+    -- audiobooks don't need it); the Books and Audiobooks pages say to sign in.
     Mod.Browser:new(self):show(type(opts) == "table" and opts or nil)
     if not Net.connected() then Net.run(function() end, { quiet = true, reason = "Grimmory library" }) end
     return true

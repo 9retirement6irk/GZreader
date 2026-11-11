@@ -66,12 +66,12 @@ local function bookLine(browser)
 end
 
 --- The Audiobooks page with a Plex library: search, Continue listening and
---- Recently added (the shelves), then All audiobooks, Authors, On this
---- Kindle and which Plex library (gz_kind "section": compartments in the
---- Bookshelf view).
+--- Recently added (the shelves), then All audiobooks, Authors and the Plex
+--- card (as on the Music page: the account, the libraries; gz_kind
+--- "section": compartments in the Bookshelf view). Grimmory isn't needed.
 function PA.items(browser, sec)
     local Browser = require("gzreader_browser")
-    local here = Browser.audiobooksHere(browser.plugin)
+    local st = type(browser.plugin) == "table" and type(browser.plugin.store) == "table" and browser.plugin.store.plex or {}
     return {
         gz_root = true, -- (the Bookshelf view: a shop, gzreader_bookshop.lua)
         { gz_id = "ab_search", gz_action = "search", text = _("Search audiobooks…"),
@@ -82,13 +82,12 @@ function PA.items(browser, sec)
             callback = function() PA.openAll(browser, sec) end },
         { gz_id = "ab_authors", gz_kind = "section", gz_contents = "dividers", text = _("Authors"), mandatory = _("A–Z"),
             callback = function() PA.openAuthors(browser, sec) end },
-        { gz_id = "ab_downloaded", gz_kind = "section", gz_contents = "tapes", text = _("On this Kindle"),
-            mandatory = #here > 0 and Browser.audioCount(#here) or _("none yet"), callback = function() browser:openAudioDownloaded() end },
-        { gz_id = "ab_plex", gz_kind = "section", gz_contents = "none", text = _("From Plex"), mandatory = sec.title or "?",
+        { gz_id = "ab_account", gz_kind = "section", gz_contents = "none", text = _("Plex"),
+            mandatory = T(_("%1 · %2"), sec.title or "?", (st.server or {}).name or "?"),
             callback = function()
-                require("gzreader_musictab").chooseAudiobooks(browser.plugin, function()
-                    if not browser.closed and browser.menu then browser:openSection("audiobooks") end
-                end)
+                -- (back from it, the page is made again: the library may have changed)
+                browser._refresh_root = true
+                Browser.musicTab(browser):openAccount()
             end },
     }
 end

@@ -81,6 +81,9 @@ echo "== statistics: book-open lookups after the first page"
 (cd "$T" && luajit statistics_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== the symbols popup (Sym on the Kindles with a keyboard)"
+(cd "$T" && luajit symbols_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"

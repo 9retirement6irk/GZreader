@@ -88,6 +88,11 @@ Press/Back answer), and the order things happen in on a first start.
   rocker (VPlus / VMinus) in the player and on Home, D (the description), the
   Home key from the player and Settings, sleep and closing GZreader. Needs a
   stand-in `gst-launch-0.10` (see the script).
+- `menu_rows.lua` (any model) — GZreader's menus as ZenOS rows: the
+  Calendar and Notes connect lists, Music's Plex sign-in (a model with a
+  speaker), Downloads with a made-up queue, copying from another GZreader;
+  a shot of each, and a check that every row is a ZenOS row with its label
+  not cut off.
 - `note_toolbar.lua` — the note editor's Menu key: to the toolbar and back,
   the cursor kept in place.
 - `screen_check.lua` — what the panel shows (the emulator's framebuffer is
@@ -113,6 +118,16 @@ Press/Back answer), and the order things happen in on a first start.
 - `grimmory_browse.lua` (demo library on 18080) — the Grimmory tab's
   selection kept when the page is drawn again and after Download, a book's
   page with its cover, and the Downloads tab taking in a finished download.
+- `catalog_shots.lua` — the README's, the landing page's and the wiki's
+  screenshots (`docs/screenshots/`): the setup guide's first pages, the
+  Catalog's Books, Audiobooks and Music pages, a book, an audiobook and an
+  album downloaded from them, Home, Downloads on shelves, a book and the
+  quick panel, the CD player, Settings. Needs a library from
+  `demo/make_library.py` (it also writes `audio.json`: made-up audiobooks
+  and albums with square covers), `demo/demo_grimmory.py` on 18080 and
+  `demo/demo_plex.py` on 18090 (the test suite's `mock_plex.py` with the demo
+  albums). `GZ_SHOTS_SET=kt` (with `GZ_EMU_MODEL=kt`) or `pw` (`pw3`): the
+  touch set, named `kt-…` / `pw-…` (a Paperwhite has no audio: Books only).
 - `dx_shelves.lua` (`GZ_EMU_MODEL=dx`, `GZ_EMU_BOOKS` a folder of EPUBs, e.g.
   the demo library's) — the DX's Home with two shelves and Downloads with four.
 - `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
@@ -145,15 +160,31 @@ leaves the refresh count unchanged changed nothing on screen.
 
 ## README screenshots
 
-`readme_shots.lua` walks through setup (QR sign-in), the Grimmory tab, a
-download, reading, the Reading menu, read aloud, Home and its Menu. It needs the
-demo library server instead of the test mock:
+`catalog_shots.lua` takes most of `docs/screenshots/` (see its bullet
+above). Servers: the demo library and the demo Plex, and for
+`GZ_SHOTS_SET=more`/`k4`/`pwmore` Memos and CalDAV too. NLTK's downloader refuses to
+go through the session's proxy; its Gutenberg zip is at
+`raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/gutenberg.zip`.
+Write a `gzreader-version` into the tree (the test build's version), or
+Settings shows "Update available".
 
 ```
 python3 tools/gzreader/emulator/demo/make_library.py <nltk gutenberg dir> <koreader>/fonts/noto /tmp/demo-lib
-DEMO_DL_DELAY=0.7 python3 tools/gzreader/emulator/demo/demo_grimmory.py <test>/mock_grimmory.py /tmp/demo-lib 18080 &
-tools/gzreader/emulator/run.sh tools/gzreader/emulator/readme_shots.lua /tmp/emu/readme
+python3 tools/gzreader/emulator/demo/demo_grimmory.py tools/gzreader/tests/mock_grimmory.py /tmp/demo-lib 18080 &
+python3 tools/gzreader/emulator/demo/demo_plex.py tools/gzreader/tests/mock_plex.py /tmp/demo-lib 18090 &
+python3 tools/gzreader/emulator/demo/mock_memos.py 18097 --sample &
+python3 -I tools/gzreader/emulator/demo/demo_caldav.py 18095 /tmp/caldav-demo &
+tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/k3
+GZ_SHOTS_SET=more tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/more
+GZ_EMU_MODEL=k4 GZ_SHOTS_SET=k4 tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/k4
+GZ_EMU_MODEL=pw3 GZ_SHOTS_SET=pwmore tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/pwmore
+GZ_EMU_MODEL=kt GZ_SHOTS_SET=kt tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/kt
+GZ_EMU_MODEL=pw3 GZ_SHOTS_SET=pw tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/pw
 ```
+
+`readme_shots.lua`, the older walk through setup with the QR sign-in, no
+longer completes the sign-in (the setup guide changed); `notes_tab.lua` and
+`calendar_tab.lua` still start from it.
 
 `phone_shots.lua` with `phone_drive.js` is the phone page, driven by a real
 browser (Playwright's Chromium at a phone's size) talking to the emulated

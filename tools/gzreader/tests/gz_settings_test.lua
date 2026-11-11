@@ -25,6 +25,7 @@ local real = {
     ["common/gz_settings"] = true,
     ["common/gz_settings_icons"] = true,
     ["common/inline_icon_map"] = true,
+    ["common/gz_wifi_icon"] = true,
     gzreader_sleeppreview = true,
 }
 local PLUGIN = arg[2] -- plugins/gzreader.koplugin (the Wallpaper tiles)
@@ -37,7 +38,10 @@ local gz = {
     sectionItems = function(_self, section)
         if section ~= "general" then return {} end
         return {
-            wifi = { text = "Wi-Fi only when needed" },
+            -- (gzreader_net.lua Net.menuItem)
+            wifi = { text = "Wi-Fi", mandatory_func = function() return "Auto" end, sub_item_table = {
+                { text = "On", radio = true }, { text = "Off", radio = true },
+                { text = "Auto (only when needed)", radio = true, separator = true } } },
             diagnostics = {
                 { text = "Diagnostic logging" },
                 { text = "Usage statistics" },
@@ -136,6 +140,20 @@ if okb then
     local device = find(about, "Device")
     check(device and not texts(device.sub_item_table):find("|KOReader: ", 1, true), "Device: no KOReader line (it's on the second line)")
     check(find(about, "Report a Bug") == nil, "no ZenOS bug reporter")
+    -- Wi-Fi: GZreader's On / Off / Auto menu in place of ZenOS's switch, its network list after them
+    local wifi = find(general, "Wi-Fi")
+    local wifi_rows = texts(wifi and wifi.sub_item_table)
+    check(gen:find("|Updates|Wi-Fi|Bluetooth|", 1, true) and select(2, gen:gsub("|Wi%-Fi", "")) == 1,
+        "General: one Wi-Fi row, where ZenOS's was (no separate \"Wi-Fi only when needed\") " .. gen)
+    check(wifi_rows == "|On|Off|Auto (only when needed)|Networks|" and wifi.mandatory_func() == "Auto",
+        "General → Wi-Fi: On, Off, Auto, then Networks; the row shows the mode " .. wifi_rows)
+    local nets = wifi and wifi.sub_item_table[4]
+    check(nets and type(nets.callback) == "function" and nets._zen_settings_submenu,
+        "Networks opens ZenOS's network list (what its Wi-Fi row opened)")
+    local GzS = require("common/gz_settings")
+    check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
+    check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil).sub_item_table) == "|On|",
+        "no ZenOS row to take the network list from: the modes alone")
     check(gen:find("|Sleep|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
         "General: Time and date, Language and Storage after Sleep " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
@@ -310,6 +328,30 @@ if PLUGIN then
     end
 end
 
+print("Wi-Fi in the status bars: the auto mark")
+do
+    local WI = require("common/gz_wifi_icon")
+    local net = { mode = function() return "auto" end }
+    package.loaded["gzreader_net"] = net
+    check(WI.mark() == "A", "Auto: \"A\" after the Wi-Fi icon")
+    net.mode = function() return "on" end
+    check(WI.mark() == nil, "On: the icon alone")
+    net.mode = function() return "off" end
+    check(WI.mark() == nil, "Off: the icon alone")
+    net.mode, net.usb = function() return "auto" end, true
+    check(WI.mark() == nil, "a Kindle without Wi-Fi: no mark")
+    net.usb, net.mode = nil, function() error("broken") end
+    check(WI.mark() == nil, "GZreader's mode can't be read: no mark, no error")
+    package.loaded["gzreader_net"] = nil
+    for _i, f in ipairs({ "modules/filebrowser/patches/status_bar.lua", "modules/reader/patches/reader_top_status_bar.lua" }) do
+        local src = read(f)
+        local body = src:match("local function getWifi%a+%(%)(.-)\n    end\n")
+        local _n, marks = (body or ""):gsub("inline_icons%.wifi_o[nf]f?, gz_mark,", "")
+        check(body and body:find('local gz_mark = require("common/gz_wifi_icon").mark()', 1, true) and marks == 3,
+            f .. ": the Wi-Fi item carries the auto mark (searching, on, off)")
+    end
+end
+
 -- Wallpaper options → Scale cover to fill screen (frontend/gzsleepfit.lua)
 do
     local FRONT = ZEN .. "/../../frontend"
@@ -386,6 +428,60 @@ do
         and ss_src:find('require("gzsleepfit").factor(widget_settings.image:getWidth()', 1, true)
         and ss_src:find("screen_w, screen_h, widget_settings.rotation_angle)", 1, true),
         "the sleep screen loads the picture to know its size and scales it to fill")
+end
+
+-- Wallpaper → "Book cover while reading, a picture elsewhere" whatever was
+-- chosen before it (frontend/gzsleepmode.lua). A saved screensaver_type used
+-- to override it: a picture while reading, or the cover at Home after
+-- Book cover was chosen once and GZreader's own again.
+do
+    local FRONT = ZEN .. "/../../frontend"
+    real.gzsleepmode = true
+    package.loaded.gzsleepmode = nil
+    local Mode = require("gzsleepmode")
+    local store = {}
+    G_reader_settings = {
+        readSetting = function(_s, k) return store[k] end,
+        saveSetting = function(_s, k, v) store[k] = v end,
+        has = function(_s, k) return store[k] ~= nil end,
+        nilOrTrue = function(_s, k) return store[k] == nil or store[k] == true end,
+        makeTrue = function(_s, k) store[k] = true end,
+        makeFalse = function(_s, k) store[k] = false end,
+    }
+    local S = G_reader_settings
+    store.screensaver_type = "disable" -- (screensaver.lua's first-start default)
+    check(Mode.type(S, "", true) == "cover" and Mode.type(S, "", false) == "random_image",
+        "GZreader's own at first: the cover while reading, a picture at Home")
+    store.screensaver_type = "random_image"
+    check(Mode.type(S, "", true) == "cover", "a saved picture choice doesn't show while reading")
+    store.screensaver_type = "cover"
+    check(Mode.type(S, "", false) == "random_image", "a saved Book cover choice doesn't show at Home")
+    store.gzreader_sleep_auto = false
+    check(Mode.type(S, "", false) == "cover" and Mode.type(S, "", true) == "cover", "Book cover chosen: the cover everywhere")
+    store.screensaver_type = "random_image"
+    check(Mode.type(S, "", true) == "random_image", "a picture chosen: a picture while reading too")
+    store.gzreader_sleep_auto, store.poweroff_screensaver_type = nil, "message"
+    check(Mode.type(S, "poweroff_", false) == "message" and Mode.type(S, "reboot_", false) == "random_image",
+        "KOReader's own power-off type still comes first; reboot without one: GZreader's")
+    store.poweroff_screensaver_type = nil
+    if PLUGIN then
+        local okp, P = pcall(require, "gzreader_sleeppreview")
+        if okp then
+            store.gzreader_sleep_auto, store.screensaver_type = nil, "random_image"
+            P.choose("cover"); P.choose("auto")
+            check(P.current() == "auto" and Mode.type(S, "", false) == "random_image" and Mode.type(S, "", true) == "cover",
+                "tiles: Book cover, then GZreader's own again: a picture at Home, the cover while reading")
+            P.choose("random_image"); P.choose("auto")
+            check(Mode.type(S, "", true) == "cover" and Mode.type(S, "", false) == "random_image",
+                "tiles: a picture, then GZreader's own again: the cover while reading")
+        end
+    end
+    local src = io.open(FRONT .. "/ui/screensaver.lua"):read("*a")
+    local setup = src:match("function Screensaver:setup%(.-\nend\n") or ""
+    local at = setup:find('require("gzsleepmode").type(G_reader_settings, self.prefix, self.ui.document ~= nil)', 1, true)
+    local prefix_at = setup:find('self.prefix = event and event .. "_" or ""', 1, true)
+    check(at and prefix_at and prefix_at < at and not setup:find("self.screensaver_type = G_reader_settings:readSetting", 1, true),
+        "the sleep screen asks gzsleepmode once the prefix is known, and nothing reads the saved type over it")
 end
 
 print(ok_count .. " passed, " .. fail .. " failed")

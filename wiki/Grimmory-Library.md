@@ -12,6 +12,8 @@ servers, in pages:
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
 (Kindle 2, 3, DX, Touch); the others have the Books page alone.
 
+![The Catalog's Books page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-books.png) ![A book's page: Download, or Download & open](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/download-confirm.png)
+
 The title says which page you're on. Under it, a strip shows the page
 before (‹ Books), a dot for each page with the current one filled, and the
 next page (Audiobooks ›). To turn to another page:
@@ -21,12 +23,29 @@ next page (Audiobooks ›). To turn to another page:
 - **Keys**: the page-turn buttons (or the next-page arrow at the bottom of a
   list view).
 
+The pages go round: turning back from Books goes to Music, and on from Music
+to Books (the strip shows ‹ Music on Books and Books › on Music).
+
 A page whose list is longer than one screen turns through its own screens
 first. Inside a page's lists (All books, an author…) the strip is blank and
 swipes turn that list's pages, as before.
 
 Kept from the Grimmory tab: its place in the tab bar, and a name you gave
 it yourself. If it was still called Grimmory, it's renamed Catalog.
+
+**Not signed in to Grimmory?** The Catalog opens all the same: Music, and
+audiobooks from Plex, don't need Grimmory. The Books page, and the
+Audiobooks page when your audiobooks come from Grimmory, have empty shelves
+and say **Sign in to Grimmory to browse the catalog**. Tap that line (or the
+**Grimmory** card) for the ways to sign in: a QR code for your browser,
+typing, or copying from another GZreader. Once you're signed in, the page
+fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
+
+**The Grimmory card** fills the bottom-right compartment of the Books
+page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
+shows who you're signed in as and where, like the Plex card on the Music
+page. It opens Rebuild library
+and reconnecting. What's on the Kindle is in the Downloads tab.
 
 **An Audiobooks tab** (off until you turn it on: Settings → Interface →
 Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
@@ -77,10 +96,6 @@ you searched for. In the Bookshelf view it's the same shelves a search's books
 stand on, empty, with cobwebs on them and the message on a card; "Search
 again…" stays at the top, with what you typed already filled in.
 
-**On this Kindle** (**On this Nook** on a Nook), last on the Books page,
-lists the books downloaded here; its card in the Bookshelf view counts them,
-as the Audiobooks and Music pages' On this Kindle do.
-
 Big libraries: a book list keeps at most 8 pages (200 books) of Grimmory's
 results. "Load more" past that lets the earliest page go, and "Earlier books"
 at the top brings it back. Each book keeps only the dozen fields GZreader
@@ -114,9 +129,11 @@ working.
 
 While anything downloads, **Downloads (N)** is a tile in the quick panel's
 Home tiles (`gzreader_tasks.lua`). It lists the current book download, the
-queue, audiobook downloads and the audiobook preparing step: reopen a
-progress bar, stop the download, take a book out of the queue, empty the
-queue. While it's open its percentages are kept current every 5 s: only the
+queue, audiobook downloads and the audiobook preparing step, one row each:
+an icon for what's happening (downloading, preparing, a clock while
+waiting), the title, and on the right where it's at (*38% of 77.0 MB*,
+*waiting*). Select a row to reopen its progress bar, stop the download or
+take a book out of the queue; the last row empties the queue. While it's open its percentages are kept current every 5 s: only the
 lines that changed are refreshed on the screen, on the page you're on (the
 whole list is redrawn when a download finishes or one is added). ZenOS's
 status bar gets a `gz_downloads` item next to the clock

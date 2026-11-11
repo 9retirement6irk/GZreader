@@ -10,8 +10,8 @@ the top, two shelves of CD cases, **Recently played** (what you played on
 this Kindle, latest first, then what Plex's own players played) and
 **Recently added** (Plex's newest albums, marked NEW), each ending in a
 bundle that opens the whole list, then a bookcase with **Playlists**,
-**Albums** and **Artists** (and *On this Kindle* and *Now playing* when
-there's something to show, and your Plex account). Albums and
+**Albums** and **Artists** (and *Now playing* when something plays), and
+your Plex account's card in the bottom-right compartment. Music on the Kindle is in the Downloads tab. Albums and
 playlists stand on the shelves as **CD cases**, face out: the album's cover
 under the lid (Plex's own small copy, fetched while the list shows and kept
 with the Catalog's covers; a plain insert with the title until it's here),
@@ -19,6 +19,9 @@ with the Catalog's covers; a plain insert with the title until it's here),
 and the artist and year (a playlist: its number of tracks). An artist opens
 to their albums, as CD cases too. Search results stay a list (artists,
 albums and tracks together).
+
+![The Catalog's Music page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-music.png) ![An album playing in the CD player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/cd-player.png)
+
 There is also a **Music tab**, off until you turn it on: Settings → Interface →
 Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds up
 to 7 tabs. While music plays or is paused, the quick panel has a **Music**
@@ -31,7 +34,7 @@ D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ 
 Press, or tap a track, to play it).
 
 Sign in, either way:
-- on the Kindle: *Sign in to Plex with a code*: go to **plex.tv/link** on a
+- on the Kindle: *Plex: sign in with a code*: go to **plex.tv/link** on a
   phone or computer and enter the 4 letters shown;
 - on the setup page: Music → *Sign in with Plex*.
 
@@ -47,7 +50,7 @@ bookshelf, the CD player), like audiobooks: open one to play it.
 
 **Music library**: a Plex server can have several music libraries. GZreader
 uses the server's first until you pick another in Settings → Connections →
-Plex → **Music library** (or *Plex: you · server* in the Music tab). Artists,
+Plex → **Music library** (or *Plex* in the Music tab, which shows you · server). Artists,
 Albums, Recently added and Recently played come from the one picked; with
 more than one music library on the server, Playlists and Search keep to it
 too. The choice is kept per server, and the sync page (Kindles without
@@ -58,7 +61,7 @@ when nothing is picked here.
 Formats: the Kindle plays MP3 and AAC. MP3 is downloaded as it is, AAC (M4A)
 is downloaded and repacked on the Kindle (like audiobooks), anything else
 (FLAC, ALAC, Ogg, Opus) is converted to MP3 by your Plex server (128, 192 or
-320 kbps: *Plex: you · server* in the Music tab). To save room, **Make bigger
+320 kbps: *Plex* in the Music tab). To save room, **Make bigger
 MP3 and AAC smaller** (in the same place) has Plex convert MP3 and AAC tracks
 of a higher quality to MP3 at that quality too (more than 15 % above it, so a
 file at about that quality stays as it is); music already downloaded stays as

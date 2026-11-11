@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GZreader – Grimmory and KOReader for Kindle</title>
-<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer; Nook 1st Edition and Simple Touch as test builds. Notes from Memos, CalDAV calendars, audiobooks, read aloud. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
-<meta name="keywords" content="Grimmory, BookLore, Kindle, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
+<meta name="description" content="GZreader puts your Grimmory (BookLore) library on a jailbroken Kindle: a KOReader build that downloads, reads and syncs your books, bookmarks and highlights. Kindle Keyboard, Kindle 4, Touch, Paperwhite and newer; Nook 1st Edition and Simple Touch as test builds. One Catalog for books, audiobooks and Plex music. Notes from Memos, CalDAV calendars, read aloud. No Wi-Fi? The Kindle 2 and DX sync over USB through a page on your computer.">
+<meta name="keywords" content="Grimmory, BookLore, Kindle, Plex music on Kindle, Kindle audiobooks, KOReader, KOReader plugin, Kindle jailbreak, KUAL, Kindle Keyboard, Kindle 3, Kindle 2, Kindle DX, Kindle without Wi-Fi, USB sync, Paperwhite, e-ink, self-hosted, ebook sync, audiobooks, Memos, CalDAV">
 <link rel="canonical" href="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="GZreader – Grimmory and KOReader for Kindle">
-<meta property="og:description" content="Your Grimmory library on a Kindle: download books, read them, and keep your place, bookmarks and highlights in sync.">
+<meta property="og:description" content="Your Grimmory library on a Kindle: download books, audiobooks and Plex music from one Catalog, and keep your place, bookmarks and highlights in sync.">
 <meta property="og:url" content="https://9retirement6irk.github.io/GZreader/">
 <meta property="og:image" content="https://9retirement6irk.github.io/GZreader/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -55,6 +55,13 @@
   .shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff;
     box-shadow: var(--shadow); }
   .shots figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .catalog { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .page { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 16px; }
+  .page img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin: 0 0 12px; }
+  .page h3 { margin: 0 0 4px; font-size: 18px; }
+  .page p { margin: 0; color: var(--muted); font-size: 15px; }
+  .page .dl { margin-top: 8px; color: var(--ink); }
+  .catalog-note { margin-bottom: 28px; }
   h2 { font: 700 28px/1.2 Georgia, "Times New Roman", serif; margin: 48px 0 14px; }
   .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
   .feature { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
@@ -99,6 +106,8 @@
     h1 { font-size: 34px; }
     .tag { font-size: 18px; }
     .shots { grid-template-columns: repeat(2, 1fr); }
+    .catalog { grid-template-columns: 1fr; }
+    .page img { max-width: 320px; margin: 0 auto 12px; }
     .features { grid-template-columns: 1fr; }
     table { font-size: 15px; }
   }
@@ -109,8 +118,8 @@
   <header>
     <img class="logo" src="gzreader-logo.svg" alt="GZreader logo" width="96" height="96">
     <h1>GZreader</h1>
-    <p class="tag">Your <strong>Grimmory</strong> library on a <strong>Kindle</strong>. Download books, read them or
-      have them read aloud, and keep your place, bookmarks and highlights in sync.</p>
+    <p class="tag">Your <strong>Grimmory</strong> library on a <strong>Kindle</strong>. Download books, audiobooks
+      and Plex music from one Catalog, read or listen, and keep your place, bookmarks and highlights in sync.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/9retirement6irk/GZreader/releases/latest">Download the latest release</a>
       <a class="btn" href="https://github.com/9retirement6irk/GZreader">Source on GitHub</a>
@@ -120,9 +129,9 @@
   </header>
 
   <section class="shots" aria-label="Screenshots">
-    <figure><img src="screenshots/home.png" alt="GZreader's Home screen on a Kindle 3" width="600" height="800" loading="lazy"><figcaption>Home</figcaption></figure>
-    <figure><img src="screenshots/grimmory-tab.png" alt="The Grimmory library laid out like a bookshop" width="600" height="800" loading="lazy"><figcaption>Your Grimmory library</figcaption></figure>
-    <figure><img src="screenshots/downloads-shelf.png" alt="Downloaded books standing on shelves" width="600" height="800" loading="lazy"><figcaption>Books on shelves</figcaption></figure>
+    <figure><img src="screenshots/home.png" alt="GZreader's Home screen on a Kindle 3: the book being read and the shelf" width="600" height="800" loading="lazy"><figcaption>Home</figcaption></figure>
+    <figure><img src="screenshots/downloads-shelf.png" alt="Downloaded books standing on shelves, with the audiobook walkman and the CD player" width="600" height="800" loading="lazy"><figcaption>Downloads on shelves</figcaption></figure>
+    <figure><img src="screenshots/cd-player.png" alt="An album from Plex playing in the CD player" width="600" height="800" loading="lazy"><figcaption>Music from Plex</figcaption></figure>
     <figure><img src="screenshots/notes-board.png" alt="Memos notes as sticky notes" width="600" height="800" loading="lazy"><figcaption>Notes from Memos</figcaption></figure>
   </section>
 
@@ -133,11 +142,36 @@
     from the Kindle 2 and Kindle Keyboard to the Paperwhite and newer, and, as test builds, on rooted Nooks:
     the Nook 1st Edition and the Nook Simple Touch.</p>
 
+  <h2 id="catalog">One Catalog: books, audiobooks and music</h2>
+  <p>The Catalog tab has three pages: swipe between them, or use the page-turn keys. Each is laid out like a shop,
+    and anything you pick downloads in the background while you keep browsing or reading.</p>
+  <div class="catalog">
+    <div class="page">
+      <img src="screenshots/catalog-books.png" alt="The Books page: Continue reading and Recently added on display ledges, then a bookcase of lists" width="600" height="800" loading="lazy">
+      <h3>Books</h3>
+      <p>Your Grimmory library: Continue reading, Recently added, All books, libraries, shelves, authors, series and search.</p>
+      <p class="dl"><strong>Download</strong> or <strong>Download &amp; open</strong>. Your place, bookmarks, highlights and ratings stay in sync.</p>
+    </div>
+    <div class="page">
+      <img src="screenshots/catalog-audiobooks.png" alt="The Audiobooks page: Continue listening and Recently added, then All audiobooks, Authors, Shelves, Series" width="600" height="800" loading="lazy">
+      <h3>Audiobooks</h3>
+      <p>Grimmory's audiobooks (or a Plex audiobook library): Continue listening, Recently added, authors, shelves and series.</p>
+      <p class="dl"><strong>Download &amp; listen</strong> opens a cassette walkman. Your place is kept, and synced with Grimmory.</p>
+    </div>
+    <div class="page">
+      <img src="screenshots/catalog-music.png" alt="The Music page: Plex albums as CD cases on Recently played and Recently added, then Playlists, Albums, Artists" width="600" height="800" loading="lazy">
+      <h3>Music</h3>
+      <p>Your Plex music: Recently played, Recently added, playlists, albums and artists, as CD cases.</p>
+      <p class="dl"><strong>Download for offline</strong>, or <strong>Play</strong> and it starts as soon as the first track is in, in a portable CD player.</p>
+    </div>
+  </div>
+  <p class="fine catalog-note">Audiobooks and Music are on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch); the others have the Books page.</p>
+
   <div class="features">
-    <div class="feature"><h3>Grimmory sync</h3><p>Browse and search your library, download in the background, and keep reading position, bookmarks, highlights and ratings in sync.</p></div>
+    <div class="feature"><h3>Grimmory sync</h3><p>Reading position, bookmarks, highlights, notes and ratings go both ways with Grimmory, and your books stand on shelves on the Kindle.</p></div>
     <div class="feature"><h3>Set up from your browser</h3><p>Scan a QR code or type the Kindle's address and a PIN. One page connects everything, single sign-on included, and sends books to the Kindle.</p></div>
     <div class="feature"><h3>Notes and calendars</h3><p>Your Memos notes as sticky notes, and CalDAV calendars or calendar links (Proton, Google…) as an agenda, week or month.</p></div>
-    <div class="feature"><h3>Audiobooks and music</h3><p>Grimmory audiobooks with your place kept, and albums from Plex, on Kindles with a speaker or headphone jack.</p></div>
+    <div class="feature"><h3>Audiobooks and music</h3><p>A cassette walkman for audiobooks, with chapters and a sleep timer, and a CD player for Plex albums and playlists, played while you read. On Kindles with a speaker or headphone jack.</p></div>
     <div class="feature"><h3>Read aloud</h3><p>On the Kindle 2, 3, DX and Touch: books read in the Kindle's own voice, the sentence highlighted and pages turning by themselves.</p></div>
     <div class="feature"><h3>Made for e-ink</h3><p>Wi‑Fi only when needed, few screen flashes on older Kindles, a built-in English dictionary and updates from GitHub.</p></div>
   </div>
