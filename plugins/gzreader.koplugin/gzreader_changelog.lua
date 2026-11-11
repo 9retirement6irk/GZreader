@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Bookshelves with more depth: page tops, title and author along the spine, shadows on the wall", text = "The bookshelves (Home, Downloads, and the spines in the Catalog) are drawn after AndyHazz's Bookshelf plugin: seen from a little above, so each book shows the top of its page block between its boards; the title runs along the spine with the author after it in smaller type where both fit (on shorter spines the author stays under the title), and a book's number in its series stands level at the foot. The books cast a soft shadow on the wall behind them, and the board shows its top, darker at the back." },
+            { short = "Bookshelves with more depth: page tops, title and author along the spine, shadows on the wall", text = "The bookshelves (Home, Downloads, and the spines in the Catalog) are drawn after AndyHazz's Bookshelf plugin: seen from a little above, so each book shows the top of its page block between its boards; the whole title runs along the spine (a long one in two or three lines of smaller type instead of being cut off) with the author after it in smaller type, or on its own line where there's no room after it, and a book's number in its series stands level at the foot. The books cast a soft shadow on the wall behind them, and the board shows its top, darker at the back." },
         },
     },
     {

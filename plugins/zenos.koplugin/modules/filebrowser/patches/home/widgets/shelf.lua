@@ -122,7 +122,7 @@ end
 --- a Kindle with a keyboard; a little on the others.
 function M.foot()
     local ok, keys = pcall(function() return Device:hasKeyboard() and not Device:isTouchDevice() end)
-    return (ok and keys) and 42 or 16
+    return (ok and keys) and 36 or 16
 end
 
 -- A line of text's height at a type size (measured once).
@@ -172,7 +172,6 @@ M.TOP_MAX = 0.2         -- the page block's top: at most this much of the book,
 M.TOP_MOST = 13         -- and this many px (at 160 dpi): GZreader's spines are short, the room is the title's
 M.RAMP = 0.13           -- how much darker the left edge is, lighter the right
 M.BOARD_SHADE = 0.55    -- the boards and the outline: this much darker than the cloth
-M.ONE_LINE_MIN = 14     -- title and author share a line down to this type size; then two lines
 
 --- How tall the top of a book h tall shows (0 for a short one): its depth
 --- into the shelf is its cover's width.
@@ -222,6 +221,98 @@ function M.shadeRamp(bb, x, y, w, h)
     end
 end
 
+--- A title in lines no longer than `room` (width(str) measures): as few as
+--- it takes, `max_lines` at most, two lines of about the same length. nil
+--- when it can't be done (a word too long, too many lines).
+function M.wrapTitle(text, room, width, max_lines)
+    local words = {}
+    for wd in tostring(text or ""):gmatch("%S+") do words[#words + 1] = wd end
+    if #words == 0 then return { "" } end
+    local lines, cur = {}, nil
+    for _i, wd in ipairs(words) do
+        if width(wd) > room then return nil end
+        local try = cur and (cur .. " " .. wd) or wd
+        if cur and width(try) > room then
+            lines[#lines + 1] = cur
+            cur = wd
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur
+    if #lines > max_lines then return nil end
+    if #lines == 2 then
+        -- (the split that leaves the two most alike)
+        local best, best_w
+        for k = 1, #words - 1 do
+            local wa, wb = width(table.concat(words, " ", 1, k)), width(table.concat(words, " ", k + 1))
+            if wa <= room and wb <= room and (not best_w or math.max(wa, wb) < best_w) then best, best_w = k, math.max(wa, wb) end
+        end
+        if best then lines = { table.concat(words, " ", 1, best), table.concat(words, " ", best + 1) } end
+    end
+    return lines
+end
+
+M.TITLE_MIN = 12   -- the smallest type a title is set in on a spine
+M.AUTHOR_MIN = 10
+M.AUTHOR_STUB = 44 -- a cut author's name after the title is shown from this much room (px at 160 dpi)
+M.AUTHOR_SEEK = 3  -- a title goes this many sizes smaller to make room for its author
+
+--- How a spine is lettered: the whole title first, in the biggest type it
+--- fits in (in lines across the spine when one isn't enough), then its
+--- author: after the title's last line where there's room, else on a line
+--- of its own (the title up to AUTHOR_SEEK sizes smaller if that shows the
+--- whole name; else what fits of it). `room`: the run along the spine; `across`: the spine's width.
+--- m = { width(str, size, bold), lineH(size), tuck(size), gap, max }.
+--- Returns { size, lines, author = "after" | "line" | nil, a_size, cut = true when the title itself is cut }.
+function M.fitSpine(title, author, room, across, m)
+    local function height(size, n) return (n - 1) * (m.lineH(size) - m.tuck(size)) + m.lineH(size) end
+    local first, bare -- (the first with some of the author; the first with none)
+    for size = m.max, M.TITLE_MIN, -1 do
+        if first and size < first.size - M.AUTHOR_SEEK then break end
+        local max_lines = 0
+        while height(size, max_lines + 1) <= across do max_lines = max_lines + 1 end
+        local lines = max_lines > 0 and M.wrapTitle(title, room, function(str) return m.width(str, size, true) end, max_lines)
+        if lines then
+            local a_size = math.max(M.AUTHOR_MIN, size - 3)
+            local cand = { size = size, lines = lines, a_size = a_size }
+            if author == "" then return cand end
+            local left = room - m.width(lines[#lines], size, true) - m.gap
+            local a_w = m.width(author, a_size, false)
+            local line_fits = height(size, #lines) + m.lineH(a_size) - m.tuck(a_size) <= across
+            if a_w <= left then
+                cand.author = "after"
+                return cand
+            end
+            if line_fits and a_w <= room then
+                cand.author = "line"
+                return cand
+            end
+            cand.author = (line_fits and "line") or (left >= S(M.AUTHOR_STUB) and "after") or nil
+            if cand.author and not first then first = cand end
+            if not bare then bare = cand end
+        end
+    end
+    -- the title whole; of a long author's name, what fits (on its own line, or after the title)
+    if first or bare then return first or bare end
+    -- too long even in the smallest type: as many lines as fit, the last one cut
+    local size = M.TITLE_MIN
+    local max_lines = 1
+    while height(size, max_lines + 1) <= across do max_lines = max_lines + 1 end
+    local lines, cur = {}, nil
+    for wd in tostring(title or ""):gmatch("%S+") do
+        local try = cur and (cur .. " " .. wd) or wd
+        if cur and #lines < max_lines - 1 and m.width(try, size, true) > room then
+            lines[#lines + 1] = cur
+            cur = wd
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur or ""
+    return { size = size, lines = lines, a_size = M.AUTHOR_MIN, cut = true }
+end
+
 local function draw_spine(book, w, h, shade)
     -- drawn lying down (h wide, w tall; its left end is the book's top), then stood up
     local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
@@ -239,7 +330,7 @@ local function draw_spine(book, w, h, shade)
     end
     -- the title along the spine, the author after it in smaller type; both
     -- centred in the run between the page block and the foot
-    local x0 = edge + S(6)
+    local x0 = edge + S(4)
     local x1 = h - foot - (n_size and (n_size.h + S(2)) or 0)
     local room = x1 - x0
     local across = w - S(4)
@@ -248,63 +339,44 @@ local function draw_spine(book, w, h, shade)
     local function tw(str, size, bold, max_w)
         return TextWidget:new{ text = str, face = Font:getFace("cfont", size), bold = bold, fgcolor = ink, max_width = max_w }
     end
-    -- one line, as a printed spine sets it: the title, then the author in
-    -- smaller type, in the biggest type that fits across the spine and shows
-    -- the whole title (and at least a good piece of the author)
-    local done = false
-    for size = M.spineType(w, false), M.ONE_LINE_MIN, -1 do
-        local title = tw(text, size, true, room)
-        local ts = title:getSize()
-        if ts.h <= across and not title:isTruncated() then
-            local auth, as
-            if author ~= "" then
-                local left = room - ts.w - gap
-                if left >= S(28) then
-                    auth = tw(author, math.max(10, size - 4), false, left)
-                    as = auth:getSize()
-                    if auth:isTruncated() and as.w < S(60) then auth:free(); auth = nil; as = nil end
-                end
-            end
-            if author == "" or auth then
-                local lw = ts.w + (auth and (gap + as.w) or 0)
-                local lx = x0 + math.max(0, math.floor((room - lw) / 2))
-                local top = math.floor((w - ts.h) / 2)
-                title:paintTo(lying, lx, top)
-                if auth then
-                    auth:paintTo(lying, lx + ts.w + gap, top + math.floor((ts.h - as.h) / 2) + S(1))
-                    auth:free()
-                end
-                done = true
-            end
+    local fit = M.fitSpine(text, author, room, across, {
+        width = function(str, size, bold)
+            local m = TextWidget:new{ text = str, face = Font:getFace("cfont", size), bold = bold }
+            local mw = m:getSize().w
+            m:free()
+            return mw
+        end,
+        lineH = lineH, tuck = tuck, gap = gap,
+        -- (with an author: type that leaves a line for it)
+        max = (M.spineType(w, author ~= "")),
+    })
+    local lh = lineH(fit.size)
+    local pitch = lh - tuck(fit.size)
+    local block = (#fit.lines - 1) * pitch + lh
+    local a_lh = fit.author and lineH(fit.a_size) or 0
+    if fit.author == "line" then block = block + a_lh - tuck(fit.a_size) end
+    local top = math.max(0, math.floor((w - block) / 2))
+    for i, str in ipairs(fit.lines) do
+        local line = tw(str, fit.size, true, room)
+        local lw = line:getSize().w
+        local auth
+        if fit.author == "after" and i == #fit.lines then
+            auth = tw(author, fit.a_size, false, math.max(1, room - lw - gap))
         end
-        title:free()
-        if done then break end
-    end
-    if not done then
-        -- too long for one line: the title over the author, two lines across
-        -- the spine (a long title a little smaller, so more of it shows)
-        local two = author ~= ""
-        local t_size, a_size, t_min = M.spineType(w, two)
-        local title
-        for size = t_size, t_min, -1 do
-            if title then title:free() end
-            title = tw(text, size, true, room)
-            if title:getSize().w < room - 1 and not title:isTruncated() then break end
-        end
-        local ts = title:getSize()
-        local tx = x0 + math.max(0, math.floor((room - ts.w) / 2))
-        if two then
-            local auth = tw(author, a_size, false, room)
-            local as = auth:getSize()
-            local t = tuck(a_size)
-            local top = math.floor((w - ts.h - as.h + t) / 2)
-            title:paintTo(lying, tx, top)
-            auth:paintTo(lying, x0 + math.max(0, math.floor((room - as.w) / 2)), top + ts.h - t)
+        local full = lw + (auth and (gap + auth:getSize().w) or 0)
+        local lx = x0 + math.max(0, math.floor((room - full) / 2))
+        local ly = top + (i - 1) * pitch
+        line:paintTo(lying, lx, ly)
+        if auth then
+            auth:paintTo(lying, lx + lw + gap, ly + math.floor((lh - a_lh) / 2) + S(1))
             auth:free()
-        else
-            title:paintTo(lying, tx, math.floor((w - ts.h) / 2))
         end
-        title:free()
+        line:free()
+    end
+    if fit.author == "line" then
+        local auth = tw(author, fit.a_size, false, room)
+        auth:paintTo(lying, x0 + math.max(0, math.floor((room - auth:getSize().w) / 2)), top + #fit.lines * pitch + tuck(fit.size) - tuck(fit.a_size))
+        auth:free()
     end
     local stood = lying:rotatedCopy(270)
     lying:free()
