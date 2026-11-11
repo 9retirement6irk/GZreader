@@ -221,6 +221,31 @@ do
         local pic = { getWidth = function() return 20 end, getHeight = function() return 30 end,
             getPixel = function(_s, x, y) return { alpha = (y <= 24 and x >= 8 and x <= 12) and 255 or 0 } end }
         check(Theme.emptyFoot(pic) == 5, "the empty rows under a picture are measured (Bookshelf's two leave a margin there): it stands on what's drawn")
+        -- shading on 16 greys: dithered, not banded
+        do
+            local BBm = require("ffi/blitbuffer")
+            local g = BBm.new(64, 16, BBm.TYPE_BB8A)
+            for gx = 0, 63 do for gy = 0, 15 do g:setPixel(gx, gy, BBm.Color8A(104 + math.floor(gx / 4), gy < 12 and 255 or 0)) end end
+            local before = g:getPixel(10, 14):getColor8A().a
+            check(Theme.dither(g), "a shaded picture's greys are dithered")
+            local levels, sum, off = {}, 0, 0
+            for gx = 0, 63 do for gy = 0, 11 do
+                local v = g:getPixel(gx, gy):getColor8A().a
+                levels[v] = true
+                sum = sum + v
+                if v % 17 ~= 0 then off = off + 1 end
+            end end
+            local n = 0
+            for _v in pairs(levels) do n = n + 1 end
+            local mean = sum / (64 * 12)
+            check(off == 0 and n == 2 and levels[102] and levels[119], "…to the screen's 16 greys: a slope from 104 to 119 becomes a mix of 102 and 119, no in-between")
+            check(math.abs(mean - 111.5) < 2, "…its tone kept (" .. string.format("%.1f", mean) .. " for 111.5)")
+            local row_a, row_b = 0, 0
+            for gy = 0, 11 do if g:getPixel(2, gy):getColor8A().a == 119 then row_a = row_a + 1 end; if g:getPixel(60, gy):getColor8A().a == 119 then row_b = row_b + 1 end end
+            check(row_b > row_a, "…the lighter end has more of the lighter grey (" .. row_a .. " then " .. row_b .. " of 12)")
+            check(g:getPixel(10, 14):getColor8A().a == before and g:getPixel(10, 14):getColor8A().alpha == 0, "…what's transparent is left alone")
+            g:free()
+        end
         check(Theme.emptyFoot({ getWidth = function() return 20 end, getHeight = function() return 30 end, getPixel = function() return {} end }) == 0,
             "a picture without transparency stands on its edge")
         -- where, how many, which end

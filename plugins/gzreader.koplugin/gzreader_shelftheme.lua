@@ -442,6 +442,48 @@ function Theme.emptyFoot(bb)
     return 0
 end
 
+--- An e-ink screen has 16 greys: a shaded picture drawn straight onto it
+--- comes out in bands. Its greys are dithered here to those 16 (an 8 x 8
+--- ordered pattern, fine enough to read as a smooth tone), once, at the size
+--- it's shown at. Transparency is left as it is. Returns true when done.
+local BAYER = {
+     0, 32,  8, 40,  2, 34, 10, 42,
+    48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44,  4, 36, 14, 46,  6, 38,
+    60, 28, 52, 20, 62, 30, 54, 22,
+     3, 35, 11, 43,  1, 33,  9, 41,
+    51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47,  7, 39, 13, 45,  5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21,
+}
+function Theme.dither(bb)
+    local Blitbuffer = require("ffi/blitbuffer")
+    local ffi = require("ffi")
+    local t = bb:getType()
+    local px = (t == Blitbuffer.TYPE_BB8A and 2) or (t == Blitbuffer.TYPE_BBRGB32 and 4) or (t == Blitbuffer.TYPE_BB8 and 1)
+    if not px then return false end
+    local w, h, stride = bb:getWidth(), bb:getHeight(), tonumber(bb.stride)
+    local data = ffi.cast("uint8_t*", bb.data)
+    local floor = math.floor
+    for y = 0, h - 1 do
+        local row = data + y * stride
+        local brow = (y % 8) * 8
+        for x = 0, w - 1 do
+            local p = row + x * px
+            local v = p[0]
+            if px == 4 then v = floor((p[0] * 77 + p[1] * 151 + p[2] * 28) / 256) end
+            if px == 1 or p[px - 1] > 0 then
+                local q = floor(v / 17 + (BAYER[brow + x % 8 + 1] + 0.5) / 64)
+                if q > 15 then q = 15 end
+                q = q * 17
+                p[0] = q
+                if px == 4 then p[1] = q; p[2] = q end
+            end
+        end
+    end
+    return true
+end
+
 local function image(entry, w, h)
     local key = entry.path .. "@" .. w .. "x" .. h
     local have = Theme.images[key]
@@ -458,6 +500,7 @@ local function image(entry, w, h)
     end
     local got = false
     if ok and bb then
+        pcall(Theme.dither, bb)
         local okf, foot = pcall(Theme.emptyFoot, bb)
         got = { bb = bb, foot = okf and foot or 0 }
     end
