@@ -49,10 +49,8 @@ browser (the photo isn't sent anywhere), with
 [libheif](https://github.com/strukturag/libheif) (LGPL 3.0), which it loads
 only when you add one (about 2 MB, once).
 
-Usage statistics (if they're on, Settings → General → Usage statistics) wait
-on the Kindle; when GZreader steps aside for the USB drive it leaves them in
-`.gzsync/usage/`, and the page sends them at the level chosen on the Kindle,
-then deletes them. Off: nothing is left or sent.
+GZreader sends no usage statistics. If an older GZreader (up to 1.28.1) left
+some in `.gzsync/usage/`, the page deletes them without sending them.
 
 ## Sending diagnostics to the developer
 

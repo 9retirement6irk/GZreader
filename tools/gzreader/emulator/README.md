@@ -46,7 +46,7 @@ Press/Back answer), and the order things happen in on a first start.
 3. The mock Grimmory: `python3 mock_grimmory.py 18080` (test suite).
 4. Optional remote debugging: `python3 feed.py 18091 feed.log` and
    `GZ_REMOTE_FEED=http://127.0.0.1:18091/open/feed/test` in the environment
-   (and usage statistics set to Full).
+   (and debug reports on: `GZ_EMU_DEBUG_REPORTS=1`).
 
 ## E-ink ghosting and the Kindle's Wi-Fi services
 

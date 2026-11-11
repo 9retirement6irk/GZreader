@@ -37,4 +37,4 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 - **Updates from GitHub** over Wi‑Fi (or the sync page), with a **What's new** screen after each; **test builds** for trying changes early. → [Updates and test builds](Updates-and-Test-Builds)
 - **Wi‑Fi on, off or auto** — Auto (the default) turns it on for what needs it and off after a minute, to save battery; the quick panel's Wi‑Fi tile goes through the three. → [Wi‑Fi](Wi-Fi)
 - **Faster on old Kindles** — a shadow screen for drawing, precompiled code, pre-sized covers. → [Performance](Performance)
-- **Usage statistics and diagnostics** — Basic, Full (with debug reports) or Off; send the diagnostic log to the developer in one tap. → [Privacy and diagnostics](Privacy-and-Diagnostics)
+- **Debug reports and diagnostics** — no usage statistics; debug reports go to the developer only if you choose, and the diagnostic log goes to the developer in one tap. → [Privacy and diagnostics](Privacy-and-Diagnostics)

@@ -1,45 +1,31 @@
 What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log.
 
-## Usage statistics
+## Debug reports
 
-GZreader sends anonymous usage statistics to its developer's
-[Tianji](https://tianji.dev) server, so problems on real Kindles can be found
-and fixed. You choose the level in the setup guide or in
-**Settings → General → Usage statistics**:
+GZreader sends no usage statistics (up to 1.28.1 it sent anonymous ones,
+Basic by default; that's gone, and what was waiting on the Kindle is
+deleted). What it can still send its developer is **debug reports**, so
+problems on real Kindles can be found and fixed:
 
-| Level | What's sent |
-| --- | --- |
-| **Basic** (default) | The usage statistics below |
-| **Full** | The same, plus **debug reports** (see [Remote debugging](Privacy-and-Diagnostics#remote-debugging)): starts and how the previous run ended, warnings and errors from GZreader's log, freezes and crashes |
-| **Off** | Nothing is recorded or sent |
+- **Send debug reports automatically** (the setup guide's **Debug Reports**
+  page, or **Settings → General → Send debug reports automatically**), off
+  unless you choose it: when GZreader starts, how the previous run ended,
+  warnings and errors from its log, freezes and crashes. They go out only
+  while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for them. See
+  [Remote debugging](#remote-debugging) for what each report has. If you had
+  usage statistics set to **Full**, which included these, they stay on;
+  **Basic** or **Off**: they're off.
+- **Send to the developer** (see [Diagnostic log](#diagnostic-log)): the
+  whole diagnostic log, once, with what you type about what went wrong,
+  whether automatic reports are on or not.
 
-What Basic and Full send. Every event carries GZreader's version, the Kindle
-model, its firmware and how many minutes it covers:
-
-| Event | When | Also |
-| --- | --- | --- |
-| **reader** | you leave a book (close it, go Home, sleep) | |
-| **catalog books**, **catalog audiobooks**, **catalog music** | you leave that page of the Catalog tab | |
-| **audiobooks tab**, **music tab** | you leave that tab | |
-| **notes**, **calendar** | you leave Notes or Calendar | |
-| **read aloud** | read aloud stops | |
-| **audiobook playing**, **music playing** | playing stops for a minute, or the Kindle sleeps | how many times it was started |
-| **download** | a download finishes or fails | size, speed, resumed or not |
-| **sync** | every 30 minutes, and at sleep and exit | how syncs with Grimmory went and Grimmory's answer times, Wi‑Fi on-time, battery use per hour (over at least 10 minutes without charging) |
-| **slow operations**, **keys not answered** | something took 3 s or more; keys the screen didn't answer | |
-
-A visit counts the part of GZreader underneath whatever is open on top (the
-quick panel, a book's page, the player, a note being written). Visits under 5
-seconds aren't sent, and sleep ends a visit (waking starts a new one).
-
-Never sent in the statistics: book titles, authors, file names, your Grimmory
-address or account, or anything you type. Full's debug reports carry lines of
-GZreader's log, which can name the book or file it was working on (never
-passwords or tokens). Each Kindle is counted by a random ID, not its serial
-number (its first 8 characters are also in the statistics' User-Agent, so the
-server can tell two Kindles on the same Wi‑Fi apart). Statistics wait in a
-small file and go out in one batch at most every 15 minutes, only while Wi‑Fi
-is already on; GZreader never turns Wi‑Fi on for them.
+Reports carry GZreader's version, the Kindle model and lines of GZreader's
+log, which can name the book or file it was working on. Never passwords,
+tokens or anything you type (except what you type for Send to the
+developer). Each Kindle is named by a random ID, not its serial number, so
+reports from two Kindles can be told apart. The Kindle 2 and DX have no
+Wi‑Fi, so they never send reports by themselves (Send to the developer
+works there, at the next sync).
 
 ## Diagnostic log
 
@@ -92,12 +78,12 @@ only the newest three `gzreader-log-<date>.txt` next to the GZreader folder
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:
-with **usage statistics set to Full** (Settings → General → Usage
-statistics, or the setup guide), GZreader reports to the developer's feed
+with **Send debug reports automatically** on (Settings → General, or the
+setup guide), GZreader reports to the developer's feed
 (Tianji `…/open/feed/<id>/send`, `/state/upsert`, `/state/resolve`);
 releases to one feed, test builds to another (`gzreader_remote.lua`
-`R.FEED`, `R.TEST_FEED`). Basic and Off send none of this, and Kindles
-without Wi‑Fi never do. (Up to 1.26.7 it was set by hand in Settings →
+`R.FEED`, `R.TEST_FEED`). Off (the default) sends none of this, and Kindles
+without Wi‑Fi never do. (Up to 1.28.1 it came with Full usage statistics; up to 1.26.7 it was set by hand in Settings →
 General → Remote debugging, with your own feed; that setting is gone.)
 `gzreader_remote.lua` queues messages as JSON files in
 `koreader/gzreader-remote/spool`; `gzreader_watchdog.lua`, a separate
@@ -134,12 +120,12 @@ General → Advanced → Send diagnostic log to the developer; Settings →
 About → Report a bug)
 asks what you were doing and what went wrong, then sends that with the
 whole diagnostic log (the same file "Save to the Kindle" writes) to a feed
-of its own (`R.REPORT_FEED`, the same for releases and test builds), at
-any usage level: in parts of 60 KB, at most the newest 480 KB, each an
+of its own (`R.REPORT_FEED`, the same for releases and test builds),
+whether automatic reports are on or not: in parts of 60 KB, at most the newest 480 KB, each an
 event "Debug report from <model>-<id> (n/m)"; the first is named after
 what you typed and starts with it ("What happened: …"; a password or token
-typed there is redacted like the log's). `<id>` is the start of usage
-statistics' random ID (not the serial number).
+typed there is redacted like the log's). `<id>` is the start of the
+Kindle's random ID (not the serial number).
 
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
 the clock jump after waking). Log lines are redacted (no passwords or

@@ -44,7 +44,7 @@ local gz = {
                 { text = "Auto (only when needed)", radio = true, separator = true } } },
             diagnostics = {
                 { text = "Diagnostic logging" },
-                { text = "Usage statistics" },
+                { text = "Send debug reports automatically" },
                 { text = "Send diagnostic log to the developer" },
                 { text = "Send diagnostic log to a browser (QR code)" },
                 { text = "Save diagnostic log (USB)" },
@@ -121,7 +121,8 @@ if okb then
     check(adv:find("^|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|") ~= nil,
         "General → Advanced starts with the diagnostic log's items")
     check(advanced.sub_item_table[4].separator == true, "a line under them")
-    check(gen:find("|Usage statistics|Advanced|", 1, true) ~= nil, "Usage statistics stays in General, just above Advanced")
+    check(gen:find("|Send debug reports automatically|Advanced|", 1, true) ~= nil and not gen:find("Usage statistics", 1, true),
+        "Send debug reports automatically stays in General, just above Advanced (no Usage statistics)")
     for _i, gone in ipairs({ "Diagnostic logging", "Send diagnostic log to the developer", "Save diagnostic log (USB)" }) do
         check(not gen:find("|" .. gone .. "|", 1, true), "not in General itself: " .. gone)
     end

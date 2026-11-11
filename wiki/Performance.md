@@ -20,8 +20,8 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   The packing reads four pixels at a time where the rows are aligned (one
   32-bit read and one 16-bit write per four pixels): about a third less
   time than two at a time, byte for byte the same.
-- **Fewer wake-ups while reading:** GZreader's own timers (usage
-  statistics, the remote-debugging heartbeat, the Wi‑Fi idle check) fire on
+- **Fewer wake-ups while reading:** GZreader's own timers (the debug
+  reports' heartbeat, the Wi‑Fi idle check) fire on
   the clock's quarter minutes, together, instead of each at its own offset
   (`gzreader_ticks.lua`). On the Kindles without REAGL (2, DX, 3, 4) the
   clock and battery at the top of a book are updated with the page instead
@@ -74,7 +74,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
 - **Background processes below the screen's priority** (`gzreader_async.lua`):
-  syncing, downloads, the library index, update checks and usage statistics
+  syncing, downloads, the library index and update checks
   run at nice 5 (longer jobs such as matching highlights at 10, cover sizing
   and other local work at 19), so a TLS handshake (seconds of CPU on a Kindle 3) doesn't hold up
   page turns.

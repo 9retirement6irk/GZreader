@@ -131,13 +131,14 @@ function M.gzreaderVersion()
 end
 
 --- Of GZreader's diagnostics items (Settings → General), the ones that move
---- into General → Advanced: everything but Usage statistics, which stays in
---- General where it's easy to find.
+--- into General → Advanced: everything but Send debug reports automatically,
+--- which stays in General where it's easy to find (as Usage statistics did
+--- up to 1.28.1; GZreader no longer sends them).
 function M.splitDiagnostics(items)
-    local usage = require("gettext")("Usage statistics")
+    local reports = require("gettext")("Send debug reports automatically")
     local stay, advanced = {}, {}
     for _i, item in ipairs(items or {}) do
-        if type(item) == "table" and item.text == usage then
+        if type(item) == "table" and item.text == reports then
             stay[#stay + 1] = item
         else
             advanced[#advanced + 1] = item
