@@ -95,6 +95,12 @@ function M.start(plugin)
     if type(meta) ~= "table" or meta.quickstart_menu_tour_pending ~= true or active then
         return false
     end
+    -- GZreader: on touch Kindles the menu is GZreader's quick panel (ZenOS's
+    -- touch menu, its Zen Mode button and tabs, isn't shown): this tour
+    -- pointed at places that aren't there and left the panel open over the
+    -- page browser tour. GZreader's tour shows the panel (gzreader_tour.lua).
+    local ok_gz, GzTour = pcall(require, "gzreader_tour")
+    if ok_gz and type(GzTour.start) == "function" then return GzTour.start(plugin) end
 
     local menu = plugin.ui and plugin.ui.menu
     if not (menu and type(menu.onShowMenu) == "function") then return false end

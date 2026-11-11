@@ -11,7 +11,7 @@ local logger = ZenLogger.new("zen_bugreporter")
 local UIManager = require("ui/uimanager")
 local restart = require("common/restart")
 local zen_utils = require("common/utils")
-local updater = require("modules/settings/zen_updater")
+local updater = require("modules/settings/gz_updater") -- GZreader: not ZenOS's updater (gz_updater.lua)
 
 local PROXY_URL       = "https://zen-reporter.misty-mud-afb2.workers.dev/"
 local UPLOAD_URL = PROXY_URL .. "upload"
@@ -37,8 +37,11 @@ local function https_post_json(url, payload_str)
         return nil, "ssl.https / ltn12 not available"
     end
 
+    -- Runs on the UI thread: bound it so a stalled network cannot hang KOReader.
+    local ok_su, socketutil = pcall(require, "socketutil")
+    if ok_su then socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT) end
     local resp = {}
-    local _, code = https.request{
+    local ok_req, request_err, code = pcall(https.request, {
         url    = url,
         method = "POST",
         headers = {
@@ -48,7 +51,9 @@ local function https_post_json(url, payload_str)
         },
         source = ltn12.source.string(payload_str),
         sink   = ltn12.sink.table(resp),
-    }
+    })
+    if ok_su then socketutil:reset_timeout() end
+    if not ok_req then return nil, tostring(request_err) end
     return code, table.concat(resp)
 end
 

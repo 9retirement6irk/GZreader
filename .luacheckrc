@@ -41,3 +41,9 @@ ignore = {
     "631",     -- Line is too long
     "dummy",
 }
+
+-- GZreader: ZenOS names throwaway locals _w, _body… (its own .luacheckrc
+-- ignores unused locals starting with _); since ZenOS 4.3.0
+files["plugins/zenos.koplugin"] = {
+    ignore = { "211/_.*", "231/_.*" },
+}

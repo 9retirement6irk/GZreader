@@ -38,6 +38,19 @@ function M.isBookshelf()
     return M.get() == "bookshelf"
 end
 
+--- GZreader: how many shelves Home's bookshelf has: two on the DX (its tall
+--- screen left one shelf with a lot of empty wall), one elsewhere.
+M.DX_HOME_SHELVES = 2
+function M.homeShelves()
+    local ok, dx = pcall(function()
+        local Device = require("device")
+        local m = Device.model or ""
+        if m ~= "Kindle2" and m ~= "KindleDX" and m ~= "KindleDXG" then return false end
+        return math.min(Device.screen:getWidth(), Device.screen:getHeight()) > 600
+    end)
+    return (ok and dx) and M.DX_HOME_SHELVES or 1
+end
+
 --- Home's strip is a shelf (its config allows it, and the view is the bookshelf)?
 function M.stripShelf(module_cfg)
     return type(module_cfg) == "table" and module_cfg.shelf == true and M.isBookshelf()
@@ -48,10 +61,52 @@ local function fileManager()
     return ok and FileManager and FileManager.instance or nil
 end
 
+---------------------------------------------------------------- square covers
+
+-- GZreader: covers are square-cornered in the Bookshelf view (Settings →
+-- Downloads → Appearance → Covers → Rounded cover corners is off and greyed
+-- out there). The value chosen in the other views is kept in
+-- features.gz_rounded_outside_shelf and put back when one is chosen again.
+local function zenConfig()
+    local zen = rawget(_G, "__ZEN_UI_PLUGIN")
+    if zen and type(zen.config) == "table" then
+        return zen.config, function() pcall(zen.saveConfig, zen) end
+    end
+    local ok, manager = pcall(require, "config/manager")
+    local cfg = ok and manager.get and manager.get() or nil
+    if type(cfg) ~= "table" then return nil end
+    return cfg, function() pcall(manager.save, cfg) end
+end
+
+--- Rounded corners off in the Bookshelf view, back as they were in the
+--- others. `bookshelf` defaults to the current view. True when it changed.
+function M.applyCorners(bookshelf, cfg, save)
+    if bookshelf == nil then bookshelf = M.isBookshelf() end
+    if not cfg then cfg, save = zenConfig() end
+    if type(cfg) ~= "table" then return false end
+    if type(cfg.features) ~= "table" then cfg.features = {} end
+    local f = cfg.features
+    local changed = false
+    if bookshelf then
+        if f.browser_cover_rounded_corners == true then
+            f.gz_rounded_outside_shelf = true
+            f.browser_cover_rounded_corners = false
+            changed = true
+        end
+    elseif f.gz_rounded_outside_shelf ~= nil then
+        f.browser_cover_rounded_corners = f.gz_rounded_outside_shelf == true
+        f.gz_rounded_outside_shelf = nil
+        changed = true
+    end
+    if changed and save then save() end
+    return changed
+end
+
 --- Choose a view (one of M.MODES); redraws Downloads and Home.
 function M.set(mode)
     local was = M.get()
     G_reader_settings:saveSetting("gzreader_view", mode == "bookshelf" and "bookshelf" or "other")
+    local corners = M.applyCorners(mode == "bookshelf")
     local cb_mode = mode == "bookshelf" and "mosaic_image" or mode
     local fm = fileManager()
     if fm and type(fm.onSetDisplayMode) == "function" then
@@ -60,7 +115,7 @@ function M.set(mode)
         local BIM = bim()
         if BIM and BIM.saveSetting then pcall(BIM.saveSetting, BIM, "filemanager_display_mode", cb_mode) end
     end
-    if was ~= mode and fm then
+    if (was ~= mode or corners) and fm then
         -- tiles <-> bookshelf: the same CoverBrowser mode, so redraw by hand
         local fc = fm.file_chooser
         if fc then

@@ -7,14 +7,15 @@
 <p align="center">
   <b>Grimmory + ZenOS + KOReader for Kindles</b><br>
   Your <a href="https://grimmory.org">Grimmory</a> (formerly BookLore) library on a Kindle,
-  from the Kindle Keyboard to the Paperwhite: download books, read them
-  or have them read aloud, and keep your place, bookmarks and highlights in sync.
-  Notes, calendars, and books sent from your browser too.
+  from the Kindle Keyboard to the Paperwhite: download books, audiobooks and
+  Plex music from one Catalog, read or listen, and keep your place, bookmarks
+  and highlights in sync. Notes, calendars, and books sent from your browser too.
 </p>
 
 <p align="center">
   <a href="https://github.com/9retirement6irk/GZreader/releases/latest"><b>Download the latest release</b></a> ·
-  <a href="GZREADER.md">Full guide</a> ·
+  <a href="https://github.com/9retirement6irk/GZreader/wiki"><b>Wiki</b></a> ·
+  <a href="https://github.com/9retirement6irk/GZreader/wiki/Installing">Install</a> ·
   <a href="plugins/gzreader.koplugin/gzreader_changelog.lua">Changelog</a>
 </p>
 
@@ -48,16 +49,29 @@ same KOReader device support and should work, but their screens and buttons
 haven't been tried.
 
 <table>
-<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/grimmory-tab.png" alt="Your Grimmory library as a bookshop" width="200"><br><sub>Your Grimmory library</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td><td align="center" width="25%"><img src="docs/screenshots/phone-start.png" alt="Set up from your browser" width="200"><br><sub>Set up from your browser</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading and your shelf" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-books.png" alt="The Catalog's Books page, laid out like a bookshop" width="200"><br><sub>Catalog: books</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-audiobooks.png" alt="The Catalog's Audiobooks page: Continue listening, Recently added" width="200"><br><sub>Catalog: audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-music.png" alt="The Catalog's Music page: Plex albums as CD cases" width="200"><br><sub>Catalog: music</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/downloads-shelf.png" alt="Downloads on shelves: books, the audiobook walkman and the CD player" width="200"><br><sub>Downloads on shelves</sub></td><td align="center" width="25%"><img src="docs/screenshots/cd-player.png" alt="Music playing in the CD player" width="200"><br><sub>Music from Plex</sub></td><td align="center" width="25%"><img src="docs/screenshots/audiobook-player.png" alt="The audiobook player: a cassette walkman" width="200"><br><sub>Audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td></tr>
 </table>
 
 [More screenshots](docs/screenshots/)
 
 ## What it does
 
-- 📚 **Grimmory:** search and browse your library (laid out like a bookshop: covers on
-  display ledges, a bookcase for libraries, shelves, authors and series), download books in the background,
-  and keep your **place, bookmarks, highlights and ratings in sync** with Grimmory.
+- 📚 **The Catalog:** one tab, three pages you swipe (or page) between, each laid out
+  like a shop: covers on display ledges, then a bookcase of lists. Pick something,
+  and it downloads in the background:
+  - **Books** from Grimmory: Continue reading, Recently added, All books, libraries,
+    shelves, authors, series and search. *Download* or *Download & open*; your
+    **place, bookmarks, highlights and ratings stay in sync** with Grimmory.
+  - **Audiobooks** from Grimmory (or a Plex library): Continue listening, Recently
+    added, authors, shelves, series. *Download & listen* opens the player, and your
+    place is kept.
+  - **Music** from Plex: Recently played, Recently added, playlists, albums and
+    artists as CD cases. *Download for offline*, or *Play*: it starts as soon as the
+    first track is in.
+
+  Audiobooks and Music are on Kindles with a speaker or headphone jack (Kindle 2, 3,
+  DX, Touch); the others have the Books page.
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
   to show its cover. Audiobooks sit on the shelf as a cassette walkman (each one a
   cassette tape inside), music as a CD player (each album a CD). Lists and tiles are a tap away.
@@ -69,27 +83,32 @@ haven't been tried.
   the [sync page](https://9retirement6irk.github.io/GZreader/sync/) in Chrome or Edge.
   Your reading goes to Grimmory; books, audiobooks and Plex music (chosen on the Kindle
   or the page), notes, calendars, GZreader updates and a copy of your library (to browse
-  the Grimmory tab) come back.
+  the Catalog tab) come back.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
   checklists, write and edit, offline too.
 - 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,
   day, week, month.
-- 🎵 **Music** *(new, Kindles with audio)*: albums and playlists from **Plex**, played
-  while you read, all in a portable CD player: browse, download and play there. Turn the
-  Music tab on in Settings → Navbar → Tabs.
+- 🎵 **Music** *(Kindles with audio)*: albums and playlists from **Plex**, played
+  while you read, in a portable CD player with its queue on the back of the case. The
+  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings →
+  Interface → Navbar → Tabs.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
   read to you in the Kindle's own voice, the sentence being spoken highlighted and the
   pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.
-- 🎧 **Audiobooks** from Grimmory, with your place kept.
+- 🎧 **Audiobooks** *(Kindles with audio)*: a cassette walkman with chapters, a sleep
+  timer and the volume keys; your place syncs with Grimmory's audiobook progress.
 - 🔋 Wi‑Fi only when needed, a built-in English dictionary, updates from GitHub.
 
-All the details: **[the full guide](GZREADER.md)**.
+All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/wiki)**:
+[feature overview](https://github.com/9retirement6irk/GZreader/wiki/Feature-Overview),
+[device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility),
+[what's changed from KOReader and ZenOS](https://github.com/9retirement6irk/GZreader/wiki/Changes-from-KOReader-and-ZenOS).
 
 ## Install
 
-1. **Jailbreak** the Kindle and install **KUAL**
-   ([kindlemodding.org](https://kindlemodding.org/jailbreaking/); Kindle 2, 3, DX, 4,
-   Touch: [MobileRead](https://www.mobileread.com/forums/forumdisplay.php?f=150)).
+1. **Jailbreak** the Kindle (and install **KUAL** on the Kindle 2, 3, DX, 4 and Touch):
+   [Jailbreaking and rooting](https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting),
+   or [kindlemodding.org's Jailbreak Wizard](https://kindlemodding.org/jailbreak-wizard.html).
 2. **Download** the package for your Kindle from the
    [latest release](https://github.com/9retirement6irk/GZreader/releases/latest):
 
@@ -104,23 +123,24 @@ All the details: **[the full guide](GZREADER.md)**.
 
 3. **Unzip** it and copy its folders to the top of the Kindle's USB drive, merging
    with what's there (your books stay). Eject.
-4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Kindle Touch,
-   Paperwhite or newer the **GZreader** item on the Kindle's home screen. The setup
+4. **Start** it: KUAL → **GZreader → Start GZreader**, or on a Paperwhite or
+   newer the **GZreader** item on the Kindle's home screen. The setup
    guide shows a QR code for your phone, and an address and PIN for any browser.
 
-Updates come by themselves (Settings → General → Updates). Step-by-step help,
-uninstalling and the Nooks: [Install in the full guide](GZREADER.md#install).
+Updates come by themselves (Settings → General → Updates). Step-by-step help
+for each package, uninstalling and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
 
 ## Privacy
 
 Passwords and tokens stay on the Kindle and are never written to its log.
-GZreader sends anonymous usage statistics (no titles, addresses or accounts) to
-help fix problems; choose Basic, Full or Off in the setup guide or Settings →
-General → Usage statistics ([what's sent](GZREADER.md#usage-statistics)).
+GZreader sends no usage statistics. It can send debug reports (errors,
+freezes, crashes; their log lines can name a book) to help fix problems,
+only if you choose: the setup guide or Settings → General → Send debug
+reports automatically ([what's sent](https://github.com/9retirement6irk/GZreader/wiki/Privacy-and-Diagnostics#debug-reports)).
 
 ## More
 
-- [The full guide](GZREADER.md) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
+- [The wiki](https://github.com/9retirement6irk/GZreader/wiki) ([edit it in `wiki/`](wiki/)) · [Changelog](plugins/gzreader.koplugin/gzreader_changelog.lua)
 - [Developing GZreader](DEVELOPING.md): building, tests, releases, keeping up with KOReader and ZenOS
 
 ## Credits and license

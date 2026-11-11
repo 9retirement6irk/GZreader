@@ -13,7 +13,7 @@ it is copied there, for run_tests.lua's import test (GZ_SYNC_DUMP).
 Ports: port (Grimmory) port+1 (its control), port+20 Memos, port+21 Plex,
 port+22 the page.
 """
-import base64, datetime, json, os, struct, subprocess, sys, tempfile, threading, time, urllib.request
+import base64, datetime, json, os, shutil, struct, subprocess, sys, tempfile, threading, time, urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -34,6 +34,22 @@ def check(cond, name):
 procs = []
 import atexit
 atexit.register(lambda: [p.terminate() for p in procs])  # (also when a step fails)
+def lua_chunks(path, seconds=15):
+    """gzreader_mp4.lua's conversion (what GZreader does on the Kindle): {name: bytes}, index.json's text."""
+    out = tempfile.mkdtemp()
+    script = os.path.join(out, "convert.lua")
+    with open(script, "w") as f:
+        f.write("package.path = %r .. '/?.lua;' .. package.path\n" % os.path.join(REPO, "plugins", "gzreader.koplugin")
+                + "local Mp4 = require('gzreader_mp4'); Mp4.CHUNK_SECONDS = %s\n" % seconds
+                + "local r = assert(Mp4.convert(arg[1], arg[2])); io.write(Mp4.indexJson(r))\n")
+    os.makedirs(os.path.join(out, "c"))
+    idx = subprocess.run(["luajit", script, path, os.path.join(out, "c")], capture_output=True, check=True).stdout.decode()
+    got = {}
+    for n in os.listdir(os.path.join(out, "c")):
+        with open(os.path.join(out, "c", n), "rb") as f: got[n] = f.read()
+    shutil.rmtree(out)
+    return got, idx
+
 def spawn(*args):
     p = subprocess.Popen([sys.executable, "-I", *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ))
     procs.append(p)
@@ -49,6 +65,9 @@ def wait_port(port):
         except Exception:
             time.sleep(0.1)
 
+# (the single-file audiobook Grimmory streams: a real M4A, which the page prepares for the Kindle)
+TEST_M4A = os.path.join(REPO, "plugins", "gzreader.koplugin", "audio", "test.m4a")
+os.environ.setdefault("GZ_TEST_M4A", TEST_M4A)
 spawn(os.path.join(HERE, "mock_grimmory.py"), str(GP))
 spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample")
 spawn(os.path.join(HERE, "mock_plex.py"), str(PP))
@@ -73,6 +92,9 @@ with zipfile.ZipFile(upd, "w", zipfile.ZIP_DEFLATED) as z:
 UPD = open(upd, "rb").read()
 with open(os.path.join(web, "updates", "latest.json"), "w") as f:
     json.dump({"version": "1.30.0", "file": "gzreader-update.zip", "size": len(UPD), "sha256": hashlib.sha256(UPD).hexdigest()}, f)
+# test builds (next to the release's on the updates branch)
+with open(os.path.join(web, "updates", "latest-beta.json"), "w") as f:
+    json.dump({"version": "1.29.0-beta.abc1234", "file": "gzreader-beta-update.zip", "size": 1, "sha256": "00"}, f)
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = ThreadingHTTPServer(("127.0.0.1", WP), partial(Quiet, directory=web))
@@ -84,6 +106,7 @@ OUTBOX = {
     "format": 1, "written_at": int(now), "gzreader": "1.24.0",
     "kindle": {"model": "Kindle2", "name": "Kindle 2 · 3F2A", "id": "3f2a01", "audio": True, "screen": {"w": 824, "h": 1200}},
     "screensavers": {"names": ["old.png"], "mode": "auto"},
+    "music_quality": {"bitrate": 128, "shrink": False},
     "grimmory": {"server": "http://127.0.0.1:%d" % GP, "user": "will"},
     "jobs": [
         {"id": "p:1:7", "kind": "progress", "book": 1, "method": "PUT", "path": "/api/v1/app/books/1/progress",
@@ -103,6 +126,11 @@ OUTBOX = {
         {"id": "m:3", "kind": "mark", "op": "highlight~", "method": "PUT", "path": "/api/v1/annotations/{id}", "ref": "usb-2",
          "body": {"color": "#F87171", "style": "highlight", "note": "from the Kindle"}},
         {"id": "m:4", "kind": "mark", "op": "bookmark-", "method": "DELETE", "path": "/api/v1/bookmarks/{id}", "ref": "9999"},
+        # a book put on a shelf on the Kindle; one put on someone else's shelf (Grimmory refuses it)
+        {"id": "sh:3:5", "kind": "shelf", "book": 3, "method": "POST", "path": "/api/v1/books/shelves",
+         "body": {"bookIds": [3], "shelvesToAssign": [6], "shelvesToUnassign": []}},
+        {"id": "sh:5:6", "kind": "shelf", "book": 5, "method": "POST", "path": "/api/v1/books/shelves",
+         "body": {"bookIds": [5], "shelvesToAssign": [7], "shelvesToUnassign": []}},
     ],
     "disk": {"total": 1500000000, "available": 900000000},
     "queue": [
@@ -114,8 +142,10 @@ OUTBOX = {
     "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
-    # usage statistics: the page sends what the Kindle left in usage/
+    # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
     "usage": {"level": "basic", "server": "http://127.0.0.1:%d" % GP, "app": "test-app"},
+    # Send to the developer: the reports in reports/ go to this feed (gzreader_usbreport.lua)
+    "report": {"feed": "http://127.0.0.1:%d/open/feed/testfeed" % GP, "device": "Kindle2-ab12cd", "test_build": False},
 }
 USAGE_LINES = "\n".join(json.dumps(x) for x in [
     {"type": "identify", "payload": {"application": "test-app", "os": "Kindle2", "language": "en", "data": {"id": "k", "version": "1.25.2"}}},
@@ -155,6 +185,22 @@ with sync_playwright() as pw:
         await u.write(usage); await u.close();
         window.testRoot = root;
     }""", {"outbox": OUTBOX, "usage": USAGE_LINES})
+    # a report saved on the Kindle (Diagnostics → Send to the developer), the log exported when
+    # Sync was pressed, and the log files themselves (gzreader_usbreport.lua)
+    page.evaluate("""async () => {
+        const root = window.testRoot;
+        const sync = await (await (await root.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+        const reports = await sync.getDirectoryHandle('reports', { create: true });
+        async function put(dir, name, text) { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+        await put(reports, 'report-20261108-101500.txt', 'Grimmory plugin log, exported 2026-11-08 10:15:00\\n\\nthe saved report\u2019s log line\\n');
+        await put(reports, 'report-20261108-101500.json', JSON.stringify({ note: 'Sign-in froze at https://books.example.com/login?password=hunter2', at: 1794150900, version: '1.26.9', device: 'Kindle2-ab12cd', test_build: false }));
+        await put(reports, 'report-20261108-101700.txt', 'a report whose .json never got written');
+        await put(reports, 'latest.txt', 'Grimmory plugin log, exported when Sync was pressed\\n\\n===== staying awake =====\\nfresh export line\\n');
+        const ko = await root.getDirectoryHandle('koreader', { create: true });
+        await put(ko, 'gzreader.log.1', 'older log line\\n');
+        await put(ko, 'gzreader.log', 'newer log line\\n');
+        await put(ko, 'crash.log', 'crash line GET /x?access_token=abc123&y=1\\n');
+    }""")
     check(page.locator("#gate").is_visible() and not page.locator("#app").is_visible(), "a Kindle first: nothing to set up before one is chosen")
     page.evaluate("() => GZSync.open(window.testRoot, true)")
     page.wait_for_selector("#unlock:not(.hidden)")
@@ -165,7 +211,7 @@ with sync_playwright() as pw:
     check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
     page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
-    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "9 reading updates" in page.locator("#k-sub").inner_text()
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "11 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
           "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
@@ -209,6 +255,17 @@ with sync_playwright() as pw:
           and not page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gzsync.') && k !== 'gzsync.sso').length"),
           "the sign-ins are on the Kindle, encrypted with its PIN (and not in the browser)")
 
+    # picks the Kindle has meanwhile (from another computer's sync, say): Book 01 and album 999 are on it
+    page.evaluate("""async () => {
+        const s = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('documents')).getDirectoryHandle('GZreader');
+        const d = await s.getDirectoryHandle('.gzsync');
+        let p = { books: [], music: [] };
+        try { p = JSON.parse(await (await (await d.getFileHandle('picks.json')).getFile()).text()); } catch (e) {}
+        p.books = (p.books || []).concat([{ id: 1, kind: 'book', title: 'Book 01', size_kb: 100 }]);
+        p.music = (p.music || []).concat([{ kind: 'album', key: '999', title: 'Old Album' }]);
+        const w = await (await d.getFileHandle('picks.json', { create: true })).createWritable();
+        await w.write(JSON.stringify(p)); await w.close();
+    }""")
     page.goto("about:blank")   # (a fresh visit, as on another computer)
     page.goto("http://127.0.0.1:%d/GZreader/sync/" % WP)
     page.wait_for_function("window.GZSync")
@@ -222,6 +279,24 @@ with sync_playwright() as pw:
     seen = (page.locator("#c-plex.on").count(), page.locator("#c-grimmory.on").count(), page.locator("#c-memos.on").count(),
             page.locator("#cal-list li").count(), page.locator("nav.main button.on").inner_text())
     check(seen == (1, 1, 1, 2, "Content"), "unlocked again (another visit): every connection back; Content first %r" % (seen,))
+    stale = page.evaluate("""async () => {
+        const s = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('documents')).getDirectoryHandle('GZreader');
+        for (let i = 0; i < 50; i++) {
+            const p = JSON.parse(await (await (await (await s.getDirectoryHandle('.gzsync')).getFileHandle('picks.json')).getFile()).text());
+            if (!p.books.some(b => b.id === 1) && !p.music.some(m => m.key === '999')) return [GZSync.Picks.d.books.length, GZSync.Picks.d.music.length, document.querySelector('#picks').innerText];
+            await new Promise(r => setTimeout(r, 100));
+        }
+        return null;
+    }""")
+    check(stale is not None and stale[:2] == [0, 0] and "Book 01" not in stale[2] and "Old Album" not in stale[2],
+          "picks the Kindle already has: off the list (on the Kindle too), not shown as coming %r" % (stale,))
+    # music quality: as on the Kindle (128, MP3/AAC as they are), then chosen here: 192, bigger ones made smaller
+    page.evaluate("() => GZSync.setPanel('connections')")
+    check(page.locator("#p-bitrate").input_value() == "128" and not page.locator("#p-shrink").is_checked(),
+          "music quality: the Kindle's, shown with the Plex connection")
+    page.select_option("#p-bitrate", "192")
+    page.check("#p-shrink")
+    page.evaluate("() => GZSync.setPanel('content')")
 
     # choosing on the page: books, audiobooks, music, as in the Kindle's Grimmory tab
     page.wait_for_selector("#b-results li button")
@@ -270,6 +345,34 @@ with sync_playwright() as pw:
     picks = page.locator("#picks").inner_text()
     check(page.locator("#picks li").count() == 7 and "the Kindle's queue" in picks and "Book 05" in picks and "Book 33 — Audio Author (audiobook)" in picks
           and "FLAC Album" in picks, "coming with the next sync: the Kindle's queue, then the books, audiobook and albums chosen here")
+    # the music library chosen on the Kindle (Settings → Connections → Plex): its albums
+    page.evaluate("() => { GZSync.K.out.music_library = { key: '4', title: 'Concerts' }; }")
+    page.click("#b-cats button:has-text('Albums')")
+    page.wait_for_selector("#b-results li:has-text('Live Album')")
+    check(page.locator("#b-results li").count() == 1, "Music: Albums from the music library chosen on the Kindle")
+    page.evaluate("() => { delete GZSync.K.out.music_library; }")
+    # audiobooks from a Plex library (the Kindle's Settings → Connections → Plex → Audiobooks): its albums, chosen like music
+    page.evaluate("() => { GZSync.K.out.audiobook_library = { key: '5', title: 'Audiobooks' }; }")
+    page.click(".tabs button[data-tab=audio]")
+    page.wait_for_selector("#b-results li:has-text('Two Part Book') button")
+    cats = page.locator("#b-cats button").all_inner_texts()
+    titles = page.locator("#b-results li .txt").all_inner_texts()
+    check(cats == ["Recently added", "A–Z", "Authors", "Audiobooks from…"] and len(titles) == 2 and titles[0].startswith("Two Part Book")
+          and "Narr Author" in titles[0], "Audiobooks from the Kindle's Plex library: its albums, newest first %r" % (cats,))
+    page.locator("#b-results li", has_text="Two Part Book").locator("button").click()
+    page.fill("#b-search", "one file")
+    page.click("#b-go")
+    page.wait_for_function("document.querySelectorAll('#b-results li').length === 1 && document.querySelector('#b-results li').innerText.includes('One File Book')")
+    page.click("#b-cats button:has-text('Audiobooks from')")
+    page.wait_for_selector("#b-results li.nav:has-text('Plex: Concerts')")
+    srcs = page.locator("#b-results li.nav").all_inner_texts()
+    check(srcs[0].startswith("Grimmory") and any(x.startswith("Plex: Audiobooks") and "in use" in x for x in srcs) and len(srcs) == 4,
+          "Audiobooks from…: Grimmory or the Plex server's music libraries, the one in use marked %r" % (srcs,))
+    page.locator("#b-results li.nav", has_text="Grimmory").click()
+    page.wait_for_selector("#b-results li:has-text('Book 33')")
+    check(page.evaluate("() => GZSync.Browse.plexAudio() === null"), "Audiobooks from Grimmory again, on this page")
+    page.evaluate("() => { GZSync.Browse.audioSrc = null; delete GZSync.K.out.audiobook_library; }")
+    check("Two Part Book — Narr Author (audiobook)" in page.locator("#picks").inner_text(), "a Plex audiobook in what comes with the next sync")
     page.click("nav.main button[data-panel=sync]")
     page.wait_for_function("document.querySelector('#storage').innerText.includes('free of')")
     st = page.locator("#storage").inner_text()
@@ -284,6 +387,37 @@ with sync_playwright() as pw:
     page.wait_for_selector("#o-update-row:not(.hidden)")
     check("to 1.30.0 (it has 1.24.0)" in page.locator("#o-update-row").inner_text(),
           "update: a newer GZreader is offered for the Kindle")
+    check(page.locator("#o-beta-row:not(.hidden)").count() == 1 and not page.locator("#o-beta").is_checked(),
+          "test builds: a choice on the page, off (as on the Kindle)")
+    # the files at the updates branch's commit (GitHub's file server keeps each file of a branch on its own)
+    sha = "ab12" * 10
+    page.route("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates",
+               lambda route: route.fulfill(status=200, body=sha if route.request.headers.get("accept") == "application/vnd.github.sha" else "{}"))
+    bases = page.evaluate("""async () => {
+        var keep = GZSync.Update.RAW, out = [];
+        GZSync.Update.RAW = 'https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/';
+        out.push(await GZSync.Update.base());
+        GZSync.Update.RAW = keep;
+        out.push(await GZSync.Update.base());
+        return out;
+    }""")
+    check(bases[0] == "https://raw.githubusercontent.com/9retirement6irk/GZreader/%s/" % sha and bases[1].startswith("http://127.0.0.1:"),
+          "update files read at the updates branch's commit (the data and the zip from the same build)")
+    page.unroute("https://api.github.com/repos/9retirement6irk/GZreader/commits/updates")
+    page.evaluate("(wp) => { GZSync.Update.RAW_BETA = 'http://127.0.0.1:' + wp + '/updates/'; }", WP)
+    page.click("#o-beta")
+    page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('test build')")
+    check("to test build 1.29.0-beta.abc1234 (it has 1.24.0)" in page.locator("#o-update-row").inner_text()
+          and page.locator("#update-note").count() == 1,
+          "test builds on: the latest test build offered (even with a lower number than the release), one note")
+    page.click("#o-beta")
+    page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
+    check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
+    cmp = page.evaluate("""() => [GZSync.Update.compare('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0-beta.5995ce3', '1.27.0'),
+        GZSync.Update.offered('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0', '1.27.0'),
+        GZSync.Update.compare('1.10.0', '1.9.2'), GZSync.Update.compare('v1.26.10', '1.27.0-beta.1')]""")
+    check(cmp == [1, -1, True, 0, 1, -1],
+          "test builds off on a Kindle with a test build of the release's number: the release offered (it was offered nothing) %r" % (cmp,))
 
     # sleep screen pictures: one added (a wide colour picture), one of the Kindle's taken off, always pictures
     import struct, zlib
@@ -300,6 +434,35 @@ with sync_playwright() as pw:
     check("My Dog.png" in ss and "old.png" in ss and "824 × 1200" in page.locator("#ss-size").inner_text()
           and page.locator('input[name="ss-mode"][value="auto"]').is_checked(),
           "sleep screen pictures: a picture added (made for this Kindle's screen), the Kindle's own listed, its mode shown")
+    # an iPhone photo (HEIC, which Chromium can't open): converted by the vendored libheif, in a worker
+    # (media/picture.heic: 120 × 60, its left half dark blue, its right half red)
+    heic = os.path.join(web, "Beach.HEIC")
+    shutil.copy(os.path.join(HERE, "media", "picture.heic"), heic)
+    page.set_input_files("#ss-files", heic)
+    page.wait_for_function("GZSync.Sleep.pending.length === 2 && !document.querySelector('#ss-add').disabled", timeout=60000)
+    got = page.evaluate("""async () => {
+      const p = GZSync.Sleep.pending[1], img = await createImageBitmap(p.blob);
+      const c = new OffscreenCanvas(img.width, img.height), g = c.getContext('2d'); g.drawImage(img, 0, 0);
+      const px = (x, y) => Array.from(g.getImageData(x, y, 1, 1).data);
+      return { name: p.name, w: img.width, h: img.height, left: px(200, 600), right: px(620, 600), worker: !!GZSync.Heic.worker };
+    }""")
+    L, R = got["left"], got["right"]
+    check(got["name"] == "Beach.png" and (got["w"], got["h"]) == (824, 1200) and got["worker"]
+          and L[0] == L[1] == L[2] and R[0] == R[1] == R[2] and L[0] < 60 and 60 < R[0] < 110,
+          "sleep screen pictures: a HEIC photo converted (grey, the screen's size, the blue half darker than the red) %r" % got)
+    sniff = page.evaluate("""async (b) => {
+      const bytes = Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+      return [await GZSync.Heic.is(new File([bytes], 'IMG_0001', { type: '' })),
+              await GZSync.Heic.is(new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13])], 'a.png'))];
+    }""", base64.b64encode(open(heic, "rb").read()[:12]).decode())
+    check(sniff == [True, False], "HEIC told by its first bytes too (a photo without its .heic name), a PNG isn't")
+    broken = os.path.join(web, "broken.heic")
+    with open(broken, "wb") as f: f.write(b"\x00\x00\x00\x18ftypheic" + b"\x00" * 64)
+    page.set_input_files("#ss-files", broken)
+    page.wait_for_function("(document.querySelector('#ss-add').closest('section').querySelector('.err') || {}).innerText", timeout=60000)
+    err = page.locator("#ss-add").locator("xpath=ancestor::section").locator(".err").inner_text()
+    check("1 HEIC picture couldn't be converted" in err and page.evaluate("GZSync.Sleep.pending.length") == 2,
+          "a HEIC that can't be decoded: said so, nothing added (%s)" % err)
     page.locator("#ss-list li", has_text="old.png").locator("button").click()
     page.check('input[name="ss-mode"][value="always"]')
     check("taken off with the sync" in page.locator("#ss-list").inner_text(), "…one of the Kindle's to take off")
@@ -320,6 +483,83 @@ with sync_playwright() as pw:
     check(page_weeks == week_of, "reading stats: the page's week numbers match GZreader's around New Year (%s)" % page_weeks)
     print("    (page log)\n      " + log.replace("\n", "\n      "))
 
+    # Send to the developer for a Kindle without Wi-Fi
+    def feed():
+        return json.loads(urllib.request.urlopen("http://127.0.0.1:%d/feed" % (GP + 1)).read())
+    def report_files():
+        return page.evaluate("""async () => {
+            const sync = await (await (await window.testRoot.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+            const d = await sync.getDirectoryHandle('reports'); const out = []; for await (const n of d.keys()) out.push(n); return out.sort();
+        }""")
+    sent = feed()
+    first = sent[0] if sent else {}
+    check(len(sent) == 1 and first.get("_channel") == "testfeed"
+          and first.get("eventName") == "Debug report from Kindle2-ab12cd (1/1): Sign-in froze at https://books.example.com/login?password=<redacted>"
+          and "What happened: Sign-in froze at https://books.example.com/login?password=<redacted>" in first.get("eventContent", "")
+          and "the saved report\u2019s log line" in first.get("eventContent", "") and "hunter2" not in json.dumps(first)
+          and first.get("tags") == ["gzreader", "Kindle2-ab12cd", "debug-log", "release", "sync-page", "with-comment"],
+          "a report saved on the Kindle: sent at the sync, as a Wi-Fi Kindle sends it (name, comment, tags; a password typed in is redacted)… %r" % ([e.get("eventName") for e in sent],))
+    check("Sent to the developer: 1 report" in log and report_files() == ["latest.txt", "report-20261108-101700.txt"],
+          "…then deleted from the Kindle (half a report, without its .json, isn't sent) %r" % (report_files(),))
+    page.fill("#rep-note", "Sync froze at 40%")
+    page.click("#rep-send")
+    page.wait_for_function("document.querySelector('#rep-result').innerText !== ''", timeout=30000)
+    sent = feed()
+    last = sent[-1] if sent else {}
+    check(page.locator("#rep-result").inner_text().startswith("Sent to the developer") and len(sent) == 2
+          and last.get("eventName") == "Debug report from Kindle2-ab12cd (1/1): Sync froze at 40%"
+          and "fresh export line" in last.get("eventContent", "") and "newer log line" not in last.get("eventContent", "")
+          and "sync-page" in last.get("tags", []) and report_files() == ["report-20261108-101700.txt"],
+          "the page's Send to the developer: the log GZreader exported when Sync was pressed, with what's typed; then deleted")
+    page.click("#rep-send")
+    page.wait_for_function("!document.querySelector('#rep-send').disabled", timeout=30000)
+    sent = feed()
+    last = sent[-1] if sent else {}
+    content = last.get("eventContent", "")
+    check(len(sent) == 3 and "What happened: (nothing typed)" in content and content.index("older log line") < content.index("newer log line")
+          and "access_token=<redacted>" in content and "abc123" not in content and "with-comment" not in last.get("tags", []),
+          "…without that export: the log files on the drive (crash.log's tail redacted), nothing typed")
+    cut = page.evaluate("""() => {
+        const text = 'é'.repeat(300000) + 'tail';   // (600 KB of two-byte characters)
+        const r = GZSync.Report.parts(text);
+        const enc = new TextEncoder();
+        return { n: r.parts.length, max: Math.max(...r.parts.map((p) => enc.encode(p).length)), ok: r.parts.join('') === text.slice(text.length - r.parts.join('').length),
+                 tail: r.parts[r.parts.length - 1].endsWith('tail'), bytes: enc.encode(r.parts.join('')).length };
+    }""")
+    check(cut["n"] == 8 and cut["max"] <= 60 * 1024 and cut["ok"] and cut["tail"] and cut["bytes"] <= 480 * 1024,
+          "a long log: its newest 480 KB in 60 KB parts, never inside a character (as gzreader_remote.lua) %r" % (cut,))
+
+    # M4B/M4A prepared for the Kindle here: the same files as gzreader_mp4.lua's (short chunks: many of them)
+    for src in (os.path.join(HERE, "media", "tone.m4a"), TEST_M4A):
+        for secs in (15, 0.25):
+            want, want_idx = lua_chunks(src, secs)
+            got = page.evaluate("""async ([b64, secs]) => {
+                const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), files = {};
+                const keep = GZSync.Mp4.CHUNK_SECONDS; GZSync.Mp4.CHUNK_SECONDS = secs;
+                try {
+                    const r = await GZSync.Mp4.convert(new Blob([bytes]), async (n, d) => {
+                        const b = new Uint8Array(await d.arrayBuffer()); let s = '';
+                        for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+                        files[n] = btoa(s);
+                    });
+                    return { index: GZSync.Mp4.indexJson(r), files };
+                } finally { GZSync.Mp4.CHUNK_SECONDS = keep; }
+            }""", [base64.b64encode(open(src, "rb").read()).decode(), secs])
+            gotf = {k: base64.b64decode(v) for k, v in got["files"].items()}
+            check(got["index"] == want_idx and gotf == want and len(want) >= (1 if secs == 15 else 3),
+                  "audio prepared in the browser = on the Kindle, byte for byte (%s, %s s chunks: %d files)" % (os.path.basename(src), secs, len(want)))
+    fb = page.evaluate("""async () => {
+        const junk = new TextEncoder().encode('not an mp4 at all, just bytes');
+        const ok = await GZSync.Mp4.bring('in/prep-test', 'x.m4b', new Response(junk).body, null, 'Junk');
+        const s = await (await (await window.testRoot.getDirectoryHandle('documents')).getDirectoryHandle('GZreader')).getDirectoryHandle('.gzsync');
+        const d = await (await s.getDirectoryHandle('in')).getDirectoryHandle('prep-test');
+        const names = []; for await (const n of d.keys()) names.push(n);
+        const text = await (await (await d.getFileHandle('x.m4b')).getFile()).text();
+        await (await s.getDirectoryHandle('in')).removeEntry('prep-test', { recursive: true });
+        return [ok, names, text];
+    }""")
+    check(fb == [False, ["x.m4b"], "not an mp4 at all, just bytes"],
+          "a file that can't be prepared here goes to the Kindle as it is (GZreader prepares it) %r" % (fb,))
     res = page.evaluate("""async () => {
         const root = window.testRoot;
         const files = {};
@@ -366,6 +606,8 @@ state = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/" % (GP + 1)).rea
 
 check(inbox.get("update", {}).get("version") == "1.30.0" and files.get(G + inbox["update"]["file"]) == UPD
       and inbox["update"]["size"] == len(UPD), "update: brought (checked against its size and SHA-256), for GZreader to install")
+check(inbox.get("test_builds") is False and inbox["update"].get("beta") is False,
+      "test builds switched off on the page: the Kindle is told (it remembers it in its update settings)")
 check(any(b["id"] == 5 for b in inbox.get("books", [])) and any(a["id"] == 33 for a in inbox.get("audiobooks", [])),
       "what was chosen on the page came too (a book and an audiobook)")
 marks = lib.get("marks", {}).get("1", {})
@@ -381,6 +623,11 @@ check(set(inbox.get("done", [])) >= {"p:1:7", "s:1:2026-11-05T10:00:00Z", "r:2:4
 check(state["progress"].get("1", {}).get("progressPercent") == 42.5 and state["progress"]["1"]["positionData"] == "epubcfi(/6/4!/4/2)"
       and any(s["durationSeconds"] == 1800 for s in state["sessions"]) and state["ratings"].get("2") == 8,
       "Grimmory got the position (with its CFI), the reading time and the rating")
+own = {str(x["id"]): x.get("own") for x in lib.get("shelves", []) if not x.get("magic")}
+check({"sh:3:5", "sh:5:6"} <= set(inbox.get("done", [])) and 3 in state["shelves"]["6"] and 5 not in state["shelves"]["7"]
+      and 3 in lib["lists"]["shelf"].get("6", []),
+      "shelves: the book put on a shelf on the Kindle is on it in Grimmory and in the copy; someone else's shelf: refused, done")
+check(own == {"4": True, "6": True, "7": False}, "library copy: your own shelves marked (someone else's public one not) " + str(own))
 check(any(f["id"] == "p:999:3" and f["error"].startswith("http_4") for f in inbox.get("failed", [])),
       "a position for a book Grimmory doesn't have: refused, reported (the Kindle drops it)")
 check(len(lib.get("books", [])) == 35 and lib["server"] == "http://127.0.0.1:%d" % GP and "1" in lib.get("full", {})
@@ -426,20 +673,46 @@ pw, ph = struct.unpack(">II", pdata[16:24]) if pdata[:8] == b"\x89PNG\r\n\x1a\n"
 check(added.get("name") == "My Dog.png" and added.get("file", "").startswith("in/screensavers/") and (pw, ph) == (824, 1200)
       and sst.get("remove") == ["old.png"] and sst.get("mode") == "always",
       "sleep screen pictures: brought as a PNG the screen's size, with what to take off and when they show")
+added2 = (sst.get("add") or [{}, {}])[1:2] or [{}]
+pdata2 = files.get(G + added2[0].get("file", "-"), b"")
+check(added2[0].get("name") == "Beach.png" and len(sst.get("add") or []) == 2 and pdata2[:8] == b"\x89PNG\r\n\x1a\n"
+      and struct.unpack(">II", pdata2[16:24]) == (824, 1200),
+      "sleep screen pictures: the HEIC photo brought as a PNG too")
 usage = state.get("usage", [])
-check(len(usage) == 2 and usage[1]["payload"]["name"] == "start" and not [k for k in files if k.startswith(G + "usage/") and k.endswith(".jsonl")],
-      "usage statistics the Kindle left: sent from the computer, then deleted")
+check(len(usage) == 0 and not [k for k in files if k.startswith(G + "usage/")],
+      "usage statistics an older GZreader left: deleted, not sent (GZreader sends none since 1.28.1)")
 mus = {m["key"]: m for m in inbox.get("music", [])}
 def col(key):
     m = mus.get(key)
     return m and json.loads(files.get(G + m["dir"] + "/music.json", b"{}"))
 c1, c2, c3 = col("201"), col("202"), col("203")
 check(c1 and [t["file"] for t in c1["tracks"]] == ["01.mp3", "02.mp3"] and G + mus["201"]["dir"] + "/cover.jpg" in files,
-      "music: an MP3 album as it is, with its cover")
-check(c2 and c2["tracks"][0]["file"] == "01.m4a", "music: AAC in M4A as it is (the Kindle converts it)")
+      "music: an MP3 album, with its cover (one track made smaller: see the music quality check)")
+want, want_idx = lua_chunks(os.path.join(HERE, "media", "tone.m4a"))
+d2 = c2 and G + mus["202"]["dir"] + "/01.m4a.chunks/"
+check(c2 and c2["tracks"][0]["file"] == "01.m4a" and G + mus["202"]["dir"] + "/01.m4a" not in files
+      and files.get(d2 + "index.json", b"").decode() == want_idx and all(files.get(d2 + n) == b for n, b in want.items()),
+      "music: AAC in M4A prepared for the Kindle here (its chunks, not the M4A)")
+ab33 = next((a for a in inbox.get("audiobooks", []) if a["id"] == 33), None)
+want, want_idx = lua_chunks(TEST_M4A)
+d33 = ab33 and G + ab33["dir"] + "/audiobook.m4b.chunks/"
+check(ab33 and G + ab33["dir"] + "/audiobook.m4b" not in files and files.get(d33 + "index.json", b"").decode() == want_idx
+      and all(files.get(d33 + n) == b for n, b in want.items()),
+      "audiobook: the M4B prepared for the Kindle here (its chunks, not the M4B)")
+check(not [k for k in files if k.startswith("gzsync-prepare/")], "…and nothing left in the browser's own storage")
+abp = next((a for a in inbox.get("audiobooks", []) if a["id"] == "plex-206"), None)
+abi = (abp or {}).get("info") or {}
+check(abp and [t["fileName"] for t in abi.get("tracks", [])] == ["track.mp3", "track.mp3"] and abi.get("plexKey") == "206"
+      and abi["tracks"][1]["cumulativeStartMs"] == 3000 and abi["tracks"][1]["plexKey"] == "307" and abi.get("folderBased")
+      and files.get(G + abp["dir"] + "/track-002.mp3") == open(os.path.join(HERE, "media", "tone.mp3"), "rb").read()
+      and G + abp["dir"] + "/cover.jpg" in files and abi.get("gz_description") == "<p>A book in two parts.</p>",
+      "a Plex audiobook: its tracks as the book's files, laid out as the Kindle's own Plex download")
 f3 = c3 and c3["tracks"][0].get("file")
 check(f3 and files.get(G + mus["203"]["dir"] + "/" + f3, b"")[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xfa") or (f3 and len(files.get(G + mus["203"]["dir"] + "/" + f3, b"")) > 1000),
       "music: FLAC made into MP3 by Plex, its MPEG-TS taken apart in the browser")
+tc = {p: b for p, b in json.loads(urllib.request.urlopen("http://127.0.0.1:%d/ctl/transcodes" % PP).read())}
+check(tc == {"/library/metadata/301": "192", "/library/metadata/304": "192"} and inbox.get("music_quality") == {"bitrate": 192, "shrink": True},
+      "music quality chosen on the page: FLAC and the 320 kbps MP3 converted at 192 kbps; the 200 kbps MP3 as it is; the Kindle told %r" % (tc,))
 notes = json.loads(files.get(G + "in/notes.json", b"{}"))
 memos = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % MP).read())
 check(inbox.get("notes", {}).get("done") == ["q1"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),

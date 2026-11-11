@@ -93,8 +93,11 @@ end
 function M.build(ctx, extras_items)
     local config = ctx.config
     local plugin = ctx.plugin
-    local quick_settings_item = require("modules/settings/sections/menu_settings").build(ctx)
-    local app_launcher_item = require("modules/settings/sections/app_launcher_settings").build(ctx)
+    -- GZreader: ZenOS's touch menu (its Controls and Launcher pages) is
+    -- replaced by GZreader's quick panel on every device, so one "Quick panel"
+    -- item (gzreader_panel: which tiles it shows) takes the place of both.
+    local ok_panel, GzPanel = pcall(require, "gzreader_panel")
+    local quick_panel_item = ok_panel and GzPanel.settingsItem and GzPanel.settingsItem() or nil
     local navbar_item = require("modules/settings/sections/library_settings/navbar_settings").build(ctx)
     local utils = zen_settings_utils
     utils.reorder_nested_items_by_text({ navbar_item }, _("Navbar"), {
@@ -126,30 +129,51 @@ function M.build(ctx, extras_items)
         _("Icon size:"),
     })
 
-    quick_settings_item.text = _("Controls")
-    IconItem.decorate(quick_settings_item, icons.settings_quick)
-    app_launcher_item.text = _("Launcher")
-    IconItem.decorate(app_launcher_item, icons.settings_launcher)
-    app_launcher_item._zen_settings_root = "launcher"
+    if quick_panel_item then IconItem.decorate(quick_panel_item, icons.settings_launcher) end
     navbar_item.text = _("Navbar")
     local status_bar_item = status_bar_section.build(ctx)
     utils.reorder_nested_items_by_text({ status_bar_item }, _("Status bar"), {
         _("12-hour time"), _("Show bottom border"), _("Bold text"), _("Colored status icons"),
         _("Left items"), _("Center items"), _("Right items"),
     })
-    local items = {
-        quick_settings_item,
-        app_launcher_item,
-        IconItem.decorate(navbar_item, icons.settings_navbar),
-        IconItem.decorate(status_bar_item, icons.settings_status),
-    }
-    local function save_accent(hex, opacity, touchmenu_instance)
-        if not Accent.isSupported() then return end
-        config.accent_color = hex
-        config.accent_opacity = opacity
+    local items = {}
+    if quick_panel_item then items[#items + 1] = quick_panel_item end
+    items[#items + 1] = IconItem.decorate(navbar_item, icons.settings_navbar)
+    items[#items + 1] = IconItem.decorate(status_bar_item, icons.settings_status)
+    local function refresh_accent(touchmenu_instance)
         plugin:saveConfig()
         schedule_background_surface_refresh(plugin)
         if touchmenu_instance then touchmenu_instance:updateItems() end
+    end
+    local function accent_picker(night_mode)
+        local title = night_mode and _("Night mode accent") or _("Accent color")
+        local prefix = night_mode and "accent_night_" or "accent_"
+        return {
+            text_func = function() return title .. ": " .. Accent.hex(config, night_mode) end,
+            enabled_func = Accent.isSupported,
+            keep_menu_open = true,
+            checked_func = night_mode and function() return config.accent_night_enabled == true end or nil,
+            checkmark_callback = night_mode and function(touchmenu_instance)
+                if not Accent.isSupported() then return end
+                config.accent_night_enabled = config.accent_night_enabled ~= true
+                refresh_accent(touchmenu_instance)
+            end or nil,
+            callback = function(touchmenu_instance)
+                if not Accent.isSupported() then return end
+                local current_hex = Accent.hex(config, night_mode)
+                UIManager:show(require("common/ui/color_wheel_widget"):new{
+                    title_text = title,
+                    hex = current_hex == "#000000" and "#3399FF" or current_hex,
+                    opacity = Accent.opacity(config, night_mode),
+                    callback = function(hex, opacity)
+                        config[prefix .. "color"] = hex
+                        config[prefix .. "opacity"] = opacity
+                        if night_mode then config.accent_night_enabled = true end
+                        refresh_accent(touchmenu_instance)
+                    end,
+                }, getFullRefreshMode())
+            end,
+        }
     end
     table.insert(items, {
         text = _("Accent color"),
@@ -159,34 +183,22 @@ function M.build(ctx, extras_items)
         checkmark_callback = function(touchmenu_instance)
             if not Accent.isSupported() then return end
             config.accent_enabled = config.accent_enabled == false
-            plugin:saveConfig()
-            schedule_background_surface_refresh(plugin)
-            if touchmenu_instance then touchmenu_instance:updateItems() end
+            refresh_accent(touchmenu_instance)
         end,
         sub_item_table = {
-            {
-                text_func = function() return _("Accent color") .. ": " .. Accent.hex(config) end,
-                enabled_func = Accent.isSupported,
-                keep_menu_open = true,
-                callback = function(touchmenu_instance)
-                    if not Accent.isSupported() then return end
-                    local current_hex = Accent.hex(config)
-                    UIManager:show(require("common/ui/color_wheel_widget"):new{
-                        title_text = _("Accent color"),
-                        hex = current_hex == "#000000" and "#3399FF" or current_hex,
-                        opacity = Accent.opacity(config),
-                        callback = function(hex, opacity) save_accent(hex, opacity, touchmenu_instance) end,
-                    }, getFullRefreshMode())
-                end,
-            },
+            accent_picker(false),
             {
                 text = _("Reset accent color"),
                 enabled_func = Accent.isSupported,
                 keep_menu_open = true,
                 callback = function(touchmenu_instance)
-                    save_accent(defaults.accent_color, defaults.accent_opacity, touchmenu_instance)
+                    if not Accent.isSupported() then return end
+                    config.accent_color = defaults.accent_color
+                    config.accent_opacity = defaults.accent_opacity
+                    refresh_accent(touchmenu_instance)
                 end,
             },
+            accent_picker(true),
         },
     })
     IconItem.decorate(items[#items], icons.settings_accent)
@@ -480,15 +492,19 @@ function M.build(ctx, extras_items)
 
     IconItem.decorate(items[#items], icons.settings_background)
     move_item(extras_items, _("Custom icons"), items)
-    move_item(quick_settings_item.sub_item_table, _("Blur menu background"), items)
-    table.insert(items, {
-        text = _("Zen mode"),
-        icon_file = require("common/utils").resolveLocalIcon(
-            require("common/plugin_root") .. "/icons/", "quick_zen"),
-        checked_func = function() return config.features.zen_mode == true end,
-        enabled_func = function() return config.features.lockdown_mode ~= true end,
-        callback = function() plugin:onToggleZenMode() end,
-    })
+    -- (GZreader: Blur menu background was in Controls; it applies to every
+    -- touch menu, Settings too. Zen mode is always on: no toggle.)
+    table.insert(items, IconItem.decorate({
+        text = _("Blur menu background"),
+        checked_func = function()
+            return type(config.quick_settings) == "table" and config.quick_settings.background_hatching == true
+        end,
+        callback = function()
+            if type(config.quick_settings) ~= "table" then config.quick_settings = {} end
+            config.quick_settings.background_hatching = config.quick_settings.background_hatching ~= true
+            ctx.save_and_apply("quick_settings")
+        end,
+    }, icons.settings_menu_blur))
     return IconItem.decorate({
         text = _("Interface"),
         sub_item_table = items,

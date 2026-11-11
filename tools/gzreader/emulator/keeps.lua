@@ -74,10 +74,39 @@ end, after = 6 })
 add({ fn = function()
     local t = shownText()
     local tabs = {}
-    for _i, name in ipairs({ "Home", "Downloads", "Grimmory", "Notes", "Calendar" }) do
+    for _i, name in ipairs({ "Home", "Downloads", "Catalog", "Notes", "Calendar" }) do
         if not t:find(name, 1, true) then tabs[#tabs + 1] = name end
     end
-    check(#tabs == 0, "Home's tabs: Home, Downloads, Grimmory, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+    check(#tabs == 0, "Home's tabs: Home, Downloads, Catalog, Notes, Calendar" .. (#tabs > 0 and (" (missing: " .. table.concat(tabs, ", ") .. ")") or ""))
+end, after = 1 })
+-- a new book laid out in the background (gzreader_layout.lua: while charging; here at once)
+local layout = {}
+add({ fn = function()
+    local big = os.getenv("GZ_EMU_BIG")
+    if not big then layout.skip = true; return end
+    local DataStorage = require("datastorage")
+    local path = DataStorage:getDataDir() .. "/layout-check.epub"
+    os.execute("cp '" .. big .. "' '" .. path .. "'")
+    local function count()
+        local n = 0
+        pcall(function() for f in require("libs/libkoreader-lfs").dir(DataStorage:getDataDir() .. "/cache/cr3cache") do if f:match("%.cr3$") then n = n + 1 end end end)
+        return n
+    end
+    layout.count, layout.before = count, count()
+    local plugin = require("apps/filemanager/filemanager").instance.gzreader
+    layout.entry = { path = path }
+    layout.started = require("gzreader_layout").start(plugin, "check", layout.entry, function(ok, line) layout.done = { ok = ok, line = line } end, true)
+end, after = 1 })
+add({ wait_for = function() return layout.skip or layout.done ~= nil end, timeout = 120 })
+add({ fn = function()
+    if layout.skip then return end
+    check(layout.started and layout.done and layout.done.ok and layout.entry.laid_out and layout.count() > layout.before,
+        "a new book laid out in the background: its layout cache written (" .. tostring(layout.done and layout.done.line) .. ", "
+        .. tostring(layout.before) .. " → " .. tostring(layout.count()) .. " cache files)")
+    local okh, hist = pcall(function() return require("readhistory").hist end)
+    local in_hist = false
+    for _i, h in ipairs(okh and hist or {}) do if h.file and h.file:find("layout-check.epub", 1, true) then in_hist = true end end
+    check(not in_hist and not require("docsettings"):hasSidecarFile(layout.entry.path), "…without it showing as opened (no history, no book settings)")
 end, after = 1 })
 add({ fn = function()
     -- the Music tab: in Settings → Navbar → Tabs' list, off until turned on
@@ -86,6 +115,26 @@ add({ fn = function()
     for _i, id in ipairs(cfg.tab_order) do if id == "ct_music" then listed = true end end
     check(listed and cfg.show_tabs.ct_music ~= true and not shownText():find("Music", 1, true),
         "the Music tab: listed in Settings, off by default")
+end, after = 1 })
+add({ fn = function()
+    -- JSON through KOReader's rapidjson (gzreader_json.lua), with LuaJSON's results
+    local Json = require("gzreader_json")
+    local okd, d = pcall(Json.decode, '{"a":null,"b":[1,null,3],"c":{"d":null,"e":"x"},"id":12,"f":0.42}')
+    check(Json.fast and okd and d.a == nil and d.c.d == nil and d.c.e == "x" and d.b[1] == 1 and d.b[2] == nil
+        and d.b[3] == 3 and d.id == 12 and d.f == 0.42, "JSON: rapidjson in use, null decoded as nil")
+    check(Json.encode({ x = Json.list() }) == '{"x":[]}' and Json.encode({}) == "{}" and Json.encode({ id = 12 }) == '{"id":12}'
+        and not pcall(Json.decode, "not json"), "JSON: [] for marked lists, {} otherwise, whole numbers, bad text raises")
+    -- saving: the fingerprint that lets a small change skip rewriting gzreader.lua (main.lua)
+    local plugin = require("apps/filemanager/filemanager").instance.gzreader
+    local fp = plugin.fingerprint -- (Grimmory.fingerprint)
+    local fp1 = fp(plugin.store)
+    plugin.store.pending.progress["gz-keeps"] = { x = 1 }
+    local fp2 = fp(plugin.store)
+    plugin.store.pending.progress["gz-keeps"] = nil
+    plugin.store.downloads["gz-keeps"] = { path = "/x.epub" }
+    local fp3 = fp(plugin.store)
+    plugin.store.downloads["gz-keeps"] = nil
+    check(type(fp1) == "string" and fp1 == fp2 and fp3 ~= fp1, "saving: rapidjson fingerprints the big parts (a queued position: small save; a download: full)")
 end, after = 1 })
 add({ shot = "keeps-home" })
 

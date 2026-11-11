@@ -171,6 +171,17 @@ function BM:online()
     return NetworkMgr:isConnected() or (self.api and self.api.offline == true)
 end
 
+-- JSON null comes out of KOReader's JSON library as a function (a sentinel),
+-- which is true in Lua: Grimmory sends "positionMs": null, "title": null…
+-- on every book bookmark. Only real values count.
+local function num(v) return type(v) == "number" and v or nil end
+local function str(v) return type(v) == "string" and v or nil end
+local function realId(v) return (type(v) == "number" or type(v) == "string") and v or nil end
+BM.num, BM.str = num, str
+
+--- An audiobook bookmark (a time in the audio), not a place in a book.
+function BM.isAudio(bm) return num(bm.positionMs) ~= nil end
+
 local function isPageBookmark(item)
     return type(item) == "table" and not item.drawer and not item.pos0 and item.page ~= nil
 end
@@ -196,7 +207,7 @@ end
 
 function BM:toLocal(bm)
     if self.ui.rolling then
-        if type(bm.cfi) ~= "string" then return nil end
+        if not str(bm.cfi) then return nil end
         local spine = self.sync:spine()
         if not spine then return nil end
         local ok, xp = pcall(BM.cfiToXp, bm.cfi, spine, function(h) return self:reader(h) end)
@@ -207,7 +218,7 @@ function BM:toLocal(bm)
         end
         return xp
     end
-    return tonumber(bm.pageNumber)
+    return num(bm.pageNumber)
 end
 
 function BM:localBookmarks()
@@ -222,8 +233,9 @@ function BM:addLocal(key, bm)
     self.applying = true
     local chapter = self.ui.toc and self.ui.toc:getTocTitleByPage(self.ui.rolling and key or tonumber(key))
     local page = self.ui.rolling and key or tonumber(key)
+    local title = str(bm.title)
     local item = { page = page, chapter = chapter ~= "" and chapter or nil,
-        text = bm.title ~= "" and bm.title or nil }
+        text = title ~= "" and title or nil }
     local index = self.ui.annotation:addItem(item)
     self.ui:handleEvent(Event:new("AnnotationsModified", { item, index_modified = index }))
     self.applying = false
@@ -258,7 +270,7 @@ function BM:pushAll(items)
         local out = {}
         for key, body in pairs(bodies) do
             local made, err, code = api:createBookmark(body)
-            if made and made.id then out[key] = { id = made.id }
+            if made and realId(made.id) then out[key] = { id = made.id }
             elseif code == 409 or code == 400 then out[key] = { exists = true } -- picked up on the next reconcile
             else out[key] = { err = tostring(err) } end
         end
@@ -317,10 +329,18 @@ function BM:apply(remote)
     local remote_ids, added, removed = {}, 0, 0
     local key_of_id = {}
     for k, id in pairs(self.entry.bookmarks) do key_of_id[tostring(id)] = k end
+    local deleted_here = {}
     for _i, bm in ipairs(remote) do
-        if type(bm) == "table" and bm.id and not bm.positionMs and not self.entry.bm_pending.del[tostring(bm.id)] then
+        if type(bm) == "table" and realId(bm.id) and not BM.isAudio(bm) and not self.entry.bm_pending.del[tostring(bm.id)] then
             remote_ids[tostring(bm.id)] = true
-            if not key_of_id[tostring(bm.id)] then
+            local known = key_of_id[tostring(bm.id)]
+            if known and locals[known] == nil then
+                -- synced, then removed here without KOReader telling (the
+                -- bookmark list's delete): remove it in Grimmory too
+                deleted_here[#deleted_here + 1] = bm.id
+                self.entry.bookmarks[known] = nil
+                self.entry.bm_pending.del[tostring(bm.id)] = true
+            elseif not known then
                 local key = self:toLocal(bm)
                 key = key and tostring(key)
                 if key then
@@ -346,8 +366,25 @@ function BM:apply(remote)
     end
     if added + removed > 0 then refreshDogear(self.ui) end
     Log.info("bookmarks reconciled", self.sync.book_id, "remote", #remote, "added", added,
-        "removed", removed, "pushed", pushed)
+        "removed", removed, "pushed", pushed, "deleted there", #deleted_here)
     if pushed > 0 then self:pushAll(todo) end
+    if #deleted_here > 0 then self:sendDeletes(deleted_here) end
+end
+
+--- Delete these Grimmory bookmarks (in the background); kept in
+--- bm_pending.del until done.
+function BM:sendDeletes(ids)
+    require("gzreader_async").run(self.api, function(api)
+        local done = {}
+        for _i, id in ipairs(ids) do if api:deleteBookmark(id) then done[#done + 1] = id end end
+        return done
+    end, function(done)
+        for _i, id in ipairs(type(done) == "table" and done or {}) do
+            self.entry.bm_pending.del[tostring(id)] = nil
+            Log.info("bookmark removed", self.sync.book_id, tostring(id))
+        end
+        self.plugin:save()
+    end, "bookmarks")
 end
 
 --- KOReader event: a bookmark was added (index > 0) or removed (index < 0).

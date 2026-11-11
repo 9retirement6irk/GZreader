@@ -7,6 +7,9 @@ local defaults = {
     accent_enabled = true,
     accent_color = "#000000",
     accent_opacity = 100,
+    accent_night_enabled = false,
+    accent_night_color = "#000000",
+    accent_night_opacity = 100,
     _meta = {
         schema_version = 1,
         files_per_page_defaulted = false,
@@ -24,9 +27,17 @@ local defaults = {
         context_menu_allow_delete_default_migrated = false,
         library_font_hyperreadable_default_migrated = false,
         lookup_plugin_items_default_migrated = false,
+        reader_pin_header_migrated = false,
         tbr_collection_migrated = false,
         kindle_launcher_added = false,
         gz_launcher_added = false, -- GZreader: documents/GZreader.sh (common/kindle_launcher.lua)
+    },
+    reader_pins = {
+        side = "right",
+        use_book_font = true,
+        relative_font_size = 0,
+        justify = true,
+        minimap = true,
     },
     updater = {
         just_updated_version = "",
@@ -42,9 +53,9 @@ local defaults = {
             enabled = { stats_triplet = true, featured = true, rating = false, quotes = true, strip = true },
         },
         middle_stats_triplet = { "book_days", "book_duration", "book_daily_minutes" },
-        quotes = { show_author = false, show_title = true, automatic_font_size = true, max_font_size = 18 },
+        quotes = { show_author = false, show_title = false, automatic_font_size = true, max_font_size = 18 },
         modules = {
-            stats_triplet = { automatic_font_size = true, max_font_size = 24, stat_style = "divider", show_icons = true,
+            stats_triplet = { automatic_font_size = true, max_font_size = 22, label_scale = 0.7, stat_style = "divider", show_icons = true,
                 show_label = false, label = "",
                 text_styles = { label = { font_face = "default", font_size = 14, bold = false } } },
             featured = { show_status_bar = false, show_description = false, navigation_icon_size = 0,
@@ -62,6 +73,7 @@ local defaults = {
     },
     rakuyomi = {
         exclude_from_home = false,
+        open_on_manga_exit = false,
         return_to_chapter_list_on_exit = false,
     },
     kindle = {
@@ -79,6 +91,7 @@ local defaults = {
             "es",
             "fr",
             "nl",
+            "pl",
             "pt_BR",
             "pt_PT",
             "ro",
@@ -114,6 +127,7 @@ local defaults = {
         warmth_schedule     = false,
         brightness_schedule = false,
         page_browser        = true,
+        reader_references   = true,
         restore_library_view = false,
         highlight_lookup     = true,
         dict_quick_lookup    = true,
@@ -163,14 +177,16 @@ local defaults = {
             ct_notes = true,
             ct_calendar = true,
             ct_music = false, -- GZreader: Music (Plex), off until turned on
+            ct_audiobooks = false, -- GZreader: the Catalog's Audiobooks page, off until turned on
         },
-        -- Grimmory build: a navbar tab that opens the Grimmory library.
+        -- Grimmory build: a navbar tab that opens the Grimmory library
+        -- (GZreader: the Catalog: books, audiobooks, music; id kept).
         custom_tabs = {
             {
                 id = "ct_grimmory",
                 type = "action",
                 action = { grimmory_library = true },
-                label = "Grimmory",
+                label = "Catalog",
                 icon = "library",
             },
             -- GZreader: notes from Memos as sticky notes (replaces Favorites)
@@ -197,10 +213,18 @@ local defaults = {
                 label = "Music",
                 icon = "tab_music",
             },
+            -- GZreader: the Catalog's Audiobooks page (Kindles with audio)
+            {
+                id = "ct_audiobooks",
+                type = "action",
+                action = { gzreader_audiobooks = true },
+                label = "Audiobooks",
+                icon = "tab_audiobooks",
+            },
         },
         tab_order = {
             "home", "books", "ct_grimmory", "ct_notes", "ct_calendar",
-            "continue", "favorites", "ct_music", -- listed (off) so they can be turned on in Settings
+            "continue", "favorites", "ct_music", "ct_audiobooks", -- listed (off) so they can be turned on in Settings
         },
         -- the tab list format the tab bar expects: tab_order lists every tab
         -- in Settings → Navbar → Tabs, show_tabs says which are on. Without
@@ -268,7 +292,6 @@ local defaults = {
         },
         background_hatching = false,
         show_labels = true,
-        hide_reader_actions_in_library = false,
         reader_actions = {},
         show_frontlight = true,
         show_warmth = true,
@@ -330,6 +353,7 @@ local defaults = {
         show_native_progress_bar = false,
         show_new_banner = true,
         badge_size = "normal",
+        badge_opacity = 100,
         dim_finished_books = false,
     },
     browser_page_count = {
@@ -393,12 +417,15 @@ local defaults = {
         show_archive = false,
         show_plugin_actions = false,
     },
+    reader_controls = { entries = {}, next_id = 0 },
+    reader_bottom_swipe = { entries = {}, next_id = 0 },
+
     reader_top_status_bar = {
         font_face = "default",
         font_size = 14,
         left_order       = {},
         center_order     = { "time" },
-        right_order      = {},
+        right_order      = { "pin" },
         page_separator   = "slash",
         page_count_scope = "book",
         separator_key    = "small-space",
@@ -420,12 +447,28 @@ local defaults = {
         status_bar_enabled = true,
         chapter_time_format = "number",
         hide_in_cbz = true,
+        tap_hide = "both",
     },
     page_browser = {
+        tab_order = { "browser", "aa", "bookmarks", "highlights", "toc", "annotations", "pins", "book_details",
+            "book_switcher" },
+        tabs = { browser = true, aa = true, bookmarks = true, highlights = true, annotations = false, pins = false,
+            toc = true, book_details = false, book_switcher = false },
+        show_status_bar = true,
         toc_font_size = 18,
         bookmarks_font_size = 18,
+        font_full_page = true,
+        contrast_full_page = true,
+    },
+    annotation_viewer = {
+        preview_length = "standard",
+        details = { book = "auto", author = "auto", chapter = true, page = true, date = true, label = true },
     },
     highlight_lookup = {
+        show_labels         = false,
+        submenu_order       = { "style", "color", "note", "start_prev", "start_next", "end_prev", "end_next",
+            "delete", "more" },
+        submenu_enabled     = {},
         allow_unknown_items = false,
         color_names         = {},
         color_codes         = {},
@@ -434,7 +477,7 @@ local defaults = {
         show_koassistant    = true,
         show_ai_assistant   = true,
     },
-    dict_quick_lookup = {},
+    dict_quick_lookup = { show_labels = false, bottom_sheet = true, allow_unknown_items = false },
 
     night_mode_schedule = {
         night_on_h  = 20,

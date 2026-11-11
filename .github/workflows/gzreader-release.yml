@@ -26,6 +26,10 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    # (one publish to the "updates" branch at a time, test builds' too)
+    concurrency:
+      group: gzreader-updates-branch
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -36,7 +40,10 @@ jobs:
           ref: ${{ env.TAG }}
       - name: Tools
         # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
+        # (an older tag has no ci-apt.sh)
+        run: |
+          if [ -f tools/gzreader/ci-apt.sh ]; then bash tools/gzreader/ci-apt.sh dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross
+          else sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross libc6-armhf-cross libgcc-s1-armhf-cross; fi
       - name: Official KOReader Kindle releases (native binaries)
         run: |
           for p in kindle-legacy kindle kindlehf kindlepw2; do
@@ -55,22 +62,15 @@ jobs:
       - name: The update for the sync page (Kindles without Wi-Fi)
         # A web page can't read GitHub's release downloads (no CORS), but it
         # can read raw.githubusercontent.com: the update and latest.json go
-        # on the "updates" branch, one commit replaced at every release (so
-        # the repository doesn't grow). Only for the latest release.
+        # on the "updates" branch (one commit, replaced at every release, the
+        # test build's files kept: tools/gzreader/publish-updates.sh). Only
+        # for the latest release.
         continue-on-error: true
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
           LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName)
           if [ "$LATEST" != "$TAG" ]; then echo "not the latest release ($LATEST): updates branch left as it is"; exit 0; fi
-          mkdir -p upd && cp out/gzreader-update.zip upd/
-          SIZE=$(stat -c %s upd/gzreader-update.zip)
-          SHA=$(sha256sum upd/gzreader-update.zip | cut -d' ' -f1)
-          printf '{"version":"%s","size":%s,"sha256":"%s","file":"gzreader-update.zip"}\n' "$VERSION" "$SIZE" "$SHA" > upd/latest.json
-          cd upd
-          git init -q -b updates
-          git add gzreader-update.zip latest.json
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "GZreader $VERSION update"
-          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" updates
+          tools/gzreader/publish-updates.sh release out/gzreader-update.zip "$VERSION"
       - name: Nook 1st Edition (test build)
         # the Kindle 2/3/DX package + Debian wheezy's glibc and BusyBox (the
         # Nook's Android has no glibc) + the Nook's start script; a failure

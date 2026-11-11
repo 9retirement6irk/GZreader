@@ -1,0 +1,49 @@
+# Test builds over Wi-Fi: every push to the "beta" branch (made from the pull
+# requests labelled beta, gzreader-beta-combine.yml) builds the update
+# package the way a release does (Lua only, the same for every Kindle and the
+# Nook) and puts it on the "updates" branch as gzreader-beta-update.zip with
+# latest-beta.json, next to the release's (tools/gzreader/publish-updates.sh). GZreader's updater reads it there when Settings →
+# Updates → Test builds is on (gzreader_update.lua). Version:
+# <GZREADER_VERSION>-beta.<commit> (the Nook package built from the same
+# push, gzreader-nook.yml, has the same one).
+name: GZreader test builds (beta)
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gzreader-beta
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gzreader-updates-branch
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 30
+      - name: Tools
+        # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
+        run: bash tools/gzreader/ci-apt.sh rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+      - name: Official KOReader Kindle 2/3/DX release (its LuaJIT, for the bytecode)
+        run: |
+          KOREADER_TAG=$(awk '$1 == "koreader" { print $2 }' tools/gzreader/UPSTREAM)
+          gh release download "$KOREADER_TAG" --repo koreader/koreader --pattern "koreader-kindle-legacy-v*.zip" --dir dl
+      - name: Update package
+        run: |
+          VERSION="$(tr -d ' \n' < GZREADER_VERSION)-beta.$(git rev-parse --short=7 HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-v*.zip out
+      - name: To the updates branch (gzreader-beta-update.zip, latest-beta.json)
+        # (the job's concurrency: one publish to "updates" at a time, the release's too)
+        run: tools/gzreader/publish-updates.sh beta out/gzreader-update.zip "$VERSION" "$GITHUB_SHA"

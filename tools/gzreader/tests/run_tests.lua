@@ -31,7 +31,28 @@ local function preload(name, val) package.preload[name] = function() return val 
 
 preload("logger", { dbg = function() end, info = function() end, warn = function(...) print("    [warn]", ...) end, err = function(...) print("    [err]", ...) end })
 preload("gettext", function(s) return s end)
-preload("json", require("dkjson"))
+-- KOReader's JSON library (LuaJSON) decodes null as a function (a sentinel,
+-- true in Lua) and encodes it back as null: so does this one, so code that
+-- takes Grimmory's nulls for values fails here as on the Kindle.
+do
+    local dk = require("dkjson")
+    local NULL = function() end
+    local function out(v, seen)
+        if v == NULL then return dk.null end
+        if type(v) ~= "table" or v == dk.null then return v end
+        seen = seen or {}
+        if seen[v] then return seen[v] end
+        local c = setmetatable({}, getmetatable(v))
+        seen[v] = c
+        for k, x in pairs(v) do c[k] = out(x, seen) end
+        return c
+    end
+    preload("json", {
+        null = NULL, util = { null = NULL },
+        decode = function(str, pos) return dk.decode(str, pos, NULL) end,
+        encode = function(v, state) return dk.encode(out(v), state) end,
+    })
+end
 package.preload["ffi/sha2"] = function() return dofile(KOROOT .. "/ffi/sha2.lua") end
 local socketutil = {
     LARGE_BLOCK_TIMEOUT = 10, LARGE_TOTAL_TIMEOUT = 30, FILE_BLOCK_TIMEOUT = 15, FILE_TOTAL_TIMEOUT = 60,
@@ -198,6 +219,9 @@ rawset(_G, "GZ_NO_PB_PREPARE", true)
 local PairServer = require("gzreader_pairserver")
 PairServer.port = PORT + 10
 require("gzreader_phone").PORT80 = false -- (the PIN part turns it on, on another port)
+-- most sections read gzreader.log right after logging: lines written at once
+-- (the log's own section turns buffering on)
+require("gzreader_log").buffered = false
 
 local plugin = Grimmory:new{ ui = { menu = { registerToMainMenu = function() end } } }
 
@@ -253,6 +277,8 @@ local s2 = socket.tcp(); s2:settimeout(0.5)
 check(s2:connect("127.0.0.1", tonumber(base:match(":(%d+)$"))) == nil, "page port closed afterwards")
 s2:close()
 for f, delay in pairs(UI.scheduled) do if delay <= 15 then UI.scheduled[f] = nil end end -- (start-up checks: Wi-Fi, usage statistics)
+-- (and the look for books to lay out while charging: gzreader_layout.lua)
+if require("gzreader_layout").loop then UI.scheduled[require("gzreader_layout").loop] = nil end
 check(next(UI.scheduled) == nil, "expiry timer cancelled")
 
 print("Setup from a browser: the Kindle's address and PIN")
@@ -471,6 +497,61 @@ print("A stopped background request keeps the login it renewed")
     Async.sync = saved_sync
 end)()
 
+print("While a book opens, background processes wait")
+;(function()
+    local Async = require("gzreader_async")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local Log = require("gzreader_log")
+    local orig_info, logged = Log.info, {}
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local function state(pid)
+        local f = io.open("/proc/" .. pid .. "/stat", "rb")
+        if not f then return nil end
+        local st = f:read("*a"):match("%) (%a)")
+        f:close()
+        return st
+    end
+    local function pauseNoTimer(reason)
+        Async.pause(reason)
+        if Async.paused then UI.scheduled[Async.paused.timer] = nil end -- (the stand-in UIManager runs everything at once)
+    end
+    -- a request running: paused, not stopped by its time limit, then finishes
+    local res_a
+    Async.run(nil, function() require("socket").sleep(1); return "a" end, function(r, e) res_a = r or e end, "calendar: sync", { timeout = 2 })
+    local pid = next(Async.running)
+    check(pid ~= nil, "the running request is known (pid " .. tostring(pid) .. ")")
+    pauseNoTimer("a book opens")
+    runLoop(function() return state(pid) == "T" end, 2)
+    check(state(pid) == "T", "a book opens: the running request is paused (state " .. tostring(state(pid)) .. ")")
+    runLoop(function() return res_a ~= nil end, 3.5)
+    check(res_a == nil, "while paused it doesn't finish, and its 2 s limit doesn't stop it (3.5 s)")
+    -- a request asked for meanwhile waits
+    local res_b
+    Async.run(nil, function() return "b" end, function(r) res_b = r end, "later")
+    check(#Async.queue == 1, "a request asked for while the book opens waits")
+    Async.resume("the book is open")
+    runLoop(function() return res_a ~= nil and res_b ~= nil end, 10)
+    check(res_a == "a" and res_b == "b", "the book is open: the paused one carries on and the waiting one runs ("
+        .. tostring(res_a) .. ", " .. tostring(res_b) .. ")")
+    check(next(Async.running) == nil, "and nothing is left running")
+    -- a book that never finishes opening: carry on anyway
+    pauseNoTimer("a book opens")
+    local timer = Async.paused and Async.paused.timer
+    local res_c
+    Async.run(nil, function() return "c" end, function(r) res_c = r end, "later")
+    runLoop(function() return false end, 0.3)
+    check(res_c == nil and timer ~= nil, "held: nothing starts")
+    timer()
+    runLoop(function() return res_c ~= nil end, 10)
+    check(res_c == "c" and Async.paused == nil, "after " .. Async.PAUSE_MAX .. " s without a page: carries on")
+    Log.info = orig_info
+    local log = table.concat(logged, "\n")
+    check(log:find("async: paused 1 background process(es) while a book opens", 1, true)
+        and log:find("async: resumed after", 1, true), "the log says what was paused and for how long")
+    Async.sync = saved_sync
+end)()
+
 print("Library browsing")
 local Browser = require("gzreader_browser")
 local b = Browser:new(plugin)
@@ -524,7 +605,12 @@ do
     check(n > 0, "search finds authors too")
     b:search("nothing like this")
     t = b.menu.item_table
-    check(#t == 2 and t[2].text == "No books match “nothing like this”." and t[2].select_enabled == false, "search: nothing found")
+    check(#t == 2 and t[2].text == "No books found containing “nothing like this”" and t[2].select_enabled == false
+        and t[2].gz_kind == "nothing_found", "search: nothing found (says what was searched for; marked for the empty ledges)")
+    b:search("nothing like this", { title = "fiction", params = { libraryId = 2, sort = "title", dir = "asc" } })
+    t = b.menu.item_table
+    check(#t == 2 and t[2].gz_kind == "nothing_found" and t[2].text == "No books found containing “nothing like this”",
+        "search in a library that found nothing: the same")
     -- in a library: the library's own search
     b:openPaged("fiction", { libraryId = 2, sort = "title", dir = "asc" })
     t = b.menu.item_table
@@ -599,17 +685,437 @@ do -- Paused books: the app's /continue-reading leaves them out, the web shows t
     b:openSimple("continue-reading", "Continue reading")
 end
 
+print("Catalog tab: Books, Audiobooks and Music pages")
+;(function()
+    local Catalog = require("gzreader_catalog")
+    check(table.concat(Catalog.sections(true), ",") == "books,audiobooks,music" and table.concat(Catalog.sections(false), ",") == "books",
+        "pages: Books, Audiobooks, Music with a speaker; Books alone without")
+    local all = Catalog.sections(true)
+    check(Catalog.step(all, "books", 1) == "audiobooks" and Catalog.step(all, "music", -1) == "audiobooks"
+        and Catalog.step(all, "music", 1) == "books" and Catalog.step(all, "books", -1) == "music" and Catalog.step(all, "audiobooks", 0) == "audiobooks"
+        and Catalog.step({ "books" }, "books", 1) == nil and Catalog.step({ "books" }, "books", -1) == nil,
+        "pages: next and before, round the ends (after Music: Books; before Books: Music); nothing to turn to with one page")
+    local p1, p2, p3 = Catalog.stripParts(all, "books"), Catalog.stripParts(all, "audiobooks"), Catalog.stripParts(all, "music")
+    check(p1.left == "‹ Music" and p1.dots == "● ○ ○" and p1.right == "Audiobooks ›" and p2.left == "‹ Books" and p2.dots == "○ ● ○"
+        and p2.right == "Music ›" and p3.left == "‹ Audiobooks" and p3.right == "Books ›" and Catalog.stripParts({ "books" }, "books") == nil,
+        "the strip under the title: the page before, a dot a page, the next page, round the ends (none with one page)")
+    check(Catalog.hit(p1, 590, 0, 600) == 1 and Catalog.hit(p1, 10, 0, 600) == -1 and Catalog.hit(p2, 10, 0, 600) == -1
+        and Catalog.hit(p2, 300, 0, 600) == nil and Catalog.hit(p3, 590, 0, 600) == 1, "the strip: a tap on either side turns that way")
+    check(Catalog.title("books") == "Books" and Catalog.title("audiobooks") == "Audiobooks" and Catalog.title("music") == "Music",
+        "the title says which page")
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local cb = Browser:new(plugin)
+    cb:show()
+    local m = cb.menu
+    check(cb.section == "books" and m.title == "Books" and m.item_table.gz_catalog == "books" and m.item_table[1].gz_id == "search"
+        and m.item_table.gz_root, "the Catalog opens on Books (the bookshop)")
+    local last = m.item_table[#m.item_table]
+    check(last.gz_id == "audiobooks" and last.text == "Audiobooks", "the Books list's last line is the Audiobooks page (its letter on keyboard Kindles)")
+    last.callback()
+    check(cb.section == "audiobooks" and #m.item_table_stack == 0, "…and turns to it (a page, not a list inside Books)")
+    cb:openSection("books")
+    m.page, m.page_num = 1, 1
+    m:onNextPage()
+    check(cb.section == "audiobooks" and m.title == "Audiobooks" and m.item_table.gz_catalog == "audiobooks"
+        and m.item_table[4].text == "All audiobooks", "a swipe left (next page) on Books: the Audiobooks page")
+    m:onNextPage()
+    local music = m.item_table
+    check(cb.section == "music" and m.title == "Music" and music.gz_catalog == "music" and #music > 0 and not music.gz_root,
+        "and again: the Music page (Plex; not drawn as the bookshop)")
+    local plain = { section = "audiobooks", api = plugin.api } -- (signed in)
+    check(Browser.rootItems(plain)[4].text == "All audiobooks" and Browser.rootItems(plain).gz_catalog == "audiobooks",
+        "the Audiobooks page: All audiobooks")
+    m:onNextPage()
+    check(cb.section == "books" and m.item_table[1].gz_id == "search" and m.title == "Books", "past Music (a swipe left): Books again")
+    m:onPrevPage()
+    check(cb.section == "music" and m.title == "Music", "before Books (a swipe right): Music")
+    m:onPrevPage(); m:onPrevPage()
+    check(cb.section == "books" and m.item_table[1].gz_id == "search", "a swipe right goes back, to Books")
+    -- a page with more than one page of its own turns those first
+    m.page, m.page_num = 1, 2
+    m:onNextPage()
+    check(cb.section == "books", "a page's own second page comes first (the Menu's own turn)")
+    m.page, m.page_num = 1, 1
+    m:onNextPage()
+    cb:push("All audiobooks", { { text = "Book 31" } })
+    m:onNextPage()
+    check(cb.section == "audiobooks" and #m.item_table_stack == 1 and m.item_table[1].text == "Book 31",
+        "inside a list (All audiobooks), page turns stay the list's")
+    local b2 = Browser:new(plugin)
+    b2:show({ section = "music" })
+    check(b2.section == "music" and b2.menu.title == "Music", "the Catalog can open on another page")
+    require("gzreader_touch").audio = function() return false end
+    local b3 = Browser:new(plugin)
+    b3:show({ section = "music" })
+    check(b3.section == "books" and b3.menu.onNextPage and not b3:turnSection(1), "no speaker: Books only, nothing to turn to")
+    -- the Audiobooks tab: the Catalog on its Audiobooks page alone, that tab underlined
+    require("gzreader_touch").audio = function() return true end
+    local at = Browser:new(plugin)
+    at:show({ section = "audiobooks", tab_id = "ct_audiobooks", only = true })
+    local am = at.menu
+    am.page, am.page_num = 1, 1
+    am:onNextPage(); am:onPrevPage()
+    check(at.section == "audiobooks" and am._gz_navbar_tab_id == "ct_audiobooks" and am.title == "Audiobooks"
+        and table.concat(at:sections(), ",") == "audiobooks" and not at:turnSection(1) and not at:turnSection(-1),
+        "the Audiobooks tab: the Audiobooks page alone (no Books or Music to swipe to), its tab underlined")
+    local cat = Browser:new(plugin)
+    cat:show()
+    check(cat.menu._gz_navbar_tab_id == "ct_grimmory" and #cat:sections() == 3, "the Catalog tab: its own tab, every page")
+    local opened_with
+    local saved_show = Browser.show
+    Browser.show = function(_s, o) opened_with = o end
+    plugin:onShowGzAudiobooks()
+    Browser.show = saved_show
+    check(type(opened_with) == "table" and opened_with.section == "audiobooks" and opened_with.tab_id == "ct_audiobooks" and opened_with.only,
+        "the tab's action opens the Catalog that way")
+    require("gzreader_touch").audio = function() return false end
+    opened_with, captured.info = nil, nil
+    Browser.show = function(_s, o) opened_with = o end
+    plugin:onShowGzAudiobooks()
+    Browser.show = saved_show
+    check(opened_with == nil and tostring(captured.info):match("no speaker or headphone jack"),
+        "a Kindle without audio: the tab says it can't play audiobooks (no Catalog page)")
+    require("gzreader_touch").audio = saved_audio
+    -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself
+    local mf = io.open(arg[1] .. "/../zenos.koplugin/config/manager.lua", "rb")
+    local msrc = mf and mf:read("*a") or ""
+    if mf then mf:close() end
+    local from = msrc:find("if cfg._meta.gz_catalog_label_migrated ~= true then", 1, true)
+    local to = from and select(2, msrc:find("cfg._meta.gz_catalog_label_migrated = true%s+changed = true%s+end", from))
+    local migrate = from and to and load("return function(cfg) local changed = false\n" .. msrc:sub(from, to) .. "\nreturn changed end", "catalog migration", "t", { type = type, ipairs = ipairs })()
+    local function cfgWith(label)
+        return { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory", label = label }, { id = "ct_notes", label = "Notes" } } } }
+    end
+    local c1, c2, c3 = cfgWith("Grimmory"), cfgWith("My books"), cfgWith(nil)
+    local ok_m = migrate and migrate(c1) and migrate(c2) and migrate(c3)
+    local c4 = cfgWith("Grimmory")
+    c4._meta.gz_catalog_label_migrated = true
+    check(ok_m and c1.navbar.custom_tabs[1].label == "Catalog" and c2.navbar.custom_tabs[1].label == "My books"
+        and c3.navbar.custom_tabs[1].label == "Catalog" and c1.navbar.custom_tabs[2].label == "Notes"
+        and migrate(c4) == false and c4.navbar.custom_tabs[1].label == "Grimmory",
+        "the tab's label: Grimmory becomes Catalog once; a name of your own stays")
+    local afrom = msrc:find("if cfg._meta.gz_audiobooks_tab_migrated ~= true then", 1, true)
+    local ato = afrom and select(2, msrc:find("cfg._meta.gz_audiobooks_tab_migrated = true%s+changed = true%s+end", afrom))
+    local amig = afrom and ato and load("return function(cfg) local changed = false\n" .. msrc:sub(afrom, ato) .. "\nreturn changed end",
+        "audiobooks tab migration", "t", { type = type, ipairs = ipairs, table = table })()
+    local acfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
+    local a1 = amig and amig(acfg)
+    acfg._meta.gz_audiobooks_tab_migrated = nil
+    amig(acfg)
+    local n_ab = 0
+    for _i, t in ipairs(acfg.navbar.custom_tabs) do if t.id == "ct_audiobooks" then n_ab = n_ab + 1 end end
+    check(a1 and n_ab == 1 and acfg.navbar.show_tabs.ct_audiobooks == false and table.concat(acfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_audiobooks",
+        "an older config gets the Audiobooks tab listed, off, once")
+end)()
+
+print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
+;(function()
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local g = Browser.groupAudiobooks({ { id = 1, authors = { "A", "B" }, seriesName = "S" }, { id = 2, authors = { "A" }, seriesName = "S" },
+        { id = 3, authors = { "C" } } })
+    check(g.authors.A == 2 and g.authors.B == 1 and g.authors.C == 1 and g.series.S.count == 2
+        and table.concat(g.series.S.authors, ",") == "A,B" and next(Browser.groupAudiobooks(nil).authors) == nil,
+        "audiobooks grouped by author and series")
+    local ab = Browser:new(plugin)
+    ab:show({ section = "audiobooks" })
+    local m = ab.menu
+    local ids = {}
+    for _i, it in ipairs(m.item_table) do ids[#ids + 1] = it.gz_id end
+    local ab_card = m.item_table[#m.item_table]
+    check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_shelves,ab_series,ab_account"
+        and m.item_table[1].gz_action == "search" and m.item_table[4].gz_kind == "section" and m.item_table[4].gz_contents == "tapes"
+        and m.item_table.gz_root and not m.item_table.gz_signed_out and ab_card.text == "Grimmory" and ab_card.gz_contents == "none"
+        and ab_card.mandatory == plugin.store.username .. " · " .. plugin.store.server:gsub("^https?://", ""),
+        "the page: search, Continue listening, Recently added, then All audiobooks, Authors, Shelves, Series and the Grimmory card (no On this Kindle) "
+        .. table.concat(ids, ",") .. " / " .. tostring(ab_card.mandatory))
+    local function abItem(id) for _i, it in ipairs(m.item_table) do if it.gz_id == id then return it end end end
+    local saved_w = {}
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Views = require("gzreader_shopviews")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    local Shop = require("gzreader_bookshop")
+    local ps = Shop.pageSpec("audiobooks")
+    local comp = {}
+    for _i, c in ipairs(ps.compartments) do comp[#comp + 1] = tostring(c.id) end
+    check(ps.ledges[1].id == "ab_continue" and ps.ledges[1].label == "Continue listening" and ps.ledges[2].id == "ab_recent"
+        and table.concat(comp, ",") == "ab_all,ab_authors,ab_shelves,ab_series,ab_account" and ps.cover_kind == "audiobook"
+        and Shop.pageSpec("books").ledges[1].id == "continue" and Views.cardOf(m.item_table[5]) == m.item_table[5].mandatory,
+        "the Bookshelf view: the books' shop, with Continue listening and Recently added ledges, then a compartment each")
+    -- Continue listening: what you've listened to on the Kindle first
+    local AB = require("gzreader_audiobook")
+    local saved_load, saved_store = AB.load, plugin.store.audiobooks
+    AB.load = function(_p, id) if tostring(id) == "41" or tostring(id) == "42" then return { files = {}, tracks = {}, durationMs = 1000000 } end end
+    plugin.store.audiobooks = { [41] = { title = "Older", pos_ms = 1000, updated = 10 }, [42] = { title = "Newer", pos_ms = 500, updated = 20 },
+        [43] = { title = "Gone", pos_ms = 5, updated = 30 } }
+    local lis = Shop.listening(plugin)
+    check(#lis == 2 and lis[1].title == "Newer" and lis[2].title == "Older" and lis[1].primaryFileType == "AUDIOBOOK",
+        "Continue listening: the Kindle's audiobooks in progress, latest first (not ones whose audio is gone)")
+    AB.load, plugin.store.audiobooks = saved_load, saved_store
+    check(Views.cardOf({ gz_kind = "author", gz_audio = true, gz_count = 2 }) == "2 audiobooks"
+        and Views.cardOf({ gz_kind = "collection", gz_audio = true, gz_count = 1 }) == "1 audiobook"
+        and Views.kindOf({ { gz_kind = "collection" } }) == "bay", "an author's or series' card counts audiobooks")
+    local function lastRequest(pat)
+        local last
+        for _i, e in ipairs(json.decode(ctl("/state")).log) do if e[2]:match(pat) then last = e[2] end end
+        return last
+    end
+    ab:openAudioAuthors()
+    local names = {}
+    for _i, it in ipairs(m.item_table) do names[#names + 1] = it.text .. "=" .. tostring(it.gz_count) end
+    check(table.concat(names, ",") == "Audio Author=2,Author 1=1" and m.item_table[1].gz_audio and m.item_table[1].gz_contents == "tapes",
+        "Authors: the audiobooks' authors only, with how many " .. table.concat(names, ","))
+    m.item_table[1].callback()
+    local books = {}
+    for _i, it in ipairs(m.item_table) do if it.book then books[#books + 1] = it.book.title .. ":" .. tostring(it.cover_kind) end end
+    local req = lastRequest("^/api/v1/app/books%?")
+    check(table.concat(books, ",") == "Book 32:audiobook,Book 33:audiobook" and req and req:match("fileType=AUDIOBOOK") and req:match("authors=Audio")
+        and m.item_table[1].text == "Search in Audio Author…", "an author: their audiobooks (Grimmory's list, audiobooks only) " .. tostring(req))
+    ab:openSection("audiobooks")
+    check(abItem("ab_all").mandatory == "3 audiobooks" and abItem("ab_authors").mandatory == "2 · A–Z" and abItem("ab_series").mandatory == "2 series",
+        "the page's cards count what's known (from the list Authors fetched)")
+    ab:openAudioSeries()
+    local series = {}
+    for _i, it in ipairs(m.item_table) do series[#series + 1] = it.text end
+    check(table.concat(series, ",") == "Audio Only Saga — Audio Author,Saga / Part One — Author 1", "Series: the audiobooks' series " .. table.concat(series, ","))
+    m.item_table[1].callback()
+    req = lastRequest("^/api/v1/app/books%?")
+    check(req and req:match("series=Audio") and req:match("fileType=AUDIOBOOK") and req:match("sort=seriesNumber"), "a series: in series order " .. tostring(req))
+    ab:openSection("audiobooks")
+    abItem("ab_shelves").callback()
+    check(m.title == "Shelves" and m.item_table[1].gz_kind == "shelf" and m.item_table[1].gz_audio, "Shelves: your shelves, each opening to its audiobooks")
+    m.item_table[1].callback()
+    req = lastRequest("^/api/v1/app/books%?")
+    check(req and req:match("fileType=AUDIOBOOK") and (req:match("shelfId=") or req:match("magicShelfId=")), "a shelf: the audiobooks on it " .. tostring(req))
+    ab:openSection("audiobooks")
+    ab:search("saga", Browser.audioScope())
+    local found = {}
+    for _i, it in ipairs(m.item_table) do if it.book then found[#found + 1] = it.book.title end end
+    req = lastRequest("^/api/v1/app/books%?")
+    check(m.title == "Audiobooks: “saga”" and #found > 0 and req:match("fileType=AUDIOBOOK") and req:match("search=saga"),
+        "Search audiobooks: audiobooks only " .. table.concat(found, ","))
+    ab:search("zzz", Browser.audioScope())
+    check(m.item_table[#m.item_table].text == "No audiobooks found containing “zzz”", "a search that finds nothing says so")
+    -- an author's audiobooks and books aren't the same saved list
+    local Cache = require("gzreader_listcache")
+    check(Cache.key("paged-audio", { authors = "X" }) ~= Cache.key("paged", { authors = "X" }), "saved lists: audiobooks and books kept apart")
+    require("gzreader_touch").audio = saved_audio
+end)()
+
+print("Catalog: not signed in to Grimmory (it opens all the same)")
+;(function()
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local out_api = setmetatable({ isPaired = function() return false end }, { __index = plugin.api })
+    local function idsOf(list) local t = {} for _i, it in ipairs(list) do t[#t + 1] = tostring(it.gz_id) end return table.concat(t, ",") end
+    local b = Browser:new(plugin)
+    b.api = out_api
+    b.section = "books"
+    local items = b:rootItems()
+    check(items.gz_root and items.gz_signed_out and idsOf(items) == "search,grimmory,audiobooks"
+        and items[1].text == "Sign in to Grimmory to browse the catalog" and items[2].text == "Grimmory" and items[2].mandatory == "signed out",
+        "Books, not signed in: the shelves empty, the slip says to sign in, the Grimmory card " .. idsOf(items) .. " / " .. tostring(items[2].mandatory))
+    local saved_user = plugin.store.username
+    plugin.store.username = nil
+    check(Browser.grimmoryItem(b, "grimmory").mandatory == "not signed in", "…never signed in: \"not signed in\"")
+    plugin.store.username = saved_user
+    b.section = "audiobooks"
+    items = b:rootItems()
+    check(items.gz_signed_out and idsOf(items) == "ab_search,ab_account" and items[1].text == "Sign in to Grimmory to browse the catalog"
+        and items[2].text == "Grimmory", "Audiobooks (Grimmory's), not signed in: the same " .. idsOf(items))
+    -- nothing saved from the account before is shown
+    -- (saved under a server of its own: the other blocks' saved lists untouched)
+    local saved_server = plugin.store.server
+    plugin.store.server = "https://signed-out.example.com"
+    local Cache = require("gzreader_listcache")
+    local key = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|"
+    Cache.put(key .. "simple:continue-reading", { { id = 1, title = "Kept", primaryFileType = "EPUB" } })
+    Cache.put(key .. "shop:ab_recent", { { id = 2, title = "Kept audio", primaryFileType = "AUDIOBOOK" } })
+    local Shop = require("gzreader_bookshop")
+    local st, ast = Shop.lists(b, "books"), Shop.lists(b, "audiobooks")
+    check(st.fetched and st.continue == nil and st.recent == nil and ast.ab_recent == nil and ast.ab_continue == nil and not st.loading,
+        "not signed in: the shelves stay empty (no saved lists from before)")
+    local signed_in = Browser:new(plugin)
+    signed_in._shop = { asked = true } -- (no fetch)
+    check(#(Shop.lists(signed_in, "books").continue or {}) == 1, "signed in: the saved list as before")
+    plugin.store.server = saved_server
+    -- the Grimmory card's list
+    local pushed
+    b.push = function(_s, title, list) pushed = { title = title, list = list } end
+    b:openGrimmory()
+    local texts = {}
+    for _i, it in ipairs(pushed and pushed.list or {}) do texts[#texts + 1] = it.text end
+    local tx = table.concat(texts, " | ")
+    check(pushed and pushed.title == "Grimmory" and tx:find("Signed out of " .. plugin.store.username .. " at " .. (plugin.store.server:gsub("^https?://", "")), 1, true) and tx:find("Connect from your browser (QR code)", 1, true)
+        and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true) and not tx:find("Rebuild", 1, true),
+        "the Grimmory card, not signed in: the ways to sign in " .. tx)
+    signed_in.push = b.push
+    signed_in:openGrimmory()
+    texts = {}
+    for _i, it in ipairs(pushed.list) do texts[#texts + 1] = it.text end
+    tx = table.concat(texts, " | ")
+    check(tx:find("Signed in as " .. plugin.store.username .. " at ", 1, true) and tx:find("Rebuild library", 1, true)
+        and tx:find("Reconnect from your browser (QR code)", 1, true), "the Grimmory card, signed in: the account " .. tx)
+    -- the Catalog opens, signed out, from its tab (it used to ask to connect instead)
+    local Net = require("gzreader_net")
+    local saved_run, saved_api = Net.run, plugin.api
+    Net.run = function() end
+    plugin.api = out_api
+    Browser.current = nil
+    plugin:onShowGrimmoryLibrary()
+    local open = Browser.current
+    check(open and open.menu and open.menu.item_table.gz_signed_out and open.section == "books", "the Catalog tab opens without Grimmory")
+    -- signed in while it shows: its page again
+    plugin.api = saved_api
+    if open then open.api = saved_api end
+    Browser.signInChanged()
+    check(open and not open.menu.item_table.gz_signed_out and idsOf(open.menu.item_table):match("^search,continue,recent,"),
+        "signed in while it's open: the page with Grimmory's shelves")
+    if open then open.closed = true end
+    Net.run = saved_run
+    local msrc = io.open(PLUGIN .. "/main.lua"):read("*a")
+    local bsrc = io.open(PLUGIN .. "/gzreader_bookshop.lua"):read("*a")
+    check(msrc:find("B.signInChanged", 1, true) and msrc:find("function Grimmory:afterLogin", 1, true) < msrc:find("B.signInChanged", 1, true),
+        "any sign-in (QR, typing, SSO) shows the Catalog's page again")
+    -- the account card: the last compartment (bottom right), whatever else is there
+    local function arranged(section, present, fixed)
+        local t = {}
+        for _i, c in ipairs(Shop.arrange(Shop.pageSpec(section).compartments, function(id) return present[id] end, fixed, 6)) do t[#t + 1] = c.id or "-" end
+        return table.concat(t, ",")
+    end
+    local all_ab = { ab_all = true, ab_authors = true, ab_shelves = true, ab_series = true, ab_account = true }
+    check(arranged("books", {}, true) == "all,libraries,shelves,authors,series,grimmory"
+        and arranged("audiobooks", all_ab, false) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
+        and arranged("audiobooks", { ab_all = true, ab_authors = true, ab_account = true }, false) == "ab_all,ab_authors,-,-,-,ab_account"
+        and arranged("audiobooks", {}, true) == "ab_all,ab_authors,ab_shelves,ab_series,-,ab_account"
+        and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_account = true }, false) == "mu_playlists,mu_albums,mu_artists,-,-,mu_account"
+        and arranged("music", { mu_playlists = true, mu_albums = true, mu_artists = true, mu_now = true, mu_account = true }, false)
+            == "mu_playlists,mu_albums,mu_artists,mu_now,-,mu_account"
+        and Shop.pageSpec("music").compartments[5].kind == "account" and Shop.pageSpec("audiobooks").compartments[5].kind == "account",
+        "the Grimmory and Plex cards: always the bottom-right compartment, the whole of it")
+    check(bsrc:find("by.search or by.ab_search or by.mu_search", 1, true),
+        "the Bookshelf view's slip is each page's own search line (the Audiobooks and Music slips did nothing)")
+    require("gzreader_touch").audio = saved_audio
+end)()
+
+print("Catalog: the Music page (CD cases on the shelves)")
+;(function()
+    local Tab = require("gzreader_musictab")
+    local e1 = Tab.entry({ text = "A" }, { type = "album", key = "201", title = "A", artist = "X", year = 2020, thumb = "/t/201" })
+    local e2 = Tab.entry({ text = "P" }, { type = "playlist", key = "9", title = "P", count = 12 })
+    local e3 = Tab.entry({ text = "X" }, { type = "artist", key = "5", title = "X" })
+    local e4 = Tab.entry({ text = "T" }, { type = "track", key = "7", title = "T" })
+    check(e1.gz_music.key == "201" and e1.gz_music.thumb == "/t/201" and e2.gz_music.type == "playlist" and e3.gz_kind == "artist"
+        and e3.gz_contents == "cds" and e4.gz_music == nil, "list lines carry their album, playlist or artist (tracks stay plain)")
+    local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
+    local saved_w = {}
+    for _i, wm in ipairs(widget_mods) do
+        saved_w[wm] = package.loaded[wm]
+        if type(saved_w[wm]) ~= "table" then package.loaded[wm] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end }) end
+    end
+    local Views = require("gzreader_shopviews")
+    for _i, wm in ipairs(widget_mods) do package.loaded[wm] = saved_w[wm] end
+    check(Views.kindOf({ e1 }) == "cds" and Views.kindOf({ e2, { text = "More (25 of 80)…", callback = function() end } }) == "cds"
+        and Views.kindOf({ e3 }) == "bay" and Views.kindOf({ e4 }) == nil, "albums and playlists: CD cases; artists: compartments; tracks: a list")
+    local t1, t2 = Views.musicTag(e1.gz_music), Views.musicTag(e2.gz_music)
+    check(t1.title == "A" and t1.authors[1] == "X · 2020" and t2.authors[1] == "12 tracks", "a case's tag: the artist and year, a playlist's tracks")
+    local one = function(x) return x end
+    local fits = true
+    for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 }, { 824, 1000 } }) do
+        local L = Views.layout("cds", size[1], size[2], false, one)
+        local fit_ok = L.fits and L.box_w <= L.slots[1].w and L.box_h > 0 and math.abs(L.box_w / L.box_h - Views.CD_RATIO) < 0.05 and L.cols >= 2
+        for _k, sl in ipairs(L.slots) do fit_ok = fit_ok and sl.x >= 0 and sl.x + sl.w <= size[1] and sl.y + sl.h <= size[2] end
+        if not fit_ok then fits = false; print("  (cds don't fit at " .. size[1] .. "x" .. size[2] .. ")") end
+    end
+    check(fits, "CD cases: a little wider than tall, two or more a row, on every Kindle's page")
+    -- covers: asked for once a session, and not at all when they're here
+    local MC = require("gzreader_musiccovers")
+    check(MC.id({ key = "/library/metadata/201" }) == "plex-_library_metadata_201", "a cover's name in the cache")
+    local miss = MC.missing({ { key = "301", thumb = "/t" }, { key = "302" } })
+    MC.tried[MC.id({ key = "301" })] = true
+    check(#miss == 1 and miss[1].key == "301" and #MC.missing({ { key = "301", thumb = "/t" } }) == 0,
+        "covers: only ones with a picture on Plex, each asked for once (one that doesn't come isn't asked for at every redraw)")
+    MC.tried = {}
+    -- the page, signed in
+    local saved_plex = plugin.store.plex
+    plugin.store.plex = { token = "t", username = "will", server = { uri = "http://127.0.0.1:9", name = "Home Server" } }
+    local saved_audio = require("gzreader_touch").audio
+    require("gzreader_touch").audio = function() return true end
+    local mb = Browser:new(plugin)
+    mb:show({ section = "music" })
+    local ids = {}
+    for _i, it in ipairs(mb.menu.item_table) do ids[#ids + 1] = it.gz_id end
+    local m1 = mb.menu.item_table
+    check(table.concat(ids, ","):match("^mu_search,mu_played,mu_recent,mu_playlists,mu_albums,mu_artists,") and m1[1].gz_action == "search"
+        and m1[4].gz_contents == "cds" and m1[#m1].gz_id == "mu_account" and m1[#m1].mandatory == "will · Home Server" and m1.gz_root,
+        "the Music page: search, Recently played, Recently added, then Playlists, Albums, Artists… and the Plex account " .. table.concat(ids, ","))
+    local Shop = require("gzreader_bookshop")
+    local mps = Shop.pageSpec("music")
+    local mcomp = {}
+    for _i, c in ipairs(mps.compartments) do mcomp[#mcomp + 1] = tostring(c.id) end
+    check(mps.music and mps.ledges[1].id == "mu_played" and mps.ledges[1].label == "Recently played" and mps.ledges[2].id == "mu_recent"
+        and table.concat(mcomp, ",") == "mu_playlists,mu_albums,mu_artists,mu_now,mu_account" and not table.concat(ids, ","):find("mu_downloaded", 1, true),
+        "the Bookshelf view: the shop with Recently played and Recently added ledges of CD cases, then a compartment each (no On this Kindle)")
+    -- Recently played: this Kindle's plays first (Plex only knows its own players'), once each
+    local Music = require("gzreader_music")
+    local saved_recent, saved_save = plugin.store.music_recent, plugin.save
+    plugin.save = function() end
+    plugin.store.music_recent = nil
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "playlist", key = "9", title = "P", tracks = {} })
+    Music.notePlayed(plugin, { kind = "album", key = "201", title = "A", tracks = { {}, {} } })
+    Music.notePlayed(plugin, { kind = "all", key = "x" })
+    local rk = {}
+    for _i, it in ipairs(plugin.store.music_recent) do rk[#rk + 1] = it.type .. ":" .. it.key end
+    check(table.concat(rk, ",") == "album:201,playlist:9" and plugin.store.music_recent[1].count == 2,
+        "played here: newest first, each once (not Shuffle all) " .. table.concat(rk, ","))
+    mb._shop_music = { asked = true, mu_played_remote = { { type = "album", key = "203", title = "C" }, { type = "album", key = "201", title = "A" } },
+        mu_recent_remote = { { type = "album", key = "202" } } }
+    local mst = Shop.musicLists(mb)
+    local pk = {}
+    for _i, it in ipairs(mst.mu_played) do pk[#pk + 1] = it.key end
+    check(table.concat(pk, ",") == "201,9,203" and mst.mu_recent[1].key == "202" and #Shop.ledgeBooks(mst.mu_played, function(it) return it.key ~= nil end) == 3,
+        "the ledges: the Kindle's plays, then Plex's; Recently added from Plex " .. table.concat(pk, ","))
+    plugin.store.music_recent, plugin.save = saved_recent, saved_save
+    -- Plex: Recently added / played albums (played: only ones played at all)
+    local Plex = require("gzreader_plex")
+    local px = Plex:new({ server = { uri = "http://127.0.0.1:9" } })
+    local asked
+    px.get = function(_s, path, params, opts)
+        asked = { path = path, params = params, size = opts and opts.headers and opts.headers["X-Plex-Container-Size"] }
+        return 200, { MediaContainer = { Metadata = {
+            { ratingKey = "1", type = "album", title = "One", parentTitle = "X", lastViewedAt = 1700000000, addedAt = 1 },
+            { ratingKey = "2", type = "album", title = "Two", parentTitle = "X", addedAt = 2 } } } }
+    end
+    local added = px:recentAlbums("7", "added", 12)
+    local a_sort, a_size = asked.params.sort, asked.size
+    local played = px:recentAlbums("7", "played", 12)
+    check(#added == 2 and a_sort == "addedAt:desc" and a_size == "12" and asked.params.sort == "lastViewedAt:desc"
+        and #played == 1 and played[1].key == "1" and played[1].viewed == 1700000000 and asked.path == "/library/sections/7/all",
+        "Plex: albums by date added, and by last played (never-played ones left out)")
+    plugin.store.plex = saved_plex
+    local mb2 = Browser:new(plugin)
+    mb2:show({ section = "music" })
+    check(mb2.menu.item_table[1].gz_id == nil and tostring(mb2.menu.item_table[1].text):match("Plex"), "not signed in to Plex: the sign-in lines")
+    require("gzreader_touch").audio = saved_audio
+end)()
+
 print("Libraries, authors, series (local index of readable books)")
 local Index = require("gzreader_index")
 local root = Browser:new(plugin):rootItems()
 local names = {}
 for _, it in ipairs(root) do names[#names + 1] = it.text end
-check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Downloaded"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Downloaded")
+check(table.concat(names, "|"):match("^Search Grimmory…|Continue reading|Recently added|All books.-|Libraries|Shelves|Authors|Series|Grimmory"), "root menu: Search, Continue, Recent, All books, Libraries, Shelves, Authors, Series, Grimmory")
 print("Grimmory tab as a bookshop")
 do
     local ids = {}
     for _i, it in ipairs(root) do ids[#ids + 1] = tostring(it.gz_id) end
-    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,downloaded"
+    check(root.gz_root == true and table.concat(ids, ",") == "search,continue,recent,all,libraries,shelves,authors,series,grimmory"
         .. (#root > 9 and ",audiobooks" or ""), "root items: marked for the bookshop " .. table.concat(ids, ","))
     -- (its drawing only: its widgets stay stubs here)
     local widget_mods = { "ui/widget/container/inputcontainer", "ui/widget/container/widgetcontainer", "ui/gesturerange", "ui/font", "ffi/blitbuffer" }
@@ -636,23 +1142,29 @@ do
     end
     check(fits, "layout: the slip, two ledges and the bookcase fit, in order, on every Kindle's page")
     check(Shop.layout(800, 380, one).fits == false, "layout: too short a page (landscape) says so: the list instead")
-    check(Shop.compartments(true)[6].id == "audiobooks" and Shop.compartments(false)[6].id == nil and Shop.compartments(false)[6].kind == "empty",
-        "compartments: Audiobooks with a speaker, an empty one (cobwebs) without")
+    check(Shop.compartments()[6].id == "grimmory" and Shop.compartments()[6].kind == "account" and #Shop.compartments() == 6,
+        "compartments: the last is the Grimmory card (Audiobooks are the Catalog's next page; what's here is in Downloads)")
     check(Shop.moreText(7) == "+3 more" and Shop.moreText(4) == "See all" and Shop.moreText(nil) == "See all", "the bundle's tag")
     local known = {
         index = { total = 1024, libraries = { ["1"] = 30, ["2"] = 0, ["3"] = 2 }, authors = { A = 1, B = 2, C = 3 }, series = { X = { count = 3 }, Y = { count = 1 } } },
         libraries = { { id = 1, name = "Fiction" }, { id = 2, name = "Audio only" }, { id = 3, name = "Classics" } },
         shelves = { { id = 1, name = "Favourites" }, { id = 2, name = "Book club" },
             { id = 9, name = "Unread sci-fi", magic = true, filter = { rules = { { field = "genre", value = "Science fiction" } } } } },
-        audiobooks = 48, downloaded = 0,
+        audiobooks = 48,
     }
     local cards = {}
-    for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks", "downloaded" }) do cards[#cards + 1] = Shop.cardText(id, known) end
-    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks|on this Kindle",
+    for _i, id in ipairs({ "all", "libraries", "shelves", "authors", "series", "audiobooks" }) do cards[#cards + 1] = Shop.cardText(id, known) end
+    check(table.concat(cards, "|") == "1,024 books|2 · Classics, Fiction|3 · 1 magic|3 · A–Z|1 series|48 audiobooks",
         "cards: counts from what's kept " .. table.concat(cards, "|"))
     check(not table.concat(cards, "|"):lower():find("genre", 1, true) and not table.concat(cards, "|"):find("Science", 1, true),
         "cards: a magic shelf's rules are never shown")
     check(Shop.cardText("all", {}) == "A–Z" and Shop.cardText("shelves", {}) == "yours and magic", "cards: nothing kept yet")
+    -- (a word as wide as 6 px per letter at size 9, one less per size below)
+    check(Shop.miniLabelSize("Shelves", 42, function(sz, w) return #w * (sz - 3) end) == 9
+        and Shop.miniLabelSize("Shelves", 30, function(sz, w) return #w * (sz - 3) end) == 7
+        and Shop.miniLabelSize("Beach reads", 30, function(sz, w) return #w * (sz - 3) end) == 9
+        and Shop.miniLabelSize("Extraordinarily", 30, function(sz, w) return #w * (sz - 3) end) == 6,
+        "Shelves card: its label's size lets every word fit the little cover (no \"Shelve / s\")")
     -- the lists opened from it, in its style
     local saved_w = {}
     for _i, m in ipairs(widget_mods) do
@@ -664,8 +1176,9 @@ do
     check(Views.kindOf({ { text = "Search…", gz_action = "search" }, { book = { id = 1 } } }) == "ledges"
         and Views.kindOf({ { book = { id = 1 }, cover_kind = "audiobook" } }) == "tapes"
         and Views.kindOf({ { gz_kind = "series" } }) == "piles" and Views.kindOf({ { gz_kind = "author" } }) == "bay"
-        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil,
-        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments")
+        and Views.kindOf({ { gz_kind = "shelf" } }) == "bay" and Views.kindOf({ { text = "x" } }) == nil
+        and Views.kindOf({ { gz_action = "search" }, { text = "No books found containing “q”", gz_kind = "nothing_found" } }) == "ledges",
+        "lists: books on ledges, audiobooks on a tape rack, series in piles, libraries/shelves/authors in compartments, nothing found: the same ledges, empty")
     check(Views.headerCount({ { gz_action = "search" }, { gz_action = "refresh" }, { gz_kind = "author" } }) == 2
         and Views.headerCount({ { gz_kind = "author" }, { gz_action = "search" } }) == 0, "lists: search and refresh above the list")
     local vfits = true
@@ -678,6 +1191,20 @@ do
         end
     end
     check(vfits, "lists: their places fit the page, below the search")
+    local cw_ok = true
+    for _j, size in ipairs({ { 600, 574 }, { 1072, 1078 }, { 758, 760 } }) do
+        -- the card between the middle row's ledge and the row above
+        local L = Views.layout("ledges", size[1], size[2], true, one)
+        local s1 = L.slots[(math.ceil(L.rows / 2) - 1) * L.cols + 1]
+        local c = { x = 0, y = s1.y, w = size[1], h = s1.h - L.fixed }
+        -- a short message: its card in the middle; a long one: no wider than the page
+        for _k, tw in ipairs({ 200, 5000 }) do
+            local r = Views.nothingCard(c.x, c.y, c.w, c.h, tw, 30, one)
+            cw_ok = cw_ok and r.x >= c.x and r.x + r.w <= c.x + c.w and r.y >= c.y and r.y + r.h <= c.y + c.h
+                and math.abs((r.x + r.w / 2) - (c.x + c.w / 2)) <= 1
+        end
+    end
+    check(cw_ok, "nothing found: the card in the middle, between the ledges, never wider than the page")
     local K3 = Views.layout("ledges", 600, 574, true, one)
     check(K3.rows == 3 and K3.cols == 3, "ledges on a Kindle 3: 3 rows of 3 (tags wide enough for their bigger type) " .. K3.rows .. "x" .. K3.cols)
     check(Views.bookLabel({ personalRating = 8 }) == "★★★★☆" and Views.bookLabel({ readProgress = 33.6 }) == "34%"
@@ -741,6 +1268,26 @@ check(b.menu.title == "Authors", "second time: opens instantly from the saved in
 index_requests = 0
 for _, e in ipairs(json.decode(ctl("/state")).log) do if e[2]:match("^/api/v1/app/books%?") then index_requests = index_requests + 1 end end
 check(index_requests == before, "no network request for a fresh index")
+do -- Refresh list from Grimmory: Wi-Fi on first (it may have gone off while the saved list was open)
+    local Net = require("gzreader_net")
+    local was_run, was_build = Net.run, Index.build
+    local reason, built
+    Net.run = function(fn, opts) reason = opts and opts.reason; fn() end
+    Index.build = function(_plugin, show) built = show end
+    find(b.menu.item_table, "^Refresh").callback()
+    Net.run, Index.build = was_run, was_build
+    check(reason == "refreshing the Grimmory list" and built == true, "Refresh list from Grimmory turns Wi-Fi on first, then rebuilds")
+    -- Check for updates says why it turns Wi-Fi on (the log read "turning on for ?")
+    local Upd = require("gzreader_update")
+    local was_check = Upd.check
+    local checked
+    reason = nil
+    Net.run = function(fn, opts) reason = opts and opts.reason; fn() end
+    Upd.check = function() checked = true; return nil, "test" end
+    Upd.run()
+    Net.run, Upd.check = was_run, was_check
+    check(reason == "checking for updates" and checked == true, "Check for updates gives its reason for turning Wi-Fi on")
+end
 find(b.menu.item_table, "^Author 1$").callback()
 local auth_ok, an = true, 0
 for _, it in ipairs(b.menu.item_table) do if it.book then an = an + 1; auth_ok = auth_ok and it.book.authors[1] == "Author 1" end end
@@ -791,7 +1338,7 @@ do
     -- the earlier "Continue reading" was saved
     local was, wod = NET.connected, gsettings.gzreader_wifi_on_demand
     NET.connected = false
-    gsettings.gzreader_wifi_on_demand = false -- nothing may turn Wi-Fi on
+    gsettings.gzreader_wifi_mode = "off" -- nothing in the background may turn Wi-Fi on
     local before = reqs("continue%-reading")
     b = Browser:new(plugin); b:show()
     b:openSimple("continue-reading", "Continue reading")
@@ -800,7 +1347,7 @@ do
     b:openLibraries()
     check(b.menu.title == "Libraries · saved" and texts(b.menu.item_table) == "Comics|fiction", "offline: saved libraries")
     -- Wi-Fi comes up: the fresh list replaces the saved one in place
-    gsettings.gzreader_wifi_on_demand = nil
+    gsettings.gzreader_wifi_mode = "auto"
     captured.wifi = {}
     b = Browser:new(plugin); b:show()
     b:openPaged("All books", { sort = "title", dir = "asc" })
@@ -827,13 +1374,13 @@ do
     local user = plugin.store.username
     plugin.store.username = "someone-else"
     NET.connected = false
-    gsettings.gzreader_wifi_on_demand = false
+    gsettings.gzreader_wifi_mode = "off"
     captured.err = nil
     b = Browser:new(plugin); b:show()
     b:openSimple("continue-reading", "Continue reading")
     check(b.menu.title ~= "Continue reading · saved", "another account doesn't see these saved lists")
     plugin.store.username = user
-    NET.connected, gsettings.gzreader_wifi_on_demand = was, wod
+    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was, wod, nil
     local d = Cache.dir()
     local nfiles = 0
     for name in require("libs/libkoreader-lfs").dir(d) do if name:match("%.json$") then nfiles = nfiles + 1 end end
@@ -928,6 +1475,78 @@ check(stuck_part > 0, "stalled: the part downloaded is kept, to continue")
 Download.STALL_SECONDS = nil
 ctl("/set?dl_stall=false")
 
+print("The Kindle 2/3/DX's screen: four pixels packed at a time, the same bytes")
+;(function()
+    local ffi = require("ffi")
+    local okb, BB = pcall(require, "ffi/blitbuffer")
+    local okf, ShadowFB = pcall(dofile, PLUGIN .. "/../../frontend/device/kindle/shadowfb.lua")
+    check(okb and okf, "shadowfb.lua loads " .. tostring(not okf and ShadowFB or ""))
+    if not (okb and okf) then return end
+    local function buffers(w, h)
+        local sh = { w = w, h = h, stride = w, data = ffi.new("uint8_t[?]", w * h + 16) }
+        local fb = { w = w, h = h, stride = w / 2, data = ffi.new("uint8_t[?]", w * h / 2 + 16), getType = function() return BB.TYPE_BB4 end }
+        return sh, fb
+    end
+    local seed = 12345
+    local function rnd(m) seed = (seed * 1103515245 + 12345) % 2147483648; return seed % m end
+    local mismatches, cases = 0, 0
+    for _i, size in ipairs({ { 600, 40 }, { 824, 30 }, { 602, 20 } }) do
+        local w, h = size[1], size[2]
+        local sh = buffers(w, h)
+        for k = 0, w * h - 1 do sh.data[k] = rnd(256) end
+        for _c = 1, 60 do
+            local x, y = rnd(w + 20) - 10, rnd(h)
+            local rw, rh = rnd(w) + 1, rnd(h - y) + 1
+            local inv = rnd(2) == 1
+            local fa = select(2, buffers(w, h))
+            local fb2 = select(2, buffers(w, h))
+            for k = 0, w * h / 2 - 1 do local v = rnd(256); fa.data[k] = v; fb2.data[k] = v end
+            ShadowFB.wide = false
+            ShadowFB.pack(sh, fa, x, y, rw, rh, inv)
+            ShadowFB.wide = true
+            ShadowFB.pack(sh, fb2, x, y, rw, rh, inv)
+            if ffi.string(fa.data, w * h / 2) ~= ffi.string(fb2.data, w * h / 2) then mismatches = mismatches + 1 end
+            cases = cases + 1
+        end
+    end
+    check(mismatches == 0 and cases == 180, "four at a time: byte for byte what two at a time gives (" .. cases .. " rectangles, both grey levels, " .. mismatches .. " different)")
+    ShadowFB.wide = true
+end)()
+
+print("Timers on the clock's quarter minutes; the clock in a book on old Kindles follows the pages")
+;(function()
+    local Ticks = require("gzreader_ticks")
+    local real = Ticks.now
+    Ticks.now = function() return 1000000.2 end -- (…:40.2 on the wall clock: 1000000 % 60 = 40)
+    local q1, h1 = Ticks.untilNext(15), Ticks.untilNext(30)
+    Ticks.now = function() return 1000004.9 end
+    local c = Ticks.untilNext(15)
+    Ticks.now = real
+    check(math.abs(q1 - 4.85) < 0.01 and math.abs(h1 - 19.85) < 0.01 and math.abs(c - 0.15) < 0.01 + 15 and c > 15,
+        "the next quarter / half minute (just after it, so they're due together; never less than half a second away)")
+    local function src(rel) local h = io.open(PLUGIN .. "/" .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
+    check(src("gzreader_remote.lua"):find('require("gzreader_ticks").untilNext(R.HEARTBEAT)', 1, true)
+        and src("gzreader_net.lua"):find('require("gzreader_ticks").untilNext(Net.CHECK_EVERY)', 1, true),
+        "the debug reports' heartbeat and the Wi-Fi idle check use it")
+    local Eink = require("gzreader_eink")
+    local Device = require("device")
+    local was_model, was_kindle = Device.model, Device.isKindle
+    Device.isKindle = function() return true end
+    Device.model = "Kindle3"
+    local k3 = Eink.minuteClock()
+    Device.model = "KindlePaperWhite3"
+    local pw3 = Eink.minuteClock()
+    Device.model = "Kindle3"
+    G_reader_settings:saveSetting(Eink.CLOCK_SETTING, true)
+    local chosen = Eink.minuteClock()
+    G_reader_settings:delSetting(Eink.CLOCK_SETTING)
+    Device.model, Device.isKindle = was_model, was_kindle
+    check(not k3 and pw3 and chosen, "in a book: the clock with the pages on a Kindle 3 (no REAGL), every minute on a Paperwhite; a setting wins")
+    local zt = src("../zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua")
+    check(zt:find("local function gzMinuteRepaints()", 1, true) and zt:find("if not gzMinuteRepaints() then return end", 1, true)
+        and zt:find("if not gzMinuteRepaints() then\n            _autoRefresh = nil", 1, true), "ZenOS's top bar in a book asks before its minute repaint")
+end)()
+
 print("Unfinished downloads after a restart")
 do
     local R = require("gzreader_recovery")
@@ -979,6 +1598,53 @@ captured.info = nil
 plugin:downloadAndOpen({ id = 27, title = "Second", primaryFileName = "second.epub", primaryFileType = "EPUB", fileSizeKb = 2048 }, nil)
 check(#Download.queue == 1 and captured.info and captured.info:match("already"), "same book twice: not queued again")
 check(Download.isQueued(26) and Download.isQueued(27) and not Download.isQueued(28), "queued/active books are known (list shows 'queued')")
+do -- other requests first: the download waits while they run
+    local job = Download.active
+    local function state(pid)
+        local fh = io.open("/proc/" .. pid .. "/stat", "rb")
+        if not fh then return nil end
+        local letter = fh:read("*a"):match("%) (%a)")
+        fh:close()
+        return letter
+    end
+    Download.yield()
+    runLoop(function() return state(job.pid) == "T" end, 2)
+    check(job and job.paused_at and state(job.pid) == "T", "a request asks Grimmory: the download's process is paused")
+    local was_stall = Download.STALL_SECONDS
+    Download.STALL_SECONDS = 1
+    runLoop(function() return false end, 1.2) -- (what had arrived before the pause, counted)
+    local size0 = job.last_size
+    runLoop(function() return false end, 1.5)
+    check(Download.active == job and not job.finished and job.last_size == size0,
+        "paused: nothing arrives, and it isn't taken for a stalled download")
+    Download.unyield()
+    Download.STALL_SECONDS = was_stall
+    check(job.paused_at == nil and state(job.pid) ~= "T" and job.yields == 1 and job.yielded_s >= 2, "the requests done: it carries on")
+    -- at most YIELD_MAX at a time, then not again until the requests are done
+    local was_max = Download.YIELD_MAX
+    Download.YIELD_MAX = 1
+    Download.yield()
+    runLoop(function() return job.paused_at == nil end, 5)
+    Download.yield()
+    check(job.paused_at == nil and job.yielded_enough and state(job.pid) ~= "T", "waited YIELD_MAX: carries on, and isn't paused again meanwhile")
+    Download.unyield()
+    Download.YIELD_MAX = was_max
+    -- gzreader_async: a request batch makes it wait, and it goes on after
+    local A = require("gzreader_async")
+    local was_y, was_u, calls = Download.yield, Download.unyield, {}
+    Download.yield = function() calls[#calls + 1] = "wait" end
+    Download.unyield = function() calls[#calls + 1] = "go on" end
+    local saved_sync, res = A.sync, nil
+    A.sync = false
+    A.run(nil, function() return "details" end, function(r) res = r end, "getBookDetail")
+    runLoop(function() return res ~= nil and #calls >= 2 end, 10)
+    A.run(nil, function() return 1 end, function() end, "pre-size covers", { nice = true })
+    runLoop(function() return not A.busy end, 10)
+    A.sync = saved_sync
+    Download.yield, Download.unyield = was_y, was_u
+    check(res == "details" and calls[1] == "wait" and calls[2] == "go on" and #calls == 3,
+        "a background request: the download waits, then goes on; long work (opts.nice) doesn't make it wait (" .. table.concat(calls, ", ") .. ")")
+end
 do
     local Tasks = require("gzreader_tasks")
     plugin:downloadAndOpen({ id = 29, title = "Third", primaryFileName = "third.epub", primaryFileType = "EPUB", fileSizeKb = 2048 }, nil)
@@ -991,6 +1657,41 @@ do
     local hm = require("gzreader_homemenu").items(plugin)
     check(hm[1].text_func():match("^Downloads %(2%)"), "GZreader menu starts with Downloads (2) while downloading")
     Tasks.show()
+    -- the screen kept current: only the lines that changed, on the page shown
+    local function rect(x, y, w, h)
+        local r = { x = x, y = y, w = w, h = h }
+        function r.copy(a) return rect(a.x, a.y, a.w, a.h) end
+        function r.combine(p, q)
+            local x0, y0 = math.min(p.x, q.x), math.min(p.y, q.y)
+            return rect(x0, y0, math.max(p.x + p.w, q.x + q.w) - x0, math.max(p.y + p.h, q.y + q.h) - y0)
+        end
+        return r
+    end
+    local UIM = require("ui/uimanager")
+    local was_dirty, dirty = UIM.setDirty, {}
+    UIM.setDirty = function(_um, w, how) dirty[#dirty + 1] = { w = w, how = how } end
+    local m = { page = 2, perpage = 2, item_group = { { dimen = rect(0, 100, 600, 60) }, { dimen = rect(0, 160, 600, 60) } } }
+    m.item_table = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "5%" }, { text = "d" } }
+    function m.switchItemTable(self, _t, new_list, keep)
+        self.item_table, self.keep = new_list, keep
+        UIM:setDirty(self, function() return "ui", rect(0, 0, 600, 800) end)
+    end
+    local same = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "5%" }, { text = "d" } }
+    check(Tasks.update(m, same) == "same" and #dirty == 0, "Downloads screen: nothing changed, nothing redrawn")
+    local moved = { { text = "a", mandatory = "1%" }, { text = "b" }, { text = "c", mandatory = "9%" }, { text = "d" } }
+    local how, rows = Tasks.update(m, moved)
+    local kind, area
+    if dirty[1] then kind, area = dirty[1].how() end
+    check(how == "rows" and rows[1] == 1 and #rows == 1 and m.keep == -1 and kind == "ui" and area.y == 100 and area.h == 60,
+        "a percentage changed: only its line refreshed, on the same page (" .. tostring(area and area.y) .. "+" .. tostring(area and area.h) .. ")")
+    dirty = {}
+    check(Tasks.update(m, { { text = "a", mandatory = "2%" }, { text = "b" }, { text = "c", mandatory = "9%" }, { text = "d" } }) == "offpage"
+        and #dirty == 0 and m.item_table[1].mandatory == "2%", "a change on another page: kept for when it's shown, nothing redrawn")
+    local all = Tasks.update(m, { { text = "a" } })
+    local full = select(2, (dirty[1] or { how = function() end }).how())
+    check(all == "all" and full and full.h == 800,
+        "the list itself changed (a download done): all of it redrawn")
+    UIM.setDirty = was_dirty
 end
 ctl("/set?dl_slow=false")
 runLoop(function() return plugin.store.downloads["27"] ~= nil end, 40)
@@ -999,6 +1700,160 @@ check(plugin.store.downloads["27"] ~= nil and Download.active == nil and #Downlo
 check(captured.info and captured.info:match("Downloaded “Second”. The download queue is done."), "queued completion: short notice, no Open prompt per book")
 check(require("gzreader_tasks").status() == nil and require("gzreader_tasks").count() == 0, "title bar item empty again when done")
 ctl("/set?dl_big=false")
+
+print("New books laid out in the background while charging")
+;(function()
+    local L = require("gzreader_layout")
+    local lfs = require("lfs")
+    local dir = WORK .. "/layout"
+    os.execute("mkdir -p '" .. dir .. "'")
+    local function mk(name) local h = io.open(dir .. "/" .. name, "wb"); h:write("x"); h:close(); return dir .. "/" .. name end
+    local fake = { store = { downloads = {
+        ["1"] = { path = mk("old.epub") }, ["2"] = { path = mk("new.epub") }, ["3"] = { path = mk("read.epub") },
+        ["4"] = { path = mk("scan.pdf") }, ["5"] = { path = dir .. "/gone.epub" }, ["6"] = { path = mk("done.epub"), laid_out = 1 },
+        ["7"] = { path = mk("failed.epub"), layout_tries = 2 } } }, saves = 0 }
+    function fake:saveSoon() self.saves = self.saves + 1 end
+    lfs.touch(dir .. "/old.epub", os.time() - 100, os.time() - 100)
+    local charge, reader, forks, busy = true, false, {}, nil
+    local saved = { L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy }
+    L.isBusy = function() return busy end
+    L.isCharging = function() return charge end
+    L.readerOpen = function() return reader end
+    local sidecars = {}
+    L.sidecar = function(bp)
+        if bp:find("read.epub", 1, true) then return { last_xpointer = "/body/DocFragment[3]" } end
+        return sidecars[bp:match("[^/]+$")]
+    end
+    L.memTotalKB = function() return 252364 end
+    L.fork = function(bpath)
+        local fk = { path = bpath, line = nil, stopped = false }
+        forks[#forks + 1] = fk
+        return { poll = function() return fk.line end, stop = function() fk.stopped = true end }
+    end
+    local LUI = require("ui/uimanager")
+    local real_in = LUI.scheduleIn
+    local timers = {}
+    LUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+    local c = L.candidate(fake)
+    check(c and c.id == "2", "the next book: the newest never opened (not a PDF, a gone file, one opened, laid out or failed twice)")
+    -- picture books: the settings the check writes before the first open
+    sidecars["new.epub"] = { gzreader_picture_book = true }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == "a picture book fitted when it opens" and c and c.id == "1",
+        "a picture book recognized but not fitted yet: not laid out (its first open fits it and lays it out again)")
+    sidecars["new.epub"] = { gzreader_picture_book = true, gzreader_pb_fit = { top = 40, bottom = 30 } }
+    c = L.candidate(fake)
+    check(L.notYet(dir .. "/new.epub") == nil and c and c.id == "2",
+        "a picture book fitted before its first open: laid out, with the margins and style it was given")
+    sidecars["new.epub"] = { gzreader_picture_book = false }
+    c = L.candidate(fake)
+    check(c and c.id == "2", "checked and not a picture book: the settings file the check wrote doesn't count as opened")
+    check(L.notYet(dir .. "/read.epub") == "opened", "a reading position next to it: opened")
+    sidecars["new.epub"] = nil
+    -- the real Layout.busy: a book waiting for its picture-book check comes first
+    local was_busy, PBq = L.isBusy, package.loaded["gzreader_picturebook"]
+    L.isBusy = nil
+    package.loaded["gzreader_picturebook"] = { queue = { dir .. "/new.epub" } }
+    local why_pb = L.busy()
+    package.loaded["gzreader_picturebook"].queue = {}
+    local why_none = L.busy()
+    package.loaded["gzreader_picturebook"], L.isBusy = PBq, was_busy
+    check(why_pb == "a picture-book check" and why_none == nil,
+        "a picture-book check waiting: no layout until it's done (" .. tostring(why_pb) .. ", " .. tostring(why_none) .. ")")
+    L.memTotalKB = function() return 124532 end
+    check(not L.possible() and L.tick(fake) == nil and #forks == 0, "a DX (128 MB): never")
+    L.memTotalKB = function() return 252364 end
+    charge = false
+    check(L.tick(fake) == nil and #forks == 0, "not charging: nothing")
+    charge, reader = true, true
+    check(L.tick(fake) == nil and #forks == 0, "a book open: nothing")
+    reader = false
+    G_reader_settings:saveSetting(L.SETTING, false)
+    check(L.tick(fake) == nil and #forks == 0, "turned off in Settings: nothing")
+    G_reader_settings:delSetting(L.SETTING)
+    local job = L.tick(fake)
+    check(job and #forks == 1 and forks[1].path == dir .. "/new.epub" and L.running == job, "charging on Home: the book laid out in a background process")
+    check(L.tick(fake) == nil and #forks == 1, "…one at a time")
+    forks[1].line = "ok 312 41"
+    timers[#timers].fn()
+    check(not L.running and fake.store.downloads["2"].laid_out and fake.saves == 1, "done: remembered (not again)")
+    job = L.tick(fake)
+    check(job and forks[2].path == dir .. "/old.epub", "then the next one")
+    charge = false
+    timers[#timers].fn()
+    check(forks[2].stopped and not L.running and not fake.store.downloads["1"].laid_out and (fake.store.downloads["1"].layout_tries or 0) == 0,
+        "unplugged: stopped at once (tried again another time)")
+    charge = true
+    L.tick(fake)
+    reader = true
+    timers[#timers].fn()
+    check(forks[3].stopped and not L.running, "a book opened: stopped at once")
+    reader = false
+    L.tick(fake)
+    forks[4].line = ""
+    timers[#timers].fn()
+    L.tick(fake)
+    forks[5].line = "err not a book the engine lays out"
+    timers[#timers].fn()
+    check(fake.store.downloads["1"].layout_tries == 2 and L.candidate(fake) == nil, "failed twice (the process died, an error): not tried again")
+    -- downloads first: not while one runs or waits, and stopped when one starts
+    fake.store.downloads["8"] = { path = mk("later.epub") }
+    busy = "a download"
+    check(L.tick(fake) == nil and #forks == 5, "a book downloading (or waiting to): no layout meanwhile")
+    busy = nil
+    L.tick(fake)
+    busy = "a download"
+    timers[#timers].fn()
+    check(forks[6].stopped and not L.running and (fake.store.downloads["8"].layout_tries or 0) == 0,
+        "a download started: the layout stopped at once (tried again later)")
+    busy = "other background work"
+    check(L.tick(fake) == nil and #forks == 6, "other background work running (a picture-book check, covers): no layout either")
+    busy = nil
+    -- the layout it made, and whether the reader used it
+    L.tick(fake)
+    forks[7].line = "ok 120 9"
+    local CD_was, inits = package.loaded["document/credocument"], 0
+    package.loaded["document/credocument"] = { cacheInit = function() inits = inits + 1 end }
+    timers[#timers].fn()
+    local e8 = fake.store.downloads["8"]
+    check(e8.laid_out and e8.layout_secs == 9, "done: how long the layout took kept")
+    check(inits == 1, "done: the book engine reads its layout cache index again (else a book laid out after another was opened isn't found)")
+    reader = true
+    check(not L.reloadCacheIndex() and inits == 1, "…not under an open book")
+    reader = false
+    package.loaded["document/credocument"] = { cacheInit = function() error("crengine not started") end }
+    check(L.reloadCacheIndex() == false, "…nothing before the first book opened (crengine not started yet)")
+    package.loaded["document/credocument"] = CD_was
+    local LogL = require("gzreader_log")
+    local was_info, said = LogL.info, {}
+    LogL.info = function(...) said[#said + 1] = table.concat({ ... }, " ") end
+    L.opened(nil, e8, 8, 0.2)
+    L.opened(nil, e8, 8, 30) -- (once per book)
+    L.opened(nil, { laid_out = 1, layout_secs = 40 }, 9, 12.5)
+    local OT_was = package.loaded["gzreader_opentiming"]
+    package.loaded["gzreader_opentiming"] = { cur = { phases = { ["laid out"] = require("ui/time").s(0.3) } } }
+    L.opened(nil, { laid_out = 1 }, 10)
+    package.loaded["gzreader_opentiming"] = { cur = nil }
+    L.opened(nil, { laid_out = 1 }, 11)
+    package.loaded["gzreader_opentiming"] = OT_was
+    LogL.info = was_info
+    check(#said == 4 and said[1]:find("its layout used: laid out in 0.2 s (in the background: 9 s)", 1, true)
+        and said[2]:find("laid out again, 12.5 s (in the background: 40 s)", 1, true)
+        and said[3]:find("its layout used: laid out in 0.3 s", 1, true)
+        and said[4]:find("the reader's layout time not known", 1, true),
+        "opened: the log says whether the reader used the background layout, from the time its own layout took ("
+            .. table.concat(said, " / ") .. ")")
+    local src = io.open(PLUGIN .. "/gzreader_layout.lua", "rb")
+    local ltext = src and src:read("*a") or ""
+    if src then src:close() end
+    check(ltext:find('require("readhistory").addItem = function() end', 1, true) and ltext:find('require("docsettings").flush = function() end', 1, true)
+        and ltext:find("oom_score_adj", 1, true) and ltext:find("lowerPriority(19)", 1, true),
+        "the background process: no history or book settings written, lowest priority, the first to go if memory runs out")
+    LUI.scheduleIn = real_in
+    L.isCharging, L.readerOpen, L.sidecar, L.memTotalKB, L.fork, L.isBusy = saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
+    L.running = nil
+    os.execute("rm -rf '" .. dir .. "'")
+end)()
 
 print("Diagnostic log")
 local logf = io.open(WORK .. "/gzreader.log", "rb"); local logtxt = logf and logf:read("*a") or ""; if logf then logf:close() end
@@ -1011,6 +1866,80 @@ check(logtxt:match("/pair/<token>") or not logtxt:match("/pair/%x%x%x%x"), "pair
 plugin:exportLog()
 check(captured.info and captured.info:match("gzreader%-log%-%d+%-%d+%.txt"), "Save diagnostic log -> file in the books folder")
 
+print("Diagnostic log: the device probe's unchanging part is kept between exports")
+;(function()
+    local Log = require("gzreader_log")
+    local saved_cmds, saved_live, saved_cache = Log.PROBE_COMMANDS, Log.PROBE_LIVE, Log.probe_cache
+    local counts = WORK .. "/probe-counts"
+    os.remove(counts)
+    local fixed = "echo s >> " .. counts .. "; echo fixed-answer"
+    local live = "echo l >> " .. counts .. "; echo live-answer"
+    Log.PROBE_COMMANDS, Log.PROBE_LIVE = { fixed, live }, { [live] = true }
+    Log.probe_cache = WORK .. "/probe-cache/gz-device-probe.lua"
+    os.remove(Log.probe_cache)
+    local function ran()
+        local fh = io.open(counts, "rb"); local txt = fh and fh:read("*a") or ""; if fh then fh:close() end
+        local _, s_runs = txt:gsub("s", ""); local _, l_runs = txt:gsub("l", "")
+        return s_runs, l_runs
+    end
+    local text1, how1 = Log.deviceProbe()
+    local text2, how2 = Log.deviceProbe()
+    local s_runs, l_runs = ran()
+    check(how1 == "run now" and how2:match("^kept from") and s_runs == 1 and l_runs == 2,
+        "the second export reuses the kept answers; the live commands run each time (" .. s_runs .. ", " .. l_runs .. ")")
+    check(text1:find("fixed-answer", 1, true) and text2:find("fixed-answer", 1, true) and text2:find("live-answer", 1, true)
+        and text2:find("kept from", 1, true) and not text1:find("kept from", 1, true), "the kept answers are in the log, marked as kept")
+    local Update = require("gzreader_update")
+    local was_version = Update.currentVersion
+    Update.currentVersion = function() return "9.9.9-beta.abc1234" end
+    local how_v = select(2, Log.deviceProbe())
+    Update.currentVersion = was_version
+    check(how_v:match("^kept from") and ran() == 1, "another GZreader version (a new test build): still kept")
+    local was_fw = Log.firmwareText
+    Log.firmwareText = function() return "Kindle 3.4.3 (2697260037)" end
+    local how3 = select(2, Log.deviceProbe())
+    Log.firmwareText = was_fw
+    check(how3 == "run now" and ran() == 2, "another firmware: the probe runs again")
+    Log.PROBE_COMMANDS = { fixed, live, "echo another" }
+    local how4 = select(2, Log.deviceProbe())
+    check(how4 == "run now" and ran() == 3, "the probe's commands changed: it runs again")
+    local fh = io.open(Log.probe_cache, "wb"); fh:write("return {{{"); fh:close()
+    local probe_ok, _text5, how5 = pcall(Log.deviceProbe)
+    check(probe_ok and _text5 and how5 == "run now", "a damaged kept file: the probe runs again, no error")
+    -- the export says how long it took and how the probe was made
+    local saved_probe = Log.probe_device
+    Log.probe_device = true
+    local dest = Log.exportTo(WORK, nil)
+    Log.probe_device = saved_probe
+    local lf = io.open(Log.path, "rb"); local logged = lf and lf:read("*a") or ""; if lf then lf:close() end
+    check(dest and logged:match("log built in [%d.]+ s %(device probe: kept from [^)]+%)\n$"), "the export logs how long it took")
+    if dest then os.remove(dest) end
+    Log.PROBE_COMMANDS, Log.PROBE_LIVE, Log.probe_cache = saved_cmds, saved_live, saved_cache
+end)()
+
+print("Diagnostic log files don't pile up")
+;(function()
+    local Log = require("gzreader_log")
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = WORK .. "/saved-logs"
+    lfs.mkdir(dir)
+    local function touch(name) local fh = io.open(dir .. "/" .. name, "wb"); fh:write("x"); fh:close() end
+    for _i, name in ipairs({ "gzreader-log-20261101-100000.txt", "gzreader-log-20261102-100000.txt", "gzreader-log-20261103-100000.txt",
+            "gzreader-log-20261104-100000.txt", "gzreader-log-19700101-000500.txt", "notes.txt" }) do touch(name) end
+    local removed = Log.pruneExports(dir, 3, dir .. "/gzreader-log-19700101-000500.txt")
+    local left = {}
+    for name in lfs.dir(dir) do if name:sub(1, 1) ~= "." then left[#left + 1] = name end end
+    table.sort(left)
+    check(removed == 2 and table.concat(left, " ") == "gzreader-log-19700101-000500.txt gzreader-log-20261103-100000.txt gzreader-log-20261104-100000.txt notes.txt",
+        "only the newest 3 saved logs stay; the one just written always does (a 1970 clock); other files untouched: " .. table.concat(left, " "))
+    check(Log.pruneExports(WORK .. "/no-such-dir") == 0, "no folder: nothing to do, no error")
+    local text, name = Log.exportText(dir, nil)
+    local after = 0
+    for fname in lfs.dir(dir) do if fname:match("^gzreader%-log%-") then after = after + 1 end end
+    check(text and text:find("Grimmory plugin log", 1, true) and name:match("^gzreader%-log%-%d+%-%d+%.txt$") and after == 3,
+        "the log as text for sending: its file is deleted again")
+end)()
+
 print("Grimmory folder is the home folder")
 local libdir = WORK .. "/home/GZreader"
 check(plugin.store.library_dir == libdir, "Grimmory folder created under the device's documents folder")
@@ -1021,6 +1950,29 @@ gsettings.home_dir = "/somewhere/else"                     -- an older build's "
 Grimmory:new{ ui = { menu = { registerToMainMenu = function() end }, active_widgets = {} } }
 check(gsettings.home_dir == libdir, "the home folder is always the GZreader folder: set back at the next start")
 gsettings.home_dir = libdir
+do -- Settings → Library → Folders has no Home folder menu (Set / Lock / Additional home folders)
+    local lf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings.lua", "rb")
+    local lsrc = lf and lf:read("*a") or ""
+    if lf then lf:close() end
+    check(lsrc:find("local folders_item = {", 1, true) and lsrc:find('text = _("Hide up folder")', 1, true),
+        "the Folders settings are still there (Hide up folder)")
+    check(not lsrc:find('_("Home folder")', 1, true) and not lsrc:find('_("Lock home folder")', 1, true)
+        and not lsrc:find('_("Additional home folders")', 1, true) and not lsrc:find("settings_home_folder", 1, true),
+        "Settings → Library → Folders: no Home folder menu, so the home folder can't be changed there")
+    local function koSource(rel)
+        local kf = io.open(KOROOT .. "/frontend/apps/filemanager/" .. rel, "rb")
+        local ksrc = kf and kf:read("*a") or ""
+        if kf then kf:close() end
+        return ksrc
+    end
+    local fmmenu, fm = koSource("filemanagermenu.lua"), koSource("filemanager.lua")
+    check(fmmenu:find('_("Show parent folder")', 1, true) and not fmmenu:find('_("Home folder settings")', 1, true)
+        and not fmmenu:find('_("Set home folder")', 1, true) and not fmmenu:find('_("Shorten home folder")', 1, true)
+        and not fmmenu:find('_("Lock home folder")', 1, true),
+        "KOReader's file manager menu: no Home folder settings (Set / Shorten / Lock home folder)")
+    check(fm:find('_("Go to HOME folder")', 1, true) and not fm:find('_("Set as HOME folder")', 1, true),
+        "KOReader's file manager: no Set as HOME folder button (folder hold, + menu); Go to HOME folder stays")
+end
 check(not (captured.info or ""):match("/Grimmory/grimmory%-log"), "exported log saved next to the folder, not inside it (no stray 'book')")
 
 print("Update wiped the settings (books stay in the folder)")
@@ -1036,6 +1988,89 @@ check(plugin:localPathFor(7) == nil, "a book with no record isn't linked yet")
 local linked = plugin:relinkLibrary(Index.load(plugin.store))
 check(linked == 1 and plugin:localPathFor(7) == libdir .. "/book7.epub" and plugin.store.downloads["7"].file_id == 1007,
     "relinked to its Grimmory book by file name (with file id for sync)")
+
+print("Saving: a small change doesn't rewrite the whole state")
+do
+    local real_fp = Grimmory.fingerprint
+    local dumpf = require("dump")
+    -- (rapidjson isn't here: the same parts, through KOReader's dump)
+    Grimmory.fingerprint = function(store)
+        local part = {}
+        for _i, k in ipairs(Grimmory.BIG_KEYS) do part[k] = store[k] end
+        for _i, k in ipairs(Grimmory.FULL_KEYS) do part[k] = store[k] end
+        return dumpf(part, nil, true)
+    end
+    -- (LuaSettings is a stand-in here: what each file would hold, at each flush)
+    local LS = require("luasettings")
+    local files = { main = plugin.settings, recent = LS:open(Grimmory.recentPath()) }
+    local writes, last, orig = { main = 0, recent = 0 }, {}, {}
+    for name, obj in pairs(files) do
+        orig[name] = obj.flush
+        obj.flush = function(o) writes[name] = writes[name] + 1; last[name] = dumpf(o.data, nil, true); return orig[name](o) end
+    end
+    local function fileState(name) return load("return " .. last[name])().state end
+    local function counts() return writes.main, writes.recent end
+    local pend = plugin.store.pending.progress
+    plugin:saveFull()
+    local m0, r0 = counts()
+    check(m0 == 1 and r0 == 0 and fileState("main").downloads["3"] and not Grimmory.recent_written,
+        "a full save: gzreader.lua, with the downloads; no recent part")
+    pend["999"] = { gz_note = "small change" }
+    plugin:save()
+    local m1, r1 = counts()
+    check(m1 == 1 and r1 == 1 and last.recent:find("small change", 1, true) and not last.recent:find("book3.epub", 1, true),
+        "a queued position: only gzreader_recent.lua, without the download list")
+    local fresh = fileState("main")
+    check(fresh.pending.progress["999"] == nil and fresh.downloads["3"], "gzreader.lua alone is complete, a little older (what an older GZreader reads)")
+    check(Grimmory.applyRecent(fresh) and fresh.pending.progress["999"] and fresh.downloads["3"] and fresh.save_seq == plugin.store.save_seq,
+        "at start: the recent part laid over it, downloads kept")
+    plugin.store.gz_test_key = "x"
+    plugin:saveFull()
+    plugin.store.gz_test_key = nil
+    plugin:save()
+    fresh = fileState("main")
+    check(fresh.gz_test_key == "x" and Grimmory.applyRecent(fresh) and fresh.gz_test_key == nil, "…and what was removed since stays removed")
+    local m2 = counts()
+    plugin.store.downloads["998"] = { path = WORK .. "/none.epub", file_id = 1 }
+    plugin:save()
+    check(counts() == m2 + 1 and fileState("main").downloads["998"] and not Grimmory.recent_written,
+        "a download: the whole file again, the recent part removed")
+    plugin:save()
+    check(Grimmory.recent_written, "(then small again)")
+    local tok = plugin.store.refresh_token
+    plugin.store.refresh_token = "rt-changed"
+    plugin:save()
+    check(not Grimmory.recent_written and fileState("main").refresh_token == "rt-changed", "a new sign-in token: the whole file (an older GZreader stays signed in)")
+    plugin.store.refresh_token = tok
+    -- a recent part written before the last full save is never laid over
+    files.recent.data.seq = 1
+    files.recent.data.state = { server = "https://old.example.com" }
+    fresh = fileState("main")
+    check(not Grimmory.applyRecent(fresh) and fresh.server ~= "https://old.example.com", "an older recent part: ignored")
+    -- a while without a full save: one anyway
+    plugin:save()
+    Grimmory.full_at = os.time() - Grimmory.FULL_EVERY
+    pend["996"] = { gz_note = "an hour later" }
+    plugin:save()
+    check(last.main:find("an hour later", 1, true) and not Grimmory.recent_written, "every " .. Grimmory.FULL_EVERY .. " s: the whole file anyway")
+    local msf = io.open(PLUGIN .. "/main.lua", "rb")
+    local msrc = msf and msf:read("*a") or ""
+    if msf then msf:close() end
+    check(msrc:find("if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end", 1, true)
+        and msrc:find("if Grimmory.recent_written or Grimmory.save_soon then\n            Grimmory.full_due = true", 1, true), "sleep and exit: the whole file")
+    -- no rapidjson: every save is a full one, as before
+    Grimmory.fingerprint = real_fp
+    local m3, r3 = counts()
+    pend["995"] = { gz_note = "no rapidjson" }
+    plugin:save()
+    plugin:save()
+    local m4, r4 = counts()
+    check(m4 == m3 + 2 and r4 == r3, "without rapidjson: gzreader.lua every time, as before")
+    for _i, k in ipairs({ "999", "996", "995" }) do pend[k] = nil end
+    plugin.store.downloads["998"] = nil
+    plugin:saveFull()
+    for name, obj in pairs(files) do obj.flush = orig[name] end
+end
 
 print("Tab action reaches the plugin from ZenOS Home")
 local fmui = { menu = { registerToMainMenu = function() end }, active_widgets = {} }
@@ -1075,7 +2110,7 @@ do
     end
     local controls = labels(Panel.controls(hplug))
     NG.applies = ng_applies
-    check(controls:match("|Wi%-Fi|") and controls:match("|Restart|") and controls:match("|Sleep|") and controls:match("|Settings|")
+    check(controls:match("|Wi%-Fi on|") and controls:match("|Restart|") and controls:match("|Sleep|") and controls:match("|Settings|")
         and controls:match("|Exit to Kindle|") and not controls:match("Night mode"),
         "panel controls: Wi-Fi, Restart, Sleep, Settings, Exit; no night mode on a Kindle 3… " .. controls)
     local saved_ld = hplug.store.logging_disabled
@@ -1096,6 +2131,128 @@ do
     end
     check(#opened == 1 and opened[1].z == "ZEN" and opened[1].o == nil, "Settings tile -> Settings page")
     package.loaded["modules/settings/zen_settings_page"] = nil; package.loaded["apps/filemanager/filemanager"] = nil
+    -- Settings → Interface → Quick panel: tiles shown or hidden, by group
+    Panel.showAll()
+    Panel.setShown("controls", "rotate", false)
+    Panel.setShown("home", "sort", false)
+    Panel.setShown("home", "send", false)
+    for _i, id in ipairs({ "home", "settings", "exit" }) do Panel.setShown("controls", id, false) end
+    local c2, h2 = labels(Panel.controls(hplug)), labels(Panel.homeTiles(hplug, nil))
+    check(not c2:match("|Rotate|") and c2:match("|Restart|") and not h2:match("|Sort|") and not h2:match("|Send books|") and h2:match("|Continue|"),
+        "hidden tiles aren't on the panel; the others are… " .. c2 .. " " .. h2)
+    check(c2:match("|Home|") and c2:match("|Settings|") and c2:match("|Exit to Kindle|") and Panel.isShown("controls", "settings"),
+        "Home, Settings and Exit to Kindle can't be hidden")
+    local hidden = G_reader_settings:readSetting("gzreader_panel_hidden") or {}
+    check(hidden["controls:rotate"] and hidden["home:sort"] and not hidden["controls:settings"] and not hidden["controls:home"],
+        "kept as group:tile, only the hideable ones")
+    check(Panel.isShown("book", "music") and not Panel.isShown("home", "sort"), "Music in a book is its own tick (Home's Music is separate)")
+    local fakeui = { handleEvent = function() end, view = {}, document = { info = { has_pages = true } } }
+    Panel.setShown("book", "gotopage", false)
+    check(not labels(Panel.bookTiles(hplug, fakeui)):match("Go to page") and labels(Panel.bookTiles(hplug, fakeui)):match("|Contents|"),
+        "a book's tiles hidden too")
+    -- Layout opens KOReader's bottom menu with force: ZenOS's Zen mode blocks a
+    -- plain ShowConfigMenu on touch Kindles (the tile did nothing on a Paperwhite)
+    local forced, sent = nil, {}
+    local layoutui = { handleEvent = function(_s, ev) sent[#sent + 1] = ev.handler end, view = {},
+        document = { info = { has_pages = true } },
+        config = { onShowConfigMenu = function(_s, force) forced = force; return true end } }
+    for _i, t in ipairs(Panel.bookTiles(hplug, layoutui)) do
+        if t.id == "layout" then t.run() end
+    end
+    check(forced == true and #sent == 0, "Layout tile: the layout menu opened with force (Zen mode on a touch Kindle doesn't block it)")
+    -- Music and Audiobook: only while one plays (or is paused), in both groups; they open its player
+    do
+        local saved_audio = require("gzreader_touch").audio
+        require("gzreader_touch").audio = function() return true end
+        local M, AB = require("gzreader_music"), require("gzreader_audiobook")
+        local saved_m, saved_ab, saved_open, saved_np = M.current, AB.current, AB.open, require("gzreader_musictab").nowPlaying
+        M.current, AB.current = nil, nil
+        local h0, b0 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(not h0:match("Music") and not h0:match("Audiobook") and not b0:match("Music") and not b0:match("Audiobook"),
+            "nothing playing: no Music or Audiobook tile (music and audiobooks are in the Catalog) " .. h0)
+        local opened_p = {}
+        require("gzreader_musictab").nowPlaying = function() opened_p[#opened_p + 1] = "cd" end
+        AB.open = function(_p, book) opened_p[#opened_p + 1] = "ab" .. tostring(book.id) end
+        M.current = { playing = true }
+        AB.current = { book = { id = 7 }, playing = false }
+        local h1, b1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(h1:match("|Music ▶|") and h1:match("|Audiobook|") and b1:match("|Music ▶|") and b1:match("|Audiobook|"),
+            "music playing, an audiobook paused: both tiles, at Home and in a book " .. h1 .. " " .. b1)
+        for _i, t in ipairs(Panel.homeTiles(hplug, nil)) do if t.id == "music" or t.id == "audiobook" then t.run() end end
+        check(table.concat(opened_p, ",") == "cd,ab7", "…each opens its player " .. table.concat(opened_p, ","))
+        M.current, AB.current, AB.open = saved_m, saved_ab, saved_open
+        require("gzreader_musictab").nowPlaying = saved_np
+        require("gzreader_touch").audio = saved_audio
+    end
+    local item = Panel.settingsItem()
+    local subs = {}
+    for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
+    check(item.text == "Quick panel" and table.concat(subs, "|") == "Controls|Home|This book|Show every tile",
+        "the settings: Quick panel → Controls, Home, This book, Show every tile… " .. table.concat(subs, "|"))
+    local function row(group_i, label)
+        for _i, r in ipairs(item.sub_item_table[group_i].sub_item_table) do
+            if r.text == label or r.text:match("^" .. label:gsub("%-", "%%-") .. " %(") then return r end
+        end
+    end
+    local exit_row, rot_row, diag_row = row(1, "Exit to Kindle"), row(1, "Rotate"), row(1, "Diagnostics")
+    check(exit_row and exit_row.enabled_func() == false and exit_row.checked_func() and rot_row and rot_row.enabled_func() and not rot_row.checked_func()
+        and diag_row and diag_row.text:match("while logging is on"),
+        "fixed tiles ticked and greyed out; the others tick; a tile that only sometimes shows says when")
+    rot_row.callback()
+    check(Panel.isShown("controls", "rotate") and labels(Panel.controls(hplug)):match("|Rotate|"), "ticking a tile puts it back")
+    exit_row.callback()
+    check(Panel.isShown("controls", "exit"), "…and a fixed one stays")
+    local NetM = require("gzreader_net"); local was_usb = NetM.usb
+    NetM.usb = true
+    local usb_item = Panel.settingsItem()
+    local usb_rows = {}
+    for _i, r in ipairs(usb_item.sub_item_table[1].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
+    for _i, r in ipairs(usb_item.sub_item_table[2].sub_item_table) do usb_rows[#usb_rows + 1] = r.text end
+    usb_rows = "|" .. table.concat(usb_rows, "|") .. "|"
+    NetM.usb = was_usb
+    check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
+        "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
+    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks" }) do Panel.setShown("home", id, false) end
+    check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")
+    item.sub_item_table[4].callback()
+    check(G_reader_settings:readSetting("gzreader_panel_hidden") == nil and labels(Panel.homeTiles(hplug, nil)):match("|Sort|"),
+        "Show every tile: all back")
+    -- in ZenOS's Settings → Interface: Quick panel in place of Controls and Launcher, no Zen mode toggle
+    local zroot = debug.getinfo(Panel.controls, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_panel%.lua$", "zenos.koplugin/")
+    local function src(rel)
+        local zf = io.open(zroot .. rel, "rb")
+        local s = zf and zf:read("*a") or ""
+        if zf then zf:close() end
+        return s
+    end
+    local iface = src("modules/settings/sections/interface_settings.lua")
+    check(iface:find("GzPanel.settingsItem()", 1, true) and not iface:find("sections/menu_settings", 1, true)
+        and not iface:find("app_launcher_item", 1, true) and not iface:find('text = _("Zen mode")', 1, true)
+        and iface:find('text = _("Blur menu background")', 1, true),
+        "Settings → Interface: Quick panel (no Controls, no Launcher), Blur menu background kept, no Zen mode toggle")
+    check(src("config/manager.lua"):find("if cfg.features.zen_mode ~= true then\n        cfg.features.zen_mode = true", 1, true),
+        "Zen mode turned back on at start if it was off")
+    local da = src("common/dispatch_action.lua")
+    local fn_src = da:match("(function M%.onToggleZenMode%(plugin%).-\nend\n)")
+    local zsaved, zapplied = 0, nil
+    local M = {}
+    local env = setmetatable({ M = M, save_config = function() zsaved = zsaved + 1 end, _ = function(s) return s end,
+        require = function(name)
+            if name == "modules/settings/zen_settings_apply" then return { apply_feature_toggle = function(_p, _k, v) zapplied = v end } end
+            if name == "ui/uimanager" then return { show = function() end } end
+            if name == "ui/widget/infomessage" then return { new = function() return {} end } end
+            return require(name)
+        end }, { __index = _G })
+    local chunk = fn_src and load(fn_src, "onToggleZenMode", "t", env)
+    if chunk then chunk() end
+    local zp = { config = { features = { zen_mode = true } } }
+    if M.onToggleZenMode then M.onToggleZenMode(zp) end
+    local stayed = zp.config.features.zen_mode == true and zsaved == 0
+    zp.config.features.zen_mode = false
+    if M.onToggleZenMode then M.onToggleZenMode(zp) end
+    check(M.onToggleZenMode and stayed and zp.config.features.zen_mode == true and zapplied == true and zsaved == 1,
+        "ZenOS's Toggle Zen Mode action (a gesture) keeps it on, and turns it on if it was off")
+    Panel.showAll()
     -- More: the full Home menu, still without KOReader settings or night mode
     NG.applies = function() return true end
     local items = HomeMenu.items(hplug)
@@ -1138,13 +2295,45 @@ do
         "staying awake: a holder that has ended is let go of, the others kept")
     Awake.release("other")
     check(cmds[#cmds]:match("preventScreenSaver 0"), "…and the Kindle may sleep again")
+    -- the wall clock set while something is held (a Nook's run-down clock): the time held still right
+    local mono, logged = 100, {}
+    local orig_now = Awake.now
+    Awake.now = function() return mono end
+    Awake.hold("phone", { what = "phone page" })
+    mono = 180
+    local Log = require("gzreader_log")
+    local orig_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    Awake.release("phone")
+    Log.info = orig_info
+    Awake.now = orig_now
+    check(logged[1] and logged[1]:match("after 80s$"), "staying awake: timed on a clock that doesn't jump (" .. tostring(logged[1]) .. ")")
+    check(type(Awake.now()) == "number", "…which is there")
     Awake.exec = exec
+end
+
+print("Book-open timing only while diagnostic logging is on")
+do
+    local Log = require("gzreader_log")
+    local OT = require("gzreader_opentiming")
+    local saved_enabled, saved_cur = Log.enabled, OT.cur
+    local opened = WORK .. "/timed-book.epub"
+    local tbf = io.open(opened, "wb"); tbf:write("x"); tbf:close()
+    Log.enabled = false
+    OT.cur = { file = "an earlier book" }
+    OT.start(opened)
+    check(OT.cur == nil, "logging off: a book opening isn't measured (no /proc reads, no timing)")
+    Log.enabled = true
+    OT.start(opened)
+    check(OT.cur and OT.cur.file == opened and OT.cur.size == 1 and OT.cur.t0, "logging on: the book opening is measured")
+    Log.enabled, OT.cur = saved_enabled, saved_cur
+    os.remove(opened)
 end
 
 print("Shelves")
 do
     local list = plugin.api:listShelves()
-    check(list and #list == 2 and list[1].name == "Kindle" and list[2].magic == true, "shelves and smart shelves listed")
+    check(list and #list == 4 and list[1].name == "Kindle" and list[4].magic == true, "shelves and smart shelves listed")
     local SS = require("gzreader_shelfsync")
     SS.set(plugin, list[1])
     ctl("/set?dl_slow=false&dl_big=false")
@@ -1175,13 +2364,31 @@ do
         and not g:match("Downloads") and not g:match("Browse library") and not g:match("updates")
         and not g:match("Diagnostic") and not g:match("Read aloud") and not g:match("Pre%-size")
         and not g:match("Wi%-Fi only"), "Grimmory section: connection and sync only " .. g)
+    check(g:match("|Sync highlights and notes|Keep connections open %(experimental%)|Rebuild library|Reconnect"),
+        "Grimmory section: Keep connections open after the sync switches, then Rebuild library " .. g)
+    do -- Rebuild library: the index from Grimmory again, the saved lists forgotten, Wi-Fi on first
+        local NetR = require("gzreader_net")
+        local IndexR, LCR = require("gzreader_index"), require("gzreader_listcache")
+        local was_run, was_build, was_clear = NetR.run, IndexR.build, LCR.clear
+        local why, cleared, built
+        NetR.run = function(fn, o) why = o and o.reason; fn() end
+        LCR.clear = function() cleared = true end
+        IndexR.build = function(_p, show, cb) built = show; cb({ total = 189 }) end
+        captured.info = nil
+        local rb
+        for _i, it in ipairs(plugin:menuItems()) do if it.text == "Rebuild library" then rb = it end end
+        rb.callback()
+        check(why == "rebuilding the library" and cleared and built == true and captured.info == "Library rebuilt: 189 books.",
+            "Rebuild library: Wi-Fi on, saved lists forgotten, the library list built again (" .. tostring(captured.info) .. ")")
+        NetR.run, IndexR.build, LCR.clear = was_run, was_build, was_clear
+    end
     local gen = plugin:sectionItems("general")
-    check(gen.wifi and gen.wifi.text == "Wi-Fi only when needed", "General: Wi-Fi only when needed")
+    check(gen.wifi and gen.wifi.text == "Wi-Fi" and #gen.wifi.sub_item_table == 3, "General: Wi-Fi (On, Off, Auto)")
     local d = texts(gen.diagnostics)
-    check(d:match("|Diagnostic logging|Remote debugging|Usage statistics|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
-        "General: logging, remote debugging, usage statistics, send and save the log " .. d)
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Reader: Read aloud, Test audiobook playback, the headphones")
+    check(d:match("|Diagnostic logging|Send debug reports automatically|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|"),
+        "General: logging, automatic debug reports, send (to the developer or a browser) and save the log (no usage statistics) " .. d)
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Reader: Read aloud, Test audiobook playback, the headphones, laying out new books while charging")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Interface: Pre-size covers (the Menu key always opens GZreader's menu)")
     local test = plugin:sectionItems("reader")[2]
     check(test.keep_menu_open == true, "Test audiobook playback stays over Settings")
@@ -1207,8 +2414,9 @@ do
     check(texts(plugin:sectionItems("reader")) == "||", "Paperwhite: no Read aloud or audiobook test in Settings")
     check(texts(plugin:sectionItems("interface")) == "|Pre-size covers|", "Paperwhite: no Menu key setting")
     local Browser = require("gzreader_browser")
-    local root = texts(Browser.rootItems({}))
-    check(root:match("|Downloaded books|$") and not root:match("Audiobooks"), "Paperwhite: no Audiobooks in the Grimmory tab " .. root)
+    local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
+    check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
+        "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }
     local saved_model = package.loaded["modules/menu/app_launcher/model"]
@@ -1253,8 +2461,8 @@ do
     Device.model = "KindleTouch"
     Device.hasKeys = function() return true end -- (its Home button)
     check(Touch.on() and Touch.audio() and Touch.tts() and not Touch.dpad(), "Kindle Touch: touch, audiobooks, read aloud")
-    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-        "Kindle Touch: Read aloud, the audiobook test, the headphones")
+    check(texts(plugin:sectionItems("reader")) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|Lay out new books while charging|",
+        "Kindle Touch: Read aloud, the audiobook test, the headphones, laying out new books")
     check(texts(Browser.rootItems({})):match("|Audiobooks|$"), "Kindle Touch: Audiobooks in the Grimmory tab")
     -- the Kindle 4: the 5-way and Menu, no keyboard, no touch, no audio
     Device.model = "Kindle4"
@@ -1464,6 +2672,26 @@ do
     check(ctx_called, "Manage opens ZenOS's own book menu")
     check(type(prepend) == "table" and #prepend == 2 and prepend[1].text:match("Open$")
         and prepend[2].text:match("Delete from this Kindle$"), "…with Open and Delete added at the top")
+    local rows = { { { text = "Mark as read" } }, { { text = "Edit  >", _gz_manage_hide = true } },
+        { { text = "More  >" } }, { { text = "Book information" } } }
+    check(type(prepend.filter) == "function" and prepend.filter(rows) == rows and #rows == 3
+        and rows[1][1].text == "Mark as read" and rows[2][1].text == "More  >" and rows[3][1].text == "Book information",
+        "…and without ZenOS's Edit submenu (Delete is already there); the other rows stay, in order")
+    do
+        local zen = debug.getinfo(HM.manage, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_homemenu%.lua$",
+            "zenos.koplugin/modules/filebrowser/patches/")
+        local function read(name)
+            local fh = io.open(zen .. name, "rb")
+            local t = fh and fh:read("*a") or ""
+            if fh then fh:close() end
+            return t
+        end
+        local dialog_src, menu_src = read("context_menu_file_dialog.lua"), read("context_menu.lua")
+        local at = dialog_src:find("callback = showEditSubmenu,", 1, true)
+        check(at and dialog_src:sub(at, at + 160):find("_gz_manage_hide = true,", 1, true)
+            and menu_src:find("prepend.filter(options.buttons)", 1, true),
+            "ZenOS marks its Edit row and lets Manage filter the menu")
+    end
     captured.confirm = nil
     prepend[2].callback()
     check(captured.confirm and captured.confirm.text:match("Grimmory keeps the book"), "delete asks first (and says Grimmory keeps it)")
@@ -1477,6 +2705,54 @@ do
     os.remove(bookpath)
     HM.context = nil
     check(not HM.items(plugin)[1].text or not HM.items(plugin)[1].text:match("^Open “"), "nothing highlighted: no book section")
+end
+
+print("Holding a book in the Downloads tab: Manage, as on Home")
+do
+    local HM = require("gzreader_homemenu")
+    local bookpath = WORK .. "/home/GZreader/hold-me.epub"
+    local fh = io.open(bookpath, "wb"); fh:write("x"); fh:close()
+    local was_fm, was_showing = package.loaded["apps/filemanager/filemanager"], rawget(plugin, "downloadsTabShowing")
+    local own_hold, dialog_item, prepend_then
+    local FakeFM = { setupLayout = function(layout_fm)
+        layout_fm.file_chooser = {
+            onFileHold = function(_fc, item) own_hold = item end,
+            showFileDialog = function(_fc, item) dialog_item = item; prepend_then = rawget(_G, "__GZ_CONTEXT_PREPEND") end,
+        }
+    end }
+    package.loaded["apps/filemanager/filemanager"] = FakeFM
+    check(HM.hookHold() == true and HM.hookHold() == false, "hooked into the file manager's layout once")
+    local fmi = { gzreader = plugin }
+    FakeFM.setupLayout(fmi)
+    local fc = fmi.file_chooser
+    local showing = true
+    plugin.downloadsTabShowing = function() return showing end
+    local book = { path = bookpath, is_file = true, text = "hold-me.epub" }
+    check(fc:onFileHold(book) == true and own_hold == nil and dialog_item == book
+        and type(prepend_then) == "table" and prepend_then[2].text:match("Delete from this Kindle$")
+        and type(prepend_then.filter) == "function",
+        "a book in Downloads: Manage (Open and Delete at the top of ZenOS's menu for that book, without Edit)")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    dialog_item = nil
+    showing = false
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "another folder: ZenOS's own menu, as before")
+    own_hold = nil
+    showing = true
+    local folder = { path = WORK .. "/home/GZreader", is_file = false }
+    fc:onFileHold(folder)
+    check(own_hold == folder and dialog_item == nil, "a folder in Downloads: its own menu")
+    own_hold = nil
+    FakeFM.instance = { selected_files = { [bookpath] = true } }
+    fc:onFileHold(book)
+    check(own_hold == book and dialog_item == nil, "select mode: KOReader's own (the selection's menu)")
+    FakeFM.instance, own_hold = nil, nil
+    FakeFM.setupLayout(fmi) -- laid out again (a rotation): a new file list
+    check(fmi.file_chooser ~= fc and fmi.file_chooser:onFileHold(book) == true and dialog_item == book and own_hold == nil,
+        "laid out again (rotation): still Manage")
+    rawset(_G, "__GZ_CONTEXT_PREPEND", nil)
+    package.loaded["apps/filemanager/filemanager"], plugin.downloadsTabShowing = was_fm, was_showing
+    os.remove(bookpath)
 end
 
 print("Login refreshed in the background process")
@@ -1570,6 +2846,237 @@ do
     end
 end
 
+print("A book's page: the cover the list shows")
+do
+    if type(package.loaded["gzreader_bookpage"]) ~= "table" then package.loaded["gzreader_bookpage"] = nil end
+    local okbp, BP = pcall(require, "gzreader_bookpage")
+    check(okbp and BP.coverImage, "the book page loads " .. tostring(not okbp and BP or ""))
+    if okbp then
+        local Covers = require("gzreader_covers")
+        local orig_image = Covers.image
+        local asked
+        Covers.image = function(id, kind, w, h)
+            asked = { id = id, kind = kind, w = w, h = h }
+            return { copy = function() return "a copy of the list's cover" end }
+        end
+        os.remove(Covers.path(9071)); os.remove(Covers.dir() .. "/9071.none")
+        local none = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(none == nil and asked == nil, "no cover on the Kindle: none drawn (it's fetched)")
+        local f = io.open(Covers.path(9071), "wb"); f:write("jpeg"); f:close()
+        local img = BP.coverImage({ id = 9071, coverUpdatedOn = "2026-01-01" }, 96, 144)
+        check(img and img.image == "a copy of the list's cover" and img.image_disposable == true
+            and asked and asked.id == 9071 and asked.w == 96 and asked.h == 144,
+            "the Grimmory tab's cached cover is the page's cover (a copy, sized for the page), whatever the old cache has")
+        os.remove(Covers.path(9071))
+        Covers.image = orig_image
+        -- Wi-Fi off (the list opens from what's on the Kindle): on first, for the page and for Download
+        local Net = require("gzreader_net")
+        local was_run, was_new, was_fetch, was_conn = Net.run, rawget(BP, "new"), BP.fetch, Net.connected
+        local why, fetched = {}, nil
+        Net.run = function(fn, o) why[#why + 1] = o and o.reason; fn() end
+        BP.new = function(_s, o) return o end
+        BP.fetch = function(pg) fetched = pg end
+        local shown = BP.show({ api = plugin.api }, { id = 5, title = "Book 05" })
+        check(why[1] == "a book's details" and fetched == shown, "a book's page turns Wi-Fi on before asking for its details and cover")
+        local Dl = require("gzreader_download")
+        local was_start, started = Dl.start, nil
+        Dl.start = function(_p, book) started = book end
+        Net.connected = function() return false end
+        plugin:downloadAndOpen({ id = 9072, title = "Offline", primaryFileName = "offline.epub", primaryFileType = "EPUB" }, nil)
+        check(why[2] == "downloading a book" and started and started.id == 9072, "Download with Wi-Fi off: on first, then the download starts")
+        why, started = {}, nil
+        Net.connected = function() return true end
+        plugin:downloadAndOpen({ id = 9073, title = "Online", primaryFileName = "online.epub", primaryFileType = "EPUB" }, nil)
+        check(#why == 0 and started and started.id == 9073, "Wi-Fi on: straight to the download")
+        Net.run, BP.fetch, Net.connected, Dl.start = was_run, was_fetch, was_conn, was_start
+        rawset(BP, "new", was_new)
+    end
+end
+
+print("The Grimmory tab's selection stays where it is (keys)")
+do
+    local F = require("gzreader_focus")
+    check(F.keyOf({ book = { id = 5 }, text = "x" }) == "book:5" and F.keyOf({ gz_id = "all", text = "All" }) == "id:all"
+        and F.keyOf({ gz_action = "search", text = "S" }) == "action:search" and F.keyOf({ text = "Libraries" }) == "text:Libraries"
+        and F.keyOf(nil) == nil, "what's selected is known by what it is: a book's id, a card, a row's text")
+    -- a menu drawn three to a row, the page putting the selection on the first
+    -- thing (as the bookshop and the list views do)
+    local function books(ids)
+        local t = {}
+        for i, id in ipairs(ids) do t[i] = { book = { id = id }, text = "Book " .. id } end
+        return t
+    end
+    local function newMenu(items)
+        local m = { item_table = items, page = 1, drawn = 0 }
+        function m:moveFocusTo(x, y) self.selected = { x = x, y = y } end
+        function m:updateItems()
+            self.drawn = self.drawn + 1
+            self.layout = {}
+            for i, e in ipairs(self.item_table) do
+                local r = math.floor((i - 1) / 3) + 1
+                self.layout[r] = self.layout[r] or {}
+                table.insert(self.layout[r], { entry = e })
+            end
+            self.selected = { x = 1, y = 1 }
+        end
+        return m
+    end
+    local function on(m) local c = F.current(m); return c and c.key end
+    local m = newMenu(books({ 1, 2, 3, 4, 5, 6, 7 }))
+    F.apply(m, true)
+    m:updateItems()
+    check(on(m) == "book:1", "first drawn: where the page puts it")
+    m:updateItems()
+    check(on(m) == "book:1", "not moved: a redraw places it as the page always did")
+    m.selected = { x = 2, y = 2 } -- the 5-way, down to book 5
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 2,
+        "moved, then the page drawn again (covers in, the bookshop's lists in, a download): still on book 5")
+    m:updateItems()
+    check(on(m) == "book:5", "and at every redraw after that")
+    table.insert(m.item_table, 1, { book = { id = 99 }, text = "Book 99" })
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 3 and m.selected.y == 2, "a book added before it: still on book 5, where it is now")
+    -- Grimmory's fresh copy of the list replaces the saved one
+    local fresh = books({ 99, 5, 1, 2 })
+    local at = F.carry(m, fresh)
+    check(at == 2, "the fresh copy is shown from book 5's place " .. tostring(at))
+    m.item_table = fresh
+    m:updateItems()
+    check(on(m) == "book:5" and m.selected.x == 2 and m.selected.y == 1, "the fresh copy: still on book 5")
+    local gone = books({ 10, 11 })
+    check(F.carry(m, gone) == nil, "book 5 not in the fresh copy: shown from the start")
+    -- not moved since: the fresh copy as before (from the first)
+    local m2 = newMenu(books({ 1, 2, 3 }))
+    F.apply(m2, true)
+    m2:updateItems()
+    check(F.carry(m2, books({ 1, 2, 3 })) == nil and m2._gz_focus_want == nil, "not moved: the fresh copy as before")
+    -- another list opened: where it starts as before
+    local m3 = newMenu(books({ 1, 2, 3, 4 }))
+    F.apply(m3, true)
+    m3:updateItems()
+    m3.selected = { x = 3, y = 1 }
+    m3.item_table = books({ 7, 8 })
+    m3:updateItems()
+    check(on(m3) == "book:7", "another list: from its start")
+    local touch = newMenu(books({ 1, 2 }))
+    local before = touch.updateItems
+    F.apply(touch, false)
+    check(touch.updateItems == before and not touch._gz_focus, "touch Kindles: nothing selected, nothing changed")
+end
+
+print("A download shows in the Downloads tab when it's on screen")
+do
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    local UIM = require("ui/uimanager")
+    local was_stack = UIM._window_stack
+    local refreshed = 0
+    local fc = { path = WORK .. "/library/", refreshPath = function() refreshed = refreshed + 1 end }
+    local fm = { file_chooser = fc, covers_fullscreen = true }
+    package.loaded["apps/filemanager/filemanager"] = { instance = fm }
+    local p = { store = { library_dir = WORK .. "/library" } }
+    setmetatable(p, { __index = plugin })
+    UIM._window_stack = { { widget = fm }, { widget = { text = "Downloading…" } } }
+    check(p:refreshDownloadsTab() == true and refreshed == 1, "the Downloads tab on screen (a message over it): shown again with the book")
+    UIM._window_stack = { { widget = fm }, { widget = { name = "home", covers_fullscreen = true } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "Home over it: left alone")
+    UIM._window_stack = { { widget = fm }, { widget = { _gz_navbar_tab_id = "ct_grimmory" } } }
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "the Grimmory tab over it: left alone")
+    UIM._window_stack = { { widget = fm } }
+    fc.path = WORK .. "/elsewhere"
+    check(p:refreshDownloadsTab() == false and refreshed == 1, "another folder in the file manager: left alone")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    UIM._window_stack = was_stack
+end
+
+print("Kindle DX: four shelves in Downloads, two on Home")
+do
+    local Device = require("device")
+    local was_model, was_screen = Device.model, Device.screen
+    local Touch = require("gzreader_touch")
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    -- (a failed load earlier left a marker behind; its widgets stubbed while it loads)
+    if type(package.loaded["gzreader_shelfview"]) ~= "table" then package.loaded["gzreader_shelfview"] = nil end
+    local wm = { "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }
+    local kept = {}
+    for _i, m in ipairs(wm) do
+        kept[m] = package.loaded[m]
+        if type(kept[m]) ~= "table" then
+            package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end })
+        end
+    end
+    local okv, View = pcall(require, "gzreader_shelfview")
+    for _i, m in ipairs(wm) do package.loaded[m] = kept[m] end
+    local okg, GzView = pcall(require, "common/gz_view")
+    package.path = saved_path
+    check(okv and okg, "the shelf views load " .. tostring(not okv and View or not okg and GzView or ""))
+    local function as(model, w, h)
+        Device.model = model
+        Device.screen = { getWidth = function() return w end, getHeight = function() return h end }
+    end
+    as("Kindle2", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX: Downloads four shelves a page, Home two")
+    as("KindleDXG", 824, 1200)
+    check(Touch.dx() and okv and View.maxRows() == 4 and okg and GzView.homeShelves() == 2, "DX Graphite: the same")
+    as("Kindle2", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 2 (6\"): as before")
+    as("Kindle3", 600, 800)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 3: as before")
+    as("KindlePaperWhite3", 1072, 1448)
+    check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Paperwhite 3: as before")
+    Device.model, Device.screen = was_model, was_screen
+end
+
+print("Downloads in the bookshelf view: shelves filled by the spines' widths, letters Q to L")
+do
+    -- (a fresh copy of the view with a plain screen and a stand-in shelf module: widths from the path)
+    local Device = require("device")
+    local was_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end, scaleBySize = function(_s, v) return v end }
+    local SHELF = "modules/filebrowser/patches/home/widgets/shelf"
+    local saved = {}
+    for _i, m in ipairs({ "gzreader_shelfview", SHELF, "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }) do
+        saved[m] = package.loaded[m]
+    end
+    local narrow = {}
+    package.loaded[SHELF] = { MIN_SPINE = 44, MAX_SPINE = 58, BOARD_H = 14, UNDER_H = 6, PAGES = 6,
+        look = function(book) return { w = narrow[book.path] and 44 or 58, h = 100, shade = 0.5 } end }
+    for _i, m in ipairs({ "ui/widget/textwidget", "ui/gesturerange", "ui/widget/container/inputcontainer" }) do
+        if type(package.loaded[m]) ~= "table" then
+            package.loaded[m] = setmetatable({ extend = function(_s, o) return o or {} end }, { __index = function() return function() end end })
+        end
+    end
+    package.loaded["gzreader_shelfview"] = nil
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local okv, SV = pcall(require, "gzreader_shelfview")
+    package.path = saved_path
+    if okv then
+        local function books(count, narrow_ones)
+            local t = {}
+            for i = 1, count do
+                local p = "/books/" .. i .. ".epub"
+                t[i] = { is_file = true, path = p, text = i .. ".epub" }
+                narrow[p] = narrow_ones and true or nil
+            end
+            return t
+        end
+        local wide = SV.countPerPage(books(60, false), 3, 190, 600)
+        local thin = SV.countPerPage(books(60, true), 3, 190, 600)
+        check(thin > wide and wide >= 18, "narrow spines: more books on a page (" .. thin .. " against " .. wide .. " of the widest)")
+        local all = books(60, true)
+        local fits = true
+        for first = 0, #all - 1, thin do if not SV.pageFits(all, first, thin, 3, 190, 600) then fits = false end end
+        check(fits and not SV.pageFits(all, 0, thin + 4, 3, 190, 600), "every page's books fit on its shelves, and no more than that")
+        check(SV.KEYS == 19, "letters on the shelves: Q to L (19), not Del")
+    else
+        check(false, "the shelf view loads: " .. tostring(SV))
+    end
+    for m, v in pairs(saved) do package.loaded[m] = v end
+    Device.screen = was_screen
+end
+
 print("No duplicate reading sessions")
 do
     local before = #json.decode(ctl("/state")).sessions
@@ -1590,8 +3097,298 @@ do
     check(#json.decode(ctl("/state")).sessions == after + 1 and #plugin.store.pending.sessions == 0, "a new session is sent normally")
 end
 
+print("Keep-alive inside a background process (one connection for several requests)")
+;(function()
+    local Api = require("gzreader_api")
+    local KPORT = PORT + 70
+    os.execute("python3 -I keepalive_server.py " .. KPORT .. " >/dev/null 2>&1 & echo $! > '" .. WORK .. "/keepalive.pid'")
+    local sock = require("socket")
+    local kbase = "http://127.0.0.1:" .. KPORT
+    for _i = 1, 40 do
+        local c = sock.tcp(); c:settimeout(0.2)
+        if c:connect("127.0.0.1", KPORT) then c:close(); break end
+        c:close(); sock.sleep(0.1)
+    end
+    local function conn(kpath, method)
+        local kcode, kdata = Api.rawRequest(method or "GET", kbase .. kpath, method == "POST" and { body = { x = 1 } } or nil)
+        return kcode == 200 and type(kdata) == "table" and kdata.conn or nil
+    end
+    -- outside a background process: a connection per request, as before
+    local ka, kb = conn("/n"), conn("/n")
+    check(ka and kb and ka ~= kb, "the main process: a new connection for each request (" .. tostring(ka) .. ", " .. tostring(kb) .. ")")
+    Api.poolBegin()
+    local c1, c2, c3 = conn("/n"), conn("/n"), conn("/n")
+    check(c1 and c1 == c2 and c2 == c3 and Api.pool.made == 1 and Api.pool.reused == 2, "in a background process: three requests, one connection")
+    local kp1 = conn("/n", "POST")
+    local after_post = conn("/n")
+    check(kp1 and kp1 ~= c3 and after_post == kp1, "a POST takes a new connection (never sent twice), and leaves it for the next")
+    local cl = conn("/close")
+    local after_close = conn("/n")
+    check(cl == kp1 and after_close and after_close ~= cl, "\"Connection: close\": not kept")
+    local d = conn("/drop")
+    local after_drop = conn("/n")
+    check(d and after_drop and after_drop ~= d, "closed by the server without saying so: sent again on a new connection")
+    local idle_was = Api.pool.IDLE_MAX
+    Api.pool.IDLE_MAX = 0
+    local i1 = conn("/n")
+    sock.sleep(0.05)
+    local i2 = conn("/n")
+    check(i1 and i2 and i1 ~= i2, "idle too long: not used again (the server may have closed it)")
+    Api.pool.IDLE_MAX = idle_was
+    -- a fault in the keep-alive code itself: the request as before, and keep-alive off for the process
+    local Conn = Api._Conn
+    local orig = Conn.connect
+    Conn.connect = function() error("gzreader_api.lua:1: a fault for the test") end
+    local f1 = conn("/n")
+    Conn.connect = orig
+    local f2, f3 = conn("/n"), conn("/n")
+    check(f1 and Api.pool.broken and f2 ~= f3, "a fault in keep-alive itself: the request still goes, keep-alive off after that")
+    Api.pool.broken = false
+    local before_end = Api.pool.requests
+    Api.poolEnd()
+    local x, y = conn("/n"), conn("/n")
+    check(before_end >= 10 and not Api.pool.on and x ~= y and next(Api.pool.idle) == nil, "after the process's last request: closed, and off")
+    local src = io.open(PLUGIN .. "/gzreader_async.lua", "rb")
+    local at = src and src:read("*a") or ""
+    if src then src:close() end
+    local isrc = io.open(PLUGIN .. "/gzreader_index.lua", "rb")
+    local it = isrc and isrc:read("*a") or ""
+    if isrc then isrc:close() end
+    check(at:find("ApiMod.poolBegin()", 1, true) and at:find("ApiMod.poolEnd()", 1, true) and it:find("Api.poolBegin()", 1, true)
+        and it:find("Api.poolEnd()", 1, true), "background requests and the library index use it")
+    local pf = io.open(WORK .. "/keepalive.pid")
+    if pf then os.execute("kill " .. (pf:read("*l") or "") .. " 2>/dev/null"); pf:close(); os.remove(WORK .. "/keepalive.pid") end
+end)()
+
+print("The request helper (opt-in): connections kept between background processes")
+;(function()
+    local Api = require("gzreader_api")
+    local Helper = require("gzreader_reqhelper")
+    -- Settings → Connections → Grimmory → Keep connections open: off by default
+    local was_force = Helper.force
+    Helper.force = nil
+    check(not Helper.enabled() and not Helper.setting(), "the helper is off by default")
+    local item
+    for _i, it in ipairs(plugin:menuItems()) do if it.text == "Keep connections open (experimental)" then item = it end end
+    local started, was_start = 0, Helper.start
+    Helper.start = function() started = started + 1 end
+    item.callback()
+    check(Helper.enabled() and Helper.setting() and item.checked_func() and gsettings.gzreader_request_helper == true,
+        "Settings → Keep connections open: on (kept in KOReader's settings)")
+    item.callback()
+    check(not Helper.enabled() and not item.checked_func() and gsettings.gzreader_request_helper == nil, "and off again")
+    Helper.start = was_start
+    Helper.force = was_force
+    local hsock = require("socket")
+    local UP = PORT + 71
+    os.execute("python3 -I keepalive_server.py " .. UP .. " >/dev/null 2>&1 & echo $! > '" .. WORK .. "/keepalive2.pid'")
+    local hdir = WORK .. "/reqhelper"
+    os.execute("rm -rf '" .. hdir .. "'; mkdir -p '" .. hdir .. "'")
+    Helper.dir_override = hdir
+    local me = tonumber((io.open("/proc/self/stat"):read("*l") or ""):match("^(%d+)"))
+    local function q(x) return "'" .. tostring(x):gsub("'", "'\\''") .. "'" end
+    os.execute(string.format("LUA_PATH=%s LUA_CPATH=%s GZ_HELPER_NO_KOENV=1 luajit %s %s %d > %s 2>&1 & echo $! > %s",
+        q(package.path), q(package.cpath), q(PLUGIN .. "/gzreader_reqhelper.lua"), q(hdir), me, q(WORK .. "/reqhelper.log"), q(WORK .. "/reqhelper.pid")))
+    for _i = 1, 50 do
+        local c = hsock.tcp(); c:settimeout(0.2)
+        local up = c:connect("127.0.0.1", UP); c:close()
+        if up and Helper.endpoint() then break end
+        hsock.sleep(0.1)
+    end
+    local port = Helper.endpoint()
+    local lf = io.open(WORK .. "/reqhelper.log")
+    check(port ~= nil, "the helper started: listening on 127.0.0.1 " .. tostring(port) .. (port and "" or (" " .. (lf and lf:read("*a") or ""))))
+    if lf then lf:close() end
+    local base2 = "http://127.0.0.1:" .. UP
+    local function upconn(hpath, method)
+        local c, d = Api.rawRequest(method or "GET", base2 .. hpath, method == "POST" and { body = { y = 2 } } or nil)
+        return c == 200 and type(d) == "table" and d.conn or nil
+    end
+    if port then
+        Api.poolBegin() -- (a background process)
+        local u1, u2 = upconn("/n"), upconn("/n")
+        local glog = require("gzreader_log")
+        local lines_seen, was_info = {}, glog.info
+        glog.info = function(...) lines_seen[#lines_seen + 1] = table.concat({ ... }, " ") end
+        Api.poolEnd()
+        glog.info = was_info
+        check(lines_seen[1] == "http: 2 requests, 2 through the request helper, 0 connection(s) here",
+            "the log says the requests went through the helper (" .. tostring(lines_seen[1]) .. ")")
+        Api.poolBegin() -- (the next one, a moment later)
+        local u3 = upconn("/n")
+        local up = upconn("/n", "POST")
+        check(u1 and u1 == u2 and u2 == u3, "requests from two background processes: one connection to the server, kept by the helper")
+        check(up ~= nil, "a POST through it too")
+        local c4 = Api.rawRequest("GET", "http://127.0.0.1:" .. (PORT + 72) .. "/nothing")
+        check(type(c4) ~= "number", "the server unreachable: a network error, as without the helper (" .. tostring(c4) .. ")")
+        -- someone without the token
+        local s = hsock.tcp(); s:settimeout(2)
+        s:connect("127.0.0.1", port)
+        s:send("GET " .. base2 .. "/n HTTP/1.1\r\nHost: x\r\nX-Gz-Helper: wrong\r\n\r\n")
+        local line = s:receive("*l") or ""
+        s:close()
+        check(line:find(" 403 ", 1, true), "without its token: refused (" .. line .. ")")
+        Api.poolEnd()
+        -- stopped: requests go directly
+        local stop_lines, was_info2 = {}, require("gzreader_log").info
+        require("gzreader_log").info = function(...) stop_lines[#stop_lines + 1] = table.concat({ ... }, " ") end
+        Helper.stop()
+        require("gzreader_log").info = was_info2
+        check(stop_lines[1] == "request helper: stopped (Wi-Fi off)", "stopping it is logged")
+        for _i = 1, 30 do if not io.open(hdir .. "/stop") then break end hsock.sleep(0.1) end
+        Api.poolBegin()
+        check(Helper.endpoint() == nil and upconn("/n") ~= nil, "stopped: requests go directly again")
+        Api.poolEnd()
+    end
+    -- an endpoint that isn't there (the helper died): directly, and not tried again in that process
+    local ef = io.open(hdir .. "/endpoint", "wb"); ef:write(string.format("%d %s %d\n", PORT + 73, "abcd", me)); ef:close()
+    Api.poolBegin()
+    local direct = upconn("/n")
+    check(direct ~= nil and Helper.dead == true, "a helper that doesn't answer: the request goes directly (" .. tostring(direct) .. ")")
+    Api.poolEnd()
+    Helper.dead, Helper.dir_override = nil, nil
+    os.remove(hdir .. "/endpoint")
+    for _i, pf in ipairs({ WORK .. "/keepalive2.pid", WORK .. "/reqhelper.pid" }) do
+        local h = io.open(pf)
+        if h then os.execute("kill " .. (h:read("*l") or "") .. " 2>/dev/null"); h:close(); os.remove(pf) end
+    end
+end)()
+
+print("Bookshelf view: square cover corners")
+do
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local okg, GV = pcall(require, "common/gz_view")
+    package.path = saved_path
+    check(okg, "gz_view loads " .. tostring(not okg and GV or ""))
+    if okg then
+        local saves = 0
+        local function save() saves = saves + 1 end
+        local cfg = { features = { browser_cover_rounded_corners = true } }
+        check(GV.applyCorners(true, cfg, save) and cfg.features.browser_cover_rounded_corners == false
+            and cfg.features.gz_rounded_outside_shelf == true and saves == 1,
+            "Bookshelf view: rounded corners off, the other views' choice kept, saved")
+        check(not GV.applyCorners(true, cfg, save) and saves == 1, "again in the Bookshelf view: nothing to change, not saved")
+        check(GV.applyCorners(false, cfg, save) and cfg.features.browser_cover_rounded_corners == true
+            and cfg.features.gz_rounded_outside_shelf == nil and saves == 2,
+            "another view: rounded corners back on")
+        local off = { features = { browser_cover_rounded_corners = false } }
+        check(not GV.applyCorners(true, off, save) and off.features.gz_rounded_outside_shelf == nil
+            and not GV.applyCorners(false, off, save) and off.features.browser_cover_rounded_corners == false,
+            "corners off already: they stay off in every view")
+        local fresh = {}
+        check(not GV.applyCorners(false, fresh, save) and type(fresh.features) == "table", "no features table yet: no error")
+        -- choosing the view through the quick panel's View (M.set) does it too
+        local zen = { config = { features = { browser_cover_rounded_corners = true } }, saved = 0 }
+        function zen:saveConfig() self.saved = self.saved + 1 end
+        local was_zen = rawget(_G, "__ZEN_UI_PLUGIN")
+        rawset(_G, "__ZEN_UI_PLUGIN", zen)
+        local was_view = G_reader_settings:readSetting("gzreader_view")
+        pcall(GV.set, "bookshelf")
+        check(zen.config.features.browser_cover_rounded_corners == false and zen.saved == 1,
+            "View → Bookshelf: square corners, saved in ZenOS's settings")
+        pcall(GV.set, "mosaic_image")
+        check(zen.config.features.browser_cover_rounded_corners == true and zen.saved == 2,
+            "View → Tiles: rounded corners again")
+        rawset(_G, "__ZEN_UI_PLUGIN", was_zen)
+        G_reader_settings:saveSetting("gzreader_view", was_view)
+    end
+    check(io.open(PLUGIN .. "/main.lua"):read("*a"):find("GV.applyCorners()", 1, true) ~= nil,
+        "at start: corners set for the view chosen earlier")
+end
+
 print("Compressed replies")
 check((json.decode(ctl("/state")).gzip_replies or 0) > 0, "JSON lists arrive gzip-compressed and are unpacked (lists above worked)")
+
+print("Requests queued together run in one background process")
+;(function()
+    local Async = require("gzreader_async")
+    local ffi = require("ffi")
+    require("ffi/posix_h")
+    pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local api = { store = {} }
+    local other = { store = {} }
+    local got, order = {}, {}
+    local function job(name, fn, opts)
+        Async.run(opts and opts.api or api, function() return fn() end, function(...)
+            got[name] = { t = socket.gettime(), ... }
+            order[#order + 1] = name
+        end, name, opts)
+    end
+    local pid = function() return tonumber(ffi.C.getpid()), tonumber(ffi.C.getpriority(0, 0)) end
+    Async.together(function()
+        job("highlights", pid, { nice = true })
+        job("place", pid)
+        job("elsewhere", pid, { api = other })
+        job("slow", function() socket.sleep(2); return pid() end)
+        job("bookmarks", pid)
+        check(#Async.queue == 5 and not Async.busy, "inside together(): queued, nothing started yet")
+    end)
+    runLoop(function() return #order == 5 end, 30)
+    local p = function(key) return got[key] and got[key][1] end
+    check(#order == 5 and p("place") and p("place") == p("slow") and p("slow") == p("bookmarks") and p("bookmarks") == p("highlights"),
+        "the same login's four requests: one process (" .. tostring(p("place")) .. ")")
+    check(p("elsewhere") and p("elsewhere") ~= p("place"), "another login's: its own process, after")
+    check(table.concat(order, ","):find("^place,slow,bookmarks,highlights") ~= nil,
+        "in the order queued, the long one (opts.nice) last: " .. table.concat(order, ","))
+    check(got.place and got.slow and got.slow.t - got.place.t > 1.5, "each result as soon as it's ready (not when all are done)")
+    check(got.place and got.place[2] >= Async.NICE and got.highlights and got.highlights[2] >= Async.NICE_LONG,
+        "nice 5 for requests, 10 from the long one on")
+    -- the login can't be renewed: every request in the process gets the error
+    local denied = { store = {}, ensureToken = function() return false, "signed out" end }
+    local errs = {}
+    Async.together(function()
+        for i = 1, 3 do Async.run(denied, function() return true end, function(res, err) errs[i] = { res, err } end, "d" .. i) end
+    end)
+    runLoop(function() return errs[3] ~= nil end, 15)
+    check(errs[1] and errs[1][1] == nil and errs[1][2] == "signed out" and errs[3] and errs[3][2] == "signed out",
+        "login refused: each request gets the error")
+    -- one alone, as before
+    local alone
+    Async.run(api, function() return "x", 2 end, function(a, second) alone = { a, second } end, "alone")
+    runLoop(function() return alone ~= nil end, 15)
+    check(alone and alone[1] == "x" and alone[2] == 2 and not Async.busy and #Async.queue == 0, "a single request: as before")
+    Async.sync = saved_sync
+end)()
+
+print("A book's sync when it opens: one go, a moment after the first page")
+;(function()
+    local Sync = require("gzreader_sync")
+    local Async = require("gzreader_async")
+    local calls = {}
+    local held_seen = {}
+    local s = { pull = function(_, interactive, saved) calls[#calls + 1] = "pull:" .. tostring(saved); held_seen[#held_seen + 1] = Async.held end }
+    local fake = {
+        sync = s, ui = { document = true }, syncEnabled = function() return true end,
+        flushPending = function() calls[#calls + 1] = "flush"; held_seen[#held_seen + 1] = Async.held end,
+        bookmarks = { reconcile = function() calls[#calls + 1] = "bookmarks" end },
+        annotations = { run = function() calls[#calls + 1] = "highlights" end },
+    }
+    Grimmory.openSync(fake, s, "saved")
+    check(table.concat(calls, ",") == "pull:saved,flush,bookmarks,highlights" and held_seen[1] == 1 and held_seen[2] == 1,
+        "openSync: place, queued updates, bookmarks, highlights, inside Async.together (" .. table.concat(calls, ",") .. ")")
+    calls = {}
+    Grimmory.openSync(fake, { pull = function() end }, nil)
+    check(#calls == 0, "openSync for a book that has closed since: nothing")
+    -- Sync:onReady schedules one sync, OPEN_SYNC_DELAY after the first page
+    local scheduled_before = {}
+    for fn in pairs(UI.scheduled) do scheduled_before[fn] = true end
+    local gz_plugin = { syncEnabled = function() return true end, save = function() end, store = { pending = { progress = {}, sessions = {} } },
+        queue = function() end, flushPending = function() end, api = { isPaired = function() return false end } }
+    local opened
+    gz_plugin.openSync = function(_, sync, saved) opened = { sync, saved } end
+    local entry = { grimmory_progress = { pct = 12 } }
+    local sync = Sync:new(gz_plugin, { document = { file = "x.epub", info = {} } }, entry, 5)
+    sync.startSession = function() end
+    sync:onReady()
+    local new = {}
+    for fn, d in pairs(UI.scheduled) do if not scheduled_before[fn] then new[#new + 1] = d; UI.scheduled[fn] = nil; fn() end end
+    check(#new == 1 and new[1] == Sync.OPEN_SYNC_DELAY, "Sync:onReady: one timer (" .. table.concat(new, ", ") .. " s)")
+    check(opened and opened[1] == sync and opened[2] and opened[2].pct == 12 and entry.grimmory_progress == nil,
+        "…which hands the book's sync to openSync, with Grimmory's progress from the download (once)")
+end)()
 
 print("Requests in the background")
 do
@@ -1610,12 +3407,33 @@ do
     AsyncMod.sync = true
 end
 
-print("Wi-Fi only when needed")
-do
+print("Background requests run below the screen's priority")
+;(function()
+    local Async = require("gzreader_async")
+    local ffi = require("ffi")
+    pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
+    local saved_sync = Async.sync
+    Async.sync = false
+    local function niceOf() return tonumber(ffi.C.getpriority(0, 0)) end
+    local nice_before = niceOf()
+    local plain, long
+    Async.run(nil, niceOf, function(v) plain = v or false end, "nice check")
+    Async.run(nil, niceOf, function(v) long = v or false end, "nice check (long)", { nice = true })
+    runLoop(function() return plain ~= nil and long ~= nil end, 15)
+    check(plain and plain >= Async.NICE and Async.NICE >= 5, "a request's process: nice " .. tostring(plain) .. " (page turns go first)")
+    check(long and long >= Async.NICE_LONG and Async.NICE_LONG > Async.NICE, "long work (opts.nice): nice " .. tostring(long))
+    check(niceOf() == nice_before, "the screen's own process keeps its priority")
+    Async.sync = saved_sync
+end)()
+
+print("Wi-Fi: on, off, auto")
+;(function()
+    local UIM = require("ui/uimanager")
     local Net = require("gzreader_net")
     local now = 1000
     Net.clock = function() return now end
-    gsettings.gzreader_wifi_on_demand = nil -- default: on
+    gsettings.gzreader_wifi_on_demand = nil -- default: auto (was "Wi-Fi only when needed", on)
+    check(Net.mode() == "auto", "nothing saved: Auto")
     local was = NET.connected
     NET.connected = false
     Net.holders, Net.ours = {}, false -- earlier tests' screens
@@ -1643,7 +3461,7 @@ do
     now = now + 600
     idle()
     check(not NET.connected and captured.wifi[1] == "off", "Wi-Fi the Kindle left on is turned off once unused")
-    -- Wi-Fi the user turns on (menu, quick panel) is left alone
+    -- Wi-Fi the user turns on elsewhere (KOReader's menu, a gesture): On, left alone
     local NM = require("ui/network/manager")
     local saved_on, saved_off = NM.toggleWifiOn, NM.toggleWifiOff
     NM.toggleWifiOn = function() NET.connected = true end
@@ -1652,27 +3470,106 @@ do
     Net.adopt() -- installs the toggle hooks
     captured.wifi = {}
     NM:toggleWifiOn()
+    check(Net.mode() == "on" and gsettings.gzreader_wifi_mode == "on", "turned on by you elsewhere: Wi-Fi is On (saved)")
     Net.run(function() end)
     Net.adopt()
     now = now + 600
     idle()
     check(NET.connected and #captured.wifi == 0, "Wi-Fi the user turned on is never turned off")
     NM:toggleWifiOff()
-    check(not Net.user_on, "…until the user turns it off")
+    check(Net.mode() == "off", "…until the user turns it off: Off")
     NM.toggleWifiOn, NM.toggleWifiOff = saved_on, saved_off
     check(Net.keptOff(), "turned off by you: remembered (background work leaves it off)")
-    gsettings.gzreader_wifi_kept_off = nil
-    Net._toggle_on, Net._toggle_off, Net.user_on = nil, nil, nil
-    gsettings.gzreader_wifi_on_demand = false
-    NET.connected = false
     local q = 0
     Net.run(function() q = q + 1 end, { quiet = true })
-    check(q == 0 and #captured.wifi == 0, "switch off: background syncs wait for Wi-Fi as before")
+    check(q == 0 and #captured.wifi == 0, "Off: background syncs wait for Wi-Fi")
+
+    -- the settings from before the three modes
+    gsettings.gzreader_wifi_mode = nil
+    gsettings.gzreader_wifi_kept_off = true
+    check(Net.mode() == "off", "until 1.28: turned off by you → Off")
+    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = nil, false
+    check(Net.mode() == "on", "until 1.28: Wi-Fi only when needed unticked → On")
+    gsettings.gzreader_wifi_on_demand = nil
+    check(Net.mode() == "auto", "until 1.28: Wi-Fi only when needed ticked (the default) → Auto")
+    gsettings.gzreader_wifi_mode = "sometimes"
+    check(Net.mode() == "auto", "an unknown saved mode counts as Auto")
+    check(Net.nextMode("on") == "off" and Net.nextMode("off") == "auto" and Net.nextMode("auto") == "on",
+        "the tile's order: on → off → auto → on")
+
+    -- choosing a mode (the tile, Settings → General → Wi-Fi)
+    local switched, events = 0, {}
+    local saved_switch, saved_bc = Net._switch, UIM.broadcastEvent
+    Net._switch = function() switched = switched + 1; NET.connected = not NET.connected end
+    UIM.broadcastEvent = function(_, ev) events[#events + 1] = ev and ev.handler or ev and ev.name or "?" end
+    gsettings.gzreader_wifi_kept_off, gsettings.gzreader_wifi_on_demand = true, false
+    NET.connected = false
+    check(Net.setMode("on") == true and switched == 1 and NET.connected and gsettings.gzreader_wifi_mode == "on",
+        "On with Wi-Fi off: saved, Wi-Fi switched on")
+    check(gsettings.gzreader_wifi_kept_off == nil and gsettings.gzreader_wifi_on_demand == nil, "the old settings are forgotten once a mode is saved")
+    check(#events >= 1 and tostring(events[1]):match("NetworkStateChanged"), "the status bars are told (their Wi-Fi icon) " .. tostring(events[1]))
+    check(Net.setMode("on") == false and switched == 1, "On again with Wi-Fi on: nothing switched")
+    -- On: something needs Wi-Fi after it went off by itself (sleep, out of range): back on, and it stays on
+    NET.connected = false
+    captured.wifi = {}
+    local bg = 0
+    Net.run(function() bg = bg + 1 end, { quiet = true, reason = "test background" })
+    now = now + 600
+    idle()
+    check(bg == 1 and captured.wifi[1] == "on-quiet" and NET.connected and captured.wifi[2] == nil,
+        "On: background work turns Wi-Fi on again, and it's never turned off")
+    check(Net.setMode("auto") == false and switched == 1 and Net.ours, "Auto with Wi-Fi on: nothing switched now…")
+    captured.wifi = {}
+    now = now + 600
+    idle()
+    check(not NET.connected and captured.wifi[1] == "off", "…and it goes off once unused")
+    NET.connected = true
+    check(Net.setMode("off") == true and switched == 2 and not NET.connected and Net.mode() == "off", "Off with Wi-Fi on: switched off")
+    check(Net.setMode("auto") == false and switched == 2 and not NET.connected, "Auto with Wi-Fi off: stays off until something needs it")
+    check(Net.setMode("sometimes") == nil and Net.mode() == "auto", "an unknown mode is ignored")
+
+    -- the quick panel's tile
+    local Panel = require("gzreader_panel")
+    captured.info = nil
+    gsettings.gzreader_wifi_mode = "on"
+    local t = Panel.wifiTile()
+    check(t.id == "wifi" and t.label == "Wi-Fi on" and t.icon == "wifi" and t.on == true, "tile, On: \"Wi-Fi on\", drawn inverted")
+    NET.connected = true
+    t.run()
+    check(Net.mode() == "off" and not NET.connected and captured.info == nil, "a tap: Off (Wi-Fi switched off; KOReader says so)")
+    t = Panel.wifiTile()
+    check(t.label == "Wi-Fi off" and t.icon == "wifi_off" and not t.on, "tile, Off: \"Wi-Fi off\"")
+    t.run()
+    check(Net.mode() == "auto" and not NET.connected and captured.info == "Wi-Fi: Auto", "a tap: Auto (says so; Wi-Fi left off) " .. tostring(captured.info))
+    t = Panel.wifiTile()
+    check(t.label == "Wi-Fi auto" and t.icon == "wifi_auto_off" and not t.on, "tile, Auto with Wi-Fi off: the auto icon, slashed")
+    NET.connected = true
+    check(Panel.wifiTile().icon == "wifi_auto", "tile, Auto with Wi-Fi on: the auto icon")
+    NET.connected = false
+    captured.info = nil
+    t.run()
+    check(Net.mode() == "on" and NET.connected, "a tap: On (Wi-Fi switched on)")
+
+    -- Settings → General → Wi-Fi
+    local item = Net.menuItem()
+    local names = {}
+    for _i, it in ipairs(item.sub_item_table) do names[#names + 1] = it.text end
+    check(item.text == "Wi-Fi" and table.concat(names, "|") == "On|Off|Auto (only when needed)" and item.sub_item_table[1].radio,
+        "General → Wi-Fi: On, Off, Auto (only when needed) " .. table.concat(names, "|"))
+    check(item.mandatory_func() == "On" and item.sub_item_table[1].checked_func() and not item.sub_item_table[3].checked_func(),
+        "it shows the mode, and the mode is ticked")
+    item.sub_item_table[3].callback()
+    check(Net.mode() == "auto" and item.mandatory_func() == "Auto", "choosing Auto there saves it")
+
+    Net._switch, UIM.broadcastEvent = saved_switch, saved_bc
+    gsettings.gzreader_wifi_mode, gsettings.gzreader_wifi_kept_off = nil, nil
+    gsettings.gzreader_wifi_on_demand = false
+    Net._toggle_on, Net._toggle_off = nil, nil
     NET.connected = was
     Net.clock = os.time
-    Net.ours, Net.holders = false, {}
+    Net.ours, Net.holders, Net.connecting = false, {}, nil
     UI.scheduled = {}
-end
+end)()
 
 print("Night mode guard (Kindle 3)")
 do
@@ -1738,10 +3635,23 @@ local readerui = {
 local rplugin = Grimmory:new{ ui = readerui }
 UI.scheduled = {}
 reader.pos = 2000
+local hold_test = { calls = {}, A = require("gzreader_async") } -- (one local: the main chunk is near Lua's 200)
+hold_test.pause, hold_test.resume = hold_test.A.pause, hold_test.A.resume
+hold_test.A.pause = function(why) hold_test.calls[#hold_test.calls + 1] = "pause: " .. tostring(why) end
+hold_test.A.resume = function(why) hold_test.calls[#hold_test.calls + 1] = "resume: " .. tostring(why) end
+do
+    local was_opened = reader_opened
+    require("apps/reader/readerui"):showReader("/books/x.epub")
+    reader_opened = was_opened
+end
 rplugin:onReaderReady()
 check(rplugin.sync ~= nil, "sync attached to Grimmory book")
 check(rplugin.store.downloads["3"].file_id == 1003, "file id looked up for a download that lacked it")
 for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}   -- initial pull (nothing on server)
+hold_test.A.pause, hold_test.A.resume = hold_test.pause, hold_test.resume
+check(hold_test.calls[1] == "pause: a book opens" and hold_test.calls[2] == "resume: the book is open",
+    "background work waits from the book's opening until its first page: " .. table.concat(hold_test.calls, ", "))
+hold_test = nil
 local sp = rplugin.sync:spine()
 check(sp and #sp.frag == 4 and #sp.all == 4, "spine parsed: every item is a crengine fragment, the SVG page too")
 check(sp.frag[1] == "OEBPS/Text/title page.xhtml" and sp.frag[4] == "OEBPS/Text/ch2.xhtml", "hrefs resolved/decoded/normalized")
@@ -1818,6 +3728,26 @@ local sess = st.sessions[#st.sessions]
 check(sess and sess.bookId == 3 and sess.durationSeconds >= 300 and sess.bookType == "EPUB"
     and sess.startTime:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"), "reading session sent with ISO times and duration")
 
+print("The clock from a server's, when it ran down")
+do
+    local Clock = require("gzreader_clock")
+    check(Clock.parseHttpDate("Sat, 07 Nov 2026 06:57:01 GMT") == 1794034621 and Clock.parseHttpDate("Thu, 01 Jan 1970 00:00:00 GMT") == 0
+        and Clock.parseHttpDate("Tue, 29 Feb 2028 23:59:59 GMT") == 1835481599 and Clock.parseHttpDate("yesterday") == nil,
+        "a server's Date read (UTC)")
+    local orig_set, set_to = Clock.set, nil
+    Clock.set = function(t) set_to = t; return true end
+    Clock.done = false
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:57:01 GMT" }, 1794030000) and set_to == nil and Clock.done,
+        "a clock that's right: left alone (and not looked at again)")
+    Clock.done = false
+    check(not Clock.fromServer({ date = "garbage" }, 946729573) and set_to == nil and not Clock.done, "no usable Date: nothing")
+    check(Clock.fromServer({ ["date"] = "Sat, 07 Nov 2026 06:57:01 GMT" }, 946729573) and set_to == 1794034621,
+        "a clock in the year 2000 (a Nook's after its battery ran down): set from the server's")
+    set_to = nil
+    check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:58:01 GMT" }, 946729600) and set_to == nil, "…once per start")
+    Clock.set, Clock.done = orig_set, true
+end
+
 print("Grimmory reading stats (Home widget)")
 do
     local GS = require("gzreader_grimstats")
@@ -1873,6 +3803,162 @@ do
     st = json.decode(ctl("/state"))
     check(st.ratings["3"] == nil and entry.rating_synced == 0 and next(rplugin.store.pending.ratings) == nil, "and Grimmory's rating removed when Wi-Fi returns")
     readerui.doc_settings = nil
+end
+
+print("Grimmory shelves on the Kindle (Add to shelf / Remove from shelf, kept, queued)")
+do
+    local S = require("gzreader_shelves")
+    local entry = rplugin.store.downloads["3"]
+    local path = entry.path
+    local path10 = rplugin.store.downloads["10"] and rplugin.store.downloads["10"].path
+    local side = "/mnt/us/documents/sideloaded.epub"
+    rplugin.store.shelf_cache = nil
+    rplugin.store.grimmory_user = nil
+    rplugin.store.pending.shelves = nil
+    local function openBook() rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {} end
+    local function wifiBack()
+        UI.scheduled = {}
+        rplugin:onNetworkConnected()
+        local due = {}
+        for f in pairs(UI.scheduled) do due[#due + 1] = f end
+        UI.scheduled = {}
+        for _i, f in ipairs(due) do f() end
+    end
+    local changed = 0
+    local function buttons(p) return rplugin:shelfButtons(p or path, function() changed = changed + 1 end) end
+    local function shelvesOf(bk)
+        local st = json.decode(ctl("/state"))
+        local on = {}
+        for sid, ids in pairs(st.shelves) do for _i, b in ipairs(ids) do if b == bk then on[#on + 1] = tonumber(sid) end end end
+        table.sort(on)
+        return table.concat(on, ","), st
+    end
+    local function names(list) local t = {} for _i, x in ipairs(list) do t[#t + 1] = x.text or x.name end return table.concat(t, "|") end
+
+    -- not signed in / not a Grimmory book: the menu is there and says why it can't
+    local saved_api = rplugin.api
+    rplugin.api = setmetatable({ isPaired = function() return false end }, { __index = saved_api })
+    local b = buttons()
+    check(b and #b == 1 and b[1].text == "Add to shelf", "not signed in: the book menu still has Add to shelf")
+    captured.info = nil; S.menu = nil
+    b[1].callback()
+    check(S.menu == nil and captured.info == "Sign in to Grimmory to continue: Settings → Connections → Grimmory.",
+        "…which says to sign in to Grimmory to continue")
+    rplugin.api = setmetatable({ offline = true, isPaired = function() return false end }, { __index = saved_api })
+    buttons()[1].callback()
+    check(captured.info and captured.info:find("sync with the sync page", 1, true), "a Kindle without Wi-Fi, never synced: says to sync through a computer")
+    rplugin.api = saved_api
+    b = buttons(side)
+    check(#b == 1 and b[1].text == "Add to shelf", "a book not from Grimmory: Add to shelf too (no Add to collection)")
+    b[1].callback()
+    check(S.menu == nil and captured.info:find("isn't from your Grimmory library", 1, true), "…which says it can't go on a Grimmory shelf")
+
+    -- a Grimmory book, nothing kept yet: your shelves (and their books) from Grimmory, then the list
+    openBook() -- (its record says: on none of your shelves; that alone isn't all your shelves)
+    check(S.mine(rplugin) == nil or not rplugin.store.shelf_cache.full, "a book's own record alone: not taken for all your shelves")
+    b = buttons()
+    check(#b == 1 and b[1].submenu, "a Grimmory book on none of your shelves: Add to shelf only")
+    b[1].callback()
+    local m = S.menu
+    check(m and m.title == "Add to shelf" and names(m.item_table) == "Beach reads|Kindle",
+        "Add to shelf: your own shelves by name (not someone else's public one, not smart shelves)")
+    check(S.isOn(rplugin, 10, 4) and S.isOn(rplugin, 12, 4) and not S.isOn(rplugin, 3, 4) and rplugin.store.grimmory_user.id == 1,
+        "every book on your shelves kept on the Kindle (not only downloaded ones), and your user id")
+    m.onMenuSelect(m, m.item_table[2])
+    local on, st = shelvesOf(3)
+    check(on == "4,7" and json.encode(st.last_shelves_body.shelvesToUnassign) == "[]" and json.encode(st.last_shelves_body.bookIds) == "[3]",
+        "picked Kindle with Wi-Fi: on it in Grimmory straight away (JSON lists)")
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4) and captured.info == "Added to “Kindle”." and changed == 1,
+        "nothing left queued, kept, said so")
+    b = buttons()
+    check(#b == 2 and b[2].text == "Remove from shelf" and not b[2].submenu, "now on one of your shelves: Remove from shelf")
+    b[1].callback()
+    check(S.menu.item_table[2].dim and S.menu.item_table[2].text == "Kindle  ✓", "Add to shelf again: Kindle ticked and greyed out")
+
+    -- no Wi-Fi: queued, shown at once, sent when Wi-Fi is back
+    NET.connected = false
+    gsettings.gzreader_wifi_mode = "off" -- (On would turn it back on to send)
+    b[2].callback()
+    check(not S.isOn(rplugin, 3, 4) and #buttons() == 1 and shelvesOf(3) == "4,7"
+        and captured.info == "Removed from “Kindle”.\nGrimmory gets it when Wi-Fi is on.",
+        "Remove from shelf without Wi-Fi: off at once on the Kindle, queued for Grimmory")
+    local jobs = S.jobs(rplugin)
+    check(#jobs == 1 and jobs[1].kind == "shelf" and jobs[1].path == "/api/v1/books/shelves"
+        and json.encode(jobs[1].body.shelvesToAssign) == "[]" and json.encode(jobs[1].body.shelvesToUnassign) == "[4]",
+        "the queue as a job for the sync page (lists as JSON lists)")
+    buttons()[1].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[2]) -- Kindle again: back to how Grimmory has it
+    check(not S.hasPending(rplugin) and S.isOn(rplugin, 3, 4), "put back on before it was sent: nothing to send")
+    buttons()[2].callback()
+    NET.connected, gsettings.gzreader_wifi_mode = true, nil
+    wifiBack()
+    check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and not S.isOn(rplugin, 3, 4), "Wi-Fi back: the change sent, the queue empty")
+
+    -- changed in Grimmory's web app: the book's record when it opens, and the 30-minute refresh
+    ctl("/shelf?book=3&add=6")
+    openBook()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 6) and b[2].text == "Remove from shelf", "put on a shelf in the web app: kept when the book opens")
+    ctl("/shelf?book=3&add=4")
+    ctl("/shelf?book=11&remove=4")
+    wifiBack()
+    check(not S.isOn(rplugin, 3, 4) and S.isOn(rplugin, 11, 4), "…not again before 30 minutes")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    b = buttons()
+    check(S.isOn(rplugin, 3, 4) and not S.isOn(rplugin, 11, 4) and b[2].text == "Remove from shelves" and b[2].submenu,
+        "after 30 minutes, with Wi-Fi: every shelf again from Grimmory (a book not opened too)")
+    S.menu = nil
+    b[2].callback()
+    m = S.menu
+    check(m and names(m.item_table) == "Beach reads|Kindle|All 2 shelves", "Remove from shelves: which one, or all")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "4,7" and captured.info == "Removed from “Beach reads”.", "took it off Beach reads only")
+    ctl("/shelf?book=3&add=6")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+    buttons()[2].callback()
+    S.menu.onMenuSelect(S.menu, S.menu.item_table[3])
+    check(shelvesOf(3) == "7" and captured.info == "Removed from 2 shelves." and #buttons() == 1, "All 2 shelves: off both")
+
+    -- changed again while a send is under way (the requests in the background): that's sent too
+    do
+        local Async = require("gzreader_async")
+        ctl("/shelf?book=3&add=4&add=6")
+        rplugin.store.shelf_cache.at = 0
+        wifiBack()
+        Async.sync = false
+        S.set(rplugin, { 3 }, 6, false)
+        S.set(rplugin, { 3 }, 4, false)
+        runLoop(function() return not S.running and not S.hasPending(rplugin) and next(Async.queue) == nil and not Async.busy end, 30)
+        Async.sync = true
+        check(shelvesOf(3) == "7" and not S.hasPending(rplugin) and #S.on(rplugin, 3) == 0,
+            "two changes, the second while the first was being sent: both reach Grimmory")
+    end
+
+    -- several selected books
+    S.menu = nil
+    rplugin:shelfAddMany({ path, path10, side }, function() changed = changed + 1 end)
+    m = S.menu
+    check(m and m.title == "Add 2 books to shelf" and not m.item_table[2].dim, "selected books: Add to shelf for the Grimmory ones")
+    m.onMenuSelect(m, m.item_table[1])
+    check(shelvesOf(3) == "6,7" and shelvesOf(10) == "4,6" and captured.info == "Added 2 books to “Beach reads”.\n1 not from Grimmory left out.",
+        "both on Beach reads in Grimmory; the sideloaded one left out, said so")
+    ctl("/shelf?book=3&remove=6"); ctl("/shelf?book=10&remove=6")
+
+    -- someone else's shelf: Grimmory refuses it for good; not sent again
+    S.set(rplugin, { 3 }, 7, false)
+    check(not S.hasPending(rplugin) and shelvesOf(3) == "7", "someone else's shelf: refused by Grimmory, off the queue")
+    rplugin.store.shelf_cache.at = 0
+    wifiBack()
+
+    local function src(f) return io.open(PLUGIN .. "/../zenos.koplugin/" .. f):read("*a") end
+    local dialog, multi, guide = src("modules/filebrowser/patches/context_menu_file_dialog.lua"),
+        src("modules/filebrowser/patches/context_menu.lua"), src("common/quickstart/quickstart_pages.lua")
+    check(dialog:find("gz:shelfButtons(file,", 1, true) and not dialog:find('_("Add to collection")', 1, true)
+        and multi:find("gz:shelfAddMany(book_paths,", 1, true) and not multi:find('text = icons.fav_add .. "  " .. _("Add to collection")', 1, true)
+        and not guide:find('_("Add to collection")', 1, true),
+        "ZenOS: Add to shelf in the book menu, for selected books and in the setup guide's picture; no Add to collection")
 end
 
 print("Wi-Fi back without KOReader noticing")
@@ -1989,6 +4075,56 @@ table.insert(anns, nb); rplugin:onAnnotationsModified({ nb, index_modified = 2 }
 check(#json.decode(ctl("/state")).bookmarks == 1, "bookmark sync switch off: nothing sent")
 rplugin.store.bookmark_sync_disabled = nil
 
+print("Bookmarks: Grimmory's own replies (nulls), deletes from the list")
+do
+    -- start clean: nothing here, nothing in Grimmory
+    for _i, bm in ipairs(json.decode(ctl("/state")).bookmarks) do ctl("/delbm?id=" .. bm.id) end
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+    rplugin.store.downloads["3"].bookmarks, rplugin.store.downloads["3"].bm_pending = {}, { add = {}, del = {} }
+    local function remote() return json.decode(ctl("/state")).bookmarks end
+    local NULL = require("json").null
+    check(not BM.isAudio({ positionMs = NULL }) and BM.isAudio({ positionMs = 1500 }),
+        "a JSON null positionMs isn't an audiobook bookmark")
+    -- the owner's case (2026-11-08): two made here, the book closed, one added
+    -- in the web reader, the book opened again -> all three on both sides
+    local k1 = { page = "/body/DocFragment[4]/body/p", chapter = "Chapter 2" }
+    local k2 = { page = "/body/DocFragment[4]/body/div/p[2]", chapter = "Chapter 2" }
+    table.insert(anns, k1); rplugin:onAnnotationsModified({ k1, index_modified = #anns })
+    table.insert(anns, k2); rplugin:onAnnotationsModified({ k2, index_modified = #anns })
+    local r = remote()
+    check(#r == 2 and r[1].positionMs == nil and r[1].priority == 3, "two Kindle bookmarks in Grimmory (its full replies, nulls and all)")
+    rplugin:onCloseDocument()
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/4/8)&title=web")
+    UI.scheduled = {}
+    rplugin:onReaderReady()
+    runLoop(function() return #anns >= 3 end, 10)
+    local pages = {}
+    for _i, a in ipairs(anns) do pages[a.page] = (pages[a.page] or 0) + 1 end
+    check(#anns == 3 and pages[k1.page] == 1 and pages[k2.page] == 1 and pages["/body/DocFragment[4]/body/div/p[3]"] == 1,
+        "opened again: both Kindle bookmarks kept and the web one added (none lost, none twice)")
+    check(#remote() == 3, "Grimmory still has all three")
+    local web
+    for _i, a in ipairs(anns) do if a.page == "/body/DocFragment[4]/body/div/p[3]" then web = a end end
+    check(web and web.text == "web", "the web bookmark's title")
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/4/8)&title=nameless") -- (title null in the next one)
+    ctl("/addbm?book=3&pos=61000&title=audio")
+    rplugin.bookmarks:reconcile()
+    check(#anns == 3, "an audiobook bookmark (a time) isn't put in the book")
+    -- deleted from the bookmark list (KOReader sends no event for that)
+    for i, a in ipairs(anns) do if a == k1 then table.remove(anns, i) end end
+    rplugin.bookmarks:reconcile()
+    runLoop(function() return #remote() == 4 end, 5)
+    local left = {}
+    for _i, bm in ipairs(remote()) do left[tostring(bm.cfi)] = true end
+    check(#remote() == 4 and not left["epubcfi(/6/8!/4/6)"] and left["epubcfi(/6/8!/4/4/6)"],
+        "deleted from the bookmark list here: deleted in Grimmory at the next sync")
+    rplugin.bookmarks:reconcile()
+    check(#anns == 2 and #remote() == 4, "…and stays deleted (not brought back)")
+    for _i, bm in ipairs(remote()) do ctl("/delbm?id=" .. bm.id) end
+    rplugin.bookmarks:reconcile()
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+end
+
 print("Highlights and notes: two-way sync")
 do
     package.loaded["ffi/archiver"] = nil -- the real one failed to load earlier (no libarchive here)
@@ -2084,7 +4220,7 @@ do
     rplugin:onAnnotationsModified({ hl3, nb_highlights_added = 1, index_modified = 2 })
     check(an.pending == nil and rplugin.store.downloads["3"].anno_dirty and #server() == 1, "offline: nothing sent, marked waiting")
     UI.scheduled = {}
-    gsettings.gzreader_wifi_on_demand = nil -- Wi-Fi only when needed
+    gsettings.gzreader_wifi_mode = "auto" -- (was "Wi-Fi only when needed")
     rplugin:onCloseDocument()
     check(rplugin.annotations == nil, "closed")
     -- (what's scheduled may schedule more: run it in rounds, not while iterating)
@@ -2096,7 +4232,7 @@ do
         for _i, f in ipairs(due) do f() end
     end
     check(#server() == 2, "on close: Wi-Fi brought up quietly and the highlight sent")
-    gsettings.gzreader_wifi_on_demand = false
+    gsettings.gzreader_wifi_mode = nil
     -- switch
     rplugin.store.annotation_sync_disabled = true
     rplugin:onReaderReady(); for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
@@ -2104,6 +4240,79 @@ do
     rplugin.annotations:run()
     check(#readerui.annotation.annotations == 2, "switch off: nothing synced")
     rplugin.store.annotation_sync_disabled = nil
+    rplugin.store.bookmark_sync_disabled = nil
+    rplugin:onCloseDocument(); UI.scheduled = {}
+end
+
+print("Notes: the web reader's Notes tab (Grimmory's book notes)")
+do
+    local NS = require("gzreader_notesync")
+    -- the merge on its own
+    local p = NS.plan({ a = { note = "x" }, b = { note = "same" }, c = {} },
+        NS.byCfi({ { id = 1, cfi = "b", noteContent = "same" }, { id = 2, cfi = "c", noteContent = "web" },
+            { id = 3, cfi = "d", noteContent = "gone here", selectedText = require("json").null } }),
+        { b = { id = 1, note = "same" }, d = { id = 3, note = "gone here" } })
+    check(#p.creates == 1 and p.creates[1].cfi == "a" and #p.updates == 0 and #p.deletes == 1 and p.deletes[1].id == 3
+        and next(p.conflicts) == nil, "notes plan: new here -> create, deleted here -> delete, new there -> left for the merge")
+    local Anno = require("gzreader_annotations")
+    local CFI = require("gzreader_cfi")
+    local function notes() return json.decode(ctl("/state")).notes end
+    local function hls() return json.decode(ctl("/state")).annotations end
+    for _i, a in ipairs(hls()) do ctl("/delan?id=" .. a.id) end
+    rplugin.store.bookmark_sync_disabled = true
+    rplugin:onReaderReady(); UI.scheduled = {}
+    local note_anns = readerui.annotation.annotations
+    for i = #note_anns, 1, -1 do table.remove(note_anns, i) end
+    local entry = rplugin.store.downloads["3"]
+    entry.anno_shadow, entry.note_shadow, entry.anno_dirty = {}, nil, nil
+    local note_an = rplugin.annotations
+    local P0, P1 = "/body/DocFragment[4]/body/div/p[3]/text().0", "/body/DocFragment[4]/body/div/p[3]/text().5"
+    CFI.initBook("x", Anno.openReader()); local range = CFI.xpointerRangeToCFI(P0, P1); CFI.clearCache()
+    table.insert(note_anns, { pos0 = P0, pos1 = P1, page = P0, text = "three", chapter = "Chapter 2", drawer = "lighten",
+        color = "green", note = "Kindle note", datetime = "2026-11-08 03:00:00" })
+    note_an:run()
+    local nt = notes()
+    check(#nt == 1 and nt[1].cfi == range and nt[1].noteContent == "Kindle note" and nt[1].selectedText == "three"
+        and nt[1].color == "#4ADE80" and nt[1].chapterTitle == "Chapter 2", "a Kindle note is in Grimmory's Notes, at its highlight")
+    check(#hls() == 1 and hls()[1].note == "Kindle note", "…and the highlight keeps it too")
+    note_an:run()
+    check(#notes() == 1 and not entry.anno_dirty, "again: no duplicate, nothing waiting")
+    ctl("/editnote?id=" .. nt[1].id .. "&note=edited%20on%20the%20web")
+    note_an:run()
+    check(note_anns[1].note == "edited on the web", "edited in the web reader: the Kindle's note changes")
+    note_an:run()
+    check(hls()[1].note == "edited on the web" and #notes() == 1, "…the highlight's copy follows")
+    note_anns[1].note = "kindle edit" -- (KOReader sends no event for an edit)
+    check(note_an:notesChanged(), "an edited note is noticed when the book closes")
+    note_an:run()
+    check(notes()[1].noteContent == "kindle edit" and not note_an:notesChanged(), "edited on the Kindle: Grimmory's note changes")
+    -- a note in the web reader where the Kindle has no highlight
+    ctl("/addnote?book=3&note=web%20only&text=two&cfi=epubcfi(/6/8%5Bc2%5D!/4/4/6,/1:0,/1:3)")
+    note_an:run()
+    local only, hl
+    for _i, a in ipairs(note_anns) do if a.grimmory_note_only then only = a else hl = a end end
+    check(#note_anns == 2 and only and only.note == "web only" and only.pos0 == "/body/DocFragment[4]/body/div[1]/p[2]/text()[1].0",
+        "a web note comes to the Kindle at its words")
+    note_an:run()
+    check(#hls() == 1 and #notes() == 2, "…and isn't sent back as a highlight")
+    hl.note = nil
+    note_an:run()
+    nt = notes()
+    check(#nt == 1 and nt[1].noteContent == "web only", "note removed on the Kindle: removed from Grimmory's Notes")
+    ctl("/delnote?id=" .. nt[1].id)
+    note_an:run()
+    check(#note_anns == 1 and not note_anns[1].grimmory_note_only and note_anns[1].text == "three", "deleted in the web reader: gone from the Kindle")
+    -- (a pass puts Grimmory's copy of a synced highlight in its place: note_anns[1] each time)
+    note_anns[1].note = "a"; note_an:run()
+    ctl("/editnote?id=" .. notes()[1].id .. "&note=web%20b"); note_anns[1].note = "kindle c"
+    note_an:run()
+    check(notes()[1].noteContent == "web b" and note_anns[1].note == "kindle c" and entry.anno_dirty,
+        "edited in both places: each keeps its own, tried again later")
+    note_anns[1].note = "web b"; note_an:run()
+    check(not entry.anno_dirty and #notes() == 1, "settles once both agree")
+    for i = #note_anns, 1, -1 do table.remove(note_anns, i) end
+    note_an:run()
+    check(#notes() == 0 and #hls() == 0, "highlight with its note deleted here: both gone in Grimmory")
     rplugin.store.bookmark_sync_disabled = nil
     rplugin:onCloseDocument(); UI.scheduled = {}
 end
@@ -2157,6 +4366,57 @@ do
     Sync.cfiReader = nil
     package.loaded["ffi/archiver"] = nil -- the real one can't load here
 end
+
+print("Highlights that show on both the Kindle and the web reader")
+;(function()
+    local AnnotationSync = require("gzreader_annosync")
+    local fake_cfi = { xpointerRangeToCFI = function() return "epubcfi(/6/4!/4/2,/1:0,/1:5)" end }
+    local function sentColor(annotation)
+        annotation.pos0, annotation.pos1, annotation.text = "/body/p[1]/text().0", "/body/p[1]/text().5", "Hello"
+        local out = AnnotationSync.fromLocal({ annotation }, fake_cfi, 1)
+        return out[1] and out[1].body.color
+    end
+    check(sentColor({ color = "gray", drawer = "lighten" }) == "#FFC107", "a Kindle's grey highlight goes to Grimmory as the web reader's yellow")
+    check(sentColor({ color = "gray", drawer = "lighten", grimmory_id = 7, grimmory_color = "#AAAAAA", grimmory_local_color = "gray" }) == "#AAAAAA",
+        "a grey highlight already in Grimmory keeps its colour there")
+    check(sentColor({ color = "green", drawer = "lighten" }) == "#4ADE80", "other colours as before")
+    local back = AnnotationSync.toLocal({ id = 8, cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", color = "#FFC107", style = "highlight" },
+        { cfiRangeToXPointers = function() return "/body/p[1]/text().0", "/body/p[1]/text().5" end })
+    local grey = AnnotationSync.toLocal({ id = 9, cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", color = "#AAAAAA", style = "highlight" },
+        { cfiRangeToXPointers = function() return "/body/p[1]/text().0", "/body/p[1]/text().5" end })
+    check(back and back.color == "yellow" and grey and grey.color == "gray", "Grimmory's yellow comes back yellow, its grey grey")
+
+    -- drawing on the Kindle: too-light colours drawn like the grey highlight
+    local HL = require("gzreader_hlcolor")
+    local yellow, orange, blue = { r = 255, g = 255, b = 51 }, { r = 255, g = 136, b = 0 }, { r = 0, g = 102, b = 255 }
+    check(HL.tooLight(yellow, 0.2) and not HL.tooLight(orange, 0.2) and not HL.tooLight(blue, 0.2) and not HL.tooLight(nil, 0.2),
+        "KOReader's yellow is too light on a greyscale screen; orange and blue aren't")
+    local saved = { rv = package.loaded["apps/reader/modules/readerview"], dev = package.loaded["device"],
+        bb = package.loaded["ffi/blitbuffer"], installed = HL.installed }
+    local drawn = {}
+    local FakeView = { drawHighlightRect = function(_self, _bb, _x, _y, _rect, drawer, color) drawn[#drawn + 1] = { drawer, color } end }
+    local colour_screen = false
+    package.loaded["apps/reader/modules/readerview"] = FakeView
+    package.loaded["device"] = { screen = { isColorEnabled = function() return colour_screen end } }
+    package.loaded["ffi/blitbuffer"] = { isColor8 = function(c) return c and c.grey ~= nil end }
+    HL.installed = false
+    HL.install()
+    local view = setmetatable({ highlight = { lighten_factor = 0.2 } }, { __index = FakeView })
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", orange)
+    view:drawHighlightRect(nil, 0, 0, {}, "underscore", yellow)
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", nil)
+    colour_screen = true
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    check(drawn[1][2] == nil and drawn[2][2] == orange and drawn[3][2] == yellow and drawn[4][2] == nil and drawn[5][2] == yellow,
+        "greyscale: yellow drawn as the grey highlight, orange and underlines as they were; a colour screen: unchanged")
+    view.highlight.lighten_factor = 0.05
+    colour_screen = false
+    view:drawHighlightRect(nil, 0, 0, {}, "lighten", yellow)
+    check(drawn[6][2] == yellow, "a lighter grey highlight chosen in KOReader's settings: yellow is drawn as before")
+    package.loaded["apps/reader/modules/readerview"], package.loaded["device"], package.loaded["ffi/blitbuffer"] = saved.rv, saved.dev, saved.bb
+    HL.installed = saved.installed
+end)()
 
 print("Picture books")
 do
@@ -2265,6 +4525,41 @@ do
     check(cfg.smooth_scaling == 0 and cfg.h_page_margins[1] == 15 and cfg.t_page_margin == 10 and cfg.sync_t_b_page_margins == 1
         and not (ui.styletweak.book_style_tweak or ""):find("picture book", 1, true) and reopened == 3, "off: style, margins and smooth scaling as before, book reopened")
 
+    -- a second picture book opened, or Fit pictures to the screen tapped,
+    -- while another book's pictures are measured: fitted after it (it did nothing)
+    do
+        local cbs = {}
+        Async.background = function(_fn, cb) cbs[#cbs + 1] = cb end
+        local DSm = require("docsettings")
+        local orig_dso = DSm.open
+        local function mkds()
+            local kv = {}
+            return { d = kv, readSetting = function(_s, k) return kv[k] end, saveSetting = function(_s, k, v) kv[k] = v end,
+                delSetting = function(_s, k) kv[k] = nil end, flush = function() end }
+        end
+        DSm.open = function() return mkds() end
+        local function mkui(file)
+            return { doc_settings = mkds(), view = ui.view, styletweak = { updateCssText = function() end },
+                document = { file = file, info = {}, invalidateCacheFile = function() end,
+                    configurable = { smooth_scaling = 0, h_page_margins = { 15, 15 }, t_page_margin = 10, b_page_margin = 10 } },
+                reloadDocument = function(self) self.reloaded = (self.reloaded or 0) + 1 end }
+        end
+        local uA, uB = mkui(WORK .. "/pb-first.epub"), mkui(WORK .. "/pb-second.epub")
+        RUI.instance = uA
+        PB.set(uA, true) -- the first book: its pictures being measured
+        RUI.instance = uB -- the second book opened meanwhile
+        local shown = #UI.shown
+        PB.menuItem(uB).callback() -- (or opened: PB.onOpen's PB.set, the same)
+        check(#cbs == 1 and not PB.isOn(uB) and #UI.shown == shown + 1,
+            "Fit pictures to the screen while another book's pictures are measured: waits, and says the pages will be fitted in a moment")
+        cbs[1]({})
+        check(#cbs == 2 and uA.reloaded == nil, "the first one done (closed: saved with it): the second book's pictures are measured next")
+        cbs[2]({})
+        check(PB.isOn(uB) and uB.reloaded == 1 and uB.document.configurable.h_page_margins[1] == 0,
+            "…and the second book is fitted and reopened")
+        DSm.open, RUI.instance, Async.background = orig_dso, saved_inst, orig_bg
+    end
+
     -- a book fitted by 1.2.x (style v3): fitted again once when it opens
     ds.d.gzreader_picture_book = true
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v3 */ img{} /* GZreader picture book: end */"
@@ -2315,8 +4610,16 @@ do
     Async.background = function(_fn, cb) cb({ yes = false, wide = {} }) end
     PB.PREPARE_DELAY = 0
     rawset(_G, "GZ_NO_PB_PREPARE", nil)
+    -- a book being laid out in the background: the check waits for it
+    local L_was = package.loaded["gzreader_layout"]
+    package.loaded["gzreader_layout"] = { running = { id = "9" } }
     PB.prepare(pg); PB.prepare(pg)
-    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
+    check(DocSettings:open(pg):readSetting("gzreader_picture_book") == nil and #PB.queue == 1,
+        "a background layout running: the picture-book check waits (two book processes ran a Kindle 3 out of memory)")
+    package.loaded["gzreader_layout"] = L_was
+    PB.safeNext()
+    for fn in pairs(UI.scheduled) do fn() end; UI.scheduled = {}
     Async.background = orig_bg2
     check(DocSettings:open(pg):readSetting("gzreader_picture_book") == false and #PB.queue == 0,
         "a book that isn't one: noted (not checked again when it opens)")
@@ -2627,8 +4930,90 @@ do
     check(not R4.active, "stopped")
     gsettings.gzreader_tts_template = TPL
 end
+-- stopping: only the voice's own properties, and nothing when it wasn't reading
+do
+    local sets, lipc_was, tpl_was = {}, TTS.lipc, gsettings.gzreader_tts_template
+    TTS.lipc = { open_no_name = function()
+        return { set_int_property = function(_h, pub, prop) sets[#sets + 1] = pub .. " " .. prop end, close = function() end }
+    end }
+    TTS.cancel({ target = { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" } })
+    check(#sets == 1 and sets[1] == "com.lab126.tts stop",
+        "Kindle 2/DX voice (playFile): only com.lab126.tts stop (no ttsd there: it failed in the system log) " .. table.concat(sets, ", "))
+    sets = {}
+    TTS.cancel({ target = { pub = "com.lab126.ttsd", prop = "playSnippetNow" } })
+    check(#sets == 2 and sets[1] == "com.lab126.ttsd cancelSnippetPlayback" and sets[2] == "com.lab126.tts stop", "Kindle 3 voice (ttsd): both, as before")
+    sets = {}
+    gsettings.gzreader_tts_template = nil
+    TTS.cancel()
+    check(#sets == 0, "no voice set up: nothing sent")
+    gsettings.gzreader_tts_template = { target = { pub = "com.lab126.tts", prop = "playFile", file = "/var/tmp" } }
+    local idle = TTS.Reader:new(tts_ui)
+    idle:stop()
+    check(#sets == 0, "a book closing without read aloud: nothing sent (it started lipc-set-prop each time)")
+    TTS.lipc, gsettings.gzreader_tts_template = lipc_was, tpl_was
+end
 TTS.exec = nil; TTS.lipc = nil; TTS.now = nil
 local _ = before
+
+print("ZenOS's updater: not loaded (GZreader's in its place, on first use)")
+;(function()
+    local Z = PLUGIN .. "/../zenos.koplugin/"
+    local function src(rel) local h = io.open(Z .. rel, "rb"); local t = h and h:read("*a") or ""; if h then h:close() end; return t end
+    local callers = { "main.lua", "modules/settings/zen_settings.lua", "modules/settings/zen_bugreporter.lua",
+        "modules/settings/sections/updates_settings.lua" }
+    local loads_zen, used = {}, {}
+    for _i, rel in ipairs(callers) do
+        local t = src(rel)
+        if t:find('require("modules/settings/zen_updater")', 1, true) or not t:find('require("modules/settings/gz_updater")', 1, true) then
+            loads_zen[#loads_zen + 1] = rel
+        end
+        -- (the module's functions: `updater.x(`, `zen_updater.x`; not config.updater's fields)
+        for fn in t:gmatch("%f[%w_]updater%.([%w_]+)%(") do used[fn] = true end
+        for fn in t:gmatch("%f[%w_]zen_updater%.([%w_]+)") do used[fn] = true end
+    end
+    check(#loads_zen == 0, "ZenOS's main, settings, bug reporter and Updates section use gz_updater (" .. table.concat(loads_zen, ", ") .. ")")
+    local saved_path = package.path
+    package.path = Z .. "?.lua;" .. package.path
+    local kept = { u = package.loaded["gzreader_update"], z = package.loaded["modules/settings/zen_updater"], ui = package.loaded["ui/uimanager"] }
+    package.loaded["gzreader_update"], package.loaded["modules/settings/gz_updater"], package.loaded["modules/settings/zen_updater"] = nil, nil, nil
+    local okm, U = pcall(require, "modules/settings/gz_updater")
+    check(okm and package.loaded["gzreader_update"] == nil and package.loaded["modules/settings/zen_updater"] == nil,
+        "loading it loads neither ZenOS's updater nor gzreader_update " .. (okm and "" or tostring(U)))
+    local missing = {}
+    for fn in pairs(used) do if fn ~= "_on_update_found" and type(U[fn]) ~= "function" then missing[#missing + 1] = fn end end
+    table.sort(missing)
+    check(okm and #missing == 0, "…and has everything they call (" .. table.concat(missing, ", ") .. ")")
+    U.init_banner()
+    check(U.has_update() == false and package.loaded["gzreader_update"] == nil, "at start: no update known, nothing loaded")
+    -- the check 20 s after start: gzreader_update then
+    local checks, found = 0, 0
+    package.loaded["gzreader_update"] = { state = {}, backgroundCheck = function(cb) checks = checks + 1; package.loaded["gzreader_update"].state = { has_update = true, latest = "9.9.9" }; cb() end,
+        menuItems = function() return { "now", "auto", "changelog", "channel" } end, run = function() end }
+    local timers = {}
+    package.loaded["ui/uimanager"] = { scheduleIn = function(_u, s, fn) timers[#timers + 1] = { s = s, fn = fn } end, unschedule = function() end }
+    U._on_update_found = function() found = found + 1 end
+    U.schedule_wakeup_check()
+    check(#timers == 1 and timers[1].s == 20, "a check 20 s after start or a wake")
+    timers[1].fn()
+    check(checks == 1 and found == 1 and U.has_update() and U.latest_version() == "9.9.9" and U.build_update_available_action({}) ~= nil,
+        "…done by gzreader_update; an update found shows (the Settings icon, the header button)")
+    check(U.build_update_now_item() == "now" and U.build_auto_check_item() == "auto" and U.build_changelog_item() == "changelog"
+        and U.build_channel_item() == "channel" and U.get_channel() == "stable", "the Updates section: GZreader's items")
+    local cfg = { updater = { update_available = true } }
+    U.clear_update_state(cfg)
+    package.loaded["gzreader_update"].state = {}
+    check(cfg.updater.update_available == false and not U.has_update(), "an update noticed elsewhere: cleared")
+    package.loaded["gzreader_update"], package.loaded["modules/settings/zen_updater"], package.loaded["ui/uimanager"] = kept.u, kept.z, kept.ui
+    package.loaded["modules/settings/gz_updater"] = nil
+    package.path = saved_path
+    -- Rakuyomi (a manga plugin GZreader doesn't ship): not loaded at start
+    local dbl, fb = src("common/db_library.lua"), src("modules/filebrowser/filebrowser.lua")
+    check(not dbl:find('\nlocal Rakuyomi = require("modules/filebrowser/patches/rakuyomi")', 1, true)
+        and dbl:find('local Rakuyomi = setmetatable({}, { __index = function(_t, k) return require("modules/filebrowser/patches/rakuyomi")[k] end })', 1, true),
+        "the library counts: Rakuyomi only loaded for a finished .cbz")
+    check(fb:find('(not installed or installed.rakuyomi)\n        and OptionalProvider.call(PATCH_MODULES.rakuyomi, "is_available")', 1, true),
+        "the file browser: not loaded to ask when the plugin scan found none")
+end)()
 
 print("Updates from GitHub releases")
 local Update = require("gzreader_update")
@@ -2665,6 +5050,7 @@ package.preload["ffi/archiver"] = function()
     function Reader:extractToPath(p, dest)
         os.execute("mkdir -p '" .. dest:match("^(.*)/") .. "'"); wf(dest, PKG[p]); return true
     end
+    function Reader:extractToMemory(p) return PKG[p] end
     function Reader:close() end
     return { Reader = Reader }
 end
@@ -2705,10 +5091,192 @@ check(rf(KO .. "/plugins/gzreader.koplugin/main.lua") == "src main" and rf(KO ..
 check(rf(KO .. "/plugins/kosync.koplugin/main.lua") == nil and rf(KO .. "/README.md") == nil and rf(KO .. "/base/thirdparty/x.c") == nil, "plugins not installed and other repo files are skipped")
 check(rf(KO .. "/plugins/zenos.koplugin/locales/de.po") == nil and rf(KO .. "/plugins/zenos.koplugin/locales/en.po") == "en", "English-only catalogs kept")
 check(Update.currentVersion() == "1.2.0" and rf(KO .. "/settings/settings.reader.lua") == "mine", "version from the tag; settings untouched")
+do
+-- the same update package on a Kindle and on a Nook: the Nook's start script only on a Nook
+PKG = { ["koreader/frontend/k.lua"] = "k", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.0\n", ["koreader/nook-gzreader.sh"] = "#!/system/bin/sh\n# new\n",
+    ["koreader/nook-launcher.sh"] = "#!/system/bin/sh\n# new helper\n" }
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0", "update with the Nook's start script in it, on a Kindle: installed")
+check(rf(KO .. "/nook-gzreader.sh") == nil and rf(WORK .. "/gzreader.sh") == nil and rf(WORK .. "/launcher.sh") == nil,
+    "…without the Nook's scripts (a Kindle has none)")
+local NK = WORK .. "/nook/gzreader/koreader"
+os.execute("rm -rf '" .. WORK .. "/nook' && mkdir -p '" .. NK .. "/frontend' '" .. NK .. "/plugins/gzreader.koplugin'")
+wf(NK .. "/plugins/gzreader.koplugin/main.lua", "old main"); wf(NK .. "/gzreader-version", "1.2.0\n")
+wf(WORK .. "/nook/gzreader/gzreader.sh", "#!/system/bin/sh\n# old\n")
+local running = io.open(WORK .. "/nook/gzreader/gzreader.sh", "rb") -- (sh has the running script open)
+Update.root = NK
+check(Update.apply("pkg.zip") and Update.currentVersion() == "1.3.0" and rf(NK .. "/frontend/k.lua") == "k", "on a Nook: the same update installed")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "…and the Nook's start script replaced, from the next start")
+check(rf(WORK .. "/nook/gzreader/launcher.sh") == "#!/system/bin/sh\n# new helper\n", "…and the icon's helper (from the Nook's next restart)")
+check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
+running:close()
+check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
+PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
+    ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/nook-gzreader.sh"] = "not a script" }
+check(Update.apply("pkg.zip") and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "a broken start script in the package: the Nook keeps its own")
+PKG = { [TOP .. "frontend/src.lua"] = "src", [TOP .. "reader.lua"] = "reader", [TOP .. "platform/nook/gzreader.sh"] = "#!/system/bin/sh\n# src\n",
+    [TOP .. "plugins/gzreader.koplugin/main.lua"] = "src main" }
+check(Update.apply("src.zip", { source = true, version = "1.4.0" }) and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n",
+    "a release's source code zip: the Nook's start script from platform/nook/")
+-- the Nook's disk full (GZreader shares 242 MB with Android): downloaded and
+-- unpacked on the card, installed by copying
+local CARD = WORK .. "/card"
+os.execute("rm -rf '" .. CARD .. "' && mkdir -p '" .. CARD .. "'")
+local real_free, real_card, real_copy = Update.freeSpace, Update.cardDir, Update.copyTree
+Update.cardDir = function() return CARD end
+Update.freeSpace = function(p) return p == NK and 1024 * 1024 or 1e10 end
+local work, elsewhere = Update.workDir(30e6)
+check(elsewhere and work == CARD .. "/GZreader/.gzreader-update", "1 MB free next to GZreader, 30 MB needed: the update goes to the card")
+PKG = { ["koreader/frontend/c.lua"] = "card", ["koreader/plugins/gzreader.koplugin/main.lua"] = "card main",
+    ["koreader/gzreader-version"] = "1.5.0\n" }
+local cok, cerr = Update.apply("pkg.zip", { stage = work })
+check(cok and rf(NK .. "/frontend/c.lua") == "card" and rf(NK .. "/frontend/k.lua") == nil
+    and rf(NK .. "/plugins/gzreader.koplugin/main.lua") == "card main" and Update.currentVersion() == "1.5.0",
+    "…unpacked there and copied in, each part as a whole (" .. tostring(cerr) .. ")")
+check(rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# src\n"
+    and io.popen("ls -a '" .. CARD .. "/GZreader' '" .. NK .. "' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"),
+    "…nothing left on the card or next to GZreader")
+PKG = { ["koreader/frontend/d.lua"] = "d", ["koreader/plugins/gzreader.koplugin/main.lua"] = "d main",
+    ["koreader/gzreader-version"] = "1.6.0\n" }
+Update.copyTree = function(from, dest)
+    if dest == NK .. "/plugins/gzreader.koplugin" and from:find("/koreader/plugins/") then return nil end
+    return real_copy(from, dest)
+end
+local fok, ferr = Update.apply("pkg.zip", { stage = work })
+Update.copyTree = real_copy
+check(not fok and ferr:match("could not install plugins/gzreader.koplugin") and rf(NK .. "/frontend/c.lua") == "card"
+    and rf(NK .. "/frontend/d.lua") == nil and rf(NK .. "/plugins/gzreader.koplugin/main.lua") == "card main"
+    and Update.currentVersion() == "1.5.0",
+    "a part that can't be copied in (the disk full after all): every part put back as it was, nothing changed")
+check(io.popen("ls -a '" .. CARD .. "/GZreader' | grep -c 'gzreader-update'"):read("*a"):match("^0"), "…and nothing left on the card")
+Update.freeSpace = function() return 1e10 end
+check(select(2, Update.workDir(30e6)) == false, "room next to GZreader: unpacked there, as before")
+-- parts on the card (the Nook's start script mounts them into koreader/):
+-- unpacked next to GZreader, but those parts copied in, not renamed
+local real_dev, copied = Update.devOf, {}
+Update.devOf = function(p)
+    if p == NK .. "/frontend" or p:find("^" .. NK:gsub("%p", "%%%0") .. "/frontend/") then return "card" end
+    return real_dev(p)
+end
+Update.copyTree = function(from, dest)
+    copied[#copied + 1] = dest
+    return real_copy(from, dest)
+end
+PKG = { ["koreader/frontend/m.lua"] = "mounted", ["koreader/plugins/gzreader.koplugin/main.lua"] = "m main",
+    ["koreader/gzreader-version"] = "1.7.0\n" }
+local mok, merr = Update.apply("pkg.zip")
+Update.copyTree, Update.devOf = real_copy, real_dev
+local copied_frontend, copied_other = false, false
+for _i, d in ipairs(copied) do
+    if d == NK .. "/frontend" then copied_frontend = true elseif not d:find("/kept/") and not d:find("^" .. NK:gsub("%p", "%%%0") .. "/frontend/") then copied_other = true end
+end
+check(mok and rf(NK .. "/frontend/m.lua") == "mounted" and rf(NK .. "/frontend/c.lua") == nil and Update.currentVersion() == "1.7.0"
+    and copied_frontend and not copied_other,
+    "a part on another disk (frontend on the card): copied in; the rest renamed as before (" .. tostring(merr) .. ")")
+check(io.popen("ls -a '" .. NK .. "' '" .. NK .. "/plugins' | grep -c 'gzreader-update\\|gz-old'"):read("*a"):match("^0"), "…nothing left behind")
+Update.freeSpace, Update.cardDir = real_free, real_card
+Update.root = KO
+end
 captured.textviewer = nil
 preload("ui/widget/textviewer", { new = function(_, o) captured.textviewer = o; return o end })
 Update.showChangelog()
 check(captured.textviewer and captured.textviewer.title == "GZreader changelog" and captured.textviewer.text:match("GZreader 1%.0%.3"), "changelog is GZreader's")
+-- test builds: latest-beta.json on the updates branch, any build other than the installed one
+do
+    local asked
+    Update.request = function(u)
+        asked = u
+        return 200, json.encode({ version = "1.4.0-beta.12", size = 4567, sha256 = string.rep("cd", 32), file = "gzreader-beta-update.zip",
+            commit = "0123abcd", notes = "• Nook: fewer flashes" })
+    end
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl(), "test builds off by default: releases")
+    Update.setBeta(true)
+    local binfo = Update.check()
+    check(Update.betaEnabled() and asked == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/latest-beta.json",
+        "test builds on: latest-beta.json on the updates branch (next to the release's latest.json)")
+    check(binfo and binfo.beta and binfo.version == "1.4.0-beta.12" and binfo.size == 4567
+        and binfo.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip"
+        and binfo.notes:match("fewer flashes") and binfo.page:match("/commit/0123abcd$") and Update.state.has_update,
+        "a test build found, with its download, size and what's in it (installed " .. Update.currentVersion() .. ")")
+    -- (GitHub's file server keeps each file of a branch for minutes, each on its own:
+    -- the test build's data and its zip are read at the branch's commit)
+    local sha, asks = string.rep("ab12", 10), {}
+    Update.request = function(u, _path, accept)
+        asks[#asks + 1] = u
+        if u:match("/commits/updates$") then return 200, accept == "application/vnd.github.sha" and sha or "{}" end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    local pinned = Update.check()
+    check(asks[1] == "https://api.github.com/repos/9retirement6irk/GZreader/commits/updates"
+        and asks[2] == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/latest-beta.json"
+        and pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/" .. sha .. "/gzreader-beta-update.zip",
+        "test builds: the data and the zip from the same commit of the updates branch (no half-old, half-new: 'incomplete')")
+    Update.request = function(u)
+        if u:match("/commits/") then return 403 end
+        return 200, json.encode({ version = "1.4.0-beta.13", size = 4568, file = "gzreader-beta-update.zip" })
+    end
+    pinned = Update.check()
+    check(pinned and pinned.url == "https://raw.githubusercontent.com/9retirement6irk/GZreader/updates/gzreader-beta-update.zip",
+        "GitHub doesn't say the commit (rate limit): the branch as before")
+    Update.request = function()
+        return 200, json.encode({ version = Update.currentVersion(), size = 1, file = "gzreader-update.zip" })
+    end
+    check(Update.check() and not Update.state.has_update, "the installed test build: nothing to offer")
+    Update.request = function() return 200, json.encode({ version = "1.0.0-beta.3", size = 1, file = "gzreader-update.zip" }) end
+    check(Update.check() and Update.state.has_update, "an older test build than the installed version: still offered (test builds go by build, not number)")
+    Update.request = function() return 200, json.encode({ version = "1.5.0-beta.1", size = 1, file = "../../evil.zip" }) end
+    check(not Update.check(), "a file name with a path in it: refused")
+    Update.request = function() return 404 end
+    local _n, berr = Update.check()
+    check(berr and berr:match("No test build"), "no test build yet: says so")
+    Update.setBeta(false)
+    check(not Update.betaEnabled() and Update.feedUrl() == Update.apiUrl() and gsettings.gzreader_update_last_check == 0,
+        "test builds off: releases again, checked at once")
+    check(Update.compare("1.4.0", "1.4.0-beta.12") > 0 and Update.compare("1.3.9", "1.4.0-beta.12") < 0,
+        "after test builds: the release of that version is newer, an older release isn't")
+end
+-- The quick panel's Updates tile: what a check already found, nothing fetched
+;(function()
+    local Panel = require("gzreader_panel")
+    local kept = { state = Update.state, latest = gsettings.gzreader_update_latest, last = gsettings.gzreader_update_last_check,
+        beta = gsettings.gzreader_update_beta, request = Update.request, version = rf(KO .. "/gzreader-version") }
+    wf(KO .. "/gzreader-version", "1.0.0\n")
+    local fetched = 0
+    Update.request = function() fetched = fetched + 1; return 404 end
+    gsettings.gzreader_update_beta = false
+    local function tile() local t = Panel.updatesTile(); return t.label .. (t.on and " (on)" or "") end
+    Update.state = { has_update = false }; gsettings.gzreader_update_latest = nil
+    check(Update.known() == nil and tile() == "Updates", "Updates tile: no check yet, plain Updates " .. tile())
+    gsettings.gzreader_update_latest = "1.1.0" -- (a check before this start: the daily one)
+    check(Update.known() == "1.1.0" and tile() == "Update available (on)",
+        "…a check before a restart found 1.1.0 (installed 1.0.0): Update available, drawn inverted " .. tile())
+    gsettings.gzreader_update_latest = "1.0.0"
+    check(Update.known() == nil and tile() == "Updates", "…the saved check found the installed version: plain Updates")
+    gsettings.gzreader_update_latest = "1.1.0"; gsettings.gzreader_update_last_check = os.time()
+    Update.backgroundCheck()
+    check(Update.state.has_update and Update.known() == "1.1.0" and tile() == "Update available (on)",
+        "…the daily check, already done today: its result shown without asking again")
+    Update.state = { has_update = false, latest = "1.0.0" }
+    check(Update.known() == nil and tile() == "Updates", "…a check in this session found nothing: it wins over the saved one")
+    Update.state = { has_update = true, latest = "1.2.0" }
+    check(Update.known() == "1.2.0" and tile() == "Update available (on)", "…a check in this session found 1.2.0")
+    gsettings.gzreader_update_beta = true; Update.state = { has_update = false }; gsettings.gzreader_update_latest = "1.0.0-beta.3"
+    check(Update.known() == "1.0.0-beta.3", "…test builds: another test build than the installed one")
+    check(fetched == 0, "…nothing fetched to draw the tile")
+    local kept_mod = package.loaded["gzreader_update"]
+    package.loaded["gzreader_update"] = nil; gsettings.gzreader_update_latest = nil
+    check(tile() == "Updates" and package.loaded["gzreader_update"] == nil, "…before any check, the panel doesn't load the updater")
+    package.loaded["gzreader_update"] = kept_mod
+    local ran = 0
+    local kept_run = Update.run
+    Update.run = function() ran = ran + 1 end
+    Panel.updatesTile().run()
+    Update.run = kept_run
+    check(ran == 1, "…a tap checks and offers it, as before")
+    Update.state, Update.request = kept.state, kept.request
+    gsettings.gzreader_update_latest, gsettings.gzreader_update_last_check, gsettings.gzreader_update_beta = kept.latest, kept.last, kept.beta
+    if kept.version then wf(KO .. "/gzreader-version", kept.version) end
+end)()
 Update.request = function() return 404 end
 local none, nerr = Update.check()
 check(none == nil and nerr:match("No GZreader release"), "no release yet -> clear message")
@@ -2970,7 +5538,16 @@ gsettings.gzreader_audio_players = nil
 print("Send the diagnostic log to a phone")
 PS.new = function(self, o) screen = o; return o end
 plugin.pairing = nil
+local function savedLogs()
+    local count = 0
+    for _i, logdir in ipairs({ plugin:libraryDir():match("^(.+)/[^/]+$"), require("datastorage"):getDataDir() .. "/cache" }) do
+        pcall(function() for fname in require("libs/libkoreader-lfs").dir(logdir) do if fname:match("^gzreader%-log%-") then count = count + 1 end end end)
+    end
+    return count
+end
+local saved_before = savedLogs()
 plugin:shareLog()
+check(savedLogs() <= math.min(saved_before, 3), "sharing leaves no log file behind (" .. saved_before .. " -> " .. savedLogs() .. ")")
 check(screen and screen.url:match("^http://%d+%.%d+%.%d+%.%d+:%d+/log/%x+$") and screen.title:match("diagnostic log"), "QR screen with a one-off log address")
 local lbase = "http://127.0.0.1:" .. UI.zmqs[1].port
 local lpath = screen.url:match("(/log/%x+)$")
@@ -2988,104 +5565,141 @@ check(#UI.zmqs == 0 and not plugin.pairing, "Back stops sharing")
 PS.new = orig_new
 
 
-print("Usage statistics")
+print("A line in the log for each start: how long until Home is on screen")
 ;(function()
-    local U = require("gzreader_usage")
-    local got = {}
-    U.testing_sink = function(item) got[#got + 1] = item end
-    gsettings.gzreader_usage = nil
-    check(U.level() == "basic", "Basic by default")
-    U.event("start", { device = "Kindle3" })
-    U.event("reading", { minutes = 5 }, true)
-    check(#got == 1 and got[1].type == "event" and got[1].payload.application == U.APP and got[1].payload.name == "start"
-        and type(got[1].payload.data.install) == "string" and #got[1].payload.data.install == 32,
-        "Basic: starts are recorded (with this Kindle's random ID); Full-only events aren't")
-    U.download({ ok = false, error = "timeout", bytes = 2048000, seconds = 10, resumed = true })
-    local d = got[#got].payload.data
-    check(got[#got].payload.name == "download" and d.ok == false and d.error == "timeout" and d.kb == nil, "Basic download: done or failed only")
-    gsettings.gzreader_usage = "full"
-    got = {}
-    U.download({ ok = true, bytes = 2048000, seconds = 10, resumed = true })
-    d = got[1].payload.data
-    check(d.ok and d.kb == 2000 and d.kb_per_s == 200 and d.resumed == true, "Full download: size, speed and resume")
-    U.menu("home", "Open \u{201C}Secret Title\u{201D}")
-    check(got[#got].payload.name == "menu" and not got[#got].payload.data.item:find("Secret", 1, true), "menu entries without book titles")
-    U.request("flush", true, 800); U.request("flush", false, 1200); U.request("annotations", true, 500)
-    U.slow("a keypress", 4)
-    got = {}
-    U.summary("test")
-    local names = {}
-    for _i, it in ipairs(got) do names[it.payload.name] = it.payload.data end
-    check(names["slow operations"] and names["slow operations"].count == 1 and names.sync and names.sync.position.ok == 1
-        and names.sync.position.failed == 1 and names.sync.position.avg_ms == 1000 and names.sync.highlights.ok == 1,
-        "summaries: slow operations, and sync counts with Grimmory's answer time")
-    gsettings.gzreader_usage = "off"
-    got = {}
-    U.event("start", {})
-    U.download({ ok = true })
-    check(#got == 0, "Off: nothing recorded")
-    U.testing_sink = nil
-    -- the batch really goes out (background process, while Wi-Fi is on)
-    gsettings.gzreader_usage = "basic"
-    U.SERVER = "http://127.0.0.1:" .. PORT
-    U.event("start", { device = "Kindle3" })
-    U.identify()
-    U.maybeSend(true)
-    runLoop(function() return not U.sending end, 30)
-    local usage = json.decode(ctl("/state")).usage or {}
-    local seen = {}
-    for _i, e in ipairs(usage) do seen[e.type .. ":" .. tostring(e.payload.name)] = true end
-    check(seen["event:start"] and seen["identify:nil"], "sent as one batch to /api/application/batch (event + identify)")
-    local left = 0
-    for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
-    check(left == 0, "sent batches are removed")
-    -- no Wi-Fi: handed to the sync page (the .gzsync folder's usage/)
-    local hand = WORK .. "/usage-hand"
-    os.execute("rm -rf '" .. hand .. "'")
-    U.event("start", { device = "Kindle2" })
-    check(U.handOver(hand) == 1, "no Wi-Fi: what's waiting goes to the sync page's folder")
-    local moved, lines = 0, 0
-    for name in require("libs/libkoreader-lfs").dir(hand) do
-        if name:match("jsonl$") then
-            moved = moved + 1
-            for line in io.lines(hand .. "/" .. name) do if json.decode(line).payload.name == "start" then lines = lines + 1 end end
-        end
-    end
-    left = 0
-    for name in require("libs/libkoreader-lfs").dir(U.dir()) do if name:match("jsonl$") then left = left + 1 end end
-    check(moved == 1 and lines == 1 and left == 0, "…moved, not copied")
-    gsettings.gzreader_usage = "off"
-    check(U.handOver(hand) == 0 and require("gzreader_usbsync").usageInfo() == nil, "Off: nothing handed over, no server in the outbox")
-    gsettings.gzreader_usage = "basic"
-    local ui = require("gzreader_usbsync").usageInfo()
-    check(ui and ui.level == "basic" and ui.server == U.SERVER, "the outbox tells the page where to send them")
-    os.execute("rm -rf '" .. hand .. "'")
-    gsettings.gzreader_usage = nil
+    local OT = require("gzreader_opentiming")
+    -- /proc/self/stat: the command name may hold spaces and brackets; starttime is field 22
+    local stat = "4242 (lua jit (x)) S 1 4242 4242 0 -1 4194304 100 0 0 0 50 10 0 0 20 0 1 0 12345 1000 200"
+    check(math.abs((OT.processAge(stat, "135.95 400.00", 100) or -1) - 12.5) < 1e-6,
+        "the program's age: uptime minus its start (12.5 s)")
+    check(OT.processAge("garbage", "10.0 0") == nil and OT.processAge(stat, "100.0 0", 100) == nil,
+        "unreadable or impossible: no age")
+    check(type(OT.processAge()) == "number", "this process's own age, from /proc")
+    local line = OT.startupLine({ what = "Home", shown = 14.21, cpu = 9.06, plugin_at = 6.3, setup = 0.71,
+        modules = 905, lua_mb = 15.32, free = 98, cached = 31, rss = 44 })
+    check(line == "start: Home on screen 14.2 s after the program started (CPU 9.1 s) | GZreader started at 6.3 s, "
+        .. "set up in 0.7 s | modules loaded 905, Lua memory 15.3 MB | free memory 98 MB (+ 31 MB cache), GZreader 44 MB",
+        "the start's line: " .. line)
+    check(OT.startupLine({}):find("^start: the first screen on screen %? s"), "missing figures: \"?\", not an error")
+    -- the run: begun, set up, then refreshes until one has Home (or a book) on screen
+    local Log = require("gzreader_log")
+    local logged = {}
+    local orig_info = Log.info
+    Log.info = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local saved_boot = OT.boot
+    OT.boot = nil
+    OT.bootBegin()
+    OT.bootRefresh({ { widget = { _zen_home_focus_targets = {} } } })
+    check(#logged == 0, "a refresh before GZreader is set up: not the end of the start")
+    OT.bootReady()
+    OT.bootRefresh({ { widget = { name = "filemanager" } } })
+    check(#logged == 0, "the file manager alone: still starting (Home comes over it)")
+    OT.bootRefresh({ { widget = { name = "filemanager" } }, { widget = { _zen_home_focus_targets = {} } } })
+    check(#logged == 1 and logged[1]:find("^start: Home on screen [%d.]+ s") and logged[1]:find("modules loaded %d+"),
+        "Home on screen: one line (" .. tostring(logged[1]) .. ")")
+    OT.bootRefresh({ { widget = { _zen_home_focus_targets = {} } } })
+    OT.bootBegin()
+    check(#logged == 1 and OT.boot == false, "once a run")
+    OT.boot = nil
+    OT.bootBegin(); OT.bootReady()
+    OT.bootRefresh({ { widget = { name = "ReaderUI" } } })
+    check(#logged == 2 and logged[2]:find("^start: a book on screen"), "a book opened at start ends it too")
+    OT.boot = nil
+    OT.bootBegin(); OT.bootReady()
+    local saved_fb = OT.BOOT_FALLBACK
+    OT.BOOT_FALLBACK = -1 -- (a minute has gone by)
+    OT.bootRefresh({ { widget = { name = "filemanager" } } })
+    OT.BOOT_FALLBACK = saved_fb
+    check(#logged == 3 and logged[3]:find("^start: the first screen on screen [%d.]+ s"),
+        "neither Home nor a book within a minute: the start ends at that refresh")
+    Log.info = orig_info
+    OT.boot = saved_boot
 end)()
 
-print("Remote debugging")
+print("No usage statistics (since 1.28.1); debug reports have their own setting")
+;(function()
+    local R = require("gzreader_remote")
+    local lfs = require("libs/libkoreader-lfs")
+    local function rd(p) local h = io.open(p, "rb"); local t = h and h:read("*a"); if h then h:close() end; return t end
+    -- nothing records or sends usage statistics any more
+    local uses = {}
+    for name in lfs.dir(PLUGIN) do
+        if name:match("%.lua$") and (rd(PLUGIN .. "/" .. name) or ""):find('require("gzreader_usage")', 1, true) then uses[#uses + 1] = name end
+    end
+    local Usb = require("gzreader_usbsync")
+    check(not rd(PLUGIN .. "/gzreader_usage.lua") and #uses == 0 and Usb.usageInfo == nil and Usb.handOverUsage == nil
+        and not (rd(PLUGIN .. "/gzreader_usbsync.lua") or ""):find("usage = ", 1, true),
+        "no usage statistics: the module is gone, nothing calls it, the outbox has no usage " .. table.concat(uses, ","))
+    -- debug reports: off unless chosen; a Full level carries over once, the rest is deleted
+    local saved_dr, saved_u = gsettings.gzreader_debug_reports, gsettings.gzreader_usage
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, nil
+    check(R.setting() == false and R.SETTING == "gzreader_debug_reports", "debug reports: off by default")
+    gsettings.gzreader_usage = "basic"
+    check(R.setting() == false, "…off after Basic usage statistics")
+    gsettings.gzreader_usage = "full"
+    check(R.setting() == true, "…on after Full (Full sent them)")
+    local udir = WORK .. "/gzreader-usage"
+    lfs.mkdir(udir)
+    local fh = io.open(udir .. "/queue.jsonl", "wb"); fh:write('{"type":"event"}\n'); fh:close()
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == true and gsettings.gzreader_usage == nil and not lfs.attributes(udir, "mode"),
+        "at start: Full becomes debug reports on, the old level and the waiting statistics are deleted")
+    check((rd(PLUGIN .. "/main.lua") or ""):find('require("gzreader_remote").forgetUsage()', 1, true),
+        "…once a run, 15 s after start (main.lua)")
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = nil, "off"
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == false and gsettings.gzreader_usage == nil, "…Off (or Basic): debug reports off")
+    R.forgetUsage()
+    check(gsettings.gzreader_debug_reports == false, "…once: a choice made since stays")
+    -- the random ID stays (it names this Kindle in reports)
+    local id = gsettings.gzreader_usage_id
+    gsettings.gzreader_usage_id = string.rep("ab", 16)
+    check(R.id() == string.rep("ab", 16) and R.deviceName():match("%-ababab$"), "the Kindle's random ID is kept: reports name it as before")
+    gsettings.gzreader_usage_id = id
+    -- Settings → General: the switch
+    local item = R.menuItem()
+    check(item and item.text == "Send debug reports automatically" and not item.checked_func()
+        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords or tokens", 1, true),
+        "Settings → General → Send debug reports automatically (says what it sends)")
+    local Net = require("gzreader_net")
+    local was_usb = Net.usb
+    Net.usb = true
+    check(R.menuItem() == nil and not R.enabled(), "a Kindle without Wi-Fi: no switch (it couldn't send)")
+    Net.usb = was_usb
+    gsettings.gzreader_debug_reports, gsettings.gzreader_usage = saved_dr, saved_u
+end)()
+
+print("Remote debugging (debug reports on)")
 ;(function()
     local R = require("gzreader_remote")
     local lfs = require("libs/libkoreader-lfs")
     check(R.normalize(" https://in.example.com/open/feed/abc/send \n") == "https://in.example.com/open/feed/abc", "feed address: /send etc. trimmed")
     check(R.normalize("nonsense") == nil, "not an address: refused")
+    check(not R.testBuild("1.26.7") and R.testBuild("1.26.7-beta.abc1234") and R.feedUrl("1.26.7") == R.FEED
+        and R.feedUrl("1.26.7-beta.abc1234") == R.TEST_FEED and R.FEED ~= R.TEST_FEED
+        and R.FEED:match("/open/feed/%w+$") and R.TEST_FEED:match("/open/feed/%w+$"),
+        "releases report to one feed, test builds to another")
     local started = 0
     R.startWatchdog = function() started = started + 1 end
-    -- off until an address is set
+    -- off (the default): nothing; a feed set by hand before is forgotten
+    gsettings.gzreader_debug_reports = false
+    plugin.store.remote_url, plugin.store.remote_profile = "https://in.example.com/open/feed/old", true
     R.started = false
-    plugin.store.remote_url = nil
     R.start(plugin)
-    check(not R.on and started == 0, "no address: nothing sent, no watchdog")
-    -- address from the USB drive file; previous run didn't close normally
+    check(not R.on and started == 0 and plugin.store.remote_url == nil and plugin.store.remote_profile == nil,
+        "off: nothing sent, no watchdog; the old hand-set feed is gone")
+    -- on: the previous run didn't close normally
+    R.LIVE_DIR = WORK .. "/live"
+    lfs.mkdir(R.LIVE_DIR)
     local dir = R.dir()
     os.execute("rm -f '" .. dir .. "'/spool/*")
     local fh = io.open(dir .. "/heartbeat", "wb"); fh:write((os.time() - 600) .. " run reading big.epub p.40"); fh:close()
     fh = io.open(WORK .. "/gzreader.log.prev", "wb"); fh:write("2026 [INFO] the line before the freeze\n"); fh:close()
-    fh = io.open(WORK .. "/gzreader-remote.txt", "wb"); fh:write("https://in.example.com/open/feed/xyz/send\n"); fh:close()
-    R.started = false
-    R.start(plugin)
-    check(plugin.store.remote_url == "https://in.example.com/open/feed/xyz" and R.on, "address read from gzreader-remote.txt")
-    check(started == 1, "watchdog started")
+    R.menuItem().callback() -- (Settings: on; starts it: R.apply)
+    check(R.on and started == 1 and gsettings.gzreader_debug_reports == true, "turned on: on at once, watchdog started")
+    local cfg = io.open(dir .. "/config"):read("*a")
+    check(cfg:sub(1, #R.feedUrl() + 1) == R.feedUrl() .. "\n" and cfg:match("\n" .. R.deviceName():gsub("%-", "%%-") .. "\n"),
+        "the watchdog reports to this build's feed")
     local names = {}
     for n in lfs.dir(dir .. "/spool") do if n:match("%.json$") then names[#names + 1] = n end end
     table.sort(names)
@@ -3098,21 +5712,161 @@ print("Remote debugging")
     check(bodies[1].tags[1] == "gzreader" and bodies[1].source == "gzreader", "tagged")
     local hb = io.open(dir .. "/heartbeat"):read("*a")
     check(hb:match("^%d+ run "), "heartbeat written")
+    -- the 15 s beat: to the RAM disk; the kept one only when the status changes or every KEEP s
+    local function rd(p) local h = io.open(p, "rb"); local t = h and h:read("*a"); if h then h:close() end; return t end
+    check(R.livePath():match("/live/gzreader%-heartbeat%.%d+$") and (rd(R.livePath()) or ""):match("^%d+ run "),
+        "the beat goes to the live file (/tmp on a Kindle: no flash write)")
+    local kept = io.open(dir .. "/heartbeat", "wb"); kept:write("100 run the kept one"); kept:close()
+    R.beat("run")
+    check(rd(dir .. "/heartbeat") == "100 run the kept one" and (rd(R.livePath()) or ""):match("^%d+ run "),
+        "a beat while still running: only the live file is written")
+    R.kept_at = os.time() - R.KEEP
+    R.beat("run")
+    check((rd(dir .. "/heartbeat") or ""):match("^%d+ run ") and rd(dir .. "/heartbeat") ~= "100 run the kept one",
+        "…and every " .. R.KEEP .. " s the kept one too (when it was last seen, after a hard reboot)")
+    -- a live beat left by a previous process (no reboot since): newer than the kept one, so it counts
+    local prev_live = R.LIVE_DIR .. "/gzreader-heartbeat.999999"
+    kept = io.open(prev_live, "wb"); kept:write((os.time() + 5) .. " run reading late.epub p.9"); kept:close()
+    local prevb = R.previousBeat(dir)
+    check(prevb and prevb:match("late%.epub p%.9") and not io.open(prev_live, "rb"), "the previous run's live beat is used and removed")
+    kept = io.open(prev_live, "wb"); kept:write("50 run older"); kept:close()
+    check(not R.previousBeat(dir):match("older"), "…unless the kept one is newer")
+    -- the watchdog reads the newer of the two
+    local wsrc = rd(PLUGIN .. "/gzreader_watchdog.lua") or ""
+    check(wsrc:find('live_dir .. "/gzreader-heartbeat." .. ppid', 1, true) and (rd(PLUGIN .. "/gzreader_remote.lua") or ""):find("q(R.LIVE_DIR)", 1, true),
+        "the watchdog is told where the live beat is, and reads it")
     -- warnings are gathered
     require("gzreader_log").warn("something odd")
     check(R.pending and #R.pending == 1 and R.pending[1]:match("something odd"), "warnings gathered for one report")
     R.onSuspend()
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ sleep "), "asleep: the watchdog doesn't call it a freeze")
     R.event("queued before turning it off", "x")
-    R.stop()
+    R.setSetting(false) -- (Settings or the setup guide: off; stops it)
     local left = 0
     for name in require("libs/libkoreader-lfs").dir(dir .. "/spool") do if name:match("%.json$") then left = left + 1 end end
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ off") and left == 0 and not R.on and require("gzreader_log").on_line == nil,
         "turned off: queued reports dropped, heartbeat says off (the watchdog stops; no crash report at the next restart)")
+    check(not io.open(R.livePath(), "rb"), "…and the live beat is gone")
+    -- Diagnostics → Send to the developer
+    local logf = WORK .. "/devlog.txt"
+    local big = {}
+    for k = 1, 3000 do big[#big + 1] = string.format("line %05d é a GZreader log line\n", k) end
+    fh = io.open(logf, "wb"); fh:write(table.concat(big)); fh:close()
+    local posts = {}
+    local was_part, was_max = R.PART, R.MAX_PARTS
+    R.PART, R.MAX_PARTS = 20000, 3
+    local typed = "  The book froze when I turned the page, then the Kindle restarted. My token is Bearer abc123def  "
+    local n = R.sendLogs(logf, typed, function(url, body) posts[#posts + 1] = { url = url, body = json.decode(body) }; return 201 end)
+    local whole = ""
+    for _i, p in ipairs(posts) do whole = whole .. p.body.eventContent end
+    local valid = true
+    for _i, p in ipairs(posts) do if p.body.eventContent:find("^[\128-\191]") then valid = false end end
+    check(n == 3 and #posts == 3 and posts[1].url == R.REPORT_FEED .. "/send" and R.reportUrl() == R.REPORT_FEED
+        and R.REPORT_FEED:match("/open/feed/cmw7f51fm0e318o2f94o54020$") and R.REPORT_FEED ~= R.FEED and R.REPORT_FEED ~= R.TEST_FEED
+        and posts[1].body.eventName:match("^Debug report from .* %(1/3%): The book froze")
+        and posts[3].body.eventName:match("%(3/3%)$") and posts[1].body.tags[3] == "debug-log" and posts[1].body.tags[5] == "with-comment",
+        "the log goes to the report feed (releases and test builds alike), in parts, numbered; the first named after what was typed")
+    check(posts[1].body.eventContent:match("What happened: The book froze when I turned the page, then the Kindle restarted%.")
+        and not posts[1].body.eventContent:find("abc123def", 1, true) and not posts[2].body.eventContent:find("What happened", 1, true),
+        "what was typed is at the top of the first part (a token in it redacted)")
+    local quiet = {}
+    R.sendLogs(logf, "", function(_u, body) quiet[#quiet + 1] = json.decode(body); return 201 end)
+    check(quiet[1] and quiet[1].eventName:match("%(1/3%)$") and quiet[1].eventContent:match("What happened: %(nothing typed%)")
+        and quiet[1].tags[5] == nil, "nothing typed: sent anyway, and says so")
+    check(whole:match("line 03000") and not whole:match("line 00001") and whole:match("The last %d+ KB of %d+ KB") and valid,
+        "a long log: its newest part (says so), never cut inside a character")
+    local failed = { R.sendLogs(logf, nil, function() return 500 end) }
+    local offline = { R.sendLogs(logf, nil, function() return nil end) }
+    check(failed[1] == nil and failed[2] == "http_500" and offline[2] == "unreachable" and R.sendLogs(WORK .. "/none.txt") == nil,
+        "not sent: says why")
+    R.PART, R.MAX_PARTS = was_part, was_max
+    os.remove(logf)
     R.on = false
     require("gzreader_log").on_line = nil
-    plugin.store.remote_url = nil
-    os.remove(WORK .. "/gzreader-remote.txt")
+    gsettings.gzreader_debug_reports = nil
+    -- the menus
+    local src = io.open(debug.getinfo(R.start, "S").source:sub(2):gsub("gzreader_remote%.lua$", "main.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(not text:find("gzreader_remote\").menuItems", 1, true) and R.menuItems == nil
+        and text:find('_("Send to the developer")', 1, true) and text:find("function Grimmory:sendLogToDeveloper", 1, true),
+        "no Remote debugging settings; Diagnostics has Send to the developer")
+    -- the box for what happened, then the send with what was typed
+    local was_send = plugin.sendLogToDeveloper
+    local sent_with
+    local UIManager = require("ui/uimanager")
+    local orig_tick, orig_show, orig_close = UIManager.nextTick, UIManager.show, UIManager.close
+    UIManager.nextTick = function(_self, fn) fn() end
+    UIManager.show = function() end
+    UIManager.close = function() end
+    plugin.sendLogToDeveloper = function(_self, c) sent_with = c end
+    -- (a stand-in dialog: the real one needs a screen)
+    local real_input = package.loaded["ui/widget/inputdialog"]
+    package.loaded["ui/widget/inputdialog"] = { new = function(_self, o) o.onShowKeyboard = function() end; return o end }
+    local dlg = plugin:askReportComment()
+    package.loaded["ui/widget/inputdialog"] = real_input
+    dlg.getInputText = function() return "the calendar was empty" end
+    for _i, row in ipairs(dlg.buttons) do for _j, b in ipairs(row) do if b.text == "Send" then b.callback() end end end
+    plugin.sendLogToDeveloper = was_send
+    UIManager.nextTick, UIManager.show, UIManager.close = orig_tick, orig_show, orig_close
+    check(dlg.title == "Send to the developer" and dlg.allow_newline and sent_with == "the calendar was empty",
+        "Send to the developer asks what happened first, and sends what was typed")
+end)()
+
+print("The log: lines written together, not one write per line")
+;(function()
+    local Log = require("gzreader_log")
+    local bpath = WORK .. "/buffered.log"
+    local keep_path, keep_main = Log.path, Log.main_pid
+    local function rd() local fh = io.open(bpath, "rb"); local t = fh and fh:read("*a") or ""; if fh then fh:close() end; return t end
+    os.remove(bpath)
+    Log.init(WORK)
+    Log.path = bpath
+    local LUI = require("ui/uimanager")
+    local real_in = LUI.scheduleIn
+    local timers = {}
+    LUI.scheduleIn = function(_ui, s, fn) timers[#timers + 1] = { s = s, fn = fn } end
+    Log.buffered = true
+    Log.info("first line")
+    Log.info("second line")
+    check(rd() == "" and #timers == 1 and timers[1].s == Log.FLUSH_AFTER, "INFO lines wait in memory; one write planned")
+    timers[1].fn()
+    local t = rd()
+    check(t:match("first line\n.*second line\n$"), "…written together, in order, a few seconds later")
+    Log.info("before a warning")
+    Log.warn("a warning")
+    check(rd():match("before a warning\n.*a warning\n$"), "a warning: written at once, with what came before it")
+    Log.info("waiting at sleep")
+    Log.flush()
+    check(rd():match("waiting at sleep\n$"), "Log.flush (sleep, exit, export) writes what's waiting")
+    local was_max = Log.MAX_BUFFER
+    Log.MAX_BUFFER = 200
+    for k = 1, 6 do Log.info(string.rep("x", 40), k) end
+    check(rd():match("x+ %d\n$"), "a lot waiting: written without waiting for the timer")
+    Log.MAX_BUFFER = was_max
+    -- a background process (another pid) writes at once and drops the parent's lines
+    Log.info("the parent's line")
+    Log.main_pid = -1
+    Log.info("the child's line")
+    t = rd()
+    check(t:match("the child's line\n$") and not t:find("the parent's line", 1, true), "a background process: its own lines at once, not the parent's")
+    Log.main_pid = keep_main
+    -- export includes what's waiting
+    Log.info("just before export")
+    local dest = Log.exportTo(WORK)
+    local ef = dest and io.open(dest, "rb")
+    local et = ef and ef:read("*a") or ""
+    if ef then ef:close(); os.remove(dest) end
+    check(et:find("just before export", 1, true), "Save/Send the log: includes the lines still waiting")
+    local msrc = io.open(PLUGIN .. "/main.lua", "rb")
+    local mtext = msrc and msrc:read("*a") or ""
+    if msrc then msrc:close() end
+    check(mtext:find("Log.flush()\n        Log.buffered = false\n        return orig_quit", 1, true)
+        and select(2, mtext:gsub("Log%.flush%(%)", "")) >= 3, "flushed on exit (then every line at once), sleep and settings flush")
+    LUI.scheduleIn = real_in
+    Log.buffered = false
+    Log.path, Log.main_pid = keep_path, keep_main
+    os.remove(bpath)
 end)()
 
 print("Slow-operation tracing")
@@ -3144,7 +5898,7 @@ print("Wi-Fi you turn off stays off for background work")
     local Net = require("gzreader_net")
     local NM = require("ui/network/manager")
     local was_c, was_wod = NET.connected, gsettings.gzreader_wifi_on_demand
-    gsettings.gzreader_wifi_on_demand = true
+    gsettings.gzreader_wifi_mode = "auto"
     Net.adopt() -- wraps the Wi-Fi switches
     NET.connected = true
     NM:disableWifi(nil, true) -- the quick panel / Wi-Fi menu
@@ -3164,8 +5918,8 @@ print("Wi-Fi you turn off stays off for background work")
     captured.wifi = {}
     Net.run(function() ran = ran + 1 end, { quiet = true, reason = "test background" })
     check(ran == 2 and captured.wifi[1] == "on-quiet", "background work turns it on quietly again")
-    NET.connected, gsettings.gzreader_wifi_on_demand = was_c, was_wod
-    Net.connecting = nil
+    NET.connected, gsettings.gzreader_wifi_on_demand, gsettings.gzreader_wifi_mode = was_c, was_wod, nil
+    Net.connecting, Net.ours = nil, false
 end)()
 
 print("Calendar (CalDAV, against Radicale)")
@@ -3265,6 +6019,21 @@ print("Notes (Memos v0.31)")
     local NE = require("gzreader_noteeditor")
     local Log = require("gzreader_log")
     local function logtxt() local f = io.open(WORK .. "/gzreader.log", "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
+
+    do -- the icon font (pin, place, file, image, tag, date) is found where Font:getFace looks: <fonts folder>/<name>
+        local ko = arg[5]
+        local function opens(dir, name)
+            local fh = io.open(dir .. "/" .. name, "rb")
+            if fh then fh:close() end
+            return fh ~= nil
+        end
+        local rel = Sticky.iconFontName("./fonts")
+        local abs = Sticky.iconFontName(ko .. "/fonts", ko)
+        check(rel == "../plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf" and opens(ko .. "/fonts", rel),
+            "Notes icons: the icon font is found from KOReader's fonts folder (" .. rel .. ")")
+        check(opens(ko .. "/fonts", abs) and not opens(ko .. "/fonts", "./plugins/zenos.koplugin/fonts/SymbolsNerdFont-Regular.ttf"),
+            "…and from a fonts folder given in full (the old path wasn't found: " .. abs .. ")")
+    end
 
     -- Markdown, as the sticky notes show it
     local md = "## Trip\n\nPlan **the** _route_ and [map](https://x.y).\n- [ ] permit\n- [x] map\n* bullet\n![pic](/file/attachments/abc/p.png)\n\n"
@@ -3549,6 +6318,34 @@ print("Calendar tab")
     Cal.layout = "month"
     check(Cal.periodLabel(plugin):match("%d%d%d%d$"), "month label: " .. Cal.periodLabel(plugin))
     check(#Cal.settingsItems(plugin) == 7, "Settings → Connections → Calendar: links, CalDAV account, calendars, layout, week start, range, storage")
+    do -- the bar next to an event is as tall as it's drawn, so a row centres it on the title
+        -- (real geometry and HorizontalGroup here: the rest of this file has stand-ins)
+        local REAL = { "ui/geometry", "ui/widget/eventlistener", "ui/widget/widget",
+            "ui/widget/container/widgetcontainer", "ui/widget/horizontalgroup" }
+        local saved = { gzreader_calendar = package.loaded["gzreader_calendar"], ["ui/bidi"] = package.loaded["ui/bidi"],
+            optmath = package.loaded["optmath"] }
+        for _i, rn in ipairs(REAL) do saved[rn] = package.loaded[rn] end
+        local Dev = require("device")
+        local was_screen = Dev.screen
+        local scr = magic()
+        scr.scaleBySize = function(_, v) return v end
+        local ok_m, res = pcall(function()
+            Dev.screen = scr
+            package.loaded["ui/bidi"] = { mirroredUILayout = function() return false end }
+            package.loaded["optmath"] = { round = function(x) return math.floor(x + 0.5) end }
+            for _i, rn in ipairs(REAL) do package.loaded[rn] = dofile(arg[5] .. "/frontend/" .. rn .. ".lua") end -- (arg[5]: KOReader)
+            package.loaded["gzreader_calendar"] = nil
+            local Cal2 = require("gzreader_calendar")
+            local mk = Cal2.marker({ title = "Rent" }, 40)
+            local row = package.loaded["ui/widget/horizontalgroup"]:new{ align = "center", mk, Cal2.marker({ title = "x" }, 54) }
+            local size = row:getSize()
+            return { h = mk:getSize().h, w = mk:getSize().w, top = math.floor((size.h - row._offsets[1].y) / 2) }
+        end)
+        Dev.screen = was_screen
+        for rn, v in pairs(saved) do package.loaded[rn] = v end
+        check(ok_m and res.h == 40 and res.w == 3 and res.top == 7,
+            "the event's calendar bar is centred on its row: " .. (ok_m and (res.w .. "x" .. res.h .. " from y " .. res.top) or tostring(res)))
+    end
 
     -- calendar links (webcal / ICS): a Proton-style feed with two time zones
     local FPORT = PORT + 5
@@ -3892,7 +6689,220 @@ print("Music (Plex): the server, downloads, the player")
     check(plex:connect("wrong") == nil, "Plex: a bad token is refused")
     plex:connect(token)
     local secs = plex:musicSections()
-    check(secs and #secs == 1 and secs[1].key == "1", "Plex: the music library (not the films)")
+    check(secs and #secs == 3 and secs[1].key == "1" and secs[2].key == "4" and secs[2].title == "Concerts" and secs[3].title == "Audiobooks",
+        "Plex: the music libraries (not the films)")
+    do -- the music library to browse: the one chosen in Settings (on this server), else the server's first
+        local MusicTab = require("gzreader_musictab")
+        local Cache = require("gzreader_listcache")
+        local px = plugin.store.plex
+        local saved_ms, saved_save = px.music_section, plugin.save
+        plugin.save = function() end
+        px.music_section = nil
+        local first, all0 = plex:musicSection()
+        check(first and first.key == "1" and #all0 == 3 and MusicTab.libraryText(plugin) == "Music library: the server's first"
+            and MusicTab.only(plex) == "1", "Plex: nothing chosen: the first music library (playlists and search kept to it, the server has two)")
+        local ckey = tostring(plugin.store.server) .. "|" .. tostring(plugin.store.username) .. "|shop:mu_recent"
+        Cache.put(ckey, { { type = "album", key = "201" } })
+        -- the choice, as Settings → Connections → Plex → Music library offers it
+        local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
+        local dlg, picked
+        require("gzreader_net").run = function(fn) fn() end
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) dlg = o; return o end }
+        MusicTab.chooseLibrary(plugin, function() picked = true end)
+        runLoop(function() return dlg ~= nil end, 15)
+        local labels = {}
+        for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
+        check(dlg and dlg.title == "Music library" and table.concat(labels, ",") == "\u{2713} Music,Concerts,Audiobooks",
+            "Plex: Music library offers the server's music libraries, the one in use ticked " .. table.concat(labels, ","))
+        if dlg then dlg.buttons[2][1].callback() end
+        require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
+        local chosen, all = plex:musicSection()
+        local albums4 = plex:list(chosen.key, "albums", 0)
+        check(picked and px.music_section.key == "4" and px.music_section.server == px.server.id and chosen.key == "4" and #all == 3
+            and albums4[1].title == "Live Album" and MusicTab.libraryText(plugin) == "Music library: Concerts",
+            "Plex: Concerts chosen: kept for this server, its albums listed")
+        local rec = Cache.get(ckey)
+        check(type(rec) == "table" and #rec == 0, "Plex: another library chosen: the Catalog's Music shelves are asked for again")
+        check(#plex:playlists(MusicTab.only(plex)) == 0 and plex:search("live", MusicTab.only(plex)).albums[1].key == "205"
+            and #plex:search("tone", MusicTab.only(plex)).tracks == 0, "Plex: with two music libraries, playlists and search keep to the one chosen")
+        local Plex1 = require("gzreader_plex")
+        check(Plex1.pickSection(all, px.music_section, { id = "another" }).key == "1"
+            and Plex1.pickSection(all, { server = px.server.id, key = "9" }, px.server).key == "1",
+            "Plex: a library chosen on another server, or one that's gone: the server's first")
+        px.music_section, plugin.save = saved_ms, saved_save
+    end
+    do -- audiobooks from a Plex library (Settings → Connections → Plex → Audiobooks)
+        local MusicTab = require("gzreader_musictab")
+        local PA = require("gzreader_plexaudio")
+        local ABk = require("gzreader_audiobook")
+        local px = plugin.store.plex
+        local saved_ab, saved_save = px.audiobook_section, plugin.save
+        plugin.save = function() end
+        px.audiobook_section = nil
+        check(PA.section(plugin) == nil and MusicTab.audiobooksText(plugin) == "Audiobooks: from Grimmory", "Plex audiobooks: Grimmory's until a Plex library is chosen")
+        local saved_net, saved_bd = require("gzreader_net").run, package.loaded["ui/widget/buttondialog"]
+        local dlg
+        require("gzreader_net").run = function(fn) fn() end
+        package.loaded["ui/widget/buttondialog"] = { new = function(_self, o) dlg = o; return o end }
+        MusicTab.chooseAudiobooks(plugin)
+        runLoop(function() return dlg ~= nil end, 15)
+        local labels = {}
+        for _i, row in ipairs(dlg and dlg.buttons or {}) do labels[#labels + 1] = row[1].text end
+        check(table.concat(labels, ",") == "\u{2713} Grimmory,Plex: Music,Plex: Concerts,Plex: Audiobooks",
+            "Plex audiobooks: Audiobooks from offers Grimmory and the server's music libraries " .. table.concat(labels, ","))
+        if dlg then dlg.buttons[4][1].callback() end
+        require("gzreader_net").run, package.loaded["ui/widget/buttondialog"] = saved_net, saved_bd
+        local sec = PA.section(plugin)
+        check(sec and sec.key == "5" and px.audiobook_section.server == px.server.id and MusicTab.audiobooksText(plugin) == "Audiobooks: from Plex (Audiobooks)",
+            "Plex audiobooks: the Audiobooks library chosen, for this server")
+        local Plex1 = require("gzreader_plex")
+        local mfirst = plex:musicSection()
+        px.audiobook_section = { server = px.server.id, key = "1", title = "Music" }
+        local mskip = plex:musicSection()
+        px.audiobook_section = { server = px.server.id, key = "5", title = "Audiobooks" }
+        check(mfirst.key == "1" and mskip.key == "4" and Plex1.audiobookSection({ audiobook_section = px.audiobook_section, server = px.server }) == nil,
+            "Plex: music skips the audiobook library when nothing's chosen for music; signed out: Grimmory's audiobooks")
+        -- a book: its tracks, chapters, summary
+        local pinfo = plex:audiobookInfo("206")
+        local one = plex:audiobookInfo("207")
+        local pbk = pinfo and ABk.describe("plex-206", pinfo)
+        local pbk1 = one and ABk.describe("plex-207", one)
+        check(pbk and #pbk.tracks == 2 and pbk.tracks[2].start == 3000 and pbk.tracks[2].plex_key == "307" and pbk.files[1] == "track-001.mp3"
+            and pbk.plex.key == "206" and pbk.plex.thumb == "/library/metadata/206/thumb/1" and pbk.author == "Narr Author" and pbk.description == "A book in two parts."
+            and pbk.chapters[2].title == "Part 2", "Plex audiobook: an album's tracks as its files and chapters, the summary as its description")
+        check(pbk1 and #pbk1.tracks == 1 and pbk1.files[1] == "track-001.m4a" and #pbk1.chapters == 2 and pbk1.chapters[2].title == "Closing"
+            and pbk1.chapters[2].startTimeMs == 1500, "Plex audiobook: one M4B/M4A file with Plex's chapters")
+        -- where it was listened to last (any Plex player)
+        local LL = Plex1.lastListened
+        local llp = LL({ { key = "1", viewed = 10, views = 1 }, { key = "2", viewed = 20, offset = 500 } })
+        local lf = LL({ { key = "1", viewed = 30, views = 1 }, { key = "2" } })
+        check(LL({ { key = "1" } }) == false and llp.track == "2" and llp.offset == 500 and lf.track == "1" and lf.finished,
+            "Plex audiobook: the place is the track listened to last (in it, or after it when played through)")
+        check(ABk.plexMs(pbk, { track = "307", offset = 700 }) == 3700 and ABk.plexMs(pbk, { track = "306", offset = 0, finished = true }) == 3000
+            and ABk.plexMs(pbk, { track = "999" }) == nil and ABk.plexMs(pbk, false) == nil, "Plex audiobook: Plex's place as a time in the book")
+        -- download it
+        local summary = PA.book({ type = "album", key = "206", title = "Two Part Book", artist = "Narr Author", thumb = "/library/metadata/206/thumb/1" })
+        check(summary.id == "plex-206" and summary.primaryFileType == "AUDIOBOOK" and summary.authors[1] == "Narr Author", "Plex audiobook: an album as an audiobook summary")
+        local got
+        ABk.download(plugin, summary, function(bk, err) got = bk or err or false end)
+        runLoop(function() return got ~= nil end, 30)
+        local mp3 = io.open(PLUGIN .. "/../../tools/gzreader/tests/media/tone.mp3", "rb"):read("*a")
+        local f2 = type(got) == "table" and io.open(got.dir .. "/track-002.mp3", "rb")
+        local d2 = f2 and f2:read("*a"); if f2 then f2:close() end
+        check(type(got) == "table" and got.plex.key == "206" and d2 == mp3 and require("libs/libkoreader-lfs").attributes(got.dir .. "/cover.jpg", "mode") == "file"
+            and plugin.store.audiobooks["plex-206"].plex_thumb == "/library/metadata/206/thumb/1" and ABk.load(plugin, "plex-206") ~= nil,
+            "Plex audiobook downloaded: its tracks, Plex's cover, kept like Grimmory's " .. tostring(type(got) ~= "table" and got or ""))
+        -- the place goes to Plex, and comes from it
+        if type(got) == "table" then
+            local PlA = ABk.Player:new(plugin, got)
+            PlA.pos = 4200
+            PlA:push()
+            PlA:save()
+            local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/progress"); local pr = json.decode(pp:read("*a")); pp:close()
+            check(pr["307"] and pr["307"].offset == 1200 and pr["307"].state == "stopped" and pr["306"] == nil,
+                "Plex audiobook: the place sent to Plex as the track's position (1.2 s into part 2)")
+            os.execute("curl -s 'http://127.0.0.1:" .. PXP .. "/ctl/progress?key=306&offset=2500&at=" .. (os.time() + 100) .. "' >/dev/null")
+            local PlB = ABk.Player:new(plugin, got)
+            local offered
+            PlB.offerRemote = function(_s, ms, from_plex, done) offered = { ms, from_plex }; done() end
+            local plx_pulled
+            PlB:pull(function() plx_pulled = true end)
+            runLoop(function() return plx_pulled end, 10)
+            check(plx_pulled and offered and offered[1] == 2500 and offered[2] == true,
+                "Plex audiobook: Plex's place offered (another player's, part 1 at 2.5 s)")
+            local PlC = ABk.Player:new(plugin, got)
+            PlC.pos = 0
+            PlC:offerRemote(120000, true, function() end)
+            check(PlC.pos == 120000, "Plex audiobook: nothing listened to here: Plex's place, no question")
+        end
+        -- the Catalog's Audiobooks page with Plex's
+        local saved_audio = require("gzreader_touch").audio
+        require("gzreader_touch").audio = function() return true end
+        local Brw = require("gzreader_browser")
+        local ab = Brw:new(plugin)
+        ab:show({ section = "audiobooks" })
+        local ids = {}
+        for _i, it in ipairs(ab.menu.item_table) do ids[#ids + 1] = it.gz_id end
+        local last = ab.menu.item_table[#ab.menu.item_table]
+        check(table.concat(ids, ",") == "ab_search,ab_continue,ab_recent,ab_all,ab_authors,ab_account" and last.text == "Plex"
+            and tostring(last.mandatory):match("^Audiobooks · ") and ab.menu.item_table.gz_root,
+            "Catalog → Audiobooks from Plex: search, the shelves, All, Authors and the Plex card (no On this Kindle) " .. table.concat(ids, ",") .. " / " .. tostring(last.mandatory))
+        ;(function() -- not signed in to Grimmory: Plex's audiobooks all the same
+            local nb = Brw:new(plugin)
+            nb.api = setmetatable({ isPaired = function() return false end }, { __index = plugin.api })
+            nb.section = "audiobooks"
+            local items = nb:rootItems()
+            check(not items.gz_signed_out and #items == 6 and items[6].text == "Plex" and items[1].text == "Search audiobooks…",
+                "Plex audiobooks: not signed in to Grimmory, the page is Plex's as usual")
+        end)()
+        ;(function() -- the Plex card: its list, a change shown in place, back to the page made again
+            local m = ab.menu
+            local root_before, saved_br = m.item_table, px.bitrate
+            m.onClose = function(menu)
+                local t = table.remove(menu.item_table_stack)
+                if t then menu:switchItemTable(t.title, t) end
+            end
+            last.callback()
+            local opened = m.title == "Plex" and #m.item_table_stack == 1
+            local q
+            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then q = it end end
+            if q then q.callback() end
+            local in_place = m.title == "Plex" and #m.item_table_stack == 1 and m.item_table_stack[1] == root_before
+                and q and tostring(m.item_table[1].text):match("kbps")
+            local mark
+            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then mark = it.mandatory end end
+            m:onClose()
+            check(opened and in_place and mark == "\u{2713}" and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
+                and m.item_table ~= root_before and m.item_table[#m.item_table].text == "Plex" and not ab._refresh_root,
+                "the Plex card: its list; a change shows it again in place (1.28.0 left an empty list behind it); back: the page made again")
+            m.onClose, px.bitrate = nil, saved_br
+        end)()
+        local Shop = require("gzreader_bookshop")
+        Shop.audioLists(ab) -- (asks Plex)
+        local sst = Shop.audioLists(ab)
+        local rk = {}
+        for _i, x in ipairs(sst.ab_recent or {}) do rk[#rk + 1] = x.id end
+        check(sst.plex == "5" and table.concat(rk, ",") == "plex-206,plex-207" and sst.ab_continue[1] and sst.ab_continue[1].id == "plex-206",
+            "Plex audiobooks: Recently added from Plex, Continue listening with what was listened to " .. table.concat(rk, ","))
+        PA.openAll(ab, sec)
+        local alltexts = {}
+        for _i, it in ipairs(ab.menu.item_table) do alltexts[#alltexts + 1] = tostring(it.text) .. (it.mandatory and (" [" .. it.mandatory .. "]") or "") end
+        local tx = table.concat(alltexts, " | ")
+        check(tx:find("One File Book — Narr Author", 1, true) and tx:find("Two Part Book — Narr Author [on Kindle]", 1, true) and tx:find("Search audiobooks", 1, true),
+            "Plex audiobooks: All audiobooks, the one downloaded marked " .. tx)
+        local line
+        for _i, it in ipairs(ab.menu.item_table) do if it.book and it.book.id == "plex-207" then line = it end end
+        check(line and line.book.plex.key == "207" and line.cover_kind == "audiobook", "Plex audiobooks: a line carries its Plex album")
+        ab:search("one", PA.scope(sec))
+        local found = {}
+        for _i, it in ipairs(ab.menu.item_table) do if it.book then found[#found + 1] = it.book.id end end
+        check(table.concat(found, ",") == "plex-207", "Plex audiobooks: search keeps to the audiobook library " .. table.concat(found, ","))
+        PA.openAuthors(ab, sec)
+        local au = ab.menu.item_table
+        local author
+        for _i, it in ipairs(au) do if it.text == "Narr Author" then author = it end end
+        if author then author.callback() end
+        local nbooks = 0
+        for _i, it in ipairs(ab.menu.item_table) do if it.book then nbooks = nbooks + 1 end end
+        check(author and nbooks == 2, "Plex audiobooks: Authors, and an author's audiobooks")
+        -- covers from Plex, never Grimmory
+        local Covers = require("gzreader_covers")
+        local cpath = Covers.path("plex-206", "audiobook")
+        os.remove(cpath)
+        Covers.plex_tried = {}
+        local cgot
+        Covers.fetch(plugin, { { id = "plex-206", kind = "audiobook" }, { id = "plex-207", kind = "audiobook" } }, function(got_n) cgot = got_n end)
+        runLoop(function() return cgot ~= nil end, 10)
+        check(cgot == 1 and require("libs/libkoreader-lfs").attributes(cpath, "mode") == "file" and Covers.state("plex-207", "audiobook") == "missing",
+            "Plex audiobooks: covers from Plex (one with no picture there isn't asked of Grimmory)")
+        ab.closed = true
+        require("gzreader_touch").audio = saved_audio
+        -- the outbox: which library (the sync page lists it)
+        check(require("gzreader_usbsync").audiobookLibrary(plugin.store).key == "5"
+            and require("gzreader_usbsync").audiobookLibrary({ plex = {} }) == nil, "outbox: the Plex audiobook library, for the sync page")
+        ABk.delete(plugin, "plex-206")
+        px.audiobook_section, plugin.save = saved_ab, saved_save
+    end
     local artists, total = plex:list("1", "artists", 0)
     local albums = plex:list("1", "albums", 0)
     check(artists and total == 1 and artists[1].title == "The Tones" and albums and #albums == 3 and albums[1].artist == "The Tones", "Plex: artists and albums")
@@ -3904,6 +6914,22 @@ print("Music (Plex): the server, downloads, the player")
     check(res and #res.tracks == 4 and #res.artists == 1, "Plex: search")
     check(Plex.how(tracks[1]) == "file" and Plex.how(plex:children("202")[1]) == "m4a" and Plex.how(plex:children("203")[1]) == "transcode",
         "Plex: MP3 as it is, AAC converted on the Kindle, FLAC converted by the server")
+    do -- "Make bigger MP3 and AAC smaller": tracks well above the quality made into MP3 at it
+        local aac1 = plex:children("202")[1]
+        check(tracks[1].part.bitrate == 320 and Plex.how(tracks[1], 192) == "transcode" and select(2, Plex.how(tracks[1], 192)) == "mp3"
+            and Plex.how(tracks[2], 192) == "file" and Plex.how(aac1, 128) == "transcode" and Plex.how(aac1, 192) == "m4a"
+            and Plex.how({ part = { container = "mp3" } }, 128) == "file",
+            "Plex: bigger MP3/AAC converted when asked (320 kbps MP3 at 192, 160 kbps AAC at 128), not a VBR 200 kbps at 192, nor without a bitrate")
+        local q0, q1 = Plex.quality({}), Plex.quality({ plex = { bitrate = 128, shrink = true } })
+        check(q0.bitrate == 192 and q0.shrink == false and q1.bitrate == 128 and q1.shrink == true, "Plex: the quality settings, and their defaults")
+        local Usb = require("gzreader_usbsync")
+        local fakep = { store = {}, save = function() end }
+        check(Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } }) and fakep.store.plex.bitrate == 128
+            and fakep.store.plex.shrink == true and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 128, shrink = true } })
+            and not Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 999 } }) and fakep.store.plex.bitrate == 128
+            and Usb.takeMusicQuality(fakep, { music_quality = { bitrate = 320, shrink = false } }) and fakep.store.plex.shrink == nil,
+            "sync: the music quality chosen on the page kept in the Kindle's Plex settings (a bitrate it doesn't offer ignored)")
+    end
     -- downloads
     Engine.root = PLUGIN
     local album = { kind = "album", key = "201", title = "MP3 Album", artist = "The Tones", thumb = "/t", tracks = tracks }
@@ -4016,10 +7042,36 @@ print("Music (Plex): the server, downloads, the player")
             { text = "Music/", path = mdir }, { text = "Other/", path = plugin:libraryDir() .. "/Other" },
             { text = "Audiobooks/", path = plugin:libraryDir() .. "/Audiobooks" } }
         SV.specialsFirst(items)
+        local cdf = io.open(PLUGIN .. "/icons/shelf/cdplayer.svg", "rb")
+        local cd = cdf and cdf:read("*a") or ""
+        if cdf then cdf:close() end
+        local vw, vh = cd:match('viewBox="0 0 (%d+) (%d+)"')
+        local ecy, ery = cd:match('<ellipse cx="85" cy="(%d+)" rx="74" ry="(%d+)" fill="url%(#edge%)"')
+        check(tonumber(vw) and math.abs(tonumber(vw) / tonumber(vh) - SV.SPECIAL.Music.ratio) < 0.001
+            and math.abs(SV.SPECIAL.Music.height - tonumber(vh) / 160) < 0.001
+            and tonumber(ecy) and tonumber(ecy) + tonumber(ery) >= tonumber(vh) - 2,
+            "the CD player lies on the shelf: the bottom of its edge is the bottom of the picture, its size as the picture's")
         check(items[1].text == "Audiobooks/" and items[2].text == "Music/" and items[3].text == "A book.epub",
             "Audiobooks and Music come first, whatever the sort")
         check(SV.SPECIAL.Audiobooks.height == 1 and SV.SPECIAL.Music.height < 0.85,
             "the walkman and the CD player drawn to one scale (the CD player lower)")
+        do -- the walkman wears its headphones, as the CD player does
+            local fh = io.open(PLUGIN .. "/icons/shelf/walkman.svg", "rb")
+            local svg = fh and fh:read("*a") or ""
+            if fh then fh:close() end
+            local px, pw = svg:match('<rect x="(%d+)" y="66" width="(%d+)" height="92"')
+            px, pw = tonumber(px) or 0, tonumber(pw) or 0
+            local left, right = false, false
+            for cx in svg:gmatch('<ellipse cx="(%d+)"[^>]*url%(#foam%)') do
+                cx = tonumber(cx)
+                if cx < px + 8 then left = true elseif cx > px + pw - 8 then right = true end
+            end
+            local band = svg:find("the headphones' band", 1, true)
+            local player = svg:find("<!-- the player", 1, true)
+            check(svg:match('viewBox="0 0 130 160"') and SV.SPECIAL.Audiobooks.ratio == 130 / 160
+                and left and right and band and player and band < player,
+                "the walkman's headphones sit on it: band behind, a pad on each side")
+        end
         G_reader_settings:saveSetting("home_dir", saved_home)
     end
     -- the player
@@ -4120,9 +7172,9 @@ print("Music (Plex): the server, downloads, the player")
     end
     local si = Tab.settingsItems(plugin)
     local st = texts(si)
-    check(st:match("^Signed in as will | Plex server: Home Server | Quality when converting: 192 kbps | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
-        "Settings → Connections → Plex: account, server, quality, downloads, sign out: " .. st)
-    local q = si[3].sub_item_table_func()
+    check(st:match("^Signed in as will | Plex server: Home Server | Music library: the server's first | Audiobooks: from Grimmory | Quality when converting: 192 kbps | Make bigger MP3 and AAC smaller | Downloaded music: 2 %(%d+ MB%) | Sign out of Plex"),
+        "Settings → Connections → Plex: account, server, music library, quality, downloads, sign out: " .. st)
+    local q = si[5].sub_item_table_func()
     q[3].callback()
     check(plugin.store.plex.bitrate == 320 and q[3].checked_func() and not q[2].checked_func() and texts(si):match("320 kbps"),
         "Settings → Plex: the conversion quality")
@@ -4132,7 +7184,7 @@ print("Music (Plex): the server, downloads, the player")
     local saved_plex = plugin.store.plex
     plugin.store.plex = { client_id = saved_plex.client_id }
     st = texts(Tab.settingsItems(plugin))
-    check(st:match("^Sign in to Plex with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
+    check(st:match("^Plex: sign in with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
     plugin.store.plex = saved_plex
     -- no token in an address (the mock refuses those) or the log
     local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/log"); local lg = json.decode(pp:read("*a")); pp:close()
@@ -4140,6 +7192,43 @@ print("Music (Plex): the server, downloads, the player")
     for _i, e in ipairs(lg) do if tostring(e[2]):lower():find("token", 1, true) then in_url = true end end
     check(not in_url, "Plex: the token only ever in a header")
     os.execute("kill $(cat " .. WORK .. "/plex.pid) 2>/dev/null")
+end)()
+
+print("Music's CD player: the headphones' band reaches both pads");
+(function()
+    local fh = io.open(PLUGIN .. "/icons/shelf/cd_player.svg", "rb")
+    local svg = fh and fh:read("*a") or ""
+    if fh then fh:close() end
+    local x1, y1, r, x2, y2 = svg:match('<path d="M([%d.]+) ([%d.]+) A([%d.]+) [%d.]+ 0 0 1 ([%d.]+) ([%d.]+)" fill="none" stroke="#2a2a2a"')
+    x1, y1, r, x2, y2 = tonumber(x1), tonumber(y1), tonumber(r), tonumber(x2), tonumber(y2)
+    local pads = {}
+    for cx, cy, pr in svg:gmatch('<circle cx="([%d.]+)" cy="([%d.]+)" r="([%d.]+)" fill="url%(#foam%)"') do
+        pads[#pads + 1] = { x = tonumber(cx), y = tonumber(cy), r = tonumber(pr) }
+    end
+    local sliders = {}
+    for sx, sy, sw, sh, a, ax, ay in svg:gmatch('<rect x="([%d.]+)" y="([%d.]+)" width="([%d.]+)" height="([%d.]+)" rx="2" fill="#2a2a2a" transform="rotate%((%-?[%d.]+) ([%d.]+) ([%d.]+)%)"/>') do
+        sliders[#sliders + 1] = { x = tonumber(ax), y = tonumber(ay), len = tonumber(sh), a = math.rad(tonumber(a)) }
+    end
+    local function inside(px, py, pad) return math.sqrt((px - pad.x) ^ 2 + (py - pad.y) ^ 2) < pad.r end
+    check(x2 and #pads == 2 and #sliders == 2, "the band, two pads and two sliders found in cd_player.svg")
+    if x2 and #pads == 2 and #sliders == 2 then
+        -- the band's circle (the arc's centre on the side the sweep goes round)
+        local mx, my, dx, dy = (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1
+        local chord = math.sqrt(dx * dx + dy * dy)
+        local hh = math.sqrt(math.max(0, r * r - (chord / 2) ^ 2))
+        local cx, cy = mx - hh * dy / chord, my + hh * dx / chord
+        local right = pads[1].x > pads[2].x and pads[1] or pads[2]
+        check(inside(x2, y2, right), "the band runs into the right pad (it stopped short of it: a gap under the slider)")
+        for i, slider in ipairs(sliders) do
+            -- a slider's long side, turned by its rotation: both ends, one on the band, one in a pad
+            local ux, uy = -math.sin(slider.a), math.cos(slider.a)
+            local ends = { { slider.x - ux * slider.len / 2, slider.y - uy * slider.len / 2 }, { slider.x + ux * slider.len / 2, slider.y + uy * slider.len / 2 } }
+            local on_band = math.abs(math.sqrt((slider.x - cx) ^ 2 + (slider.y - cy) ^ 2) - r) < 4
+            local in_pad = inside(ends[1][1], ends[1][2], pads[1]) or inside(ends[1][1], ends[1][2], pads[2])
+                or inside(ends[2][1], ends[2][2], pads[1]) or inside(ends[2][1], ends[2][2], pads[2])
+            check(on_band and in_pad, "slider " .. i .. " sits on the band and reaches its pad")
+        end
+    end
 end)()
 
 print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
@@ -4206,6 +7295,158 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("Downloads tab: its name in the title bar, like the other tabs")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_tab_title"] = nil
+    local T = require("common/gz_tab_title")
+    local home = "/mnt/us/documents/GZreader"
+    check(T.downloads(home, home, nil, false) == "Downloads", "the home folder (the Downloads tab): \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "" }, false) == "Downloads", "an empty navbar label: still \"Downloads\"")
+    check(T.downloads(home, home, { books_label = "My books" }, false) == "My books", "the navbar's own label for the tab wins")
+    check(T.downloads(home, home, nil, false, function(s) return "[" .. s .. "]" end) == "[Downloads]", "translated")
+    check(T.downloads(home .. "/Series", home, nil, false) == nil, "a folder inside it: ZenOS's folder name stays")
+    check(T.downloads(home, home, nil, true) == nil, "a series group open: ZenOS's own title stays")
+    check(T.downloads("/mnt/us/documents", home, nil, false) == nil, "another folder (Folder tab, archive): nothing added")
+    check(T.downloads(nil, home, nil, false) == nil and T.downloads(home, nil, nil, false) == nil,
+        "no path (collections) or no home folder: nothing added")
+    local sbf = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/status_bar.lua")
+    local src = sbf and sbf:read("*a") or ""
+    if sbf then sbf:close() end
+    check(src:find('require("common/gz_tab_title").downloads(', 1, true) ~= nil,
+        "ZenOS's status row asks it when nothing else names the view")
+    package.path = saved_path
+end)()
+
+print("Menus drawn as ZenOS rows: an icon, short labels, an arrow")
+;(function()
+    local Rows = require("gzreader_rows")
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local saved_map = package.loaded["common/inline_icon_map"]
+    package.loaded["common/inline_icon_map"] = nil
+    local okm, map = pcall(require, "common/inline_icon_map")
+    local rows = Rows.mark({
+        { text = "Action", gz_icon = "download", callback = function() end },
+        { text = "Info", select_enabled = false },
+        { text = "Switch", checked_func = function() return true end, callback = function() end },
+        { text = "Pick", gz_pick = true, gz_icon = "name:usb" },
+        { text = "Picked", gz_pick = true, dim = true, gz_icon = "/x/music.svg" },
+        { text = "Bold", bold = true, gz_no_arrow = true, callback = function() end },
+    })
+    package.path = saved_path
+    package.loaded["common/inline_icon_map"] = saved_map
+    check(Rows.isRows(rows) and rows[1]._zen_settings_row and rows[2]._zen_settings_row and rows[6]._zen_settings_row,
+        "every row marked as ZenOS's Settings row, the list too")
+    check(rows[1]._zen_has_submenu and rows[1]._zen_caret_icon == "chevron.right" and not rows[2]._zen_has_submenu
+        and not rows[3]._zen_has_submenu and rows[4]._zen_has_submenu and not rows[5]._zen_has_submenu and not rows[6]._zen_has_submenu,
+        "an arrow on rows that do something; none on a line of text, a switch, a greyed-out choice or when asked")
+    check(okm and rows[1].icon_glyph == map.download and rows[4].icon_name == "usb" and rows[5].icon_file == "/x/music.svg",
+        "icons: ZenOS's glyphs, its icons by name, a file")
+    check(rows[6]._zen_primary_bold, "bold stays bold")
+    check(not Rows.isRows({ { text = "a book" } }), "other lists aren't touched")
+    -- the long explanations behind About, shown when it's tapped
+    local saved_info = package.loaded["ui/widget/infomessage"]
+    local UIM = require("ui/uimanager")
+    local real_show, shown = UIM.show, {}
+    package.loaded["ui/widget/infomessage"] = { new = function(_s, o) return o end }
+    UIM.show = function(_um, w) shown[#shown + 1] = w and w.text end
+    local about = Rows.mark({ Rows.about("About it", "The whole story.") })[1]
+    about.callback()
+    check(shown[1] == "The whole story." and about._zen_has_submenu and about.icon_glyph ~= false, "About: the explanation in a message")
+    -- the menus: short labels (they were cut off at the screen's edge), every row a ZenOS row
+    local Net = require("gzreader_net")
+    local was_usb = Net.usb
+    local function short(list, name)
+        local long = {}
+        for _i, it in ipairs(list) do
+            local t = it.text or ""
+            if #t > 30 or not it._zen_settings_row then long[#long + 1] = t end
+        end
+        check(Rows.isRows(list) and #list > 1 and #long == 0, name .. ": short labels, ZenOS rows " .. table.concat(long, " | "))
+    end
+    for _i, usb in ipairs({ false, true }) do
+        Net.usb = usb
+        local how = usb and " (no Wi-Fi)" or ""
+        short(require("gzreader_calendar").connectItems(plugin), "Calendar's connect list" .. how)
+        short(require("gzreader_notes").connectItems(plugin), "Notes' connect list" .. how)
+    end
+    Net.usb = was_usb
+    local cal = require("gzreader_calendar").connectItems(plugin)
+    shown = {}
+    cal[#cal].callback()
+    check(cal[1].text == "Add with QR code" and tostring(shown[1]):match("Proton") and tostring(shown[1]):match("app password"),
+        "Calendar: About calendar links says what was cut off before")
+    local Tab = require("gzreader_musictab")
+    short(Tab.signInItems(plugin), "Plex's sign-in")
+    local Touch = require("gzreader_touch")
+    local was_audio = Touch.audio
+    Touch.audio = function() return false end
+    local tab = Tab.new(plugin)
+    local mute = tab:rootItems()
+    Touch.audio = was_audio
+    check(#mute == 1 and mute[1].text == "No speaker on this Kindle" and mute[1].gz_about:match("headphone jack"),
+        "Music on a Kindle without a speaker: a short line, the reason behind it")
+    UIM.show = real_show
+    package.loaded["ui/widget/infomessage"] = saved_info
+    -- Downloads: the title, where it's at on the right, an icon for what's happening
+    local Tasks = require("gzreader_tasks")
+    local dl = { Tasks.line({ kind = "book", title = "Diper Överlöde", done = 30 * 1048576, total = 77 * 1048576 }) }
+    local wq = { Tasks.line({ kind = "queued", title = "Hot Mess" }) }
+    local mu = { Tasks.line({ kind = "music", title = "Album", status = "track 3 of 12 · 41%" }) }
+    check(dl[1] == "Diper Överlöde" and dl[2] == "38% of 77.0 MB" and dl[3] == "download" and wq[1] == "Hot Mess" and wq[2] == "waiting"
+        and wq[3] == "tbr" and mu[2] == "track 3 of 12 · 41%" and mu[3] == Rows.FILE.music,
+        "Downloads: the title alone, a short status, an icon (" .. tostring(dl[2]) .. ")")
+    -- ZenOS's row height for the lists made so, the Menu's own for others
+    local saved_ii = package.loaded["common/ui/icon_menu_item"]
+    package.loaded["common/ui/icon_menu_item"] = { getSettingsRowHeight = function() return 69 end, getSettingsFontSize = function() return 22 end }
+    local m = { page = 1, item_table = rows, updated = 0 }
+    function m._recalculateDimen(self) self.perpage, self.font_size, self.available_height, self.item_dimen = 14, 19, 700, { h = 50 } end
+    function m.getPageNumber(self, count) return math.max(1, math.ceil(count / self.perpage)) end
+    function m.updateItems(self) self.updated = self.updated + 1; self:_recalculateDimen() end
+    Rows.apply(m)
+    check(m.updated == 1 and m.perpage == 10 and m.item_dimen.h == 69 and m.font_size == 22 and m.page_num == 1,
+        "a Menu with such a list: ZenOS's row height and font, as many rows as fit")
+    m.item_table = { { text = "a book" } }
+    m:_recalculateDimen()
+    check(m.perpage == 14 and m.item_dimen.h == 50, "…and its other lists keep the Menu's own")
+    Rows.apply(m)
+    check(m.updated == 1, "applied once")
+    package.loaded["common/ui/icon_menu_item"] = saved_ii
+    -- the lists use it
+    for _i, mod in ipairs({ "gzreader_calendar", "gzreader_notes", "gzreader_musictab", "gzreader_tasks", "gzreader_usbsync",
+            "gzreader_copy", "gzreader_panel", "gzreader_shelves", "gzreader_browser" }) do
+        local fh = io.open(PLUGIN .. "/" .. mod .. ".lua")
+        local src = fh and fh:read("*a") or ""
+        if fh then fh:close() end
+        check(src:find('require("gzreader_rows")', 1, true) and src:find("apply(", 1, true), mod .. ": its menu drawn with ZenOS rows")
+    end
+end)()
+
+print("The reader's top status bar stays drawn under KOReader's layout menu")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_header_overlay"] = nil
+    local O = require("common/gz_header_overlay")
+    local dialog, a_window = { name = "ConfigDialog" }, { name = "a window" }
+    local view = { ui = { config = { config_dialog = dialog } } }
+    check(O.leavesHeader(view, dialog) == true, "the book's open layout menu leaves the bar in view")
+    check(O.leavesHeader(view, a_window) == false, "another window over the book: the bar isn't drawn (as before)")
+    local closed = { ui = { config = {} } }
+    check(O.leavesHeader(closed, dialog) == false, "a layout menu that was closed doesn't count")
+    check(O.leavesHeader({ ui = {} }, dialog) == false and O.leavesHeader(nil, dialog) == false
+        and O.leavesHeader(view, nil) == false, "no reader config, no view or no window: false")
+    local tf = io.open(PLUGIN .. "/../zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua")
+    local src = tf and tf:read("*a") or ""
+    if tf then tf:close() end
+    local fn = src:match("local function is_view_active_top%(view%)(.-)\n    end\n") or ""
+    check(fn:find('require("common/gz_header_overlay").leavesHeader(view, top_widget)', 1, true) ~= nil,
+        "ZenOS's top bar asks it when the book isn't the topmost window")
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
@@ -4255,6 +7496,47 @@ print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
     package.path = saved_path
 end)()
 
+print("Home's status bar with no book to show (as on the other tabs)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_home_status"] = nil
+    local S = require("common/gz_home_status")
+    local rows = { { id = "datetime" }, { id = "featured" }, { id = "strip" } }
+    local function preset(home_bar, book_bar)
+        return { show_status_bar = home_bar, modules = { featured = { show_status_bar = book_bar } } }
+    end
+    local asked = 0
+    local function book(yes) return function() asked = asked + 1; return yes end end
+    -- the presets: Home's bar off, the book widget carries it
+    check(S.wanted(preset(false, true), rows, book(true)) == false,
+        "a book on Home: the status bar stays inside the book widget")
+    check(S.wanted(preset(false, true), rows, book(false)) == true,
+        "no recently read book: Home shows the status bar across the top")
+    check(S.wanted(preset(false, true), { { id = "strip" } }, book(true)) == true,
+        "the book widget off: Home shows the status bar across the top")
+    asked = 0
+    check(S.wanted(preset(true, false), rows, book(false)) == true and S.wanted(preset(nil, false), rows, book(false)) == true
+        and asked == 0, "Home's own status bar on: shown, no book looked up")
+    check(S.wanted(preset(false, false), rows, book(false)) == false and asked == 0,
+        "the status bar turned off on Home (not in the book widget): stays off")
+    check(S.wanted(preset(false, true), rows, function() error("boom") end) == false
+        and S.wanted(preset(false, true), rows, nil) == false,
+        "can't tell whether there's a book: as before (the book widget's bar)")
+    -- Home uses it: built with it, rebuilt when it changes, no second bar
+    local src = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/home_page.lua", "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    local _n, uses = text:gsub("home_status_bar_wanted%(dcfg, rows, data_provider%)", "")
+    check(text:find("local show_status_bar = home_status_bar_wanted(dcfg, rows, data_provider)", 1, true)
+        and text:find("show_status_bar = menu._zen_home_status_bar_wanted(dcfg)", 1, true)
+        and text:find('return false, "status_bar_changed"', 1, true) and uses == 4
+        and text:find("buildStatusRow = menu._zen_home_show_status_bar == false", 1, true),
+        "Home: built with it, built again when a book appears or goes, no second bar in the book widget")
+    package.loaded["common/gz_home_status"] = nil
+    package.path = saved_path
+end)()
+
 print("Audiobook player: go to a time, skips gathered, the cassette")
 ;(function()
     local AB = require("gzreader_audiobook")
@@ -4277,6 +7559,18 @@ print("Audiobook player: go to a time, skips gathered, the cassette")
     check(#seeks == 1 and seeks[1] == 60000 + 3 * AB.SKIP_MS, "skips pressed close together: the player is started once, where they end")
     local Deck = require("gzreader_deck")
     check(Deck.Cassette and Deck.Cassette.RATIO == 0.63, "the player shows the audiobook as a cassette (100 × 63)")
+    -- Music's CD player: the disc fills the lid's window, the cover nearly all of the disc
+    local D = Deck.CD.DISC
+    local svgf = io.open(debug.getinfo(Deck.CD.paintTo, "S").source:sub(2):gsub("gzreader_deck%.lua$", "icons/shelf/cd_player.svg"), "rb")
+    local svg = svgf and svgf:read("*a") or ""
+    if svgf then svgf:close() end
+    local win = tonumber(svg:match('<circle cx="180" cy="126" r="(%d+)" fill="#2a2a2a"/>'))
+    local deck_src = io.open(debug.getinfo(Deck.CD.paintTo, "S").source:sub(2), "rb")
+    local dsrc = deck_src and deck_src:read("*a") or ""
+    if deck_src then deck_src:close() end
+    check(win and D.disc == win and D.label >= D.disc - 4 and D.hub < D.label / 4 and D.spindle < D.hole and D.hole < D.hub
+        and dsrc:find("fit(st.cover_bb, 2 * rl, 2 * rl, true)", 1, true),
+        "the CD player: the album's cover fills the disc, the disc fills the lid's window (it was a small label in the middle)")
     -- the chunk feeder ends with the player
     local Engine = require("gzreader_audioengine")
     local cmd = Engine.command({ pipe = "fakesink" }, { kind = "chunks", dir = "/x", starts = { 0, 15000 }, offset_ms = 0 })
@@ -4307,6 +7601,10 @@ print("Kindles without REAGL: flash when the screen changes")
     check(Eink.promote("ui", nil, W, H, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, true) == "ui",
         "the 5-way's arrows (along the tab bar, around the quick panel) don't flash, however much they redraw")
     check(Eink.promote("ui", nil, W, H, true, true) == "full", "unless a full-screen window just opened or closed")
+    check(Eink.promote("ui", nil, W, H, false, false, true) == "ui" and Eink.promote("ui", { w = 600, h = 800 }, W, H, false, false, true) == "ui"
+        and Eink.promote("ui", nil, W, H, true, false, true) == "full",
+        "nothing you did (no key or tap for a while: a download done, covers arriving): no flash, unless a window opened or closed")
+    check(require("gzreader_tasks").REFRESH == 3, "the download status in the status bar: updated every 3 s")
     local player = { covers_fullscreen = true, gz_player = true }
     local chapters = { covers_fullscreen = true }
     local stack = { { widget = { name = "home" } }, { widget = player } }
@@ -4322,6 +7620,337 @@ print("Kindles without REAGL: flash when the screen changes")
     check(text:match("local Editor = InputContainer:extend{ covers_fullscreen = true,%s*gz_no_flash = true }")
         and Eink.inPlayer(estack) and Eink.flashesFor(ed, { { widget = {} } }) and not Eink.flashesFor({ covers_fullscreen = true }, estack),
         "the note editor: typing doesn't flash the screen at every key (only its opening and closing do)")
+end)()
+
+print("Quick panel's light: the swipe that opens it doesn't move the light")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    -- (the panel's sizes go through the screen it was loaded with: 1:1 here)
+    local Screen = require("device").screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local set = {}
+    local w = setmetatable({ light_y = 40, w = 600 }, { __index = PW })
+    w.lightInfo = function() return nil, 0, 24, 12 end
+    w.setLight = function(_self, v) set[#set + 1] = v end
+    local on_strip = 40 + 20
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    -- the swipe down that opened the panel goes on over the slider, then lets go
+    w:onPanLight(nil, at(100, on_strip))
+    w:onPanLight(nil, at(400, on_strip))
+    w:onPanReleaseLight(nil, at(400, on_strip + 4))
+    w:onSwipeLight(nil, { pos = at(100, on_strip).pos, direction = "east", distance = 300 })
+    check(#set == 0, "the rest of the opening swipe (pans, release, swipe) leaves the light alone")
+    -- a finger put down below the slider (on the tiles) and dragged up over it
+    check(w:onTouchPanel(nil, at(300, 300)) == false, "a touch isn't taken from the tiles")
+    w:onPanLight(nil, at(400, on_strip))
+    w:onPanReleaseLight(nil, at(400, on_strip))
+    check(#set == 0, "a drag that started on the tiles doesn't move the light")
+    -- a finger put down on the slider and dragged
+    w:onTouchPanel(nil, at(200, on_strip))
+    w:onPanLight(nil, at(300, on_strip))
+    w:onPanReleaseLight(nil, at(350, on_strip))
+    check(#set == 2, "a drag on the slider moves the light (" .. #set .. ")")
+    -- then the next gesture needs its own touch
+    w:onPanLight(nil, at(100, on_strip))
+    check(#set == 2, "…and only until that finger lets go")
+    w:onTouchPanel(nil, at(200, on_strip))
+    w:onSwipeLight(nil, { pos = at(200, on_strip).pos, direction = "east", distance = 100 })
+    check(#set == 3, "a quick swipe on the slider moves the light")
+    w:onSwipeLight(nil, { pos = at(200, on_strip).pos, direction = "east", distance = 100 })
+    check(#set == 3, "…once")
+    local pf = io.open(debug.getinfo(PW.onTouchPanel, "S").source:sub(2), "rb")
+    local src = pf and pf:read("*a") or ""
+    if pf then pf:close() end
+    check(src:match('TouchPanel = { GestureRange:new{ ges = "touch", range = whole } }'),
+        "the panel listens for a finger put down (KOReader's touch gesture)")
+    Screen.scaleBySize = was_scale
+end)()
+
+print("The first tour on a touch Kindle: GZreader's quick panel")
+;(function()
+    local Tour = require("gzreader_tour")
+    local UIManager = require("ui/uimanager")
+    local Device = require("device")
+    local was_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end }
+    -- a stand-in panel: 10 Controls tiles (Settings the 8th), 6 Home tiles
+    local function tile(label) return { label = label, w = 100, h = 100 } end
+    local placed, controls = {}, {}
+    for i = 1, 10 do
+        controls[i] = {}
+        placed[i] = { tile = tile(i == 8 and "Settings" or ("c" .. i)), x = 16 + ((i - 1) % 5) * 110, y = 70 + math.floor((i - 1) / 5) * 110 }
+    end
+    for i = 1, 6 do
+        placed[10 + i] = { tile = tile("h" .. i), x = 16 + ((i - 1) % 5) * 110, y = 320 + math.floor((i - 1) / 5) * 110 }
+    end
+    local panel = { placed = placed, controls = controls, titles = { { y = 40 }, { y = 290 } } }
+    local t = Tour.targets(panel)
+    check(t.controls and t.controls.y == 40 and t.controls.h == 70 + 110 + 100 - 40 and t.controls.w == 600 - 32
+        and t.settings and t.settings.x == 16 + 2 * 110 and t.settings.y == 180
+        and t.section and t.section.y == 290 and t.section.h == 320 + 100 - 290,
+        "points at the panel's own parts: the Controls tiles, Settings, the section's heading and first row")
+    local book, home = Tour.steps(panel, true), Tour.steps(panel, false)
+    check(#book == 3 and book[1].text == Tour.TEXT.panel and book[2].text == Tour.TEXT.settings and book[3].text == Tour.TEXT.book
+        and home[3].text == Tour.TEXT.home, "three steps: the panel (how to open and close it), Settings, This book or Home")
+    -- the tour itself: opens the panel, then on its end closes it and hands over to the page browser tour
+    local Panel = require("gzreader_panel")
+    local shown, closed, reader_tour = {}, {}, 0
+    local orig_show, orig_close, orig_tick = UIManager.show, UIManager.close, UIManager.nextTick
+    UIManager.show = function(_self, w) shown[#shown + 1] = w end
+    UIManager.close = function(_self, w) closed[#closed + 1] = w; if Panel.open == w then Panel.open = nil end end
+    UIManager.nextTick = function(_self, fn) fn() end
+    local real_cm = package.loaded["common/quickstart/menu_coachmark"]
+    package.loaded["common/quickstart/menu_coachmark"] = { new = function(_self, o) return o end }
+    local meta = { quickstart_menu_tour_pending = true, quickstart_reader_tour_pending = true }
+    local saved = 0
+    local plugin = { config = { _meta = meta }, saveConfig = function() saved = saved + 1 end,
+        ui = { document = {}, menu = {
+            onShowMenu = function() Panel.open = panel end,
+            _zen_start_reader_tour = function() reader_tour = reader_tour + 1 end } } }
+    local started = Tour.start(plugin)
+    local mark = shown[#shown]
+    check(started and Panel.open == panel and mark and mark.name == "gzreader tour" and #mark.steps == 3 and Tour.active,
+        "in a book: the quick panel opens and the tour shows on it")
+    check(not Tour.start(plugin), "…once")
+    mark._finished = true
+    mark.on_complete()
+    check(Panel.open == nil and closed[#closed] == panel and meta.quickstart_menu_tour_pending == false and saved == 1
+        and reader_tour == 1 and not Tour.active,
+        "at its end: the panel closes, then the page browser tour (never under the panel)")
+    meta.quickstart_menu_tour_pending, reader_tour = true, 0
+    plugin.ui.document = nil
+    Tour.start(plugin)
+    shown[#shown].on_cancel()
+    check(Panel.open == nil and meta.quickstart_menu_tour_pending == true and reader_tour == 0,
+        "cancelled (the screen turned): the panel closes, the tour waits for the next start")
+    UIManager.show, UIManager.close, UIManager.nextTick = orig_show, orig_close, orig_tick
+    package.loaded["common/quickstart/menu_coachmark"] = real_cm
+    Device.screen = was_screen
+    Panel.open = nil
+    local src = io.open(debug.getinfo(Tour.start, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_tour%.lua$",
+        "zenos.koplugin/common/quickstart/reader_tour.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(text:find("meta.quickstart_menu_tour_pending == true or GzTour.active then return false end", 1, true)
+        and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
+end)()
+
+print("What's new after an update: GZreader's version and short points")
+;(function()
+    local New = require("gzreader_whatsnew")
+    local log = {
+        { version = "next", changes = { { short = "Next A", text = "Next A, long." }, "Next B. More about B." } },
+        { version = "1.26.8", changes = { { short = "Eight", text = "Eight, long." } } },
+        { version = "1.26.7", changes = { "Seven: it does this. And more.", { text = "Seven two. Long." } } },
+        { version = "1.26.6", changes = { "Six." } },
+    }
+    local function same(a, b) return table.concat(a, "|") == table.concat(b, "|") end
+    check(same(New.items(log, "1.26.8", "1.26.7"), { "Eight" }), "a release: its own points (short ones), not the older versions'")
+    check(same(New.items(log, "1.26.8", "1.26.6"), { "Eight", "Seven: it does this.", "Seven two." }),
+        "versions skipped since the last one shown come along; a line without a short point gives its first sentence")
+    check(same(New.items(log, "1.26.8", nil), { "Eight" }), "nothing shown before (the first update with this screen): its own points")
+    -- (a test build carries the last release's number: 1.26.7-beta.<commit> until 1.26.8 is out)
+    check(same(New.items(log, "1.26.7-beta.abc1234", "1.26.7"), { "Next A", "Next B." })
+        and same(New.items(log, "1.26.7-beta.def5678", "1.26.7-beta.abc1234"), { "Next A", "Next B." }),
+        "a test build: what it brings (the next entry), each test build")
+    check(same(New.items(log, "1.26.8", "1.26.7-beta.abc1234"), { "Eight" }), "from a test build to the release: the release's points")
+    local long = New.firstSentence(string.rep("word ", 40))
+    check(#long <= New.MAX_LEN + 2 and long:match("…$") and New.text({ short = "s", text = "t" }) == "t" and New.text("plain") == "plain",
+        "a long first sentence is cut at a word; the full text stays for the changelog")
+    -- pending(): marks seen, once per version
+    local real_cur, seen_was = New.current, G_reader_settings:readSetting(New.SEEN)
+    local cur = "1.26.8"
+    New.current = function() return cur end
+    local real_log = package.loaded["gzreader_changelog"]
+    package.loaded["gzreader_changelog"] = log
+    G_reader_settings:saveSetting(New.SEEN, "1.26.7")
+    local p = New.pending()
+    check(p and p.version == "1.26.8" and same(p.items, { "Eight" }) and New.pending() == nil
+        and G_reader_settings:readSetting(New.SEEN) == "1.26.8", "shown once after the update, then not again")
+    cur = "0.0.0"
+    check(New.pending() == nil, "a tree without a version (development): nothing")
+    package.loaded["gzreader_changelog"] = real_log
+    New.current = real_cur
+    if seen_was == nil then G_reader_settings:delSetting(New.SEEN) else G_reader_settings:saveSetting(New.SEEN, seen_was) end
+    -- the real changelog: every line of the next entry has a short point
+    local real = dofile(debug.getinfo(New.items, "S").source:sub(2):gsub("gzreader_whatsnew%.lua$", "gzreader_changelog.lua"))
+    local ok_next = real[1].version ~= "next" or #real[1].changes > 0
+    for _i, c in ipairs(real[1].version == "next" and real[1].changes or {}) do
+        if not (type(c) == "table" and type(c.short) == "string" and #c.short <= New.MAX_LEN and type(c.text) == "string") then ok_next = false end
+    end
+    check(ok_next, "the changelog's next lines each have a short point (for the screen) and a text")
+    -- ZenOS's update screen asks GZreader's
+    local src = io.open(debug.getinfo(New.items, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_whatsnew%.lua$",
+        "zenos.koplugin/main.lua"), "rb")
+    local text = src and src:read("*a") or ""
+    if src then src:close() end
+    check(text:find('pcall(require, "gzreader_whatsnew")', 1, true) and text:find("is_update = gz_new ~= nil", 1, true)
+        and text:find('"v" .. (gz_new and gz_new.version or current_ver)', 1, true)
+        and text:find("hide_logo   = gz_new ~= nil", 1, true),
+        "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
+end)()
+
+print("Flash on every page turn (Settings → General → Screen refresh)")
+;(function()
+    local Eink = require("gzreader_eink")
+    local UIManager = require("ui/uimanager")
+    local real_applies, keep_count = Eink.applies, UIManager.FULL_REFRESH_COUNT
+    local keys = { Eink.PAGE_SETTING, Eink.SETTING, "full_refresh_count", "night_mode" }
+    local saved = {}
+    for _i, k in ipairs(keys) do saved[k] = G_reader_settings:readSetting(k); G_reader_settings:delSetting(k) end
+    local legacy = true
+    Eink.applies = function() return legacy end
+    Eink.pageRate()
+    check(Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 1,
+        "Kindle 2, DX, 3, 4: on by default, every page turn flashes")
+    legacy = false
+    Eink.pageRate()
+    check(not Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 6, "other devices: off by default (KOReader's every 6 pages)")
+    Eink.setFlashPageTurns(true)
+    check(Eink.flashPageTurns() and UIManager.FULL_REFRESH_COUNT == 1 and Eink.pageTurnsTicked(), "…and can be turned on there too")
+    G_reader_settings:delSetting(Eink.PAGE_SETTING)
+    legacy = true
+    G_reader_settings:saveSetting(Eink.SETTING, false)
+    check(not Eink.flashPageTurns(), "a Kindle 3 that had turned off \"Flash when the screen changes\" (it did both until now): stays off")
+    Eink.setFlashPageTurns(true)
+    check(Eink.flashPageTurns() and Eink.enabled() == false, "…and the two are separate now")
+    G_reader_settings:saveSetting("full_refresh_count", 8)
+    UIManager.FULL_REFRESH_COUNT = 8
+    Eink.pageRate()
+    check(UIManager.FULL_REFRESH_COUNT == 8 and not Eink.pageTurnsTicked(),
+        "a rate chosen in a book's menu (every 8 pages) is kept, and the box shows it isn't every page")
+    Eink.setFlashPageTurns(true)
+    check(UIManager.FULL_REFRESH_COUNT == 1 and G_reader_settings:readSetting("full_refresh_count") == nil and Eink.pageTurnsTicked(),
+        "ticking the box replaces that rate: every page")
+    Eink.setFlashPageTurns(false)
+    check(UIManager.FULL_REFRESH_COUNT == 6 and not Eink.pageTurnsTicked(), "unticked: every 6 pages")
+    local f = io.open(debug.getinfo(Eink.promote, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_eink%.lua$",
+        "zenos.koplugin/modules/settings/sections/gz_screen_refresh.lua"), "rb")
+    local src = f and f:read("*a") or ""
+    if f then f:close() end
+    check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen refresh, on every device")
+    Eink.applies = real_applies
+    UIManager.FULL_REFRESH_COUNT = keep_count
+    for _i, k in ipairs(keys) do
+        if saved[k] == nil then G_reader_settings:delSetting(k) else G_reader_settings:saveSetting(k, saved[k]) end
+    end
+end)()
+
+print("No Local reading stats widget on Home (Settings → Home → Widgets)")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    local WDIR = "modules/filebrowser/patches/home/widgets/"
+    local stubs = { "datetime", "featured", "stats_triplet", "grimmory_stats", "reading_goals", "strip", "quotes" }
+    local kept = {}
+    for _i, id in ipairs(stubs) do
+        kept[id] = package.loaded[WDIR .. id]
+        package.loaded[WDIR .. id] = { id = id, label = id, size = "s", build = function() end }
+    end
+    local RP = "modules/filebrowser/patches/home/components/registry"
+    package.loaded[RP] = nil
+    local loaded, Registry = pcall(require, RP)
+    check(loaded, "ZenOS's Home widget registry loads " .. tostring(not loaded and Registry or ""))
+    if loaded then
+        local function has(list, id) for _i, v in ipairs(list) do if v == id then return true end end end
+        local rows = Registry.normalizeRows({}, { "datetime", "featured", "grimmory_stats", "stats_triplet", "strip" },
+            { featured = true, grimmory_stats = true, stats_triplet = true, strip = true })
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and has(rows.order, "grimmory_stats") and rows.enabled.grimmory_stats == true,
+            "a new Home: Grimmory's reading stats, no Local reading stats (not in Widgets, not on Home)")
+        rows = Registry.normalizeRows({ order = { "stats_triplet", "featured", "strip" },
+            enabled = { stats_triplet = true, featured = true, strip = true } }, {}, {})
+        check(not has(rows.order, "stats_triplet") and rows.enabled.stats_triplet == nil
+            and rows.enabled.featured == true and rows.order[1] == "featured",
+            "an older build's Home that showed them: gone, the other widgets kept in their order")
+        rows = Registry.normalizeRows({ enabled = { stats_triplet = true } }, {}, { featured = true })
+        check(rows.enabled.stats_triplet == nil and rows.enabled.featured == true,
+            "a Home with only them: the default widgets instead of an empty Home")
+        check(Registry.get("stats_triplet") ~= nil, "still there for the end-of-book page's stats")
+    end
+    package.loaded[RP] = nil
+    for _i, id in ipairs(stubs) do package.loaded[WDIR .. id] = kept[id] end
+    local sf = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua", "rb")
+    local src = sf and sf:read("*a") or ""
+    if sf then sf:close() end
+    local order = src:match("local DEFAULT_ORDER = (%b{})") or ""
+    check(order:find('"grimmory_stats"', 1, true) and not order:find('"stats_triplet"', 1, true),
+        "Settings → Home → Widgets' default list has no Local reading stats")
+    package.path = saved_path
+end)()
+
+print("Headphones: the Kindle 3's audioHS message")
+;(function()
+    local Jack = require("gzreader_jack")
+    local files, cmds, killed = {}, {}, {}
+    files["/proc/bus/input/devices"] = "" -- (nothing that can be looked at: the Kindle 3)
+    files[Jack.SYSLOG] = "Nov  8 18:00:00 kindle powerd: older line\n"
+    Jack.read = function(p) return files[p] end
+    Jack.exec = function(c) cmds[#cmds + 1] = c; files[Jack.EVENTS_FILE] = ""; files[Jack.EVENTS_FILE .. ".pid"] = "4242\n" end
+    Jack.kill = function(pid) killed[#killed + 1] = pid end
+    local was_info = package.loaded["ui/widget/infomessage"] -- (stand-ins above replaced it)
+    package.loaded["ui/widget/infomessage"] = { new = function(_, o) captured.info = o.text; return o end }
+    G_reader_settings:delSetting(Jack.SETTING)
+    -- the guided test: the listener hears audioHS 1 plugging in, audioHS 0 unplugging
+    Jack.test()
+    check(cmds[1] and cmds[1]:find("lipc-wait-event -m com.lab126.hal audioHS > " .. Jack.EVENTS_FILE, 1, true),
+        "Find the headphone jack listens to the Kindle's hardware service (" .. tostring(cmds[1]) .. ")")
+    files[Jack.EVENTS_FILE] = "audioHS 1\n"
+    captured.confirm.ok_callback()
+    files[Jack.EVENTS_FILE] = "audioHS 1\naudioHS 0\n"
+    captured.confirm.ok_callback()
+    local det = G_reader_settings:readSetting(Jack.SETTING)
+    check(type(det) == "table" and det.kind == "event" and det.name == "audioHS" and det.on == "1" and det.off == "0",
+        "…and keeps the message that changed: audioHS 1 in, 0 out")
+    check(killed[1] == 4242 and Jack.listening == nil, "the listener is stopped after the test")
+    check(tostring(captured.info):find("com.lab126.hal audioHS", 1, true), "it says what it found: " .. tostring(captured.info))
+    -- no listener output: the system log's lipc-send-event lines (as in a Kindle 3's log)
+    G_reader_settings:delSetting(Jack.SETTING)
+    Jack.exec = function(c) cmds[#cmds + 1] = c end
+    files[Jack.EVENTS_FILE], files[Jack.EVENTS_FILE .. ".pid"] = nil, nil
+    Jack.test()
+    files[Jack.SYSLOG] = files[Jack.SYSLOG] .. "261108:235055 lipc-send-event[4467]: I lipc:evts:name=audioHS, origin=com.lab126.hal, fparam=1:Event sent\n"
+    captured.confirm.ok_callback()
+    files[Jack.SYSLOG] = files[Jack.SYSLOG] .. "261108:235058 lipc-send-event[4473]: I lipc:evts:name=audioHS, origin=com.lab126.hal, fparam=0:Event sent\n"
+    captured.confirm.ok_callback()
+    det = G_reader_settings:readSetting(Jack.SETTING)
+    check(type(det) == "table" and det.kind == "event" and det.on == "1" and det.off == "0", "…or from the system log")
+    -- nothing heard: nothing kept (as before)
+    G_reader_settings:delSetting(Jack.SETTING)
+    Jack.test()
+    captured.confirm.ok_callback()
+    captured.confirm.ok_callback()
+    check(G_reader_settings:readSetting(Jack.SETTING) == nil and tostring(captured.info):find("Nothing on this Kindle changed", 1, true),
+        "no message either: nothing kept")
+    check(Jack.fromEvents({ { name = "audioHS", value = "1" } }, { { name = "audioHS", value = "1" } }) == nil,
+        "the same message both times isn't the jack")
+    -- while playing: one listener, its file read each second, paused on audioHS 0
+    G_reader_settings:saveSetting(Jack.SETTING, { kind = "event", source = "com.lab126.hal", name = "audioHS", on = "1", off = "0" })
+    check(Jack.plugged() == nil, "a message isn't a state: plugged() can't tell")
+    cmds, killed = {}, {}
+    Jack.exec = function(c) cmds[#cmds + 1] = c; files[Jack.EVENTS_FILE] = ""; files[Jack.EVENTS_FILE .. ".pid"] = "5151\n" end
+    local paused = 0
+    UI.scheduled = {}
+    Jack.watch("music", function() paused = paused + 1 end)
+    Jack.watch("tts", function() paused = paused + 1 end)
+    check(#cmds == 1, "one listener for everything that plays (" .. #cmds .. " started)")
+    local function runDue() local due = {}; for fn in pairs(UI.scheduled) do due[#due + 1] = fn end; UI.scheduled = {}; for _i, fn in ipairs(due) do fn() end end
+    for _i = 1, 3 do runDue() end
+    check(paused == 0 and #cmds == 1, "nothing heard: playing on, and no shell started for each look")
+    files[Jack.EVENTS_FILE] = "audioHS 0\n"
+    runDue()
+    check(paused == 2 and next(Jack.watchers) == nil and killed[1] == 5151, "audioHS 0: everything playing pauses, and the listener stops")
+    -- stopped by hand
+    Jack.watch("audiobook", function() paused = paused + 1 end)
+    Jack.unwatch("audiobook")
+    check(Jack.listening == nil and Jack.event_ticker == nil and #killed == 2, "playback stopped: the listener stops")
+    G_reader_settings:delSetting(Jack.SETTING)
+    UI.scheduled = {}
+    Jack.read, Jack.exec, Jack.kill = nil, nil, nil
+    package.loaded["ui/widget/infomessage"] = was_info
 end)()
 
 print("Headphones")
@@ -4361,6 +7990,46 @@ print("Headphones")
     check(Jack.plugged() == false, "and it's used")
     files["/sys/devices/platform/codec/hp_det"] = "1"
     check(Jack.plugged() == true, "and plugged in again")
+    -- an lipc property: read in the process when KOReader's lipc library opens
+    Jack.unwatch("music")
+    G_reader_settings:saveSetting(Jack.SETTING, { kind = "lipc", prop = "headphoneState", on = "1" })
+    local reads, closed, state = 0, 0, "1"
+    local handle = {
+        get_string_property = function(_h, svc, prop)
+            reads = reads + 1
+            return svc == "com.lab126.audio" and prop == "headphoneState" and state or nil
+        end,
+        close = function() closed = closed + 1 end,
+    }
+    Jack.handle = nil
+    Jack.lipc_open = function() return handle end
+    Jack.shells = 0
+    files["lipc:headphoneState"] = "1"
+    local sched = {}
+    local JUI = require("ui/uimanager")
+    local real_in, real_un = JUI.scheduleIn, JUI.unschedule
+    JUI.scheduleIn = function(_ui, s, fn) sched[#sched + 1] = { s = s, fn = fn } end
+    JUI.unschedule = function() end
+    paused = 0
+    Jack.watch("audiobook", function() paused = paused + 1 end)
+    check(Jack.inProcess() and sched[1] and sched[1].s == Jack.INTERVAL, "lipc in the process: a look every second")
+    Jack.ticker()
+    state = "0"
+    Jack.ticker()
+    check(paused == 1 and reads >= 3 and Jack.shells == 0, "unplugged: paused, with no shell started")
+    check(closed == 1 and Jack.handle == nil, "nothing playing: the lipc handle is closed")
+    -- no lipc library: lipc-get-prop, but only every few seconds
+    Jack.handle = nil
+    Jack.lipc_open = function() return nil end
+    sched = {}
+    Jack.watch("audiobook", function() end)
+    check(not Jack.inProcess() and sched[1] and sched[1].s == Jack.SHELL_INTERVAL and Jack.SHELL_INTERVAL >= 3,
+        "no lipc library: looks with a shell every " .. tostring(Jack.SHELL_INTERVAL) .. " s, not every second")
+    Jack.unwatch("audiobook")
+    check(Jack.handle == nil, "stopped: nothing kept open")
+    JUI.scheduleIn, JUI.unschedule = real_in, real_un
+    Jack.lipc_open = nil
+    Jack.handle = nil
     G_reader_settings:delSetting(Jack.SETTING)
     Jack.read = nil
 end)()
@@ -4568,6 +8237,29 @@ print("Settings → Storage")
         and #by.Books.sub_item_table == 4 and by.Notes.sub_item_table[1].text:match("No notes")
         and by.Calendar.mandatory == "2 KB" and by["Covers and saved lists"].mandatory == "10.0 MB",
         "storage page: free space, each part's size, the biggest of each")
+    -- Settings → General → Storage: rows with icons, arrows into the biggest
+    local function iconed(it) return it and (it.icon_glyph or it.icon_name or it.icon_file) ~= nil end
+    check(iconed(by["Free on this Kindle"]) and iconed(by.Books) and iconed(by.Books.sub_item_table[1]) and iconed(by.Audiobooks)
+        and by.Music.icon_name == "tab_music" and iconed(by.Notes) and iconed(by["Covers and saved lists"])
+        and by.Books.sub_item_table and not by.Calendar.sub_item_table,
+        "storage rows: an icon on each (the parts and their books), a submenu where there are things in it")
+    local saved_bg, saved_last = St._background, St.last
+    local pending
+    St._background = function(fn, done) pending = done end
+    St.last = nil
+    local spage = { updated = 0 }
+    function spage.updateItems(p) p.updated = p.updated + 1 end
+    local list = St.settingsItems(fake, spage)
+    check(#list == 1 and list[1].text:match("Measuring"), "storage settings: Measuring… until it's measured")
+    spage.item_table = list
+    pending({ disk = { total = 2 * 1024 ^ 3, available = 1024 ^ 3 }, books = b, calendar = { bytes = 10 } })
+    check(spage.updated == 1 and list[1].text == "Free on this Kindle" and list[2].text == "Books" and #list == 3
+        and St.last ~= nil, "storage settings: the same rows filled in where they're shown, then kept")
+    local again = St.settingsItems(fake, spage)
+    check(again[2] and again[2].text == "Books", "storage settings: shown at once the next time (measured again behind)")
+    pending({ disk = { total = 1, available = 1 } })
+    check(spage.updated == 1, "storage settings: a page showing other rows isn't redrawn")
+    St._background, St.last = saved_bg, saved_last
     os.execute("rm -rf '" .. lib .. "'")
 end)()
 
@@ -4644,6 +8336,11 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         "outbox: ratings (and a rating taken away)")
     check(#out.queue == 2 and out.notes.queue[1].content == "milk #shopping" and out.calendar.days_ahead == 90,
         "outbox: the sync queue, notes written here, the calendar range")
+    check(out.music_quality and out.music_quality.bitrate == ((fake.store.plex or {}).bitrate or 192)
+        and out.music_quality.shrink == ((fake.store.plex or {}).shrink == true),
+        "outbox: Plex music's quality, for the page")
+    check(Usb.musicLibrary({ plex = { music_section = { server = "s", key = 4, title = "Concerts" } } }).key == "4"
+        and Usb.musicLibrary({ plex = {} }) == nil and Usb.musicLibrary({}) == nil, "outbox: the music library chosen on the Kindle, for the page")
     check(text:find('"music":[]', 1, true) and text:find('"audiobooks":[]', 1, true),
         "outbox: empty lists written as lists ([], not {}: the page reads them as lists)")
     check(not text:find("SECRET", 1, true) and not text:find("password", 1, true),
@@ -4652,6 +8349,12 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     os.remove(lib .. "/.gzsync/outbox.json")
     Usb.writeOutbox(fake)
     check(exists(lib .. "/.gzsync/outbox.json") and mtime, "outbox: written again when it's gone")
+    check(out.test_builds == nil, "outbox: test builds off, not mentioned")
+    gsettings.gzreader_update_beta = true
+    os.remove(lib .. "/.gzsync/outbox.json")
+    Usb.writeOutbox(fake)
+    check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
+    gsettings.gzreader_update_beta = nil
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
@@ -4818,6 +8521,16 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     put(base .. "/in/gzreader-update.zip", "ZIPDATA")
     local r2, e2 = Usb.installUpdate(fake, base, short)
     check(r2 == nil and tostring(e2):match("incomplete") and Update.currentVersion() == "1.2.0", "…nor when the file is incomplete")
+    -- a test build from the page: any other than the installed one, even with a lower number
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local older = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7 } }
+    check(Usb.installUpdate(fake, base, older) == nil and Update.currentVersion() == "1.2.0", "an older release from the page: not installed")
+    put(base .. "/in/gzreader-update.zip", "ZIPDATA")
+    local beta = { update = { version = "1.1.0-beta.abc1234", file = "in/gzreader-update.zip", size = 7, beta = true } }
+    check(Usb.installUpdate(fake, base, beta) == true, "a test build from the page: installed, though its number is lower")
+    check(Usb.takeTestBuilds({ test_builds = true }) and Update.betaEnabled() and not Usb.takeTestBuilds({ test_builds = true })
+        and not Usb.takeTestBuilds({}) and Update.betaEnabled() and Usb.takeTestBuilds({ test_builds = false }) and not Update.betaEnabled(),
+        "test builds switched on and off on the page: the Kindle's setting follows")
     Update.root = nil
     os.remove(base .. "/inbox.json")
     os.execute("rm -rf '" .. KO2 .. "' '" .. base .. "/in'")
@@ -4859,7 +8572,74 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     plugin:showDiagnostics()
     package.loaded["ui/widget/buttondialog"] = orig_bd
     check(gen.wifi == nil and #labels == 3 and not table.concat(labels, "|"):match("browser") and not table.concat(labels, "|"):match("Remote")
-        and nbtn == 2, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone (" .. table.concat(labels, ", ") .. ")")
+        and not table.concat(labels, "|"):match("automatically") and table.concat(labels, "|"):match("to the developer %(at the next sync%)")
+        and nbtn == 3, "no Wi-Fi: Settings and Diagnostics don't offer sending the log to a phone or automatic debug reports; Send to the developer goes at the next sync (" .. table.concat(labels, ", ") .. ")")
+    -- Send to the developer without Wi-Fi: the report waits in .gzsync/reports/ for the sync page (gzreader_usbreport.lua)
+    do
+        local Rep = require("gzreader_usbreport")
+        local RemoteM = require("gzreader_remote")
+        local rlfs = require("libs/libkoreader-lfs")
+        local LogM = require("gzreader_log")
+        local rdir = Rep.dir(plugin)
+        local function rexists(p) return rlfs.attributes(p, "mode") == "file" end
+        local function slurp(p) local fh = io.open(p, "rb"); local t = fh and fh:read("*a"); if fh then fh:close() end; return t end
+        local n_export = 0
+        local function fakeExport(into)
+            n_export = n_export + 1
+            local p = into .. "/gzreader-log-test-" .. n_export .. ".txt"
+            local fh = io.open(p, "wb"); fh:write("exported log " .. n_export .. "\n"); fh:close()
+            return p
+        end
+        local stamp = Rep.save(plugin, "  froze at https://books.example.com/x?password=hunter2  ", fakeExport)
+        local meta = stamp and JSON.decode(slurp(rdir .. "/report-" .. stamp .. ".json") or "null") or {}
+        check(stamp and slurp(rdir .. "/report-" .. stamp .. ".txt") == "exported log 1\n"
+            and meta.note == "froze at https://books.example.com/x?password=<redacted>" and meta.device == RemoteM.deviceName()
+            and type(meta.at) == "number" and meta.version and meta.test_build ~= nil and not rexists(rdir .. "/gzreader-log-test-1.txt"),
+            "no Wi-Fi: Send to the developer saves the log and what was typed (redacted) for the sync page")
+        for _i = 1, 4 do Rep.save(plugin, "", fakeExport) end
+        local rsaved = Rep.saved(plugin)
+        local txts = 0
+        for rname in rlfs.dir(rdir) do if rname:match("^report%-.*%.txt$") then txts = txts + 1 end end
+        check(#rsaved == Rep.KEEP and txts == Rep.KEEP and rsaved[1]:match("^0003%-") and rsaved[#rsaved]:match("^0005%-")
+            and not rexists(rdir .. "/report-" .. stamp .. ".json"),
+            "…the newest " .. Rep.KEEP .. " kept (an old Kindle's drive is small): " .. table.concat(rsaved, ", "))
+        local box = Usb.outbox(plugin).report or {}
+        check(box.feed == RemoteM.reportUrl() and box.device == RemoteM.deviceName() and box.test_build ~= nil,
+            "the outbox tells the page the report feed and the Kindle's name, as a Wi-Fi Kindle sends them")
+        local was_enabled = LogM.enabled
+        LogM.enabled = true
+        local latest = Rep.exportForPage(plugin, fakeExport)
+        local fresh = latest and slurp(latest)
+        LogM.enabled = false
+        Rep.exportForPage(plugin, fakeExport)
+        local gone = not rexists(rdir .. "/latest.txt")
+        LogM.enabled = was_enabled
+        check(latest == rdir .. "/latest.txt" and fresh and fresh:match("^exported log") and gone,
+            "Sync with diagnostic logging on: a fresh log for the page's Diagnostics box; logging off: none (an old one deleted)")
+        local usrc = slurp(debug.getinfo(Usb.show, "S").source:sub(2)) or ""
+        check(usrc:find('Usb.writeOutbox(plugin)\n    -- (diagnostic logging on: a fresh log for the page', 1, true)
+            and usrc:find('require("gzreader_usbreport").exportForPage(plugin)', 1, true),
+            "the Sync window (the quick panel's Sync) exports that log when it opens")
+        -- the Kindle's own Send to the developer: the box, then saved (not sent: no Wi-Fi)
+        local UIM2 = require("ui/uimanager")
+        local orig_show2, orig_close2, orig_rp = UIM2.show, UIM2.close, UIM2.forceRePaint
+        local shown_text
+        UIM2.show = function(_s, w) if w and w.text then shown_text = w.text end end
+        UIM2.close = function() end
+        UIM2.forceRePaint = function() end
+        local orig_exp = LogM.exportTo
+        LogM.exportTo = function(into) return fakeExport(into) end
+        local before_n = #Rep.saved(plugin)
+        local rstamp = plugin:sendLogToDeveloper("the sync page said nothing")
+        LogM.exportTo = orig_exp
+        UIM2.show, UIM2.close, UIM2.forceRePaint = orig_show2, orig_close2, orig_rp
+        local last = Rep.saved(plugin)
+        local lmeta = JSON.decode(slurp(rdir .. "/report-" .. last[#last] .. ".json") or "null") or {}
+        check(rstamp and last[#last] == rstamp and #last == math.min(Rep.KEEP, before_n + 1) and lmeta.note == "the sync page said nothing"
+            and tostring(shown_text):match("next sync"),
+            "no Wi-Fi: Diagnostics → Send to the developer saves the report and says it goes at the next sync (" .. tostring(shown_text) .. ")")
+        os.execute("rm -rf '" .. rdir .. "'")
+    end
     local Notes = require("gzreader_notes")
     local err
     Notes.refresh(fake, function(_ok, e) err = e end)
@@ -4895,7 +8675,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
             pending = { progress = {
                 ["1"] = { gz_seq = 7, fileProgress = { bookFileId = 1001, progressPercent = 42.5 } },
                 ["999"] = { gz_seq = 3, fileProgress = { bookFileId = 1, progressPercent = 1 } },
-            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 } },
+            }, sessions = { { bookId = 1, startTime = "2026-11-05T10:00:00Z", durationSeconds = 1800 } }, ratings = { ["2"] = 4 },
+                -- (books put on shelves here: the page's jobs sh:3:5 and sh:5:6)
+                shelves = { ["3"] = { seq = 5, set = { ["6"] = true } }, ["5"] = { seq = 6, set = { ["7"] = true } } } },
             memos = { queue = { { id = "q1", op = "create", content = "Written on the Kindle #kindle" } } },
             usb_queue = { { id = 3, kind = "book", title = "Book 03" }, { id = 32, kind = "audiobook", title = "Book 32" } } } }
         local f = io.open(lib .. "/book1.epub", "wb"); f:write("x"); f:close()
@@ -4916,13 +8698,26 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         Usb.SCREENSAVER_DIR = lib .. "/screensavers"
         local r = Usb.import(fake, function() ready = true end)
         local left = Usb.journal(fake)
+        do
+            local S = require("gzreader_shelves")
+            local mine = S.mine(fake)
+            local names = {}
+            for _i, sh in ipairs(mine or {}) do names[#names + 1] = sh.name end
+            check(next(fake.store.pending.shelves) == nil and table.concat(names, ",") == "Beach reads,Kindle"
+                and S.isOn(fake, 3, 6) and S.isOn(fake, 10, 4) and not S.isOn(fake, 5, 7),
+                "e2e: shelf changes sent by the page are off the queue; your shelves (not someone else's) kept from the copy, with their books")
+        end
         local pf = io.open(lib .. "/screensavers/My Dog.png", "rb")
         local phead = pf and pf:read(24)
         if pf then pf:close() end
-        check(r.pictures == 1 and phead and phead:sub(2, 4) == "PNG" and G_reader_settings:readSetting("screensaver_type") == "random_image"
+        local hf = io.open(lib .. "/screensavers/Beach.png", "rb") -- (made on the page from a HEIC photo)
+        local hhead = hf and hf:read(24)
+        if hf then hf:close() end
+        check(r.pictures == 2 and phead and phead:sub(2, 4) == "PNG" and hhead and hhead:sub(2, 4) == "PNG"
+            and G_reader_settings:readSetting("screensaver_type") == "random_image"
             and G_reader_settings:readSetting("gzreader_sleep_auto") == false and G_reader_settings:readSetting("screensaver_dir") == lib .. "/screensavers"
-            and Usb.sleepMode() == "always" and #Usb.screensavers() == 1 and Usb.summaryText(r):match("1 sleep screen picture"),
-            "e2e: the sleep screen picture in the screensavers folder; pictures always, as chosen on the page")
+            and Usb.sleepMode() == "always" and #Usb.screensavers() == 2 and Usb.summaryText(r):match("2 sleep screen pictures"),
+            "e2e: the sleep screen pictures (one from a HEIC photo) in the screensavers folder; pictures always, as chosen on the page")
         G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
         G_reader_settings:saveSetting("screensaver_dir", nil)
         Usb.SCREENSAVER_DIR = nil
@@ -4934,7 +8729,7 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local anns = api2:listAnnotations(1) or {}
         check(#anns == 1 and anns[1].note == "later" and anns[1].color == "#F87171",
             "e2e: highlights as GZreader sees them: Grimmory's (from the copy) with the journal's change on top")
-        check(r and r.sent == 3 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
+        check(r and r.sent == 5 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
             and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
         local b = fake.store.downloads["3"]
         check(b and b.path == lib .. "/book3.epub" and b.subtitle == "Old School" and #fake.store.usb_queue == 0,
@@ -4949,12 +8744,24 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local ab = require("gzreader_audiobook").load(fake, "32")
         check(ab and #ab.files == 2 and ab.files[1] == "track-001.mp3" and ab.chapters[2].title == "Story",
             "e2e: the folder audiobook plays from its two tracks")
+        local pab = require("gzreader_audiobook").load(fake, "plex-206")
+        check(pab and pab.plex and pab.plex.key == "206" and #pab.files == 2 and pab.files[2] == "track-002.mp3" and pab.tracks[2].plex_key == "307"
+            and pab.tracks[2].start == 3000 and pab.description == "A book in two parts." and fake.store.audiobooks["plex-206"].title == "Two Part Book",
+            "e2e: a Plex audiobook the page brought: its tracks, and where its place goes in Plex")
+        local ab33 = require("gzreader_audiobook").load(fake, "33")
+        local d33 = ab33 and require("gzreader_audiobook").dir(fake, "33")
+        local lfs = require("libs/libkoreader-lfs")
+        check(ab33 and ab33.tracks[1].chunks and #ab33.tracks[1].chunks.starts >= 1 and ab33.files[1]:match("^audiobook%.m4b%.chunks/c0%.aac$")
+            and lfs.attributes(d33 .. "/audiobook.m4b.chunks/c0.aac", "mode") == "file" and not lfs.attributes(d33 .. "/audiobook.m4b"),
+            "e2e: the M4B audiobook the page prepared plays from its chunks (nothing to convert on the Kindle)")
         local Music = require("gzreader_music")
         local mp3 = Music.load(Music.dirFor(fake, "album", "201"))
         local aac = Music.load(Music.dirFor(fake, "album", "202"))
         local flac = Music.load(Music.dirFor(fake, "album", "203"))
         check(mp3 and mp3.have == 2 and aac and aac.have == 1 and aac.tracks[1].chunks and flac and flac.have == 1,
             "e2e: the three albums play (MP3, AAC made into chunks, FLAC as MP3)")
+        check(fake.store.plex and fake.store.plex.bitrate == 192 and fake.store.plex.shrink == true,
+            "e2e: the music quality chosen on the page, in the Kindle's Plex settings")
         check(r.notes and r.notes >= 3 and #fake.store.memos.queue == 0, "e2e: notes in, the Kindle's note sent")
         check(r.events == 2 and #fake.store.calendar_feeds == 2, "e2e: the calendar's events, the failed one kept by name")
         local api = require("gzreader_offlineapi"):new(fake.store, nil, lib .. "/.gzsync")

@@ -34,7 +34,7 @@ HTTP on the sender (JSON):
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 local _ = require("gettext")
 local T = require("ffi/util").template
@@ -524,6 +524,7 @@ local function listMenu(title, items)
     local m = Menu:new{ title = title, item_table = items, covers_fullscreen = true, is_borderless = true,
         is_popout = false, title_bar_fm_style = true, modal = true }
     m.onMenuSelect = function(_self, item) if item.callback then item.callback() end return true end
+    require("gzreader_rows").apply(m)
     return m
 end
 
@@ -552,13 +553,12 @@ end
 function Copy.choose(plugin, ch, opts)
     local offer, want = ch.offer, Copy.defaults(plugin, ch.offer, opts.only)
     local menu
-    local function mark(on) return on and _("copy") or _("skip") end
     local items
     local function rebuild()
         items = {}
         local function toggle(item, get, set)
-            item.mandatory = mark(get())
-            item.dim = not get()
+            -- (a switch on the right, ZenOS's)
+            item.checked_func = function() return get() and true or false end
             item.callback = function()
                 set(not get())
                 rebuild()
@@ -567,34 +567,38 @@ function Copy.choose(plugin, ch, opts)
             items[#items + 1] = item
         end
         if offer.grimmory then
-            toggle({ text = T(_("Grimmory: %1 · %2 (then sign in here)"), offer.grimmory.host, offer.grimmory.username or "?") },
+            toggle({ text = _("Grimmory"), gz_icon = "settings_library",
+                    _zen_settings_breadcrumb = T(_("%1 · %2 (then sign in here)"), offer.grimmory.host, offer.grimmory.username or "?") },
                 function() return want.grimmory end, function(v) want.grimmory = v end)
         end
         if offer.memos then
-            toggle({ text = T(_("Notes: Memos at %1"), offer.memos.host) }, function() return want.memos end, function(v) want.memos = v end)
+            toggle({ text = _("Notes (Memos)"), gz_icon = "name:notes", _zen_settings_breadcrumb = offer.memos.host },
+                function() return want.memos end, function(v) want.memos = v end)
         end
         if offer.caldav then
-            toggle({ text = T(_("Calendar: CalDAV %1 · %2"), offer.caldav.host, offer.caldav.username or "?") },
+            toggle({ text = _("Calendar (CalDAV)"), gz_icon = "calendar",
+                    _zen_settings_breadcrumb = T(_("%1 · %2"), offer.caldav.host, offer.caldav.username or "?") },
                 function() return want.caldav end, function(v) want.caldav = v end)
         end
         for _i, l in ipairs(offer.links) do
-            toggle({ text = T(_("Calendar link: %1"), l.name) }, function() return want.links[l.n] == true end,
-                function(v) want.links[l.n] = v or nil end)
+            toggle({ text = l.name, gz_icon = "calendar", _zen_settings_breadcrumb = _("Calendar link") },
+                function() return want.links[l.n] == true end, function(v) want.links[l.n] = v or nil end)
         end
-        items[#items + 1] = { text = _("Copy the ones marked copy"), bold = true, callback = function()
+        items[#items + 1] = { text = _("Copy the ones switched on"), bold = true, gz_icon = "copy", callback = function()
             local list = {}
             for n in pairs(want.links) do list[#list + 1] = n end
             table.sort(list)
             local w = { grimmory = want.grimmory or nil, memos = want.memos or nil, caldav = want.caldav or nil, links = list }
             if not (w.grimmory or w.memos or w.caldav or #list > 0) then
-                return UIManager:show(InfoMessage:new{ text = _("Nothing is marked copy."), timeout = 3 })
+                return UIManager:show(InfoMessage:new{ text = _("Nothing is switched on."), timeout = 3 })
             end
             UIManager:close(menu)
             Copy.copy(plugin, ch, w, opts)
         end }
         if #items == 1 then
-            items = { { text = T(_("%1 has nothing to send yet."), offer.name or "?"), select_enabled = false } }
+            items = { { text = T(_("%1 has nothing to send yet."), offer.name or "?"), gz_icon = "details", select_enabled = false } }
         end
+        require("gzreader_rows").mark(items)
     end
     rebuild()
     menu = listMenu(T(_("Copy from %1"), offer.name or ch.dev.name or "?"), items)
@@ -704,27 +708,28 @@ function Copy.pick(plugin, opts)
     local function items(searching, devices)
         local list = {}
         for _i, dev in ipairs(devices or {}) do
-            list[#list + 1] = { text = dev.name, mandatory = dev.ip, callback = function()
+            list[#list + 1] = { text = dev.name, mandatory = dev.ip, gz_icon = "name:tablet", callback = function()
                 stop()
                 UIManager:close(menu)
                 Copy.askPin(plugin, dev, opts)
             end }
         end
+        local Rows = require("gzreader_rows")
         if searching then
-            list[#list + 1] = { text = _("Looking for GZreader devices on this Wi-Fi…"), select_enabled = false }
+            list[#list + 1] = { text = _("Looking on this Wi-Fi…"), gz_icon = "wifi_on", select_enabled = false }
         elseif #list == 0 then
-            list[#list + 1] = { text = _("None found. On the other GZreader choose Send connections (Settings → Connections, or its setup guide), then look again."), select_enabled = false }
+            list[#list + 1] = Rows.about(_("None found"), _("None found. On the other GZreader choose Send connections (Settings → Connections, or its setup guide), then look again."))
         end
-        list[#list + 1] = { text = _("Look again"), callback = function()
+        list[#list + 1] = { text = _("Look again"), gz_icon = "refresh", callback = function()
             stop()
             Copy.look(menu, items, function(b, p) browser, poller = b, p end)
         end }
-        list[#list + 1] = { text = _("Type its address…"), callback = function()
+        list[#list + 1] = { text = _("Type its address"), gz_icon = "keyboard", callback = function()
             stop()
             UIManager:close(menu)
             Copy.typeAddress(plugin, opts)
         end }
-        return list
+        return Rows.mark(list)
     end
     menu = listMenu(_("Copy from another GZreader"), items(true))
     local orig_close = menu.onCloseWidget

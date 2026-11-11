@@ -127,7 +127,6 @@ local function done(what, ...)
     depth = 0
     local wall = os.time() - w0
     if wall >= S.SLOW then
-        pcall(function() require("gzreader_usage").slow(what, wall) end)
         local cpu = os.clock() - t0
         local where = top(event or {}, 4)
         if what == "scheduled work" and S.slowest_task and where == "" then
@@ -224,7 +223,6 @@ function S.checkStuck(report)
     if not unanswered or (S.last_paint and S.last_paint >= unanswered) then return end
     if t - unanswered < 45 or t - stuck_reported < 600 then return end
     stuck_reported = t
-    pcall(function() require("gzreader_usage").stuck(t - unanswered, S.windows()) end)
     report(string.format("Keys were pressed for %d s but the screen didn't change (%s).\nOn screen: %s",
         t - unanswered, S.uiState(), S.windows()))
 end
@@ -235,7 +233,7 @@ function S.install(dir, opts)
     opts = opts or {}
     S.file = dir and (dir .. "/profile")
     -- The sampling profiler (SIGPROF timer signals) only when asked for:
-    -- Settings → General → Remote debugging → Detailed timing.
+    -- (GZreader leaves it off: debug reports don't need it.)
     if opts.profile and S.available then
         local okp, err = pcall(prof.start, "fi" .. S.INTERVAL, onSample)
         if okp then S.profiling = true else Log.warn("profiler unavailable:", tostring(err)) end

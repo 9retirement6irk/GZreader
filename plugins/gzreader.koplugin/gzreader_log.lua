@@ -5,14 +5,31 @@ Written to <koreader dir>/gzreader.log (on a Kindle: /mnt/us/koreader/gzreader.l
 visible over USB). Rotates to gzreader.log.1 at ~512 KB. Secrets are redacted
 before anything is written: passwords, access/refresh tokens, OIDC codes,
 PKCE verifiers, states and the pairing URL token never reach the file.
+
+INFO lines are kept in memory and written together (one open, one write)
+FLUSH_AFTER seconds after the first of them, as soon as a warning or an
+error comes, when MAX_BUFFER bytes are waiting, and on Log.flush() (the
+plugin calls it when the Kindle goes to sleep, on exit and before the log is
+exported). A burst of sync logging is then one write to the Kindle's flash
+instead of one per line. Background processes (forks) write each line at
+once, and drop what the parent hadn't written yet (it's the parent's).
 ]]
+
+local ffi = require("ffi")
+pcall(ffi.cdef, "int getpid(void);")
 
 local MAX_BYTES = 512 * 1024
 
 local Log = {
     enabled = true,
     path = nil,
+    buffered = true,
+    FLUSH_AFTER = 5,
+    MAX_BUFFER = 16 * 1024,
 }
+
+local buf, buf_bytes, flush_scheduled = {}, 0, false
+local function pid() return ffi.C.getpid() end
 
 -- Size tracked in memory (checked on disk once per run), so a log line is
 -- one open + write, not two opens.
@@ -21,6 +38,7 @@ local size_known
 function Log.init(dir)
     Log.path = dir .. "/gzreader.log"
     size_known = nil
+    Log.main_pid = pid()
 end
 
 local SECRET_KEYS = {
@@ -59,6 +77,38 @@ local function rotateIfNeeded(adding)
     end
 end
 
+local function append(text)
+    pcall(function()
+        rotateIfNeeded(#text)
+        local f = io.open(Log.path, "ab")
+        if f then
+            f:write(text)
+            f:close()
+        end
+    end)
+end
+
+--- Write the lines waiting in memory (in a background process: drop them,
+--- they're the parent's to write).
+function Log.flush()
+    if #buf == 0 then return end
+    local lines = buf
+    buf, buf_bytes = {}, 0
+    if not Log.path or (Log.main_pid and pid() ~= Log.main_pid) then return end
+    append(table.concat(lines))
+end
+
+local function scheduleFlush()
+    if flush_scheduled then return end
+    local ok, UIManager = pcall(require, "ui/uimanager")
+    if not ok or not UIManager or not UIManager.scheduleIn then return Log.flush() end
+    flush_scheduled = true
+    UIManager:scheduleIn(Log.FLUSH_AFTER, function()
+        flush_scheduled = false
+        Log.flush()
+    end)
+end
+
 local function write(level, ...)
     if not Log.enabled or not Log.path then return end
     local parts = {}
@@ -69,14 +119,17 @@ local function write(level, ...)
     local line = string.format("%s [%s] %s\n", os.date("%Y-%m-%d %H:%M:%S"), level,
         Log.redact(table.concat(parts, " ")))
     if Log.on_line and level ~= "INFO" then pcall(Log.on_line, level, line) end -- remote debugging
-    pcall(function()
-        rotateIfNeeded(#line)
-        local f = io.open(Log.path, "ab")
-        if f then
-            f:write(line)
-            f:close()
-        end
-    end)
+    if not Log.buffered or (Log.main_pid and pid() ~= Log.main_pid) then
+        if #buf > 0 then Log.flush() end -- (a fork: drops the parent's)
+        return append(line)
+    end
+    buf[#buf + 1] = line
+    buf_bytes = buf_bytes + #line
+    if level ~= "INFO" or buf_bytes >= Log.MAX_BUFFER then
+        Log.flush()
+    else
+        scheduleFlush()
+    end
 end
 
 function Log.info(...) write("INFO", ...) end
@@ -85,7 +138,14 @@ function Log.err(...) write("ERROR", ...) end
 
 --- Copy the log (and the current KOReader crash.log tail) somewhere visible
 --- over USB. Returns the destination path or nil, err.
+local function now()
+    local ok, socket = pcall(require, "socket")
+    return ok and socket.gettime and socket.gettime() or os.time()
+end
+
 function Log.exportTo(dir, crash_log_path)
+    Log.flush()
+    local started = now()
     local stamp = os.date("%Y%m%d-%H%M%S")
     local dest = string.format("%s/gzreader-log-%s.txt", dir, stamp)
     local out, err = io.open(dest, "wb")
@@ -106,11 +166,54 @@ function Log.exportTo(dir, crash_log_path)
         cf:close()
     end
     out:write("\n\n===== staying awake =====\n", Log.awakeReport())
+    local probe
     if Log.probe_device then
-        out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi) =====\n", Log.deviceProbe())
+        local text
+        text, probe = Log.deviceProbe()
+        out:write("\n\n===== device probe (text-to-speech, audio, Wi-Fi) =====\n", text)
     end
     out:close()
+    Log.info(string.format("log built in %.1f s", now() - started),
+        probe and ("(device probe: " .. probe .. ")") or "")
     return dest
+end
+
+--- How many saved logs ("Save to the Kindle") stay next to the GZreader folder.
+Log.KEEP_EXPORTS = 3
+
+--- Delete older gzreader-log-<date>-<time>.txt files in `dir`, keeping the
+--- newest `keep` (Log.KEEP_EXPORTS) by name. `except` (the file just written)
+--- always stays and counts as one of them: a Kindle whose clock went back to
+--- 1970 names it as the oldest. Returns how many were deleted.
+function Log.pruneExports(dir, keep, except)
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok or type(dir) ~= "string" then return 0 end
+    local except_name = except and except:match("[^/]+$")
+    local names = {}
+    pcall(function()
+        for name in lfs.dir(dir) do
+            if name ~= except_name and name:match("^gzreader%-log%-%d+%-%d+%.txt$") then names[#names + 1] = name end
+        end
+    end)
+    table.sort(names)
+    local allowed = math.max(0, (keep or Log.KEEP_EXPORTS) - (except_name and 1 or 0))
+    local removed = 0
+    for i = 1, #names - allowed do
+        if os.remove(dir .. "/" .. names[i]) then removed = removed + 1 end
+    end
+    return removed
+end
+
+--- The log bundle as text, built in `tmp_dir` and deleted there (for sending
+--- it somewhere: nothing is left behind). Returns text, file name; or nil, err.
+function Log.exportText(tmp_dir, crash_log_path)
+    local dest, err = Log.exportTo(tmp_dir, crash_log_path)
+    local f = dest and io.open(dest, "rb")
+    if not f then return nil, err or "couldn't read the log" end
+    local content = f:read("*a")
+    f:close()
+    os.remove(dest)
+    return content, dest:match("[^/]+$")
 end
 
 -- Read-only survey used to plan text-to-speech: where the Kindle's own speech
@@ -194,20 +297,103 @@ function Log.awakeReport()
     return table.concat(lines, "\n") .. "\n"
 end
 
+-- Commands whose answer changes while the Kindle runs: run at every export.
+-- The others only change with the firmware, so their output is
+-- kept (Log.probeCachePath) and reused: running them all took ~25 s on a
+-- Kindle 3, most of it waiting on `strings` and `ls -R`.
+Log.PROBE_LIVE = {
+    ["free"] = true,
+    ["ps 2>/dev/null | awk 'tolower($0) ~ /tts|audio|cvm|speech|java/' | grep -v grep"] = true,
+    ["ps 2>/dev/null | awk 'tolower($0) ~ /audioserver|gst|aplay/' | grep -v awk"] = true,
+    ["awk 'tolower($0) ~ /tts|snippet/' /var/log/messages 2>/dev/null | tail -40"] = true,
+    ["for p in cmState scanState; do echo \"$p: $(lipc-get-prop com.lab126.wifid $p 2>&1)\"; done"] = true,
+    ["ls -la /usr/lib/liblipc* common/*lipc* libs/*lipc* 2>&1"] = true, -- (GZreader's own files too)
+}
+
+local function readFile(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+--- The firmware's version files (what the kept probe answers depend on).
+function Log.firmwareText()
+    return (readFile("/etc/prettyversion.txt") or "") .. (readFile("/etc/version.txt") or "")
+end
+
+--- What the kept probe answers depend on: the firmware and the commands
+--- themselves. (Not GZreader's version: a test build every few minutes
+--- would run the whole probe each time; the one command that looks at
+--- GZreader's own files runs every time instead.)
+function Log.probeKey()
+    local h = 5381
+    local cmds = table.concat(Log.PROBE_COMMANDS, "\n")
+    for i = 1, #cmds do h = (h * 33 + cmds:byte(i)) % 4294967296 end
+    return (Log.firmwareText():gsub("%s+", " ")) .. " | " .. string.format("%08x", h)
+end
+
+function Log.probeCachePath()
+    if Log.probe_cache then return Log.probe_cache end
+    local dir = Log.path and Log.path:match("^(.*)/[^/]+$")
+    return dir and (dir .. "/cache/gz-device-probe.lua") or nil
+end
+
+local function loadProbeCache(path, key)
+    local fn = path and loadfile(path)
+    if not fn then return nil end
+    setfenv(fn, {})
+    local ok, t = pcall(fn)
+    if ok and type(t) == "table" and t.key == key and type(t.out) == "table" then return t end
+end
+
+local function saveProbeCache(path, key, out)
+    if not path then return end
+    local dir = path:match("^(.*)/[^/]+$")
+    if dir then pcall(function() require("libs/libkoreader-lfs").mkdir(dir) end) end
+    local lines = { "return {", string.format("key = %q,", key), string.format("at = %q,", os.date("%Y-%m-%d %H:%M")), "out = {" }
+    for cmd, text in pairs(out) do lines[#lines + 1] = string.format("[%q] = %q,", cmd, text) end
+    lines[#lines + 1] = "} }\n"
+    local tmp = path .. ".tmp"
+    local f = io.open(tmp, "wb")
+    if not f then return end
+    f:write(table.concat(lines, "\n"))
+    f:close()
+    os.rename(tmp, path)
+end
+
+local function runProbe(cmd)
+    local ok, result = pcall(function()
+        local p = io.popen(cmd .. " 2>&1")
+        if not p then return "(could not run)" end
+        local outp = p:read("*a") or ""
+        p:close()
+        return #outp > 8000 and (outp:sub(1, 8000) .. "\n…truncated") or outp
+    end)
+    return ok and result or ("(error: " .. tostring(result) .. ")")
+end
+
+--- The probe's text, and how it was made ("kept from <date>" or "run now").
 function Log.deviceProbe()
-    local parts = {}
+    local path = Log.probeCachePath()
+    local key = Log.probeKey()
+    local kept = loadProbeCache(path, key)
+    local parts, fresh = {}, {}
+    if kept then
+        parts[1] = "(the unchanging part kept from " .. tostring(kept.at) .. ", for this firmware)"
+    end
     for _, cmd in ipairs(Log.PROBE_COMMANDS) do
         parts[#parts + 1] = "$ " .. cmd
-        local ok, result = pcall(function()
-            local p = io.popen(cmd .. " 2>&1")
-            if not p then return "(could not run)" end
-            local outp = p:read("*a") or ""
-            p:close()
-            return #outp > 8000 and (outp:sub(1, 8000) .. "\n…truncated") or outp
-        end)
-        parts[#parts + 1] = ok and result or ("(error: " .. tostring(result) .. ")")
+        local text = not Log.PROBE_LIVE[cmd] and kept and kept.out[cmd]
+        if not text then
+            text = runProbe(cmd)
+            if not Log.PROBE_LIVE[cmd] then fresh[cmd] = text end
+        end
+        parts[#parts + 1] = text
     end
-    return table.concat(parts, "\n")
+    if not kept then pcall(saveProbeCache, path, key, fresh) end
+    return table.concat(parts, "\n"), kept and ("kept from " .. tostring(kept.at)) or "run now"
 end
 
 return Log

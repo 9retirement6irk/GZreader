@@ -21,7 +21,7 @@ on:
         required: false
         default: ""
   push:
-    branches: [nook-softfloat]
+    branches: [nook-softfloat, beta, 'feat/nook-*']
 
 permissions:
   contents: write
@@ -44,8 +44,7 @@ jobs:
       - name: crosstool-NG's tools
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq autoconf automake bison flex gawk gettext git gperf help2man \
+          bash tools/gzreader/ci-apt.sh autoconf automake bison flex gawk gettext git gperf help2man \
             libncurses-dev libtool libtool-bin make patch python3-dev rsync texinfo unzip wget xz-utils
       - name: Build the soft-float toolchain
         if: steps.cache.outputs.cache-hit != 'true'
@@ -91,8 +90,22 @@ jobs:
           path: ko-out/*.zip
           retention-days: 14
 
+  launcher:
+    # GZreader's icon for the Nook's app list (platform/nook/launcher-app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: GZreader-launcher.apk (Android 1.5)
+        run: platform/nook/launcher-app/build.sh out/GZreader-launcher.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gzreader-nook-launcher
+          path: out/GZreader-launcher.apk
+          retention-days: 30
+
   package:
-    needs: koreader
+    needs: [koreader, launcher]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -106,19 +119,23 @@ jobs:
         with:
           name: koreader-kindle-legacy-softfloat
           path: dl
+      - uses: actions/download-artifact@v8
+        with:
+          name: gzreader-nook-launcher
+          path: apk
       - name: Tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          # (an older tag has no ci-apt.sh)
+          if [ -f tools/gzreader/ci-apt.sh ]; then bash tools/gzreader/ci-apt.sh dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          else sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross; fi
           sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
-      - name: The build, for trying it elsewhere (branch nook-softfloat-out, one commit)
+      - name: The build, for trying it elsewhere (on the updates branch, next to the updates)
         if: github.event_name == 'push'
         continue-on-error: true
         run: |
-          mkdir -p o && cp dl/koreader-kindle-legacy-*.zip o/
-          cd o && git init -q -b nook-softfloat-out && git add . \
-            && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "KOReader kindle-legacy without VFP" \
-            && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" nook-softfloat-out
+          Z=$(ls dl/koreader-kindle-legacy-*.zip | head -n 1)
+          V=$(basename "$Z" .zip); V=${V#koreader-kindle-legacy-}
+          tools/gzreader/publish-updates.sh nook-koreader "$Z" "$V" "$GITHUB_SHA"
       - name: No VFP in KOReader's programs
         run: |
           mkdir -p chk && unzip -q dl/koreader-kindle-legacy-*.zip -d chk
@@ -147,9 +164,11 @@ jobs:
         run: |
           VERSION="${TAG#v}"; VERSION="${VERSION#.}"
           [ -n "$VERSION" ] || VERSION=$(tr -d ' \n' < GZREADER_VERSION)
+          # (a test build: the version its over-the-air updates have, gzreader-beta.yml)
+          if [ -z "$TAG" ] && [ "$GITHUB_REF" = refs/heads/beta ]; then VERSION="$VERSION-beta.$(git rev-parse --short=7 HEAD)"; fi
           GZ_VERSION="$VERSION" tools/gzreader/package-kindle.sh dl/koreader-kindle-legacy-*.zip out
           tools/gzreader/nook-runtime.sh nook-runtime
-          GZ_VERSION="$VERSION" GZ_NOOK_NAME=gzreader-nook-1st-edition GZ_NOOK_FOR="1st Edition (built without VFP)" \
+          GZ_VERSION="$VERSION" GZ_NOOK_NAME=gzreader-nook-1st-edition GZ_NOOK_FOR="1st Edition (built without VFP)" GZ_NOOK_APK=apk/GZreader-launcher.apk \
             tools/gzreader/package-nook.sh out/gzreader-kindle-legacy-"$VERSION".zip nook-runtime out
           mkdir -p chk2 && unzip -q out/gzreader-nook-1st-edition-*.zip -d chk2
           tools/gzreader/nook-softfloat/check-novfp.sh chk2

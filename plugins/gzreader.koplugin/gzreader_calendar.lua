@@ -343,11 +343,13 @@ local function badge(letter, side)
     return Menu.getItemShortCutIcon(nil, Geom:new{ w = side, h = side }, letter, "square")
 end
 
---- The shade marker of an event's calendar (black, greys).
+--- The shade marker of an event's calendar (black, greys), `h` tall.
+--- (A Line, whose size is its own: a FrameContainer's height only paints, so a
+--- row centring it centred a 1-pixel widget and the bar hung below the title.)
 local function marker(ev, h)
-    return FrameContainer:new{ padding = 0, bordersize = 0, background = shade(ev), width = S(3), height = h,
-        VerticalSpan:new{ width = 1 } }
+    return Line:new{ w = S(3), h = h, color = shade(ev) }
 end
+Calendar.marker = marker
 
 local function allDayOn(ev, day)
     return ev.all_day or (ev.start <= day and ev.finish >= addDays(day, 1))
@@ -546,7 +548,7 @@ local function eventRow(plugin, ev, day, w, h, key)
                 HorizontalSpan:new{ width = S(8) },
                 LeftContainer:new{ dimen = Geom:new{ w = time_w, h = h - S(4) }, times },
                 marker(ev, h - S(14)),
-                HorizontalSpan:new{ width = S(10) },
+                HorizontalSpan:new{ width = S(7) }, -- (the marker now takes its own 3 px)
                 title,
             } }, 0, 0)
         return Outline:new{ w = w, h = h, on = focused, c }
@@ -779,7 +781,7 @@ local function renderDay(plugin, w, h)
         local build = function(focused)
             local bsize = math.min(S(22), bh - S(6))
             local b = bsize >= S(14) and badge(key, bsize) or nil
-            local inner_w = bw - S(12) - (b and (bsize + S(4)) or 0)
+            local inner_w = bw - S(15) - (b and (bsize + S(4)) or 0) -- (the marker's 3 px included)
             local label = shortClock(ev.start) .. "  " .. (ev.title or "")
             return FrameContainer:new{
                 width = bw, height = bh, padding = S(3), margin = 0,
@@ -1433,23 +1435,31 @@ function Calendar.removeFeed(plugin, index)
     Calendar.events, Calendar.cached_at, Calendar.range = {}, nil, nil
 end
 
-function Calendar.showConnect(plugin)
-    local items = require("gzreader_net").usb and {
+--- The Calendar tab before any calendar is added: the ways to add some
+--- (ZenOS rows: short labels, the explanation behind About).
+function Calendar.connectItems(plugin)
+    local Rows = require("gzreader_rows")
+    if require("gzreader_net").usb then
         -- no Wi-Fi: the sync page brings the calendars (gzreader_usbsync.lua)
-        { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end },
-        { text = _("Calendars come through your computer: add calendar links, a CalDAV account or .ics files on the sync page, then sync."),
-          select_enabled = false },
-    } or {
-        { text = _("Add calendars with QR code: links (webcal / ICS, e.g. Proton) or a CalDAV account"), callback = function()
+        return Rows.mark({
+            { text = _("Sync with computer"), gz_icon = Rows.FILE.usb, callback = function() require("gzreader_usbsync").show(plugin) end },
+            Rows.about(_("About calendars"), _("Calendars come through your computer: add calendar links, a CalDAV account or .ics files on the sync page, then sync.")),
+        })
+    end
+    return Rows.mark({
+        { text = _("Add with QR code"), gz_icon = "send", callback = function()
             require("gzreader_net").run(function() Calendar.qrAddLinks(plugin) end, { reason = "calendar links" })
         end },
-        { text = _("Add a calendar link by typing"), callback = function() Calendar.typeAddLink(plugin) end },
-        { text = _("Add links from calendars.txt (USB drive)"), callback = function() Calendar.importFileUI(plugin) end },
-        { text = _("Connect a CalDAV account by typing"), callback = function() Calendar.typeConnect(plugin) end },
-        { text = _("Copy from another GZreader"), callback = function() Calendar.copyConnect(plugin) end },
-        { text = _("Calendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password."),
-          select_enabled = false },
-    }
+        { text = _("Type a calendar link"), gz_icon = "connect", callback = function() Calendar.typeAddLink(plugin) end },
+        { text = _("Add from calendars.txt"), gz_icon = Rows.FILE.usb, callback = function() Calendar.importFileUI(plugin) end },
+        { text = _("Type a CalDAV account"), gz_icon = "keyboard", callback = function() Calendar.typeConnect(plugin) end },
+        { text = _("Copy from another GZreader"), gz_icon = "copy", callback = function() Calendar.copyConnect(plugin) end },
+        Rows.about(_("About calendar links"), _("Add with QR code: open the page on your phone to add calendar links (webcal / ICS, e.g. Proton) or a CalDAV account.\n\nCalendar links are the subscription links calendars share (Proton Calendar: Settings → Calendars → Share → Share with anyone). A CalDAV account (Nextcloud, iCloud, Fastmail…) needs its address, user name and an app password.\n\ncalendars.txt: one link per line (\"Name | link\" to give it a name), in the GZreader folder or at the top of the Kindle's USB drive.")),
+    })
+end
+
+function Calendar.showConnect(plugin)
+    local items = Calendar.connectItems(plugin)
     local menu
     menu = Menu:new{
         title = _("Calendar: add calendars"), item_table = items, covers_fullscreen = true, is_borderless = true,
@@ -1458,6 +1468,7 @@ function Calendar.showConnect(plugin)
     }
     menu.key_events.LeftButtonTap = nil
     pcall(require("gzreader_tabs").decorate, menu, _("Calendar"))
+    require("gzreader_rows").apply(menu)
     Calendar.connect_menu = menu
     UIManager:show(menu)
     return menu

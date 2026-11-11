@@ -29,7 +29,7 @@ one pauses the others; sleep (the power switch) and unplugging headphones
 local Awake = require("gzreader_awake")
 local Engine = require("gzreader_audioengine")
 local InfoMessage = require("ui/widget/infomessage")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
@@ -280,6 +280,8 @@ function Music.download(plugin, c, opts)
     Music.save(col)
     local plex = Music.plex(plugin)
     local bitrate = plugin.store.plex.bitrate or 192
+    -- (bigger MP3/AAC made smaller too, if asked: Plex.how, here and in the download's process)
+    require("gzreader_plex").shrink_to = plugin.store.plex.shrink and bitrate or nil
     local luajit = require("gzreader_audiobook").luajit()
     local script = (Engine.root or "plugins/gzreader.koplugin") .. "/gzreader_mp4.lua"
     local todo = {}
@@ -516,7 +518,7 @@ function Player:play()
     end
     quietOthers(self.plugin)
     if Music.current and Music.current ~= self then Music.current:stop() end
-    local started = select(2, Engine.play(p, src))
+    local started = select(2, Engine.play(p, src, "music"))
     self.pos = started or 0
     self.playing, self.paused = true, nil
     Music.current = self
@@ -652,7 +654,7 @@ function Player:tick()
     if stopped and Engine.played() < 3000 then
         Log.warn("music: the player stopped at once:", Engine.log():sub(1, 300):gsub("\n", " / "))
         self:stop()
-        UIManager:show(InfoMessage:new{ text = _("The track didn't play. Run Test audiobook playback (Settings → Reader); if it still fails, send the log (Settings → General).") })
+        UIManager:show(InfoMessage:new{ text = _("The track didn't play. Run Test audiobook playback (Settings → General → Audio); if it still fails, send the log (Settings → General).") })
         return
     end
     if ended then
@@ -689,7 +691,26 @@ end
 --- Play collection c (downloaded, or downloading it now: from the first track).
 function Music.play(plugin, c, start, shuffle)
     local p = Player:new(plugin, c, start, shuffle)
+    pcall(Music.notePlayed, plugin, c)
     return p:play() and p
+end
+
+Music.RECENT = 20 -- (albums and playlists kept for the Catalog's Recently played)
+
+--- Remember an album or playlist played here (newest first, once each) for
+--- the Catalog's Music page: Recently played. Plex only knows what Plex's
+--- own players played.
+function Music.notePlayed(plugin, c)
+    if type(c) ~= "table" or not c.key or (c.kind ~= "album" and c.kind ~= "playlist") then return end
+    local store = plugin.store
+    local list = type(store.music_recent) == "table" and store.music_recent or {}
+    local out = { { type = c.kind, key = c.key, title = c.title, artist = c.artist, year = c.year, thumb = c.thumb,
+        count = type(c.tracks) == "table" and #c.tracks or nil, played = os.time() } }
+    for _i, it in ipairs(list) do
+        if type(it) == "table" and it.key ~= c.key and #out < Music.RECENT then out[#out + 1] = it end
+    end
+    store.music_recent = out
+    if plugin.save then pcall(plugin.save, plugin) end
 end
 
 --- Every downloaded track at random.

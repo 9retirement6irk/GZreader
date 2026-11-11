@@ -775,15 +775,12 @@ table.insert(package.loaders, 2, function(name)
     end
 end)
 
+-- GZ_EMU_DEBUG_REPORTS=1: debug reports on (with GZ_REMOTE_FEED, feed.py's)
 table.insert(package.loaders, 2, function(name)
-    if name ~= "gzreader_usage" then return nil end
+    if name ~= "gzreader_remote" then return nil end
     return function()
         local m = dofile(package.searchpath(name, package.path))
-        if os.getenv("GZ_EMU_TIANJI") then m.SERVER = os.getenv("GZ_EMU_TIANJI") end
-        m.SEND_EVERY = tonumber(os.getenv("GZ_EMU_USAGE_EVERY") or "") or m.SEND_EVERY
-        if os.getenv("GZ_EMU_USAGE_LEVEL") then G_reader_settings:saveSetting("gzreader_usage", os.getenv("GZ_EMU_USAGE_LEVEL")) end
-        m.TICK = tonumber(os.getenv("GZ_EMU_USAGE_TICK") or "") or m.TICK
-        m.SUMMARY_EVERY = tonumber(os.getenv("GZ_EMU_USAGE_SUMMARY") or "") or m.SUMMARY_EVERY
+        if os.getenv("GZ_EMU_DEBUG_REPORTS") then G_reader_settings:saveSetting(m.SETTING, os.getenv("GZ_EMU_DEBUG_REPORTS") == "1") end
         return m
     end
 end)

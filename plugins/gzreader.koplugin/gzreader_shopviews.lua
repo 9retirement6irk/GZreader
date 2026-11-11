@@ -8,13 +8,21 @@ The Grimmory tab's lists in the Bookshelf view, in the bookshop's style
   you are); a ribbon in the ones you're reading, a tick on the finished ones,
   ON KINDLE on the ones downloaded. Load more / Earlier books are bundles of
   spines tied with a tag;
-- libraries, shelves and authors: bookcase compartments with a card clipped
+- libraries, shelves and authors (and the Catalog's Audiobooks page, its
+  authors, shelves and series, with cassettes in them): bookcase
+  compartments with a card clipped
   to each (name, how many, letter): spines between bookends, a book face
   out with the shelf's name, the author's initial on a divider. Magic
   shelves say so, never their rules;
 - series: piles of books lying flat, one per series, a card under each;
 - audiobooks: a tape rack, a cassette's spine for each (▶ when it's on the
-  Kindle).
+  Kindle);
+- albums and playlists (the Catalog's Music page): CD cases face out on
+  display ledges, the cover under the lid (Plex's, gzreader_musiccovers.lua;
+  a stand-in insert until it's here), ON KINDLE on the ones downloaded, a tag
+  under each with the title and the artist and year (a playlist: its tracks);
+- a search that found nothing: the same display ledges as its results,
+  empty, cobwebs on each, and a card between them saying so.
 
 A search or Refresh line at the top of a list is a slip pinned above it
 (and a sign beside it); on later pages a sign shows the list's name. Every
@@ -39,6 +47,7 @@ local Views = {
     TAG_AUTHOR = 12,
     TAG_H = 44,      -- its height (px at 160 dpi)
     TAG_W = 150,     -- the narrowest a tag may be (sets the books a row)
+    CD_RATIO = 1.12, -- a CD case's width to its height (142 x 125 mm)
 }
 
 local function Shop() return require("gzreader_bookshop") end
@@ -46,13 +55,18 @@ local function Shelf() return require("modules/filebrowser/patches/home/widgets/
 
 ---------------------------------------------------------------- which view
 
---- "ledges", "tapes", "piles", "bay" or nil (stays as it is) for a list.
+--- "ledges", "tapes", "piles", "bay", "cds" or nil (stays as it is) for a list.
 function Views.kindOf(items)
     for _i, e in ipairs(type(items) == "table" and items or {}) do
         if type(e) == "table" then
+            -- (the Catalog's Music page: albums and playlists as CD cases)
+            if type(e.gz_music) == "table" and (e.gz_music.type == "album" or e.gz_music.type == "playlist") then return "cds" end
+            if e.gz_kind == "nothing_found" then return "ledges" end -- (empty, cobwebs)
             if type(e.book) == "table" then return e.cover_kind == "audiobook" and "tapes" or "ledges" end
             if e.gz_kind == "series" then return "piles" end
             if e.gz_kind == "library" or e.gz_kind == "shelf" or e.gz_kind == "author" then return "bay" end
+            -- (the Catalog's Audiobooks page and its series: compartments too)
+            if e.gz_kind == "section" or e.gz_kind == "collection" or e.gz_kind == "artist" then return "bay" end
         end
     end
     return nil
@@ -111,6 +125,19 @@ function Views.layout(kind, w, h, band, s)
         L.box_h = box_h
         L.box_w = math.min(box_w, L.slots[1].w - s(11))
         L.fixed = fixed
+    elseif kind == "cds" then
+        -- a row: the CD case face out (a little wider than tall), the ledge,
+        -- the tag under it (as the books' ledges)
+        local fixed = s(11) + s(10) + s(Views.TAG_H + 4) + s(8)
+        local rows = clamp(math.floor(avail / (s(80) + fixed)), 1, 4)
+        local box_h = math.floor(avail / rows) - fixed
+        local gap = s(14)
+        local cols = clamp(math.floor((w - 2 * pad + gap) / (math.floor(box_h * Views.CD_RATIO) + gap)), 2, 8)
+        cols = math.max(2, math.min(cols, math.floor((w - 2 * pad + gap) / (s(Views.TAG_W) + gap))))
+        grid(rows, cols, pad, top, w - 2 * pad, avail, gap)
+        L.box_w = math.min(math.floor(box_h * Views.CD_RATIO), L.slots[1].w - s(6))
+        L.box_h = math.min(box_h, math.floor(L.box_w / Views.CD_RATIO))
+        L.fixed = fixed
     elseif kind == "bay" then
         local inner = avail - s(11)
         local rows = clamp(math.floor(inner / s(76)), 2, 8)
@@ -127,7 +154,8 @@ function Views.layout(kind, w, h, band, s)
         L.case = { x = s(10), y = top, w = w - 2 * s(10), h = avail, top = s(10), side = s(3) }
         grid(rows, 2, L.case.x + s(10), top + s(10) + s(4), L.case.w - 2 * s(10), rows * row_h, s(12))
     end
-    L.fits = #L.slots > 0 and L.slots[1].w >= s(60) and L.slots[1].h >= s(30) and (kind ~= "ledges" or L.box_h >= s(50))
+    L.fits = #L.slots > 0 and L.slots[1].w >= s(60) and L.slots[1].h >= s(30)
+        and ((kind ~= "ledges" and kind ~= "cds") or L.box_h >= s(50))
     return L
 end
 
@@ -143,10 +171,13 @@ function Views.bookLabel(book)
     return nil
 end
 
---- A compartment's card for a library, shelf or author.
+--- A compartment's card for a library, shelf or author (or a page's section:
+--- what it says under its name).
 function Views.cardOf(e)
+    if e.gz_kind == "section" then return e.mandatory or "" end
     local n = tonumber(e.gz_count)
-    local count = n and (n == 1 and _("1 book") or T(_("%1 books"), n)) or nil
+    local count = n and (e.gz_audio and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), n))
+        or (n == 1 and _("1 book") or T(_("%1 books"), n))) or nil
     if e.gz_kind == "shelf" and e.gz_magic then
         return count and T(_("magic · %1"), count) or _("magic shelf")
     end
@@ -224,6 +255,7 @@ function Page:paintLedges(bb, x, y)
     local Sh = Shelf()
     local L = self.L
     local p = S(Sh.PAGES)
+    local nothing -- (a search that found nothing)
     -- the ledges, one per row (drawn after the books: the books stand on them)
     local ledges = {}
     for r = 1, L.rows do
@@ -277,9 +309,34 @@ function Page:paintLedges(bb, x, y)
             if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
             local side = (sl.letter and self.menu.is_enable_shortcut) and S(18) or 0
             if side > 0 then D.badge(bb, self.menu, sl.letter, cx + math.floor((slot.w - side) / 2), led.y + led.h + S(8), side) end
+        elseif e.gz_kind == "nothing_found" then
+            nothing = e
         else
             message(bb, e.text or "", x + L.slots[1].x, bottom - math.floor(L.box_h / 2), self.w - 2 * L.slots[1].x)
         end
+    end
+    if nothing then
+        -- a search that found nothing: every ledge empty, cobwebs on each
+        -- (alternating corners), the message on a card between them
+        local web = Shelf().cobweb
+        for r = 1, L.rows do
+            local top = y + L.slots[(r - 1) * L.cols + 1].y
+            local led = ledges[r]
+            local rad = math.max(S(20), math.min(S(70), math.floor((led.y - top) * 0.6)))
+            local left, right = led.x + S(2), led.x + led.w - S(3)
+            if web then
+                if r % 2 == 1 then
+                    web(bb, left, top, 1, 1, rad)
+                    web(bb, right, led.y - 1, -1, -1, math.floor(rad * 0.7))
+                else
+                    web(bb, right, top, -1, 1, rad)
+                    web(bb, left, led.y - 1, 1, -1, math.floor(rad * 0.7))
+                end
+            end
+        end
+        local mid = math.ceil(L.rows / 2)
+        local top = y + L.slots[(mid - 1) * L.cols + 1].y
+        Views.paintNothingCard(bb, nothing.text or "", x, top, self.w, ledges[mid].y - top)
     end
     for r = 1, L.rows do D.ledge(bb, ledges[r]) end
 end
@@ -337,7 +394,7 @@ function Page:paintBay(bb, x, y)
             Shop().paintCompartment(bb, self.menu, sx, sy, slot.w, slot.h, { kind = "empty" })
         elseif sl.entry.gz_kind then
             local e = sl.entry
-            local kind = e.gz_kind == "library" and "spines" or e.gz_kind == "shelf" and "faceout" or "dividers"
+            local kind = e.gz_contents or e.gz_kind == "library" and "spines" or e.gz_kind == "shelf" and "faceout" or "dividers"
             local name = e.text or ""
             local initial = name:match("^[%w]") and name:sub(1, 1):upper() or "·"
             Shop().paintCompartment(bb, self.menu, sx, sy, slot.w, slot.h,
@@ -349,6 +406,32 @@ function Page:paintBay(bb, x, y)
             if sl.hot then sl.hot.dimen = Geom:new{ x = sx, y = sy, w = slot.w, h = slot.h } end
         end
     end
+end
+
+--- Where the "nothing found" card goes in the area cx, cy, cw, ch (tw, th:
+--- the message's size): in its middle, never wider. Pure: run_tests.lua.
+function Views.nothingCard(cx, cy, cw, ch, tw, th, s)
+    s = s or S
+    local w = math.min(cw - s(40), tw + s(48))
+    local h = th + s(36)
+    return { x = cx + math.floor((cw - w) / 2), y = cy + math.floor((ch - h) / 2), w = w, h = h }
+end
+
+--- The card pinned in the middle of the area, with the message.
+function Views.paintNothingCard(bb, msg, cx, cy, cw, ch)
+    local D = Shop().draw
+    local TextWidget = require("ui/widget/textwidget")
+    local face = hand(22)
+    local probe = TextWidget:new{ text = msg, face = face }
+    local sz = probe:getSize()
+    probe:free()
+    local r = Views.nothingCard(cx, cy, cw, ch, sz.w, sz.h)
+    bb:paintRect(r.x + S(3), r.y + S(3), r.w, r.h, D.gray(0.35))
+    bb:paintRect(r.x, r.y, r.w, r.h, Blitbuffer.COLOR_WHITE)
+    bb:paintBorder(r.x, r.y, r.w, r.h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+    D.clip(bb, r.x + math.floor(r.w / 2), r.y, S(24))
+    D.text(bb, msg, face, r.x + math.floor(r.w / 2), r.y + math.floor(r.h / 2) + S(4),
+        { center = true, middle = true, max_width = r.w - S(24) })
 end
 
 function Page:paintPiles(bb, x, y)
@@ -465,6 +548,98 @@ function Page:paintTapes(bb, x, y)
     end
 end
 
+--- A CD case face out at bx, by (bw x bh): the hinge on its left, the cover
+--- (or a stand-in insert: the disc and its title) under the clear lid.
+function Views.paintCase(bb, bx, by, bw, bh, it, cover)
+    local D = Shop().draw
+    bb:paintRect(bx + S(3), by + S(3), bw, bh, D.gray(0.35))
+    bb:paintRect(bx, by, bw, bh, D.gray(0.06))
+    local hw = math.max(3, math.floor(bw * 0.07))
+    bb:paintRect(bx, by, hw, bh, D.gray(0.5))
+    bb:paintRect(bx + math.floor(hw / 2), by + S(2), 1, bh - S(4), D.gray(0.75))
+    for _i, fy in ipairs({ 0.12, 0.88 }) do bb:paintRect(bx + 1, by + math.floor(bh * fy), hw - 2, math.max(2, S(3)), D.gray(0.8)) end
+    local ix, iy, iw, ih = bx + hw + S(2), by + S(2), bw - hw - S(4), bh - S(4)
+    if cover then
+        local cw, ch = cover:getWidth(), cover:getHeight()
+        bb:paintRect(ix, iy, iw, ih, D.gray(0.2))
+        bb:blitFrom(cover, ix + math.floor((iw - cw) / 2), iy + math.floor((ih - ch) / 2), 0, 0, math.min(cw, iw), math.min(ch, ih))
+    else
+        -- no cover (yet): the insert's paper, the disc behind it, the title
+        bb:paintRect(ix, iy, iw, ih, D.gray(0.12 + (D.hash(it and it.key or "") % 4) * 0.08))
+        local r = math.floor(math.min(iw, ih) * 0.34)
+        local dcx, dcy = ix + math.floor(iw / 2), iy + math.floor(ih * 0.6)
+        bb:paintCircle(dcx, dcy, r, D.gray(0.05))
+        bb:paintCircle(dcx, dcy, r, D.gray(0.45), 1)
+        bb:paintCircle(dcx, dcy, math.floor(r * 0.28), D.gray(0.3), 1)
+        bb:paintCircle(dcx, dcy, math.max(2, math.floor(r * 0.1)), D.gray(0.6))
+        D.text(bb, it and it.title or "", hand(16), ix + S(5), iy + S(4), { max_width = iw - S(10) })
+    end
+    -- the lid's shine and edge
+    bb:paintRect(ix, iy, iw, 1, Blitbuffer.COLOR_WHITE)
+    bb:paintBorder(bx, by, bw, bh, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+end
+
+function Page:paintCds(bb, x, y)
+    local D = Shop().draw
+    local L = self.L
+    local ledges = {}
+    for r = 1, L.rows do
+        local s1 = L.slots[(r - 1) * L.cols + 1]
+        local base = y + s1.y + s1.h - S(8) - S(40) - S(10)
+        ledges[r] = { x = x + S(8), y = base, w = self.w - 2 * S(8), h = S(10) }
+    end
+    local plugin = self.browser and self.browser.plugin
+    for k, sl in ipairs(self.slots) do
+        local slot = L.slots[k]
+        local led = ledges[slot.row]
+        local cx = x + slot.x
+        local bottom = led.y
+        local e = sl.entry
+        local it = e.gz_music
+        if it then
+            local bw, bh = L.box_w, L.box_h
+            local bx, by = cx + math.floor((slot.w - bw) / 2), bottom - bh
+            local hw = math.max(3, math.floor(bw * 0.07))
+            local cover = plugin and require("gzreader_musiccovers").image(plugin, it, bw - hw - S(4), bh - S(4))
+            Views.paintCase(bb, bx, by, bw, bh, it, cover)
+            sl.hot.dimen = Geom:new{ x = bx, y = by, w = bw, h = bh }
+            if self.here and self.here[tostring(it.key)] then
+                local TextWidget = require("ui/widget/textwidget")
+                local t = TextWidget:new{ text = _("ON KINDLE"), face = Font:getFace("cfont", 8), bold = true, fgcolor = Blitbuffer.COLOR_WHITE }
+                local ts = t:getSize()
+                bb:paintRect(bx + hw + S(6), by + bh - ts.h - S(6), ts.w + S(6), ts.h, Blitbuffer.COLOR_BLACK)
+                t:paintTo(bb, bx + hw + S(9), by + bh - ts.h - S(6))
+                t:free()
+            end
+            Views.paintTag(bb, self.menu, cx, led.y + led.h + S(4), slot.w, sl.letter, Views.musicTag(it))
+            if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
+        elseif e.callback and e.select_enabled ~= false then
+            -- More (n of m)…: a bundle of cases, tied
+            local r = D.bundle(bb, { x = cx, w = slot.w }, bottom, L.box_h, _("Load more"), "more")
+            sl.hot.dimen = Geom:new{ x = r.x, y = r.y, w = r.w, h = r.h }
+            if sl.hot.focused then D.focusRing(bb, sl.hot.dimen) end
+            local side = (sl.letter and self.menu.is_enable_shortcut) and S(18) or 0
+            if side > 0 then D.badge(bb, self.menu, sl.letter, cx + math.floor((slot.w - side) / 2), led.y + led.h + S(8), side) end
+        else
+            message(bb, e.text or "", x + L.slots[1].x, bottom - math.floor(L.box_h / 2), self.w - 2 * L.slots[1].x)
+        end
+    end
+    for r = 1, L.rows do D.ledge(bb, ledges[r]) end
+end
+
+--- What an album's or playlist's tag says: its title, then the artist and
+--- year (a playlist: how many tracks). Pure.
+function Views.musicTag(it)
+    local second
+    if it.type == "playlist" then
+        second = it.count and T(_("%1 tracks"), it.count) or _("Playlist")
+    else
+        second = it.artist or ""
+        if it.year then second = second ~= "" and (second .. " · " .. tostring(it.year)) or tostring(it.year) end
+    end
+    return { title = it.title or "?", authors = second ~= "" and { second } or nil }
+end
+
 function Page:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
     Shop().draw.wall(bb, x, y, self.w, self.h)
@@ -473,7 +648,8 @@ function Page:paintTo(bb, x, y)
     if kind == "ledges" then self:paintLedges(bb, x, y)
     elseif kind == "bay" then self:paintBay(bb, x, y)
     elseif kind == "piles" then self:paintPiles(bb, x, y)
-    elseif kind == "tapes" then self:paintTapes(bb, x, y) end
+    elseif kind == "tapes" then self:paintTapes(bb, x, y)
+    elseif kind == "cds" then self:paintCds(bb, x, y) end
 end
 
 ---------------------------------------------------------------- building a page
@@ -544,6 +720,19 @@ function Views.build(m, browser, kind, select_number, no_recalculate_dimen)
             end
         end)
     end
+    local music = {}
+    if kind == "cds" then
+        -- which albums and playlists are on the Kindle; covers to fetch
+        page.here = {}
+        local MC = require("gzreader_musiccovers")
+        for _k, sl in pairs(page.slots) do
+            local it = sl.entry.gz_music
+            if it then
+                music[#music + 1] = it
+                if MC.downloaded(browser.plugin, it) then page.here[tostring(it.key)] = true end
+            end
+        end
+    end
     if #header_row > 0 then m.layout[#m.layout + 1] = header_row end
     for r = 1, L.rows or 0 do
         if rows[r] and #rows[r] > 0 then m.layout[#m.layout + 1] = rows[r] end
@@ -567,6 +756,12 @@ function Views.build(m, browser, kind, select_number, no_recalculate_dimen)
     UIManager:setDirty(m.show_parent, function()
         return "ui", old_dimen and old_dimen:combine(m.dimen) or m.dimen
     end)
+    if #music > 0 then
+        local items, pg = m.item_table, m.page
+        require("gzreader_musiccovers").fetch(browser.plugin, music, function(got)
+            if got > 0 and m.item_table == items and m.page == pg and not m._gz_closed then pcall(m.updateItems, m) end
+        end)
+    end
     if #wanted > 0 then
         local items, pg = m.item_table, m.page
         require("gzreader_covers").fetch(browser.plugin, wanted, function(got)

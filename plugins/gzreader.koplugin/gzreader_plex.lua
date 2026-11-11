@@ -1,6 +1,9 @@
 --[[--
 Plex (https://plex.tv) client for the Music tab: sign-in, finding your Plex
-Media Server, its music libraries, and the tracks' audio.
+Media Server, its music libraries, and the tracks' audio. Also audiobooks
+from one of its music libraries, when chosen instead of Grimmory's (Settings
+→ Connections → Plex → Audiobooks): an album is a book, its tracks the
+book's files, played by gzreader_audiobook.lua.
 
 Sign-in, two ways (both "PINs" in Plex's API, POST plex.tv/api/v2/pins):
 - on the Kindle: a 4-character code to enter at plex.tv/link on any phone or
@@ -267,6 +270,43 @@ function Plex:musicSections()
     return out
 end
 
+--- The music library to browse: the one chosen in Settings → Connections →
+--- Plex → Music library (store.music_section = { server, key, title }) while
+--- this server still has it, else the server's first. Returns it ({ key,
+--- title }) and every music library, or nil, err ("no_music": none).
+function Plex:musicSection()
+    local sections, err = self:musicSections()
+    if not sections then return nil, err end
+    if #sections == 0 then return nil, "no_music" end
+    local ab = Plex.audiobookSection(self.store)
+    return Plex.pickSection(sections, self.store.music_section, self.store.server, ab and ab.key), sections
+end
+
+--- Of `sections`, the one `want` names (kept for `server`), else the first
+--- that isn't `skip` (the audiobook library), else the first. Pure
+--- (run_tests.lua).
+function Plex.pickSection(sections, want, server, skip)
+    if type(want) == "table" and want.key and want.server == (type(server) == "table" and server.id or nil) then
+        for _i, s in ipairs(sections) do
+            if s.key == tostring(want.key) then return s end
+        end
+    end
+    for _i, s in ipairs(sections) do
+        if skip == nil or s.key ~= tostring(skip) then return s end
+    end
+    return sections[1]
+end
+
+--- The library audiobooks come from, when it's a Plex one (Settings →
+--- Connections → Plex → Audiobooks): store.audiobook_section = { server,
+--- key, title }, signed in and on that server; else nil (Grimmory's
+--- audiobooks). Pure.
+function Plex.audiobookSection(store)
+    local a = type(store) == "table" and store.audiobook_section
+    if type(a) == "table" and a.key and store.token and type(store.server) == "table" and a.server == store.server.id then return a end
+    return nil
+end
+
 --- A track, album, artist or playlist as GZreader keeps it.
 function Plex.item(m)
     if type(m) ~= "table" then return nil end
@@ -276,6 +316,8 @@ function Plex.item(m)
         year = tonumber(m.year), index = tonumber(m.index), duration = tonumber(m.duration),
         thumb = str(m.thumb) or str(m.composite) or str(m.parentThumb), count = tonumber(m.leafCount) or tonumber(m.childCount),
         album_key = str(m.parentRatingKey),
+        added = tonumber(m.addedAt), viewed = tonumber(m.lastViewedAt),
+        offset = tonumber(m.viewOffset), views = tonumber(m.viewCount),
     }
     if t.type == "album" then t.artist = str(m.parentTitle) end
     if t.type == "artist" then t.artist = nil end
@@ -283,7 +325,7 @@ function Plex.item(m)
     local part = media and type(media.Part) == "table" and media.Part[1]
     if part then
         t.part = { key = str(part.key), container = str(part.container) or str(media.container),
-            size = tonumber(part.size), codec = str(media.audioCodec) }
+            size = tonumber(part.size), codec = str(media.audioCodec), bitrate = tonumber(media.bitrate) }
     end
     return t
 end
@@ -304,6 +346,23 @@ end
 
 --- Artists (type 8) or albums (9) of a music library, A–Z, a page at a time:
 --- list, total, or nil, err.
+--- The Catalog's Music shelves: albums Recently added (`by` "added") or
+--- Recently played ("played": the ones played at all, from any player), at
+--- most `n`: list, or nil, err.
+function Plex:recentAlbums(section, by, n)
+    local _, data, err = self:get("/library/sections/" .. escape(section) .. "/all",
+        { type = 9, sort = by == "played" and "lastViewedAt:desc" or "addedAt:desc" },
+        { headers = { ["X-Plex-Container-Start"] = "0", ["X-Plex-Container-Size"] = tostring(n or 20) } })
+    if err then return nil, err end
+    local list = items(data)
+    if by == "played" then
+        local out = {}
+        for _i, it in ipairs(list) do if (it.viewed or 0) > 0 then out[#out + 1] = it end end
+        list = out
+    end
+    return list
+end
+
 function Plex:list(section, kind, start)
     local _, data, err = self:get("/library/sections/" .. escape(section) .. "/all",
         { type = kind == "albums" and 9 or 8, sort = "titleSort:asc" }, { headers = paged(start) })
@@ -318,9 +377,9 @@ function Plex:children(key)
     return items(data)
 end
 
---- Audio playlists.
-function Plex:playlists()
-    local _, data, err = self:get("/playlists", { playlistType = "audio" })
+--- Audio playlists (of one library: `section`, when the server has several).
+function Plex:playlists(section)
+    local _, data, err = self:get("/playlists", { playlistType = "audio", sectionID = section })
     if err then return nil, err end
     return items(data)
 end
@@ -349,18 +408,104 @@ function Plex:search(q, section)
     return out
 end
 
+---------------------------------------------------------------- audiobooks
+
+--- An audiobook (an album of the audiobook library) the way Grimmory
+--- describes one, for gzreader_audiobook.lua's Audiobook.describe: each
+--- track a file of its own, in order, with its length and where it starts;
+--- a single-file book's chapters; the album's summary. Each track also
+--- carries its Plex item (plexTrack: what Plex:downloadTrack takes) and key
+--- (plexKey: where the listening position goes). info, or nil, err.
+function Plex:audiobookInfo(key)
+    local _, adata, aerr = self:get("/library/metadata/" .. escape(key))
+    if aerr then return nil, aerr end
+    local album = (container(adata).Metadata or {})[1]
+    album = type(album) == "table" and album or {}
+    local tracks, err = self:children(key)
+    if not tracks then return nil, err end
+    if #tracks == 0 then return nil, "no_tracks" end
+    local info = { title = str(album.title), author = str(album.parentTitle), folderBased = true, tracks = {}, chapters = {},
+        gz_description = str(album.summary), plexKey = tostring(key), plexThumb = str(album.thumb) }
+    local start = 0
+    for i, t in ipairs(tracks) do
+        local how, ext = Plex.how(t)
+        info.tracks[i] = { index = i - 1, fileName = "track." .. ext, durationMs = t.duration or 0, cumulativeStartMs = start,
+            fileSizeBytes = how ~= "transcode" and t.part and t.part.size or nil, title = t.title, plexKey = t.key, plexTrack = t }
+        start = start + (t.duration or 0)
+    end
+    info.durationMs = start
+    if #tracks == 1 then
+        -- one file (an M4B): its chapters, when Plex has them
+        local _, cdata = self:get("/library/metadata/" .. escape(tracks[1].key), { includeChapters = 1 })
+        local m = (container(cdata).Metadata or {})[1]
+        for i, c in ipairs(type(m) == "table" and type(m.Chapter) == "table" and m.Chapter or {}) do
+            local s, e = tonumber(c.startTimeOffset), tonumber(c.endTimeOffset)
+            if s then info.chapters[#info.chapters + 1] = { title = str(c.tag) or ("Chapter " .. i), startTimeMs = s, durationMs = e and (e - s) or nil } end
+        end
+    end
+    return info
+end
+
+--- Where audiobook `key` (an album) was listened to last, from its tracks'
+--- positions in Plex (any player's): { track = key, offset = ms, finished =
+--- true when that track was played to its end }, false (never listened
+--- to), or nil, err.
+function Plex:audiobookPosition(key)
+    local tracks, err = self:children(key)
+    if not tracks then return nil, err end
+    return Plex.lastListened(tracks)
+end
+
+--- Of `tracks` (Plex items), the one listened to last: see audiobookPosition. Pure.
+function Plex.lastListened(tracks)
+    local best
+    for _i, t in ipairs(tracks or {}) do
+        local at = tonumber(t.viewed) or 0
+        if at > 0 and (not best or at > best.at) then best = { at = at, t = t } end
+    end
+    if not best then return false end
+    local t = best.t
+    if (t.offset or 0) > 0 then return { track = t.key, offset = t.offset } end
+    return { track = t.key, offset = 0, finished = (t.views or 0) > 0 }
+end
+
+--- Tell Plex where in track `key` the listener is (ms): Plex's own players
+--- then continue there. true, or nil, err.
+function Plex:setProgress(key, ms)
+    local _, _, err = self:get("/:/progress", { key = key, identifier = "com.plexapp.plugins.library",
+        time = tostring(math.max(0, math.floor(tonumber(ms) or 0))), state = "stopped" })
+    if err then return nil, err end
+    return true
+end
+
 ---------------------------------------------------------------- audio
 
 --- How a track's audio comes to the Kindle: "file" (as it is: MP3), "m4a"
 --- (as it is, then converted to ADTS AAC on the Kindle) or "transcode" (the
 --- server makes MP3).
-function Plex.how(track)
+--- shrink_to (kbps; default Plex.shrink_to, from Settings: "Make bigger MP3
+--- and AAC smaller"): an MP3 or AAC track well above it (15 % more, so a
+--- VBR file at about that quality stays as it is) is made into MP3 at that
+--- quality too, to save room.
+Plex.SHRINK_MARGIN = 1.15
+function Plex.how(track, shrink_to)
     local p = track.part or {}
     local c, codec = tostring(p.container or ""):lower(), tostring(p.codec or ""):lower()
-    if c == "mp3" or (codec == "mp3" and c == "") then return "file", "mp3" end
-    if (c == "mp4" or c == "m4a") and (codec == "aac" or codec == "") then return "m4a", "m4a" end
-    if c == "aac" or c == "adts" then return "file", "aac" end
-    return "transcode", "mp3"
+    local how, ext
+    if c == "mp3" or (codec == "mp3" and c == "") then how, ext = "file", "mp3"
+    elseif (c == "mp4" or c == "m4a") and (codec == "aac" or codec == "") then how, ext = "m4a", "m4a"
+    elseif c == "aac" or c == "adts" then how, ext = "file", "aac"
+    else return "transcode", "mp3" end
+    shrink_to = shrink_to or Plex.shrink_to
+    local kbps = tonumber(p.bitrate)
+    if shrink_to and kbps and kbps > shrink_to * Plex.SHRINK_MARGIN then return "transcode", "mp3" end
+    return how, ext
+end
+
+--- The Plex settings' quality: { bitrate = kbps, shrink = true/false }.
+function Plex.quality(store)
+    local s = type(store) == "table" and store.plex or {}
+    return { bitrate = tonumber(s and s.bitrate) or 192, shrink = (s and s.shrink) == true }
 end
 
 local function download(self, url, dest, opts)

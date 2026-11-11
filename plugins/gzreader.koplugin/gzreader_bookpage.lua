@@ -6,7 +6,8 @@ genres and the facts (pages, year, format, size), its description below
 
 What the list already has shows at once; the rest (description, genres,
 rating…) comes from Grimmory's book page (/api/v1/app/books/{id}) in the
-background, and the cover from the Kindle's cache or Grimmory.
+background, and the cover from the Kindle's cache (the one the list
+shows) or Grimmory.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -94,6 +95,33 @@ function BookPage.description(detail)
     return (html:gsub("<[^>]+>", ""))
 end
 
+---------------------------------------------------------------- the cover
+
+--- The book's cover as an image widget fitting cw x ch, or nil: the one the
+--- Grimmory tab's list already shows (gzreader_covers.lua's cache: until
+--- now the page looked only in a cache of its own, kept by the old download
+--- box, and showed no cover when that fetch didn't come back), else that old
+--- cache.
+function BookPage.coverImage(book, cw, ch)
+    local ok, img = pcall(function()
+        local ImageWidget = require("ui/widget/imagewidget")
+        local Covers = require("gzreader_covers")
+        if book.id ~= nil and Covers.state(book.id) == "have" then
+            local bb = Covers.image(book.id, nil, cw, ch)
+            -- (a copy: Covers may let its own go while the page is open, when
+            -- the list behind it draws other covers)
+            if bb then return ImageWidget:new{ image = bb:copy(), image_disposable = true } end
+        end
+        local thumb = require("gzreader_browser").thumbPath(book)
+        if lfs.attributes(thumb, "size") then
+            return ImageWidget:new{ file = thumb, width = cw, height = ch, scale_factor = 0, file_do_cache = false }
+        end
+    end)
+    if ok then return img end
+    require("gzreader_log").warn("book page cover:", tostring(img))
+    return nil
+end
+
 ---------------------------------------------------------------- the page
 
 function BookPage:init()
@@ -122,13 +150,8 @@ function BookPage:build()
     -- the cover, small, beside what it is
     local cw, ch = S(96), S(144)
     local cover
-    local thumb = require("gzreader_browser").thumbPath(book)
-    if lfs.attributes(thumb, "size") then
-        local ok, img = pcall(function()
-            return require("ui/widget/imagewidget"):new{ file = thumb, width = cw, height = ch, scale_factor = 0, file_do_cache = false }
-        end)
-        if ok then cover = FrameContainer:new{ padding = 0, bordersize = 1, color = Blitbuffer.COLOR_BLACK, img } end
-    end
+    local img = BookPage.coverImage(book, cw, ch)
+    if img then cover = FrameContainer:new{ padding = 0, bordersize = 1, color = Blitbuffer.COLOR_BLACK, img } end
     cover = cover or FrameContainer:new{ width = cw, height = ch, padding = 0, bordersize = 1, background = Blitbuffer.COLOR_LIGHT_GRAY,
         CenterContainer:new{ dimen = Geom:new{ w = cw - 2, h = ch - 2 },
             TextBoxWidget:new{ text = book.title or "?", face = Font:getFace("cfont", 12), width = cw - S(12), alignment = "center" } } }
@@ -195,6 +218,8 @@ end
 
 function BookPage:refresh()
     if self.closed then return end
+    -- (the cover drawn before: its copy let go)
+    if self[1] and self[1].free then pcall(self[1].free, self[1]) end
     self:build()
     UIManager:setDirty(self, function() return "ui", self.frame.dimen end)
 end
@@ -234,20 +259,31 @@ function BookPage.show(browser, book)
     local page = BookPage:new{ browser = browser, book = book }
     UIManager:show(page)
     if book.id and browser.api then
-        local Async = require("gzreader_async")
-        Async.call(browser.api, "getBookDetail", { book.id }, function(detail)
-            if page.closed then return end
-            if type(detail) == "table" then page.detail = detail else page.failed = true end
-            page:refresh()
-        end)
-        local thumb = require("gzreader_browser").thumbPath(book)
-        if not lfs.attributes(thumb, "size") then
-            Async.call(browser.api, "downloadThumbnail", { book.id, thumb }, function(ok)
-                if ok and not page.closed then page:refresh() end
-            end)
-        end
+        -- (the list opens from what's saved on the Kindle, so Wi-Fi may be off:
+        -- on first, as the rest of the Grimmory tab does)
+        require("gzreader_net").run(function() BookPage.fetch(page, browser, book) end,
+            { reason = "a book's details", usb = true })
     end
     return page
+end
+
+--- The book's details and, if it isn't on the Kindle yet, its cover.
+function BookPage.fetch(page, browser, book)
+    if page.closed then return end
+    local Async = require("gzreader_async")
+    Async.call(browser.api, "getBookDetail", { book.id }, function(detail)
+        if page.closed then return end
+        if type(detail) == "table" then page.detail = detail else page.failed = true end
+        page:refresh()
+    end)
+    -- not on the Kindle yet: into the list's cover cache (the list then
+    -- has it too)
+    local Covers = require("gzreader_covers")
+    if Covers.state(book.id) == "missing" and not lfs.attributes(require("gzreader_browser").thumbPath(book), "size") then
+        Async.call(browser.api, "downloadThumbnail", { book.id, Covers.path(book.id) }, function(ok)
+            if ok and not page.closed then page:refresh() end
+        end)
+    end
 end
 
 return BookPage

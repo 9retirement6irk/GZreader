@@ -3,6 +3,12 @@ name: GZreader tests
 # luacheck, the plugin tests against mock servers, and GZreader started in
 # the emulator on a Kindle 3, a Nook 1st Edition and a Nook Simple Touch
 # (tools/gzreader/ci-test.sh), on every push to main and every pull request.
+# A pull request that changes only what the emulator can't be affected by
+# (the sync and landing pages, tests, Markdown, the changelog, the workflows
+# and scripts that publish updates and releases:
+# tools/gzreader/ci_emulator_needed.py) gets the tests without the emulator
+# runs: a few minutes instead of half an hour. The same check, so nothing
+# that waits for it changes.
 
 on:
   push:
@@ -21,10 +27,21 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2   # (a pull request's merge commit and its parent on the base branch: what it changes)
+      - name: What the change touches
+        if: github.event_name == 'pull_request'
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD) || changed=""
+          printf '%s\n' "$changed"
+          if [ "$(printf '%s\n' "$changed" | python3 tools/gzreader/ci_emulator_needed.py)" = skip ]; then
+            echo "GZ_CI_MODELS=none" >> "$GITHUB_ENV"
+            echo "Only web pages, tests, Markdown, the changelog or publishing scripts changed: the emulator runs are skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq luajit lua-socket lua-check python3 curl rsync unzip \
+          # (ci-apt.sh: falls back to a mirror outside ubuntu.com when Ubuntu's servers can't be reached)
+          bash tools/gzreader/ci-apt.sh luajit lua-socket lua-check python3 curl rsync unzip \
             qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
           sudo pip install -q --break-system-packages radicale playwright   # (the CalDAV tests' server; the sync page's browser)
           sudo python3 -m playwright install-deps chromium
@@ -49,4 +66,5 @@ jobs:
             ci-out/summary.md
             ci-out/keeps-*/*.png
             ci-out/keeps-*/keeps.txt
+            ci-out/perf-*/perf.json
           retention-days: 14

@@ -78,6 +78,19 @@ assert(HW:open())
 local woke = table.concat(sysfs, " ")
 check(HW.vfb_fd == 10 and HW.epd_fd == 11 and not HW.direct and not woke:find("enable=", 1, true),
     "by default: the kernel's e-ink updates (Android's way), left on")
+check(HW.partial, "…refreshing the areas that changed without a flash (by panning the vfb)")
+do
+    local keep_open = { HW.vfb_fd, HW.epd_fd, HW.lcdfb_fd }
+    HW.vfb_fd, HW.epd_fd, HW.lcdfb_fd = nil, nil, nil
+    local orig = HW.epdMode
+    HW.epdMode = function() return "flash" end -- (GZ_NOOK_EPD=flash: /data/gzreader/eink-flash)
+    assert(HW:open())
+    HW.epdMode = orig
+    check(not HW.direct and not HW.partial, "GZ_NOOK_EPD=flash: every refresh a full redraw, as before")
+    HW.partial = true
+    HW.vfb_fd, HW.epd_fd, HW.lcdfb_fd = keep_open[1], keep_open[2], keep_open[3]
+    sysfs = {}
+end
 check(woke:find("0-0020/gesture_mask=16!", 1, true) and woke:find("spi0.0/lcd_power=1!", 1, true)
     and woke:find("backlight_level=64", 1, true) and woke:find("backlight_power=1", 1, true),
     "the colour screen woken: LCD powered up, backlight on at Android's level, the panel reporting finger motion (one write each)")
@@ -149,6 +162,11 @@ sysfs = {}
 HW:eink(page, 0, 100, 600, 1, "gu", false)
 check(ffi.cast("uint16_t *", mem + 100 * 1200)[5] == 0x8410, "grey 0x80 written to the vfb as RGB565 0x8410")
 check(sysfs[1] == "/sys/devices/platform/s1d13521fb.0/redraw=1", "then the kernel redraws the page")
+calls, sysfs = {}, {}
+HW.vinfo.yoffset = 944
+HW:einkPan()
+check(#calls == 1 and calls[1].req == 0x4606 and calls[1].fd == HW.vfb_fd and calls[1].yoffset == 0 and #sysfs == 0,
+    "without a flash: the vfb panned to its first buffer (the kernel refreshes what changed), no redraw")
 HW.direct = true
 
 print("giving the screens back")
@@ -159,6 +177,198 @@ local joined = table.concat(sysfs, " ")
 check(joined:find("enable=1", 1, true) and joined:find("redraw=1", 1, true), "kernel updates back on, Android's page redrawn")
 check(joined:find("home_height=1500!", 1, true) and joined:find("gesture_mask=1!", 1, true) and joined:find("lcd_power=0!", 1, true) and joined:find("backlight_power=0", 1, true)
     and joined:find("backlight_level=8", 1, true), "the colour screen and touch panel left as Android had them (it wakes them itself)")
+
+------------------------------------------------------------------ fewer refreshes
+print("e-ink refreshes through the kernel: as few as possible")
+do
+    local redraws, staged = 0, {}
+    local fakeHW = { EINK_W = 600, EINK_H = 800, direct = false }
+    function fakeHW:open() return self end
+    function fakeHW:einkStage(_bb, y, h) staged[#staged + 1] = y .. "+" .. h end
+    function fakeHW:einkRedraw() redraws = redraws + 1 end
+    function fakeHW:close() end
+    local real_hw = package.loaded["device/nook/display_hw"]
+    package.loaded["device/nook/display_hw"] = fakeHW
+    package.loaded["device/nook/framebuffer"] = nil
+    local FB = require("device/nook/framebuffer")
+    local fb = FB:new{ device = { getDeviceScreenDPI = function() return 167 end }, debug = function() end }
+    package.loaded["device/nook/display_hw"] = real_hw
+    local time = require("ui/time")
+    local now, timer = 0, nil -- (ms; the one pending timer: { at, fn })
+    fb.now = function() return time.ms(now) end
+    local screen_under = { covers_fullscreen = true } -- (Home or the book)
+    local top = screen_under
+    fb.topWidget = function() return top end
+    fb.schedule = function(this, ms, fn)
+        this.scheduled = fn
+        timer = fn and { at = now + ms, fn = fn } or nil
+    end
+    local function advance(ms)
+        local target = now + ms
+        while timer and timer.at <= target do
+            now = timer.at
+            local t = timer
+            timer = nil
+            t.fn()
+        end
+        now = target
+    end
+    -- a tap, its highlight, the menu it opens and the status bar: one refresh
+    advance(10000)
+    fb:noteInput()
+    fb:refreshFast(100, 700, 80, 40)
+    advance(60)
+    fb:refreshUI(0, 0, 600, 500)
+    advance(40)
+    fb:refreshUI(0, 760, 600, 40)
+    check(redraws == 0 and #staged == 3, "nothing refreshed while the updates are coming (each copied into the page at once)")
+    advance(149)
+    check(redraws == 0, "…not before they've stopped for 150 ms")
+    advance(1)
+    check(redraws == 1, "a tap, its highlight, the menu it opens and the status bar under it: one refresh, not three")
+    advance(5000)
+    check(redraws == 1, "and no more after")
+    -- updates that keep coming (a page drawn in pieces): at most 600 ms after the first
+    fb:noteInput()
+    for _i = 1, 10 do fb:refreshUI(0, 0, 600, 100); advance(100) end
+    check(redraws == 2, "updates that keep coming: refreshed 600 ms after the first one asked (" .. redraws .. ")")
+    advance(5000)
+    check(redraws == 3, "…and once more for the ones after that")
+    -- the clock while you read (no tap for minutes): no refresh of its own
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    check(redraws == 3, "the clock changing while you read: no refresh of its own")
+    fb:noteInput()
+    fb:refreshPartial(0, 0, 600, 800)
+    advance(200)
+    check(redraws == 4, "…it shows with the next page turn, in the same refresh")
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(300 * 1000 - 1)
+    check(redraws == 4, "…or")
+    advance(1)
+    check(redraws == 5, "…after five minutes at the latest")
+    -- a big change nobody asked for (a dialog popping up, a download done): soon
+    advance(60000)
+    fb:refreshUI(50, 200, 500, 400)
+    advance(150)
+    check(redraws == 6, "a big change without a tap (a dialog): refreshed 150 ms later")
+    advance(60000)
+    fb:refreshFlashUI(100, 100, 50, 50)
+    advance(150)
+    check(redraws == 7, "a flashing refresh asked for: also soon")
+    -- a popup that opens by itself (a download's progress): soon; its progress bar now and then
+    advance(60000)
+    local popup = {}
+    top = popup
+    local before = redraws
+    fb:refreshUI(100, 300, 400, 120)
+    advance(150)
+    check(redraws == before + 1, "a popup opening by itself (a download started from the Grimmory tab): shown at once")
+    for _i = 1, 20 do advance(500); fb:refreshUI(120, 380, 360, 20) end -- (its bar, every 0.5 s for 10 s)
+    check(redraws == before + 3, "…its progress bar: about every 4 s, not every update (" .. (redraws - before) .. ")")
+    advance(5000)
+    check(redraws == before + 4, "…and its last change shows")
+    top = screen_under
+    fb:refreshUI(500, 0, 100, 30)
+    advance(60000)
+    check(redraws == before + 4, "the popup gone: the clock is back to waiting")
+    advance(300 * 1000)
+    -- before sleeping, and on exit: right away
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    local at = redraws
+    fb:flush()
+    check(redraws == at + 1 and timer == nil, "flush (before sleep): refreshed at once, nothing left waiting")
+    fb:flush()
+    check(redraws == at + 1, "…and nothing to refresh: no refresh")
+    fb:refreshUI(500, 0, 100, 30)
+    fb:close()
+    check(redraws == at + 2, "on exit: what's waiting is refreshed")
+end
+
+------------------------------------------------------------------ no flash
+print("e-ink refreshes without a flash")
+do
+    local pans, redraws = 0, 0
+    local fakeHW = { EINK_W = 600, EINK_H = 800, direct = false, partial = true }
+    function fakeHW:open() return self end
+    function fakeHW:einkStage() end
+    function fakeHW:einkRedraw() redraws = redraws + 1 end
+    function fakeHW:einkPan() pans = pans + 1 end
+    function fakeHW:close() end
+    local real_hw = package.loaded["device/nook/display_hw"]
+    package.loaded["device/nook/display_hw"] = fakeHW
+    package.loaded["device/nook/framebuffer"] = nil
+    local FB = require("device/nook/framebuffer")
+    local fb = FB:new{ device = { getDeviceScreenDPI = function() return 167 end }, debug = function() end }
+    package.loaded["device/nook/display_hw"] = real_hw
+    local time = require("ui/time")
+    local now, timer = 0, nil
+    fb.now = function() return time.ms(now) end
+    fb.topWidget = function() return { covers_fullscreen = true } end
+    fb.schedule = function(this, ms, fn)
+        this.scheduled = fn
+        timer = fn and { at = now + ms, fn = fn } or nil
+    end
+    local function advance(ms)
+        local target = now + ms
+        while timer and timer.at <= target do
+            now = timer.at
+            local t = timer
+            timer = nil
+            t.fn()
+        end
+        now = target
+    end
+    advance(10000)
+    fb:noteInput()
+    fb:refreshFast(100, 700, 80, 40)
+    advance(60)
+    fb:refreshUI(0, 0, 600, 500)
+    advance(200)
+    check(pans == 1 and redraws == 0, "a tap moving the selection, and what it changes: one refresh, no flash")
+    advance(60000)
+    fb:refreshUI(500, 0, 100, 30)
+    advance(200)
+    check(pans == 2 and redraws == 0, "the clock changing while you read: shown soon, without a flash (no waiting for one)")
+    fb:refreshFull(0, 0, 600, 800)
+    advance(200)
+    check(pans == 2 and redraws == 1, "a full refresh asked for (a page turn every so often, against ghosting): the kernel's redraw, with its flash")
+    fb:noteInput()
+    fb:refreshUI(0, 0, 100, 100)
+    fb:refreshFlashUI(0, 0, 600, 800)
+    advance(200)
+    check(pans == 2 and redraws == 2, "a flash and a small update in one refresh: just the redraw (it shows both)")
+    fb:refreshUI(0, 0, 100, 100)
+    fb:close()
+    check(pans == 3, "on exit: what's waiting is refreshed")
+end
+
+-- the start script: the old way back with a file (no build needed)
+do
+    local f = assert(io.open(REPO .. "/platform/nook/gzreader.sh"))
+    local line
+    for l in f:lines() do if l:find("eink-flash", 1, true) and not l:match("^%s*#") then line = l end end
+    f:close()
+    local dir = os.tmpname()
+    os.remove(dir)
+    os.execute("mkdir -p " .. dir)
+    local function mode()
+        local p = io.popen("GZ=" .. dir .. " sh -c '" .. line .. "; echo \"${GZ_NOOK_EPD:-kernel}\"'")
+        local out = p:read("*l")
+        p:close()
+        return out
+    end
+    local without = mode()
+    io.open(dir .. "/eink-flash", "w"):close()
+    local with = mode()
+    os.execute("rm -rf " .. dir)
+    check(line and without == "kernel" and with == "flash", "start script: /data/gzreader/eink-flash there → every refresh a full redraw (" .. tostring(without) .. ", " .. tostring(with) .. ")")
+end
 
 ------------------------------------------------------------------ lcd touch
 print("colour screen touches")
@@ -224,6 +434,55 @@ fake:refreshFastImp(0, 0, 10, 10)
 check(got[5] == 2, "fast: DU")
 fake:refreshUIImp(590, 790, 50, 50)
 check(got[3] == 599 and got[4] == 799, "clipped to the screen")
+
+------------------------------------------------------------------ ZenOS's paths
+print("ZenOS's paths on a Nook (no /storage)")
+do
+    local real_lfs = package.loaded["libs/libkoreader-lfs"]
+    local function paths(has_storage)
+        package.loaded["libs/libkoreader-lfs"] = { attributes = function(p, what)
+            if p == "/storage/emulated/0" and has_storage then return what == "mode" and "directory" or {} end
+        end }
+        local P = dofile(REPO .. "/plugins/zenos.koplugin/common/paths.lua")
+        return P
+    end
+    local nook = paths(false)
+    check(nook.normPath("/sdcard/GZreader") == "/sdcard/GZreader" and nook.normPath("/sdcard") == "/sdcard",
+        "the Nook's /sdcard (the microSD card) stays /sdcard: the Downloads tab opens GZreader's folder")
+    local android = paths(true)
+    check(android.normPath("/sdcard/GZreader") == "/storage/emulated/0/GZreader", "modern Android: /sdcard is still /storage/emulated/0")
+    package.loaded["libs/libkoreader-lfs"] = real_lfs
+end
+
+------------------------------------------------------------------ Wi-Fi power saving
+print("Nook 1st Edition: Wi-Fi power saving (no iwconfig on Android 1.5)")
+do
+    local W = require("device/nook/wifi_power")
+    check(ffi.sizeof("struct gz_iwreq") == 32 and ffi.offsetof("struct gz_iw_param", "disabled") == 5,
+        "struct iwreq as the kernel has it (32 bytes; iw_param.disabled at 5)")
+    local power_off, calls = false, {}
+    local real = W.C
+    W.C = setmetatable({
+        socket = function() return 7 end,
+        close = function() return 0 end,
+        strerror = function() return ffi.cast("char *", "nope") end,
+        ioctl = function(fd, req, r)
+            calls[#calls + 1] = { req = req, name = ffi.string(r.name), disabled = r.u.power.disabled }
+            if req == 0x8B2D then r.u.power.disabled = power_off and 1 or 0 end
+            if req == 0x8B2C then power_off = r.u.power.disabled == 1 end
+            return 0
+        end,
+    }, { __index = real })
+    check(W.get("eth0") == "on", "power saving on (as the Nook leaves it)")
+    check(W.set("eth0", false) and power_off and calls[2].req == 0x8B2C and calls[2].name == "eth0" and calls[2].disabled == 1,
+        "switched off: SIOCSIWPOWER on eth0 with disabled = 1 (iwconfig eth0 power off)")
+    check(W.get("eth0") == "off", "…and reads back off")
+    W.C = setmetatable({ ioctl = function() return -1 end, socket = function() return 7 end, close = function() return 0 end,
+        strerror = function() return ffi.cast("char *", "Operation not supported") end }, { __index = real })
+    local st, err = W.get("eth0")
+    check(st == nil and err == "Operation not supported", "a driver that can't: says why")
+    W.C = real
+end
 
 print(string.format("%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

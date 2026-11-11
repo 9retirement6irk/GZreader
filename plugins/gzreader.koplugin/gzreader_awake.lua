@@ -66,11 +66,20 @@ function Awake.prune()
     end
 end
 
+--- Seconds on a clock that never jumps (a Nook or Kindle whose clock ran
+--- down is set while GZreader runs: gzreader_clock.lua; with the wall
+--- clock a phone page open for 80 s read as 26 years); a test replaces it.
+function Awake.now()
+    local ok, time = pcall(require, "ui/time")
+    if ok and time.now then return math.floor(time.to_s(time.now())) end
+    return os.time()
+end
+
 local function tick()
     Awake.prune()
     if Awake.count == 0 then Awake.ticking = false; return end
     UIManager:broadcastEvent(Event:new("InputEvent"))
-    local now = os.time()
+    local now = Awake.now()
     if now - (Awake.reported or 0) >= Awake.REPORT_EVERY then
         Awake.reported = now
         log("awake: kept awake by", Awake.who())
@@ -83,11 +92,11 @@ Awake.tick = tick
 --- it's still needed; `opts.what`: its kind, for the log.
 function Awake.hold(key, opts)
     if Awake.holders[key] then return end
-    Awake.holders[key] = { what = whatOf(key, opts), still = opts and opts.still, since = os.time() }
+    Awake.holders[key] = { what = whatOf(key, opts), still = opts and opts.still, since = Awake.now() }
     Awake.count = Awake.count + 1
     if Awake.count == 1 then
         powerd(true)
-        Awake.reported = os.time()
+        Awake.reported = Awake.now()
     end
     log("awake: kept awake for", Awake.holders[key].what)
     if not Awake.ticking then
@@ -101,7 +110,7 @@ function Awake.release(key)
     if not h then return end
     Awake.holders[key] = nil
     Awake.count = Awake.count - 1
-    log("awake: done with", h.what, "after", (os.time() - h.since) .. "s")
+    log("awake: done with", h.what, "after", (Awake.now() - h.since) .. "s")
     if Awake.count == 0 then
         powerd(false)
         UIManager:unschedule(tick)

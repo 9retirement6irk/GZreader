@@ -14,22 +14,40 @@ and the result comes back a moment later.
   screen's thread and could freeze it for the whole request, or much longer
   when the network was half down). Nothing here ever does network work on
   the screen's thread.
+- Requests queued together for the same login run in one process, one
+  after another (up to BATCH_MAX; long ones last), each result coming back
+  on its own line as soon as it's ready: a fork of GZreader and a login
+  check are seconds on a Kindle 3, and opening a book started four.
+  Async.together(fn) holds the queue while fn() starts its requests.
 - Results travel back as JSON (plain values only).
 - `Async.sync = true` runs everything inline (tests; and where a result is
   needed right away, e.g. while going to sleep).
+- While a book opens (Async.pause / Async.resume), the background
+  processes running are paused and no new request starts: a Kindle 3 has
+  one core and little memory, and a calendar sync running beside a book
+  open made it take 23.5 s instead of 6 (2026-11-08). They carry on once
+  the first page is up, their time limits moved on by the pause.
 ]]
 
 local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
-local JSON = require("json")
+local JSON = require("gzreader_json")
 local Log = require("gzreader_log")
 
 local Async = {
     sync = false,
     POLL = 0.2,
     TIMEOUT = 120,
+    -- A request process's priority (nice): it mostly waits on the network,
+    -- but the TLS handshake is seconds of CPU on a Kindle 3, and it ran at
+    -- the screen's own priority, so page turns waited for it (opening a book
+    -- starts several). NICE_LONG: long CPU work (opts.nice).
+    NICE = 5,
+    NICE_LONG = 10,
     queue = {},
     busy = false,
+    held = 0,       -- inside Async.together(): requests wait
+    BATCH_MAX = 6,  -- requests in one background process at most
 }
 
 local function pack(...) return { n = select("#", ...), ... } end
@@ -66,6 +84,12 @@ function Async.reader(fd)
             if not got or got <= 0 then return end
             chunks[#chunks + 1] = ffi.string(buf, got)
         end
+    end
+    --- What has been read since the last take() (and isn't returned again).
+    function r:take()
+        local s = table.concat(chunks)
+        chunks = {}
+        return s
     end
     function r:finish()
         if not fd then return table.concat(chunks) end
@@ -112,13 +136,9 @@ local function netHold(on)
     end)
 end
 
-local function finish(job, res)
-    Async.busy = false
-    pcall(function()
-        require("gzreader_usage").request(job.name, res[1] ~= nil and res[1] ~= false,
-            job.t0 and math.floor((require("socket").gettime() - job.t0) * 1000) or nil)
-    end)
-    netHold(false)
+--- One job's result, in the main process: the login it may have renewed,
+--- then its on_done.
+local function finishJob(job, res)
     if res.tokens and job.api and job.api.store then
         -- the login was refreshed in the background process: keep the new tokens
         local store = job.api.store
@@ -148,31 +168,87 @@ local function finish(job, res)
     end
     local ok, err = pcall(job.on_done, unpack(res, 1, res.n))
     if not ok then Log.warn("async callback failed:", tostring(err)) end
-    UIManager:nextTick(pump)
+end
+
+--- A background process is done (all its jobs answered): the next one.
+--- A book downloading waits while requests run (gzreader_download.lua, yield).
+local function downloadWaits(on)
+    pcall(function()
+        local D = package.loaded["gzreader_download"]
+        if type(D) ~= "table" then return end
+        if on then if D.yield then D.yield() end elseif D.unyield then D.unyield() end
+    end)
+end
+
+local function batchDone()
+    Async.busy = false
+    netHold(false)
+    UIManager:nextTick(function()
+        pump()
+        if not Async.busy then downloadWaits(false) end -- (nothing more asked for: the download goes on)
+    end)
+end
+
+--- The jobs for the next background process: the first queued job and the
+--- ones after it for the same login (up to BATCH_MAX), long ones (opts.nice)
+--- last. One process instead of one each: one fork of GZreader, one login
+--- check (and, later, one connection), on a Kindle 3 seconds each.
+local function takeBatch()
+    local first = table.remove(Async.queue, 1)
+    if not first then return nil end
+    local quick, long = { first }, {}
+    if first.nice then quick, long = {}, { first } end
+    local i = 1
+    while Async.queue[i] and #quick + #long < Async.BATCH_MAX do
+        local j = Async.queue[i]
+        if j.api == first.api then
+            table.remove(Async.queue, i)
+            if j.nice then long[#long + 1] = j else quick[#quick + 1] = j end
+        else
+            i = i + 1
+        end
+    end
+    for _i, j in ipairs(long) do quick[#quick + 1] = j end
+    return quick
 end
 
 pump = function()
-    if Async.busy then return end
-    local job = table.remove(Async.queue, 1)
-    if not job then return end
+    if Async.busy or Async.held > 0 or Async.paused then return end
+    local jobs = takeBatch()
+    if not jobs then return end
     Async.busy = true
-    job.t0 = require("socket").gettime()
+    local t0 = require("socket").gettime()
     netHold(true) -- Wi-Fi only when needed: not turned off mid-request
-    local api = job.api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
-    job.refresh_before = api.store and api.store.refresh_token
-    local nice = job.nice
+    local api = jobs[1].api or {} -- (nil: a request that needs no Grimmory login, e.g. Plex)
+    local refresh_before = api.store and api.store.refresh_token
+    local timeout = 0
+    for _i, job in ipairs(jobs) do
+        job.t0, job.refresh_before = t0, refresh_before
+        timeout = timeout + (job.timeout or Async.TIMEOUT)
+    end
     local pid, fd = ffiutil.runInSubProcess(function(_pid, wfd)
-        if nice then Async.lowerPriority(10) end -- long CPU work: let the screen go first
+        Async.lowerPriority(Async.NICE) -- the screen goes first (see NICE)
+        -- one kept connection for this process's requests (gzreader_api.lua)
+        local okp, ApiMod = pcall(require, "gzreader_api")
+        if okp then ApiMod.poolBegin() end
         local store = api.store or {}
         local before = {}
         for _i, k in ipairs(TOKEN_FIELDS) do before[k] = store[k] end
         api.no_refresh = false
         api.on_change = function() end -- saved by the main process instead
+        -- each job's result on its own line, as soon as it's ready
+        local function send(res, last)
+            local tokens
+            for _i, k in ipairs(TOKEN_FIELDS) do
+                if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end
+            end
+            if tokens and store.refresh_token == nil then tokens = { cleared = true } end
+            ffiutil.writeToFD(wfd, encode(res, tokens) .. "\n", last)
+        end
         if api.ensureToken then
             local okt, err = api:ensureToken()
             if not okt then
-                local tokens = (store.refresh_token == nil and before.refresh_token ~= nil) and { cleared = true } or nil
-                ffiutil.writeToFD(wfd, encode(pack(nil, err), tokens), true)
+                for i = 1, #jobs do send(pack(nil, err), i == #jobs) end
                 return
             end
             -- a new login: on disk at once (see gzreader_api.lua, writePending)
@@ -180,42 +256,130 @@ pump = function()
                 pcall(api.writePending, store, before.refresh_token)
             end
         end
-        local res = protected(job.fn, api)
-        if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
-            pcall(api.writePending, store, before.refresh_token)
+        local lowered = false
+        for i, job in ipairs(jobs) do
+            if job.nice and not lowered then
+                lowered = true
+                Async.lowerPriority(Async.NICE_LONG) -- long CPU work: lower still
+            end
+            local res = protected(job.fn, api)
+            if api.writePending and store.refresh_token and store.refresh_token ~= before.refresh_token then
+                pcall(api.writePending, store, before.refresh_token)
+            end
+            if i == #jobs and okp then ApiMod.poolEnd() end
+            send(res, i == #jobs)
         end
-        local tokens
-        for _i, k in ipairs(TOKEN_FIELDS) do
-            if store[k] ~= before[k] then tokens = tokens or {}; tokens[k] = store[k] end
-        end
-        if tokens and store.refresh_token == nil then tokens = { cleared = true } end
-        ffiutil.writeToFD(wfd, encode(res, tokens), true)
     end, true)
     if not pid then
         -- couldn't fork (low memory?): give up rather than freeze the screen
-        Log.warn("async: couldn't start a background process for", job.name or "?")
-        return finish(job, pack(nil, "busy"))
+        Log.warn("async: couldn't start a background process for", jobs[1].name or "?")
+        for _i, job in ipairs(jobs) do finishJob(job, pack(nil, "busy")) end
+        return batchDone()
     end
-    local started = os.time()
+    for _i, job in ipairs(jobs) do
+        if not job.nice then downloadWaits(true); break end -- (long work, opts.nice, doesn't make it wait)
+    end
+    if #jobs > 1 then
+        local names = {}
+        for i, job in ipairs(jobs) do names[i] = job.name or "?" end
+        Log.info("async: one background process for", #jobs, "requests:", table.concat(names, ", "))
+    end
+    local run = { started = os.time() }
+    Async.running[pid] = run
     local out = Async.reader(fd)
+    local buf, next_job = "", 1
+    -- the results that have arrived, each to its job
+    local function dispatch(text)
+        buf = buf .. text
+        while true do
+            local nl = buf:find("\n", 1, true)
+            if not nl or next_job > #jobs then break end
+            local line = buf:sub(1, nl - 1)
+            buf = buf:sub(nl + 1)
+            local job = jobs[next_job]
+            next_job = next_job + 1
+            finishJob(job, decode(line) or pack(nil, "background request failed"))
+        end
+    end
+    local function rest(why)
+        while next_job <= #jobs do
+            local job = jobs[next_job]
+            next_job = next_job + 1
+            finishJob(job, pack(nil, why))
+        end
+    end
     local function poll()
         out:drain()
+        dispatch(out:take())
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > (job.timeout or Async.TIMEOUT) then
-                Log.warn("async request took too long, stopped:", job.name or "?")
+            if not Async.paused and os.time() - run.started > timeout then
+                Async.running[pid] = nil
+                Log.warn("async request took too long, stopped:", jobs[next_job] and jobs[next_job].name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()
                     if ffiutil.isSubProcessDone(pid) then out:finish() else out:drain(); UIManager:scheduleIn(1, reap) end
                 end
                 UIManager:scheduleIn(1, reap)
-                return finish(job, pack(nil, "timeout"))
+                rest("timeout")
+                return batchDone()
             end
             return UIManager:scheduleIn(Async.POLL, poll)
         end
-        local res = decode(out:finish()) or pack(nil, "background request failed")
-        finish(job, res)
+        Async.running[pid] = nil
+        dispatch(out:finish() .. "\n")
+        rest("background request failed")
+        batchDone()
     end
     UIManager:scheduleIn(Async.POLL, poll)
+end
+
+---------------------------------------------------------------- while a book opens
+
+Async.running = {} -- pid -> { started = os.time() }: the background processes running now
+Async.paused = nil -- { reason, at, count, timer }: while a book opens
+Async.PAUSE_MAX = 30 -- s: carry on anyway (a book that never finished opening)
+
+--- A signal to a background process and anything it started (its group;
+--- the process itself too, in case it hasn't made its group yet).
+local SIGSTOP, SIGCONT = 19, 18
+local function signal(pid, sig)
+    return pcall(function()
+        local ffi = require("ffi")
+        require("ffi/posix_h")
+        ffi.C.kill(pid, sig)
+        ffi.C.kill(-pid, sig)
+    end)
+end
+
+--- A book starts opening: pause the background processes running now, and
+--- start no new request until Async.resume() (or PAUSE_MAX seconds).
+function Async.pause(reason)
+    if Async.sync or Async.paused then return end
+    local p = { reason = reason or "?", at = os.time(), count = 0 }
+    Async.paused = p
+    for pid in pairs(Async.running) do
+        signal(pid, SIGSTOP)
+        p.count = p.count + 1
+    end
+    if p.count > 0 then Log.info("async: paused", p.count, "background process(es) while", p.reason) end
+    p.timer = function() Async.resume("still not done after " .. Async.PAUSE_MAX .. " s") end
+    UIManager:scheduleIn(Async.PAUSE_MAX, p.timer)
+end
+
+--- The book is open: the paused processes carry on (their time limits moved
+--- on by the pause), and waiting requests start.
+function Async.resume(why)
+    local p = Async.paused
+    if not p then return end
+    Async.paused = nil
+    UIManager:unschedule(p.timer)
+    local paused_for = os.time() - p.at
+    for pid, run in pairs(Async.running) do
+        run.started = run.started + paused_for
+        signal(pid, SIGCONT)
+    end
+    if p.count > 0 then Log.info("async: resumed after", paused_for, "s", why and ("(" .. why .. ")") or "") end
+    UIManager:nextTick(pump)
 end
 
 --- Run fn(api) in the background; on_done(...) gets what it returned.
@@ -242,6 +406,17 @@ function Async.run(api, fn, on_done, name, opts)
     pump()
 end
 
+--- Run fn(); the requests it starts wait until it's done and then go in one
+--- background process (when they're for the same login), e.g. a book's sync
+--- when it opens: its place, queued updates, bookmarks and highlights.
+function Async.together(fn)
+    Async.held = Async.held + 1
+    local ok, err = pcall(fn)
+    Async.held = Async.held - 1
+    pump()
+    if not ok then error(err, 0) end
+end
+
 --- Local work (no network, no login) in its own background process, outside
 --- the request queue so a long job doesn't hold up syncing. Lowest priority.
 --- on_done(...) gets what fn() returned, or nil, "timeout"/"busy"/an error.
@@ -263,8 +438,11 @@ function Async.background(fn, on_done, name, opts)
         return on_done(nil, "busy")
     end
     Async.local_jobs = Async.local_jobs + 1
-    local started = os.time()
+    local run = { started = os.time() }
+    Async.running[pid] = run
+    if Async.paused then signal(pid, SIGSTOP) end -- (it waits for the book too)
     local function done(...)
+        Async.running[pid] = nil
         Async.local_jobs = Async.local_jobs - 1
         local ok, err = pcall(on_done, ...)
         if not ok then Log.warn("async callback failed:", tostring(err)) end
@@ -273,7 +451,7 @@ function Async.background(fn, on_done, name, opts)
     local function poll()
         out:drain()
         if not ffiutil.isSubProcessDone(pid) then
-            if os.time() - started > (opts.timeout or 600) then
+            if not Async.paused and os.time() - run.started > (opts.timeout or 600) then
                 Log.warn("background job took too long, stopped:", name or "?")
                 ffiutil.terminateSubProcess(pid)
                 local function reap()

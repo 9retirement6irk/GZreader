@@ -23,20 +23,20 @@ do
     end
 end
 
-local calendar_icon_path = utils.resolveLocalIcon(_icons_dir, "calendar")
+local calendar_icon_path = utils.resolveIcon(_icons_dir, "calendar")
 local stat_icon_paths = {
     book_days = calendar_icon_path,
-    book_duration = utils.resolveLocalIcon(_icons_dir, "tab_to_be_read"),
-    book_page_minutes = utils.resolveLocalIcon(
-        require("libs/libkoreader-lfs").currentdir() .. "/resources/icons/mdlight/", "book.opened")
-        or utils.resolveLocalIcon(_icons_dir, "book_open"),
+    book_duration = utils.resolveIcon(_icons_dir, "tab_to_be_read"),
+    book_page_minutes = utils.resolveIcon(_icons_dir, "book.opened"),
     book_daily_minutes = calendar_icon_path,
-    streak = utils.resolveLocalIcon(_icons_dir, "flame"),
+    streak = utils.resolveIcon(_icons_dir, "flame"),
 }
+local ICON_GAP = Device.screen:scaleBySize(5)
 local MIN_FONT_SIZE = 8
 local MAX_FONT_SIZE = 64
 local DEFAULT_FONT_SIZE = 16
 local DEFAULT_MAX_FONT_SIZE = 18
+local DEFAULT_LABEL_SCALE = 0.8 -- GZreader: (was 0.6) labels a little bigger, as before 4.3
 
 local function time_unit(unit)
     if type(_) == "table" and type(_.pgettext) == "function" then
@@ -109,10 +109,14 @@ local function configured_max_font_size(ctx)
         tonumber(module_cfg.max_font_size) or DEFAULT_MAX_FONT_SIZE))
 end
 
-local function font_size_fits(candidate, fields, stats, inner_w, inner_h, show_icons)
+local function label_font_size(module_cfg, font_size)
+    return math.max(module_cfg.automatic_font_size ~= false and 1 or 6,
+        math.floor(font_size * (tonumber(module_cfg.label_scale) or DEFAULT_LABEL_SCALE)))
+end
+
+local function font_size_fits(candidate, fields, stats, inner_w, inner_h, show_icons, module_cfg)
     local value_face = Font:getFace("smallinfofont", candidate)
-    local label_face = Font:getFace("smallinfofont",
-        math.max(1, math.floor(candidate * 0.8)))
+    local label_face = Font:getFace("smallinfofont", label_font_size(module_cfg, candidate))
     for _i, field in ipairs(fields) do
         local value_probe = TextWidget:new{
             text = field.get(stats),
@@ -125,7 +129,7 @@ local function font_size_fits(candidate, fields, stats, inner_w, inner_h, show_i
         local value_w = value_size.w or 0
         local value_h = value_size.h or 1
         if show_icons and stat_icon_paths[field.icon or field.id] then
-            value_w = value_w + math.max(8, math.floor(value_h * 0.62)) + 3
+            value_w = value_w + math.max(8, math.floor(value_h * 0.62)) + ICON_GAP
         end
         local content_h = value_h - math.floor(value_h * 0.18)
             + 1 + (label_size.h or 1)
@@ -138,12 +142,12 @@ local function font_size_fits(candidate, fields, stats, inner_w, inner_h, show_i
     return true
 end
 
-local function fitting_font_size(fields, stats, inner_w, inner_h, max_font_size, show_icons)
+local function fitting_font_size(fields, stats, inner_w, inner_h, max_font_size, show_icons, module_cfg)
     local low, high = 1, max_font_size
     local best = 1
     while low <= high do
         local candidate = math.floor((low + high) / 2)
-        if font_size_fits(candidate, fields, stats, inner_w, inner_h, show_icons) then
+        if font_size_fits(candidate, fields, stats, inner_w, inner_h, show_icons, module_cfg) then
             best = candidate
             low = candidate + 1
         else
@@ -165,8 +169,7 @@ local function preferred_height(ctx)
     }
     local label_probe = TextWidget:new{
         text = "A",
-        face = Font:getFace("smallinfofont",
-            math.max(module_cfg.automatic_font_size ~= false and 1 or 6, math.floor(font_size * 0.8))),
+        face = Font:getFace("smallinfofont", label_font_size(module_cfg, font_size)),
     }
     local value_h = value_probe:getSize().h or 1
     local label_h = label_probe:getSize().h or 1
@@ -330,11 +333,10 @@ local function build_stats(ctx, spec)
         local shift_state = { value = 0 }
         local font_size = module_cfg.automatic_font_size ~= false
             and fitting_font_size(fields, stats, inner_w, inner_h,
-                configured_max_font_size(ctx), show_icons)
+                configured_max_font_size(ctx), show_icons, module_cfg)
             or configured_font_size(ctx)
         local value_face = Font:getFace("smallinfofont", font_size)
-        local label_face = Font:getFace("smallinfofont",
-            math.max(module_cfg.automatic_font_size ~= false and 1 or 6, math.floor(font_size * 0.8)))
+        local label_face = Font:getFace("smallinfofont", label_font_size(module_cfg, font_size))
         local row = HorizontalGroup:new{ align = "center" }
         local visual_top
         local visual_bottom
@@ -359,7 +361,7 @@ local function build_stats(ctx, spec)
                         height = icon_size,
                         alpha = true,
                     },
-                    HorizontalSpan:new{ width = 3 },
+                    HorizontalSpan:new{ width = ICON_GAP },
                     value_widget,
                 }
             end

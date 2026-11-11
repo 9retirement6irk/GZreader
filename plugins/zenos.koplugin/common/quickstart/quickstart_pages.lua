@@ -143,8 +143,8 @@ local function paintCoverBadge(canvas, Blitbuffer, Font, TextWidget, Screen,
             and math.max(7, math.floor(badge_size * 0.40))
             or  math.max(7, math.floor(badge_size * 0.24))
         local tw = TextWidget:new{
-            text    = do_tbr and "\u{F0150}"
-                or (do_pause and "\u{F03E4}" or (math.floor(100 * progress) .. "%")),
+            text    = do_tbr and icons.tbr
+                or (do_pause and icons.on_hold or (math.floor(100 * progress) .. "%")),
             face    = Font:getFace("cfont", font_sz),
             bold    = not do_tbr and not do_pause,
             fgcolor = Blitbuffer.COLOR_BLACK,
@@ -246,7 +246,7 @@ local function buildContextMenuBB(slot_w, slot_h, cover_info)
             local ok_iw,  ImageWidget     = pcall(require, "ui/widget/imagewidget")
             local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
             if ok_iw and ok_bim then
-                local _, _, sf = BookInfoManager.getCachedCoverSize(
+                local _w, _h, sf = BookInfoManager.getCachedCoverSize(
                     cover_info.w, cover_info.h, cover_max_w, cover_max_h)
                 cover_frame = FrameContainer:new{
                     padding    = 0,
@@ -297,11 +297,11 @@ local function buildContextMenuBB(slot_w, slot_h, cover_info)
     end)
 
     local buttons = {
-        {{ text = "\u{F02FD}  " .. _("Details"),                              align = "left", callback = function() end }},
-        {{ text = "\u{F01BE}  " .. _("Move"),                                 align = "left", callback = function() end }},
-        {{ text = "\u{F04CE}  " .. _("Add to collection") .. "  " .. icons.arrow_right, align = "left", callback = function() end }},
-        {{ text = "\u{F0B64}  " .. _("Read status") .. "  " .. icons.arrow_right,       align = "left", callback = function() end }},
-        {{ text = "\u{F090C}  " .. _("Edit") .. "  " .. icons.arrow_right,              align = "left", callback = function() end }},
+        {{ text = icons.details .. "  " .. _("Details"),                              align = "left", callback = function() end }},
+        {{ text = icons.move .. "  " .. _("Move"),                                 align = "left", callback = function() end }},
+        {{ text = icons.fav_add .. "  " .. _("Add to shelf") .. "  " .. icons.arrow_right, align = "left", callback = function() end }}, -- GZreader: Grimmory shelves
+        {{ text = icons.read_status .. "  " .. _("Read status") .. "  " .. icons.arrow_right,       align = "left", callback = function() end }},
+        {{ text = icons.edit .. "  " .. _("Edit") .. "  " .. icons.arrow_right,              align = "left", callback = function() end }},
     }
 
     local dialog = ButtonDialog:new{
@@ -621,10 +621,10 @@ end
 function M.build_accent_page(ctx)
     if not Accent.isSupported() then return nil end
     local config = ctx.config
-    local hex = Accent.hex(config)
+    local hex = Accent.hex(config, false)
     local picker = {
         hex = hex == "#000000" and "#3399FF" or hex,
-        opacity = Accent.opacity(config),
+        opacity = Accent.opacity(config, false),
     }
     picker.callback = function(color, opacity)
         picker.hex, picker.opacity = color, opacity
@@ -879,7 +879,7 @@ function M.build_install_pages(ctx)
             choice_type    = "checkbox",
             -- the bar holds 7: leave room for tabs on but not listed here (Downloads, Grimmory)
             max_selections = (function()
-                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, history = true, favorites = true,
+                local listed = { home = true, continue = true, ct_notes = true, ct_calendar = true, ct_music = true, ct_audiobooks = true, history = true, favorites = true,
                     collections = true, authors = true, series = true, to_be_read = true, search = true, stats = true }
                 local others = 0
                 local order = type(config.navbar) == "table" and config.navbar.tab_order
@@ -896,6 +896,8 @@ function M.build_install_pages(ctx)
                 { id = "ct_calendar", text = _("Calendar"),    checked = show_tabs["ct_calendar"] ~= false },
                 -- GZreader: Music (Plex), off by default; Kindles with audio only
                 gz_audio() and { id = "ct_music", text = _("Music (Plex)"), checked = show_tabs["ct_music"] == true } or false,
+                -- GZreader: the Catalog's Audiobooks page as a tab of its own, off by default
+                gz_audio() and { id = "ct_audiobooks", text = _("Audiobooks"), checked = show_tabs["ct_audiobooks"] == true } or false,
                 { id = "history",     text = _("History"),     checked = show_tabs["history"]     == true },
                 { id = "favorites",   text = _("Favorites"),   checked = show_tabs["favorites"]   == true },
                 { id = "collections", text = _("Collections"), checked = show_tabs["collections"] == true },
@@ -908,7 +910,7 @@ function M.build_install_pages(ctx)
             on_apply = function(sel)
                 if type(config.navbar) ~= "table" then config.navbar = {} end
                 if type(config.navbar.show_tabs) ~= "table" then config.navbar.show_tabs = {} end
-                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "history", "favorites", "collections",
+                local tabs = { "home", "continue", "ct_notes", "ct_calendar", "ct_music", "ct_audiobooks", "history", "favorites", "collections",
                                "authors", "series", "to_be_read", "search", "stats" }
                 for _i, id in ipairs(tabs) do
                     config.navbar.show_tabs[id] = sel[id] == true
@@ -956,7 +958,7 @@ function M.build_install_pages(ctx)
             title       = _("Synced with Grimmory"),
             icon_file   = _plugin_root .. "/icons/library.svg",
             icon_size   = 120,
-            description = _("Books from the Grimmory tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
+            description = _("Books from the Catalog tab keep their place and bookmarks in sync with Grimmory and your other devices.") .. "\n\n"
                 .. _("Offline? It syncs when you're back online."),
         },
 
@@ -1005,7 +1007,7 @@ function M.build_install_pages(ctx)
         {
             title       = _("Time Format"),
             description = _("Which time format do you prefer?") .. (legacy_clock and ("\n"
-                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time zone.")) or ""),
+                .. _("This Kindle keeps its clock in UTC: set your time zone in Settings → General → Time and date.")) or ""),
             choice_type = "radio",
             choices     = {
                 { id = "12h", text = _("12-hour  (3:30 PM)"), checked = is_12h      },
@@ -1026,27 +1028,28 @@ function M.build_install_pages(ctx)
             end,
         },
 
-        -- GZreader: usage statistics (Basic by default; can be turned off)
+        -- GZreader: automatic debug reports (off unless chosen; GZreader
+        -- sends no usage statistics after 1.28.1: gzreader_remote.lua)
         {
-            title       = _("Usage Statistics"),
-            description = _("Anonymous, and sent only when Wi‑Fi is on: never titles, files, accounts or what you type.") .. "\n"
-                .. _("Basic: version, Kindle model, failed downloads, freezes.") .. "\n"
-                .. _("Full: also screens, menus and reading time."),
+            title       = _("Debug Reports"),
+            gz_debug_reports = true,
+            description = _("When something goes wrong (an error, a freeze, a crash), GZreader can tell its developer by itself, while Wi‑Fi is on.") .. "\n"
+                .. _("Reports have GZreader's version, the Kindle model and lines from its log, which can name a book or file. Never passwords, tokens or what you type."),
             choice_type = "radio",
             choices     = (function()
-                local cur = G_reader_settings:readSetting("gzreader_usage")
-                cur = (cur == "off" or cur == "full") and cur or "basic"
+                local okr, R = pcall(require, "gzreader_remote")
+                local on = okr and type(R) == "table" and type(R.setting) == "function" and R.setting() == true
                 return {
-                    { id = "basic", text = _("Basic (recommended)"), checked = cur == "basic" },
-                    { id = "full",  text = _("Full"),                checked = cur == "full" },
-                    { id = "off",   text = _("Off"),                 checked = cur == "off" },
+                    { id = "on",  text = _("Send debug reports automatically"), checked = on },
+                    { id = "off", text = _("Don't send them"),                  checked = not on },
                 }
             end)(),
             on_apply = function(sel)
-                local v = sel["off"] and "off" or sel["full"] and "full" or sel["basic"] and "basic" or nil
-                if not v then return end
-                local ok, U = pcall(require, "gzreader_usage")
-                if ok then U.setLevel(v) else G_reader_settings:saveSetting("gzreader_usage", v) end
+                local v
+                if sel["on"] then v = true elseif sel["off"] then v = false else return end
+                local okr, R = pcall(require, "gzreader_remote")
+                if okr and type(R) == "table" and type(R.setSetting) == "function" then R.setSetting(v)
+                else G_reader_settings:saveSetting("gzreader_debug_reports", v) end
             end,
         },
 
@@ -1070,6 +1073,15 @@ function M.build_install_pages(ctx)
 
     local accent_page = M.build_accent_page(ctx)
     if accent_page then table.insert(pages, 3, accent_page) end
+
+    -- GZreader: a Kindle without Wi-Fi can't send debug reports by itself
+    -- (Send diagnostic log to the developer goes at the next sync there)
+    local okn, Net = pcall(require, "gzreader_net")
+    if okn and type(Net) == "table" and Net.usb == true then
+        for i = #pages, 1, -1 do
+            if pages[i].gz_debug_reports then table.remove(pages, i) end
+        end
+    end
 
     -- Grimmory build: no "Home Folder" question. The home folder is the
     -- Grimmory folder the plugin creates (downloads land there).

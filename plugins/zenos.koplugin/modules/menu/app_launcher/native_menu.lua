@@ -146,8 +146,9 @@ end
 local function walk(items, allowed, depth, out, seen, visited)
     if type(items) ~= "table" or visited[items] then return end
     visited[items] = true
+    local keep = require("common/gz_settings").keepKOReaderItem -- GZreader
     for _i, item in ipairs(items) do
-        if type(item) == "table" then
+        if type(item) == "table" and keep(item) then
             local children = submenu_items(item, true)
             local title = item_title(item) or fallback_title(item.id)
             if type(item.id) == "string" and allowed[item.id]
@@ -211,6 +212,14 @@ function M.isSettingsOwner(menu)
         and not (menu.ui and menu.ui.tearing_down)
 end
 
+-- Plugin tabs (Bookshelf, Ink Away) fall back to their own top-menu icon via KOReader's lookup.
+local function tab_icon_file(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local ok, icon = pcall(function() return require("ui/widget/iconwidget"):new{ icon = name } end)
+    local file = ok and type(icon) == "table" and icon.file
+    if type(file) == "string" and not file:find("icon-not-found", 1, true) then return file end
+end
+
 function M.settingsItems(scope, id)
     local menu = live_menu(scope or "active", false)
     local items = menu_tree(menu)
@@ -229,26 +238,34 @@ function M.settingsItems(scope, id)
         search = icons.search, main = icons.koreader_menu,
         navi = icons.koreader_navigation, typeset = icons.koreader_typesetting,
     }
+    -- filemanager/reader: callback-only tabs that switch apps (reader = KOReader nightly "open last doc").
     local injected = { zen_ui = true, zen_library_home = true, quicksettings = true,
-        app_launcher = true, filemanager = true }
+        app_launcher = true, filemanager = true, reader = true }
     for _i, tab in ipairs(items) do
-        if not injected[tab.id] then
+        local title = item_title(tab) or fallback_title(tab.id)
+        -- Untitled tabs (e.g. Ink Away's icon-only shortcut) would render as blank rows.
+        if not injected[tab.id] and title ~= ""
+                and require("common/gz_settings").keepKOReaderItem(tab) -- GZreader
+                and not require("common/gz_settings").KOREADER_DUPLICATES[tab.id] then
             local setting = tab.id == "setting" or tab.id == "typeset"
                 or tab.id == "filemanager_settings"
             local root = {}
             for key, value in pairs(tab) do
                 if type(key) ~= "number" then root[key] = value end
             end
-            root.text = item_title(tab) or fallback_title(tab.id)
+            root.text = title
             if tab.enabled_func then root.enabled = nil end
             root.icon_glyph = glyphs[tab.id]
+            if not root.icon_glyph then root.icon_file = tab_icon_file(tab.icon) end
             root._zen_native_owner, root._zen_native_setting = menu, setting
             if #tab > 0 or ROOT_TITLES[tab.id] or tab.sub_item_table or tab.sub_item_table_func then
                 root.sub_item_table = nil
                 root.sub_item_table_func = function(page)
                     local children = tab.sub_item_table_func and tab.sub_item_table_func(page)
                         or tab.sub_item_table or tab
-                    return Settings.copyItems(children, menu, setting)
+                    -- GZreader: without what GZreader has elsewhere (gz_settings KOREADER_DUPLICATES)
+                    return require("common/gz_settings").dropKOReaderDuplicates(
+                        Settings.copyItems(children, menu, setting))
                 end
             end
             roots[#roots + 1] = root

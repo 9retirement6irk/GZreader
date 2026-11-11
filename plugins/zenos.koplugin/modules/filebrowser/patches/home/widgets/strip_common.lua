@@ -28,6 +28,7 @@ local BookOpenTap = require("common/book_open_tap")
 local ButtonModel = require("common/nav_button_model")
 local _ = require("gettext")
 local logger = require("common/zen_logger").new("home_strip")
+local icons = require("common/inline_icon_map")
 
 local M = {}
 M.CONTROLS_HEIGHT = 30
@@ -86,10 +87,10 @@ local function strip_layout_metrics(outer_width, module_cfg)
     local rows = two_rows and 2 or 1
     count = math.min(count, responsive_per_row(width) * rows)
     local per_row = two_rows and math.ceil(count / 2) or count
-    if require("common/gz_view").stripShelf(module_cfg) then -- GZreader: spines, many to a shelf; one shelf, no pages
-        two_rows, rows = false, 1
+    if require("common/gz_view").stripShelf(module_cfg) then -- GZreader: spines, many to a shelf; one shelf (two on the DX), no pages
+        two_rows, rows = false, require("common/gz_view").homeShelves()
         per_row = require("modules/filebrowser/patches/home/widgets/shelf").perRow(width)
-        count = per_row
+        count = per_row * rows
     end
     local strip_title_face = library_font.getFace(16)
     local title_h = 0
@@ -318,7 +319,7 @@ local function apply_strip_cover_decorations(frame, book, config, show_badges)
         end
         WidgetResources.free(_cached_fav_mark)
         _cached_fav_mark = TextWidget:new{
-            text    = "\u{2606}",
+            text    = icons.favorite,
             face    = Font:getFace("cfont", utils.getBadgeFontSize(config, size, 0.45, 6)),
             fgcolor = is_dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK,
             padding = 0,
@@ -424,7 +425,7 @@ local function apply_strip_cover_decorations(frame, book, config, show_badges)
                                icon_y + math.floor((icon_h-sq)/2), sq, sq, badge_fg)
             elseif do_tbr or do_pause then
                 local fs = utils.getBadgeFontSize(config, base_sz, 0.40, 7)
-                local icon = do_tbr and "\u{F0150}" or "\u{F03E4}"
+                local icon = do_tbr and icons.tbr or icons.on_hold
                 if not _cached_pause_tw or _cached_pause_icon ~= icon
                         or _cached_pause_fs ~= fs or _cached_pause_dark ~= is_dark then
                     WidgetResources.free(_cached_pause_tw)
@@ -939,7 +940,7 @@ function M.build_strip(ctx, source_key)
         local tabs_gap = controls_enabled and Screen:scaleBySize(8) or Screen:scaleBySize(6)
         local shelf_h = math.max(Screen:scaleBySize(60), reach - tabs_top - controls_height - tabs_gap)
         local content, shelf_targets, shelf_jobs, shelf_cw, shelf_ch = Shelf.build(books, {
-            ctx = ctx, width = width, height = shelf_h, rows = 1,
+            ctx = ctx, width = width, height = shelf_h, rows = num_rows, per_row = per_row,
             interactive = interactive, source_name = source_name,
             empty_text = source_name == "recently_read" and _("Start reading books to fill this shelf.")
                 or ctx.empty_message or cover_common.get_empty_message(source_name),
@@ -1396,6 +1397,7 @@ function M.build_strip(ctx, source_key)
     local visible_hydrate_fn
     local prewarm_fn
     local prewarm_direction = 1
+    local has_paged = false -- prewarm only once the user has paged at least once
     local swap_sequence = 0
 
     local function repaint_strip()
@@ -1583,7 +1585,7 @@ function M.build_strip(ctx, source_key)
     end
 
     schedule_prewarm = function(delay)
-        if closed or prewarm_fn or not has_adjacent_pages
+        if closed or prewarm_fn or not has_paged or not has_adjacent_pages
                 or (type(ctx.data.getStripItemsForPage) ~= "function"
                     and type(ctx.data.getBooksForStripPage) ~= "function") then
             return
@@ -1756,6 +1758,7 @@ function M.build_strip(ctx, source_key)
             "cache_hit=", cache_hit and 1 or 0)
         repaint_strip()
         prewarm_direction = direction == "next" and 1 or -1
+        has_paged = true
         schedule_visible_hydration(HYDRATE_DELAY_S)
         schedule_prewarm(PRELOAD_DELAY_S)
     end
@@ -1843,7 +1846,6 @@ function M.build_strip(ctx, source_key)
             if first_paint then
                 first_paint = false
                 schedule_visible_hydration(HYDRATE_DELAY_S)
-                schedule_prewarm(PRELOAD_DELAY_S)
             end
         end
     end
