@@ -712,7 +712,8 @@ return function(ctx)
                     buttons[#buttons + 1] = {{ text = _("Settings"), icon = GlyphIcons.iconPath(GlyphIcons.SVG.settings),
                         callback = function() launch(function()
                             require("modules/settings/zen_settings_page").show(_plugin_ref, {
-                                path = {{ key = "text", value = _("Reader") }, { key = "text", value = _("Page Browser") }},
+                                -- GZreader: through Reader's group (gz_reader_groups)
+                                path = require("modules/settings/sections/gz_reader_groups").path(_("Page Browser")),
                             })
                         end) end }}
                 end

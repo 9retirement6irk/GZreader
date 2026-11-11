@@ -1898,7 +1898,9 @@ function M.build(ctx)
         end,
     }, icons.end_book)
 
-    return items
+    -- GZreader: related entries in a submenu each (Notes and footnotes,
+    -- Gestures and controls: sections/gz_reader_groups.lua)
+    return require("modules/settings/sections/gz_reader_groups").group(items)
 end
 
 return M
