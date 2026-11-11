@@ -40,6 +40,42 @@ the book once you open one.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
+- **Theme and ornaments** (Settings → Downloads → Appearance → **Bookshelf
+  theme**), for Home's shelf, Downloads and the Catalog's ledges:
+  - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
+    **Walnut** (darker) or **Plain** (flat greys);
+  - ornaments, standing on a shelf's free end like a plant on a half-empty
+    shelf: **where there's room** (to begin with: no book moves for them, so
+    a full shelf has none), **on every page** (the shelves that get one keep
+    room for it, so a page holds a book or two fewer), or **none**;
+  - **where and how many**:
+    - *On Home*, *In Downloads*, *In the Catalog*: untick one to have no
+      ornaments there (only on Home, say);
+    - *One on a page* (to begin with), *Up to two*, *Up to three*, or *One
+      on every shelf*. A page's lowest shelves with books get them. Two or
+      three on a page are different ones;
+    - *At the right end of the shelf* (to begin with), *At the left end*
+      (the books start after it), or *Scattered*: the first on the right,
+      the next on the left, then the right again. In the Catalog an ornament
+      stands in a ledge's free place, on the right, whatever this says;
+  - **which ornaments**: seventeen photorealistic ones stand all year:
+    pictures of [Poly Haven](https://polyhaven.com)'s CC0 objects (three
+    potted plants, a stone cat, a marble bust, a porcelain horse, an alarm
+    clock and a mantel clock, two vases, a storm lantern, a candlestick, a
+    model ship, binoculars, a seashell, a flowered jug) and a tabby cat.
+    Two seasonal ones stand in their season and then take about two places
+    of three: a **Christmas tree** (20 November to 6 January) and a pumpkin
+    (mid-September to November). **Which
+    ornaments** has a tick for each: tick a seasonal one to have it all
+    year, untick any to never see it; *Seasonal ones in their season again*
+    undoes that;
+  - **your own ornaments**: connect the Kindle to a computer and put PNG or
+    SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
+    the folder and makes it). A picture's bottom edge stands on the plank;
+    keep its background transparent. Bold, dark shapes read best on e-ink.
+    A shaded picture should be a PNG: the Kindle draws an SVG's gradients
+    far too dark (flat colours in an SVG are fine).
+
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
