@@ -223,22 +223,74 @@ do
         check(Theme.emptyFoot(pic) == 5, "the empty rows under a picture are measured (Bookshelf's two leave a margin there): it stands on what's drawn")
         check(Theme.emptyFoot({ getWidth = function() return 20 end, getHeight = function() return 30 end, getPixel = function() return {} end }) == 0,
             "a picture without transparency stands on its edge")
+        -- where, how many, which end
+        local function sides(t) local o = {}; for r = 1, 4 do o[r] = t[r] and t[r]:sub(1, 1) or "-" end; return table.concat(o) end
+        check(Theme.count() == 1 and Theme.side() == "right" and Theme.placeOn("home") and Theme.placeOn("downloads") and Theme.placeOn("catalog"),
+            "to begin with: one on a page, at the right end, on Home, in Downloads and in the Catalog")
+        check(sides(Theme.rowsFor("downloads", { 1, 2, 3 })) == "--r-", "one on a page: the lowest shelf with books")
+        check(sides(Theme.rowsFor("downloads", { 1 })) == "r---" and sides(Theme.rowsFor("downloads", {})) == "----", "…a page with one shelf of books: that one; no books: none")
+        Theme.setCount(2)
+        check(sides(Theme.rowsFor("downloads", { 1, 2, 3 })) == "-rr-" and sides(Theme.rowsFor("downloads", { 1 })) == "r---", "up to two: the two lowest")
+        Theme.setCount("all")
+        check(Theme.count() == math.huge and sides(Theme.rowsFor("downloads", { 1, 2, 3, 4 })) == "rrrr", "one on every shelf")
+        Theme.setSide("left")
+        check(sides(Theme.rowsFor("home", { 1, 2 })) == "ll--", "at the left end")
+        Theme.setSide("scattered")
+        check(sides(Theme.rowsFor("downloads", { 1, 2, 3 })) == "rlr-" and sides(Theme.rowsFor("downloads", { 2, 3 })) == "-rl-",
+            "scattered: the first on the right, the next on the left, then the right again")
+        check(not Theme.setSide("middle") and not Theme.setCount(7) and not Theme.setCount(0) and Theme.side() == "scattered", "only the choices there are")
+        Theme.setPlace("home", false)
+        check(not Theme.placeOn("home") and Theme.placeOn("downloads") and sides(Theme.rowsFor("home", { 1 })) == "----" and sides(Theme.rowsFor("downloads", { 1 })) == "r---",
+            "Home switched off: none there, Downloads keeps its own")
+        Theme.setCount(2)
+        check(Theme.keeps("downloads", 3, 3) and Theme.keeps("downloads", 2, 3) and not Theme.keeps("downloads", 1, 3) and not Theme.keeps("home", 1, 1),
+            "an ornament on every page: the shelves that get one keep room for it (the two lowest of three; none on Home, switched off)")
+        Theme.setPlace("home", true)
+        Theme.setCount(1)
+        Theme.setSide("right")
         Theme.setOrnaments("room")
-        check(Theme.reserve(150) == 0, "where there's room: nothing is kept for them")
+        check(not Theme.keeps("downloads", 3, 3), "where there's room: nothing is kept for them")
+        check(Theme.plan("x", 30, 150) == nil, "no room beside the books: no ornament planned")
+        -- a page's ornaments differ from each other; in season about two of three are seasonal
+        Theme.today = { 10, 31 } -- (one seasonal ornament: the pumpkin)
+        local repeats, pumpkins, pages = 0, 0, 60
+        for pg = 1, pages do
+            local p1, p2, p3 = Theme.pick("downloads:" .. pg, 1), Theme.pick("downloads:" .. pg, 2), Theme.pick("downloads:" .. pg, 3)
+            if p1 == p2 or p2 == p3 or p1 == p3 then repeats = repeats + 1 end
+            for _i, e in ipairs({ p1, p2, p3 }) do if e.label == "Pumpkin" then pumpkins = pumpkins + 1 end end
+            if Theme.pick("downloads:" .. pg, 2) ~= p2 then repeats = repeats + 100 end
+        end
+        check(repeats == 0, "three ornaments on a page are three different ones, the same each time (60 pages)")
+        check(pumpkins == pages, "…in October one of the three is the pumpkin (" .. pumpkins .. " on " .. pages .. " pages)")
+        Theme.today = { 12, 10 }
+        local festive3 = 0
+        for pg = 1, pages do for k = 1, 3 do if Theme.pick("downloads:" .. pg, k).season then festive3 = festive3 + 1 end end end
+        check(festive3 == 2 * pages, "…in December two of the three are seasonal (" .. festive3 .. " of " .. 3 * pages .. ")")
+        Theme.today = { 6, 10 }
         Theme.setOrnaments("off")
         local BB = require("ffi/blitbuffer")
         local wall = BB.new(300, 200, BB.TYPE_BB8)
         wall:fill(BB.COLOR_WHITE)
-        check(Theme.paintOrnament(wall, "x", 0, 300, 180, 150) == nil and wall:getPixel(250, 181):getColor8().a == 255, "no ornaments: nothing is drawn")
+        check(Theme.paintOrnament(wall, "x", 0, 300, 180, 150) == nil and wall:getPixel(250, 181):getColor8().a == 255
+            and Theme.plan("x", 300, 150) == nil and sides(Theme.rowsFor("downloads", { 1, 2 })) == "----", "no ornaments: nothing is planned or drawn")
         -- Settings: the themes, the ornaments, your own
         local item = Theme.settingsItem()
         local texts = {}
         for i, it in ipairs(item.sub_item_table) do texts[i] = it.text end
-        check(item.text == "Bookshelf theme" and table.concat(texts, " | ") == "Plain | Oak | Walnut | No ornaments | Ornaments where there's room | An ornament on every page | Which ornaments | Your own ornaments…",
+        check(item.text == "Bookshelf theme" and table.concat(texts, " | ") == "Plain | Oak | Walnut | No ornaments | Ornaments where there's room | An ornament on every page | Where and how many | Which ornaments | Your own ornaments…",
             "Settings: " .. table.concat(texts, " | "))
         item.sub_item_table[2].callback()
         item.sub_item_table[6].callback()
-        local which = item.sub_item_table[7].sub_item_table_func()
+        local wh = item.sub_item_table[7].sub_item_table
+        local wht = {}
+        for i, it in ipairs(wh) do wht[i] = it.text end
+        check(table.concat(wht, " | ") == "On Home | In Downloads | In the Catalog | One on a page | Up to two on a page | Up to three on a page | One on every shelf | At the right end of the shelf | At the left end of the shelf | Scattered: right, then left, then right",
+            "Where and how many: " .. table.concat(wht, " | "))
+        wh[1].callback(); wh[6].callback(); wh[10].callback()
+        check(not Theme.placeOn("home") and not wh[1].checked_func() and Theme.count() == 3 and wh[6].checked_func() and not wh[4].checked_func()
+            and Theme.side() == "scattered" and wh[10].checked_func(), "…each sets what it says, and shows it")
+        wh[1].callback(); wh[4].callback(); wh[8].callback()
+        local which = item.sub_item_table[8].sub_item_table_func()
         local wt = {}
         for i, it in ipairs(which) do wt[i] = it.text or it.text_func() end
         check(#which == 13 and wt[8] == "Christmas tree (20 November to 6 January)" and wt[1] == "Potted plant" and wt[11] == "Vase" and wt[13] == "Seasonal ones in their season again"
@@ -255,10 +307,10 @@ do
     check(slurp("plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):find('Theme.plank(w, top_h, front_h)', 1, true)
         and slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):find('Theme.plank(r.w, top_h, r.h - top_h)', 1, true),
         "the boards (Home, Downloads) and the Catalog's ledges ask for the theme's plank")
-    check(select(2, slurp("plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):gsub('paintOrnament%(', "")) == 1
-        and select(2, slurp("plugins/gzreader.koplugin/gzreader_shelfview.lua"):gsub('paintOrnament%(', "")) == 1
-        and select(2, slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):gsub('paintOrnament%(', "")) == 1,
-        "Home's shelf, Downloads' shelves and the Catalog's ledges stand an ornament on their free end")
+    check(slurp("plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):find('rowsFor("home", occupied)', 1, true)
+        and slurp("plugins/gzreader.koplugin/gzreader_shelfview.lua"):find('rowsFor("downloads", occupied)', 1, true)
+        and slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):find('Theme.placeOn("catalog")', 1, true),
+        "Home's shelf, Downloads' shelves and the Catalog's ledges ask where their ornaments go")
     check(slurp("plugins/zenos.koplugin/modules/settings/sections/library_settings.lua"):find('ShelfTheme.settingsItem()', 1, true),
         "Settings → Downloads → Appearance has Bookshelf theme")
     local png = io.open(REPO .. "/plugins/gzreader.koplugin/icons/shelf/plank-oak.png", "rb")

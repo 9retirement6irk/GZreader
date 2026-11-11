@@ -46,9 +46,18 @@ the book once you open one.
     **Walnut** (darker) or **Plain** (flat greys);
   - ornaments, standing on a shelf's free end like a plant on a half-empty
     shelf: **where there's room** (to begin with: no book moves for them, so
-    a full shelf has none), **on every page** (the bottom shelf keeps room
-    for one, so a page holds a book or two fewer), or **none**. Which one
-    stands where stays the same each time you see the page;
+    a full shelf has none), **on every page** (the shelves that get one keep
+    room for it, so a page holds a book or two fewer), or **none**;
+  - **where and how many**:
+    - *On Home*, *In Downloads*, *In the Catalog*: untick one to have no
+      ornaments there (only on Home, say);
+    - *One on a page* (to begin with), *Up to two*, *Up to three*, or *One
+      on every shelf*. A page's lowest shelves with books get them. Two or
+      three on a page are different ones;
+    - *At the right end of the shelf* (to begin with), *At the left end*
+      (the books start after it), or *Scattered*: the first on the right,
+      the next on the left, then the right again. In the Catalog an ornament
+      stands in a ledge's free place, on the right, whatever this says;
   - **which ornaments**: ten come with GZreader. Bookshelf's potted plant
     and cactus, a globe, an hourglass and a cat stand all year. Seasonal
     ones stand in their season, and then take about two places of three: a

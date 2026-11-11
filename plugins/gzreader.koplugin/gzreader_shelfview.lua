@@ -105,9 +105,11 @@ end
 
 --- The room a page's bottom shelf keeps for an ornament ("an ornament on
 --- every page": gzreader_shelftheme.lua); 0 otherwise.
-function View.ornamentRoom(row_h)
+function View.ornamentRoom(row_h, rr, rows)
     local okt, Theme = pcall(require, "gzreader_shelftheme")
-    local okr, keep = pcall(function() return okt and Theme.reserve(areaH(row_h)) or 0 end)
+    local okr, keep = pcall(function()
+        return okt and Theme.keeps("downloads", rr, rows) and Theme.reserve(areaH(row_h)) or 0
+    end)
     return okr and tonumber(keep) or 0
 end
 
@@ -124,8 +126,7 @@ function View.pageFits(items, first, n, rows, row_h, width)
             widths[#widths + 1] = View.itemWidth(e)
         end
     end
-    local keep = View.ornamentRoom(row_h)
-    local function limit(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - (rr == rows and keep or 0) end
+    local function limit(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows) end
     local r, x = 1, 0
     for _i, w in ipairs(widths) do
         if x + w > limit(r) and x > 0 then
@@ -152,7 +153,8 @@ function View.countPerPage(items, rows, row_h, width)
     local Sh = Shelf()
     local least = math.max(1, rows * math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Sh.MAX_SPINE))) - 2)
     local most = rows * math.max(3, math.floor((width - S(16)) / S(Sh.MIN_SPINE)))
-    local keep = View.ornamentRoom(row_h)
+    local keep = 0
+    for rr = 1, rows do keep = keep + View.ornamentRoom(row_h, rr, rows) end
     if keep > 0 then least = math.max(1, least - math.ceil(keep / S(Sh.MIN_SPINE))) end
     if #items == 0 then return least end
     for n = most, least + 1, -1 do
@@ -569,6 +571,24 @@ function Row:paintTo(bb, x, y)
     end
     local face_w = self.cover_w + 2 * S(6) + S(Sh.PAGES) + S(5)
     local px = x + S(8)
+    -- this shelf's ornament, if it has one and there's room for it beside
+    -- the books (and the room kept for one turned to its cover); the same
+    -- one each time this page's shelf is drawn. At the left end the books
+    -- start after it.
+    local orn
+    if self.orn_side and not self.note then
+        pcall(function()
+            local used = 0
+            for i, it in ipairs(self.items) do used = used + (i == picked and (it.face_w or face_w) or it.w) end
+            local free = room_end - px - used - (picked and 0 or turnRoom(self.h))
+            orn = require("gzreader_shelftheme").plan("downloads:" .. tostring(menu.page or 1), free, areaH(self.h), self.orn_nth)
+        end)
+    end
+    local orn_x
+    if orn and self.orn_side == "left" then
+        orn_x = px + S(2)
+        px = px + orn.room
+    end
     local spans = {}
     for i, it in ipairs(self.items) do
         local w = i == picked and (it.face_w or face_w) or it.w
@@ -644,13 +664,10 @@ function Row:paintTo(bb, x, y)
         if i ~= picked and it.cover then it.cover:free(); it.cover = nil end
     end
     Sh.paintDepth(bb, board_y, spans)
-    -- an ornament on the shelf's free end (gzreader_shelftheme.lua): the
-    -- same one each time this page's shelf is drawn
-    if not self.note then
+    if orn then
         pcall(function()
-            -- (not in the room kept for a book turned to its cover)
-            require("gzreader_shelftheme").paintOrnament(bb, "downloads:" .. tostring(menu.page or 1) .. ":" .. tostring(self.row or 1),
-                px + (picked and 0 or turnRoom(self.h)), room_end, board_y, areaH(self.h))
+            local Theme = require("gzreader_shelftheme")
+            Theme.paintPlanned(bb, orn, orn_x or (room_end - S(Theme.MARGIN) - orn.w), board_y)
         end)
     end
 end
@@ -764,8 +781,7 @@ function View.buildUI(menu)
     for _i, d in ipairs(devices) do device_room = device_room + d.w + S(10) end
     local row_items = {}
     local r, x = 1, 0
-    local keep = View.ornamentRoom(row_h)
-    local limit = function(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - (rr == rows and keep or 0) end
+    local limit = function(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows) end
     for _i, it in ipairs(books) do
         if x + it.w > limit(r) and x > 0 and r < rows then r, x = r + 1, 0 end
         row_items[r] = row_items[r] or {}
@@ -784,8 +800,15 @@ function View.buildUI(menu)
     if #books == 0 and #devices == 0 and menu.page == 1 then
         note = { _("No books yet"), _("Books you download from the Catalog tab appear here.") }
     end
+    -- which shelves get an ornament, and at which end (gzreader_shelftheme.lua)
+    local orn_sides, orn_nth = {}, {}
+    pcall(function()
+        local occupied = {}
+        for rr = 1, rows do if row_items[rr] and #row_items[rr] > 0 then occupied[#occupied + 1] = rr end end
+        orn_sides, orn_nth = require("gzreader_shelftheme").rowsFor("downloads", occupied)
+    end)
     for rr = 1, rows do
-        local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {},
+        local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {}, orn_side = orn_sides[rr], orn_nth = orn_nth[rr],
             devices = rr == 1 and devices or {}, cover_w = cover_w, cover_h = cover_h, note = rr == 1 and note or nil, row = rr }
         table.insert(menu.item_group, row)
         local line = {}

@@ -1098,8 +1098,10 @@ function Page:paintLedge(bb, ox, oy, i, L)
     local last = led.cols[#led.cols]
     if free and last and msg == "" then
         pcall(function()
-            require("gzreader_shelftheme").paintOrnament(bb, "catalog:" .. tostring(spec.kind) .. ":" .. tostring(i),
-                ox + free.x, ox + last.x + last.w, bottom, led.box_h)
+            local Theme = require("gzreader_shelftheme")
+            -- (when the Catalog has them; the lower ledge first, as many ledges as the count allows)
+            if not Theme.placeOn("catalog") or i <= 2 - math.min(Theme.count(), 2) then return end
+            Theme.paintOrnament(bb, "catalog", ox + free.x, ox + last.x + last.w, bottom, led.box_h, i)
         end)
     end
 end

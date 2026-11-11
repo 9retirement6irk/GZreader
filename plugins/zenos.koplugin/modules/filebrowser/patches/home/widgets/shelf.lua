@@ -674,10 +674,25 @@ function Shelf:paintTo(bb, x, y)
     end
     self.overlay = nil
     local px = S(8)
+    -- GZreader: this shelf's ornament (gzreader_shelftheme.lua), if it has
+    -- one and there's room beside the books; at the left end they start after it
+    local orn, orn_x
+    if self.orn_side and not self.empty_text then
+        pcall(function()
+            local used = 0
+            for i = first, #self.slots do used = used + width_of(i) end
+            orn = require("gzreader_shelftheme").plan("home", room - used, area_h, self.orn_nth)
+        end)
+        if orn and self.orn_side == "left" then
+            orn_x = px + S(2)
+            px = px + orn.room
+        end
+    end
+    local shift = orn_x and orn.room or 0
     local spans = {}
     for i, slot in ipairs(self.slots) do
         local w = width_of(i)
-        if i < first or px + w > S(8) + room then
+        if i < first or px + w > S(8) + room + shift then
             slot.hidden = true
         else
             slot.hidden = false
@@ -706,10 +721,10 @@ function Shelf:paintTo(bb, x, y)
         if i ~= picked and slot.cover then slot.cover:free(); slot.cover = nil end
     end
     M.paintDepth(bb, board_y, spans)
-    -- GZreader: an ornament on the shelf's free end (gzreader_shelftheme.lua)
-    if not self.empty_text then
+    if orn then
         pcall(function()
-            require("gzreader_shelftheme").paintOrnament(bb, "home:" .. tostring(self.row or 1), x + px, x + self.w - S(4), board_y, area_h)
+            local Theme = require("gzreader_shelftheme")
+            Theme.paintPlanned(bb, orn, orn_x and (x + orn_x) or (x + self.w - S(4) - S(Theme.MARGIN) - orn.w), board_y)
         end)
     end
 end
@@ -739,6 +754,7 @@ function M.build(books, opts)
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local group = VerticalGroup:new{ align = "left" }
+    local shelves = {}
     local menu = ctx.menu
     for r = 1, rows do
         local shelf = Shelf:new{ w = width, h = row_h, area_h = area_h, slots = {}, menu = menu,
@@ -746,10 +762,10 @@ function M.build(books, opts)
         local x = S(8)
         -- (an ornament on every page: the last shelf keeps room for one)
         local keep = 0
-        if r == rows then
-            local okt, Theme = pcall(require, "gzreader_shelftheme")
-            if okt then keep = Theme.reserve(area_h) end
-        end
+        pcall(function()
+            local Theme = require("gzreader_shelftheme")
+            if Theme.keeps("home", r, rows) then keep = Theme.reserve(area_h) end
+        end)
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)
@@ -843,8 +859,16 @@ function M.build(books, opts)
             x = x + look.w
         end
         group[#group + 1] = shelf
+        shelves[r] = shelf
         if r < rows then group[#group + 1] = VerticalSpan:new{ width = gap } end
     end
+    -- GZreader: which shelves get an ornament, and at which end
+    pcall(function()
+        local occupied = {}
+        for r = 1, rows do if #shelves[r].slots > 0 then occupied[#occupied + 1] = r end end
+        local sides, nth = require("gzreader_shelftheme").rowsFor("home", occupied)
+        for r, side in pairs(sides) do shelves[r].orn_side, shelves[r].orn_nth = side, nth[r] end
+    end)
     return group, targets, jobs, cover_w, cover_h
 end
 

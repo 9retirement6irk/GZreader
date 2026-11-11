@@ -14,7 +14,10 @@ the Kindle's SVG renderer draws gradients far too dark.
   before), Oak (the wood's grain) or Walnut (the same wood, darker).
 - Ornaments stand on a shelf's free end, like a plant on a half-empty
   shelf: where there's room (nothing moves for them), on every page (the
-  bottom shelf keeps room for one), or not at all. Which one stands where
+  shelves that get one keep room for it), or not at all. Where and how
+  many: on Home, in Downloads, in the Catalog (each can be off); one, two or
+  three on a page at most, or one on every shelf; at the right end of the
+  shelf, the left, or scattered (right, then left, then right). Which one stands where
   is the same every time a page is shown. Your own: PNG or SVG files in
   koreader/settings/gzreader/ornaments (the picture's bottom edge stands on
   the plank).
@@ -85,6 +88,78 @@ function Theme.ornaments()
     local v = G_reader_settings and G_reader_settings:readSetting(Theme.ORNAMENTS)
     if v == "off" or v == "room" or v == "always" then return v end
     return Theme.ORNAMENTS_DEFAULT
+end
+
+--- Where ornaments stand: { home, downloads, catalog } (all, to begin with).
+Theme.PLACES = "gzreader_shelf_ornament_places"
+Theme.PLACE_ORDER = { "home", "downloads", "catalog" }
+function Theme.placeOn(place)
+    local t = G_reader_settings and G_reader_settings:readSetting(Theme.PLACES)
+    if type(t) ~= "table" or t[place] == nil then return true end
+    return t[place] == true
+end
+function Theme.setPlace(place, on)
+    local t = {}
+    local old = G_reader_settings:readSetting(Theme.PLACES)
+    for k, v in pairs(type(old) == "table" and old or {}) do t[k] = v end
+    t[place] = on and true or false
+    G_reader_settings:saveSetting(Theme.PLACES, t)
+    Theme.changed()
+end
+
+--- How many on a page at most: 1 (to begin with), 2, 3, or "all" (every shelf).
+Theme.COUNT = "gzreader_shelf_ornament_count"
+function Theme.count()
+    local v = G_reader_settings and G_reader_settings:readSetting(Theme.COUNT)
+    if v == "all" then return math.huge end
+    v = tonumber(v)
+    if v and v >= 1 and v <= 3 then return math.floor(v) end
+    return 1
+end
+function Theme.setCount(v)
+    if v ~= "all" and not (tonumber(v) and tonumber(v) >= 1 and tonumber(v) <= 3) then return false end
+    G_reader_settings:saveSetting(Theme.COUNT, v)
+    Theme.changed()
+    return true
+end
+
+--- Which end of a shelf: "right" (to begin with), "left", or "scattered"
+--- (the first on a page on the right, the next on the left, then right…).
+Theme.SIDE = "gzreader_shelf_ornament_side"
+function Theme.side()
+    local v = G_reader_settings and G_reader_settings:readSetting(Theme.SIDE)
+    if v == "left" or v == "scattered" then return v end
+    return "right"
+end
+function Theme.setSide(v)
+    if v ~= "right" and v ~= "left" and v ~= "scattered" then return false end
+    G_reader_settings:saveSetting(Theme.SIDE, v)
+    Theme.changed()
+    return true
+end
+
+--- Which of a page's shelves get an ornament, and at which end:
+--- { [row] = "right" | "left" }, and { [row] = which of the page's
+--- ornaments it is: 1, 2… }. `occupied`: the rows with books on them,
+--- top down. The lowest ones are taken, as many as the count allows (the
+--- free room is on a page's last shelves); the sides are dealt top down.
+function Theme.rowsFor(place, occupied)
+    local out, nth = {}, {}
+    if Theme.ornaments() == "off" or not Theme.placeOn(place) then return out, nth end
+    local n = math.min(Theme.count(), #occupied)
+    local side = Theme.side()
+    for k = 1, n do
+        local row = occupied[#occupied - n + k]
+        out[row] = side == "scattered" and (k % 2 == 1 and "right" or "left") or side
+        nth[row] = k
+    end
+    return out, nth
+end
+
+--- Does shelf `row` of `rows` keep room for an ornament ("on every page")?
+function Theme.keeps(place, row, rows)
+    if Theme.ornaments() ~= "always" or not Theme.placeOn(place) then return false end
+    return row > rows - math.min(Theme.count(), rows)
 end
 
 --- What's drawn is drawn again: the planks and spines kept, the shelves on screen.
@@ -298,17 +373,29 @@ local function hash(s)
     return h
 end
 
---- The ornament for a place (`seed`: the same place, the same ornament), or
---- nil. In their season the seasonal ones take FAVOUR places of FAVOUR + 1.
-function Theme.pick(seed)
+--- The ornament for a page (`seed`: the same page, the same ornaments) and
+--- its place among the page's ornaments (`nth`: 1, 2, 3…), or nil. A page's
+--- ornaments differ from each other while there are enough; in their
+--- season the seasonal ones take FAVOUR places of FAVOUR + 1.
+function Theme.pick(seed, nth)
+    nth = nth or 1
     local on, seasonal = Theme.standing()
     if #on == 0 then return nil end
-    local h = hash(seed)
     -- (the hash's low digits follow the seed's last letter: taken from higher up)
-    if #seasonal > 0 and #seasonal < #on and math.floor(h / 131) % (Theme.FAVOUR + 1) < Theme.FAVOUR then
-        return seasonal[math.floor(h / 7919) % #seasonal + 1]
+    local h = math.floor(hash(seed) / 131)
+    if #seasonal == 0 or #seasonal == #on then return on[(h + nth) % #on + 1] end
+    local regular = {}
+    for _i, e in ipairs(on) do
+        local s = false
+        for _j, x in ipairs(seasonal) do if x == e then s = true end end
+        if not s then regular[#regular + 1] = e end
     end
-    return on[math.floor(h / 7919) % #on + 1]
+    local function festive(j) return (j + h) % (Theme.FAVOUR + 1) ~= 0 end
+    -- how many seasonal ones the page has had by this place (no more than there are)
+    local had = 0
+    for j = 1, nth - 1 do if festive(j) and had < #seasonal then had = had + 1 end end
+    if festive(nth) and had < #seasonal then return seasonal[(h + had) % #seasonal + 1] end
+    return regular[(h + nth - 1 - had) % #regular + 1]
 end
 
 --- The size `entry` stands at beside books `stand_h` tall, in `free_w` of
@@ -326,10 +413,10 @@ function Theme.size(entry, stand_h, free_w)
     return w, h
 end
 
---- The room the bottom shelf of a page keeps for an ornament ("on every
---- page"), for books `stand_h` tall: 0 otherwise.
+--- The room a shelf keeps for an ornament when it keeps any (Theme.keeps),
+--- for books `stand_h` tall: the widest one standing now.
 function Theme.reserve(stand_h)
-    if Theme.ornaments() ~= "always" then return 0 end
+    if Theme.ornaments() == "off" then return 0 end
     local list = Theme.standing()
     if #list == 0 then return 0 end
     local widest = 0
@@ -378,33 +465,44 @@ local function image(entry, w, h)
     return got or nil
 end
 
---- Stand an ornament on the board at board_y, in the free room from
---- `left` to `right` (the shelf's end, or where its devices begin), for
---- books `stand_h` tall. Returns its place { x, y, w, h } or nil (ornaments
---- off, no room, nothing to stand).
-function Theme.paintOrnament(bb, seed, left, right, board_y, stand_h)
+--- The ornament for a place (`seed`) if it fits in `free_w` beside books
+--- `stand_h` tall: { entry, img, w, h, foot, room (the width it takes with
+--- its margins) }, or nil.
+function Theme.plan(seed, free_w, stand_h, nth)
     if Theme.ornaments() == "off" then return nil end
-    local entry = Theme.pick(seed)
+    local entry = Theme.pick(seed, nth)
     if not entry then return nil end
-    local w, h = Theme.size(entry, stand_h, right - left)
+    local w, h = Theme.size(entry, stand_h, free_w)
     if not w then return nil end
     local got = image(entry, w, h)
     if not got then return nil end
-    local img = got.bb
-    local iw, ih = img:getWidth(), img:getHeight()
-    local x = right - S(Theme.MARGIN) - iw
-    -- its lowest drawn row on the board, where the books' feet are
-    local y = board_y - ih + got.foot
+    local iw, ih = got.bb:getWidth(), got.bb:getHeight()
+    return { entry = entry, img = got.bb, w = iw, h = ih - got.foot, foot = got.foot, room = iw + 2 * S(Theme.MARGIN) }
+end
+
+--- Paint a planned ornament with its left edge at x, standing on the board
+--- at board_y (its lowest drawn row where the books' feet are).
+function Theme.paintPlanned(bb, plan, x, board_y)
+    local img = plan.img
+    local y = board_y - plan.h
     local Blitbuffer = require("ffi/blitbuffer")
     local t = img:getType()
     if t == Blitbuffer.TYPE_BBRGB32 or t == Blitbuffer.TYPE_BB8A then
-        bb:alphablitFrom(img, x, y, 0, 0, iw, ih - got.foot)
+        bb:alphablitFrom(img, x, y, 0, 0, plan.w, plan.h)
     else
-        bb:blitFrom(img, x, y, 0, 0, iw, ih - got.foot)
+        bb:blitFrom(img, x, y, 0, 0, plan.w, plan.h)
     end
     -- where it touches the board
-    bb:darkenRect(x + math.floor(iw * 0.12), board_y, math.floor(iw * 0.76), S(2), 0.30)
-    return { x = x, y = y, w = iw, h = ih - got.foot }
+    bb:darkenRect(x + math.floor(plan.w * 0.12), board_y, math.floor(plan.w * 0.76), S(2), 0.30)
+    return { x = x, y = y, w = plan.w, h = plan.h }
+end
+
+--- Stand an ornament at the right end of the free room from `left` to
+--- `right`, for books `stand_h` tall. Returns its place or nil.
+function Theme.paintOrnament(bb, seed, left, right, board_y, stand_h, nth)
+    local plan = Theme.plan(seed, right - left, stand_h, nth)
+    if not plan then return nil end
+    return Theme.paintPlanned(bb, plan, right - S(Theme.MARGIN) - plan.w, board_y)
 end
 
 ---------------------------------------------------------------- Settings
@@ -432,6 +530,40 @@ function Theme.settingsItem()
         }
     end
     items[#items].separator = true
+    do
+        local where = {}
+        for _i, pl in ipairs({ { "home", _("On Home") }, { "downloads", _("In Downloads") }, { "catalog", _("In the Catalog") } }) do
+            where[#where + 1] = {
+                text = pl[2],
+                checked_func = function() return Theme.placeOn(pl[1]) end,
+                callback = function() Theme.setPlace(pl[1], not Theme.placeOn(pl[1])) end,
+            }
+        end
+        where[#where].separator = true
+        for _i, c in ipairs({ { 1, _("One on a page") }, { 2, _("Up to two on a page") }, { 3, _("Up to three on a page") }, { "all", _("One on every shelf") } }) do
+            where[#where + 1] = {
+                text = c[2],
+                radio = true,
+                checked_func = function() return Theme.count() == (c[1] == "all" and math.huge or c[1]) end,
+                callback = function() Theme.setCount(c[1]) end,
+            }
+        end
+        where[#where].separator = true
+        for _i, sd in ipairs({ { "right", _("At the right end of the shelf") }, { "left", _("At the left end of the shelf") },
+                { "scattered", _("Scattered: right, then left, then right") } }) do
+            where[#where + 1] = {
+                text = sd[2],
+                radio = true,
+                checked_func = function() return Theme.side() == sd[1] end,
+                callback = function() Theme.setSide(sd[1]) end,
+            }
+        end
+        items[#items + 1] = {
+            text = _("Where and how many"),
+            help_text = _("Which screens have ornaments, how many a page has at most (a page's lowest shelves with books get them), and which end of the shelf they stand at. In the Catalog they stand in a ledge's free place, on the right."),
+            sub_item_table = where,
+        }
+    end
     items[#items + 1] = {
         text = _("Which ornaments"),
         help_text = _("Tick the ones that may stand on the shelves. A seasonal one stands in its season; tick it to have it all year, untick it to never have it."),
