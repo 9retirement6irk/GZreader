@@ -38,6 +38,26 @@ do
         check(Sh.topEdge(50) == 0 and Sh.topEdge(60) == 8 and Sh.topEdge(90) == 12 and Sh.topEdge(150) == 13 and Sh.topEdge(400) == 13,
             "a book's top: its cover's width seen from 12 degrees above, none on a short book, 13 px at most (" .. Sh.topEdge(60) .. ", " .. Sh.topEdge(90) .. ", " .. Sh.topEdge(150) .. ")")
         check(Sh.boardShade(0.2) > 0.2 and Sh.boardShade(0.2) < 1 and Sh.boardShade(0.9) <= 1 and Sh.boardShade(0.9) > 0.9, "the boards: darker than the cloth, never past black")
+        -- lettering: 1 px a letter per type size (bold or not), a line as tall as its size
+        local m = { width = function(str, size) return #str * size / 2 end, lineH = function(size) return size end,
+            tuck = function() return 0 end, gap = 10, max = 20 }
+        local function show(f) return f.size .. ":" .. table.concat(f.lines, "/") .. ":" .. tostring(f.author) end
+        local f = Sh.fitSpine("Emma", "Jane Austen", 200, 50, m)
+        check(f.size == 20 and #f.lines == 1 and f.author == "after" and f.a_size == 17, "a short title: big, its author after it on the same line (" .. show(f) .. ")")
+        f = Sh.fitSpine("Frankenstein", "Mary Shelley", 130, 50, m)
+        check(f.size == 20 and #f.lines == 1 and f.author == "line", "no room after it: the author on a line of its own (" .. show(f) .. ")")
+        f = Sh.fitSpine("Alice's Adventures in Wonderland", "Lewis Carroll", 130, 50, m)
+        check(not f.cut and #f.lines == 2 and f.lines[1] == "Alice's Adventures" and f.lines[2] == "in Wonderland" and f.size <= 14,
+            "a long title: whole, in two lines of about the same length, in smaller type (" .. show(f) .. ")")
+        f = Sh.fitSpine("Kidnapped", "R. L. Stevenson", 110, 40, m)
+        check(f.lines[1] == "Kidnapped" and f.author == "line" and f.size == 17, "a long name: the title a little smaller so the author has its line (" .. show(f) .. ")")
+        f = Sh.fitSpine("Hamlet", "", 100, 40, m)
+        check(f.size == 20 and f.author == nil, "no author: the title alone")
+        f = Sh.fitSpine("The Innocence of Father Brown and Other Stories of Detection", "G. K. Chesterton", 90, 30, m)
+        check(f.cut and f.size == Sh.TITLE_MIN and #f.lines == 2 and f.author == nil, "too long for the spine even in the smallest type: as many lines as fit, the last cut (" .. show(f) .. ")")
+        check(Sh.wrapTitle("Supercalifragilistic", 50, function(str) return #str * 6 end, 3) == nil
+            and #Sh.wrapTitle("a b c d e f", 12, function(str) return #str * 6 end, 6) == 6
+            and Sh.wrapTitle("a b c d e f", 12, function(str) return #str * 6 end, 5) == nil, "a word too long for the run, or more lines than fit: not wrapped")
         local function lum(bb, x, y) return bb:getPixel(x, y):getColor8().a end
         -- the page block between its boards
         local bb = BB.new(60, 40, BB.TYPE_BB8)

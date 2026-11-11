@@ -33,9 +33,10 @@ the book once you open one.
 - **The spines** are drawn after
   [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin), AndyHazz's
   KOReader plugin: the shelf is seen from a little above, so each book shows
-  the top of its page block between its boards. The title runs along the
-  spine with the author after it in smaller type; where the two don't fit on
-  one line (shorter spines, long titles) the author stands under the title.
+  the top of its page block between its boards. The whole title runs along the
+  spine: a long one takes two or three lines of smaller type instead of
+  being cut off. The author comes after it in smaller type, or on a line of
+  its own where there's no room after the title.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
