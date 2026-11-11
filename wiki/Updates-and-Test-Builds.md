@@ -2,7 +2,10 @@ How GZreader updates itself, and how to try changes before they're released. Upd
 
 GZreader checks the latest release of github.com/9retirement6irk/GZreader
 once a day (Settings → General → Updates, or the quick panel → Updates;
-the changelog is in Settings → General → Updates too).
+the changelog is in Settings → General → Updates too). When a check has
+found a newer version, the quick panel's **Updates** tile reads **Update
+available** and is drawn white on black (also after a restart, until it's
+installed); tap it to see the update and install it.
 
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
@@ -18,7 +21,9 @@ repository's `beta` branch: every push there builds an update package
 `gzreader-update.zip` and `latest.json`; GZreader and the sync page look
 there. Any test build other than the installed one is
 offered. Turn it off to go back to releases: the next release is offered as
-usual. Kindles without Wi‑Fi get them through the sync page: tick **Test
+usual, and so is the release a test build was made towards (1.27.0 counts
+as newer than 1.27.0-beta.5995ce3, on the Kindle and on the sync page).
+Kindles without Wi‑Fi get them through the sync page: tick **Test
 builds** there (it follows the Kindle's setting, and tells the Kindle when
 you change it). Native parts (KOReader's programs, the Nook's icon app) still come
 only with a full package.

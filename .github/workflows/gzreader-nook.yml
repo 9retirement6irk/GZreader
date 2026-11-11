@@ -44,8 +44,7 @@ jobs:
       - name: crosstool-NG's tools
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq autoconf automake bison flex gawk gettext git gperf help2man \
+          bash tools/gzreader/ci-apt.sh autoconf automake bison flex gawk gettext git gperf help2man \
             libncurses-dev libtool libtool-bin make patch python3-dev rsync texinfo unzip wget xz-utils
       - name: Build the soft-float toolchain
         if: steps.cache.outputs.cache-hit != 'true'
@@ -126,8 +125,9 @@ jobs:
           path: apk
       - name: Tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          # (an older tag has no ci-apt.sh)
+          if [ -f tools/gzreader/ci-apt.sh ]; then bash tools/gzreader/ci-apt.sh dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+          else sudo apt-get update -qq && sudo apt-get install -y -qq dictzip rsync zip unzip python3 qemu-user-static libc6-armel-cross libgcc-s1-armel-cross; fi
           sudo mkdir -p /mnt/us && sudo chown "$USER" /mnt/us
       - name: The build, for trying it elsewhere (on the updates branch, next to the updates)
         if: github.event_name == 'push'

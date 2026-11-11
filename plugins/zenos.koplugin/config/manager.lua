@@ -1232,6 +1232,43 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader 1.27.x: the Grimmory tab is the Catalog (books, audiobooks,
+    -- music): its label, unless it was given another name.
+    if cfg._meta.gz_catalog_label_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        for _i, t in ipairs(nb and type(nb.custom_tabs) == "table" and nb.custom_tabs or {}) do
+            if type(t) == "table" and t.id == "ct_grimmory" and (t.label == nil or t.label == "Grimmory") then t.label = "Catalog" end
+        end
+        cfg._meta.gz_catalog_label_migrated = true
+        changed = true
+    end
+
+    -- GZreader 1.27.x: an Audiobooks tab (the Catalog's Audiobooks page):
+    -- listed in Settings → Navbar → Tabs, off.
+    if cfg._meta.gz_audiobooks_tab_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb then
+            nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+            local has = false
+            for _i, t in ipairs(nb.custom_tabs) do
+                if type(t) == "table" and t.id == "ct_audiobooks" then has = true end
+            end
+            if not has then
+                table.insert(nb.custom_tabs, { id = "ct_audiobooks", type = "action",
+                    action = { gzreader_audiobooks = true }, label = "Audiobooks", icon = "tab_audiobooks" })
+            end
+            nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+            if nb.show_tabs.ct_audiobooks == nil then nb.show_tabs.ct_audiobooks = false end
+            if type(nb.tab_order) == "table" then
+                local seen = false
+                for _i, id in ipairs(nb.tab_order) do if id == "ct_audiobooks" then seen = true end end
+                if not seen then table.insert(nb.tab_order, "ct_audiobooks") end
+            end
+        end
+        cfg._meta.gz_audiobooks_tab_migrated = true
+        changed = true
+    end
+
     -- GZreader 1.14.0: the Music tab (Plex): listed in Settings → Navbar →
     -- Tabs, off.
     if cfg._meta.gz_music_tab_migrated ~= true then
@@ -1255,6 +1292,18 @@ local function migrate_changed_defaults(cfg)
             end
         end
         cfg._meta.gz_music_tab_migrated = true
+        changed = true
+    end
+
+    -- GZreader: Settings has no Debug logging switch any more (KOReader's
+    -- verbose log, slow on an old Kindle): turned off once, from the next start.
+    if cfg._meta.gz_debug_logging_off ~= true then
+        local g = rawget(_G, "G_reader_settings")
+        if g and g.isTrue and g:isTrue("debug_verbose") then
+            g:makeFalse("debug")
+            g:makeFalse("debug_verbose")
+        end
+        cfg._meta.gz_debug_logging_off = true
         changed = true
     end
 
@@ -1343,6 +1392,16 @@ local function migrate_changed_defaults(cfg)
         cfg.highlight_lookup.show_koassistant = true
         cfg.highlight_lookup.show_ai_assistant = true
         cfg._meta.lookup_plugin_items_default_migrated = true
+        changed = true
+    end
+
+    if cfg._meta.dict_other_items_migrated ~= true then
+        -- Dictionary used to share the highlight menu's toggle.
+        if type(cfg.highlight_lookup) == "table" and cfg.highlight_lookup.allow_unknown_items == true then
+            if type(cfg.dict_quick_lookup) ~= "table" then cfg.dict_quick_lookup = {} end
+            cfg.dict_quick_lookup.allow_unknown_items = true
+        end
+        cfg._meta.dict_other_items_migrated = true
         changed = true
     end
 

@@ -3,10 +3,12 @@
 -- is on, or that was tapped, is pulled out and shows its cover. Tap it (or
 -- Press, or its letter) to open it. One shelf of the most recent books (two on the DX).
 --
--- Drawn with rectangles and text (e-ink greys), with some depth: spines are
--- rounded with light from the left (darker edges, a highlight), cast a shadow
--- on the wall, and the board has a top, a front edge and a shadow below. A
--- spine is drawn once and kept (spine_cache) until the shelf changes size.
+-- Drawn with rectangles and text (e-ink greys), with depth in the manner of
+-- AndyHazz's Bookshelf plugin: the shelf is seen from a little above, so each
+-- book shows the top of its page block, the title and author run along the
+-- spine, the books cast a shadow on the wall behind them, and the board has a
+-- top (darker at the back), a front and a shadow below. A spine is drawn once
+-- and kept (spine_cache) until the shelf changes size.
 -- Downloads' bookshelf (gzreader_shelfview.lua) uses the same spines and boards.
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -120,7 +122,7 @@ end
 --- a Kindle with a keyboard; a little on the others.
 function M.foot()
     local ok, keys = pcall(function() return Device:hasKeyboard() and not Device:isTouchDevice() end)
-    return (ok and keys) and 42 or 16
+    return (ok and keys) and 36 or 16
 end
 
 -- A line of text's height at a type size (measured once).
@@ -157,64 +159,234 @@ function M.spineType(w, two)
     return 15, nil, 15
 end
 
+--- The look of a spine and its shelf follows AndyHazz's Bookshelf plugin
+--- (https://github.com/AndyHazz/bookshelf.koplugin, AGPL-3.0;
+--- lib/bookshelf_spine_shelf.lua): seen from a little above (12 degrees), so
+--- each book shows the top of its page block between its boards; the title
+--- runs along the spine with the author after it in smaller type, the number
+--- in a series level at the foot; the spine a touch darker at its left edge
+--- than its right. Redrawn here for GZreader's greys and letter keys.
+M.VIEW_SIN = 0.208      -- sin(12 deg): a depth d shows as d * this
+M.COVER_ASPECT = 1.5    -- a cover's height to its width
+M.TOP_MAX = 0.2         -- the page block's top: at most this much of the book,
+M.TOP_MOST = 13         -- and this many px (at 160 dpi): GZreader's spines are short, the room is the title's
+M.RAMP = 0.13           -- how much darker the left edge is, lighter the right
+M.BOARD_SHADE = 0.55    -- the boards and the outline: this much darker than the cloth
+
+--- How tall the top of a book h tall shows (0 for a short one): its depth
+--- into the shelf is its cover's width.
+function M.topEdge(h)
+    if h < S(60) then return 0 end
+    local e = math.floor(h / M.COVER_ASPECT * M.VIEW_SIN)
+    return math.max(S(5), math.min(e, math.floor(h * M.TOP_MAX), S(M.TOP_MOST)))
+end
+
+--- The boards' and outline's darkness for a cloth of `shade`.
+function M.boardShade(shade) return math.min(1, shade + (1 - shade) * M.BOARD_SHADE) end
+
+--- The top of the page block (w x edge) at x, y on a spine of `shade`: the
+--- boards up the sides, a row above the paper (their outer corners left to
+--- whatever is behind: Spine:paintTo doesn't copy them), fine page lines.
+function M.paintTop(bb, x, y, w, edge, shade)
+    if edge <= 1 then return end
+    local board = Blitbuffer.gray(M.boardShade(shade))
+    local bw = math.max(2, math.min(S(3), math.floor(w * 0.1)))
+    local inner_w = w - 2 * bw
+    bb:paintRect(x, y, w, edge, board)
+    if inner_w > 2 then
+        -- (the row above the paper, between the boards: the wall's shadow)
+        bb:paintRect(x + bw, y, inner_w, 1, Blitbuffer.gray(0.55))
+        bb:paintRect(x + bw, y + 1, inner_w, edge - 1, Blitbuffer.gray(0.06))
+        local pitch = math.max(2, math.floor(S(1.4)))
+        local cx = x + bw + 1
+        while cx < x + bw + inner_w - 1 do
+            local lw = math.min(1 + ((cx * 73 + 41) % pitch), x + bw + inner_w - cx)
+            bb:paintRect(cx, y + 1, lw, edge - 1, Blitbuffer.gray(0.34))
+            cx = cx + pitch + 1
+        end
+        -- (where the boards meet the spine they turn in: a pixel each side)
+        bb:paintRect(x + bw, y + edge - 1, 1, 1, board)
+        bb:paintRect(x + bw + inner_w - 1, y + edge - 1, 1, 1, board)
+    end
+end
+
+--- The cloth's light across a spine (w x h at x, y): darker at the left
+--- edge, lighter at the right.
+function M.shadeRamp(bb, x, y, w, h)
+    if w < 3 then return end
+    for i = 0, w - 1 do
+        local f = M.RAMP * (2 * i / (w - 1) - 1)
+        if f < -0.02 then bb:darkenRect(x + i, y, 1, h, -f)
+        elseif f > 0.02 then bb:lightenRect(x + i, y, 1, h, f * 0.8) end
+    end
+end
+
+--- A title in lines no longer than `room` (width(str) measures): as few as
+--- it takes, `max_lines` at most, two lines of about the same length. nil
+--- when it can't be done (a word too long, too many lines).
+function M.wrapTitle(text, room, width, max_lines)
+    local words = {}
+    for wd in tostring(text or ""):gmatch("%S+") do words[#words + 1] = wd end
+    if #words == 0 then return { "" } end
+    local lines, cur = {}, nil
+    for _i, wd in ipairs(words) do
+        if width(wd) > room then return nil end
+        local try = cur and (cur .. " " .. wd) or wd
+        if cur and width(try) > room then
+            lines[#lines + 1] = cur
+            cur = wd
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur
+    if #lines > max_lines then return nil end
+    if #lines == 2 then
+        -- (the split that leaves the two most alike)
+        local best, best_w
+        for k = 1, #words - 1 do
+            local wa, wb = width(table.concat(words, " ", 1, k)), width(table.concat(words, " ", k + 1))
+            if wa <= room and wb <= room and (not best_w or math.max(wa, wb) < best_w) then best, best_w = k, math.max(wa, wb) end
+        end
+        if best then lines = { table.concat(words, " ", 1, best), table.concat(words, " ", best + 1) } end
+    end
+    return lines
+end
+
+M.TITLE_MIN = 12   -- the smallest type a title is set in on a spine
+M.AUTHOR_MIN = 10
+M.AUTHOR_STUB = 44 -- a cut author's name after the title is shown from this much room (px at 160 dpi)
+M.AUTHOR_SEEK = 3  -- a title goes this many sizes smaller to make room for its author
+
+--- How a spine is lettered: the whole title first, in the biggest type it
+--- fits in (in lines across the spine when one isn't enough), then its
+--- author: after the title's last line where there's room, else on a line
+--- of its own (the title up to AUTHOR_SEEK sizes smaller if that shows the
+--- whole name; else what fits of it). `room`: the run along the spine; `across`: the spine's width.
+--- m = { width(str, size, bold), lineH(size), tuck(size), gap, max }.
+--- Returns { size, lines, author = "after" | "line" | nil, a_size, cut = true when the title itself is cut }.
+function M.fitSpine(title, author, room, across, m)
+    local function height(size, n) return (n - 1) * (m.lineH(size) - m.tuck(size)) + m.lineH(size) end
+    local first, bare -- (the first with some of the author; the first with none)
+    for size = m.max, M.TITLE_MIN, -1 do
+        if first and size < first.size - M.AUTHOR_SEEK then break end
+        local max_lines = 0
+        while height(size, max_lines + 1) <= across do max_lines = max_lines + 1 end
+        local lines = max_lines > 0 and M.wrapTitle(title, room, function(str) return m.width(str, size, true) end, max_lines)
+        if lines then
+            local a_size = math.max(M.AUTHOR_MIN, size - 3)
+            local cand = { size = size, lines = lines, a_size = a_size }
+            if author == "" then return cand end
+            local left = room - m.width(lines[#lines], size, true) - m.gap
+            local a_w = m.width(author, a_size, false)
+            local line_fits = height(size, #lines) + m.lineH(a_size) - m.tuck(a_size) <= across
+            if a_w <= left then
+                cand.author = "after"
+                return cand
+            end
+            if line_fits and a_w <= room then
+                cand.author = "line"
+                return cand
+            end
+            cand.author = (line_fits and "line") or (left >= S(M.AUTHOR_STUB) and "after") or nil
+            if cand.author and not first then first = cand end
+            if not bare then bare = cand end
+        end
+    end
+    -- the title whole; of a long author's name, what fits (on its own line, or after the title)
+    if first or bare then return first or bare end
+    -- too long even in the smallest type: as many lines as fit, the last one cut
+    local size = M.TITLE_MIN
+    local max_lines = 1
+    while height(size, max_lines + 1) <= across do max_lines = max_lines + 1 end
+    local lines, cur = {}, nil
+    for wd in tostring(title or ""):gmatch("%S+") do
+        local try = cur and (cur .. " " .. wd) or wd
+        if cur and #lines < max_lines - 1 and m.width(try, size, true) > room then
+            lines[#lines + 1] = cur
+            cur = wd
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur or ""
+    return { size = size, lines = lines, a_size = M.AUTHOR_MIN, cut = true }
+end
+
 local function draw_spine(book, w, h, shade)
-    -- drawn lying down (h wide, w tall), then stood up
+    -- drawn lying down (h wide, w tall; its left end is the book's top), then stood up
     local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
     local dark = shade >= 0.5
     local ink = dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     lying:fill(Blitbuffer.gray(shade))
-    -- the top: the headband over the pages; bands near each end (the bottom
-    -- one above the letter key's square)
-    local cap = math.max(3, S(5))
-    lying:paintRect(0, 0, cap, w, Blitbuffer.gray(math.max(0, shade - 0.25)))
-    lying:paintRect(cap, 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.25)))
+    local edge = M.topEdge(h)
     local foot = S(M.foot())
-    for _i, bx in ipairs({ cap + S(5), h - foot + S(6) }) do
-        lying:paintRect(bx, 0, 1, w, Blitbuffer.gray(math.max(0, shade - 0.3)))
-        lying:paintRect(bx + 1, 0, S(2), w, ink)
-        lying:paintRect(bx + 1 + S(2), 0, 1, w, Blitbuffer.gray(math.min(1, shade + 0.3)))
-    end
-    -- the top of the spine: its number in the series, then the title and
-    -- author; the bottom is kept for the letter key's square
+    -- the number in a series: level at the foot (above the letter key's square)
     local num = book_number(book)
-    local x0 = cap + S(12)
+    local n_widget, n_size
     if num then
-        local n = TextWidget:new{ text = num, face = Font:getFace("cfont", 15), bold = true, fgcolor = ink }
-        local ns = n:getSize()
-        n:paintTo(lying, x0, math.floor((w - ns.h) / 2))
-        x0 = x0 + ns.w + S(8)
-        n:free()
+        n_widget = TextWidget:new{ text = num, face = Font:getFace("cfont", 14), bold = true, fgcolor = ink, max_width = w - S(4) }
+        n_size = n_widget:getSize()
     end
-    local room = h - x0 - foot
-    local author = book_author(book)
-    -- (every spine with an author shows it; the type is as big as the
-    -- spine's width allows (1.22.6), a long title a little smaller so more
-    -- of it shows)
-    local two = author ~= ""
-    local t_size, a_size, t_min = M.spineType(w, two)
-    local text = book_title(book)
-    local title
-    for size = t_size, t_min, -1 do
-        if title then title:free() end
-        title = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = true, fgcolor = ink, max_width = room }
-        if title:getSize().w < room - 1 and not title:isTruncated() then break end
+    -- the title along the spine, the author after it in smaller type; both
+    -- centred in the run between the page block and the foot
+    local x0 = edge + S(4)
+    local x1 = h - foot - (n_size and (n_size.h + S(2)) or 0)
+    local room = x1 - x0
+    local across = w - S(4)
+    local gap = S(10)
+    local text, author = book_title(book), book_author(book)
+    local function tw(str, size, bold, max_w)
+        return TextWidget:new{ text = str, face = Font:getFace("cfont", size), bold = bold, fgcolor = ink, max_width = max_w }
     end
-    local th = title:getSize().h
-    if two then
-        local auth = TextWidget:new{ text = author, face = Font:getFace("cfont", a_size), fgcolor = ink, max_width = room }
-        local ah = auth:getSize().h
-        local t = tuck(a_size)
-        local top = math.floor((w - th - ah + t) / 2)
-        title:paintTo(lying, x0, top)
-        auth:paintTo(lying, x0, top + th - t)
+    local fit = M.fitSpine(text, author, room, across, {
+        width = function(str, size, bold)
+            local m = TextWidget:new{ text = str, face = Font:getFace("cfont", size), bold = bold }
+            local mw = m:getSize().w
+            m:free()
+            return mw
+        end,
+        lineH = lineH, tuck = tuck, gap = gap,
+        -- (with an author: type that leaves a line for it)
+        max = (M.spineType(w, author ~= "")),
+    })
+    local lh = lineH(fit.size)
+    local pitch = lh - tuck(fit.size)
+    local block = (#fit.lines - 1) * pitch + lh
+    local a_lh = fit.author and lineH(fit.a_size) or 0
+    if fit.author == "line" then block = block + a_lh - tuck(fit.a_size) end
+    local top = math.max(0, math.floor((w - block) / 2))
+    for i, str in ipairs(fit.lines) do
+        local line = tw(str, fit.size, true, room)
+        local lw = line:getSize().w
+        local auth
+        if fit.author == "after" and i == #fit.lines then
+            auth = tw(author, fit.a_size, false, math.max(1, room - lw - gap))
+        end
+        local full = lw + (auth and (gap + auth:getSize().w) or 0)
+        local lx = x0 + math.max(0, math.floor((room - full) / 2))
+        local ly = top + (i - 1) * pitch
+        line:paintTo(lying, lx, ly)
+        if auth then
+            auth:paintTo(lying, lx + lw + gap, ly + math.floor((lh - a_lh) / 2) + S(1))
+            auth:free()
+        end
+        line:free()
+    end
+    if fit.author == "line" then
+        local auth = tw(author, fit.a_size, false, room)
+        auth:paintTo(lying, x0 + math.max(0, math.floor((room - auth:getSize().w) / 2)), top + #fit.lines * pitch + tuck(fit.size) - tuck(fit.a_size))
         auth:free()
-    else
-        title:paintTo(lying, x0, math.floor((w - th) / 2))
     end
-    title:free()
     local stood = lying:rotatedCopy(270)
     lying:free()
-    M.shadeRound(stood, 0, 0, w, h)
+    M.shadeRamp(stood, 0, edge, w, h - edge)
+    if n_widget then
+        n_widget:paintTo(stood, math.floor((w - n_size.w) / 2), h - foot - n_size.h)
+        n_widget:free()
+    end
+    stood:paintBorder(0, edge, w, h - edge, 1, Blitbuffer.gray(M.boardShade(shade)))
+    M.paintTop(stood, 0, 0, w, edge, shade)
     return stood
 end
 
@@ -232,14 +404,34 @@ local function spine_bb(book, w, h, shade)
     return bb
 end
 
---- A spine (w x h), its edge drawn darker.
+--- Forget the spines drawn (the look changed).
+function M.forgetSpines()
+    for k, v in pairs(spine_cache) do v:free(); spine_cache[k] = nil end
+    spine_cache_n = 0
+end
+
+--- A spine (w x h) standing with its foot on the board.
 local Spine = WidgetContainer:extend{ w = 0, h = 0, book = nil, shade = 0.5 }
 function Spine:getSize() return Geom:new{ w = self.w, h = self.h } end
 function Spine:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
     local img = spine_bb(self.book, self.w, self.h, self.shade)
-    bb:blitFrom(img, x, y, 0, 0, self.w, self.h)
-    bb:paintBorder(x, y, self.w, self.h, 1, Blitbuffer.gray(0.9))
+    local w, h = self.w, self.h
+    if M.topEdge(h) > 1 and w > 4 then
+        -- the boards' tips: their outer corners aren't drawn (what's behind shows)
+        local bw = math.max(2, math.min(S(3), math.floor(w * 0.1)))
+        bb:blitFrom(img, x + 1, y, 1, 0, bw - 1, 1)
+        bb:blitFrom(img, x + w - bw, y, w - bw, 0, bw - 1, 1)
+        bb:blitFrom(img, x, y + 1, 0, 1, w, h - 1)
+    else
+        bb:blitFrom(img, x, y, 0, 0, w, h)
+    end
+    -- the foot's corners take the board's tone below them: a slightly
+    -- rounded foot, as a real book's
+    if y + h < bb:getHeight() and w > 4 then
+        bb:blitFrom(bb, x, y + h - 1, x, y + h, 1, 1)
+        bb:blitFrom(bb, x + w - 1, y + h - 1, x + w - 1, y + h, 1, 1)
+    end
 end
 function Spine:free() end -- (the picture stays in spine_cache)
 
@@ -250,36 +442,116 @@ end
 
 ---------------------------------------------------------------- depth
 
---- The board under the books at board_y, `w` wide: a top seen from above
---- (narrower at the back), a front edge, and its shadow on the wall.
+M.STAND = 3        -- how far back from its front edge the books stand on the board's top
+M.PLANK_BANDS = 5  -- the top is drawn in this many steps (what e-ink can show)
+M.PLANK = 0.52     -- the plank's darkness (its front)
+
+--- The board under the books at board_y, `w` wide: its top seen from above,
+--- darkest at the back and lighter towards the front edge (narrower at the
+--- back), a bright line along the edge, the front, and its shadow on the wall.
 function M.paintBoard(bb, x, board_y, w)
-    local top_h, front_h = S(5), S(M.BOARD_H) - S(5)
+    local stand = S(M.STAND)
+    local top_h, front_h = S(5) + stand, S(M.BOARD_H) - S(5)
+    local y0 = board_y - stand
+    local base = M.PLANK
+    -- GZreader: the theme's plank (gzreader_shelftheme.lua: oak, walnut) in
+    -- place of the flat greys
+    local okt, Theme = pcall(require, "gzreader_shelftheme")
+    local wood = okt and Theme.plank(w, top_h, front_h) or nil
+    if wood then
+        bb:blitFrom(wood, x, y0, 0, 0, w, top_h + front_h)
+        -- (still darker at the back, where the books' shadow falls)
+        for i = 0, top_h - 1 do
+            local band = math.floor(i * M.PLANK_BANDS / top_h) / (M.PLANK_BANDS - 1)
+            bb:darkenRect(x, y0 + i, w, 1, 0.35 * (1 - band))
+        end
+        local under = S(M.UNDER_H)
+        for i = 0, under - 1 do
+            bb:darkenRect(x + S(4), y0 + top_h + front_h + i, w - S(8), 1, 0.45 * (1 - i / under))
+        end
+        return
+    end
     for i = 0, top_h - 1 do
         local inset = math.floor((top_h - i) * S(6) / top_h)
-        bb:paintRect(x + inset, board_y + i, w - 2 * inset, 1, Blitbuffer.gray(0.16 + 0.12 * i / top_h))
+        local band = math.floor(i * M.PLANK_BANDS / top_h) / (M.PLANK_BANDS - 1)
+        -- (lit 0.50 at the back to 0.95 at the front, of the plank's own tone)
+        local lit = (1 - base) * (0.50 + 0.45 * band)
+        bb:paintRect(x + inset, y0 + i, w - 2 * inset, 1, Blitbuffer.gray(1 - lit))
     end
-    local fy = board_y + top_h
-    bb:paintRect(x, fy, w, front_h, Blitbuffer.gray(0.58))
-    bb:paintRect(x, fy, w, 1, Blitbuffer.gray(0.30))
-    bb:paintRect(x, fy + front_h - 1, w, 1, Blitbuffer.gray(0.85))
+    local fy = y0 + top_h
+    bb:paintRect(x, fy, w, front_h, Blitbuffer.gray(base))
+    bb:paintRect(x, fy, w, 1, Blitbuffer.gray(base * 0.45))
+    bb:paintRect(x, fy + front_h - 1, w, 1, Blitbuffer.gray(math.min(1, base + 0.3)))
     local under = S(M.UNDER_H)
     for i = 0, under - 1 do
         bb:darkenRect(x + S(4), fy + front_h + i, w - S(8), 1, 0.45 * (1 - i / under))
     end
 end
 
---- Where the books stand: a contact shadow on the board's top, and each
---- spine's shadow on the wall beside a shorter neighbour (light from the left).
+M.RECESS_MAX = 0.26   -- the books' shadow on the wall behind them: at their feet
+M.RECESS_TOP = 0.5    -- what's left of it at their tops
+M.RECESS_HALO = 6     -- how far it shows above them (px at 160 dpi)
+M.RECESS_SIDE = 14    -- and past the ends of a run
+
+--- How tall the shadow stands at px: the tallest of each book's height less
+--- the distance to it (a book's shadow leans over what's beside it and falls
+--- away at 45 degrees), within `reach`.
+function M.recessHorizon(spans, px, reach)
+    local best = 0
+    for _i, sp in ipairs(spans) do
+        local d
+        if px < sp.x then d = sp.x - px elseif px >= sp.x + sp.w then d = px - (sp.x + sp.w) + 1 else d = 0 end
+        if d <= reach and sp.h - d > best then best = sp.h - d end
+    end
+    return best
+end
+
+--- Where the books stand: their shadow on the wall behind them (a little
+--- above their tops, leaning over a shorter neighbour, and past the ends of
+--- the row) and where they touch the board.
 --- spans = { { x, w, h }, ... } in order, standing on board_y.
 function M.paintDepth(bb, board_y, spans)
-    for k, sp in ipairs(spans) do
-        bb:darkenRect(sp.x, board_y, sp.w + S(2), S(3), 0.35)
-        local nxt = spans[k + 1]
-        local drop = sp.h - (nxt and nxt.x == sp.x + sp.w and nxt.h or 0)
-        if drop > S(6) then
-            bb:darkenRect(sp.x + sp.w, board_y - sp.h + S(5), S(5), drop - S(5), 0.30)
-            bb:darkenRect(sp.x + sp.w + S(5), board_y - sp.h + S(8), S(3), drop - S(8), 0.15)
+    if #spans == 0 then return end
+    local halo, reach = S(M.RECESS_HALO), S(M.RECESS_SIDE)
+    local foot_y = board_y - S(M.STAND)
+    local bw = bb:getWidth()
+    -- the wall beside and above shorter books: slices, each from where the
+    -- book under it ends up to the horizon
+    local step = math.max(2, S(2))
+    local function slice(px, from_h, dist)
+        if px < 0 or px + step > bw then return end
+        local top_h = M.recessHorizon(spans, px, reach) + (from_h > 0 and halo or 0)
+        if top_h <= from_h then return end
+        local fade = 1 - 0.85 * math.min(1, dist / reach)
+        local bands = 6
+        local span_h = top_h - from_h
+        for b = 0, bands - 1 do
+            local y1 = from_h + math.floor(span_h * b / bands)
+            local y2 = from_h + math.floor(span_h * (b + 1) / bands)
+            -- (strongest at the foot, gone at its top edge)
+            local t = (b + 0.5) / bands
+            local strength = M.RECESS_MAX * (1 - (1 - M.RECESS_TOP) * (y1 + y2) / 2 / math.max(1, top_h)) * fade * (1 - t) ^ 1.5
+            if y2 > y1 and strength > 0.02 then bb:darkenRect(px, foot_y - y2, step, y2 - y1, strength) end
         end
+    end
+    local first, last = spans[1], spans[#spans]
+    for px = first.x - reach, first.x - 1, step do slice(px, 0, first.x - px) end
+    for px = last.x + last.w, last.x + last.w + reach, step do slice(px, 0, px - (last.x + last.w)) end
+    for k, sp in ipairs(spans) do
+        local nxt = spans[k + 1]
+        -- a gap after it (a cover turned out, an ornament): its shadow falls into the gap
+        if nxt and nxt.x > sp.x + sp.w then
+            for px = sp.x + sp.w, math.min(nxt.x - 1, sp.x + sp.w + reach), step do slice(px, 0, px - (sp.x + sp.w)) end
+            for px = math.max(sp.x + sp.w + reach + 1, nxt.x - reach), nxt.x - 1, step do slice(px, 0, nxt.x - px) end
+        end
+        -- a little of it shows above the book's top
+        for b = 0, 2 do
+            local y2 = sp.h + math.floor(halo * (b + 1) / 3)
+            local y1 = sp.h + math.floor(halo * b / 3)
+            bb:darkenRect(sp.x, foot_y - y2, sp.w, y2 - y1, M.RECESS_MAX * M.RECESS_TOP * (1 - (b + 0.5) / 3) ^ 2.2)
+        end
+        -- where it touches the board
+        bb:darkenRect(sp.x, board_y, sp.w + S(1), S(2), 0.30)
     end
 end
 
@@ -402,10 +674,25 @@ function Shelf:paintTo(bb, x, y)
     end
     self.overlay = nil
     local px = S(8)
+    -- GZreader: this shelf's ornament (gzreader_shelftheme.lua), if it has
+    -- one and there's room beside the books; at the left end they start after it
+    local orn, orn_x
+    if self.orn_side and not self.empty_text then
+        pcall(function()
+            local used = 0
+            for i = first, #self.slots do used = used + width_of(i) end
+            orn = require("gzreader_shelftheme").plan("home", room - used, area_h, self.orn_nth)
+        end)
+        if orn and self.orn_side == "left" then
+            orn_x = px + S(2)
+            px = px + orn.room
+        end
+    end
+    local shift = orn_x and orn.room or 0
     local spans = {}
     for i, slot in ipairs(self.slots) do
         local w = width_of(i)
-        if i < first or px + w > S(8) + room then
+        if i < first or px + w > S(8) + room + shift then
             slot.hidden = true
         else
             slot.hidden = false
@@ -434,6 +721,12 @@ function Shelf:paintTo(bb, x, y)
         if i ~= picked and slot.cover then slot.cover:free(); slot.cover = nil end
     end
     M.paintDepth(bb, board_y, spans)
+    if orn then
+        pcall(function()
+            local Theme = require("gzreader_shelftheme")
+            Theme.paintPlanned(bb, orn, orn_x and (x + orn_x) or (x + self.w - S(4) - S(Theme.MARGIN) - orn.w), board_y)
+        end)
+    end
 end
 
 function Shelf:free()
@@ -461,14 +754,22 @@ function M.build(books, opts)
     local VerticalGroup = require("ui/widget/verticalgroup")
     local VerticalSpan = require("ui/widget/verticalspan")
     local group = VerticalGroup:new{ align = "left" }
+    local shelves = {}
     local menu = ctx.menu
     for r = 1, rows do
         local shelf = Shelf:new{ w = width, h = row_h, area_h = area_h, slots = {}, menu = menu,
-            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and r == 1 and opts.empty_text or nil }
+            cover_w = cover_w, cover_h = cover_h, empty_text = #books == 0 and r == 1 and opts.empty_text or nil, row = r }
         local x = S(8)
+        -- (an ornament on every page: the last shelf keeps room for one)
+        local keep = 0
+        pcall(function()
+            local Theme = require("gzreader_shelftheme")
+            if Theme.keeps("home", r, rows) then keep = Theme.reserve(area_h) end
+        end)
         for i = (r - 1) * per_row + 1, math.min(#books, r * per_row) do
             local book = books[i]
             local look = M.look(book, area_h)
+            if x + look.w > width - S(4) - keep and #shelf.slots > 0 then break end
             if x + look.w > width - S(4) then break end
             local slot = { x = x, w = look.w, h = look.h, book = book }
             local spine = Spine:new{ w = look.w, h = look.h, book = book, shade = look.shade }
@@ -558,8 +859,16 @@ function M.build(books, opts)
             x = x + look.w
         end
         group[#group + 1] = shelf
+        shelves[r] = shelf
         if r < rows then group[#group + 1] = VerticalSpan:new{ width = gap } end
     end
+    -- GZreader: which shelves get an ornament, and at which end
+    pcall(function()
+        local occupied = {}
+        for r = 1, rows do if #shelves[r].slots > 0 then occupied[#occupied + 1] = r end end
+        local sides, nth = require("gzreader_shelftheme").rowsFor("home", occupied)
+        for r, side in pairs(sides) do shelves[r].orn_side, shelves[r].orn_nth = side, nth[r] end
+    end)
     return group, targets, jobs, cover_w, cover_h
 end
 

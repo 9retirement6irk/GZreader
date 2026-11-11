@@ -20,7 +20,7 @@ You'll need a computer with a USB cable, and about 100 MB free on the device.
 
 ## After installing
 
-**The first start.** A setup guide runs. Its first page, **Set up from your browser**, shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now*. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and usage statistics. → [Setup page and connections](Setup-Page-and-Connections)
+**The first start.** A setup guide runs. Its first page, **Set up from your browser**, shows a QR code: scan it with your phone, or type the address under it into any browser on the same Wi‑Fi and enter the PIN, to connect Grimmory, Notes (Memos) and Calendar, or to send books, or pick *Skip for now*. You can come back to it any time: the quick panel → **Send books** (Menu, or on a touch Kindle swipe down from the top). The guide then asks about the library view, tabs, sleep screen, clock and whether to send debug reports. → [Setup page and connections](Setup-Page-and-Connections)
 
 Books you download or send go to the **GZreader** folder at the top of the Kindle's drive; the **Downloads** tab shows them.
 

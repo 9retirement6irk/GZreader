@@ -1,5 +1,5 @@
 --[[--
-The Grimmory tab's first page as a bookshop (the Bookshelf view,
+The Catalog tab's Books page as a bookshop (the Bookshelf view,
 common/gz_view.lua; the other views keep the list):
 
 - a search slip pinned to the wall;
@@ -7,16 +7,15 @@ common/gz_view.lua; the other views keep the list):
   how far you are) and Recently added (a "new" tag), each ending in a tied
   bundle of spines that opens the whole list;
 - a bookcase bay below, a compartment each for All books, Libraries,
-  Shelves, Authors, Series and Audiobooks (Downloaded books on Kindles
-  without a speaker), each with a card clipped to it: its name, how many,
+  Shelves, Authors, Series and On this Kindle (Audiobooks have their own
+  page since 1.27.x), each with a card clipped to it: its name, how many,
   its letter. What stands in it says what it is: spines, spines between
   bookends, a book face out, letter dividers, piles lying flat, tapes.
 
 The page draws the browser's own root items (gzreader_browser.lua,
 rootItems: each has a gz_id), so a letter opens what it opened in the list
 (the Menu's shortcuts: Q search, W Continue reading, E Recently added, R All
-books, T Libraries, Y Shelves, U Authors, I Series, O Downloaded books,
-P Audiobooks). The 5-way moves between the slip, the covers and the
+books, T Libraries, Y Shelves, U Authors, I Series, O On this Kindle). The 5-way moves between the slip, the covers and the
 compartments; Press or a tap opens. Covers come from gzreader_covers.lua;
 the two lists are Grimmory's (kept like the list views keep them,
 gzreader_listcache.lua) and fetched again each time the tab opens.
@@ -69,7 +68,8 @@ function Shop.bookshelf()
     return ok and on == true
 end
 
---- The Grimmory tab's root in the bookshelf view?
+--- A Catalog page's root (Books, Audiobooks, Music: marked gz_root) in the
+--- bookshelf view?
 function Shop.applies(m)
     if type(m) ~= "table" or type(m.item_table) ~= "table" or not m.item_table.gz_root then return false end
     return Shop.bookshelf()
@@ -134,17 +134,84 @@ end
 ---------------------------------------------------------------- what goes where
 
 --- The compartments, in order: { id, kind } (the kind says what stands in
---- it). Audiobooks only where there's a speaker; Downloaded books otherwise.
-function Shop.compartments(audio)
+--- it). Audiobooks have their own page of the Catalog tab (gzreader_catalog.lua)
+--- since 1.27.x; the last one is the Grimmory card (the account, as Plex's on
+--- the Music page). What's on the Kindle is in the Downloads tab.
+function Shop.compartments()
     return {
         { id = "all", kind = "spines" },
         { id = "libraries", kind = "bookends" },
         { id = "shelves", kind = "faceout" },
         { id = "authors", kind = "dividers" },
         { id = "series", kind = "piles" },
-        -- (no speaker: no audiobooks; an empty compartment, cobwebs in it)
-        audio and { id = "audiobooks", kind = "tapes" } or { kind = "empty" },
+        { id = "grimmory", kind = "account" },
     }
+end
+
+--- Each Catalog page drawn as a shop: its two ledges ({ id: the root
+--- item that opens the whole list, label, empty, kind: "continue" (a ribbon
+--- and how far) or "recent" (a NEW tag) }) and its compartments.
+function Shop.pageSpec(section)
+    if section == "audiobooks" then
+        return {
+            search = _("Search audiobooks…"),
+            ledges = {
+                { id = "ab_continue", key = "ab_continue", kind = "continue", label = _("Continue listening"), empty = _("Nothing in progress yet") },
+                { id = "ab_recent", key = "ab_recent", kind = "recent", label = _("Recently added"), empty = _("No audiobooks yet") },
+            },
+            compartments = {
+                { id = "ab_all", kind = "tapes" },
+                { id = "ab_authors", kind = "dividers" },
+                { id = "ab_shelves", kind = "faceout" },
+                { id = "ab_series", kind = "piles" },
+                { id = "ab_account", kind = "account" }, -- (Grimmory's card, or Plex's when audiobooks come from Plex)
+            },
+            cover_kind = "audiobook",
+        }
+    elseif section == "music" then
+        return {
+            search = _("Search artists, albums, tracks…"),
+            music = true, -- (the ledges hold CD cases)
+            ledges = {
+                { id = "mu_played", key = "mu_played", kind = "played", label = _("Recently played"), empty = _("Nothing played yet") },
+                { id = "mu_recent", key = "mu_recent", kind = "recent", label = _("Recently added"), empty = _("Nothing new yet") },
+            },
+            compartments = {
+                { id = "mu_playlists", kind = "cds" },
+                { id = "mu_albums", kind = "cds" },
+                { id = "mu_artists", kind = "dividers" },
+                { id = "mu_now", kind = "cds" },
+                { id = "mu_account", kind = "account" },
+            },
+        }
+    end
+    return {
+        search = _("Search titles, authors, series…"),
+        ledges = {
+            { id = "continue", key = "continue", kind = "continue", label = _("Continue reading"), empty = _("Nothing in progress yet") },
+            { id = "recent", key = "recent", kind = "recent", label = _("Recently added"), empty = _("Nothing new yet") },
+        },
+        compartments = Shop.compartments(),
+    }
+end
+
+--- Which compartment goes in each of the bookcase's `cells`: the Books
+--- page (or a page not signed in: `fixed`) each where it goes, the other
+--- pages the ones there now (`here(id)`) together, cobwebs ({ kind =
+--- "empty" }) after; the account card (Grimmory's or Plex's) always in the
+--- last cell, bottom right. Pure.
+function Shop.arrange(compartments, here, fixed, cells)
+    local out, account = {}, nil
+    for _i, comp in ipairs(compartments) do
+        if comp.kind == "account" then
+            if fixed or (comp.id and here(comp.id)) then account = comp end
+        elseif fixed or (comp.id and here(comp.id)) then
+            out[#out + 1] = comp
+        end
+    end
+    while #out < cells - (account and 1 or 0) do out[#out + 1] = { kind = "empty" } end
+    if account then out[#out + 1] = account end
+    return out
 end
 
 local function thousands(n)
@@ -162,7 +229,7 @@ end
 
 --- What a compartment's card says under its name. `known`: what GZreader
 --- keeps (index = the library index, libraries / shelves / audiobooks = the
---- saved lists, downloaded = how many books are on the Kindle). Pure.
+--- saved lists). Pure.
 function Shop.cardText(id, known)
     known = known or {}
     local idx = known.index
@@ -208,9 +275,6 @@ function Shop.cardText(id, known)
     elseif id == "audiobooks" then
         local n = tonumber(known.audiobooks)
         return n and n > 0 and (n == 1 and _("1 audiobook") or T(_("%1 audiobooks"), thousands(n))) or _("M4B and MP3")
-    elseif id == "downloaded" then
-        local n = tonumber(known.downloaded) or 0
-        return n > 0 and T(_("%1 on this Kindle"), n) or _("on this Kindle")
     end
     return ""
 end
@@ -219,7 +283,8 @@ end
 function Shop.ledgeBooks(list, readable)
     local out = {}
     for _i, b in ipairs(type(list) == "table" and list or {}) do
-        if type(b) == "table" and b.id and (not readable or readable(b)) then out[#out + 1] = b end
+        -- (a book's id, or a Plex album's key on the Music page)
+        if type(b) == "table" and (b.id or b.key) and (not readable or readable(b)) then out[#out + 1] = b end
     end
     return out
 end
@@ -239,9 +304,19 @@ end
 
 local ENDPOINT = { continue = "continue-reading", recent = "recently-added" }
 
+--- Not signed in to Grimmory: its pages' shelves stay empty (nothing
+--- saved from an account before is shown).
+local function signedOut(browser)
+    return not require("gzreader_browser").signedIn(browser)
+end
+Shop.signedOut = signedOut
+
 --- The two ledges' books now (saved copies), and a fresh fetch once per
 --- visit; the page is drawn again when it's back.
-function Shop.lists(browser)
+function Shop.lists(browser, section)
+    if section == "audiobooks" then return Shop.audioLists(browser) end
+    if section == "music" then return Shop.musicLists(browser) end
+    if signedOut(browser) then return { fetched = true } end
     local st = browser._shop or {}
     browser._shop = st
     local Cache = require("gzreader_listcache")
@@ -253,6 +328,223 @@ function Shop.lists(browser)
         Shop.fetch(browser)
     end
     return st
+end
+
+--- The Music page's two ledges: Recently played (played on this Kindle,
+--- then on Plex's own players) and Recently added, from Plex, saved like
+--- the other pages' lists (Plex items: { type, key, title, artist, thumb … }).
+function Shop.musicLists(browser)
+    local st = browser._shop_music or {}
+    browser._shop_music = st
+    local Cache = require("gzreader_listcache")
+    for _i, id in ipairs({ "mu_played", "mu_recent" }) do
+        if st[id .. "_remote"] == nil then st[id .. "_remote"] = Cache.get(cacheKey(browser, "shop:" .. id)) end
+    end
+    local store = browser.plugin and browser.plugin.store or {}
+    local seen, played = {}, {}
+    for _i, src in ipairs({ type(store.music_recent) == "table" and store.music_recent or {},
+            type(st.mu_played_remote) == "table" and st.mu_played_remote or {} }) do
+        for _j, it in ipairs(src) do
+            if type(it) == "table" and it.key and not seen[tostring(it.key)] then
+                seen[tostring(it.key)] = true
+                played[#played + 1] = it
+            end
+        end
+    end
+    st.mu_played = played
+    st.mu_recent = st.mu_recent_remote
+    -- (asked once a visit; not yet signed in or no Wi-Fi: asked again next time)
+    if not st.asked then st.asked = Shop.fetchMusic(browser) == true end
+    return st
+end
+
+--- Another music library chosen (gzreader_musictab.lua): the Music page's
+--- shelves are the old one's; empty them and ask Plex again.
+function Shop.forgetMusic(plugin)
+    local Cache = require("gzreader_listcache")
+    for _i, id in ipairs({ "mu_played", "mu_recent" }) do Cache.put(cacheKey({ plugin = plugin }, "shop:" .. id), {}) end
+    local B = package.loaded["gzreader_browser"]
+    local cur = type(B) == "table" and B.current
+    if type(cur) == "table" then cur._shop_music = nil end
+end
+
+function Shop.fetchMusic(browser)
+    local st = browser._shop_music
+    local Music = require("gzreader_music")
+    local plex = Music.plex(browser.plugin)
+    if not plex:isConnected() then return false end
+    local function go()
+        st.loading = true
+        require("gzreader_async").run(nil, function()
+            local sec = plex:musicSection()
+            local key = type(sec) == "table" and sec.key
+            if not key then return {} end
+            return { mu_played = plex:recentAlbums(key, "played", Shop.LIST_LIMIT), mu_recent = plex:recentAlbums(key, "added", Shop.LIST_LIMIT) }
+        end, function(res)
+            st.loading = false
+            if type(res) == "table" then
+                local Cache = require("gzreader_listcache")
+                for _i, id in ipairs({ "mu_played", "mu_recent" }) do
+                    if type(res[id]) == "table" then
+                        st[id .. "_remote"] = res[id]
+                        Cache.put(cacheKey(browser, "shop:" .. id), res[id])
+                    end
+                end
+            end
+            st.fetched = true
+            local m = browser.menu
+            if m and not browser.closed and Shop.applies(m) and m.item_table.gz_catalog == "music" then pcall(m.updateItems, m) end
+        end, "music shelves")
+    end
+    local Net = require("gzreader_net")
+    if Net.connected() then go() else Net.run(go, { quiet = true, reason = "Catalog: music" }) end
+    return true
+end
+
+--- The audiobooks on the Kindle you've listened to, newest first, as
+--- book-like tables (store.audiobooks: pos_ms, updated): Continue listening's
+--- first ones.
+function Shop.listening(plugin)
+    local out = {}
+    local ok, Audiobook = pcall(require, "gzreader_audiobook")
+    for id, e in pairs(type(plugin.store) == "table" and type(plugin.store.audiobooks) == "table" and plugin.store.audiobooks or {}) do
+        if type(e) == "table" and (tonumber(e.pos_ms) or 0) > 0 then
+            local data = ok and Audiobook.load(plugin, id)
+            local okt, total = false, nil
+            if data and Audiobook.total then okt, total = pcall(Audiobook.total, data) end
+            total = okt and tonumber(total) or nil
+            local pct = total and total > 0 and math.min(100, e.pos_ms * 100 / total) or nil
+            if data and (not pct or pct < 99.5) then
+                out[#out + 1] = { id = id, title = e.title or data.title, authors = (e.author or data.author) and { e.author or data.author } or nil,
+                    primaryFileType = "AUDIOBOOK", readProgress = pct, _updated = tonumber(e.updated) or 0 }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a._updated > b._updated end)
+    return out
+end
+
+--- The Audiobooks page's two ledges: Continue listening (the Kindle's, then
+--- Grimmory's in progress) and Recently added, saved like the Books page's.
+function Shop.audioLists(browser)
+    local plex_sec = require("gzreader_plexaudio").section(browser.plugin)
+    if plex_sec then return Shop.plexAudioLists(browser, plex_sec) end
+    if signedOut(browser) then return { fetched = true } end
+    local st = browser._shop_audio or {}
+    if st.plex then st = {} end -- (Plex's lists were showing)
+    browser._shop_audio = st
+    local Cache = require("gzreader_listcache")
+    for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+        if st[id .. "_remote"] == nil then st[id .. "_remote"] = Cache.get(cacheKey(browser, "shop:" .. id)) end
+    end
+    local seen, cont = {}, {}
+    for _i, src in ipairs({ Shop.listening(browser.plugin), type(st.ab_continue_remote) == "table" and st.ab_continue_remote or {} }) do
+        for _j, b in ipairs(src) do
+            if type(b) == "table" and b.id ~= nil and not seen[tostring(b.id)] then
+                seen[tostring(b.id)] = true
+                cont[#cont + 1] = b
+            end
+        end
+    end
+    st.ab_continue = cont
+    st.ab_recent = st.ab_recent_remote
+    if not st.asked then
+        st.asked = true
+        Shop.fetchAudio(browser)
+    end
+    return st
+end
+
+--- The Audiobooks page's shelves with audiobooks from a Plex library:
+--- Continue listening (what you've listened to on the Kindle, then the
+--- library's albums played last, by any Plex player) and Recently added.
+function Shop.plexAudioLists(browser, sec)
+    local st = browser._shop_audio or {}
+    if st.plex ~= sec.key then st = { plex = sec.key } end
+    browser._shop_audio = st
+    local Cache = require("gzreader_listcache")
+    local PA = require("gzreader_plexaudio")
+    for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+        if st[id .. "_remote"] == nil then st[id .. "_remote"] = Cache.get(cacheKey(browser, "shop:p" .. id .. ":" .. tostring(sec.key))) end
+    end
+    local seen, cont = {}, {}
+    for _i, src in ipairs({ Shop.listening(browser.plugin), PA.books(st.ab_continue_remote) }) do
+        for _j, b in ipairs(src) do
+            if type(b) == "table" and b.id ~= nil and not seen[tostring(b.id)] then
+                seen[tostring(b.id)] = true
+                cont[#cont + 1] = b
+            end
+        end
+    end
+    st.ab_continue = cont
+    st.ab_recent = PA.books(st.ab_recent_remote)
+    if not st.asked then
+        st.asked = true
+        Shop.fetchPlexAudio(browser, sec)
+    end
+    return st
+end
+
+function Shop.fetchPlexAudio(browser, sec)
+    local st = browser._shop_audio
+    local plex = require("gzreader_music").plex(browser.plugin)
+    if not plex:isConnected() then return end
+    local Net = require("gzreader_net")
+    local function go()
+        st.loading = true
+        require("gzreader_async").run(nil, function()
+            return { ab_continue = plex:recentAlbums(sec.key, "played", Shop.LIST_LIMIT), ab_recent = plex:recentAlbums(sec.key, "added", Shop.LIST_LIMIT) }
+        end, function(res)
+            st.loading = false
+            if type(res) == "table" then
+                local Cache = require("gzreader_listcache")
+                for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+                    if type(res[id]) == "table" then
+                        st[id .. "_remote"] = res[id]
+                        Cache.put(cacheKey(browser, "shop:p" .. id .. ":" .. tostring(sec.key)), res[id])
+                    end
+                end
+            end
+            st.fetched = true
+            local m = browser.menu
+            if m and not browser.closed and Shop.applies(m) and m.item_table.gz_catalog == "audiobooks" then pcall(m.updateItems, m) end
+        end, "plex audiobook shelves")
+    end
+    if Net.connected() then return go() end
+    Net.run(go, { quiet = true, reason = "Catalog: audiobooks" })
+end
+
+function Shop.fetchAudio(browser)
+    local st = browser._shop_audio
+    if not (browser.api and browser.api.isPaired and browser.api:isPaired()) then return end
+    local Net = require("gzreader_net")
+    local function go()
+        st.loading = true
+        local api = browser.api
+        local audio = { "AUDIOBOOK" }
+        require("gzreader_async").run(api, function()
+            local cont = api:listBooks{ page = 0, size = Shop.LIST_LIMIT, status = api.IN_PROGRESS or require("gzreader_api").IN_PROGRESS,
+                sort = "lastReadTime", dir = "desc", fileType = audio }
+            local recent = api:listBooks{ page = 0, size = Shop.LIST_LIMIT, sort = "addedOn", dir = "desc", fileType = audio }
+            return { ab_continue = type(cont) == "table" and cont.content or nil, ab_recent = type(recent) == "table" and recent.content or nil }
+        end, function(res)
+            st.loading = false
+            if type(res) == "table" then
+                local Cache = require("gzreader_listcache")
+                for _i, id in ipairs({ "ab_continue", "ab_recent" }) do
+                    if type(res[id]) == "table" then
+                        st[id .. "_remote"] = res[id]
+                        Cache.put(cacheKey(browser, "shop:" .. id), res[id])
+                    end
+                end
+            end
+            st.fetched = true
+            local m = browser.menu
+            if m and not browser.closed and Shop.applies(m) and m.item_table.gz_catalog == "audiobooks" then pcall(m.updateItems, m) end
+        end, "audiobook shelves")
+    end
+    if Net.connected() then return go() end
+    Net.run(go, { quiet = true, reason = "Catalog: audiobooks", usb = true })
 end
 
 function Shop.fetch(browser)
@@ -278,7 +570,7 @@ function Shop.fetch(browser)
             end
             st.fetched = true
             local m = browser.menu
-            if m and not browser.closed and Shop.applies(m) then pcall(m.updateItems, m) end
+            if m and not browser.closed and Shop.applies(m) and (m.item_table.gz_catalog or "books") == "books" then pcall(m.updateItems, m) end
         end, "bookshop")
     end
     if Net.connected() then return go() end
@@ -306,12 +598,6 @@ function Shop.readKnown(browser)
     known.shelves = Cache.get(cacheKey(browser, "shelves"))
     local ab = Cache.get(cacheKey(browser, "audiobooks"))
     known.audiobooks = type(ab) == "table" and tonumber(ab.totalElements) or nil
-    local lfs = require("libs/libkoreader-lfs")
-    local n = 0
-    for _id, e in pairs(browser.plugin.store and browser.plugin.store.downloads or {}) do
-        if type(e) == "table" and e.path and lfs.attributes(e.path, "mode") == "file" then n = n + 1 end
-    end
-    known.downloaded = n
     return known
 end
 
@@ -421,7 +707,15 @@ local function paintSign(bb, menu, sign, label, count, letter)
 end
 
 local function paintLedge(bb, r)
-    for i = 0, r.h - 1 do bb:paintRect(r.x, r.y + i, r.w, 1, gray(0.10 + 0.32 * i / r.h)) end
+    -- the theme's plank (gzreader_shelftheme.lua: oak, walnut), or flat greys
+    local okt, Theme = pcall(require, "gzreader_shelftheme")
+    local top_h = math.max(1, math.floor(r.h * 0.6))
+    local wood = okt and r.h >= 4 and Theme.plank(r.w, top_h, r.h - top_h) or nil
+    if wood then
+        bb:blitFrom(wood, r.x, r.y, 0, 0, r.w, r.h)
+    else
+        for i = 0, r.h - 1 do bb:paintRect(r.x, r.y + i, r.w, 1, gray(0.10 + 0.32 * i / r.h)) end
+    end
     bb:paintBorder(r.x, r.y, r.w, r.h, math.max(1, S(1)), gray(0.85))
     -- its shadow on the wall, and the covers' on its top
     for i = 0, S(4) - 1 do bb:darkenRect(r.x + S(4), r.y + r.h + i, r.w - S(8), 1, 0.35 * (1 - i / S(4))) end
@@ -589,13 +883,36 @@ local function cassette(bb, x, y, w, h)
     end
 end
 
+--- The miniature cover's label size: the largest from 9 down to 6 at which
+--- every word of `label` fits `width` (a word wider than the cover is broken
+--- mid-word: "Shelve / s" on the Paperwhite 3's Shelves card). `width_of(size,
+--- word)` measures a word. Pure.
+function Shop.miniLabelSize(label, width, width_of)
+    for size = 9, 6, -1 do
+        local fits = true
+        for word in tostring(label or ""):gmatch("%S+") do
+            if width_of(size, word) > width then fits = false; break end
+        end
+        if fits then return size end
+    end
+    return 6
+end
+
 local function miniCover(bb, x, bottom, w, h, label)
     bb:darkenRect(x + S(3), bottom - h + S(3), w, h - S(3), 0.3)
     bb:paintRect(x, bottom - h, w, h, gray(0.8))
     bb:paintBorder(x, bottom - h, w, h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
     Shelf().shadeRound(bb, x, bottom - h, S(5), h, 0.8)
     local TextBoxWidget = require("ui/widget/textboxwidget")
-    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", 9), bold = true, width = w - S(9),
+    local TextWidget = require("ui/widget/textwidget")
+    local tw = w - S(9)
+    local size = Shop.miniLabelSize(label, tw, function(sz, word)
+        local t = TextWidget:new{ text = word, face = Font:getFace("cfont", sz), bold = true }
+        local ww = t:getWidth()
+        t:free()
+        return ww
+    end)
+    local tb = TextBoxWidget:new{ text = label, face = Font:getFace("cfont", size), bold = true, width = tw,
         fgcolor = Blitbuffer.COLOR_WHITE, bgcolor = gray(0.8), height = h - S(8), height_adjust = true, height_overflow_show_ellipsis = true }
     tb:paintTo(bb, x + S(6), bottom - h + S(4))
     tb:free()
@@ -651,13 +968,24 @@ local function paintContents(bb, kind, room, info)
             tapePile(bb, x + S(20), bottom, 4 + n, "tp" .. n)
             x = x + S(46)
         end
-    elseif kind == "downloaded" then
-        local _, sp = spines(bb, x, bottom, right, h, "dl")
-        spans = sp
-        -- a bookmark in the first one
-        if sp[1] then
-            local s = sp[1]
-            bb:paintRect(s.x + math.floor(s.w / 2) - S(2), bottom - s.h - S(10), S(4), S(14), Blitbuffer.COLOR_BLACK)
+    elseif kind == "cds" then
+        -- CD cases: one face out, the others' spines standing beside it
+        local cw = math.min(S(46), math.floor(h * 0.7))
+        local ch = math.floor(cw / 1.12)
+        bb:paintRect(x + S(2), bottom - ch + S(2), cw, ch, gray(0.35))
+        bb:paintRect(x, bottom - ch, cw, ch, gray(0.25))
+        bb:paintRect(x, bottom - ch, math.max(3, math.floor(cw * 0.08)), ch, gray(0.55))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.floor(ch * 0.32), gray(0.08))
+        bb:paintCircle(x + math.floor(cw * 0.55), bottom - math.floor(ch / 2), math.max(2, math.floor(ch * 0.08)), gray(0.5))
+        bb:paintBorder(x, bottom - ch, cw, ch, 1, Blitbuffer.COLOR_BLACK)
+        x = x + cw + S(6)
+        local n, sw = 0, math.max(4, S(7))
+        while x + sw <= right and n < 9 do
+            n = n + 1
+            local sh = math.floor(ch * 1.0)
+            bb:paintRect(x, bottom - sh, sw, sh, gray(({ 0.1, 0.7, 0.35, 0.85, 0.2 })[(hash(sd .. "cd" .. n) % 5) + 1]))
+            bb:paintBorder(x, bottom - sh, sw, sh, 1, Blitbuffer.COLOR_BLACK)
+            x = x + sw + 1
         end
     end
     if #spans > 0 then pcall(Shelf().paintDepth, bb, bottom, spans) end
@@ -669,9 +997,9 @@ local Page = WidgetContainer:extend{ w = 0, h = 0 }
 
 function Page:getSize() return Geom:new{ w = self.w, h = self.h } end
 
-local function coverImage(book, w, h)
+local function coverImage(book, w, h, kind)
     local Covers = require("gzreader_covers")
-    local img = Covers.image(book.id, nil, w, h)
+    local img = Covers.image(book.id, kind, w, h)
     if img then
         local ImageWidget = require("ui/widget/imagewidget")
         return ImageWidget:new{ image = img, image_disposable = false }, img:getWidth(), img:getHeight()
@@ -690,15 +1018,36 @@ function Page:paintLedge(bb, ox, oy, i, L)
     local bottom = ledge.y
     local Sh = Shelf()
     local p = S(Sh.PAGES)
-    if #spec.books == 0 then
-        local msg = spec.loading and _("Fetching from Grimmory…") or spec.empty
+    local msg = #spec.books == 0 and (spec.loading and _("Fetching from Grimmory…") or spec.empty) or ""
+    if msg ~= "" then
         text(bb, msg, hand(20), ox + math.floor(L.w / 2), bottom - math.floor(led.cover_h / 2), { center = true, middle = true, color = gray(0.7) })
     end
     for c, item in ipairs(spec.items) do
         local col = led.cols[c]
         local cx = ox + col.x
-        if item.book then
-            local widget, iw, ih = coverImage(item.book, led.box_w, led.box_h)
+        if item.music then
+            -- a CD case face out (gzreader_shopviews.lua), ON KINDLE / NEW on it
+            local Views = require("gzreader_shopviews")
+            local MC = require("gzreader_musiccovers")
+            local bw = math.min(led.box_w, col.w - S(4))
+            local bh = math.floor(bw / Views.CD_RATIO)
+            local x, y = cx + math.floor((col.w - bw) / 2), bottom - bh
+            local hw = math.max(3, math.floor(bw * 0.07))
+            local plugin = self.browser and self.browser.plugin
+            Views.paintCase(bb, x, y, bw, bh, item.music, plugin and MC.image(plugin, item.music, bw - hw - S(4), bh - S(4)))
+            item.hot.dimen = Geom:new{ x = x, y = y, w = bw, h = bh }
+            local tag = plugin and MC.downloaded(plugin, item.music) and _("ON KINDLE") or (spec.kind == "recent" and _("NEW")) or nil
+            if tag then
+                local TextWidget = require("ui/widget/textwidget")
+                local t = TextWidget:new{ text = tag, face = Font:getFace("cfont", 8), bold = true, fgcolor = Blitbuffer.COLOR_WHITE }
+                local tsz = t:getSize()
+                bb:paintRect(x + hw + S(4), y + bh - tsz.h - S(5), tsz.w + S(6), tsz.h, Blitbuffer.COLOR_BLACK)
+                t:paintTo(bb, x + hw + S(7), y + bh - tsz.h - S(5))
+                t:free()
+            end
+            if item.hot.focused then focusRing(bb, item.hot.dimen) end
+        elseif item.book then
+            local widget, iw, ih = coverImage(item.book, led.box_w, led.box_h, self.cover_kind)
             local x = cx + math.floor((col.w - iw - p) / 2)
             local y = bottom - ih - p
             Sh.paintBook(bb, widget, x, y, iw, ih)
@@ -744,11 +1093,23 @@ function Page:paintLedge(bb, ox, oy, i, L)
         end
     end
     paintLedge(bb, ledge)
+    -- an ornament where the ledge has a place free (fewer books than places)
+    local free = led.cols[#spec.items + 1]
+    local last = led.cols[#led.cols]
+    if free and last and msg == "" then
+        pcall(function()
+            local Theme = require("gzreader_shelftheme")
+            -- (when the Catalog has them; the lower ledge first, as many ledges as the count allows)
+            if not Theme.placeOn("catalog") or i <= 2 - math.min(Theme.count(), 2) then return end
+            Theme.paintOrnament(bb, "catalog", ox + free.x, ox + last.x + last.w, bottom, led.box_h, i)
+        end)
+    end
 end
 
 --- A compartment of the bookcase (x, y, w, h): its back, its board, what
 --- stands in it and its card (spec = { kind, name, sub, letter, hot }).
 --- kind "empty": nothing, cobwebs in its corners.
+--- kind "account": the Grimmory or Plex card, filling it.
 function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
     -- the back of the compartment, darker at the top (the shelf above's shadow)
     bb:paintRect(x, y, w, h, gray(0.1))
@@ -757,6 +1118,38 @@ function Shop.paintCompartment(bb, menu, x, y, w, h, spec, info)
     local by = y + h - board_h
     for i = 0, board_h - 1 do bb:paintRect(x, by + i, w, 1, gray(0.62 - 0.2 * i / board_h)) end
     bb:paintRect(x, by, w, math.max(2, S(3)), gray(0.25))
+    if spec.kind == "account" then
+        -- the account card (Grimmory's, Plex's): the whole compartment
+        local cx, cy = x + S(8), y + S(9)
+        local card_w, card_h = w - S(16), by - cy - S(3)
+        bb:paintRect(cx + S(3), cy + S(3), card_w, card_h, gray(0.35))
+        bb:paintRect(cx, cy, card_w, card_h, Blitbuffer.COLOR_WHITE)
+        bb:paintBorder(cx, cy, card_w, card_h, math.max(1, S(1)), Blitbuffer.COLOR_BLACK)
+        clip(bb, cx + math.floor(card_w / 2), cy, S(20))
+        local side = (spec.letter and menu.is_enable_shortcut) and S(20) or 0
+        local inner = card_w - S(20) - (side > 0 and side + S(6) or 0)
+        -- (the name and the line under it, together in the middle of the card)
+        local TextWidget = require("ui/widget/textwidget")
+        local name_face, sub_face = hand(20), Font:getFace("cfont", 11)
+        local function height(str, face)
+            local t = TextWidget:new{ text = str ~= "" and str or " ", face = face }
+            local hh = t:getSize().h
+            t:free()
+            return hh
+        end
+        local nh, sh = height(spec.name or "", name_face), height(spec.sub or "", sub_face)
+        local ty = cy + math.max(S(2), math.floor((card_h - nh - sh) / 2))
+        text(bb, spec.name or "", name_face, cx + S(10), ty, { max_width = inner })
+        text(bb, spec.sub or "", sub_face, cx + S(10), ty + nh, { color = gray(0.8), max_width = inner })
+        if side > 0 then badge(bb, menu, spec.letter, cx + card_w - side - S(6), cy + card_h - side - S(6), side) end
+        if spec.hot then
+            spec.hot.dimen = Geom:new{ x = x, y = y, w = w, h = h }
+            if spec.hot.focused then
+                bb:paintBorder(cx - S(4), cy - S(4), card_w + S(8), card_h + S(8), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
+            end
+        end
+        return
+    end
     if spec.kind == "empty" then
         local Sh = Shelf()
         local r = math.min(S(70), math.floor((h - board_h) * 0.75))
@@ -821,7 +1214,7 @@ function Page:paintTo(bb, x, y)
         bb:paintRect(mx + r - S(1) + k, my + r - S(1) + k, math.max(2, S(3)), math.max(2, S(3)), Blitbuffer.COLOR_BLACK)
     end
     local side = (self.search_letter and menu.is_enable_shortcut) and S(20) or 0
-    text(bb, _("Search titles, authors, series…"), hand(20), mx + r + S(14), sy + math.floor(s.h / 2),
+    text(bb, self.search_text or _("Search titles, authors, series…"), hand(20), mx + r + S(14), sy + math.floor(s.h / 2),
         { middle = true, color = gray(0.6), max_width = s.w - S(60) - side })
     if side > 0 then badge(bb, menu, self.search_letter, sx + s.w - side - S(8), sy + math.floor((s.h - side) / 2), side) end
     self.search_hot.dimen = Geom:new{ x = sx, y = sy, w = s.w, h = s.h }
@@ -887,44 +1280,63 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     local L = Shop.layout(W, H)
     if not L.fits then return false end
     local by = entryById(m)
+    local section = m.item_table.gz_catalog or "books"
+    local pspec = Shop.pageSpec(section)
+    -- (not signed in to Grimmory: the slip says so, the shelves stay empty)
+    local signed_out = m.item_table.gz_signed_out and true or false
+    -- (each page's own search line: 1.28.0's Audiobooks and Music slips
+    -- looked only for the Books page's and did nothing when tapped)
+    local search = by.search or by.ab_search or by.mu_search
     local Covers = require("gzreader_covers")
     Covers.beginPage()
-    local page = Page:new{ w = W, h = H, L = L, menu = m }
+    local page = Page:new{ w = W, h = H, L = L, menu = m, cover_kind = pspec.cover_kind, browser = browser,
+        search_text = signed_out and search and search.entry.text or pspec.search }
     local function hot(entry)
         local h = Hot:new{ menu = m, entry = entry, shop = page }
         page[#page + 1] = h
         return h
     end
     -- the slip
-    local search = by.search
     page.search_hot = hot(search and search.entry)
     page.search_letter = search and letterOf(m, search.idx)
     m.layout[1] = { page.search_hot }
     -- the ledges
-    local st = Shop.lists(browser)
-    local wanted = {}
+    local st = Shop.lists(browser, section)
+    local wanted, music_wanted = {}, {}
     page.ledges = {}
-    for i, id in ipairs({ "continue", "recent" }) do
-        local root = by[id]
-        local books = Shop.ledgeBooks(st[id], browser.isReadable or require("gzreader_browser").isReadable)
+    local Browser_ = require("gzreader_browser")
+    local audio = section == "audiobooks"
+    for i, lspec in ipairs(pspec.ledges) do
+        local root = by[lspec.id]
+        local books = Shop.ledgeBooks(st[lspec.key], pspec.music and function(it) return it.key ~= nil end
+            or audio and Browser_.isAudiobook or browser.isReadable or Browser_.isReadable)
         local spec = {
-            kind = id,
-            label = id == "continue" and _("Continue reading") or _("Recently added"),
+            kind = lspec.kind,
+            label = lspec.label,
             count = #books > 0 and tostring(#books) or nil,
             letter = root and letterOf(m, root.idx),
             books = books, items = {},
             loading = st.loading and not st.fetched,
-            empty = id == "continue" and _("Nothing in progress yet") or _("Nothing new yet"),
+            empty = signed_out and "" or lspec.empty,
         }
         spec.sign_hot = hot(root and root.entry)
         local row = {}
         for k = 1, math.min(Shop.SHOWN, #books) do
             local book = books[k]
-            local entry = browser:bookItem(book)
-            local item = { book = book, hot = hot(entry) }
+            local item
+            if pspec.music then
+                -- (an album or playlist: opens it, as in its list)
+                local tab = browser.music_tab
+                item = { music = book, hot = hot({ text = book.title, gz_music = book,
+                    callback = function() if tab then tab:openItem(book) end end }) }
+                music_wanted[#music_wanted + 1] = book
+            else
+                local entry = audio and browser:audiobookItem(book) or browser:bookItem(book)
+                item = { book = book, hot = hot(entry) }
+                wanted[#wanted + 1] = { id = book.id, kind = pspec.cover_kind }
+            end
             spec.items[#spec.items + 1] = item
             row[#row + 1] = item.hot
-            wanted[#wanted + 1] = { id = book.id }
         end
         if #books > 0 then
             local item = { label = Shop.moreText(#books), hot = hot(root and root.entry) }
@@ -959,16 +1371,22 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     page.cells = {}
     local names = {
         all = _("All books"), libraries = _("Libraries"), shelves = _("Shelves"), authors = _("Authors"),
-        series = _("Series"), audiobooks = _("Audiobooks"), downloaded = _("Downloaded"),
+        series = _("Series"), audiobooks = _("Audiobooks"),
     }
-    local audio = by.audiobooks ~= nil
+    local comps = Shop.arrange(pspec.compartments, function(id) return by[id] ~= nil end, section == "books" or signed_out, #L.cells)
     local row
-    for k, comp in ipairs(Shop.compartments(audio)) do
+    for k, comp in ipairs(comps) do
         local spec = { kind = comp.kind }
-        if comp.id then
-            local root = by[comp.id]
-            spec.name, spec.sub, spec.letter = names[comp.id], Shop.cardText(comp.id, known), root and letterOf(m, root.idx)
-            spec.hot = hot(root and root.entry)
+        local root = comp.id and by[comp.id]
+        if comp.id and (root or (section == "books" and not signed_out)) then
+            -- (Books: its names and counts from what's kept; the other pages: the line's own)
+            local e = root and root.entry
+            spec.name = names[comp.id] or (e and e.text)
+            spec.sub = names[comp.id] and Shop.cardText(comp.id, known) or (e and e.mandatory) or ""
+            spec.letter = root and letterOf(m, root.idx)
+            spec.hot = hot(e)
+        elseif comp.id then
+            spec.kind = "empty" -- (not on this page now: cobwebs)
         end
         page.cells[k] = spec
         if k % 2 == 1 then row = {}; m.layout[#m.layout + 1] = row end
@@ -979,12 +1397,16 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     m._gz_shop = page
     -- start on the first cover (or what's there); back from a list: on
     -- what opened it
-    local fx, fy = 1, m.layout[2] and 2 or 1
+    -- (not signed in: on the slip, which signs in)
+    local fx, fy = 1, (m.layout[2] and not signed_out) and 2 or 1
     local back = m._gz_shop_last or (select_number and m.item_table[select_number])
     if back then
         for y, r in ipairs(m.layout) do
             for x, h in ipairs(r) do
-                if h.entry == back then fx, fy = x, y end
+                -- (or the same card on a page made again)
+                if h.entry == back or (type(back) == "table" and back.gz_id and type(h.entry) == "table" and h.entry.gz_id == back.gz_id) then
+                    fx, fy = x, y
+                end
             end
         end
     end
@@ -999,6 +1421,11 @@ function Shop.build(m, browser, select_number, no_recalculate_dimen)
     Covers.fetch(browser.plugin, wanted, function(got)
         if got > 0 and m.item_table == items and not m._gz_closed and Shop.applies(m) then pcall(m.updateItems, m) end
     end)
+    if #music_wanted > 0 then
+        require("gzreader_musiccovers").fetch(browser.plugin, music_wanted, function(got)
+            if got > 0 and m.item_table == items and not m._gz_closed and Shop.applies(m) then pcall(m.updateItems, m) end
+        end)
+    end
 end
 
 --- Take over the browser's root page in the bookshelf view.

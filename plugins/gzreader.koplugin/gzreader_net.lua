@@ -1,29 +1,36 @@
 --[[--
-Wi-Fi only when needed (Settings → General → Wi-Fi only when needed).
+Wi-Fi: on, off or auto (the quick panel's Wi-Fi tile cycles through them;
+Settings → General → Wi-Fi offers them too). The mode is kept in
+G_reader_settings "gzreader_wifi_mode"; until 1.28 it was two settings
+("Wi-Fi only when needed" and "you turned it off"), read by Net.mode() when
+no mode has been saved yet.
 
-The Kindle 3's Wi-Fi is one of its biggest battery drains. With this on,
-GZreader turns Wi-Fi on by itself when it needs the network:
-- browsing Grimmory, downloads, connecting, sending the log, checking for
-  updates (shows "Connecting to Wi-Fi…");
-- syncing when a book opens and closes, and on wake after a long sleep
-  (quietly in the background);
-and turns it off again once nothing has used it for IDLE_SECONDS and
-nothing needs it (an open Grimmory browser, a download or its queue, the
-library index, a QR screen). Page-turn syncs and bookmarks made while Wi-Fi
-is off wait and go with the next sync.
+- **Auto** (the default; it was "Wi-Fi only when needed"). The Kindle 3's
+  Wi-Fi is one of its biggest battery drains. GZreader turns Wi-Fi on by
+  itself when it needs the network:
+  - browsing Grimmory, downloads, connecting, sending the log, checking for
+    updates (shows "Connecting to Wi-Fi…");
+  - syncing when a book opens and closes, and on wake after a long sleep
+    (quietly in the background);
+  and turns it off again once nothing has used it for IDLE_SECONDS and
+  nothing needs it (an open Grimmory browser, a download or its queue, the
+  library index, a QR screen). Page-turn syncs and bookmarks made while
+  Wi-Fi is off wait and go with the next sync. Wi-Fi that was already on
+  when GZreader started or woke up (the Kindle keeps it on by itself) counts
+  as GZreader's too: up to 1.2.7 it didn't, so on a Kindle that connected at
+  boot Wi-Fi was never turned off.
+- **On**: Wi-Fi stays on; GZreader never turns it off, and turns it back on
+  when something needs it and it has gone off (after waking, out of range).
+- **Off**: background work (syncing when a book opens or closes, after
+  waking, Notes, the auto-download shelf) waits until Wi-Fi is on again,
+  also after a restart (1.6.0; before, the next sync turned it back on).
+  Things you ask for (browsing Grimmory, a download, opening an attachment,
+  checking for updates, connecting) still turn it on, then off after a
+  minute.
 
-Wi-Fi you turn off yourself (Wi-Fi menu item or quick panel) stays off
-for background work (syncing when a book opens or closes, after waking,
-Notes, the auto-download shelf): that waits until you turn Wi-Fi on again,
-also after a restart (1.6.0; before, the next sync turned it back on).
-Things you ask for (browsing Grimmory, a download, opening an attachment,
-checking for updates, connecting) still turn it on, then off after a minute.
-
-Wi-Fi that was already on when GZreader started or woke up (the Kindle
-keeps it on by itself) counts as GZreader's too: up to 1.2.7 it didn't, so
-on a Kindle that connected at boot Wi-Fi was never turned off. Only Wi-Fi
-you turn on yourself (the Wi-Fi menu item or quick panel button) is left
-alone, until you turn it off again.
+Turning Wi-Fi on or off anywhere else (KOReader's Wi-Fi menu, a gesture, the
+network list) chooses On or Off, so the mode always says what you last asked
+for.
 ]]
 
 local UIManager = require("ui/uimanager")
@@ -39,18 +46,43 @@ local Net = {
     clock = os.time,
 }
 
-function Net.enabled()
-    return G_reader_settings:nilOrTrue("gzreader_wifi_on_demand")
+Net.MODES = { "on", "off", "auto" } -- (the tile's order)
+local VALID = { on = true, off = true, auto = true }
+
+--- "on", "off" or "auto".
+function Net.mode()
+    local m = G_reader_settings:readSetting("gzreader_wifi_mode")
+    if VALID[m] then return m end
+    -- (until 1.28: "Wi-Fi only when needed" (on by default) and "you turned it off")
+    if G_reader_settings:isTrue("gzreader_wifi_kept_off") then return "off" end
+    if G_reader_settings:readSetting("gzreader_wifi_on_demand") == false then return "on" end
+    return "auto"
 end
 
---- You turned Wi-Fi off yourself: background work leaves it off.
+--- The next mode on the quick panel's tile: on → off → auto → on.
+function Net.nextMode(m)
+    m = m or Net.mode()
+    for i, v in ipairs(Net.MODES) do
+        if v == m then return Net.MODES[i % #Net.MODES + 1] end
+    end
+    return "auto"
+end
+
+--- You turned Wi-Fi off yourself (mode Off): background work leaves it off.
 function Net.keptOff()
-    return G_reader_settings:isTrue("gzreader_wifi_kept_off")
+    return Net.mode() == "off"
 end
 
-local function setKeptOff(on)
-    if on then G_reader_settings:makeTrue("gzreader_wifi_kept_off")
-    else G_reader_settings:delSetting("gzreader_wifi_kept_off") end
+local check
+local function saveMode(m)
+    if Net.mode() ~= m then Log.info("wifi: mode", m) end
+    G_reader_settings:saveSetting("gzreader_wifi_mode", m)
+    G_reader_settings:delSetting("gzreader_wifi_on_demand")
+    G_reader_settings:delSetting("gzreader_wifi_kept_off")
+    -- the status bars' Wi-Fi icon (the auto mark) and open settings pages
+    pcall(function()
+        UIManager:broadcastEvent(require("ui/event"):new("NetworkStateChanged"))
+    end)
 end
 
 function Net.connected()
@@ -61,7 +93,6 @@ local function busy()
     return next(Net.holders) ~= nil
 end
 
-local check
 local function schedule()
     UIManager:unschedule(check)
     -- (every half minute, on the clock with GZreader's other timers: gzreader_ticks.lua)
@@ -82,7 +113,6 @@ Net._check = function() return check() end -- tests
 --- Something just used the network.
 function Net.touch()
     Net.last_use = Net.clock()
-    pcall(function() require("gzreader_usage").networkUsed() end)
     if Net.ours then schedule() end
 end
 
@@ -131,11 +161,8 @@ function Net.run(fn, opts)
     end
     local function go() Net.touch(); fn() end
     if Net.connected() then return go() end
-    if opts.quiet and Net.keptOff() then return end -- you turned it off: background work waits
-    if not Net.enabled() then
-        if opts.quiet then return end
-        return NetworkMgr:runWhenOnline(go)
-    end
+    local mode = Net.mode()
+    if opts.quiet and mode == "off" then return end -- you turned it off: background work waits
     if Net.connecting then
         table.insert(Net.connecting, go)
         return
@@ -143,7 +170,8 @@ function Net.run(fn, opts)
     local attempt = { go }
     Net.connecting = attempt
     Log.info("wifi: turning on for", opts.reason or "?")
-    Net.ours = not NetworkMgr:isWifiOn()
+    -- (On: it stays on afterwards)
+    Net.ours = mode ~= "on" and not NetworkMgr:isWifiOn()
     local function run_waiting()
         local list = Net.connecting or {}
         Net.connecting = nil
@@ -228,15 +256,24 @@ wrapScan = function()
     NetworkMgr.reconnectOrShowNetworkMenu = Net._scan
 end
 
---- Wi-Fi switched on or off by the user (menu, quick panel, gesture).
+--- Wi-Fi switched on or off by you anywhere else (KOReader's Wi-Fi menu, a
+--- gesture, the network list): On or Off. (Net.setMode's own switching goes
+--- through here too, with the mode already saved.)
+local function userSwitched(on)
+    Net.ours = false
+    UIManager:unschedule(check)
+    local m = on and "on" or "off"
+    if Net.mode() == m then return end
+    if on then Log.info("wifi: turned on by you; left on (Wi-Fi: on)")
+    else Log.info("wifi: turned off by you; background work waits until you turn it on (Wi-Fi: off)") end
+    saveMode(m)
+end
+
 local function wrapToggles()
     if NetworkMgr.toggleWifiOn ~= Net._toggle_on then
         local orig = NetworkMgr.toggleWifiOn
         Net._toggle_on = function(...)
-            Net.user_on, Net.ours = true, false
-            setKeptOff(false)
-            UIManager:unschedule(check)
-            Log.info("wifi: turned on by you; left on")
+            userSwitched(true)
             return orig(...)
         end
         NetworkMgr.toggleWifiOn = Net._toggle_on
@@ -244,10 +281,7 @@ local function wrapToggles()
     if NetworkMgr.toggleWifiOff ~= Net._toggle_off then
         local orig = NetworkMgr.toggleWifiOff
         Net._toggle_off = function(...)
-            Net.user_on, Net.ours = nil, false
-            UIManager:unschedule(check)
-            if not Net.keptOff() then Log.info("wifi: turned off by you; background work waits until you turn it on") end
-            setKeptOff(true)
+            userSwitched(false)
             return orig(...)
         end
         NetworkMgr.toggleWifiOff = Net._toggle_off
@@ -257,36 +291,100 @@ local function wrapToggles()
     if NetworkMgr.disableWifi ~= Net._disable then
         local orig = NetworkMgr.disableWifi
         Net._disable = function(self, cb, interactive, ...)
-            if interactive == true then
-                Net.user_on, Net.ours = nil, false
-                UIManager:unschedule(check)
-                if not Net.keptOff() then Log.info("wifi: turned off by you; background work waits until you turn it on") end
-                setKeptOff(true)
-            end
+            if interactive == true then userSwitched(false) end
             return orig(self, cb, interactive, ...)
         end
         NetworkMgr.disableWifi = Net._disable
     end
-    -- and on again (the Home menu's "Turn Wi-Fi on": enableWifi(cb, interactive = true))
+    -- and on again (the toggle_wifi action: enableWifi(cb, interactive = true))
     if NetworkMgr.enableWifi ~= Net._enable then
         local orig = NetworkMgr.enableWifi
         Net._enable = function(self, cb, interactive, ...)
-            if interactive == true then
-                Net.user_on, Net.ours = true, false
-                UIManager:unschedule(check)
-                setKeptOff(false)
-            end
+            if interactive == true then userSwitched(true) end
             return orig(self, cb, interactive, ...)
         end
         NetworkMgr.enableWifi = Net._enable
     end
 end
 
+--- Switch Wi-Fi on or off the way the quick panel always has (KOReader's
+--- toggle_wifi action: its messages, ZenOS's network list when there's no
+--- saved network). Tests replace it.
+function Net._switch()
+    local Dispatcher = require("dispatcher")
+    Dispatcher:execute({ toggle_wifi = true })
+end
+
+--- Choose On, Off or Auto (the quick panel's tile, Settings → General →
+--- Wi-Fi). Returns true when Wi-Fi itself is being switched (KOReader shows
+--- "Turning on Wi-Fi…" then).
+function Net.setMode(m)
+    if not VALID[m] then return end
+    pcall(wrapToggles)
+    saveMode(m)
+    Net.ours = false
+    UIManager:unschedule(check)
+    local on = NetworkMgr:isWifiOn()
+    if m == "on" and not on or m == "off" and on then
+        local ok, err = pcall(Net._switch)
+        if not ok then Log.warn("wifi: switching failed:", tostring(err)) end
+        return true
+    end
+    if m == "auto" and on and not Net.connecting then
+        -- on now: off once nothing has used it for a minute
+        Net.ours = true
+        Net.last_use = Net.clock()
+        schedule()
+    end
+    return false
+end
+
+--- What each mode is called and what it does (the tile, the menu).
+function Net.describe(m)
+    local _ = require("gettext")
+    m = m or Net.mode()
+    if m == "on" then
+        return { name = _("On"), tile = _("Wi-Fi on"), icon = "wifi",
+            help = _("Wi-Fi stays on. If it goes off (after sleep, out of range), GZreader turns it on again when something needs it.") }
+    elseif m == "off" then
+        return { name = _("Off"), tile = _("Wi-Fi off"), icon = "wifi_off",
+            help = _("Wi-Fi stays off. Syncing waits until Wi-Fi is on again; things you ask for (browsing Grimmory, a download, checking for updates) turn it on, then off again after a minute.") }
+    end
+    local on = NetworkMgr:isWifiOn()
+    return { name = _("Auto"), tile = _("Wi-Fi auto"), icon = on and "wifi_auto" or "wifi_auto_off",
+        help = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync.") }
+end
+
+--- Settings → General → Wi-Fi: On, Off, Auto (zenos common/gz_settings.lua
+--- wifiItem adds ZenOS's network list under them).
+function Net.menuItem()
+    local _ = require("gettext")
+    local items = {}
+    for _i, m in ipairs(Net.MODES) do
+        local d = Net.describe(m)
+        items[#items + 1] = {
+            text = m == "auto" and _("Auto (only when needed)") or d.name,
+            help_text = d.help,
+            radio = true,
+            gz_wifi_mode = m,
+            checked_func = function() return Net.mode() == m end,
+            callback = function() Net.setMode(m) end,
+        }
+    end
+    items[#items].separator = true
+    return {
+        text = _("Wi-Fi"),
+        help_text = _("On: Wi-Fi stays on. Off: it stays off. Auto: GZreader turns it on when it needs it and off again after a minute unused. The quick panel's Wi-Fi tile goes through the three."),
+        mandatory_func = function() return Net.describe().name end,
+        sub_item_table = items,
+    }
+end
+
 --- At start and after waking: Wi-Fi that's on and not turned on by the user
 --- is managed like Wi-Fi GZreader turned on (off after IDLE_SECONDS unused).
 function Net.adopt()
     pcall(wrapToggles) -- (again: ZenOS replaces these functions after we load)
-    if not Net.enabled() or Net.user_on or Net.ours or Net.connecting then return end
+    if Net.mode() == "on" or Net.ours or Net.connecting then return end
     if not NetworkMgr:isWifiOn() then return end
     Net.ours = true
     Net.last_use = Net.clock()

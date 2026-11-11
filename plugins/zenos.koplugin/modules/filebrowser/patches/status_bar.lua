@@ -306,13 +306,15 @@ local function apply_status_bar()
 
     local function getWifiInfo()
         local state = WifiState.get()
+        -- GZreader: "A" after the icon while Wi-Fi is on Auto (common/gz_wifi_icon.lua)
+        local gz_mark = require("common/gz_wifi_icon").mark()
         if state == "searching" then
-            return inline_icons.wifi_on, nil, colors.wifi_searching, nil, true
+            return inline_icons.wifi_on, gz_mark, colors.wifi_searching, nil, true
         end
         if state == "on" then
-            return inline_icons.wifi_on, nil, colors.wifi_on
+            return inline_icons.wifi_on, gz_mark, colors.wifi_on
         elseif not config.wifi_hide_when_off then
-            return inline_icons.wifi_off, nil, colors.wifi_off
+            return inline_icons.wifi_off, gz_mark, colors.wifi_off
         end
         return nil
     end
@@ -778,6 +780,15 @@ local function apply_status_bar()
         return vg
     end
 
+    -- OverlapGroup/VerticalGroup do not track their painted origin; tap hit-tests need it.
+    local function track_origin(widget)
+        local paint = widget.paintTo
+        widget.paintTo = function(w, bb, x, y)
+            w.dimen.x, w.dimen.y = x, y
+            return paint(w, bb, x, y)
+        end
+    end
+
     -- Builds a pure item row (no file-browser navigation) suitable for embedding in other panels.
     -- width: desired row width in pixels (e.g. the panel's inner_width).
     -- opts:  optional table with:
@@ -825,12 +836,7 @@ local function apply_status_bar()
                 left_group,
             },
         }
-        -- OverlapGroup does not track its painted origin.
-        local paint_row = row.paintTo
-        row.paintTo = function(widget, bb, x, y)
-            widget.dimen.x, widget.dimen.y = x, y
-            return paint_row(widget, bb, x, y)
-        end
+        track_origin(row)
         if center_content then
             local CenterContainer = require("ui/widget/container/centercontainer")
             table.insert(row, CenterContainer:new{
@@ -882,6 +888,8 @@ local function apply_status_bar()
             dimen = Geom:new{ w = width, h = Size.line.medium },
             border,
         })
+        vg.dimen = Geom:new{ w = width, h = row_height + Size.line.medium }
+        track_origin(vg)
         vg._zen_status_item_regions = item_regions
         vg._zen_status_item_values = row._zen_status_item_values
         return vg

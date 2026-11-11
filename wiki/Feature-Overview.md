@@ -2,7 +2,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## Reading and your library
 
-- **Grimmory library** — search and browse your [Grimmory](https://grimmory.org) server laid out like a bookshop: Continue reading, Recently added, All books, Libraries, Shelves (and magic shelves), Authors, Series. Lists open at once from a saved copy. → [Grimmory library](Grimmory-Library)
+- **Catalog** — one tab, three pages you swipe between: Books, Audiobooks and Music. Search and browse your [Grimmory](https://grimmory.org) server laid out like a bookshop: Continue reading, Recently added, All books, Libraries, Shelves (and magic shelves), Authors, Series. Lists open at once from a saved copy. → [Grimmory library](Grimmory-Library)
 - **Downloads in the background** — with a progress bar, a queue, resuming after a dropped connection or a restart, and an auto-download shelf. → [Grimmory library](Grimmory-Library#home-folder-and-downloads)
 - **Sync with Grimmory** — reading position (to the exact place, as an EPUB CFI the web reader understands), bookmarks, highlights and notes (both ways, with a three-way merge), ratings and reading sessions. → [Grimmory sync](Grimmory-Sync)
 - **Bookshelves** — books stand on shelves, spines out, the selected one turns to show its cover; audiobooks as a cassette walkman, music as a CD player. Also lists and tiles. → [Home and bookshelves](Home-and-Bookshelves)
@@ -35,6 +35,6 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 ## Looking after itself
 
 - **Updates from GitHub** over Wi‑Fi (or the sync page), with a **What's new** screen after each; **test builds** for trying changes early. → [Updates and test builds](Updates-and-Test-Builds)
-- **Wi‑Fi only when needed** — turned on for what needs it and off after a minute, to save battery. → [Wi‑Fi](Wi-Fi)
+- **Wi‑Fi on, off or auto** — Auto (the default) turns it on for what needs it and off after a minute, to save battery; the quick panel's Wi‑Fi tile goes through the three. → [Wi‑Fi](Wi-Fi)
 - **Faster on old Kindles** — a shadow screen for drawing, precompiled code, pre-sized covers. → [Performance](Performance)
-- **Usage statistics and diagnostics** — Basic, Full (with debug reports) or Off; send the diagnostic log to the developer in one tap. → [Privacy and diagnostics](Privacy-and-Diagnostics)
+- **Debug reports and diagnostics** — no usage statistics; debug reports go to the developer only if you choose, and the diagnostic log goes to the developer in one tap. → [Privacy and diagnostics](Privacy-and-Diagnostics)

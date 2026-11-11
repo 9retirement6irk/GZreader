@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 30
       - name: Tools
         # qemu + ARM libc: run the Kindle's own LuaJIT to precompile bytecode
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
+        run: bash tools/gzreader/ci-apt.sh rsync zip qemu-user-static libc6-armel-cross libgcc-s1-armel-cross
       - name: Official KOReader Kindle 2/3/DX release (its LuaJIT, for the bytecode)
         run: |
           KOREADER_TAG=$(awk '$1 == "koreader" { print $2 }' tools/gzreader/UPSTREAM)

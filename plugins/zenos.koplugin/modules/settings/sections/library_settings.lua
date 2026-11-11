@@ -1098,7 +1098,13 @@ function M.build(ctx)
         },
     }
     double_tap_item.checkmark_callback = double_tap_item.callback
-    table.insert(book_items, IconItem.decorate(double_tap_item, icons.double_tap))
+    -- GZreader: only on a touch screen (the Kindle 2, 3, DX and 4 open books
+    -- with keys or the 5-way: there's nothing to tap)
+    local ok_dev, Device = pcall(require, "device")
+    if not (ok_dev and type(Device) == "table" and type(Device.isTouchDevice) == "function")
+            or Device:isTouchDevice() then
+        table.insert(book_items, IconItem.decorate(double_tap_item, icons.double_tap))
+    end
 
     local context_item = IconItem.decorate({
         text = _("Context menu"),
@@ -1206,6 +1212,14 @@ function M.build(ctx)
             settings_apply.prompt_restart()
         end,
     }, icons.settings_subfolders))
+    -- GZreader: the bookshelves' plank and ornaments (gzreader_shelftheme.lua)
+    do
+        local ok_theme, ShelfTheme = pcall(require, "gzreader_shelftheme")
+        local ok_item, theme_item = pcall(function() return ok_theme and ShelfTheme.settingsItem() or nil end)
+        if ok_item and theme_item then
+            table.insert(appearance_items, IconItem.decorate(theme_item, icons.navbar_styling))
+        end
+    end
     return {
         IconItem.decorate({ text = _("Appearance"), sub_item_table = appearance_items }, icons.navbar_styling),
         IconItem.decorate(folders_item, icons.settings_folders),
