@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → General → Wi‑Fi: HTTP proxy and Network info; no KOReader Wi‑Fi timeout", text = "Settings → General → Wi‑Fi now has HTTP proxy (tap to turn it on or off, hold to set its address) and Network info under the networks; they've left Settings → KOReader → Network. KOReader's \"Disable Wi‑Fi connection when inactive\" is no longer offered: it turned Wi‑Fi off after five quiet minutes even when Wi‑Fi was set to On, and Auto already turns it off when it's not needed. If it was ticked, it's turned off." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },
