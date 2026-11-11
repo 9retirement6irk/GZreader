@@ -167,4 +167,21 @@ function M.wifiItem(gz_item, zen_item)
     return gz_item
 end
 
+--- GZreader's audio settings, by text: they come with the Reader section's
+--- items (gzreader main.lua sectionItems("reader")) but are for music and
+--- audiobooks too, so Settings shows them in General → Audio.
+M.AUDIO_ITEMS = { "Read aloud", "Test audiobook playback", "Pause when headphones are unplugged", "Find the headphone jack" }
+
+--- `items` split into the audio ones (in their order) and the rest.
+function M.splitAudio(items)
+    local _ = require("gettext")
+    local wanted = {}
+    for _i, t in ipairs(M.AUDIO_ITEMS) do wanted[_(t)] = true end
+    local audio, rest = {}, {}
+    for _i, item in ipairs(items or {}) do
+        if type(item) == "table" and wanted[item.text] then audio[#audio + 1] = item else rest[#rest + 1] = item end
+    end
+    return audio, rest
+end
+
 return M

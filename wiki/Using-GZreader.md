@@ -112,7 +112,7 @@ run the same GZreader with ZenOS's touch interface:
   Setup Guide.
 - **Audio:** the Kindle Touch plays audiobooks; the player has buttons for
   chapters, ±30 s, play / pause, sleep timer, volume, the description and
-  close (Settings → Reader → Test audiobook playback finds what works on
+  close (Settings → General → Audio → Test audiobook playback finds what works on
   its firmware). It also reads aloud with the Kindle's voice: in a book,
   swipe down from the top and tap **Listen** in the quick panel (again to
   stop); the first time, a short test finds the Kindle's voice. The

@@ -10,7 +10,7 @@ What the Kindle 3 has (from its diagnostic log, firmware 3.4.3):
 - Amazon's audioServer (com.lab126.audio over lipc): playbin-based, needs
   absolute file paths.
 
-"Test audiobook playback" (Settings → Reader) plays a short MP3 and an AAC tune (converted on the
+"Test audiobook playback" (Settings → General → Audio) plays a short MP3 and an AAC tune (converted on the
 Kindle from the bundled M4A, which also tests the converter) through each
 candidate pipeline, logs what the Kindle says, asks which you heard and
 remembers the pipeline per format.
