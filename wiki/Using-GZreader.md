@@ -90,7 +90,7 @@ run the same GZreader with ZenOS's touch interface:
   slider on Kindles with a frontlight. A tap below it closes it.
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
-- **Notes:** New note, Filter and More are buttons under the title; a note
+- **Notes:** New note, Filter, Layout, Sort, Options and a full screen icon are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
   its toolbar (lists, checklists, headings, italic, bold, tags) and Save are

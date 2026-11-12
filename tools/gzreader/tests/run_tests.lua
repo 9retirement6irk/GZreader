@@ -6389,8 +6389,8 @@ print("Notes (Memos v0.31)")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
     check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
-        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 6,
-        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices), kept notes, attachment limit")
+        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 7,
+        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices, full screen), kept notes, attachment limit")
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
@@ -6656,6 +6656,144 @@ print("Notes (Memos v0.31)")
             "older Memos: no spaces, Filter as before")
         local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
         check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+    end)()
+
+    ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
+        local UIM = require("ui/uimanager")
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local prefs = Notes.prefs(plugin)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned, prefs.fullscreen = nil, nil, nil, nil
+        local function sync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        Notes.notes, Notes.filter, Notes.board = nil, { kind = "all" }, nil
+        local so = Notes.sort(plugin)
+        check(so.by == "created" and not so.reverse and so.pinned and Notes.orderBy(plugin) == "pinned desc, create_time desc",
+            "sort: newest first, pinned first by default (as before)")
+        check(sync() and Notes.notes[1].pinned and Notes.notes[2].content:match("^## Georgia"), "…what Memos sends")
+        Notes.setSort(plugin, "sort_reverse", true)
+        check(Notes.orderBy(plugin) == "pinned desc, create_time asc" and Notes.notes[1].pinned and Notes.notes[2].content:match("large%-print"),
+            "Reverse order: oldest first (pinned still first), asked of Memos")
+        Notes.setSort(plugin, "sort_pinned", false)
+        check(Notes.orderBy(plugin) == "create_time asc" and Notes.notes[1].content:match("large%-print"), "Pinned first off: just by date")
+        Notes.setSort(plugin, "sort_reverse", nil)
+        local target
+        for _i, m in ipairs(Notes.notes) do if m.content:match("^Notes tab for the Kindle") then target = m end end
+        socket.sleep(1.1)
+        Memos:new(plugin.store.memos):update(target.name, target.content .. " Edited.")
+        Notes.setSort(plugin, "sort", "updated")
+        check(Notes.orderBy(plugin) == "update_time desc" and Notes.notes[1].content:match("Edited%.$"), "Date edited: the note just edited first")
+        check(logtxt():find("notes: sort update_time desc", 1, true) ~= nil, "a change of sort is logged")
+        -- on the Kindle too (kept notes, notes written here, a sync through a computer)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        local list = { { content = "a", created = "2026-11-01T00:00:00Z" }, { content = "b", created = "2026-11-03T00:00:00Z", pinned = true },
+            { content = "c", created = "2026-11-02T00:00:00Z", updated = "2026-11-09T00:00:00Z" }, { content = "d", created = "2026-11-02T00:00:00Z" } }
+        local function order() local o = {} for _i, m in ipairs(Notes.sorted(list, plugin)) do o[#o + 1] = m.content end return table.concat(o) end
+        check(order() == "bcda", "on the Kindle: pinned first, newest first; equal dates keep their order")
+        prefs.sort = "updated"
+        check(order() == "bcda" and (function() prefs.sort_pinned = false; return order() == "cbda" end)(),
+            "…by date edited (a note never edited: its date created)")
+        prefs.sort_reverse = true
+        check(order() == "adbc", "…oldest first")
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        -- the dialog
+        local BD = require("ui/widget/buttondialog")
+        local dlg
+        rawset(BD, "new", function(_s, o) dlg = o; return o end)
+        Notes.showSort(plugin)
+        check(dlg.title == "Sort notes by" and #dlg.buttons == 4 and dlg.buttons[1][1].text == "Date created  \u{2713}"
+            and dlg.buttons[2][1].text == "Date edited" and dlg.buttons[4][1].text == "Pinned first  \u{2713}",
+            "Sort (a button, S, Options): Sort notes by: date created or edited, reverse order, pinned first")
+        -- full screen (Layout)
+        Notes.showView(plugin)
+        local last = dlg.buttons[#dlg.buttons][1]
+        check(last.text == "Full screen: no tab bar" and not Notes.fullscreen(plugin), "Layout: Full screen, off by default")
+        local closed, shown_again = {}, nil
+        local real_close, real_show, real_reload = UIM.close, Notes.show, Notes.reloadBoard
+        UIM.close = function(_s, w) closed[#closed + 1] = w end
+        Notes.board = { _gz_first = 4 }
+        local old_board = Notes.board
+        Notes.show = function() shown_again = { }; Notes.board = shown_again; return shown_again end
+        Notes.reloadBoard = function() end
+        last.callback()
+        check(Notes.fullscreen(plugin) and closed[#closed] == old_board and shown_again and shown_again._gz_goto == 4,
+            "Full screen on: kept, and the board made again (no tab bar), at the same notes")
+        check(logtxt():find("notes: full screen true", 1, true) ~= nil, "…logged")
+        Notes.board = { _gz_closed = true }
+        Notes.setFullscreen(plugin, false)
+        check(not Notes.fullscreen(plugin) and prefs.fullscreen == nil, "…and off again")
+        UIM.close, Notes.show, Notes.reloadBoard = real_close, real_show, real_reload
+        rawset(BD, "new", nil)
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        local show_src = nsrc:match("function Notes%.show%(plugin%)(.-)\nend\n")
+        check(show_src and show_src:find("name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil", 1, true)
+            and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
+            and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
+            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin))", 1, true)
+            and show_src:find("menu.onGzOptions = function() Notes.showOptions(plugin); return true end", 1, true),
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: Options")
+        -- the buttons (touch): New note, Filter, Layout, Sort, Options, and Full screen as an icon (an X in full screen)
+        local acts = Notes.actions(plugin)
+        local bnames = {}
+        for i = 1, 5 do bnames[i] = acts[i][1] end
+        check(table.concat(bnames, "|") == "New note|Filter|Layout|Sort|Options" and acts[6].icon_file:match("/icons/panel/fullscreen%.svg$")
+            and acts[6].label == "Full screen" and io.open(acts[6].icon_file) ~= nil,
+            "touch: New note, Filter, Layout, Sort, Options, and the full screen icon")
+        local opened = {}
+        local real = { edit = Notes.edit, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
+            showOptions = Notes.showOptions, setFullscreen = Notes.setFullscreen }
+        for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
+        for i = 1, 5 do acts[i][2]() end
+        acts[6].callback()
+        for k, fn in pairs(real) do Notes[k] = fn end
+        check(table.concat(opened, ",") == "edit,showFilter,showView,showSort,showOptions,setFullscreen=true",
+            "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
+        prefs.fullscreen = true
+        acts = Notes.actions(plugin)
+        check(acts[6].icon_file:match("/icons/panel/close%.svg$") and acts[6].label == "Leave full screen" and io.open(acts[6].icon_file) ~= nil,
+            "…in full screen the icon is an X, to leave it")
+        opened = {}
+        Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
+        acts[6].callback()
+        Notes.setFullscreen = real.setFullscreen
+        check(opened[1] == "false", "…which turns it off")
+        prefs.fullscreen = nil
+        -- Options (Kindle 4's Menu, M): Sort and Full screen too
+        rawset(BD, "new", function(_s, o) dlg = o; return o end)
+        Notes.showOptions(plugin)
+        local otexts = {}
+        for _i, row in ipairs(dlg.buttons) do otexts[#otexts + 1] = row[1].text end
+        rawset(BD, "new", nil)
+        check(table.concat(otexts, "|"):match("|Sort…|Full screen: no tab bar|Refresh"), "Options: Sort… and Full screen too (no touch buttons on a Kindle 4)")
+        local Touch = require("gzreader_touch")
+        local cw = Touch.chipWidths(564, acts, 6, 46)
+        check(cw[1] == cw[5] and cw[6] == 46 and cw[1] * 5 + 46 + 6 * 5 <= 564 and cw[1] * 5 + 46 + 6 * 5 > 558,
+            "the icon button is narrow; the text buttons share the rest of the row")
+        -- on top?
+        local board = { plugin = plugin }
+        Notes.board = board
+        local stack = UIM._window_stack
+        UIM._window_stack = { { widget = {} }, { widget = board } }
+        local top1 = Notes.onTop()
+        UIM._window_stack = { { widget = board }, { widget = {} } }
+        local top2 = Notes.onTop()
+        UIM._window_stack = stack
+        check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+        -- S sorts (keyboard Kindles)
+        local sorted_shown
+        local real_sort = Notes.showSort
+        Notes.showSort = function(p) sorted_shown = p end
+        Notes.Board.onSelectByShortCut(board, nil, { key = "S" })
+        Notes.showSort = real_sort
+        check(sorted_shown == plugin, "S on the board: Sort notes by")
+        Notes.board = nil
     end)()
 
     -- disconnect

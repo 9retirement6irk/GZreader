@@ -71,23 +71,69 @@ function Touch.buttonRow(width, actions, opts)
         sep_width = 0 }
 end
 
---- A row of rounded buttons ("chips"), spread over `width`.
+--- How wide each chip of a row is: icon chips (`icon_file`) square-ish,
+--- `icon_w` wide; text chips share the rest. Returns { w, … } per action.
+function Touch.chipWidths(width, actions, gap, icon_w)
+    local n, icons = #actions, 0
+    for _i, a in ipairs(actions) do if a.icon_file then icons = icons + 1 end end
+    local text_w = n > icons and math.floor((width - gap * (n - 1) - icon_w * icons) / (n - icons)) or 0
+    local out = {}
+    for i, a in ipairs(actions) do out[i] = a.icon_file and icon_w or text_w end
+    return out
+end
+
+--- A chip with a picture (an SVG file) instead of text: `h` tall, framed like the others.
+local function iconChip(a, w, h, show_parent)
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local Geom = require("ui/geometry")
+    local GestureRange = require("ui/gesturerange")
+    local IconWidget = require("ui/widget/iconwidget")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local Size = require("ui/size")
+    local b = Size.border.thin
+    local isz = math.floor(h * 0.6)
+    local box = InputContainer:new{ dimen = Geom:new{ w = w, h = h }, show_parent = show_parent,
+        FrameContainer:new{ width = w, height = h, padding = 0, margin = 0, bordersize = b, radius = Size.radius.button,
+            CenterContainer:new{ dimen = Geom:new{ w = w - 2 * b, h = h - 2 * b },
+                IconWidget:new{ file = a.icon_file, width = isz, height = isz, alpha = true } } } }
+    box.ges_events = { TapChip = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+    function box:onTapChip() if a.callback then a.callback() end return true end
+    box.gz_label = a.label -- (what it does, for tests and logs)
+    return box
+end
+
+--- A row of rounded buttons ("chips"), spread over `width`. An action is
+--- { text, callback } or { icon_file = "….svg", label, callback } (a
+--- narrower chip with a picture).
 function Touch.chips(width, actions, show_parent)
     local Button = require("ui/widget/button")
     local HorizontalGroup = require("ui/widget/horizontalgroup")
     local HorizontalSpan = require("ui/widget/horizontalspan")
     local Size = require("ui/size")
     local gap = Device.screen:scaleBySize(10)
-    local n = #actions
-    local w = math.floor((width - gap * (n - 1)) / n)
+    local icon_w = Device.screen:scaleBySize(46)
+    local nicons = 0
+    for _i, a in ipairs(actions) do if a.icon_file then nicons = nicons + 1 end end
+    if nicons > 0 and #actions > 4 then gap = Device.screen:scaleBySize(6) end -- (six on a 600 px screen)
+    local widths = Touch.chipWidths(width, actions, gap, icon_w)
+    local small = nicons > 0 and #actions > 4
+    -- the text chips first: an icon chip is as tall as they are
+    local made, h = {}, nil
+    for i, a in ipairs(actions) do
+        if not a.icon_file then
+            made[i] = Button:new{
+                text = a.text or a[1], callback = a.callback or a[2], width = widths[i], show_parent = show_parent,
+                bordersize = Size.border.thin, radius = Size.radius.button, margin = 0,
+                padding = Size.padding.small, text_font_size = small and 16 or 17, text_font_bold = false,
+            }
+            h = h or made[i]:getSize().h
+        end
+    end
     local row = HorizontalGroup:new{ align = "center" }
     for i, a in ipairs(actions) do
         if i > 1 then row[#row + 1] = HorizontalSpan:new{ width = gap } end
-        row[#row + 1] = Button:new{
-            text = a.text or a[1], callback = a.callback or a[2], width = w, show_parent = show_parent,
-            bordersize = Size.border.thin, radius = Size.radius.button, margin = 0,
-            padding = Size.padding.small, text_font_size = 17, text_font_bold = false,
-        }
+        row[#row + 1] = made[i] or iconChip(a, widths[i], h or Device.screen:scaleBySize(40), show_parent)
     end
     return row
 end
