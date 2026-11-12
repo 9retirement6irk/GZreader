@@ -1,5 +1,4 @@
 local _ = require("gettext")
-local UIManager = require("ui/uimanager")
 
 local settings_apply = require("modules/settings/zen_settings_apply")
 local updater        = require("modules/settings/gz_updater") -- GZreader: not ZenOS's updater (gz_updater.lua)
@@ -15,7 +14,6 @@ local reader_section   = require("modules/settings/sections/reader_settings")
 local extras_section   = require("modules/settings/sections/extras_settings")
 local general_section  = require("modules/settings/sections/general_settings")
 local about_section    = require("modules/settings/sections/about_settings")
-local shutdown         = require("common/shutdown")
 
 local M = {}
 
@@ -96,21 +94,31 @@ function M.build(plugin)
         local item = require("common/gz_settings").wifiItem(gz_general.wifi, at and general_items[at])
         if at then general_items[at] = item else table.insert(general_items, 1, item) end
     end
+    -- GZreader: Advanced goes to the end of About (with the diagnostic log's
+    -- items at its top, KOReader's whole menu at its end), and Send debug
+    -- reports automatically just above it (owner, 2026-11-11).
+    local about_tail = {}
+    local advanced_at = index_of(general_items, _("Advanced"))
+    local advanced_item = advanced_at and table.remove(general_items, advanced_at) or nil
     if type(gz_general.diagnostics) == "table" and #gz_general.diagnostics > 0 then
         local stay, advanced = require("common/gz_settings").splitDiagnostics(gz_general.diagnostics)
-        local at = index_of(general_items, _("Advanced"))
-        local adv = at and general_items[at].sub_item_table
+        local adv = advanced_item and advanced_item.sub_item_table
         if type(adv) ~= "table" then stay, advanced = gz_general.diagnostics, {} end
-        at = at or (#general_items + 1)
-        if #stay > 0 then
-            general_items[at - 1].separator = true
-            for i, item in ipairs(stay) do table.insert(general_items, at + i - 1, item) end
-            stay[#stay].separator = true
-        end
+        for _i, item in ipairs(stay) do about_tail[#about_tail + 1] = item end
         if #advanced > 0 then
             for i, item in ipairs(advanced) do table.insert(adv, i, item) end
             advanced[#advanced].separator = true
         end
+    end
+    if advanced_item then
+        if type(advanced_item.sub_item_table) == "table" then
+            table.insert(advanced_item.sub_item_table, require("common/gz_settings").koreaderMenuItem(plugin_root))
+        end
+        about_tail[#about_tail + 1] = advanced_item
+    end
+    if #about_tail > 0 then
+        if about_items[#about_items] then about_items[#about_items].separator = true end
+        for _i, item in ipairs(about_tail) do about_items[#about_items + 1] = item end
     end
     local gz_reader = gz_section("reader")
     -- GZreader: read aloud, the audiobook test and the headphone jack are for
@@ -236,29 +244,8 @@ function M.build(plugin)
                 }, icons.sync),
             }, 6),
         }, icons.connect),
-        {
-            text = _("KOReader"),
-            icon_file = plugin_root .. "/icons/koreader.png",
-            _zen_settings_root = "koreader",
-            sub_item_table_func = function()
-                local items = require("modules/menu/app_launcher/native_menu").settingsItems("active")
-                table.insert(items, IconItem.decorate({
-                    text = _("Quit KOReader"),
-                    icon_name = "close",
-                    keep_menu_open = true,
-                    callback = function()
-                        UIManager:show(require("ui/widget/confirmbox"):new{
-                            text = _("Are you sure you want to quit KOReader?"),
-                            ok_text = _("Quit"),
-                            ok_callback = function()
-                                shutdown.broadcastExit(plugin)
-                            end,
-                        })
-                    end,
-                }, icons.delete))
-                return items
-            end,
-        },
+        -- GZreader: no KOReader section: KOReader's whole menu is About →
+        -- Advanced → KOReader settings (gz_settings.koreaderMenuItem)
         IconItem.decorate({ text = _("About"), sub_item_table = about_items }, icons.settings_about),
     }
 

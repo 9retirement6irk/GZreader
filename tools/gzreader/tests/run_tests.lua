@@ -2300,13 +2300,15 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     package.loaded["apps/filemanager/filemanager"] = had_fm
     gsettings.activate_menu = nil
     -- KOReader's Disable double tap: a saved untick cleared
-    gsettings.disable_double_tap = false
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = false, nil
     check(Touch.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
         "Disable double tap unticked: cleared (taps in a book don't wait for a second one)")
-    check(Touch.forgetKOReaderDoubleTap() == false, "nothing saved: nothing to do")
-    gsettings.disable_double_tap = true
+    gsettings.disable_double_tap = false
+    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == false,
+        "once only: unticked again later (About → Advanced → KOReader settings), it stays unticked")
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = true, nil
     check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
-    gsettings.disable_double_tap = nil
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = nil, nil
     local main_src = io.open(PLUGIN .. "/main.lua"):read("*a")
     check(main_src:find('require("gzreader_touch").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
     -- ZenOS's lists of KOReader rows (zenos common/gz_settings.lua)
@@ -3624,13 +3626,15 @@ end)()
 print("Wi-Fi: KOReader's \"Disable Wi-Fi connection when inactive\" cleared (its row is hidden)")
 ;(function()
     local Net = require("gzreader_net")
-    gsettings.auto_disable_wifi = true
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = true, nil
     check(Net.forgetKOReaderPowersave() == true and gsettings.auto_disable_wifi == nil,
         "a saved tick is cleared (it turned Wi-Fi off after 5 quiet minutes even on On)")
-    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == nil, "nothing saved: nothing to do")
-    gsettings.auto_disable_wifi = false
+    gsettings.auto_disable_wifi = true
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == true,
+        "once only: ticked again later (About → Advanced → KOReader settings), it stays ticked")
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = false, nil
     check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == false, "unticked: left as it is")
-    gsettings.auto_disable_wifi = nil
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = nil, nil
     check(io.open(PLUGIN .. "/gzreader_net.lua"):read("*a"):find("pcall(Net.forgetKOReaderPowersave)", 1, true) ~= nil,
         "done at start (Net.start)")
 end)()

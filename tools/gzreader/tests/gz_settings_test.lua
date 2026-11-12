@@ -136,15 +136,30 @@ if okb then
     local items = root.sub_item_table
     local general = find(items, "General").sub_item_table
     local gen = texts(general)
-    local advanced = find(general, "Advanced")
+    local about_rows = find(items, "About").sub_item_table
+    local advanced = find(about_rows, "Advanced")
     local adv = texts(advanced and advanced.sub_item_table)
     print("    General: " .. gen)
     print("    Advanced: " .. adv)
-    check(adv:find("^|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|") ~= nil,
-        "General → Advanced starts with the diagnostic log's items")
+    check(find(general, "Advanced") == nil and not gen:find("Send debug reports automatically", 1, true),
+        "General: no Advanced, no Send debug reports automatically (both in About now) " .. gen)
+    check(texts(about_rows):find("|Report a bug|Send debug reports automatically|Advanced|$") ~= nil and not texts(about_rows):find("Usage statistics", 1, true),
+        "About ends with Send debug reports automatically, then Advanced (no Usage statistics) " .. texts(about_rows))
+    check(adv == "|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser (QR code)|Save diagnostic log (USB)|KOReader settings|",
+        "About → Advanced: the diagnostic log's items, then KOReader settings " .. adv)
     check(advanced.sub_item_table[4].separator == true, "a line under them")
-    check(gen:find("|Send debug reports automatically|Advanced|", 1, true) ~= nil and not gen:find("Usage statistics", 1, true),
-        "Send debug reports automatically stays in General, just above Advanced (no Usage statistics)")
+    -- KOReader settings: KOReader's whole menu, nothing left out
+    local ko = advanced.sub_item_table[5]
+    local asked
+    package.loaded["modules/menu/app_launcher/native_menu"] = { settingsItems = function(scope, id, opts)
+        asked = { scope = scope, id = id, unfiltered = type(opts) == "table" and opts.unfiltered }
+        return { { text = "Plugin management" }, { text = "Network" } }
+    end }
+    local ko_rows = ko and ko.sub_item_table_func and ko.sub_item_table_func()
+    package.loaded["modules/menu/app_launcher/native_menu"] = nil
+    check(ko and ko._zen_settings_root == "koreader" and texts(ko_rows) == "|Plugin management|Network|"
+            and asked and asked.scope == "active" and asked.id == nil and asked.unfiltered == true,
+        "KOReader settings: KOReader's own menu of what's open, unfiltered " .. texts(ko_rows))
     for _i, gone in ipairs({ "Diagnostic logging", "Send diagnostic log to the developer", "Save diagnostic log (USB)" }) do
         check(not gen:find("|" .. gone .. "|", 1, true), "not in General itself: " .. gone)
     end
@@ -154,7 +169,10 @@ if okb then
     for _i, gone in ipairs({ "Show hidden files", "Extract metadata" }) do
         check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced (hidden on GZreader): " .. gone)
     end
-    check(adv:find("|Allow dragging reader modals|", 1, true) ~= nil, "Advanced still has Allow dragging reader modals")
+    check(not adv:find("|Allow dragging reader modals|", 1, true), "no Allow dragging reader modals (hidden on GZreader)")
+    check(read("config/manager.lua"):find("cfg._meta.gz_modal_drag_off ~= true", 1, true)
+            and read("config/manager.lua"):find("cfg.developer.allow_modal_drag = nil", 1, true),
+        "a saved Allow dragging reader modals is turned off once (config/manager.lua)")
     local mgr = read("config/manager.lua")
     check(mgr:find("cfg._meta.gz_show_hidden_off ~= true", 1, true) and mgr:find("cfg.developer.show_hidden_outside_home = nil", 1, true)
             and mgr:find('g:saveSetting("show_hidden", false)', 1, true),
@@ -196,7 +214,7 @@ if okb then
     check(not rsrc:find('_("Flash on every', 1, true), "Reader → Appearance: no flash settings left")
     local asrc = read("modules/settings/sections/advanced_settings.lua")
     check(not asrc:find('_("Partial pages refresh")', 1, true) and not asrc:find('_("Flash when the screen changes")', 1, true),
-        "General → Advanced: no flash settings left")
+        "About → Advanced: no flash settings left")
     -- what each Kindle sees (gzreader_eink: page turns on every Kindle, screen changes without REAGL)
     local function refreshTexts(eink)
         local keep = package.loaded["gzreader_eink"]
@@ -333,6 +351,10 @@ check(texts(copied) == "|Wi-Fi connection|More tools|HTTP proxy|Help|no id|",
 check(require("common/gz_settings").KOREADER_HIDDEN.network_powersave == true,
     "KOReader section: no \"Disable Wi-Fi connection when inactive\" (it turned Wi-Fi off on On; Auto does its job)")
 check(texts(copied[2].sub_item_table) == "|Advanced settings|", "and inside submenus " .. texts(copied[2].sub_item_table))
+local all = KS.copyItems(src, {}, true, nil, function() return true end)
+check(texts(all):find("|Plugin management|", 1, true) and texts(all[3].sub_item_table) == "|Patches|Advanced settings|Developer options|"
+        and texts(all._zen_refresh()):find("|Plugin management|", 1, true),
+    "unfiltered (About → Advanced → KOReader settings): nothing left out, inside submenus and after a refresh too " .. texts(all))
 local n_keep = select(2, read("modules/menu/app_launcher/native_menu.lua"):gsub("keepKOReaderItem", ""))
 check(n_keep == 2, "the KOReader section's top menus (File browser) are filtered too")
 check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem", 1, true) ~= nil,
@@ -374,9 +396,9 @@ check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem",
     check(texts(out._zen_refresh()) == "|Units|" and refreshed == 1, "…and again after the page refreshes")
     check(GzS.dropKOReaderDuplicates(nil) == nil, "nil: nil")
     local nm = read("modules/menu/app_launcher/native_menu.lua")
-    check(nm:find('dropKOReaderDuplicates(\n                        Settings.copyItems(children, menu, setting))', 1, true) ~= nil
+    check(nm:find('local copied = Settings.copyItems(children, menu, setting, nil, keep_all)\n                    if gz_all then return copied end\n                    return require("common/gz_settings").dropKOReaderDuplicates(copied)', 1, true) ~= nil
         and select(2, nm:gsub("dropKOReaderDuplicates", "")) == 1,
-        "only the KOReader section drops them (not settingsItems(scope, id): End of book's End of document action)")
+        "only the KOReader menu's top level drops them, and not when unfiltered (not settingsItems(scope, id): End of book's End of document action)")
     check(read("modules/settings/sections/end_book_settings.lua"):find('settingsItems("active", "document_end_action")', 1, true) ~= nil,
         "End of book still takes End of document action by its id")
 end)()

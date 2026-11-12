@@ -161,7 +161,7 @@ function M.build(ctx)
     table.insert(items, {
         icon_glyph = icons.settings_bug,
         text      = _("Report a bug"),
-        help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer (the same as Settings → General → Advanced → Send diagnostic log to the developer)."),
+        help_text = _("Asks what happened, then sends it with the diagnostic log to GZreader's developer (the same as Settings → About → Advanced → Send diagnostic log to the developer)."),
         callback  = function(touchmenu)
             local g = GzSettings.gzreader()
             if not (g and type(g.sendLogToDeveloper) == "function") then return end

@@ -27,7 +27,7 @@ function M.dropHiddenTabs(list)
     return out
 end
 
---- KOReader menu items the Settings → KOReader section leaves out (by
+--- KOReader menu items GZreader leaves out where it shows KOReader's rows (by
 --- KOReader's menu id), because they work against GZreader or ZenOS:
 M.KOREADER_HIDDEN = {
     -- turning off gzreader, zenos or coverbrowser breaks GZreader; patches are untested code
@@ -69,12 +69,13 @@ M.KOREADER_HIDDEN = {
     document_metadata_location_move = true,
 }
 
---- Whether the KOReader section shows `item` (a KOReader menu item).
+--- Whether `item` (a KOReader menu item) is shown (not in About → Advanced →
+--- KOReader settings, which shows everything).
 function M.keepKOReaderItem(item)
     return not (type(item) == "table" and type(item.id) == "string" and M.KOREADER_HIDDEN[item.id])
 end
 
---- KOReader menu items the Settings → KOReader section leaves out because
+--- KOReader menu items KOReader's menu (native_menu.settingsItems, filtered) leaves out because
 --- GZreader has them elsewhere. Unlike KOREADER_HIDDEN they still work where
 --- GZreader takes one by its id (Reader → End of book's End of document
 --- action), so only the section drops them (native_menu.settingsItems).
@@ -218,6 +219,28 @@ function M.withFlashRows(list, gz_items)
     return list
 end
 
+--- About → Advanced → KOReader settings: KOReader's whole menu, nothing left
+--- out (native_menu.settingsItems unfiltered: also what KOREADER_HIDDEN and
+--- KOREADER_DUPLICATES leave out elsewhere), from the menu of whatever is open
+--- (Home or the book). It was the Settings → KOReader section until the owner
+--- asked for it here (2026-11-11). `plugin_root`: ZenOS's folder (the icon).
+function M.koreaderMenuItem(plugin_root, native)
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    return {
+        -- (gettext keeps "KOReader settings" as it is; any other string naming KOReader shows GZreader)
+        text = _("KOReader settings"),
+        help_text = T(_("All of %1's own settings, as %1 has them, including those GZreader leaves out elsewhere because they can work against it (plugin and patch management, developer options, Wi-Fi actions). Change them only if you know what they do."), "KOReader"),
+        icon_file = plugin_root and (plugin_root .. "/icons/koreader.png") or nil,
+        _zen_settings_root = "koreader",
+        sub_item_table_func = function()
+            native = native or require("modules/menu/app_launcher/native_menu")
+            local ok, items = pcall(native.settingsItems, "active", nil, { unfiltered = true })
+            return ok and type(items) == "table" and items or {}
+        end,
+    }
+end
+
 --- About's first two lines: GZreader's version, then what it's built on.
 function M.aboutLines(gz_version, zen_version, ko_version)
     local _ = require("gettext")
@@ -286,7 +309,7 @@ function M.gzreaderVersion()
 end
 
 --- Of GZreader's diagnostics items (Settings → General), the ones that move
---- into General → Advanced: everything but Send debug reports automatically,
+--- into About → Advanced: everything but Send debug reports automatically,
 --- which stays in General where it's easy to find (as Usage statistics did
 --- up to 1.28.1; GZreader no longer sends them).
 function M.splitDiagnostics(items)
