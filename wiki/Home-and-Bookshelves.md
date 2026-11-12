@@ -53,7 +53,9 @@ the book once you open one.
       ornaments there (only on Home, say);
     - *One on a page* (to begin with), *Up to two*, *Up to three*, or *One
       on every shelf*. A page's lowest shelves with books get them. Two or
-      three on a page are different ones;
+      three on a page are different ones. In Downloads the top shelf has
+      none while the walkman (Audiobooks) or the CD player (Music) stands
+      on it;
     - *At the right end of the shelf* (to begin with), *At the left end*
       (the books start after it), or *Scattered*: the first on the right,
       the next on the left, then the right again. In the Catalog an ornament
