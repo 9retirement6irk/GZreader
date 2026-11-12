@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Touch Kindles: choose how the quick panel opens (a tap at the top, a swipe down)", text = "Settings → Interface → Quick panel starts with Open with a tap at the top and Open with a swipe down from the top (both by default; untick one to keep only the other). They're KOReader's Activate menu, which is gone from Settings → KOReader with its Auto-show bottom menu. Also gone from there: Disable double tap (GZreader has no double-tap actions; if it was unticked, taps in a book waited for a second one, and it's ticked again) and Book metadata location and Move book metadata (GZreader looks for a book's metadata next to it)." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

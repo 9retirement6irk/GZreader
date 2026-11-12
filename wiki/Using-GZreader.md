@@ -3,7 +3,8 @@ How you drive GZreader on each device: the quick panel (the same on all of them)
 ## The quick panel
 
 One panel of square tiles, on every Kindle and Nook: **Menu** opens it (on a
-touch Kindle, swipe down from the top). Each tile has a letter for the
+touch Kindle, a tap at the top or a swipe down from the top; [which of
+them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 
@@ -23,6 +24,14 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and
 holding a book at Home or in Downloads opens Manage book.
+
+### How it opens
+
+On a touch Kindle, **Settings → Interface → Quick panel** starts with **Open
+with a tap at the top** and **Open with a swipe down from the top** (both by
+default; in a book too). Untick one to keep only the other: one always stays
+ticked. They're KOReader's "Activate menu", which no longer shows in Settings →
+KOReader (nor its "Auto-show bottom menu", which does nothing in GZreader).
 
 ### Choosing the tiles
 

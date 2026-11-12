@@ -2270,6 +2270,56 @@ do
 
 end
 
+print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and metadata rows hidden")
+;(function()
+    local Panel = require("gzreader_panel")
+    local Touch = require("gzreader_touch")
+    local saved_on = Touch.on
+    Touch.on = function() return false end
+    check(#Panel.openRows() == 0, "a Kindle without a touch screen: no rows (the Menu key opens it)")
+    Touch.on = function() return true end
+    local rows = Panel.openRows()
+    local item = Panel.settingsItem()
+    Touch.on = saved_on
+    check(#rows == 2 and rows[1].text == "Open with a tap at the top" and rows[2].text == "Open with a swipe down from the top"
+            and rows[2].separator and item.sub_item_table[1].text == rows[1].text and item.sub_item_table[2].text == rows[2].text,
+        "a touch Kindle: Settings → Interface → Quick panel starts with Open with a tap / with a swipe")
+    local fm = require("apps/filemanager/filemanager")
+    local had = fm.instance
+    fm.instance = { menu = {} }
+    gsettings.activate_menu = nil
+    check(rows[1].checked_func() and rows[2].checked_func(), "by default both (KOReader's swipe_tap)")
+    rows[1].callback()
+    check(gsettings.activate_menu == "swipe" and not rows[1].checked_func() and rows[2].checked_func()
+            and fm.instance.menu.activation_menu == "swipe", "untick the tap: a swipe only, Home's menu told at once")
+    rows[2].callback()
+    check(gsettings.activate_menu == "tap" and rows[1].checked_func() and not rows[2].checked_func(),
+        "untick the swipe then: a tap only (one of them stays, as in KOReader)")
+    rows[2].callback()
+    check(gsettings.activate_menu == "swipe_tap" and rows[1].checked_func() and rows[2].checked_func(), "tick it again: both")
+    fm.instance = had
+    gsettings.activate_menu = nil
+    -- KOReader's Disable double tap: a saved untick cleared
+    gsettings.disable_double_tap = false
+    check(Panel.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
+        "Disable double tap unticked: cleared (taps in a book don't wait for a second one)")
+    check(Panel.forgetKOReaderDoubleTap() == false, "nothing saved: nothing to do")
+    gsettings.disable_double_tap = true
+    check(Panel.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
+    gsettings.disable_double_tap = nil
+    local main_src = io.open(PLUGIN .. "/main.lua"):read("*a")
+    check(main_src:find('require("gzreader_panel").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
+    -- ZenOS's lists of KOReader rows (zenos common/gz_settings.lua)
+    local GzS = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_settings.lua")
+    check(GzS.KOREADER_DUPLICATES.menu_activate and not GzS.KOREADER_HIDDEN.menu_activate,
+        "Settings → KOReader: no Activate menu (Interface → Quick panel has it; its Auto-show bottom menu goes with it)")
+    check(GzS.KOREADER_HIDDEN.screen_disable_double_tap and GzS.KOREADER_HIDDEN.document_metadata_location
+            and GzS.KOREADER_HIDDEN.document_metadata_location_move,
+        "hidden: Disable double tap, Book metadata location, Move book metadata")
+    check(not GzS.KOREADER_HIDDEN.document_auto_save and not GzS.KOREADER_HIDDEN.document_metadata_arc,
+        "Save book metadata and the metadata archive stay")
+end)()
+
 print("Download progress + staying awake")
 do
     local Progress = require("gzreader_progress")

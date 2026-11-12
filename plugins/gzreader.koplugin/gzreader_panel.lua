@@ -220,8 +220,62 @@ local function shown(group, list)
 end
 
 --- Settings → Interface → Quick panel: a tick per tile, by group.
+--- How the quick panel opens on a touch Kindle: a tap at the top, a swipe
+--- down from the top, or both. It's KOReader's "Activate menu" (G_reader_settings
+--- activate_menu: "swipe_tap", the default, "tap" or "swipe"), which opens the
+--- quick panel since GZreader puts it in place of KOReader's menu; its row in
+--- Settings → KOReader is left out (zenos common/gz_settings.lua
+--- KOREADER_DUPLICATES.menu_activate), with the "Auto-show bottom menu" under
+--- it (ZenOS keeps KOReader's bottom menu shut on touch Kindles). As there,
+--- unticking one ticks the other: the panel always opens somehow. None on a
+--- Kindle without a touch screen (the Menu key opens it).
+function Panel.openRows()
+    if not require("gzreader_touch").on() then return {} end
+    local function mode() return G_reader_settings:readSetting("activate_menu") or "swipe_tap" end
+    local function set(value)
+        G_reader_settings:saveSetting("activate_menu", value)
+        -- (Home's and an open book's menus read it once, when they're made)
+        for _i, name in ipairs({ "apps/filemanager/filemanager", "apps/reader/readerui" }) do
+            local ok, App = pcall(require, name)
+            local ui = ok and type(App) == "table" and App.instance
+            if ui and ui.menu then ui.menu.activation_menu = value end
+            if ui and ui.config then ui.config.activation_menu = value end
+        end
+    end
+    return {
+        {
+            text = _("Open with a tap at the top"),
+            help_text = _("A tap at the top of the screen opens the quick panel (in a book too). Untick it to open it only with a swipe down."),
+            checked_func = function() return mode() ~= "swipe" end,
+            callback = function() set(mode() ~= "swipe" and "swipe" or "swipe_tap") end,
+        },
+        {
+            text = _("Open with a swipe down from the top"),
+            help_text = _("A swipe down from the top of the screen opens the quick panel (in a book too). Untick it to open it only with a tap at the top."),
+            checked_func = function() return mode() ~= "tap" end,
+            callback = function() set(mode() ~= "tap" and "tap" or "swipe_tap") end,
+            separator = true,
+        },
+    }
+end
+
+--- KOReader's "Disable double tap" (disable_double_tap) is left out of Settings
+--- → KOReader (zenos common/gz_settings.lua KOREADER_HIDDEN): GZreader has no
+--- double-tap actions (no gestures plugin), so unticked it only made every tap
+--- in a book wait for a second one. A saved untick is cleared (the default,
+--- taps at once; a book opened after reads it).
+function Panel.forgetKOReaderDoubleTap()
+    if G_reader_settings:readSetting("disable_double_tap") == false then
+        G_reader_settings:delSetting("disable_double_tap")
+        require("gzreader_log").info("panel: KOReader's \"Disable double tap\" back on (GZreader has no double-tap actions)")
+        return true
+    end
+    return false
+end
+
 function Panel.settingsItem()
     local groups = {}
+    for _i, row in ipairs(Panel.openRows()) do groups[#groups + 1] = row end
     for _i, g in ipairs(Panel.catalog()) do
         local items = {}
         for _j, t in ipairs(g.tiles) do
@@ -252,7 +306,7 @@ function Panel.settingsItem()
     }
     return {
         text = _("Quick panel"),
-        help_text = _("The tiles on the quick panel (Menu, or swipe down from the top). Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
+        help_text = _("How the quick panel opens (touch Kindles: a tap at the top, a swipe down; the Menu key on the others) and its tiles. Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
         sub_item_table = groups,
     }
 end
