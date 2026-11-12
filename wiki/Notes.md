@@ -16,18 +16,24 @@ API to `/api` are found too.
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
 - **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
-  moves around the notes. **N** new note, **F** filter, **L** layout, **S** sort, **M** options
-  (refresh, connect again, disconnect, and Sort and Full screen too; the Menu key opens the quick panel in tab views,
-  and Options on a Kindle 4).
+  moves around the notes. **N** new note, **F** filter, **L** layout, **S** sort, **M** connection
+  (the Menu key opens the quick panel in tab views).
   Touch Kindles have buttons under the title instead: **New note**, **Filter**, **Layout**,
-  **Sort**, **Options**, and an icon for **Full screen** (an **X** while in full screen, to leave it).
-- **Sort** (the Sort button, S, or Options → Sort…): *Sort notes by*
+  **Sort**, **Connection**, and an icon for **Full screen** (an **X** while in full screen, to leave it).
+  A Kindle 4 has neither letter keys nor buttons: its **Menu** key on the board
+  opens New note, Filter…, Layout, Sort…, Full screen and Connection….
+- **Connection** (the button, M, or Menu → Connection… on a Kindle 4): your
+  Memos account only: **Refresh** (with how many changes are waiting to be
+  sent), **Connect again** (a new address or access token) and
+  **Disconnect** (asks first; the notes kept on the Kindle are removed, your
+  notes in Memos stay).
+- **Sort** (the Sort button, S, or Menu → Sort… on a Kindle 4): *Sort notes by*
   **Date created** (the default) or **Date edited**, **Reverse order**
   (oldest first) and **Pinned first** (on by default). Memos is asked for the
   notes in that order (`order_by`), and the Kindle sorts what it keeps the same
   way (notes written here and not sent yet, a sync through a computer).
 - **Layouts** (as in the Memos web app): **L** on the board (Layout on a touch
-  Kindle, Options → Layout on a Kindle 4, or Settings → Connections → Memos
+  Kindle, Menu → Layout on a Kindle 4, or Settings → Connections → Memos
   (Notes) → Layout) chooses how many notes side by side, and how long each is:
   - **List** (one note under another), **Two side by side** (the default),
     **Three side by side**, or **Auto**: as many side by side as fit the
@@ -44,8 +50,8 @@ API to `/api` are found too.
     Q–P. After a change, the board shows the page with the note that was
     first on screen. The choice is kept.
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
-    and Options) hides the tab bar at the bottom of the Notes tab, for more
-    notes on a page. The X where the icon was (or Options, or Layout) brings
+    and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
+    notes on a page. The X where the icon was (or Layout) brings
     it back; Back or the quick panel's Home leave the tab.
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from

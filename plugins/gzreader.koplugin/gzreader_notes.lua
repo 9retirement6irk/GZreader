@@ -4,11 +4,12 @@ The Notes tab: your Memos notes as sticky notes.
 - Board: sticky notes, pinned first (Q, W, E… open one; ◀ ▶ pages). L layout:
   a list, two or three side by side, or Auto; Compact (every note the same
   size, six to a page two side by side) or Full (whole notes, as long as
-  they need: gzreader_notelayout.lua). N new note, F filter, M more
-  (refresh, connect, disconnect). (Not the Menu key: ZenOS sends it from
-  tab views to the Home menu.)
+  they need: gzreader_notelayout.lua). N new note, F filter, L layout,
+  S sort, M connection (refresh, connect again, disconnect). (Not the Menu
+  key: ZenOS sends it from tab views to the Home menu; a Kindle 4's Menu
+  opens Notes.showMenu.)
 - Wi-Fi: only to sync (when the tab opens, at most every 5 minutes, or with
-  changes waiting; M → Refresh any time), to send what you change, and to
+  changes waiting; Connection → Refresh any time), to send what you change, and to
   open an attachment not on the Kindle yet. Browsing never needs it:
   notes, and the pictures in them, are kept on the Kindle.
 - A note: the whole text, checklist items you tick with their letter key
@@ -149,7 +150,7 @@ end
 
 --- Layout → Full screen: the Notes tab without the tab bar at the bottom
 --- (more room for notes). The X button where its icon was leaves it (or
---- Options or Layout; Back or the quick panel's Home leave the tab).
+--- Layout, or a Kindle 4's Menu; Back or the quick panel's Home leave the tab).
 Notes.FULLSCREEN_NAME = "gz_notes_fullscreen"
 function Notes.fullscreen(plugin) return Notes.prefs(plugin).fullscreen == true end
 
@@ -483,7 +484,7 @@ function Notes.refresh(plugin, on_done, opts)
 end
 
 local function describe(err)
-    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (M → Connect to Memos again).") end
+    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (Connection → Connect again).") end
     if err == "unreachable" then return _("Couldn't reach Memos. Check Wi-Fi and the address.") end
     if err == "not_connected" then return _("Not connected to Memos.") end
     if err == "usb" then return _("Notes come from Memos through your computer: they're brought and sent with each sync (Menu → Sync with computer).") end
@@ -878,8 +879,8 @@ local function boardItems(plugin)
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
             items[1] = { text = T(Touch.text(_("Couldn't load your notes. %1\n\nM → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nOptions → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMenu → Options → Refresh to try again.")), describe(Notes.last_error)) }
+                _("Couldn't load your notes. %1\n\nConnection → Refresh to try again."),
+                _("Couldn't load your notes. %1\n\nMenu → Connection → Refresh to try again.")), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
@@ -1020,7 +1021,7 @@ function Notes.Board:onSelectByShortCut(arg, keyevent)
     local k = keyevent and keyevent.key
     if k == "N" then Notes.edit(self.plugin); return true end
     if k == "F" then Notes.showFilter(self.plugin); return true end
-    if k == "M" then Notes.showOptions(self.plugin); return true end
+    if k == "M" then Notes.showConnection(self.plugin); return true end
     if k == "L" then Notes.showView(self.plugin); return true end
     if k == "S" then Notes.showSort(self.plugin); return true end
     for i, key in ipairs(KEYS) do
@@ -1057,7 +1058,7 @@ function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthe
 Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/panel/"
 
 --- Touch Kindles: the buttons under the Notes tab's title: New note, Filter,
---- Layout, Sort, Options, and an icon for Full screen (an X while in it).
+--- Layout, Sort, Connection, and an icon for Full screen (an X while in it).
 function Notes.actions(plugin)
     local full = Notes.fullscreen(plugin)
     return {
@@ -1065,7 +1066,7 @@ function Notes.actions(plugin)
         { _("Filter"), function() Notes.showFilter(plugin) end },
         { _("Layout"), function() Notes.showView(plugin) end },
         { _("Sort"), function() Notes.showSort(plugin) end },
-        { _("Options"), function() Notes.showOptions(plugin) end },
+        { _("Connection"), function() Notes.showConnection(plugin) end },
         { icon_file = Notes.ICON_DIR .. (full and "close.svg" or "fullscreen.svg"),
           label = full and _("Leave full screen") or _("Full screen"),
           callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end },
@@ -1084,8 +1085,8 @@ function Notes.show(plugin)
     local menu = Notes.Board:new{
         title = Notes.title(),
         -- (touch: buttons in their place, Notes.actions)
-        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M options"),
-            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M options"),
+        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
+            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
             _("Menu: new note, filter, layout, sort, full screen  \u{00B7}  Press opens a note")),
         item_table = boardItems(plugin),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
@@ -1099,9 +1100,9 @@ function Notes.show(plugin)
     menu._gz_navbar_tab_id = Notes.TAB_ID -- (GZreader's own tabs close each other by it)
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
     if Touch.dpad() then
-        -- Kindle 4: no letter keys; Menu opens the options (new note, filter, layout, sort…)
-        menu.key_events.GzOptions = { { "Menu" } }
-        menu.onGzOptions = function() Notes.showOptions(plugin); return true end
+        -- Kindle 4: no letter keys and no buttons; Menu opens what they'd do
+        menu.key_events.GzMenu = { { "Menu" } }
+        menu.onGzMenu = function() Notes.showMenu(plugin); return true end
     end
     -- Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the bottom tabs, as in the Grimmory tab
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
@@ -1716,19 +1717,33 @@ function Notes.showFilter(plugin)
     })
 end
 
-function Notes.showOptions(plugin)
+--- Kindle 4 (no letter keys, no buttons): Menu on the board opens what the
+--- touch buttons and the letter keys do elsewhere.
+function Notes.showMenu(plugin)
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
-    local client = Notes.client(plugin)
-    local store = plugin.store.memos
-    local queued = #(store.queue or {})
-    dialog = Notes.keyedDialog(store.user and T(_("Memos: %1"), store.user) or _("Memos"), {
+    dialog = Notes.keyedDialog(_("Notes"), {
         { { text = _("New note"), align = "left", callback = run(function() Notes.edit(plugin) end) } },
         { { text = _("Filter…"), align = "left", callback = run(function() Notes.showFilter(plugin) end) } },
         { { text = T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), align = "left", callback = run(function() Notes.showView(plugin) end) } },
         { { text = _("Sort…"), align = "left", callback = run(function() Notes.showSort(plugin) end) } },
         { { text = Notes.fullscreen(plugin) and _("Leave full screen") or _("Full screen: no tab bar"), align = "left",
             callback = run(function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end) } },
+        { { text = _("Connection…"), align = "left", callback = run(function() Notes.showConnection(plugin) end) } },
+    })
+    return dialog
+end
+
+--- Connection (a button on touch Kindles, M on Kindles with keys): Memos
+--- only. New note, Filter, Layout, Sort and Full screen have their own
+--- buttons and keys.
+function Notes.showConnection(plugin)
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    local client = Notes.client(plugin)
+    local store = plugin.store.memos
+    local queued = #(store.queue or {})
+    dialog = Notes.keyedDialog(store.user and T(_("Memos: %1"), store.user) or _("Memos"), {
         { { text = queued > 0 and T(_("Refresh (%1 changes to send)"), queued) or _("Refresh"), align = "left",
             callback = run(function()
                 require("gzreader_net").run(function()
@@ -1737,8 +1752,8 @@ function Notes.showOptions(plugin)
                     end)
                 end, { reason = "notes" })
             end) } },
-        { { text = _("Connect to Memos again"), align = "left", callback = run(function() Notes.showConnect(plugin, true) end) } },
-        { { text = _("Disconnect from Memos"), align = "left", enabled = client:isConnected(), callback = run(function()
+        { { text = _("Connect again"), align = "left", callback = run(function() Notes.showConnect(plugin, true) end) } },
+        { { text = _("Disconnect"), align = "left", enabled = client:isConnected(), callback = run(function()
             local ConfirmBox = require("ui/widget/confirmbox")
             UIManager:show(ConfirmBox:new{
                 text = _("Disconnect from Memos?\n\nThe notes kept on this Kindle are removed. Your notes in Memos stay as they are.")
@@ -1748,6 +1763,7 @@ function Notes.showOptions(plugin)
             })
         end) } },
     })
+    return dialog
 end
 
 function Notes.disconnect(plugin)

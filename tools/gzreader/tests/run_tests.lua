@@ -6710,7 +6710,7 @@ print("Notes (Memos v0.31)")
         Notes.showSort(plugin)
         check(dlg.title == "Sort notes by" and #dlg.buttons == 4 and dlg.buttons[1][1].text == "Date created  \u{2713}"
             and dlg.buttons[2][1].text == "Date edited" and dlg.buttons[4][1].text == "Pinned first  \u{2713}",
-            "Sort (a button, S, Options): Sort notes by: date created or edited, reverse order, pinned first")
+            "Sort (a button, S, Menu on a Kindle 4): Sort notes by: date created or edited, reverse order, pinned first")
         -- full screen (Layout)
         Notes.showView(plugin)
         local last = dlg.buttons[#dlg.buttons][1]
@@ -6737,23 +6737,24 @@ print("Notes (Memos v0.31)")
             and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
             and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
             and show_src:find("Touch.actionRow(menu, Notes.actions(plugin))", 1, true)
-            and show_src:find("menu.onGzOptions = function() Notes.showOptions(plugin); return true end", 1, true),
-            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: Options")
-        -- the buttons (touch): New note, Filter, Layout, Sort, Options, and Full screen as an icon (an X in full screen)
+            and show_src:find("menu.onGzMenu = function() Notes.showMenu(plugin); return true end", 1, true)
+            and not show_src:find("showOptions", 1, true),
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu")
+        -- the buttons (touch): New note, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
         local acts = Notes.actions(plugin)
         local bnames = {}
         for i = 1, 5 do bnames[i] = acts[i][1] end
-        check(table.concat(bnames, "|") == "New note|Filter|Layout|Sort|Options" and acts[6].icon_file:match("/icons/panel/fullscreen%.svg$")
+        check(table.concat(bnames, "|") == "New note|Filter|Layout|Sort|Connection" and acts[6].icon_file:match("/icons/panel/fullscreen%.svg$")
             and acts[6].label == "Full screen" and io.open(acts[6].icon_file) ~= nil,
-            "touch: New note, Filter, Layout, Sort, Options, and the full screen icon")
+            "touch: New note, Filter, Layout, Sort, Connection, and the full screen icon")
         local opened = {}
         local real = { edit = Notes.edit, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
-            showOptions = Notes.showOptions, setFullscreen = Notes.setFullscreen }
+            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen }
         for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
         for i = 1, 5 do acts[i][2]() end
         acts[6].callback()
         for k, fn in pairs(real) do Notes[k] = fn end
-        check(table.concat(opened, ",") == "edit,showFilter,showView,showSort,showOptions,setFullscreen=true",
+        check(table.concat(opened, ",") == "edit,showFilter,showView,showSort,showConnection,setFullscreen=true",
             "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
@@ -6765,13 +6766,38 @@ print("Notes (Memos v0.31)")
         Notes.setFullscreen = real.setFullscreen
         check(opened[1] == "false", "…which turns it off")
         prefs.fullscreen = nil
-        -- Options (Kindle 4's Menu, M): Sort and Full screen too
-        rawset(BD, "new", function(_s, o) dlg = o; return o end)
-        Notes.showOptions(plugin)
-        local otexts = {}
-        for _i, row in ipairs(dlg.buttons) do otexts[#otexts + 1] = row[1].text end
-        rawset(BD, "new", nil)
-        check(table.concat(otexts, "|"):match("|Sort…|Full screen: no tab bar|Refresh"), "Options: Sort… and Full screen too (no touch buttons on a Kindle 4)")
+        -- Connection (the button, M): the Memos account only
+        local function texts(fn)
+            rawset(BD, "new", function(_s, o) dlg = o; return o end)
+            fn(plugin)
+            rawset(BD, "new", nil)
+            local t, cbs = {}, {}
+            for _i, row in ipairs(dlg.buttons) do t[#t + 1] = row[1].text; cbs[#cbs + 1] = row[1].callback end
+            return table.concat(t, "|"), dlg, cbs
+        end
+        local ctexts, cdlg = texts(Notes.showConnection)
+        check(ctexts == "Refresh|Connect again|Disconnect" and tostring(cdlg.title):match("^Memos") ~= nil,
+            "Connection: Refresh, Connect again, Disconnect only, under the account's name: " .. ctexts .. " / " .. tostring(cdlg.title))
+        plugin.store.memos.queue = { {}, {} }
+        ctexts = texts(Notes.showConnection)
+        plugin.store.memos.queue = nil
+        check(ctexts:match("^Refresh %(2 changes to send%)|") ~= nil, "…Refresh says how many changes are waiting: " .. ctexts)
+        local kept_connect, connected_again = Notes.showConnect, nil
+        Notes.showConnect = function(p, again) connected_again = { p, again } end
+        local _t, _d, ccbs = texts(Notes.showConnection)
+        ccbs[2]()
+        Notes.showConnect = kept_connect
+        check(connected_again and connected_again[1] == plugin and connected_again[2] == true, "…Connect again opens the connect page")
+        -- Kindle 4's Menu: what the buttons and letter keys do elsewhere, and Connection
+        local mtexts, _md, mcbs = texts(Notes.showMenu)
+        check(mtexts:match("^New note|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Filter, Layout, Sort, Full screen, Connection: " .. mtexts)
+        local opened_conn
+        local kept_conn = Notes.showConnection
+        Notes.showConnection = function(p) opened_conn = p end
+        mcbs[#mcbs]()
+        Notes.showConnection = kept_conn
+        check(opened_conn == plugin, "…Connection… opens Connection")
         local Touch = require("gzreader_touch")
         local cw = Touch.chipWidths(564, acts, 6, 46)
         check(cw[1] == cw[5] and cw[6] == 46 and cw[1] * 5 + 46 + 6 * 5 <= 564 and cw[1] * 5 + 46 + 6 * 5 > 558,
@@ -6793,6 +6819,12 @@ print("Notes (Memos v0.31)")
         Notes.Board.onSelectByShortCut(board, nil, { key = "S" })
         Notes.showSort = real_sort
         check(sorted_shown == plugin, "S on the board: Sort notes by")
+        local conn_shown
+        local real_conn = Notes.showConnection
+        Notes.showConnection = function(p) conn_shown = p end
+        Notes.Board.onSelectByShortCut(board, nil, { key = "M" })
+        Notes.showConnection = real_conn
+        check(conn_shown == plugin, "M on the board: Connection")
         Notes.board = nil
     end)()
 
