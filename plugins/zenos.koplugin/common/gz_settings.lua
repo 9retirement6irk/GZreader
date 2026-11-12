@@ -73,6 +73,8 @@ M.KOREADER_DUPLICATES = {
     language = true, time = true, screensaver = true, autosuspend = true, network_wifi = true,
     -- the History, Favorites and Collections tabs
     history = true, favorites = true, collections = true,
+    -- Settings → General → Screen: KOReader's whole Screen menu (M.screenItem)
+    screen = true,
     -- Settings → Reader → End of book
     document_end_action = true,
     -- the quick panel's Night mode, Rotate, Restart, Sleep and Exit tiles
@@ -112,6 +114,93 @@ function M.dropKOReaderDuplicates(list)
         end
     end
     return out
+end
+
+--- Settings → General → Screen: KOReader's Screen menu (DPI, E-ink settings,
+--- Fullscreen, …; out of Settings → KOReader, KOREADER_DUPLICATES.screen),
+--- without what GZreader has elsewhere (Sleep screen, Rotation), and with
+--- GZreader's flash rows (`gz_items`: Flash on every page turn, Flash when
+--- the screen changes, Partial pages refresh) in its E-ink settings after
+--- Full refresh rate. `native`: modules/menu/app_launcher/native_menu. Built
+--- when opened, from the menu of whatever is open (Home or a book).
+function M.screenItem(native, gz_items)
+    local _ = require("gettext")
+    return {
+        text = _("Screen"),
+        sub_item_table_func = function() return M.screenItems(native, gz_items) end,
+    }
+end
+
+--- The rows of Settings → General → Screen (see screenItem).
+function M.screenItems(native, gz_items)
+    gz_items = type(gz_items) == "table" and gz_items or {}
+    local ok, got = pcall(function() return native.settingsItems("active", "screen") end)
+    local screen = ok and type(got) == "table" and got[1]
+    local list
+    if type(screen) == "table" then
+        list = screen.sub_item_table
+        if type(list) ~= "table" and type(screen.sub_item_table_func) == "function" then
+            local okf, l = pcall(screen.sub_item_table_func)
+            list = okf and l or nil
+        end
+    end
+    if type(list) ~= "table" then
+        -- no KOReader menu to take it from: GZreader's own rows alone
+        local out = {}
+        for _i, item in ipairs(gz_items) do out[#out + 1] = item end
+        return out
+    end
+    return M.withFlashRows(M.dropKOReaderDuplicates(list), gz_items)
+end
+
+--- `list` (KOReader's Screen rows) with `gz_items` in its E-ink settings, after
+--- Full refresh rate (at the end of the list when there's no E-ink settings).
+function M.withFlashRows(list, gz_items)
+    if type(list) ~= "table" or #gz_items == 0 then return list end
+    -- (the Settings page builds the list again from KOReader's on a refresh: again with them)
+    for _i, refresh in ipairs({ "_zen_refresh", "refresh_func" }) do
+        if type(list[refresh]) == "function" then
+            local f = list[refresh]
+            list[refresh] = function(...) return M.withFlashRows(f(...), gz_items) end
+        end
+    end
+    local function into(children)
+        if type(children) ~= "table" then return children end
+        local out = {}
+        for key, value in pairs(children) do
+            if type(key) ~= "number" then out[key] = value end
+        end
+        for _i, refresh in ipairs({ "_zen_refresh", "refresh_func" }) do
+            if type(children[refresh]) == "function" then
+                local f = children[refresh]
+                out[refresh] = function(...) return into(f(...)) end
+            end
+        end
+        local at = 0
+        local full = require("gettext")("Full refresh rate")
+        for i, item in ipairs(children) do
+            out[#out + 1] = item
+            if type(item) == "table" and item.text == full then at = i end
+        end
+        for i, item in ipairs(gz_items) do table.insert(out, at + i, item) end
+        if at > 0 then out[at].separator = nil end
+        gz_items[#gz_items].separator = true
+        return out
+    end
+    for _i, item in ipairs(list) do
+        if type(item) == "table" and item.id == "screen_eink_opt" then
+            if type(item.sub_item_table) == "table" then
+                item.sub_item_table = into(item.sub_item_table)
+            elseif type(item.sub_item_table_func) == "function" then
+                local f = item.sub_item_table_func
+                item.sub_item_table_func = function(...) return into(f(...)) end
+            end
+            return list
+        end
+    end
+    if #list > 0 and type(list[#list]) == "table" then list[#list].separator = true end
+    for _i, item in ipairs(gz_items) do list[#list + 1] = item end
+    return list
 end
 
 --- About's first two lines: GZreader's version, then what it's built on.

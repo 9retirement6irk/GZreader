@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings: General first; General → Screen has KOReader's screen settings and every flash setting", text = "Settings opens with General at the top. General → Screen is KOReader's Screen menu (DPI, E-ink settings, screen timeout, fullscreen and the rest), moved from Settings → KOReader; it replaces General → Screen refresh. Its E-ink settings now hold every flash setting: KOReader's Full refresh rate, then Flash on every page turn, Flash when the screen changes and Partial pages refresh, then KOReader's others. Flash on every CBZ page turn is gone: comics now follow KOReader's Always flash on pages with images (under Full refresh rate; on unless you untick it), so every CBZ page flashes while it's ticked." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

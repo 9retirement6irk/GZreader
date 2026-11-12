@@ -92,6 +92,7 @@
 2 plugins/zenos.koplugin/modules/reader/end_book.lua
 3 plugins/zenos.koplugin/modules/reader/page_browser_widget.lua
 1 plugins/zenos.koplugin/modules/reader/patches/opening_banner.lua
+1 plugins/zenos.koplugin/modules/reader/patches/reader_flash_cbz.lua
 12 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua
 3 plugins/zenos.koplugin/modules/reader/reference_drawer.lua
 15 plugins/zenos.koplugin/modules/settings/gz_updater.lua
