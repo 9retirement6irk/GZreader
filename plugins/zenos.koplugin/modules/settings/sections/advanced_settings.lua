@@ -3,9 +3,6 @@
 -- Receives ctx: { plugin, config, save_and_apply, settings_apply }
 
 local _ = require("gettext")
-local UIManager = require("ui/uimanager")
-local utils = require("modules/settings/zen_settings_utils")
-local paths = require("common/paths")
 
 local M = {}
 
@@ -16,23 +13,10 @@ function M.build(ctx)
 
     local items = {}
 
-    table.insert(items, {
-        text = _("Extract metadata"),
-        help_text = _("Extract and cache book metadata and cover images for books in the current directory. Requires CoverBrowser plugin."),
-        callback = function()
-            local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-            if not ok_bim or not BookInfoManager then return end
-            local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
-            local fc = ok_fm and FileManager and FileManager.instance
-                and FileManager.instance.file_chooser
-            if not fc then return end
-            local Trapper = require("ui/trapper")
-            Trapper:wrap(function()
-                BookInfoManager:extractBooksInDirectory(fc.path, fc.cover_specs)
-            end)
-        end,
-        keep_menu_open = true,
-    })
+    -- GZreader: no Extract metadata (CoverBrowser reads a book's details and
+    -- cover by itself when it shows the book; GZreader's Catalog has its own)
+    -- and no Show hidden files (config/manager.lua turns a saved tick off once):
+    -- the owner's call, 2026-11-11.
 
     -- GZreader: Partial pages refresh and GZreader's Flash when the screen
     -- changes (gzreader_eink, the Kindles without REAGL) are in General →
@@ -51,44 +35,6 @@ function M.build(ctx)
             plugin:saveConfig()
             settings_apply.prompt_restart()
         end,
-    })
-
-    table.insert(items, {
-        text = _("Show hidden files"),
-        checked_func = function()
-            return type(config.developer) == "table"
-                and config.developer.show_hidden_outside_home == true
-        end,
-        callback = function()
-            if type(config.developer) ~= "table" then
-                config.developer = {}
-            end
-            local enabling = config.developer.show_hidden_outside_home ~= true
-            config.developer.show_hidden_outside_home = enabling
-            plugin:saveConfig()
-
-            if enabling then
-                local current_dir = utils.get_current_dir()
-                local is_outside_home = not paths.isInHomeDir(current_dir)
-                G_reader_settings:saveSetting("show_hidden", is_outside_home)
-                G_reader_settings:saveSetting("show_unsupported", is_outside_home)
-            else
-                G_reader_settings:saveSetting("show_hidden", false)
-                G_reader_settings:saveSetting("show_unsupported", false)
-                local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
-                local fm = ok and FileManager and FileManager.instance
-                if fm and fm.file_chooser then
-                    fm.file_chooser.show_hidden = false
-                    fm.file_chooser.show_unsupported = false
-                    fm.file_chooser:refreshPath()
-                end
-            end
-
-            UIManager:nextTick(function()
-                settings_apply.prompt_restart()
-            end)
-        end,
-        keep_menu_open = true,
     })
 
     -- GZreader: no Debug logging (KOReader's verbose log; GZreader's own

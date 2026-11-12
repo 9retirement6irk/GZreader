@@ -151,9 +151,14 @@ if okb then
     for _i, gone in ipairs({ "Debug logging", "Clear all gestures", "Plugin management", "Patch management" }) do
         check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced: " .. gone)
     end
-    for _i, kept in ipairs({ "Show hidden files", "Extract metadata" }) do
-        check(adv:find("|" .. kept .. "|", 1, true) ~= nil, "Advanced still has " .. kept)
+    for _i, gone in ipairs({ "Show hidden files", "Extract metadata" }) do
+        check(not adv:find("|" .. gone .. "|", 1, true), "not in General → Advanced (hidden on GZreader): " .. gone)
     end
+    check(adv:find("|Allow dragging reader modals|", 1, true) ~= nil, "Advanced still has Allow dragging reader modals")
+    local mgr = read("config/manager.lua")
+    check(mgr:find("cfg._meta.gz_show_hidden_off ~= true", 1, true) and mgr:find("cfg.developer.show_hidden_outside_home = nil", 1, true)
+            and mgr:find('g:saveSetting("show_hidden", false)', 1, true),
+        "a saved Show hidden files is turned off once (config/manager.lua)")
     -- General → Screen: KOReader's Screen menu, GZreader's flash rows in its E-ink settings
     for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
         check(not adv:find("|" .. moved .. "|", 1, true), "not in General → Advanced any more: " .. moved)

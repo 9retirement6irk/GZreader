@@ -1307,6 +1307,22 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader: Settings → General → Advanced has no Show hidden files any more
+    -- (advanced_settings.lua): turned off once, so the Downloads tab doesn't
+    -- keep showing hidden and unsupported files with no switch to stop it.
+    if cfg._meta.gz_show_hidden_off ~= true then
+        if type(cfg.developer) == "table" and cfg.developer.show_hidden_outside_home == true then
+            cfg.developer.show_hidden_outside_home = nil
+            local g = rawget(_G, "G_reader_settings")
+            if g and g.saveSetting then
+                g:saveSetting("show_hidden", false)
+                g:saveSetting("show_unsupported", false)
+            end
+        end
+        cfg._meta.gz_show_hidden_off = true
+        changed = true
+    end
+
     -- GZreader 1.16.2: 1.16.0 gave the end-of-book page the bookshelf and the
     -- notebook stats by mistake (they're Home's): back to its own look.
     if cfg._meta.gz_end_book_look_fixed ~= true then
