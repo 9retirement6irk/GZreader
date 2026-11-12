@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Immich: pictures from one of your albums for the sleep screen and the Home wallpaper", text = "New: Settings → Connections → Immich (Photos). Connect your Immich server with an API key (with a QR code on your phone, by typing, or on the sync page for Kindles without Wi‑Fi), choose an album, and its pictures can be the sleep screen (the book's cover while reading and an Immich picture elsewhere, or an Immich picture always; also as two new tiles in Settings → General → Sleep → Wallpaper) and the Home wallpaper (Settings → Interface → Wallpaper → Picture from Immich). The Kindle keeps 10, 20 or 50 of them, made to fit its screen in grey, so they show without Wi‑Fi; on Wi‑Fi (at most every 6 hours, or Get new pictures now) half of them are swapped for others from the album, and the wallpaper changes too. The API key is kept like the other sign-ins and never written to the log." },
+            { short = "Setup page: Immich, and your own sleep screen pictures from the phone", text = "The setup page in your browser (the quick panel → Send books, or a QR code) has two new tabs: Immich (connect, choose the album, use it for the sleep screen and the wallpaper, how many pictures to keep, get new ones now) and Sleep screen (send your own pictures to the screensavers folder, made in the browser to fit the Kindle's screen in grey; take ones off; choose which sleep screen)." },
+            { short = "Sync page: Immich for Kindles without Wi‑Fi", text = "The sync page (Kindle 2, DX) connects to Immich too: Connections → Immich (the address and an API key, the album, how many pictures, the Home wallpaper), and Content → Sleep screen pictures offers the two Immich choices. Each sync brings new pictures from the album, made on the computer for the Kindle's screen. Immich only answers web pages it's told to: the wiki (Home and bookshelves → Immich from the sync page) has the lines to add to your server's proxy." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

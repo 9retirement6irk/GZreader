@@ -449,14 +449,12 @@ function Screensaver:setup(event, event_message)
         end
     end
     if self.screensaver_type == "random_image" then
-        local screensaver_dir = G_reader_settings:readSetting(self.prefix .. "screensaver_dir")
-                             or G_reader_settings:readSetting("screensaver_dir")
-        self.image_file = _getRandomImage(screensaver_dir)
-        -- GZreader: then the USB drive's "screensavers" folder, then the
-        -- Kindle's own sleep pictures.
-        for _, dir in ipairs(Device:isKindle() and { "/mnt/us/screensavers", "/opt/amazon/screen_saver/600x800" } or {}) do
+        -- GZreader: the Immich album's pictures first when they're chosen,
+        -- the folder set, then the USB drive's "screensavers" folder, then
+        -- the Kindle's own sleep pictures (frontend/gzsleepmode.lua).
+        for _, dir in ipairs(require("gzsleepmode").pictureDirs(G_reader_settings, self.prefix, Device:isKindle())) do
             if self.image_file then break end
-            if dir ~= screensaver_dir and lfs.attributes(dir, "mode") == "directory" then
+            if lfs.attributes(dir, "mode") == "directory" then
                 self.image_file = _getRandomImage(dir)
             end
         end

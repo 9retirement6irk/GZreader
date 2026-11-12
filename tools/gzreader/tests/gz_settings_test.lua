@@ -5,7 +5,7 @@
 -- Calibre Search tabs. ZenOS's settings modules are real; the rest are stubs.
 --   luajit gz_settings_test.lua <plugins/zenos.koplugin>
 local ZEN = arg[1]
-package.path = ZEN .. "/?.lua;" .. package.path
+package.path = ZEN .. "/?.lua;" .. ZEN .. "/../../frontend/?.lua;" .. package.path
 local function magic()
     local m
     m = setmetatable({}, { __index = function() return m end, __call = function() return m end,
@@ -28,6 +28,7 @@ local real = {
     ["common/inline_icon_map"] = true,
     ["common/gz_wifi_icon"] = true,
     gzreader_sleeppreview = true,
+    gzsleepmode = true, -- (frontend/: which sleep screen, where its pictures come from)
 }
 local PLUGIN = arg[2] -- plugins/gzreader.koplugin (the Wallpaper tiles)
 if PLUGIN then package.path = PLUGIN .. "/?.lua;" .. package.path end
@@ -36,6 +37,7 @@ local sent = 0
 local storage_shown
 local gz = {
     sendLogToDeveloper = function() sent = sent + 1 end,
+    immichSettingsItems = function() return { { text = "Connect with QR code" }, { text = "Connect by typing" } } end,
     sectionItems = function(_self, section)
         if section ~= "general" then return {} end
         return {
@@ -118,6 +120,12 @@ if okb then
     local advanced = find(general, "Advanced")
     local adv = texts(advanced and advanced.sub_item_table)
     print("    General: " .. gen)
+    local conn = find(items, "Connections")
+    local cl = texts(conn and conn.sub_item_table)
+    local im = conn and find(conn.sub_item_table, "Immich (Photos)")
+    local okim, imitems = pcall(function() return im.sub_item_table_func() end)
+    check(cl:find("|Calendar (CalDAV)|Immich (Photos)|", 1, true) and okim and texts(imitems) == "|Connect with QR code|Connect by typing|",
+        "Connections: Immich (Photos) after Calendar, GZreader's items in it " .. cl)
     print("    Advanced: " .. adv)
     check(adv:find("^|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser %(QR code%)|Save diagnostic log %(USB%)|") ~= nil,
         "General → Advanced starts with the diagnostic log's items")
@@ -388,6 +396,7 @@ if PLUGIN then
         nilOrTrue = function(_s, k) return store[k] == nil or store[k] == true end,
         makeTrue = function(_s, k) store[k] = true end,
         makeFalse = function(_s, k) store[k] = false end,
+        delSetting = function(_s, k) store[k] = nil end,
     }
     stubs["libs/libkoreader-lfs"] = { attributes = function() return nil end, dir = function() return function() end end }
     stubs.device = { screen = { scaleBySize = function(_s, n) return n end, getWidth = function() return 600 end,
@@ -407,6 +416,25 @@ if PLUGIN then
             "choosing Book cover saves it and turns GZreader's own off")
         P.choose("auto")
         check(P.current() == "auto" and store.gzreader_sleep_auto == true, "choosing GZreader's own again")
+        -- an Immich album chosen (Settings → Connections → Immich): two more tiles
+        store.gzreader_immich_album = "Kindle"
+        ids = {}
+        for _i, c in ipairs(P.choices()) do ids[#ids + 1] = c.id end
+        check(table.concat(ids, ",") == "auto,cover,random_image,immich_auto,immich,readingprogress,bookstatus,disable",
+            "with an Immich album: cover while reading + Immich, and Immich always, after the folder's " .. table.concat(ids, ","))
+        P.choose("immich_auto")
+        check(P.current() == "immich_auto" and store.gzreader_sleep_auto == true and store.gzreader_sleep_source == "immich",
+            "choosing the cover and Immich: GZreader's own, its pictures from Immich")
+        P.choose("immich")
+        check(P.current() == "immich" and store.gzreader_sleep_auto == false and store.screensaver_type == "random_image"
+            and store.gzreader_sleep_source == "immich", "choosing Immich always: a picture, from Immich")
+        P.choose("random_image")
+        check(P.current() == "random_image" and store.gzreader_sleep_source == nil, "a picture from the folder again: not Immich's")
+        P.choose("auto")
+        check(P.current() == "auto" and store.gzreader_sleep_source == nil, "GZreader's own again, from the folder")
+        store.gzreader_immich_album = nil
+        local L8 = P.layoutFor(600, 800, 8)
+        check(L8.rows == 3 and L8.top + 3 * L8.th + 2 * L8.gap <= 800 - 30, "eight tiles fit a 600 × 800 screen")
         for _i, size in ipairs({ { 600, 800 }, { 824, 1200 }, { 1072, 1448 }, { 758, 1024 } }) do
             local L = P.layoutFor(size[1], size[2], 6)
             local bottom = L.top + L.rows * L.th + (L.rows - 1) * L.gap
@@ -535,6 +563,7 @@ do
         nilOrTrue = function(_s, k) return store[k] == nil or store[k] == true end,
         makeTrue = function(_s, k) store[k] = true end,
         makeFalse = function(_s, k) store[k] = false end,
+        delSetting = function(_s, k) store[k] = nil end,
     }
     local S = G_reader_settings
     store.screensaver_type = "disable" -- (screensaver.lua's first-start default)
@@ -570,6 +599,22 @@ do
     local prefix_at = setup:find('self.prefix = event and event .. "_" or ""', 1, true)
     check(at and prefix_at and prefix_at < at and not setup:find("self.screensaver_type = G_reader_settings:readSetting", 1, true),
         "the sleep screen asks gzsleepmode once the prefix is known, and nothing reads the saved type over it")
+    -- where a picture comes from: Immich's first when chosen (gzreader_sleep_source)
+    Mode.IMMICH_DIR = "/x/gzreader-immich"
+    store.screensaver_dir, store.poweroff_screensaver_dir = "/mnt/us/pics", "/mnt/us/off"
+    check(table.concat(Mode.pictureDirs(S, "", true), ",") == "/mnt/us/pics,/mnt/us/screensavers,/opt/amazon/screen_saver/600x800",
+        "pictures: the folder set, then the drive's screensavers folder, then the Kindle's own")
+    store.gzreader_sleep_source = "immich"
+    check(table.concat(Mode.pictureDirs(S, "", false), ",") == "/x/gzreader-immich,/mnt/us/pics"
+        and Mode.pictureDirs(S, "poweroff_", false)[2] == "/mnt/us/off",
+        "pictures with Immich chosen: its pictures first, then the folder (the power-off one for power-off)")
+    store.gzreader_sleep_source, store.screensaver_dir, store.poweroff_screensaver_dir = nil, nil, nil
+    check(setup:find('require("gzsleepmode").pictureDirs(G_reader_settings, self.prefix, Device:isKindle())', 1, true)
+        and not setup:find('"/opt/amazon/screen_saver/600x800"', 1, true),
+        "the sleep screen takes its picture from gzsleepmode's folders, in order")
+    local isrc = read("modules/settings/sections/interface_settings.lua")
+    check(isrc:find('require("common/gz_immich_wallpaper").menuItem()', 1, true) and select(2, isrc:gsub("chosenByHand%(ensure_lib_bg%(%)%)", "")) == 2,
+        "Interface → Wallpaper: Picture from Immich; an image chosen by hand (or cleared) isn't Immich's any more")
 end
 
 print(ok_count .. " passed, " .. fail .. " failed")

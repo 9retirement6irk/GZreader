@@ -201,6 +201,15 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.calendar),
+                -- GZreader: Immich, pictures for the sleep screen and the wallpaper
+                IconItem.decorate({
+                    text = _("Immich (Photos)"),
+                    sub_item_table_func = function()
+                        local g = gzreader()
+                        if g and type(g.immichSettingsItems) == "function" then return g:immichSettingsItems() end
+                        return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                    end,
+                }, icons.wallpaper),
                 -- GZreader: Plex (the Music tab), on the Kindles with a speaker or jack
                 (function()
                     local okt, Touch = pcall(require, "gzreader_touch")
@@ -233,7 +242,7 @@ function M.build(plugin)
                         return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
                     end,
                 }, icons.sync),
-            }, 6),
+            }, 7),
         }, icons.connect),
         {
             text = _("KOReader"),

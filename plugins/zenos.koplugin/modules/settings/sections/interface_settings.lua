@@ -418,6 +418,7 @@ function M.build(ctx, extras_items)
                 text_func = function()
                     local path = lib_bg_path()
                     if path == "" then return _("Image: none") end
+                    if require("common/gz_immich_wallpaper").isOn() then return _("Image: from Immich") end
                     local util = require("util")
                     local name = select(2, util.splitFilePathName(path))
                     return _("Image: ") .. (name ~= "" and name or path)
@@ -443,6 +444,8 @@ function M.build(ctx, extras_items)
                                 })
                                 return
                             end
+                            -- (GZreader: a picture chosen here, not Immich's)
+                            require("common/gz_immich_wallpaper").chosenByHand(ensure_lib_bg())
                             set_lib_bg(file_path)
                             if touchmenu_instance then touchmenu_instance:updateItems() end
                         end,
@@ -450,11 +453,14 @@ function M.build(ctx, extras_items)
                 end,
                 hold_callback = function(touchmenu_instance)
                     if lib_bg_path() ~= "" then
+                        require("common/gz_immich_wallpaper").chosenByHand(ensure_lib_bg())
                         set_lib_bg("")
                         if touchmenu_instance then touchmenu_instance:updateItems() end
                     end
                 end,
             },
+            -- GZreader: a picture from your Immich album (common/gz_immich_wallpaper.lua)
+            require("common/gz_immich_wallpaper").menuItem(),
             {
                 text_func = function()
                     return string.format("%s: %d%%", _("Opacity"),

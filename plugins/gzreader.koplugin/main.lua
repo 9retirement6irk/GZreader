@@ -1554,6 +1554,8 @@ function Grimmory:onNetworkConnected()
     UIManager:scheduleIn(6, function() pcall(require("gzreader_shelfsync").run, self) end)
     -- your shelves: changes made here sent, the shelves kept again (at most every 30 min)
     UIManager:scheduleIn(8, function() pcall(require("gzreader_shelves").sync, self) end)
+    -- the Immich album's pictures (sleep screen, wallpaper), when used (at most every 6 h)
+    UIManager:scheduleIn(12, function() pcall(require("gzreader_immich").onNetworkConnected, self) end)
 end
 
 ---------------------------------------------------------------- reader integration
@@ -1894,6 +1896,11 @@ end
 --- Settings → Connections → Calendar (CalDAV).
 function Grimmory:calendarSettingsItems()
     return require("gzreader_calendar").settingsItems(self)
+end
+
+--- Settings → Connections → Immich (Photos): the album for the sleep screen and the wallpaper.
+function Grimmory:immichSettingsItems()
+    return require("gzreader_immichsettings").items(self)
 end
 
 --- Settings → Notes (ZenOS settings): connection, storage, synced tags, limits.

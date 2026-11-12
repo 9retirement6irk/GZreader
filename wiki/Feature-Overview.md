@@ -8,7 +8,8 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 - **Bookshelves** — books stand on shelves, spines out, the selected one turns to show its cover; audiobooks as a cassette walkman, music as a CD player. Also lists and tiles. → [Home and bookshelves](Home-and-Bookshelves)
 - **Grimmory reading stats on Home** — read this week, day streak, books finished, across all your devices. → [Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)
 - **Picture books** — scanned-page EPUBs are recognized and each page fills the screen. → [Picture books](Picture-Books)
-- **Sleep screen** — the book's cover while reading, your pictures from Home. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
+- **Sleep screen** — the book's cover while reading, your pictures from Home: from the USB drive's `screensavers` folder (send them from your phone's browser) or from an Immich album. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
+- **Immich** — an album's photos as the sleep screen and the Home wallpaper, kept on the Kindle and changed now and then on Wi‑Fi. → [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich)
 - **English dictionary** built in (Open English WordNet).
 
 ## Setting up
