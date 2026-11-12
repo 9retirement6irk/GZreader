@@ -21,7 +21,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## More than books
 
-- **Notes** — your [Memos](https://usememos.com) notes as sticky notes; tick checklists, write and edit, offline too. → [Notes](Notes)
+- **Notes** — your [Memos](https://usememos.com) notes as sticky notes, in a list or side by side, compact or whole; tick checklists, write and edit, offline too. → [Notes](Notes)
 - **Calendar** — calendar links (Proton, Google, Outlook…) and CalDAV accounts: agenda, day, week, month. → [Calendar](Calendar)
 - **Music** — albums and playlists from Plex, downloaded and played while you read (Kindles with audio). → [Music](Music)
 - **Audiobooks** — from Grimmory, with your place kept in sync (Kindles with audio). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)

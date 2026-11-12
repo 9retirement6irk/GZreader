@@ -6176,6 +6176,158 @@ print("Notes (Memos v0.31)")
     local tg = Notes.tagsIn("#a and #b/c, (#d) x#no #a")
     check(#tg == 3 and tg[1] == "a" and tg[2] == "b/c" and tg[3] == "d", "tags from text (no repeats; not inside words)")
 
+    ;(function() -- the board's layouts: List / Two / Three / Auto, Compact / Full (gzreader_notelayout.lua)
+        local NL = require("gzreader_notelayout")
+        local v = NL.view(nil)
+        check(v.columns == "2" and v.display == "compact", "layout: two side by side, compact by default (the board as before)")
+        v = NL.view({ columns = "7", display = "huge" })
+        check(v.columns == "2" and v.display == "compact", "layout: an unknown saved value falls back to the default")
+        check(NL.view({ columns = "list", display = "full" }).columns == "list", "layout: a saved choice is kept")
+        check(NL.columns("list", 600, 230) == 1 and NL.columns("2", 600, 230) == 2 and NL.columns("3", 600, 230) == 3,
+            "layout: List is one column, Two two, Three three")
+        check(NL.columns("auto", 600, 230) == 2 and NL.columns("auto", 800, 230) == 3,
+            "layout: Auto fits as many columns as are at least 230 (scaled) wide: two upright, three sideways")
+        check(NL.columns("auto", 1600, 230) == NL.MAX_COLS and NL.columns("auto", 200, 230) == 1, "layout: Auto stays between 1 and 4")
+        check(NL.rows(2, 600, 180) == 3 and NL.rows(1, 600, 180) == 3 and NL.rows(2, 400, 180) == 2,
+            "compact: three rows upright (six notes two side by side, as before), two sideways")
+        check(NL.rows(3, 600, 180, 10) == 3 and NL.rows(4, 600, 180, 10) == 2,
+            "compact: with letter keys, no more notes on a page than letters (four columns: two rows)")
+
+        -- full: notes as tall as they are (top + blocks), Memos' masonry
+        local function note(top, count, h)
+            local bl = {}
+            for i = 1, count do bl[i] = h or 10 end
+            return { top = top, blocks = bl }
+        end
+        local function desc(pages)
+            local out = {}
+            for p, pg in ipairs(pages) do
+                for _i, part in ipairs(pg) do
+                    out[#out + 1] = string.format("%d:%d/%d.%d-%d@%d", p, part.col, part.note, part.from, part.to, part.y)
+                end
+            end
+            return table.concat(out, " ")
+        end
+        local pages = NL.paginate({ note(20, 3), note(20, 5), note(20, 1), note(20, 2) }, 2, 100)
+        check(desc(pages) == "1:1/1.1-3@0 1:2/2.1-5@0 1:1/3.1-1@50 2:1/4.1-2@0",
+            "full: each note in the column with the most room, in order; one that doesn't fit starts the next page: " .. desc(pages))
+        check(pages[1][1].h == 50 and pages[1][2].h == 70, "full: a part's height is its top and its blocks")
+        pages = NL.paginate({ note(20, 3), note(20, 5) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-3@0 2:1/2.1-5@0", "full, list: one under another, a page ends when the next doesn't fit")
+        -- a note taller than a page: split between blocks, "continued"
+        pages = NL.paginate({ note(20, 20) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-8@0 2:1/1.9-16@0 3:1/1.17-20@0", "full: a note taller than the page goes on on the next pages, nothing left out: " .. desc(pages))
+        -- …in the empty column to its right (read on like a newspaper), else on the next page
+        pages = NL.paginate({ note(20, 2), note(20, 30), note(20, 1) }, 3, 100)
+        check(desc(pages) == "1:1/1.1-2@0 1:2/2.1-8@0 1:3/2.9-16@0 2:1/2.17-24@0 2:2/2.25-30@0 2:3/3.1-1@0",
+            "full: a long note goes on in the empty column to its right, then on the next page; the notes after it come after it: " .. desc(pages))
+        pages = NL.paginate({ note(20, 2), note(20, 30), note(20, 1) }, 2, 100)
+        check(desc(pages) == "1:1/1.1-2@0 1:2/2.1-8@0 2:1/2.9-16@0 2:2/2.17-24@0 3:1/2.25-30@0 3:2/3.1-1@0",
+            "full: …not back under an earlier note in a column to its left: " .. desc(pages))
+        pages = NL.paginate({ note(20, 7), note(20, 30) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-7@0 2:1/2.1-8@0 3:1/2.9-16@0 4:1/2.17-24@0 5:1/2.25-30@0",
+            "full: a long note with too little room left (under 3 lines) starts on a fresh page: " .. desc(pages))
+        pages = NL.paginate({ note(20, 3), note(20, 30) }, 1, 100)
+        check(pages[1][2] and pages[1][2].note == 2 and pages[1][2].from == 1 and pages[1][2].to == 3,
+            "full: …with room for 3 lines it starts on this page")
+        pages = NL.paginate({ { top = 20, blocks = { 10, 200, 10 } } }, 1, 100)
+        check(#pages == 3 and pages[2][1].from == 2 and pages[2][1].to == 2, "full: a block taller than the page (never: pictures are 40 % of it) still gets a page")
+        local many = {}
+        for i = 1, 30 do many[i] = note(5, 1, 5) end
+        pages = NL.paginate(many, 2, 1000, { max_parts = 10 })
+        check(#pages == 3 and #pages[1] == 10, "full: with letter keys, at most ten notes on a page")
+        check(NL.pageOf(pages, 1) == 1 and NL.pageOf(pages, 11) == 2 and NL.pageOf(pages, 30) == 3 and NL.pageOf(pages, 99) == 3,
+            "full: the page a note is on (after a change of layout the board shows that page)")
+        check(#NL.paginate({}, 2, 100) == 0 and #NL.paginate({ { top = 20, blocks = {} } }, 2, 100) == 1, "full: no notes; a note with nothing but its top")
+
+        -- the sticky note's tilt: long notes tilted less, so they never grow more than a 300 px one
+        check(Sticky.tilt(2.4, 264, 172, 300) == 2.4, "tilt: notes up to 300 px (the board before layouts) keep their angle")
+        check(math.abs(Sticky.tilt(2.4, 528, 172, 300) - 2.4 * 300 / 528) < 1e-9 and math.abs(Sticky.tilt(-2, 100, 600, 300) + 1) < 1e-9,
+            "tilt: a long note (a list's width, a whole note) less")
+        local Screen = require("device").screen
+        local scale = Screen.scaleBySize
+        Screen.scaleBySize = function(_s, px) return px end
+        local fw, fh = Sticky.footprint(200, 100, { angle = 0 })
+        local tw, th = Sticky.footprint(200, 900, { angle = 2.6 })
+        check(fw == 220 and fh == 120 and tw <= 220 + 16 and th >= 920, "a note's room on the board: its margin, and its tilt (at most 15 px more)")
+        check(Notes.noteWidth(300) == 264 and Notes.noteWidth(200) == 164, "a note's width: 88 % of its place, or 36 px less where that's narrow")
+        local s1 = Notes.slack(264)
+        check(s1 >= 20 + 4 + math.ceil(284 * math.sin(math.rad(2.6))) - 1, "full: room kept around a note for its shadow, tape and tilt")
+        Screen.scaleBySize = scale
+
+        -- pictures' sizes from their first bytes (full layout lays pages out without decoding them)
+        local function file(name, bytes)
+            local p = WORK .. "/" .. name
+            local fh2 = io.open(p, "wb"); fh2:write(bytes); fh2:close()
+            return p
+        end
+        local function u16be(x) return string.char(math.floor(x / 256), x % 256) end
+        local function u16le(x) return string.char(x % 256, math.floor(x / 256)) end
+        local png = "\137PNG\r\n\26\n" .. "\0\0\0\13IHDR" .. "\0\0" .. u16be(320) .. "\0\0" .. u16be(200) .. "\8\2\0\0\0"
+        local w, h = Sticky.imageSize(file("s.png", png))
+        check(w == 320 and h == 200, "picture size: PNG")
+        local jpg = "\255\216" .. "\255\224" .. u16be(16) .. ("JFIF\0" .. string.rep("\0", 9))
+            .. "\255\219" .. u16be(4) .. "\0\0" .. "\255\194" .. u16be(17) .. "\8" .. u16be(1080) .. u16be(1920) .. string.rep("\0", 10)
+        w, h = Sticky.imageSize(file("s.jpg", jpg))
+        check(w == 1920 and h == 1080, "picture size: JPEG (the frame header after other segments; progressive)")
+        w, h = Sticky.imageSize(file("s.gif", "GIF89a" .. u16le(64) .. u16le(48) .. "\0\0\0"))
+        check(w == 64 and h == 48, "picture size: GIF")
+        local vp8x = "RIFF" .. "\0\0\0\0" .. "WEBP" .. "VP8X" .. "\10\0\0\0" .. "\0\0\0\0" .. string.char(99, 1, 0) .. string.char(199, 0, 0)
+        w, h = Sticky.imageSize(file("s.webp", vp8x))
+        check(w == 356 and h == 200, "picture size: WebP")
+        check(Sticky.imageSize(file("s.txt", "hello")) == nil and Sticky.imageSize(WORK .. "/none.png") == nil, "picture size: not a picture, no file")
+        w, h = Sticky.fitSize(320, 200, 160, 1000)
+        check(w == 160 and h == 100 and select(2, Sticky.fitSize(320, 200, 1000, 50)) == 50 and Sticky.fitSize(30, 20, 100, 100) == 30,
+            "pictures shrink to fit, never grow")
+        Notes.pic_sizes = {}
+        check(select(2, Notes.picSize(WORK .. "/s.png")) == 200 and Notes.pic_sizes[WORK .. "/s.png"], "a picture's size is kept once read")
+
+        -- a note's pictures: those in its text first, then its other picture attachments
+        local pm = { content = "x\n![b](/file/attachments/bbb/b.png)\n",
+            attachments = { { name = "attachments/aaa", type = "image/jpeg" }, { name = "attachments/pdf", type = "application/pdf" },
+                { name = "attachments/bbb", type = "image/png" } } }
+        local pa = Notes.pictureAttachments(pm)
+        check(#pa == 2 and pa[1].name == "attachments/bbb" and pa[2].name == "attachments/aaa", "a note's pictures: the one in its text first, no PDFs")
+
+        -- the layout is kept (Settings → Notes) and the board shows the page with its first note
+        local saved_plugin_store = plugin.store.notes_prefs
+        plugin.store.notes_prefs = {}
+        check(Notes.view(plugin).columns == "2" and Notes.view(plugin).display == "compact", "layout: default for a new user")
+        local reloaded
+        local real_reload = Notes.reloadBoard
+        Notes.reloadBoard = function(keep) reloaded = keep end
+        Notes.board = { _gz_first = 7 }
+        Notes.setView(plugin, "display", "full")
+        check(plugin.store.notes_prefs.display == "full" and reloaded == true and Notes.board._gz_goto == 7,
+            "layout: Full chosen, kept, and the board redrawn at the note that was first on screen")
+        reloaded = nil
+        Notes.setView(plugin, "display", "full")
+        check(reloaded == nil, "layout: choosing the same again redraws nothing")
+        Notes.setView(plugin, "columns", "list")
+        check(Notes.viewLabel(Notes.view(plugin)) == "List, full", "layout: its label (Settings → Notes, More)")
+        check(logtxt():find("notes: view list full", 1, true) ~= nil, "layout: a change is logged")
+        Notes.reloadBoard = real_reload
+        Notes.board = nil
+        plugin.store.notes_prefs = saved_plugin_store
+
+        -- L opens the Layout dialog (V is the Notes tab's own key in the tab bar); a letter opens that note
+        local shown, opened
+        local real_show = Notes.showView
+        Notes.showView = function() shown = true end
+        local fake = { plugin = plugin, _gz_keyed = { [2] = { memo = { name = "memos/2" } } },
+            onMenuSelect = function(_s, entry) opened = entry.memo.name end }
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "L" })
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "W" })
+        check(shown and opened == "memos/2", "board: L opens Layout; W opens the note with W on this page (not a place in a list)")
+        opened = nil
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "E" })
+        check(opened == nil, "board: a letter no note has does nothing")
+        Notes.showView = real_show
+        local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(not src:find('k == "V"', 1, true) and src:find('_("Layout"), function() Notes.showView(plugin) end', 1, true),
+            "board: no V (the tab bar's), and a Layout button on touch Kindles")
+    end)()
+
     -- connecting
     os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
     runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
@@ -6306,8 +6458,9 @@ print("Notes (Memos v0.31)")
     check(Notes.pruneFiles(plugin) == 0, "no limit: nothing removed")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
-    check(#items == 5 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: "),
-        "Settings → Notes: connection, sync, storage, kept notes, attachment limit")
+    check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
+        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 6,
+        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices), kept notes, attachment limit")
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
