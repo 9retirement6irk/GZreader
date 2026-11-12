@@ -18,6 +18,10 @@ API to `/api` are found too.
 - **Board:** Q–Y open a note, ◀ ▶ (or the page keys) turn pages, the 5-way
   moves around the notes. **N** new note, **F** filter, **M** for refresh,
   connect again and disconnect (the Menu key opens the quick panel in tab views).
+- **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
+  paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
+  backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and
+  the characters themselves. The editor here shows the note as it's written.
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and

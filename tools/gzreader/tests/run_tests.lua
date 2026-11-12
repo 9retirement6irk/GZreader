@@ -6047,6 +6047,23 @@ print("Notes (Memos v0.31)")
     check(Sticky.firstImage(md) == "/file/attachments/abc/p.png", "first picture found")
     check(Sticky.tagsOnly("#travel #hiking") and not Sticky.tagsOnly("#idea buy milk") and not Sticky.tagsOnly(""), "a line of only tags")
     check(Sticky.preview("Title\n\nbody\n\n#a #b") == "Title\nbody", "sticky preview: no blank lines, tag line left out")
+    ;(function() -- Memos 26.11's rich editor: "&nbsp;" for an empty paragraph, entities, backslash escapes
+        local rich = "First paragraph.\n\n&nbsp;\n\nSecond&nbsp;one: Tom &amp; Jerry &lt;3\n\n\\* not a bullet, 2 \\* 3 \\_x\\_\n\n&#35; not a heading &#124; pipe&#10;next"
+        local pv = Sticky.preview(rich)
+        check(pv == "First paragraph.\nSecond one: Tom & Jerry <3\n* not a bullet, 2 * 3 _x_\n# not a heading | pipe\nnext",
+            "rich-editor notes on a sticky note: no &nbsp;, entities and escapes as their characters, not read as Markdown… " .. pv)
+        local rl = Sticky.lines(rich)
+        check(rl[3].kind == "text" and rl[3].text == "" and Sticky.blankLine("&nbsp;") and Sticky.blankLine(" &nbsp; &#160;\194\160")
+            and not Sticky.blankLine("&nbsp;x"), "an &nbsp; line is a blank line (the note's page keeps it as a gap)")
+        check(rl[9] and rl[9].kind == "text", "…and an entity-made # is not a heading")
+        check(Sticky.plain("**bold** &amp; \\*stars\\*") == "bold & *stars*" and Sticky.plain("a &#42;b&#42; c") == "a *b* c",
+            "markers still made plain; escaped or entity stars stay stars (no italics)")
+        check(Sticky.plain("`a &amp; \\* b`") == "a &amp; \\* b" and Sticky.plain("x `y` &amp; z") == "x y & z",
+            "in `code` nothing is decoded")
+        check(Sticky.plain("&unknown; &#xD83D; &#x2014; &mdash;") == "&unknown; \u{FFFD} \u{2014} \u{2014}"
+            and Sticky.plain("[a &amp; b](https://example.com)") == "a & b", "unknown names left as written; bad numbers replaced; links' text decoded")
+        check(Sticky.decode("caf&#233; &euro;5") == "caf\u{00E9} \u{20AC}5", "accented letters and symbols from numeric and named entities")
+    end)()
     local t2 = Sticky.toggle(md, 2)
     check(t2:match("%- %[ %] map") and t2:match("%- %[ %] permit") and t2:match("^## Trip"), "tick: the 2nd item unticked, the rest untouched")
     check(Sticky.toggle(Sticky.toggle("- [ ] a\n- [ ] b", 1), 1) == "- [ ] a\n- [ ] b", "tick twice: as before")

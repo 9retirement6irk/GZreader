@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes written in Memos 26.11's rich editor no longer show `&nbsp;` and other codes", text = "Memos 26.11's rich editor writes an empty paragraph as `&nbsp;`, and some characters as codes (`&#124;`, `&amp;`) or with a backslash (`\\*`, `\\#`). The Notes tab showed those as they were written; now such a line is a blank line and the codes and escapes show as their characters, on the sticky notes and on a note's page. The note itself is unchanged." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

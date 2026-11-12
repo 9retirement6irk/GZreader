@@ -183,10 +183,23 @@ end
 -- well: checklists as boxes, bullets as •, headings on their own, ** and _
 -- markers dropped, links as their text, images as pictures.
 
+-- Memos 26.11's rich editor (@usememos/editor) writes an empty paragraph
+-- as a line of "&nbsp;", characters that would read as Markdown as entities
+-- ("&#124;", "&#10;") or backslash escapes ("\*", "\#"): Memos shows them as
+-- the characters, so does the Kindle (Sticky.plain, Sticky.blankLine).
+
+--- A line that's only non-breaking spaces (an empty paragraph from Memos'
+--- rich editor): a blank line.
+function Sticky.blankLine(line)
+    local rest = line:gsub("&nbsp;", ""):gsub("&#160;", ""):gsub("&#[xX]0*[aA]0;", ""):gsub("\194\160", "")
+    return rest:match("^%s*$") ~= nil
+end
+
 --- The note's lines: { kind = "text"|"check"|"heading"|"image", text, done, level, src }
 function Sticky.lines(content)
     local out = {}
     for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do
+        if line ~= "" and Sticky.blankLine(line) then line = "" end
         local mark, rest = line:match("^%s*[%-%*] %[([ xX])%]%s*(.*)$")
         local hashes, head = line:match("^(#+)%s+(.*)$")
         local src = line:match("^%s*!%[[^%]]*%]%(([^%)%s]+)[^%)]*%)%s*$")
@@ -204,8 +217,61 @@ function Sticky.lines(content)
     return out
 end
 
---- Inline Markdown made plain: **bold**, *it*, `code`, [text](url), bullets.
+local function utf8char(cp)
+    if cp < 0x80 then return string.char(cp) end
+    if cp < 0x800 then return string.char(0xC0 + math.floor(cp / 0x40), 0x80 + cp % 0x40) end
+    if cp < 0x10000 then
+        return string.char(0xE0 + math.floor(cp / 0x1000), 0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+    end
+    return string.char(0xF0 + math.floor(cp / 0x40000), 0x80 + math.floor(cp / 0x1000) % 0x40,
+        0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+end
+
+-- HTML entities a note may hold (named ones Memos' editor or a writer would use)
+Sticky.ENTITIES = { nbsp = " ", amp = "&", lt = "<", gt = ">", quot = '"', apos = "'", ensp = " ", emsp = " ",
+    thinsp = " ", ndash = "\u{2013}", mdash = "\u{2014}", hellip = "\u{2026}", lsquo = "\u{2018}", rsquo = "\u{2019}",
+    ldquo = "\u{201C}", rdquo = "\u{201D}", laquo = "\u{00AB}", raquo = "\u{00BB}", middot = "\u{00B7}", bull = "\u{2022}",
+    copy = "\u{00A9}", reg = "\u{00AE}", trade = "\u{2122}", deg = "\u{00B0}", times = "\u{00D7}", euro = "\u{20AC}",
+    pound = "\u{00A3}", larr = "\u{2190}", rarr = "\u{2192}" }
+
+-- An ASCII punctuation character that came from an escape or an entity is
+-- held as a private-use character while the Markdown markers are taken out
+-- (an escaped "\*" is a star, not italics), then put back.
+local function hold(ch)
+    if #ch == 1 and ch:match("%p") then return utf8char(0xE000 + ch:byte()) end
+    return ch
+end
+local function unhold(s)
+    return (s:gsub("\238\128([\161-\191])", function(c) return string.char(c:byte() - 128) end)
+        :gsub("\238\129([\128-\190])", function(c) return string.char(c:byte() - 64) end))
+end
+
+--- Entities ("&nbsp;", "&amp;", "&#124;", "&#x2014;") and backslash escapes
+--- ("\*") as their characters, held from Markdown (Sticky.plain puts them back).
+local function decode(s)
+    -- (in `code` nothing is an escape or an entity: its punctuation is held as it is)
+    s = s:gsub("`([^`]*)`", function(code) return "`" .. code:gsub("%p", hold) .. "`" end)
+    s = s:gsub("\\(%p)", hold)
+    s = s:gsub("&(#?%w+);", function(name)
+        local cp
+        if name:match("^#[xX]%x+$") then cp = tonumber(name:sub(3), 16)
+        elseif name:match("^#%d+$") then cp = tonumber(name:sub(2)) end
+        if cp then
+            if cp == 0 or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return "\u{FFFD}" end
+            if cp == 0xA0 then return " " end
+            return hold(utf8char(cp))
+        end
+        local v = Sticky.ENTITIES[name]
+        return v and hold(v) or nil -- (an unknown name: left as written)
+    end)
+    return s
+end
+Sticky.decode = function(s) return unhold(decode(s)) end
+
+--- Inline Markdown made plain: **bold**, *it*, `code`, [text](url), bullets;
+--- entities and escapes as their characters.
 function Sticky.plain(s)
+    s = decode(s)
     s = s:gsub("!%[([^%]]*)%]%([^%)]*%)", "%1")
     s = s:gsub("%[([^%]]+)%]%([^%)]*%)", "%1")
     s = s:gsub("%*%*(.-)%*%*", "%1"):gsub("__(.-)__", "%1")
@@ -213,7 +279,7 @@ function Sticky.plain(s)
     s = s:gsub("~~(.-)~~", "%1"):gsub("`([^`]*)`", "%1")
     s = s:gsub("^(%s*)[%-%*%+] ", "%1\u{2022} ")
     s = s:gsub("^>%s?", "\u{201C}")
-    return s
+    return unhold(s)
 end
 
 --- A line with nothing but #tags (shown on their own row instead).
