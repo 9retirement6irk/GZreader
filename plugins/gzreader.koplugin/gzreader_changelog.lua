@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Notes: filter by space, and choose a new note's space (Memos spaces)", text = "With a Memos that has spaces (v0.31 and newer), the Notes tab's Filter has Space… (No space, or one of the spaces you're a member of, with how many notes each has), and the note editor has a space chip beside who can see the note (tap it or Alt+A): No space or one of your spaces. A new note starts in the space the board is showing. In a space, who can see it also offers Space members; taking a note out of its space turns that into Private, as Memos does. The note's page says which space it's in. Kindles that sync through a computer get the same (the sync page brings your spaces and sends each note's space)." },
             { short = "Quick note: write a Memos note from the quick panel without leaving your book", text = "The quick panel has a Quick note tile (at Home and in a book) while Memos is connected: it opens the note editor over whatever is on the screen, and Save puts you back where you were — in the book, at Home or in Settings. The note is sent to Memos in the background a moment later (only the note: the Notes tab's list is fetched the next time you open it); without Wi‑Fi it waits, as other notes do. The editor offers your tags even when the Notes tab hasn't been opened yet. Hide the tile in Settings → Interface → Quick panel." },
         },
     },

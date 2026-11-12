@@ -57,7 +57,33 @@ NoteEditor.TOOLS = {
 }
 
 NoteEditor.VISIBILITY = { "PRIVATE", "PROTECTED", "PUBLIC" }
-NoteEditor.VIS_LABEL = { PRIVATE = _("Private"), PROTECTED = _("Signed-in users"), PUBLIC = _("Public") }
+-- In a space (Memos v0.31), also "only its members", second as in Memos' own menu.
+NoteEditor.VISIBILITY_IN_SPACE = { "PRIVATE", "SPACE", "PROTECTED", "PUBLIC" }
+NoteEditor.VIS_LABEL = { PRIVATE = _("Private"), PROTECTED = _("Signed-in users"), PUBLIC = _("Public"),
+    SPACE = _("Space members") }
+
+--- Who can see a note in `space` (nil: none): the choices Alt+V goes through.
+--- (Space members only in a space, or for a note that already has it.)
+function NoteEditor.visibilities(space, current)
+    if space or current == "SPACE" then return NoteEditor.VISIBILITY_IN_SPACE end
+    return NoteEditor.VISIBILITY
+end
+
+--- The next visibility after `current` (Alt+V, a tap).
+function NoteEditor.nextVisibility(current, space)
+    local list = NoteEditor.visibilities(space, current)
+    local i = 1
+    for j, v in ipairs(list) do if v == current then i = j end end
+    return list[i % #list + 1]
+end
+
+--- Moving a note out of its space: "Space members" can't stay (Memos
+--- refuses it without a space), so it becomes Private, as in Memos' own
+--- Move dialog. Otherwise who can see it stays as it was.
+function NoteEditor.visibilityAfterMove(visibility, space)
+    if not space and visibility == "SPACE" then return "PRIVATE" end
+    return visibility
+end
 
 ---------------------------------------------------------------- Markdown edits (plain text, tested)
 
@@ -183,6 +209,10 @@ function Editor:init()
     self.visibility = (self.memo and self.memo.visibility) or "PRIVATE"
     self.original = self.memo and self.memo.content or ""
     self.original_vis = self.visibility
+    -- its space (Memos v0.31): a chip beside who can see it, when you have spaces
+    if self.memo then self.space = self.memo.space end -- (a new note: the space it was given, if any)
+    self.original_space = self.space
+    self.has_spaces = (self.spaces and #self.spaces > 0) or self.space ~= nil
     self.focus_tool = nil
     self.key_events = {
         ToolLeft = { { "Left" } },
@@ -285,6 +315,13 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
+                self.has_spaces and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
+                    bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 3)) and Size.border.thick
+                        or (self.dpad and Size.border.thin) or 0,
+                    TextWidget:new{ text = self:spaceLabel() .. ((self.touch or self.dpad) and "  \u{25BE}" or "  (Alt+A)"),
+                        face = Font:getFace("cfont", 15), max_width = math.floor(sw * 0.3) } }, function() self:onShortcut("A") end)
+                    or HorizontalSpan:new{ width = 0 },
+                HorizontalSpan:new{ width = self.has_spaces and S(8) or 0 },
                 tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 2)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
@@ -329,7 +366,8 @@ function Editor:drawChrome()
     local hint
     if self.dpad then
         hint = self.focus_tool and (_("\u{25C0} \u{25B6} choose   Press apply   Menu: back to the text"))
-            or _("Menu: toolbar, visibility, save     Back: close")
+            or (self.has_spaces and _("Menu: toolbar, visibility, space, save     Back: close")
+                or _("Menu: toolbar, visibility, save     Back: close"))
     elseif t then
         hint = t.help .. "  (Alt+" .. t.key .. ")   \u{00B7}   \u{25C0} \u{25B6} " .. _("choose") .. "   " .. _("Press apply")
             .. "   Menu " .. _("text")
@@ -426,12 +464,11 @@ end
 function Editor:onShortcut(k)
     if k == "S" then self:save(); return true end
     if k == "V" then
-        local i = 1
-        for j, v in ipairs(NoteEditor.VISIBILITY) do if v == self.visibility then i = j end end
-        self.visibility = NoteEditor.VISIBILITY[i % #NoteEditor.VISIBILITY + 1]
+        self.visibility = NoteEditor.nextVisibility(self.visibility, self.space)
         self:redraw()
         return true
     end
+    if k == "A" and self.has_spaces then self:pickSpace(); return true end
     for i, t in ipairs(NoteEditor.TOOLS) do
         if t.key == k then self:useTool(i); return true end
     end
@@ -460,8 +497,12 @@ function Editor:onToolbarToggle()
     return true
 end
 
---- The toolbar's last cell: Save, then (Kindle 4) who can see the note.
-function Editor:lastTool() return #NoteEditor.TOOLS + (self.dpad and 2 or 1) end
+--- The toolbar's last cell: Save, then (Kindle 4) who can see the note and
+--- its space.
+function Editor:lastTool()
+    if not self.dpad then return #NoteEditor.TOOLS + 1 end
+    return #NoteEditor.TOOLS + (self.has_spaces and 3 or 2)
+end
 
 function Editor:onToolUp()
     if self.focus_tool then self:backToText() end
@@ -485,6 +526,7 @@ end
 function Editor:onToolPress()
     if not self.focus_tool then return false end
     if self.focus_tool == #NoteEditor.TOOLS + 2 then self:onShortcut("V"); return true end
+    if self.focus_tool == #NoteEditor.TOOLS + 3 then self:onShortcut("A"); return true end
     self:useTool(self.focus_tool)
     return true
 end
@@ -502,7 +544,44 @@ function Editor:onKeyPress(key)
 end
 
 function Editor:changed()
-    return self:text() ~= self.original or self.visibility ~= self.original_vis
+    return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
+end
+
+--- The space chip's text: the note's space, or "No space".
+function Editor:spaceLabel()
+    if not self.space then return _("No space") end
+    return (self.space_title and self.space_title(self.space)) or self.space:match("^spaces/(.+)$") or self.space
+end
+
+--- Choose the note's space (Alt+A, a tap): No space, or one of yours.
+--- (Touch: the on-screen keyboard steps aside while the list is open, or it
+--- would hide the list's last rows; it comes back after.)
+function Editor:pickSpace()
+    local dialog
+    local kb = self.touch and self.input
+    if kb then kb:onCloseKeyboard() end
+    local function back() if kb then kb:onShowKeyboard() end end
+    local function row(name, text)
+        return { { text = text .. (self.space == name and "  \u{2713}" or ""), align = "left", callback = function()
+            UIManager:close(dialog)
+            self.space = name
+            self.visibility = NoteEditor.visibilityAfterMove(self.visibility, name)
+            self:redraw()
+            back()
+        end } }
+    end
+    local rows = { row(nil, _("No space")) }
+    local listed = false
+    for _i, sp in ipairs(self.spaces or {}) do
+        rows[#rows + 1] = row(sp.name, sp.title)
+        if sp.name == self.space then listed = true end
+    end
+    if self.space and not listed then rows[#rows + 1] = row(self.space, self:spaceLabel()) end
+    dialog = ButtonDialog:new{ title = _("Space"), buttons = rows, tap_close_callback = back }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
 end
 
 function Editor:save()
@@ -513,7 +592,9 @@ function Editor:save()
     end
     self.saved = true
     UIManager:close(self, "full")
-    if self.on_save then self.on_save(text, self.visibility, self.visibility ~= self.original_vis) end
+    if self.on_save then
+        self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space)
+    end
 end
 
 --- Back (from the text box or the toolbar).
@@ -531,9 +612,13 @@ function Editor:onCloseDialog()
     return true
 end
 
---- opts: memo (nil for a new note), tags ({ {tag=, count=} }), on_save(text, visibility, vis_changed).
+--- opts: memo (nil for a new note), tags ({ {tag=, count=} }), spaces
+--- ({ { name, title } }: your Memos spaces, or nil), space (a new note's:
+--- the one the board shows), space_title(name),
+--- on_save(text, visibility, vis_changed, space, space_changed).
 function NoteEditor.show(opts)
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save }
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
+        spaces = opts.spaces, space = opts.space, space_title = opts.space_title }
     UIManager:show(e, "full")
     return e
 end

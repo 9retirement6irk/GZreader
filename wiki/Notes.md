@@ -30,9 +30,17 @@ API to `/api` are found too.
   is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼
   from the last line also reaches the toolbar; ◀ ▶ choose, Press applies. Shortcuts:
   Alt+L list, Alt+C checklist, Alt+N numbered, Alt+H heading, Alt+K italic,
-  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it. Alt + the top
-  row types 1–0 here. New notes are **private** unless you change it. Back
-  asks whether to save.
+  Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space.
+  Alt + the top row types 1–0 here. New notes are **private** unless you
+  change it. Back asks whether to save.
+- **Spaces** (Memos v0.31 and newer): beside who can see the note, the editor
+  shows its **space** (tap it, Alt+A, or on a Kindle 4 Menu → ◀ ▶ to it).
+  Choose **No space** or one of the spaces you're a member of. A new note
+  starts in the space the board is showing (Filter → Space…). In a space,
+  who can see it also offers **Space members** (only that space's members);
+  taking a note out of its space turns Space members into Private, as Memos
+  does. The note's page says which space it's in. With an older Memos (no
+  spaces) none of this shows.
 - **Quick note:** the quick panel's **Quick note** tile (at Home and in a
   book, while Memos is connected) opens the same editor over whatever is on
   the screen, so you can jot something down without leaving the book, Home or
@@ -46,9 +54,11 @@ API to `/api` are found too.
 - **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).
+  **Space…** (when your Memos has spaces): **No space** or one of your
+  spaces, with how many notes each has; the board's title says which.
 - **Settings → Connections → Memos (Notes):** the Memos connection (connect again, disconnect);
-  **Sync** all notes or only notes with chosen tags (Memos has no spaces or
-  notebooks, so tags are the way to pick; the list comes from Memos' tag
+  **Sync** all notes or only notes with chosen tags (Memos has no notebooks,
+  so tags are the way to pick, and Filter → Space… for spaces; the list comes from Memos' tag
   counts, `users/<id>:getStats`, and the filter is `tag in [...]`);
   **Storage used** with *Free up space* (downloaded attachments, kept
   notes); **Notes kept on the Kindle** (50–500, fetched a page at a time);

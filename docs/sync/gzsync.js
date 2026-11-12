@@ -393,6 +393,7 @@ gets a password or token.
       name: m.name, content: m.content || "", pinned: m.pinned === true, visibility: m.visibility,
       tags: Array.isArray(m.tags) ? m.tags : [], created: m.createTime, updated: m.updateTime,
       place: loc && loc.placeholder ? loc.placeholder : undefined,
+      space: m.space || undefined,
       attachments: (m.attachments || []).map(function (a) {
         return { name: a.name, filename: a.filename, type: a.type, size: Number(a.size) || undefined, link: a.externalLink || undefined };
       }),
@@ -1633,6 +1634,20 @@ gets a password or token.
   };
 
   // 4. notes
+  // (gzreader_memos.lua Memos:create / Memos.updateBody: a space only when
+  // there is one, since Memos before v0.31 refuses the field; "" takes a
+  // note out of its space)
+  function memoCreateBody(q) {
+    var b = { content: q.content, visibility: q.visibility || "PRIVATE" };
+    if (q.space) b.space = q.space;
+    return b;
+  }
+  function memoUpdateBody(q) {
+    var b = { name: q.name, content: q.content }, mask = ["content"];
+    if (q.visibility) { b.visibility = q.visibility; mask.push("visibility"); }
+    if (typeof q.space === "string") { mask.push("space"); if (q.space) b.space = q.space; }
+    return { body: b, mask: mask.join(",") };
+  }
   async function syncNotes(out, inbox) {
     var n = out.notes || {};
     var prev = inbox.notes || {};
@@ -1643,9 +1658,8 @@ gets a password or token.
       var q = n.queue[i];
       if (done.indexOf(q.id) >= 0) continue;
       var r;
-      if (q.op === "create") r = await M.req("POST", "/memos", { content: q.content, visibility: q.visibility || "PRIVATE" });
-      else if (q.op === "update") r = await M.req("PATCH", "/" + q.name, { name: q.name, content: q.content, visibility: q.visibility },
-        { updateMask: q.visibility ? "content,visibility" : "content" });
+      if (q.op === "create") r = await M.req("POST", "/memos", memoCreateBody(q));
+      else if (q.op === "update") { var ub = memoUpdateBody(q); r = await M.req("PATCH", "/" + q.name, ub.body, { updateMask: ub.mask }); }
       else if (q.op === "pin") r = await M.req("PATCH", "/" + q.name, { name: q.name, pinned: q.pinned === true }, { updateMask: "pinned" });
       else { done.push(q.id); continue; }
       if (r.ok) { done.push(q.id); sentNow++; }
@@ -1672,7 +1686,16 @@ gets a password or token.
       var rs = await M.req("GET", "/" + M.st.userName + ":getStats");
       if (rs.ok) { var sd = await rs.json(); tags = sd.tagCounts || sd.tagCount || null; }
     } catch (e) {}
-    await Drive.write(Drive.sync, "in/notes.json", JSON.stringify({ notes: notes, at: Math.floor(Date.now() / 1000), tags: tags }));
+    // your spaces (Memos v0.31; an older Memos has none: no /spaces)
+    var spaces = null;
+    try {
+      var rsp = await M.req("GET", "/spaces", undefined, { pageSize: 100 });
+      if (rsp.ok) {
+        spaces = ((await rsp.json()).spaces || []).filter(function (sp) { return sp && typeof sp.name === "string"; })
+          .map(function (sp) { return { name: sp.name, title: sp.title || sp.name.replace(/^spaces\//, "") }; });
+      }
+    } catch (e) {}
+    await Drive.write(Drive.sync, "in/notes.json", JSON.stringify({ notes: notes, at: Math.floor(Date.now() / 1000), tags: tags, spaces: spaces }));
     // their pictures (not already on the Kindle)
     var have = new Set(n.files || []);
     var budget = (Number(n.files_mb) || 50) * 1048576 * 0.8, pics = [];

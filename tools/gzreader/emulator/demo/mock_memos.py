@@ -3,16 +3,20 @@
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
-  POST  /api/v1/memos            {content, visibility}
-  PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,pinned
+  POST  /api/v1/memos            {content, visibility, space}
+  PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
+  GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
-  python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26]
+  python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces]
 
 --sample fills it with a few notes (with a picture and a PDF), as in the
 mockup. --many N adds N long notes (a big account: replies over 64 KB). --prefix /api serves the newer layout (no /api/v1) instead. --memos26 is
 Memos 26.10+: /api, with /api/v1 answering 410 Gone, and user stats' tagCounts.
+--spaces: Memos v0.31's Spaces (Family and Book club; with --sample two notes
+in them). Without it the server is older: no /spaces, and a note with a
+`space` field is refused (400, an unknown field) as gRPC-gateway does.
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
 import json, re, sys, time, threading, zlib, struct
@@ -27,6 +31,14 @@ PREFIX = "/api/v1"
 if "--prefix" in sys.argv:
     PREFIX = sys.argv[sys.argv.index("--prefix") + 1]
 MEMOS26 = "--memos26" in sys.argv
+SPACES = "--spaces" in sys.argv
+# (the spaces user 1 is a member of; "spaces/other" exists but isn't theirs)
+SPACE_LIST = [
+    {"name": "spaces/family", "title": "Family", "description": "", "currentUserRole": "ADMIN", "memberCount": 3,
+     "icon": {"emoji": "\U0001F3E1"}},
+    {"name": "spaces/book-club", "title": "Book club", "description": "Monthly picks", "currentUserRole": "USER",
+     "memberCount": 7},
+]
 if MEMOS26:
     PREFIX = "/api"
 GONE_MESSAGE = ("API v1 has been removed. Use /api/... for REST and /memos.api.<Service>/<Method> for Connect. "
@@ -90,7 +102,7 @@ def tags_of(content):
     return seen
 
 
-def add(content, visibility="PRIVATE", pinned=False, ago=timedelta(0), place=None, attachments=None):
+def add(content, visibility="PRIVATE", pinned=False, ago=timedelta(0), place=None, attachments=None, space=None):
     with LOCK:
         n = STATE["next"]
         STATE["next"] += 1
@@ -105,6 +117,8 @@ def add(content, visibility="PRIVATE", pinned=False, ago=timedelta(0), place=Non
     }
     if place:
         m["location"] = {"placeholder": place, "latitude": 34.56, "longitude": -84.25}
+    if space:
+        m["space"] = space  # (protojson leaves an unset optional field out)
     STATE["memos"].append(m)
     return m
 
@@ -130,6 +144,14 @@ def sample():
     add("The view from the ridge, for the sleep screen.\n\n![ridge](/file/attachments/ridge/ridge.png)\n\n#travel",
         ago=timedelta(days=8), place="Blood Mountain", attachments=[pic])
     add("Ask the library about the large-print edition. #reading", ago=timedelta(days=40))
+    if SPACES:
+        add("Grocery run Saturday: who needs what?\n\n- [ ] milk\n- [ ] coffee", visibility="SPACE",
+            ago=timedelta(hours=3), space="spaces/family")
+        add("Next month's pick: The Overstory. #reading", visibility="SPACE", ago=timedelta(days=2), space="spaces/book-club")
+
+
+def own_space(name):
+    return any(sp["name"] == name for sp in SPACE_LIST)
 
 
 # --- the CEL subset GZreader sends ------------------------------------------
@@ -163,6 +185,14 @@ def matcher(f):
         if mm:
             needle = json.loads('"%s"' % mm.group(1))
             tests.append(lambda m, needle=needle: needle in m["content"])
+            continue
+        mm = re.fullmatch(r'space == "((?:[^"\\]|\\.)*)"', part)
+        if mm and SPACES:
+            sp = json.loads('"%s"' % mm.group(1))
+            tests.append(lambda m, sp=sp: m.get("space") == sp)
+            continue
+        if part == "space == null" and SPACES:
+            tests.append(lambda m: not m.get("space"))
             continue
         if part == "has_task_list":
             tests.append(lambda m: m["property"]["hasTaskList"])
@@ -271,6 +301,8 @@ class H(BaseHTTPRequestHandler):
                     counts[t] = counts.get(t, 0) + 1
             return self.send(200, {"name": "users/1", ("tagCounts" if MEMOS26 else "tagCount"): counts,
                                    "totalMemoCount": len(STATE["memos"])})
+        if p == "/spaces" and SPACES:
+            return self.send(200, {"spaces": SPACE_LIST, "nextPageToken": ""})
         if p == "/memos":
             ok = matcher(q.get("filter"))
             if ok is None:
@@ -307,7 +339,15 @@ class H(BaseHTTPRequestHandler):
             b = self.body()
             if not (b.get("content") or "").strip():
                 return self.send(400, {"code": 3, "message": "content is required"})
-            m = add(b["content"], visibility=b.get("visibility") or "PRIVATE")
+            if "space" in b and not SPACES:
+                return self.send(400, {"code": 3, "message": 'proto: (line 1:2): unknown field "space"'})
+            vis = b.get("visibility") or "PRIVATE"
+            space = b.get("space") or None
+            if space and not own_space(space):
+                return self.send(403, {"code": 7, "message": "not a member of the space"})
+            if vis == "SPACE" and not space:
+                return self.send(400, {"code": 3, "message": "SPACE visibility requires a space"})
+            m = add(b["content"], visibility=vis, space=space)
             return self.send(200, m)
         return self.send(404, {"message": "not found"})
 
@@ -332,15 +372,35 @@ class H(BaseHTTPRequestHandler):
         if not mask:
             return self.send(400, {"code": 3, "message": "update mask is required"})
         b = self.body()
-        for field in mask.split(","):
+        if "space" in b and not SPACES:
+            return self.send(400, {"code": 3, "message": 'proto: (line 1:2): unknown field "space"'})
+        fields = mask.split(",")
+        # placement and visibility are checked together (Memos' UpdateMemo)
+        next_space, next_vis = m.get("space"), m["visibility"]
+        if "space" in fields:
+            next_space = b.get("space") or None
+            if next_space and not own_space(next_space):
+                return self.send(403, {"code": 7, "message": "not a member of the space"})
+        if "visibility" in fields:
+            next_vis = b.get("visibility")
+        if next_vis == "SPACE" and not next_space:
+            return self.send(400, {"code": 3, "message": "SPACE visibility requires a space"})
+        if m["visibility"] == "SPACE" and next_space != m.get("space") and "visibility" not in fields:
+            return self.send(400, {"code": 3, "message": "moving a memo with SPACE visibility requires an explicit visibility update"})
+        for field in fields:
             if field == "content":
                 m["content"] = b.get("content", m["content"])
                 m["tags"] = tags_of(m["content"])
                 m["property"]["hasTaskList"] = "- [" in m["content"]
             elif field == "visibility":
-                if b.get("visibility") not in ("PRIVATE", "PROTECTED", "PUBLIC"):
+                if b.get("visibility") not in ("PRIVATE", "PROTECTED", "PUBLIC") + (("SPACE",) if SPACES else ()):
                     return self.send(400, {"code": 3, "message": "invalid visibility"})
                 m["visibility"] = b["visibility"]
+            elif field == "space" and SPACES:
+                if next_space:
+                    m["space"] = next_space
+                else:
+                    m.pop("space", None)
             elif field == "pinned":
                 m["pinned"] = bool(b.get("pinned"))
             else:

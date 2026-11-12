@@ -83,6 +83,22 @@ function Notes.syncTags(plugin)
     return (type(t) == "table" and #t > 0) and t or nil
 end
 
+--- Your Memos spaces ({ { name = "spaces/…", title }, … }, Memos v0.31) as
+--- of the last sync, or nil (a Memos without spaces, or not synced yet).
+function Notes.spaces(plugin)
+    local t = plugin and plugin.store.memos and plugin.store.memos.spaces
+    return (type(t) == "table" and #t > 0) and t or nil
+end
+
+--- A space's title ("spaces/family" → "Family"), from the last sync.
+function Notes.spaceTitle(plugin, name)
+    if not name or name == "" then return nil end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do
+        if sp.name == name then return sp.title end
+    end
+    return name:match("^spaces/(.+)$") or name -- (a space not synced yet: its id)
+end
+
 local function quote(v) return '"' .. tostring(v):gsub('[\\"]', "\\%0") .. '"' end
 
 --- The whole Memos filter: the synced tags (if chosen) and the board's filter.
@@ -115,6 +131,9 @@ function Notes.cel(f)
     if f.kind == "pinned" then return "pinned == true" end
     if f.kind == "date" then return string.format('created_ts > now - duration("%dh")', f.value * 24) end
     if f.kind == "search" then return string.format("content.contains(%q)", f.value) end
+    if f.kind == "space" then -- ("" for notes in no space)
+        return f.value == "" and "space == null" or string.format("space == %q", f.value)
+    end
     return nil
 end
 
@@ -143,6 +162,7 @@ function Notes.keepHere(m, f)
     if f.kind == "search" then return tostring(m.content or ""):lower():find(tostring(f.value):lower(), 1, true) ~= nil end
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
+    if f.kind == "space" then return (m.space or "") == f.value end
     return true
 end
 
@@ -162,6 +182,7 @@ function Notes.filterLabel(f)
     if f.kind == "attachments" then return _("With attachments") end
     if f.kind == "pinned" then return _("Pinned") end
     if f.kind == "search" then return "\u{201C}" .. f.value .. "\u{201D}" end
+    if f.kind == "space" then return f.value == "" and _("No space") or (f.label or f.value) end
     return _("All notes")
 end
 
@@ -182,12 +203,17 @@ function Notes.applyQueue(plugin)
             for _j, m in ipairs(Notes.notes) do if m.local_id == q.id then seen = true end end
             if not seen then
                 table.insert(Notes.notes, 1, { local_id = q.id, content = q.content, tags = Notes.tagsIn(q.content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = {}, pinned = false, pending = true })
+                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = {}, pinned = false, pending = true,
+                    visibility = q.visibility, space = q.space })
             end
         else
             for _j, m in ipairs(Notes.notes) do
                 if m.name == q.name then
-                    if q.op == "update" then m.content = q.content; m.tags = Notes.tagsIn(q.content) end
+                    if q.op == "update" then
+                        m.content = q.content; m.tags = Notes.tagsIn(q.content)
+                        if q.visibility then m.visibility = q.visibility end
+                        if q.space then m.space = q.space ~= "" and q.space or nil end
+                    end
                     if q.op == "pin" then m.pinned = q.pinned end
                     m.pending = true
                 end
@@ -247,6 +273,7 @@ function Notes.refresh(plugin, on_done, opts)
             Notes.last_error = nil
             if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix; plugin:save() end
             if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
+            if type(res.spaces) == "table" then store.spaces = res.spaces; plugin:save() end
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
@@ -709,7 +736,9 @@ function NoteView:build()
     end
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
-    add(iconLine("date", Sticky.when(m.created) .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
+    local space = Notes.spaceTitle(self.plugin, m.space)
+    add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
+        .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
         .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
     add(VerticalSpan:new{ width = S(10) })
     local para = {}
@@ -959,17 +988,24 @@ end
 ---------------------------------------------------------------- saving
 
 --- Save a note's new text (queued; sent now when possible). `visibility`:
---- only when it changed.
-function Notes.saveContent(plugin, memo, visibility)
+--- only when it changed; `space` too ("spaces/…", or "" for none).
+function Notes.saveContent(plugin, memo, visibility, space)
     memo.tags = Notes.tagsIn(memo.content)
     if visibility then memo.visibility = visibility end
+    if space then memo.space = space ~= "" and space or nil end
     if memo.name then
         local q = { op = "update", name = memo.name, content = memo.content }
-        -- an earlier, unsent change of who can see it stays
+        -- an earlier, unsent change of who can see it, or of its space, stays
         for _i, old in ipairs(plugin.store.memos.queue or {}) do
-            if old.op == "update" and old.name == memo.name and old.visibility then q.visibility = old.visibility end
+            if old.op == "update" and old.name == memo.name then
+                if old.visibility then q.visibility = old.visibility end
+                if old.space then q.space = old.space end
+            end
         end
         q.visibility = visibility or q.visibility
+        q.space = space or q.space
+        -- (Memos moves a note between spaces only with its visibility said too)
+        if q.space and not q.visibility then q.visibility = memo.visibility or "PRIVATE" end
         Notes.enqueue(plugin, q)
     elseif memo.local_id then
         -- not in Memos yet: change the queued new note instead
@@ -977,6 +1013,7 @@ function Notes.saveContent(plugin, memo, visibility)
             if q.id == memo.local_id then
                 q.content = memo.content
                 if visibility then q.visibility = visibility end
+                if space then q.space = space ~= "" and space or nil end
             end
         end
         plugin:save()
@@ -1017,6 +1054,12 @@ function Notes.sendSoon(plugin)
     end)
 end
 
+--- The space a new note starts in: the one the board is showing, if any.
+function Notes.newNoteSpace()
+    local f = Notes.filter
+    return f.kind == "space" and f.value ~= "" and f.value or nil
+end
+
 --- New note (memo nil) or edit one: the full-page editor.
 --- opts.on_created(): after a new note was saved (queued).
 function Notes.edit(plugin, memo, opts)
@@ -1024,18 +1067,22 @@ function Notes.edit(plugin, memo, opts)
         plugin = plugin,
         memo = memo,
         tags = Notes.allTags(plugin),
-        on_save = function(content, visibility, vis_changed)
+        spaces = Notes.spaces(plugin),
+        space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
+        space_title = function(name) return Notes.spaceTitle(plugin, name) end,
+        on_save = function(content, visibility, vis_changed, space, space_changed)
             if memo then
                 memo.content = content
-                Notes.saveContent(plugin, memo, vis_changed and visibility or nil)
+                Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
             else
-                local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE" })
+                local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
+                    space = space })
                 -- (notes not loaded yet, e.g. a quick note from a book: the
                 -- board loads the kept ones later and shows the queued note then)
                 if Notes.notes then
                     table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
                         created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
-                        visibility = q.visibility })
+                        visibility = q.visibility, space = q.space })
                 end
                 Notes.sendSoon(plugin)
                 if opts and opts.on_created then opts.on_created() end
@@ -1061,8 +1108,11 @@ end
 
 ---------------------------------------------------------------- filters
 
+--- A dialog of `rows` (a row that's `false` is left out) with letter keys.
 function Notes.keyedDialog(title, rows)
-    local dialog = ButtonDialog:new{ title = title, buttons = rows }
+    local list = {}
+    for _i, row in ipairs(rows) do if row then list[#list + 1] = row end end
+    local dialog = ButtonDialog:new{ title = title, buttons = list }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
     UIManager:show(dialog)
@@ -1132,6 +1182,39 @@ local function listPicker(title, entries, on_pick)
     return menu
 end
 
+--- Whether to offer spaces (Filter → Space…): your Memos has them, or a
+--- note is in one.
+function Notes.spacesShown(plugin)
+    if Notes.spaces(plugin) then return true end
+    for _i, m in ipairs(Notes.notes or {}) do if m.space then return true end end
+    return false
+end
+
+--- Filter → Space…: No space, then your spaces (with how many notes are in
+--- each of those shown now).
+function Notes.spaceEntries(plugin)
+    local n, none, seen = {}, 0, {}
+    for _i, m in ipairs(Notes.notes or {}) do
+        if m.space then n[m.space] = (n[m.space] or 0) + 1 else none = none + 1 end
+    end
+    local entries = { { text = _("No space"), mandatory = none > 0 and count(none) or nil, value = "", icon = "name:document" } }
+    local function add(name, title)
+        if seen[name] then return end
+        seen[name] = true
+        entries[#entries + 1] = { text = title, mandatory = n[name] and count(n[name]) or nil, value = name, icon = "name:folder" }
+    end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do add(sp.name, sp.title) end
+    -- (a note in a space not in the list yet)
+    for _i, m in ipairs(Notes.notes or {}) do if m.space then add(m.space, Notes.spaceTitle(plugin, m.space)) end end
+    return entries
+end
+
+function Notes.showSpaceFilter(plugin)
+    return listPicker(_("Filter by space"), Notes.spaceEntries(plugin), function(e)
+        Notes.setFilter(plugin, { kind = "space", value = e.value, label = e.text })
+    end)
+end
+
 function Notes.showFilter(plugin)
     local dialog
     local function pick(fn) return function() UIManager:close(dialog); fn() end end
@@ -1163,6 +1246,9 @@ function Notes.showFilter(plugin)
             end
             listPicker(_("Filter by place"), entries, function(e) Notes.setFilter(plugin, { kind = "place", value = e.place }) end)
         end) } },
+        Notes.spacesShown(plugin) and { { text = mark("space", _("Space…")), align = "left", callback = pick(function()
+            Notes.showSpaceFilter(plugin)
+        end) } } or false,
         { { text = mark("attachments", _("With attachments")), align = "left", callback = pick(function()
             Notes.setFilter(plugin, { kind = "attachments" })
         end) } },
