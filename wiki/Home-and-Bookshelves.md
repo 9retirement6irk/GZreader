@@ -9,7 +9,7 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens Manage book (Open, Delete from this Kindle, then
 the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
-Covers have square corners in this view: Settings → Downloads → Appearance →
+Covers have square corners in this view: Settings → Home → Appearance →
 Covers → Rounded cover corners is greyed out while it's on, and your choice
 for the tiles and lists comes back when you switch to one of them.
 
@@ -40,7 +40,7 @@ the book once you open one.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
-- **Theme and ornaments** (Settings → Downloads → Appearance → **Bookshelf
+- **Theme and ornaments** (Settings → Home → Appearance → **Bookshelf
   theme**), for Home's shelf, Downloads and the Catalog's ledges:
   - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
     **Walnut** (darker) or **Plain** (flat greys);

@@ -63,6 +63,10 @@ local stubs = {
         return (f:gsub("%%(%d)", function(i) return tostring(a[tonumber(i)]) end)) end },
     ["common/ui/icon_menu_item"] = { installMenuPatch = function() end, decorate = function(item) return item end },
     ["common/plugin_root"] = "",
+    -- ZenOS's Home section (its rows; the Downloads tab's come after them in Settings)
+    ["modules/settings/sections/library_settings/home_settings"] = { build = function()
+        return { text = "Home", sub_item_table = { { text = "Widgets ▸" }, { text = "Edit mode" }, { text = "Presets" }, { text = "Show top status bar" } } }
+    end },
     ["modules/settings/zenpm_installer"] = { build_item = function() return nil end },
     ["modules/filebrowser/patches/rakuyomi"] = { is_available = function() return false end },
     ["apps/reader/readerui"] = {},
@@ -300,8 +304,7 @@ if okb then
     local td = find(general, "Time and date")
     check(td and texts(td.sub_item_table) == "|Time zone: UTC−5|12-hour clock|Set time|",
         "General → Time and date: Time zone first " .. texts(td and td.sub_item_table))
-    local downloads = find(items, "Downloads")
-    check(downloads and downloads.icon_name == "tab_downloaded", "Downloads has the Downloads tab's icon")
+    check(find(items, "Downloads") == nil, "no Downloads section (its rows are in Home: zen_settings_test.lua)")
     local shared = require("ui/elements/common_settings_menu_table").time
     check(#shared.sub_item_table == 2, "KOReader's own Time and date menu left as it was")
     local bug = find(about, "Report a bug")

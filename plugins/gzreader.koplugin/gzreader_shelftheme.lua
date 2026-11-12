@@ -562,7 +562,7 @@ end
 
 ---------------------------------------------------------------- Settings
 
---- Settings → Downloads → Appearance → Bookshelf theme.
+--- Settings → Home → Appearance → Bookshelf theme.
 function Theme.settingsItem()
     local labels = Theme.labels()
     local items = {}
