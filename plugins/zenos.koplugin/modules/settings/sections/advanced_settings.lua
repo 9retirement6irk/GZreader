@@ -36,7 +36,7 @@ function M.build(ctx)
 
     -- GZreader: Partial pages refresh and GZreader's Flash when the screen
     -- changes (gzreader_eink, the Kindles without REAGL) are in General →
-    -- Screen refresh (sections/gz_screen_refresh.lua).
+    -- Screen → E-ink settings (sections/gz_screen_refresh.lua).
 
     table.insert(items, {
         text = _("Allow dragging reader modals"),

@@ -75,6 +75,27 @@ local stubs = {
         return { { text = "Free on this Kindle" }, { text = "Books", sub_item_table = {} } }
     end },
     ["ui/language"] = { getLangMenuTable = function() return { text = "Language", sub_item_table = { { text = "English" } } } end },
+    -- KOReader's Screen menu, as Settings → KOReader copies it (Settings → General → Screen)
+    ["modules/menu/app_launcher/native_menu"] = {
+        settingsItems = function(_scope, id)
+            if id ~= "screen" then return {} end
+            local eink = { { text = "Full refresh rate", separator = true, sub_item_table = {} },
+                { text = "Use smaller panning rate" }, { text = "Avoid mandatory black flashes in UI" } }
+            eink._zen_refresh = function() return { { text = "Full refresh rate", separator = true }, { text = "Flash keyboard" } } end
+            return { { id = "screen", text = "Screen", sub_item_table = {
+                { id = "screensaver", text = "Sleep screen" }, { id = "autodim", text = "Automatic dimmer" },
+                { id = "screen_rotation", text = "Rotation" }, { id = "screen_dpi", text = "Screen DPI" },
+                { id = "screen_eink_opt", text = "E-ink settings", sub_item_table = eink },
+                { id = "screen_timeout", text = "Screen timeout" }, { id = "fullscreen", text = "Fullscreen" },
+            } } }
+        end,
+    },
+    -- KOReader's NetworkMgr: its HTTP proxy and Network info rows (General → Wi-Fi)
+    ["ui/network/manager"] = {
+        getProxyMenuTable = function() return { text_func = function() return "HTTP proxy " end,
+            checked_func = function() return false end, callback = function() end, hold_input = { title = "Enter proxy address" } } end,
+        getInfoMenuTable = function() return { text = "Network info", keep_menu_open = true, callback = function() end } end,
+    },
     ["ui/elements/common_settings_menu_table"] = { time = { text = "Time and date",
         sub_item_table = { { text = "12-hour clock" }, { text = "Set time" } } } },
 }
@@ -133,16 +154,39 @@ if okb then
     for _i, kept in ipairs({ "Show hidden files", "Extract metadata" }) do
         check(adv:find("|" .. kept .. "|", 1, true) ~= nil, "Advanced still has " .. kept)
     end
-    -- General → Screen refresh: every flash setting in one place
+    -- General → Screen: KOReader's Screen menu, GZreader's flash rows in its E-ink settings
     for _i, moved in ipairs({ "Partial pages refresh", "Flash when the screen changes" }) do
         check(not adv:find("|" .. moved .. "|", 1, true), "not in General → Advanced any more: " .. moved)
     end
-    check(gen:find("|Sleep|Screen refresh|", 1, true) ~= nil, "General: Screen refresh, just after Sleep")
-    local refresh = find(general, "Screen refresh")
-    local rt = texts(refresh and refresh.sub_item_table)
-    print("    Screen refresh: " .. rt)
-    check(rt == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
-        "Screen refresh: page turns, CBZ page turns, screen changes, partial pages (a Kindle 3)")
+    check(gen:find("|Sleep|Screen|", 1, true) ~= nil and not gen:find("|Screen refresh|", 1, true),
+        "General: Screen, just after Sleep (no Screen refresh row) " .. gen)
+    local screen = find(general, "Screen")
+    local srows = screen and screen.sub_item_table_func and screen.sub_item_table_func()
+    print("    Screen: " .. texts(srows))
+    check(texts(srows) == "|Automatic dimmer|Screen DPI|E-ink settings|Screen timeout|Fullscreen|",
+        "Screen: KOReader's Screen menu without Sleep screen and Rotation (GZreader has them elsewhere) " .. texts(srows))
+    local einkrows = find(srows or {}, "E-ink settings")
+    local rt = texts(einkrows and einkrows.sub_item_table)
+    print("    E-ink settings: " .. rt)
+    check(rt == "|Full refresh rate|Flash on every page turn|Flash when the screen changes|Partial pages refresh|Use smaller panning rate|Avoid mandatory black flashes in UI|",
+        "E-ink settings: Full refresh rate, then GZreader's page turns, screen changes, partial pages (a Kindle 3), then KOReader's others " .. rt)
+    check(einkrows.sub_item_table[4].separator == true and not einkrows.sub_item_table[1].separator,
+        "a line under GZreader's rows, none between them and Full refresh rate")
+    check(texts(einkrows.sub_item_table._zen_refresh()) == "|Full refresh rate|Flash on every page turn|Flash when the screen changes|Partial pages refresh|Flash keyboard|",
+        "…and still there after the page refreshes")
+    check(not texts(srows):find("CBZ", 1, true) and not rt:find("CBZ", 1, true), "no Flash on every CBZ page turn")
+    -- the Settings page builds Screen's rows again from KOReader's on a refresh: GZreader's rows come back too
+    local again = require("common/gz_settings").withFlashRows(setmetatable({ { id = "screen_eink_opt", text = "E-ink settings", sub_item_table = { { text = "Full refresh rate" } } },
+        _zen_refresh = function() return { { id = "screen_eink_opt", text = "E-ink settings", sub_item_table = { { text = "Full refresh rate" }, { text = "Flash keyboard" } } } } end }, nil),
+        { { text = "A" } })
+    local fresh = again._zen_refresh()
+    check(texts(fresh[1].sub_item_table) == "|Full refresh rate|A|Flash keyboard|", "after Screen's own refresh too " .. texts(fresh[1].sub_item_table))
+    local GzS = require("common/gz_settings")
+    check(GzS.KOREADER_DUPLICATES.screen == true and not GzS.KOREADER_HIDDEN.screen, "Settings → KOReader: no Screen menu (General has it)")
+    check(texts(GzS.screenItems({ settingsItems = function() error("no menu") end }, { { text = "A" } })) == "|A|",
+        "no KOReader menu to copy: GZreader's rows alone")
+    check(texts(GzS.withFlashRows({ { id = "screen_dpi", text = "Screen DPI" } }, { { text = "A" } })) == "|Screen DPI|A|",
+        "no E-ink settings: GZreader's rows at the end")
     local rsrc = read("modules/settings/sections/reader_settings.lua")
     check(not rsrc:find('_("Flash on every', 1, true), "Reader → Appearance: no flash settings left")
     local asrc = read("modules/settings/sections/advanced_settings.lua")
@@ -163,22 +207,26 @@ if okb then
             setFlashPageTurns = function() end, applies = function() return not reagl end,
             enabled = function() return true end, setEnabled = function() end }
     end
-    check(refreshTexts(eink(true)) == "|Flash on every page turn|Flash on every CBZ page turn|Partial pages refresh|",
+    check(refreshTexts(eink(true)) == "|Flash on every page turn|Partial pages refresh|",
         "a Paperwhite (REAGL): no Flash when the screen changes")
-    check(refreshTexts(eink(false)) == "|Flash on every page turn|Flash on every CBZ page turn|Flash when the screen changes|Partial pages refresh|",
-        "a Kindle 3: all four")
-    check(refreshTexts(false) == "|Flash on every CBZ page turn|Partial pages refresh|", "without GZreader's e-ink module: ZenOS's two")
-    -- ticking them changes what they did before
-    local cbz, partial
+    check(refreshTexts(eink(false)) == "|Flash on every page turn|Flash when the screen changes|Partial pages refresh|",
+        "a Kindle 3: all three")
+    check(refreshTexts(false) == "|Partial pages refresh|", "without GZreader's e-ink module: ZenOS's one")
+    -- ticking it changes what it did before
+    local partial
     for _i, it in ipairs(require("modules/settings/sections/gz_screen_refresh").build({ config = config, plugin = plugin })) do
-        if text(it) == "Flash on every CBZ page turn" then cbz = it elseif text(it) == "Partial pages refresh" then partial = it end
+        if text(it) == "Partial pages refresh" then partial = it end
     end
-    config.features.reader_flash_cbz, config.features.partial_page_repaint = nil, nil
-    cbz.callback(); partial.callback()
-    check(config.features.reader_flash_cbz == true and cbz.checked_func() and config.features.partial_page_repaint == true and partial.checked_func(),
-        "Flash on every CBZ page turn and Partial pages refresh still set ZenOS's own settings")
-    cbz.callback(); partial.callback()
-    check(not cbz.checked_func() and not partial.checked_func(), "…and untick them")
+    config.features.partial_page_repaint = nil
+    partial.callback()
+    check(config.features.partial_page_repaint == true and partial.checked_func(), "Partial pages refresh still sets ZenOS's own setting")
+    partial.callback()
+    check(not partial.checked_func(), "…and unticks it")
+    -- comics: KOReader's "Always flash on pages with images" instead of ZenOS's CBZ setting
+    local cbz_src = read("modules/reader/patches/reader_flash_cbz.lua")
+    check(cbz_src:find('G_reader_settings:nilOrTrue("refresh_on_pages_with_images")', 1, true) ~= nil
+            and not cbz_src:find("reader_flash_cbz == true", 1, true),
+        "a CBZ page turn flashes when \"Always flash on pages with images\" is ticked (on unless unticked), not by ZenOS's own setting")
 
     local about = find(items, "About").sub_item_table
     print("    About: " .. texts(about))
@@ -193,17 +241,24 @@ if okb then
     local wifi_rows = texts(wifi and wifi.sub_item_table)
     check(gen:find("|Updates|Wi-Fi|Bluetooth|", 1, true) and select(2, gen:gsub("|Wi%-Fi", "")) == 1,
         "General: one Wi-Fi row, where ZenOS's was (no separate \"Wi-Fi only when needed\") " .. gen)
-    check(wifi_rows == "|On|Off|Auto (only when needed)|Networks|" and wifi.mandatory_func() == "Auto",
-        "General → Wi-Fi: On, Off, Auto, then Networks; the row shows the mode " .. wifi_rows)
+    check(wifi_rows == "|On|Off|Auto (only when needed)|Networks|HTTP proxy |Network info|" and wifi.mandatory_func() == "Auto",
+        "General → Wi-Fi: On, Off, Auto, then Networks, HTTP proxy and Network info; the row shows the mode " .. wifi_rows)
+    local proxy = wifi and wifi.sub_item_table[5]
+    check(proxy and proxy.hold_input and type(proxy.callback) == "function" and proxy.keep_menu_open,
+        "HTTP proxy is KOReader's own row: a tap turns it on or off, a hold asks for the address")
     local nets = wifi and wifi.sub_item_table[4]
     check(nets and type(nets.callback) == "function" and nets._zen_settings_submenu,
         "Networks opens ZenOS's network list (what its Wi-Fi row opened)")
     local GzS = require("common/gz_settings")
     check(GzS.wifiItem(nil, { text = "Wi-Fi" }).text == "Wi-Fi", "no GZreader item (a Kindle without Wi-Fi): ZenOS's Wi-Fi row stays")
-    check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil).sub_item_table) == "|On|",
-        "no ZenOS row to take the network list from: the modes alone")
-    check(gen:find("|Sleep|Screen refresh|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
-        "General: Time and date, Language and Storage after Sleep (and Screen refresh) " .. gen)
+    check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil, {}).sub_item_table) == "|On|",
+        "no ZenOS row to take the network list from, no NetworkMgr rows: the modes alone")
+    check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil,
+            { getInfoMenuTable = function() return { text = "Network info" } end,
+              getProxyMenuTable = function() error("old KOReader") end }).sub_item_table) == "|On|Network info|",
+        "a NetworkMgr row that fails is left out, the others stay")
+    check(gen:find("|Sleep|Screen|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
+        "General: Time and date, Language and Storage after Sleep (and Screen) " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
     local dev = texts(device and device.sub_item_table)
     check(not dev:find("|Storage|", 1, true) and not dev:find("|Language|", 1, true) and not dev:find("|Time and date|", 1, true),
@@ -253,6 +308,7 @@ local src = {
     { id = "network_before_wifi_action", text = "Action when Wi-Fi is off" },
     { id = "network_after_wifi_action", text = "Action when done with Wi-Fi" },
     { id = "network_proxy", text = "HTTP proxy" },
+    { id = "network_powersave", text = "Disable Wi-Fi connection when inactive" },
     { id = "gzreader", text = "Grimmory" },
     { id = "statistics", text = "Reading statistics" },
     { id = "filemanager_settings", text = "File browser" },
@@ -269,6 +325,8 @@ check(texts(copied[4] and copied[4].sub_item_table) == "|Quickstart guide|Versio
     "Help: no KOReader bug report, no Disable external plugins " .. texts(copied[4] and copied[4].sub_item_table))
 check(texts(copied) == "|Wi-Fi connection|More tools|HTTP proxy|Help|no id|",
     "KOReader section: clashing items left out " .. texts(copied))
+check(require("common/gz_settings").KOREADER_HIDDEN.network_powersave == true,
+    "KOReader section: no \"Disable Wi-Fi connection when inactive\" (it turned Wi-Fi off on On; Auto does its job)")
 check(texts(copied[2].sub_item_table) == "|Advanced settings|", "and inside submenus " .. texts(copied[2].sub_item_table))
 local n_keep = select(2, read("modules/menu/app_launcher/native_menu.lua"):gsub("keepKOReaderItem", ""))
 check(n_keep == 2, "the KOReader section's top menus (File browser) are filtered too")
@@ -278,7 +336,7 @@ check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem",
 -- the KOReader section without what GZreader has elsewhere (KOREADER_DUPLICATES)
 ;(function()
     local GzS = require("common/gz_settings")
-    for _i, id in ipairs({ "language", "time", "screensaver", "autosuspend", "network_wifi", "history", "favorites",
+    for _i, id in ipairs({ "language", "time", "screensaver", "autosuspend", "network_wifi", "network_proxy", "network_info", "history", "favorites",
             "collections", "document_end_action", "night_mode", "screen_rotation", "exit_menu", "version", "about",
             "quickstart_guide", "cloud_storage" }) do
         check(GzS.KOREADER_DUPLICATES[id] == true and not GzS.KOREADER_HIDDEN[id], "KOReader section: " .. id .. " left out there only")
@@ -287,7 +345,9 @@ check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem",
     local section = {
         { id = "night_mode", text = "Night mode" },
         { id = "network", text = "Network", sub_item_table = {
-            { id = "network_wifi", text = "Wi-Fi connection" }, { id = "network_info", text = "Network info" } } },
+            { id = "network_wifi", text = "Wi-Fi connection" }, { id = "network_proxy", text = "HTTP proxy" },
+            { id = "network_dismiss_scan", text = "Dismiss Wi-Fi scan popup after connection" },
+            { id = "network_info", text = "Network info" } } },
         { id = "device", text = "Device", sub_item_table_func = function() return {
             { id = "time", text = "Time and date" }, { id = "keyboard_layout", text = "Keyboard" },
             { id = "autosuspend", text = "Autosuspend timeout" } } end },
@@ -301,7 +361,8 @@ check(read("modules/menu/app_launcher/native_menu.lua"):find("keepKOReaderItem",
     section._zen_refresh = function() refreshed = refreshed + 1; return { { id = "language", text = "Language" }, { id = "units", text = "Units" } } end
     local out = GzS.dropKOReaderDuplicates(section)
     check(texts(out) == "|Network|Device|Main menu|no id|", "KOReader section: Night mode left out " .. texts(out))
-    check(texts(out[1].sub_item_table) == "|Network info|", "…and Wi-Fi connection inside Network")
+    check(texts(out[1].sub_item_table) == "|Dismiss Wi-Fi scan popup after connection|",
+        "…and Wi-Fi connection, HTTP proxy, Network info inside Network (General → Wi-Fi has them) " .. texts(out[1].sub_item_table))
     check(texts(out[2].sub_item_table_func()) == "|Keyboard|", "…and Time and date, Autosuspend inside a built-later submenu")
     check(texts(out[3].sub_item_table) == "|Bookmark browser|Help|", "…History and Exit (Restart, Sleep, Exit) from Main menu")
     check(texts(out[3].sub_item_table[2].sub_item_table) == "|Menu search|", "…Quickstart guide, Version, About from Help")

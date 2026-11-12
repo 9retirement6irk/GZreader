@@ -160,15 +160,16 @@ function M.build(plugin)
     library_item.icon_name = "tab_downloaded" -- GZreader: the Downloads tab's own icon
 
     local root_items = {
+        -- GZreader: General first (Wi-Fi, Screen, Sleep, …: what's changed most).
+        -- No Extras section: General takes its Schedules and Sleep and
+        -- Interface its Custom icons (above); the rest (Stats tab widgets,
+        -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
+        -- its saved value or default, with nothing to set.
+        IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
         home_item,
         library_item,
         IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
         interface_item,
-        -- GZreader: no Extras section. General takes its Schedules and Sleep
-        -- and Interface its Custom icons (above); the rest (Stats tab widgets,
-        -- ZenPM, Rakuyomi, Zen Search, Lockdown mode, Zen Keyboard) stays at
-        -- its saved value or default, with nothing to set.
-        IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
         -- GZreader: Storage (what's on the Kindle) is in General → Storage
         -- GZreader: Connections: the Grimmory plugin's settings (connection,
         -- sync, audiobooks; KOReader → Tools → Grimmory is left out) and

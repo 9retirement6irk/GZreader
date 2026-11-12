@@ -1868,9 +1868,10 @@ function M.build(ctx)
         end,
     })
 
-    -- GZreader: Flash on every CBZ page turn and GZreader's Flash on every
-    -- page turn (gzreader_eink) are in General → Screen refresh, with the
-    -- other flash settings (sections/gz_screen_refresh.lua).
+    -- GZreader: GZreader's Flash on every page turn (gzreader_eink) is in
+    -- General → Screen → E-ink settings, with the other flash settings
+    -- (sections/gz_screen_refresh.lua); no Flash on every CBZ page turn
+    -- (KOReader's Always flash on pages with images covers comics).
 
     table.insert(appearance_items, 3, IconItem.decorate({
         text = _("Align status bars with book margins"),

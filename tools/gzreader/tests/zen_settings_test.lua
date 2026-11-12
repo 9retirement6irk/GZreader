@@ -66,8 +66,8 @@ check(okb and type(root) == "table", "ZenOS's settings build " .. tostring(not o
 if okb then
     local items = root.sub_item_table
     local top = texts(items)
-    check(top == "|Home|Downloads|Reader|Interface|General|Connections|KOReader|About|",
-        "Settings: Home, Downloads, Reader, Interface, General, Connections, KOReader, About; no Extras, Storage in About " .. top)
+    check(top == "|General|Home|Downloads|Reader|Interface|Connections|KOReader|About|",
+        "Settings: General first, then Home, Downloads, Reader, Interface, Connections, KOReader, About; no Extras " .. top)
     -- Downloads (ZenOS's Library section): Books has no Metadata menu
     local dl = sub(items, "Downloads")
     print("    Downloads: " .. texts(dl))

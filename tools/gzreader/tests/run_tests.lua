@@ -3621,6 +3621,20 @@ print("Wi-Fi: on, off, auto")
     UI.scheduled = {}
 end)()
 
+print("Wi-Fi: KOReader's \"Disable Wi-Fi connection when inactive\" cleared (its row is hidden)")
+;(function()
+    local Net = require("gzreader_net")
+    gsettings.auto_disable_wifi = true
+    check(Net.forgetKOReaderPowersave() == true and gsettings.auto_disable_wifi == nil,
+        "a saved tick is cleared (it turned Wi-Fi off after 5 quiet minutes even on On)")
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == nil, "nothing saved: nothing to do")
+    gsettings.auto_disable_wifi = false
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == false, "unticked: left as it is")
+    gsettings.auto_disable_wifi = nil
+    check(io.open(PLUGIN .. "/gzreader_net.lua"):read("*a"):find("pcall(Net.forgetKOReaderPowersave)", 1, true) ~= nil,
+        "done at start (Net.start)")
+end)()
+
 print("Night mode guard (Kindle 3)")
 do
     local saved_dev, saved_ng = package.loaded["device"], package.loaded["gzreader_nightguard"]
@@ -7842,7 +7856,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → General → Screen refresh)")
+print("Flash on every page turn (Settings → General → Screen → E-ink settings)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -7881,7 +7895,7 @@ print("Flash on every page turn (Settings → General → Screen refresh)")
     local src = f and f:read("*a") or ""
     if f then f:close() end
     check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen refresh, on every device")
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen → E-ink settings, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do
