@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindles with a warm light: a warmth slider in the quick panel", text = "On Kindles whose light can be made warmer (Paperwhite 5 and newer, Oasis 3, Scribe, Colorsoft) the quick panel has a warmth slider under the light's, from Cool to Warm: tap or drag it, or step it with − and +. As with the light, the swipe that opens the panel leaves it alone. Other Kindles keep the light slider alone." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },
