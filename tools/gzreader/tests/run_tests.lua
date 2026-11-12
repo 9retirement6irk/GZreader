@@ -2284,9 +2284,9 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     check(#rows == 2 and rows[1].text == "Open with a tap at the top" and rows[2].text == "Open with a swipe down from the top"
             and rows[2].separator and item.sub_item_table[1].text == rows[1].text and item.sub_item_table[2].text == rows[2].text,
         "a touch Kindle: Settings → Interface → Quick panel starts with Open with a tap / with a swipe")
-    local fm = require("apps/filemanager/filemanager")
-    local had = fm.instance
-    fm.instance = { menu = {} }
+    local had_fm = package.loaded["apps/filemanager/filemanager"]
+    local fm = { instance = { menu = {} } }
+    package.loaded["apps/filemanager/filemanager"] = fm
     gsettings.activate_menu = nil
     check(rows[1].checked_func() and rows[2].checked_func(), "by default both (KOReader's swipe_tap)")
     rows[1].callback()
@@ -2297,7 +2297,7 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
         "untick the swipe then: a tap only (one of them stays, as in KOReader)")
     rows[2].callback()
     check(gsettings.activate_menu == "swipe_tap" and rows[1].checked_func() and rows[2].checked_func(), "tick it again: both")
-    fm.instance = had
+    package.loaded["apps/filemanager/filemanager"] = had_fm
     gsettings.activate_menu = nil
     -- KOReader's Disable double tap: a saved untick cleared
     gsettings.disable_double_tap = false
