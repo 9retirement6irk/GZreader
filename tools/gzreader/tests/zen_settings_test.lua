@@ -31,6 +31,8 @@ local stubs = {
     ["modules/settings/zenpm_installer"] = { build_item = function() return nil end },
     ["modules/filebrowser/patches/rakuyomi"] = { is_available = function() return false end },
     ["common/gz_view"] = { isBookshelf = function() return view.bookshelf end },
+    -- the Kindles without Wi-Fi (2, DX): no Home Assistant in Connections
+    ["gzreader_usbsync"] = { noWifi = function() return view.no_wifi == true end },
 }
 table.insert(package.loaders, 2, function(name)
     if stubs[name] ~= nil then local v = stubs[name]; return function() return v end end
@@ -97,6 +99,26 @@ if okb then
     for _i, gone in ipairs({ "Extras", "Stats", "Zen Search", "Lockdown mode", "Zen Keyboard" }) do
         check(not all:find("|" .. gone .. "|", 1, true), "not in Settings: " .. gone)
     end
+end
+
+-- Connections: Home Assistant (the House tab), before Copy; not without Wi-Fi
+do
+    local function connections()
+        local okc, r = pcall(require("modules/settings/zen_settings").build, plugin)
+        for _i, it in ipairs(okc and r.sub_item_table or {}) do
+            if rawget(it, "_zen_settings_root") == "gzreader" then return texts(it.sub_item_table) end
+        end
+        return ""
+    end
+    view.no_wifi = false
+    local con = connections()
+    check(con:find("|Plex (Music)|Home Assistant (House)|Copy to or from another GZreader|", 1, true)
+        or con:find("|Calendar (CalDAV)|Home Assistant (House)|Copy to or from another GZreader|", 1, true),
+        "Connections: Home Assistant (House), before Copy to or from another GZreader " .. con)
+    view.no_wifi = true
+    con = connections()
+    check(con ~= "" and not con:find("Home Assistant", 1, true), "Connections: no Home Assistant on a Kindle without Wi-Fi " .. con)
+    view.no_wifi = false
 end
 
 print(ok_count .. " passed, " .. fail .. " failed")

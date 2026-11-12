@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800px" height="800px" viewBox="0 0 36 36" fill="none" stroke="#000000" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <title>unlock</title>
+    <rect x="7.5" y="16.5" width="21" height="15" rx="2.5"/>
+    <path d="M12 16.5V11a6 6 0 0 1 11.5-2.3"/>
+    <path d="M18 22.5v3"/>
+</svg>

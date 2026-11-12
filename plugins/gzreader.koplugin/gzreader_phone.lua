@@ -157,6 +157,12 @@ local function state(S, flash)
     st.access = { enabled = ac.enabled == true, key = ac.key, hosts = ac.hosts, auto = auto, cf_id = ac.cf_id,
         cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
         error = sec == "access" and flash.error or nil }
+    -- Home Assistant (the House tab): not on the Kindles without Wi-Fi
+    if not require("gzreader_usbsync").noWifi() then
+        local hs = store.homeassistant or {}
+        st.house = { connected = hs.server ~= nil and hs.token ~= nil, name = hs.name, host = host(hs.server),
+            form = sec == "house" and flash.form or { server = hs.server }, error = sec == "house" and flash.error or nil }
+    end
     st.start = S.opts.section or "grimmory"
     -- diagnostics: the log, while diagnostic logging is on
     if store.logging_disabled ~= true then st.diagnostics = { level = store.log_level } end
@@ -459,6 +465,25 @@ function Phone.open(plugin, opts)
         Log.info("access: key", ac.enabled and "on" or "off", "service token", ac.cf_id and "set" or "none")
         return back({ ok = true, text = _("Saved."), section = "access" })
     end
+    -- Home Assistant (gzreader_homeassistant.lua): address and long-lived token
+    routes["/house"] = function(form)
+        local HA = require("gzreader_homeassistant")
+        local ok, err = HA.connect(plugin, form.server or "", form.token or "")
+        if not ok then
+            if failedLogin() then return 200, "text/html", PairPage.gone() end
+            return back({ section = "house", error = err, form = { server = form.server } })
+        end
+        S.changes.house = true
+        local name = plugin.store.homeassistant.name or _("Home Assistant")
+        toast(T(_("House: connected to %1."), name))
+        return back({ ok = true, text = T(_("Connected to %1. Turn the House tab on in Settings → Connections → Home Assistant."), name), section = "house" })
+    end
+    routes["/house/disconnect"] = function()
+        require("gzreader_homeassistant").disconnect(plugin)
+        S.changes.house = true
+        toast(_("House: disconnected from Home Assistant."))
+        return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
+    end
     routes["/memos"] = function(form)
         local ok, err = Notes().connect(plugin, form.server, form.token)
         if not ok then
@@ -715,6 +740,10 @@ function Phone.afterClose(S)
     if ch.music then
         local ps = plugin.store.plex or {}
         lines[#lines + 1] = ps.token and T(_("Music: signed in to Plex as %1."), ps.username or "?") or _("Music: signed out of Plex.")
+    end
+    if ch.house then
+        local hs = plugin.store.homeassistant or {}
+        lines[#lines + 1] = hs.token and T(_("House: connected to %1."), hs.name or _("Home Assistant")) or _("House: disconnected.")
     end
     if ch.books then
         lines[#lines + 1] = T(_("%1 books received (the Downloads tab shows them)."), ch.books)

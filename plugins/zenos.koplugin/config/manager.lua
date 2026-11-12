@@ -1295,6 +1295,32 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
+    -- GZreader: the House tab (Home Assistant): listed in Settings → Navbar →
+    -- Tabs, off (Settings → Connections → Home Assistant turns it on too).
+    if cfg._meta.gz_house_tab_migrated ~= true then
+        local nb = type(cfg.navbar) == "table" and cfg.navbar or nil
+        if nb then
+            nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+            local has = false
+            for _i, t in ipairs(nb.custom_tabs) do
+                if type(t) == "table" and t.id == "ct_house" then has = true end
+            end
+            if not has then
+                table.insert(nb.custom_tabs, { id = "ct_house", type = "action",
+                    action = { gzreader_house = true }, label = "House", icon = "tab_house" })
+            end
+            nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+            if nb.show_tabs.ct_house == nil then nb.show_tabs.ct_house = false end
+            if type(nb.tab_order) == "table" then
+                local seen = false
+                for _i, id in ipairs(nb.tab_order) do if id == "ct_house" then seen = true end end
+                if not seen then table.insert(nb.tab_order, "ct_house") end
+            end
+        end
+        cfg._meta.gz_house_tab_migrated = true
+        changed = true
+    end
+
     -- GZreader: Settings has no Debug logging switch any more (KOReader's
     -- verbose log, slow on an old Kindle): turned off once, from the next start.
     if cfg._meta.gz_debug_logging_off ~= true then

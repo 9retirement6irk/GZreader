@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The House tab: your Home Assistant rooms, lights, thermostat, locks and scenes", text = "A House tab (off until you turn it on): your Home Assistant rooms with their lights, switches, thermostats, locks, garage doors and scenes, to switch from the Kindle. Connect in Settings → Connections → Home Assistant (House): with a QR code (paste the address and a long-lived access token on your phone), by finding Home Assistant on the Wi-Fi, or by typing; then tick House tab there. A switch toggles, a dimmable light opens a dimmer (On, Off, −/+ 10%, 10/40/80/100%), a thermostat its target a step down or up; locks and garage doors ask before unlocking or opening. Rooms need an administrator's token; another one groups things by kind. GZreader talks to Home Assistant directly over the Wi-Fi; the token is never written to the log. Not on the Kindle 2 and DX (no Wi-Fi)." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

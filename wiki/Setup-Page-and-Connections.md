@@ -26,6 +26,8 @@ you came from; without JavaScript they're one under the other):
   can be renamed, given a new link (Proton's links change when you reshare)
   or removed; add new links (several at once); connect or disconnect a CalDAV
   account.
+- **House** (Kindles with Wi‑Fi): your Home Assistant address and a
+  long-lived access token, or disconnect ([House](House)).
 - **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
   page, which comes back to the setup page), the Plex server to use, sign out.
 - **Send books**: pick books in the browser (EPUB, PDF, MOBI, AZW3, FB2, CBZ,

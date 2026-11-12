@@ -25,6 +25,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 - **Music** — albums and playlists from Plex, downloaded and played while you read (Kindles with audio). → [Music](Music)
 - **Audiobooks** — from Grimmory, with your place kept in sync (Kindles with audio). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
 - **Read aloud** — any EPUB, MOBI, AZW3, FB2 or TXT in the Kindle's own voice, the sentence highlighted and pages turning by themselves (Kindle 2, 3, DX, Touch). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud#read-aloud-kindle-2-3-dx-text-to-speech)
+- **House** — your [Home Assistant](https://www.home-assistant.io) rooms: lights, switches, thermostats, locks, garage doors and scenes to switch from the Kindle, straight over your Wi‑Fi (Kindles with Wi‑Fi). → [House](House)
 
 ## Using it
 
