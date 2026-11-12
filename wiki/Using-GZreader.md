@@ -95,6 +95,10 @@ run the same GZreader with ZenOS's touch interface:
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light
   slider on Kindles with a frontlight. A tap below it closes it.
+- **Warmth:** on Kindles whose light can be made warmer (Paperwhite 5 and
+  newer, Oasis 3, Scribe, Colorsoft) a second slider under the light's goes
+  from **Cool** to **Warm**: tap or drag it, − and + step. The swipe that
+  opens the panel moves neither slider.
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
 - **Notes:** New note, Filter and More are buttons under the title; a note

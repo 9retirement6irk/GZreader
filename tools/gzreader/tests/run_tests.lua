@@ -7738,6 +7738,88 @@ print("Quick panel's light: the swipe that opens it doesn't move the light")
     Screen.scaleBySize = was_scale
 end)()
 
+print("Quick panel: a warmth slider on Kindles with a warm light")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    local Device = require("device")
+    local Screen = Device.screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local saved = { nl = Device.hasNaturalLight, pd = Device.getPowerDevice }
+    -- which Kindles get it
+    Device.hasNaturalLight = nil
+    check(Panel.hasWarmth() == false, "a Kindle KOReader knows nothing of a warm light for: none (no error)")
+    Device.hasNaturalLight = function() return false end
+    Device.getPowerDevice = function() return {} end
+    check(Panel.hasWarmth() == false, "no warm light (Paperwhite 3, Kindle Touch): no warmth slider")
+    Device.hasNaturalLight = function() return true end
+    check(Panel.hasWarmth() == true, "a warm light (Paperwhite 5, Oasis 3, Scribe…): a warmth slider")
+    -- the Kindle's steps (KindlePowerD: native 0…24, the public warmth 0…100)
+    local pd = { fl_warmth_min = 0, fl_warmth_max = 24, fl_warmth = 50, sets = {} }
+    function pd:frontlightWarmth() return self.fl_warmth end
+    function pd:toNativeWarmth(w) return math.floor(w / (100 / 24) + 0.5) end
+    function pd:fromNativeWarmth(nat) return math.floor(nat * (100 / 24) + 0.5) end
+    function pd:setWarmth(w) self.sets[#self.sets + 1] = w; self.fl_warmth = w end
+    Device.getPowerDevice = function() return pd end
+    local w = setmetatable({ light_y = 40, warmth_y = 92, w = 600, h = 700 }, { __index = PW })
+    local min, max, cur = select(2, w:warmthInfo())
+    check(min == 0 and max == 24 and cur == 12, "the warmth in the Kindle's steps: 0 to 24, now 12 (" .. tostring(cur) .. ")")
+    w:setWarmth(24)
+    check(pd.sets[1] == 100, "the warmest step sets the warmth to 100 (" .. tostring(pd.sets[1]) .. ")")
+    w:setWarmth(30)
+    w:setWarmth(-3)
+    check(pd.sets[2] == 100 and pd.sets[3] == 0, "kept between Cool and Warm")
+    -- the two sliders: a finger on one moves that one only
+    local light, warm = {}, {}
+    w.lightInfo = function() return nil, 0, 24, 12 end
+    w.warmthInfo = function() return nil, 0, 24, 6 end
+    w.setLight = function(_self, v) light[#light + 1] = v end
+    w.setWarmth = function(_self, v) warm[#warm + 1] = v end
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    local light_bar, warm_bar = 40 + 20, 92 + 20
+    check(w:sliderAtY(light_bar) == "light" and w:sliderAtY(warm_bar) == "warmth" and w:sliderAtY(300) == nil
+            and w:sliderAtY(40 + 44) == "light" and w:sliderAtY(92 - 4) == "warmth",
+        "a finger is on the slider whose bar is nearest")
+    -- the opening swipe goes on over both and lets go
+    w:onPanLight(nil, at(100, light_bar))
+    w:onPanLight(nil, at(300, warm_bar))
+    w:onPanReleaseLight(nil, at(300, warm_bar))
+    check(#light == 0 and #warm == 0, "the swipe that opens the panel moves neither")
+    w:onTouchPanel(nil, at(200, warm_bar))
+    w:onPanLight(nil, at(300, warm_bar))
+    w:onPanLight(nil, at(400, light_bar)) -- (straying up over the light: still the warmth)
+    w:onPanReleaseLight(nil, at(450, light_bar))
+    check(#warm == 3 and #light == 0, "a drag that starts on the warmth moves the warmth only (" .. #warm .. ", " .. #light .. ")")
+    w:onTouchPanel(nil, at(200, warm_bar))
+    w:onSwipeLight(nil, { pos = at(200, warm_bar).pos, direction = "west", distance = 200 })
+    check(#warm == 4 and warm[4] == 0, "a quick swipe on the warmth to the left: all the way Cool (" .. tostring(warm[4]) .. ")")
+    w:onTouchPanel(nil, at(200, light_bar))
+    w:onPanLight(nil, at(300, light_bar))
+    w:onPanReleaseLight(nil, at(300, light_bar))
+    check(#light == 2 and #warm == 4, "a drag on the light still moves the light")
+    -- taps: − and + step, the bar sets
+    warm = {}
+    w:onTapPanel(nil, at(20, 92 + 10))
+    w:onTapPanel(nil, at(590, 92 + 10))
+    w:onTapPanel(nil, at(300, 92 + 20))
+    check(warm[1] == 5 and warm[2] == 7 and warm[3] == 12 and #light == 2,
+        "warmth: − one step cooler, + one warmer, the middle of the bar halfway")
+    -- no warm light: the light slider as before, nothing under it
+    local w2 = setmetatable({ light_y = 40, w = 600 }, { __index = PW })
+    check(w2:sliderAtY(92 + 20) == nil and #w2:sliders() == 1, "without a warm light only the light's slider")
+    -- the panel makes room for it, only on such Kindles
+    local pf = io.open(debug.getinfo(PW.init, "S").source:sub(2), "rb")
+    local src = pf and pf:read("*a") or ""
+    if pf then pf:close() end
+    check(src:find("local warmth = light and Panel.hasWarmth()", 1, true)
+            and src:find("(warmth and S(52) or 0)", 1, true) and src:find("self.warmth_y = y", 1, true)
+            and src:find("if self.warmth_y then self:paintWarmth(bb, x, y + self.warmth_y) end", 1, true),
+        "the panel lays out and paints the warmth row under the light's when there's a warm light")
+    Device.hasNaturalLight, Device.getPowerDevice = saved.nl, saved.pd
+    Screen.scaleBySize = was_scale
+end)()
+
 print("The first tour on a touch Kindle: GZreader's quick panel")
 ;(function()
     local Tour = require("gzreader_tour")
