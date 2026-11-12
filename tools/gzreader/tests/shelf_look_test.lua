@@ -130,6 +130,7 @@ do
     local ok, Theme = pcall(dofile, REPO .. "/plugins/gzreader.koplugin/gzreader_shelftheme.lua")
     check(ok, "gzreader_shelftheme loads " .. tostring(not ok and Theme or ""))
     if ok then
+        local real_changed = Theme.changed
         Theme.changed = function() Theme.planks, Theme.images, Theme.found = {}, {}, nil end
         check(Theme.get() == "oak" and Theme.ornaments() == "room", "to begin with: the Oak plank, ornaments where there's room")
         check(Theme.set("walnut") and Theme.get() == "walnut" and not Theme.set("marble") and Theme.get() == "walnut", "a theme is one of Plain, Oak, Walnut")
@@ -304,31 +305,94 @@ do
         wall:fill(BB.COLOR_WHITE)
         check(Theme.paintOrnament(wall, "x", 0, 300, 180, 150) == nil and wall:getPixel(250, 181):getColor8().a == 255
             and Theme.plan("x", 300, 150) == nil and sides(Theme.rowsFor("downloads", { 1, 2 })) == "----", "no ornaments: nothing is planned or drawn")
-        -- Settings: the themes, the ornaments, your own
+        -- Settings → … → Bookshelf theme: the theme screen (gzreader_shelfpreview.lua)
         local item = Theme.settingsItem()
-        local texts = {}
-        for i, it in ipairs(item.sub_item_table) do texts[i] = it.text end
-        check(item.text == "Bookshelf theme" and table.concat(texts, " | ") == "Plain | Oak | Walnut | No ornaments | Ornaments where there's room | An ornament on every page | Where and how many | Which ornaments | Your own ornaments…",
-            "Settings: " .. table.concat(texts, " | "))
-        item.sub_item_table[2].callback()
-        item.sub_item_table[6].callback()
-        local wh = item.sub_item_table[7].sub_item_table
-        local wht = {}
-        for i, it in ipairs(wh) do wht[i] = it.text end
-        check(table.concat(wht, " | ") == "On Home | In Downloads | In the Catalog | One on a page | Up to two on a page | Up to three on a page | One on every shelf | At the right end of the shelf | At the left end of the shelf | Scattered: right, then left, then right",
-            "Where and how many: " .. table.concat(wht, " | "))
-        wh[1].callback(); wh[6].callback(); wh[10].callback()
-        check(not Theme.placeOn("home") and not wh[1].checked_func() and Theme.count() == 3 and wh[6].checked_func() and not wh[4].checked_func()
-            and Theme.side() == "scattered" and wh[10].checked_func(), "…each sets what it says, and shows it")
-        wh[1].callback(); wh[4].callback(); wh[8].callback()
-        local which = item.sub_item_table[8].sub_item_table_func()
-        local wt = {}
-        for i, it in ipairs(which) do wt[i] = it.text or it.text_func() end
-        check(#which == 22 and wt[19] == "Christmas tree (20 November to 6 January)" and wt[18] == "Pumpkin (mid-September to November)" and wt[1] == "Potted plant" and wt[17] == "Tabby cat" and wt[20] == "Vase"
-            and wt[22] == "Seasonal ones in their season again" and which[1].checked_func() and which[17].checked_func() and not which[18].checked_func() and not which[19].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[19]) .. ")")
-        which[19].callback()
-        check(which[19].checked_func() and which[19].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
-        -- a hold on an ornament: its settings, on a page of their own
+        local shown_with
+        package.loaded["gzreader_shelfpreview"] = { show = function(cb) shown_with = cb or true; return true end }
+        local refreshed
+        item.callback({ updateItems = function() refreshed = true end })
+        check(item.text == "Bookshelf theme" and item.sub_item_table == nil and item.keep_menu_open and type(shown_with) == "function",
+            "Settings: Bookshelf theme opens the theme screen (no list of rows)")
+        shown_with()
+        check(refreshed, "…and Settings' row is drawn again when it closes")
+        package.loaded["gzreader_shelfpreview"] = nil
+        package.loaded["gzreader_shelftheme"] = Theme
+        local okp, P = pcall(dofile, REPO .. "/plugins/gzreader.koplugin/gzreader_shelfpreview.lua")
+        check(okp, "gzreader_shelfpreview loads " .. tostring(not okp and P or ""))
+        if okp then
+            -- the theme screen's choices
+            local secs = P.sections()
+            local sec_names = {}
+            for i, sec in ipairs(secs) do
+                local labels = {}
+                for j, c in ipairs(sec.items) do labels[j] = c.label end
+                sec_names[i] = sec.title .. ": " .. table.concat(labels, ", ")
+            end
+            check(table.concat(sec_names, " | ") == "Plank: Oak, Walnut, Plain | Ornaments: None, Where there's room, On every page | Where on the shelf: Right end, Left end, Scattered | How many on a page: One, Up to two, Up to three, Every shelf",
+                "the theme screen: " .. table.concat(sec_names, " | "))
+            secs[1].items[2].pick(); secs[2].items[3].pick(); secs[3].items[3].pick(); secs[4].items[4].pick()
+            check(Theme.get() == "walnut" and Theme.ornaments() == "always" and Theme.side() == "scattered" and Theme.count() == math.huge
+                and secs[1].items[2].on() and not secs[1].items[1].on() and secs[2].items[3].on() and secs[3].items[3].on() and secs[4].items[4].on(),
+                "a tile sets what it says, and is the one marked")
+            secs[1].items[1].pick(); secs[2].items[2].pick(); secs[3].items[1].pick(); secs[4].items[1].pick()
+            check(Theme.get() == "oak" and Theme.ornaments() == "room" and Theme.side() == "right" and Theme.count() == 1 and secs[4].items[1].on(),
+                "…and back")
+            local places = P.places()
+            check(#places == 3 and places[1].label == "Home" and places[3].label == "Catalog" and places[1].on(), "chips: Home, Downloads, Catalog")
+            places[1].pick()
+            check(not Theme.placeOn("home") and not places[1].on(), "…a chip turns its screen's ornaments off")
+            places[1].pick()
+            check(Theme.placeOn("home"), "…and on")
+            -- Which ornaments
+            Theme.today = { 6, 10 }
+            local all = Theme.list()
+            local function find(label) for _i, e in ipairs(all) do if e.label == label then return e end end end
+            local xmas, pumpkin = find("Christmas tree"), find("Pumpkin")
+            local on_n, total = P.counts()
+            local want = 0
+            for _i, e in ipairs(all) do if Theme.isOn(e) then want = want + 1 end end
+            check(total == #all and on_n == want and on_n == total - 2, "Which ornaments: " .. on_n .. " of " .. total .. " stand (in June, not the seasonal two)")
+            check(P.seasonTag(xmas) == "Not in season" and P.seasonTag(find("Potted plant")) == nil, "a seasonal one out of its season says so; the others have no tag")
+            Theme.today = { 10, 31 }
+            check(P.seasonTag(pumpkin) == "In season" and P.firstShown() == pumpkin, "…in its season it says so, and the preview starts with it")
+            Theme.today = { 6, 10 }
+            check(not P.seasonalByHand(), "nothing ticked by hand yet")
+            Theme.setOn(xmas, true)
+            check(Theme.isOn(xmas) and P.seasonTag(xmas) == nil and P.seasonalByHand(), "ticking the Christmas tree in June: it stands all year, no season tag")
+            Theme.resetChosen()
+            check(not Theme.isOn(xmas) and not P.seasonalByHand(), "Seasonal ones in their season again")
+            local n_pages, pg, first, last = P.pageOf(21, 20, 2)
+            local pages1, pg1, first1, last1 = P.pageOf(19, 20, 1)
+            check(n_pages == 2 and pg == 2 and first == 21 and last == 22 and pages1 == 1 and pg1 == 1 and first1 == 1 and last1 == 20,
+                "ornaments on pages: Your own… the last place")
+            -- what fits on a screen
+            for _i, size in ipairs({ { 600, 800 }, { 1072, 1448 }, { 758, 1024 }, { 824, 1200 } }) do
+                local L = P.themeLayout(size[1], size[2])
+                local W2 = P.whichLayout(size[1], size[2])
+                local grid_end = W2.grid_y + W2.rows * (W2.ph + W2.cap_h) + (W2.rows - 1) * W2.gap
+                check(L.rows_y + 2 * L.row_h <= size[2] and L.ph >= 36 and L.sections[4].y + L.sections[4].ph + L.cap_h < L.rows_y
+                    and grid_end <= W2.footer_y and W2.per >= 12,
+                    "the theme screen and Which ornaments fit " .. size[1] .. " x " .. size[2] .. " (" .. W2.cols .. " x " .. W2.rows .. ")")
+            end
+        end
+        -- while the theme screen is open, a change is only noted; the shelves are drawn again once, when it closes
+        local stub_changed = Theme.changed
+        Theme.changed = real_changed
+        Theme.defer(true)
+        local planks_before = Theme.planks
+        Theme.found = Theme.list()
+        Theme.setOrnaments("always")
+        check(Theme.deferred == "pending" and Theme.planks == planks_before and Theme.found == nil and Theme.ornaments() == "always",
+            "a change while the theme screen is open: kept, the shelves not drawn yet")
+        Theme.defer(false)
+        check(Theme.deferred == nil and Theme.planks ~= planks_before, "…drawn again when it closes")
+        Theme.defer(true); Theme.defer(false)
+        check(Theme.deferred == nil, "…and nothing to do when nothing changed")
+        Theme.changed = stub_changed
+        -- the little pictures take narrow ornaments the shelves would leave out
+        local narrow = { aspect = 0.3, tall = 0.6 }
+        check(Theme.size(narrow, 60, 400) == nil and Theme.size(narrow, 60, 400, true) ~= nil, "narrow ornaments: only in the theme screen's pictures")
+        -- a hold on an ornament: the theme screen
         local shelf_w, other = {}, {}
         local wall2 = BB.new(300, 200, BB.TYPE_BB8)
         wall2:fill(BB.COLOR_WHITE)
@@ -337,21 +401,15 @@ do
         check(spot ~= nil and Theme.at(shelf_w, { x = spot.x + 2, y = spot.y + 2 }) == spot
             and Theme.at(shelf_w, { x = spot.x - 5, y = spot.y + 2 }) == nil and Theme.at(other, { x = spot.x + 2, y = spot.y + 2 }) == nil,
             "a drawn ornament's place is kept by the shelf that drew it")
-        local opened
-        local kept_hm = package.loaded["gzreader_homemenu"]
-        package.loaded["gzreader_homemenu"] = { settings = function(o) opened = o; return o end }
+        local opened = nil
+        package.loaded["gzreader_shelfpreview"] = { show = function() opened = true; return true end }
         local off_it = Theme.hold(shelf_w, { x = spot.x - 5, y = spot.y + 2 })
         check(off_it == false and opened == nil, "a hold beside the ornament: nothing (the shelf's own hold, if any)")
         local on_it = Theme.hold(shelf_w, { x = spot.x + math.floor(spot.w / 2), y = spot.y + math.floor(spot.h / 2) })
-        check(on_it == true and opened and opened.title == "Bookshelf theme" and opened.root_items
-            and opened.root_items[1].text == "Plain" and opened.root_items[#opened.root_items].text == "Your own ornaments…",
-            "a hold on the ornament: the Bookshelf theme settings on a page of their own")
-        package.loaded["gzreader_homemenu"] = kept_hm
+        check(on_it == true and opened, "a hold on the ornament: the theme screen")
+        package.loaded["gzreader_shelfpreview"] = nil
         Theme.forget(shelf_w)
         check(Theme.at(shelf_w, { x = spot.x + 2, y = spot.y + 2 }) == nil, "drawn again: the old place is forgotten")
-        which[22].callback()
-        check(Theme.get() == "oak" and item.sub_item_table[2].checked_func() and not item.sub_item_table[1].checked_func()
-            and Theme.ornaments() == "always" and item.sub_item_table[6].checked_func(), "choosing one sets it, and ticks it")
     end
     os.execute("rm -rf '" .. udir .. "'")
     -- where it's asked for

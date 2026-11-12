@@ -133,6 +133,11 @@ Press/Back answer), and the order things happen in on a first start.
 - `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
   with 40 books: a page takes as many as fit, none hidden, letters Q to L only,
   Del opens nothing, L opens its book.
+- `shelf_theme_tiles.lua` (`GZ_EMU_MODEL=pw3` taps, `k3` the 5-way) — the
+  Bookshelf theme screen and Which ornaments (`gzreader_shelfpreview.lua`):
+  Walnut and On every page chosen, an ornament ticked off and on, the
+  shelves held until the screen closes; checks in
+  `<out>/shelf_theme_tiles.txt`.
 - `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
   `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
   books with real covers) — Lua memory and RSS while paging through All

@@ -70,15 +70,26 @@ the book once you open one.
     (mid-September to November). **Which
     ornaments** has a tick for each: tick a seasonal one to have it all
     year, untick any to never see it; *Seasonal ones in their season again*
-    undoes that;
+    undoes that. It's a grid of the ornaments, each standing on a piece of
+    plank: a tick for those on the shelves, the others faded, and a
+    seasonal one tagged *In season* or *Not in season*. A tap puts one on
+    the shelves or takes it off; a hold only shows it, on your shelf at the
+    top (the one shown has a thick frame). The page keys turn its pages when
+    your own ornaments make more than fit;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
     keep its background transparent. Bold, dark shapes read best on e-ink.
     A shaded picture should be a PNG: the Kindle draws an SVG's gradients
     far too dark (flat colours in an SVG are fine).
+  - **the screen**: each choice is a tile with a small picture of what it
+    does, and a preview of your shelf (your recent books' spines) at the
+    top shows the result as you choose; the shelves themselves are drawn
+    again when you close it. Chips under the preview turn the ornaments on
+    or off on **Home**, in **Downloads** and in the **Catalog**. On a Kindle
+    with keys the 5-way moves between the tiles and Press chooses;
   - **Hold an ornament** (on Home, in Downloads or in the Catalog, on a
-    touch Kindle) to open these settings straight away, as holding a Home
+    touch Kindle) to open this screen straight away, as holding a Home
     widget opens its settings. Back (or the ×) returns to the shelves.
 
 - **Audiobooks** stand on the top shelf to the right of the books as a
