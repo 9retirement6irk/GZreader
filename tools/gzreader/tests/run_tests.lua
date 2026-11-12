@@ -2301,14 +2301,14 @@ print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and 
     gsettings.activate_menu = nil
     -- KOReader's Disable double tap: a saved untick cleared
     gsettings.disable_double_tap = false
-    check(Panel.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
+    check(Touch.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
         "Disable double tap unticked: cleared (taps in a book don't wait for a second one)")
-    check(Panel.forgetKOReaderDoubleTap() == false, "nothing saved: nothing to do")
+    check(Touch.forgetKOReaderDoubleTap() == false, "nothing saved: nothing to do")
     gsettings.disable_double_tap = true
-    check(Panel.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
+    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
     gsettings.disable_double_tap = nil
     local main_src = io.open(PLUGIN .. "/main.lua"):read("*a")
-    check(main_src:find('require("gzreader_panel").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
+    check(main_src:find('require("gzreader_touch").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
     -- ZenOS's lists of KOReader rows (zenos common/gz_settings.lua)
     local GzS = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_settings.lua")
     check(GzS.KOREADER_DUPLICATES.menu_activate and not GzS.KOREADER_HIDDEN.menu_activate,

@@ -133,4 +133,18 @@ function Touch.actionRow(menu, actions)
     return row
 end
 
+--- KOReader's "Disable double tap" (disable_double_tap) is left out of Settings
+--- → KOReader (zenos common/gz_settings.lua KOREADER_HIDDEN): GZreader has no
+--- double-tap actions (no gestures plugin), so unticked it only made every tap
+--- in a book wait for a second one. A saved untick is cleared (the default,
+--- taps at once; a book opened after reads it).
+function Touch.forgetKOReaderDoubleTap()
+    if G_reader_settings:readSetting("disable_double_tap") == false then
+        G_reader_settings:delSetting("disable_double_tap")
+        require("gzreader_log").info("touch: KOReader's \"Disable double tap\" back on (GZreader has no double-tap actions)")
+        return true
+    end
+    return false
+end
+
 return Touch

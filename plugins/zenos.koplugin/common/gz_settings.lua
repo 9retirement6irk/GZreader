@@ -61,7 +61,7 @@ M.KOREADER_HIDDEN = {
     statistics = true,
     -- Taps and gestures → Disable double tap: GZreader has no double-tap
     -- actions (no gestures plugin); unticked, every tap in a book waited for
-    -- a second one (gzreader_panel.lua forgetKOReaderDoubleTap clears it)
+    -- a second one (gzreader_touch.lua forgetKOReaderDoubleTap clears it)
     screen_disable_double_tap = true,
     -- Document → Book metadata location and Move book metadata: GZreader's
     -- Storage and its clean-ups look for a book's .sdr folder next to it

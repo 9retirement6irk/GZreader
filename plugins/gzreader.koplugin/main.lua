@@ -258,7 +258,7 @@ function Grimmory:init()
             if not m._gz_full then return require("gzreader_panel").show(plugin) end
             return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
         end
-        pcall(function() require("gzreader_panel").forgetKOReaderDoubleTap() end)
+        pcall(function() require("gzreader_touch").forgetKOReaderDoubleTap() end)
         -- a long press on a book on Home: Manage it (Open and Delete, then
         -- ZenOS's own book menu), as the panel's Manage tile does
         rawset(_G, "__GZ_MANAGE_BOOK", function(path, context)
