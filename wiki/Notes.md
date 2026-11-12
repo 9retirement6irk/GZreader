@@ -20,7 +20,7 @@ API to `/api` are found too.
   connect again and disconnect (the Menu key opens the quick panel in tab views).
 - **The quick panel on the Notes tab** has the board's actions (the board
   has no buttons of its own; on touch Kindles they were a row under the
-  title): **New note** (in Quick note's place), **Layout** (in View's),
+  title, and the first time the tab opens a line there says where they went): **New note** (in Quick note's place), **Layout** (in View's),
   **Sort**, **Filter** and **Options** (refresh, connect again, disconnect:
   what More was). Its second group is called *Notes* there and has no
   Manage book. On a Kindle 4 the Menu key opens the panel on the Notes tab

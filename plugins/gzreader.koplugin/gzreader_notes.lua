@@ -235,6 +235,17 @@ function Notes.showSort(plugin)
     return dialog
 end
 
+--- Touch Kindles: where the board's actions went ("…: in the quick
+--- panel"), under the title the first time the Notes tab opens only; then
+--- nil (no subtitle). Kept in Settings → Notes' table (`panel_hint_shown`).
+function Notes.panelHint(plugin)
+    local p = Notes.prefs(plugin)
+    if p.panel_hint_shown then return nil end
+    p.panel_hint_shown = true
+    plugin:save()
+    return _("New note, Filter, Layout, Sort: in the quick panel")
+end
+
 --- Whether the Notes tab is what's on screen (the quick panel then has
 --- the board's tiles: New note, Filter, Layout, Sort, Options).
 function Notes.onTop()
@@ -1067,8 +1078,9 @@ function Notes.show(plugin)
         title = Notes.title(),
         -- (New note, Filter, Layout, Sort and Options are the quick panel's
         -- tiles on this tab: gzreader_panel.lua Panel.notesTiles)
+        -- (touch: where they went, the first time the tab opens only)
         subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M more"),
-            _("New note, Filter, Layout, Sort: in the quick panel"),
+            (Touch.on() and not Touch.keys()) and Notes.panelHint(plugin) or nil,
             _("Menu: new note, filter, layout, sort  \u{00B7}  Press opens a note")),
         item_table = boardItems(plugin),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,

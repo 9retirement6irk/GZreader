@@ -6788,6 +6788,13 @@ print("Notes (Memos v0.31)")
         local top2 = Notes.onTop()
         UIM._window_stack = stack
         check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+        -- touch: "…: in the quick panel" under the title the first time only
+        prefs.panel_hint_shown = nil
+        local h1, h2 = Notes.panelHint(plugin), Notes.panelHint(plugin)
+        check(h1 == "New note, Filter, Layout, Sort: in the quick panel" and h2 == nil and prefs.panel_hint_shown == true,
+            "touch: where the board's buttons went, shown the first time the Notes tab opens, then no more")
+        check(show_src:find("(Touch.on() and not Touch.keys()) and Notes.panelHint(plugin) or nil", 1, true) ~= nil,
+            "…only asked on touch Kindles (keyboard Kindles keep their key hints)")
         -- S sorts (keyboard Kindles)
         local sorted_shown
         local real_sort = Notes.showSort
