@@ -1,5 +1,5 @@
 -- The Notes tab's buttons on a touch Kindle: New note, Filter, Layout, Sort,
--- Options and the full screen icon (an X while in full screen), tapped where
+-- Connection and the full screen icon (an X while in full screen), tapped where
 -- they are drawn. With demo/mock_memos.py --sample on 127.0.0.1:18090.
 local s = { start = 16 }
 local function add(t) s[#s + 1] = t end
@@ -38,8 +38,8 @@ add({ fn = function(E) E.say("after Sort:", tostring(top().title)) end })
 shot("toolbar-2-sort")
 add({ fn = function() if top() ~= N().board then UI():close(top()) end end, after = 3 })
 add(tapChip(5))
-add({ fn = function(E) E.say("after Options:", tostring(top().title)) end })
-shot("toolbar-3-options")
+add({ fn = function(E) E.say("after Connection:", tostring(top().title)) end })
+shot("toolbar-3-connection")
 add({ fn = function() if top() ~= N().board then UI():close(top()) end end, after = 3 })
 add(tapChip(6))
 add({ fn = function(E) E.say("full screen:", tostring(N().fullscreen(plugin())), tostring(N().board and N().board.name)) end, after = 6 })

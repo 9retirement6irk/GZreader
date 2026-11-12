@@ -256,7 +256,7 @@ function NoteSettings.items(plugin)
     view_items[#view_items].separator = true
     view_items[#view_items + 1] = {
         text = _("Full screen: no tab bar"),
-        help_text = _("The Notes tab without the tab bar at the bottom, for more notes on a page. On a touch Kindle the X at the end of the buttons under the title leaves it; Options has it too. Back (or the quick panel's Home) leaves the tab."),
+        help_text = _("The Notes tab without the tab bar at the bottom, for more notes on a page. On a touch Kindle the X at the end of the buttons under the title leaves it; Layout on the board has it too. Back (or the quick panel's Home) leaves the tab."),
         checked_func = function() return Notes.fullscreen(plugin) end,
         callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end,
     }
