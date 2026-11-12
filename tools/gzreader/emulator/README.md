@@ -17,9 +17,28 @@ binaries (LuaJIT, crengine, SQLite…) under `qemu-arm`, headless:
 `GZ_EMU_MODEL` picks the Kindle (default `k3`): `k2` (Kindle 2), `dx` (the
 DX: KOReader's Kindle 2 class at 824 × 1200), `dxg` (DX Graphite), `k4`
 (Kindle 4: 5-way, no keyboard, an 8-bit framebuffer with inverted levels),
-`kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates) or
-`pw3`, each with its serial, framebuffer and key codes (the model's own
+`kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates),
+`pw3` or `scribe`, each with its serial, framebuffer and key codes (the model's own
 event map, so a key it doesn't have fails the step).
+
+`GZ_EMU_MODEL=scribe` runs it as a **Kindle Scribe** (also the Scribe 2 to
+KOReader): its serial (device code 27J, so the real `KindleScribe` class: MTK
+display, touch, a pen, 300 dpi), an 8-bit 1860 × 2480 framebuffer, touches as
+on the Paperwhite, and the pen as KOReader's wacom protocol sends it
+(`BTN_TOOL_PEN` / `BTN_TOOL_RUBBER`, `ABS_X` / `ABS_Y` / `ABS_PRESSURE`,
+`BTN_TOUCH`): `{ pen = { { x, y }, … }, sec = s, eraser = true }` or
+`E.pen(points, sec, eraser)`, `E.penTap(what)`. KOReader puts the pen in its
+own slot (`input.pen_slot`), tagged 1 (pen) or 2 (eraser), and hands each
+frame to `Input:registerStylusCallback` when one is registered (a drawing
+screen's way in). The emulator runs the kindle-legacy binaries; a real Scribe
+runs the `kindlehf` package. It can't tell how the pen feels on the device
+(lag, accuracy, the panel's refresh). `scribe_tour.lua` (with the demo
+library: `GZ_SCRIBE_LIB=<library dir>`, `demo/demo_grimmory.py` on 18080,
+`demo/demo_plex.py` on 18090): screenshots of reading, the quick panel, Home,
+Downloads, the Catalog, a book's page, Notes and Settings at the Scribe's
+size, a pen tap on a quick panel tile, and a pen stroke and the eraser
+through a stylus callback; its checks go to `<out>/scribe-checks.txt`. Not
+in CI's model list (`GZ_CI_MODELS`): a 1860 × 2480 screen is slow under qemu.
 
 `GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
