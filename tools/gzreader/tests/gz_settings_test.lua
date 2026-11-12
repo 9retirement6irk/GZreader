@@ -256,6 +256,7 @@ if okb then
     check(texts(GzS.wifiItem({ text = "Wi-Fi", sub_item_table = { { text = "On" } } }, nil,
             { getInfoMenuTable = function() return { text = "Network info" } end,
               getProxyMenuTable = function() error("old KOReader") end }).sub_item_table) == "|On|Network info|",
+        "a NetworkMgr row that fails is left out, the others stay")
     check(gen:find("|Sleep|Screen|Time and date|Language|Storage|Battery|", 1, true) ~= nil,
         "General: Time and date, Language and Storage after Sleep (and Screen) " .. gen)
     check(find(items, "Storage") == nil, "no Storage section at the top")
