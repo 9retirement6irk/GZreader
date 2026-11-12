@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Bookshelf theme as tiles, with a preview of your shelf", text = "Settings → Downloads → Appearance → Bookshelf theme (and holding an ornament) now opens a screen of tiles, each a small picture of what it does, with a preview of your shelf at the top that changes as you choose: the plank (Oak, Walnut, Plain), the ornaments (none, where there's room, on every page), where on the shelf (right end, left end, scattered), how many on a page, and chips for Home, Downloads and the Catalog. Which ornaments is a grid of the ornaments themselves: a tick for those on the shelves, the seasonal ones tagged In season or Not in season; tap to put one on or take it off, hold to see it on your shelf. On Kindles with keys the 5-way moves and Press chooses." },
             { short = "Hold an ornament on the shelves for the Bookshelf theme settings", text = "On a touch Kindle, holding an ornament on Home's shelf, in Downloads or in the Catalog opens the Bookshelf theme settings (the plank, ornaments, where and how many, which ones, your own) on a page of their own, as holding a Home widget opens its settings. Back returns to the shelves." },
         },
     },

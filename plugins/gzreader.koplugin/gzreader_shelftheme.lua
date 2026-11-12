@@ -175,8 +175,26 @@ function Theme.keeps(place, row, rows)
     return row > rows - math.min(Theme.count(), rows)
 end
 
+--- While the Bookshelf theme screen is open (gzreader_shelfpreview.lua) a
+--- change is only noted; the shelves under it are drawn again once, when it
+--- closes (Theme.defer(false)).
+function Theme.defer(on)
+    if on then
+        Theme.deferred = Theme.deferred or "held"
+        return
+    end
+    local pending = Theme.deferred == "pending"
+    Theme.deferred = nil
+    if pending then Theme.changed() end
+end
+
 --- What's drawn is drawn again: the planks and spines kept, the shelves on screen.
 function Theme.changed()
+    if Theme.deferred then
+        Theme.deferred = "pending"
+        Theme.found = nil -- (Which ornaments: the list as it is now)
+        return
+    end
     for _k, v in pairs(Theme.images or {}) do if v and v.bb then v.bb:free() end end
     for _k, v in pairs(Theme.planks or {}) do if v then v:free() end end
     Theme.planks, Theme.images, Theme.found = {}, {}, nil
@@ -217,9 +235,11 @@ Theme.planks = {}
 --- front_h (one buffer, the top above the front), or nil in the Plain theme
 --- (or when the picture can't be made: the board is drawn in greys then).
 function Theme.plank(w, top_h, front_h)
-    local th = Theme.THEMES[Theme.get()]
+    -- (the theme screen's tiles draw each theme: Theme.preview_theme)
+    local id = Theme.THEMES[Theme.preview_theme or ""] and Theme.preview_theme or Theme.get()
+    local th = Theme.THEMES[id]
     if not (th and th.plank) or w < 8 or top_h < 1 or front_h < 1 then return nil end
-    local key = table.concat({ Theme.get(), w, top_h, front_h }, ":")
+    local key = table.concat({ id, w, top_h, front_h }, ":")
     local have = Theme.planks[key]
     if have ~= nil then return have or nil end
     local ok, bb = pcall(function()
@@ -343,6 +363,9 @@ local function chosen()
     return type(t) == "table" and t or {}
 end
 
+--- Ticked (true) or unticked (false) by hand, or nil (as its season says).
+function Theme.byHand(entry) return chosen()[entry.name] end
+
 --- Does `entry` stand on the shelves now? Ticked or unticked by hand: that;
 --- else a seasonal one in its season, the others always.
 function Theme.isOn(entry)
@@ -414,7 +437,8 @@ end
 
 --- The size `entry` stands at beside books `stand_h` tall, in `free_w` of
 --- room: w, h; nil when it doesn't fit (it's never squeezed under 2/3).
-function Theme.size(entry, stand_h, free_w)
+--- `small`: the theme screen's little pictures, where narrow ones are fine.
+function Theme.size(entry, stand_h, free_w, small)
     local h = math.floor(stand_h * (entry.tall or Theme.HEIGHT))
     local w = math.floor(h * entry.aspect)
     local most = free_w - 2 * S(Theme.MARGIN)
@@ -423,7 +447,8 @@ function Theme.size(entry, stand_h, free_w)
         if scale < 2 / 3 then return nil end
         w, h = math.floor(w * scale), math.floor(h * scale)
     end
-    if w < S(Theme.MIN_W) or h < S(Theme.MIN_W) then return nil end
+    local least = small and 4 or S(Theme.MIN_W)
+    if w < least or h < least then return nil end
     return w, h
 end
 
@@ -529,7 +554,13 @@ function Theme.plan(seed, free_w, stand_h, nth)
     if Theme.ornaments() == "off" then return nil end
     local entry = Theme.pick(seed, nth)
     if not entry then return nil end
-    local w, h = Theme.size(entry, stand_h, free_w)
+    return Theme.planFor(entry, free_w, stand_h)
+end
+
+--- The same for a given ornament (the theme screen's previews), whatever
+--- the settings say.
+function Theme.planFor(entry, free_w, stand_h, small)
+    local w, h = Theme.size(entry, stand_h, free_w, small)
     if not w then return nil end
     local got = image(entry, w, h)
     if not got then return nil end
@@ -594,118 +625,38 @@ function Theme.hold(owner, pos)
     return true
 end
 
---- The Bookshelf theme settings on a page of their own (the same rows as in
---- Settings), over the shelves: Back returns to them, redrawn.
-function Theme.openSettings()
-    local item = Theme.settingsItem()
-    return require("gzreader_homemenu").settings({ title = item.text, root_items = item.sub_item_table })
+--- The Bookshelf theme screen (gzreader_shelfpreview.lua), over the
+--- shelves: Back returns to them, redrawn. `on_done` after it closes.
+function Theme.openSettings(on_done)
+    return require("gzreader_shelfpreview").show(on_done)
 end
 
 ---------------------------------------------------------------- Settings
 
---- Settings → Downloads → Appearance → Bookshelf theme.
+--- Your own ornaments: where to put them (the folder is made).
+function Theme.showOwnFolder()
+    local dir = Theme.userDir(true)
+    Theme.found = nil
+    pcall(function()
+        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{
+            text = require("ffi/util").template(_("Put PNG or SVG pictures in this folder (with the Kindle connected to a computer) and they stand on the shelves with the others:\n\n%1\n\nA picture's bottom edge stands on the plank; leave its background transparent."), tostring(dir)),
+        })
+    end)
+end
+
+--- Settings → Downloads → Appearance → Bookshelf theme: the theme screen
+--- (gzreader_shelfpreview.lua: each choice a tile with a picture of it, a
+--- preview of the shelf at the top).
 function Theme.settingsItem()
-    local labels = Theme.labels()
-    local items = {}
-    for _i, id in ipairs(Theme.ORDER) do
-        items[#items + 1] = {
-            text = labels[id],
-            radio = true,
-            checked_func = function() return Theme.get() == id end,
-            callback = function() Theme.set(id) end,
-        }
-    end
-    items[#items].separator = true
-    for _i, o in ipairs({ { "off", _("No ornaments") }, { "room", _("Ornaments where there's room") },
-            { "always", _("An ornament on every page") } }) do
-        items[#items + 1] = {
-            text = o[2],
-            radio = true,
-            checked_func = function() return Theme.ornaments() == o[1] end,
-            callback = function() Theme.setOrnaments(o[1]) end,
-        }
-    end
-    items[#items].separator = true
-    do
-        local where = {}
-        for _i, pl in ipairs({ { "home", _("On Home") }, { "downloads", _("In Downloads") }, { "catalog", _("In the Catalog") } }) do
-            where[#where + 1] = {
-                text = pl[2],
-                checked_func = function() return Theme.placeOn(pl[1]) end,
-                callback = function() Theme.setPlace(pl[1], not Theme.placeOn(pl[1])) end,
-            }
-        end
-        where[#where].separator = true
-        for _i, c in ipairs({ { 1, _("One on a page") }, { 2, _("Up to two on a page") }, { 3, _("Up to three on a page") }, { "all", _("One on every shelf") } }) do
-            where[#where + 1] = {
-                text = c[2],
-                radio = true,
-                checked_func = function() return Theme.count() == (c[1] == "all" and math.huge or c[1]) end,
-                callback = function() Theme.setCount(c[1]) end,
-            }
-        end
-        where[#where].separator = true
-        for _i, sd in ipairs({ { "right", _("At the right end of the shelf") }, { "left", _("At the left end of the shelf") },
-                { "scattered", _("Scattered: right, then left, then right") } }) do
-            where[#where + 1] = {
-                text = sd[2],
-                radio = true,
-                checked_func = function() return Theme.side() == sd[1] end,
-                callback = function() Theme.setSide(sd[1]) end,
-            }
-        end
-        items[#items + 1] = {
-            text = _("Where and how many"),
-            help_text = _("Which screens have ornaments, how many a page has at most (a page's lowest shelves with books get them), and which end of the shelf they stand at. In the Catalog they stand in a ledge's free place, on the right."),
-            sub_item_table = where,
-        }
-    end
-    items[#items + 1] = {
-        text = _("Which ornaments"),
-        help_text = _("Tick the ones that may stand on the shelves. A seasonal one stands in its season; tick it to have it all year, untick it to never have it."),
-        sub_item_table_func = function()
-            local which = {}
-            for _i, e in ipairs(Theme.list()) do
-                which[#which + 1] = {
-                    text_func = function()
-                        if e.season and chosen()[e.name] == nil then
-                            return e.label .. " (" .. e.when .. ")"
-                        end
-                        return e.label
-                    end,
-                    checked_func = function() return Theme.isOn(e) end,
-                    callback = function() Theme.setOn(e, not Theme.isOn(e)) end,
-                }
-            end
-            which[#which].separator = true
-            which[#which + 1] = {
-                text = _("Seasonal ones in their season again"),
-                keep_menu_open = true,
-                callback = function(touchmenu)
-                    Theme.resetChosen()
-                    if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end
-                end,
-            }
-            return which
-        end,
-    }
-    items[#items + 1] = {
-        text = _("Your own ornaments…"),
-        keep_menu_open = true,
-        callback = function()
-            local dir = Theme.userDir(true)
-            Theme.found = nil
-            pcall(function()
-                require("ui/uimanager"):show(require("ui/widget/infomessage"):new{
-                    text = require("ffi/util").template(_("Put PNG or SVG pictures in this folder (with the Kindle connected to a computer) and they stand on the shelves with the others:\n\n%1\n\nA picture's bottom edge stands on the plank; leave its background transparent."), tostring(dir)),
-                })
-            end)
-        end,
-    }
     return {
         text = _("Bookshelf theme"),
-        help_text = _("The plank the books stand on, and the ornaments on the shelves' free ends: Home, Downloads and the Catalog in the Bookshelf view."),
-        sub_item_table = items,
+        help_text = _("The plank the books stand on, and the ornaments on the shelves' free ends: Home, Downloads and the Catalog in the Bookshelf view. Each choice is a small picture of it, with a preview of your shelf."),
+        keep_menu_open = true,
+        callback = function(touchmenu)
+            Theme.openSettings(function()
+                if touchmenu and touchmenu.updateItems then touchmenu:updateItems() end
+            end)
+        end,
     }
 end
 
