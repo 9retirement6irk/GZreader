@@ -40,7 +40,17 @@ local Drawing = {
     WIDTHS = { 1, 2, 4 },
     --- Most text memos will inflate from a scene chunk (its MAX_SCENE_TEXT).
     MAX_SCENE_TEXT = 64000000,
+    --- memos' drawing sheet's paper and ink (web `DrawingSheet/useCanvasTheme.ts`).
+    PAPER = "#fbfaf7",
+    INK = "#1a1a1a",
+    --- How wide memos draws a stroke whose width follows its speed (as every
+    --- stroke here does), as a share of its full width: measured on a drawing
+    --- exported by memos (thin 5–6 px, thick 12–13 px at 2x).
+    SPEED_WIDTH = 0.42,
 }
+
+--- A stroke's full width in scene units for memos' width 1, 2 or 4 (@usememos/canvas `strokeDiameter`).
+function Drawing.strokeDiameter(width) return 2 + (tonumber(width) or 2) * 3 end
 
 local SIGNATURE = "\137PNG\r\n\26\n"
 local LIST_MT = { __jsontype = "array", __is_luajson_array = true }
@@ -109,14 +119,14 @@ end
 
 -- -------------------------------------------------------------------- scene
 
---- A new, empty scene on `paper` (`#rrggbb`, white by default).
+--- A new, empty scene on `paper` (`#rrggbb`, memos' drawing paper by default).
 function Drawing.newScene(paper)
     return {
         type = Drawing.SCENE_TYPE,
         version = Drawing.SCENE_VERSION,
         elements = list(),
         files = {},
-        appState = { viewBackgroundColor = paper or "#ffffff", zoom = 1, scrollX = 0, scrollY = 0, handDrawn = false },
+        appState = { viewBackgroundColor = paper or Drawing.PAPER, zoom = 1, scrollX = 0, scrollY = 0, handDrawn = false },
     }
 end
 
@@ -133,7 +143,7 @@ end
 
 local function hexColor(c)
     if type(c) == "string" and c:match("^#%x%x%x%x%x%x$") then return c:lower() end
-    return "#1e1e1e"
+    return Drawing.INK
 end
 
 local function nearestWidth(w)

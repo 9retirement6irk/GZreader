@@ -56,8 +56,8 @@ print("== a stroke")
     check(Drawing.SCENE_TYPE == "memos-canvas" and Drawing.SCENE_VERSION == 1, "scene type memos-canvas, version 1")
     local scene = Drawing.newScene()
     check(scene.type == "memos-canvas" and scene.version == 1 and #scene.elements == 0, "a new scene: type, version, no elements")
-    check(scene.appState.viewBackgroundColor == "#ffffff" and scene.appState.zoom == 1 and scene.appState.handDrawn == false,
-        "a new scene: white paper, zoom 1, not hand-drawn")
+    check(scene.appState.viewBackgroundColor == "#fbfaf7" and scene.appState.zoom == 1 and scene.appState.handDrawn == false,
+        "a new scene: memos' paper (#fbfaf7), zoom 1, not hand-drawn")
 
     local pts = Drawing.fromScreen({ { 400, 600 }, { 410, 590 }, { 410, 590 }, { 430.333, 620.126 } })
     check(pts[1][1] == 200 and pts[1][2] == 300 and pts[4][1] == 215.1665, "screen pixels: 2 per scene unit")
@@ -81,7 +81,7 @@ print("== a stroke")
     local p2 = Drawing.stroke({ { 0, 0, 0.2 }, { 5, 5, 1.7 }, { 9, 1, -1 } }, { color = "red", width = 1, opacity = 40 })
     check(p2.simulatePressure == false and p2.points[1][3] == 0.2 and p2.points[2][3] == 1 and p2.points[3][3] == 0,
         "pressure on every point: kept, between 0 and 1")
-    check(p2.strokeColor == "#1e1e1e" and p2.strokeWidth == 1 and p2.opacity == 40, "a colour that isn't #rrggbb: memos' ink")
+    check(p2.strokeColor == "#1a1a1a" and p2.strokeWidth == 1 and p2.opacity == 40, "a colour that isn't #rrggbb: memos' ink")
     check(Drawing.stroke({}) == nil and Drawing.stroke({ { 0 / 0, 1 } }) == nil and Drawing.stroke({ { 1, math.huge } }) == nil,
         "no points, or a point that isn't a finite number: no stroke")
     check(Drawing.stroke({ { 7, 8 } }).width == 0, "a dot: a stroke of one point")
@@ -233,6 +233,42 @@ print("== memos' own drawing")
     local back = assert(Drawing.readScene(out))
     check(#back.elements == 1 and back.appState.futureState == "kept", "a stroke added to it: written back with the unknown field")
     if OUT then writeFile(OUT .. "/drawing-20261111-201503.canvas.png", out) end
+end)()
+
+print("== a drawing made in memos' web app (6 pen strokes, an ellipse, a text)")
+;(function()
+    local png = readFile(HERE .. "/media/memos-drawing.canvas.png")
+    local scene, why = Drawing.readScene(png)
+    check(scene and why == nil, "it reads")
+    if not scene then return end
+    local kinds = {}
+    for _i, el in ipairs(scene.elements) do kinds[el.type] = (kinds[el.type] or 0) + 1 end
+    check(kinds.freedraw == 6 and kinds.ellipse == 1 and kinds.text == 1, "its elements: 6 strokes, 1 ellipse, 1 text")
+    check(scene.appState.viewBackgroundColor == Drawing.PAPER, "its paper is Drawing.PAPER (#fbfaf7)")
+    local inks, offsets_ok = true, true
+    for _i, el in ipairs(scene.elements) do
+        if el.strokeColor ~= Drawing.INK then inks = false end
+        if el.type == "freedraw" then
+            local mx, my, xx, xy = math.huge, math.huge, 0, 0
+            for _j, p in ipairs(el.points) do
+                mx, my = math.min(mx, p[1]), math.min(my, p[2]); xx, xy = math.max(xx, p[1]), math.max(xy, p[2])
+            end
+            if mx ~= 0 or my ~= 0 or math.abs(xx - el.width) > 0.011 or math.abs(xy - el.height) > 0.011 then offsets_ok = false end
+        end
+    end
+    check(inks, "its ink is Drawing.INK (#1a1a1a)")
+    check(offsets_ok, "memos' strokes are what Drawing.stroke makes: offsets from the box's top left, box = extent")
+    local thick
+    for _i, el in ipairs(scene.elements) do if el.type == "freedraw" and el.strokeWidth == 4 then thick = el end end
+    check(thick and thick.simulatePressure == true and thick.points[1][3] == 0.5, "a mouse stroke: simulated pressure, 0.5 stored (as ours)")
+    check(Drawing.strokeDiameter(2) == 8 and Drawing.strokeDiameter(4) == 14, "full widths 8 and 14 units for widths 2 and 4")
+    local text
+    for _i, el in ipairs(scene.elements) do if el.type == "text" then text = el end end
+    check(text and text.text == "jjjj" and text.containerId == nil, "its text element, its null containerId read as nil")
+    Drawing.addStroke(scene, { { 10, 10 }, { 40, 30 } })
+    local back = assert(Drawing.readScene(assert(Drawing.withScene(png, scene))))
+    check(#back.elements == 9 and back.elements[9].type == "freedraw", "a stroke added: 9 elements written back")
+    if OUT then writeFile(OUT .. "/drawing-20261112-173500.canvas.png", assert(Drawing.withScene(png, scene))) end
 end)()
 
 print(string.format("drawing: %d passed, %d failed", pass, fail))

@@ -126,7 +126,7 @@ def two_decimals(v):
     return isinstance(v, int) or abs(round(v, 2) - v) < 1e-9
 
 
-def check_file(path, ours=True):
+def check_file(path, ours=True, strokes=None):
     name = os.path.basename(path)
     png = open(path, "rb").read()
     got, why, cs = read_scene(png)
@@ -142,10 +142,13 @@ def check_file(path, ours=True):
     pixels = zlib.decompress(b"".join(d for t, d, _ok in cs if t == "IDAT"))
     per_px = {0: 1, 2: 3, 4: 2, 6: 4}.get(colour, 1) * depth // 8
     check(len(pixels) == h * (1 + w * per_px), f"{name}: its pixels decode ({w}x{h})")
-    if not ours:
-        return scene
-    check(re.fullmatch(r"drawing-\d{8}-\d{6}\.canvas\.png", name) is not None, f"{name}: named as memos names a drawing")
+    if strokes is None:
+        strokes = ours
+    if ours:
+        check(re.fullmatch(r"drawing-\d{8}-\d{6}\.canvas\.png", name) is not None, f"{name}: named as memos names a drawing")
     check(all(ord(c) < 0x7F for c in text), f"{name}: the scene's text is ASCII (\\uXXXX above U+007E)")
+    if not strokes:
+        return scene
     for el in scene["elements"]:
         for key in ("x", "y", "width", "height"):
             if key in el:
@@ -176,9 +179,13 @@ def main():
     i = bad.index(b"zTXt") + 20
     check(read_scene(bad[:i] + bytes([bad[i] ^ 1]) + bad[i + 1:])[1] == "bad-crc", "a damaged chunk: bad-crc, as memos says")
 
+    print("== a drawing made in memos' web app: its strokes follow the same rules")
+    real = check_file(os.path.join(HERE, "media", "memos-drawing.canvas.png"), ours=False, strokes=True)
+    check(real is not None and sorted(e["type"] for e in real["elements"]).count("freedraw") == 6, "memos' drawing: 6 strokes")
+
     print("== drawings from gzreader_drawing.lua")
     files = sorted(f for f in os.listdir(out) if f.endswith(".canvas.png"))
-    check(len(files) == 4, f"drawing_test.lua left 4 drawings ({len(files)})")
+    check(len(files) == 5, f"drawing_test.lua left 5 drawings ({len(files)})")
     scenes = {f: check_file(os.path.join(out, f)) for f in files}
     s0 = scenes.get("drawing-20261111-201500.canvas.png")
     check(s0 is not None and [e["type"] for e in s0["elements"]] == ["freedraw", "freedraw"], "the two strokes, in order")
