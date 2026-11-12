@@ -3070,6 +3070,30 @@ do
         for first = 0, #all - 1, thin do if not SV.pageFits(all, first, thin, 3, 190, 600) then fits = false end end
         check(fits and not SV.pageFits(all, 0, thin + 4, 3, 190, 600), "every page's books fit on its shelves, and no more than that")
         check(SV.KEYS == 19, "letters on the shelves: Q to L (19), not Del")
+        -- no ornament on the first shelf beside the walkman or the CD player
+        local okt, Th = pcall(require, "gzreader_shelftheme")
+        if okt then
+            local function sides(filled, players)
+                local t = SV.ornamentRows(filled, 3, players)
+                local o = {}
+                for r = 1, 3 do o[r] = t[r] and t[r]:sub(1, 1) or "-" end
+                return table.concat(o)
+            end
+            Th.setOrnaments("room"); Th.setCount(1); Th.setSide("right")
+            check(sides({ true, false, false }, false) == "r--", "one shelf of books, no player: its ornament on that shelf")
+            check(sides({ true, false, false }, true) == "---", "…the walkman or the CD player on the first shelf: no ornament there")
+            check(sides({ true, true, false }, true) == "-r-" and sides({ true, true, true }, true) == "--r", "…the shelves under it keep theirs")
+            Th.setCount("all")
+            check(sides({ true, true, true }, true) == "-rr" and sides({ true, true, true }, false) == "rrr", "one on every shelf: every shelf but the players' one")
+            Th.setSide("scattered")
+            check(sides({ true, true, true }, true) == "-rl", "scattered: the first under the players on the right, the next on the left")
+            Th.setOrnaments("always")
+            check(SV.ornamentRoom(190, 1, 3, true) == 0 and SV.ornamentRoom(190, 1, 3, false) > 0 and SV.ornamentRoom(190, 2, 3, true) > 0,
+                "an ornament on every page: the players' shelf keeps no room for one, the others do")
+            Th.setOrnaments("room"); Th.setCount(1); Th.setSide("right")
+        else
+            check(false, "the shelf theme loads: " .. tostring(Th))
+        end
     else
         check(false, "the shelf view loads: " .. tostring(SV))
     end
