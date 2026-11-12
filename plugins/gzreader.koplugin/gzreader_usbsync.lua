@@ -31,7 +31,8 @@ Format 1:
     have = { books = { [id] = { file_id, format } }, audiobooks = { ids }, music = { "kind-key" } },
     notes = { queue = { Memos changes: id, op, content, visibility, name, pinned } },
     calendar = { from, to }, auto_shelf = { id, magic }, last_import,
-    screensavers = { names, mode = "auto"|"always"|"other" }; kindle.screen = { w, h } }
+    screensavers = { names, mode = "auto"|"always"|"immich_auto"|"immich"|"other" }; kindle.screen = { w, h },
+    immich = { album = { id, name }, have = { asset ids }, count, wallpaper } }
 - usage/*.jsonl: usage statistics GZreader up to 1.28.1 left for the page;
   the page deletes them without sending (no usage statistics since).
   inbox = { format, written_at, done = { job ids }, failed = { { id, error } },
@@ -42,6 +43,8 @@ Format 1:
     calendars = { { name, file } },
     grimmory = { server, user },
     screensavers = { add = { { file, name } }, remove = { names }, mode },
+    immich = { album = { id, name, count }, server, add = { { file, id } }, keep = { asset ids },
+      count, wallpaper } or { off = true },
     grimmory_stats = { at, values = { streak, longest_streak, reading_days,
       week_time, week_books, month_sessions, year_finished } } or { at, error } }
 ]]
@@ -448,6 +451,8 @@ function Usb.outbox(plugin)
         last_import = store.usb_last and store.usb_last.at or nil,
         -- the sleep screen's pictures (the page makes new ones for this screen)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
+        -- the Immich album's pictures on the Kindle (the page brings the others)
+        immich = Usb.immichOut(plugin),
         -- (how much room is left on the Kindle, for the page)
         disk = cached("disk", function()
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
@@ -840,11 +845,11 @@ function Usb.takeScreensavers(base, st)
             os.remove(dir .. "/" .. name)
         end
     end
-    if st.mode == "auto" then
-        G_reader_settings:saveSetting("gzreader_sleep_auto", true)
+    local SleepMode = require("gzsleepmode")
+    if st.mode == "auto" or st.mode == "immich_auto" or st.mode == "immich" then
+        SleepMode.use(G_reader_settings, st.mode)
     elseif st.mode == "always" then
-        G_reader_settings:saveSetting("gzreader_sleep_auto", false)
-        G_reader_settings:saveSetting("screensaver_type", "random_image")
+        SleepMode.use(G_reader_settings, "random_image")
         G_reader_settings:saveSetting("screensaver_dir", dir)
     end
     if not Device:isKindle() and G_reader_settings:readSetting("screensaver_dir") == nil then
@@ -857,9 +862,80 @@ end
 
 --- Which sleep screen is on, for the page.
 function Usb.sleepMode()
-    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then return "auto" end
-    if G_reader_settings:readSetting("screensaver_type") == "random_image" then return "always" end
+    local cur = require("gzsleepmode").current(G_reader_settings)
+    if cur == "auto" or cur == "immich_auto" or cur == "immich" then return cur end
+    if cur == "random_image" then return "always" end
     return "other"
+end
+
+---------------------------------------------------------------- Immich
+
+--- What the page needs to know of the Immich album's pictures here.
+function Usb.immichOut(plugin)
+    local st = plugin.store.immich or {}
+    local okw, on = pcall(function() return require("common/gz_immich_wallpaper").isOn() end)
+    return {
+        album = st.album and { id = st.album.id, name = st.album.name } or nil,
+        have = jsonList(require("gzreader_immich").have()),
+        count = st.count,
+        wallpaper = okw and on == true or false,
+    }
+end
+
+--- inbox.immich: the album's pictures the page made for this screen, the
+--- ones to keep (the others go), the album, and whether the wallpaper uses
+--- them; { off = true }: Immich disconnected on the page. Returns how many came.
+function Usb.takeImmich(plugin, base, im)
+    local Immich = require("gzreader_immich")
+    if im.off then
+        if (plugin.store.immich or {}).usb then Immich.disconnect(plugin) end
+        return 0
+    end
+    local dir = require("gzsleepmode").immichDir()
+    if not isDir(dir) then lfs.mkdir(dir) end
+    local UUID = "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"
+    local added, wanted = 0, {}
+    for _i, p in ipairs(type(im.add) == "table" and im.add or {}) do
+        local id = type(p) == "table" and type(p.id) == "string" and p.id:match(UUID) and p.id
+        local src = id and type(p.file) == "string" and not p.file:find("%.%.") and base .. "/" .. p.file
+        if src and isFile(src) then
+            local old = Immich.fileOf(dir, id)
+            if old then os.remove(old) end
+            if move(src, dir .. "/" .. id .. ".png") then added = added + 1; wanted[id] = true end
+        end
+    end
+    if type(im.keep) == "table" then
+        for _i, id in ipairs(im.keep) do if type(id) == "string" then wanted[id] = true end end
+        for _i, id in ipairs(Immich.have(dir)) do
+            if not wanted[id] then
+                local f = Immich.fileOf(dir, id)
+                while f do os.remove(f); f = Immich.fileOf(dir, id) end
+            end
+        end
+    end
+    local st = plugin.store.immich or {}
+    plugin.store.immich = st
+    st.usb = true
+    if type(im.server) == "string" then st.server = im.server end
+    if type(im.count) == "number" then st.count = im.count end
+    if type(im.album) == "table" and type(im.album.id) == "string" then
+        st.album = { id = im.album.id, name = tostring(im.album.name or "Immich"), count = tonumber(im.album.count) }
+        G_reader_settings:saveSetting("gzreader_immich_album", st.album.name)
+    end
+    st.at = os.time()
+    plugin:save()
+    pcall(function()
+        local W = require("common/gz_immich_wallpaper")
+        if im.wallpaper == true and not W.isOn() then
+            W.turnOn(Immich.randomPicture())
+        elseif im.wallpaper == false and W.isOn() then
+            W.turnOff()
+        elseif added > 0 then
+            Immich.changed()
+        end
+    end)
+    Log.info("sync: Immich pictures:", added, "brought,", #Immich.have(dir), "on the Kindle")
+    return added
 end
 
 --- Grimmory's reading stats the page fetched (Home's "Grimmory reading
@@ -940,6 +1016,10 @@ function Usb.import(plugin, on_prepared)
             local oks, got = pcall(Usb.takeScreensavers, base, inbox.screensavers)
             if oks then r.pictures = got else Log.warn("sync: sleep screen pictures:", tostring(got)) end
         end
+        if type(inbox.immich) == "table" then
+            local oki, got = pcall(Usb.takeImmich, plugin, base, inbox.immich)
+            if oki then r.photos = got else Log.warn("sync: Immich pictures:", tostring(got)) end
+        end
         r.prepare = prepare
     end)
     if not ok then Log.err("sync: taking in what the computer brought failed:", tostring(err)) end
@@ -986,6 +1066,7 @@ function Usb.summaryText(r)
     if r.notes then parts[#parts + 1] = r.notes == 1 and _("1 note") or T(_("%1 notes"), r.notes) end
     if r.events then parts[#parts + 1] = T(_("calendar: %1 events"), r.events) end
     if (r.pictures or 0) > 0 then parts[#parts + 1] = r.pictures == 1 and _("1 sleep screen picture") or T(_("%1 sleep screen pictures"), r.pictures) end
+    if (r.photos or 0) > 0 then parts[#parts + 1] = r.photos == 1 and _("1 picture from Immich") or T(_("%1 pictures from Immich"), r.photos) end
     local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
     if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end
     if (r.marks or 0) > 0 then text = text .. "\n" .. T(_("%1 bookmark and highlight changes sent to Grimmory."), r.marks) end

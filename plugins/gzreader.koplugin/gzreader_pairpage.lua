@@ -111,6 +111,7 @@ textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);
 #up p,.results p{margin:6px 0;font-size:14px;word-break:break-word}
 .drop{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;margin:0 0 12px;color:var(--muted);font-size:14px}
 .drop input{margin:10px 0 0}
+select.sel{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;margin:0 0 14px}
 /* wide screens: the tabs down the side, the page beside them */
 @media (min-width:760px){
 body{padding:40px 28px}
@@ -309,6 +310,128 @@ local function musicSection(st, base)
     return table.concat(parts)
 end
 
+local SLEEP_LABELS = {
+    auto = "The book's cover while reading, a picture from the screensavers folder elsewhere",
+    always = "A picture from the screensavers folder, always",
+    immich_auto = "The book's cover while reading, a picture from Immich elsewhere",
+    immich = "A picture from Immich, always",
+}
+
+local function radio(name, value, label, checked)
+    return '<label class="check"><input type="radio" name="' .. name .. '" value="' .. esc(value) .. '"' .. (checked and " checked" or "") .. "> " .. esc(label) .. "</label>"
+end
+
+local function immichSection(st, base)
+    local m = st.immich or {}
+    local parts = { '<section id="immich" class="tab"><h2>Immich</h2>',
+        '<p class="what">Pictures from one of your <a href="https://immich.app">Immich</a> albums for the sleep screen and the Home wallpaper. The Kindle keeps a few of them (made to fit its screen) and gets new ones now and then on Wi‑Fi.</p>' }
+    if m.error then parts[#parts + 1] = '<p class="err">' .. esc(m.error) .. "</p>" end
+    if m.connected then
+        parts[#parts + 1] = status(true, "Connected to <b>" .. esc(m.host) .. "</b>" .. (m.user and (" as <b>" .. esc(m.user) .. "</b>") or ""))
+        -- the album and what it's for
+        local opts = { m.album and "" or '<option value="" selected>Choose an album…</option>' }
+        local cur = (m.album or {}).id
+        local listed = false
+        for _i, a in ipairs(m.albums or {}) do
+            listed = listed or a.id == cur
+            opts[#opts + 1] = '<option value="' .. esc(a.id) .. '"' .. (a.id == cur and " selected" or "") .. ">" .. esc(a.name) .. " (" .. esc(a.count) .. ")</option>"
+        end
+        if cur and not listed then opts[#opts + 1] = '<option value="' .. esc(cur) .. '" selected>' .. esc(m.album.name) .. "</option>" end
+        local counts = {}
+        for _i, n in ipairs(m.counts or { 10, 20, 50 }) do
+            counts[#counts + 1] = '<option value="' .. n .. '"' .. (n == m.count and " selected" or "") .. ">" .. n .. " pictures</option>"
+        end
+        local sl = m.sleep
+        local immich_sleep = sl == "immich_auto" or sl == "immich"
+        parts[#parts + 1] = form(base .. "/immich/use",
+            '<label for="i_album">Album</label><select id="i_album" name="album" class="sel">' .. table.concat(opts) .. "</select>"
+            .. '<p style="font-size:14px;font-weight:600;margin:4px 0 8px">Sleep screen</p>'
+            .. radio("sleep", "immich_auto", SLEEP_LABELS.immich_auto, sl == "immich_auto")
+            .. radio("sleep", "immich", SLEEP_LABELS.immich, sl == "immich")
+            .. radio("sleep", "none", "Not used for the sleep screen", not immich_sleep)
+            .. '<label class="check"><input type="checkbox" name="wallpaper" value="1"' .. (m.wallpaper and " checked" or "") .. "> Home wallpaper: a picture from the album (another one each time new pictures come)</label>"
+            .. '<label for="i_count">Pictures kept on the Kindle</label><select id="i_count" name="count" class="sel">' .. table.concat(counts) .. "</select>"
+            .. '<button type="submit">Save</button>', "Saving…")
+        local where = m.pictures .. (m.pictures == 1 and " picture" or " pictures") .. " on the Kindle"
+            .. (m.at and (" · last brought " .. os.date("%Y-%m-%d %H:%M", m.at)) or "")
+        parts[#parts + 1] = '<p class="note">' .. esc(where) .. (m.refresh_error and (' · <span class="err">the last try failed (' .. esc(m.refresh_error) .. ")</span>") or "") .. "</p>"
+        parts[#parts + 1] = '<div class="two" style="margin-top:12px">' .. form(base .. "/immich/refresh", '<button class="alt small" type="submit">Get new pictures now</button>', "Asking…")
+            .. form(base .. "/immich/albums", '<button class="alt small" type="submit">Update the album list</button>', "Asking…") .. "</div>"
+        parts[#parts + 1] = form(base .. "/immich/disconnect",
+            '<button class="danger" type="submit" style="margin-top:12px"' .. confirmJs("Disconnect Immich? Its pictures are removed from the Kindle; the sleep screen goes back to the screensavers folder.")
+            .. ">Disconnect</button>", "Disconnecting…")
+        parts[#parts + 1] = "<details><summary>Change the address or API key</summary><div style=\"margin-top:12px\">"
+    else
+        parts[#parts + 1] = status(false, "Not connected")
+    end
+    parts[#parts + 1] = form(base .. "/immich",
+        input("i_server", "server", "Immich address (or an album's address from your browser)", (m.form or {}).server, 'required placeholder="https://photos.example.com" ' .. URL_ATTRS)
+        .. '<label for="i_key">API key</label><input id="i_key" name="key" type="password" required ' .. NAME_ATTRS .. ">"
+        .. '<button type="submit">Connect</button>'
+        .. '<details><summary>Where do I get an API key?</summary><p class="note">In Immich: your picture (top right) → Account Settings → API Keys → New API Key. Give it at least album.read, asset.read and asset.view (or all permissions). The Kindle keeps the key, never your password, and never writes it to its log.</p></details>',
+        "Connecting…")
+    if m.connected then parts[#parts + 1] = "</div></details>" end
+    parts[#parts + 1] = "</section>"
+    return table.concat(parts)
+end
+
+local function sleepSection(st, base)
+    local sl = st.sleep or {}
+    local sc = sl.screen or { w = 600, h = 800 }
+    local parts = { '<section id="sleep" class="tab"><h2>Sleep screen</h2>',
+        '<p class="what">Your own pictures for the sleep screen: made in this browser to fit the Kindle\'s screen (',
+        esc(sc.w), " × ", esc(sc.h), ', in grey) and put in its <code>screensavers</code> folder. Nothing is sent anywhere else.</p>' }
+    if sl.error then parts[#parts + 1] = '<p class="err">' .. esc(sl.error) .. "</p>" end
+    -- which sleep screen
+    local mode = sl.mode == "random_image" and "always" or sl.mode
+    local radios = { radio("mode", "auto", SLEEP_LABELS.auto, mode == "auto"), radio("mode", "always", SLEEP_LABELS.always, mode == "always") }
+    if sl.immich or mode == "immich_auto" or mode == "immich" then
+        radios[#radios + 1] = radio("mode", "immich_auto", SLEEP_LABELS.immich_auto, mode == "immich_auto")
+        radios[#radios + 1] = radio("mode", "immich", SLEEP_LABELS.immich, mode == "immich")
+    end
+    if not SLEEP_LABELS[mode or ""] then
+        radios[#radios + 1] = '<p class="note" style="margin:0 0 12px">Now: another sleep screen, chosen on the Kindle (Settings → General → Sleep → Wallpaper).</p>'
+    end
+    parts[#parts + 1] = form(base .. "/sleep/mode", table.concat(radios) .. '<button class="alt small" type="submit">Use this sleep screen</button>', "Saving…")
+    -- adding pictures (made here: the Kindle's size, grey, PNG)
+    local received = {}
+    for _i, name in ipairs(sl.received or {}) do received[#received + 1] = '<p class="ok">✓ ' .. esc(name) .. "</p>" end
+    parts[#parts + 1] = table.concat({
+        '<h3 style="font-size:15px;margin:18px 0 8px">Add pictures</h3>',
+        '<div class="drop"><label for="ss_files" style="margin:0">Photos and pictures (JPEG, PNG, and whatever else this browser can open)</label>',
+        '<input id="ss_files" type="file" multiple accept="image/*"></div>',
+        '<label for="ss_fit">How they fit the screen</label><select id="ss_fit" class="sel"><option value="cover">Fill the screen (edges cropped)</option><option value="contain">Whole picture (white edges)</option></select>',
+        '<button id="ss_send" type="button">Send to Kindle</button>',
+        '<div id="ss_up">', table.concat(received), '</div>',
+        '<script>(function(){var BASE=', string.format("%q", base), ',W=', tonumber(sc.w) or 600, ',H=', tonumber(sc.h) or 800, ';',
+        'var f=document.getElementById("ss_files"),b=document.getElementById("ss_send"),out=document.getElementById("ss_up");',
+        'function say(t,c){var p=document.createElement("p");p.textContent=t;if(c)p.className=c;out.appendChild(p);return p}',
+        'function make(file,fit){return createImageBitmap(file).then(function(img){var c=document.createElement("canvas");c.width=W;c.height=H;var g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,W,H);',
+        'var k=fit=="contain"?Math.min(W/img.width,H/img.height):Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;g.imageSmoothingQuality="high";g.drawImage(img,(W-w)/2,(H-h)/2,w,h);if(img.close)img.close();',
+        'var d=g.getImageData(0,0,W,H),px=d.data;for(var i=0;i<px.length;i+=4){var y=Math.round(.299*px[i]+.587*px[i+1]+.114*px[i+2]);px[i]=px[i+1]=px[i+2]=y;px[i+3]=255}g.putImageData(d,0,0);',
+        'return new Promise(function(ok,bad){c.toBlob(function(x){x?ok(x):bad(new Error("couldn\'t make the picture"))},"image/png")})})}',
+        'b.onclick=function(){var list=[].slice.call(f.files);if(!list.length){say("Choose one or more pictures first.","err");return}var fit=document.getElementById("ss_fit").value,sent=0;',
+        'b.disabled=true;b.textContent="Sending…";next();',
+        'function next(){var file=list.shift();if(!file){b.disabled=false;b.textContent="Send to Kindle";f.value="";if(sent)say("Reload the page to see them in the list below.","note");return}',
+        'var row=say(file.name+" …"),name=(file.name.replace(/\\.[^.]*$/,"")||"picture")+".png";',
+        'make(file,fit).then(function(png){var x=new XMLHttpRequest();x.open("POST",BASE+"/sleep/upload?name="+encodeURIComponent(name));',
+        'x.onload=function(){var ok=x.status==200;if(ok)sent++;row.textContent=(ok?"✓ ":"✗ ")+x.responseText;row.className=ok?"ok":"err";next()};',
+        'x.onerror=function(){row.textContent="✗ "+file.name+": the connection to the Kindle was lost";row.className="err";next()};x.send(png)},',
+        'function(){row.textContent="✗ "+file.name+": this browser can\'t open that picture (an iPhone photo: choose it from Photos, which sends a JPEG)";row.className="err";next()})}}})();</script>',
+    })
+    -- the pictures there
+    local rows = {}
+    for _i, name in ipairs(sl.names or {}) do
+        rows[#rows + 1] = '<div class="row">' .. form(base .. "/sleep/remove",
+            '<input type="hidden" name="name" value="' .. esc(name) .. '">'
+            .. "<h3>" .. esc(name) .. ' <button class="danger small" type="submit"' .. confirmJs("Take this picture off the Kindle?") .. ">Take off</button></h3>", "Taking off…") .. "</div>"
+    end
+    parts[#parts + 1] = '<h3 style="font-size:15px;margin:18px 0 8px">On the Kindle</h3>'
+    parts[#parts + 1] = #rows > 0 and table.concat(rows) or '<p class="note" style="margin-top:0">No pictures yet: add some, or the Kindle shows its own.</p>'
+    parts[#parts + 1] = "</section>"
+    return table.concat(parts)
+end
+
 local function accessSection(st, base)
     local a = st.access or {}
     local parts = { '<section id="access" class="tab"><h2>Access</h2>',
@@ -374,7 +497,7 @@ local function diagnosticsSection(st, base)
 end
 
 --- The setup page: every connection and sending books. `st` (see gzreader_phone.lua):
---- base, flash = { ok, text }, grimmory, memos, caldav, links, books.
+--- base, flash = { ok, text }, grimmory, memos, caldav, links, immich, books, sleep.
 function PairPage.hub(st)
     local base = st.base
     local flash = ""
@@ -386,7 +509,9 @@ function PairPage.hub(st)
     local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
+    tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
     tabs[#tabs + 1] = { "books", "Send books" }
+    tabs[#tabs + 1] = { "sleep", "Sleep screen" }
     tabs[#tabs + 1] = { "access", "Access", (st.access or {}).enabled }
     if st.diagnostics then tabs[#tabs + 1] = { "diagnostics", "Diagnostics" } end
     local nav = {}
@@ -402,7 +527,7 @@ function PairPage.hub(st)
         '<div class="layout"><nav>', table.concat(nav), "</nav><div>",
         flash,
         grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), musicSection(st, base),
-        booksSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
+        immichSection(st, base), booksSection(st, base), sleepSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',

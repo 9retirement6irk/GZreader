@@ -139,3 +139,81 @@ it covers the screen; the parts that don't fit (the top and bottom of a tall
 cover, the sides of a wide one) are cut off. While it's on, **Stretch cover
 to fit screen** just above it, which pulls the cover out of shape instead, is
 greyed out.
+
+### Pictures from Immich
+
+With an [Immich](https://immich.app) album you can have your own photos on
+the sleep screen and as the Home wallpaper. Set it up in **Settings →
+Connections → Immich (Photos)** (or on the [setup page](Setup-Page-and-Connections#immich)
+in your phone's browser; Kindles without Wi‑Fi on the
+[sync page](Sync-with-a-Computer)):
+
+- **Connect**: your Immich address and an API key (Immich → your picture
+  → Account Settings → API Keys → New API Key, with at least `album.read`,
+  `asset.read` and `asset.view`, or all permissions). Pasting an album's
+  address from your browser chooses that album too. The key is kept like the
+  other sign-ins and never written to the log.
+- **Album**: which album's pictures to use (yours and the ones shared with
+  you; photos only, no videos).
+- **Sleep screen**: *Book cover while reading, an Immich picture elsewhere*,
+  or *An Immich picture, always*. These are also two more tiles in
+  **Settings → General → Sleep → Wallpaper** once an album is chosen. With no
+  pictures yet, the screensavers folder's show.
+- **Home wallpaper**: a picture from the album behind Home and the tabs
+  (the same as **Settings → Interface → Wallpaper → Picture from Immich**).
+  Turning it off puts back the wallpaper you had before; choosing an image
+  by hand there turns it off.
+- **Pictures kept on the Kindle**: 10, 20 or 50. They're made to fit the
+  screen, in grey, and kept on the Kindle (`koreader/gzreader-immich/`), so
+  they show without Wi‑Fi.
+- **Get new pictures now**. Otherwise, whenever Wi‑Fi comes on and the last
+  time was over 6 hours ago, about half of them are swapped for others from
+  the album (all of them when the album changed), and the wallpaper changes
+  to another one.
+- **Disconnect**: the pictures are removed, the sleep screen goes back to the
+  screensavers folder and the wallpaper to what it was.
+
+### Immich from the sync page
+
+The sync page runs in your browser on GitHub's site, and Immich only answers
+web pages from other sites when it's told to: without that the page says
+*Couldn't reach Immich from this page*. If Immich is behind a reverse proxy
+(it has to be on `https://` for the page anyway), add these headers there for
+the page's address. Caddy:
+
+    photos.example.com {
+        @gzsync header Origin https://9retirement6irk.github.io
+        header @gzsync Access-Control-Allow-Origin "https://9retirement6irk.github.io"
+        header @gzsync Access-Control-Allow-Headers "x-api-key, content-type"
+        header @gzsync Access-Control-Allow-Methods "GET, POST, OPTIONS"
+        @gzsync_preflight {
+            method OPTIONS
+            header Origin https://9retirement6irk.github.io
+        }
+        respond @gzsync_preflight 204
+        reverse_proxy immich-server:2283
+    }
+
+nginx: a `map` next to the `server` block, and four lines in the `location`
+that passes requests on to Immich:
+
+    map $http_origin $gzsync_origin {
+        default "";
+        "https://9retirement6irk.github.io" $http_origin;
+    }
+    server {
+        …
+        location / {
+            add_header Access-Control-Allow-Origin $gzsync_origin always;
+            add_header Access-Control-Allow-Headers "x-api-key, content-type" always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            if ($request_method = OPTIONS) { return 204; }
+            proxy_pass http://immich-server:2283;
+            …
+        }
+    }
+
+(nginx then ignores `add_header` lines of the `server` block in that
+location: repeat any you have there.) Only that one site is let in, and it
+still needs your API key for everything.
+Wi‑Fi Kindles don't need any of this: they ask Immich themselves.

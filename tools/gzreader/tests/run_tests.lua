@@ -166,6 +166,8 @@ G_reader_settings = { saveSetting = function(_, k, v) gsettings[k] = v end, read
     nilOrTrue = function(_, k) return gsettings[k] == nil or gsettings[k] == true end,
     isTrue = function(_, k) return gsettings[k] == true end,
     makeTrue = function(_, k) gsettings[k] = true end,
+    makeFalse = function(_, k) gsettings[k] = false end,
+    has = function(_, k) return gsettings[k] ~= nil end,
     delSetting = function(_, k) gsettings[k] = nil end,
     flipNilOrTrue = function(_, k) if gsettings[k] == nil or gsettings[k] == true then gsettings[k] = false else gsettings[k] = nil end end }
 
@@ -8789,6 +8791,20 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
         G_reader_settings:saveSetting("screensaver_dir", nil)
         Usb.SCREENSAVER_DIR = nil
+        -- the Immich album's pictures the page made (gzreader_immich.lua's folder)
+        local Immich = require("gzreader_immich")
+        local ihave = Immich.have()
+        local ifile = ihave[1] and Immich.fileOf(require("gzsleepmode").immichDir(), ihave[1])
+        local ih = ifile and io.open(ifile, "rb")
+        local ihead = ih and ih:read(8)
+        if ih then ih:close() end
+        check(r.photos == 10 and #ihave == 10 and ihead == "\137PNG\r\n\26\n" and fake.store.immich and fake.store.immich.usb
+            and fake.store.immich.album.name == "Kindle" and G_reader_settings:readSetting("gzreader_immich_album") == "Kindle"
+            and not (fake.store.immich.key or json.encode(fake.store.immich):find("immich-test-key", 1, true))
+            and Usb.summaryText(r):match("10 pictures from Immich"),
+            "e2e: 10 pictures from the Immich album the page made for this screen (the API key stays with the page)")
+        os.execute("rm -rf '" .. require("gzsleepmode").immichDir() .. "'")
+        G_reader_settings:delSetting("gzreader_immich_album")
         check(r.marks == 4 and #left == 1 and left[1].id == "m:5" and left[1].ref ~= "usb-2" and tonumber(left[1].ref)
             and fake.store.downloads["1"].bookmarks["/body/DocFragment[2]"] ~= "usb-1" and fake.store.usb_idmap["usb-2"],
             "e2e: the journal's sent lines gone, the rest now refer to Grimmory's ids, as does the Kindle")
@@ -8844,6 +8860,258 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         os.remove(require("gzreader_caldav").cachePath())
     end)()
 end
+
+print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
+;(function()
+    local Immich = require("gzreader_immich")
+    local SleepMode = require("gzsleepmode")
+    local lfs = require("libs/libkoreader-lfs")
+    local Device = require("device")
+    local real_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end }
+    local function logtxt() local f = io.open(WORK .. "/gzreader.log", "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
+    local IP = PORT + 30
+    local function startMock(port, flags, name)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_immich.py " .. port .. " " .. flags
+            .. " > " .. WORK .. "/" .. name .. ".log 2>&1 & echo $! > " .. WORK .. "/" .. name .. ".pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. port .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    startMock(IP, "", "immich")
+    local function istate(port) local pp = io.popen("curl -s http://127.0.0.1:" .. (port or IP) .. "/__state"); local t = pp:read("*a"); pp:close(); return json.decode(t) or {} end
+    local function uid(n, kind) return string.format("%08x-0000-4000-8000-%s%011x", n, kind or "a", n) end
+    local KINDLE, TRIP, FAMILY = uid(1, "b"), uid(2, "b"), uid(3, "b")
+    local SERVER = "http://127.0.0.1:" .. IP
+    local saved_settings = {}
+    for _i, k in ipairs({ "gzreader_sleep_auto", "screensaver_type", "gzreader_sleep_source", "screensaver_dir", "gzreader_immich_album" }) do
+        saved_settings[k] = gsettings[k]
+    end
+    SleepMode.IMMICH_DIR = WORK .. "/immich-pics"
+    os.execute("rm -rf '" .. SleepMode.IMMICH_DIR .. "'")
+
+    -- the address
+    local s1, a1 = Immich.normalizeServer(" photos.example.com/albums/" .. KINDLE .. "?at=1 ")
+    check(s1 == "https://photos.example.com" and a1 == KINDLE, "address: an album's address pasted: the server, and the album")
+    check(Immich.normalizeServer("http://192.168.1.5:2283/photos/" .. uid(5)) == "http://192.168.1.5:2283"
+        and Immich.normalizeServer("https://example.com/immich/api/") == "https://example.com/immich" and Immich.normalizeServer(" ") == nil,
+        "address: a photo's page, /api, Immich under a path; nothing typed")
+    -- which pictures to keep
+    local album = {}
+    for i = 1, 30 do album[i] = "p" .. i end
+    local keep, get, drop = Immich.plan(album, {}, 20)
+    check(#keep == 0 and #get == 20 and #drop == 0, "plan: an empty Kindle gets 20")
+    local have = {}
+    for i = 1, 20 do have[i] = get[i] end
+    have[21] = "gone"
+    keep, get, drop = Immich.plan(album, have, 20)
+    local fresh = true
+    for _i, id in ipairs(get) do for _j, h in ipairs(have) do if id == h then fresh = false end end end
+    check(#keep == 10 and #get == 10 and #drop == 11 and fresh, "plan: half of them swapped for new ones, one no longer in the album taken off")
+    keep, get, drop = Immich.plan({ "a", "b", "c" }, { "a", "b" }, 20)
+    check(#keep == 2 and #get == 1 and #drop == 0, "plan: a small album: all of it, nothing swapped")
+    keep, get = Immich.plan(album, have, 10)
+    check(#keep + #get == 10, "plan: fewer pictures kept: down to that number")
+
+    -- connecting
+    plugin.store.immich = nil
+    local ok, err = Immich.connect(plugin, SERVER, "not-the-key")
+    check(not ok and err:match("didn't accept"), "connect: a wrong API key is refused")
+    ok, err = Immich.connect(plugin, SERVER, "immich-limited-key")
+    check(not ok and err:match("can't read albums") and err:match("album%.read"), "connect: a key without album.read: says which permissions")
+    ok, err = Immich.connect(plugin, SERVER .. "/albums/" .. KINDLE, " immich-test-key\n")
+    local st = plugin.store.immich or {}
+    check(ok and st.server == SERVER and st.key == "immich-test-key" and st.user == "Will" and #st.albums == 3
+        and st.album and st.album.id == KINDLE and st.album.name == "Kindle" and gsettings.gzreader_immich_album == "Kindle",
+        "connect: with an album's address: connected, the albums (shared ones too), that album chosen " .. tostring(err))
+    local names = {}
+    for _i, a in ipairs(st.albums) do names[#names + 1] = a.name .. "=" .. a.count end
+    check(table.concat(names, ",") == "Family=2,Kindle=30,Trip=4", "albums: by name, with their sizes " .. table.concat(names, ","))
+    check(not logtxt():find("immich-test-key", 1, true) and not logtxt():find("immich-limited-key", 1, true), "the API key is never in the log")
+
+    -- the pictures
+    check(not Immich.inUse(), "not used yet: nothing fetched on Wi-Fi")
+    local done
+    Immich.refresh(plugin, {}, function(okr, res) done = { okr, res } end)
+    check(done and done[1] and done[2].got == 20 and #Immich.have() == 20 and st.at and st.album.count == 30,
+        "Get new pictures: 20 of the album's 30 on the Kindle")
+    local f1 = Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1])
+    local fh = f1 and io.open(f1, "rb"); local head = fh and fh:read(8); if fh then fh:close() end
+    check(f1 and f1:match("%.png$") and head == "\137PNG\r\n\26\n", "each one a picture file named after the photo")
+    local reqs = istate().log or {}
+    local search
+    for _i, r in ipairs(reqs) do if r.path == "/api/search/metadata" then search = r end end
+    local thumbs_keyed = 0
+    for _i, r in ipairs(reqs) do if r.path:find("/thumbnail?size=preview", 1, true) and r.key == "ok" then thumbs_keyed = thumbs_keyed + 1 end end
+    check(search and type(search.body.albumIds) == "table" and search.body.albumIds[1] == KINDLE and search.body.type == "IMAGE"
+        and thumbs_keyed == 20, "the album's photos asked with Immich's search (albumIds as a list, photos only); previews with the key")
+    local first = {}
+    for _i, id in ipairs(Immich.have()) do first[id] = true end
+    done = nil
+    Immich.refresh(plugin, {}, function(okr, res) done = { okr, res } end)
+    check(done and not done[1] and done[2] == "recent", "on Wi-Fi again soon after: not again (at most every 6 hours)")
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    local still = 0
+    for _i, id in ipairs(Immich.have()) do if first[id] then still = still + 1 end end
+    check(done[1] and done[2].got == 10 and #Immich.have() == 20 and still == 10, "the next time: half of them swapped for others from the album")
+    Immich.setAlbum(plugin, { id = TRIP, name = "Trip", count = 4 })
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    check(done[1] and #Immich.have() == 3 and done[2].total == 3 and gsettings.gzreader_immich_album == "Trip",
+        "another album: its 3 photos (not its video), the other album's taken off")
+    -- an older Immich: no album search, the album's own list
+    startMock(IP + 1, "--old", "immich-old")
+    local old = Immich:new({ server = "http://127.0.0.1:" .. (IP + 1), key = "immich-test-key" })
+    local ids = old:albumPictures(KINDLE)
+    check(ids and #ids == 30, "an older Immich (no album search): the album's own list of photos")
+    os.execute("kill $(cat " .. WORK .. "/immich-old.pid) 2>/dev/null")
+
+    -- the sleep screen
+    gsettings.gzreader_sleep_auto, gsettings.screensaver_type, gsettings.gzreader_sleep_source = nil, nil, nil
+    SleepMode.use(G_reader_settings, "immich_auto")
+    local dirs = SleepMode.pictureDirs(G_reader_settings, "", true)
+    check(Immich.inUse() and SleepMode.type(G_reader_settings, "", true) == "cover" and SleepMode.type(G_reader_settings, "", false) == "random_image"
+        and dirs[1] == SleepMode.IMMICH_DIR and dirs[2] == "/mnt/us/screensavers",
+        "sleep screen: the cover while reading, an Immich picture elsewhere (the folders after it)")
+    -- Settings → Connections → Immich (Photos)
+    local IS = require("gzreader_immichsettings")
+    local function labels(items)
+        local t = {}
+        for _i, it in ipairs(items) do t[#t + 1] = it.text or (it.text_func and it.text_func()) or "?" end
+        return table.concat(t, "|")
+    end
+    local im_items = IS.items(plugin)
+    local lb = labels(im_items)
+    check(lb:find("^Connected to 127%.0%.0%.1:%d+ · Will|Album: Trip|Sleep screen|Home wallpaper|Pictures kept on the Kindle: 20|Get new pictures now %(last: [%d-]+ [%d:]+%)|Disconnect$"),
+        "Settings → Connections → Immich: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
+    local sub = im_items[3].sub_item_table
+    check(sub[1].checked_func() and not sub[3].checked_func(), "…its Sleep screen: the cover and Immich, as chosen")
+    sub[3].callback()
+    check(SleepMode.current(G_reader_settings) == "auto", "…Not used: the cover while reading and the screensavers folder's pictures")
+    sub[1].callback()
+    local was_im = plugin.store.immich
+    plugin.store.immich = {}
+    check(labels(IS.items(plugin)) == "Connect with QR code|Connect by typing|About Immich", "not connected: how to connect")
+    plugin.store.immich = was_im
+
+    -- the Home wallpaper (ZenOS's Settings → Interface → Wallpaper)
+    local W = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_immich_wallpaper.lua")
+    package.loaded["common/gz_immich_wallpaper"] = W
+    local saves = 0
+    W.plugin = { config = { library_background = { enabled = false, path = "/mnt/us/old.png", opacity = 80 } }, saveConfig = function() saves = saves + 1 end }
+    W.FILE = WORK .. "/immich-wallpaper.png"
+    local bg = W.plugin.config.library_background
+    check(W.turnOn(Immich.randomPicture()) == "on" and W.isOn() and bg.path == W.FILE and bg.enabled == true
+        and lfs.attributes(W.FILE, "mode") == "file" and saves == 1, "wallpaper: a picture from the album, copied where the wallpaper looks")
+    local src1 = W.source()
+    Immich.changed()
+    check(W.source() and W.source() ~= src1 and bg.path == W.FILE, "wallpaper: another picture after new ones came")
+    W.turnOff()
+    check(not W.isOn() and bg.path == "/mnt/us/old.png" and bg.enabled == false and not lfs.attributes(W.FILE), "wallpaper: turned off, the one before back")
+    W.turnOn(Immich.randomPicture())
+    W.chosenByHand(bg)
+    check(not W.isOn() and bg.gz_before == nil, "wallpaper: an image chosen by hand isn't Immich's any more")
+    bg.enabled, bg.path = false, ""
+    check(W.toggle({ store = { immich = {} } }) == "no_album" and not W.isOn(), "wallpaper: without an album, nothing changes")
+    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Connections → Immich")
+
+    -- the setup page (Wi-Fi Kindles): Immich, sleep screen pictures
+    local Phone = require("gzreader_phone")
+    local Usb = require("gzreader_usbsync")
+    Usb.SCREENSAVER_DIR = WORK .. "/ss-pictures"
+    os.execute("rm -rf '" .. Usb.SCREENSAVER_DIR .. "'")
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local closed
+    Phone.open(plugin, { section = "immich", on_close = function(ch) closed = ch end })
+    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Connections → Immich → Connect with QR code)")
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields, extra)
+        local args = { "-L", #fields == 0 and "-d ''" or nil }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " " .. (extra or "") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('data-tab="immich"', 1, true) and b:find('data-tab="sleep"', 1, true) and b:find('<section id="immich" class="tab">', 1, true)
+        and b:find('<section id="sleep" class="tab">', 1, true) and b:find("Connected to <b>127.0.0.1:" .. IP .. "</b> as <b>Will</b>", 1, true)
+        and b:find(">Trip (4)</option>", 1, true) and not b:find("immich-test-key", 1, true),
+        "setup page: Immich and Sleep screen tabs; connected, the albums to choose from, the key never shown")
+    Immich.disconnect(plugin)
+    c, b = post("/immich", { "server=" .. SERVER, "key=wrong" })
+    check(c == 200 and b:find("didn&#39;t accept that API key", 1, true), "setup page: a wrong API key: the page says so")
+    c, b = post("/immich", { "server=" .. SERVER, "key=immich-test-key" })
+    check(c == 200 and b:find("Now choose an album", 1, true) and plugin.store.immich.key == "immich-test-key" and not plugin.store.immich.album,
+        "setup page: connected, an album to choose")
+    c, b = post("/immich/use", { "album=" .. FAMILY, "sleep=immich", "wallpaper=1", "count=10" })
+    st = plugin.store.immich
+    check(c == 200 and st.album and st.album.id == FAMILY and st.count == 10 and SleepMode.current(G_reader_settings) == "immich"
+        and #Immich.have() == 2 and W.isOn() and b:find("Pictures from “Family”", 1, true),
+        "setup page: the album, Immich always for the sleep screen, the wallpaper, 10 kept; its pictures brought")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('value="immich" checked', 1, true) and b:find('name="wallpaper" value="1" checked', 1, true) and b:find('<option value="10" selected>', 1, true)
+        and b:find("2 pictures on the Kindle", 1, true), "setup page: shows what's chosen")
+    -- sleep screen pictures
+    local pic = WORK .. "/cat.png"
+    local pf = io.open(pic, "wb"); pf:write("\137PNG\r\n\26\n" .. string.rep("x", 2000)); pf:close()
+    c, b = phone("--data-binary @'" .. pic .. "' '" .. P .. "/sleep/upload?name=My%20Cat!.png'")
+    check(c == 200 and b:match("My Cat%.png is on the Kindle") and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat.png", "size") == 2008,
+        "sleep screen: a picture made on the page, in the screensavers folder " .. tostring(b))
+    c, b = phone("--data-binary @'" .. pic .. "' '" .. P .. "/sleep/upload?name=My%20Cat.png'")
+    check(c == 200 and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat (2).png", "mode") == "file", "sleep screen: the same name again: (2)")
+    c, b = phone("--data-binary 'MZ' '" .. P .. "/sleep/upload?name=..%2F..%2Fevil.sh'")
+    check(c == 415 and not lfs.attributes(WORK .. "/evil.sh"), "sleep screen: not a picture: refused")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('name="name" value="My Cat (2).png"', 1, true) and b:find("var BASE=", 1, true) and b:find("W=600,H=800", 1, true),
+        "setup page: the pictures on the Kindle; pictures made for its 600 × 800 screen")
+    c, b = post("/sleep/remove", { "name=My Cat (2).png" })
+    check(c == 200 and not lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat (2).png") and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat.png"), "sleep screen: a picture taken off")
+    c, b = post("/sleep/remove", { "name=../gzreader.log" })
+    check(c == 200 and b:find("isn&#39;t on the Kindle", 1, true) and lfs.attributes(WORK .. "/gzreader.log"), "sleep screen: only its pictures can be taken off")
+    c, b = post("/sleep/mode", { "mode=always" })
+    check(c == 200 and SleepMode.current(G_reader_settings) == "random_image" and gsettings.gzreader_sleep_source == nil, "sleep screen: a picture from the folder, always")
+    c, b = post("/sleep/mode", { "mode=immich_auto" })
+    check(SleepMode.current(G_reader_settings) == "immich_auto", "sleep screen: the cover while reading, Immich elsewhere (from the Sleep screen tab)")
+    check(not logtxt():find("immich-test-key", 1, true), "setup page: the key never in the log")
+    scr.on_cancel()
+    check(closed and closed.immich and closed.pictures == 2 and Phone.session == nil, "setup page closed: the caller hears what changed")
+    PS.new = orig_ps
+
+    -- Kindles without Wi-Fi: what the sync page brings (gzreader_usbsync.lua)
+    local base = WORK .. "/usb-immich"
+    os.execute("rm -rf '" .. base .. "' && mkdir -p '" .. base .. "/in/immich'")
+    local new1, new2 = uid(21), uid(22)
+    for _i, id in ipairs({ new1, new2 }) do local o = io.open(base .. "/in/immich/" .. id .. ".png", "wb"); o:write("\137PNG\r\n\26\n" .. id); o:close() end
+    local kept_one = Immich.have()[1]
+    local got = Usb.takeImmich(plugin, base, { album = { id = KINDLE, name = "Kindle", count = 30 }, server = SERVER, count = 20,
+        add = { { file = "in/immich/" .. new1 .. ".png", id = new1 }, { file = "in/immich/" .. new2 .. ".png", id = new2 },
+            { file = "../../escape.png", id = uid(23) }, { file = "in/immich/x.png", id = "not-an-id" } },
+        keep = { kept_one }, wallpaper = false })
+    local hv = {}
+    for _i, id in ipairs(Immich.have()) do hv[id] = true end
+    check(got == 2 and hv[new1] and hv[new2] and hv[kept_one] and #Immich.have() == 3 and plugin.store.immich.usb
+        and plugin.store.immich.album.id == KINDLE and gsettings.gzreader_immich_album == "Kindle" and not W.isOn(),
+        "sync page: its pictures in, the ones not kept taken off, the album, the wallpaper turned off as chosen there")
+    local out = Usb.immichOut(plugin)
+    check(out.album.id == KINDLE and #out.have == 3 and out.wallpaper == false, "the outbox tells the page which pictures are on the Kindle")
+    check(Usb.takeImmich(plugin, base, { album = { id = KINDLE, name = "Kindle" }, wallpaper = true }) == 0 and W.isOn() and #Immich.have() == 3,
+        "sync page: the wallpaper turned on there; no keep list: none taken off")
+    Usb.takeScreensavers(base, { mode = "immich" })
+    check(Usb.sleepMode() == "immich", "sync page: Immich always for the sleep screen, chosen there")
+    Usb.takeImmich(plugin, base, { off = true })
+    check(not (plugin.store.immich or {}).album and not lfs.attributes(SleepMode.IMMICH_DIR) and gsettings.gzreader_sleep_source == nil
+        and gsettings.gzreader_immich_album == nil and not W.isOn(), "sync page: Immich disconnected there: its pictures gone, the sleep screen back to the folder")
+    Usb.SCREENSAVER_DIR = nil
+
+    os.execute("kill $(cat " .. WORK .. "/immich.pid) 2>/dev/null")
+    for k, v in pairs(saved_settings) do gsettings[k] = v end
+    package.loaded["common/gz_immich_wallpaper"] = nil
+    SleepMode.IMMICH_DIR = nil
+    Device.screen = real_screen
+    plugin.store.immich = nil
+end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
