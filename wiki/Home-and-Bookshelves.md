@@ -75,6 +75,9 @@ the book once you open one.
     keep its background transparent. Bold, dark shapes read best on e-ink.
     A shaded picture should be a PNG: the Kindle draws an SVG's gradients
     far too dark (flat colours in an SVG are fine).
+  - **Hold an ornament** (on Home, in Downloads or in the Catalog, on a
+    touch Kindle) to open these settings straight away, as holding a Home
+    widget opens its settings. Back (or the ×) returns to the shelves.
 
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a

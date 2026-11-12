@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Hold an ornament on the shelves for the Bookshelf theme settings", text = "On a touch Kindle, holding an ornament on Home's shelf, in Downloads or in the Catalog opens the Bookshelf theme settings (the plank, ornaments, where and how many, which ones, your own) on a page of their own, as holding a Home widget opens its settings. Back returns to the shelves." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

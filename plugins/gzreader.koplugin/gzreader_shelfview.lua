@@ -390,6 +390,14 @@ local Row = WidgetContainer:extend{ w = 0, h = 0 }
 
 function Row:getSize() return Geom:new{ w = self.w, h = self.h } end
 
+--- A hold on this shelf's ornament: the ornament settings
+--- (gzreader_shelftheme.lua); the items' own holds come first.
+function Row:onGesture(ev)
+    if not (ev and ev.ges == "hold" and ev.pos) then return false end
+    local Theme = package.loaded["gzreader_shelftheme"]
+    return Theme ~= nil and Theme.hold(self, ev.pos) or false
+end
+
 local device_cache = {}
 
 local function deviceImage(name, w, h)
@@ -532,6 +540,7 @@ end
 
 function Row:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
+    if package.loaded["gzreader_shelftheme"] then package.loaded["gzreader_shelftheme"].forget(self) end
     local menu = self.menu
     local Sh = Shelf()
     local board_y = y + self.h - S(Sh.BOARD_H) - S(Sh.UNDER_H)
@@ -667,7 +676,7 @@ function Row:paintTo(bb, x, y)
     if orn then
         pcall(function()
             local Theme = require("gzreader_shelftheme")
-            Theme.paintPlanned(bb, orn, orn_x or (room_end - S(Theme.MARGIN) - orn.w), board_y)
+            Theme.paintPlanned(bb, orn, orn_x or (room_end - S(Theme.MARGIN) - orn.w), board_y, self)
         end)
     end
 end

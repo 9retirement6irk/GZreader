@@ -19,6 +19,8 @@ seasonal ones, a Christmas tree in winter and a pumpkin in autumn.
   is the same every time a page is shown. Your own: PNG or SVG files in
   koreader/settings/gzreader/ornaments (the picture's bottom edge stands on
   the plank).
+- Hold an ornament (touch Kindles) for these settings on a page of their
+  own, as holding a Home widget opens its settings.
 
 shelf.lua (the spines and boards), gzreader_shelfview.lua (Downloads) and
 gzreader_bookshop.lua (the Catalog) ask this module; without it they draw as
@@ -535,9 +537,17 @@ function Theme.plan(seed, free_w, stand_h, nth)
     return { entry = entry, img = got.bb, w = iw, h = ih - got.foot, foot = got.foot, room = iw + 2 * S(Theme.MARGIN) }
 end
 
+--- Where the ornaments were last drawn, by the shelf that drew them (its
+--- widget): a hold on one opens the ornament settings (Theme.hold).
+Theme.spots = setmetatable({}, { __mode = "k" })
+
+--- A shelf drawn again: forget where its ornaments were.
+function Theme.forget(owner) if owner then Theme.spots[owner] = nil end end
+
 --- Paint a planned ornament with its left edge at x, standing on the board
---- at board_y (its lowest drawn row where the books' feet are).
-function Theme.paintPlanned(bb, plan, x, board_y)
+--- at board_y (its lowest drawn row where the books' feet are). `owner`, the
+--- shelf's widget, remembers where it stands (Theme.hold).
+function Theme.paintPlanned(bb, plan, x, board_y, owner)
     local img = plan.img
     local y = board_y - plan.h
     local Blitbuffer = require("ffi/blitbuffer")
@@ -549,15 +559,46 @@ function Theme.paintPlanned(bb, plan, x, board_y)
     end
     -- where it touches the board
     bb:darkenRect(x + math.floor(plan.w * 0.12), board_y, math.floor(plan.w * 0.76), S(2), 0.30)
-    return { x = x, y = y, w = plan.w, h = plan.h }
+    local spot = { x = x, y = y, w = plan.w, h = plan.h }
+    if owner then
+        local list = Theme.spots[owner] or {}
+        list[#list + 1] = spot
+        Theme.spots[owner] = list
+    end
+    return spot
 end
 
 --- Stand an ornament at the right end of the free room from `left` to
 --- `right`, for books `stand_h` tall. Returns its place or nil.
-function Theme.paintOrnament(bb, seed, left, right, board_y, stand_h, nth)
+function Theme.paintOrnament(bb, seed, left, right, board_y, stand_h, nth, owner)
     local plan = Theme.plan(seed, right - left, stand_h, nth)
     if not plan then return nil end
-    return Theme.paintPlanned(bb, plan, right - S(Theme.MARGIN) - plan.w, board_y)
+    return Theme.paintPlanned(bb, plan, right - S(Theme.MARGIN) - plan.w, board_y, owner)
+end
+
+--- The ornament `owner` drew at `pos` (a hold's place on the screen), or nil.
+function Theme.at(owner, pos)
+    if not (owner and pos and pos.x and pos.y) then return nil end
+    for _i, r in ipairs(Theme.spots[owner] or {}) do
+        if pos.x >= r.x and pos.x < r.x + r.w and pos.y >= r.y and pos.y < r.y + r.h then return r end
+    end
+    return nil
+end
+
+--- A hold on a shelf: on one of its ornaments, the ornament settings (as a
+--- hold on a Home widget opens its settings). True if it was on one.
+function Theme.hold(owner, pos)
+    if not Theme.at(owner, pos) then return false end
+    pcall(function() require("gzreader_log").info("shelf theme: hold on an ornament, its settings") end)
+    Theme.openSettings()
+    return true
+end
+
+--- The Bookshelf theme settings on a page of their own (the same rows as in
+--- Settings), over the shelves: Back returns to them, redrawn.
+function Theme.openSettings()
+    local item = Theme.settingsItem()
+    return require("gzreader_homemenu").settings({ title = item.text, root_items = item.sub_item_table })
 end
 
 ---------------------------------------------------------------- Settings
