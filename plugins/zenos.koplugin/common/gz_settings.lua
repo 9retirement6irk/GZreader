@@ -59,6 +59,14 @@ M.KOREADER_HIDDEN = {
     -- Tools → Reading statistics: the plugin stays (time left, book details,
     -- the end-of-book page, Reading goals), its menu goes
     statistics = true,
+    -- Taps and gestures → Disable double tap: GZreader has no double-tap
+    -- actions (no gestures plugin); unticked, every tap in a book waited for
+    -- a second one (gzreader_touch.lua forgetKOReaderDoubleTap clears it)
+    screen_disable_double_tap = true,
+    -- Document → Book metadata location and Move book metadata: GZreader's
+    -- Storage and its clean-ups look for a book's .sdr folder next to it
+    document_metadata_location = true,
+    document_metadata_location_move = true,
 }
 
 --- Whether the KOReader section shows `item` (a KOReader menu item).
@@ -88,6 +96,9 @@ M.KOREADER_DUPLICATES = {
     version = true, about = true, quickstart_guide = true,
     -- not used by GZreader
     cloud_storage = true,
+    -- Settings → Interface → Quick panel: Open with a tap / a swipe
+    -- (gzreader_panel.lua openRows; its Auto-show bottom menu does nothing here)
+    menu_activate = true,
 }
 
 --- `list` (rows copied from KOReader's menu for the KOReader section) without
