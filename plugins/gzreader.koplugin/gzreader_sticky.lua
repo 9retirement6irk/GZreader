@@ -136,6 +136,28 @@ function Sticky.paper(look)
     return look.shade > 0 and Blitbuffer.gray(look.shade) or Blitbuffer.COLOR_WHITE
 end
 
+-- A note's tilt grows it by its length × sin(angle): a long note (a list's
+-- full width, a whole note in the Full view) is tilted less, so it never
+-- grows more than a note this long (scaled) at the full angle.
+Sticky.TILT_REF = 300
+
+--- The angle a w x h note is turned by (degrees), for `angle` (its look's).
+function Sticky.tilt(angle, w, h, ref)
+    ref = ref or S(Sticky.TILT_REF)
+    local long = math.max(w or 0, h or 0)
+    if long <= ref then return angle end
+    return angle * ref / long
+end
+
+--- Room a w x h note takes on the board: its image's width and height
+--- (the margin for the shadow and tape, then the tilt).
+function Sticky.footprint(w, h, look)
+    local m = S(10)
+    local cw, ch = w + 2 * m, h + 2 * m
+    local a = math.rad(math.abs(Sticky.tilt(look and look.angle or 0, w, h)))
+    return math.ceil(cw * math.cos(a) + ch * math.sin(a)), math.ceil(cw * math.sin(a) + ch * math.cos(a))
+end
+
 --- `widget` (w x h) as a sticky note: shadow, paper, tape, tilt. A new image.
 function Sticky.image(widget, w, h, look, focused)
     local m = S(10)
@@ -155,9 +177,69 @@ function Sticky.image(widget, w, h, look, focused)
         local tx = m + math.floor((w - tw) / 2) + S(look.tape_shift or 0)
         canvas:paintRect(tx, m - math.floor(th / 2), tw, th, Blitbuffer.gray(0.22))
     end
-    local img = Sticky.rotate(canvas, look.angle or 0)
+    local img = Sticky.rotate(canvas, Sticky.tilt(look.angle or 0, w, h))
     canvas:free()
     return img
+end
+
+local function be16(s, i) return s:byte(i) * 256 + s:byte(i + 1) end
+local function le16(s, i) return s:byte(i) + s:byte(i + 1) * 256 end
+
+--- A picture's width and height from the start of its file (PNG, JPEG, GIF,
+--- WebP), without decoding it; nil if it can't be told.
+function Sticky.imageSize(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local head = f:read(64 * 1024) or ""
+    f:close()
+    if head:sub(1, 8) == "\137PNG\r\n\26\n" and #head >= 24 then
+        return be16(head, 17) * 65536 + be16(head, 19), be16(head, 21) * 65536 + be16(head, 23)
+    end
+    if head:sub(1, 6) == "GIF87a" or head:sub(1, 6) == "GIF89a" then
+        if #head >= 10 then return le16(head, 7), le16(head, 9) end
+        return nil
+    end
+    if head:sub(1, 4) == "RIFF" and head:sub(9, 12) == "WEBP" and #head >= 30 then
+        local kind = head:sub(13, 16)
+        if kind == "VP8 " then return le16(head, 27) % 16384, le16(head, 29) % 16384 end
+        if kind == "VP8L" then
+            local b1, b2, b3, b4 = head:byte(22, 25)
+            return 1 + b1 + (b2 % 64) * 256, 1 + math.floor(b2 / 64) + b3 * 4 + (b4 % 16) * 1024
+        end
+        if kind == "VP8X" then
+            return 1 + head:byte(25) + head:byte(26) * 256 + head:byte(27) * 65536,
+                1 + head:byte(28) + head:byte(29) * 256 + head:byte(30) * 65536
+        end
+        return nil
+    end
+    if head:sub(1, 2) == "\255\216" then -- JPEG: the frame header (SOF0–SOF15, not DHT/JPG/DAC)
+        local i = 3
+        while i + 8 <= #head do
+            if head:byte(i) ~= 0xFF then return nil end
+            local marker = head:byte(i + 1)
+            if marker == 0xFF then
+                i = i + 1 -- (padding)
+            elseif marker == 0xD8 or (marker >= 0xD0 and marker <= 0xD7) or marker == 0x01 then
+                i = i + 2 -- (no length)
+            else
+                local len = be16(head, i + 2)
+                if marker >= 0xC0 and marker <= 0xCF and marker ~= 0xC4 and marker ~= 0xC8 and marker ~= 0xCC then
+                    return be16(head, i + 7), be16(head, i + 5)
+                end
+                if len < 2 then return nil end
+                i = i + 2 + len
+            end
+        end
+        return nil
+    end
+    return nil
+end
+
+--- The size Sticky.picture shrinks a w x h picture to, for max_w x max_h.
+function Sticky.fitSize(w, h, max_w, max_h)
+    local sc = math.min(max_w / w, max_h / h, 1)
+    if sc >= 1 then return w, h end
+    return math.max(1, math.floor(w * sc)), math.max(1, math.floor(h * sc))
 end
 
 --- A picture file shrunk to fit max_w x max_h (a new image), or nil.
@@ -169,10 +251,9 @@ function Sticky.picture(path, max_w, max_h)
     local RenderImage = require("ui/renderimage")
     local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
     if not ok or not bb then return nil end
-    local sc = math.min(max_w / bb:getWidth(), max_h / bb:getHeight(), 1)
-    if sc < 1 then
-        bb = RenderImage:scaleBlitBuffer(bb, math.max(1, math.floor(bb:getWidth() * sc)),
-            math.max(1, math.floor(bb:getHeight() * sc)), true)
+    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h)
+    if w ~= bb:getWidth() or h ~= bb:getHeight() then
+        bb = RenderImage:scaleBlitBuffer(bb, w, h, true)
     end
     return bb
 end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes tab layouts: a list, two or three side by side, or Auto; compact or full notes", text = "The Notes tab can show your notes the way the Memos web app does: L (or Layout on a touch Kindle, or More → Layout) chooses a List (one note under another), Two side by side (as before), Three side by side, or Auto (as many side by side as fit the screen: two upright, three sideways), and Compact (every note the same size, a long one cut off, as before) or Full (each note as long as it needs, with all its pictures, nothing cut off; a note too long for the page goes on in the empty column to its right or on the next page, marked continued). The same choices are in Settings → Connections → Memos (Notes) → Layout, and are kept." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

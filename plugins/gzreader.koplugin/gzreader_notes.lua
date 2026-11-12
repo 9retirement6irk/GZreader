@@ -1,9 +1,12 @@
 --[[--
 The Notes tab: your Memos notes as sticky notes.
 
-- Board: six sticky notes per page (Q–Y open one; ◀ ▶ pages), pinned first.
-  N new note, F filter, M more (refresh, connect, disconnect). (Not the Menu
-  key: ZenOS sends it from tab views to the Home menu.)
+- Board: sticky notes, pinned first (Q, W, E… open one; ◀ ▶ pages). L layout:
+  a list, two or three side by side, or Auto; Compact (every note the same
+  size, six to a page two side by side) or Full (whole notes, as long as
+  they need: gzreader_notelayout.lua). N new note, F filter, M more
+  (refresh, connect, disconnect). (Not the Menu key: ZenOS sends it from
+  tab views to the Home menu.)
 - Wi-Fi: only to sync (when the tab opens, at most every 5 minutes, or with
   changes waiting; M → Refresh any time), to send what you change, and to
   open an attachment not on the Kindle yet. Browsing never needs it:
@@ -44,6 +47,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 local Memos = require("gzreader_memos")
+local NL = require("gzreader_notelayout")
 local Sticky = require("gzreader_sticky")
 local Touch = require("gzreader_touch")
 local _ = require("gettext")
@@ -54,7 +58,6 @@ local S = function(px) return Screen:scaleBySize(px) end
 
 local Notes = {
     TAB_ID = "ct_notes",
-    COLS = 2, ROWS = 3,
     KEEP = 100,           -- notes fetched and kept (newest, pinned first); Settings → Notes
     FILES_MB = 25,        -- attachments kept on the Kindle; Settings → Notes
     filter = { kind = "all" },
@@ -75,6 +78,68 @@ function Notes.prefs(plugin)
     p.keep = tonumber(p.keep) or Notes.KEEP
     p.files_mb = tonumber(p.files_mb) or Notes.FILES_MB -- 0: no limit
     return p
+end
+
+---------------------------------------------------------------- views
+
+--- The board's view: { columns = "list"|"2"|"3"|"auto", display = "compact"|"full" }.
+function Notes.view(plugin) return NL.view(Notes.prefs(plugin)) end
+
+--- How many columns Auto gives on a board `width` pixels wide (the screen's).
+function Notes.autoColumns(width)
+    return NL.columns("auto", width or Screen:getWidth(), S(NL.AUTO_MIN_W))
+end
+
+function Notes.columnsLabel(columns, short)
+    if columns == "list" then return short and _("List") or _("List: one note under another") end
+    if columns == "3" then return _("Three side by side") end
+    if columns == "auto" then
+        return short and _("Auto") or T(_("Auto: as many as fit (%1 here)"), Notes.autoColumns())
+    end
+    return _("Two side by side")
+end
+
+function Notes.displayLabel(display, short)
+    if display == "full" then return short and _("Full") or _("Full: whole notes, nothing cut off") end
+    return short and _("Compact") or _("Compact: every note the same size")
+end
+
+--- "Two side by side, compact" (Settings → Notes).
+function Notes.viewLabel(view)
+    return Notes.columnsLabel(view.columns, true) .. ", " .. Notes.displayLabel(view.display, true):lower()
+end
+
+--- Change the view (`field`: "columns" or "display"); the board shows the
+--- page with the note that was first on screen.
+function Notes.setView(plugin, field, value)
+    local p = Notes.prefs(plugin)
+    if p[field] == value then return end
+    p[field] = value
+    plugin:save()
+    local v = NL.view(p)
+    Log.info("notes: view", v.columns, v.display)
+    local b = Notes.board
+    if b and not b._gz_closed then
+        b._gz_goto = b._gz_first
+        Notes.reloadBoard(true)
+    end
+end
+
+--- L on the board (or Layout, More → Layout): side by side, and compact or full.
+function Notes.showView(plugin)
+    local dialog
+    local view = Notes.view(plugin)
+    local function row(field, value, text)
+        return { { text = text .. (view[field] == value and "  \u{2713}" or ""), align = "left", callback = function()
+            UIManager:close(dialog)
+            Notes.setView(plugin, field, value)
+        end } }
+    end
+    local rows = {}
+    for _i, c in ipairs(NL.COLUMNS) do rows[#rows + 1] = row("columns", c, Notes.columnsLabel(c)) end
+    for _i, d in ipairs(NL.DISPLAYS) do rows[#rows + 1] = row("display", d, Notes.displayLabel(d)) end
+    dialog = Notes.keyedDialog(_("Layout"), rows)
+    return dialog
 end
 
 --- The tags chosen in Settings → Notes → Sync only these tags, or nil (all notes).
@@ -287,7 +352,11 @@ Notes.describe = describe
 
 ---------------------------------------------------------------- the board
 
-local StickyItem = InputContainer:extend{ entry = nil, menu = nil, dimen = nil, shortcut = nil, look = nil, focused = false }
+-- A note on the board: the whole note, the same size as the others
+-- (compact), or `part` of it as long as it needs (full: lines from…to of
+-- its text, its pictures, its tags and place; gzreader_notelayout.lua).
+local StickyItem = InputContainer:extend{ entry = nil, menu = nil, dimen = nil, shortcut = nil, look = nil, focused = false,
+    part = nil, size = nil }
 
 function StickyItem:init()
     self.ges_events = {
@@ -297,29 +366,35 @@ function StickyItem:init()
     self:draw()
 end
 
-function StickyItem:draw()
-    local w, h = self.dimen.w, self.dimen.h
-    local note_w, note_h = math.floor(w * 0.88), math.floor(h * 0.86)
-    local m = self.entry.memo
-    if self.img then self.img:free(); self.img = nil end
-    if not m then -- "No notes" and the like
-        self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
-            TextBoxWidget:new{ text = self.entry.text, face = Sticky.hand(20), width = w - S(20), alignment = "center" } }
-        return
-    end
-    local paper = Sticky.paper(self.look)
-    local pad = S(8)
-    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
-    local sc = self.shortcut and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(24), h = S(24) }, self.shortcut, "square")
-    local head = OverlapGroup:new{
-        dimen = Geom:new{ w = inner_w, h = S(24) },
-        LeftContainer:new{ dimen = Geom:new{ w = inner_w, h = S(24) },
+local PAD = 8 -- (scaled) inside a note's frame
+local HEAD_H, HEAD_GAP, GAP = 24, 6, 4 -- (scaled) the date line, under it, between the rest
+
+--- A note's width in a `cell_w` wide place on the board (room for its
+--- shadow, tape and tilt; at least as much as the board before views had).
+function Notes.noteWidth(cell_w)
+    local w = math.floor(cell_w * 0.88)
+    if cell_w - w < S(36) then w = cell_w - S(36) end
+    return math.max(S(60), w)
+end
+
+--- The date line: letter key, date (and "not sent yet", "continued"), pin.
+local function noteHead(m, inner_w, shortcut, continued)
+    local sc = shortcut and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(24), h = S(24) }, shortcut, "square")
+    local when = Sticky.when(m.created)
+    if m.pending then when = when .. " \u{2022} " .. _("not sent yet") end
+    if continued then when = when .. " \u{2022} " .. _("continued") end
+    return OverlapGroup:new{
+        dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
+        LeftContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
             HorizontalGroup:new{ sc or HorizontalSpan:new{ width = 0 }, HorizontalSpan:new{ width = sc and S(6) or 0 },
-                TextWidget:new{ text = m.pending and (Sticky.when(m.created) .. " \u{2022} " .. _("not sent yet")) or Sticky.when(m.created),
-                    face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(50) } } },
-        RightContainer:new{ dimen = Geom:new{ w = inner_w, h = S(24) },
+                TextWidget:new{ text = when, face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(50) } } },
+        RightContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
             m.pinned and TextWidget:new{ text = Sticky.ICONS.pin, face = Sticky.iconFace(15) } or HorizontalSpan:new{ width = 0 } },
     }
+end
+
+--- The note's tags (a line, or nil) and its place and attachment count (a row).
+local function noteFoot(m, inner_w)
     local foot_bits = HorizontalGroup:new{ align = "center" }
     if m.place then
         foot_bits[#foot_bits + 1] = TextWidget:new{ text = Sticky.ICONS.place .. " ", face = Sticky.iconFace(13) }
@@ -333,26 +408,96 @@ function StickyItem:draw()
     local tags = {}
     for _i, t in ipairs(m.tags or {}) do tags[#tags + 1] = "#" .. t end
     local tag_line = #tags > 0 and TextWidget:new{ text = table.concat(tags, "  "), face = Sticky.hand(16), bold = true, max_width = inner_w }
-    -- the text gets what's left of the note
-    local body_h = note_h - 2 * pad - 2 * Size.border.thin - head:getSize().h - S(6) - S(4)
-        - (tag_line and tag_line:getSize().h or 0) - (#foot_bits > 0 and foot_bits:getSize().h or 0)
-    local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
-    local text_h = pic and (body_h - pic:getSize().h - S(4)) or body_h
-    local body = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
-        height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
-    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(6) }, body }
-    if pic then content[#content + 1] = VerticalSpan:new{ width = S(4) }; content[#content + 1] = pic end
-    content[#content + 1] = VerticalSpan:new{ width = S(4) }
-    if tag_line then content[#content + 1] = tag_line end
-    if #foot_bits > 0 then content[#content + 1] = foot_bits end
-    local frame = FrameContainer:new{
-        width = note_w, height = note_h, padding = pad, margin = 0, bordersize = Size.border.thin,
-        background = paper, color = Blitbuffer.COLOR_DARK_GRAY, content,
-    }
+    return tag_line or nil, #foot_bits > 0 and foot_bits or nil
+end
+
+function StickyItem:draw()
+    local w, h = self.dimen.w, self.dimen.h
+    local m = self.entry.memo
+    if self.img then self.img:free(); self.img = nil end
+    if not m then -- "No notes" and the like
+        self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
+            TextBoxWidget:new{ text = self.entry.text, face = Sticky.hand(20), width = w - S(20), alignment = "center" } }
+        return
+    end
+    local frame, note_w, note_h
+    if self.part then
+        frame, note_w, note_h = self:fullNote(m)
+    else
+        frame, note_w, note_h = self:compactNote(m, w, h)
+    end
     self.img = Sticky.image(frame, note_w, note_h, self.look, self.focused)
     frame:free()
     self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
         ImageWidget:new{ image = self.img, image_disposable = false } }
+end
+
+--- Compact: the whole note in a cell of the grid, cut off where it ends.
+function StickyItem:compactNote(m, w, h)
+    local note_w, note_h = Notes.noteWidth(w), math.floor(h * 0.86)
+    local paper = Sticky.paper(self.look)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local head = noteHead(m, inner_w, self.shortcut)
+    local tag_line, foot_bits = noteFoot(m, inner_w)
+    -- the text gets what's left of the note
+    local body_h = note_h - 2 * pad - 2 * Size.border.thin - head:getSize().h - S(HEAD_GAP) - S(GAP)
+        - (tag_line and tag_line:getSize().h or 0) - (foot_bits and foot_bits:getSize().h or 0)
+    local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
+    local text_h = pic and (body_h - pic:getSize().h - S(GAP)) or body_h
+    local body = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
+        height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
+    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(HEAD_GAP) }, body }
+    if pic then content[#content + 1] = VerticalSpan:new{ width = S(GAP) }; content[#content + 1] = pic end
+    content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+    if tag_line then content[#content + 1] = tag_line end
+    if foot_bits then content[#content + 1] = foot_bits end
+    local frame = FrameContainer:new{
+        width = note_w, height = note_h, padding = pad, margin = 0, bordersize = Size.border.thin,
+        background = paper, color = Blitbuffer.COLOR_DARK_GRAY, content,
+    }
+    return frame, note_w, note_h
+end
+
+--- Full: blocks part.from…part.to of the note (Notes.measure): its lines of
+--- text, then each picture, then the tags and place. Nothing cut off.
+function StickyItem:fullNote(m)
+    local size, part = self.size, self.part
+    local note_w = size.note_w
+    local paper = Sticky.paper(self.look)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local content = VerticalGroup:new{ align = "left", noteHead(m, inner_w, self.shortcut, part.from > 1),
+        VerticalSpan:new{ width = S(HEAD_GAP) } }
+    local first_line, n_lines = nil, 0
+    for b = part.from, math.min(part.to, size.lines) do
+        first_line = first_line or b
+        n_lines = n_lines + 1
+    end
+    if n_lines > 0 then
+        content[#content + 1] = TextBoxWidget:new{ text = size.text, face = Sticky.hand(19), width = inner_w,
+            height = n_lines * size.line_h, height_adjust = false, virtual_line_num = first_line, bgcolor = paper }
+    end
+    for b = math.max(part.from, size.lines + 1), part.to do
+        local p = size.pics[b - size.lines]
+        if p then
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+            local bb = Sticky.picture(p.path, p.w, p.h) -- (fitted to the room measured: never taller)
+            content[#content + 1] = FrameContainer:new{ padding = 0, bordersize = Size.border.thin,
+                bb and ImageWidget:new{ image = bb, image_disposable = true } or VerticalSpan:new{ width = p.h } }
+        elseif b == size.lines + #size.pics + 1 then -- the tags and place, last
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+            local tag_line, foot_bits = noteFoot(m, inner_w)
+            if tag_line then content[#content + 1] = tag_line end
+            if foot_bits then content[#content + 1] = foot_bits end
+        end
+    end
+    local note_h = part.h - size.slack
+    local frame = FrameContainer:new{
+        width = note_w, height = note_h, padding = pad, margin = 0, bordersize = Size.border.thin,
+        background = paper, color = Blitbuffer.COLOR_DARK_GRAY, content,
+    }
+    return frame, note_w, note_h
 end
 
 function StickyItem:onFocus()
@@ -376,35 +521,129 @@ function StickyItem:onCloseWidget()
     if self.img then self.img:free(); self.img = nil end
 end
 
+--- The pictures of note `m` (attachments): the ones in its text first, in
+--- order, then its other picture attachments.
+function Notes.pictureAttachments(m)
+    local out, seen = {}, {}
+    for _i, l in ipairs(Sticky.lines(m.content)) do
+        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+        if uid then
+            for _j, a in ipairs(m.attachments or {}) do
+                if not seen[a] and tostring(a.name):match("attachments/(.+)$") == uid then
+                    seen[a] = true
+                    out[#out + 1] = a
+                end
+            end
+        end
+    end
+    for _i, a in ipairs(m.attachments or {}) do
+        if not seen[a] and tostring(a.type):match("^image/") then seen[a] = true; out[#out + 1] = a end
+    end
+    return out
+end
+
+local function redrawBoard()
+    if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
+end
+
 --- A picture for note `m` (its first image), shrunk: an ImageWidget or nil.
 --- Not on the Kindle yet: fetched in the background, then the view redraws.
 function Notes.picture(plugin, m, max_w, max_h, small)
-    local src = Sticky.firstImage(m.content)
-    local att
-    if src then
-        local uid = src:match("/file/attachments/([^/%?]+)")
-        for _i, a in ipairs(m.attachments or {}) do
-            if uid and tostring(a.name):match("attachments/(.+)$") == uid then att = a end
-        end
-    end
-    if not att then
-        for _i, a in ipairs(m.attachments or {}) do
-            if tostring(a.type):match("^image/") and not att then att = a end
-        end
-    end
+    local att = Notes.pictureAttachments(m)[1]
     if not att then return nil end
     local path = Memos.filePath(att)
     if lfs.attributes(path, "mode") ~= "file" then
         if small then -- on the board: redraw it once the picture is here
-            Notes.fetchFile(plugin, att, function()
-                if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
-            end)
+            Notes.fetchFile(plugin, att, redrawBoard)
         end
         return nil
     end
     local bb = Sticky.picture(path, max_w, max_h)
     if not bb then return nil end
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
+end
+
+---------------------------------------------------------------- full view: measuring
+
+Notes.pic_sizes = {} -- path → { w, h }
+Notes.measured = setmetatable({}, { __mode = "k" }) -- note → its measure (Notes.measure)
+Notes.PIC_MAX = 0.4 -- full view: a picture at most this much of the page's height
+
+--- A picture file's width and height: from its first bytes, or (a format
+--- that can't be read that way) decoded once.
+function Notes.picSize(path)
+    local known = Notes.pic_sizes[path]
+    if known then return known[1], known[2] end
+    local w, h = Sticky.imageSize(path)
+    if not w then
+        local bb = Sticky.picture(path, math.huge, math.huge)
+        if bb then w, h = bb:getWidth(), bb:getHeight(); bb:free() end
+    end
+    if not (w and h and w > 0 and h > 0) then return nil end
+    Notes.pic_sizes[path] = { w, h }
+    return w, h
+end
+
+local MAX_TILT = 0
+for _i, look in ipairs(Sticky.LOOK) do MAX_TILT = math.max(MAX_TILT, math.abs(look.angle or 0)) end
+
+--- The room a full-view note `note_w` wide takes besides its frame: the
+--- margin for its shadow and tape, what its tilt adds, and a gap.
+function Notes.slack(note_w)
+    local m = S(10)
+    local a = math.rad(Sticky.tilt(MAX_TILT, note_w, 0))
+    return 2 * m + math.ceil((note_w + 2 * m) * math.sin(a)) + S(GAP)
+end
+
+--- Full view: note `m` as gzreader_notelayout.lua lays it out, `note_w`
+--- wide on a page `page_h` tall: { top, blocks } (a block per line of text,
+--- one per picture, the tags and place last) and what drawing needs (its
+--- text, line height, pictures). Kept until its text, pictures or size change.
+--- Pictures not on the Kindle yet are left out (`missing`: the board fetches
+--- those of the notes it shows, then measures them again).
+function Notes.measure(m, note_w, page_h)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local pic_max_h = math.max(S(40), math.floor(page_h * Notes.PIC_MAX))
+    local pics, sig, missing = {}, {}, {}
+    for _i, a in ipairs(Notes.pictureAttachments(m)) do
+        local path = Memos.filePath(a)
+        local w, h
+        if lfs.attributes(path, "mode") == "file" then
+            w, h = Notes.picSize(path)
+        else
+            missing[#missing + 1] = a
+        end
+        if w then
+            w, h = Sticky.fitSize(w, h, inner_w, pic_max_h)
+            pics[#pics + 1] = { path = path, w = w, h = h }
+        end
+        sig[#sig + 1] = w and (w .. "x" .. h) or "-"
+    end
+    sig = table.concat(sig, ",") .. "|" .. tostring(m.place) .. "|" .. #(m.attachments or {}) .. "|" .. note_w .. "|" .. page_h
+    local c = Notes.measured[m]
+    if c and c.content == m.content and c.sig == sig then c.missing = missing; return c end
+    local text = Sticky.preview(m.content)
+    local lines, line_h = 0, 0
+    if text:match("%S") then
+        -- one line drawn: the rest only split into lines, to count them
+        local tb = TextBoxWidget:new{ text = text, face = Sticky.hand(19), width = inner_w, height = 1 }
+        lines, line_h = #(tb.vertical_string_list or {}), tb.line_height_px or 0
+        tb:free()
+    end
+    local tag_line, foot_bits = noteFoot(m, inner_w)
+    local tail = S(GAP) + (tag_line and tag_line:getSize().h or 0) + (foot_bits and foot_bits:getSize().h or 0)
+    if tag_line then tag_line:free() end
+    if foot_bits then foot_bits:free() end
+    local blocks = {}
+    for i = 1, lines do blocks[i] = line_h end
+    for _i, p in ipairs(pics) do blocks[#blocks + 1] = S(GAP) + p.h + 2 * Size.border.thin end
+    blocks[#blocks + 1] = tail
+    local slack = Notes.slack(note_w)
+    c = { content = m.content, sig = sig, text = text, lines = lines, line_h = line_h, pics = pics, note_w = note_w, missing = missing,
+        blocks = blocks, slack = slack, top = 2 * pad + 2 * Size.border.thin + S(HEAD_H) + S(HEAD_GAP) + slack }
+    Notes.measured[m] = c
+    return c
 end
 
 Notes.fetching = {}
@@ -512,6 +751,84 @@ local function boardItems()
 end
 
 --- Draw the board's page as sticky notes (replaces Menu:updateItems).
+-- Compact: a grid of `cols` columns, every note the same size.
+local function drawCompact(m, select_number, cols, max_items)
+    local rows = NL.rows(cols, m.available_height, S(NL.ROW_MIN_H), max_items)
+    m.items_per_page = cols * rows
+    m:_recalculateDimen(false)
+    if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
+    local per = m.perpage
+    local offset = (m.page - 1) * per
+    local cell_w = math.floor(m.item_dimen.w / cols)
+    local cell_h = math.floor(m.available_height / rows)
+    local row, layout_row
+    for i = 1, per do
+        local e = m.item_table[offset + i]
+        if not e then break end
+        e.idx = offset + i
+        if offset + i == m.itemnumber then select_number = i end
+        if (i - 1) % cols == 0 then
+            row = HorizontalGroup:new{ align = "top" }
+            layout_row = {}
+            table.insert(m.item_group, row)
+            table.insert(m.layout, layout_row)
+        end
+        local key = e.memo and Touch.letter(KEYS[i]) or nil
+        if e.memo and KEYS[i] then m._gz_keyed[i] = e end
+        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
+            shortcut = key, dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
+        table.insert(row, item)
+        table.insert(layout_row, item)
+    end
+    m._gz_first = offset + 1
+    return select_number
+end
+
+-- Full: each note as long as it needs, in `cols` columns (Memos' masonry);
+-- pages as gzreader_notelayout.lua lays them out.
+local function drawFull(m, select_number, cols, max_items)
+    local col_w = math.floor(m.item_dimen.w / cols)
+    local note_w = Notes.noteWidth(col_w)
+    local page_h = m.available_height
+    local sizes = {}
+    for i, e in ipairs(m.item_table) do sizes[i] = Notes.measure(e.memo, note_w, page_h) end
+    local pages = NL.paginate(sizes, cols, page_h, { max_parts = max_items })
+    m._gz_pages = pages
+    m.page_num = math.max(1, #pages)
+    if m._gz_goto then m.page = NL.pageOf(pages, m._gz_goto) end
+    m.page = math.max(1, math.min(m.page or 1, m.page_num))
+    local page = pages[m.page] or {}
+    local row = HorizontalGroup:new{ align = "top" }
+    local columns = {}
+    for c = 1, cols do
+        -- (a column keeps its width with nothing in it)
+        columns[c] = VerticalGroup:new{ align = "left", HorizontalSpan:new{ width = col_w } }
+        row[c] = columns[c]
+    end
+    local letter = {} -- note → its letter on this page (one for all its parts)
+    for k, part in ipairs(page) do
+        local e = m.item_table[part.note]
+        e.idx = part.note
+        if part.note == m.itemnumber and not m._gz_selected then select_number = k; m._gz_selected = true end
+        if not letter[part.note] then
+            letter[part.note] = #m._gz_keyed + 1
+            if KEYS[letter[part.note]] then m._gz_keyed[letter[part.note]] = e end
+        end
+        local size = sizes[part.note]
+        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(k), show_parent = m.show_parent,
+            shortcut = Touch.letter(KEYS[letter[part.note]]), part = part, size = size, dimen = Geom:new{ w = col_w, h = part.h } }
+        table.insert(columns[part.col], item)
+        table.insert(m.layout, { item }) -- (the 5-way goes from note to note, in order)
+        if part.from == 1 then
+            for _j, a in ipairs(size.missing or {}) do Notes.fetchFile(m.plugin, a, redrawBoard) end
+        end
+    end
+    m._gz_selected = nil
+    table.insert(m.item_group, row)
+    m._gz_first = page[1] and page[1].note or 1
+    return select_number
+end
+
 local function drawBoard(m, select_number)
     local old_dimen = m.dimen and m.dimen:copy()
     m.layout = {}
@@ -519,30 +836,19 @@ local function drawBoard(m, select_number)
     m.page_info:resetLayout()
     m.return_button:resetLayout()
     m.content_group:resetLayout()
-    m.items_per_page = Notes.COLS * Notes.ROWS
-    m:_recalculateDimen(false)
-    local per = m.perpage
-    local offset = (m.page - 1) * per
-    local cell_w = math.floor(m.item_dimen.w / Notes.COLS)
-    local cell_h = math.floor(m.available_height / Notes.ROWS)
-    local row, layout_row
-    for i = 1, per do
-        local e = m.item_table[offset + i]
-        if not e then break end
-        e.idx = offset + i
-        if offset + i == m.itemnumber then select_number = i end
-        if (i - 1) % Notes.COLS == 0 then
-            row = HorizontalGroup:new{ align = "top" }
-            layout_row = {}
-            table.insert(m.item_group, row)
-            table.insert(m.layout, layout_row)
-        end
-        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
-            shortcut = e.memo and Touch.letter(KEYS[i]) or nil,
-            dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
-        table.insert(row, item)
-        table.insert(layout_row, item)
+    local view = Notes.view(m.plugin)
+    local cols = NL.columns(view.columns, m.inner_dimen.w, S(NL.AUTO_MIN_W))
+    local max_items = Touch.keys() and #KEYS or nil -- (a letter for every note)
+    m._gz_pages, m._gz_keyed = nil, {}
+    local page = m.page
+    m:_recalculateDimen(false) -- (the room for the notes)
+    if view.display == "full" and m.item_table[1] and m.item_table[1].memo then
+        m.page = page -- (Menu counted pages of equal notes: drawFull counts them itself)
+        select_number = drawFull(m, select_number, cols, max_items)
+    else
+        select_number = drawCompact(m, select_number, cols, max_items)
     end
+    m._gz_goto = nil
     m:updatePageInfo(select_number)
     m:mergeTitleBarIntoLayout()
     UIManager:setDirty(m.show_parent, function()
@@ -551,10 +857,16 @@ local function drawBoard(m, select_number)
 end
 
 -- The board: a Menu (ZenOS puts its tab bar under it) whose page is drawn as
--- sticky notes. Q–Y open notes; N new note; F filter.
+-- sticky notes. Q, W, E… open notes; N new note; F filter; L layout.
 Notes.Board = Menu:extend{}
 
 function Notes.Board:updateItems(select_number) return drawBoard(self, select_number) end
+
+--- The page a note is on (Full: pages hold as many notes as fit).
+function Notes.Board:getPageNumber(item_number)
+    if self._gz_pages then return NL.pageOf(self._gz_pages, item_number) end
+    return Menu.getPageNumber(self, item_number)
+end
 
 function Notes.Board:onMenuSelect(item)
     if item.memo then Notes.showNote(self.plugin, item.memo) end
@@ -566,6 +878,14 @@ function Notes.Board:onSelectByShortCut(arg, keyevent)
     if k == "N" then Notes.edit(self.plugin); return true end
     if k == "F" then Notes.showFilter(self.plugin); return true end
     if k == "M" then Notes.showOptions(self.plugin); return true end
+    if k == "L" then Notes.showView(self.plugin); return true end
+    for i, key in ipairs(KEYS) do
+        if key == k then -- the note with that letter on this page
+            local e = self._gz_keyed and self._gz_keyed[i]
+            if e and e.memo then self:onMenuSelect(e) end
+            return true
+        end
+    end
     return Menu.onSelectByShortCut(self, arg, keyevent)
 end
 
@@ -601,8 +921,9 @@ function Notes.show(plugin)
     if not Notes.notes then Notes.loadCache(plugin) end
     local menu = Notes.Board:new{
         title = Notes.title(),
-        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  M more"), _("N new note  \u{00B7}  F filter  \u{00B7}  M more"),
-            _("Menu: new note, filter, refresh  \u{00B7}  Press opens a note")),
+        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  M more"),
+            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  M more"),
+            _("Menu: new note, filter, layout, refresh  \u{00B7}  Press opens a note")),
         item_table = boardItems(),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
         _gz_navbar_tab_id = Notes.TAB_ID,
@@ -638,6 +959,7 @@ function Notes.show(plugin)
     Touch.actionRow(menu, {
         { _("New note"), function() Notes.edit(plugin) end },
         { _("Filter"), function() Notes.showFilter(plugin) end },
+        { _("Layout"), function() Notes.showView(plugin) end },
         { _("More"), function() Notes.showOptions(plugin) end },
     })
     UIManager:show(menu)
@@ -1157,6 +1479,7 @@ function Notes.showOptions(plugin)
     dialog = Notes.keyedDialog(store.user and T(_("Memos: %1"), store.user) or _("Memos"), {
         { { text = _("New note"), align = "left", callback = run(function() Notes.edit(plugin) end) } },
         { { text = _("Filter…"), align = "left", callback = run(function() Notes.showFilter(plugin) end) } },
+        { { text = T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), align = "left", callback = run(function() Notes.showView(plugin) end) } },
         { { text = queued > 0 and T(_("Refresh (%1 changes to send)"), queued) or _("Refresh"), align = "left",
             callback = run(function()
                 require("gzreader_net").run(function()
