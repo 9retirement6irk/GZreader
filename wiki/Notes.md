@@ -16,12 +16,23 @@ API to `/api` are found too.
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
 - **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
-  moves around the notes. **N** new note, **F** filter, **L** layout, **M** for refresh,
+  moves around the notes. **N** new note, **F** filter, **L** layout, **S** sort, **M** for refresh,
   connect again and disconnect (the Menu key opens the quick panel in tab views).
-  Touch Kindles have New note, Filter, Layout and More buttons instead.
-- **Layouts** (as in the Memos web app): **L** on the board (Layout on a touch
-  Kindle, More → Layout on a Kindle 4, or Settings → Connections → Memos
-  (Notes) → Layout) chooses how many notes side by side, and how long each is:
+- **The quick panel on the Notes tab** has the board's actions (the board
+  has no buttons of its own; on touch Kindles they were a row under the
+  title): **New note** (in Quick note's place), **Layout** (in View's),
+  **Sort**, **Filter** and **Options** (refresh, connect again, disconnect:
+  what More was). Its second group is called *Notes* there and has no
+  Manage book. On a Kindle 4 the Menu key opens the panel on the Notes tab
+  too. Each tile can be hidden in Settings → Interface → Quick panel → Home.
+- **Sort** (the panel's Sort tile on the Notes tab, or S): *Sort notes by*
+  **Date created** (the default) or **Date edited**, **Reverse order**
+  (oldest first) and **Pinned first** (on by default). Memos is asked for the
+  notes in that order (`order_by`), and the Kindle sorts what it keeps the same
+  way (notes written here and not sent yet, a sync through a computer).
+- **Layouts** (as in the Memos web app): the quick panel's **Layout** tile on
+  the Notes tab (or **L**, or Settings → Connections → Memos (Notes) →
+  Layout) chooses how many notes side by side, and how long each is:
   - **List** (one note under another), **Two side by side** (the default),
     **Three side by side**, or **Auto**: as many side by side as fit the
     screen with room for about 22 characters a line (two upright, three
@@ -36,6 +47,10 @@ API to `/api` are found too.
   - On the Kindles with keys a page holds at most ten notes, one per letter
     Q–P. After a change, the board shows the page with the note that was
     first on screen. The choice is kept.
+  - **Full screen: no tab bar** hides the tab bar at the bottom of the Notes
+    tab, for more notes on a page. To leave the tab then, open the quick
+    panel and choose **Home** (or press Back; keyboard Kindles' tab keys
+    still work).
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and

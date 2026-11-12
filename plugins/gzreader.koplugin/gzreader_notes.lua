@@ -138,8 +138,111 @@ function Notes.showView(plugin)
     local rows = {}
     for _i, c in ipairs(NL.COLUMNS) do rows[#rows + 1] = row("columns", c, Notes.columnsLabel(c)) end
     for _i, d in ipairs(NL.DISPLAYS) do rows[#rows + 1] = row("display", d, Notes.displayLabel(d)) end
+    rows[#rows + 1] = { { text = _("Full screen: no tab bar") .. (Notes.fullscreen(plugin) and "  \u{2713}" or ""), align = "left",
+        callback = function()
+            UIManager:close(dialog)
+            Notes.setFullscreen(plugin, not Notes.fullscreen(plugin))
+        end } }
     dialog = Notes.keyedDialog(_("Layout"), rows)
     return dialog
+end
+
+--- Layout → Full screen: the Notes tab without the tab bar at the bottom
+--- (more room for notes). The quick panel's Home tile (or Back) leaves it.
+Notes.FULLSCREEN_NAME = "gz_notes_fullscreen"
+function Notes.fullscreen(plugin) return Notes.prefs(plugin).fullscreen == true end
+
+function Notes.setFullscreen(plugin, on)
+    local p = Notes.prefs(plugin)
+    if (p.fullscreen == true) == (on == true) then return end
+    p.fullscreen = on == true or nil
+    plugin:save()
+    Log.info("notes: full screen", on == true)
+    -- (ZenOS adds the tab bar when a tab view is made: the board is made again)
+    local b = Notes.board
+    if b and not b._gz_closed then
+        local page_note = b._gz_first
+        UIManager:close(b)
+        local nb = Notes.show(plugin)
+        if nb and page_note then nb._gz_goto = page_note; Notes.reloadBoard(true) end
+    end
+end
+
+---------------------------------------------------------------- sorting
+
+Notes.SORTS = { { "created", _("Date created") }, { "updated", _("Date edited") } }
+
+--- How the notes are sorted (the quick panel's Sort on the Notes tab):
+--- { by = "created"|"updated", reverse = bool (oldest first), pinned = bool (pinned first) }.
+function Notes.sort(plugin)
+    local p = Notes.prefs(plugin)
+    return { by = p.sort == "updated" and "updated" or "created", reverse = p.sort_reverse == true,
+        pinned = p.sort_pinned ~= false }
+end
+
+--- Memos' order_by for it ("pinned desc, create_time desc" by default).
+function Notes.orderBy(plugin)
+    local so = Notes.sort(plugin)
+    local field = (so.by == "updated" and "update_time" or "create_time") .. (so.reverse and " asc" or " desc")
+    return so.pinned and ("pinned desc, " .. field) or field
+end
+
+--- `list` in that order, on the Kindle too (notes kept from before, notes
+--- written here and not sent yet, a sync through a computer).
+function Notes.sorted(list, plugin)
+    local so = Notes.sort(plugin)
+    local key = so.by == "updated" and "updated" or "created"
+    local out, pos = {}, {}
+    for i, m in ipairs(list) do out[i] = m; pos[m] = i end
+    local function t(m) return tostring(m[key] or m.created or "") end
+    table.sort(out, function(a, b)
+        if so.pinned and (a.pinned == true) ~= (b.pinned == true) then return a.pinned == true end
+        local ta, tb = t(a), t(b)
+        if ta ~= tb then
+            if so.reverse then return ta < tb end
+            return ta > tb
+        end
+        return pos[a] < pos[b] -- (stable)
+    end)
+    return out
+end
+
+function Notes.setSort(plugin, field, value)
+    local p = Notes.prefs(plugin)
+    p[field] = value
+    plugin:save()
+    Log.info("notes: sort", Notes.orderBy(plugin))
+    Notes.reloadBoard(false)
+    -- (Memos sends the first notes in this order: with more than are kept, others)
+    Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(false) end end)
+end
+
+--- The quick panel's Sort on the Notes tab: "Sort notes by".
+function Notes.showSort(plugin)
+    local dialog
+    local so = Notes.sort(plugin)
+    local function pick(fn) return function() UIManager:close(dialog); fn() end end
+    local rows = {}
+    for _i, sd in ipairs(Notes.SORTS) do
+        rows[#rows + 1] = { { text = sd[2] .. (so.by == sd[1] and "  \u{2713}" or ""), align = "left",
+            callback = pick(function() Notes.setSort(plugin, "sort", sd[1]) end) } }
+    end
+    rows[#rows + 1] = { { text = _("Reverse order (oldest first)") .. (so.reverse and "  \u{2713}" or ""), align = "left",
+        callback = pick(function() Notes.setSort(plugin, "sort_reverse", not so.reverse or nil) end) } }
+    rows[#rows + 1] = { { text = _("Pinned first") .. (so.pinned and "  \u{2713}" or ""), align = "left",
+        callback = pick(function() Notes.setSort(plugin, "sort_pinned", (not so.pinned) and true or false) end) } }
+    dialog = Notes.keyedDialog(_("Sort notes by"), rows)
+    return dialog
+end
+
+--- Whether the Notes tab is what's on screen (the quick panel then has
+--- the board's tiles: New note, Filter, Layout, Sort, Options).
+function Notes.onTop()
+    local b = Notes.board
+    if not b or b._gz_closed then return false end
+    local stack = UIManager._window_stack or {}
+    local top = stack[#stack]
+    return top ~= nil and top.widget == b
 end
 
 --- The tags chosen in Settings → Notes → Sync only these tags, or nil (all notes).
@@ -328,7 +431,8 @@ function Notes.refresh(plugin, on_done, opts)
     local function fetch()
         local query = Notes.query(plugin)
         local keep = Notes.prefs(plugin).keep
-        Async.run(client, function(c) return c:listAll(query, keep) end, function(res, err)
+        local order = Notes.orderBy(plugin)
+        Async.run(client, function(c) return c:listAll(query, keep, order) end, function(res, err)
             Notes.refreshing = false
             if not res then
                 Log.warn("notes: refresh failed:", tostring(err))
@@ -766,22 +870,23 @@ function Notes.fetchFile(plugin, att, on_done)
     end, "notes: attachment")
 end
 
-local function boardItems()
+local function boardItems(plugin)
     local items = {}
-    for _i, m in ipairs(Notes.visible()) do
+    for _i, m in ipairs(Notes.sorted(Notes.visible(), plugin)) do
         items[#items + 1] = { memo = m, text = Sticky.preview(m.content) }
     end
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
             items[1] = { text = T(Touch.text(_("Couldn't load your notes. %1\n\nM → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMore → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMenu → Refresh to try again.")), describe(Notes.last_error)) }
+                _("Couldn't load your notes. %1\n\nQuick panel → Options → Refresh to try again."),
+                _("Couldn't load your notes. %1\n\nMenu → Options → Refresh to try again.")), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
-            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."), _("No notes yet. Tap New note to write one."),
+            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."),
+                _("No notes yet. Open the quick panel and tap New note to write one."),
                 _("No notes yet. Menu → New note to write one."))
-                or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Tap Filter to change it."),
+                or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Open the quick panel and tap Filter to change it."),
                 _("No notes match. Menu → Filter to change it.")) }
         end
     end
@@ -917,6 +1022,7 @@ function Notes.Board:onSelectByShortCut(arg, keyevent)
     if k == "F" then Notes.showFilter(self.plugin); return true end
     if k == "M" then Notes.showOptions(self.plugin); return true end
     if k == "L" then Notes.showView(self.plugin); return true end
+    if k == "S" then Notes.showSort(self.plugin); return true end
     for i, key in ipairs(KEYS) do
         if key == k then -- the note with that letter on this page
             local e = self._gz_keyed and self._gz_keyed[i]
@@ -936,7 +1042,7 @@ end
 function Notes.reloadBoard(keep_page)
     local b = Notes.board
     if not b or b._gz_closed then return end
-    b:switchItemTable(Notes.title(), boardItems(), keep_page and -1 or nil)
+    b:switchItemTable(Notes.title(), boardItems(b.plugin), keep_page and -1 or nil)
     pcall(Notes.decorate, b)
 end
 
@@ -959,19 +1065,26 @@ function Notes.show(plugin)
     if not Notes.notes then Notes.loadCache(plugin) end
     local menu = Notes.Board:new{
         title = Notes.title(),
-        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  M more"),
-            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  M more"),
-            _("Menu: new note, filter, layout, refresh  \u{00B7}  Press opens a note")),
-        item_table = boardItems(),
+        -- (New note, Filter, Layout, Sort and Options are the quick panel's
+        -- tiles on this tab: gzreader_panel.lua Panel.notesTiles)
+        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M more"),
+            _("New note, Filter, Layout, Sort: in the quick panel"),
+            _("Menu: new note, filter, layout, sort  \u{00B7}  Press opens a note")),
+        item_table = boardItems(plugin),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
-        _gz_navbar_tab_id = Notes.TAB_ID,
+        -- Layout → Full screen: a name, so ZenOS doesn't make room for the tab
+        -- bar, and the tab's id only once it's made (ZenOS adds the bar a moment
+        -- later to a view that says which tab it is)
+        name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil,
+        _gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil,
         plugin = plugin,
     }
+    menu._gz_navbar_tab_id = Notes.TAB_ID -- (GZreader's own tabs close each other by it)
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
     if Touch.dpad() then
-        -- Kindle 4: no letter keys; Menu opens the options (new note, filter…)
+        -- Kindle 4: no letter keys; Menu opens the quick panel (New note, Filter, Layout, Sort, Options)
         menu.key_events.GzOptions = { { "Menu" } }
-        menu.onGzOptions = function() Notes.showOptions(plugin); return true end
+        menu.onGzOptions = function() require("gzreader_panel").show(plugin); return true end
     end
     -- Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the bottom tabs, as in the Grimmory tab
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
@@ -994,12 +1107,6 @@ function Notes.show(plugin)
     end
     Notes.board = menu
     pcall(Notes.decorate, menu)
-    Touch.actionRow(menu, {
-        { _("New note"), function() Notes.edit(plugin) end },
-        { _("Filter"), function() Notes.showFilter(plugin) end },
-        { _("Layout"), function() Notes.showView(plugin) end },
-        { _("More"), function() Notes.showOptions(plugin) end },
-    })
     UIManager:show(menu)
     Notes.syncOnOpen(plugin)
     return menu

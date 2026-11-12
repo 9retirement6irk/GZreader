@@ -14,6 +14,11 @@ Quick note is there while Memos is connected (the Notes tab): a new note in
 the full-page editor over whatever is on screen; Save sends it in the
 background and you're back in the book (or Home, or Settings).
 
+On the Notes tab the second group is the board's (Panel.notesTiles, titled
+Notes): New note in Quick note's place, Layout in View's, Sort sorts the
+notes ("Sort notes by"), and Filter and Options (the board's More) after
+them; no Manage. The board has no buttons of its own any more.
+
 Music and Audiobook are there only while one plays (or is paused): they
 open its player. Browsing and downloading music and audiobooks is the
 Catalog tab's (gzreader_catalog.lua); what's on the Kindle, Downloads.
@@ -162,7 +167,9 @@ function Panel.catalog()
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
-            { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
+            { id = "note", label = _("Quick note"), note = _("while Memos is connected; New note in the Notes tab") },
+            { id = "filter", label = _("Filter"), note = _("in the Notes tab") },
+            { id = "options", label = _("Notes options"), note = _("in the Notes tab") },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
@@ -365,6 +372,40 @@ local function quickNoteTile(plugin)
     return { id = "note", icon = "quicknote", label = _("Quick note"), run = function() require("gzreader_notes").quickNote(plugin) end }
 end
 Panel.quickNoteTile = quickNoteTile
+
+--- The Notes tab's tiles, in Home's group (its place on the panel and its
+--- keys): the board's New note, Filter, Layout, Sort and Options. `Notes`:
+--- gzreader_notes (loaded: its tab is open).
+function Panel.notesTiles(plugin, Notes)
+    local function run(fn) return function() fn(plugin) end end
+    local list = {}
+    list[#list + 1] = { id = "continue", icon = "continue", label = _("Continue"), run = function() dispatch("open_previous_document") end }
+    if not require("gzreader_net").usb then
+        list[#list + 1] = { id = "send", icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
+    end
+    list[#list + 1] = { id = "search", icon = "search", label = _("Search"), run = function() dispatch("file_search") end }
+    list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
+    list[#list + 1] = { id = "view", icon = "view", label = _("Layout"), run = run(Notes.showView) }
+    list[#list + 1] = { id = "sort", icon = "sort", label = _("Sort"), run = run(Notes.showSort) }
+    list[#list + 1] = { id = "note", icon = "quicknote", label = _("New note"), run = function() Notes.edit(plugin) end }
+    list[#list + 1] = { id = "filter", icon = "filter", label = _("Filter"), run = run(Notes.showFilter) }
+    list[#list + 1] = { id = "options", icon = "more", label = _("Options"), run = run(Notes.showOptions) }
+    list[#list + 1] = musicTile(plugin)
+    list[#list + 1] = audiobookTile(plugin)
+    local Tasks = require("gzreader_tasks")
+    if Tasks.count() > 0 then
+        local item = Tasks.menuItem()
+        list[#list + 1] = { id = "tasks", icon = "updates", label = item.text_func(), run = function() item.callback() end }
+    end
+    return shown("home", list)
+end
+
+--- Is the Notes tab on screen? Then its module (already loaded).
+local function notesTab()
+    local Notes = package.loaded["gzreader_notes"]
+    if type(Notes) == "table" and Notes.onTop and Notes.onTop() then return Notes end
+end
+Panel.notesTab = notesTab
 
 --- Home's tiles (the file manager).
 function Panel.homeTiles(plugin, book)
@@ -739,9 +780,14 @@ function Panel.show(plugin)
     if ui and ui.document then
         section, title, id = Panel.bookTiles(plugin, ui), _("This book"), "reading"
     else
-        local HomeMenu = require("gzreader_homemenu")
-        local okh, book = pcall(HomeMenu.highlighted)
-        section, title, id = Panel.homeTiles(plugin, okh and book or nil), _("Home"), "home"
+        local Notes = notesTab()
+        if Notes then
+            section, title, id = Panel.notesTiles(plugin, Notes), _("Notes"), "home"
+        else
+            local HomeMenu = require("gzreader_homemenu")
+            local okh, book = pcall(HomeMenu.highlighted)
+            section, title, id = Panel.homeTiles(plugin, okh and book or nil), _("Home"), "home"
+        end
     end
     local w = PanelWidget:new{ controls = Panel.controls(plugin), section = section, section_title = title, section_id = id }
     Panel.open = w

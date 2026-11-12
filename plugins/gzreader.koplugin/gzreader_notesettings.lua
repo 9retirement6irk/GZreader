@@ -253,6 +253,13 @@ function NoteSettings.items(plugin)
             callback = function() Notes.setView(plugin, "display", d) end,
         }
     end
+    view_items[#view_items].separator = true
+    view_items[#view_items + 1] = {
+        text = _("Full screen: no tab bar"),
+        help_text = _("The Notes tab without the tab bar at the bottom, for more notes on a page. To leave it, open the quick panel and choose Home (or press Back)."),
+        checked_func = function() return Notes.fullscreen(plugin) end,
+        callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end,
+    }
     return {
         icon("connect", {
             text_func = function()
@@ -314,7 +321,7 @@ function NoteSettings.items(plugin)
         }),
         icon("view_mosaic", {
             text_func = function() return T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))) end,
-            help_text = _("How the Notes tab shows your notes: in a list or side by side (Auto: as many as fit the screen), and all the same size (Compact: a long note is cut off; open it to read it all) or whole (Full: as long as each note needs). Also L (or Layout) in the Notes tab."),
+            help_text = _("How the Notes tab shows your notes: in a list or side by side (Auto: as many as fit the screen), and all the same size (Compact: a long note is cut off; open it to read it all) or whole (Full: as long as each note needs), and full screen (no tab bar). Also the quick panel's Layout tile in the Notes tab (or L)."),
             sub_item_table = view_items,
         }),
         icon("view_list", {

@@ -16,6 +16,8 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
   **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the
   Catalog tab), and **Downloads (N)** while something downloads.
+  On the **Notes** tab this group is the board's instead: New note, Filter,
+  Layout, Sort (notes) and Options ([Notes](Notes)).
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
   margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud,
@@ -67,8 +69,8 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 
 - **Tabs:** Down from the bottom of Home reaches the tab bar; Left and Right
   choose a tab, Press opens it.
-- **Menu:** the quick panel at Home and in a book (see *The quick panel* above); in Notes and Calendar their options (new note, filter, refresh;
-  today, Agenda / Day / Week / Month, refresh, settings).
+- **Menu:** the quick panel at Home, in a book and in Notes (where it has New note, Filter, Layout, Sort and Options); in Calendar its options
+  (today, Agenda / Day / Week / Month, refresh, settings).
 - **Notes:** the 5-way moves between the sticky notes, Press opens one; in a
   note ▲ ▼ choose a checklist item or attachment and Press ticks or opens
   it; Menu: edit, pin. The editor shows the on-screen keyboard (the 5-way
@@ -90,7 +92,7 @@ run the same GZreader with ZenOS's touch interface:
   slider on Kindles with a frontlight. A tap below it closes it.
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
-- **Notes:** New note, Filter and More are buttons under the title; a note
+- **Notes:** New note, Filter, Layout, Sort and Options are in the quick panel; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
   its toolbar (lists, checklists, headings, italic, bold, tags) and Save are

@@ -2207,6 +2207,45 @@ do
         package.loaded["gzreader_notes"] = saved_notes
         hplug.store.memos = saved_memos
     end
+    ;(function() -- the Notes tab: its board's New note, Filter, Layout, Sort and Options are the panel's tiles
+        local saved_notes = package.loaded["gzreader_notes"]
+        local saved_hidden = G_reader_settings:readSetting("gzreader_panel_hidden")
+        Panel.showAll() -- (tiles hidden by the checks above)
+        local calls = {}
+        local function rec(what) return function(p, arg2) calls[#calls + 1] = what .. (p == hplug and "" or "?") .. (arg2 and "+" or "") end end
+        local fakeN = { onTop = function() return true end, showView = rec("layout"), showSort = rec("sort"), edit = rec("new"),
+            showFilter = rec("filter"), showOptions = rec("options") }
+        package.loaded["gzreader_notes"] = fakeN
+        check(Panel.notesTab() == fakeN, "the Notes tab on screen: the panel knows")
+        local nt = Panel.notesTiles(hplug, fakeN)
+        local nl = labels(nt)
+        check(nl:match("|History|Layout|Sort|New note|Filter|Options|") and not nl:match("Quick note") and not nl:match("Manage")
+            and not nl:match("|View|"), "Notes tab: Layout in View's place, Sort, New note in Quick note's, then Filter and Options… " .. nl)
+        for _i, t in ipairs(nt) do
+            if t.id == "view" or t.id == "sort" or t.id == "note" or t.id == "filter" or t.id == "options" then t.run() end
+        end
+        check(table.concat(calls, ",") == "layout,sort,new,filter,options",
+            "…each does what the board's button did (a new note, not a quick one): " .. table.concat(calls, ","))
+        Panel.setShown("home", "filter", false)
+        check(not labels(Panel.notesTiles(hplug, fakeN)):match("Filter"), "…each can be hidden (Settings → Interface → Quick panel → Home)")
+        Panel.setShown("home", "filter", true)
+        local filt, opts = false, false
+        for _i, g in ipairs(Panel.catalog()) do
+            for _j, t in ipairs(g.tiles) do
+                if g.id == "home" and t.id == "filter" then filt = true end
+                if g.id == "home" and t.id == "options" then opts = true end
+            end
+        end
+        check(filt and opts, "…and they're in the Quick panel settings' Home list")
+        fakeN.onTop = function() return false end
+        check(Panel.notesTab() == nil and not labels(Panel.homeTiles(hplug, nil)):match("Filter"), "elsewhere: Home's tiles as before")
+        package.loaded["gzreader_notes"] = nil
+        check(Panel.notesTab() == nil, "…and the Notes module isn't loaded just to ask")
+        package.loaded["gzreader_notes"] = saved_notes
+        if saved_hidden then G_reader_settings:saveSetting("gzreader_panel_hidden", saved_hidden) end
+        local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+        check(psrc:find('Panel.notesTiles(plugin, Notes), _("Notes"), "home"', 1, true) ~= nil, "the panel's group is called Notes there")
+    end)()
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
@@ -6254,8 +6293,8 @@ print("Notes (Memos v0.31)")
         check(opened == nil, "board: a letter no note has does nothing")
         Notes.showView = real_show
         local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(not src:find('k == "V"', 1, true) and src:find('_("Layout"), function() Notes.showView(plugin) end', 1, true),
-            "board: no V (the tab bar's), and a Layout button on touch Kindles")
+        check(not src:find('k == "V"', 1, true) and src:find('if k == "L" then Notes.showView(self.plugin)', 1, true),
+            "board: L for Layout, not V (the tab bar's); on touch Kindles the quick panel's Layout tile")
     end)()
 
     -- connecting
@@ -6389,8 +6428,8 @@ print("Notes (Memos v0.31)")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
     check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
-        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 6,
-        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices), kept notes, attachment limit")
+        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 7,
+        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices, full screen), kept notes, attachment limit")
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
@@ -6656,6 +6695,107 @@ print("Notes (Memos v0.31)")
             "older Memos: no spaces, Filter as before")
         local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
         check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+    end)()
+
+    ;(function() -- the Notes tab's board: sorting, full screen, keys; its buttons are the quick panel's now
+        local UIM = require("ui/uimanager")
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local prefs = Notes.prefs(plugin)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned, prefs.fullscreen = nil, nil, nil, nil
+        local function sync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        Notes.notes, Notes.filter, Notes.board = nil, { kind = "all" }, nil
+        local so = Notes.sort(plugin)
+        check(so.by == "created" and not so.reverse and so.pinned and Notes.orderBy(plugin) == "pinned desc, create_time desc",
+            "sort: newest first, pinned first by default (as before)")
+        check(sync() and Notes.notes[1].pinned and Notes.notes[2].content:match("^## Georgia"), "…what Memos sends")
+        Notes.setSort(plugin, "sort_reverse", true)
+        check(Notes.orderBy(plugin) == "pinned desc, create_time asc" and Notes.notes[1].pinned and Notes.notes[2].content:match("large%-print"),
+            "Reverse order: oldest first (pinned still first), asked of Memos")
+        Notes.setSort(plugin, "sort_pinned", false)
+        check(Notes.orderBy(plugin) == "create_time asc" and Notes.notes[1].content:match("large%-print"), "Pinned first off: just by date")
+        Notes.setSort(plugin, "sort_reverse", nil)
+        local target
+        for _i, m in ipairs(Notes.notes) do if m.content:match("^Notes tab for the Kindle") then target = m end end
+        socket.sleep(1.1)
+        Memos:new(plugin.store.memos):update(target.name, target.content .. " Edited.")
+        Notes.setSort(plugin, "sort", "updated")
+        check(Notes.orderBy(plugin) == "update_time desc" and Notes.notes[1].content:match("Edited%.$"), "Date edited: the note just edited first")
+        check(logtxt():find("notes: sort update_time desc", 1, true) ~= nil, "a change of sort is logged")
+        -- on the Kindle too (kept notes, notes written here, a sync through a computer)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        local list = { { content = "a", created = "2026-11-01T00:00:00Z" }, { content = "b", created = "2026-11-03T00:00:00Z", pinned = true },
+            { content = "c", created = "2026-11-02T00:00:00Z", updated = "2026-11-09T00:00:00Z" }, { content = "d", created = "2026-11-02T00:00:00Z" } }
+        local function order() local o = {} for _i, m in ipairs(Notes.sorted(list, plugin)) do o[#o + 1] = m.content end return table.concat(o) end
+        check(order() == "bcda", "on the Kindle: pinned first, newest first; equal dates keep their order")
+        prefs.sort = "updated"
+        check(order() == "bcda" and (function() prefs.sort_pinned = false; return order() == "cbda" end)(),
+            "…by date edited (a note never edited: its date created)")
+        prefs.sort_reverse = true
+        check(order() == "adbc", "…oldest first")
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        -- the dialog
+        local BD = require("ui/widget/buttondialog")
+        local dlg
+        rawset(BD, "new", function(_s, o) dlg = o; return o end)
+        Notes.showSort(plugin)
+        check(dlg.title == "Sort notes by" and #dlg.buttons == 4 and dlg.buttons[1][1].text == "Date created  \u{2713}"
+            and dlg.buttons[2][1].text == "Date edited" and dlg.buttons[4][1].text == "Pinned first  \u{2713}",
+            "the Sort tile on the Notes tab: Sort notes by (not books): date created or edited, reverse order, pinned first")
+        -- full screen (Layout)
+        Notes.showView(plugin)
+        local last = dlg.buttons[#dlg.buttons][1]
+        check(last.text == "Full screen: no tab bar" and not Notes.fullscreen(plugin), "Layout: Full screen, off by default")
+        local closed, shown_again = {}, nil
+        local real_close, real_show, real_reload = UIM.close, Notes.show, Notes.reloadBoard
+        UIM.close = function(_s, w) closed[#closed + 1] = w end
+        Notes.board = { _gz_first = 4 }
+        local old_board = Notes.board
+        Notes.show = function() shown_again = { }; Notes.board = shown_again; return shown_again end
+        Notes.reloadBoard = function() end
+        last.callback()
+        check(Notes.fullscreen(plugin) and closed[#closed] == old_board and shown_again and shown_again._gz_goto == 4,
+            "Full screen on: kept, and the board made again (no tab bar), at the same notes")
+        check(logtxt():find("notes: full screen true", 1, true) ~= nil, "…logged")
+        Notes.board = { _gz_closed = true }
+        Notes.setFullscreen(plugin, false)
+        check(not Notes.fullscreen(plugin) and prefs.fullscreen == nil, "…and off again")
+        UIM.close, Notes.show, Notes.reloadBoard = real_close, real_show, real_reload
+        rawset(BD, "new", nil)
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        local show_src = nsrc:match("function Notes%.show%(plugin%)(.-)\nend\n")
+        check(show_src and show_src:find("name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil", 1, true)
+            and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
+            and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
+            and not show_src:find("Touch.actionRow", 1, true)
+            and show_src:find('require("gzreader_panel").show(plugin)', 1, true),
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then), no buttons of its own, Menu on a Kindle 4 opens the quick panel")
+        -- on top?
+        local board = { plugin = plugin }
+        Notes.board = board
+        local stack = UIM._window_stack
+        UIM._window_stack = { { widget = {} }, { widget = board } }
+        local top1 = Notes.onTop()
+        UIM._window_stack = { { widget = board }, { widget = {} } }
+        local top2 = Notes.onTop()
+        UIM._window_stack = stack
+        check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+        -- S sorts (keyboard Kindles)
+        local sorted_shown
+        local real_sort = Notes.showSort
+        Notes.showSort = function(p) sorted_shown = p end
+        Notes.Board.onSelectByShortCut(board, nil, { key = "S" })
+        Notes.showSort = real_sort
+        check(sorted_shown == plugin, "S on the board: Sort notes by")
+        Notes.board = nil
     end)()
 
     -- disconnect
