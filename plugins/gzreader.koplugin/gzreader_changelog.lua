@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Music: Now playing, Queue and Library tabs with big keys, a progress bar you tap to jump", text = "Music's player is easier to use by touch. Three tabs along the top: Now playing (the CD player, the track, a progress bar you tap to jump to that time, big previous · play/pause · next keys, then Shuffle, Repeat and the volume), Queue (the album's tracks in big rows: tap one to play it; Up/Down pages; Shuffle and Stop) and Library (Recently played, Recently added, Playlists, Albums, Artists, On this Kindle, with Search above and Shuffle all and your Plex account below; inside a list, Back and where you are at the top). The Queue and Library tabs keep what plays on a strip with its pause key; tap the strip for Now playing. Stop is no longer next to Next. Kindle 2, Keyboard and DX: each key's letter is on its button; Z X C open the tabs (F still goes between the queue and the library); on Now playing ◀ ▶ go 10 s back or ahead (Q and E change track); the volume keys show the level on Now playing." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },

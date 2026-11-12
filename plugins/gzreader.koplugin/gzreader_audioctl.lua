@@ -33,6 +33,13 @@ function AudioCtl.step(dir)
         pcall(screen.refreshVolume, screen) -- the level is on the player's screen
         return
     end
+    -- (music's player shows it too, on Now playing)
+    local CD = package.loaded["gzreader_cdscreen"]
+    local cd = CD and CD.instance
+    if cd and cd.mode == "now" and UIManager:getTopmostVisibleWidget() == cd then
+        pcall(cd.refreshVolume, cd)
+        return
+    end
     if AudioCtl.note then UIManager:close(AudioCtl.note) end
     AudioCtl.note = require("ui/widget/notification"):new{
         text = T(_("Volume %1 / %2"), now, tts.VOLUME_MAX),

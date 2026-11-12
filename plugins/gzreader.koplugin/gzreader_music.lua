@@ -586,6 +586,26 @@ function Player:jump(n)
     if not self:play() then self:keepAwake(false) end
 end
 
+--- Go to `ms` into the track (◀ ▶ on Now playing, a tap on its progress
+--- strip; never past a second before its end): started again there when it
+--- was playing, from there at the next play when paused.
+function Player:seekTo(ms)
+    if self.waiting then return end -- (not on the Kindle yet)
+    local t = self:track()
+    local dur = t and tonumber(t.duration) or 0
+    ms = math.max(0, math.floor(tonumber(ms) or 0))
+    if dur > 0 then ms = math.min(ms, math.max(0, dur - 1000)) end
+    local was = self.playing
+    Engine.stop()
+    self.playing = false
+    self.pos = ms
+    if was then
+        if not self:play() then self:keepAwake(false) end
+    else
+        self:changed()
+    end
+end
+
 function Player:setShuffle(on)
     local cur = self.order[self.at]
     self.shuffle = on
