@@ -33,6 +33,16 @@ API to `/api` are found too.
   Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it. Alt + the top
   row types 1–0 here. New notes are **private** unless you change it. Back
   asks whether to save.
+- **Quick note:** the quick panel's **Quick note** tile (at Home and in a
+  book, while Memos is connected) opens the same editor over whatever is on
+  the screen, so you can jot something down without leaving the book, Home or
+  Settings. **Save** (or Back → Save) closes it and you're back where you
+  were; "Note saved" says it's on its way. It's sent in the background a
+  moment later (Wi‑Fi on Auto turns on for it; on Off it waits), and only the
+  note is sent: the board's list isn't fetched while you read, so the Notes
+  tab syncs the next time you open it. On a Kindle syncing through a
+  computer it goes with the next sync. Hide the tile in **Settings →
+  Interface → Quick panel**.
 - **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).
