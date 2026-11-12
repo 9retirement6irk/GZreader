@@ -453,6 +453,10 @@ function Grimmory:onDispatcherRegisterActions()
         category = "none", event = "ShowGzAudiobooks", title = _("Audiobooks (the Catalog's page)"),
         general = true,
     })
+    Dispatcher:registerAction("gzreader_house", {
+        category = "none", event = "ShowGzHouse", title = _("House (Home Assistant)"),
+        general = true,
+    })
     Dispatcher:registerAction("grimmory_pair", {
         category = "none", event = "GrimmoryPair", title = _("Grimmory: connect with QR code"),
         general = true,
@@ -1235,6 +1239,18 @@ function Grimmory:onShowGzMusic()
     if self.ui and self.ui.document then return end -- (file manager's instance)
     require("gzreader_musictab").show(self)
     return true
+end
+
+--- The House tab: Home Assistant (ZenOS's tab bar; gzreader_house.lua).
+function Grimmory:onShowGzHouse()
+    if self.ui and self.ui.document then return end -- (file manager's instance)
+    require("gzreader_house").show(self)
+    return true
+end
+
+--- Settings → Connections → Home Assistant (the House tab).
+function Grimmory:houseSettingsItems()
+    return require("gzreader_house").settingsItems(self)
 end
 
 function Grimmory:onGzLauncherContinue() dispatch("open_previous_document") end

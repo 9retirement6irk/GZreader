@@ -268,6 +268,28 @@ function M.build(plugin)
         return M.build(plugin).sub_item_table
     end
 
+    -- GZreader: Home Assistant (the House tab) in Connections, before Copy to
+    -- or from another GZreader; not on the Kindles without Wi-Fi (2, DX)
+    local okn, no_wifi = pcall(function() return require("gzreader_usbsync").noWifi() end)
+    for _i, item in ipairs(root_items) do
+        local list = type(item) == "table" and item._zen_settings_root == "gzreader" and item.sub_item_table
+        if type(list) == "table" and not (okn and no_wifi) then
+            local at = #list + 1
+            for j, it in ipairs(list) do
+                if type(it) == "table" and it.text == _("Copy to or from another GZreader") then at = j end
+            end
+            table.insert(list, at, {
+                text = _("Home Assistant (House)"),
+                icon_file = require("common/utils").resolveLocalIcon(plugin_root .. "/icons/", "tab_house"),
+                sub_item_table_func = function()
+                    local g = gzreader()
+                    if g and type(g.houseSettingsItems) == "function" then return g:houseSettingsItems() end
+                    return { { text = _("GZreader's Grimmory plugin isn't loaded."), enabled = false } }
+                end,
+            })
+        end
+    end
+
     return {
         text = _("ZenOS"),
         sub_item_table = root_items,

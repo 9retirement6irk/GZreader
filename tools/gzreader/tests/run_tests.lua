@@ -811,6 +811,271 @@ print("Catalog tab: Books, Audiobooks and Music pages")
         "an older config gets the Audiobooks tab listed, off, once")
 end)()
 
+print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
+;(function()
+    local HA = require("gzreader_homeassistant")
+    local House = require("gzreader_house")
+    local NetM = require("gzreader_net")
+    local T0 = { sync = AsyncMod.sync, usb = NetM.usb, zen = rawget(_G, "__ZEN_UI_PLUGIN"), save = plugin.save }
+    AsyncMod.sync = true
+    NetM.usb = nil
+    plugin.save = function() end
+    local HP, HP2 = PORT + 30, PORT + 31
+    local mock = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_homeassistant.py"
+    os.execute("python3 -I " .. mock .. " " .. HP .. " > " .. WORK .. "/ha.log 2>&1 & echo $! > " .. WORK .. "/ha.pid")
+    os.execute("python3 -I " .. mock .. " " .. HP2 .. " --no-admin > " .. WORK .. "/ha2.log 2>&1 & echo $! > " .. WORK .. "/ha2.pid")
+    local function hctl(port, method, path)
+        local p = io.popen("curl -s -X " .. method .. " 'http://127.0.0.1:" .. port .. path .. "'"); local o = p:read("*a"); p:close(); return o
+    end
+    local function hstate(id)
+        local st = json.decode(hctl(HP, "GET", "/__state")) or {}
+        for _i, s in ipairs(st.states or {}) do if s.entity_id == id then return s end end
+    end
+    runLoop(function() return hctl(HP, "GET", "/__state"):match("states") ~= nil and hctl(HP2, "GET", "/__state"):match("states") ~= nil end, 10)
+
+    -- addresses as typed or pasted
+    check(HA.normalizeServer("homeassistant.local") == "http://homeassistant.local:8123"
+        and HA.normalizeServer(" 192.168.1.20:8123/lovelace/0 ") == "http://192.168.1.20:8123"
+        and HA.normalizeServer("https://ha.example.com/") == "https://ha.example.com"
+        and HA.normalizeServer("http://ha.example.com:8123/api") == "http://ha.example.com:8123"
+        and HA.normalizeServer("ftp://ha.example.com") == nil and HA.normalizeServer("") == nil,
+        "House: the address typed becomes Home Assistant's (port 8123 when none, the page's path dropped)")
+
+    -- connecting
+    plugin.store.homeassistant = nil
+    local ok, err = HA.connect(plugin, "127.0.0.1:" .. HP, "wrong-token")
+    check(not ok and err:match("didn't accept that token"), "House: a wrong token is refused")
+    ok, err = HA.connect(plugin, "127.0.0.1:" .. (PORT + 39), "ha-test-token")
+    check(not ok and err:match("Couldn't reach"), "House: nothing at that address: it says so")
+    ok = HA.connect(plugin, "127.0.0.1:" .. HP .. "/lovelace/home", " ha-test-token\n")
+    local hs = plugin.store.homeassistant
+    check(ok and hs.server == "http://127.0.0.1:" .. HP and hs.token == "ha-test-token" and hs.name == "Home" and hs.unit == "°C",
+        "House: connected (address cleaned up, token trimmed, its name and unit kept)")
+
+    -- the tab: rooms from the template
+    local tab = House.show(plugin)
+    local function rows() return tab.menu.item_table end
+    local function row(text) for _i, r in ipairs(rows()) do if r.text == text then return r end end end
+    local function texts() local t = {} for _i, r in ipairs(rows()) do t[#t + 1] = r.text end return table.concat(t, "|") end
+    check(tab and tab.menu._gz_navbar_tab_id == "ct_house" and tab.house and not tab.house.by_kind,
+        "House tab: opened (its tab id), the list fetched with the rooms")
+    check(texts() == "Refresh|Living room|Ceiling light|Floor lamp|Thermostat|Temperature|Kitchen|Under-cabinet lights|Kettle"
+        .. "|Outside|Porch light|Front door|Garage door|Back door|Other|Coffee maker|Scenes|Goodnight|Leaving|Movie",
+        "House tab: rooms in Home Assistant's order, room names off the devices' names, no empty room, no power sensor or automation (" .. texts() .. ")")
+    check(row("Ceiling light").mandatory == "On · 80%" and row("Floor lamp").mandatory == "Off" and row("Thermostat").mandatory == "20.5° → 21°"
+        and row("Temperature").mandatory == "20.5°" and row("Front door").mandatory == "Locked" and row("Garage door").mandatory == "Closed"
+        and row("Back door").mandatory == "Closed" and row("Goodnight").mandatory == nil and row("Living room").bold and row("Living room").select_enabled == false,
+        "House tab: what each row says (On · 80%, 20.5° → 21°, Locked…); rooms as headers")
+    check(row("Floor lamp").checked_func and row("Floor lamp").checked_func() == false and row("Ceiling light").checked_func == nil
+        and row("Temperature").callback == nil and row("Floor lamp").gz_icon:match("icons/house/light%.svg$")
+        and row("Garage door").gz_icon:match("garage%.svg$"), "House tab: switches have a toggle, a dimmer opens (no toggle), sensors do nothing; their icons")
+    check(HA.loadCache() and #HA.loadCache().rooms == 5, "House tab: the list is kept on the Kindle for the next opening")
+    check(next(UI.scheduled) ~= nil, "House tab: it refreshes every 30 s while open")
+
+    -- switching
+    row("Floor lamp").callback()
+    check(hstate("light.floor_lamp").state == "on" and row("Floor lamp").checked_func() == true and row("Floor lamp").mandatory == "On",
+        "House tab: tapping a switch turns it on; the answer goes straight into the list")
+    captured.buttons = nil
+    row("Ceiling light").callback()
+    local dlg = captured.buttons
+    local function button(d, text)
+        for _i, line in ipairs(d and d.buttons or {}) do for _j, b in ipairs(line) do if b.text == text then return b end end end
+    end
+    check(dlg and dlg.title == "Ceiling light\nOn · 80%" and button(dlg, "On") and button(dlg, "Off") and button(dlg, "100%"),
+        "House tab: a dimmable light opens its dimmer (On, Off, −/+ 10%, levels)")
+    captured.buttons = nil
+    button(dlg, "+ 10%").callback()
+    check(hstate("light.living_room_ceiling").attributes.brightness == 230 and row("Ceiling light").mandatory == "On · 90%"
+        and captured.buttons and captured.buttons.title:match("On · 90%%"), "House tab: + 10% → 90%, and the dimmer opens again for another step")
+    button(captured.buttons, "10%").callback()
+    check(hstate("light.living_room_ceiling").attributes.brightness == 26 and row("Ceiling light").mandatory == "On · 10%", "House tab: a level (10%)")
+    captured.buttons = nil
+    row("Thermostat").callback()
+    local cd = captured.buttons
+    check(cd and cd.title:match("20%.5° now · heating") and cd.title:match("Target 21°") and button(cd, "+ 21.5°") and button(cd, "− 20.5°"),
+        "House tab: the thermostat: now, target, a step down or up")
+    button(cd, "+ 21.5°").callback()
+    check(hstate("climate.thermostat").attributes.temperature == 21.5 and row("Thermostat").mandatory == "20.5° → 21.5°",
+        "House tab: the target set to 21.5°")
+    captured.confirm = nil
+    row("Front door").callback()
+    check(captured.confirm and captured.confirm.text == "Unlock Front door?" and hstate("lock.front_door").state == "locked",
+        "House tab: unlocking asks first")
+    captured.confirm.ok_callback()
+    check(hstate("lock.front_door").state == "unlocked" and row("Front door").mandatory == "Unlocked" and row("Front door").gz_icon:match("unlock%.svg$"),
+        "House tab: …unlocked once you say so")
+    captured.confirm = nil
+    row("Front door").callback()
+    check(captured.confirm == nil and hstate("lock.front_door").state == "locked", "House tab: locking doesn't ask")
+    row("Garage door").callback()
+    check(captured.confirm and captured.confirm.text == "Open Garage door?" and hstate("cover.garage_door").state == "closed",
+        "House tab: opening the garage door asks first")
+    captured.confirm = nil
+    hs.ask = false
+    row("Garage door").callback()
+    check(captured.confirm == nil and hstate("cover.garage_door").state == "open", "House tab: with Ask before unlocking or opening off, it just opens")
+    hs.ask = nil
+    row("Garage door").callback()
+    check(hstate("cover.garage_door").state == "closed" and row("Garage door").mandatory == "Closed", "House tab: closing it doesn't ask")
+    row("Goodnight").callback()
+    check(hstate("light.porch").state == "off" and hstate("light.floor_lamp").state == "off" and row("Porch light").mandatory == "Off",
+        "House tab: a scene runs (Goodnight: the lights off)")
+
+    -- what Settings hides
+    hs.hidden = { ["switch.kettle"] = true }
+    hs.hidden_rooms = { outside = true }
+    tab:redraw()
+    check(not row("Kettle") and not row("Outside") and not row("Front door") and row("Kitchen") and row("Under-cabinet lights"),
+        "House tab: a hidden device and a hidden room aren't shown")
+    hs.hidden, hs.hidden_rooms = nil, nil
+
+    -- Home Assistant out of reach: the kept list stays, with why
+    hctl(HP, "POST", "/__offline?on=1")
+    tab:refresh(true)
+    check(tab.house and row("Ceiling light") and texts():find("Couldn't reach Home Assistant", 1, true), "House tab: unreachable: the list stays, it says why")
+    hctl(HP, "POST", "/__offline?on=0")
+    tab:refresh(false)
+    check(tab.err == nil and not texts():find("Couldn't reach", 1, true), "House tab: back again on the next refresh")
+
+    -- Settings → Connections → Home Assistant
+    local items = House.settingsItems(plugin)
+    local labels = {}
+    for _i, it in ipairs(items) do labels[#labels + 1] = it.text or it.text_func() end
+    check(table.concat(labels, "|") == "Connected: Home · 127.0.0.1:" .. HP .. "|House tab|Rooms and devices|Ask before unlocking or opening|Disconnect",
+        "Settings: Home Assistant's rows (" .. table.concat(labels, "|") .. ")")
+    local ritems = House.roomItems(plugin)
+    local sub = ritems[2].sub_item_table_func()
+    check(#ritems == 5 and ritems[2].text_func() == "Kitchen" and sub[1].text == "Show this room" and sub[3].text == "Kettle",
+        "Settings: Rooms and devices lists each room and its devices")
+    sub[1].callback()
+    sub[3].callback()
+    check(hs.hidden_rooms.kitchen and hs.hidden["switch.kettle"] and ritems[2].text_func():match("%(hidden%)")
+        and not row("Kitchen"), "Settings: a room and a device hidden, the tab redrawn")
+    sub[1].callback(); sub[3].callback()
+    check(not hs.hidden_rooms.kitchen and not hs.hidden["switch.kettle"] and row("Kitchen"), "Settings: shown again")
+    -- the House tab in ZenOS's tab bar
+    local saved = 0
+    local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
+        saveConfig = function() saved = saved + 1 end }
+    rawset(_G, "__ZEN_UI_PLUGIN", zen)
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    package.loaded["apps/filemanager/filemanager"] = { instance = nil }
+    check(House.tabShown() == false and House.setTabShown(true) and zen.config.navbar.show_tabs.ct_house == true
+        and zen.config.navbar.tab_order[3] == "ct_house" and zen.config.navbar.custom_tabs[1].action.gzreader_house and saved == 1 and House.tabShown(),
+        "Settings: House tab on: in the tab bar (listed, defined), ZenOS's settings saved")
+    House.setTabShown(false)
+    check(zen.config.navbar.show_tabs.ct_house == false and #zen.config.navbar.custom_tabs == 1, "Settings: House tab off again")
+    for _i, id in ipairs({ "a", "b", "c", "d", "e" }) do zen.config.navbar.show_tabs[id] = true; table.insert(zen.config.navbar.tab_order, id) end
+    captured.info = nil
+    check(House.setTabShown(true) == false and zen.config.navbar.show_tabs.ct_house == false and (captured.info or ""):match("7 tabs already"),
+        "Settings: not an eighth tab (it says which to turn off)")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    rawset(_G, "__ZEN_UI_PLUGIN", T0.zen)
+    -- a token that isn't an administrator's: no rooms, by kind
+    tab.menu:onCloseWidget()
+    check(tab.closed and UI.scheduled[tab.tick] == nil, "House tab: closed (no more refreshing)")
+    local hs1 = plugin.store.homeassistant
+    ok = HA.connect(plugin, "http://127.0.0.1:" .. HP2, "ha-test-token")
+    local tab2 = House.show(plugin)
+    local function texts2() local t = {} for _i, r in ipairs(tab2.menu.item_table) do t[#t + 1] = r.text end return table.concat(t, "|") end
+    check(ok and tab2.house and tab2.house.by_kind and plugin.store.homeassistant.no_template
+        and texts2() == "Refresh|Lights|Floor lamp|Kitchen Under-cabinet lights|Living room Ceiling light|Porch light|Switches|Coffee maker|Kettle"
+            .. "|Climate|Thermostat|Locks|Front door|Covers|Garage door|Doors and windows|Back door|Sensors|Living room Temperature"
+            .. "|Scenes|Goodnight|Leaving|Movie|Why no rooms?",
+        "House tab: a token that can't render templates: grouped by kind (full names), it says why (" .. texts2() .. ")")
+    tab2:refresh(true)
+    local log2 = json.decode(hctl(HP2, "GET", "/__state")).log
+    local templ = 0
+    for _i, l in ipairs(log2) do if l:match("^POST /api/template") then templ = templ + 1 end end
+    check(templ == 1, "House tab: …and the template isn't asked again")
+    tab2.menu:onCloseWidget()
+    plugin.store.homeassistant = hs1
+
+    -- no Wi-Fi (a Kindle 2, or syncing through a computer)
+    NetM.usb = true
+    local tab3 = House.show(plugin)
+    check(tab3.menu.item_table[1].text == "No Wi-Fi here" and #tab3.menu.item_table == 1, "House tab: no Wi-Fi: it says so")
+    tab3.menu:onCloseWidget()
+    NetM.usb = nil
+
+    -- Home Assistant found on the Wi-Fi (mDNS: _home-assistant._tcp)
+    local Mdns = require("gzreader_mdns")
+    local function u16(n) return string.char(math.floor(n / 256) % 256, n % 256) end
+    local function rec(name, rtype, data) return Mdns.encodeName(name) .. u16(rtype) .. u16(0x8001) .. u16(0) .. u16(120) .. u16(#data) .. data end
+    local inst = { "Home", "_home-assistant", "_tcp", "local" }
+    local function txt(list) local t = {} for _i, s in ipairs(list) do t[#t + 1] = string.char(#s) .. s end return table.concat(t) end
+    local answers = {
+        rec(Mdns.HA_SERVICE, 12, Mdns.encodeName(inst)),
+        rec(inst, 33, u16(0) .. u16(0) .. u16(8123) .. Mdns.encodeName("homeassistant.local")),
+        rec(inst, 16, txt({ "location_name=Home", "internal_url=http://192.168.1.20:8123/", "version=2026.11.1" })),
+        rec("homeassistant.local", 1, string.char(192, 168, 1, 20)),
+    }
+    local msg = u16(0) .. u16(0x8400) .. u16(0) .. u16(#answers) .. u16(0) .. u16(0) .. table.concat(answers)
+    local found = {}
+    Mdns.collectService(Mdns.HA_SERVICE)(found, msg, "192.168.1.99")
+    local dev = found["home._home-assistant._tcp.local"]
+    check(dev and dev.name == "Home" and dev.port == 8123 and dev.ip == "192.168.1.20" and dev.txt.location_name == "Home"
+        and House.foundAddress(dev) == "http://192.168.1.20:8123", "House: Home Assistant found on the Wi-Fi: its own address")
+    check(House.foundAddress({ ip = "192.168.1.21", port = 8123, txt = {} }) == "http://192.168.1.21:8123"
+        and Mdns._query(1, Mdns.HA_SERVICE):find(Mdns.encodeName(Mdns.HA_SERVICE), 1, true)
+        and Mdns._query(1):find(Mdns.encodeName(Mdns.SERVICE), 1, true), "House: …or where it answered from; GZreader's own search unchanged")
+
+    -- the phone page: House, connect and disconnect
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local Phone = require("gzreader_phone")
+    local closed
+    plugin.store.homeassistant = { ask = false }
+    Phone.open(plugin, { section = "house", on_close = function(ch) closed = ch end })
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields)
+        local args = { "-L", #fields == 0 and "-d ''" or nil }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('data-tab="house"', 1, true) and b:find('<section id="house" class="tab">', 1, true) and b:find('"house";', 1, true)
+        and b:find("Not connected", 1, true), "phone page: the House tab, opening at it")
+    c, b = post("/house", { "server=127.0.0.1:" .. HP, "token=nope" })
+    check(c == 200 and (b:find("didn&#39;t accept that token", 1, true) or b:find("didn't accept that token", 1, true))
+        and not (plugin.store.homeassistant or {}).token, "phone page: House: a wrong token -> the page says so")
+    c, b = post("/house", { "server=127.0.0.1:" .. HP, "token=ha-test-token" })
+    hs = plugin.store.homeassistant
+    check(c == 200 and b:find("Connected to Home.", 1, true) and hs.token == "ha-test-token" and hs.server == "http://127.0.0.1:" .. HP
+        and hs.ask == false and b:find("Connected to <b>Home</b>", 1, true), "phone page: House: connected (the Ask setting kept)")
+    c, b = post("/house/disconnect", {})
+    check(c == 200 and not plugin.store.homeassistant.token and plugin.store.homeassistant.ask == false and not HA.loadCache(),
+        "phone page: House: disconnected (address, token and the kept list gone)")
+    scr.on_cancel()
+    check(closed and closed.house and Phone.session == nil and #UI.zmqs == 0, "phone page: closed, the caller hears House changed")
+    PS.new = orig_ps
+
+    -- ZenOS: the House tab listed (off) in an older config, once
+    local msrc = io.open(PLUGIN .. "/../zenos.koplugin/config/manager.lua"):read("*a")
+    local hfrom = msrc:find("if cfg._meta.gz_house_tab_migrated ~= true then", 1, true)
+    local hto = hfrom and select(2, msrc:find("cfg._meta.gz_house_tab_migrated = true%s+changed = true%s+end", hfrom))
+    local hmig = hfrom and hto and load("return function(cfg) local changed = false\n" .. msrc:sub(hfrom, hto) .. "\nreturn changed end",
+        "house tab migration", "t", { type = type, ipairs = ipairs, table = table })()
+    local hcfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
+    local h1 = hmig and hmig(hcfg)
+    hcfg._meta.gz_house_tab_migrated = nil
+    hmig(hcfg)
+    local n_h, def = 0, nil
+    for _i, t in ipairs(hcfg.navbar.custom_tabs) do if t.id == "ct_house" then n_h = n_h + 1; def = t end end
+    check(h1 and n_h == 1 and def.icon == "tab_house" and def.label == "House" and def.action.gzreader_house and hcfg.navbar.show_tabs.ct_house == false
+        and table.concat(hcfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_house", "ZenOS: an older config gets the House tab listed, off, once")
+
+    local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
+    check(ltxt:find("house: connecting to", 1, true) and not ltxt:find("ha-test-token", 1, true), "House: the token is never in the log")
+    os.execute("kill $(cat " .. WORK .. "/ha.pid) $(cat " .. WORK .. "/ha2.pid) 2>/dev/null")
+    plugin.store.homeassistant = nil
+    HA.clearCache()
+    AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
+end)()
+
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
 ;(function()
     local saved_audio = require("gzreader_touch").audio

@@ -219,6 +219,33 @@ local function memosSection(st, base)
     return table.concat(parts)
 end
 
+local function houseSection(st, base)
+    local h = st.house
+    if not h then return "" end
+    local parts = { '<section id="house" class="tab"><h2>House (Home Assistant)</h2>',
+        '<p class="what">The House tab shows your <a href="https://www.home-assistant.io">Home Assistant</a> rooms with their lights, switches, thermostats, locks and scenes, to switch from the Kindle. Turn the tab on in Settings → Connections → Home Assistant.</p>' }
+    if h.connected then
+        parts[#parts + 1] = status(true, "Connected to <b>" .. esc(h.name or "Home Assistant") .. "</b> · " .. esc(h.host))
+        parts[#parts + 1] = form(base .. "/house/disconnect",
+            '<button class="danger" type="submit"' .. confirmJs("Disconnect from Home Assistant? The address and token are removed from the Kindle (delete the token in Home Assistant too).")
+            .. ">Disconnect</button>", "Disconnecting…")
+        parts[#parts + 1] = "<details><summary>Change the address or token</summary><div style=\"margin-top:12px\">"
+    else
+        parts[#parts + 1] = status(false, "Not connected")
+    end
+    if h.error then parts[#parts + 1] = '<p class="err">' .. esc(h.error) .. "</p>" end
+    parts[#parts + 1] = form(base .. "/house",
+        input("h_server", "server", "Home Assistant address", (h.form or {}).server, 'required placeholder="homeassistant.local:8123" ' .. URL_ATTRS)
+        .. '<label for="h_token">Long-lived access token</label><input id="h_token" name="token" type="password" required ' .. NAME_ATTRS .. ">"
+        .. '<button type="submit">Connect</button>'
+        .. '<details><summary>Where do I get a token?</summary><p class="note">In Home Assistant: your profile (bottom left) → Security → Long-lived access tokens → Create token. Copy it here: Home Assistant shows it only once. A token made by an administrator also brings your rooms (areas); with another one the tab groups things by kind. The Kindle keeps the token, never your password, and never writes it to its log.</p></details>'
+        .. '<details><summary>Which address?</summary><p class="note">The one you open Home Assistant with on this Wi‑Fi, e.g. <code>homeassistant.local:8123</code> or <code>192.168.1.20:8123</code> (port 8123 is added when there\'s none). A Home Assistant Cloud or other https:// address works too.</p></details>',
+        "Connecting…")
+    if h.connected then parts[#parts + 1] = "</div></details>" end
+    parts[#parts + 1] = "</section>"
+    return table.concat(parts)
+end
+
 local function calendarSection(st, base)
     local c = st.caldav or {}
     local links = st.links or {}
@@ -508,6 +535,7 @@ function PairPage.hub(st)
     -- one tab at a time (all of them, one under the other, without JavaScript)
     local tabs = { { "grimmory", "Grimmory", (st.grimmory or {}).connected }, { "notes", "Notes", (st.memos or {}).connected },
         { "calendar", "Calendar", (st.caldav or {}).connected or #((st.links or {}).list or {}) > 0 } }
+    if st.house then tabs[#tabs + 1] = { "house", "House", st.house.connected } end
     if st.plex then tabs[#tabs + 1] = { "music", "Music", st.plex.connected } end
     tabs[#tabs + 1] = { "immich", "Immich", (st.immich or {}).connected }
     tabs[#tabs + 1] = { "books", "Send books" }
@@ -529,6 +557,7 @@ function PairPage.hub(st)
         grimmorySection(st, base), memosSection(st, base), calendarSection(st, base), musicSection(st, base),
         immichSection(st, base), booksSection(st, base), sleepSection(st, base), accessSection(st, base), diagnosticsSection(st, base),
         '<p class="note">This page works while setup is open on the Kindle\'s screen; press Back (or Done) there when you\'re done.</p>',
+        houseSection(st, base), -- (after the note: one tab at a time with JavaScript; below the rest without)
         "</div></div>",
         '<script>(function(){var A=', alias, ';function show(id){id=A[id]||id;var s=document.getElementById(id);if(!s||!/\\btab\\b/.test(s.className))id="', st.start or "grimmory", '";',
         '[].forEach.call(document.querySelectorAll("section.tab"),function(e){e.className=e.id==id?"tab on":"tab"});',
