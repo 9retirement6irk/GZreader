@@ -6588,6 +6588,113 @@ print("Notes (Memos v0.31)")
         Notes.pic_sizes = {}
         check(select(2, Notes.picSize(WORK .. "/s.png")) == 200 and Notes.pic_sizes[WORK .. "/s.png"], "a picture's size is kept once read")
 
+        -- the tilt in whole numbers (Sticky.rotate): the picture the fractions gave, within 2 levels of 255
+        ;(function()
+            local ffi = require("ffi")
+            local BB = package.loaded["ffi/blitbuffer"] -- (a stand-in: give it what rotate uses)
+            local function bb(bw, bh)
+                local t = { w = bw, h = bh, stride = bw, data = ffi.new("uint8_t[?]", bw * bh) }
+                t.getWidth = function(x) return x.w end
+                t.getHeight = function(x) return x.h end
+                return t
+            end
+            rawset(BB, "new", function(bw, bh) return bb(bw, bh) end)
+            rawset(BB, "TYPE_BB8", 1)
+            local function fractions(src, deg) -- (the formula until 1.29)
+                local a = math.rad(deg)
+                local ca, sa = math.cos(a), math.sin(a)
+                local sw, sh = src.w, src.h
+                local dw = math.ceil(math.abs(sw * ca) + math.abs(sh * sa))
+                local dh = math.ceil(math.abs(sw * sa) + math.abs(sh * ca))
+                local dst, px = bb(dw, dh), src.data
+                for y = 0, dh - 1 do
+                    for x = 0, dw - 1 do
+                        local rx, ry = x - dw / 2, y - dh / 2
+                        local fx, fy = ca * rx + sa * ry + sw / 2, -sa * rx + ca * ry + sh / 2
+                        local x0, y0 = math.floor(fx), math.floor(fy)
+                        local level = 255
+                        if x0 >= 0 and y0 >= 0 and x0 < sw - 1 and y0 < sh - 1 then
+                            local tx, ty, i = fx - x0, fy - y0, y0 * sw + x0
+                            local top = px[i] + (px[i + 1] - px[i]) * tx
+                            local bot = px[i + sw] + (px[i + sw + 1] - px[i + sw]) * tx
+                            level = top + (bot - top) * ty
+                        end
+                        dst.data[y * dw + x] = level
+                    end
+                end
+                return dst
+            end
+            local worst, same_size, cases = 0, true, 0
+            for _i, size in ipairs({ { 37, 23 }, { 120, 90 }, { 64, 200 }, { 5, 5 } }) do
+                for _j, deg in ipairs({ -2.6, -1.1, 0, 0.4, 1.9, 2.6, 30 }) do
+                    local src = bb(size[1], size[2])
+                    for k = 0, size[1] * size[2] - 1 do -- (a white edge, as a note's canvas has: its shadow's margin)
+                        local x, y = k % size[1], math.floor(k / size[1])
+                        local edge = x < 2 or y < 2 or x >= size[1] - 2 or y >= size[2] - 2
+                        src.data[k] = edge and 255 or (k * 37 + y * 11) % 256
+                    end
+                    local old, rot = fractions(src, deg), Sticky.rotate(src, deg)
+                    same_size = same_size and old.w == rot.w and old.h == rot.h
+                    for k = 0, old.w * old.h - 1 do worst = math.max(worst, math.abs(old.data[k] - rot.data[k])) end
+                    cases = cases + 1
+                end
+            end
+            rawset(BB, "new", nil)
+            rawset(BB, "TYPE_BB8", nil)
+            check(same_size and worst <= 2, "tilt: the same size and picture as before (" .. cases .. " cases, at most " .. worst .. " levels apart)")
+        end)()
+
+        -- the board keeps each note's image: drawn again only when what it shows changes
+        ;(function()
+            local Scr = require("device").screen
+            local real_scale = Scr.scaleBySize
+            Scr.scaleBySize = function(_s, size) return size end
+            local made, freed = 0, 0
+            local real_image = Sticky.image
+            Sticky.image = function() made = made + 1; return { free = function() freed = freed + 1 end } end
+            local function item(m, over)
+                local it = { dimen = { w = 200, h = 150 }, entry = { memo = m }, look = Sticky.LOOK[1], menu = { plugin = plugin },
+                    compactNote = function() return { free = function() end }, 170, 120 end,
+                    fullNote = function() return { free = function() end }, 170, 120 end }
+                for key, val in pairs(over or {}) do it[key] = val end
+                Notes._StickyItem.draw(it)
+                return it
+            end
+            Notes.dropImages(true)
+            local m = { content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" } }
+            Notes.image_gen = Notes.image_gen + 1
+            local first = item(m)
+            local again = item({ content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" } }) -- (a sync: a new table)
+            check(made == 1 and first.img == again.img, "board: a note drawn again as it was (a sync, the tab opened again) reuses its image")
+            item(m, { focused = true })
+            item(m, { shortcut = "W" })
+            item(m, { look = Sticky.LOOK[2] })
+            item(m, { dimen = { w = 300, h = 150 } })
+            item({ content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" }, pinned = true })
+            item({ content = "Buy oat milk", created = "2026-11-10T10:00:00Z", tags = { "home" } })
+            item(m, { part = { from = 1, to = 3, h = 120 }, size = { sig = "x" } })
+            check(made == 8, "board: …and draws it again when it's focused, gets another letter, look, size, pin, text or part (" .. made .. ")")
+            Notes.image_gen = Notes.image_gen + 1
+            item(m)
+            Notes.dropImages()
+            check(freed == 7 and next(Notes.images) ~= nil, "board: after a draw, the images it no longer shows are let go; its own stay")
+            Notes.dropImages(true)
+            check(freed == 8 and next(Notes.images) == nil, "board: …all of them when the tab closes on a Kindle with little memory")
+            local Layout = require("gzreader_layout")
+            local real_mem = Layout.memTotalKB
+            Layout.memTotalKB = function() return 125 * 1024 end
+            local small = Notes.keepImages()
+            Layout.memTotalKB = function() return 512 * 1024 end
+            check(not small and Notes.keepImages(), "board: images kept while the tab is closed, not on a 128 MB Kindle (2, DX)")
+            Layout.memTotalKB = real_mem
+            Sticky.image = real_image
+            Scr.scaleBySize = real_scale
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("if m._gz_hold_draw then return end", 1, true) and src:find("_gz_hold_draw = Touch.on() or nil,", 1, true)
+                and src:find("menu._gz_hold_draw = nil\n    Touch.actionRow(menu, Notes.actions(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
+                "board: on a touch Kindle drawn once on opening, after its buttons (Menu's own first draw was thrown away)")
+        end)()
+
         -- a note's pictures: those in its text first, then its other picture attachments
         local pm = { content = "x\n![b](/file/attachments/bbb/b.png)\n",
             attachments = { { name = "attachments/aaa", type = "image/jpeg" }, { name = "attachments/pdf", type = "application/pdf" },

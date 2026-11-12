@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },

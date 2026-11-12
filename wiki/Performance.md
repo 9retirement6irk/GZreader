@@ -71,6 +71,18 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
 - **5-way focus on Home** refreshes only the old and the new focus boxes
   (quick mode), and the Home key from Settings or the audiobook player makes
   one refresh.
+- **The Notes tab opens quickly** (`gzreader_notes.lua`, `gzreader_sticky.lua`):
+  each sticky note is painted and tilted by a degree or two, pixel by pixel in
+  Lua, and that was most of the time the tab took to open (about 3 s on a
+  Paperwhite 3). The tilt is now worked out in whole numbers along each row,
+  only over the part of the row the note covers (about 4× faster, the same
+  picture); on touch Kindles the board is drawn once on opening instead of
+  twice (the first draw, before the buttons under the title, was thrown
+  away); and each note's finished picture is kept, so opening the tab again,
+  a sync that changed nothing or a page back redraws only the notes that
+  changed. The last page's pictures stay while the tab is closed (a few MB;
+  not on the Kindle 2 and DX). In the emulator (Paperwhite 3): 1.4 s of CPU
+  to open before, 0.5 s now, 0.25 s when opened again.
 - **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
   lines, unused: GZreader's updater replaces it) isn't loaded at all; a
   small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is

@@ -509,6 +509,8 @@ function StickyItem:init()
     self:draw()
 end
 
+Notes._StickyItem = StickyItem -- (tests)
+
 local PAD = 8 -- (scaled) inside a note's frame
 local HEAD_H, HEAD_GAP, GAP = 24, 6, 4 -- (scaled) the date line, under it, between the rest
 
@@ -554,23 +556,69 @@ local function noteFoot(m, inner_w)
     return tag_line or nil, #foot_bits > 0 and foot_bits or nil
 end
 
+---------------------------------------------------------------- kept note images
+
+-- A note drawn on the board is an image (painted, shadowed, tilted: most of
+-- the time the board takes). Each is kept under what it shows, so drawing
+-- the board again (the tab opened again, a sync that changed nothing, a
+-- page back) paints only the notes that changed. Images not on the board's
+-- last page are let go when it's drawn; the last page's stay while the tab
+-- is closed, except on a Kindle with little memory (the 2 and DX).
+Notes.images = {}   -- key → { bb, gen }
+Notes.image_gen = 0 -- the board's draws
+
+--- Note `m` as StickyItem `item` shows it: everything its image depends on.
+function Notes.imageKey(item, m)
+    local tags = table.concat(m.tags or {}, " ")
+    local part, size = item.part, item.size
+    local pic = "" -- compact: its picture, if it's on the Kindle yet
+    if not part then
+        local att = Notes.pictureAttachments(m)[1]
+        pic = att and (lfs.attributes(Memos.filePath(att), "mode") == "file" and "p" or "-") or ""
+    end
+    local look = item.look or {}
+    return table.concat({ tostring(m.content), tostring(m.pinned), tostring(m.pending), Sticky.when(m.created),
+        tags, tostring(m.place), #(m.attachments or {}), pic, tostring(item.shortcut), tostring(look.angle),
+        tostring(look.shade), tostring(look.tape), tostring(item.focused), item.dimen.w, item.dimen.h,
+        part and (part.from .. "-" .. part.to .. "-" .. part.h) or "", size and size.sig or "" }, "\0")
+end
+
+--- After a draw of the board: let go of the images it no longer shows.
+function Notes.dropImages(all)
+    for key, kept in pairs(Notes.images) do
+        if all or kept.gen ~= Notes.image_gen then
+            kept.bb:free()
+            Notes.images[key] = nil
+        end
+    end
+end
+
 function StickyItem:draw()
     local w, h = self.dimen.w, self.dimen.h
     local m = self.entry.memo
-    if self.img then self.img:free(); self.img = nil end
+    self.img = nil -- (Notes.images has it)
     if not m then -- "No notes" and the like
         self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
             TextBoxWidget:new{ text = self.entry.text, face = Sticky.hand(20), width = w - S(20), alignment = "center" } }
         return
     end
-    local frame, note_w, note_h
-    if self.part then
-        frame, note_w, note_h = self:fullNote(m)
+    local key = Notes.imageKey(self, m)
+    local kept = Notes.images[key]
+    if kept then
+        kept.gen = Notes.image_gen
+        if not self.part then Notes.picture(self.menu.plugin, m, 0, 0, true, true) end -- (fetch it if it's missing)
     else
-        frame, note_w, note_h = self:compactNote(m, w, h)
+        local frame, note_w, note_h
+        if self.part then
+            frame, note_w, note_h = self:fullNote(m)
+        else
+            frame, note_w, note_h = self:compactNote(m, w, h)
+        end
+        kept = { bb = Sticky.image(frame, note_w, note_h, self.look, self.focused), gen = Notes.image_gen }
+        frame:free()
+        Notes.images[key] = kept
     end
-    self.img = Sticky.image(frame, note_w, note_h, self.look, self.focused)
-    frame:free()
+    self.img = kept.bb
     self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
         ImageWidget:new{ image = self.img, image_disposable = false } }
 end
@@ -661,7 +709,7 @@ end
 function StickyItem:onHoldSelect() return self:onTapSelect() end
 
 function StickyItem:onCloseWidget()
-    if self.img then self.img:free(); self.img = nil end
+    self.img = nil -- (kept in Notes.images: let go by Notes.dropImages)
 end
 
 --- The pictures of note `m` (attachments): the ones in its text first, in
@@ -691,7 +739,8 @@ end
 
 --- A picture for note `m` (its first image), shrunk: an ImageWidget or nil.
 --- Not on the Kindle yet: fetched in the background, then the view redraws.
-function Notes.picture(plugin, m, max_w, max_h, small)
+--- `fetch_only`: only that (a kept note image without its picture).
+function Notes.picture(plugin, m, max_w, max_h, small, fetch_only)
     local att = Notes.pictureAttachments(m)[1]
     if not att then return nil end
     local path = Memos.filePath(att)
@@ -701,6 +750,7 @@ function Notes.picture(plugin, m, max_w, max_h, small)
         end
         return nil
     end
+    if fetch_only then return nil end
     local bb = Sticky.picture(path, max_w, max_h)
     if not bb then return nil end
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
@@ -974,6 +1024,11 @@ local function drawFull(m, select_number, cols, max_items)
 end
 
 local function drawBoard(m, select_number)
+    -- (opening on a touch Kindle: Menu's own first draw is skipped, the
+    -- buttons under the title draw it once they're in: Notes.show)
+    if m._gz_hold_draw then return end
+    m._gz_drawn = true
+    Notes.image_gen = Notes.image_gen + 1
     local old_dimen = m.dimen and m.dimen:copy()
     m.layout = {}
     m.item_group:clear()
@@ -993,8 +1048,9 @@ local function drawBoard(m, select_number)
         select_number = drawCompact(m, select_number, cols, max_items)
     end
     m._gz_goto = nil
-    m:updatePageInfo(select_number)
+    m:updatePageInfo(select_number) -- (5-way: the focused note's image, kept too)
     m:mergeTitleBarIntoLayout()
+    Notes.dropImages()
     UIManager:setDirty(m.show_parent, function()
         return "ui", old_dimen and old_dimen:combine(m.dimen) or m.dimen
     end)
@@ -1073,6 +1129,13 @@ function Notes.actions(plugin)
     }
 end
 
+--- Keep the board's note images while the tab is closed (not on a Kindle
+--- with 128 MB: the 2 and DX; the same line as laying books out ahead).
+function Notes.keepImages()
+    local ok, possible = pcall(function() return require("gzreader_layout").possible() end)
+    return ok and possible == true
+end
+
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
     Notes.closeOtherTabs(Notes.TAB_ID)
@@ -1096,6 +1159,9 @@ function Notes.show(plugin)
         name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil,
         _gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil,
         plugin = plugin,
+        -- touch Kindles: the board is drawn once its buttons are in (they
+        -- make the title taller: a first draw before them was thrown away)
+        _gz_hold_draw = Touch.on() or nil,
     }
     menu._gz_navbar_tab_id = Notes.TAB_ID -- (GZreader's own tabs close each other by it)
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
@@ -1121,11 +1187,14 @@ function Notes.show(plugin)
     menu.onCloseWidget = function(m, ...)
         m._gz_closed = true
         if Notes.board == m then Notes.board = nil end
+        if not Notes.keepImages() then Notes.dropImages(true) end
         if orig_close then return orig_close(m, ...) end
     end
     Notes.board = menu
     pcall(Notes.decorate, menu)
+    menu._gz_hold_draw = nil
     Touch.actionRow(menu, Notes.actions(plugin))
+    if not menu._gz_drawn then menu:updateItems(1) end
     UIManager:show(menu)
     Notes.syncOnOpen(plugin)
     return menu
