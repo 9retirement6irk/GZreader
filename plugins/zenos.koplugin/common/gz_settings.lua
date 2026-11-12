@@ -46,6 +46,9 @@ M.KOREADER_HIDDEN = {
     network_restore = true,
     network_before_wifi_action = true,
     network_after_wifi_action = true,
+    -- "Disable Wi-Fi connection when inactive": turned Wi-Fi off after 5 quiet
+    -- minutes even on On (gzreader_net.lua clears a saved tick)
+    network_powersave = true,
     -- the same menu as Settings → Connections → Grimmory
     gzreader = true,
     -- the whole File browser menu: Sort by, Book status, Reverse, mixed are
@@ -69,8 +72,9 @@ end
 --- action), so only the section drops them (native_menu.settingsItems).
 M.KOREADER_DUPLICATES = {
     -- Settings → General: Language, Time and date, Sleep (and its Automatic
-    -- suspend), Wi-Fi
+    -- suspend), Wi-Fi (and, in Wi-Fi, HTTP proxy and Network info)
     language = true, time = true, screensaver = true, autosuspend = true, network_wifi = true,
+    network_proxy = true, network_info = true,
     -- the History, Favorites and Collections tabs
     history = true, favorites = true, collections = true,
     -- Settings → Reader → End of book
@@ -202,7 +206,7 @@ end
 --- Auto; gzreader_net.lua Net.menuItem) with ZenOS's network list after
 --- them, in place of ZenOS's Wi-Fi switch. `zen_item`: ZenOS's Wi-Fi row (its
 --- callback opens the network list), or nil.
-function M.wifiItem(gz_item, zen_item)
+function M.wifiItem(gz_item, zen_item, net)
     if type(gz_item) ~= "table" then return zen_item end
     local items = {}
     for _i, item in ipairs(gz_item.sub_item_table or {}) do items[#items + 1] = item end
@@ -214,8 +218,29 @@ function M.wifiItem(gz_item, zen_item)
             callback = zen_item.callback,
         }
     end
+    -- KOReader's HTTP proxy (tap: on/off; hold: the address) and Network info,
+    -- here instead of Settings → KOReader → Network (KOREADER_DUPLICATES)
+    for _i, item in ipairs(M.networkItems(net)) do items[#items + 1] = item end
     gz_item.sub_item_table = items
     return gz_item
+end
+
+--- KOReader's HTTP proxy and Network info rows (NetworkMgr's own), or none.
+function M.networkItems(net)
+    local out = {}
+    if not net then
+        local ok, mgr = pcall(require, "ui/network/manager")
+        if not ok then return out end
+        net = mgr
+    end
+    for _i, name in ipairs({ "getProxyMenuTable", "getInfoMenuTable" }) do
+        local ok, item = pcall(function() return net[name](net) end)
+        if ok and type(item) == "table" then
+            item.keep_menu_open = true
+            out[#out + 1] = item
+        end
+    end
+    return out
 end
 
 --- GZreader's audio settings, by text: they come with the Reader section's
