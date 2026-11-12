@@ -638,8 +638,17 @@ local Shelf = WidgetContainer:extend{ w = 0, h = 0 }
 
 function Shelf:getSize() return Geom:new{ w = self.w, h = self.h } end
 
+--- GZreader: a hold on this shelf's ornament opens the ornament settings
+--- (gzreader_shelftheme.lua); the books' own holds come first.
+function Shelf:onGesture(ev)
+    if not (ev and ev.ges == "hold" and ev.pos) then return false end
+    local Theme = package.loaded["gzreader_shelftheme"]
+    return Theme ~= nil and Theme.hold(self, ev.pos) or false
+end
+
 function Shelf:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
+    if package.loaded["gzreader_shelftheme"] then package.loaded["gzreader_shelftheme"].forget(self) end
     local area_h = self.area_h
     local board_y = y + area_h
     M.paintBoard(bb, x, board_y, self.w)
@@ -724,7 +733,7 @@ function Shelf:paintTo(bb, x, y)
     if orn then
         pcall(function()
             local Theme = require("gzreader_shelftheme")
-            Theme.paintPlanned(bb, orn, orn_x and (x + orn_x) or (x + self.w - S(4) - S(Theme.MARGIN) - orn.w), board_y)
+            Theme.paintPlanned(bb, orn, orn_x and (x + orn_x) or (x + self.w - S(4) - S(Theme.MARGIN) - orn.w), board_y, self)
         end)
     end
 end

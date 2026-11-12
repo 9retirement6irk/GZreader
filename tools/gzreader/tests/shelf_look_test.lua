@@ -328,6 +328,27 @@ do
             and wt[22] == "Seasonal ones in their season again" and which[1].checked_func() and which[17].checked_func() and not which[18].checked_func() and not which[19].checked_func(), "Which ornaments: each with a tick, a seasonal one with its season (" .. tostring(wt[19]) .. ")")
         which[19].callback()
         check(which[19].checked_func() and which[19].text_func() == "Christmas tree", "ticking the Christmas tree in June: it stands all year")
+        -- a hold on an ornament: its settings, on a page of their own
+        local shelf_w, other = {}, {}
+        local wall2 = BB.new(300, 200, BB.TYPE_BB8)
+        wall2:fill(BB.COLOR_WHITE)
+        -- (a picture of its own: pictures aren't decoded here)
+        local spot = Theme.paintPlanned(wall2, { img = BB.new(40, 60, BB.TYPE_BB8), w = 40, h = 60 }, 200, 180, shelf_w)
+        check(spot ~= nil and Theme.at(shelf_w, { x = spot.x + 2, y = spot.y + 2 }) == spot
+            and Theme.at(shelf_w, { x = spot.x - 5, y = spot.y + 2 }) == nil and Theme.at(other, { x = spot.x + 2, y = spot.y + 2 }) == nil,
+            "a drawn ornament's place is kept by the shelf that drew it")
+        local opened
+        local kept_hm = package.loaded["gzreader_homemenu"]
+        package.loaded["gzreader_homemenu"] = { settings = function(o) opened = o; return o end }
+        local off_it = Theme.hold(shelf_w, { x = spot.x - 5, y = spot.y + 2 })
+        check(off_it == false and opened == nil, "a hold beside the ornament: nothing (the shelf's own hold, if any)")
+        local on_it = Theme.hold(shelf_w, { x = spot.x + math.floor(spot.w / 2), y = spot.y + math.floor(spot.h / 2) })
+        check(on_it == true and opened and opened.title == "Bookshelf theme" and opened.root_items
+            and opened.root_items[1].text == "Plain" and opened.root_items[#opened.root_items].text == "Your own ornaments…",
+            "a hold on the ornament: the Bookshelf theme settings on a page of their own")
+        package.loaded["gzreader_homemenu"] = kept_hm
+        Theme.forget(shelf_w)
+        check(Theme.at(shelf_w, { x = spot.x + 2, y = spot.y + 2 }) == nil, "drawn again: the old place is forgotten")
         which[22].callback()
         check(Theme.get() == "oak" and item.sub_item_table[2].checked_func() and not item.sub_item_table[1].checked_func()
             and Theme.ornaments() == "always" and item.sub_item_table[6].checked_func(), "choosing one sets it, and ticks it")
@@ -342,6 +363,17 @@ do
         and slurp("plugins/gzreader.koplugin/gzreader_shelfview.lua"):find('rowsFor("downloads", occupied)', 1, true)
         and slurp("plugins/gzreader.koplugin/gzreader_bookshop.lua"):find('Theme.placeOn("catalog")', 1, true),
         "Home's shelf, Downloads' shelves and the Catalog's ledges ask where their ornaments go")
+    for _i, w in ipairs({ { "plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua", "Shelf" },
+            { "plugins/gzreader.koplugin/gzreader_shelfview.lua", "Row" }, { "plugins/gzreader.koplugin/gzreader_bookshop.lua", "Page" } }) do
+        local src = slurp(w[1])
+        local gesture = src:match("function " .. w[2] .. ":onGesture%(ev%)(.-)\nend\n") or ""
+        local paint = src:match("function " .. w[2] .. ":paintTo%(bb, x, y%)\n(.-)\n") or ""
+        local paint2 = src:match("function " .. w[2] .. ":paintTo%(bb, x, y%)\n.-\n(.-)\n") or ""
+        check(gesture:find('ev.ges == "hold"', 1, true) and gesture:find("Theme.hold(self, ev.pos)", 1, true)
+            and (paint .. paint2):find('.forget(self)', 1, true)
+            and (src:find("board_y, self)", 1, true) or src:find("led.box_h, i, self)", 1, true)),
+            w[1]:match("[^/]+$") .. ": a hold on its ornament opens the settings; it says where it drew one, and forgets it when drawn again")
+    end
     check(slurp("plugins/zenos.koplugin/modules/settings/sections/library_settings.lua"):find('ShelfTheme.settingsItem()', 1, true),
         "Settings → Downloads → Appearance has Bookshelf theme")
     local png = io.open(REPO .. "/plugins/gzreader.koplugin/icons/shelf/plank-oak.png", "rb")
