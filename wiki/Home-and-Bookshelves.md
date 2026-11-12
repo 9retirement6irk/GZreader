@@ -41,13 +41,7 @@ the book once you open one.
   cast a soft shadow on the wall behind them, and the board shows its top.
 
 - **Theme and ornaments** (Settings → Downloads → Appearance → **Bookshelf
-  theme**, or hold an ornament), for Home's shelf, Downloads and the
-  Catalog's ledges. Each choice is a tile with a small picture of what it
-  does, and a preview of your shelf (your recent books' spines) at the top
-  shows the result as you choose; the shelves themselves are drawn again
-  when you close the screen. Chips under the preview turn the ornaments on
-  or off on **Home**, in **Downloads** and in the **Catalog**. On a Kindle
-  with keys the 5-way moves between the tiles and Press chooses.
+  theme**), for Home's shelf, Downloads and the Catalog's ledges:
   - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
     **Walnut** (darker) or **Plain** (flat greys);
   - ornaments, standing on a shelf's free end like a plant on a half-empty
@@ -86,6 +80,12 @@ the book once you open one.
     keep its background transparent. Bold, dark shapes read best on e-ink.
     A shaded picture should be a PNG: the Kindle draws an SVG's gradients
     far too dark (flat colours in an SVG are fine).
+  - **the screen**: each choice is a tile with a small picture of what it
+    does, and a preview of your shelf (your recent books' spines) at the
+    top shows the result as you choose; the shelves themselves are drawn
+    again when you close it. Chips under the preview turn the ornaments on
+    or off on **Home**, in **Downloads** and in the **Catalog**. On a Kindle
+    with keys the 5-way moves between the tiles and Press chooses;
   - **Hold an ornament** (on Home, in Downloads or in the Catalog, on a
     touch Kindle) to open this screen straight away, as holding a Home
     widget opens its settings. Back (or the ×) returns to the shelves.

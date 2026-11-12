@@ -616,6 +616,17 @@ function Theme.at(owner, pos)
     return nil
 end
 
+--- Your own ornaments: where to put them (the folder is made).
+function Theme.showOwnFolder()
+    local dir = Theme.userDir(true)
+    Theme.found = nil
+    pcall(function()
+        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{
+            text = require("ffi/util").template(_("Put PNG or SVG pictures in this folder (with the Kindle connected to a computer) and they stand on the shelves with the others:\n\n%1\n\nA picture's bottom edge stands on the plank; leave its background transparent."), tostring(dir)),
+        })
+    end)
+end
+
 --- A hold on a shelf: on one of its ornaments, the ornament settings (as a
 --- hold on a Home widget opens its settings). True if it was on one.
 function Theme.hold(owner, pos)
@@ -633,21 +644,10 @@ end
 
 ---------------------------------------------------------------- Settings
 
---- Your own ornaments: where to put them (the folder is made).
-function Theme.showOwnFolder()
-    local dir = Theme.userDir(true)
-    Theme.found = nil
-    pcall(function()
-        require("ui/uimanager"):show(require("ui/widget/infomessage"):new{
-            text = require("ffi/util").template(_("Put PNG or SVG pictures in this folder (with the Kindle connected to a computer) and they stand on the shelves with the others:\n\n%1\n\nA picture's bottom edge stands on the plank; leave its background transparent."), tostring(dir)),
-        })
-    end)
-end
-
---- Settings → Downloads → Appearance → Bookshelf theme: the theme screen
---- (gzreader_shelfpreview.lua: each choice a tile with a picture of it, a
---- preview of the shelf at the top).
+--- Settings → Downloads → Appearance → Bookshelf theme.
 function Theme.settingsItem()
+    -- (the theme screen, gzreader_shelfpreview.lua: each choice a tile with a
+    -- picture of it, a preview of the shelf at the top)
     return {
         text = _("Bookshelf theme"),
         help_text = _("The plank the books stand on, and the ornaments on the shelves' free ends: Home, Downloads and the Catalog in the Bookshelf view. Each choice is a small picture of it, with a preview of your shelf."),
