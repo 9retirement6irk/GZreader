@@ -410,8 +410,9 @@ function Usb.outbox(plugin)
     local memos = store.memos or {}
     local notes_queue = {}
     for _i, q in ipairs(memos.queue or {}) do
+        -- (space: Memos v0.31's, "spaces/…", or "" taking a note out of its space)
         notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
-            name = q.name, pinned = q.pinned, at = q.at }
+            name = q.name, pinned = q.pinned, at = q.at, space = q.space }
     end
     -- the notes' pictures already here (not brought again)
     local note_files = cached("note_files", function()
@@ -698,6 +699,7 @@ function Usb.takeNotes(plugin, base, n)
     memos.server = memos.server or n.server
     memos.user = n.user or memos.user
     if type(data.tags) == "table" then memos.tag_counts = data.tags end
+    if type(data.spaces) == "table" then memos.spaces = data.spaces end -- (Memos v0.31: your spaces)
     local done = set(n.done)
     local left = {}
     for _i, q in ipairs(memos.queue or {}) do if not done[tostring(q.id)] then left[#left + 1] = q end end

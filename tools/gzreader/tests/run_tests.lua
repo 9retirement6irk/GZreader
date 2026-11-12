@@ -6561,6 +6561,197 @@ print("Notes (Memos v0.31)")
         NEq.show = saved_show
     end
 
+    ;(function() -- Memos v0.31's spaces: Filter → Space…, a note's space when writing it
+        local MOCKM = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py"
+        local function restart(flags)
+            os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+            socket.sleep(0.3)
+            os.execute("python3 -I " .. MOCKM .. " " .. MPORT .. " " .. flags .. " > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+            runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        end
+        local function inMemos(content)
+            for _i, m in ipairs(mstate().memos) do if m.content == content then return m end end
+        end
+        local function sync()
+            local res, rerr
+            Notes.refresh(plugin, function(ok2, err2) res, rerr = ok2, err2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res, rerr
+        end
+        restart("--sample --spaces")
+        plugin.store.memos.prefix = "/api/v1"
+        plugin.store.memos.queue = {}
+        plugin.store.memos.spaces = nil
+        local spl = Memos:new(plugin.store.memos):spaces()
+        check(spl and #spl == 2 and spl[1].name == "spaces/family" and spl[1].title == "Family" and spl[2].title == "Book club",
+            "spaces: the ones you're a member of, with their titles (Memos v0.31)")
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        check(sync() and Notes.spaces(plugin) and #Notes.spaces(plugin) == 2 and #Notes.notes == 9, "a sync keeps your spaces")
+        local fam
+        for _i, m in ipairs(Notes.notes) do if m.space == "spaces/family" then fam = m end end
+        check(fam and fam.visibility == "SPACE" and Notes.spaceTitle(plugin, fam.space) == "Family"
+            and Notes.spaceTitle(plugin, "spaces/new-one") == "new-one" and Notes.spaceTitle(plugin, nil) == nil,
+            "a note's space is kept (its title from your spaces; one not synced yet: its id)")
+        check(Notes.cel({ kind = "space", value = "spaces/family" }) == 'space == "spaces/family"'
+            and Notes.cel({ kind = "space", value = "" }) == "space == null", "filter: a space, or no space (Memos CEL)")
+        Notes.setFilter(plugin, { kind = "space", value = "spaces/family", label = "Family" })
+        check(#Notes.notes == 1 and Notes.notes[1].space == "spaces/family" and Notes.title() == "Notes \u{00B7} Family",
+            "space filter: Memos sends that space's notes; the title says which")
+        Notes.setFilter(plugin, { kind = "space", value = "" })
+        check(#Notes.notes == 7 and Notes.filterLabel() == "No space", "…No space: the notes in none")
+        local Net = require("gzreader_net")
+        local was_usb = Net.usb
+        Net.usb = true
+        check(Notes.keep({ space = "spaces/family" }, { kind = "space", value = "spaces/family" })
+            and not Notes.keep({}, { kind = "space", value = "spaces/family" }) and Notes.keep({}, { kind = "space", value = "" })
+            and not Notes.keep({ space = "spaces/family" }, { kind = "space", value = "" }),
+            "space filter on the Kindle (syncing through a computer: no Memos to ask)")
+        Net.usb = was_usb
+
+        -- Filter → Space…
+        Notes.setFilter(plugin, { kind = "all" })
+        local entries = Notes.spaceEntries(plugin)
+        check(#entries == 3 and entries[1].value == "" and entries[1].mandatory == "7 notes" and entries[2].text == "Family"
+            and entries[2].mandatory == "1 note" and entries[3].value == "spaces/book-club",
+            "Filter → Space…: No space, then your spaces, with how many notes")
+        local BD = require("ui/widget/buttondialog")
+        local rows
+        rawset(BD, "new", function(_s, o) rows = o.buttons; return o end)
+        local function offered()
+            for _i, row in ipairs(rows or {}) do if row[1].text:match("^Space") then return true end end
+            return false
+        end
+        Notes.showFilter(plugin)
+        check(offered() and #rows == 8, "Filter offers Space… when your Memos has spaces")
+        local saved_spaces, saved_notes = plugin.store.memos.spaces, Notes.notes
+        plugin.store.memos.spaces, Notes.notes = {}, { { content = "x" } }
+        Notes.showFilter(plugin)
+        check(not offered() and #rows == 7, "…and not without (an older Memos): the dialog as before")
+        plugin.store.memos.spaces, Notes.notes = saved_spaces, saved_notes
+
+        -- writing: a new note starts in the space the board shows
+        local saved_show, eopts = NE.show, nil
+        NE.show = function(o) eopts = o; return o end
+        Notes.filter = { kind = "space", value = "spaces/family", label = "Family" }
+        Notes.edit(plugin)
+        check(eopts.space == "spaces/family" and #eopts.spaces == 2 and eopts.space_title("spaces/book-club") == "Book club",
+            "a new note starts in the space the board shows; the editor gets your spaces")
+        local plain
+        for _i, m in ipairs(Notes.notes) do if not m.space and m.name then plain = m end end
+        Notes.edit(plugin, plain)
+        check(eopts.space == nil and eopts.memo == plain, "editing a note: its own space (none), not the board's")
+        Notes.filter = { kind = "all" }
+        Notes.edit(plugin)
+        eopts.on_save("Bring the tent #travel", "SPACE", true, "spaces/family", false)
+        local qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.op == "create" and qd.space == "spaces/family" and Notes.notes[1].space == "spaces/family", "a new note in a space: queued with it")
+        sync()
+        local tent = inMemos("Bring the tent #travel")
+        check(tent and tent.space == "spaces/family" and tent.visibility == "SPACE" and #plugin.store.memos.queue == 0,
+            "…created in Memos in Family, for its members")
+        -- moving: the visibility goes too (Memos refuses a move without it)
+        Notes.saveContent(plugin, plain, nil, "spaces/book-club")
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.space == "spaces/book-club" and qd.visibility == (plain.visibility or "PRIVATE"), "moved into a space: its visibility is sent with it")
+        sync()
+        check(inMemos(plain.content).space == "spaces/book-club", "…moved in Memos")
+        local tent_note
+        for _i, m in ipairs(Notes.notes) do if m.content == "Bring the tent #travel" then tent_note = m end end
+        Notes.saveContent(plugin, tent_note, "PRIVATE", "")
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.space == "" and qd.visibility == "PRIVATE" and tent_note.space == nil, "taken out of its space: queued as \"\" (none), private")
+        sync()
+        tent = inMemos("Bring the tent #travel")
+        check(tent and tent.space == nil and tent.visibility == "PRIVATE", "…in no space in Memos")
+        local bd1, mk1 = Memos.updateBody("memos/1", "x", nil, "")
+        local bd2, mk2 = Memos.updateBody("memos/1", "x", "SPACE", "spaces/a")
+        local bd3, mk3 = Memos.updateBody("memos/1", "x")
+        check(mk1 == "content,space" and bd1.space == nil and mk2 == "content,visibility,space" and bd2.space == "spaces/a"
+            and mk3 == "content" and bd3.space == nil, "update: the space in the mask only when it changes (none: left out)")
+        -- an unsent move followed by an edit keeps the move
+        Notes.saveContent(plugin, plain, nil, "spaces/family")
+        plain.content = plain.content .. " (edited)"
+        Notes.saveContent(plugin, plain)
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(#plugin.store.memos.queue == 1 and qd.space == "spaces/family" and qd.content:match("%(edited%)$"),
+            "an edit after an unsent move keeps the move")
+        sync()
+        NE.show = saved_show
+
+        -- the editor
+        check(#NE.visibilities(nil) == 3 and NE.visibilities("spaces/a")[2] == "SPACE" and #NE.visibilities(nil, "SPACE") == 4,
+            "who can see it: Space members only in a space (or a note that has it already)")
+        check(NE.nextVisibility("PRIVATE", "spaces/a") == "SPACE" and NE.nextVisibility("PRIVATE", nil) == "PROTECTED"
+            and NE.nextVisibility("PUBLIC", "spaces/a") == "PRIVATE", "Alt+V goes round the choices for the note's space")
+        check(NE.visibilityAfterMove("SPACE", nil) == "PRIVATE" and NE.visibilityAfterMove("SPACE", "spaces/b") == "SPACE"
+            and NE.visibilityAfterMove("PUBLIC", nil) == "PUBLIC", "out of its space, Space members becomes Private (as in Memos)")
+        local E = NE.Editor
+        local saved_args
+        local fake = setmetatable({ space = "spaces/family", original_space = "spaces/family", visibility = "SPACE",
+            original_vis = "SPACE", spaces = spl, has_spaces = true, original = "t",
+            space_title = function(nm) return Notes.spaceTitle(plugin, nm) end, redraw = function() end,
+            text = function() return "t" end, on_save = function(...) saved_args = { ... } end },
+            { __index = function(_t, k) return rawget(E, k) end }) -- (the editor's own methods: its widget base is a stand-in here)
+        check(fake:spaceLabel() == "Family" and not fake:changed(), "editor: the space chip says Family")
+        rows = nil
+        check(fake:onShortcut("A") and rows and #rows == 3 and rows[1][1].text == "No space" and rows[2][1].text == "Family  \u{2713}"
+            and rows[3][1].text == "Book club", "Alt+A (or a tap): choose the space; the note's is ticked")
+        check(not fake:onShortcut("P"), "…not Alt+P (Alt + the top row types 1–0 on a Kindle Keyboard)")
+        rows[1][1].callback()
+        check(fake.space == nil and fake.visibility == "PRIVATE" and fake:changed() and fake:spaceLabel() == "No space",
+            "No space: Space members becomes Private; a change to save")
+        fake:onShortcut("V")
+        check(fake.visibility == "PROTECTED", "without a space, Alt+V skips Space members")
+        E.save(fake)
+        check(saved_args and saved_args[1] == "t" and saved_args[2] == "PROTECTED" and saved_args[3] == true and saved_args[4] == nil
+            and saved_args[5] == true, "Save: the text, who can see it and the space, and which changed")
+        local kb = { shut = 0, open = 0 }
+        function kb:onCloseKeyboard() self.shut = self.shut + 1 end
+        function kb:onShowKeyboard() self.open = self.open + 1 end
+        fake.touch, fake.input = true, kb
+        fake:pickSpace()
+        local shut_while_open = kb.shut == 1 and kb.open == 0
+        rows[3][1].callback()
+        check(shut_while_open and kb.open == 1 and fake.space == "spaces/book-club",
+            "touch: the keyboard steps aside while the space list is open (it hid its last rows), and comes back")
+        fake.touch, fake.input = nil, nil
+        fake.dpad = true
+        check(fake:lastTool() == #NE.TOOLS + 3, "Kindle 4: the space chip is on the toolbar's row too")
+        fake.has_spaces = false
+        check(fake:lastTool() == #NE.TOOLS + 2 and not fake:onShortcut("A"), "no spaces: no chip, no Alt+A")
+        rawset(BD, "new", nil)
+
+        -- the note view says which space
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find('T(_("in %1"), space)', 1, true) ~= nil, "the note view's date line says which space it's in")
+
+        -- through a computer: the queue carries the space; the page's spaces come in
+        local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
+        check(usrc:find("name = q.name, pinned = q.pinned, at = q.at, space = q.space }", 1, true) ~= nil,
+            "outbox: a queued note's space, for the page")
+        local Usb = require("gzreader_usbsync")
+        local ub = WORK .. "/usb-notes"
+        os.execute("mkdir -p " .. ub)
+        local fh = io.open(ub .. "/notes.json", "wb")
+        fh:write(json.encode({ at = 1, notes = { { name = "memos/x", content = "hi", space = "spaces/family", tags = {}, attachments = {} } },
+            spaces = { { name = "spaces/family", title = "Family" } } }))
+        fh:close()
+        local nfp = { store = { memos = { queue = {} } }, save = function() end }
+        Usb.takeNotes(nfp, ub, { file = "notes.json", done = {} })
+        local kept = Memos.loadCache()
+        check(nfp.store.memos.spaces and nfp.store.memos.spaces[1].title == "Family" and kept and kept.notes[1].space == "spaces/family",
+            "through a computer: your spaces and each note's space come in")
+
+        -- an older Memos (no spaces): no Space…, and no space field sent
+        restart("--sample")
+        plugin.store.memos.spaces = nil
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        check(Memos:new(plugin.store.memos):spaces() == nil and sync() and Notes.spaces(plugin) == nil and not Notes.spacesShown(plugin),
+            "older Memos: no spaces, Filter as before")
+        local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
+        check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+    end)()
+
     -- disconnect
     Notes.disconnect(plugin)
     check(next(plugin.store.memos) == nil and Memos.loadCache() == nil, "disconnect: address, token and kept notes removed")

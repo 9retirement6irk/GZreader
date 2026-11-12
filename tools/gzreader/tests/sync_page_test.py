@@ -70,7 +70,7 @@ def wait_port(port):
 TEST_M4A = os.path.join(REPO, "plugins", "gzreader.koplugin", "audio", "test.m4a")
 os.environ.setdefault("GZ_TEST_M4A", TEST_M4A)
 spawn(os.path.join(HERE, "mock_grimmory.py"), str(GP))
-spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample")
+spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample", "--spaces")
 spawn(os.path.join(HERE, "mock_plex.py"), str(PP))
 spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_immich.py"), str(IP), "--cors")
 spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_immich.py"), str(IP + 1))
@@ -143,7 +143,11 @@ OUTBOX = {
     ],
     # (empty lists as GZreader 1.24 on a Kindle wrote them: {}, KOReader's JSON)
     "have": {"books": {"1": {"file_id": 1001, "format": "EPUB"}}, "audiobooks": {}, "music": ["album-999"]},
-    "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
+    "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"},
+                        # (Memos v0.31's spaces: a new note in one, a note moved into one)
+                        {"id": "q2", "op": "create", "content": "For the family #kindle", "visibility": "SPACE", "space": "spaces/family"},
+                        {"id": "q3", "op": "update", "name": "memos/m003", "content": "A quote for the book club #quotes",
+                         "visibility": "PRIVATE", "space": "spaces/book-club"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
     # (GZreader up to 1.28.1 also wrote usage statistics' server here; the page ignores it)
@@ -757,8 +761,17 @@ check(tc == {"/library/metadata/301": "192", "/library/metadata/304": "192"} and
       "music quality chosen on the page: FLAC and the 320 kbps MP3 converted at 192 kbps; the 200 kbps MP3 as it is; the Kindle told %r" % (tc,))
 notes = json.loads(files.get(G + "in/notes.json", b"{}"))
 memos = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % MP).read())
-check(inbox.get("notes", {}).get("done") == ["q1"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
+check(inbox.get("notes", {}).get("done") == ["q1", "q2", "q3"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
       "notes: the one written on the Kindle is in Memos")
+by_content = {m.get("content"): m for m in memos.get("memos", [])}
+check("space" not in by_content.get("Written on the Kindle #kindle", {"space": 1})
+      and by_content.get("For the family #kindle", {}).get("space") == "spaces/family"
+      and by_content.get("For the family #kindle", {}).get("visibility") == "SPACE"
+      and by_content.get("A quote for the book club #quotes", {}).get("space") == "spaces/book-club",
+      "notes: a note's space from the Kindle (a new note in Family, one moved to Book club; none sent for a note in no space)")
+check([sp.get("title") for sp in notes.get("spaces") or []] == ["Family", "Book club"]
+      and any(n.get("space") == "spaces/family" for n in notes.get("notes", [])),
+      "notes: your spaces and each note's space, for the Kindle")
 check(len(notes.get("notes", [])) >= 3 and any(f.startswith(G + "in/notes-files/") for f in files),
       "notes: the notes and their pictures, for the Kindle")
 cals = inbox.get("calendars", [])
