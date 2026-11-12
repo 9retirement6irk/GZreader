@@ -7204,6 +7204,115 @@ print("Notes (Memos v0.31)")
         Notes.board = nil
     end)()
 
+    ;(function() -- a new note with a drawing (touch Kindles): queued, sent as the note, then the drawing on it
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local Drawing = require("gzreader_drawing")
+        local function sync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        local function readAll(p) local fh = io.open(p, "rb"); if not fh then return nil end; local d = fh:read("*a"); fh:close(); return d end
+        local fixture = readAll(PLUGIN .. "/../../tools/gzreader/tests/media/memos-drawing.canvas.png")
+        local dir = WORK .. "/gzreader-drawings"
+        os.execute("mkdir -p '" .. dir .. "'")
+        local function drawingFile(name)
+            local p = dir .. "/" .. name
+            local fh = io.open(p, "wb"); fh:write(fixture); fh:close()
+            return { path = p, filename = name }
+        end
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+
+        -- who can draw
+        local NetD = require("gzreader_net")
+        local was_usb = NetD.usb
+        NetD.usb = true
+        check(Notes.canDraw(plugin) == false, "draw: not when Memos goes through the computer (the sync page doesn't send drawings)")
+        NetD.usb = was_usb
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find("can_draw = memo == nil and Notes.canDraw(plugin)", 1, true) ~= nil, "draw: offered for new notes only")
+
+        -- queued: shown on the board with its drawing before it's sent
+        local d1 = drawingFile("drawing-20261112-180000.canvas.png")
+        local q = Notes.enqueue(plugin, { op = "create", content = "", visibility = "PRIVATE", drawing = d1 })
+        Notes.showDrawingNow(q)
+        local att = Notes.queuedAttachments(q)[1]
+        check(att and att.filename == d1.filename and att.type == "image/png" and readAll(Memos.filePath(att)) == fixture,
+            "queued: the drawing where the board finds a note's pictures")
+        Notes.loadCache(plugin)
+        local shown
+        for _i, m in ipairs(Notes.notes) do if m.local_id == q.id then shown = m end end
+        check(shown and shown.pending and shown.attachments[1].filename == d1.filename and Notes.pictureAttachments(shown)[1] ~= nil,
+            "queued: on the board with its drawing as its picture")
+
+        -- the sync page doesn't get it
+        local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
+        check(usrc:find("if not q.drawing then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
+
+        -- sent: the note (no text), then the drawing on it, byte for byte
+        check(sync(), "sent")
+        local st = mstate()
+        local made
+        for _i, m in ipairs(st.memos) do
+            for _j, a in ipairs(m.attachments or {}) do if a.filename == d1.filename then made = m end end
+        end
+        check(made and made.content == "" and made.visibility == "PRIVATE", "Memos has a note with no text and the drawing")
+        local a = made and made.attachments[1]
+        check(a and a.type == "image/png" and a.memo == made.name, "…an image/png attachment, linked to the note")
+        local posted = 0
+        for _i, l in ipairs(st.log) do if l == "POST /api/v1/attachments" then posted = posted + 1 end end
+        check(posted == 1, "one upload (POST /attachments)")
+        local got_path = WORK .. "/drawing-back.png"
+        os.remove(got_path)
+        local served = a and Notes.client(plugin):download({ name = a.name, filename = a.filename }, got_path) and readAll(got_path)
+        check(served == fixture, "the PNG arrived byte for byte (the drawing inside it too)")
+        local scene = served and Drawing.readScene(served)
+        check(scene and #scene.elements == 8, "…and memos can open it as a drawing")
+        check(#plugin.store.memos.queue == 0 and not io.open(d1.path, "rb"), "queue empty; the waiting copy removed")
+        local on_board
+        for _i, m in ipairs(Notes.notes) do if m.name == made.name then on_board = m end end
+        check(on_board and on_board.attachments[1].filename == d1.filename, "the board now has Memos' note with the drawing")
+
+        -- a note made but the drawing not sent: next time only the drawing goes
+        local real_upload = Memos.uploadAttachment
+        Memos.uploadAttachment = function() return nil, "unreachable" end
+        local d2 = drawingFile("drawing-20261112-180100.canvas.png")
+        Notes.enqueue(plugin, { op = "create", content = "With a sketch #ideas", visibility = "PRIVATE", drawing = d2 })
+        sync()
+        Memos.uploadAttachment = real_upload
+        local left = plugin.store.memos.queue[1]
+        check(#plugin.store.memos.queue == 1 and left.op == "attach" and tostring(left.name):match("^memos/")
+            and left.drawing.path == d2.path, "upload failed after the note was made: the queue now sends only the drawing, onto that note")
+        local count_before = #mstate().memos
+        check(sync() and #plugin.store.memos.queue == 0, "sent next time")
+        st = mstate()
+        local note2
+        for _i, m in ipairs(st.memos) do if m.content == "With a sketch #ideas" then note2 = m end end
+        local twice = 0
+        for _i, m in ipairs(st.memos) do if m.content == "With a sketch #ideas" then twice = twice + 1 end end
+        check(note2 and twice == 1 and #st.memos == count_before and note2.attachments[1].filename == d2.filename,
+            "the drawing went onto the same note (no second note)")
+
+        -- the drawing's file gone (removed by hand): the note goes without it
+        local q3 = Notes.enqueue(plugin, { op = "create", content = "Lost sketch", visibility = "PRIVATE",
+            drawing = { path = dir .. "/gone.canvas.png", filename = "gone.canvas.png" } })
+        check(sync() and #plugin.store.memos.queue == 0, "a drawing whose file is gone: the note is sent anyway")
+        local lost
+        for _i, m in ipairs(mstate().memos) do if m.content == "Lost sketch" then lost = m end end
+        check(lost and #lost.attachments == 0 and q3, "…without an attachment")
+
+        -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
+        local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(esrc:find('if text == "" and not self.drawing then', 1, true) and esrc:find("return self.touch and self.memo == nil and self.can_draw == true", 1, true),
+            "editor: Draw on touch Kindles for a new note; a note with only a drawing can be saved")
+        check(esrc:find("self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil, "editor: Discard throws the drawing away")
+    end)()
+
     -- disconnect
     Notes.disconnect(plugin)
     check(next(plugin.store.memos) == nil and Memos.loadCache() == nil, "disconnect: address, token and kept notes removed")

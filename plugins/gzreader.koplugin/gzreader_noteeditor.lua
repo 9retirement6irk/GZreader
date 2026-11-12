@@ -15,6 +15,8 @@ Markdown; a toolbar at the bottom of the page adds it for you:
   so those letters aren't shortcuts here.)
 - # Tag: your tags, or a new one (the keyboard has no # key; Sym+G also types #).
 - New notes are private unless you choose otherwise.
+- Draw (touch Kindles, a new note): a drawing to go with the note
+  (`gzreader_drawscreen.lua`), sent to Memos as a drawing you can edit there.
 - Back: asks whether to save when something changed.
 ]]
 
@@ -213,6 +215,7 @@ function Editor:init()
     if self.memo then self.space = self.memo.space end -- (a new note: the space it was given, if any)
     self.original_space = self.space
     self.has_spaces = (self.spaces and #self.spaces > 0) or self.space ~= nil
+    self.drawing = nil -- { path, filename, sketch } once something is drawn
     self.focus_tool = nil
     self.key_events = {
         ToolLeft = { { "Left" } },
@@ -315,6 +318,14 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
+                self:canDraw() and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
+                    background = self.drawing and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
+                    TextWidget:new{ text = self.drawing and ("\u{270E} " .. _("Drawing")) or ("\u{270E} " .. _("Draw")),
+                        face = Font:getFace("cfont", 15), bold = true,
+                        fgcolor = self.drawing and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
+                    function() self:openDrawing() end)
+                    or HorizontalSpan:new{ width = 0 },
+                HorizontalSpan:new{ width = self:canDraw() and S(8) or 0 },
                 self.has_spaces and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 3)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
@@ -545,6 +556,34 @@ end
 
 function Editor:changed()
     return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
+        or self.drawing ~= nil
+end
+
+--- Draw: on touch Kindles, for a new note, when the caller allows it.
+function Editor:canDraw()
+    return self.touch and self.memo == nil and self.can_draw == true
+end
+
+--- Opens the drawing screen (the drawing so far, if any); the keyboard goes
+--- away meanwhile and comes back after.
+function Editor:openDrawing()
+    if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+    local function back()
+        self:redraw()
+        if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    end
+    require("gzreader_drawscreen").show{
+        sketch = self.drawing and self.drawing.sketch,
+        path = self.drawing and self.drawing.path,
+        on_done = function(res) self.drawing = res; back() end,
+        on_cancel = back,
+    }
+end
+
+--- The drawing's file, gone (a note discarded).
+function Editor:dropDrawing()
+    if self.drawing and self.drawing.path then os.remove(self.drawing.path) end
+    self.drawing = nil
 end
 
 --- The space chip's text: the note's space, or "No space".
@@ -586,14 +625,15 @@ end
 
 function Editor:save()
     local text = self:text():gsub("%s+$", "")
-    if text == "" then
+    if text == "" and not self.drawing then
         UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
         return
     end
     self.saved = true
     UIManager:close(self, "full")
     if self.on_save then
-        self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space)
+        self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
+            self.drawing and { path = self.drawing.path, filename = self.drawing.filename } or nil)
     end
 end
 
@@ -603,7 +643,9 @@ function Editor:onCloseDialog()
     local dialog
     dialog = ButtonDialog:new{ title = _("Save this note?"), buttons = {
         { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
-        { { text = _("Discard"), align = "left", callback = function() UIManager:close(dialog); UIManager:close(self, "full") end } },
+        { { text = _("Discard"), align = "left", callback = function()
+            UIManager:close(dialog); self:dropDrawing(); UIManager:close(self, "full")
+        end } },
         { { text = _("Keep writing"), align = "left", callback = function() UIManager:close(dialog) end } },
     } }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
@@ -615,10 +657,12 @@ end
 --- opts: memo (nil for a new note), tags ({ {tag=, count=} }), spaces
 --- ({ { name, title } }: your Memos spaces, or nil), space (a new note's:
 --- the one the board shows), space_title(name),
---- on_save(text, visibility, vis_changed, space, space_changed).
+--- can_draw (a new note may have a drawing: touch Kindles),
+--- on_save(text, visibility, vis_changed, space, space_changed, drawing):
+--- drawing = { path, filename } (a memos drawing waiting to be sent) or nil.
 function NoteEditor.show(opts)
     local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
-        spaces = opts.spaces, space = opts.space, space_title = opts.space_title }
+        spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw }
     UIManager:show(e, "full")
     return e
 end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: draw in a new note (with a finger; on a Kindle Scribe with the pen), sent to Memos as a drawing", text = "On touch Kindles the new-note editor has Draw: a page to draw on with Thin, Medium and Thick, Eraser (rubs out whole strokes), Undo and Clear. Done keeps the drawing with the note, and Save sends both to Memos, where the drawing is an attachment that Memos (its next version, with drawings) opens as a drawing you can go on editing; older Memos show it as a picture. A note can be just a drawing. On a Kindle with a pen (the Scribe) only the pen draws: fingers don't, and while the pen is near the screen your hand can rest on it (it's ignored); the pen's other end rubs out. Other touch Kindles draw with one finger. Drawings need Memos over Wi‑Fi (not through the computer)." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },

@@ -256,13 +256,49 @@ function Memos:download(att, dest)
     return nil, code and ("http_" .. code) or "unreachable"
 end
 
+--- Upload the file at `path` as an attachment named `filename` (`mime`:
+--- image/png by default), on note `memo_name` ("memos/…") when given: Memos
+--- links it to that note. Returns the attachment ({ name, filename, type })
+--- or nil, err ("missing_file" when the file is gone).
+function Memos:uploadAttachment(path, filename, memo_name, mime)
+    local f = path and io.open(path, "rb")
+    if not f then return nil, "missing_file" end
+    local data = f:read("*a")
+    f:close()
+    local body = { filename = filename, type = mime or "image/png",
+        content = require("ffi/sha2").bin_to_base64(data), memo = memo_name }
+    local _, att, err = self:request("POST", "/attachments", body, nil, { timeouts = { 15, 120 } })
+    if err then return nil, err end
+    if type(att) ~= "table" or not att.name then return nil, "http_200" end
+    return { name = att.name, filename = att.filename, type = att.type }
+end
+
+--- A new note with a drawing (`q.drawing` = { path, filename }): the note
+--- first, then the drawing uploaded onto it. Returns the note, or nil, err
+--- and (the note made but not the upload) the note's name.
+function Memos:createWithDrawing(q)
+    local memo, err = self:create(q.content or "", q.visibility, q.space)
+    if not memo then return nil, err end
+    local att, aerr = self:uploadAttachment(q.drawing.path, q.drawing.filename, memo.name)
+    if not att and aerr ~= "missing_file" then return nil, aerr, memo.name end
+    return memo
+end
+
 --- Run the queued changes (in the background process). Returns the queue
---- items that went through (their ids) and the first error.
+--- items that went through (their ids), the first error, and `attached`:
+--- { [queue id] = note name } for notes made whose drawing didn't upload yet
+--- (the queue then sends only the drawing: op "attach").
 function Memos:flush(queue)
-    local done, first_err = {}, nil
+    local done, first_err, attached = {}, nil, {}
     for _i, q in ipairs(queue or {}) do
-        local ok, err
-        if q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
+        local ok, err, made
+        if q.op == "create" and q.drawing then
+            ok, err, made = self:createWithDrawing(q)
+            if made then attached[q.id] = made end
+        elseif q.op == "attach" then
+            ok, err = self:uploadAttachment(q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
+            if err == "missing_file" then ok = true end -- (nothing left to send)
+        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
         elseif q.op == "update" then ok, err = self:update(q.name, q.content, q.visibility, q.space)
         elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned) end
         if ok then done[#done + 1] = q.id
@@ -272,7 +308,7 @@ function Memos:flush(queue)
             if err and err:match("^http_4") then done[#done + 1] = q.id end -- refused for good: drop it
         end
     end
-    return { done = done, err = first_err, prefix = self.store.prefix }
+    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached }
 end
 
 ---------------------------------------------------------------- the cache

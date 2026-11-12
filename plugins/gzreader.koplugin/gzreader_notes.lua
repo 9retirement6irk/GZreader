@@ -372,8 +372,8 @@ function Notes.applyQueue(plugin)
             for _j, m in ipairs(Notes.notes) do if m.local_id == q.id then seen = true end end
             if not seen then
                 table.insert(Notes.notes, 1, { local_id = q.id, content = q.content, tags = Notes.tagsIn(q.content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = {}, pinned = false, pending = true,
-                    visibility = q.visibility, space = q.space })
+                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = Notes.queuedAttachments(q), pinned = false,
+                    pending = true, visibility = q.visibility, space = q.space })
             end
         else
             for _j, m in ipairs(Notes.notes) do
@@ -389,6 +389,32 @@ function Notes.applyQueue(plugin)
             end
         end
     end
+end
+
+--- A queued note's drawing as an attachment the board can show before it's
+--- in Memos (`Notes.showDrawingNow` puts its file where the board looks).
+function Notes.queuedAttachments(q)
+    if not (q.drawing and q.drawing.filename) then return {} end
+    return { { name = "attachments/local-" .. tostring(q.id), filename = q.drawing.filename, type = "image/png" } }
+end
+
+--- Copies a queued drawing to where the board finds the note's pictures.
+function Notes.showDrawingNow(q)
+    local att = Notes.queuedAttachments(q)[1]
+    if not att then return end
+    local src = io.open(q.drawing.path, "rb")
+    if not src then return end
+    local data = src:read("*a")
+    src:close()
+    local dst = io.open(Memos.filePath(att), "wb")
+    if dst then dst:write(data); dst:close() end
+end
+
+--- Draw in a new note: touch Kindles, Memos over Wi-Fi (the sync page
+--- doesn't send drawings).
+function Notes.canDraw(plugin)
+    if require("gzreader_net").usb then return false end
+    return Touch.on() and not Touch.keys() and Notes.client(plugin):isConnected()
 end
 
 function Notes.tagsIn(content)
@@ -462,7 +488,16 @@ function Notes.refresh(plugin, on_done, opts)
                 local gone = {}
                 for _i, id in ipairs(res.done or {}) do gone[id] = true end
                 local left = {}
-                for _i, q in ipairs(store.queue or {}) do if not gone[q.id] then left[#left + 1] = q end end
+                for _i, q in ipairs(store.queue or {}) do
+                    if not gone[q.id] then
+                        -- a note made whose drawing didn't go: send only the drawing next time
+                        local made = type(res.attached) == "table" and res.attached[q.id]
+                        if made then q.op, q.name = "attach", made end
+                        left[#left + 1] = q
+                    elseif q.drawing and q.drawing.path then
+                        os.remove(q.drawing.path) -- (in Memos now; the board shows it from there)
+                    end
+                end
                 store.queue = left
                 plugin:save()
                 if res.err then Log.warn("notes: queued changes:", tostring(res.err), #left, "left") end
@@ -1518,19 +1553,24 @@ function Notes.edit(plugin, memo, opts)
         spaces = Notes.spaces(plugin),
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
-        on_save = function(content, visibility, vis_changed, space, space_changed)
+        can_draw = memo == nil and Notes.canDraw(plugin),
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawing)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
             else
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
-                    space = space })
+                    space = space, drawing = drawing })
+                if drawing then
+                    Notes.showDrawingNow(q)
+                    Log.info("notes: a new note with a drawing queued")
+                end
                 -- (notes not loaded yet, e.g. a quick note from a book: the
                 -- board loads the kept ones later and shows the queued note then)
                 if Notes.notes then
                     table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
-                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
-                        visibility = q.visibility, space = q.space })
+                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = Notes.queuedAttachments(q), pinned = false,
+                        pending = true, visibility = q.visibility, space = q.space })
                 end
                 Notes.sendSoon(plugin)
                 if opts and opts.on_created then opts.on_created() end

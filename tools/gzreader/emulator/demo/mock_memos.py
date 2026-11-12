@@ -3,7 +3,8 @@
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
-  POST  /api/v1/memos            {content, visibility, space}
+  POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
+  POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
   PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
@@ -19,7 +20,7 @@ in them). Without it the server is older: no /spaces, and a note with a
 `space` field is refused (400, an unknown field) as gRPC-gateway does.
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
-import json, re, sys, time, threading, zlib, struct
+import base64, json, re, sys, time, threading, zlib, struct
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -345,8 +346,9 @@ class H(BaseHTTPRequestHandler):
             return
         if p == "/memos":
             b = self.body()
-            if not (b.get("content") or "").strip():
-                return self.send(400, {"code": 3, "message": "content is required"})
+            # (Memos checks only the length: a note can be just its attachments)
+            if len(b.get("content") or "") > 8192:
+                return self.send(400, {"code": 3, "message": "content too long"})
             if "space" in b and not SPACES:
                 return self.send(400, {"code": 3, "message": 'proto: (line 1:2): unknown field "space"'})
             vis = b.get("visibility") or "PRIVATE"
@@ -355,8 +357,29 @@ class H(BaseHTTPRequestHandler):
                 return self.send(403, {"code": 7, "message": "not a member of the space"})
             if vis == "SPACE" and not space:
                 return self.send(400, {"code": 3, "message": "SPACE visibility requires a space"})
-            m = add(b["content"], visibility=vis, space=space)
+            m = add(b.get("content") or "", visibility=vis, space=space)
             return self.send(200, m)
+        if p == "/attachments":
+            b = self.body()
+            if not b.get("filename") or not b.get("type"):
+                return self.send(400, {"code": 3, "message": "filename and type are required"})
+            try:
+                data = base64.b64decode(b.get("content") or "", validate=True)
+            except ValueError:
+                return self.send(400, {"code": 3, "message": "content is not base64"})
+            memo = None
+            if b.get("memo"):
+                memo = next((x for x in STATE["memos"] if x["name"] == b["memo"]), None)
+                if memo is None:
+                    return self.send(404, {"code": 5, "message": "memo not found: " + b["memo"]})
+            with LOCK:
+                uid = "att%d" % STATE["next"]
+                STATE["next"] += 1
+            a = attachment(uid, b["filename"], b["type"], data)
+            if memo is not None:
+                a["memo"] = memo["name"]
+                memo["attachments"].append(a)
+            return self.send(200, a)
         return self.send(404, {"message": "not found"})
 
     def do_PATCH(self):

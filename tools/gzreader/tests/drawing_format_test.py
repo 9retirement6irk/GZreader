@@ -140,8 +140,9 @@ def check_file(path, ours=True, strokes=None):
     check(types[-1] == "IEND" and "IDAT" in types, f"{name}: still a whole PNG (IDAT, IEND)")
     w, h, depth, colour = struct.unpack(">IIBB", cs[0][1][:10])
     pixels = zlib.decompress(b"".join(d for t, d, _ok in cs if t == "IDAT"))
-    per_px = {0: 1, 2: 3, 4: 2, 6: 4}.get(colour, 1) * depth // 8
-    check(len(pixels) == h * (1 + w * per_px), f"{name}: its pixels decode ({w}x{h})")
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(colour, 1)
+    row = (w * channels * depth + 7) // 8  # (a palette or grey PNG can pack several pixels in a byte)
+    check(len(pixels) == h * (1 + row), f"{name}: its pixels decode ({w}x{h})")
     if strokes is None:
         strokes = ours
     if ours:
