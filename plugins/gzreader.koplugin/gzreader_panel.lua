@@ -5,10 +5,14 @@ the top of the screen. Square tiles, in two groups:
   Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
-             Search, History, View, Sort, Music, Audiobook
+             Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Music,
-             Audiobook
+             Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
+             Music, Audiobook
+
+Quick note is there while Memos is connected (the Notes tab): a new note in
+the full-page editor over whatever is on screen; Save sends it in the
+background and you're back in the book (or Home, or Settings).
 
 Music and Audiobook are there only while one plays (or is paused): they
 open its player. Browsing and downloading music and audiobooks is the
@@ -158,6 +162,7 @@ function Panel.catalog()
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
+            { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
@@ -173,6 +178,7 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
+            { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
         } },
@@ -351,6 +357,15 @@ local function audiobookTile(plugin)
 end
 Panel.audiobookTile = audiobookTile
 
+--- The Quick note tile, while Memos is connected: a new note over whatever
+--- is on screen (gzreader_notes is only loaded when it's used).
+local function quickNoteTile(plugin)
+    local store = plugin and plugin.store and plugin.store.memos
+    if not (type(store) == "table" and require("gzreader_memos"):new(store):isConnected()) then return nil end
+    return { id = "note", icon = "quicknote", label = _("Quick note"), run = function() require("gzreader_notes").quickNote(plugin) end }
+end
+Panel.quickNoteTile = quickNoteTile
+
 --- Home's tiles (the file manager).
 function Panel.homeTiles(plugin, book)
     local HomeMenu = require("gzreader_homemenu")
@@ -368,6 +383,7 @@ function Panel.homeTiles(plugin, book)
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { id = "view", icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }
     list[#list + 1] = { id = "sort", icon = "sort", label = _("Sort"), run = function() HomeMenu.showSort() end }
+    list[#list + 1] = quickNoteTile(plugin)
     list[#list + 1] = musicTile(plugin)
     list[#list + 1] = audiobookTile(plugin)
     local Tasks = require("gzreader_tasks")
@@ -407,6 +423,7 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
+    list[#list + 1] = quickNoteTile(plugin)
     list[#list + 1] = musicTile(plugin)
     list[#list + 1] = audiobookTile(plugin)
     return shown("book", list)

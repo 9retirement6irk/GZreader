@@ -222,8 +222,10 @@ function Notes.enqueue(plugin, q)
 end
 
 --- Send queued changes, then fetch the notes for the current filter.
---- on_done(ok, err) on the screen's thread.
-function Notes.refresh(plugin, on_done)
+--- on_done(ok, err) on the screen's thread. opts.send_only: send the queue
+--- and stop (a quick note while reading: the board isn't loaded, so there's
+--- nothing to show the list in; the next time the tab opens it syncs).
+function Notes.refresh(plugin, on_done, opts)
     -- (syncing through a computer: the notes come with the next sync)
     if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
     local client = Notes.client(plugin)
@@ -268,8 +270,17 @@ function Notes.refresh(plugin, on_done)
                 plugin:save()
                 if res.err then Log.warn("notes: queued changes:", tostring(res.err), #left, "left") end
             end
+            if opts and opts.send_only then
+                Notes.refreshing = false
+                Notes.last_sync = nil -- (the board fetches the list when it next opens)
+                local sent = type(res) == "table" and not res.err
+                return on_done and on_done(sent, not sent and (type(res) == "table" and res.err or "failed") or nil)
+            end
             fetch()
         end, "notes: send changes")
+    elseif opts and opts.send_only then
+        Notes.refreshing = false
+        if on_done then on_done(true) end
     else
         fetch()
     end
@@ -992,35 +1003,42 @@ end
 
 --- Send a change (new note, edit, tick, pin) a moment after it's made:
 --- turns Wi-Fi on for it (quietly) when Wi-Fi only when needed is on. Without
---- a connection it waits in the queue for the next sync.
+--- a connection it waits in the queue for the next sync. With the notes
+--- never loaded (a quick note from a book), only the change is sent.
 function Notes.sendSoon(plugin)
     if Notes.send_scheduled then return end
     Notes.send_scheduled = true
     UIManager:scheduleIn(2, function()
         Notes.send_scheduled = false
+        local send_only = Notes.notes == nil
         require("gzreader_net").run(function()
-            Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end)
+            Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end, { send_only = send_only })
         end, { quiet = true, reason = "a note changed" })
     end)
 end
 
 --- New note (memo nil) or edit one: the full-page editor.
-function Notes.edit(plugin, memo)
+--- opts.on_created(): after a new note was saved (queued).
+function Notes.edit(plugin, memo, opts)
     require("gzreader_noteeditor").show{
         plugin = plugin,
         memo = memo,
-        tags = Notes.allTags(),
+        tags = Notes.allTags(plugin),
         on_save = function(content, visibility, vis_changed)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil)
             else
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE" })
-                Notes.notes = Notes.notes or {}
-                table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
-                    visibility = q.visibility })
+                -- (notes not loaded yet, e.g. a quick note from a book: the
+                -- board loads the kept ones later and shows the queued note then)
+                if Notes.notes then
+                    table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
+                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
+                        visibility = q.visibility })
+                end
                 Notes.sendSoon(plugin)
+                if opts and opts.on_created then opts.on_created() end
             end
             Notes.reloadBoard(true)
             for _i, w in ipairs(UIManager._window_stack or {}) do
@@ -1028,6 +1046,17 @@ function Notes.edit(plugin, memo)
             end
         end,
     }
+end
+
+--- The quick panel's Quick note tile: a new note over whatever is on the
+--- screen (a book, Home, Settings). Save queues it and sends it in the
+--- background; closing the editor leaves you where you were.
+function Notes.quickNote(plugin)
+    if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
+    return Notes.edit(plugin, nil, { on_created = function()
+        info(require("gzreader_net").usb and _("Note saved. It goes to Memos at the next sync with your computer.")
+            or _("Note saved. It goes to Memos as soon as GZreader can reach it."), 3)
+    end })
 end
 
 ---------------------------------------------------------------- filters
@@ -1040,10 +1069,16 @@ function Notes.keyedDialog(title, rows)
     return dialog
 end
 
-function Notes.allTags()
+--- Your tags, most used first: from the notes loaded, or (notes not loaded,
+--- e.g. a quick note from a book) from the counts Memos sent at the last sync.
+function Notes.allTags(plugin)
     local count = {}
     for _i, m in ipairs(Notes.notes or {}) do
         for _j, t in ipairs(m.tags or {}) do count[t] = (count[t] or 0) + 1 end
+    end
+    local saved = plugin and plugin.store and plugin.store.memos and plugin.store.memos.tag_counts
+    if not Notes.notes and type(saved) == "table" then
+        for t, n in pairs(saved) do if type(t) == "string" then count[t] = tonumber(n) or 0 end end
     end
     local list = {}
     for t, n in pairs(count) do list[#list + 1] = { tag = t, count = n } end

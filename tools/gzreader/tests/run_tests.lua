@@ -2184,6 +2184,29 @@ do
         require("gzreader_musictab").nowPlaying = saved_np
         require("gzreader_touch").audio = saved_audio
     end
+    -- Quick note: at Home and in a book while Memos is connected; it opens a new note over what's on screen
+    do
+        local saved_memos, saved_notes = hplug.store.memos, package.loaded["gzreader_notes"]
+        hplug.store.memos = nil
+        local hq0, bq0 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(not hq0:match("Quick note") and not bq0:match("Quick note"), "Memos not connected: no Quick note tile")
+        hplug.store.memos = { server = "https://memos.example.com", token = "t" }
+        local hq1, bq1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(hq1:match("|View|Quick note|") and bq1:match("|Layout|Quick note|"),
+            "Memos connected: Quick note at Home (after View/Sort) and in a book (before Music) " .. hq1 .. " " .. bq1)
+        local quick = {}
+        package.loaded["gzreader_notes"] = { quickNote = function(p) quick[#quick + 1] = p end }
+        for _i, t in ipairs(Panel.bookTiles(hplug, fakeui)) do if t.id == "note" then t.run() end end
+        check(#quick == 1 and quick[1] == hplug, "…the tile opens a quick note")
+        hplug.store.memos = { usb = true }
+        check(labels(Panel.bookTiles(hplug, fakeui)):match("|Quick note|"), "…also on a Kindle syncing notes through a computer")
+        Panel.setShown("book", "note", false)
+        check(not labels(Panel.bookTiles(hplug, fakeui)):match("Quick note") and labels(Panel.homeTiles(hplug, nil)):match("|Quick note|"),
+            "…and can be hidden in a book on its own")
+        Panel.setShown("book", "note", true)
+        package.loaded["gzreader_notes"] = saved_notes
+        hplug.store.memos = saved_memos
+    end
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
@@ -2212,7 +2235,7 @@ do
     NetM.usb = was_usb
     check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
         "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
-    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks" }) do Panel.setShown("home", id, false) end
+    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks", "note" }) do Panel.setShown("home", id, false) end
     check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")
     item.sub_item_table[4].callback()
     check(G_reader_settings:readSetting("gzreader_panel_hidden") == nil and labels(Panel.homeTiles(hplug, nil)):match("|Sort|"),
@@ -6255,6 +6278,41 @@ print("Notes (Memos v0.31)")
     check(r26b and select(2, mctl("GET", "/__state"):gsub("/api/v1/", "")) == before, "Memos 26.10: next refresh goes straight to /api")
     local c404, _d, e404 = Memos:new(plugin.store.memos):request("PATCH", "/memos/999", { content = "x" }, { updateMask = "content" })
     check(c404 == 404 and e404 == "http_404", "Memos 26.10: a note that isn't there is still 'not found' (not 410)")
+
+    -- the quick panel's Quick note (from a book: the board never loaded)
+    do
+        local NEq = require("gzreader_noteeditor")
+        local saved_show, qn_opts = NEq.show, nil
+        NEq.show = function(o) qn_opts = o; return o end
+        Notes.notes, Notes.board, Notes.last_sync = nil, nil, os.time()
+        plugin.store.memos.tag_counts = { reading = 3, travel = 5 }
+        Notes.quickNote(plugin)
+        check(qn_opts and qn_opts.memo == nil and qn_opts.tags[1] and qn_opts.tags[1].tag == "travel" and qn_opts.tags[2].tag == "reading",
+            "Quick note: the new-note editor, your tags from Memos' counts (the notes aren't loaded)")
+        local before_list = select(2, mctl("GET", "/__state"):gsub("GET /api/memos", ""))
+        local shown_before = #UI.shown
+        local sched_before = {}
+        for fn in pairs(UI.scheduled) do sched_before[fn] = true end
+        qn_opts.on_save("Idea from chapter 3 #reading", "PRIVATE", false)
+        check(Notes.notes == nil and #plugin.store.memos.queue == 1 and plugin.store.memos.queue[1].op == "create",
+            "…Save queues it without loading the board's notes")
+        check(#UI.shown == shown_before + 1, "…and says it's saved")
+        local send
+        for fn, sec in pairs(UI.scheduled) do if not sched_before[fn] and sec == 2 then send = fn end end
+        check(send ~= nil, "…sent a moment later")
+        if send then UI.scheduled[send] = nil; send() end
+        local stq = mstate()
+        local quick
+        for _i, m in ipairs(stq.memos) do if m.content == "Idea from chapter 3 #reading" then quick = m end end
+        check(quick and quick.visibility == "PRIVATE" and #plugin.store.memos.queue == 0, "Quick note: created in Memos, private; queue empty")
+        check(Notes.notes == nil and Notes.last_sync == nil
+            and select(2, mctl("GET", "/__state"):gsub("GET /api/memos", "")) == before_list,
+            "…only the note was sent (no list fetched while reading); the tab syncs when it next opens")
+        Notes.loadCache(plugin)
+        local tags_loaded = Notes.allTags(plugin)
+        check(#tags_loaded > 0 and type(Notes.notes) == "table", "with the notes loaded, tags come from them")
+        NEq.show = saved_show
+    end
 
     -- disconnect
     Notes.disconnect(plugin)

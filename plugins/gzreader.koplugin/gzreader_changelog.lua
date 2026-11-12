@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick note: write a Memos note from the quick panel without leaving your book", text = "The quick panel has a Quick note tile (at Home and in a book) while Memos is connected: it opens the note editor over whatever is on the screen, and Save puts you back where you were — in the book, at Home or in Settings. The note is sent to Memos in the background a moment later (only the note: the Notes tab's list is fetched the next time you open it); without Wi‑Fi it waits, as other notes do. The editor offers your tags even when the Notes tab hasn't been opened yet. Hide the tile in Settings → Interface → Quick panel." },
+        },
+    },
+    {
         version = "1.28.3",
         changes = {
             { short = "No more usage statistics; debug reports only if you choose", text = "GZreader no longer sends usage statistics (time in books and tabs, what plays, downloads, syncs, battery), and what was waiting on the Kindle is deleted. What's left is one choice, in the setup guide's new Debug Reports page and Settings → General → Send debug reports automatically: when something goes wrong (errors, freezes, crashes), GZreader tells its developer while Wi‑Fi is on. It's off unless you choose it; if you had usage statistics set to Full, which sent these, it stays on. Send diagnostic log to the developer works as before. The sync page no longer sends a Kindle 2's or DX's usage statistics either." },
