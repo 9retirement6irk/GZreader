@@ -138,7 +138,11 @@ end
 --- double-tap actions (no gestures plugin), so unticked it only made every tap
 --- in a book wait for a second one. A saved untick is cleared (the default,
 --- taps at once; a book opened after reads it).
+--- Once only (gzreader_double_tap_cleared): About → Advanced → KOReader
+--- settings has KOReader's whole menu, where it can be unticked on purpose.
 function Touch.forgetKOReaderDoubleTap()
+    if G_reader_settings:isTrue("gzreader_double_tap_cleared") then return false end
+    G_reader_settings:makeTrue("gzreader_double_tap_cleared")
     if G_reader_settings:readSetting("disable_double_tap") == false then
         G_reader_settings:delSetting("disable_double_tap")
         require("gzreader_log").info("touch: KOReader's \"Disable double tap\" back on (GZreader has no double-tap actions)")

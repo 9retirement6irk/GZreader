@@ -6,11 +6,7 @@ local _ = require("gettext")
 
 local M = {}
 
-function M.build(ctx)
-    local config = ctx.config
-    local plugin = ctx.plugin
-    local settings_apply = ctx.settings_apply
-
+function M.build(_ctx)
     local items = {}
 
     -- GZreader: no Extract metadata (CoverBrowser reads a book's details and
@@ -22,20 +18,10 @@ function M.build(ctx)
     -- changes (gzreader_eink, the Kindles without REAGL) are in General →
     -- Screen → E-ink settings (sections/gz_screen_refresh.lua).
 
-    table.insert(items, {
-        text = _("Allow dragging reader modals"),
-        help_text = _("Restore KOReader's default draggable modal behavior."),
-        checked_func = function()
-            return type(config.developer) == "table"
-                and config.developer.allow_modal_drag == true
-        end,
-        callback = function()
-            if type(config.developer) ~= "table" then config.developer = {} end
-            config.developer.allow_modal_drag = config.developer.allow_modal_drag ~= true
-            plugin:saveConfig()
-            settings_apply.prompt_restart()
-        end,
-    })
+    -- GZreader: no Allow dragging reader modals (ZenOS keeps KOReader's pop-up
+    -- windows where they open; config/manager.lua turns a saved tick off once).
+    -- At the end of this menu GZreader adds KOReader settings (zen_settings.lua,
+    -- gz_settings.koreaderMenuItem); this menu itself is About → Advanced.
 
     -- GZreader: no Debug logging (KOReader's verbose log; GZreader's own
     -- diagnostic log is at the top of this menu), no Clear all gestures (the

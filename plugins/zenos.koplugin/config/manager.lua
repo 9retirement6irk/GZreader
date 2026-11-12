@@ -1307,7 +1307,7 @@ local function migrate_changed_defaults(cfg)
         changed = true
     end
 
-    -- GZreader: Settings → General → Advanced has no Show hidden files any more
+    -- GZreader: Settings → About → Advanced has no Show hidden files any more
     -- (advanced_settings.lua): turned off once, so the Downloads tab doesn't
     -- keep showing hidden and unsupported files with no switch to stop it.
     if cfg._meta.gz_show_hidden_off ~= true then
@@ -1320,6 +1320,16 @@ local function migrate_changed_defaults(cfg)
             end
         end
         cfg._meta.gz_show_hidden_off = true
+        changed = true
+    end
+
+    -- GZreader: Settings has no Allow dragging reader modals any more
+    -- (advanced_settings.lua): turned off once, so pop-ups stay put again.
+    if cfg._meta.gz_modal_drag_off ~= true then
+        if type(cfg.developer) == "table" and cfg.developer.allow_modal_drag == true then
+            cfg.developer.allow_modal_drag = nil
+        end
+        cfg._meta.gz_modal_drag_off = true
         changed = true
     end
 
