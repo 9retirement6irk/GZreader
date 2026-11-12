@@ -108,10 +108,11 @@ end
 
 --- A page of notes: { memos = {…}, next = token } or nil, err.
 --- filter: Memos' CEL filter (tags, created_ts, pinned, has_task_list…).
-function Memos:list(filter, page_token, page_size)
+--- order: Memos' order_by (pinned, create_time, update_time; pinned first, newest first by default).
+function Memos:list(filter, page_token, page_size, order)
     local _, data, err = self:request("GET", "/memos", nil, {
         pageSize = page_size or Memos.PAGE_SIZE, pageToken = page_token, filter = filter,
-        orderBy = "pinned desc, create_time desc",
+        orderBy = order or "pinned desc, create_time desc",
     })
     if err then return nil, err end
     data = type(data) == "table" and data or {}
@@ -123,11 +124,11 @@ end
 --- Up to `max` notes, fetched a page at a time (Memos sends at most 1000
 --- per page), with your tags and how many notes have each:
 --- { memos = {…}, tags = { tag = count } } or nil, err.
-function Memos:listAll(filter, max)
+function Memos:listAll(filter, max, order)
     max = max or 100
     local out, token = {}, nil
     repeat
-        local page, err = self:list(filter, token, math.min(200, max - #out))
+        local page, err = self:list(filter, token, math.min(200, max - #out), order)
         if not page then return nil, err end
         for _i, m in ipairs(page.memos) do out[#out + 1] = m end
         token = page.next

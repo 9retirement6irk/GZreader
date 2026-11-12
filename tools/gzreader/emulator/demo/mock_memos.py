@@ -308,7 +308,15 @@ class H(BaseHTTPRequestHandler):
             if ok is None:
                 return self.send(400, {"code": 3, "message": "invalid filter"})
             items = [m for m in STATE["memos"] if m["state"] == "NORMAL" and ok(m)]
-            items.sort(key=lambda m: (not m["pinned"], [-ord(c) for c in m["createTime"]]))
+            # orderBy: "pinned desc, create_time desc" (Memos' default) or other
+            # fields of pinned, create_time, update_time, each asc or desc
+            order = [o.split() for o in (q.get("orderBy") or "create_time desc").split(",") if o.strip()]
+            fields = {"pinned": "pinned", "create_time": "createTime", "update_time": "updateTime"}
+            for spec in reversed(order):
+                if spec[0] not in fields:
+                    return self.send(400, {"code": 3, "message": "invalid order_by: unsupported field " + spec[0]})
+                desc = len(spec) > 1 and spec[1].lower() == "desc"
+                items.sort(key=lambda m, f=fields[spec[0]]: m[f], reverse=desc)
             size = int(q.get("pageSize") or 10)
             start = int(q.get("pageToken") or 0)
             page = items[start:start + size]
