@@ -143,6 +143,12 @@ Press/Back answer), and the order things happen in on a first start.
   and 7 tabs; the Music tab: signing in with a code, Artists → an album → Play
   (downloads, plays; the player stubbed), Now playing, the Home and Reading
   menus' Music line. Writes `music.txt`.
+- `music_player_tabs.lua` (any model with audio: `kt` for touch, `k3`/`dx` for
+  keys; no servers) — music's player and its tabs: an album stood in for as
+  playing, Now playing (◀ ▶ seeking gathered), Queue (▲ ▼), Library (its first
+  list, a list inside it, Back). `GZ_PLAYER_COVER=<a JPEG>` puts a cover on the
+  disc (`docs/screenshots/cd-player.png`, `music-queue.png`, `music-library.png`
+  were taken on `kt` with one). Writes `player-tabs.txt`.
 - `copy_send.lua` + `copy_receive.lua` — copying connections between two
   emulators at once (e.g. `GZ_EMU_MODEL=pw3` sending, `k3` receiving, each
   with its own `GZ_EMU_TREE`, the same `GZ_COPY_PIN` file; servers: the mock

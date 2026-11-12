@@ -8239,6 +8239,169 @@ print("Audiobook player: the 5-way goes from key to key (Kindle 3)")
         "up and down keep to the same part of the screen (play → Stop → volume +)")
 end)()
 
+print("Music's player: three tabs, big keys, a strip to seek on (layout A)")
+;(function()
+    -- (every widget class here is one stand-in: keep what's on it, put it back after)
+    local IC = require("ui/widget/container/inputcontainer")
+    local kept = {}
+    for k, v in pairs(IC) do kept[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+    local CD = require("gzreader_cdscreen")
+    local Music = require("gzreader_music")
+    local Tab = require("gzreader_musictab")
+    local LUI = require("ui/uimanager")
+    local saved = { current = Music.current, plex = Music.plex, downloaded = Music.downloaded, instance = CD.instance,
+        top = LUI.getTopmostVisibleWidget }
+    local SZ = CD.SIZE
+    check(SZ.top >= 56 and SZ.close >= 56 and SZ.transport >= 88 and SZ.modes >= 56 and SZ.row >= 56 and SZ.pager >= 56
+        and SZ.mini >= 56 and SZ.seek >= 48,
+        "every target 56 or more at the mockup's size (about 8.5 mm on a Kindle Touch); the progress strip 48, all of it a target")
+    local tabs = {}
+    for _i, t in ipairs(CD.TABS) do tabs[#tabs + 1] = t.mode .. "=" .. t.key end
+    check(table.concat(tabs, ",") == "now=Z,queue=X,library=C", "three tabs: Now playing (Z), Queue (X), Library (C)")
+    local ke = CD.keyEvents()
+    check(ke.Prev[1][1] == "Q" and ke.Toggle[1][1] == "W" and ke.Next[1][1] == "E" and ke.Shuffle[1][1] == "A"
+        and ke.Repeat[1][1] == "S" and ke.Stop[1][1] == "D" and ke.TabNow[1][1] == "Z" and ke.TabQueue[1][1] == "X"
+        and ke.TabLibrary[1][1] == "C" and ke.Library[1][1] == "F" and ke.PrevKey[1][1] == "Left" and ke.NextKey[1][1] == "Right",
+        "keys: Q W E, A S D, Z X C for the tabs, F still between the queue and the library, ◀ ▶")
+    check(CD.rowsFor(444, 62, 4) == 6 and CD.rowsFor(100, 62, 4) == 3, "the lists: as many big rows as fit, 3 at least")
+    local pf, pg, pn = CD.pageOf(8, 6, 12)
+    check(pf == 7 and pg == 2 and pn == 2 and CD.pageOf(1, 6, 0) == 1 and select(3, CD.pageOf(1, 6, 0)) == 1,
+        "the lists' pages: the one holding the line picked")
+
+    -- a player standing in for one that plays: Now playing's keys
+    local seeks, jumped = {}, nil
+    local order = {}
+    for i = 1, 12 do order[i] = i end
+    local pl = { order = order, at = 2, shuffle = false, position = function() return 60000 end,
+        seekTo = function(_p, ms) seeks[#seeks + 1] = ms end, jump = function(_p, k) jumped = k end,
+        toggle = function() jumped = "toggle" end, track = function() return { duration = 214000 } end }
+    Music.current = pl
+    -- (only what the module defined: the stand-in answers anything else with a function)
+    local scr = setmetatable({ mode = "now", build = function() end }, { __index = function(_t, k) return rawget(CD, k) end })
+    scr.refresh = function() end
+    for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil end
+    scr:onNextKey(); scr:onNextKey(); scr:onPrevKey(); scr:onNextKey()
+    check(scr.seek_target == 80000 and #seeks == 0, "Now playing: ◀ ▶ move the time shown at once, 10 s a press")
+    for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil; fn() end
+    check(#seeks == 1 and seeks[1] == 80000 and scr.seek_target == nil,
+        "…and the player is started once, where the presses end (" .. table.concat(seeks, ",") .. ")")
+    seeks = {}
+    scr:seekToFrac(0.5)
+    check(seeks[1] == 107000, "a tap on the progress strip: that point of the track")
+    local sb = { dimen = { x = 100, w = 400 } }
+    local fr = CD.SeekBar.fracAt(sb, { pos = { x = 300 } })
+    check(fr == 0.5 and CD.SeekBar.fracAt(sb, { pos = { x = 20 } }) == 0 and CD.SeekBar.fracAt(sb, { pos = { x = 900 } }) == 1,
+        "the strip: where the tap was, from its left end (0) to its right (1)")
+    scr:onPlay()
+    check(jumped == "toggle", "Now playing: Press plays / pauses")
+    scr:onUp()
+    check(scr.picked == nil, "Now playing: ▲ ▼ do nothing (the queue is a tab of its own)")
+
+    -- the queue's keys
+    scr:onTabQueue()
+    check(scr.mode == "queue", "X: the Queue tab")
+    scr.rows = 6
+    seeks = {}
+    scr:onNextKey()
+    check(scr.picked == 7 and #seeks == 0, "Queue: ▶ the next page (no seeking there)")
+    scr:onPrevKey()
+    check(scr.picked == 1, "Queue: ◀ the page before")
+    scr:onDown(); scr:onDown(); scr:onDown()
+    check(scr.picked == 4, "Queue: ▲ ▼ move the outline")
+    scr:onPlay()
+    check(jumped == 4 and scr.picked == nil, "Queue: Press plays the track picked")
+
+    -- the library: tabs, F, Back
+    scr.ensureLibrary = function(s) s.nav = s.nav or { item_table = { {}, {}, {} }, item_table_stack = {}, onClose = function() end } end
+    scr:onTabLibrary()
+    check(scr.mode == "library" and scr.nav, "C: the Library tab")
+    scr:onLibrary()
+    check(scr.mode == "queue", "F: from the library to the queue, as before")
+    scr:onLibrary()
+    check(scr.mode == "library", "F: and back")
+    local up = 0
+    scr.nav.item_table_stack = { {} }
+    scr.nav.onClose = function() up = up + 1 end
+    UI.closed = nil
+    scr:onClose()
+    check(up == 1 and UI.closed == nil, "Back inside a list: up a level, the player stays open")
+    scr.nav.item_table_stack = {}
+    scr:onClose()
+    check(UI.closed == scr, "Back at the first list: the player closes (the music plays on)")
+    scr.nav.item_table_stack = { {} }
+    UI.closed = nil
+    scr:onClose(true)
+    check(UI.closed == scr and up == 1, "the close key closes from anywhere")
+    scr:onTabNow()
+    check(scr.mode == "now", "Z: Now playing")
+
+    -- the volume: − + here on touch Kindles, the volume keys show it here too
+    local vols = 0
+    scr.refreshVolume = function() vols = vols + 1 end
+    local TTSm = require("gzreader_tts")
+    TTSm.setVolume(7)
+    scr:stepVolume(1)
+    check(TTSm.volume() == 8 and vols == 1, "the volume: + one step, shown at once")
+    CD.instance = scr
+    LUI.getTopmostVisibleWidget = function() return scr end
+    captured.notification = nil
+    require("gzreader_audioctl").step(-1)
+    check(TTSm.volume() == 7 and vols == 2 and captured.notification == nil, "the volume keys on Now playing: its level changes there (no note over it)")
+    TTSm.setVolume(10)
+
+    -- seeking in the player itself
+    local c = { dir = WORK .. "/no-album", title = "Album", tracks = { { title = "A", duration = 200000 }, { title = "B", duration = 180000 } } }
+    local MP = Music.Player:new({ store = {} }, c, 1, false)
+    MP.paused = true
+    MP:seekTo(90000)
+    check(MP.pos == 90000 and not MP.playing, "paused: the place moves; it plays from there next")
+    MP:seekTo(999999)
+    check(MP.pos == 199000, "never past a second before the end")
+    MP:seekTo(-5)
+    check(MP.pos == 0, "nor before the start")
+    local started
+    MP.playing = true
+    MP.play = function(self) started = self.pos; self.playing = true; return true end
+    MP:seekTo(30000)
+    check(started == 30000 and MP.playing, "playing: started again there")
+    MP.waiting, MP.pos = true, 5
+    MP:seekTo(1000)
+    check(MP.pos == 5, "a track not on the Kindle yet: nothing to seek in")
+
+    -- the Library tab's first list
+    local function lineTexts(list)
+        local t = {}
+        for _i, it in ipairs(list) do t[#t + 1] = it.text end
+        return table.concat(t, "|")
+    end
+    Music.plex = function() return { isConnected = function() return true end } end
+    Music.downloaded = function() return { {}, {} } end
+    local tab = Tab.new({ store = { plex = { username = "reader", server = { name = "Home Server" } } } })
+    local it = tab:playerRootItems(false)
+    check(lineTexts(it) == "Recently played|Recently added|Playlists|Albums|Artists|On this Kindle" and it[6].mandatory == "2"
+        and type(it.gz_search) == "function" and type(it.gz_shuffle) == "function" and it.gz_account.text == "Plex: reader · Home Server",
+        "Library (touch): its lists; Search above them, Shuffle all and the Plex account below")
+    it = tab:playerRootItems(true)
+    check(lineTexts(it) == "Search music…|Recently played|Recently added|Playlists|Albums|Artists|On this Kindle|Shuffle all on this Kindle|Plex: reader · Home Server"
+        and it.gz_search == nil, "Library (keys): Search, Shuffle all and the account are lines, so the 5-way reaches them")
+    Music.downloaded = function() return {} end
+    it = tab:playerRootItems(false)
+    check(lineTexts(it) == "Recently played|Recently added|Playlists|Albums|Artists" and it.gz_shuffle == nil,
+        "nothing on the Kindle: no On this Kindle, no Shuffle all")
+    Music.plex = function() return { isConnected = function() return false end } end
+    Music.current = { track = function() return { title = "Tone" } end }
+    it = tab:playerRootItems(false)
+    check(not lineTexts(it):find("Now playing", 1, true) and lineTexts(it):find("Plex: sign in with a code", 1, true),
+        "signed out: the sign-in lines, without Now playing (a tab now)")
+
+    Music.current, Music.plex, Music.downloaded, CD.instance = saved.current, saved.plex, saved.downloaded, saved.instance
+    LUI.getTopmostVisibleWidget = saved.top
+    for k in pairs(IC) do IC[k] = nil end
+    for k, v in pairs(kept) do IC[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+end)()
+
 print("Kindles without REAGL: flash when the screen changes")
 ;(function()
     local Eink = require("gzreader_eink")

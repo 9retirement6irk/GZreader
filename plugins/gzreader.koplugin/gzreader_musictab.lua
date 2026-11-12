@@ -292,6 +292,49 @@ function Tab:rootItems(after)
     return Rows.mark(items)
 end
 
+--- The player's Library tab (gzreader_cdscreen.lua): Recently played,
+--- Recently added, Playlists, Albums, Artists, On this Kindle. Search,
+--- Shuffle all and the Plex account go above and below the list
+--- (items.gz_search, gz_shuffle, gz_account { text, callback }), or with
+--- `inline` are lines of it (Kindles with keys: the 5-way reaches them).
+--- Not signed in to Plex: the first list without Now playing (a tab now).
+function Tab:playerRootItems(inline, after)
+    local plugin = self.plugin
+    local Rows = require("gzreader_rows")
+    after = after or function() self:replace(_("Music"), self:playerRootItems(inline)) end
+    local plex = Music().plex(plugin)
+    if not (require("gzreader_touch").audio() and plex:isConnected()) then
+        local items = {}
+        for _i, it in ipairs(self:rootItems(after)) do
+            if it.text ~= _("Now playing") then items[#items + 1] = it end
+        end
+        return Rows.mark(items)
+    end
+    local list = Music().downloaded(plugin)
+    local items = {
+        { text = _("Recently played"), callback = function() self:openRecent("played") end },
+        { text = _("Recently added"), callback = function() self:openRecent("added") end },
+        { text = _("Playlists"), callback = function() self:openPlaylists() end },
+        { text = _("Albums"), callback = function() self:openSection("albums") end },
+        { text = _("Artists"), callback = function() self:openSection("artists") end },
+    }
+    if #list > 0 then
+        items[#items + 1] = { text = _("On this Kindle"), mandatory = tostring(#list), callback = function() self:openDownloaded() end }
+    end
+    local search = function() self:promptSearch() end
+    local shuffle = #list > 0 and function() Music().shuffleAll(plugin) end or nil
+    local s = plugin.store.plex or {}
+    local account = { text = T(_("Plex: %1 · %2"), s.username or "?", (s.server or {}).name or "?"), callback = function() self:openAccount() end }
+    if inline then
+        table.insert(items, 1, { text = _("Search music…"), callback = search })
+        if shuffle then items[#items + 1] = { text = _("Shuffle all on this Kindle"), callback = shuffle } end
+        items[#items + 1] = { text = account.text, callback = account.callback }
+    else
+        items.gz_search, items.gz_shuffle, items.gz_account = search, shuffle, account
+    end
+    return Rows.mark(items)
+end
+
 --- Sign-in choices (here and in Settings). after() once signed in.
 function Tab.signInItems(plugin, after)
     local Rows = require("gzreader_rows")
