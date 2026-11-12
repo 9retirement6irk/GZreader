@@ -3571,6 +3571,20 @@ print("Wi-Fi: on, off, auto")
     UI.scheduled = {}
 end)()
 
+print("Wi-Fi: KOReader's \"Disable Wi-Fi connection when inactive\" cleared (its row is hidden)")
+;(function()
+    local Net = require("gzreader_net")
+    gsettings.auto_disable_wifi = true
+    check(Net.forgetKOReaderPowersave() == true and gsettings.auto_disable_wifi == nil,
+        "a saved tick is cleared (it turned Wi-Fi off after 5 quiet minutes even on On)")
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == nil, "nothing saved: nothing to do")
+    gsettings.auto_disable_wifi = false
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == false, "unticked: left as it is")
+    gsettings.auto_disable_wifi = nil
+    check(io.open(PLUGIN .. "/gzreader_net.lua"):read("*a"):find("pcall(Net.forgetKOReaderPowersave)", 1, true) ~= nil,
+        "done at start (Net.start)")
+end)()
+
 print("Night mode guard (Kindle 3)")
 do
     local saved_dev, saved_ng = package.loaded["device"], package.loaded["gzreader_nightguard"]

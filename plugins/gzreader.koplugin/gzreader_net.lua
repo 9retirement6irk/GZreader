@@ -392,9 +392,23 @@ function Net.adopt()
     schedule()
 end
 
+--- KOReader's "Disable Wi-Fi connection when inactive" (auto_disable_wifi)
+--- turned Wi-Fi off after 5 quiet minutes whatever the mode, On too. Its row
+--- is gone from Settings → KOReader (zenos common/gz_settings.lua
+--- KOREADER_HIDDEN), so a saved tick is cleared: Auto does that job.
+function Net.forgetKOReaderPowersave()
+    if G_reader_settings:isTrue("auto_disable_wifi") then
+        G_reader_settings:delSetting("auto_disable_wifi")
+        Log.info("wifi: KOReader's \"Disable Wi-Fi connection when inactive\" off (Wi-Fi Auto does that)")
+        return true
+    end
+    return false
+end
+
 function Net.start()
     if Net.started then return end
     Net.started = true
+    pcall(Net.forgetKOReaderPowersave)
     UIManager:scheduleIn(10, Net.adopt) -- after startup syncs, once ZenOS has loaded
 end
 

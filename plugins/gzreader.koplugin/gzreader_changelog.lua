@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Settings: General first; General → Screen has KOReader's screen settings and every flash setting", text = "Settings opens with General at the top. General → Screen is KOReader's Screen menu (DPI, E-ink settings, screen timeout, fullscreen and the rest), moved from Settings → KOReader; it replaces General → Screen refresh. Its E-ink settings now hold every flash setting: KOReader's Full refresh rate, then Flash on every page turn, Flash when the screen changes and Partial pages refresh, then KOReader's others. Flash on every CBZ page turn is gone: comics now follow KOReader's Always flash on pages with images (under Full refresh rate; on unless you untick it), so every CBZ page flashes while it's ticked." },
+            { short = "Settings → General → Wi‑Fi: HTTP proxy and Network info; no KOReader Wi‑Fi timeout", text = "Settings → General → Wi‑Fi now has HTTP proxy (tap to turn it on or off, hold to set its address) and Network info under the networks; they've left Settings → KOReader → Network. KOReader's \"Disable Wi‑Fi connection when inactive\" is no longer offered: it turned Wi‑Fi off after five quiet minutes even when Wi‑Fi was set to On, and Auto already turns it off when it's not needed. If it was ticked, it's turned off." },
         },
     },
     {
