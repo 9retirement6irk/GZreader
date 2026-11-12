@@ -46,7 +46,9 @@ downloaded downloads it in order and starts as soon as the first track is in;
 Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
 (`.music` in the GZreader folder); *Shuffle all downloaded* plays it all. Each
 downloaded album or playlist is also in Downloads → **Music** (on the
-bookshelf, the CD player), like audiobooks: open one to play it.
+bookshelf, the CD player), like audiobooks: open one to play it. On its
+shelves each one is a CD facing out with its cover, its name on a plate under
+it.
 
 **Music library**: a Plex server can have several music libraries. GZreader
 uses the server's first until you pick another in Settings → Connections →
