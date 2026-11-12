@@ -27,6 +27,10 @@ local stubs = {
         return (f:gsub("%%(%d)", function(i) return tostring(a[tonumber(i)]) end)) end },
     ["common/ui/icon_menu_item"] = { installMenuPatch = function() end, decorate = function(item) return item end },
     ["common/plugin_root"] = "",
+    -- ZenOS's Home section (its rows; the Downloads tab's come after them in Settings)
+    ["modules/settings/sections/library_settings/home_settings"] = { build = function()
+        return { text = "Home", sub_item_table = { { text = "Widgets ▸" }, { text = "Edit mode" }, { text = "Presets" }, { text = "Show top status bar" } } }
+    end },
     -- no ZenPM, no Rakuyomi on a Kindle with GZreader
     ["modules/settings/zenpm_installer"] = { build_item = function() return nil end },
     ["modules/filebrowser/patches/rakuyomi"] = { is_available = function() return false end },
@@ -66,14 +70,22 @@ check(okb and type(root) == "table", "ZenOS's settings build " .. tostring(not o
 if okb then
     local items = root.sub_item_table
     local top = texts(items)
-    check(top == "|General|Home|Downloads|Reader|Interface|Connections|About|",
-        "Settings: General first, then Home, Downloads, Reader, Interface, Connections, About; no Extras, no KOReader (About → Advanced has it) " .. top)
-    -- Downloads (ZenOS's Library section): Books has no Metadata menu
-    local dl = sub(items, "Downloads")
-    print("    Downloads: " .. texts(dl))
+    check(top == "|General|Home|Reader|Interface|Connections|About|",
+        "Settings: General first, then Home, Reader, Interface, Connections, About; no Extras, no KOReader (About → Advanced has it), no Downloads (in Home) " .. top)
+    -- Home: its own rows, then the Downloads tab's (ZenOS's Library section: Appearance, Folders, Books, Context menu)
+    local dl = sub(items, "Home")
+    print("    Home: " .. texts(dl))
+    local hrows = texts(dl)
+    check(hrows:find("|Appearance|Folders|Books|Context menu|$") ~= nil and not hrows:find("^|Appearance|"),
+        "Home: Home's own rows first, then the Downloads tab's Appearance, Folders, Books, Context menu " .. hrows)
+    for i, it in ipairs(dl or {}) do
+        if rawget(it, "text") == "Appearance" then
+            check(dl[i - 1] and dl[i - 1].separator == true, "a line between Home's rows and the Downloads tab's")
+        end
+    end
     local books = texts(sub(dl, "Books"))
     check(books:find("|", 2, true) and not books:find("|Metadata|", 1, true),
-        "Downloads → Books: no Metadata menu (details come from Grimmory) " .. books)
+        "Home → Books: no Metadata menu (details come from Grimmory) " .. books)
     -- Appearance → Covers → Rounded cover corners: off in the Bookshelf view
     local covers = sub(sub(dl, "Appearance"), "Covers")
     local rounded

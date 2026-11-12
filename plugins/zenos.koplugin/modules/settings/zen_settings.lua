@@ -159,13 +159,14 @@ function M.build(plugin)
         for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
     end
 
-    -- GZreader: the section is named Downloads, like the tab it sets up
-    local library_item = IconItem.decorate({
-        text = _("Downloads"),
-        sub_item_table = filebrowser_items,
-        _zen_settings_root = "library",
-    }, icons.settings_library)
-    library_item.icon_name = "tab_downloaded" -- GZreader: the Downloads tab's own icon
+    -- GZreader: no Downloads section (ZenOS's Library section, which sets up
+    -- the Downloads tab): its rows (Appearance, Folders, Books, Context menu)
+    -- come after Home's own, in Home (owner, 2026-11-11).
+    if type(home_item.sub_item_table) == "table" and type(filebrowser_items) == "table" and #filebrowser_items > 0 then
+        local list = home_item.sub_item_table
+        if list[#list] then list[#list].separator = true end
+        for _i, item in ipairs(filebrowser_items) do list[#list + 1] = item end
+    end
 
     local root_items = {
         -- GZreader: General first (Wi-Fi, Screen, Sleep, …: what's changed most).
@@ -175,7 +176,6 @@ function M.build(plugin)
         -- its saved value or default, with nothing to set.
         IconItem.decorate({ text = _("General"), sub_item_table = general_items }, icons.settings),
         home_item,
-        library_item,
         IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
         interface_item,
         -- GZreader: Storage (what's on the Kindle) is in General → Storage
