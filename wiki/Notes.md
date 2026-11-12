@@ -1,8 +1,8 @@
 Your [Memos](https://usememos.com) notes on the device.
 
 The Notes tab (it took Favorites' place in the tab bar, V) shows your
-[Memos](https://usememos.com) notes as sticky notes, six to a page, pinned
-first. Written against Memos v0.31 (`/api/v1`); newer servers that moved the
+[Memos](https://usememos.com) notes as sticky notes, pinned first (six to a
+page in the usual layout: see Layouts below). Written against Memos v0.31 (`/api/v1`); newer servers that moved the
 API to `/api` are found too.
 
 - **Favorites** is still in Settings → Interface → Navbar → Tabs, turned
@@ -15,9 +15,27 @@ API to `/api` are found too.
   the token (never your password) in GZreader's settings; it's never written
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
-- **Board:** Q–Y open a note, ◀ ▶ (or the page keys) turn pages, the 5-way
-  moves around the notes. **N** new note, **F** filter, **M** for refresh,
+- **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
+  moves around the notes. **N** new note, **F** filter, **L** layout, **M** for refresh,
   connect again and disconnect (the Menu key opens the quick panel in tab views).
+  Touch Kindles have New note, Filter, Layout and More buttons instead.
+- **Layouts** (as in the Memos web app): **L** on the board (Layout on a touch
+  Kindle, More → Layout on a Kindle 4, or Settings → Connections → Memos
+  (Notes) → Layout) chooses how many notes side by side, and how long each is:
+  - **List** (one note under another), **Two side by side** (the default),
+    **Three side by side**, or **Auto**: as many side by side as fit the
+    screen with room for about 22 characters a line (two upright, three
+    sideways; at most four).
+  - **Compact** (the default): every note the same size, three rows to a
+    page (two sideways); a long note is cut off with "…" (open it to read it
+    all). **Full:** each note as long as it needs, with all its pictures,
+    nothing cut off, as many to a page as fit (each in the column with the
+    most room, like Memos' masonry view). A note too long for the page goes
+    on at the top of the empty column to its right, or on the next page,
+    marked *continued*; its parts share one letter.
+  - On the Kindles with keys a page holds at most ten notes, one per letter
+    Q–P. After a change, the board shows the page with the note that was
+    first on screen. The choice is kept.
 - **A note:** the text in Patrick Hand, checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and

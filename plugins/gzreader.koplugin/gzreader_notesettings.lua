@@ -234,6 +234,25 @@ function NoteSettings.items(plugin)
             end,
         }
     end
+    local NL = require("gzreader_notelayout")
+    local view_items = {}
+    for _i, c in ipairs(NL.COLUMNS) do
+        view_items[#view_items + 1] = {
+            text = Notes.columnsLabel(c),
+            radio = true,
+            checked_func = function() return Notes.view(plugin).columns == c end,
+            callback = function() Notes.setView(plugin, "columns", c) end,
+        }
+    end
+    view_items[#view_items].separator = true
+    for _i, d in ipairs(NL.DISPLAYS) do
+        view_items[#view_items + 1] = {
+            text = Notes.displayLabel(d),
+            radio = true,
+            checked_func = function() return Notes.view(plugin).display == d end,
+            callback = function() Notes.setView(plugin, "display", d) end,
+        }
+    end
     return {
         icon("connect", {
             text_func = function()
@@ -292,6 +311,11 @@ function NoteSettings.items(plugin)
             end,
             sub_item_table_func = function() return NoteSettings.storageItems(plugin) end,
             separator = true,
+        }),
+        icon("view_mosaic", {
+            text_func = function() return T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))) end,
+            help_text = _("How the Notes tab shows your notes: in a list or side by side (Auto: as many as fit the screen), and all the same size (Compact: a long note is cut off; open it to read it all) or whole (Full: as long as each note needs). Also L (or Layout) in the Notes tab."),
+            sub_item_table = view_items,
         }),
         icon("view_list", {
             text_func = function() return T(_("Notes kept on the Kindle: %1"), prefs.keep) end,
