@@ -53,6 +53,10 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
+- **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
+  paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
+  backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and
+  the characters themselves. The editor here shows the note as it's written.
 - **Editor:** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
