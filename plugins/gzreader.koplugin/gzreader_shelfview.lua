@@ -13,10 +13,12 @@ _updateItemsBuildUI) is replaced by this one; every other list keeps its own.
 - Folders are spines too (light grey, a tab at the top). A series
   (ZenOS's series grouping) is a spine that turns to show its first book's
   cover, the others behind it.
-- In Audiobooks, each audiobook is a cassette: its case's spine, turned to
-  show the tape with its label and reels; in Music, each album or playlist
-  is a CD: its jewel case's spine, turned to show the cover with the disc
-  peeking out.
+- In Audiobooks, each audiobook is a cassette facing out (its label with
+  the cover and title, the reels); in Music, each album or playlist is a CD
+  facing out (its cover, the disc peeking out). They always face out, each
+  with its name on a plate on the shelf under it; a tap opens one, and the
+  5-way's one has a frame. With nothing on the list that turns, no room is
+  kept for a turned book.
 - Audiobooks and Music (GZreader's folders of what's downloaded) stand on
   the top shelf to the right of the books: a cassette walkman with
   headphones and a CD player (icons/shelf/*.svg). In lists and tiles
@@ -84,17 +86,46 @@ local function deviceSize(name, row_h)
 end
 
 --- Room kept on every shelf for the book turned to show its cover (so
---- turning one never pushes another off the shelf).
+--- turning one never pushes another off the shelf). None when nothing on
+--- the list turns (View.no_turn: Audiobooks, Music, only folders).
 local function turnRoom(row_h)
+    if View.no_turn then return 0 end
     local face_w = math.floor(areaH(row_h) * 0.88 * 2 / 3) + 2 * S(6) + S(Shelf().PAGES) + S(5)
     return math.max(0, face_w - S(Shelf().MIN_SPINE))
 end
 
+--- A tape's or CD's size facing out, for a shelf of row_h: { w (its room on
+--- the shelf, with the gaps), face_h }.
+function View.caseSize(case, row_h)
+    local area_h = areaH(row_h or S(View.ROW_H))
+    if case == "tape" then
+        local face_h = math.floor(area_h * 0.5)
+        return { w = math.floor(face_h * 1.55) + S(14), face_h = face_h }
+    end
+    local face_h = math.floor(area_h * 0.6)
+    return { w = face_h + math.floor(face_h * 0.3) + S(10), face_h = face_h }
+end
+
+--- Does anything on the list turn to show its cover (a book, a series)?
+--- Tapes, CDs, folders and the walkman / CD player don't.
+function View.anyTurns(items)
+    for _i, e in ipairs(items or {}) do
+        if type(e) == "table" and not View.specialOf(e) then
+            if e.is_file then
+                if not View.caseOf(e) then return true end
+            elseif e.is_series_group or type(e.series_items) == "table" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 --- An item's width on a shelf, as buildUI makes it (spines' widths come from
 --- their path: no book needs reading).
-function View.itemWidth(entry)
+function View.itemWidth(entry, row_h)
     local case = View.caseOf(entry)
-    if case == "tape" then return S(20) elseif case == "cd" then return S(14) end
+    if case then return View.caseSize(case, row_h).w end
     local p = entry.path
     if not entry.is_file and type(entry.series_items) == "table" and type(entry.series_items[1]) == "table" then
         p = entry.series_items[1].path or p -- (a series: its first book's spine)
@@ -104,13 +135,27 @@ function View.itemWidth(entry)
 end
 
 --- The room a page's bottom shelf keeps for an ornament ("an ornament on
---- every page": gzreader_shelftheme.lua); 0 otherwise.
-function View.ornamentRoom(row_h, rr, rows)
+--- every page": gzreader_shelftheme.lua); 0 otherwise. None on the first
+--- shelf when the walkman or the CD player is there (`players`).
+function View.ornamentRoom(row_h, rr, rows, players)
+    if rr == 1 and players then return 0 end
     local okt, Theme = pcall(require, "gzreader_shelftheme")
     local okr, keep = pcall(function()
         return okt and Theme.keeps("downloads", rr, rows) and Theme.reserve(areaH(row_h)) or 0
     end)
     return okr and tonumber(keep) or 0
+end
+
+--- Which of a page's shelves get an ornament, and at which end: rows →
+--- side, rows → nth (gzreader_shelftheme.lua's rowsFor). `filled[rr]`: the
+--- shelf has books. The first shelf gets none when the walkman or the CD
+--- player is on it (`players`): they are what stands at its end.
+function View.ornamentRows(filled, rows, players)
+    local occupied = {}
+    for rr = 1, rows do
+        if filled[rr] and not (rr == 1 and players) then occupied[#occupied + 1] = rr end
+    end
+    return require("gzreader_shelftheme").rowsFor("downloads", occupied)
 end
 
 --- Do item_table[first + 1 .. first + n] fit on `rows` shelves (the devices
@@ -123,10 +168,10 @@ function View.pageFits(items, first, n, rows, row_h, width)
         if special then
             device_room = device_room + deviceSize(special, row_h) + S(10)
         else
-            widths[#widths + 1] = View.itemWidth(e)
+            widths[#widths + 1] = View.itemWidth(e, row_h)
         end
     end
-    local function limit(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows) end
+    local function limit(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows, device_room > 0) end
     local r, x = 1, 0
     for _i, w in ipairs(widths) do
         if x + w > limit(r) and x > 0 then
@@ -142,10 +187,25 @@ end
 --- own widths (it was rows × the widest spine, so a shelf of narrow spines
 --- ended with room for three more).
 function View.perPage(items, rows, row_h, width)
-    local key = table.concat({ tostring(items), #items, rows, row_h, width }, " ")
+    local key = table.concat({ tostring(items), #items, rows, row_h, width, tostring(View.no_turn) }, " ")
     if View._per_page and View._per_page.key == key then return View._per_page.n end -- (once per list and size)
     local n = View.countPerPage(items, rows, row_h, width)
+    if View.no_turn then n = View.fitDown(items, n, rows, row_h, width) end
     View._per_page = { key = key, n = n }
+    return n
+end
+
+--- Fewer than n a page until every page fits: tapes and CDs facing out are
+--- much wider than spines, so even the fewest a page of spines takes
+--- (countPerPage's least) can be too many, and the last ones would be hidden.
+function View.fitDown(items, n, rows, row_h, width)
+    local function all(k)
+        for first = 0, #items - 1, k do
+            if not View.pageFits(items, first, k, rows, row_h, width) then return false end
+        end
+        return true
+    end
+    while n > 1 and not all(n) do n = n - 1 end
     return n
 end
 
@@ -168,6 +228,7 @@ function View.countPerPage(items, rows, row_h, width)
 end
 
 function View.recalculateDimen(menu)
+    View.no_turn = not View.anyTurns(menu.item_table)
     menu.portrait_mode = Screen:getWidth() <= Screen:getHeight()
     menu.others_height = 0
     if menu.title_bar then
@@ -297,7 +358,10 @@ function Item:open()
     return true
 end
 
-local TURNS = { book = true, series = true, tape = true, cd = true }
+local TURNS = { book = true, series = true }
+-- (tapes and CDs always face out: a tap opens one)
+local CASES = { tape = true, cd = true }
+View.TURNS, View.CASES = TURNS, CASES
 
 function Item:onTapShelfItem()
     local menu = self.menu
@@ -390,6 +454,14 @@ local Row = WidgetContainer:extend{ w = 0, h = 0 }
 
 function Row:getSize() return Geom:new{ w = self.w, h = self.h } end
 
+--- A hold on this shelf's ornament: the ornament settings
+--- (gzreader_shelftheme.lua); the items' own holds come first.
+function Row:onGesture(ev)
+    if not (ev and ev.ges == "hold" and ev.pos) then return false end
+    local Theme = package.loaded["gzreader_shelftheme"]
+    return Theme ~= nil and Theme.hold(self, ev.pos) or false
+end
+
 local device_cache = {}
 
 local function deviceImage(name, w, h)
@@ -433,41 +505,7 @@ end
 
 local function gray(v) return Blitbuffer.gray(math.max(0, math.min(1, v))) end
 
---- Text running up a strip w x h (a case's spine), on `bg`.
-local function spineText(bb, x, y, w, h, text, bg, ink, size)
-    local lying = Blitbuffer.new(h, w, Blitbuffer.TYPE_BB8)
-    lying:fill(bg)
-    local t = TextWidget:new{ text = text, face = Font:getFace("cfont", size or 9), bold = true, fgcolor = ink, max_width = h - S(8) }
-    local ts = t:getSize()
-    t:paintTo(lying, math.floor((h - ts.w) / 2), math.floor((w - ts.h) / 2))
-    t:free()
-    local stood = lying:rotatedCopy(270)
-    lying:free()
-    bb:blitFrom(stood, x, y, 0, 0, w, h)
-    stood:free()
-end
-
---- A cassette case standing, its spine out: the J-card's spine with the title.
-local function tapeSpine(bb, x, y, w, h, title)
-    bb:paintRect(x, y, w, h, gray(0.55))
-    spineText(bb, x + S(3), y + S(3), w - S(6), h - S(6), title, Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK, 9)
-    bb:paintRect(x + S(3), y + S(3), w - S(6), S(4), gray(0.85))
-    bb:paintBorder(x, y, w, h, 1, gray(0.95))
-    Shelf().shadeRound(bb, x, y, w, h, 0.5)
-end
-
---- A CD's jewel case standing, its spine out.
-local function cdSpine(bb, x, y, w, h, title, shade)
-    local ink = shade >= 0.5 and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
-    bb:paintRect(x, y, w, h, gray(shade))
-    spineText(bb, x + 1, y + S(4), w - 2, h - S(8), title, gray(shade), ink, 8)
-    bb:paintBorder(x, y, w, h, 1, gray(0.9))
-    -- the clear case's edges catching the light
-    bb:paintRect(x + 1, y + 1, 1, h - 2, gray(0.15))
-    Shelf().shadeRound(bb, x, y, w, h, 0.4)
-end
-
---- The tape itself, turned to face out (w x h, its foot on `bottom`).
+--- The tape facing out (w x h, its foot on `bottom`).
 local function tapeFront(bb, x, bottom, w, h, title, cover)
     local y = bottom - h
     bb:darkenRect(x + S(4), y + S(4), w, h, 0.3)
@@ -508,7 +546,7 @@ local function tapeFront(bb, x, bottom, w, h, title, cover)
     end
 end
 
---- The CD turned to face out: its case with the cover, the disc peeking out.
+--- The CD facing out: its case with the cover, the disc peeking out.
 local function cdFront(bb, x, bottom, side, cover)
     local y = bottom - side
     -- the disc behind, out on the right
@@ -530,8 +568,43 @@ local function cdFront(bb, x, bottom, side, cover)
     for i = 0, S(10) do bb:lightenRect(x + side - S(30) + i, y + S(4) + i, S(3), 1, 0.4) end
 end
 
+--- A tape or CD on a shelf at px (its room it.w), its foot on board_y:
+--- facing out, its name on a plate on the board under it, a frame when the
+--- 5-way is on it. Its cover is kept until the row is freed.
+function View.paintCase(bb, menu, it, px, board_y)
+    local CC = require("modules/filebrowser/patches/home/widgets/cover_common")
+    local fw, fh
+    if it.kind == "tape" then
+        fh = it.face_h
+        fw = it.w - S(10)
+        if not it.cover then
+            local cs = math.min(math.floor(fh * 0.62) - S(12), S(40))
+            it.cover = CC.make_cover_widget(it.book, cs, cs, { border = 1, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
+        end
+        tapeFront(bb, px + S(4), board_y, fw, fh, it.book.title or "", it.cover)
+    else
+        fh = it.face_h
+        fw = fh
+        if not it.cover then
+            it.cover = CC.make_cover_widget(it.book, fh - S(9), fh - S(4), { border = 0, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
+        end
+        cdFront(bb, px + S(4), board_y, fh, it.cover)
+    end
+    local fx, fy = px + S(4), board_y - fh
+    plate(bb, it.book.title or "", px + math.floor(it.w / 2), board_y + S(2), it.w - S(8))
+    if it.focused then
+        for k = 0, 1 do
+            bb:paintBorder(fx - S(3) - k, fy - S(3) - k, fw + 2 * (S(3) + k), fh + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
+        end
+    end
+    badge(bb, menu, it, fx, fy, fw, fh)
+    -- (a tap on the plate opens it too)
+    it.dimen = Geom:new{ x = px, y = fy, w = it.w, h = board_y - fy + S(Shelf().BOARD_H) + S(Shelf().UNDER_H) }
+end
+
 function Row:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
+    if package.loaded["gzreader_shelftheme"] then package.loaded["gzreader_shelftheme"].forget(self) end
     local menu = self.menu
     local Sh = Shelf()
     local board_y = y + self.h - S(Sh.BOARD_H) - S(Sh.UNDER_H)
@@ -597,29 +670,8 @@ function Row:paintTo(bb, x, y)
             it.dimen = Geom:new{ x = 0, y = 0, w = 0, h = 0 }
         else
             it.hidden = false
-            if i == picked and (it.kind == "tape" or it.kind == "cd") then
-                local CC = require("modules/filebrowser/patches/home/widgets/cover_common")
-                if it.kind == "tape" then
-                    local th = it.face_h
-                    if not it.cover then
-                        local cs = math.min(math.floor(th * 0.62) - S(12), S(40))
-                        it.cover = CC.make_cover_widget(it.book, cs, cs, { border = 1, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
-                    end
-                    tapeFront(bb, px + S(4), board_y, it.face_w - S(10), th, it.book.title or "", it.cover)
-                    it.dimen = Geom:new{ x = px + S(4), y = board_y - th, w = it.face_w - S(10), h = th }
-                else
-                    local side = it.face_h
-                    if not it.cover then
-                        it.cover = CC.make_cover_widget(it.book, side - S(9), side - S(4), { border = 0, background = Blitbuffer.COLOR_LIGHT_GRAY, uniform = false })
-                    end
-                    cdFront(bb, px + S(4), board_y, side, it.cover)
-                    it.dimen = Geom:new{ x = px + S(4), y = board_y - side, w = side, h = side }
-                end
-                local d = it.dimen
-                for k = 0, 1 do
-                    bb:paintBorder(d.x - S(3) - k, d.y - S(3) - k, d.w + 2 * (S(3) + k), d.h + 2 * (S(3) + k), 1, Blitbuffer.COLOR_BLACK)
-                end
-                badge(bb, menu, it, d.x, d.y, d.w, d.h)
+            if CASES[it.kind] then
+                View.paintCase(bb, menu, it, px, board_y)
             elseif i == picked then
                 if not it.cover then
                     it.cover = require("modules/filebrowser/patches/home/widgets/cover_common").make_cover_widget(it.book,
@@ -644,9 +696,7 @@ function Row:paintTo(bb, x, y)
                 badge(bb, menu, it, cx, cy, cs.w, cs.h)
             else
                 local top = board_y - it.h
-                if it.kind == "tape" then tapeSpine(bb, px, top, it.w, it.h, it.book.title or "")
-                elseif it.kind == "cd" then cdSpine(bb, px, top, it.w, it.h, it.book.title or "", it.shade or 0.3)
-                else it.spine:paintTo(bb, px, top) end
+                it.spine:paintTo(bb, px, top)
                 if it.kind == "folder" then
                     -- a folder: a tab on top
                     bb:paintRect(px + S(6), top - S(5), it.w - S(12), S(5), Blitbuffer.gray(0.25))
@@ -661,13 +711,13 @@ function Row:paintTo(bb, x, y)
             end
             px = px + w
         end
-        if i ~= picked and it.cover then it.cover:free(); it.cover = nil end
+        if i ~= picked and it.cover and not CASES[it.kind] then it.cover:free(); it.cover = nil end
     end
     Sh.paintDepth(bb, board_y, spans)
     if orn then
         pcall(function()
             local Theme = require("gzreader_shelftheme")
-            Theme.paintPlanned(bb, orn, orn_x or (room_end - S(Theme.MARGIN) - orn.w), board_y)
+            Theme.paintPlanned(bb, orn, orn_x or (room_end - S(Theme.MARGIN) - orn.w), board_y, self)
         end)
     end
 end
@@ -761,14 +811,10 @@ function View.buildUI(menu)
             local item = Item:new{ menu = menu, entry = entry, idx = idx, slot = slot, kind = kind,
                 w = look.w, h = (is_book or series) and look.h or math.floor(area_h * 0.8), book = book }
             if case then book.cover_w, book.cover_h = 1, 1 end -- (square: an audiobook's or album's cover)
-            if case == "tape" then
-                item.w, item.h = S(20), math.floor(area_h * 0.52)
-                item.face_h = math.floor(area_h * 0.5)
-                item.face_w = math.floor(item.face_h * 1.55) + S(14)
-            elseif case == "cd" then
-                item.w, item.h, item.shade = S(14), math.floor(area_h * 0.58), shade
-                item.face_h = math.floor(area_h * 0.6)
-                item.face_w = item.face_h + math.floor(item.face_h * 0.3) + S(10)
+            if case then
+                -- (facing out: its room on the shelf is its front's)
+                local size = View.caseSize(case, row_h)
+                item.w, item.h, item.face_h = size.w, size.face_h, size.face_h
             else
                 item.spine = Sh.newSpine(book, item.w, item.h, shade)
             end
@@ -781,7 +827,7 @@ function View.buildUI(menu)
     for _i, d in ipairs(devices) do device_room = device_room + d.w + S(10) end
     local row_items = {}
     local r, x = 1, 0
-    local limit = function(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows) end
+    local limit = function(rr) return width - S(16) - turnRoom(row_h) - (rr == 1 and device_room or 0) - View.ornamentRoom(row_h, rr, rows, device_room > 0) end
     for _i, it in ipairs(books) do
         if x + it.w > limit(r) and x > 0 and r < rows then r, x = r + 1, 0 end
         row_items[r] = row_items[r] or {}
@@ -803,9 +849,9 @@ function View.buildUI(menu)
     -- which shelves get an ornament, and at which end (gzreader_shelftheme.lua)
     local orn_sides, orn_nth = {}, {}
     pcall(function()
-        local occupied = {}
-        for rr = 1, rows do if row_items[rr] and #row_items[rr] > 0 then occupied[#occupied + 1] = rr end end
-        orn_sides, orn_nth = require("gzreader_shelftheme").rowsFor("downloads", occupied)
+        local filled = {}
+        for rr = 1, rows do filled[rr] = row_items[rr] ~= nil and #row_items[rr] > 0 end
+        orn_sides, orn_nth = View.ornamentRows(filled, rows, #devices > 0)
     end)
     for rr = 1, rows do
         local row = Row:new{ w = width, h = row_h, menu = menu, items = row_items[rr] or {}, orn_side = orn_sides[rr], orn_nth = orn_nth[rr],

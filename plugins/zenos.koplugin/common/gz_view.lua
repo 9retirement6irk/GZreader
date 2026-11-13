@@ -64,7 +64,7 @@ end
 ---------------------------------------------------------------- square covers
 
 -- GZreader: covers are square-cornered in the Bookshelf view (Settings →
--- Downloads → Appearance → Covers → Rounded cover corners is off and greyed
+-- Settings → Home → Appearance → Covers → Rounded cover corners is off and greyed
 -- out there). The value chosen in the other views is kept in
 -- features.gz_rounded_outside_shelf and put back when one is chosen again.
 local function zenConfig()

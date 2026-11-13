@@ -3,7 +3,7 @@ Remote debugging: GZreader reports to the developer's feed (Tianji
 /open/feed/<id>/send and /state/upsert) so problems are visible even when
 the Kindle can't be reached afterwards.
 
-On with "Send debug reports automatically" (Settings → General, or the
+On with "Send debug reports automatically" (Settings → About, or the
 setup guide's Debug Reports page; off unless chosen), on Kindles with
 Wi-Fi. (Until 1.28.1 it came with Full usage statistics; GZreader sends no
 usage statistics since: R.setting carries a Full choice over.) Releases report to one feed,
@@ -128,7 +128,7 @@ end
 --- What it sends (the Settings item's help, the setup guide's page).
 R.WHAT_IS_SENT = require("gettext")("When GZreader starts, how the previous run ended; warnings and errors from its log; freezes and crashes. Sent to the developer only while Wi-Fi is on. Log lines can name the book or file GZreader was working on; never passwords or tokens.")
 
---- Settings → General: "Send debug reports automatically" (nil on a Kindle
+--- Settings → About: "Send debug reports automatically" (nil on a Kindle
 --- without Wi-Fi: Send diagnostic log to the developer still works there,
 --- at the next sync).
 function R.menuItem()

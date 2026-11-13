@@ -17,9 +17,68 @@ binaries (LuaJIT, crengine, SQLite…) under `qemu-arm`, headless:
 `GZ_EMU_MODEL` picks the Kindle (default `k3`): `k2` (Kindle 2), `dx` (the
 DX: KOReader's Kindle 2 class at 824 × 1200), `dxg` (DX Graphite), `k4`
 (Kindle 4: 5-way, no keyboard, an 8-bit framebuffer with inverted levels),
-`kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates) or
-`pw3`, each with its serial, framebuffer and key codes (the model's own
+`kt` (Kindle Touch: touch at 600 × 800, its panel's 0–4095 coordinates),
+`pw3` or `scribe`, each with its serial, framebuffer and key codes (the model's own
 event map, so a key it doesn't have fails the step).
+
+`GZ_EMU_MODEL=scribe` runs it as a **Kindle Scribe** (also the Scribe 2 to
+KOReader): its serial (device code 27J, so the real `KindleScribe` class: MTK
+display, touch, a pen, 300 dpi), an 8-bit 1860 × 2480 framebuffer, touches as
+on the Paperwhite, and the pen as KOReader's wacom protocol sends it
+(`BTN_TOOL_PEN` / `BTN_TOOL_RUBBER`, `ABS_X` / `ABS_Y` / `ABS_PRESSURE`,
+`BTN_TOUCH`): `{ pen = { { x, y }, … }, sec = s, eraser = true }` or
+`E.pen(points, sec, eraser)`, `E.penTap(what)`. KOReader puts the pen in its
+own slot (`input.pen_slot`), tagged 1 (pen) or 2 (eraser), and hands each
+frame to `Input:registerStylusCallback` when one is registered (a drawing
+screen's way in). The emulator runs the kindle-legacy binaries; a real Scribe
+runs the `kindlehf` package. It can't tell how the pen feels on the device
+(lag, accuracy, the panel's refresh). `scribe_tour.lua` (with the demo
+library: `GZ_SCRIBE_LIB=<library dir>`, `demo/demo_grimmory.py` on 18080,
+`demo/demo_plex.py` on 18090): screenshots of reading, the quick panel, Home,
+Downloads, the Catalog, a book's page, Notes and Settings at the Scribe's
+size, a pen tap on a quick panel tile, and a pen stroke and the eraser
+through a stylus callback; its checks go to `<out>/scribe-checks.txt`. Not
+in CI's model list (`GZ_CI_MODELS`): a 1860 × 2480 screen is slow under qemu.
+
+`drawing_tour.lua` (any touch model; `demo/mock_memos.py 18090` running): a
+new note's Draw, the drawing screen, Done, Save and the note in Memos with
+its drawing. On pw3/kt it draws with `E.finger(points, sec)`; on scribe only
+the pen draws, and it checks palm rejection with `E.fingerDown(x, y, dt)` /
+`E.fingerUp(dt)` (a hand resting on the screen) and `E.penHover(x, y, dt)` /
+`E.penAway(dt)` (the pen near the screen without touching). It keeps the
+PNG it sent as `<out>/drawing-sent.canvas.png`; checks go to
+`<out>/drawing-checks.txt`.
+
+`notes_drawings.lua` (`demo/mock_memos.py 18090 --sample`): puts two notes
+with drawings in Memos ("# Garden plan" with a small drawing, and one with a
+big drawing; `GZ_DRAWING_SMALL` / `GZ_DRAWING_BIG`, by default
+`tests/media/memos-drawing.canvas.png`), then shoots the board (Compact and
+Full) and both notes' pages, then Edit on the big one (it opens the drawing,
+scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
+and checks Memos has the new file under the same attachment; checks go to
+`<out>/notes-drawings-checks.txt`.
+
+`notes_pages.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): the
+Notes tab's Draw button opens a new note on a page (the text page isn't
+drawn first); Paper → College ruled, a stroke, + New page (on College ruled
+too), Paper → Graph, a stroke, + New page → Dot grid and a stroke off the
+paper's edge (it stops there), ◀ ◀, Done: the editor says Drawings (3), each
+page's file has its paper as Memos keeps a background. Save: one note in
+Memos with three drawings in page order (the mock lists a note's attachments
+newest first, as Memos does). Edit opens the pages again, in order. It keeps
+the PNGs as `<out>/page-<n>.canvas.png`; checks go to
+`<out>/notes-pages-checks.txt`.
+
+`notes_richedit.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): puts a
+note written in Memos' rich editor in Memos (a heading, bold and italic, an
+`&nbsp;` line, a checklist, a numbered list, code and a tag), then Edit: it
+opens formatted on one page with no Markdown or `&nbsp;` to see. The tour taps
+into a word and an item's ☐, taps the keyboard's ⮠ and types on its keys,
+holds and drags over the heading (`E.holdDrag`, in real time: KOReader's hold
+comes from a timer) and taps Head, B on a word, and saves. It checks that
+Memos gets exactly the Markdown Memos' own editor would write, and that a
+one-line box keeps ZenOS' short bottom row; checks go to
+`<out>/notes-richedit-checks.txt`.
 
 `GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
@@ -133,6 +192,11 @@ Press/Back answer), and the order things happen in on a first start.
 - `shelf_fill.lua` (`GZ_EMU_BOOK` an EPUB) — Downloads in the bookshelf view
   with 40 books: a page takes as many as fit, none hidden, letters Q to L only,
   Del opens nothing, L opens its book.
+- `shelf_theme_tiles.lua` (`GZ_EMU_MODEL=pw3` taps, `k3` the 5-way) — the
+  Bookshelf theme screen and Which ornaments (`gzreader_shelfpreview.lua`):
+  Walnut and On every page chosen, an ornament ticked off and on, the
+  shelves held until the screen closes; checks in
+  `<out>/shelf_theme_tiles.txt`.
 - `grimmory_memory.lua` (best with `GZ_EMU_MODEL=pw3`, and
   `demo/big_grimmory.py <tests/mock_grimmory.py> 18080 6000`: thousands of
   books with real covers) — Lua memory and RSS while paging through All
@@ -143,6 +207,12 @@ Press/Back answer), and the order things happen in on a first start.
   and 7 tabs; the Music tab: signing in with a code, Artists → an album → Play
   (downloads, plays; the player stubbed), Now playing, the Home and Reading
   menus' Music line. Writes `music.txt`.
+- `music_player_tabs.lua` (any model with audio: `kt` for touch, `k3`/`dx` for
+  keys; no servers) — music's player and its tabs: an album stood in for as
+  playing, Now playing (◀ ▶ seeking gathered), Queue (▲ ▼), Library (its first
+  list, a list inside it, Back). `GZ_PLAYER_COVER=<a JPEG>` puts a cover on the
+  disc (`docs/screenshots/cd-player.png`, `music-queue.png`, `music-library.png`
+  were taken on `kt` with one). Writes `player-tabs.txt`.
 - `copy_send.lua` + `copy_receive.lua` — copying connections between two
   emulators at once (e.g. `GZ_EMU_MODEL=pw3` sending, `k3` receiving, each
   with its own `GZ_EMU_TREE`, the same `GZ_COPY_PIN` file; servers: the mock

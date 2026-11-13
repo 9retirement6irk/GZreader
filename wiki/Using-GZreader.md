@@ -3,7 +3,8 @@ How you drive GZreader on each device: the quick panel (the same on all of them)
 ## The quick panel
 
 One panel of square tiles, on every Kindle and Nook: **Menu** opens it (on a
-touch Kindle, swipe down from the top). Each tile has a letter for the
+touch Kindle, a tap at the top or a swipe down from the top; [which of
+them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 
@@ -12,17 +13,27 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
-  History, View and Sort; **Music** and **Audiobook** while one plays or is
+  History, View and Sort; **Quick note** while [Memos](Notes) is connected;
+  **Music** and **Audiobook** while one plays or is
   paused (they open its player: music and audiobooks are browsed in the
   Catalog tab), and **Downloads (N)** while something downloads.
 - **This book** (while reading): Sync with Grimmory, Contents, Bookmark,
   Bookmarks, Go to page, Search book, Font (the list of fonts), Layout (size,
-  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud, and
-  Music and Audiobook while one plays or is paused.
+  margins, spacing: KOReader's bottom panel), Fit pictures, Read aloud,
+  **Quick note** while [Memos](Notes) is connected, and Music and Audiobook
+  while one plays or is paused.
 
 On a touch Kindle with a frontlight the panel also has a light slider (the swipe that opens the panel leaves the light alone; tap or
 drag it; − and + step), and
 holding a book at Home or in Downloads opens Manage book.
+
+### How it opens
+
+On a touch Kindle, **Settings → Interface → Quick panel** starts with **Open
+with a tap at the top** and **Open with a swipe down from the top** (both by
+default; in a book too). Untick one to keep only the other: one always stays
+ticked. They're KOReader's "Activate menu", which no longer shows in Settings →
+KOReader (nor its "Auto-show bottom menu", which does nothing in GZreader).
 
 ### Choosing the tiles
 
@@ -86,9 +97,13 @@ run the same GZreader with ZenOS's touch interface:
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light
   slider on Kindles with a frontlight. A tap below it closes it.
+- **Warmth:** on Kindles whose light can be made warmer (Paperwhite 5 and
+  newer, Oasis 3, Scribe, Colorsoft) a second slider under the light's goes
+  from **Cool** to **Warm**: tap or drag it, − and + step. The swipe that
+  opens the panel moves neither slider.
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
-- **Notes:** New note, Filter and More are buttons under the title; a note
+- **Notes:** Note, Draw (a new note on a page to draw on), Filter, Layout, Sort, Connection (refresh, connect again, disconnect) and a full screen icon are buttons under the title; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
   its toolbar (lists, checklists, headings, italic, bold, tags) and Save are
