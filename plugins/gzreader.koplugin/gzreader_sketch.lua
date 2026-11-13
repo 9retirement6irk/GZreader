@@ -48,6 +48,7 @@ function Sketch.new(opts)
     self.pen_only = opts.pen_only == true
     self.pen_slot = opts.pen_slot
     self.per_unit = opts.per_unit or Drawing.SCREEN_PER_UNIT
+    self.max_per_unit = self.per_unit -- (an opened drawing is shrunk to fit, never enlarged past this)
     -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
     self.ox, self.oy = 0, 0
     self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
@@ -111,7 +112,80 @@ function Sketch:live()
     return out
 end
 
-function Sketch:isEmpty() return #self:live() == 0 and #self.locked == 0 end
+--- Nothing on the page: no strokes, no shapes or text (its paper doesn't count).
+function Sketch:isEmpty()
+    if #self:live() > 0 then return false end
+    for _i, el in ipairs(self.locked) do
+        if not (self.base and require("gzreader_notepaper").isBackground(self.base, el)) then return false end
+    end
+    return true
+end
+
+--- The page's paper: one of `gzreader_notepaper.lua`'s ids, "blank", or
+--- "other" (a picture under the drawing that isn't one of them).
+function Sketch:paper()
+    local Notepaper = require("gzreader_notepaper")
+    local bg = self.base and Notepaper.background(self.base)
+    if not bg then return "blank" end
+    return Notepaper.idOf(self.base, bg) or "other"
+end
+
+--- Fits the page (its shapes, pictures and strokes) to the canvas again, at
+--- most `max_per_unit` screen pixels a unit, with a margin; the strokes
+--- move with it.
+function Sketch:refit()
+    local scene_pts = {}
+    for i, st in ipairs(self.strokes) do
+        local pts = {}
+        for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+        scene_pts[i] = pts
+    end
+    local minX, minY, maxX, maxY
+    local function grow(x, y)
+        minX, minY = math.min(minX or x, x), math.min(minY or y, y)
+        maxX, maxY = math.max(maxX or x, x), math.max(maxY or y, y)
+    end
+    for _i, el in ipairs(self.locked) do
+        local x, y = tonumber(el.x) or 0, tonumber(el.y) or 0
+        grow(x, y); grow(x + (tonumber(el.width) or 0), y + (tonumber(el.height) or 0))
+    end
+    for i, st in ipairs(self.strokes) do
+        if not st.gone then for _j, p in ipairs(scene_pts[i]) do grow(p[1], p[2]) end end
+    end
+    if not minX then return end
+    local margin = Sketch.PADDING
+    local c = self.canvas
+    local fit = math.min((c.w - 2 * margin) / math.max(1, maxX - minX), (c.h - 2 * margin) / math.max(1, maxY - minY))
+    self.per_unit = math.max(0.05, math.min(self.max_per_unit or self.per_unit, fit))
+    -- (in the middle across, at the top)
+    self.ox, self.oy = minX - (c.w / self.per_unit - (maxX - minX)) / 2, minY - margin / self.per_unit
+    for i, st in ipairs(self.strokes) do
+        for j, p in ipairs(scene_pts[i]) do st.points[j] = { self:toCanvas(p[1], p[2]) } end
+    end
+end
+
+--- Puts the page on paper `id` (`gzreader_notepaper.lua`; "blank": none),
+--- in place of its paper if it had one, and fits it to the canvas again.
+function Sketch:setPaper(id)
+    local Notepaper = require("gzreader_notepaper")
+    if not self.base then self.base = Drawing.newScene() end
+    local base = self.base
+    local old = Notepaper.background(base)
+    if old then
+        for i, el in ipairs(base.elements) do if el == old then table.remove(base.elements, i); break end end
+        for i, el in ipairs(self.locked) do if el == old then table.remove(self.locked, i); break end end
+        if type(base.files) == "table" and old.fileId then base.files[old.fileId] = nil end
+    end
+    local el, file_id, file = Notepaper.element(id)
+    if el then
+        base.files = type(base.files) == "table" and base.files or {}
+        base.files[file_id] = file
+        table.insert(base.elements, 1, el)
+        table.insert(self.locked, 1, el)
+    end
+    self:refit()
+    return true
+end
 
 --- A scene point in canvas pixels, and back.
 function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
@@ -135,9 +209,15 @@ function Sketch.fromScene(scene, opts)
     if not b then return self end
     local margin = Sketch.PADDING
     local c = self.canvas
-    local fit = math.min((c.w - 2 * margin) / math.max(1, b.w), (c.h - 2 * margin) / math.max(1, b.h))
-    self.per_unit = math.max(0.05, math.min(self.per_unit, fit))
-    self.ox, self.oy = b.x - margin / self.per_unit, b.y - margin / self.per_unit
+    if b.x >= 0 and b.y >= 0 and (b.x + b.w) * self.per_unit <= c.w and (b.y + b.h) * self.per_unit <= c.h then
+        -- (it fits where it was drawn, at full size: a drawing made here comes back as it was)
+        self.ox, self.oy = 0, 0
+    else
+        local fit = math.min((c.w - 2 * margin) / math.max(1, b.w), (c.h - 2 * margin) / math.max(1, b.h))
+        self.per_unit = math.max(0.05, math.min(self.per_unit, fit))
+        -- (in the middle across, at the top)
+        self.ox, self.oy = b.x - (c.w / self.per_unit - b.w) / 2, b.y - margin / self.per_unit
+    end
     for _i, el in ipairs(Drawing.liveElements(scene)) do
         if el.type == "freedraw" and type(el.points) == "table" and #el.points > 0 then
             local pts = {}

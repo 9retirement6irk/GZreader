@@ -58,6 +58,15 @@ scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
 and checks Memos has the new file under the same attachment; checks go to
 `<out>/notes-drawings-checks.txt`.
 
+`notes_pages.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): the
+Notes tab's Draw button opens a new note on a page; Paper → College ruled,
+a stroke, + New page (on College ruled too), Paper → Graph, a stroke, ◀,
+Done: the editor says Drawings (2), each page's file has its paper as
+Memos keeps a background. Save: one note in Memos with two drawings. Edit
+opens both pages again (▶ to the second). It keeps the two PNGs as
+`<out>/page-1.canvas.png` and `page-2.canvas.png`; checks go to
+`<out>/notes-pages-checks.txt`.
+
 `notes_richedit.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): puts a
 note written in Memos' rich editor in Memos (a heading, bold and italic, an
 `&nbsp;` line, a checklist, a numbered list, code and a tag), then Edit: it

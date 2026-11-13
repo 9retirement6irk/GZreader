@@ -18,7 +18,8 @@ API to `/api` are found too.
 - **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
   moves around the notes. **N** new note, **F** filter, **L** layout, **S** sort, **M** connection
   (the Menu key opens the quick panel in tab views).
-  Touch Kindles have buttons under the title instead: **New note**, **Filter**, **Layout**,
+  Touch Kindles have buttons under the title instead: **Note** (a new note),
+  **Draw** (a new note that opens on a page to draw on), **Filter**, **Layout**,
   **Sort**, **Connection**, and an icon for **Full screen** (an **X** while in full screen, to leave it).
   A Kindle 4 has neither letter keys nor buttons: its **Menu** key on the board
   opens New note, Filter…, Layout, Sort…, Full screen and Connection….
@@ -118,17 +119,28 @@ API to `/api` are found too.
   tab syncs the next time you open it. On a Kindle syncing through a
   computer it goes with the next sync. Hide the tile in **Settings →
   Interface → Quick panel**.
-- **Drawings** (touch Kindles, Memos over Wi‑Fi): in a new note, tap
-  **✎ Draw** (beside who can see it) for a page to draw on, with **Thin**,
-  **Medium** and **Thick**, **Eraser** (rubs out whole strokes, as in Memos),
-  **Undo** and **Clear**. **Done** keeps it with the note (the button says
-  **✎ Drawing**; tap it to go on drawing) and **Save** sends both. A note can
-  be just a drawing. In Memos it's an attachment named
+- **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
+  tab, or **✎ Draw** in a note's editor (beside who can see it), for a page
+  to draw on, with **Thin**, **Medium** and **Thick**, **Eraser** (rubs out
+  whole strokes, as in Memos), **Undo** and **Clear**. **Done** keeps the
+  drawings with the note (the button says **✎ Drawing**, or **✎ Drawings (2)**;
+  tap it to go on drawing) and **Save** sends them all. A note can be just
+  drawings.
+  - **Pages:** **+ New page** adds another drawing to the note; **◀ ▶** go
+    between them (*Page 1 of 2*). In Memos each page is a drawing of its own,
+    in the order of the pages. A page rubbed out to nothing is left out (or
+    taken off the note, when it's already in Memos).
+  - **Paper:** the button with the page's paper (**Blank paper ▾** on a new
+    page) puts it on **College ruled**, **Wide ruled**, **Gregg ruled**,
+    **Dot grid** or **Graph** paper, or back to **Blank**. New pages start on
+    the paper you chose last. The paper goes to Memos with the drawing as its
+    background, as Memos' own drawing editor keeps one (a locked picture
+    under everything), so Memos shows and keeps it; on the Kindle it's grey. In Memos it's an attachment named
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
   26.11.0) opens it as a drawing you can edit there; an older Memos shows it
   as a picture. Until it's sent, the board shows the note with the drawing.
-  - **Editing a drawing** (touch Kindles): **Edit** on a note with a drawing
-    opens the drawing. Draw more, rub out (strokes made in Memos too),
+  - **Editing drawings** (touch Kindles): **Edit** on a note with drawings
+    opens them, a page each (pictures added in Memos show too). Draw more, rub out (strokes made in Memos too),
     Undo, Clear; **Done** goes back to the note's text and **Save** sends
     both. The new drawing goes over the old one in Memos (the same
     attachment, as Memos' Edit drawing does); an older Memos gets it added

@@ -1,4 +1,4 @@
--- The Notes tab's buttons on a touch Kindle: New note, Filter, Layout, Sort,
+-- The Notes tab's buttons on a touch Kindle: Note, Draw, Filter, Layout, Sort,
 -- Connection and the full screen icon (an X while in full screen), tapped where
 -- they are drawn. With demo/mock_memos.py --sample on 127.0.0.1:18090.
 local s = { start = 16 }
@@ -8,7 +8,7 @@ local function plugin() return require("apps/filemanager/filemanager").instance.
 local function N() return require("gzreader_notes") end
 local function UI() return require("ui/uimanager") end
 local function top() local st = UI()._window_stack; return st[#st].widget end
--- the centre of the board's button `i` (1–6), from where it was drawn
+-- the centre of the board's button `i` (1–7), from where it was drawn
 local function chip(i)
     local row = N().board.title_bar._gz_action_row
     local k = 0
@@ -33,18 +33,18 @@ add({ fn = function(E)
     N().show(plugin())
 end, after = 16 })
 shot("toolbar-1-board")
-add(tapChip(4))
+add(tapChip(5))
 add({ fn = function(E) E.say("after Sort:", tostring(top().title)) end })
 shot("toolbar-2-sort")
 add({ fn = function() if top() ~= N().board then UI():close(top()) end end, after = 3 })
-add(tapChip(5))
+add(tapChip(6))
 add({ fn = function(E) E.say("after Connection:", tostring(top().title)) end })
 shot("toolbar-3-connection")
 add({ fn = function() if top() ~= N().board then UI():close(top()) end end, after = 3 })
-add(tapChip(6))
+add(tapChip(7))
 add({ fn = function(E) E.say("full screen:", tostring(N().fullscreen(plugin())), tostring(N().board and N().board.name)) end, after = 6 })
 shot("toolbar-4-full-screen")
-add(tapChip(6))
+add(tapChip(7))
 add({ fn = function(E) E.say("after X:", tostring(N().fullscreen(plugin())), tostring(N().board and N().board.name)) end, after = 6 })
 shot("toolbar-5-back")
 return s

@@ -150,9 +150,10 @@ add({ shot = "5-editor-with-drawing", after = 1 })
 add({ fn = function(E)
     local e = editor()
     local Drawing = require("gzreader_drawing")
-    local path = e and e.drawing and e.drawing.path
+    local page = e and e.pages and e.pages[1]
+    local path = page and page.path
     local scene = path and Drawing.readFile(path)
-    check(screen() == nil and e and e.drawing and path:match("drawing%-%d+%-%d+%.canvas%.png$") ~= nil,
+    check(screen() == nil and e and page and path and path:match("drawing%-%d+%-%d+%.canvas%.png$") ~= nil,
         "Done: back in the editor, the drawing kept (" .. tostring(path) .. ")")
     check(scene and #scene.elements == (PEN and 2 or 1) and scene.elements[1].type == "freedraw",
         "the file is a memos drawing with the strokes (" .. tostring(scene and #scene.elements) .. ")")

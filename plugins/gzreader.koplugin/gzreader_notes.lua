@@ -391,11 +391,17 @@ function Notes.applyQueue(plugin)
     end
 end
 
---- A queued note's drawing as an attachment the board can show before it's
---- in Memos (`Notes.showDrawingNow` puts its file where the board looks).
+--- A queued note's drawings as attachments the board can show before
+--- they're in Memos (`Notes.showDrawingNow` puts their files where the board looks).
 function Notes.queuedAttachments(q)
-    if not (q.drawing and q.drawing.filename) then return {} end
-    return { { name = "attachments/local-" .. tostring(q.id), filename = q.drawing.filename, type = "image/png" } }
+    local out = {}
+    for k, d in ipairs(Memos.queuedDrawings(q)) do
+        if d.filename then
+            out[#out + 1] = { name = "attachments/local-" .. tostring(q.id) .. (k > 1 and ("-" .. k) or ""),
+                filename = d.filename, type = "image/png" }
+        end
+    end
+    return out
 end
 
 --- Drawings (memos' `drawing-…canvas.png` attachments) show in the note,
@@ -500,16 +506,54 @@ function Notes.saveDrawing(plugin, memo, drawing)
     Notes.sendSoon(plugin)
 end
 
---- Copies a queued drawing to where the board finds the note's pictures.
+--- Copies a queued note's drawings to where the board finds the note's pictures.
 function Notes.showDrawingNow(q)
-    local att = Notes.queuedAttachments(q)[1]
-    if not att then return end
-    local src = io.open(q.drawing.path, "rb")
-    if not src then return end
-    local data = src:read("*a")
-    src:close()
-    local dst = io.open(Memos.filePath(att), "wb")
-    if dst then dst:write(data); dst:close() end
+    local list = Memos.queuedDrawings(q)
+    for k, att in ipairs(Notes.queuedAttachments(q)) do
+        local src = list[k] and io.open(list[k].path, "rb")
+        if src then
+            local data = src:read("*a")
+            src:close()
+            local dst = io.open(Memos.filePath(att), "wb")
+            if dst then dst:write(data); dst:close() end
+        end
+    end
+end
+
+--- Drawings changed in a note already in Memos (`list`: { att, path,
+--- filename } drawn or edited, { att, removed = true } taken off; no att: a
+--- new one): queued, and shown here at once.
+function Notes.saveDrawings(plugin, memo, list)
+    for _i, d in ipairs(list or {}) do
+        if d.removed then
+            if d.att then
+                Notes.enqueue(plugin, { op = "undraw", name = memo.name, attachment = d.att.name })
+                for i, a in ipairs(memo.attachments or {}) do
+                    if a.name == d.att.name then table.remove(memo.attachments, i); break end
+                end
+                Log.info("notes: a drawing taken off a note")
+            end
+        elseif d.att then
+            Notes.enqueue(plugin, { op = "redraw", name = memo.name, attachment = d.att.name,
+                drawing = { path = d.path, filename = d.filename } })
+            local src = io.open(d.path, "rb")
+            local data = src and src:read("*a")
+            if src then src:close() end
+            local dst = data and io.open(Memos.filePath(d.att), "wb")
+            if dst then dst:write(data); dst:close() end
+            Notes.pic_sizes[Memos.filePath(d.att)] = nil
+            Log.info("notes: a drawing edited")
+        else
+            local q = Notes.enqueue(plugin, { op = "attach", name = memo.name,
+                drawing = { path = d.path, filename = d.filename } })
+            Notes.showDrawingNow(q)
+            memo.attachments = memo.attachments or {}
+            table.insert(memo.attachments, Notes.queuedAttachments(q)[1])
+            Log.info("notes: a drawing added to a note")
+        end
+    end
+    if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
 end
 
 --- Draw in a new note: touch Kindles, Memos over Wi-Fi (the sync page
@@ -592,12 +636,21 @@ function Notes.refresh(plugin, on_done, opts)
                 local left = {}
                 for _i, q in ipairs(store.queue or {}) do
                     if not gone[q.id] then
-                        -- a note made whose drawing didn't go: send only the drawing next time
+                        -- a note made whose drawings didn't all go: send only those left next time
                         local made = type(res.attached) == "table" and res.attached[q.id]
                         if made then q.op, q.name = "attach", made end
+                        local sent = type(res.sent) == "table" and tonumber(res.sent[q.id])
+                        if sent and sent > 0 then
+                            local list = Memos.queuedDrawings(q)
+                            for k = 1, sent do if list[k] and list[k].path then os.remove(list[k].path) end end
+                            local rest = {}
+                            for k = sent + 1, #list do rest[#rest + 1] = list[k] end
+                            q.drawings, q.drawing = rest, nil
+                        end
                         left[#left + 1] = q
-                    elseif q.drawing and q.drawing.path then
-                        os.remove(q.drawing.path) -- (in Memos now; the board shows it from there)
+                    else
+                        -- (in Memos now; the board shows them from there)
+                        for _k, d in ipairs(Memos.queuedDrawings(q)) do if d.path then os.remove(d.path) end end
                     end
                 end
                 store.queue = left
@@ -1228,12 +1281,14 @@ function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthe
 
 Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/panel/"
 
---- Touch Kindles: the buttons under the Notes tab's title: New note, Filter,
---- Layout, Sort, Connection, and an icon for Full screen (an X while in it).
+--- Touch Kindles: the buttons under the Notes tab's title: Note (a new
+--- note), Draw (a new note, drawn), Filter, Layout, Sort, Connection, and an
+--- icon for Full screen (an X while in it).
 function Notes.actions(plugin)
     local full = Notes.fullscreen(plugin)
     return {
-        { _("New note"), function() Notes.edit(plugin) end },
+        { _("Note"), function() Notes.edit(plugin) end },
+        { _("Draw"), function() Notes.draw(plugin) end },
         { _("Filter"), function() Notes.showFilter(plugin) end },
         { _("Layout"), function() Notes.showView(plugin) end },
         { _("Sort"), function() Notes.showSort(plugin) end },
@@ -1709,20 +1764,26 @@ function Notes.edit(plugin, memo, opts)
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
         can_draw = Notes.canDraw(plugin),
-        -- an edit of a note with a drawing: Edit opens the drawing (Done goes back to the text)
-        drawing_att = memo and Notes.drawings(memo)[1] or nil,
-        open_drawing = memo ~= nil and Notes.drawings(memo)[1] ~= nil and Notes.canDraw(plugin),
-        on_save = function(content, visibility, vis_changed, space, space_changed, drawing)
+        -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
+        -- Draw (a new note): a page to draw on at once
+        drawing_atts = memo and Notes.drawings(memo) or nil,
+        open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))
+            and Notes.canDraw(plugin),
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
-                if drawing then Notes.saveDrawing(plugin, memo, drawing) end
+                if drawings then Notes.saveDrawings(plugin, memo, drawings) end
             else
+                local list = {}
+                for _i, d in ipairs(drawings or {}) do
+                    if d.path then list[#list + 1] = { path = d.path, filename = d.filename } end
+                end
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
-                    space = space, drawing = drawing })
-                if drawing then
+                    space = space, drawings = #list > 0 and list or nil })
+                if #list > 0 then
                     Notes.showDrawingNow(q)
-                    Log.info("notes: a new note with a drawing queued")
+                    Log.info("notes: a new note with", #list, "drawing(s) queued")
                 end
                 -- (notes not loaded yet, e.g. a quick note from a book: the
                 -- board loads the kept ones later and shows the queued note then)
@@ -1740,6 +1801,16 @@ function Notes.edit(plugin, memo, opts)
             end
         end,
     }
+end
+
+--- Draw (the Notes tab's button): a new note that opens on a page to draw
+--- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
+function Notes.draw(plugin)
+    if not Notes.canDraw(plugin) then
+        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
+            or _("Drawing needs Memos connected."), 3)
+    end
+    return Notes.edit(plugin, nil, { draw = true })
 end
 
 --- The quick panel's Quick note tile: a new note over whatever is on the

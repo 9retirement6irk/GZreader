@@ -327,31 +327,52 @@ function Memos:deleteAttachment(att_name)
     return true
 end
 
---- A new note with a drawing (`q.drawing` = { path, filename }): the note
---- first, then the drawing uploaded onto it. Returns the note, or nil, err
---- and (the note made but not the upload) the note's name.
+--- A queue item's drawings ({ path, filename } each): `q.drawings`, or the
+--- one `q.drawing` (queues from before several drawings).
+function Memos.queuedDrawings(q)
+    if type(q.drawings) == "table" then return q.drawings end
+    if type(q.drawing) == "table" then return { q.drawing } end
+    return {}
+end
+
+--- Uploads `q`'s drawings onto note `name`, in order. Returns true, or nil,
+--- err and how many went before it stopped. (A drawing whose file is gone
+--- is skipped: nothing left to send.)
+function Memos:uploadDrawings(q, name)
+    for i, d in ipairs(Memos.queuedDrawings(q)) do
+        local att, err = self:uploadAttachment(d.path, d.filename, name)
+        if not att and err ~= "missing_file" then return nil, err, i - 1 end
+    end
+    return true
+end
+
+--- A new note with drawings: the note first, then the drawings uploaded
+--- onto it. Returns the note, or nil, err and (the note made but not every
+--- upload) the note's name and how many drawings went.
 function Memos:createWithDrawing(q)
     local memo, err = self:create(q.content or "", q.visibility, q.space)
     if not memo then return nil, err end
-    local att, aerr = self:uploadAttachment(q.drawing.path, q.drawing.filename, memo.name)
-    if not att and aerr ~= "missing_file" then return nil, aerr, memo.name end
+    local ok, aerr, sent = self:uploadDrawings(q, memo.name)
+    if not ok then return nil, aerr, memo.name, sent end
     return memo
 end
 
 --- Run the queued changes (in the background process). Returns the queue
---- items that went through (their ids), the first error, and `attached`:
---- { [queue id] = note name } for notes made whose drawing didn't upload yet
---- (the queue then sends only the drawing: op "attach").
+--- items that went through (their ids), the first error, `attached`:
+--- { [queue id] = note name } for notes made whose drawings didn't all
+--- upload yet (the queue then sends only those: op "attach"), and `sent`:
+--- { [queue id] = how many of its drawings went } for those cut short.
 function Memos:flush(queue)
-    local done, first_err, attached = {}, nil, {}
+    local done, first_err, attached, sent_some = {}, nil, {}, {}
     for _i, q in ipairs(queue or {}) do
-        local ok, err, made
-        if q.op == "create" and q.drawing then
-            ok, err, made = self:createWithDrawing(q)
+        local ok, err, made, sent
+        if q.op == "create" and #Memos.queuedDrawings(q) > 0 then
+            ok, err, made, sent = self:createWithDrawing(q)
             if made then attached[q.id] = made end
+            if sent and sent > 0 then sent_some[q.id] = sent end
         elseif q.op == "attach" then
-            ok, err = self:uploadAttachment(q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
-            if err == "missing_file" then ok = true end -- (nothing left to send)
+            ok, err, sent = self:uploadDrawings(q, q.name)
+            if sent and sent > 0 then sent_some[q.id] = sent end
         elseif q.op == "redraw" then -- a drawing on a note edited: its new file over the old
             ok, err = self:replaceAttachment(q.attachment, q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
             if err == "missing_file" then ok = true end
@@ -367,7 +388,7 @@ function Memos:flush(queue)
             if err and err:match("^http_4") then done[#done + 1] = q.id end -- refused for good: drop it
         end
     end
-    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached }
+    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached, sent = sent_some }
 end
 
 ---------------------------------------------------------------- the cache

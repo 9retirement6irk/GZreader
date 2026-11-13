@@ -7116,29 +7116,43 @@ print("Notes (Memos v0.31)")
             and show_src:find("menu.onGzMenu = function() Notes.showMenu(plugin); return true end", 1, true)
             and not show_src:find("showOptions", 1, true),
             "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu")
-        -- the buttons (touch): New note, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
+        -- the buttons (touch): Note, Draw, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
         local acts = Notes.actions(plugin)
         local bnames = {}
-        for i = 1, 5 do bnames[i] = acts[i][1] end
-        check(table.concat(bnames, "|") == "New note|Filter|Layout|Sort|Connection" and acts[6].icon_file:match("/icons/panel/fullscreen%.svg$")
-            and acts[6].label == "Full screen" and io.open(acts[6].icon_file) ~= nil,
-            "touch: New note, Filter, Layout, Sort, Connection, and the full screen icon")
+        for i = 1, 6 do bnames[i] = acts[i][1] end
+        check(table.concat(bnames, "|") == "Note|Draw|Filter|Layout|Sort|Connection" and acts[7].icon_file:match("/icons/panel/fullscreen%.svg$")
+            and acts[7].label == "Full screen" and io.open(acts[7].icon_file) ~= nil,
+            "touch: Note, Draw, Filter, Layout, Sort, Connection, and the full screen icon")
         local opened = {}
-        local real = { edit = Notes.edit, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
+        local real = { edit = Notes.edit, draw = Notes.draw, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
             showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen }
         for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
-        for i = 1, 5 do acts[i][2]() end
-        acts[6].callback()
+        for i = 1, 6 do acts[i][2]() end
+        acts[7].callback()
         for k, fn in pairs(real) do Notes[k] = fn end
-        check(table.concat(opened, ",") == "edit,showFilter,showView,showSort,showConnection,setFullscreen=true",
+        check(table.concat(opened, ",") == "edit,draw,showFilter,showView,showSort,showConnection,setFullscreen=true",
             "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
+        -- Draw: a new note opening on a page to draw on
+        local drew
+        local real_edit = Notes.edit
+        Notes.edit = function(_p, memo, o) drew = { memo = memo, draw = o and o.draw } end
+        local real_can = Notes.canDraw
+        Notes.canDraw = function() return true end
+        Notes.draw(plugin)
+        Notes.canDraw = function() return false end
+        local before_info = drew
+        drew = nil
+        Notes.draw(plugin)
+        Notes.edit, Notes.canDraw = real_edit, real_can
+        check(before_info and before_info.memo == nil and before_info.draw == true and drew == nil,
+            "Draw: a new note that opens on a page (not when drawings can't go to Memos)")
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
-        check(acts[6].icon_file:match("/icons/panel/close%.svg$") and acts[6].label == "Leave full screen" and io.open(acts[6].icon_file) ~= nil,
+        check(acts[7].icon_file:match("/icons/panel/close%.svg$") and acts[7].label == "Leave full screen" and io.open(acts[7].icon_file) ~= nil,
             "…in full screen the icon is an X, to leave it")
         opened = {}
         Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
-        acts[6].callback()
+        acts[7].callback()
         Notes.setFullscreen = real.setFullscreen
         check(opened[1] == "false", "…which turns it off")
         prefs.fullscreen = nil
@@ -7176,7 +7190,7 @@ print("Notes (Memos v0.31)")
         check(opened_conn == plugin, "…Connection… opens Connection")
         local Touch = require("gzreader_touch")
         local cw = Touch.chipWidths(564, acts, 6, 46)
-        check(cw[1] == cw[5] and cw[6] == 46 and cw[1] * 5 + 46 + 6 * 5 <= 564 and cw[1] * 5 + 46 + 6 * 5 > 558,
+        check(cw[1] == cw[6] and cw[7] == 46 and cw[1] * 6 + 46 + 6 * 6 <= 564 and cw[1] * 6 + 46 + 6 * 6 > 558,
             "the icon button is narrow; the text buttons share the rest of the row")
         -- on top?
         local board = { plugin = plugin }
@@ -7235,8 +7249,8 @@ print("Notes (Memos v0.31)")
         check(Notes.canDraw(plugin) == false, "draw: not when Memos goes through the computer (the sync page doesn't send drawings)")
         NetD.usb = was_usb
         local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc:find("can_draw = Notes.canDraw(plugin)", 1, true) and nsrc:find("drawing_att = memo and Notes.drawings(memo)[1] or nil", 1, true),
-            "draw: offered for new notes, and for notes in Memos (their drawing, or a first one)")
+        check(nsrc:find("can_draw = Notes.canDraw(plugin)", 1, true) and nsrc:find("drawing_atts = memo and Notes.drawings(memo) or nil", 1, true),
+            "draw: offered for new notes, and for notes in Memos (their drawings, or a first one)")
 
         -- queued: shown on the board with its drawing before it's sent
         local d1 = drawingFile("drawing-20261112-180000.canvas.png")
@@ -7253,7 +7267,7 @@ print("Notes (Memos v0.31)")
 
         -- the sync page doesn't get it
         local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
-        check(usrc:find("if not q.drawing then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
+        check(usrc:find("if not (q.drawing or q.drawings) then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
 
         -- sent: the note (no text), then the drawing on it, byte for byte
         check(sync(), "sent")
@@ -7370,11 +7384,67 @@ print("Notes (Memos v0.31)")
         check(#after.attachments == 1 and after.attachments[1].filename == d4.filename, "…and on the note in Memos")
         local esrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc3:find("open_drawing = memo ~= nil and Notes.drawings(memo)[1] ~= nil and Notes.canDraw(plugin)", 1, true)
-            and esrc2:find("if opts.open_drawing and e:canDraw() and e.drawing_att then", 1, true),
-            "Edit on a note with a drawing opens the drawing (touch Kindles)")
+        check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))", 1, true)
+            and esrc2:find("if opts.open_drawing and e:canDraw() then", 1, true),
+            "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
-        check(dsrc:find("if self.scene and not self.changed then", 1, true) ~= nil, "a drawing opened and left as it was: nothing sent")
+        check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
+            "a drawing opened and left as it was: nothing sent")
+
+        -- several drawings: a new note with two pages, both sent onto it
+        local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")
+        local qm = Notes.enqueue(plugin, { op = "create", content = "Two pages", visibility = "PRIVATE", drawings = { m1, m2 } })
+        Notes.showDrawingNow(qm)
+        local qa = Notes.queuedAttachments(qm)
+        check(#qa == 2 and qa[1].filename == m1.filename and qa[2].filename == m2.filename and qa[1].name ~= qa[2].name
+            and readAll(Memos.filePath(qa[2])) == fixture, "two pages queued: both on the board at once")
+        sync()
+        local two
+        for _i, m in ipairs(mstate().memos) do if m.content == "Two pages" then two = m end end
+        check(two and #two.attachments == 2 and two.attachments[1].filename == m1.filename and two.attachments[2].filename == m2.filename
+            and not io.open(m1.path, "rb") and not io.open(m2.path, "rb"), "…sent: one note, its two drawings in order; the waiting copies removed")
+        -- the second upload fails: next time only the second goes, onto the same note
+        local m3, m4 = drawingFile("drawing-20261113-091000.canvas.png"), drawingFile("drawing-20261113-091000-2.canvas.png")
+        local real_up, ups = Memos.uploadAttachment, 0
+        Memos.uploadAttachment = function(c, path, ...)
+            ups = ups + 1
+            if path == m4.path then return nil, "unreachable" end
+            return real_up(c, path, ...)
+        end
+        Notes.enqueue(plugin, { op = "create", content = "Half sent", visibility = "PRIVATE", drawings = { m3, m4 } })
+        sync()
+        Memos.uploadAttachment = real_up
+        local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(lq and lq.op == "attach" and tostring(lq.name):match("^memos/") and #lq.drawings == 1 and lq.drawings[1].path == m4.path
+            and not io.open(m3.path, "rb"), "the second drawing didn't go: only it is left, for the note already made")
+        sync()
+        local half
+        for _i, m in ipairs(mstate().memos) do if m.content == "Half sent" then half = m end end
+        check(half and #half.attachments == 2 and #plugin.store.memos.queue == 0, "…sent next time: the note has both, once each")
+        -- an edit: one page redrawn, one added, one taken off
+        local en = client2:create("Pages to edit", "PRIVATE")
+        local e1 = drawingFile("drawing-20261113-092000.canvas.png")
+        local e2 = drawingFile("drawing-20261113-092001.canvas.png")
+        local ea1 = client2:uploadAttachment(e1.path, e1.filename, en.name)
+        local ea2 = client2:uploadAttachment(e2.path, e2.filename, en.name)
+        sync()
+        local held2
+        for _i, m in ipairs(Notes.notes) do if m.name == en.name then held2 = m end end
+        check(held2 and #Notes.drawings(held2) == 2, "a note with two drawings: both are its drawings")
+        local redone = drawingFile("drawing-20261113-092000.canvas.png")
+        local added = drawingFile("drawing-20261113-092500.canvas.png")
+        Notes.saveDrawings(plugin, held2, { { att = Notes.drawings(held2)[1], path = redone.path, filename = redone.filename },
+            { att = Notes.drawings(held2)[2], removed = true }, { path = added.path, filename = added.filename } })
+        local ops = {}
+        for _i, qq in ipairs(plugin.store.memos.queue) do ops[#ops + 1] = qq.op end
+        check(table.concat(ops, ",") == "redraw,undraw,attach", "edited pages queued: redraw, undraw, attach (" .. table.concat(ops, ",") .. ")")
+        sync()
+        local done2
+        for _i, m in ipairs(mstate().memos) do if m.name == en.name then done2 = m end end
+        local names = {}
+        for _i, a2 in ipairs(done2 and done2.attachments or {}) do names[#names + 1] = a2.name end
+        check(done2 and #done2.attachments == 2 and done2.attachments[1].name == ea1.name and names[2] ~= ea2.name,
+            "…in Memos: the first page kept its attachment, the second gone, a new one added")
 
         -- an older Memos (v0.31: no replace_attachment): the new file added to the note, the old one deleted
         os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
