@@ -4,9 +4,11 @@ Run GZreader (the real KOReader + ZenOS + GZreader Lua) as a Kindle 3 under
 qemu-arm, headless: fake framebuffer, scripted keys, real everything else.
 GZ_EMU_MODEL: k3 (default), k2 (Kindle 2), dx (DX: KOReader's Kindle 2
 class at 824 × 1200), dxg (DX Graphite), k4 (Kindle 4: 5-way, no keyboard,
-8-bit inverted framebuffer), kt (Kindle Touch: touch, Home button) or pw3
-(Paperwhite 3: touch, 1072 × 1448 at 300 dpi), with that model's serial,
-framebuffer and key codes; scripted taps and swipes on the touch models.
+8-bit inverted framebuffer), kt (Kindle Touch: touch, Home button), pw3
+(Paperwhite 3: touch, 1072 × 1448 at 300 dpi) or scribe (Kindle Scribe:
+touch and a pen, 1860 × 2480 at 300 dpi, KOReader's KindleScribe with its
+MTK display), with that model's serial, framebuffer and key codes; scripted
+taps and swipes on the touch models, pen strokes on the Scribe.
 k2, dx and dxg have no Wi-Fi (off and offline; asking for it is counted in
 E.wifi_asked), like the real ones.
 
@@ -16,7 +18,8 @@ The script returns a list of steps: { wait = s } | { key = "Press" } |
 { shot = "name" } | { fn = function(E) ... end } |
 { wait_for = function(E) return done end, timeout = s } |
 { tap = { x, y } } | { tap = "text on screen" } | { tap = function() return x, y end } | { hold = { x, y } | "text" } |
-{ swipe = { x1, y1, x2, y2 } } (touch models).
+{ swipe = { x1, y1, x2, y2 } } (touch models) |
+{ pen = { { x, y }, … }, eraser = true } (the Scribe: one stroke, E.pen).
 ]]
 local SCRIPT, OUT = arg[1], arg[2]
 arg = { [0] = "reader.lua" }
@@ -29,10 +32,13 @@ pcall(ffi.cdef, "struct emu_timeval { long tv_sec; long tv_usec; }; int gettimeo
 -- /proc/usid: a Kindle 3 (Wi-Fi) serial, or a Paperwhite 3's
 local MODEL = os.getenv("GZ_EMU_MODEL") or "k3"
 local SERIALS = { k3 = "B00812345678ABCD", k2 = "B00212345678ABCD", dx = "B00412345678ABCD", dxg = "B00912345678ABCD",
-    k4 = "B00E12345678ABCD", kt = "B00F12345678ABCD", pw3 = "G090G1000000000A" }
+    k4 = "B00E12345678ABCD", kt = "B00F12345678ABCD", pw3 = "G090G1000000000A",
+    -- (a Kindle Scribe: device code 27J at the 4th–6th characters, KOReader's ks_set)
+    scribe = "G0927J000000000A" }
 -- framebuffer: einkfb (Kindle 2, DX, 3, 4) or mxcfb (touch), size, bits, inverted grey levels
 local SCREENS = { k3 = { 600, 800, 4 }, k2 = { 600, 800, 4 }, dx = { 824, 1200, 4 }, dxg = { 824, 1200, 4 },
-    k4 = { 600, 800, 8 }, kt = { 600, 800, 8, mxcfb = true }, pw3 = { 1072, 1448, 8, mxcfb = true } }
+    k4 = { 600, 800, 8 }, kt = { 600, 800, 8, mxcfb = true }, pw3 = { 1072, 1448, 8, mxcfb = true },
+    scribe = { 1860, 2480, 8, mxcfb = true } }
 local SCREEN = SCREENS[MODEL] or SCREENS.k3
 local real_open = io.open
 local usid = OUT .. "/usid"
@@ -222,6 +228,45 @@ function E.findText(text)
     end
 end
 
+-- the Scribe's pen (KOReader's wacom protocol, input.wacom_protocol): its own
+-- tool keys, single-touch ABS_X / ABS_Y, BTN_TOUCH for contact; KOReader puts
+-- it in its own slot (pen_slot), tagged pen or eraser
+local BTN_TOOL_PEN, BTN_TOOL_RUBBER, BTN_TOUCH = 320, 321, 330
+local ABS_X, ABS_Y, ABS_PRESSURE = 0, 1, 24
+local function penFrame(evs, dt) stFrame(evs, dt) end
+--- One pen stroke through `points` ({ { x, y }, … }, screen pixels; one point:
+--- a tap), `sec` long; `eraser`: the pen's other end.
+function E.pen(points, sec, eraser)
+    if type(points) ~= "table" or #points == 0 then return say("pen: no points") end
+    sec = sec or 0.3
+    local tool = eraser and BTN_TOOL_RUBBER or BTN_TOOL_PEN
+    local p1 = points[1]
+    say(eraser and "eraser" or "pen", #points, "points from", math.floor(p1[1]), math.floor(p1[2]))
+    -- hovering in, then down
+    penFrame({ { 1, tool, 1 }, { 3, ABS_X, math.floor(p1[1]) }, { 3, ABS_Y, math.floor(p1[2]) }, { 3, ABS_PRESSURE, 0 } }, 0)
+    penFrame({ { 3, ABS_PRESSURE, 1200 }, { 1, BTN_TOUCH, 1 } }, 0.01)
+    local n = #points
+    for i = 2, n do
+        local p = points[i]
+        penFrame({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, 1500 } }, 0.01 + sec * (i - 1) / n)
+    end
+    -- lifted, then out of range
+    penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
+    penFrame({ { 1, tool, 0 } }, sec + 0.04)
+end
+--- The pen hovering over (x, y), not touching; and taken away. `dt`: seconds from now.
+function E.penHover(x, y, dt)
+    say("pen hovering", math.floor(x), math.floor(y))
+    penFrame({ { 1, BTN_TOOL_PEN, 1 }, { 3, ABS_X, math.floor(x) }, { 3, ABS_Y, math.floor(y) }, { 3, ABS_PRESSURE, 0 } }, dt or 0)
+end
+function E.penAway(dt) say("pen away"); penFrame({ { 1, BTN_TOOL_PEN, 0 } }, dt or 0) end
+--- A tap with the pen on `what` ({ x, y } or text on screen).
+function E.penTap(what)
+    local x, y = E.where(what)
+    if not x then return say("pen tap: not on screen:", tostring(what)) end
+    E.pen({ { x, y } }, 0.05)
+end
+
 function E.tap(what)
     local x, y = E.where(what)
     if not x then return say("tap: not on screen:", tostring(what)) end
@@ -281,6 +326,30 @@ function E.lcdSwipe(x1, y1, x2, y2)
     lcdFrame({ { 3, 24, 0 }, { 1, 330, 0 } }, 0.2)
 end
 
+--- A finger stroke through `points` ({ { x, y }, … }, screen pixels), `sec` long.
+function E.finger(points, sec)
+    if type(points) ~= "table" or #points == 0 then return say("finger: no points") end
+    sec = sec or 0.3
+    say("finger", #points, "points from", math.floor(points[1][1]), math.floor(points[1][2]))
+    down(points[1][1], points[1][2])
+    local n = #points
+    for i = 2, n do move(points[i][1], points[i][2], sec * (i - 1) / n) end
+    up(sec + 0.02)
+end
+--- Hold at (x1, y1), then drag to (x2, y2) and lift (KOReader: hold, hold_pan, hold_release).
+function E.holdDrag(x1, y1, x2, y2)
+    say("hold and drag", math.floor(x1), math.floor(y1), "->", math.floor(x2), math.floor(y2))
+    -- (in real time: KOReader's hold comes from a timer, not the events' times)
+    down(x1, y1)
+    for i = 1, 5 do
+        later(1.0 + 0.15 * i, function() move(x1 + (x2 - x1) * i / 5, y1 + (y2 - y1) * i / 5) end)
+    end
+    later(2.0, up)
+end
+--- A finger put down and left there (a hand resting on the screen), and lifted.
+function E.fingerDown(x, y, dt) say("finger down", math.floor(x), math.floor(y)); down(x, y, dt) end
+function E.fingerUp(dt) say("finger up"); up(dt) end
+
 function E.swipe(x1, y1, x2, y2, sec)
     say("swipe", x1, y1, "->", x2, y2)
     sec = sec or 0.25
@@ -337,6 +406,8 @@ package.preload["ffi/framebuffer_mxcfb"] = function()
         self.bb:fill(BB.COLOR_WHITE)
         require("ffi/framebuffer").init(self)
     end
+    -- (the Scribe's MTK display: KindleScribe:init turns its "fast" mode on)
+    function PW:_MTK_ToggleFastMode(on) E.mtk_fast = on end
     return PW
 end
 
@@ -696,6 +767,8 @@ local function runScript()
             E.hold(s.hold, s.sec)
         elseif s.swipe then
             E.swipe(unpack(s.swipe))
+        elseif s.pen then
+            E.pen(s.pen, s.sec, s.eraser)
         elseif s.lcd then
             E.lcdTap(s.lcd, s.sec)
         elseif s.lcd_swipe then

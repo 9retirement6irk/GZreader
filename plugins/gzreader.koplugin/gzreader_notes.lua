@@ -1,11 +1,15 @@
 --[[--
 The Notes tab: your Memos notes as sticky notes.
 
-- Board: six sticky notes per page (Q–Y open one; ◀ ▶ pages), pinned first.
-  N new note, F filter, M more (refresh, connect, disconnect). (Not the Menu
-  key: ZenOS sends it from tab views to the Home menu.)
+- Board: sticky notes, pinned first (Q, W, E… open one; ◀ ▶ pages). L layout:
+  a list, two or three side by side, or Auto; Compact (every note the same
+  size, six to a page two side by side) or Full (whole notes, as long as
+  they need: gzreader_notelayout.lua). N new note, F filter, L layout,
+  S sort, M connection (refresh, connect again, disconnect). (Not the Menu
+  key: ZenOS sends it from tab views to the Home menu; a Kindle 4's Menu
+  opens Notes.showMenu.)
 - Wi-Fi: only to sync (when the tab opens, at most every 5 minutes, or with
-  changes waiting; M → Refresh any time), to send what you change, and to
+  changes waiting; Connection → Refresh any time), to send what you change, and to
   open an attachment not on the Kindle yet. Browsing never needs it:
   notes, and the pictures in them, are kept on the Kindle.
 - A note: the whole text, checklist items you tick with their letter key
@@ -44,6 +48,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
 local Memos = require("gzreader_memos")
+local NL = require("gzreader_notelayout")
 local Sticky = require("gzreader_sticky")
 local Touch = require("gzreader_touch")
 local _ = require("gettext")
@@ -54,7 +59,6 @@ local S = function(px) return Screen:scaleBySize(px) end
 
 local Notes = {
     TAB_ID = "ct_notes",
-    COLS = 2, ROWS = 3,
     KEEP = 100,           -- notes fetched and kept (newest, pinned first); Settings → Notes
     FILES_MB = 25,        -- attachments kept on the Kindle; Settings → Notes
     filter = { kind = "all" },
@@ -77,10 +81,191 @@ function Notes.prefs(plugin)
     return p
 end
 
+---------------------------------------------------------------- views
+
+--- The board's view: { columns = "list"|"2"|"3"|"auto", display = "compact"|"full" }.
+function Notes.view(plugin) return NL.view(Notes.prefs(plugin)) end
+
+--- How many columns Auto gives on a board `width` pixels wide (the screen's).
+function Notes.autoColumns(width)
+    return NL.columns("auto", width or Screen:getWidth(), S(NL.AUTO_MIN_W))
+end
+
+function Notes.columnsLabel(columns, short)
+    if columns == "list" then return short and _("List") or _("List: one note under another") end
+    if columns == "3" then return _("Three side by side") end
+    if columns == "auto" then
+        return short and _("Auto") or T(_("Auto: as many as fit (%1 here)"), Notes.autoColumns())
+    end
+    return _("Two side by side")
+end
+
+function Notes.displayLabel(display, short)
+    if display == "full" then return short and _("Full") or _("Full: whole notes, nothing cut off") end
+    return short and _("Compact") or _("Compact: every note the same size")
+end
+
+--- "Two side by side, compact" (Settings → Notes).
+function Notes.viewLabel(view)
+    return Notes.columnsLabel(view.columns, true) .. ", " .. Notes.displayLabel(view.display, true):lower()
+end
+
+--- Change the view (`field`: "columns" or "display"); the board shows the
+--- page with the note that was first on screen.
+function Notes.setView(plugin, field, value)
+    local p = Notes.prefs(plugin)
+    if p[field] == value then return end
+    p[field] = value
+    plugin:save()
+    local v = NL.view(p)
+    Log.info("notes: view", v.columns, v.display)
+    local b = Notes.board
+    if b and not b._gz_closed then
+        b._gz_goto = b._gz_first
+        Notes.reloadBoard(true)
+    end
+end
+
+--- L on the board (or Layout, More → Layout): side by side, and compact or full.
+function Notes.showView(plugin)
+    local dialog
+    local view = Notes.view(plugin)
+    local function row(field, value, text)
+        return { { text = text .. (view[field] == value and "  \u{2713}" or ""), align = "left", callback = function()
+            UIManager:close(dialog)
+            Notes.setView(plugin, field, value)
+        end } }
+    end
+    local rows = {}
+    for _i, c in ipairs(NL.COLUMNS) do rows[#rows + 1] = row("columns", c, Notes.columnsLabel(c)) end
+    for _i, d in ipairs(NL.DISPLAYS) do rows[#rows + 1] = row("display", d, Notes.displayLabel(d)) end
+    rows[#rows + 1] = { { text = _("Full screen: no tab bar") .. (Notes.fullscreen(plugin) and "  \u{2713}" or ""), align = "left",
+        callback = function()
+            UIManager:close(dialog)
+            Notes.setFullscreen(plugin, not Notes.fullscreen(plugin))
+        end } }
+    dialog = Notes.keyedDialog(_("Layout"), rows)
+    return dialog
+end
+
+--- Layout → Full screen: the Notes tab without the tab bar at the bottom
+--- (more room for notes). The X button where its icon was leaves it (or
+--- Layout, or a Kindle 4's Menu; Back or the quick panel's Home leave the tab).
+Notes.FULLSCREEN_NAME = "gz_notes_fullscreen"
+function Notes.fullscreen(plugin) return Notes.prefs(plugin).fullscreen == true end
+
+function Notes.setFullscreen(plugin, on)
+    local p = Notes.prefs(plugin)
+    if (p.fullscreen == true) == (on == true) then return end
+    p.fullscreen = on == true or nil
+    plugin:save()
+    Log.info("notes: full screen", on == true)
+    -- (ZenOS adds the tab bar when a tab view is made: the board is made again)
+    local b = Notes.board
+    if b and not b._gz_closed then
+        local page_note = b._gz_first
+        UIManager:close(b)
+        local nb = Notes.show(plugin)
+        if nb and page_note then nb._gz_goto = page_note; Notes.reloadBoard(true) end
+    end
+end
+
+---------------------------------------------------------------- sorting
+
+Notes.SORTS = { { "created", _("Date created") }, { "updated", _("Date edited") } }
+
+--- How the notes are sorted (the Notes tab's Sort button, or S):
+--- { by = "created"|"updated", reverse = bool (oldest first), pinned = bool (pinned first) }.
+function Notes.sort(plugin)
+    local p = Notes.prefs(plugin)
+    return { by = p.sort == "updated" and "updated" or "created", reverse = p.sort_reverse == true,
+        pinned = p.sort_pinned ~= false }
+end
+
+--- Memos' order_by for it ("pinned desc, create_time desc" by default).
+function Notes.orderBy(plugin)
+    local so = Notes.sort(plugin)
+    local field = (so.by == "updated" and "update_time" or "create_time") .. (so.reverse and " asc" or " desc")
+    return so.pinned and ("pinned desc, " .. field) or field
+end
+
+--- `list` in that order, on the Kindle too (notes kept from before, notes
+--- written here and not sent yet, a sync through a computer).
+function Notes.sorted(list, plugin)
+    local so = Notes.sort(plugin)
+    local key = so.by == "updated" and "updated" or "created"
+    local out, pos = {}, {}
+    for i, m in ipairs(list) do out[i] = m; pos[m] = i end
+    local function t(m) return tostring(m[key] or m.created or "") end
+    table.sort(out, function(a, b)
+        if so.pinned and (a.pinned == true) ~= (b.pinned == true) then return a.pinned == true end
+        local ta, tb = t(a), t(b)
+        if ta ~= tb then
+            if so.reverse then return ta < tb end
+            return ta > tb
+        end
+        return pos[a] < pos[b] -- (stable)
+    end)
+    return out
+end
+
+function Notes.setSort(plugin, field, value)
+    local p = Notes.prefs(plugin)
+    p[field] = value
+    plugin:save()
+    Log.info("notes: sort", Notes.orderBy(plugin))
+    Notes.reloadBoard(false)
+    -- (Memos sends the first notes in this order: with more than are kept, others)
+    Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(false) end end)
+end
+
+--- The Notes tab's Sort: "Sort notes by".
+function Notes.showSort(plugin)
+    local dialog
+    local so = Notes.sort(plugin)
+    local function pick(fn) return function() UIManager:close(dialog); fn() end end
+    local rows = {}
+    for _i, sd in ipairs(Notes.SORTS) do
+        rows[#rows + 1] = { { text = sd[2] .. (so.by == sd[1] and "  \u{2713}" or ""), align = "left",
+            callback = pick(function() Notes.setSort(plugin, "sort", sd[1]) end) } }
+    end
+    rows[#rows + 1] = { { text = _("Reverse order (oldest first)") .. (so.reverse and "  \u{2713}" or ""), align = "left",
+        callback = pick(function() Notes.setSort(plugin, "sort_reverse", not so.reverse or nil) end) } }
+    rows[#rows + 1] = { { text = _("Pinned first") .. (so.pinned and "  \u{2713}" or ""), align = "left",
+        callback = pick(function() Notes.setSort(plugin, "sort_pinned", (not so.pinned) and true or false) end) } }
+    dialog = Notes.keyedDialog(_("Sort notes by"), rows)
+    return dialog
+end
+
+--- Whether the Notes tab is what's on screen (nothing over the board).
+function Notes.onTop()
+    local b = Notes.board
+    if not b or b._gz_closed then return false end
+    local stack = UIManager._window_stack or {}
+    local top = stack[#stack]
+    return top ~= nil and top.widget == b
+end
+
 --- The tags chosen in Settings → Notes → Sync only these tags, or nil (all notes).
 function Notes.syncTags(plugin)
     local t = plugin.store.memos and plugin.store.memos.sync_tags
     return (type(t) == "table" and #t > 0) and t or nil
+end
+
+--- Your Memos spaces ({ { name = "spaces/…", title }, … }, Memos v0.31) as
+--- of the last sync, or nil (a Memos without spaces, or not synced yet).
+function Notes.spaces(plugin)
+    local t = plugin and plugin.store.memos and plugin.store.memos.spaces
+    return (type(t) == "table" and #t > 0) and t or nil
+end
+
+--- A space's title ("spaces/family" → "Family"), from the last sync.
+function Notes.spaceTitle(plugin, name)
+    if not name or name == "" then return nil end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do
+        if sp.name == name then return sp.title end
+    end
+    return name:match("^spaces/(.+)$") or name -- (a space not synced yet: its id)
 end
 
 local function quote(v) return '"' .. tostring(v):gsub('[\\"]', "\\%0") .. '"' end
@@ -115,6 +300,9 @@ function Notes.cel(f)
     if f.kind == "pinned" then return "pinned == true" end
     if f.kind == "date" then return string.format('created_ts > now - duration("%dh")', f.value * 24) end
     if f.kind == "search" then return string.format("content.contains(%q)", f.value) end
+    if f.kind == "space" then -- ("" for notes in no space)
+        return f.value == "" and "space == null" or string.format("space == %q", f.value)
+    end
     return nil
 end
 
@@ -143,6 +331,7 @@ function Notes.keepHere(m, f)
     if f.kind == "search" then return tostring(m.content or ""):lower():find(tostring(f.value):lower(), 1, true) ~= nil end
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
+    if f.kind == "space" then return (m.space or "") == f.value end
     return true
 end
 
@@ -162,6 +351,7 @@ function Notes.filterLabel(f)
     if f.kind == "attachments" then return _("With attachments") end
     if f.kind == "pinned" then return _("Pinned") end
     if f.kind == "search" then return "\u{201C}" .. f.value .. "\u{201D}" end
+    if f.kind == "space" then return f.value == "" and _("No space") or (f.label or f.value) end
     return _("All notes")
 end
 
@@ -182,18 +372,217 @@ function Notes.applyQueue(plugin)
             for _j, m in ipairs(Notes.notes) do if m.local_id == q.id then seen = true end end
             if not seen then
                 table.insert(Notes.notes, 1, { local_id = q.id, content = q.content, tags = Notes.tagsIn(q.content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = {}, pinned = false, pending = true })
+                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = Notes.queuedAttachments(q), pinned = false,
+                    pending = true, visibility = q.visibility, space = q.space })
             end
         else
             for _j, m in ipairs(Notes.notes) do
                 if m.name == q.name then
-                    if q.op == "update" then m.content = q.content; m.tags = Notes.tagsIn(q.content) end
+                    if q.op == "update" then
+                        m.content = q.content; m.tags = Notes.tagsIn(q.content)
+                        if q.visibility then m.visibility = q.visibility end
+                        if q.space then m.space = q.space ~= "" and q.space or nil end
+                    end
                     if q.op == "pin" then m.pinned = q.pinned end
                     m.pending = true
                 end
             end
         end
     end
+end
+
+--- A queued note's drawings as attachments the board can show before
+--- they're in Memos (`Notes.showDrawingNow` puts their files where the board looks).
+function Notes.queuedAttachments(q)
+    local out = {}
+    for k, d in ipairs(Memos.queuedDrawings(q)) do
+        if d.filename then
+            out[#out + 1] = { name = "attachments/local-" .. tostring(q.id) .. (k > 1 and ("-" .. k) or ""),
+                filename = d.filename, type = "image/png" }
+        end
+    end
+    return out
+end
+
+--- Drawings (memos' `drawing-…canvas.png` attachments) show in the note,
+--- as big as there's room for: enlarged at most this many times.
+Notes.DRAWING_GROW = 3
+
+--- True for a memos drawing (an attachment named like one).
+function Notes.isDrawing(att)
+    return type(att) == "table" and require("gzreader_drawing").isDrawingName(att.filename)
+end
+
+--- Note `m`'s drawings that aren't already pictures in its text: the note's
+--- page shows them after its text, the board as its picture.
+function Notes.drawings(m)
+    local inline = {}
+    for _i, l in ipairs(Sticky.lines(m.content)) do
+        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+        if uid then inline[uid] = true end
+    end
+    local out = {}
+    for _i, a in ipairs(m.attachments or {}) do
+        if Notes.isDrawing(a) and not inline[tostring(a.name):match("attachments/(.+)$") or ""] then out[#out + 1] = a end
+    end
+    return out
+end
+
+--- A note's first heading (its text) and the rest of its preview without
+--- that heading: a note with a drawing shows the heading above it.
+function Notes.headingAndRest(content)
+    local heading, rest = nil, {}
+    for _i, l in ipairs(Sticky.lines(content)) do
+        if l.kind == "heading" and not heading then heading = Sticky.plain(l.text)
+        elseif l.kind == "check" then rest[#rest + 1] = (l.done and "\u{2611} " or "\u{2610} ") .. Sticky.plain(l.text)
+        elseif l.kind == "heading" then rest[#rest + 1] = Sticky.plain(l.text)
+        elseif l.kind == "text" and l.text:match("%S") and not Sticky.tagsOnly(l.text) then rest[#rest + 1] = Sticky.plain(l.text) end
+    end
+    if heading and not heading:match("%S") then heading = nil end
+    return heading, (table.concat(rest, "\n"):gsub("^%s+", ""))
+end
+
+--- The size picture `a` (w x h in its file) is drawn at, for max_w x max_h:
+--- { w, h, grow }. A drawing is enlarged to fit too (DRAWING_GROW times at
+--- most); a photo only shrinks.
+function Notes.fitPicture(a, w, h, max_w, max_h)
+    local grow = Notes.isDrawing(a) and Notes.DRAWING_GROW or nil
+    local fw, fh = Sticky.fitSize(w, h, max_w, max_h, grow)
+    return { w = fw, h = fh, grow = grow }
+end
+
+--- Draws the board again (a picture arrived).
+function Notes.redrawBoard()
+    if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
+end
+
+--- A drawing, as big as fits max_w x max_h (enlarged up to DRAWING_GROW
+--- times), framed; nil when it isn't on the Kindle yet: then it's fetched
+--- (Wi-Fi up) and on_ready() runs once it's here.
+function Notes.drawingWidget(plugin, att, max_w, max_h, on_ready)
+    local path = Memos.filePath(att)
+    if lfs.attributes(path, "mode") ~= "file" then
+        Notes.fetchFile(plugin, att, on_ready)
+        return nil
+    end
+    local bb = Sticky.picture(path, max_w, max_h, Notes.DRAWING_GROW)
+    if not bb then return nil end
+    return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
+end
+
+--- A drawing changed in a note already in Memos (`drawing`: { path,
+--- filename } or { removed = true }): queued (its new file over the old one,
+--- the note's first drawing gone, or a first drawing added), and shown here
+--- at once.
+function Notes.saveDrawing(plugin, memo, drawing)
+    local att = Notes.drawings(memo)[1]
+    if drawing.removed then
+        if not att then return end
+        Notes.enqueue(plugin, { op = "undraw", name = memo.name, attachment = att.name })
+        for i, a in ipairs(memo.attachments or {}) do
+            if a == att then table.remove(memo.attachments, i); break end
+        end
+        Log.info("notes: a drawing taken off a note")
+    elseif att then
+        Notes.enqueue(plugin, { op = "redraw", name = memo.name, attachment = att.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        local src = io.open(drawing.path, "rb")
+        local data = src and src:read("*a")
+        if src then src:close() end
+        local dst = data and io.open(Memos.filePath(att), "wb")
+        if dst then dst:write(data); dst:close() end
+        Notes.pic_sizes[Memos.filePath(att)] = nil
+        Log.info("notes: a drawing edited")
+    else
+        local q = Notes.enqueue(plugin, { op = "attach", name = memo.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        Notes.showDrawingNow(q)
+        memo.attachments = memo.attachments or {}
+        table.insert(memo.attachments, Notes.queuedAttachments(q)[1])
+        Log.info("notes: a drawing added to a note")
+    end
+    -- (kept note images, if the board keeps them, show the old drawing: drawn again)
+    if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
+--- Copies a queued note's drawings to where the board finds the note's pictures.
+function Notes.showDrawingNow(q)
+    local list = Memos.queuedDrawings(q)
+    for k, att in ipairs(Notes.queuedAttachments(q)) do
+        local src = list[k] and io.open(list[k].path, "rb")
+        if src then
+            local data = src:read("*a")
+            src:close()
+            local dst = io.open(Memos.filePath(att), "wb")
+            if dst then dst:write(data); dst:close() end
+        end
+    end
+end
+
+--- Drawings changed in a note already in Memos (`list`: { att, path,
+--- filename } drawn or edited, { att, removed = true } taken off; no att: a
+--- new one): queued, and shown here at once.
+function Notes.saveDrawings(plugin, memo, list)
+    for _i, d in ipairs(list or {}) do
+        if d.removed then
+            if d.att then
+                Notes.enqueue(plugin, { op = "undraw", name = memo.name, attachment = d.att.name })
+                for i, a in ipairs(memo.attachments or {}) do
+                    if a.name == d.att.name then table.remove(memo.attachments, i); break end
+                end
+                Log.info("notes: a drawing taken off a note")
+            end
+        elseif d.att then
+            Notes.enqueue(plugin, { op = "redraw", name = memo.name, attachment = d.att.name,
+                drawing = { path = d.path, filename = d.filename } })
+            local src = io.open(d.path, "rb")
+            local data = src and src:read("*a")
+            if src then src:close() end
+            local dst = data and io.open(Memos.filePath(d.att), "wb")
+            if dst then dst:write(data); dst:close() end
+            Notes.pic_sizes[Memos.filePath(d.att)] = nil
+            Log.info("notes: a drawing edited")
+        else
+            local q = Notes.enqueue(plugin, { op = "attach", name = memo.name,
+                drawing = { path = d.path, filename = d.filename } })
+            Notes.showDrawingNow(q)
+            memo.attachments = memo.attachments or {}
+            table.insert(memo.attachments, Notes.queuedAttachments(q)[1])
+            Log.info("notes: a drawing added to a note")
+        end
+    end
+    -- the pages in their order, in Memos (which lists them newest first) and here
+    if type(list) == "table" and type(list.order) == "table" and #list.order > 1 then
+        Notes.enqueue(plugin, { op = "order", name = memo.name, order = list.order })
+        local names = Memos.drawingOrder(memo.attachments, list.order)
+        if names then
+            local by = {}
+            for _i, a in ipairs(memo.attachments) do by[a.name] = a end
+            local sorted = {}
+            for i, n in ipairs(names) do sorted[i] = by[n] end
+            memo.attachments = sorted
+        end
+    end
+    if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
+--- Draw in a new note: touch Kindles, Memos over Wi-Fi (the sync page
+--- doesn't send drawings).
+function Notes.canDraw(plugin)
+    if require("gzreader_net").usb then return false end
+    return Touch.on() and not Touch.keys() and Notes.client(plugin):isConnected()
+end
+
+--- Draw (the Notes tab's button): a new note that opens on a page to draw
+--- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
+function Notes.draw(plugin)
+    if not Notes.canDraw(plugin) then
+        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
+            or _("Drawing needs Memos connected."), 3)
+    end
+    return Notes.edit(plugin, nil, { draw = true })
 end
 
 function Notes.tagsIn(content)
@@ -222,8 +611,10 @@ function Notes.enqueue(plugin, q)
 end
 
 --- Send queued changes, then fetch the notes for the current filter.
---- on_done(ok, err) on the screen's thread.
-function Notes.refresh(plugin, on_done)
+--- on_done(ok, err) on the screen's thread. opts.send_only: send the queue
+--- and stop (a quick note while reading: the board isn't loaded, so there's
+--- nothing to show the list in; the next time the tab opens it syncs).
+function Notes.refresh(plugin, on_done, opts)
     -- (syncing through a computer: the notes come with the next sync)
     if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
     local client = Notes.client(plugin)
@@ -235,7 +626,8 @@ function Notes.refresh(plugin, on_done)
     local function fetch()
         local query = Notes.query(plugin)
         local keep = Notes.prefs(plugin).keep
-        Async.run(client, function(c) return c:listAll(query, keep) end, function(res, err)
+        local order = Notes.orderBy(plugin)
+        Async.run(client, function(c) return c:listAll(query, keep, order) end, function(res, err)
             Notes.refreshing = false
             if not res then
                 Log.warn("notes: refresh failed:", tostring(err))
@@ -245,6 +637,7 @@ function Notes.refresh(plugin, on_done)
             Notes.last_error = nil
             if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix; plugin:save() end
             if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
+            if type(res.spaces) == "table" then store.spaces = res.spaces; plugin:save() end
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
@@ -263,20 +656,52 @@ function Notes.refresh(plugin, on_done)
                 local gone = {}
                 for _i, id in ipairs(res.done or {}) do gone[id] = true end
                 local left = {}
-                for _i, q in ipairs(store.queue or {}) do if not gone[q.id] then left[#left + 1] = q end end
+                for _i, q in ipairs(store.queue or {}) do
+                    if not gone[q.id] then
+                        -- a note made whose drawings didn't all go: send only those left next time
+                        local made = type(res.attached) == "table" and res.attached[q.id]
+                        if made then q.op, q.name = "attach", made end
+                        local sent = type(res.sent) == "table" and tonumber(res.sent[q.id])
+                        if sent and sent > 0 then
+                            local list = Memos.queuedDrawings(q)
+                            for k = 1, sent do if list[k] and list[k].path then os.remove(list[k].path) end end
+                            local rest = {}
+                            for k = sent + 1, #list do rest[#rest + 1] = list[k] end
+                            q.drawings, q.drawing = rest, nil
+                        end
+                        left[#left + 1] = q
+                    else
+                        -- (in Memos now; the board shows them from there)
+                        for _k, d in ipairs(Memos.queuedDrawings(q)) do if d.path then os.remove(d.path) end end
+                    end
+                end
                 store.queue = left
+                -- notes whose drawings went but aren't in order yet: only that, next time
+                for _i, q in ipairs(queue) do
+                    local name = gone[q.id] and type(res.reorder) == "table" and res.reorder[q.id]
+                    if name and q.order then Notes.enqueue(plugin, { op = "order", name = name, order = q.order }) end
+                end
                 plugin:save()
                 if res.err then Log.warn("notes: queued changes:", tostring(res.err), #left, "left") end
             end
+            if opts and opts.send_only then
+                Notes.refreshing = false
+                Notes.last_sync = nil -- (the board fetches the list when it next opens)
+                local sent = type(res) == "table" and not res.err
+                return on_done and on_done(sent, not sent and (type(res) == "table" and res.err or "failed") or nil)
+            end
             fetch()
         end, "notes: send changes")
+    elseif opts and opts.send_only then
+        Notes.refreshing = false
+        if on_done then on_done(true) end
     else
         fetch()
     end
 end
 
 local function describe(err)
-    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (M → Connect to Memos again).") end
+    if err == "unauthorized" then return _("Memos didn't accept the access token. Connect again with a new one (Connection → Connect again).") end
     if err == "unreachable" then return _("Couldn't reach Memos. Check Wi-Fi and the address.") end
     if err == "not_connected" then return _("Not connected to Memos.") end
     if err == "usb" then return _("Notes come from Memos through your computer: they're brought and sent with each sync (Menu → Sync with computer).") end
@@ -287,7 +712,11 @@ Notes.describe = describe
 
 ---------------------------------------------------------------- the board
 
-local StickyItem = InputContainer:extend{ entry = nil, menu = nil, dimen = nil, shortcut = nil, look = nil, focused = false }
+-- A note on the board: the whole note, the same size as the others
+-- (compact), or `part` of it as long as it needs (full: lines from…to of
+-- its text, its pictures, its tags and place; gzreader_notelayout.lua).
+local StickyItem = InputContainer:extend{ entry = nil, menu = nil, dimen = nil, shortcut = nil, look = nil, focused = false,
+    part = nil, size = nil }
 
 function StickyItem:init()
     self.ges_events = {
@@ -297,29 +726,37 @@ function StickyItem:init()
     self:draw()
 end
 
-function StickyItem:draw()
-    local w, h = self.dimen.w, self.dimen.h
-    local note_w, note_h = math.floor(w * 0.88), math.floor(h * 0.86)
-    local m = self.entry.memo
-    if self.img then self.img:free(); self.img = nil end
-    if not m then -- "No notes" and the like
-        self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
-            TextBoxWidget:new{ text = self.entry.text, face = Sticky.hand(20), width = w - S(20), alignment = "center" } }
-        return
-    end
-    local paper = Sticky.paper(self.look)
-    local pad = S(8)
-    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
-    local sc = self.shortcut and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(24), h = S(24) }, self.shortcut, "square")
-    local head = OverlapGroup:new{
-        dimen = Geom:new{ w = inner_w, h = S(24) },
-        LeftContainer:new{ dimen = Geom:new{ w = inner_w, h = S(24) },
+Notes._StickyItem = StickyItem -- (tests)
+
+local PAD = 8 -- (scaled) inside a note's frame
+local HEAD_H, HEAD_GAP, GAP = 24, 6, 4 -- (scaled) the date line, under it, between the rest
+
+--- A note's width in a `cell_w` wide place on the board (room for its
+--- shadow, tape and tilt; at least as much as the board before views had).
+function Notes.noteWidth(cell_w)
+    local w = math.floor(cell_w * 0.88)
+    if cell_w - w < S(36) then w = cell_w - S(36) end
+    return math.max(S(60), w)
+end
+
+--- The date line: letter key, date (and "not sent yet", "continued"), pin.
+local function noteHead(m, inner_w, shortcut, continued)
+    local sc = shortcut and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(24), h = S(24) }, shortcut, "square")
+    local when = Sticky.when(m.created)
+    if m.pending then when = when .. " \u{2022} " .. _("not sent yet") end
+    if continued then when = when .. " \u{2022} " .. _("continued") end
+    return OverlapGroup:new{
+        dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
+        LeftContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
             HorizontalGroup:new{ sc or HorizontalSpan:new{ width = 0 }, HorizontalSpan:new{ width = sc and S(6) or 0 },
-                TextWidget:new{ text = m.pending and (Sticky.when(m.created) .. " \u{2022} " .. _("not sent yet")) or Sticky.when(m.created),
-                    face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(50) } } },
-        RightContainer:new{ dimen = Geom:new{ w = inner_w, h = S(24) },
+                TextWidget:new{ text = when, face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(50) } } },
+        RightContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
             m.pinned and TextWidget:new{ text = Sticky.ICONS.pin, face = Sticky.iconFace(15) } or HorizontalSpan:new{ width = 0 } },
     }
+end
+
+--- The note's tags (a line, or nil) and its place and attachment count (a row).
+local function noteFoot(m, inner_w)
     local foot_bits = HorizontalGroup:new{ align = "center" }
     if m.place then
         foot_bits[#foot_bits + 1] = TextWidget:new{ text = Sticky.ICONS.place .. " ", face = Sticky.iconFace(13) }
@@ -333,26 +770,167 @@ function StickyItem:draw()
     local tags = {}
     for _i, t in ipairs(m.tags or {}) do tags[#tags + 1] = "#" .. t end
     local tag_line = #tags > 0 and TextWidget:new{ text = table.concat(tags, "  "), face = Sticky.hand(16), bold = true, max_width = inner_w }
+    return tag_line or nil, #foot_bits > 0 and foot_bits or nil
+end
+
+---------------------------------------------------------------- kept note images
+
+-- A note drawn on the board is an image (painted, shadowed, tilted: most of
+-- the time the board takes). Each is kept under what it shows, so drawing
+-- the board again (the tab opened again, a sync that changed nothing, a
+-- page back) paints only the notes that changed. Images not on the board's
+-- last page are let go when it's drawn; the last page's stay while the tab
+-- is closed, except on a Kindle with little memory (the 2 and DX).
+Notes.images = {}   -- key → { bb, gen }
+Notes.image_gen = 0 -- the board's draws
+
+--- Note `m` as StickyItem `item` shows it: everything its image depends on.
+function Notes.imageKey(item, m)
+    local tags = table.concat(m.tags or {}, " ")
+    local part, size = item.part, item.size
+    local pic = "" -- compact: its picture, if it's on the Kindle yet
+    if not part then
+        local att = Notes.pictureAttachments(m)[1]
+        pic = att and (lfs.attributes(Memos.filePath(att), "mode") == "file" and "p" or "-") or ""
+    end
+    local look = item.look or {}
+    return table.concat({ tostring(m.content), tostring(m.pinned), tostring(m.pending), Sticky.when(m.created),
+        tags, tostring(m.place), #(m.attachments or {}), pic, tostring(item.shortcut), tostring(look.angle),
+        tostring(look.shade), tostring(look.tape), tostring(item.focused), item.dimen.w, item.dimen.h,
+        part and (part.from .. "-" .. part.to .. "-" .. part.h) or "", size and size.sig or "" }, "\0")
+end
+
+--- After a draw of the board: let go of the images it no longer shows.
+function Notes.dropImages(all)
+    for key, kept in pairs(Notes.images) do
+        if all or kept.gen ~= Notes.image_gen then
+            kept.bb:free()
+            Notes.images[key] = nil
+        end
+    end
+end
+
+function StickyItem:draw()
+    local w, h = self.dimen.w, self.dimen.h
+    local m = self.entry.memo
+    self.img = nil -- (Notes.images has it)
+    if not m then -- "No notes" and the like
+        self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
+            TextBoxWidget:new{ text = self.entry.text, face = Sticky.hand(20), width = w - S(20), alignment = "center" } }
+        return
+    end
+    local key = Notes.imageKey(self, m)
+    local kept = Notes.images[key]
+    if kept then
+        kept.gen = Notes.image_gen
+        if not self.part then Notes.picture(self.menu.plugin, m, 0, 0, true, true) end -- (fetch it if it's missing)
+    else
+        local frame, note_w, note_h
+        if self.part then
+            frame, note_w, note_h = self:fullNote(m)
+        else
+            frame, note_w, note_h = self:compactNote(m, w, h)
+        end
+        kept = { bb = Sticky.image(frame, note_w, note_h, self.look, self.focused), gen = Notes.image_gen }
+        frame:free()
+        Notes.images[key] = kept
+    end
+    self.img = kept.bb
+    self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
+        ImageWidget:new{ image = self.img, image_disposable = false } }
+end
+
+--- Compact: the whole note in a cell of the grid, cut off where it ends.
+function StickyItem:compactNote(m, w, h)
+    local note_w, note_h = Notes.noteWidth(w), math.floor(h * 0.86)
+    local paper = Sticky.paper(self.look)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local head = noteHead(m, inner_w, self.shortcut)
+    local tag_line, foot_bits = noteFoot(m, inner_w)
     -- the text gets what's left of the note
-    local body_h = note_h - 2 * pad - 2 * Size.border.thin - head:getSize().h - S(6) - S(4)
-        - (tag_line and tag_line:getSize().h or 0) - (#foot_bits > 0 and foot_bits:getSize().h or 0)
-    local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
-    local text_h = pic and (body_h - pic:getSize().h - S(4)) or body_h
-    local body = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
-        height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
-    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(6) }, body }
-    if pic then content[#content + 1] = VerticalSpan:new{ width = S(4) }; content[#content + 1] = pic end
-    content[#content + 1] = VerticalSpan:new{ width = S(4) }
+    local body_h = note_h - 2 * pad - 2 * Size.border.thin - head:getSize().h - S(HEAD_GAP) - S(GAP)
+        - (tag_line and tag_line:getSize().h or 0) - (foot_bits and foot_bits:getSize().h or 0)
+    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(HEAD_GAP) } }
+    local drawing = Notes.pictureAttachments(m)[1]
+    if Notes.isDrawing(drawing) then
+        -- a drawing: its heading, if it has one, then the drawing as big as fits
+        -- (the rest of its text is on the note's page)
+        local heading = Notes.headingAndRest(m.content)
+        if heading then
+            local hw = TextBoxWidget:new{ text = heading, face = Sticky.hand(21), bold = true, width = inner_w, bgcolor = paper }
+            local cap = math.floor(body_h * 0.3)
+            if hw:getSize().h > cap then -- (a long heading: cut off)
+                hw:free()
+                hw = TextBoxWidget:new{ text = heading, face = Sticky.hand(21), bold = true, width = inner_w, height = cap,
+                    height_adjust = true, height_overflow_show_ellipsis = true, bgcolor = paper }
+            end
+            content[#content + 1] = hw
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+        end
+        -- the drawing: all the room left (measured: what's on the note so far, and its tags and footer)
+        local used = S(GAP) + (tag_line and tag_line:getSize().h or 0) + (foot_bits and foot_bits:getSize().h or 0)
+        for _i, part in ipairs(content) do used = used + part:getSize().h end
+        local room = note_h - 2 * pad - 2 * Size.border.thin - used
+        local pic = Notes.drawingWidget(self.menu.plugin, drawing, inner_w - 2 * Size.border.thin,
+            math.max(S(30), room - 2 * Size.border.thin), Notes.redrawBoard)
+        if pic then content[#content + 1] = pic end
+    else
+        local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
+        local text_h = pic and (body_h - pic:getSize().h - S(GAP)) or body_h
+        content[#content + 1] = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
+            height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
+        if pic then content[#content + 1] = VerticalSpan:new{ width = S(GAP) }; content[#content + 1] = pic end
+    end
+    content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
     if tag_line then content[#content + 1] = tag_line end
-    if #foot_bits > 0 then content[#content + 1] = foot_bits end
+    if foot_bits then content[#content + 1] = foot_bits end
     local frame = FrameContainer:new{
         width = note_w, height = note_h, padding = pad, margin = 0, bordersize = Size.border.thin,
         background = paper, color = Blitbuffer.COLOR_DARK_GRAY, content,
     }
-    self.img = Sticky.image(frame, note_w, note_h, self.look, self.focused)
-    frame:free()
-    self[1] = CenterContainer:new{ dimen = Geom:new{ w = w, h = h },
-        ImageWidget:new{ image = self.img, image_disposable = false } }
+    return frame, note_w, note_h
+end
+
+--- Full: blocks part.from…part.to of the note (Notes.measure): its lines of
+--- text, then each picture, then the tags and place. Nothing cut off.
+function StickyItem:fullNote(m)
+    local size, part = self.size, self.part
+    local note_w = size.note_w
+    local paper = Sticky.paper(self.look)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local content = VerticalGroup:new{ align = "left", noteHead(m, inner_w, self.shortcut, part.from > 1),
+        VerticalSpan:new{ width = S(HEAD_GAP) } }
+    local first_line, n_lines = nil, 0
+    for b = part.from, math.min(part.to, size.lines) do
+        first_line = first_line or b
+        n_lines = n_lines + 1
+    end
+    if n_lines > 0 then
+        content[#content + 1] = TextBoxWidget:new{ text = size.text, face = Sticky.hand(19), width = inner_w,
+            height = n_lines * size.line_h, height_adjust = false, virtual_line_num = first_line, bgcolor = paper }
+    end
+    for b = math.max(part.from, size.lines + 1), part.to do
+        local p = size.pics[b - size.lines]
+        if p then
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+            local bb = Sticky.picture(p.path, p.w, p.h, p.grow) -- (fitted to the room measured: never taller)
+            content[#content + 1] = FrameContainer:new{ padding = 0, bordersize = Size.border.thin,
+                bb and ImageWidget:new{ image = bb, image_disposable = true } or VerticalSpan:new{ width = p.h } }
+        elseif b == size.lines + #size.pics + 1 then -- the tags and place, last
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+            local tag_line, foot_bits = noteFoot(m, inner_w)
+            if tag_line then content[#content + 1] = tag_line end
+            if foot_bits then content[#content + 1] = foot_bits end
+        end
+    end
+    local note_h = part.h - size.slack
+    local frame = FrameContainer:new{
+        width = note_w, height = note_h, padding = pad, margin = 0, bordersize = Size.border.thin,
+        background = paper, color = Blitbuffer.COLOR_DARK_GRAY, content,
+    }
+    return frame, note_w, note_h
 end
 
 function StickyItem:onFocus()
@@ -373,38 +951,136 @@ end
 function StickyItem:onHoldSelect() return self:onTapSelect() end
 
 function StickyItem:onCloseWidget()
-    if self.img then self.img:free(); self.img = nil end
+    self.img = nil -- (kept in Notes.images: let go by Notes.dropImages)
+end
+
+--- The pictures of note `m` (attachments): the ones in its text first, in
+--- order, then its other picture attachments.
+function Notes.pictureAttachments(m)
+    local out, seen = {}, {}
+    for _i, l in ipairs(Sticky.lines(m.content)) do
+        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+        if uid then
+            for _j, a in ipairs(m.attachments or {}) do
+                if not seen[a] and tostring(a.name):match("attachments/(.+)$") == uid then
+                    seen[a] = true
+                    out[#out + 1] = a
+                end
+            end
+        end
+    end
+    for _i, a in ipairs(m.attachments or {}) do
+        if not seen[a] and tostring(a.type):match("^image/") then seen[a] = true; out[#out + 1] = a end
+    end
+    return out
+end
+
+local function redrawBoard()
+    if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
 end
 
 --- A picture for note `m` (its first image), shrunk: an ImageWidget or nil.
 --- Not on the Kindle yet: fetched in the background, then the view redraws.
-function Notes.picture(plugin, m, max_w, max_h, small)
-    local src = Sticky.firstImage(m.content)
-    local att
-    if src then
-        local uid = src:match("/file/attachments/([^/%?]+)")
-        for _i, a in ipairs(m.attachments or {}) do
-            if uid and tostring(a.name):match("attachments/(.+)$") == uid then att = a end
-        end
-    end
-    if not att then
-        for _i, a in ipairs(m.attachments or {}) do
-            if tostring(a.type):match("^image/") and not att then att = a end
-        end
-    end
+--- `fetch_only`: only that (a kept note image without its picture).
+function Notes.picture(plugin, m, max_w, max_h, small, fetch_only)
+    local att = Notes.pictureAttachments(m)[1]
     if not att then return nil end
     local path = Memos.filePath(att)
     if lfs.attributes(path, "mode") ~= "file" then
         if small then -- on the board: redraw it once the picture is here
-            Notes.fetchFile(plugin, att, function()
-                if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
-            end)
+            Notes.fetchFile(plugin, att, redrawBoard)
         end
         return nil
     end
+    if fetch_only then return nil end
     local bb = Sticky.picture(path, max_w, max_h)
     if not bb then return nil end
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
+end
+
+---------------------------------------------------------------- full view: measuring
+
+Notes.pic_sizes = {} -- path → { w, h }
+Notes.measured = setmetatable({}, { __mode = "k" }) -- note → its measure (Notes.measure)
+Notes.PIC_MAX = 0.4 -- full view: a picture at most this much of the page's height
+
+--- A picture file's width and height: from its first bytes, or (a format
+--- that can't be read that way) decoded once.
+function Notes.picSize(path)
+    local known = Notes.pic_sizes[path]
+    if known then return known[1], known[2] end
+    local w, h = Sticky.imageSize(path)
+    if not w then
+        local bb = Sticky.picture(path, math.huge, math.huge)
+        if bb then w, h = bb:getWidth(), bb:getHeight(); bb:free() end
+    end
+    if not (w and h and w > 0 and h > 0) then return nil end
+    Notes.pic_sizes[path] = { w, h }
+    return w, h
+end
+
+local MAX_TILT = 0
+for _i, look in ipairs(Sticky.LOOK) do MAX_TILT = math.max(MAX_TILT, math.abs(look.angle or 0)) end
+
+--- The room a full-view note `note_w` wide takes besides its frame: the
+--- margin for its shadow and tape, what its tilt adds, and a gap.
+function Notes.slack(note_w)
+    local m = S(10)
+    local a = math.rad(Sticky.tilt(MAX_TILT, note_w, 0))
+    return 2 * m + math.ceil((note_w + 2 * m) * math.sin(a)) + S(GAP)
+end
+
+--- Full view: note `m` as gzreader_notelayout.lua lays it out, `note_w`
+--- wide on a page `page_h` tall: { top, blocks } (a block per line of text,
+--- one per picture, the tags and place last) and what drawing needs (its
+--- text, line height, pictures). Kept until its text, pictures or size change.
+--- Pictures not on the Kindle yet are left out (`missing`: the board fetches
+--- those of the notes it shows, then measures them again).
+function Notes.measure(m, note_w, page_h)
+    local pad = S(PAD)
+    local inner_w = note_w - 2 * pad - 2 * Size.border.thin
+    local pic_max_h = math.max(S(40), math.floor(page_h * Notes.PIC_MAX))
+    local pics, sig, missing = {}, {}, {}
+    for _i, a in ipairs(Notes.pictureAttachments(m)) do
+        local path = Memos.filePath(a)
+        local w, h
+        if lfs.attributes(path, "mode") == "file" then
+            w, h = Notes.picSize(path)
+        else
+            missing[#missing + 1] = a
+        end
+        if w then
+            local p = Notes.fitPicture(a, w, h, inner_w, pic_max_h)
+            p.path = path
+            w, h = p.w, p.h
+            pics[#pics + 1] = p
+        end
+        sig[#sig + 1] = w and (w .. "x" .. h) or "-"
+    end
+    sig = table.concat(sig, ",") .. "|" .. tostring(m.place) .. "|" .. #(m.attachments or {}) .. "|" .. note_w .. "|" .. page_h
+    local c = Notes.measured[m]
+    if c and c.content == m.content and c.sig == sig then c.missing = missing; return c end
+    local text = Sticky.preview(m.content)
+    local lines, line_h = 0, 0
+    if text:match("%S") then
+        -- one line drawn: the rest only split into lines, to count them
+        local tb = TextBoxWidget:new{ text = text, face = Sticky.hand(19), width = inner_w, height = 1 }
+        lines, line_h = #(tb.vertical_string_list or {}), tb.line_height_px or 0
+        tb:free()
+    end
+    local tag_line, foot_bits = noteFoot(m, inner_w)
+    local tail = S(GAP) + (tag_line and tag_line:getSize().h or 0) + (foot_bits and foot_bits:getSize().h or 0)
+    if tag_line then tag_line:free() end
+    if foot_bits then foot_bits:free() end
+    local blocks = {}
+    for i = 1, lines do blocks[i] = line_h end
+    for _i, p in ipairs(pics) do blocks[#blocks + 1] = S(GAP) + p.h + 2 * Size.border.thin end
+    blocks[#blocks + 1] = tail
+    local slack = Notes.slack(note_w)
+    c = { content = m.content, sig = sig, text = text, lines = lines, line_h = line_h, pics = pics, note_w = note_w, missing = missing,
+        blocks = blocks, slack = slack, top = 2 * pad + 2 * Size.border.thin + S(HEAD_H) + S(HEAD_GAP) + slack }
+    Notes.measured[m] = c
+    return c
 end
 
 Notes.fetching = {}
@@ -474,35 +1150,43 @@ function Notes.prefetchPictures(plugin)
     for _i, a in ipairs(todo) do Notes.fetchFile(plugin, a) end
 end
 
---- Download an attachment in the background (only while Wi-Fi is up), then on_done().
+--- Download an attachment in the background (only while Wi-Fi is up), then
+--- on_done(). Asked again while it's coming (the board asking for a picture
+--- the sync's prefetch is already fetching): on_done waits for that download.
 function Notes.fetchFile(plugin, att, on_done)
     local path = Memos.filePath(att)
-    if Notes.fetching[path] then return end
+    local waiting = Notes.fetching[path]
+    if waiting then
+        if on_done then waiting[#waiting + 1] = on_done end
+        return
+    end
     local ok_net, Net = pcall(require, "gzreader_net")
     if not (ok_net and Net.connected()) then return end
-    Notes.fetching[path] = true
+    waiting = { on_done }
+    Notes.fetching[path] = waiting
     require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
         Notes.fetching[path] = nil
         if not got then Log.warn("notes: attachment not downloaded:", tostring(err)) end
         if got then Notes.pruneFiles(plugin, path) end
-        if got and on_done then on_done() end
+        if got then for _i, fn in ipairs(waiting) do fn() end end
     end, "notes: attachment")
 end
 
-local function boardItems()
+local function boardItems(plugin)
     local items = {}
-    for _i, m in ipairs(Notes.visible()) do
+    for _i, m in ipairs(Notes.sorted(Notes.visible(), plugin)) do
         items[#items + 1] = { memo = m, text = Sticky.preview(m.content) }
     end
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
             items[1] = { text = T(Touch.text(_("Couldn't load your notes. %1\n\nM → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMore → Refresh to try again."),
-                _("Couldn't load your notes. %1\n\nMenu → Refresh to try again.")), describe(Notes.last_error)) }
+                _("Couldn't load your notes. %1\n\nConnection → Refresh to try again."),
+                _("Couldn't load your notes. %1\n\nMenu → Connection → Refresh to try again.")), describe(Notes.last_error)) }
         elseif Notes.refreshing or not Notes.cached_at then -- (nothing kept from before: first load)
             items[1] = { text = _("Loading your notes…") }
         else
-            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."), _("No notes yet. Tap New note to write one."),
+            items[1] = { text = Notes.filter.kind == "all" and Touch.text(_("No notes yet. Press N to write one."),
+                _("No notes yet. Tap New note to write one."),
                 _("No notes yet. Menu → New note to write one."))
                 or Touch.text(_("No notes match. Press F to change the filter."), _("No notes match. Tap Filter to change it."),
                 _("No notes match. Menu → Filter to change it.")) }
@@ -512,49 +1196,128 @@ local function boardItems()
 end
 
 --- Draw the board's page as sticky notes (replaces Menu:updateItems).
-local function drawBoard(m, select_number)
-    local old_dimen = m.dimen and m.dimen:copy()
-    m.layout = {}
-    m.item_group:clear()
-    m.page_info:resetLayout()
-    m.return_button:resetLayout()
-    m.content_group:resetLayout()
-    m.items_per_page = Notes.COLS * Notes.ROWS
+-- Compact: a grid of `cols` columns, every note the same size.
+local function drawCompact(m, select_number, cols, max_items)
+    local rows = NL.rows(cols, m.available_height, S(NL.ROW_MIN_H), max_items)
+    m.items_per_page = cols * rows
     m:_recalculateDimen(false)
+    if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
     local per = m.perpage
     local offset = (m.page - 1) * per
-    local cell_w = math.floor(m.item_dimen.w / Notes.COLS)
-    local cell_h = math.floor(m.available_height / Notes.ROWS)
+    local cell_w = math.floor(m.item_dimen.w / cols)
+    local cell_h = math.floor(m.available_height / rows)
     local row, layout_row
     for i = 1, per do
         local e = m.item_table[offset + i]
         if not e then break end
         e.idx = offset + i
         if offset + i == m.itemnumber then select_number = i end
-        if (i - 1) % Notes.COLS == 0 then
+        if (i - 1) % cols == 0 then
             row = HorizontalGroup:new{ align = "top" }
             layout_row = {}
             table.insert(m.item_group, row)
             table.insert(m.layout, layout_row)
         end
+        local key = e.memo and Touch.letter(KEYS[i]) or nil
+        if e.memo and KEYS[i] then m._gz_keyed[i] = e end
         local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
-            shortcut = e.memo and Touch.letter(KEYS[i]) or nil,
-            dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
+            shortcut = key, dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
         table.insert(row, item)
         table.insert(layout_row, item)
     end
-    m:updatePageInfo(select_number)
+    m._gz_first = offset + 1
+    return select_number
+end
+
+-- Full: each note as long as it needs, in `cols` columns (Memos' masonry);
+-- pages as gzreader_notelayout.lua lays them out.
+local function drawFull(m, select_number, cols, max_items)
+    local col_w = math.floor(m.item_dimen.w / cols)
+    local note_w = Notes.noteWidth(col_w)
+    local page_h = m.available_height
+    local sizes = {}
+    for i, e in ipairs(m.item_table) do sizes[i] = Notes.measure(e.memo, note_w, page_h) end
+    local pages = NL.paginate(sizes, cols, page_h, { max_parts = max_items })
+    m._gz_pages = pages
+    m.page_num = math.max(1, #pages)
+    if m._gz_goto then m.page = NL.pageOf(pages, m._gz_goto) end
+    m.page = math.max(1, math.min(m.page or 1, m.page_num))
+    local page = pages[m.page] or {}
+    local row = HorizontalGroup:new{ align = "top" }
+    local columns = {}
+    for c = 1, cols do
+        -- (a column keeps its width with nothing in it)
+        columns[c] = VerticalGroup:new{ align = "left", HorizontalSpan:new{ width = col_w } }
+        row[c] = columns[c]
+    end
+    local letter = {} -- note → its letter on this page (one for all its parts)
+    for k, part in ipairs(page) do
+        local e = m.item_table[part.note]
+        e.idx = part.note
+        if part.note == m.itemnumber and not m._gz_selected then select_number = k; m._gz_selected = true end
+        if not letter[part.note] then
+            letter[part.note] = #m._gz_keyed + 1
+            if KEYS[letter[part.note]] then m._gz_keyed[letter[part.note]] = e end
+        end
+        local size = sizes[part.note]
+        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(k), show_parent = m.show_parent,
+            shortcut = Touch.letter(KEYS[letter[part.note]]), part = part, size = size, dimen = Geom:new{ w = col_w, h = part.h } }
+        table.insert(columns[part.col], item)
+        table.insert(m.layout, { item }) -- (the 5-way goes from note to note, in order)
+        if part.from == 1 then
+            for _j, a in ipairs(size.missing or {}) do Notes.fetchFile(m.plugin, a, redrawBoard) end
+        end
+    end
+    m._gz_selected = nil
+    table.insert(m.item_group, row)
+    m._gz_first = page[1] and page[1].note or 1
+    return select_number
+end
+
+local function drawBoard(m, select_number)
+    -- (opening on a touch Kindle: Menu's own first draw is skipped, the
+    -- buttons under the title draw it once they're in: Notes.show)
+    if m._gz_hold_draw then return end
+    m._gz_drawn = true
+    Notes.image_gen = Notes.image_gen + 1
+    local old_dimen = m.dimen and m.dimen:copy()
+    m.layout = {}
+    m.item_group:clear()
+    m.page_info:resetLayout()
+    m.return_button:resetLayout()
+    m.content_group:resetLayout()
+    local view = Notes.view(m.plugin)
+    local cols = NL.columns(view.columns, m.inner_dimen.w, S(NL.AUTO_MIN_W))
+    local max_items = Touch.keys() and #KEYS or nil -- (a letter for every note)
+    m._gz_pages, m._gz_keyed = nil, {}
+    local page = m.page
+    m:_recalculateDimen(false) -- (the room for the notes)
+    if view.display == "full" and m.item_table[1] and m.item_table[1].memo then
+        m.page = page -- (Menu counted pages of equal notes: drawFull counts them itself)
+        select_number = drawFull(m, select_number, cols, max_items)
+    else
+        select_number = drawCompact(m, select_number, cols, max_items)
+    end
+    m._gz_goto = nil
+    m:updatePageInfo(select_number) -- (5-way: the focused note's image, kept too)
     m:mergeTitleBarIntoLayout()
+    Notes.dropImages()
     UIManager:setDirty(m.show_parent, function()
         return "ui", old_dimen and old_dimen:combine(m.dimen) or m.dimen
     end)
 end
 
 -- The board: a Menu (ZenOS puts its tab bar under it) whose page is drawn as
--- sticky notes. Q–Y open notes; N new note; F filter.
+-- sticky notes. Q, W, E… open notes; N new note; F filter; L layout.
 Notes.Board = Menu:extend{}
 
 function Notes.Board:updateItems(select_number) return drawBoard(self, select_number) end
+
+--- The page a note is on (Full: pages hold as many notes as fit).
+function Notes.Board:getPageNumber(item_number)
+    if self._gz_pages then return NL.pageOf(self._gz_pages, item_number) end
+    return Menu.getPageNumber(self, item_number)
+end
 
 function Notes.Board:onMenuSelect(item)
     if item.memo then Notes.showNote(self.plugin, item.memo) end
@@ -565,7 +1328,16 @@ function Notes.Board:onSelectByShortCut(arg, keyevent)
     local k = keyevent and keyevent.key
     if k == "N" then Notes.edit(self.plugin); return true end
     if k == "F" then Notes.showFilter(self.plugin); return true end
-    if k == "M" then Notes.showOptions(self.plugin); return true end
+    if k == "M" then Notes.showConnection(self.plugin); return true end
+    if k == "L" then Notes.showView(self.plugin); return true end
+    if k == "S" then Notes.showSort(self.plugin); return true end
+    for i, key in ipairs(KEYS) do
+        if key == k then -- the note with that letter on this page
+            local e = self._gz_keyed and self._gz_keyed[i]
+            if e and e.memo then self:onMenuSelect(e) end
+            return true
+        end
+    end
     return Menu.onSelectByShortCut(self, arg, keyevent)
 end
 
@@ -578,7 +1350,7 @@ end
 function Notes.reloadBoard(keep_page)
     local b = Notes.board
     if not b or b._gz_closed then return end
-    b:switchItemTable(Notes.title(), boardItems(), keep_page and -1 or nil)
+    b:switchItemTable(Notes.title(), boardItems(b.plugin), keep_page and -1 or nil)
     pcall(Notes.decorate, b)
 end
 
@@ -589,6 +1361,33 @@ end
 
 --- (kept for callers from 1.5.2) see gzreader_tabs
 function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthers(keep_id) end
+
+Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/panel/"
+
+--- Touch Kindles: the buttons under the Notes tab's title: Note (a new
+--- note), Draw (a new note, drawn), Filter, Layout, Sort, Connection, and an
+--- icon for Full screen (an X while in it).
+function Notes.actions(plugin)
+    local full = Notes.fullscreen(plugin)
+    return {
+        { _("Note"), function() Notes.edit(plugin) end },
+        { _("Draw"), function() Notes.draw(plugin) end },
+        { _("Filter"), function() Notes.showFilter(plugin) end },
+        { _("Layout"), function() Notes.showView(plugin) end },
+        { _("Sort"), function() Notes.showSort(plugin) end },
+        { _("Connection"), function() Notes.showConnection(plugin) end },
+        { icon_file = Notes.ICON_DIR .. (full and "close.svg" or "fullscreen.svg"),
+          label = full and _("Leave full screen") or _("Full screen"),
+          callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end },
+    }
+end
+
+--- Keep the board's note images while the tab is closed (not on a Kindle
+--- with 128 MB: the 2 and DX; the same line as laying books out ahead).
+function Notes.keepImages()
+    local ok, possible = pcall(function() return require("gzreader_layout").possible() end)
+    return ok and possible == true
+end
 
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
@@ -601,18 +1400,28 @@ function Notes.show(plugin)
     if not Notes.notes then Notes.loadCache(plugin) end
     local menu = Notes.Board:new{
         title = Notes.title(),
-        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  M more"), _("N new note  \u{00B7}  F filter  \u{00B7}  M more"),
-            _("Menu: new note, filter, refresh  \u{00B7}  Press opens a note")),
-        item_table = boardItems(),
+        -- (touch: buttons in their place, Notes.actions)
+        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
+            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
+            _("Menu: new note, filter, layout, sort, full screen  \u{00B7}  Press opens a note")),
+        item_table = boardItems(plugin),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
-        _gz_navbar_tab_id = Notes.TAB_ID,
+        -- Layout → Full screen: a name, so ZenOS doesn't make room for the tab
+        -- bar, and the tab's id only once it's made (ZenOS adds the bar a moment
+        -- later to a view that says which tab it is)
+        name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil,
+        _gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil,
         plugin = plugin,
+        -- touch Kindles: the board is drawn once its buttons are in (they
+        -- make the title taller: a first draw before them was thrown away)
+        _gz_hold_draw = Touch.on() or nil,
     }
+    menu._gz_navbar_tab_id = Notes.TAB_ID -- (GZreader's own tabs close each other by it)
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
     if Touch.dpad() then
-        -- Kindle 4: no letter keys; Menu opens the options (new note, filter…)
-        menu.key_events.GzOptions = { { "Menu" } }
-        menu.onGzOptions = function() Notes.showOptions(plugin); return true end
+        -- Kindle 4: no letter keys and no buttons; Menu opens what they'd do
+        menu.key_events.GzMenu = { { "Menu" } }
+        menu.onGzMenu = function() Notes.showMenu(plugin); return true end
     end
     -- Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the bottom tabs, as in the Grimmory tab
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
@@ -631,15 +1440,14 @@ function Notes.show(plugin)
     menu.onCloseWidget = function(m, ...)
         m._gz_closed = true
         if Notes.board == m then Notes.board = nil end
+        if not Notes.keepImages() then Notes.dropImages(true) end
         if orig_close then return orig_close(m, ...) end
     end
     Notes.board = menu
     pcall(Notes.decorate, menu)
-    Touch.actionRow(menu, {
-        { _("New note"), function() Notes.edit(plugin) end },
-        { _("Filter"), function() Notes.showFilter(plugin) end },
-        { _("More"), function() Notes.showOptions(plugin) end },
-    })
+    menu._gz_hold_draw = nil
+    Touch.actionRow(menu, Notes.actions(plugin))
+    if not menu._gz_drawn then menu:updateItems(1) end
     UIManager:show(menu)
     Notes.syncOnOpen(plugin)
     return menu
@@ -698,7 +1506,9 @@ function NoteView:build()
     end
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
-    add(iconLine("date", Sticky.when(m.created) .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
+    local space = Notes.spaceTitle(self.plugin, m.space)
+    add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
+        .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
         .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
     add(VerticalSpan:new{ width = S(10) })
     local para = {}
@@ -738,6 +1548,23 @@ function NoteView:build()
         end
     end
     flush()
+    -- the note's drawings, after its text, as wide as the page (a tap opens one)
+    local shown = {}
+    for _i, a in ipairs(Notes.drawings(m)) do
+        shown[a] = true
+        local pic = Notes.drawingWidget(self.plugin, a, inner, math.floor(sh * 0.55), function()
+            if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
+        end)
+        add(VerticalSpan:new{ width = S(8) })
+        if pic then
+            self.picks[#self.picks + 1] = { att = a }
+            local focused = self.focus == #self.picks
+            add(self:tappable(#self.picks, FrameContainer:new{ padding = 0, margin = 0,
+                bordersize = focused and Size.border.thick or 0, pic }))
+        else
+            add(TextWidget:new{ text = _("(drawing: downloading…)"), face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+        end
+    end
     add(VerticalSpan:new{ width = S(12) })
     if #(m.tags or {}) > 0 then
         local tags = {}
@@ -748,11 +1575,13 @@ function NoteView:build()
         add(VerticalSpan:new{ width = S(4) })
         add(iconLine("place", m.place, Font:getFace("cfont", 17)))
     end
-    if #(m.attachments or {}) > 0 then
+    local listed = {}
+    for _i, a in ipairs(m.attachments or {}) do if not shown[a] then listed[#listed + 1] = a end end
+    if #listed > 0 then
         add(VerticalSpan:new{ width = S(14) })
         add(TextWidget:new{ text = _("Attachments"), face = Font:getFace("smalltfont", 17), bold = true })
         add(VerticalSpan:new{ width = S(6) })
-        for _i, a in ipairs(m.attachments) do
+        for _i, a in ipairs(listed) do
             local key = Touch.letter(KEYS[#self.picks + 1])
             self.picks[#self.picks + 1] = { att = a }
             local focused = self.focus == #self.picks
@@ -948,17 +1777,24 @@ end
 ---------------------------------------------------------------- saving
 
 --- Save a note's new text (queued; sent now when possible). `visibility`:
---- only when it changed.
-function Notes.saveContent(plugin, memo, visibility)
+--- only when it changed; `space` too ("spaces/…", or "" for none).
+function Notes.saveContent(plugin, memo, visibility, space)
     memo.tags = Notes.tagsIn(memo.content)
     if visibility then memo.visibility = visibility end
+    if space then memo.space = space ~= "" and space or nil end
     if memo.name then
         local q = { op = "update", name = memo.name, content = memo.content }
-        -- an earlier, unsent change of who can see it stays
+        -- an earlier, unsent change of who can see it, or of its space, stays
         for _i, old in ipairs(plugin.store.memos.queue or {}) do
-            if old.op == "update" and old.name == memo.name and old.visibility then q.visibility = old.visibility end
+            if old.op == "update" and old.name == memo.name then
+                if old.visibility then q.visibility = old.visibility end
+                if old.space then q.space = old.space end
+            end
         end
         q.visibility = visibility or q.visibility
+        q.space = space or q.space
+        -- (Memos moves a note between spaces only with its visibility said too)
+        if q.space and not q.visibility then q.visibility = memo.visibility or "PRIVATE" end
         Notes.enqueue(plugin, q)
     elseif memo.local_id then
         -- not in Memos yet: change the queued new note instead
@@ -966,6 +1802,7 @@ function Notes.saveContent(plugin, memo, visibility)
             if q.id == memo.local_id then
                 q.content = memo.content
                 if visibility then q.visibility = visibility end
+                if space then q.space = space ~= "" and space or nil end
             end
         end
         plugin:save()
@@ -992,35 +1829,75 @@ end
 
 --- Send a change (new note, edit, tick, pin) a moment after it's made:
 --- turns Wi-Fi on for it (quietly) when Wi-Fi only when needed is on. Without
---- a connection it waits in the queue for the next sync.
+--- a connection it waits in the queue for the next sync. With the notes
+--- never loaded (a quick note from a book), only the change is sent.
 function Notes.sendSoon(plugin)
     if Notes.send_scheduled then return end
     Notes.send_scheduled = true
     UIManager:scheduleIn(2, function()
         Notes.send_scheduled = false
+        local send_only = Notes.notes == nil
         require("gzreader_net").run(function()
-            Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end)
+            Notes.refresh(plugin, function(ok) if ok then Notes.reloadBoard(true) end end, { send_only = send_only })
         end, { quiet = true, reason = "a note changed" })
     end)
 end
 
---- New note (memo nil) or edit one: the full-page editor.
-function Notes.edit(plugin, memo)
-    require("gzreader_noteeditor").show{
+--- The space a new note starts in: the one the board is showing, if any.
+function Notes.newNoteSpace()
+    local f = Notes.filter
+    return f.kind == "space" and f.value ~= "" and f.value or nil
+end
+
+--- New note (memo nil) or edit one: the full-page editor, or with
+--- opts.floating a window over the screen (the quick panel's Quick note).
+--- opts.on_created(): after a new note was saved (queued).
+function Notes.edit(plugin, memo, opts)
+    local NoteEditor = require("gzreader_noteeditor")
+    local show = opts and opts.floating and NoteEditor.showFloating or NoteEditor.show
+    show{
         plugin = plugin,
         memo = memo,
-        tags = Notes.allTags(),
-        on_save = function(content, visibility, vis_changed)
+        tags = Notes.allTags(plugin),
+        spaces = Notes.spaces(plugin),
+        space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
+        space_title = function(name) return Notes.spaceTitle(plugin, name) end,
+        can_draw = Notes.canDraw(plugin),
+        -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
+        -- Draw (a new note): a page to draw on at once
+        drawing_atts = memo and Notes.drawings(memo) or nil,
+        open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))
+            and Notes.canDraw(plugin),
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
             if memo then
                 memo.content = content
-                Notes.saveContent(plugin, memo, vis_changed and visibility or nil)
+                Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
+                if drawings then Notes.saveDrawings(plugin, memo, drawings) end
             else
-                local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE" })
-                Notes.notes = Notes.notes or {}
-                table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
-                    visibility = q.visibility })
+                local list = {}
+                for _i, d in ipairs(drawings or {}) do
+                    if d.path then list[#list + 1] = { path = d.path, filename = d.filename } end
+                end
+                local order
+                if #list > 1 then
+                    order = {}
+                    for i, d in ipairs(list) do order[i] = d.filename end
+                end
+                local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
+                    space = space, drawings = #list > 0 and list or nil, order = order })
+                if #list > 0 then
+                    Notes.showDrawingNow(q)
+                    Log.info("notes: a new note with", #list, "drawing(s) queued")
+                end
+                -- (notes not loaded yet, e.g. a quick note from a book: the
+                -- board loads the kept ones later and shows the queued note then)
+                if Notes.notes then
+                    table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
+                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = Notes.queuedAttachments(q), pinned = false,
+                        pending = true, visibility = q.visibility, space = q.space })
+                end
                 Notes.sendSoon(plugin)
+                if opts and opts.on_created then opts.on_created() end
             end
             Notes.reloadBoard(true)
             for _i, w in ipairs(UIManager._window_stack or {}) do
@@ -1030,20 +1907,41 @@ function Notes.edit(plugin, memo)
     }
 end
 
+--- The quick panel's Quick note tile: a new note in a window over whatever
+--- is on the screen (a book, Home, Settings), which stays visible around it.
+--- Save queues it and sends it in the background; closing the editor leaves
+--- you where you were.
+function Notes.quickNote(plugin)
+    if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
+    return Notes.edit(plugin, nil, { floating = true, on_created = function()
+        info(require("gzreader_net").usb and _("Note saved. It goes to Memos at the next sync with your computer.")
+            or _("Note saved. It goes to Memos as soon as GZreader can reach it."), 3)
+    end })
+end
+
 ---------------------------------------------------------------- filters
 
+--- A dialog of `rows` (a row that's `false` is left out) with letter keys.
 function Notes.keyedDialog(title, rows)
-    local dialog = ButtonDialog:new{ title = title, buttons = rows }
+    local list = {}
+    for _i, row in ipairs(rows) do if row then list[#list + 1] = row end end
+    local dialog = ButtonDialog:new{ title = title, buttons = list }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
     UIManager:show(dialog)
     return dialog
 end
 
-function Notes.allTags()
+--- Your tags, most used first: from the notes loaded, or (notes not loaded,
+--- e.g. a quick note from a book) from the counts Memos sent at the last sync.
+function Notes.allTags(plugin)
     local count = {}
     for _i, m in ipairs(Notes.notes or {}) do
         for _j, t in ipairs(m.tags or {}) do count[t] = (count[t] or 0) + 1 end
+    end
+    local saved = plugin and plugin.store and plugin.store.memos and plugin.store.memos.tag_counts
+    if not Notes.notes and type(saved) == "table" then
+        for t, n in pairs(saved) do if type(t) == "string" then count[t] = tonumber(n) or 0 end end
     end
     local list = {}
     for t, n in pairs(count) do list[#list + 1] = { tag = t, count = n } end
@@ -1097,6 +1995,39 @@ local function listPicker(title, entries, on_pick)
     return menu
 end
 
+--- Whether to offer spaces (Filter → Space…): your Memos has them, or a
+--- note is in one.
+function Notes.spacesShown(plugin)
+    if Notes.spaces(plugin) then return true end
+    for _i, m in ipairs(Notes.notes or {}) do if m.space then return true end end
+    return false
+end
+
+--- Filter → Space…: No space, then your spaces (with how many notes are in
+--- each of those shown now).
+function Notes.spaceEntries(plugin)
+    local n, none, seen = {}, 0, {}
+    for _i, m in ipairs(Notes.notes or {}) do
+        if m.space then n[m.space] = (n[m.space] or 0) + 1 else none = none + 1 end
+    end
+    local entries = { { text = _("No space"), mandatory = none > 0 and count(none) or nil, value = "", icon = "name:document" } }
+    local function add(name, title)
+        if seen[name] then return end
+        seen[name] = true
+        entries[#entries + 1] = { text = title, mandatory = n[name] and count(n[name]) or nil, value = name, icon = "name:folder" }
+    end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do add(sp.name, sp.title) end
+    -- (a note in a space not in the list yet)
+    for _i, m in ipairs(Notes.notes or {}) do if m.space then add(m.space, Notes.spaceTitle(plugin, m.space)) end end
+    return entries
+end
+
+function Notes.showSpaceFilter(plugin)
+    return listPicker(_("Filter by space"), Notes.spaceEntries(plugin), function(e)
+        Notes.setFilter(plugin, { kind = "space", value = e.value, label = e.text })
+    end)
+end
+
 function Notes.showFilter(plugin)
     local dialog
     local function pick(fn) return function() UIManager:close(dialog); fn() end end
@@ -1128,6 +2059,9 @@ function Notes.showFilter(plugin)
             end
             listPicker(_("Filter by place"), entries, function(e) Notes.setFilter(plugin, { kind = "place", value = e.place }) end)
         end) } },
+        Notes.spacesShown(plugin) and { { text = mark("space", _("Space…")), align = "left", callback = pick(function()
+            Notes.showSpaceFilter(plugin)
+        end) } } or false,
         { { text = mark("attachments", _("With attachments")), align = "left", callback = pick(function()
             Notes.setFilter(plugin, { kind = "attachments" })
         end) } },
@@ -1148,15 +2082,33 @@ function Notes.showFilter(plugin)
     })
 end
 
-function Notes.showOptions(plugin)
+--- Kindle 4 (no letter keys, no buttons): Menu on the board opens what the
+--- touch buttons and the letter keys do elsewhere.
+function Notes.showMenu(plugin)
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    dialog = Notes.keyedDialog(_("Notes"), {
+        { { text = _("New note"), align = "left", callback = run(function() Notes.edit(plugin) end) } },
+        { { text = _("Filter…"), align = "left", callback = run(function() Notes.showFilter(plugin) end) } },
+        { { text = T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), align = "left", callback = run(function() Notes.showView(plugin) end) } },
+        { { text = _("Sort…"), align = "left", callback = run(function() Notes.showSort(plugin) end) } },
+        { { text = Notes.fullscreen(plugin) and _("Leave full screen") or _("Full screen: no tab bar"), align = "left",
+            callback = run(function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end) } },
+        { { text = _("Connection…"), align = "left", callback = run(function() Notes.showConnection(plugin) end) } },
+    })
+    return dialog
+end
+
+--- Connection (a button on touch Kindles, M on Kindles with keys): Memos
+--- only. New note, Filter, Layout, Sort and Full screen have their own
+--- buttons and keys.
+function Notes.showConnection(plugin)
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
     local client = Notes.client(plugin)
     local store = plugin.store.memos
     local queued = #(store.queue or {})
     dialog = Notes.keyedDialog(store.user and T(_("Memos: %1"), store.user) or _("Memos"), {
-        { { text = _("New note"), align = "left", callback = run(function() Notes.edit(plugin) end) } },
-        { { text = _("Filter…"), align = "left", callback = run(function() Notes.showFilter(plugin) end) } },
         { { text = queued > 0 and T(_("Refresh (%1 changes to send)"), queued) or _("Refresh"), align = "left",
             callback = run(function()
                 require("gzreader_net").run(function()
@@ -1165,8 +2117,8 @@ function Notes.showOptions(plugin)
                     end)
                 end, { reason = "notes" })
             end) } },
-        { { text = _("Connect to Memos again"), align = "left", callback = run(function() Notes.showConnect(plugin, true) end) } },
-        { { text = _("Disconnect from Memos"), align = "left", enabled = client:isConnected(), callback = run(function()
+        { { text = _("Connect again"), align = "left", callback = run(function() Notes.showConnect(plugin, true) end) } },
+        { { text = _("Disconnect"), align = "left", enabled = client:isConnected(), callback = run(function()
             local ConfirmBox = require("ui/widget/confirmbox")
             UIManager:show(ConfirmBox:new{
                 text = _("Disconnect from Memos?\n\nThe notes kept on this Kindle are removed. Your notes in Memos stay as they are.")
@@ -1176,6 +2128,7 @@ function Notes.showOptions(plugin)
             })
         end) } },
     })
+    return dialog
 end
 
 function Notes.disconnect(plugin)

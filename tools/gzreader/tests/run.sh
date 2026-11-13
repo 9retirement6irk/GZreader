@@ -61,6 +61,22 @@ echo "== JSON (rapidjson, or LuaJSON)"
 (cd "$T" && luajit json_test.lua "$REPO/plugins/gzreader.koplugin" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== memos drawings (the scene in the PNG, read as memos reads it)"
+(cd "$T" && luajit drawing_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/drawings") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+timeout 60 python3 -I "$T/drawing_format_test.py" "$WORK/drawings" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== the drawing screen's input (finger; pen only, palm rejection)"
+(cd "$T" && luajit sketch_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
+(cd "$T" && luajit blocks_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+(cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== Settings → Downloads → Books: Double-tap only on touch Kindles"
 (cd "$T" && luajit settings_doubletap_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
@@ -103,6 +119,10 @@ echo "== statistics: book-open lookups after the first page"
 
 echo "== the symbols popup (Sym on the Kindles with a keyboard)"
 (cd "$T" && luajit symbols_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== Downloads: audiobooks and music face out, named under them"
+(cd "$T" && luajit shelf_cases_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== release notes from the changelog"

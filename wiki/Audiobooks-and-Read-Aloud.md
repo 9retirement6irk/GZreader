@@ -45,6 +45,10 @@ are (as on Home).
 | Home | Home (keeps playing) |
 | Volume buttons | Volume, here and anywhere in GZreader (a note shows the level) |
 
+In Downloads → Audiobooks (the Bookshelf view) each downloaded audiobook is a
+cassette facing out, its cover on the label and its title on a plate on the
+shelf under it; tap one to open the player.
+
 Pause stops the player process and remembers the place; play starts it
 again from there (MP3: to the nearest 4 KB; M4B: from the AAC frame playing
 when paused). The Kindle 3's sound pipeline doesn't come back from a

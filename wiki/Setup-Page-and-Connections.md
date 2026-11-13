@@ -26,14 +26,26 @@ you came from; without JavaScript they're one under the other):
   can be renamed, given a new link (Proton's links change when you reshare)
   or removed; add new links (several at once); connect or disconnect a CalDAV
   account.
+- **House** (Kindles with Wi‑Fi): your Home Assistant address and a
+  long-lived access token, or disconnect ([House](House)).
 - **Music** (Kindles with audio): *Sign in with Plex* (Plex's own sign-in
   page, which comes back to the setup page), the Plex server to use, sign out.
+- **Immich**: your Immich address and an API key, the album, whether its
+  pictures are the sleep screen and the Home wallpaper, how many the Kindle
+  keeps, *Get new pictures now*, disconnect (below).
 - **Send books**: pick books in the browser (EPUB, PDF, MOBI, AZW3, FB2, CBZ,
   TXT, DOCX…, up to 1 GB each) and they go straight into the GZreader folder
   (the Downloads tab). No Grimmory needed. A name already there gets
   "(2)"; a book is written to a temporary file first, so a dropped Wi‑Fi
   leaves nothing half-copied; it is refused when the Kindle is short of
   space.
+- **Sleep screen**: your own pictures for the sleep screen. Pick photos in
+  the browser; they're made there to fit the Kindle's screen (filling it, or
+  whole with white edges), in grey, and go into the `screensavers` folder.
+  The pictures already there are listed (*Take off* removes one), and you
+  choose which sleep screen: the book's cover while reading and a picture
+  elsewhere, a picture always, or the same with Immich's pictures. An iPhone
+  photo: choose it from Photos (the phone sends a JPEG).
 - **Access**: the key for a Cloudflare rule (below).
 - **Diagnostics** (while diagnostic logging is on, Settings → General →
   Advanced → Diagnostic logging): download the diagnostic log.
@@ -48,7 +60,17 @@ the Memos token and the CalDAV password are kept (never logged).
 
 Where to open it: the setup guide's first page (**Set up from your browser**),
 the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
-*Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar.
+*Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar /
+Immich.
+
+## Immich
+
+Pictures from one of your [Immich](https://immich.app) albums for the sleep
+screen and the Home wallpaper: **Settings → Connections → Immich (Photos)**,
+*Connect with QR code* (the setup page's Immich tab) or *Connect by typing*.
+You need the address and an API key (Immich → Account Settings → API Keys;
+at least `album.read`, `asset.read` and `asset.view`). What it does and its
+settings: [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich).
 
 ## Connect to Grimmory
 

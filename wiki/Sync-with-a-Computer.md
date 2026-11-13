@@ -19,12 +19,12 @@ Connections → Sync through a computer.
    drive (or its `documents/GZreader` folder). Nothing else can be set up
    before a Kindle is chosen.
 3. Enter the Kindle's **PIN**. The first time, you choose one: the sign-ins
-   (Grimmory, Memos, Plex, calendars) are kept on the Kindle, encrypted with
+   (Grimmory, Memos, Plex, Immich, calendars) are kept on the Kindle, encrypted with
    it, so any computer can sync the Kindle with just the PIN. (Or "Don't keep
    sign-ins on the Kindle": they last until the tab is closed.)
 4. Three tabs:
    - **Connections**: Grimmory (password or single sign-on), Notes (a Memos
-     access token), calendars, Plex.
+     access token), calendars, Immich (an API key and an album), Plex.
    - **Content**: what to bring, browsed as in the Kindle's Catalog tab:
      Books and Audiobooks (Recently added, A–Z, Libraries, Shelves, Authors,
      Series, search) and Music (Plex albums A–Z, playlists, search). With
@@ -41,6 +41,18 @@ Connections → Sync through a computer.
    takes in what was brought ("Synced with your computer"). Books and
    audiobooks open at their place on Grimmory the first time, and Home's
    Grimmory reading stats show Grimmory's numbers as of the sync.
+
+Immich: **Connections → Immich (Photos)** takes your Immich address (or an
+album's address) and an API key, then the album, how many pictures the
+Kindle keeps (10, 20 or 50) and whether one is the Home wallpaper. Each sync
+brings new pictures from the album (about half of them swapped each time),
+made on the computer to fit the Kindle's screen in grey; the Content tab's
+**Sleep screen pictures** then also offers *the book's cover while reading, a
+picture from Immich elsewhere* and *a picture from Immich, always*. The API
+key stays in the page's locked sign-ins (`keys.json`), not in GZreader.
+Immich has to be told to answer the page: see
+[Immich from the sync page](Home-and-Bookshelves#immich-from-the-sync-page).
+*Disconnect* there takes the pictures off the Kindle at the next sync.
 
 Sleep screen pictures: the Content tab's **Sleep screen pictures** adds your
 own (made to fit the Kindle's screen, in grey) to the drive's `screensavers`
@@ -61,7 +73,7 @@ A Kindle without Wi‑Fi sends its diagnostic log through the page, the same
 report a Wi‑Fi Kindle sends with **Send to the developer**:
 
 - **On the Kindle:** Diagnostics (quick panel) → **Send to the developer (at
-  the next sync)**, or Settings → General → Advanced → Send diagnostic log to the
+  the next sync)**, or Settings → About → Advanced → Send diagnostic log to the
   developer. A box asks what you were doing and what went wrong; the log and
   what you typed are saved in `.gzsync/reports/` (the newest three). At your
   next sync the page sends them and deletes them; if it can't reach the

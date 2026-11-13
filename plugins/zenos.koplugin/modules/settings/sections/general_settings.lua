@@ -72,12 +72,12 @@ function M.build(ctx, extras_items)
         end
     end
 
-    -- GZreader: Screen refresh, after Sleep: every setting about when the
-    -- screen flashes clean (they were in Reader → Appearance and Advanced)
-    table.insert(items, IconItem.decorate({
-        text = _("Screen refresh"),
-        sub_item_table = require("modules/settings/sections/gz_screen_refresh").build(ctx),
-    }, icons.refresh))
+    -- GZreader: Screen, after Sleep: KOReader's Screen menu (from Settings →
+    -- KOReader), with GZreader's flash rows in its E-ink settings
+    -- (gz_settings.screenItem; until 1.28.3 they were General → Screen refresh)
+    table.insert(items, IconItem.decorate(require("common/gz_settings").screenItem(
+        require("modules/menu/app_launcher/native_menu"),
+        require("modules/settings/sections/gz_screen_refresh").build(ctx)), icons.display))
 
     -- GZreader: Time and date (Time zone first), Language and Storage, here
     -- rather than in About → Device (gz_settings.lua)

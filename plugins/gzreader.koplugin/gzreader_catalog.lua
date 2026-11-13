@@ -72,6 +72,15 @@ function Catalog.stripParts(list, id)
     }
 end
 
+--- The Menu's `subtitle` for a Catalog with these pages: nil (KOReader's
+--- empty line under the title, which the strip takes) with two or more;
+--- false with one (a Kindle without audio, the Audiobooks tab): no strip,
+--- so no line, and the page starts right under the title as other tabs do.
+function Catalog.titleSubtitle(list)
+    if #list < 2 then return false end
+    return nil
+end
+
 --- Which way a tap at `x` turns in a strip of width `w` starting at `x0`:
 --- -1 (the left third, when there's a page before), +1 (the right third,
 --- when there's a next one), or nil.
