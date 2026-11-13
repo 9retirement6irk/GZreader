@@ -7,7 +7,7 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
-        version = "next",
+        version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
             { short = "Notes: draw in a new note (with a finger; on a Kindle Scribe with the pen), sent to Memos as a drawing", text = "On touch Kindles the new-note editor has Draw: a page to draw on with Thin, Medium and Thick, Eraser (rubs out whole strokes), Undo and Clear. Done keeps the drawing with the note, and Save sends both to Memos, where the drawing is an attachment that Memos (its next version, with drawings) opens as a drawing you can go on editing; older Memos show it as a picture. A note can be just a drawing. On a Kindle with a pen (the Scribe) only the pen draws: fingers don't, and while the pen is near the screen your hand can rest on it (it's ignored); the pen's other end rubs out. Other touch Kindles draw with one finger. Drawings need Memos over Wi‑Fi (not through the computer)." },
