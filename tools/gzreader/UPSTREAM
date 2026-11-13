@@ -1,4 +1,4 @@
 # What GZreader is built on (tools/gzreader/upstream.sh reads and updates this;
 # KOReader's tag is also the release workflow's KOREADER_TAG).
 koreader v2026.07.1
-zenos v4.3.1
+zenos v4.3.2

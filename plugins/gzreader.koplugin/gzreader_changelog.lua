@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "ZenOS 4.3.2: a folding table of contents, and what a tap on a book does", text = "Built on ZenOS 4.3.2. The table of contents folds subchapters under their chapter (the chapter you're reading starts unfolded), and can show each chapter's page count (Settings → Reader → Table of contents). On a touch Kindle, Settings → Home → Books → Double tap now lets you choose what a single tap and a double tap on a book do (for example tap to open, double tap for the book's menu); a saved Double-tap to open a book carries over. Left and right margins can be set apart. Fixed: swiping through chapters and bookmarks in the page browser skipped every other page; following a link inside a book could highlight the whole page; the highlight menu's More button did nothing with some plugins." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },
