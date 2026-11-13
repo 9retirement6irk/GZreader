@@ -3356,6 +3356,17 @@ do
     UIM._window_stack = was_stack
 end
 
+print("Kindles with 128 MB: the garbage collector starts sooner");
+(function()
+    -- (a lower peak for the Lua heap on the Kindle 2 and DX)
+    local pause_before = collectgarbage("setpause", 200)
+    collectgarbage("setpause", pause_before)
+    check(Grimmory.tuneGC(124532) == 120 and collectgarbage("setpause", pause_before) == 120, "a DX (128 MB): GC pause 120")
+    check(Grimmory.tuneGC(252364) == nil and collectgarbage("setpause", pause_before) == pause_before, "a Kindle 3 (256 MB): Lua's default, untouched")
+    check(Grimmory.tuneGC(509000) == nil, "a Paperwhite 3 (512 MB): untouched")
+    collectgarbage("setpause", pause_before)
+end)()
+
 print("Kindle DX: four shelves in Downloads, two on Home")
 do
     local Device = require("device")

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2 and DX: less memory held by GZreader between clean-ups", text = "On Kindles with 128 MB of memory or less (Kindle 2, DX), Lua's garbage collector runs a cycle once memory has grown by 20% since the last one, instead of waiting until it has doubled, so GZreader's peak memory stays lower and more is left for the book." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
