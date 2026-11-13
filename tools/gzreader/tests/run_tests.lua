@@ -9430,6 +9430,8 @@ print("Settings → Storage")
         and #by.Books.sub_item_table == 4 and by.Notes.sub_item_table[1].text:match("No notes")
         and by.Calendar.mandatory == "2 KB" and by["Covers and saved lists"].mandatory == "10.0 MB",
         "storage page: free space, each part's size, the biggest of each")
+    check(by.Music.mandatory == "1 downloaded · 6 KB" and St.show == nil,
+        "storage: Music's line short enough for the row (albums and playlists counted together); only Settings shows the page")
     -- Settings → General → Storage: rows with icons, arrows into the biggest
     local function iconed(it) return it and (it.icon_glyph or it.icon_name or it.icon_file) ~= nil end
     check(iconed(by["Free on this Kindle"]) and iconed(by.Books) and iconed(by.Books.sub_item_table[1]) and iconed(by.Audiobooks)
