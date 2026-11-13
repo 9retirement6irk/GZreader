@@ -372,8 +372,8 @@ function Notes.applyQueue(plugin)
             for _j, m in ipairs(Notes.notes) do if m.local_id == q.id then seen = true end end
             if not seen then
                 table.insert(Notes.notes, 1, { local_id = q.id, content = q.content, tags = Notes.tagsIn(q.content),
-                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = {}, pinned = false, pending = true,
-                    visibility = q.visibility, space = q.space })
+                    created = os.date("!%Y-%m-%dT%H:%M:%SZ", q.at), attachments = Notes.queuedAttachments(q), pinned = false,
+                    pending = true, visibility = q.visibility, space = q.space })
             end
         else
             for _j, m in ipairs(Notes.notes) do
@@ -389,6 +389,134 @@ function Notes.applyQueue(plugin)
             end
         end
     end
+end
+
+--- A queued note's drawing as an attachment the board can show before it's
+--- in Memos (`Notes.showDrawingNow` puts its file where the board looks).
+function Notes.queuedAttachments(q)
+    if not (q.drawing and q.drawing.filename) then return {} end
+    return { { name = "attachments/local-" .. tostring(q.id), filename = q.drawing.filename, type = "image/png" } }
+end
+
+--- Drawings (memos' `drawing-…canvas.png` attachments) show in the note,
+--- as big as there's room for: enlarged at most this many times.
+Notes.DRAWING_GROW = 3
+
+--- True for a memos drawing (an attachment named like one).
+function Notes.isDrawing(att)
+    return type(att) == "table" and require("gzreader_drawing").isDrawingName(att.filename)
+end
+
+--- Note `m`'s drawings that aren't already pictures in its text: the note's
+--- page shows them after its text, the board as its picture.
+function Notes.drawings(m)
+    local inline = {}
+    for _i, l in ipairs(Sticky.lines(m.content)) do
+        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+        if uid then inline[uid] = true end
+    end
+    local out = {}
+    for _i, a in ipairs(m.attachments or {}) do
+        if Notes.isDrawing(a) and not inline[tostring(a.name):match("attachments/(.+)$") or ""] then out[#out + 1] = a end
+    end
+    return out
+end
+
+--- A note's first heading (its text) and the rest of its preview without
+--- that heading: a note with a drawing shows the heading above it.
+function Notes.headingAndRest(content)
+    local heading, rest = nil, {}
+    for _i, l in ipairs(Sticky.lines(content)) do
+        if l.kind == "heading" and not heading then heading = Sticky.plain(l.text)
+        elseif l.kind == "check" then rest[#rest + 1] = (l.done and "\u{2611} " or "\u{2610} ") .. Sticky.plain(l.text)
+        elseif l.kind == "heading" then rest[#rest + 1] = Sticky.plain(l.text)
+        elseif l.kind == "text" and l.text:match("%S") and not Sticky.tagsOnly(l.text) then rest[#rest + 1] = Sticky.plain(l.text) end
+    end
+    if heading and not heading:match("%S") then heading = nil end
+    return heading, (table.concat(rest, "\n"):gsub("^%s+", ""))
+end
+
+--- The size picture `a` (w x h in its file) is drawn at, for max_w x max_h:
+--- { w, h, grow }. A drawing is enlarged to fit too (DRAWING_GROW times at
+--- most); a photo only shrinks.
+function Notes.fitPicture(a, w, h, max_w, max_h)
+    local grow = Notes.isDrawing(a) and Notes.DRAWING_GROW or nil
+    local fw, fh = Sticky.fitSize(w, h, max_w, max_h, grow)
+    return { w = fw, h = fh, grow = grow }
+end
+
+--- Draws the board again (a picture arrived).
+function Notes.redrawBoard()
+    if Notes.board and not Notes.board._gz_closed then Notes.board:updateItems() end
+end
+
+--- A drawing, as big as fits max_w x max_h (enlarged up to DRAWING_GROW
+--- times), framed; nil when it isn't on the Kindle yet: then it's fetched
+--- (Wi-Fi up) and on_ready() runs once it's here.
+function Notes.drawingWidget(plugin, att, max_w, max_h, on_ready)
+    local path = Memos.filePath(att)
+    if lfs.attributes(path, "mode") ~= "file" then
+        Notes.fetchFile(plugin, att, on_ready)
+        return nil
+    end
+    local bb = Sticky.picture(path, max_w, max_h, Notes.DRAWING_GROW)
+    if not bb then return nil end
+    return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
+end
+
+--- A drawing changed in a note already in Memos (`drawing`: { path,
+--- filename } or { removed = true }): queued (its new file over the old one,
+--- the note's first drawing gone, or a first drawing added), and shown here
+--- at once.
+function Notes.saveDrawing(plugin, memo, drawing)
+    local att = Notes.drawings(memo)[1]
+    if drawing.removed then
+        if not att then return end
+        Notes.enqueue(plugin, { op = "undraw", name = memo.name, attachment = att.name })
+        for i, a in ipairs(memo.attachments or {}) do
+            if a == att then table.remove(memo.attachments, i); break end
+        end
+        Log.info("notes: a drawing taken off a note")
+    elseif att then
+        Notes.enqueue(plugin, { op = "redraw", name = memo.name, attachment = att.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        local src = io.open(drawing.path, "rb")
+        local data = src and src:read("*a")
+        if src then src:close() end
+        local dst = data and io.open(Memos.filePath(att), "wb")
+        if dst then dst:write(data); dst:close() end
+        Notes.pic_sizes[Memos.filePath(att)] = nil
+        Log.info("notes: a drawing edited")
+    else
+        local q = Notes.enqueue(plugin, { op = "attach", name = memo.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        Notes.showDrawingNow(q)
+        memo.attachments = memo.attachments or {}
+        table.insert(memo.attachments, Notes.queuedAttachments(q)[1])
+        Log.info("notes: a drawing added to a note")
+    end
+    -- (kept note images, if the board keeps them, show the old drawing: drawn again)
+    if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
+--- Copies a queued drawing to where the board finds the note's pictures.
+function Notes.showDrawingNow(q)
+    local att = Notes.queuedAttachments(q)[1]
+    if not att then return end
+    local src = io.open(q.drawing.path, "rb")
+    if not src then return end
+    local data = src:read("*a")
+    src:close()
+    local dst = io.open(Memos.filePath(att), "wb")
+    if dst then dst:write(data); dst:close() end
+end
+
+--- Draw in a new note: touch Kindles, Memos over Wi-Fi (the sync page
+--- doesn't send drawings).
+function Notes.canDraw(plugin)
+    if require("gzreader_net").usb then return false end
+    return Touch.on() and not Touch.keys() and Notes.client(plugin):isConnected()
 end
 
 function Notes.tagsIn(content)
@@ -462,7 +590,16 @@ function Notes.refresh(plugin, on_done, opts)
                 local gone = {}
                 for _i, id in ipairs(res.done or {}) do gone[id] = true end
                 local left = {}
-                for _i, q in ipairs(store.queue or {}) do if not gone[q.id] then left[#left + 1] = q end end
+                for _i, q in ipairs(store.queue or {}) do
+                    if not gone[q.id] then
+                        -- a note made whose drawing didn't go: send only the drawing next time
+                        local made = type(res.attached) == "table" and res.attached[q.id]
+                        if made then q.op, q.name = "attach", made end
+                        left[#left + 1] = q
+                    elseif q.drawing and q.drawing.path then
+                        os.remove(q.drawing.path) -- (in Memos now; the board shows it from there)
+                    end
+                end
                 store.queue = left
                 plugin:save()
                 if res.err then Log.warn("notes: queued changes:", tostring(res.err), #left, "left") end
@@ -634,12 +771,37 @@ function StickyItem:compactNote(m, w, h)
     -- the text gets what's left of the note
     local body_h = note_h - 2 * pad - 2 * Size.border.thin - head:getSize().h - S(HEAD_GAP) - S(GAP)
         - (tag_line and tag_line:getSize().h or 0) - (foot_bits and foot_bits:getSize().h or 0)
-    local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
-    local text_h = pic and (body_h - pic:getSize().h - S(GAP)) or body_h
-    local body = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
-        height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
-    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(HEAD_GAP) }, body }
-    if pic then content[#content + 1] = VerticalSpan:new{ width = S(GAP) }; content[#content + 1] = pic end
+    local content = VerticalGroup:new{ align = "left", head, VerticalSpan:new{ width = S(HEAD_GAP) } }
+    local drawing = Notes.pictureAttachments(m)[1]
+    if Notes.isDrawing(drawing) then
+        -- a drawing: its heading, if it has one, then the drawing as big as fits
+        -- (the rest of its text is on the note's page)
+        local heading = Notes.headingAndRest(m.content)
+        if heading then
+            local hw = TextBoxWidget:new{ text = heading, face = Sticky.hand(21), bold = true, width = inner_w, bgcolor = paper }
+            local cap = math.floor(body_h * 0.3)
+            if hw:getSize().h > cap then -- (a long heading: cut off)
+                hw:free()
+                hw = TextBoxWidget:new{ text = heading, face = Sticky.hand(21), bold = true, width = inner_w, height = cap,
+                    height_adjust = true, height_overflow_show_ellipsis = true, bgcolor = paper }
+            end
+            content[#content + 1] = hw
+            content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
+        end
+        -- the drawing: all the room left (measured: what's on the note so far, and its tags and footer)
+        local used = S(GAP) + (tag_line and tag_line:getSize().h or 0) + (foot_bits and foot_bits:getSize().h or 0)
+        for _i, part in ipairs(content) do used = used + part:getSize().h end
+        local room = note_h - 2 * pad - 2 * Size.border.thin - used
+        local pic = Notes.drawingWidget(self.menu.plugin, drawing, inner_w - 2 * Size.border.thin,
+            math.max(S(30), room - 2 * Size.border.thin), Notes.redrawBoard)
+        if pic then content[#content + 1] = pic end
+    else
+        local pic = Notes.picture(self.menu.plugin, m, inner_w, math.floor(body_h * 0.55), true)
+        local text_h = pic and (body_h - pic:getSize().h - S(GAP)) or body_h
+        content[#content + 1] = TextBoxWidget:new{ text = Sticky.preview(m.content), face = Sticky.hand(19), width = inner_w,
+            height = text_h, height_adjust = false, height_overflow_show_ellipsis = true, bgcolor = paper }
+        if pic then content[#content + 1] = VerticalSpan:new{ width = S(GAP) }; content[#content + 1] = pic end
+    end
     content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
     if tag_line then content[#content + 1] = tag_line end
     if foot_bits then content[#content + 1] = foot_bits end
@@ -673,7 +835,7 @@ function StickyItem:fullNote(m)
         local p = size.pics[b - size.lines]
         if p then
             content[#content + 1] = VerticalSpan:new{ width = S(GAP) }
-            local bb = Sticky.picture(p.path, p.w, p.h) -- (fitted to the room measured: never taller)
+            local bb = Sticky.picture(p.path, p.w, p.h, p.grow) -- (fitted to the room measured: never taller)
             content[#content + 1] = FrameContainer:new{ padding = 0, bordersize = Size.border.thin,
                 bb and ImageWidget:new{ image = bb, image_disposable = true } or VerticalSpan:new{ width = p.h } }
         elseif b == size.lines + #size.pics + 1 then -- the tags and place, last
@@ -808,8 +970,10 @@ function Notes.measure(m, note_w, page_h)
             missing[#missing + 1] = a
         end
         if w then
-            w, h = Sticky.fitSize(w, h, inner_w, pic_max_h)
-            pics[#pics + 1] = { path = path, w = w, h = h }
+            local p = Notes.fitPicture(a, w, h, inner_w, pic_max_h)
+            p.path = path
+            w, h = p.w, p.h
+            pics[#pics + 1] = p
         end
         sig[#sig + 1] = w and (w .. "x" .. h) or "-"
     end
@@ -906,18 +1070,25 @@ function Notes.prefetchPictures(plugin)
     for _i, a in ipairs(todo) do Notes.fetchFile(plugin, a) end
 end
 
---- Download an attachment in the background (only while Wi-Fi is up), then on_done().
+--- Download an attachment in the background (only while Wi-Fi is up), then
+--- on_done(). Asked again while it's coming (the board asking for a picture
+--- the sync's prefetch is already fetching): on_done waits for that download.
 function Notes.fetchFile(plugin, att, on_done)
     local path = Memos.filePath(att)
-    if Notes.fetching[path] then return end
+    local waiting = Notes.fetching[path]
+    if waiting then
+        if on_done then waiting[#waiting + 1] = on_done end
+        return
+    end
     local ok_net, Net = pcall(require, "gzreader_net")
     if not (ok_net and Net.connected()) then return end
-    Notes.fetching[path] = true
+    waiting = { on_done }
+    Notes.fetching[path] = waiting
     require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
         Notes.fetching[path] = nil
         if not got then Log.warn("notes: attachment not downloaded:", tostring(err)) end
         if got then Notes.pruneFiles(plugin, path) end
-        if got and on_done then on_done() end
+        if got then for _i, fn in ipairs(waiting) do fn() end end
     end, "notes: attachment")
 end
 
@@ -1295,6 +1466,23 @@ function NoteView:build()
         end
     end
     flush()
+    -- the note's drawings, after its text, as wide as the page (a tap opens one)
+    local shown = {}
+    for _i, a in ipairs(Notes.drawings(m)) do
+        shown[a] = true
+        local pic = Notes.drawingWidget(self.plugin, a, inner, math.floor(sh * 0.55), function()
+            if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
+        end)
+        add(VerticalSpan:new{ width = S(8) })
+        if pic then
+            self.picks[#self.picks + 1] = { att = a }
+            local focused = self.focus == #self.picks
+            add(self:tappable(#self.picks, FrameContainer:new{ padding = 0, margin = 0,
+                bordersize = focused and Size.border.thick or 0, pic }))
+        else
+            add(TextWidget:new{ text = _("(drawing: downloading…)"), face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+        end
+    end
     add(VerticalSpan:new{ width = S(12) })
     if #(m.tags or {}) > 0 then
         local tags = {}
@@ -1305,11 +1493,13 @@ function NoteView:build()
         add(VerticalSpan:new{ width = S(4) })
         add(iconLine("place", m.place, Font:getFace("cfont", 17)))
     end
-    if #(m.attachments or {}) > 0 then
+    local listed = {}
+    for _i, a in ipairs(m.attachments or {}) do if not shown[a] then listed[#listed + 1] = a end end
+    if #listed > 0 then
         add(VerticalSpan:new{ width = S(14) })
         add(TextWidget:new{ text = _("Attachments"), face = Font:getFace("smalltfont", 17), bold = true })
         add(VerticalSpan:new{ width = S(6) })
-        for _i, a in ipairs(m.attachments) do
+        for _i, a in ipairs(listed) do
             local key = Touch.letter(KEYS[#self.picks + 1])
             self.picks[#self.picks + 1] = { att = a }
             local focused = self.focus == #self.picks
@@ -1587,19 +1777,28 @@ function Notes.edit(plugin, memo, opts)
         spaces = Notes.spaces(plugin),
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
-        on_save = function(content, visibility, vis_changed, space, space_changed)
+        can_draw = Notes.canDraw(plugin),
+        -- an edit of a note with a drawing: Edit opens the drawing (Done goes back to the text)
+        drawing_att = memo and Notes.drawings(memo)[1] or nil,
+        open_drawing = memo ~= nil and Notes.drawings(memo)[1] ~= nil and Notes.canDraw(plugin),
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawing)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
+                if drawing then Notes.saveDrawing(plugin, memo, drawing) end
             else
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
-                    space = space })
+                    space = space, drawing = drawing })
+                if drawing then
+                    Notes.showDrawingNow(q)
+                    Log.info("notes: a new note with a drawing queued")
+                end
                 -- (notes not loaded yet, e.g. a quick note from a book: the
                 -- board loads the kept ones later and shows the queued note then)
                 if Notes.notes then
                     table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
-                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false, pending = true,
-                        visibility = q.visibility, space = q.space })
+                        created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = Notes.queuedAttachments(q), pinned = false,
+                        pending = true, visibility = q.visibility, space = q.space })
                 end
                 Notes.sendSoon(plugin)
                 if opts and opts.on_created then opts.on_created() end

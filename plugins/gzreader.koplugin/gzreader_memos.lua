@@ -256,13 +256,108 @@ function Memos:download(att, dest)
     return nil, code and ("http_" .. code) or "unreachable"
 end
 
+--- Upload the file at `path` as an attachment named `filename` (`mime`:
+--- image/png by default), on note `memo_name` ("memos/…") when given: Memos
+--- links it to that note. Returns the attachment ({ name, filename, type })
+--- or nil, err ("missing_file" when the file is gone).
+function Memos:uploadAttachment(path, filename, memo_name, mime)
+    local f = path and io.open(path, "rb")
+    if not f then return nil, "missing_file" end
+    local data = f:read("*a")
+    f:close()
+    local body = { filename = filename, type = mime or "image/png",
+        content = require("ffi/sha2").bin_to_base64(data), memo = memo_name }
+    local _, att, err = self:request("POST", "/attachments", body, nil, { timeouts = { 15, 120 } })
+    if err then return nil, err end
+    if type(att) ~= "table" or not att.name then return nil, "http_200" end
+    return { name = att.name, filename = att.filename, type = att.type }
+end
+
+Memos.UPLOAD_CHUNK = 1024 * 1024 -- bytes a call (Memos takes up to 2 MiB)
+
+--- Replace attachment `att_name`'s file with the file at `path` (an edited
+--- drawing), keeping its name and note: Memos' resumable upload with
+--- `replace_attachment` (its version after 26.11.0, as its web app does it).
+--- Memos without it (v0.31) or that won't let us replace it (someone else's
+--- drawing): the new file is added to note `memo_name` instead, and with an
+--- old Memos the old one is deleted. Returns the attachment, or nil, err.
+function Memos:replaceAttachment(att_name, path, filename, memo_name, mime)
+    local f = path and io.open(path, "rb")
+    if not f then return nil, "missing_file" end
+    local data = f:read("*a")
+    f:close()
+    local b64 = require("ffi/sha2").bin_to_base64
+    local id, offset, att = nil, 0
+    repeat
+        local part = data:sub(offset + 1, offset + Memos.UPLOAD_CHUNK)
+        local last = offset + #part >= #data
+        local body = { write_offset = offset, data = b64(part), finish_write = last }
+        if id then body.upload_id = id
+        else
+            body.spec = { attachment = { filename = filename, type = mime or "image/png" }, total_size = #data,
+                replace_attachment = att_name }
+        end
+        local code, res, err = self:request("POST", "/attachments:upload", body, nil, { timeouts = { 15, 120 } })
+        if err then
+            if id == nil and (code == 404 or code == 400 or code == 405 or code == 501) then
+                -- (no replacing in this Memos: add the new one, then drop the old)
+                local added, aerr = self:uploadAttachment(path, filename, memo_name, mime)
+                if not added then return nil, aerr end
+                self:deleteAttachment(att_name)
+                return added
+            elseif id == nil and code == 403 then
+                -- (not ours to replace: the edit goes beside it, as in Memos' web app)
+                return self:uploadAttachment(path, filename, memo_name, mime)
+            end
+            return nil, err
+        end
+        if type(res) ~= "table" then return nil, "http_200" end
+        id = res.uploadId or res.upload_id or id
+        offset = offset + #part
+        att = res.attachment
+    until last
+    if type(att) ~= "table" or not att.name then return nil, "http_200" end
+    return { name = att.name, filename = att.filename, type = att.type }
+end
+
+--- Delete attachment `att_name` ("attachments/…"). true, or nil, err.
+function Memos:deleteAttachment(att_name)
+    local _, _, err = self:request("DELETE", "/" .. att_name)
+    if err and err ~= "http_404" then return nil, err end
+    return true
+end
+
+--- A new note with a drawing (`q.drawing` = { path, filename }): the note
+--- first, then the drawing uploaded onto it. Returns the note, or nil, err
+--- and (the note made but not the upload) the note's name.
+function Memos:createWithDrawing(q)
+    local memo, err = self:create(q.content or "", q.visibility, q.space)
+    if not memo then return nil, err end
+    local att, aerr = self:uploadAttachment(q.drawing.path, q.drawing.filename, memo.name)
+    if not att and aerr ~= "missing_file" then return nil, aerr, memo.name end
+    return memo
+end
+
 --- Run the queued changes (in the background process). Returns the queue
---- items that went through (their ids) and the first error.
+--- items that went through (their ids), the first error, and `attached`:
+--- { [queue id] = note name } for notes made whose drawing didn't upload yet
+--- (the queue then sends only the drawing: op "attach").
 function Memos:flush(queue)
-    local done, first_err = {}, nil
+    local done, first_err, attached = {}, nil, {}
     for _i, q in ipairs(queue or {}) do
-        local ok, err
-        if q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
+        local ok, err, made
+        if q.op == "create" and q.drawing then
+            ok, err, made = self:createWithDrawing(q)
+            if made then attached[q.id] = made end
+        elseif q.op == "attach" then
+            ok, err = self:uploadAttachment(q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
+            if err == "missing_file" then ok = true end -- (nothing left to send)
+        elseif q.op == "redraw" then -- a drawing on a note edited: its new file over the old
+            ok, err = self:replaceAttachment(q.attachment, q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
+            if err == "missing_file" then ok = true end
+        elseif q.op == "undraw" then -- a drawing rubbed out to nothing: gone from the note
+            ok, err = self:deleteAttachment(q.attachment)
+        elseif q.op == "create" then ok, err = self:create(q.content, q.visibility, q.space)
         elseif q.op == "update" then ok, err = self:update(q.name, q.content, q.visibility, q.space)
         elseif q.op == "pin" then ok, err = self:setPinned(q.name, q.pinned) end
         if ok then done[#done + 1] = q.id
@@ -272,7 +367,7 @@ function Memos:flush(queue)
             if err and err:match("^http_4") then done[#done + 1] = q.id end -- refused for good: drop it
         end
     end
-    return { done = done, err = first_err, prefix = self.store.prefix }
+    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached }
 end
 
 ---------------------------------------------------------------- the cache

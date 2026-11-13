@@ -90,6 +90,40 @@ API to `/api` are found too.
   tab syncs the next time you open it. On a Kindle syncing through a
   computer it goes with the next sync. Hide the tile in **Settings →
   Interface → Quick panel**.
+- **Drawings** (touch Kindles, Memos over Wi‑Fi): in a new note, tap
+  **✎ Draw** (beside who can see it) for a page to draw on, with **Thin**,
+  **Medium** and **Thick**, **Eraser** (rubs out whole strokes, as in Memos),
+  **Undo** and **Clear**. **Done** keeps it with the note (the button says
+  **✎ Drawing**; tap it to go on drawing) and **Save** sends both. A note can
+  be just a drawing. In Memos it's an attachment named
+  `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
+  26.11.0) opens it as a drawing you can edit there; an older Memos shows it
+  as a picture. Until it's sent, the board shows the note with the drawing.
+  - **Editing a drawing** (touch Kindles): **Edit** on a note with a drawing
+    opens the drawing. Draw more, rub out (strokes made in Memos too),
+    Undo, Clear; **Done** goes back to the note's text and **Save** sends
+    both. The new drawing goes over the old one in Memos (the same
+    attachment, as Memos' Edit drawing does); an older Memos gets it added
+    and the old one taken off; someone else's drawing keeps theirs and gets
+    yours beside it. A drawing bigger than the screen is shrunk to fit.
+    Shapes and text made in Memos stay as they are (they can't be changed
+    on the Kindle). Done on an empty page takes the drawing off the note.
+    Any note can get a drawing: ✎ Draw in its editor.
+  - **Seeing drawings** (made on the Kindle or in Memos): on the Notes tab a
+    note with a drawing shows its heading (if it has one) and the drawing
+    as big as the note allows; **Layout → Full** shows it bigger, with all
+    the note's text. Open the note for everything: its text, then the
+    drawing as wide as the page (tap it to see it on its own). Drawings come
+    down by themselves on Wi‑Fi, like the notes' other pictures.
+  - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
+    draw nothing, and while the pen is near the screen, and for a moment
+    after it leaves, your hand can rest anywhere on it: it's ignored (palm
+    rejection). The pen's other end rubs out. With the pen away, a finger
+    can tap the buttons at the top.
+  - **With a finger** (every other touch Kindle): one finger draws; a second
+    finger at the same time is ignored.
+  - Not on Kindles syncing through a computer (the sync page doesn't send
+    drawings).
 - **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).

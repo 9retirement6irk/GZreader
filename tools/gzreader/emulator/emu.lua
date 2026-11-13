@@ -252,6 +252,12 @@ function E.pen(points, sec, eraser)
     penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
     penFrame({ { 1, tool, 0 } }, sec + 0.04)
 end
+--- The pen hovering over (x, y), not touching; and taken away. `dt`: seconds from now.
+function E.penHover(x, y, dt)
+    say("pen hovering", math.floor(x), math.floor(y))
+    penFrame({ { 1, BTN_TOOL_PEN, 1 }, { 3, ABS_X, math.floor(x) }, { 3, ABS_Y, math.floor(y) }, { 3, ABS_PRESSURE, 0 } }, dt or 0)
+end
+function E.penAway(dt) say("pen away"); penFrame({ { 1, BTN_TOOL_PEN, 0 } }, dt or 0) end
 --- A tap with the pen on `what` ({ x, y } or text on screen).
 function E.penTap(what)
     local x, y = E.where(what)
@@ -317,6 +323,20 @@ function E.lcdSwipe(x1, y1, x2, y2)
     end
     lcdFrame({ { 3, 24, 0 }, { 1, 330, 0 } }, 0.2)
 end
+
+--- A finger stroke through `points` ({ { x, y }, … }, screen pixels), `sec` long.
+function E.finger(points, sec)
+    if type(points) ~= "table" or #points == 0 then return say("finger: no points") end
+    sec = sec or 0.3
+    say("finger", #points, "points from", math.floor(points[1][1]), math.floor(points[1][2]))
+    down(points[1][1], points[1][2])
+    local n = #points
+    for i = 2, n do move(points[i][1], points[i][2], sec * (i - 1) / n) end
+    up(sec + 0.02)
+end
+--- A finger put down and left there (a hand resting on the screen), and lifted.
+function E.fingerDown(x, y, dt) say("finger down", math.floor(x), math.floor(y)); down(x, y, dt) end
+function E.fingerUp(dt) say("finger up"); up(dt) end
 
 function E.swipe(x1, y1, x2, y2, sec)
     say("swipe", x1, y1, "->", x2, y2)

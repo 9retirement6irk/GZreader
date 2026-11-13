@@ -411,8 +411,11 @@ function Usb.outbox(plugin)
     local notes_queue = {}
     for _i, q in ipairs(memos.queue or {}) do
         -- (space: Memos v0.31's, "spaces/…", or "" taking a note out of its space)
-        notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
-            name = q.name, pinned = q.pinned, at = q.at, space = q.space }
+        -- (a note with a drawing waits for Wi-Fi: the sync page doesn't send drawings)
+        if not q.drawing then
+            notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
+                name = q.name, pinned = q.pinned, at = q.at, space = q.space }
+        end
     end
     -- the notes' pictures already here (not brought again)
     local note_files = cached("note_files", function()

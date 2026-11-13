@@ -264,14 +264,17 @@ function Sticky.imageSize(path)
 end
 
 --- The size Sticky.picture shrinks a w x h picture to, for max_w x max_h.
-function Sticky.fitSize(w, h, max_w, max_h)
-    local sc = math.min(max_w / w, max_h / h, 1)
-    if sc >= 1 then return w, h end
+--- `grow`: also enlarge a smaller picture to fit, at most `grow` times (a
+--- drawing, which reads better big; photos are never enlarged).
+function Sticky.fitSize(w, h, max_w, max_h, grow)
+    local sc = math.min(max_w / w, max_h / h, (grow and grow > 1) and grow or 1)
+    if sc == 1 then return w, h end
     return math.max(1, math.floor(w * sc)), math.max(1, math.floor(h * sc))
 end
 
 --- A picture file shrunk to fit max_w x max_h (a new image), or nil.
-function Sticky.picture(path, max_w, max_h)
+--- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
+function Sticky.picture(path, max_w, max_h, grow)
     local f = io.open(path, "rb")
     if not f then return nil end
     local data = f:read("*a")
@@ -279,7 +282,7 @@ function Sticky.picture(path, max_w, max_h)
     local RenderImage = require("ui/renderimage")
     local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
     if not ok or not bb then return nil end
-    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h)
+    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h, grow)
     if w ~= bb:getWidth() or h ~= bb:getHeight() then
         bb = RenderImage:scaleBlitBuffer(bb, w, h, true)
     end
