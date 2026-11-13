@@ -7210,6 +7210,32 @@ print("Notes (Memos v0.31)")
     os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
 end)()
 
+print("Calendar tab: Calendar settings is ZenOS's Settings page")
+;(function()
+    local Cal = require("gzreader_calendar")
+    local Tabs = require("gzreader_tabs")
+    local saved_zen, saved_page, saved_redraw, saved_menu = Tabs.zen, package.loaded["modules/settings/zen_settings_page"], Cal.redraw, Cal.showSettingsMenu
+    local zen = {}
+    local opened, closed_with, redraws, old_menu = nil, nil, 0, 0
+    local cs_page = { onCloseWidget = function(p) closed_with = p end }
+    Tabs.zen = function() return zen end
+    package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened = { z = z, o = o }; return cs_page end }
+    Cal.redraw = function() redraws = redraws + 1 end
+    Cal.showSettingsMenu = function() old_menu = old_menu + 1 end
+    local shown = Cal.showSettings(plugin)
+    local cs_path = opened and opened.o.path or {}
+    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Connections"
+        and cs_path[2].value == "Calendar (CalDAV)" and old_menu == 0,
+        "Calendar settings: ZenOS's Settings page, opened at Connections → Calendar (CalDAV) (not KOReader's drop-down menu)")
+    Cal.showSettings(plugin) -- (again: the page's close isn't wrapped twice)
+    cs_page:onCloseWidget()
+    check(closed_with == cs_page and redraws == 1, "Calendar settings closed: the calendar drawn again, once")
+    -- without ZenOS's Settings: KOReader's menu as before
+    package.loaded["modules/settings/zen_settings_page"] = { show = function() error("no settings") end }
+    Cal.showSettings(plugin)
+    check(old_menu == 1, "Calendar settings without ZenOS's Settings page: the old menu instead")
+    Tabs.zen, package.loaded["modules/settings/zen_settings_page"], Cal.redraw, Cal.showSettingsMenu = saved_zen, saved_page, saved_redraw, saved_menu
+end)()
 print("Calendar tab")
 ;(function()
     package.loaded["ui/widget/container/widgetcontainer"] = magic()

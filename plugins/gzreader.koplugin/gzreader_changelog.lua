@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Calendar: M → Calendar settings opens the Settings page, not KOReader's drop-down", text = "Calendar tab → M → Calendar settings opened KOReader's drop-down menu over the calendar (an empty tab bar with a gear, small rows with ▸). It now opens Settings → Connections → Calendar (CalDAV), ZenOS's own page with the same settings drawn like the rest of Settings; the calendar is drawn again when you close it." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },
