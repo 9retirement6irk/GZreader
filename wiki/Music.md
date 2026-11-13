@@ -11,7 +11,11 @@ this Kindle, latest first, then what Plex's own players played) and
 **Recently added** (Plex's newest albums, marked NEW), each ending in a
 bundle that opens the whole list, then a bookcase with **Playlists**,
 **Albums** and **Artists** (and *Now playing* when something plays), and
-your Plex account's card in the bottom-right compartment. Music on the Kindle is in the Downloads tab. Albums and
+your Plex account's card in the bottom-right compartment. The card opens a
+list drawn like Settings: who you're signed in as, the Plex server, the music
+library, where audiobooks come from and the quality when converting (each
+with its value on the right; tap to choose), the *Make bigger MP3 and AAC
+smaller* switch, and Sign out. Music on the Kindle is in the Downloads tab. Albums and
 playlists stand on the shelves as **CD cases**, face out: the album's cover
 under the lid (Plex's own small copy, fetched while the list shows and kept
 with the Catalog's covers; a plain insert with the title until it's here),

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Catalog: the Plex card's list looks like Settings, with values on the right", text = "Catalog → Music (or Audiobooks from Plex) → the Plex card opens a list drawn like ZenOS's Settings → Connections → Plex: an icon on each row; who you're signed in as; Plex server, Music library, Audiobooks from and Quality when converting each show their value on the right and open a choice (the three quality lines and the \"Use the server\" lines are gone); Make bigger MP3 and AAC smaller is a switch; then Sign out of Plex." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },

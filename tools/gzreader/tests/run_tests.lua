@@ -7792,17 +7792,40 @@ print("Music (Plex): the server, downloads, the player")
             end
             last.callback()
             local opened = m.title == "Plex" and #m.item_table_stack == 1
+            local function row(text)
+                for _i, it in ipairs(m.item_table) do if it.text == text then return it end end
+            end
+            -- (ZenOS rows, as Settings → Connections → Plex: values on the right, a switch, Sign out)
+            local card = m.item_table
+            local card_labels = {}
+            for _i, it in ipairs(card) do card_labels[#card_labels + 1] = it.text end
+            local icons = true
+            for _i, it in ipairs(card) do
+                if not (it._zen_settings_row and (it.icon_glyph or it.icon_name or it.icon_file)) then icons = false end
+            end
+            check(card.gz_rows and icons and table.concat(card_labels, "|") == "Signed in|Plex server|Music library|Audiobooks from|Quality when converting|Make bigger MP3 and AAC smaller|Sign out of Plex"
+                and card[1].select_enabled == false and not card[1]._zen_has_submenu and card[1].mandatory:find(" · ", 1, true)
+                and row("Quality when converting").mandatory == (saved_br or 192) .. " kbps" and row("Quality when converting")._zen_has_submenu
+                and row("Make bigger MP3 and AAC smaller").checked_func and not row("Make bigger MP3 and AAC smaller")._zen_has_submenu
+                and row("Audiobooks from").mandatory:find("^Plex: ") and row("Sign out of Plex")._zen_has_submenu,
+                "the Plex card: ZenOS rows with icons; the account (no arrow), values on the right, a switch, Sign out " .. table.concat(card_labels, "|"))
+            row("Quality when converting").callback()
+            local choice = m.title == "Quality when converting" and #m.item_table_stack == 2 and m.item_table.gz_rows
             local q
-            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then q = it end end
+            for _i, it in ipairs(m.item_table) do if it.text == "128 kbps" then q = it end end
+            choice = choice and q and q.radio and not q._zen_has_submenu
             if q then q.callback() end
             local in_place = m.title == "Plex" and #m.item_table_stack == 1 and m.item_table_stack[1] == root_before
-                and q and tostring(m.item_table[1].text):match("kbps")
-            local mark
-            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then mark = it.mandatory end end
+                and row("Quality when converting") and row("Quality when converting").mandatory == "128 kbps" and px.bitrate == 128
+            local shrink_before = px.shrink
+            row("Make bigger MP3 and AAC smaller").callback()
+            local switched = px.shrink == (not shrink_before or nil) and row("Make bigger MP3 and AAC smaller").checked_func() == (px.shrink == true)
+                and m.title == "Plex" and #m.item_table_stack == 1
+            px.shrink = shrink_before
             m:onClose()
-            check(opened and in_place and mark == "\u{2713}" and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
+            check(opened and choice and in_place and switched and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
                 and m.item_table ~= root_before and m.item_table[#m.item_table].text == "Plex" and not ab._refresh_root,
-                "the Plex card: its list; a change shows it again in place (1.28.0 left an empty list behind it); back: the page made again")
+                "the Plex card: Quality opens a choice; picked, back to the card showing it; the switch in place; back: the page made again")
             m.onClose, px.bitrate = nil, saved_br
         end)()
         local Shop = require("gzreader_bookshop")
