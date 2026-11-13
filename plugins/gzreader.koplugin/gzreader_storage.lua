@@ -255,7 +255,8 @@ function Storage.items(r)
     local N_ = type(_) == "table" and _.ngettext or function(one, many, n) return n == 1 and one or many end
     group("books", _("Books"), function(n) return N_("1 book", "%1 books", n) end, _("No books on this Kindle."))
     group("audiobooks", _("Audiobooks"), function(n) return N_("1 audiobook", "%1 audiobooks", n) end, _("No audiobooks on this Kindle."))
-    group("music", _("Music"), function(n) return N_("1 album or playlist", "%1 albums and playlists", n) end, _("No music on this Kindle."))
+    -- (albums and playlists together; "12 albums and playlists · 1.2 GB" didn't fit on the row)
+    group("music", _("Music"), function(n) return N_("1 downloaded", "%1 downloaded", n) end, _("No music on this Kindle."))
     group("notes", _("Notes"), function(n) return N_("1 note", "%1 notes", n) end, _("No notes on this Kindle."))
     group("calendar", _("Calendar"))
     group("caches", _("Covers and saved lists"))
@@ -302,45 +303,6 @@ function Storage.settingsItems(plugin, page)
     end
     run()
     return list
-end
-
---- Show the page; fill it in when measured.
-function Storage.show(plugin)
-    local UIManager = require("ui/uimanager")
-    local Menu = require("ui/widget/menu")
-    local menu = Menu:new{
-        title = _("Storage"),
-        item_table = { { text = _("Measuring…"), select_enabled = false } },
-        covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
-    }
-    menu.close_callback = function() UIManager:close(menu) end
-    UIManager:show(menu)
-    local Log = require("gzreader_log")
-    local tries = 0
-    local function run()
-        require("gzreader_async").background(function() return Storage.measure(plugin) end, function(r, err)
-            if menu.closed then return end
-            if type(r) ~= "table" then
-                if err == "busy" and tries < 10 then
-                    tries = tries + 1
-                    return UIManager:scheduleIn(2, run)
-                end
-                Log.warn("storage: couldn't measure:", tostring(err))
-                return menu:switchItemTable(nil, { { text = _("Couldn't measure the storage. Try again."), select_enabled = false } })
-            end
-            Log.info("storage: books", Storage.size(r.books and r.books.bytes), "audiobooks", Storage.size(r.audiobooks and r.audiobooks.bytes),
-                "music", Storage.size(r.music and r.music.bytes), "notes", Storage.size(r.notes and r.notes.bytes),
-                "free", r.disk and Storage.size(r.disk.available) or "?")
-            menu:switchItemTable(nil, Storage.items(r))
-        end, "storage")
-    end
-    local orig = menu.onCloseWidget
-    menu.onCloseWidget = function(m, ...)
-        m.closed = true
-        if orig then return orig(m, ...) end
-    end
-    run()
-    return menu
 end
 
 return Storage

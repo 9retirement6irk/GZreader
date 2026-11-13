@@ -8,7 +8,8 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 - **Bookshelves** — books stand on shelves, spines out, the selected one turns to show its cover; audiobooks as a cassette walkman, music as a CD player. Also lists and tiles. → [Home and bookshelves](Home-and-Bookshelves)
 - **Grimmory reading stats on Home** — read this week, day streak, books finished, across all your devices. → [Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)
 - **Picture books** — scanned-page EPUBs are recognized and each page fills the screen. → [Picture books](Picture-Books)
-- **Sleep screen** — the book's cover while reading, your pictures from Home. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
+- **Sleep screen** — the book's cover while reading, your pictures from Home: from the USB drive's `screensavers` folder (send them from your phone's browser) or from an Immich album. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
+- **Immich** — an album's photos as the sleep screen and the Home wallpaper, kept on the Kindle and changed now and then on Wi‑Fi. → [Home and bookshelves](Home-and-Bookshelves#pictures-from-immich)
 - **English dictionary** built in (Open English WordNet).
 
 ## Setting up
@@ -20,11 +21,12 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## More than books
 
-- **Notes** — your [Memos](https://usememos.com) notes as sticky notes; tick checklists, write and edit, offline too. → [Notes](Notes)
+- **Notes** — your [Memos](https://usememos.com) notes as sticky notes, in a list or side by side, compact or whole; tick checklists, write and edit, offline too. → [Notes](Notes)
 - **Calendar** — calendar links (Proton, Google, Outlook…) and CalDAV accounts: agenda, day, week, month. → [Calendar](Calendar)
 - **Music** — albums and playlists from Plex, downloaded and played while you read (Kindles with audio). → [Music](Music)
 - **Audiobooks** — from Grimmory, with your place kept in sync (Kindles with audio). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
 - **Read aloud** — any EPUB, MOBI, AZW3, FB2 or TXT in the Kindle's own voice, the sentence highlighted and pages turning by themselves (Kindle 2, 3, DX, Touch). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud#read-aloud-kindle-2-3-dx-text-to-speech)
+- **House** — your [Home Assistant](https://www.home-assistant.io) rooms: lights, switches, thermostats, locks, garage doors and scenes to switch from the Kindle, straight over your Wi‑Fi (Kindles with Wi‑Fi). → [House](House)
 
 ## Using it
 

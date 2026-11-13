@@ -166,6 +166,8 @@ G_reader_settings = { saveSetting = function(_, k, v) gsettings[k] = v end, read
     nilOrTrue = function(_, k) return gsettings[k] == nil or gsettings[k] == true end,
     isTrue = function(_, k) return gsettings[k] == true end,
     makeTrue = function(_, k) gsettings[k] = true end,
+    makeFalse = function(_, k) gsettings[k] = false end,
+    has = function(_, k) return gsettings[k] ~= nil end,
     delSetting = function(_, k) gsettings[k] = nil end,
     flipNilOrTrue = function(_, k) if gsettings[k] == nil or gsettings[k] == true then gsettings[k] = false else gsettings[k] = nil end end }
 
@@ -749,6 +751,9 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     local b3 = Browser:new(plugin)
     b3:show({ section = "music" })
     check(b3.section == "books" and b3.menu.onNextPage and not b3:turnSection(1), "no speaker: Books only, nothing to turn to")
+    check(b3.menu.subtitle == false and m.subtitle == nil and Catalog.titleSubtitle({ "books" }) == false
+        and Catalog.titleSubtitle(Catalog.sections(true)) == nil,
+        "one page alone: no empty strip line under the title (the slip right below it); pages to turn: the strip's line")
     -- the Audiobooks tab: the Catalog on its Audiobooks page alone, that tab underlined
     require("gzreader_touch").audio = function() return true end
     local at = Browser:new(plugin)
@@ -759,6 +764,7 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     check(at.section == "audiobooks" and am._gz_navbar_tab_id == "ct_audiobooks" and am.title == "Audiobooks"
         and table.concat(at:sections(), ",") == "audiobooks" and not at:turnSection(1) and not at:turnSection(-1),
         "the Audiobooks tab: the Audiobooks page alone (no Books or Music to swipe to), its tab underlined")
+    check(am.subtitle == false, "the Audiobooks tab: no empty strip line under its title either")
     local cat = Browser:new(plugin)
     cat:show()
     check(cat.menu._gz_navbar_tab_id == "ct_grimmory" and #cat:sections() == 3, "the Catalog tab: its own tab, every page")
@@ -807,6 +813,271 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     for _i, t in ipairs(acfg.navbar.custom_tabs) do if t.id == "ct_audiobooks" then n_ab = n_ab + 1 end end
     check(a1 and n_ab == 1 and acfg.navbar.show_tabs.ct_audiobooks == false and table.concat(acfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_audiobooks",
         "an older config gets the Audiobooks tab listed, off, once")
+end)()
+
+print("House tab (Home Assistant): connecting, rooms, switching, Settings, the phone page")
+;(function()
+    local HA = require("gzreader_homeassistant")
+    local House = require("gzreader_house")
+    local NetM = require("gzreader_net")
+    local T0 = { sync = AsyncMod.sync, usb = NetM.usb, zen = rawget(_G, "__ZEN_UI_PLUGIN"), save = plugin.save }
+    AsyncMod.sync = true
+    NetM.usb = nil
+    plugin.save = function() end
+    local HP, HP2 = PORT + 30, PORT + 31
+    local mock = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_homeassistant.py"
+    os.execute("python3 -I " .. mock .. " " .. HP .. " > " .. WORK .. "/ha.log 2>&1 & echo $! > " .. WORK .. "/ha.pid")
+    os.execute("python3 -I " .. mock .. " " .. HP2 .. " --no-admin > " .. WORK .. "/ha2.log 2>&1 & echo $! > " .. WORK .. "/ha2.pid")
+    local function hctl(port, method, path)
+        local p = io.popen("curl -s -X " .. method .. " 'http://127.0.0.1:" .. port .. path .. "'"); local o = p:read("*a"); p:close(); return o
+    end
+    local function hstate(id)
+        local st = json.decode(hctl(HP, "GET", "/__state")) or {}
+        for _i, s in ipairs(st.states or {}) do if s.entity_id == id then return s end end
+    end
+    runLoop(function() return hctl(HP, "GET", "/__state"):match("states") ~= nil and hctl(HP2, "GET", "/__state"):match("states") ~= nil end, 10)
+
+    -- addresses as typed or pasted
+    check(HA.normalizeServer("homeassistant.local") == "http://homeassistant.local:8123"
+        and HA.normalizeServer(" 192.168.1.20:8123/lovelace/0 ") == "http://192.168.1.20:8123"
+        and HA.normalizeServer("https://ha.example.com/") == "https://ha.example.com"
+        and HA.normalizeServer("http://ha.example.com:8123/api") == "http://ha.example.com:8123"
+        and HA.normalizeServer("ftp://ha.example.com") == nil and HA.normalizeServer("") == nil,
+        "House: the address typed becomes Home Assistant's (port 8123 when none, the page's path dropped)")
+
+    -- connecting
+    plugin.store.homeassistant = nil
+    local ok, err = HA.connect(plugin, "127.0.0.1:" .. HP, "wrong-token")
+    check(not ok and err:match("didn't accept that token"), "House: a wrong token is refused")
+    ok, err = HA.connect(plugin, "127.0.0.1:" .. (PORT + 39), "ha-test-token")
+    check(not ok and err:match("Couldn't reach"), "House: nothing at that address: it says so")
+    ok = HA.connect(plugin, "127.0.0.1:" .. HP .. "/lovelace/home", " ha-test-token\n")
+    local hs = plugin.store.homeassistant
+    check(ok and hs.server == "http://127.0.0.1:" .. HP and hs.token == "ha-test-token" and hs.name == "Home" and hs.unit == "°C",
+        "House: connected (address cleaned up, token trimmed, its name and unit kept)")
+
+    -- the tab: rooms from the template
+    local tab = House.show(plugin)
+    local function rows() return tab.menu.item_table end
+    local function row(text) for _i, r in ipairs(rows()) do if r.text == text then return r end end end
+    local function texts() local t = {} for _i, r in ipairs(rows()) do t[#t + 1] = r.text end return table.concat(t, "|") end
+    check(tab and tab.menu._gz_navbar_tab_id == "ct_house" and tab.house and not tab.house.by_kind,
+        "House tab: opened (its tab id), the list fetched with the rooms")
+    check(texts() == "Refresh|Living room|Ceiling light|Floor lamp|Thermostat|Temperature|Kitchen|Under-cabinet lights|Kettle"
+        .. "|Outside|Porch light|Front door|Garage door|Back door|Other|Coffee maker|Scenes|Goodnight|Leaving|Movie",
+        "House tab: rooms in Home Assistant's order, room names off the devices' names, no empty room, no power sensor or automation (" .. texts() .. ")")
+    check(row("Ceiling light").mandatory == "On · 80%" and row("Floor lamp").mandatory == "Off" and row("Thermostat").mandatory == "20.5° → 21°"
+        and row("Temperature").mandatory == "20.5°" and row("Front door").mandatory == "Locked" and row("Garage door").mandatory == "Closed"
+        and row("Back door").mandatory == "Closed" and row("Goodnight").mandatory == nil and row("Living room").bold and row("Living room").select_enabled == false,
+        "House tab: what each row says (On · 80%, 20.5° → 21°, Locked…); rooms as headers")
+    check(row("Floor lamp").checked_func and row("Floor lamp").checked_func() == false and row("Ceiling light").checked_func == nil
+        and row("Temperature").callback == nil and row("Floor lamp").gz_icon:match("icons/house/light%.svg$")
+        and row("Garage door").gz_icon:match("garage%.svg$"), "House tab: switches have a toggle, a dimmer opens (no toggle), sensors do nothing; their icons")
+    check(HA.loadCache() and #HA.loadCache().rooms == 5, "House tab: the list is kept on the Kindle for the next opening")
+    check(next(UI.scheduled) ~= nil, "House tab: it refreshes every 30 s while open")
+
+    -- switching
+    row("Floor lamp").callback()
+    check(hstate("light.floor_lamp").state == "on" and row("Floor lamp").checked_func() == true and row("Floor lamp").mandatory == "On",
+        "House tab: tapping a switch turns it on; the answer goes straight into the list")
+    captured.buttons = nil
+    row("Ceiling light").callback()
+    local dlg = captured.buttons
+    local function button(d, text)
+        for _i, line in ipairs(d and d.buttons or {}) do for _j, b in ipairs(line) do if b.text == text then return b end end end
+    end
+    check(dlg and dlg.title == "Ceiling light\nOn · 80%" and button(dlg, "On") and button(dlg, "Off") and button(dlg, "100%"),
+        "House tab: a dimmable light opens its dimmer (On, Off, −/+ 10%, levels)")
+    captured.buttons = nil
+    button(dlg, "+ 10%").callback()
+    check(hstate("light.living_room_ceiling").attributes.brightness == 230 and row("Ceiling light").mandatory == "On · 90%"
+        and captured.buttons and captured.buttons.title:match("On · 90%%"), "House tab: + 10% → 90%, and the dimmer opens again for another step")
+    button(captured.buttons, "10%").callback()
+    check(hstate("light.living_room_ceiling").attributes.brightness == 26 and row("Ceiling light").mandatory == "On · 10%", "House tab: a level (10%)")
+    captured.buttons = nil
+    row("Thermostat").callback()
+    local cd = captured.buttons
+    check(cd and cd.title:match("20%.5° now · heating") and cd.title:match("Target 21°") and button(cd, "+ 21.5°") and button(cd, "− 20.5°"),
+        "House tab: the thermostat: now, target, a step down or up")
+    button(cd, "+ 21.5°").callback()
+    check(hstate("climate.thermostat").attributes.temperature == 21.5 and row("Thermostat").mandatory == "20.5° → 21.5°",
+        "House tab: the target set to 21.5°")
+    captured.confirm = nil
+    row("Front door").callback()
+    check(captured.confirm and captured.confirm.text == "Unlock Front door?" and hstate("lock.front_door").state == "locked",
+        "House tab: unlocking asks first")
+    captured.confirm.ok_callback()
+    check(hstate("lock.front_door").state == "unlocked" and row("Front door").mandatory == "Unlocked" and row("Front door").gz_icon:match("unlock%.svg$"),
+        "House tab: …unlocked once you say so")
+    captured.confirm = nil
+    row("Front door").callback()
+    check(captured.confirm == nil and hstate("lock.front_door").state == "locked", "House tab: locking doesn't ask")
+    row("Garage door").callback()
+    check(captured.confirm and captured.confirm.text == "Open Garage door?" and hstate("cover.garage_door").state == "closed",
+        "House tab: opening the garage door asks first")
+    captured.confirm = nil
+    hs.ask = false
+    row("Garage door").callback()
+    check(captured.confirm == nil and hstate("cover.garage_door").state == "open", "House tab: with Ask before unlocking or opening off, it just opens")
+    hs.ask = nil
+    row("Garage door").callback()
+    check(hstate("cover.garage_door").state == "closed" and row("Garage door").mandatory == "Closed", "House tab: closing it doesn't ask")
+    row("Goodnight").callback()
+    check(hstate("light.porch").state == "off" and hstate("light.floor_lamp").state == "off" and row("Porch light").mandatory == "Off",
+        "House tab: a scene runs (Goodnight: the lights off)")
+
+    -- what Settings hides
+    hs.hidden = { ["switch.kettle"] = true }
+    hs.hidden_rooms = { outside = true }
+    tab:redraw()
+    check(not row("Kettle") and not row("Outside") and not row("Front door") and row("Kitchen") and row("Under-cabinet lights"),
+        "House tab: a hidden device and a hidden room aren't shown")
+    hs.hidden, hs.hidden_rooms = nil, nil
+
+    -- Home Assistant out of reach: the kept list stays, with why
+    hctl(HP, "POST", "/__offline?on=1")
+    tab:refresh(true)
+    check(tab.house and row("Ceiling light") and texts():find("Couldn't reach Home Assistant", 1, true), "House tab: unreachable: the list stays, it says why")
+    hctl(HP, "POST", "/__offline?on=0")
+    tab:refresh(false)
+    check(tab.err == nil and not texts():find("Couldn't reach", 1, true), "House tab: back again on the next refresh")
+
+    -- Settings → Connections → Home Assistant
+    local items = House.settingsItems(plugin)
+    local labels = {}
+    for _i, it in ipairs(items) do labels[#labels + 1] = it.text or it.text_func() end
+    check(table.concat(labels, "|") == "Connected: Home · 127.0.0.1:" .. HP .. "|House tab|Rooms and devices|Ask before unlocking or opening|Disconnect",
+        "Settings: Home Assistant's rows (" .. table.concat(labels, "|") .. ")")
+    local ritems = House.roomItems(plugin)
+    local sub = ritems[2].sub_item_table_func()
+    check(#ritems == 5 and ritems[2].text_func() == "Kitchen" and sub[1].text == "Show this room" and sub[3].text == "Kettle",
+        "Settings: Rooms and devices lists each room and its devices")
+    sub[1].callback()
+    sub[3].callback()
+    check(hs.hidden_rooms.kitchen and hs.hidden["switch.kettle"] and ritems[2].text_func():match("%(hidden%)")
+        and not row("Kitchen"), "Settings: a room and a device hidden, the tab redrawn")
+    sub[1].callback(); sub[3].callback()
+    check(not hs.hidden_rooms.kitchen and not hs.hidden["switch.kettle"] and row("Kitchen"), "Settings: shown again")
+    -- the House tab in ZenOS's tab bar
+    local saved = 0
+    local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
+        saveConfig = function() saved = saved + 1 end }
+    rawset(_G, "__ZEN_UI_PLUGIN", zen)
+    local was_fm = package.loaded["apps/filemanager/filemanager"]
+    package.loaded["apps/filemanager/filemanager"] = { instance = nil }
+    check(House.tabShown() == false and House.setTabShown(true) and zen.config.navbar.show_tabs.ct_house == true
+        and zen.config.navbar.tab_order[3] == "ct_house" and zen.config.navbar.custom_tabs[1].action.gzreader_house and saved == 1 and House.tabShown(),
+        "Settings: House tab on: in the tab bar (listed, defined), ZenOS's settings saved")
+    House.setTabShown(false)
+    check(zen.config.navbar.show_tabs.ct_house == false and #zen.config.navbar.custom_tabs == 1, "Settings: House tab off again")
+    for _i, id in ipairs({ "a", "b", "c", "d", "e" }) do zen.config.navbar.show_tabs[id] = true; table.insert(zen.config.navbar.tab_order, id) end
+    captured.info = nil
+    check(House.setTabShown(true) == false and zen.config.navbar.show_tabs.ct_house == false and (captured.info or ""):match("7 tabs already"),
+        "Settings: not an eighth tab (it says which to turn off)")
+    package.loaded["apps/filemanager/filemanager"] = was_fm
+    rawset(_G, "__ZEN_UI_PLUGIN", T0.zen)
+    -- a token that isn't an administrator's: no rooms, by kind
+    tab.menu:onCloseWidget()
+    check(tab.closed and UI.scheduled[tab.tick] == nil, "House tab: closed (no more refreshing)")
+    local hs1 = plugin.store.homeassistant
+    ok = HA.connect(plugin, "http://127.0.0.1:" .. HP2, "ha-test-token")
+    local tab2 = House.show(plugin)
+    local function texts2() local t = {} for _i, r in ipairs(tab2.menu.item_table) do t[#t + 1] = r.text end return table.concat(t, "|") end
+    check(ok and tab2.house and tab2.house.by_kind and plugin.store.homeassistant.no_template
+        and texts2() == "Refresh|Lights|Floor lamp|Kitchen Under-cabinet lights|Living room Ceiling light|Porch light|Switches|Coffee maker|Kettle"
+            .. "|Climate|Thermostat|Locks|Front door|Covers|Garage door|Doors and windows|Back door|Sensors|Living room Temperature"
+            .. "|Scenes|Goodnight|Leaving|Movie|Why no rooms?",
+        "House tab: a token that can't render templates: grouped by kind (full names), it says why (" .. texts2() .. ")")
+    tab2:refresh(true)
+    local log2 = json.decode(hctl(HP2, "GET", "/__state")).log
+    local templ = 0
+    for _i, l in ipairs(log2) do if l:match("^POST /api/template") then templ = templ + 1 end end
+    check(templ == 1, "House tab: …and the template isn't asked again")
+    tab2.menu:onCloseWidget()
+    plugin.store.homeassistant = hs1
+
+    -- no Wi-Fi (a Kindle 2, or syncing through a computer)
+    NetM.usb = true
+    local tab3 = House.show(plugin)
+    check(tab3.menu.item_table[1].text == "No Wi-Fi here" and #tab3.menu.item_table == 1, "House tab: no Wi-Fi: it says so")
+    tab3.menu:onCloseWidget()
+    NetM.usb = nil
+
+    -- Home Assistant found on the Wi-Fi (mDNS: _home-assistant._tcp)
+    local Mdns = require("gzreader_mdns")
+    local function u16(n) return string.char(math.floor(n / 256) % 256, n % 256) end
+    local function rec(name, rtype, data) return Mdns.encodeName(name) .. u16(rtype) .. u16(0x8001) .. u16(0) .. u16(120) .. u16(#data) .. data end
+    local inst = { "Home", "_home-assistant", "_tcp", "local" }
+    local function txt(list) local t = {} for _i, s in ipairs(list) do t[#t + 1] = string.char(#s) .. s end return table.concat(t) end
+    local answers = {
+        rec(Mdns.HA_SERVICE, 12, Mdns.encodeName(inst)),
+        rec(inst, 33, u16(0) .. u16(0) .. u16(8123) .. Mdns.encodeName("homeassistant.local")),
+        rec(inst, 16, txt({ "location_name=Home", "internal_url=http://192.168.1.20:8123/", "version=2026.11.1" })),
+        rec("homeassistant.local", 1, string.char(192, 168, 1, 20)),
+    }
+    local msg = u16(0) .. u16(0x8400) .. u16(0) .. u16(#answers) .. u16(0) .. u16(0) .. table.concat(answers)
+    local found = {}
+    Mdns.collectService(Mdns.HA_SERVICE)(found, msg, "192.168.1.99")
+    local dev = found["home._home-assistant._tcp.local"]
+    check(dev and dev.name == "Home" and dev.port == 8123 and dev.ip == "192.168.1.20" and dev.txt.location_name == "Home"
+        and House.foundAddress(dev) == "http://192.168.1.20:8123", "House: Home Assistant found on the Wi-Fi: its own address")
+    check(House.foundAddress({ ip = "192.168.1.21", port = 8123, txt = {} }) == "http://192.168.1.21:8123"
+        and Mdns._query(1, Mdns.HA_SERVICE):find(Mdns.encodeName(Mdns.HA_SERVICE), 1, true)
+        and Mdns._query(1):find(Mdns.encodeName(Mdns.SERVICE), 1, true), "House: …or where it answered from; GZreader's own search unchanged")
+
+    -- the phone page: House, connect and disconnect
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local Phone = require("gzreader_phone")
+    local closed
+    plugin.store.homeassistant = { ask = false }
+    Phone.open(plugin, { section = "house", on_close = function(ch) closed = ch end })
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields)
+        local args = { "-L", #fields == 0 and "-d ''" or nil }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('data-tab="house"', 1, true) and b:find('<section id="house" class="tab">', 1, true) and b:find('"house";', 1, true)
+        and b:find("Not connected", 1, true), "phone page: the House tab, opening at it")
+    c, b = post("/house", { "server=127.0.0.1:" .. HP, "token=nope" })
+    check(c == 200 and (b:find("didn&#39;t accept that token", 1, true) or b:find("didn't accept that token", 1, true))
+        and not (plugin.store.homeassistant or {}).token, "phone page: House: a wrong token -> the page says so")
+    c, b = post("/house", { "server=127.0.0.1:" .. HP, "token=ha-test-token" })
+    hs = plugin.store.homeassistant
+    check(c == 200 and b:find("Connected to Home.", 1, true) and hs.token == "ha-test-token" and hs.server == "http://127.0.0.1:" .. HP
+        and hs.ask == false and b:find("Connected to <b>Home</b>", 1, true), "phone page: House: connected (the Ask setting kept)")
+    c, b = post("/house/disconnect", {})
+    check(c == 200 and not plugin.store.homeassistant.token and plugin.store.homeassistant.ask == false and not HA.loadCache(),
+        "phone page: House: disconnected (address, token and the kept list gone)")
+    scr.on_cancel()
+    check(closed and closed.house and Phone.session == nil and #UI.zmqs == 0, "phone page: closed, the caller hears House changed")
+    PS.new = orig_ps
+
+    -- ZenOS: the House tab listed (off) in an older config, once
+    local msrc = io.open(PLUGIN .. "/../zenos.koplugin/config/manager.lua"):read("*a")
+    local hfrom = msrc:find("if cfg._meta.gz_house_tab_migrated ~= true then", 1, true)
+    local hto = hfrom and select(2, msrc:find("cfg._meta.gz_house_tab_migrated = true%s+changed = true%s+end", hfrom))
+    local hmig = hfrom and hto and load("return function(cfg) local changed = false\n" .. msrc:sub(hfrom, hto) .. "\nreturn changed end",
+        "house tab migration", "t", { type = type, ipairs = ipairs, table = table })()
+    local hcfg = { _meta = {}, navbar = { custom_tabs = { { id = "ct_grimmory" } }, show_tabs = {}, tab_order = { "home", "ct_grimmory" } } }
+    local h1 = hmig and hmig(hcfg)
+    hcfg._meta.gz_house_tab_migrated = nil
+    hmig(hcfg)
+    local n_h, def = 0, nil
+    for _i, t in ipairs(hcfg.navbar.custom_tabs) do if t.id == "ct_house" then n_h = n_h + 1; def = t end end
+    check(h1 and n_h == 1 and def.icon == "tab_house" and def.label == "House" and def.action.gzreader_house and hcfg.navbar.show_tabs.ct_house == false
+        and table.concat(hcfg.navbar.tab_order, ",") == "home,ct_grimmory,ct_house", "ZenOS: an older config gets the House tab listed, off, once")
+
+    local lg = io.open(WORK .. "/gzreader.log", "rb"); local ltxt = lg and lg:read("*a") or ""; if lg then lg:close() end
+    check(ltxt:find("house: connecting to", 1, true) and not ltxt:find("ha-test-token", 1, true), "House: the token is never in the log")
+    os.execute("kill $(cat " .. WORK .. "/ha.pid) $(cat " .. WORK .. "/ha2.pid) 2>/dev/null")
+    plugin.store.homeassistant = nil
+    HA.clearCache()
+    AsyncMod.sync, NetM.usb, plugin.save = T0.sync, T0.usb, T0.save
 end)()
 
 print("Catalog: the Audiobooks page (search, All audiobooks, Authors, Shelves, Series)")
@@ -951,16 +1222,37 @@ print("Catalog: not signed in to Grimmory (it opens all the same)")
     local texts = {}
     for _i, it in ipairs(pushed and pushed.list or {}) do texts[#texts + 1] = it.text end
     local tx = table.concat(texts, " | ")
-    check(pushed and pushed.title == "Grimmory" and tx:find("Signed out of " .. plugin.store.username .. " at " .. (plugin.store.server:gsub("^https?://", "")), 1, true) and tx:find("Connect from your browser (QR code)", 1, true)
-        and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true) and not tx:find("Rebuild", 1, true),
-        "the Grimmory card, not signed in: the ways to sign in " .. tx)
+    local host = plugin.store.server:gsub("^https?://", ""):gsub("/+$", "")
+    local out_rows = pushed and pushed.list or {}
+    check(pushed and pushed.title == "Grimmory" and out_rows[1].text == "Signed out"
+        and out_rows[1].mandatory == plugin.store.username .. " · " .. host and out_rows[1].select_enabled == false
+        and tx:find("Connect with QR code", 1, true) and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true)
+        and tx:find("About Grimmory", 1, true) and not tx:find("Rebuild", 1, true),
+        "the Grimmory card, not signed in: who was signed in, then the ways to sign in " .. tx)
+    -- (ZenOS rows, as the Calendar and Notes connect lists: an icon on each, an arrow on what opens)
+    local all_rows, arrows_ok = out_rows.gz_rows == true, true
+    for i, it in ipairs(out_rows) do
+        if not (it._zen_settings_row and (it.gz_icon or it.icon_glyph or it.icon_name or it.icon_file)) then all_rows = false end
+        if (i == 1) == (it._zen_has_submenu == true) then arrows_ok = false end
+    end
+    check(all_rows and arrows_ok and out_rows[#out_rows].gz_about,
+        "the Grimmory card: ZenOS rows, an icon on each, an arrow on all but the account line, About last")
     signed_in.push = b.push
     signed_in:openGrimmory()
     texts = {}
     for _i, it in ipairs(pushed.list) do texts[#texts + 1] = it.text end
     tx = table.concat(texts, " | ")
-    check(tx:find("Signed in as " .. plugin.store.username .. " at ", 1, true) and tx:find("Rebuild library", 1, true)
-        and tx:find("Reconnect from your browser (QR code)", 1, true), "the Grimmory card, signed in: the account " .. tx)
+    check(pushed.list[1].text == "Signed in" and pushed.list[1].mandatory == plugin.store.username .. " · " .. host
+        and tx:find("Rebuild library", 1, true) and tx:find("Reconnect with QR code", 1, true) and pushed.list.gz_rows,
+        "the Grimmory card, signed in: the account on the right, Rebuild library, Reconnect " .. tx)
+    local saved_usb = require("gzreader_net").usb
+    require("gzreader_net").usb = true
+    plugin.store.server = nil
+    local usb_rows = Browser.grimmoryItems(b)
+    require("gzreader_net").usb = saved_usb
+    plugin.store.server = saved_server
+    check(usb_rows[1].text == "Not signed in" and usb_rows[2].text == "Sync with computer" and #usb_rows == 3,
+        "the Grimmory card on a Kindle without Wi-Fi: sign in through the sync page")
     -- the Catalog opens, signed out, from its tab (it used to ask to connect instead)
     local Net = require("gzreader_net")
     local saved_run, saved_api = Net.run, plugin.api
@@ -2184,6 +2476,29 @@ do
         require("gzreader_musictab").nowPlaying = saved_np
         require("gzreader_touch").audio = saved_audio
     end
+    -- Quick note: at Home and in a book while Memos is connected; it opens a new note over what's on screen
+    do
+        local saved_memos, saved_notes = hplug.store.memos, package.loaded["gzreader_notes"]
+        hplug.store.memos = nil
+        local hq0, bq0 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(not hq0:match("Quick note") and not bq0:match("Quick note"), "Memos not connected: no Quick note tile")
+        hplug.store.memos = { server = "https://memos.example.com", token = "t" }
+        local hq1, bq1 = labels(Panel.homeTiles(hplug, nil)), labels(Panel.bookTiles(hplug, fakeui))
+        check(hq1:match("|View|Quick note|") and bq1:match("|Layout|Quick note|"),
+            "Memos connected: Quick note at Home (after View/Sort) and in a book (before Music) " .. hq1 .. " " .. bq1)
+        local quick = {}
+        package.loaded["gzreader_notes"] = { quickNote = function(p) quick[#quick + 1] = p end }
+        for _i, t in ipairs(Panel.bookTiles(hplug, fakeui)) do if t.id == "note" then t.run() end end
+        check(#quick == 1 and quick[1] == hplug, "…the tile opens a quick note")
+        hplug.store.memos = { usb = true }
+        check(labels(Panel.bookTiles(hplug, fakeui)):match("|Quick note|"), "…also on a Kindle syncing notes through a computer")
+        Panel.setShown("book", "note", false)
+        check(not labels(Panel.bookTiles(hplug, fakeui)):match("Quick note") and labels(Panel.homeTiles(hplug, nil)):match("|Quick note|"),
+            "…and can be hidden in a book on its own")
+        Panel.setShown("book", "note", true)
+        package.loaded["gzreader_notes"] = saved_notes
+        hplug.store.memos = saved_memos
+    end
     local item = Panel.settingsItem()
     local subs = {}
     for _i, s in ipairs(item.sub_item_table) do subs[#subs + 1] = s.text end
@@ -2212,7 +2527,7 @@ do
     NetM.usb = was_usb
     check(usb_rows:match("|Sync|") and not usb_rows:match("|Updates|") and not usb_rows:match("|Send books|"),
         "a Kindle without Wi-Fi: only the tiles it can have are listed… " .. usb_rows)
-    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks" }) do Panel.setShown("home", id, false) end
+    for _i, id in ipairs({ "continue", "search", "history", "view", "manage", "music", "audiobook", "tasks", "note" }) do Panel.setShown("home", id, false) end
     check(#Panel.homeTiles(hplug, { path = "/mnt/us/a.epub" }) == 0, "every Home tile hidden: an empty group (the panel leaves it out)")
     item.sub_item_table[4].callback()
     check(G_reader_settings:readSetting("gzreader_panel_hidden") == nil and labels(Panel.homeTiles(hplug, nil)):match("|Sort|"),
@@ -2269,6 +2584,58 @@ do
     Panel.show = panel_show
 
 end
+
+print("Quick panel: how it opens (KOReader's Activate menu), KOReader's tap and metadata rows hidden")
+;(function()
+    local Panel = require("gzreader_panel")
+    local Touch = require("gzreader_touch")
+    local saved_on = Touch.on
+    Touch.on = function() return false end
+    check(#Panel.openRows() == 0, "a Kindle without a touch screen: no rows (the Menu key opens it)")
+    Touch.on = function() return true end
+    local rows = Panel.openRows()
+    local item = Panel.settingsItem()
+    Touch.on = saved_on
+    check(#rows == 2 and rows[1].text == "Open with a tap at the top" and rows[2].text == "Open with a swipe down from the top"
+            and rows[2].separator and item.sub_item_table[1].text == rows[1].text and item.sub_item_table[2].text == rows[2].text,
+        "a touch Kindle: Settings → Interface → Quick panel starts with Open with a tap / with a swipe")
+    local had_fm = package.loaded["apps/filemanager/filemanager"]
+    local fm = { instance = { menu = {} } }
+    package.loaded["apps/filemanager/filemanager"] = fm
+    gsettings.activate_menu = nil
+    check(rows[1].checked_func() and rows[2].checked_func(), "by default both (KOReader's swipe_tap)")
+    rows[1].callback()
+    check(gsettings.activate_menu == "swipe" and not rows[1].checked_func() and rows[2].checked_func()
+            and fm.instance.menu.activation_menu == "swipe", "untick the tap: a swipe only, Home's menu told at once")
+    rows[2].callback()
+    check(gsettings.activate_menu == "tap" and rows[1].checked_func() and not rows[2].checked_func(),
+        "untick the swipe then: a tap only (one of them stays, as in KOReader)")
+    rows[2].callback()
+    check(gsettings.activate_menu == "swipe_tap" and rows[1].checked_func() and rows[2].checked_func(), "tick it again: both")
+    package.loaded["apps/filemanager/filemanager"] = had_fm
+    gsettings.activate_menu = nil
+    -- KOReader's Disable double tap: a saved untick cleared
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = false, nil
+    check(Touch.forgetKOReaderDoubleTap() == true and gsettings.disable_double_tap == nil,
+        "Disable double tap unticked: cleared (taps in a book don't wait for a second one)")
+    gsettings.disable_double_tap = false
+    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == false,
+        "once only: unticked again later (About → Advanced → KOReader settings), it stays unticked")
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = true, nil
+    check(Touch.forgetKOReaderDoubleTap() == false and gsettings.disable_double_tap == true, "ticked: left as it is")
+    gsettings.disable_double_tap, gsettings.gzreader_double_tap_cleared = nil, nil
+    local main_src = io.open(PLUGIN .. "/main.lua"):read("*a")
+    check(main_src:find('require("gzreader_touch").forgetKOReaderDoubleTap()', 1, true) ~= nil, "done when Home's menu is set up")
+    -- ZenOS's lists of KOReader rows (zenos common/gz_settings.lua)
+    local GzS = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_settings.lua")
+    check(GzS.KOREADER_DUPLICATES.menu_activate and not GzS.KOREADER_HIDDEN.menu_activate,
+        "Settings → KOReader: no Activate menu (Interface → Quick panel has it; its Auto-show bottom menu goes with it)")
+    check(GzS.KOREADER_HIDDEN.screen_disable_double_tap and GzS.KOREADER_HIDDEN.document_metadata_location
+            and GzS.KOREADER_HIDDEN.document_metadata_location_move,
+        "hidden: Disable double tap, Book metadata location, Move book metadata")
+    check(not GzS.KOREADER_HIDDEN.document_auto_save and not GzS.KOREADER_HIDDEN.document_metadata_arc,
+        "Save book metadata and the metadata archive stay")
+end)()
 
 print("Download progress + staying awake")
 do
@@ -3070,6 +3437,30 @@ do
         for first = 0, #all - 1, thin do if not SV.pageFits(all, first, thin, 3, 190, 600) then fits = false end end
         check(fits and not SV.pageFits(all, 0, thin + 4, 3, 190, 600), "every page's books fit on its shelves, and no more than that")
         check(SV.KEYS == 19, "letters on the shelves: Q to L (19), not Del")
+        -- no ornament on the first shelf beside the walkman or the CD player
+        local okt, Th = pcall(require, "gzreader_shelftheme")
+        if okt then
+            local function sides(filled, players)
+                local t = SV.ornamentRows(filled, 3, players)
+                local o = {}
+                for r = 1, 3 do o[r] = t[r] and t[r]:sub(1, 1) or "-" end
+                return table.concat(o)
+            end
+            Th.setOrnaments("room"); Th.setCount(1); Th.setSide("right")
+            check(sides({ true, false, false }, false) == "r--", "one shelf of books, no player: its ornament on that shelf")
+            check(sides({ true, false, false }, true) == "---", "…the walkman or the CD player on the first shelf: no ornament there")
+            check(sides({ true, true, false }, true) == "-r-" and sides({ true, true, true }, true) == "--r", "…the shelves under it keep theirs")
+            Th.setCount("all")
+            check(sides({ true, true, true }, true) == "-rr" and sides({ true, true, true }, false) == "rrr", "one on every shelf: every shelf but the players' one")
+            Th.setSide("scattered")
+            check(sides({ true, true, true }, true) == "-rl", "scattered: the first under the players on the right, the next on the left")
+            Th.setOrnaments("always")
+            check(SV.ornamentRoom(190, 1, 3, true) == 0 and SV.ornamentRoom(190, 1, 3, false) > 0 and SV.ornamentRoom(190, 2, 3, true) > 0,
+                "an ornament on every page: the players' shelf keeps no room for one, the others do")
+            Th.setOrnaments("room"); Th.setCount(1); Th.setSide("right")
+        else
+            check(false, "the shelf theme loads: " .. tostring(Th))
+        end
     else
         check(false, "the shelf view loads: " .. tostring(SV))
     end
@@ -3569,6 +3960,22 @@ print("Wi-Fi: on, off, auto")
     Net.clock = os.time
     Net.ours, Net.holders, Net.connecting = false, {}, nil
     UI.scheduled = {}
+end)()
+
+print("Wi-Fi: KOReader's \"Disable Wi-Fi connection when inactive\" cleared (its row is hidden)")
+;(function()
+    local Net = require("gzreader_net")
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = true, nil
+    check(Net.forgetKOReaderPowersave() == true and gsettings.auto_disable_wifi == nil,
+        "a saved tick is cleared (it turned Wi-Fi off after 5 quiet minutes even on On)")
+    gsettings.auto_disable_wifi = true
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == true,
+        "once only: ticked again later (About → Advanced → KOReader settings), it stays ticked")
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = false, nil
+    check(Net.forgetKOReaderPowersave() == false and gsettings.auto_disable_wifi == false, "unticked: left as it is")
+    gsettings.auto_disable_wifi, gsettings.gzreader_wifi_powersave_cleared = nil, nil
+    check(io.open(PLUGIN .. "/gzreader_net.lua"):read("*a"):find("pcall(Net.forgetKOReaderPowersave)", 1, true) ~= nil,
+        "done at start (Net.start)")
 end)()
 
 print("Night mode guard (Kindle 3)")
@@ -6047,6 +6454,23 @@ print("Notes (Memos v0.31)")
     check(Sticky.firstImage(md) == "/file/attachments/abc/p.png", "first picture found")
     check(Sticky.tagsOnly("#travel #hiking") and not Sticky.tagsOnly("#idea buy milk") and not Sticky.tagsOnly(""), "a line of only tags")
     check(Sticky.preview("Title\n\nbody\n\n#a #b") == "Title\nbody", "sticky preview: no blank lines, tag line left out")
+    ;(function() -- Memos 26.11's rich editor: "&nbsp;" for an empty paragraph, entities, backslash escapes
+        local rich = "First paragraph.\n\n&nbsp;\n\nSecond&nbsp;one: Tom &amp; Jerry &lt;3\n\n\\* not a bullet, 2 \\* 3 \\_x\\_\n\n&#35; not a heading &#124; pipe&#10;next"
+        local pv = Sticky.preview(rich)
+        check(pv == "First paragraph.\nSecond one: Tom & Jerry <3\n* not a bullet, 2 * 3 _x_\n# not a heading | pipe\nnext",
+            "rich-editor notes on a sticky note: no &nbsp;, entities and escapes as their characters, not read as Markdown… " .. pv)
+        local rl = Sticky.lines(rich)
+        check(rl[3].kind == "text" and rl[3].text == "" and Sticky.blankLine("&nbsp;") and Sticky.blankLine(" &nbsp; &#160;\194\160")
+            and not Sticky.blankLine("&nbsp;x"), "an &nbsp; line is a blank line (the note's page keeps it as a gap)")
+        check(rl[9] and rl[9].kind == "text", "…and an entity-made # is not a heading")
+        check(Sticky.plain("**bold** &amp; \\*stars\\*") == "bold & *stars*" and Sticky.plain("a &#42;b&#42; c") == "a *b* c",
+            "markers still made plain; escaped or entity stars stay stars (no italics)")
+        check(Sticky.plain("`a &amp; \\* b`") == "a &amp; \\* b" and Sticky.plain("x `y` &amp; z") == "x y & z",
+            "in `code` nothing is decoded")
+        check(Sticky.plain("&unknown; &#xD83D; &#x2014; &mdash;") == "&unknown; \u{FFFD} \u{2014} \u{2014}"
+            and Sticky.plain("[a &amp; b](https://example.com)") == "a & b", "unknown names left as written; bad numbers replaced; links' text decoded")
+        check(Sticky.decode("caf&#233; &euro;5") == "caf\u{00E9} \u{20AC}5", "accented letters and symbols from numeric and named entities")
+    end)()
     local t2 = Sticky.toggle(md, 2)
     check(t2:match("%- %[ %] map") and t2:match("%- %[ %] permit") and t2:match("^## Trip"), "tick: the 2nd item unticked, the rest untouched")
     check(Sticky.toggle(Sticky.toggle("- [ ] a\n- [ ] b", 1), 1) == "- [ ] a\n- [ ] b", "tick twice: as before")
@@ -6082,6 +6506,265 @@ print("Notes (Memos v0.31)")
         and not Notes.keep({ attachments = {} }, { kind = "attachments" }), "filter: place and attachments on the Kindle")
     local tg = Notes.tagsIn("#a and #b/c, (#d) x#no #a")
     check(#tg == 3 and tg[1] == "a" and tg[2] == "b/c" and tg[3] == "d", "tags from text (no repeats; not inside words)")
+
+    ;(function() -- the board's layouts: List / Two / Three / Auto, Compact / Full (gzreader_notelayout.lua)
+        local NL = require("gzreader_notelayout")
+        local v = NL.view(nil)
+        check(v.columns == "2" and v.display == "compact", "layout: two side by side, compact by default (the board as before)")
+        v = NL.view({ columns = "7", display = "huge" })
+        check(v.columns == "2" and v.display == "compact", "layout: an unknown saved value falls back to the default")
+        check(NL.view({ columns = "list", display = "full" }).columns == "list", "layout: a saved choice is kept")
+        check(NL.columns("list", 600, 230) == 1 and NL.columns("2", 600, 230) == 2 and NL.columns("3", 600, 230) == 3,
+            "layout: List is one column, Two two, Three three")
+        check(NL.columns("auto", 600, 230) == 2 and NL.columns("auto", 800, 230) == 3,
+            "layout: Auto fits as many columns as are at least 230 (scaled) wide: two upright, three sideways")
+        check(NL.columns("auto", 1600, 230) == NL.MAX_COLS and NL.columns("auto", 200, 230) == 1, "layout: Auto stays between 1 and 4")
+        check(NL.rows(2, 600, 180) == 3 and NL.rows(1, 600, 180) == 3 and NL.rows(2, 400, 180) == 2,
+            "compact: three rows upright (six notes two side by side, as before), two sideways")
+        check(NL.rows(3, 600, 180, 10) == 3 and NL.rows(4, 600, 180, 10) == 2,
+            "compact: with letter keys, no more notes on a page than letters (four columns: two rows)")
+
+        -- full: notes as tall as they are (top + blocks), Memos' masonry
+        local function note(top, count, h)
+            local bl = {}
+            for i = 1, count do bl[i] = h or 10 end
+            return { top = top, blocks = bl }
+        end
+        local function desc(pages)
+            local out = {}
+            for p, pg in ipairs(pages) do
+                for _i, part in ipairs(pg) do
+                    out[#out + 1] = string.format("%d:%d/%d.%d-%d@%d", p, part.col, part.note, part.from, part.to, part.y)
+                end
+            end
+            return table.concat(out, " ")
+        end
+        local pages = NL.paginate({ note(20, 3), note(20, 5), note(20, 1), note(20, 2) }, 2, 100)
+        check(desc(pages) == "1:1/1.1-3@0 1:2/2.1-5@0 1:1/3.1-1@50 2:1/4.1-2@0",
+            "full: each note in the column with the most room, in order; one that doesn't fit starts the next page: " .. desc(pages))
+        check(pages[1][1].h == 50 and pages[1][2].h == 70, "full: a part's height is its top and its blocks")
+        pages = NL.paginate({ note(20, 3), note(20, 5) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-3@0 2:1/2.1-5@0", "full, list: one under another, a page ends when the next doesn't fit")
+        -- a note taller than a page: split between blocks, "continued"
+        pages = NL.paginate({ note(20, 20) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-8@0 2:1/1.9-16@0 3:1/1.17-20@0", "full: a note taller than the page goes on on the next pages, nothing left out: " .. desc(pages))
+        -- …in the empty column to its right (read on like a newspaper), else on the next page
+        pages = NL.paginate({ note(20, 2), note(20, 30), note(20, 1) }, 3, 100)
+        check(desc(pages) == "1:1/1.1-2@0 1:2/2.1-8@0 1:3/2.9-16@0 2:1/2.17-24@0 2:2/2.25-30@0 2:3/3.1-1@0",
+            "full: a long note goes on in the empty column to its right, then on the next page; the notes after it come after it: " .. desc(pages))
+        pages = NL.paginate({ note(20, 2), note(20, 30), note(20, 1) }, 2, 100)
+        check(desc(pages) == "1:1/1.1-2@0 1:2/2.1-8@0 2:1/2.9-16@0 2:2/2.17-24@0 3:1/2.25-30@0 3:2/3.1-1@0",
+            "full: …not back under an earlier note in a column to its left: " .. desc(pages))
+        pages = NL.paginate({ note(20, 7), note(20, 30) }, 1, 100)
+        check(desc(pages) == "1:1/1.1-7@0 2:1/2.1-8@0 3:1/2.9-16@0 4:1/2.17-24@0 5:1/2.25-30@0",
+            "full: a long note with too little room left (under 3 lines) starts on a fresh page: " .. desc(pages))
+        pages = NL.paginate({ note(20, 3), note(20, 30) }, 1, 100)
+        check(pages[1][2] and pages[1][2].note == 2 and pages[1][2].from == 1 and pages[1][2].to == 3,
+            "full: …with room for 3 lines it starts on this page")
+        pages = NL.paginate({ { top = 20, blocks = { 10, 200, 10 } } }, 1, 100)
+        check(#pages == 3 and pages[2][1].from == 2 and pages[2][1].to == 2, "full: a block taller than the page (never: pictures are 40 % of it) still gets a page")
+        local many = {}
+        for i = 1, 30 do many[i] = note(5, 1, 5) end
+        pages = NL.paginate(many, 2, 1000, { max_parts = 10 })
+        check(#pages == 3 and #pages[1] == 10, "full: with letter keys, at most ten notes on a page")
+        check(NL.pageOf(pages, 1) == 1 and NL.pageOf(pages, 11) == 2 and NL.pageOf(pages, 30) == 3 and NL.pageOf(pages, 99) == 3,
+            "full: the page a note is on (after a change of layout the board shows that page)")
+        check(#NL.paginate({}, 2, 100) == 0 and #NL.paginate({ { top = 20, blocks = {} } }, 2, 100) == 1, "full: no notes; a note with nothing but its top")
+
+        -- the sticky note's tilt: long notes tilted less, so they never grow more than a 300 px one
+        check(Sticky.tilt(2.4, 264, 172, 300) == 2.4, "tilt: notes up to 300 px (the board before layouts) keep their angle")
+        check(math.abs(Sticky.tilt(2.4, 528, 172, 300) - 2.4 * 300 / 528) < 1e-9 and math.abs(Sticky.tilt(-2, 100, 600, 300) + 1) < 1e-9,
+            "tilt: a long note (a list's width, a whole note) less")
+        local Screen = require("device").screen
+        local scale = Screen.scaleBySize
+        Screen.scaleBySize = function(_s, px) return px end
+        local fw, fh = Sticky.footprint(200, 100, { angle = 0 })
+        local tw, th = Sticky.footprint(200, 900, { angle = 2.6 })
+        check(fw == 220 and fh == 120 and tw <= 220 + 16 and th >= 920, "a note's room on the board: its margin, and its tilt (at most 15 px more)")
+        check(Notes.noteWidth(300) == 264 and Notes.noteWidth(200) == 164, "a note's width: 88 % of its place, or 36 px less where that's narrow")
+        local s1 = Notes.slack(264)
+        check(s1 >= 20 + 4 + math.ceil(284 * math.sin(math.rad(2.6))) - 1, "full: room kept around a note for its shadow, tape and tilt")
+        Screen.scaleBySize = scale
+
+        -- pictures' sizes from their first bytes (full layout lays pages out without decoding them)
+        local function file(name, bytes)
+            local p = WORK .. "/" .. name
+            local fh2 = io.open(p, "wb"); fh2:write(bytes); fh2:close()
+            return p
+        end
+        local function u16be(x) return string.char(math.floor(x / 256), x % 256) end
+        local function u16le(x) return string.char(x % 256, math.floor(x / 256)) end
+        local png = "\137PNG\r\n\26\n" .. "\0\0\0\13IHDR" .. "\0\0" .. u16be(320) .. "\0\0" .. u16be(200) .. "\8\2\0\0\0"
+        local w, h = Sticky.imageSize(file("s.png", png))
+        check(w == 320 and h == 200, "picture size: PNG")
+        local jpg = "\255\216" .. "\255\224" .. u16be(16) .. ("JFIF\0" .. string.rep("\0", 9))
+            .. "\255\219" .. u16be(4) .. "\0\0" .. "\255\194" .. u16be(17) .. "\8" .. u16be(1080) .. u16be(1920) .. string.rep("\0", 10)
+        w, h = Sticky.imageSize(file("s.jpg", jpg))
+        check(w == 1920 and h == 1080, "picture size: JPEG (the frame header after other segments; progressive)")
+        w, h = Sticky.imageSize(file("s.gif", "GIF89a" .. u16le(64) .. u16le(48) .. "\0\0\0"))
+        check(w == 64 and h == 48, "picture size: GIF")
+        local vp8x = "RIFF" .. "\0\0\0\0" .. "WEBP" .. "VP8X" .. "\10\0\0\0" .. "\0\0\0\0" .. string.char(99, 1, 0) .. string.char(199, 0, 0)
+        w, h = Sticky.imageSize(file("s.webp", vp8x))
+        check(w == 356 and h == 200, "picture size: WebP")
+        check(Sticky.imageSize(file("s.txt", "hello")) == nil and Sticky.imageSize(WORK .. "/none.png") == nil, "picture size: not a picture, no file")
+        w, h = Sticky.fitSize(320, 200, 160, 1000)
+        check(w == 160 and h == 100 and select(2, Sticky.fitSize(320, 200, 1000, 50)) == 50 and Sticky.fitSize(30, 20, 100, 100) == 30,
+            "pictures shrink to fit, never grow")
+        Notes.pic_sizes = {}
+        check(select(2, Notes.picSize(WORK .. "/s.png")) == 200 and Notes.pic_sizes[WORK .. "/s.png"], "a picture's size is kept once read")
+
+        -- the tilt in whole numbers (Sticky.rotate): the picture the fractions gave, within 2 levels of 255
+        ;(function()
+            local ffi = require("ffi")
+            local BB = package.loaded["ffi/blitbuffer"] -- (a stand-in: give it what rotate uses)
+            local function bb(bw, bh)
+                local t = { w = bw, h = bh, stride = bw, data = ffi.new("uint8_t[?]", bw * bh) }
+                t.getWidth = function(x) return x.w end
+                t.getHeight = function(x) return x.h end
+                return t
+            end
+            rawset(BB, "new", function(bw, bh) return bb(bw, bh) end)
+            rawset(BB, "TYPE_BB8", 1)
+            local function fractions(src, deg) -- (the formula until 1.29)
+                local a = math.rad(deg)
+                local ca, sa = math.cos(a), math.sin(a)
+                local sw, sh = src.w, src.h
+                local dw = math.ceil(math.abs(sw * ca) + math.abs(sh * sa))
+                local dh = math.ceil(math.abs(sw * sa) + math.abs(sh * ca))
+                local dst, px = bb(dw, dh), src.data
+                for y = 0, dh - 1 do
+                    for x = 0, dw - 1 do
+                        local rx, ry = x - dw / 2, y - dh / 2
+                        local fx, fy = ca * rx + sa * ry + sw / 2, -sa * rx + ca * ry + sh / 2
+                        local x0, y0 = math.floor(fx), math.floor(fy)
+                        local level = 255
+                        if x0 >= 0 and y0 >= 0 and x0 < sw - 1 and y0 < sh - 1 then
+                            local tx, ty, i = fx - x0, fy - y0, y0 * sw + x0
+                            local top = px[i] + (px[i + 1] - px[i]) * tx
+                            local bot = px[i + sw] + (px[i + sw + 1] - px[i + sw]) * tx
+                            level = top + (bot - top) * ty
+                        end
+                        dst.data[y * dw + x] = level
+                    end
+                end
+                return dst
+            end
+            local worst, same_size, cases = 0, true, 0
+            for _i, size in ipairs({ { 37, 23 }, { 120, 90 }, { 64, 200 }, { 5, 5 } }) do
+                for _j, deg in ipairs({ -2.6, -1.1, 0, 0.4, 1.9, 2.6, 30 }) do
+                    local src = bb(size[1], size[2])
+                    for k = 0, size[1] * size[2] - 1 do -- (a white edge, as a note's canvas has: its shadow's margin)
+                        local x, y = k % size[1], math.floor(k / size[1])
+                        local edge = x < 2 or y < 2 or x >= size[1] - 2 or y >= size[2] - 2
+                        src.data[k] = edge and 255 or (k * 37 + y * 11) % 256
+                    end
+                    local old, rot = fractions(src, deg), Sticky.rotate(src, deg)
+                    same_size = same_size and old.w == rot.w and old.h == rot.h
+                    for k = 0, old.w * old.h - 1 do worst = math.max(worst, math.abs(old.data[k] - rot.data[k])) end
+                    cases = cases + 1
+                end
+            end
+            rawset(BB, "new", nil)
+            rawset(BB, "TYPE_BB8", nil)
+            check(same_size and worst <= 2, "tilt: the same size and picture as before (" .. cases .. " cases, at most " .. worst .. " levels apart)")
+        end)()
+
+        -- the board keeps each note's image: drawn again only when what it shows changes
+        ;(function()
+            local Scr = require("device").screen
+            local real_scale = Scr.scaleBySize
+            Scr.scaleBySize = function(_s, size) return size end
+            local made, freed = 0, 0
+            local real_image = Sticky.image
+            Sticky.image = function() made = made + 1; return { free = function() freed = freed + 1 end } end
+            local function item(m, over)
+                local it = { dimen = { w = 200, h = 150 }, entry = { memo = m }, look = Sticky.LOOK[1], menu = { plugin = plugin },
+                    compactNote = function() return { free = function() end }, 170, 120 end,
+                    fullNote = function() return { free = function() end }, 170, 120 end }
+                for key, val in pairs(over or {}) do it[key] = val end
+                Notes._StickyItem.draw(it)
+                return it
+            end
+            Notes.dropImages(true)
+            local m = { content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" } }
+            Notes.image_gen = Notes.image_gen + 1
+            local first = item(m)
+            local again = item({ content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" } }) -- (a sync: a new table)
+            check(made == 1 and first.img == again.img, "board: a note drawn again as it was (a sync, the tab opened again) reuses its image")
+            item(m, { focused = true })
+            item(m, { shortcut = "W" })
+            item(m, { look = Sticky.LOOK[2] })
+            item(m, { dimen = { w = 300, h = 150 } })
+            item({ content = "Buy milk", created = "2026-11-10T10:00:00Z", tags = { "home" }, pinned = true })
+            item({ content = "Buy oat milk", created = "2026-11-10T10:00:00Z", tags = { "home" } })
+            item(m, { part = { from = 1, to = 3, h = 120 }, size = { sig = "x" } })
+            check(made == 8, "board: …and draws it again when it's focused, gets another letter, look, size, pin, text or part (" .. made .. ")")
+            Notes.image_gen = Notes.image_gen + 1
+            item(m)
+            Notes.dropImages()
+            check(freed == 7 and next(Notes.images) ~= nil, "board: after a draw, the images it no longer shows are let go; its own stay")
+            Notes.dropImages(true)
+            check(freed == 8 and next(Notes.images) == nil, "board: …all of them when the tab closes on a Kindle with little memory")
+            local Layout = require("gzreader_layout")
+            local real_mem = Layout.memTotalKB
+            Layout.memTotalKB = function() return 125 * 1024 end
+            local small = Notes.keepImages()
+            Layout.memTotalKB = function() return 512 * 1024 end
+            check(not small and Notes.keepImages(), "board: images kept while the tab is closed, not on a 128 MB Kindle (2, DX)")
+            Layout.memTotalKB = real_mem
+            Sticky.image = real_image
+            Scr.scaleBySize = real_scale
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("if m._gz_hold_draw then return end", 1, true) and src:find("_gz_hold_draw = Touch.on() or nil,", 1, true)
+                and src:find("menu._gz_hold_draw = nil\n    Touch.actionRow(menu, Notes.actions(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
+                "board: on a touch Kindle drawn once on opening, after its buttons (Menu's own first draw was thrown away)")
+        end)()
+
+        -- a note's pictures: those in its text first, then its other picture attachments
+        local pm = { content = "x\n![b](/file/attachments/bbb/b.png)\n",
+            attachments = { { name = "attachments/aaa", type = "image/jpeg" }, { name = "attachments/pdf", type = "application/pdf" },
+                { name = "attachments/bbb", type = "image/png" } } }
+        local pa = Notes.pictureAttachments(pm)
+        check(#pa == 2 and pa[1].name == "attachments/bbb" and pa[2].name == "attachments/aaa", "a note's pictures: the one in its text first, no PDFs")
+
+        -- the layout is kept (Settings → Notes) and the board shows the page with its first note
+        local saved_plugin_store = plugin.store.notes_prefs
+        plugin.store.notes_prefs = {}
+        check(Notes.view(plugin).columns == "2" and Notes.view(plugin).display == "compact", "layout: default for a new user")
+        local reloaded
+        local real_reload = Notes.reloadBoard
+        Notes.reloadBoard = function(keep) reloaded = keep end
+        Notes.board = { _gz_first = 7 }
+        Notes.setView(plugin, "display", "full")
+        check(plugin.store.notes_prefs.display == "full" and reloaded == true and Notes.board._gz_goto == 7,
+            "layout: Full chosen, kept, and the board redrawn at the note that was first on screen")
+        reloaded = nil
+        Notes.setView(plugin, "display", "full")
+        check(reloaded == nil, "layout: choosing the same again redraws nothing")
+        Notes.setView(plugin, "columns", "list")
+        check(Notes.viewLabel(Notes.view(plugin)) == "List, full", "layout: its label (Settings → Notes, More)")
+        check(logtxt():find("notes: view list full", 1, true) ~= nil, "layout: a change is logged")
+        Notes.reloadBoard = real_reload
+        Notes.board = nil
+        plugin.store.notes_prefs = saved_plugin_store
+
+        -- L opens the Layout dialog (V is the Notes tab's own key in the tab bar); a letter opens that note
+        local shown, opened
+        local real_show = Notes.showView
+        Notes.showView = function() shown = true end
+        local fake = { plugin = plugin, _gz_keyed = { [2] = { memo = { name = "memos/2" } } },
+            onMenuSelect = function(_s, entry) opened = entry.memo.name end }
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "L" })
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "W" })
+        check(shown and opened == "memos/2", "board: L opens Layout; W opens the note with W on this page (not a place in a list)")
+        opened = nil
+        Notes.Board.onSelectByShortCut(fake, nil, { key = "E" })
+        check(opened == nil, "board: a letter no note has does nothing")
+        Notes.showView = real_show
+        local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(not src:find('k == "V"', 1, true) and src:find('_("Layout"), function() Notes.showView(plugin) end', 1, true),
+            "board: no V (the tab bar's), and a Layout button on touch Kindles")
+    end)()
 
     -- connecting
     os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
@@ -6213,8 +6896,9 @@ print("Notes (Memos v0.31)")
     check(Notes.pruneFiles(plugin) == 0, "no limit: nothing removed")
     Notes.prefs(plugin).files_mb = 25
     local items = NS.items(plugin)
-    check(#items == 5 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: "),
-        "Settings → Notes: connection, sync, storage, kept notes, attachment limit")
+    check(#items == 6 and items[1].text_func():match("Will") and items[3].text_func():match("^Storage used: ")
+        and items[4].text_func() == "Layout: Two side by side, compact" and #items[4].sub_item_table == 7,
+        "Settings → Notes: connection, sync, storage, layout (4 + 2 choices, full screen), kept notes, attachment limit")
 
     -- a token that stopped working
     plugin.store.memos.token = "revoked"
@@ -6256,12 +6940,864 @@ print("Notes (Memos v0.31)")
     local c404, _d, e404 = Memos:new(plugin.store.memos):request("PATCH", "/memos/999", { content = "x" }, { updateMask = "content" })
     check(c404 == 404 and e404 == "http_404", "Memos 26.10: a note that isn't there is still 'not found' (not 410)")
 
+    -- the quick panel's Quick note (from a book: the board never loaded)
+    do
+        local NEq = require("gzreader_noteeditor")
+        local saved_show, saved_float, qn_opts, qn_how = NEq.show, NEq.showFloating, nil, nil
+        NEq.show = function(o) qn_opts, qn_how = o, "page"; return o end
+        NEq.showFloating = function(o) qn_opts, qn_how = o, "window"; return o end
+        Notes.notes, Notes.board, Notes.last_sync = nil, nil, os.time()
+        plugin.store.memos.tag_counts = { reading = 3, travel = 5 }
+        Notes.quickNote(plugin)
+        check(qn_opts and qn_opts.memo == nil and qn_opts.tags[1] and qn_opts.tags[1].tag == "travel" and qn_opts.tags[2].tag == "reading",
+            "Quick note: the new-note editor, your tags from Memos' counts (the notes aren't loaded)")
+        check(qn_how == "window", "…in a window over the screen, not the full page")
+        local qn_kept = qn_opts
+        Notes.edit(plugin)
+        check(qn_how == "page", "the Notes tab's New note: still the full page")
+        qn_opts = qn_kept
+        local before_list = select(2, mctl("GET", "/__state"):gsub("GET /api/memos", ""))
+        local shown_before = #UI.shown
+        local sched_before = {}
+        for fn in pairs(UI.scheduled) do sched_before[fn] = true end
+        qn_opts.on_save("Idea from chapter 3 #reading", "PRIVATE", false)
+        check(Notes.notes == nil and #plugin.store.memos.queue == 1 and plugin.store.memos.queue[1].op == "create",
+            "…Save queues it without loading the board's notes")
+        check(#UI.shown == shown_before + 1, "…and says it's saved")
+        local send
+        for fn, sec in pairs(UI.scheduled) do if not sched_before[fn] and sec == 2 then send = fn end end
+        check(send ~= nil, "…sent a moment later")
+        if send then UI.scheduled[send] = nil; send() end
+        local stq = mstate()
+        local quick
+        for _i, m in ipairs(stq.memos) do if m.content == "Idea from chapter 3 #reading" then quick = m end end
+        check(quick and quick.visibility == "PRIVATE" and #plugin.store.memos.queue == 0, "Quick note: created in Memos, private; queue empty")
+        check(Notes.notes == nil and Notes.last_sync == nil
+            and select(2, mctl("GET", "/__state"):gsub("GET /api/memos", "")) == before_list,
+            "…only the note was sent (no list fetched while reading); the tab syncs when it next opens")
+        Notes.loadCache(plugin)
+        local tags_loaded = Notes.allTags(plugin)
+        check(#tags_loaded > 0 and type(Notes.notes) == "table", "with the notes loaded, tags come from them")
+        NEq.show, NEq.showFloating = saved_show, saved_float
+
+        -- the quick note's window: where it goes and how big
+        local id = function(px) return px end
+        local k3 = NEq.floatingBox(600, 800, 0, 150, id)
+        check(k3.w == 560 and k3.x == 20 and k3.text_h == 224 and k3.y == math.floor((800 - 374) / 2),
+            "quick note window, Kindle 3: 560 wide, centred, a text box a quarter of the screen tall")
+        local kt = NEq.floatingBox(600, 800, 320, 110, id)
+        check(kt.y >= 16 and kt.y + kt.h <= 800 - 320 - 16 and kt.text_h == 224,
+            "touch Kindle: the window fits above the on-screen keyboard")
+        local small = NEq.floatingBox(600, 800, 420, 300, id)
+        check(small.text_h == 60 and small.y >= 16, "little room above the keyboard: a smaller text box (60 at least)")
+        local pw_s = function(px) return math.ceil(px * 1072 / 600) end -- (as KOReader scales on a Paperwhite 3)
+        local pw = NEq.floatingBox(1072, 1448, 520, pw_s(110), pw_s)
+        check(pw.w == pw_s(560) and pw.w < 1072 - 2 * pw_s(16) and pw.y + pw.h <= 1448 - 520 and pw.x == math.floor((1072 - pw.w) / 2),
+            "Paperwhite 3: as wide as on a Kindle 3 (scaled), a margin each side, above the keyboard")
+        local land = NEq.floatingBox(1448, 1072, 0, pw_s(150), pw_s)
+        check(land.w == pw_s(560) and land.x == math.floor((1448 - land.w) / 2), "landscape: no wider than a page")
+        -- a tap outside the window closes it as Back does (real geometry here)
+        ;(function()
+            local saved_m = { ["ui/geometry"] = package.loaded["ui/geometry"], optmath = package.loaded["optmath"] }
+            package.loaded["optmath"] = { round = function(x) return math.floor(x + 0.5) end }
+            local okg, G = pcall(dofile, arg[5] .. "/frontend/ui/geometry.lua") -- (arg[5]: KOReader)
+            for k, v in pairs(saved_m) do package.loaded[k] = v end
+            if not okg then return check(false, "real geometry: " .. tostring(G)) end
+            local E2, closed = NEq.Editor, 0
+            local win = setmetatable({ frame = { dimen = G:new{ x = 20, y = 200, w = 560, h = 380 } },
+                dimen = G:new{ x = 0, y = 0, w = 600, h = 800 }, onCloseDialog = function() closed = closed + 1; return true end },
+                { __index = function(_t, k) return rawget(E2, k) end })
+            local function tap(x, y) return win:onTapOutside(nil, { pos = G:new{ x = x, y = y, w = 0, h = 0 } }) end
+            check(tap(300, 100) and closed == 1 and tap(300, 700) and closed == 2,
+                "a tap above or below the quick note's window: as Back (asks to save if something was written)")
+            check(not tap(300, 400) and closed == 2, "…a tap inside it isn't")
+            check(win:area() == win.frame.dimen, "the window redraws only itself (the book around it stays)")
+            local page = setmetatable({ dimen = win.dimen }, { __index = function(_t, k) return rawget(E2, k) end })
+            check(page:area() == win.dimen and not page:onTapOutside(nil, { pos = G:new{ x = 1, y = 1, w = 0, h = 0 } }),
+                "the full-page editor: unchanged")
+        end)()
+        -- touch: the keyboard (always above other windows) steps aside for the editor's dialogs
+        ;(function()
+            local UIMk = require("ui/uimanager")
+            local E3 = NEq.Editor
+            local kb = { shown = true }
+            function kb:onCloseKeyboard() self.shown = false end
+            function kb:onShowKeyboard() self.shown = true end
+            local ed = setmetatable({ vk = true, input = kb }, { __index = function(_t, k) return rawget(E3, k) end })
+            local was_stack, was_tick = rawget(UIMk, "_window_stack"), rawget(UIMk, "nextTick")
+            UIMk.nextTick = function(_s, fn) fn() end
+            local own_closed = 0
+            local dlg = { title = "Save this note?", onCloseWidget = function() own_closed = own_closed + 1 end }
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed }, { widget = dlg } }
+            ed:keyboardAside(dlg)
+            check(kb.shown == false, "touch: Save this note? opens with the keyboard out of the way (it hid the dialog's rows)")
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed } }
+            dlg:onCloseWidget()
+            check(own_closed == 1 and kb.shown == true, "…Keep writing (the dialog closed, the note in front): the keyboard comes back")
+            local tagd = {}
+            ed:keyboardAside(tagd)
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed }, { widget = { title = "New tag" } },
+                { widget = { name = "VirtualKeyboard" } } }
+            tagd:onCloseWidget()
+            check(kb.shown == false, "…not while another window with its own keyboard is in front (New tag)")
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } } }
+            ed:keyboardAside({})
+            check(not ed:keyboardBack() and kb.shown == false, "…nor once the note is closed (Save, Discard)")
+            ed.dpad, ed.focus_tool = true, 2
+            UIMk._window_stack = { { widget = ed } }
+            check(not ed:keyboardBack() and kb.shown == false, "Kindle 4: not while on the toolbar")
+            local keys_only = setmetatable({ input = kb }, { __index = function(_t, k) return rawget(E3, k) end })
+            local plain = {}
+            keys_only:keyboardAside(plain)
+            check(plain.onCloseWidget == nil, "keyboard Kindles: nothing to move")
+            UIMk._window_stack, UIMk.nextTick = was_stack, was_tick
+        end)()
+        local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(esrc:find('local o = { floating = true, covers_fullscreen = false }', 1, true) ~= nil,
+            "the window doesn't cover the screen: the book or Home under it stays drawn")
+    end
+
+    ;(function() -- Memos v0.31's spaces: Filter → Space…, a note's space when writing it
+        local MOCKM = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py"
+        local function restart(flags)
+            os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+            socket.sleep(0.3)
+            os.execute("python3 -I " .. MOCKM .. " " .. MPORT .. " " .. flags .. " > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+            runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        end
+        local function inMemos(content)
+            for _i, m in ipairs(mstate().memos) do if m.content == content then return m end end
+        end
+        local function sync()
+            local res, rerr
+            Notes.refresh(plugin, function(ok2, err2) res, rerr = ok2, err2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res, rerr
+        end
+        restart("--sample --spaces")
+        plugin.store.memos.prefix = "/api/v1"
+        plugin.store.memos.queue = {}
+        plugin.store.memos.spaces = nil
+        local spl = Memos:new(plugin.store.memos):spaces()
+        check(spl and #spl == 2 and spl[1].name == "spaces/family" and spl[1].title == "Family" and spl[2].title == "Book club",
+            "spaces: the ones you're a member of, with their titles (Memos v0.31)")
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        check(sync() and Notes.spaces(plugin) and #Notes.spaces(plugin) == 2 and #Notes.notes == 9, "a sync keeps your spaces")
+        local fam
+        for _i, m in ipairs(Notes.notes) do if m.space == "spaces/family" then fam = m end end
+        check(fam and fam.visibility == "SPACE" and Notes.spaceTitle(plugin, fam.space) == "Family"
+            and Notes.spaceTitle(plugin, "spaces/new-one") == "new-one" and Notes.spaceTitle(plugin, nil) == nil,
+            "a note's space is kept (its title from your spaces; one not synced yet: its id)")
+        check(Notes.cel({ kind = "space", value = "spaces/family" }) == 'space == "spaces/family"'
+            and Notes.cel({ kind = "space", value = "" }) == "space == null", "filter: a space, or no space (Memos CEL)")
+        Notes.setFilter(plugin, { kind = "space", value = "spaces/family", label = "Family" })
+        check(#Notes.notes == 1 and Notes.notes[1].space == "spaces/family" and Notes.title() == "Notes \u{00B7} Family",
+            "space filter: Memos sends that space's notes; the title says which")
+        Notes.setFilter(plugin, { kind = "space", value = "" })
+        check(#Notes.notes == 7 and Notes.filterLabel() == "No space", "…No space: the notes in none")
+        local Net = require("gzreader_net")
+        local was_usb = Net.usb
+        Net.usb = true
+        check(Notes.keep({ space = "spaces/family" }, { kind = "space", value = "spaces/family" })
+            and not Notes.keep({}, { kind = "space", value = "spaces/family" }) and Notes.keep({}, { kind = "space", value = "" })
+            and not Notes.keep({ space = "spaces/family" }, { kind = "space", value = "" }),
+            "space filter on the Kindle (syncing through a computer: no Memos to ask)")
+        Net.usb = was_usb
+
+        -- Filter → Space…
+        Notes.setFilter(plugin, { kind = "all" })
+        local entries = Notes.spaceEntries(plugin)
+        check(#entries == 3 and entries[1].value == "" and entries[1].mandatory == "7 notes" and entries[2].text == "Family"
+            and entries[2].mandatory == "1 note" and entries[3].value == "spaces/book-club",
+            "Filter → Space…: No space, then your spaces, with how many notes")
+        local BD = require("ui/widget/buttondialog")
+        local rows
+        rawset(BD, "new", function(_s, o) rows = o.buttons; return o end)
+        local function offered()
+            for _i, row in ipairs(rows or {}) do if row[1].text:match("^Space") then return true end end
+            return false
+        end
+        Notes.showFilter(plugin)
+        check(offered() and #rows == 8, "Filter offers Space… when your Memos has spaces")
+        local saved_spaces, saved_notes = plugin.store.memos.spaces, Notes.notes
+        plugin.store.memos.spaces, Notes.notes = {}, { { content = "x" } }
+        Notes.showFilter(plugin)
+        check(not offered() and #rows == 7, "…and not without (an older Memos): the dialog as before")
+        plugin.store.memos.spaces, Notes.notes = saved_spaces, saved_notes
+
+        -- writing: a new note starts in the space the board shows
+        local saved_show, eopts = NE.show, nil
+        NE.show = function(o) eopts = o; return o end
+        Notes.filter = { kind = "space", value = "spaces/family", label = "Family" }
+        Notes.edit(plugin)
+        check(eopts.space == "spaces/family" and #eopts.spaces == 2 and eopts.space_title("spaces/book-club") == "Book club",
+            "a new note starts in the space the board shows; the editor gets your spaces")
+        local plain
+        for _i, m in ipairs(Notes.notes) do if not m.space and m.name then plain = m end end
+        Notes.edit(plugin, plain)
+        check(eopts.space == nil and eopts.memo == plain, "editing a note: its own space (none), not the board's")
+        Notes.filter = { kind = "all" }
+        Notes.edit(plugin)
+        eopts.on_save("Bring the tent #travel", "SPACE", true, "spaces/family", false)
+        local qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.op == "create" and qd.space == "spaces/family" and Notes.notes[1].space == "spaces/family", "a new note in a space: queued with it")
+        sync()
+        local tent = inMemos("Bring the tent #travel")
+        check(tent and tent.space == "spaces/family" and tent.visibility == "SPACE" and #plugin.store.memos.queue == 0,
+            "…created in Memos in Family, for its members")
+        -- moving: the visibility goes too (Memos refuses a move without it)
+        Notes.saveContent(plugin, plain, nil, "spaces/book-club")
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.space == "spaces/book-club" and qd.visibility == (plain.visibility or "PRIVATE"), "moved into a space: its visibility is sent with it")
+        sync()
+        check(inMemos(plain.content).space == "spaces/book-club", "…moved in Memos")
+        local tent_note
+        for _i, m in ipairs(Notes.notes) do if m.content == "Bring the tent #travel" then tent_note = m end end
+        Notes.saveContent(plugin, tent_note, "PRIVATE", "")
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(qd.space == "" and qd.visibility == "PRIVATE" and tent_note.space == nil, "taken out of its space: queued as \"\" (none), private")
+        sync()
+        tent = inMemos("Bring the tent #travel")
+        check(tent and tent.space == nil and tent.visibility == "PRIVATE", "…in no space in Memos")
+        local bd1, mk1 = Memos.updateBody("memos/1", "x", nil, "")
+        local bd2, mk2 = Memos.updateBody("memos/1", "x", "SPACE", "spaces/a")
+        local bd3, mk3 = Memos.updateBody("memos/1", "x")
+        check(mk1 == "content,space" and bd1.space == nil and mk2 == "content,visibility,space" and bd2.space == "spaces/a"
+            and mk3 == "content" and bd3.space == nil, "update: the space in the mask only when it changes (none: left out)")
+        -- an unsent move followed by an edit keeps the move
+        Notes.saveContent(plugin, plain, nil, "spaces/family")
+        plain.content = plain.content .. " (edited)"
+        Notes.saveContent(plugin, plain)
+        qd = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(#plugin.store.memos.queue == 1 and qd.space == "spaces/family" and qd.content:match("%(edited%)$"),
+            "an edit after an unsent move keeps the move")
+        sync()
+        NE.show = saved_show
+
+        -- the editor
+        check(#NE.visibilities(nil) == 3 and NE.visibilities("spaces/a")[2] == "SPACE" and #NE.visibilities(nil, "SPACE") == 4,
+            "who can see it: Space members only in a space (or a note that has it already)")
+        check(NE.nextVisibility("PRIVATE", "spaces/a") == "SPACE" and NE.nextVisibility("PRIVATE", nil) == "PROTECTED"
+            and NE.nextVisibility("PUBLIC", "spaces/a") == "PRIVATE", "Alt+V goes round the choices for the note's space")
+        check(NE.visibilityAfterMove("SPACE", nil) == "PRIVATE" and NE.visibilityAfterMove("SPACE", "spaces/b") == "SPACE"
+            and NE.visibilityAfterMove("PUBLIC", nil) == "PUBLIC", "out of its space, Space members becomes Private (as in Memos)")
+        local E = NE.Editor
+        local saved_args
+        local fake = setmetatable({ space = "spaces/family", original_space = "spaces/family", visibility = "SPACE",
+            original_vis = "SPACE", spaces = spl, has_spaces = true, original = "t",
+            space_title = function(nm) return Notes.spaceTitle(plugin, nm) end, redraw = function() end,
+            text = function() return "t" end, on_save = function(...) saved_args = { ... } end },
+            { __index = function(_t, k) return rawget(E, k) end }) -- (the editor's own methods: its widget base is a stand-in here)
+        check(fake:spaceLabel() == "Family" and not fake:changed(), "editor: the space chip says Family")
+        rows = nil
+        check(fake:onShortcut("A") and rows and #rows == 3 and rows[1][1].text == "No space" and rows[2][1].text == "Family  \u{2713}"
+            and rows[3][1].text == "Book club", "Alt+A (or a tap): choose the space; the note's is ticked")
+        check(not fake:onShortcut("P"), "…not Alt+P (Alt + the top row types 1–0 on a Kindle Keyboard)")
+        rows[1][1].callback()
+        check(fake.space == nil and fake.visibility == "PRIVATE" and fake:changed() and fake:spaceLabel() == "No space",
+            "No space: Space members becomes Private; a change to save")
+        fake:onShortcut("V")
+        check(fake.visibility == "PROTECTED", "without a space, Alt+V skips Space members")
+        E.save(fake)
+        check(saved_args and saved_args[1] == "t" and saved_args[2] == "PROTECTED" and saved_args[3] == true and saved_args[4] == nil
+            and saved_args[5] == true, "Save: the text, who can see it and the space, and which changed")
+        local kb = { shut = 0, open = 0 }
+        function kb:onCloseKeyboard() self.shut = self.shut + 1 end
+        function kb:onShowKeyboard() self.open = self.open + 1 end
+        fake.touch, fake.input = true, kb
+        fake:pickSpace()
+        local shut_while_open = kb.shut == 1 and kb.open == 0
+        rows[3][1].callback()
+        check(shut_while_open and kb.open == 1 and fake.space == "spaces/book-club",
+            "touch: the keyboard steps aside while the space list is open (it hid its last rows), and comes back")
+        fake.touch, fake.input = nil, nil
+        fake.dpad = true
+        check(fake:lastTool() == #NE.TOOLS + 3, "Kindle 4: the space chip is on the toolbar's row too")
+        fake.has_spaces = false
+        check(fake:lastTool() == #NE.TOOLS + 2 and not fake:onShortcut("A"), "no spaces: no chip, no Alt+A")
+        rawset(BD, "new", nil)
+
+        -- the note view says which space
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find('T(_("in %1"), space)', 1, true) ~= nil, "the note view's date line says which space it's in")
+
+        -- through a computer: the queue carries the space; the page's spaces come in
+        local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
+        check(usrc:find("name = q.name, pinned = q.pinned, at = q.at, space = q.space }", 1, true) ~= nil,
+            "outbox: a queued note's space, for the page")
+        local Usb = require("gzreader_usbsync")
+        local ub = WORK .. "/usb-notes"
+        os.execute("mkdir -p " .. ub)
+        local fh = io.open(ub .. "/notes.json", "wb")
+        fh:write(json.encode({ at = 1, notes = { { name = "memos/x", content = "hi", space = "spaces/family", tags = {}, attachments = {} } },
+            spaces = { { name = "spaces/family", title = "Family" } } }))
+        fh:close()
+        local nfp = { store = { memos = { queue = {} } }, save = function() end }
+        Usb.takeNotes(nfp, ub, { file = "notes.json", done = {} })
+        local kept = Memos.loadCache()
+        check(nfp.store.memos.spaces and nfp.store.memos.spaces[1].title == "Family" and kept and kept.notes[1].space == "spaces/family",
+            "through a computer: your spaces and each note's space come in")
+
+        -- an older Memos (no spaces): no Space…, and no space field sent
+        restart("--sample")
+        plugin.store.memos.spaces = nil
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        check(Memos:new(plugin.store.memos):spaces() == nil and sync() and Notes.spaces(plugin) == nil and not Notes.spacesShown(plugin),
+            "older Memos: no spaces, Filter as before")
+        local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
+        check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+    end)()
+
+    ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
+        local UIM = require("ui/uimanager")
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local prefs = Notes.prefs(plugin)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned, prefs.fullscreen = nil, nil, nil, nil
+        local function sync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        Notes.notes, Notes.filter, Notes.board = nil, { kind = "all" }, nil
+        local so = Notes.sort(plugin)
+        check(so.by == "created" and not so.reverse and so.pinned and Notes.orderBy(plugin) == "pinned desc, create_time desc",
+            "sort: newest first, pinned first by default (as before)")
+        check(sync() and Notes.notes[1].pinned and Notes.notes[2].content:match("^## Georgia"), "…what Memos sends")
+        Notes.setSort(plugin, "sort_reverse", true)
+        check(Notes.orderBy(plugin) == "pinned desc, create_time asc" and Notes.notes[1].pinned and Notes.notes[2].content:match("large%-print"),
+            "Reverse order: oldest first (pinned still first), asked of Memos")
+        Notes.setSort(plugin, "sort_pinned", false)
+        check(Notes.orderBy(plugin) == "create_time asc" and Notes.notes[1].content:match("large%-print"), "Pinned first off: just by date")
+        Notes.setSort(plugin, "sort_reverse", nil)
+        local target
+        for _i, m in ipairs(Notes.notes) do if m.content:match("^Notes tab for the Kindle") then target = m end end
+        socket.sleep(1.1)
+        Memos:new(plugin.store.memos):update(target.name, target.content .. " Edited.")
+        Notes.setSort(plugin, "sort", "updated")
+        check(Notes.orderBy(plugin) == "update_time desc" and Notes.notes[1].content:match("Edited%.$"), "Date edited: the note just edited first")
+        check(logtxt():find("notes: sort update_time desc", 1, true) ~= nil, "a change of sort is logged")
+        -- on the Kindle too (kept notes, notes written here, a sync through a computer)
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        local list = { { content = "a", created = "2026-11-01T00:00:00Z" }, { content = "b", created = "2026-11-03T00:00:00Z", pinned = true },
+            { content = "c", created = "2026-11-02T00:00:00Z", updated = "2026-11-09T00:00:00Z" }, { content = "d", created = "2026-11-02T00:00:00Z" } }
+        local function order() local o = {} for _i, m in ipairs(Notes.sorted(list, plugin)) do o[#o + 1] = m.content end return table.concat(o) end
+        check(order() == "bcda", "on the Kindle: pinned first, newest first; equal dates keep their order")
+        prefs.sort = "updated"
+        check(order() == "bcda" and (function() prefs.sort_pinned = false; return order() == "cbda" end)(),
+            "…by date edited (a note never edited: its date created)")
+        prefs.sort_reverse = true
+        check(order() == "adbc", "…oldest first")
+        prefs.sort, prefs.sort_reverse, prefs.sort_pinned = nil, nil, nil
+        -- the dialog
+        local BD = require("ui/widget/buttondialog")
+        local dlg
+        rawset(BD, "new", function(_s, o) dlg = o; return o end)
+        Notes.showSort(plugin)
+        check(dlg.title == "Sort notes by" and #dlg.buttons == 4 and dlg.buttons[1][1].text == "Date created  \u{2713}"
+            and dlg.buttons[2][1].text == "Date edited" and dlg.buttons[4][1].text == "Pinned first  \u{2713}",
+            "Sort (a button, S, Menu on a Kindle 4): Sort notes by: date created or edited, reverse order, pinned first")
+        -- full screen (Layout)
+        Notes.showView(plugin)
+        local last = dlg.buttons[#dlg.buttons][1]
+        check(last.text == "Full screen: no tab bar" and not Notes.fullscreen(plugin), "Layout: Full screen, off by default")
+        local closed, shown_again = {}, nil
+        local real_close, real_show, real_reload = UIM.close, Notes.show, Notes.reloadBoard
+        UIM.close = function(_s, w) closed[#closed + 1] = w end
+        Notes.board = { _gz_first = 4 }
+        local old_board = Notes.board
+        Notes.show = function() shown_again = { }; Notes.board = shown_again; return shown_again end
+        Notes.reloadBoard = function() end
+        last.callback()
+        check(Notes.fullscreen(plugin) and closed[#closed] == old_board and shown_again and shown_again._gz_goto == 4,
+            "Full screen on: kept, and the board made again (no tab bar), at the same notes")
+        check(logtxt():find("notes: full screen true", 1, true) ~= nil, "…logged")
+        Notes.board = { _gz_closed = true }
+        Notes.setFullscreen(plugin, false)
+        check(not Notes.fullscreen(plugin) and prefs.fullscreen == nil, "…and off again")
+        UIM.close, Notes.show, Notes.reloadBoard = real_close, real_show, real_reload
+        rawset(BD, "new", nil)
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        local show_src = nsrc:match("function Notes%.show%(plugin%)(.-)\nend\n")
+        check(show_src and show_src:find("name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil", 1, true)
+            and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
+            and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
+            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin))", 1, true)
+            and show_src:find("menu.onGzMenu = function() Notes.showMenu(plugin); return true end", 1, true)
+            and not show_src:find("showOptions", 1, true),
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu")
+        -- the buttons (touch): Note, Draw, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
+        local acts = Notes.actions(plugin)
+        local bnames = {}
+        for i = 1, 6 do bnames[i] = acts[i][1] end
+        check(table.concat(bnames, "|") == "Note|Draw|Filter|Layout|Sort|Connection" and acts[7].icon_file:match("/icons/panel/fullscreen%.svg$")
+            and acts[7].label == "Full screen" and io.open(acts[7].icon_file) ~= nil,
+            "touch: Note, Draw, Filter, Layout, Sort, Connection, and the full screen icon")
+        local opened = {}
+        local real = { edit = Notes.edit, draw = Notes.draw, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
+            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen }
+        for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
+        for i = 1, 6 do acts[i][2]() end
+        acts[7].callback()
+        for k, fn in pairs(real) do Notes[k] = fn end
+        check(table.concat(opened, ",") == "edit,draw,showFilter,showView,showSort,showConnection,setFullscreen=true",
+            "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
+        -- Draw: a new note opening on a page to draw on
+        local drew
+        local real_edit = Notes.edit
+        Notes.edit = function(_p, memo, o) drew = { memo = memo, draw = o and o.draw } end
+        local real_can = Notes.canDraw
+        Notes.canDraw = function() return true end
+        Notes.draw(plugin)
+        Notes.canDraw = function() return false end
+        local before_info = drew
+        drew = nil
+        Notes.draw(plugin)
+        Notes.edit, Notes.canDraw = real_edit, real_can
+        check(before_info and before_info.memo == nil and before_info.draw == true and drew == nil,
+            "Draw: a new note that opens on a page (not when drawings can't go to Memos)")
+        prefs.fullscreen = true
+        acts = Notes.actions(plugin)
+        check(acts[7].icon_file:match("/icons/panel/close%.svg$") and acts[7].label == "Leave full screen" and io.open(acts[7].icon_file) ~= nil,
+            "…in full screen the icon is an X, to leave it")
+        opened = {}
+        Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
+        acts[7].callback()
+        Notes.setFullscreen = real.setFullscreen
+        check(opened[1] == "false", "…which turns it off")
+        prefs.fullscreen = nil
+        -- Connection (the button, M): the Memos account only
+        local function texts(fn)
+            rawset(BD, "new", function(_s, o) dlg = o; return o end)
+            fn(plugin)
+            rawset(BD, "new", nil)
+            local t, cbs = {}, {}
+            for _i, row in ipairs(dlg.buttons) do t[#t + 1] = row[1].text; cbs[#cbs + 1] = row[1].callback end
+            return table.concat(t, "|"), dlg, cbs
+        end
+        local ctexts, cdlg = texts(Notes.showConnection)
+        check(ctexts == "Refresh|Connect again|Disconnect" and tostring(cdlg.title):match("^Memos") ~= nil,
+            "Connection: Refresh, Connect again, Disconnect only, under the account's name: " .. ctexts .. " / " .. tostring(cdlg.title))
+        plugin.store.memos.queue = { {}, {} }
+        ctexts = texts(Notes.showConnection)
+        plugin.store.memos.queue = nil
+        check(ctexts:match("^Refresh %(2 changes to send%)|") ~= nil, "…Refresh says how many changes are waiting: " .. ctexts)
+        local kept_connect, connected_again = Notes.showConnect, nil
+        Notes.showConnect = function(p, again) connected_again = { p, again } end
+        local _t, _d, ccbs = texts(Notes.showConnection)
+        ccbs[2]()
+        Notes.showConnect = kept_connect
+        check(connected_again and connected_again[1] == plugin and connected_again[2] == true, "…Connect again opens the connect page")
+        -- Kindle 4's Menu: what the buttons and letter keys do elsewhere, and Connection
+        local mtexts, _md, mcbs = texts(Notes.showMenu)
+        check(mtexts:match("^New note|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Filter, Layout, Sort, Full screen, Connection: " .. mtexts)
+        local opened_conn
+        local kept_conn = Notes.showConnection
+        Notes.showConnection = function(p) opened_conn = p end
+        mcbs[#mcbs]()
+        Notes.showConnection = kept_conn
+        check(opened_conn == plugin, "…Connection… opens Connection")
+        local Touch = require("gzreader_touch")
+        local cw = Touch.chipWidths(564, acts, 6, 46)
+        check(cw[1] == cw[6] and cw[7] == 46 and cw[1] * 6 + 46 + 6 * 6 <= 564 and cw[1] * 6 + 46 + 6 * 6 > 558,
+            "the icon button is narrow; the text buttons share the rest of the row")
+        -- on top?
+        local board = { plugin = plugin }
+        Notes.board = board
+        local stack = UIM._window_stack
+        UIM._window_stack = { { widget = {} }, { widget = board } }
+        local top1 = Notes.onTop()
+        UIM._window_stack = { { widget = board }, { widget = {} } }
+        local top2 = Notes.onTop()
+        UIM._window_stack = stack
+        check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+        -- S sorts (keyboard Kindles)
+        local sorted_shown
+        local real_sort = Notes.showSort
+        Notes.showSort = function(p) sorted_shown = p end
+        Notes.Board.onSelectByShortCut(board, nil, { key = "S" })
+        Notes.showSort = real_sort
+        check(sorted_shown == plugin, "S on the board: Sort notes by")
+        local conn_shown
+        local real_conn = Notes.showConnection
+        Notes.showConnection = function(p) conn_shown = p end
+        Notes.Board.onSelectByShortCut(board, nil, { key = "M" })
+        Notes.showConnection = real_conn
+        check(conn_shown == plugin, "M on the board: Connection")
+        Notes.board = nil
+    end)()
+
+    ;(function() -- a new note with a drawing (touch Kindles): queued, sent as the note, then the drawing on it
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local Drawing = require("gzreader_drawing")
+        local function sync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        local function readAll(p) local fh = io.open(p, "rb"); if not fh then return nil end; local d = fh:read("*a"); fh:close(); return d end
+        local fixture = readAll(PLUGIN .. "/../../tools/gzreader/tests/media/memos-drawing.canvas.png")
+        local dir = WORK .. "/gzreader-drawings"
+        os.execute("mkdir -p '" .. dir .. "'")
+        local function drawingFile(name)
+            local p = dir .. "/" .. name
+            local fh = io.open(p, "wb"); fh:write(fixture); fh:close()
+            return { path = p, filename = name }
+        end
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+
+        -- who can draw
+        local NetD = require("gzreader_net")
+        local was_usb = NetD.usb
+        NetD.usb = true
+        check(Notes.canDraw(plugin) == false, "draw: not when Memos goes through the computer (the sync page doesn't send drawings)")
+        NetD.usb = was_usb
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find("can_draw = Notes.canDraw(plugin)", 1, true) and nsrc:find("drawing_atts = memo and Notes.drawings(memo) or nil", 1, true),
+            "draw: offered for new notes, and for notes in Memos (their drawings, or a first one)")
+
+        -- queued: shown on the board with its drawing before it's sent
+        local d1 = drawingFile("drawing-20261112-180000.canvas.png")
+        local q = Notes.enqueue(plugin, { op = "create", content = "", visibility = "PRIVATE", drawing = d1 })
+        Notes.showDrawingNow(q)
+        local att = Notes.queuedAttachments(q)[1]
+        check(att and att.filename == d1.filename and att.type == "image/png" and readAll(Memos.filePath(att)) == fixture,
+            "queued: the drawing where the board finds a note's pictures")
+        Notes.loadCache(plugin)
+        local shown
+        for _i, m in ipairs(Notes.notes) do if m.local_id == q.id then shown = m end end
+        check(shown and shown.pending and shown.attachments[1].filename == d1.filename and Notes.pictureAttachments(shown)[1] ~= nil,
+            "queued: on the board with its drawing as its picture")
+
+        -- the sync page doesn't get it
+        local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
+        check(usrc:find("if not (q.drawing or q.drawings) and q.op ~= \"order\" then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
+
+        -- sent: the note (no text), then the drawing on it, byte for byte
+        check(sync(), "sent")
+        local st = mstate()
+        local made
+        for _i, m in ipairs(st.memos) do
+            for _j, a in ipairs(m.attachments or {}) do if a.filename == d1.filename then made = m end end
+        end
+        check(made and made.content == "" and made.visibility == "PRIVATE", "Memos has a note with no text and the drawing")
+        local a = made and made.attachments[1]
+        check(a and a.type == "image/png" and a.memo == made.name, "…an image/png attachment, linked to the note")
+        local posted = 0
+        for _i, l in ipairs(st.log) do if l == "POST /api/v1/attachments" then posted = posted + 1 end end
+        check(posted == 1, "one upload (POST /attachments)")
+        local got_path = WORK .. "/drawing-back.png"
+        os.remove(got_path)
+        local served = a and Notes.client(plugin):download({ name = a.name, filename = a.filename }, got_path) and readAll(got_path)
+        check(served == fixture, "the PNG arrived byte for byte (the drawing inside it too)")
+        local scene = served and Drawing.readScene(served)
+        check(scene and #scene.elements == 8, "…and memos can open it as a drawing")
+        check(#plugin.store.memos.queue == 0 and not io.open(d1.path, "rb"), "queue empty; the waiting copy removed")
+        local on_board
+        for _i, m in ipairs(Notes.notes) do if m.name == made.name then on_board = m end end
+        check(on_board and on_board.attachments[1].filename == d1.filename, "the board now has Memos' note with the drawing")
+
+        -- a note made but the drawing not sent: next time only the drawing goes
+        local real_upload = Memos.uploadAttachment
+        Memos.uploadAttachment = function() return nil, "unreachable" end
+        local d2 = drawingFile("drawing-20261112-180100.canvas.png")
+        Notes.enqueue(plugin, { op = "create", content = "With a sketch #ideas", visibility = "PRIVATE", drawing = d2 })
+        sync()
+        Memos.uploadAttachment = real_upload
+        local left = plugin.store.memos.queue[1]
+        check(#plugin.store.memos.queue == 1 and left.op == "attach" and tostring(left.name):match("^memos/")
+            and left.drawing.path == d2.path, "upload failed after the note was made: the queue now sends only the drawing, onto that note")
+        local count_before = #mstate().memos
+        check(sync() and #plugin.store.memos.queue == 0, "sent next time")
+        st = mstate()
+        local note2
+        for _i, m in ipairs(st.memos) do if m.content == "With a sketch #ideas" then note2 = m end end
+        local twice = 0
+        for _i, m in ipairs(st.memos) do if m.content == "With a sketch #ideas" then twice = twice + 1 end end
+        check(note2 and twice == 1 and #st.memos == count_before and note2.attachments[1].filename == d2.filename,
+            "the drawing went onto the same note (no second note)")
+
+        -- the drawing's file gone (removed by hand): the note goes without it
+        local q3 = Notes.enqueue(plugin, { op = "create", content = "Lost sketch", visibility = "PRIVATE",
+            drawing = { path = dir .. "/gone.canvas.png", filename = "gone.canvas.png" } })
+        check(sync() and #plugin.store.memos.queue == 0, "a drawing whose file is gone: the note is sent anyway")
+        local lost
+        for _i, m in ipairs(mstate().memos) do if m.content == "Lost sketch" then lost = m end end
+        check(lost and #lost.attachments == 0 and q3, "…without an attachment")
+
+        -- editing a note's drawing: its new file over the old one (same attachment), or taken off
+        local client2 = Notes.client(plugin)
+        local dnote = client2:create("# Sketch to fix #ideas", "PRIVATE")
+        local d3 = drawingFile("drawing-20261112-220000.canvas.png")
+        local datt = dnote and client2:uploadAttachment(d3.path, d3.filename, dnote.name)
+        check(dnote and datt, "editing: a note with a drawing in Memos")
+        sync()
+        local held
+        for _i, m in ipairs(Notes.notes) do if m.name == dnote.name then held = m end end
+        check(held and Notes.drawings(held)[1] and Notes.drawings(held)[1].name == datt.name, "editing: the board has it, with its drawing")
+        -- the edited drawing: another PNG with another scene
+        local Drawing2 = require("gzreader_drawing")
+        local edited_scene = Drawing2.readScene(fixture)
+        Drawing2.addStroke(edited_scene, { { 1, 1 }, { 9, 9 } })
+        local edited = assert(Drawing2.withScene(fixture, edited_scene))
+        local e1 = dir .. "/drawing-20261112-220000.canvas.png"
+        local fh = io.open(e1, "wb"); fh:write(edited); fh:close()
+        Notes.saveDrawing(plugin, held, { path = e1, filename = "drawing-20261112-220000.canvas.png" })
+        local q = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(q.op == "redraw" and q.attachment == datt.name and q.name == dnote.name, "editing: queued as the new file over the old")
+        check(readAll(Memos.filePath(datt)) == edited, "editing: the Kindle shows the new drawing at once")
+        check(sync() and #plugin.store.memos.queue == 0, "editing: sent")
+        local after
+        for _i, m in ipairs(mstate().memos) do if m.name == dnote.name then after = m end end
+        check(after and #after.attachments == 1 and after.attachments[1].name == datt.name, "editing: the same attachment (its name kept), still one")
+        local got3 = WORK .. "/drawing-edited.png"
+        os.remove(got3)
+        check(client2:download({ name = datt.name, filename = datt.filename }, got3) and readAll(got3) == edited,
+            "editing: Memos has the new file, byte for byte")
+        local up = 0
+        for _i, l in ipairs(mstate().log) do if l == "POST /api/v1/attachments:upload" then up = up + 1 end end
+        check(up == 1, "editing: one resumable upload with replace_attachment")
+        -- someone else's drawing: the edit goes beside it
+        local foreign = client2:create("Theirs", "PRIVATE")
+        local fh2 = io.open(dir .. "/f.png", "wb"); fh2:write(fixture); fh2:close()
+        local fcode = foreign and select(1, client2:request("POST", "/attachments:upload", { spec = { attachment = { filename = "drawing-1.canvas.png",
+            type = "image/png", memo = foreign.name }, attachment_id = "foreign1", total_size = #fixture }, write_offset = 0,
+            data = require("ffi/sha2").bin_to_base64(fixture), finish_write = true }))
+        local beside = client2:replaceAttachment("attachments/foreign1", dir .. "/f.png", "drawing-1.canvas.png", foreign and foreign.name)
+        local fm
+        for _i, m in ipairs(mstate().memos) do if foreign and m.name == foreign.name then fm = m end end
+        check(fcode == 200 and beside and beside.name ~= "attachments/foreign1" and fm and #fm.attachments == 2,
+            "editing someone else's drawing: refused to replace (403), so the edit is added beside it")
+        -- taken off: Done on an empty page
+        Notes.saveDrawing(plugin, held, { removed = true })
+        check(plugin.store.memos.queue[#plugin.store.memos.queue].op == "undraw" and #held.attachments == 0, "rubbed out to nothing: queued to be taken off")
+        sync()
+        for _i, m in ipairs(mstate().memos) do if m.name == dnote.name then after = m end end
+        check(#after.attachments == 0 and #plugin.store.memos.queue == 0, "…and gone from the note in Memos")
+        -- a first drawing on a note that had none
+        local plain = client2:create("No drawing yet", "PRIVATE")
+        sync()
+        local pl
+        for _i, m in ipairs(Notes.notes) do if m.name == plain.name then pl = m end end
+        local d4 = drawingFile("drawing-20261112-220100.canvas.png")
+        Notes.saveDrawing(plugin, pl, d4)
+        check(plugin.store.memos.queue[#plugin.store.memos.queue].op == "attach" and Notes.drawings(pl)[1] ~= nil,
+            "a first drawing on a note: queued to be added, shown at once")
+        sync()
+        for _i, m in ipairs(mstate().memos) do if m.name == plain.name then after = m end end
+        check(#after.attachments == 1 and after.attachments[1].filename == d4.filename, "…and on the note in Memos")
+        local esrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))", 1, true)
+            and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
+            and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
+            and esrc2:find("if self.vk and not self.drawing_first then", 1, true),
+            "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles), the drawing screen up with the editor (no text page first, no keyboard over it)")
+        check(nsrc3:find("space = space, drawings = #list > 0 and list or nil, order = order })", 1, true) ~= nil
+            and esrc2:find("out.order[#out.order + 1] = f", 1, true) ~= nil,
+            "a new note's pages and an edit's: their order goes with them")
+        -- Memos lists a note's attachments newest first: put in the pages' order
+        local atts = { { name = "a3", filename = "p3" }, { name = "a2", filename = "p2" }, { name = "pic", filename = "photo.jpg" },
+            { name = "a1", filename = "p1" } }
+        check(table.concat(Memos.drawingOrder(atts, { "p1", "p2", "p3" }), ",") == "a1,a2,a3,pic"
+            and Memos.drawingOrder({ atts[4], atts[2], atts[1], atts[3] }, { "p1", "p2", "p3" }) == nil,
+            "the pages' order: the drawings in page order, then the rest; nothing to do when they're in it")
+        local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
+            "a drawing opened and left as it was: nothing sent")
+
+        -- several drawings: a new note with two pages, both sent onto it
+        local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")
+        local qm = Notes.enqueue(plugin, { op = "create", content = "Two pages", visibility = "PRIVATE", drawings = { m1, m2 },
+            order = { m1.filename, m2.filename } })
+        Notes.showDrawingNow(qm)
+        local qa = Notes.queuedAttachments(qm)
+        check(#qa == 2 and qa[1].filename == m1.filename and qa[2].filename == m2.filename and qa[1].name ~= qa[2].name
+            and readAll(Memos.filePath(qa[2])) == fixture, "two pages queued: both on the board at once")
+        sync()
+        local two
+        for _i, m in ipairs(mstate().memos) do if m.content == "Two pages" then two = m end end
+        check(two and #two.attachments == 2 and two.attachments[1].filename == m1.filename and two.attachments[2].filename == m2.filename
+            and not io.open(m1.path, "rb") and not io.open(m2.path, "rb"),
+            "…sent: one note, its two drawings in page order (Memos lists them newest first: put back in order); the waiting copies removed")
+        -- the order couldn't be set (offline a moment): only that, next time
+        local m5, m6 = drawingFile("drawing-20261113-093000.canvas.png"), drawingFile("drawing-20261113-093000-2.canvas.png")
+        local real_order = Memos.orderDrawings
+        Memos.orderDrawings = function() return nil, "unreachable" end
+        Notes.enqueue(plugin, { op = "create", content = "Order later", visibility = "PRIVATE", drawings = { m5, m6 },
+            order = { m5.filename, m6.filename } })
+        sync()
+        Memos.orderDrawings = real_order
+        local oq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(#plugin.store.memos.queue == 1 and oq.op == "order" and tostring(oq.name):match("^memos/") and oq.order[1] == m5.filename,
+            "the note and its drawings sent, their order not set: queued on its own")
+        sync()
+        local later
+        for _i, m in ipairs(mstate().memos) do if m.content == "Order later" then later = m end end
+        check(later and #later.attachments == 2 and later.attachments[1].filename == m5.filename and #plugin.store.memos.queue == 0,
+            "…set next time")
+        -- the second upload fails: next time only the second goes, onto the same note
+        local m3, m4 = drawingFile("drawing-20261113-091000.canvas.png"), drawingFile("drawing-20261113-091000-2.canvas.png")
+        local real_up, ups = Memos.uploadAttachment, 0
+        Memos.uploadAttachment = function(c, path, ...)
+            ups = ups + 1
+            if path == m4.path then return nil, "unreachable" end
+            return real_up(c, path, ...)
+        end
+        Notes.enqueue(plugin, { op = "create", content = "Half sent", visibility = "PRIVATE", drawings = { m3, m4 },
+            order = { m3.filename, m4.filename } })
+        sync()
+        Memos.uploadAttachment = real_up
+        local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(lq and lq.op == "attach" and tostring(lq.name):match("^memos/") and #lq.drawings == 1 and lq.drawings[1].path == m4.path
+            and not io.open(m3.path, "rb"), "the second drawing didn't go: only it is left, for the note already made")
+        sync()
+        local half
+        for _i, m in ipairs(mstate().memos) do if m.content == "Half sent" then half = m end end
+        check(half and #half.attachments == 2 and #plugin.store.memos.queue == 0 and half.attachments[1].filename == m3.filename
+            and half.attachments[2].filename == m4.filename, "…sent next time: the note has both, once each, in page order")
+        -- an edit: one page redrawn, one added, one taken off
+        local en = client2:create("Pages to edit", "PRIVATE")
+        local e1 = drawingFile("drawing-20261113-092000.canvas.png")
+        local e2 = drawingFile("drawing-20261113-092001.canvas.png")
+        local ea1 = client2:uploadAttachment(e1.path, e1.filename, en.name)
+        local ea2 = client2:uploadAttachment(e2.path, e2.filename, en.name)
+        sync()
+        local held2
+        for _i, m in ipairs(Notes.notes) do if m.name == en.name then held2 = m end end
+        check(held2 and #Notes.drawings(held2) == 2, "a note with two drawings: both are its drawings")
+        local first, second = Notes.drawings(held2)[1], Notes.drawings(held2)[2]
+        local redone = drawingFile(first.filename) -- (a page edited keeps its file's name)
+        local added = drawingFile("drawing-20261113-092500.canvas.png")
+        local edits = { { att = first, path = redone.path, filename = redone.filename },
+            { att = second, removed = true }, { path = added.path, filename = added.filename } }
+        edits.order = { first.filename, added.filename }
+        Notes.saveDrawings(plugin, held2, edits)
+        local ops = {}
+        for _i, qq in ipairs(plugin.store.memos.queue) do ops[#ops + 1] = qq.op end
+        check(table.concat(ops, ",") == "redraw,undraw,attach,order", "edited pages queued: redraw, undraw, attach, then their order ("
+            .. table.concat(ops, ",") .. ")")
+        sync()
+        local done2
+        for _i, m in ipairs(mstate().memos) do if m.name == en.name then done2 = m end end
+        local names = {}
+        for _i, a2 in ipairs(done2 and done2.attachments or {}) do names[#names + 1] = a2.name end
+        check(done2 and #done2.attachments == 2 and done2.attachments[1].name == first.name and names[2] ~= second.name
+            and done2.attachments[2].filename == added.filename,
+            "…in Memos: the first page kept its attachment, the second gone, a new one added, in page order")
+
+        -- an older Memos (v0.31: no replace_attachment): the new file added to the note, the old one deleted
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --old-upload > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        local client3 = Notes.client(plugin)
+        local onote = client3:create("Old Memos", "PRIVATE")
+        local o1 = drawingFile("drawing-20261112-230000.canvas.png")
+        local oatt = onote and client3:uploadAttachment(o1.path, o1.filename, onote.name)
+        local repl, rerr = client3:replaceAttachment(oatt and oatt.name, o1.path, o1.filename, onote and onote.name)
+        local om
+        for _i, m in ipairs(mstate().memos) do if onote and m.name == onote.name then om = m end end
+        check(repl and om and #om.attachments == 1 and om.attachments[1].name == repl.name and repl.name ~= oatt.name,
+            "an older Memos: the edited drawing added to the note and the old one deleted (" .. tostring(rerr) .. ")")
+
+        -- drawings shown in the note: on the board and on the note's page, as big as there's room for
+        check(select(1, Sticky.fitSize(100, 50, 400, 400, 3)) == 300 and select(2, Sticky.fitSize(100, 50, 400, 400, 3)) == 150,
+            "drawings: a small one enlarged to fit, at most 3 times")
+        check(select(1, Sticky.fitSize(100, 50, 160, 400, 3)) == 160 and Sticky.fitSize(100, 50, 400, 400) == 100,
+            "drawings: enlarged only as far as the room; a photo never enlarged")
+        check(select(1, Sticky.fitSize(2000, 1000, 400, 400, 3)) == 400, "drawings: a big one shrunk as before")
+        check(Notes.isDrawing({ filename = "drawing-20261112-195442.canvas.png" }) and not Notes.isDrawing({ filename = "photo.png" })
+            and not Notes.isDrawing(nil), "drawings: told apart by memos' name for them")
+        local dm = { content = "# Garden plan\nBeds by the fence\n![](/file/attachments/in1/drawing-2.canvas.png)\n- [ ] seeds\n#garden",
+            attachments = { { name = "attachments/d1", filename = "drawing-1.canvas.png", type = "image/png" },
+                { name = "attachments/p1", filename = "photo.jpg", type = "image/jpeg" },
+                { name = "attachments/in1", filename = "drawing-2.canvas.png", type = "image/png" } } }
+        local ds = Notes.drawings(dm)
+        check(#ds == 1 and ds[1].name == "attachments/d1", "drawings: the note page shows those not already pictures in its text")
+        local heading, rest = Notes.headingAndRest(dm.content)
+        check(heading == "Garden plan" and rest == "Beds by the fence\n\u{2610} seeds", "drawings: the heading above the drawing, the rest after")
+        local h2 = Notes.headingAndRest("Just text")
+        check(h2 == nil and select(2, Notes.headingAndRest("Just text")) == "Just text", "drawings: no heading, all the text after")
+        check(Notes.headingAndRest("## Second level\nx") == "Second level", "drawings: a heading of any level")
+        -- the full layout sizes a drawing enlarged to the note's width (a photo isn't)
+        local fd = Notes.fitPicture({ filename = "drawing-20261112-200000.canvas.png" }, 799, 188, 1960, 800)
+        local fp = Notes.fitPicture({ filename = "small.png" }, 799, 188, 1960, 800)
+        check(fd.grow == Notes.DRAWING_GROW and fd.w == 1960 and fp.w == 799 and fp.grow == nil,
+            "full layout: a drawing drawn as wide as the note (" .. fd.w .. "), a photo at its size")
+        local msrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(msrc:find("local p = Notes.fitPicture(a, w, h, inner_w, pic_max_h)", 1, true)
+            and msrc:find("Sticky.picture(p.path, p.w, p.h, p.grow)", 1, true), "full layout: measures and draws pictures by it")
+        -- a picture asked for while it's already coming: told when it's here
+        local fetched = { name = "attachments/fetch1", filename = "drawing-20261112-210000.canvas.png", type = "image/png" }
+        local NetF = require("gzreader_net")
+        local AsyncF = require("gzreader_async")
+        local was_connected, was_run = NetF.connected, AsyncF.run
+        local finish
+        NetF.connected = function() return true end
+        AsyncF.run = function(_c, _job, done) finish = function() done(true) end end
+        local told = {}
+        Notes.fetchFile(plugin, fetched) -- (the sync's prefetch: no callback)
+        Notes.fetchFile(plugin, fetched, function() told[#told + 1] = "board" end)
+        Notes.fetchFile(plugin, fetched, function() told[#told + 1] = "page" end)
+        if finish then finish() end
+        NetF.connected, AsyncF.run = was_connected, was_run
+        check(#told == 2 and told[1] == "board" and Notes.fetching[Memos.filePath(fetched)] == nil,
+            "a picture already coming: the board and the page are told when it's here (one download)")
+        local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("for _i, a in ipairs(Notes.drawings(m)) do", 1, true)
+            and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
+            "drawings: on the board's cards and the note's page, not repeated under Attachments")
+
+        -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
+        local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(esrc:find('if text == "" and not self:hasDrawing() then', 1, true) and esrc:find("return self.touch and self.can_draw == true", 1, true),
+            "editor: Draw on touch Kindles; a note with only a drawing can be saved")
+        check(esrc:find("self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil, "editor: Discard throws the drawing away")
+    end)()
+
     -- disconnect
     Notes.disconnect(plugin)
     check(next(plugin.store.memos) == nil and Memos.loadCache() == nil, "disconnect: address, token and kept notes removed")
     os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
 end)()
 
+print("Calendar tab: Calendar settings is ZenOS's Settings page")
+;(function()
+    local Cal = require("gzreader_calendar")
+    local Tabs = require("gzreader_tabs")
+    local saved_zen, saved_page, saved_redraw, saved_menu = Tabs.zen, package.loaded["modules/settings/zen_settings_page"], Cal.redraw, Cal.showSettingsMenu
+    local zen = {}
+    local opened, closed_with, redraws, old_menu = nil, nil, 0, 0
+    local cs_page = { onCloseWidget = function(p) closed_with = p end }
+    Tabs.zen = function() return zen end
+    package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened = { z = z, o = o }; return cs_page end }
+    Cal.redraw = function() redraws = redraws + 1 end
+    Cal.showSettingsMenu = function() old_menu = old_menu + 1 end
+    local shown = Cal.showSettings(plugin)
+    local cs_path = opened and opened.o.path or {}
+    check(shown == cs_page and opened.z == zen and #cs_path == 2 and cs_path[1].key == "text" and cs_path[1].value == "Connections"
+        and cs_path[2].value == "Calendar (CalDAV)" and old_menu == 0,
+        "Calendar settings: ZenOS's Settings page, opened at Connections → Calendar (CalDAV) (not KOReader's drop-down menu)")
+    Cal.showSettings(plugin) -- (again: the page's close isn't wrapped twice)
+    cs_page:onCloseWidget()
+    check(closed_with == cs_page and redraws == 1, "Calendar settings closed: the calendar drawn again, once")
+    -- without ZenOS's Settings: KOReader's menu as before
+    package.loaded["modules/settings/zen_settings_page"] = { show = function() error("no settings") end }
+    Cal.showSettings(plugin)
+    check(old_menu == 1, "Calendar settings without ZenOS's Settings page: the old menu instead")
+    Tabs.zen, package.loaded["modules/settings/zen_settings_page"], Cal.redraw, Cal.showSettingsMenu = saved_zen, saved_page, saved_redraw, saved_menu
+end)()
 print("Calendar tab")
 ;(function()
     package.loaded["ui/widget/container/widgetcontainer"] = magic()
@@ -6844,17 +8380,40 @@ print("Music (Plex): the server, downloads, the player")
             end
             last.callback()
             local opened = m.title == "Plex" and #m.item_table_stack == 1
+            local function row(text)
+                for _i, it in ipairs(m.item_table) do if it.text == text then return it end end
+            end
+            -- (ZenOS rows, as Settings → Connections → Plex: values on the right, a switch, Sign out)
+            local card = m.item_table
+            local card_labels = {}
+            for _i, it in ipairs(card) do card_labels[#card_labels + 1] = it.text end
+            local icons = true
+            for _i, it in ipairs(card) do
+                if not (it._zen_settings_row and (it.icon_glyph or it.icon_name or it.icon_file)) then icons = false end
+            end
+            check(card.gz_rows and icons and table.concat(card_labels, "|") == "Signed in|Plex server|Music library|Audiobooks from|Quality when converting|Make bigger MP3 and AAC smaller|Sign out of Plex"
+                and card[1].select_enabled == false and not card[1]._zen_has_submenu and card[1].mandatory:find(" · ", 1, true)
+                and row("Quality when converting").mandatory == (saved_br or 192) .. " kbps" and row("Quality when converting")._zen_has_submenu
+                and row("Make bigger MP3 and AAC smaller").checked_func and not row("Make bigger MP3 and AAC smaller")._zen_has_submenu
+                and row("Audiobooks from").mandatory:find("^Plex: ") and row("Sign out of Plex")._zen_has_submenu,
+                "the Plex card: ZenOS rows with icons; the account (no arrow), values on the right, a switch, Sign out " .. table.concat(card_labels, "|"))
+            row("Quality when converting").callback()
+            local choice = m.title == "Quality when converting" and #m.item_table_stack == 2 and m.item_table.gz_rows
             local q
-            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then q = it end end
+            for _i, it in ipairs(m.item_table) do if it.text == "128 kbps" then q = it end end
+            choice = choice and q and q.radio and not q._zen_has_submenu
             if q then q.callback() end
             local in_place = m.title == "Plex" and #m.item_table_stack == 1 and m.item_table_stack[1] == root_before
-                and q and tostring(m.item_table[1].text):match("kbps")
-            local mark
-            for _i, it in ipairs(m.item_table) do if tostring(it.text):match("128 kbps") then mark = it.mandatory end end
+                and row("Quality when converting") and row("Quality when converting").mandatory == "128 kbps" and px.bitrate == 128
+            local shrink_before = px.shrink
+            row("Make bigger MP3 and AAC smaller").callback()
+            local switched = px.shrink == (not shrink_before or nil) and row("Make bigger MP3 and AAC smaller").checked_func() == (px.shrink == true)
+                and m.title == "Plex" and #m.item_table_stack == 1
+            px.shrink = shrink_before
             m:onClose()
-            check(opened and in_place and mark == "\u{2713}" and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
+            check(opened and choice and in_place and switched and #m.item_table_stack == 0 and m.item_table.gz_catalog == "audiobooks"
                 and m.item_table ~= root_before and m.item_table[#m.item_table].text == "Plex" and not ab._refresh_root,
-                "the Plex card: its list; a change shows it again in place (1.28.0 left an empty list behind it); back: the page made again")
+                "the Plex card: Quality opens a choice; picked, back to the card showing it; the switch in place; back: the page made again")
             m.onClose, px.bitrate = nil, saved_br
         end)()
         local Shop = require("gzreader_bookshop")
@@ -7588,6 +9147,169 @@ print("Audiobook player: the 5-way goes from key to key (Kindle 3)")
         "up and down keep to the same part of the screen (play → Stop → volume +)")
 end)()
 
+print("Music's player: three tabs, big keys, a strip to seek on (layout A)")
+;(function()
+    -- (every widget class here is one stand-in: keep what's on it, put it back after)
+    local IC = require("ui/widget/container/inputcontainer")
+    local kept = {}
+    for k, v in pairs(IC) do kept[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+    local CD = require("gzreader_cdscreen")
+    local Music = require("gzreader_music")
+    local Tab = require("gzreader_musictab")
+    local LUI = require("ui/uimanager")
+    local saved = { current = Music.current, plex = Music.plex, downloaded = Music.downloaded, instance = CD.instance,
+        top = LUI.getTopmostVisibleWidget }
+    local SZ = CD.SIZE
+    check(SZ.top >= 56 and SZ.close >= 56 and SZ.transport >= 88 and SZ.modes >= 56 and SZ.row >= 56 and SZ.pager >= 56
+        and SZ.mini >= 56 and SZ.seek >= 48,
+        "every target 56 or more at the mockup's size (about 8.5 mm on a Kindle Touch); the progress strip 48, all of it a target")
+    local tabs = {}
+    for _i, t in ipairs(CD.TABS) do tabs[#tabs + 1] = t.mode .. "=" .. t.key end
+    check(table.concat(tabs, ",") == "now=Z,queue=X,library=C", "three tabs: Now playing (Z), Queue (X), Library (C)")
+    local ke = CD.keyEvents()
+    check(ke.Prev[1][1] == "Q" and ke.Toggle[1][1] == "W" and ke.Next[1][1] == "E" and ke.Shuffle[1][1] == "A"
+        and ke.Repeat[1][1] == "S" and ke.Stop[1][1] == "D" and ke.TabNow[1][1] == "Z" and ke.TabQueue[1][1] == "X"
+        and ke.TabLibrary[1][1] == "C" and ke.Library[1][1] == "F" and ke.PrevKey[1][1] == "Left" and ke.NextKey[1][1] == "Right",
+        "keys: Q W E, A S D, Z X C for the tabs, F still between the queue and the library, ◀ ▶")
+    check(CD.rowsFor(444, 62, 4) == 6 and CD.rowsFor(100, 62, 4) == 3, "the lists: as many big rows as fit, 3 at least")
+    local pf, pg, pn = CD.pageOf(8, 6, 12)
+    check(pf == 7 and pg == 2 and pn == 2 and CD.pageOf(1, 6, 0) == 1 and select(3, CD.pageOf(1, 6, 0)) == 1,
+        "the lists' pages: the one holding the line picked")
+
+    -- a player standing in for one that plays: Now playing's keys
+    local seeks, jumped = {}, nil
+    local order = {}
+    for i = 1, 12 do order[i] = i end
+    local pl = { order = order, at = 2, shuffle = false, position = function() return 60000 end,
+        seekTo = function(_p, ms) seeks[#seeks + 1] = ms end, jump = function(_p, k) jumped = k end,
+        toggle = function() jumped = "toggle" end, track = function() return { duration = 214000 } end }
+    Music.current = pl
+    -- (only what the module defined: the stand-in answers anything else with a function)
+    local scr = setmetatable({ mode = "now", build = function() end }, { __index = function(_t, k) return rawget(CD, k) end })
+    scr.refresh = function() end
+    for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil end
+    scr:onNextKey(); scr:onNextKey(); scr:onPrevKey(); scr:onNextKey()
+    check(scr.seek_target == 80000 and #seeks == 0, "Now playing: ◀ ▶ move the time shown at once, 10 s a press")
+    for fn in pairs(UI.scheduled) do UI.scheduled[fn] = nil; fn() end
+    check(#seeks == 1 and seeks[1] == 80000 and scr.seek_target == nil,
+        "…and the player is started once, where the presses end (" .. table.concat(seeks, ",") .. ")")
+    seeks = {}
+    scr:seekToFrac(0.5)
+    check(seeks[1] == 107000, "a tap on the progress strip: that point of the track")
+    local sb = { dimen = { x = 100, w = 400 } }
+    local fr = CD.SeekBar.fracAt(sb, { pos = { x = 300 } })
+    check(fr == 0.5 and CD.SeekBar.fracAt(sb, { pos = { x = 20 } }) == 0 and CD.SeekBar.fracAt(sb, { pos = { x = 900 } }) == 1,
+        "the strip: where the tap was, from its left end (0) to its right (1)")
+    scr:onPlay()
+    check(jumped == "toggle", "Now playing: Press plays / pauses")
+    scr:onUp()
+    check(scr.picked == nil, "Now playing: ▲ ▼ do nothing (the queue is a tab of its own)")
+
+    -- the queue's keys
+    scr:onTabQueue()
+    check(scr.mode == "queue", "X: the Queue tab")
+    scr.rows = 6
+    seeks = {}
+    scr:onNextKey()
+    check(scr.picked == 7 and #seeks == 0, "Queue: ▶ the next page (no seeking there)")
+    scr:onPrevKey()
+    check(scr.picked == 1, "Queue: ◀ the page before")
+    scr:onDown(); scr:onDown(); scr:onDown()
+    check(scr.picked == 4, "Queue: ▲ ▼ move the outline")
+    scr:onPlay()
+    check(jumped == 4 and scr.picked == nil, "Queue: Press plays the track picked")
+
+    -- the library: tabs, F, Back
+    scr.ensureLibrary = function(s) s.nav = s.nav or { item_table = { {}, {}, {} }, item_table_stack = {}, onClose = function() end } end
+    scr:onTabLibrary()
+    check(scr.mode == "library" and scr.nav, "C: the Library tab")
+    scr:onLibrary()
+    check(scr.mode == "queue", "F: from the library to the queue, as before")
+    scr:onLibrary()
+    check(scr.mode == "library", "F: and back")
+    local up = 0
+    scr.nav.item_table_stack = { {} }
+    scr.nav.onClose = function() up = up + 1 end
+    UI.closed = nil
+    scr:onClose()
+    check(up == 1 and UI.closed == nil, "Back inside a list: up a level, the player stays open")
+    scr.nav.item_table_stack = {}
+    scr:onClose()
+    check(UI.closed == scr, "Back at the first list: the player closes (the music plays on)")
+    scr.nav.item_table_stack = { {} }
+    UI.closed = nil
+    scr:onClose(true)
+    check(UI.closed == scr and up == 1, "the close key closes from anywhere")
+    scr:onTabNow()
+    check(scr.mode == "now", "Z: Now playing")
+
+    -- the volume: − + here on touch Kindles, the volume keys show it here too
+    local vols = 0
+    scr.refreshVolume = function() vols = vols + 1 end
+    local TTSm = require("gzreader_tts")
+    TTSm.setVolume(7)
+    scr:stepVolume(1)
+    check(TTSm.volume() == 8 and vols == 1, "the volume: + one step, shown at once")
+    CD.instance = scr
+    LUI.getTopmostVisibleWidget = function() return scr end
+    captured.notification = nil
+    require("gzreader_audioctl").step(-1)
+    check(TTSm.volume() == 7 and vols == 2 and captured.notification == nil, "the volume keys on Now playing: its level changes there (no note over it)")
+    TTSm.setVolume(10)
+
+    -- seeking in the player itself
+    local c = { dir = WORK .. "/no-album", title = "Album", tracks = { { title = "A", duration = 200000 }, { title = "B", duration = 180000 } } }
+    local MP = Music.Player:new({ store = {} }, c, 1, false)
+    MP.paused = true
+    MP:seekTo(90000)
+    check(MP.pos == 90000 and not MP.playing, "paused: the place moves; it plays from there next")
+    MP:seekTo(999999)
+    check(MP.pos == 199000, "never past a second before the end")
+    MP:seekTo(-5)
+    check(MP.pos == 0, "nor before the start")
+    local started
+    MP.playing = true
+    MP.play = function(self) started = self.pos; self.playing = true; return true end
+    MP:seekTo(30000)
+    check(started == 30000 and MP.playing, "playing: started again there")
+    MP.waiting, MP.pos = true, 5
+    MP:seekTo(1000)
+    check(MP.pos == 5, "a track not on the Kindle yet: nothing to seek in")
+
+    -- the Library tab's first list
+    local function lineTexts(list)
+        local t = {}
+        for _i, it in ipairs(list) do t[#t + 1] = it.text end
+        return table.concat(t, "|")
+    end
+    Music.plex = function() return { isConnected = function() return true end } end
+    Music.downloaded = function() return { {}, {} } end
+    local tab = Tab.new({ store = { plex = { username = "reader", server = { name = "Home Server" } } } })
+    local it = tab:playerRootItems(false)
+    check(lineTexts(it) == "Recently played|Recently added|Playlists|Albums|Artists|On this Kindle" and it[6].mandatory == "2"
+        and type(it.gz_search) == "function" and type(it.gz_shuffle) == "function" and it.gz_account.text == "Plex: reader · Home Server",
+        "Library (touch): its lists; Search above them, Shuffle all and the Plex account below")
+    it = tab:playerRootItems(true)
+    check(lineTexts(it) == "Search music…|Recently played|Recently added|Playlists|Albums|Artists|On this Kindle|Shuffle all on this Kindle|Plex: reader · Home Server"
+        and it.gz_search == nil, "Library (keys): Search, Shuffle all and the account are lines, so the 5-way reaches them")
+    Music.downloaded = function() return {} end
+    it = tab:playerRootItems(false)
+    check(lineTexts(it) == "Recently played|Recently added|Playlists|Albums|Artists" and it.gz_shuffle == nil,
+        "nothing on the Kindle: no On this Kindle, no Shuffle all")
+    Music.plex = function() return { isConnected = function() return false end } end
+    Music.current = { track = function() return { title = "Tone" } end }
+    it = tab:playerRootItems(false)
+    check(not lineTexts(it):find("Now playing", 1, true) and lineTexts(it):find("Plex: sign in with a code", 1, true),
+        "signed out: the sign-in lines, without Now playing (a tab now)")
+
+    Music.current, Music.plex, Music.downloaded, CD.instance = saved.current, saved.plex, saved.downloaded, saved.instance
+    LUI.getTopmostVisibleWidget = saved.top
+    for k in pairs(IC) do IC[k] = nil end
+    for k, v in pairs(kept) do IC[k] = v end
+    package.loaded["gzreader_cdscreen"] = nil
+end)()
+
 print("Kindles without REAGL: flash when the screen changes")
 ;(function()
     local Eink = require("gzreader_eink")
@@ -7665,6 +9387,88 @@ print("Quick panel's light: the swipe that opens it doesn't move the light")
     if pf then pf:close() end
     check(src:match('TouchPanel = { GestureRange:new{ ges = "touch", range = whole } }'),
         "the panel listens for a finger put down (KOReader's touch gesture)")
+    Screen.scaleBySize = was_scale
+end)()
+
+print("Quick panel: a warmth slider on Kindles with a warm light")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    local Device = require("device")
+    local Screen = Device.screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local saved = { nl = Device.hasNaturalLight, pd = Device.getPowerDevice }
+    -- which Kindles get it
+    Device.hasNaturalLight = nil
+    check(Panel.hasWarmth() == false, "a Kindle KOReader knows nothing of a warm light for: none (no error)")
+    Device.hasNaturalLight = function() return false end
+    Device.getPowerDevice = function() return {} end
+    check(Panel.hasWarmth() == false, "no warm light (Paperwhite 3, Kindle Touch): no warmth slider")
+    Device.hasNaturalLight = function() return true end
+    check(Panel.hasWarmth() == true, "a warm light (Paperwhite 5, Oasis 3, Scribe…): a warmth slider")
+    -- the Kindle's steps (KindlePowerD: native 0…24, the public warmth 0…100)
+    local pd = { fl_warmth_min = 0, fl_warmth_max = 24, fl_warmth = 50, sets = {} }
+    function pd:frontlightWarmth() return self.fl_warmth end
+    function pd:toNativeWarmth(w) return math.floor(w / (100 / 24) + 0.5) end
+    function pd:fromNativeWarmth(nat) return math.floor(nat * (100 / 24) + 0.5) end
+    function pd:setWarmth(w) self.sets[#self.sets + 1] = w; self.fl_warmth = w end
+    Device.getPowerDevice = function() return pd end
+    local w = setmetatable({ light_y = 40, warmth_y = 92, w = 600, h = 700 }, { __index = PW })
+    local min, max, cur = select(2, w:warmthInfo())
+    check(min == 0 and max == 24 and cur == 12, "the warmth in the Kindle's steps: 0 to 24, now 12 (" .. tostring(cur) .. ")")
+    w:setWarmth(24)
+    check(pd.sets[1] == 100, "the warmest step sets the warmth to 100 (" .. tostring(pd.sets[1]) .. ")")
+    w:setWarmth(30)
+    w:setWarmth(-3)
+    check(pd.sets[2] == 100 and pd.sets[3] == 0, "kept between Cool and Warm")
+    -- the two sliders: a finger on one moves that one only
+    local light, warm = {}, {}
+    w.lightInfo = function() return nil, 0, 24, 12 end
+    w.warmthInfo = function() return nil, 0, 24, 6 end
+    w.setLight = function(_self, v) light[#light + 1] = v end
+    w.setWarmth = function(_self, v) warm[#warm + 1] = v end
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    local light_bar, warm_bar = 40 + 20, 92 + 20
+    check(w:sliderAtY(light_bar) == "light" and w:sliderAtY(warm_bar) == "warmth" and w:sliderAtY(300) == nil
+            and w:sliderAtY(40 + 44) == "light" and w:sliderAtY(92 - 4) == "warmth",
+        "a finger is on the slider whose bar is nearest")
+    -- the opening swipe goes on over both and lets go
+    w:onPanLight(nil, at(100, light_bar))
+    w:onPanLight(nil, at(300, warm_bar))
+    w:onPanReleaseLight(nil, at(300, warm_bar))
+    check(#light == 0 and #warm == 0, "the swipe that opens the panel moves neither")
+    w:onTouchPanel(nil, at(200, warm_bar))
+    w:onPanLight(nil, at(300, warm_bar))
+    w:onPanLight(nil, at(400, light_bar)) -- (straying up over the light: still the warmth)
+    w:onPanReleaseLight(nil, at(450, light_bar))
+    check(#warm == 3 and #light == 0, "a drag that starts on the warmth moves the warmth only (" .. #warm .. ", " .. #light .. ")")
+    w:onTouchPanel(nil, at(200, warm_bar))
+    w:onSwipeLight(nil, { pos = at(200, warm_bar).pos, direction = "west", distance = 200 })
+    check(#warm == 4 and warm[4] == 0, "a quick swipe on the warmth to the left: all the way Cool (" .. tostring(warm[4]) .. ")")
+    w:onTouchPanel(nil, at(200, light_bar))
+    w:onPanLight(nil, at(300, light_bar))
+    w:onPanReleaseLight(nil, at(300, light_bar))
+    check(#light == 2 and #warm == 4, "a drag on the light still moves the light")
+    -- taps: − and + step, the bar sets
+    warm = {}
+    w:onTapPanel(nil, at(20, 92 + 10))
+    w:onTapPanel(nil, at(590, 92 + 10))
+    w:onTapPanel(nil, at(300, 92 + 20))
+    check(warm[1] == 5 and warm[2] == 7 and warm[3] == 12 and #light == 2,
+        "warmth: − one step cooler, + one warmer, the middle of the bar halfway")
+    -- no warm light: the light slider as before, nothing under it
+    local w2 = setmetatable({ light_y = 40, w = 600 }, { __index = PW })
+    check(w2:sliderAtY(92 + 20) == nil and #w2:sliders() == 1, "without a warm light only the light's slider")
+    -- the panel makes room for it, only on such Kindles
+    local pf = io.open(debug.getinfo(PW.init, "S").source:sub(2), "rb")
+    local src = pf and pf:read("*a") or ""
+    if pf then pf:close() end
+    check(src:find("local warmth = light and Panel.hasWarmth()", 1, true)
+            and src:find("(warmth and S(52) or 0)", 1, true) and src:find("self.warmth_y = y", 1, true)
+            and src:find("if self.warmth_y then self:paintWarmth(bb, x, y + self.warmth_y) end", 1, true),
+        "the panel lays out and paints the warmth row under the light's when there's a warm light")
+    Device.hasNaturalLight, Device.getPowerDevice = saved.nl, saved.pd
     Screen.scaleBySize = was_scale
 end)()
 
@@ -7792,7 +9596,7 @@ print("What's new after an update: GZreader's version and short points")
         "ZenOS's update screen shows GZreader's version and points, for GZreader's updates")
 end)()
 
-print("Flash on every page turn (Settings → General → Screen refresh)")
+print("Flash on every page turn (Settings → General → Screen → E-ink settings)")
 ;(function()
     local Eink = require("gzreader_eink")
     local UIManager = require("ui/uimanager")
@@ -7831,7 +9635,7 @@ print("Flash on every page turn (Settings → General → Screen refresh)")
     local src = f and f:read("*a") or ""
     if f then f:close() end
     check(src:find('if Eink and Eink.flashPageTurns then\n        items[#items + 1] = IconItem.decorate({\n            text = _("Flash on every page turn"),', 1, true)
-        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen refresh, on every device")
+        and src:find("Eink.pageTurnsTicked()", 1, true), "in Settings → General → Screen → E-ink settings, on every device")
     Eink.applies = real_applies
     UIManager.FULL_REFRESH_COUNT = keep_count
     for _i, k in ipairs(keys) do
@@ -8237,6 +10041,8 @@ print("Settings → Storage")
         and #by.Books.sub_item_table == 4 and by.Notes.sub_item_table[1].text:match("No notes")
         and by.Calendar.mandatory == "2 KB" and by["Covers and saved lists"].mandatory == "10.0 MB",
         "storage page: free space, each part's size, the biggest of each")
+    check(by.Music.mandatory == "1 downloaded · 6 KB" and St.show == nil,
+        "storage: Music's line short enough for the row (albums and playlists counted together); only Settings shows the page")
     -- Settings → General → Storage: rows with icons, arrows into the biggest
     local function iconed(it) return it and (it.icon_glyph or it.icon_name or it.icon_file) ~= nil end
     check(iconed(by["Free on this Kindle"]) and iconed(by.Books) and iconed(by.Books.sub_item_table[1]) and iconed(by.Audiobooks)
@@ -8723,6 +10529,20 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         G_reader_settings:saveSetting("gzreader_sleep_auto", nil); G_reader_settings:saveSetting("screensaver_type", nil)
         G_reader_settings:saveSetting("screensaver_dir", nil)
         Usb.SCREENSAVER_DIR = nil
+        -- the Immich album's pictures the page made (gzreader_immich.lua's folder)
+        local Immich = require("gzreader_immich")
+        local ihave = Immich.have()
+        local ifile = ihave[1] and Immich.fileOf(require("gzsleepmode").immichDir(), ihave[1])
+        local ih = ifile and io.open(ifile, "rb")
+        local ihead = ih and ih:read(8)
+        if ih then ih:close() end
+        check(r.photos == 10 and #ihave == 10 and ihead == "\137PNG\r\n\26\n" and fake.store.immich and fake.store.immich.usb
+            and fake.store.immich.album.name == "Kindle" and G_reader_settings:readSetting("gzreader_immich_album") == "Kindle"
+            and not (fake.store.immich.key or json.encode(fake.store.immich):find("immich-test-key", 1, true))
+            and Usb.summaryText(r):match("10 pictures from Immich"),
+            "e2e: 10 pictures from the Immich album the page made for this screen (the API key stays with the page)")
+        os.execute("rm -rf '" .. require("gzsleepmode").immichDir() .. "'")
+        G_reader_settings:delSetting("gzreader_immich_album")
         check(r.marks == 4 and #left == 1 and left[1].id == "m:5" and left[1].ref ~= "usb-2" and tonumber(left[1].ref)
             and fake.store.downloads["1"].bookmarks["/body/DocFragment[2]"] ~= "usb-1" and fake.store.usb_idmap["usb-2"],
             "e2e: the journal's sent lines gone, the rest now refer to Grimmory's ids, as does the Kindle")
@@ -8778,6 +10598,258 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         os.remove(require("gzreader_caldav").cachePath())
     end)()
 end
+
+print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
+;(function()
+    local Immich = require("gzreader_immich")
+    local SleepMode = require("gzsleepmode")
+    local lfs = require("libs/libkoreader-lfs")
+    local Device = require("device")
+    local real_screen = Device.screen
+    Device.screen = { getWidth = function() return 600 end, getHeight = function() return 800 end }
+    local function logtxt() local f = io.open(WORK .. "/gzreader.log", "rb"); local t = f and f:read("*a") or ""; if f then f:close() end; return t end
+    local IP = PORT + 30
+    local function startMock(port, flags, name)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_immich.py " .. port .. " " .. flags
+            .. " > " .. WORK .. "/" .. name .. ".log 2>&1 & echo $! > " .. WORK .. "/" .. name .. ".pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. port .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    startMock(IP, "", "immich")
+    local function istate(port) local pp = io.popen("curl -s http://127.0.0.1:" .. (port or IP) .. "/__state"); local t = pp:read("*a"); pp:close(); return json.decode(t) or {} end
+    local function uid(n, kind) return string.format("%08x-0000-4000-8000-%s%011x", n, kind or "a", n) end
+    local KINDLE, TRIP, FAMILY = uid(1, "b"), uid(2, "b"), uid(3, "b")
+    local SERVER = "http://127.0.0.1:" .. IP
+    local saved_settings = {}
+    for _i, k in ipairs({ "gzreader_sleep_auto", "screensaver_type", "gzreader_sleep_source", "screensaver_dir", "gzreader_immich_album" }) do
+        saved_settings[k] = gsettings[k]
+    end
+    SleepMode.IMMICH_DIR = WORK .. "/immich-pics"
+    os.execute("rm -rf '" .. SleepMode.IMMICH_DIR .. "'")
+
+    -- the address
+    local s1, a1 = Immich.normalizeServer(" photos.example.com/albums/" .. KINDLE .. "?at=1 ")
+    check(s1 == "https://photos.example.com" and a1 == KINDLE, "address: an album's address pasted: the server, and the album")
+    check(Immich.normalizeServer("http://192.168.1.5:2283/photos/" .. uid(5)) == "http://192.168.1.5:2283"
+        and Immich.normalizeServer("https://example.com/immich/api/") == "https://example.com/immich" and Immich.normalizeServer(" ") == nil,
+        "address: a photo's page, /api, Immich under a path; nothing typed")
+    -- which pictures to keep
+    local album = {}
+    for i = 1, 30 do album[i] = "p" .. i end
+    local keep, get, drop = Immich.plan(album, {}, 20)
+    check(#keep == 0 and #get == 20 and #drop == 0, "plan: an empty Kindle gets 20")
+    local have = {}
+    for i = 1, 20 do have[i] = get[i] end
+    have[21] = "gone"
+    keep, get, drop = Immich.plan(album, have, 20)
+    local fresh = true
+    for _i, id in ipairs(get) do for _j, h in ipairs(have) do if id == h then fresh = false end end end
+    check(#keep == 10 and #get == 10 and #drop == 11 and fresh, "plan: half of them swapped for new ones, one no longer in the album taken off")
+    keep, get, drop = Immich.plan({ "a", "b", "c" }, { "a", "b" }, 20)
+    check(#keep == 2 and #get == 1 and #drop == 0, "plan: a small album: all of it, nothing swapped")
+    keep, get = Immich.plan(album, have, 10)
+    check(#keep + #get == 10, "plan: fewer pictures kept: down to that number")
+
+    -- connecting
+    plugin.store.immich = nil
+    local ok, err = Immich.connect(plugin, SERVER, "not-the-key")
+    check(not ok and err:match("didn't accept"), "connect: a wrong API key is refused")
+    ok, err = Immich.connect(plugin, SERVER, "immich-limited-key")
+    check(not ok and err:match("can't read albums") and err:match("album%.read"), "connect: a key without album.read: says which permissions")
+    ok, err = Immich.connect(plugin, SERVER .. "/albums/" .. KINDLE, " immich-test-key\n")
+    local st = plugin.store.immich or {}
+    check(ok and st.server == SERVER and st.key == "immich-test-key" and st.user == "Will" and #st.albums == 3
+        and st.album and st.album.id == KINDLE and st.album.name == "Kindle" and gsettings.gzreader_immich_album == "Kindle",
+        "connect: with an album's address: connected, the albums (shared ones too), that album chosen " .. tostring(err))
+    local names = {}
+    for _i, a in ipairs(st.albums) do names[#names + 1] = a.name .. "=" .. a.count end
+    check(table.concat(names, ",") == "Family=2,Kindle=30,Trip=4", "albums: by name, with their sizes " .. table.concat(names, ","))
+    check(not logtxt():find("immich-test-key", 1, true) and not logtxt():find("immich-limited-key", 1, true), "the API key is never in the log")
+
+    -- the pictures
+    check(not Immich.inUse(), "not used yet: nothing fetched on Wi-Fi")
+    local done
+    Immich.refresh(plugin, {}, function(okr, res) done = { okr, res } end)
+    check(done and done[1] and done[2].got == 20 and #Immich.have() == 20 and st.at and st.album.count == 30,
+        "Get new pictures: 20 of the album's 30 on the Kindle")
+    local f1 = Immich.fileOf(SleepMode.IMMICH_DIR, Immich.have()[1])
+    local fh = f1 and io.open(f1, "rb"); local head = fh and fh:read(8); if fh then fh:close() end
+    check(f1 and f1:match("%.png$") and head == "\137PNG\r\n\26\n", "each one a picture file named after the photo")
+    local reqs = istate().log or {}
+    local search
+    for _i, r in ipairs(reqs) do if r.path == "/api/search/metadata" then search = r end end
+    local thumbs_keyed = 0
+    for _i, r in ipairs(reqs) do if r.path:find("/thumbnail?size=preview", 1, true) and r.key == "ok" then thumbs_keyed = thumbs_keyed + 1 end end
+    check(search and type(search.body.albumIds) == "table" and search.body.albumIds[1] == KINDLE and search.body.type == "IMAGE"
+        and thumbs_keyed == 20, "the album's photos asked with Immich's search (albumIds as a list, photos only); previews with the key")
+    local first = {}
+    for _i, id in ipairs(Immich.have()) do first[id] = true end
+    done = nil
+    Immich.refresh(plugin, {}, function(okr, res) done = { okr, res } end)
+    check(done and not done[1] and done[2] == "recent", "on Wi-Fi again soon after: not again (at most every 6 hours)")
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    local still = 0
+    for _i, id in ipairs(Immich.have()) do if first[id] then still = still + 1 end end
+    check(done[1] and done[2].got == 10 and #Immich.have() == 20 and still == 10, "the next time: half of them swapped for others from the album")
+    Immich.setAlbum(plugin, { id = TRIP, name = "Trip", count = 4 })
+    Immich.refresh(plugin, { force = true }, function(okr, res) done = { okr, res } end)
+    check(done[1] and #Immich.have() == 3 and done[2].total == 3 and gsettings.gzreader_immich_album == "Trip",
+        "another album: its 3 photos (not its video), the other album's taken off")
+    -- an older Immich: no album search, the album's own list
+    startMock(IP + 1, "--old", "immich-old")
+    local old = Immich:new({ server = "http://127.0.0.1:" .. (IP + 1), key = "immich-test-key" })
+    local ids = old:albumPictures(KINDLE)
+    check(ids and #ids == 30, "an older Immich (no album search): the album's own list of photos")
+    os.execute("kill $(cat " .. WORK .. "/immich-old.pid) 2>/dev/null")
+
+    -- the sleep screen
+    gsettings.gzreader_sleep_auto, gsettings.screensaver_type, gsettings.gzreader_sleep_source = nil, nil, nil
+    SleepMode.use(G_reader_settings, "immich_auto")
+    local dirs = SleepMode.pictureDirs(G_reader_settings, "", true)
+    check(Immich.inUse() and SleepMode.type(G_reader_settings, "", true) == "cover" and SleepMode.type(G_reader_settings, "", false) == "random_image"
+        and dirs[1] == SleepMode.IMMICH_DIR and dirs[2] == "/mnt/us/screensavers",
+        "sleep screen: the cover while reading, an Immich picture elsewhere (the folders after it)")
+    -- Settings → Connections → Immich (Photos)
+    local IS = require("gzreader_immichsettings")
+    local function labels(items)
+        local t = {}
+        for _i, it in ipairs(items) do t[#t + 1] = it.text or (it.text_func and it.text_func()) or "?" end
+        return table.concat(t, "|")
+    end
+    local im_items = IS.items(plugin)
+    local lb = labels(im_items)
+    check(lb:find("^Connected to 127%.0%.0%.1:%d+ · Will|Album: Trip|Sleep screen|Home wallpaper|Pictures kept on the Kindle: 20|Get new pictures now %(last: [%d-]+ [%d:]+%)|Disconnect$"),
+        "Settings → Connections → Immich: the connection, the album, what it's for, how many, get new ones, disconnect " .. lb)
+    local sub = im_items[3].sub_item_table
+    check(sub[1].checked_func() and not sub[3].checked_func(), "…its Sleep screen: the cover and Immich, as chosen")
+    sub[3].callback()
+    check(SleepMode.current(G_reader_settings) == "auto", "…Not used: the cover while reading and the screensavers folder's pictures")
+    sub[1].callback()
+    local was_im = plugin.store.immich
+    plugin.store.immich = {}
+    check(labels(IS.items(plugin)) == "Connect with QR code|Connect by typing|About Immich", "not connected: how to connect")
+    plugin.store.immich = was_im
+
+    -- the Home wallpaper (ZenOS's Settings → Interface → Wallpaper)
+    local W = dofile(PLUGIN .. "/../zenos.koplugin/common/gz_immich_wallpaper.lua")
+    package.loaded["common/gz_immich_wallpaper"] = W
+    local saves = 0
+    W.plugin = { config = { library_background = { enabled = false, path = "/mnt/us/old.png", opacity = 80 } }, saveConfig = function() saves = saves + 1 end }
+    W.FILE = WORK .. "/immich-wallpaper.png"
+    local bg = W.plugin.config.library_background
+    check(W.turnOn(Immich.randomPicture()) == "on" and W.isOn() and bg.path == W.FILE and bg.enabled == true
+        and lfs.attributes(W.FILE, "mode") == "file" and saves == 1, "wallpaper: a picture from the album, copied where the wallpaper looks")
+    local src1 = W.source()
+    Immich.changed()
+    check(W.source() and W.source() ~= src1 and bg.path == W.FILE, "wallpaper: another picture after new ones came")
+    W.turnOff()
+    check(not W.isOn() and bg.path == "/mnt/us/old.png" and bg.enabled == false and not lfs.attributes(W.FILE), "wallpaper: turned off, the one before back")
+    W.turnOn(Immich.randomPicture())
+    W.chosenByHand(bg)
+    check(not W.isOn() and bg.gz_before == nil, "wallpaper: an image chosen by hand isn't Immich's any more")
+    bg.enabled, bg.path = false, ""
+    check(W.toggle({ store = { immich = {} } }) == "no_album" and not W.isOn(), "wallpaper: without an album, nothing changes")
+    check(W.toggle(plugin) == "on" and W.isOn(), "wallpaper: turned on from Settings → Connections → Immich")
+
+    -- the setup page (Wi-Fi Kindles): Immich, sleep screen pictures
+    local Phone = require("gzreader_phone")
+    local Usb = require("gzreader_usbsync")
+    Usb.SCREENSAVER_DIR = WORK .. "/ss-pictures"
+    os.execute("rm -rf '" .. Usb.SCREENSAVER_DIR .. "'")
+    local PS = require("gzreader_pairscreen")
+    local orig_ps = PS.new
+    local scr
+    PS.new = function(_self, o) scr = o; return o end
+    local closed
+    Phone.open(plugin, { section = "immich", on_close = function(ch) closed = ch end })
+    check(scr and scr.url:match("/phone/%x+#immich$"), "setup page: opened at Immich (Settings → Connections → Immich → Connect with QR code)")
+    local P = "http://127.0.0.1:" .. UI.zmqs[1].port .. scr.url:match("(/phone/%x+)")
+    local function post(path, fields, extra)
+        local args = { "-L", #fields == 0 and "-d ''" or nil }
+        for _i, kv in ipairs(fields) do args[#args + 1] = "--data-urlencode '" .. kv .. "'" end
+        return phone(table.concat(args, " ") .. " " .. (extra or "") .. " '" .. P .. path .. "'")
+    end
+    local c, b = phone("'" .. P .. "'")
+    check(c == 200 and b:find('data-tab="immich"', 1, true) and b:find('data-tab="sleep"', 1, true) and b:find('<section id="immich" class="tab">', 1, true)
+        and b:find('<section id="sleep" class="tab">', 1, true) and b:find("Connected to <b>127.0.0.1:" .. IP .. "</b> as <b>Will</b>", 1, true)
+        and b:find(">Trip (4)</option>", 1, true) and not b:find("immich-test-key", 1, true),
+        "setup page: Immich and Sleep screen tabs; connected, the albums to choose from, the key never shown")
+    Immich.disconnect(plugin)
+    c, b = post("/immich", { "server=" .. SERVER, "key=wrong" })
+    check(c == 200 and b:find("didn&#39;t accept that API key", 1, true), "setup page: a wrong API key: the page says so")
+    c, b = post("/immich", { "server=" .. SERVER, "key=immich-test-key" })
+    check(c == 200 and b:find("Now choose an album", 1, true) and plugin.store.immich.key == "immich-test-key" and not plugin.store.immich.album,
+        "setup page: connected, an album to choose")
+    c, b = post("/immich/use", { "album=" .. FAMILY, "sleep=immich", "wallpaper=1", "count=10" })
+    st = plugin.store.immich
+    check(c == 200 and st.album and st.album.id == FAMILY and st.count == 10 and SleepMode.current(G_reader_settings) == "immich"
+        and #Immich.have() == 2 and W.isOn() and b:find("Pictures from “Family”", 1, true),
+        "setup page: the album, Immich always for the sleep screen, the wallpaper, 10 kept; its pictures brought")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('value="immich" checked', 1, true) and b:find('name="wallpaper" value="1" checked', 1, true) and b:find('<option value="10" selected>', 1, true)
+        and b:find("2 pictures on the Kindle", 1, true), "setup page: shows what's chosen")
+    -- sleep screen pictures
+    local pic = WORK .. "/cat.png"
+    local pf = io.open(pic, "wb"); pf:write("\137PNG\r\n\26\n" .. string.rep("x", 2000)); pf:close()
+    c, b = phone("--data-binary @'" .. pic .. "' '" .. P .. "/sleep/upload?name=My%20Cat!.png'")
+    check(c == 200 and b:match("My Cat%.png is on the Kindle") and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat.png", "size") == 2008,
+        "sleep screen: a picture made on the page, in the screensavers folder " .. tostring(b))
+    c, b = phone("--data-binary @'" .. pic .. "' '" .. P .. "/sleep/upload?name=My%20Cat.png'")
+    check(c == 200 and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat (2).png", "mode") == "file", "sleep screen: the same name again: (2)")
+    c, b = phone("--data-binary 'MZ' '" .. P .. "/sleep/upload?name=..%2F..%2Fevil.sh'")
+    check(c == 415 and not lfs.attributes(WORK .. "/evil.sh"), "sleep screen: not a picture: refused")
+    c, b = phone("'" .. P .. "'")
+    check(b:find('name="name" value="My Cat (2).png"', 1, true) and b:find("var BASE=", 1, true) and b:find("W=600,H=800", 1, true),
+        "setup page: the pictures on the Kindle; pictures made for its 600 × 800 screen")
+    c, b = post("/sleep/remove", { "name=My Cat (2).png" })
+    check(c == 200 and not lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat (2).png") and lfs.attributes(Usb.SCREENSAVER_DIR .. "/My Cat.png"), "sleep screen: a picture taken off")
+    c, b = post("/sleep/remove", { "name=../gzreader.log" })
+    check(c == 200 and b:find("isn&#39;t on the Kindle", 1, true) and lfs.attributes(WORK .. "/gzreader.log"), "sleep screen: only its pictures can be taken off")
+    c, b = post("/sleep/mode", { "mode=always" })
+    check(c == 200 and SleepMode.current(G_reader_settings) == "random_image" and gsettings.gzreader_sleep_source == nil, "sleep screen: a picture from the folder, always")
+    c, b = post("/sleep/mode", { "mode=immich_auto" })
+    check(SleepMode.current(G_reader_settings) == "immich_auto", "sleep screen: the cover while reading, Immich elsewhere (from the Sleep screen tab)")
+    check(not logtxt():find("immich-test-key", 1, true), "setup page: the key never in the log")
+    scr.on_cancel()
+    check(closed and closed.immich and closed.pictures == 2 and Phone.session == nil, "setup page closed: the caller hears what changed")
+    PS.new = orig_ps
+
+    -- Kindles without Wi-Fi: what the sync page brings (gzreader_usbsync.lua)
+    local base = WORK .. "/usb-immich"
+    os.execute("rm -rf '" .. base .. "' && mkdir -p '" .. base .. "/in/immich'")
+    local new1, new2 = uid(21), uid(22)
+    for _i, id in ipairs({ new1, new2 }) do local o = io.open(base .. "/in/immich/" .. id .. ".png", "wb"); o:write("\137PNG\r\n\26\n" .. id); o:close() end
+    local kept_one = Immich.have()[1]
+    local got = Usb.takeImmich(plugin, base, { album = { id = KINDLE, name = "Kindle", count = 30 }, server = SERVER, count = 20,
+        add = { { file = "in/immich/" .. new1 .. ".png", id = new1 }, { file = "in/immich/" .. new2 .. ".png", id = new2 },
+            { file = "../../escape.png", id = uid(23) }, { file = "in/immich/x.png", id = "not-an-id" } },
+        keep = { kept_one }, wallpaper = false })
+    local hv = {}
+    for _i, id in ipairs(Immich.have()) do hv[id] = true end
+    check(got == 2 and hv[new1] and hv[new2] and hv[kept_one] and #Immich.have() == 3 and plugin.store.immich.usb
+        and plugin.store.immich.album.id == KINDLE and gsettings.gzreader_immich_album == "Kindle" and not W.isOn(),
+        "sync page: its pictures in, the ones not kept taken off, the album, the wallpaper turned off as chosen there")
+    local out = Usb.immichOut(plugin)
+    check(out.album.id == KINDLE and #out.have == 3 and out.wallpaper == false, "the outbox tells the page which pictures are on the Kindle")
+    check(Usb.takeImmich(plugin, base, { album = { id = KINDLE, name = "Kindle" }, wallpaper = true }) == 0 and W.isOn() and #Immich.have() == 3,
+        "sync page: the wallpaper turned on there; no keep list: none taken off")
+    Usb.takeScreensavers(base, { mode = "immich" })
+    check(Usb.sleepMode() == "immich", "sync page: Immich always for the sleep screen, chosen there")
+    Usb.takeImmich(plugin, base, { off = true })
+    check(not (plugin.store.immich or {}).album and not lfs.attributes(SleepMode.IMMICH_DIR) and gsettings.gzreader_sleep_source == nil
+        and gsettings.gzreader_immich_album == nil and not W.isOn(), "sync page: Immich disconnected there: its pictures gone, the sleep screen back to the folder")
+    Usb.SCREENSAVER_DIR = nil
+
+    os.execute("kill $(cat " .. WORK .. "/immich.pid) 2>/dev/null")
+    for k, v in pairs(saved_settings) do gsettings[k] = v end
+    package.loaded["common/gz_immich_wallpaper"] = nil
+    SleepMode.IMMICH_DIR = nil
+    Device.screen = real_screen
+    plugin.store.immich = nil
+end)()
 
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

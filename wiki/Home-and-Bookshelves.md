@@ -9,7 +9,7 @@ that you tap, turns to show its cover; tap it again, Press or its letter opens
 it, and holding it opens Manage book (Open, Delete from this Kindle, then
 the book's menu). The book you're reading (top of Home) is
 drawn as a book too: its pages behind the cover and a drop shadow.
-Covers have square corners in this view: Settings → Downloads → Appearance →
+Covers have square corners in this view: Settings → Home → Appearance →
 Covers → Rounded cover corners is greyed out while it's on, and your choice
 for the tiles and lists comes back when you switch to one of them.
 
@@ -40,7 +40,7 @@ the book once you open one.
   A book's number in its series is level at the foot of the spine. The books
   cast a soft shadow on the wall behind them, and the board shows its top.
 
-- **Theme and ornaments** (Settings → Downloads → Appearance → **Bookshelf
+- **Theme and ornaments** (Settings → Home → Appearance → **Bookshelf
   theme**), for Home's shelf, Downloads and the Catalog's ledges:
   - the plank: **Oak** (to begin with; Bookshelf's oak plank, in greys),
     **Walnut** (darker) or **Plain** (flat greys);
@@ -53,7 +53,9 @@ the book once you open one.
       ornaments there (only on Home, say);
     - *One on a page* (to begin with), *Up to two*, *Up to three*, or *One
       on every shelf*. A page's lowest shelves with books get them. Two or
-      three on a page are different ones;
+      three on a page are different ones. In Downloads the top shelf has
+      none while the walkman (Audiobooks) or the CD player (Music) stands
+      on it;
     - *At the right end of the shelf* (to begin with), *At the left end*
       (the books start after it), or *Scattered*: the first on the right,
       the next on the left, then the right again. In the Catalog an ornament
@@ -68,18 +70,36 @@ the book once you open one.
     (mid-September to November). **Which
     ornaments** has a tick for each: tick a seasonal one to have it all
     year, untick any to never see it; *Seasonal ones in their season again*
-    undoes that;
+    undoes that. It's a grid of the ornaments, each standing on a piece of
+    plank: a tick for those on the shelves, the others faded, and a
+    seasonal one tagged *In season* or *Not in season*. A tap puts one on
+    the shelves or takes it off; a hold only shows it, on your shelf at the
+    top (the one shown has a thick frame). The page keys turn its pages when
+    your own ornaments make more than fit;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
     keep its background transparent. Bold, dark shapes read best on e-ink.
     A shaded picture should be a PNG: the Kindle draws an SVG's gradients
     far too dark (flat colours in an SVG are fine).
+  - **the screen**: each choice is a tile with a small picture of what it
+    does, and a preview of your shelf (your recent books' spines) at the
+    top shows the result as you choose; the shelves themselves are drawn
+    again when you close it. Chips under the preview turn the ornaments on
+    or off on **Home**, in **Downloads** and in the **Catalog**. On a Kindle
+    with keys the 5-way moves between the tiles and Press chooses;
+  - **Hold an ornament** (on Home, in Downloads or in the Catalog, on a
+    touch Kindle) to open this screen straight away, as holding a Home
+    widget opens its settings. Back (or the ×) returns to the shelves.
 
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,
   whatever the sort.
+- **Inside Audiobooks and Music** each audiobook is a cassette and each album
+  or playlist a CD, always facing out with its cover showing, and its name on
+  a little plate on the shelf under it. A tap (or Press, or its letter) opens
+  it straight away; the one the 5-way is on has a frame around it.
 - **Sort** (quick panel → Sort) orders Downloads and Home's shelf: title,
   author, series, date downloaded, reading progress, size or file name;
   *Last read* puts the most recent first.
@@ -135,3 +155,81 @@ it covers the screen; the parts that don't fit (the top and bottom of a tall
 cover, the sides of a wide one) are cut off. While it's on, **Stretch cover
 to fit screen** just above it, which pulls the cover out of shape instead, is
 greyed out.
+
+### Pictures from Immich
+
+With an [Immich](https://immich.app) album you can have your own photos on
+the sleep screen and as the Home wallpaper. Set it up in **Settings →
+Connections → Immich (Photos)** (or on the [setup page](Setup-Page-and-Connections#immich)
+in your phone's browser; Kindles without Wi‑Fi on the
+[sync page](Sync-with-a-Computer)):
+
+- **Connect**: your Immich address and an API key (Immich → your picture
+  → Account Settings → API Keys → New API Key, with at least `album.read`,
+  `asset.read` and `asset.view`, or all permissions). Pasting an album's
+  address from your browser chooses that album too. The key is kept like the
+  other sign-ins and never written to the log.
+- **Album**: which album's pictures to use (yours and the ones shared with
+  you; photos only, no videos).
+- **Sleep screen**: *Book cover while reading, an Immich picture elsewhere*,
+  or *An Immich picture, always*. These are also two more tiles in
+  **Settings → General → Sleep → Wallpaper** once an album is chosen. With no
+  pictures yet, the screensavers folder's show.
+- **Home wallpaper**: a picture from the album behind Home and the tabs
+  (the same as **Settings → Interface → Wallpaper → Picture from Immich**).
+  Turning it off puts back the wallpaper you had before; choosing an image
+  by hand there turns it off.
+- **Pictures kept on the Kindle**: 10, 20 or 50. They're made to fit the
+  screen, in grey, and kept on the Kindle (`koreader/gzreader-immich/`), so
+  they show without Wi‑Fi.
+- **Get new pictures now**. Otherwise, whenever Wi‑Fi comes on and the last
+  time was over 6 hours ago, about half of them are swapped for others from
+  the album (all of them when the album changed), and the wallpaper changes
+  to another one.
+- **Disconnect**: the pictures are removed, the sleep screen goes back to the
+  screensavers folder and the wallpaper to what it was.
+
+### Immich from the sync page
+
+The sync page runs in your browser on GitHub's site, and Immich only answers
+web pages from other sites when it's told to: without that the page says
+*Couldn't reach Immich from this page*. If Immich is behind a reverse proxy
+(it has to be on `https://` for the page anyway), add these headers there for
+the page's address. Caddy:
+
+    photos.example.com {
+        @gzsync header Origin https://9retirement6irk.github.io
+        header @gzsync Access-Control-Allow-Origin "https://9retirement6irk.github.io"
+        header @gzsync Access-Control-Allow-Headers "x-api-key, content-type"
+        header @gzsync Access-Control-Allow-Methods "GET, POST, OPTIONS"
+        @gzsync_preflight {
+            method OPTIONS
+            header Origin https://9retirement6irk.github.io
+        }
+        respond @gzsync_preflight 204
+        reverse_proxy immich-server:2283
+    }
+
+nginx: a `map` next to the `server` block, and four lines in the `location`
+that passes requests on to Immich:
+
+    map $http_origin $gzsync_origin {
+        default "";
+        "https://9retirement6irk.github.io" $http_origin;
+    }
+    server {
+        …
+        location / {
+            add_header Access-Control-Allow-Origin $gzsync_origin always;
+            add_header Access-Control-Allow-Headers "x-api-key, content-type" always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            if ($request_method = OPTIONS) { return 204; }
+            proxy_pass http://immich-server:2283;
+            …
+        }
+    }
+
+(nginx then ignores `add_header` lines of the `server` block in that
+location: repeat any you have there.) Only that one site is let in, and it
+still needs your API key for everything.
+Wi‑Fi Kindles don't need any of this: they ask Immich themselves.

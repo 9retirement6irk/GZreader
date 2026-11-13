@@ -10,7 +10,8 @@ servers, in pages:
 3. **Music**: your Plex music ([Music](Music)).
 
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
-(Kindle 2, 3, DX, Touch); the others have the Books page alone.
+(Kindle 2, 3, DX, Touch); the others have the Books page alone, with no
+strip under the title: the search bar sits right below it.
 
 ![The Catalog's Books page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-books.png) ![A book's page: Download, or Download & open](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/download-confirm.png)
 
@@ -44,8 +45,9 @@ fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
 **The Grimmory card** fills the bottom-right compartment of the Books
 page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
 shows who you're signed in as and where, like the Plex card on the Music
-page. It opens Rebuild library
-and reconnecting. What's on the Kindle is in the Downloads tab.
+page. It opens a list drawn like Settings (an icon on each row): who you're
+signed in as, Rebuild library, reconnecting, and About Grimmory. What's on
+the Kindle is in the Downloads tab.
 
 **An Audiobooks tab** (off until you turn it on: Settings → Interface →
 Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
@@ -110,7 +112,7 @@ a sub-list, a back arrow.
 ## Home folder and downloads
 
 The GZreader folder (`GZreader` at the top of the Kindle's drive, `/mnt/us/GZreader`) is the home folder; the
-**Downloads** tab shows it. It can't be changed: Settings → Downloads → Folders has no Home folder
+**Downloads** tab shows it. It can't be changed: Settings → Home → Folders has no Home folder
 menu and KOReader's menus have no Home folder settings or "Set as HOME folder", since GZreader relies on it (it's set back to the GZreader folder at every start). Books sent from your browser (quick panel → Send
 books) go there too. Books download in a background process with a
 progress bar (percentage, MB received of the total; the Kindle stays awake

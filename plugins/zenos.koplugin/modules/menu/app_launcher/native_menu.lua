@@ -220,15 +220,20 @@ local function tab_icon_file(name)
     if type(file) == "string" and not file:find("icon-not-found", 1, true) then return file end
 end
 
-function M.settingsItems(scope, id)
+-- GZreader: `opts.unfiltered`: every KOReader item, none left out (About →
+-- Advanced → KOReader settings); otherwise without gz_settings'
+-- KOREADER_HIDDEN and KOREADER_DUPLICATES.
+function M.settingsItems(scope, id, opts)
     local menu = live_menu(scope or "active", false)
     local items = menu_tree(menu)
     if not items then return {} end
     local Settings = require("modules/settings/koreader_settings")
     Settings.install()
+    local gz_all = type(opts) == "table" and opts.unfiltered == true
+    local keep_all = gz_all and function() return true end or nil
     if id then
         local item = resolve_item(id, scope or "active")
-        return Settings.copyItems(item and { item } or {}, menu, true)
+        return Settings.copyItems(item and { item } or {}, menu, true, nil, keep_all)
     end
     local roots = { _zen_native_owner = menu }
     local icons = require("common/inline_icon_map")
@@ -245,8 +250,8 @@ function M.settingsItems(scope, id)
         local title = item_title(tab) or fallback_title(tab.id)
         -- Untitled tabs (e.g. Ink Away's icon-only shortcut) would render as blank rows.
         if not injected[tab.id] and title ~= ""
-                and require("common/gz_settings").keepKOReaderItem(tab) -- GZreader
-                and not require("common/gz_settings").KOREADER_DUPLICATES[tab.id] then
+                and (gz_all or (require("common/gz_settings").keepKOReaderItem(tab) -- GZreader
+                    and not require("common/gz_settings").KOREADER_DUPLICATES[tab.id])) then
             local setting = tab.id == "setting" or tab.id == "typeset"
                 or tab.id == "filemanager_settings"
             local root = {}
@@ -264,8 +269,9 @@ function M.settingsItems(scope, id)
                     local children = tab.sub_item_table_func and tab.sub_item_table_func(page)
                         or tab.sub_item_table or tab
                     -- GZreader: without what GZreader has elsewhere (gz_settings KOREADER_DUPLICATES)
-                    return require("common/gz_settings").dropKOReaderDuplicates(
-                        Settings.copyItems(children, menu, setting))
+                    local copied = Settings.copyItems(children, menu, setting, nil, keep_all)
+                    if gz_all then return copied end
+                    return require("common/gz_settings").dropKOReaderDuplicates(copied)
                 end
             end
             roots[#roots + 1] = root

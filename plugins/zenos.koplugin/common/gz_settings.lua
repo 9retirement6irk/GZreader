@@ -27,7 +27,7 @@ function M.dropHiddenTabs(list)
     return out
 end
 
---- KOReader menu items the Settings → KOReader section leaves out (by
+--- KOReader menu items GZreader leaves out where it shows KOReader's rows (by
 --- KOReader's menu id), because they work against GZreader or ZenOS:
 M.KOREADER_HIDDEN = {
     -- turning off gzreader, zenos or coverbrowser breaks GZreader; patches are untested code
@@ -46,6 +46,9 @@ M.KOREADER_HIDDEN = {
     network_restore = true,
     network_before_wifi_action = true,
     network_after_wifi_action = true,
+    -- "Disable Wi-Fi connection when inactive": turned Wi-Fi off after 5 quiet
+    -- minutes even on On (gzreader_net.lua clears a saved tick)
+    network_powersave = true,
     -- the same menu as Settings → Connections → Grimmory
     gzreader = true,
     -- the whole File browser menu: Sort by, Book status, Reverse, mixed are
@@ -56,23 +59,35 @@ M.KOREADER_HIDDEN = {
     -- Tools → Reading statistics: the plugin stays (time left, book details,
     -- the end-of-book page, Reading goals), its menu goes
     statistics = true,
+    -- Taps and gestures → Disable double tap: GZreader has no double-tap
+    -- actions (no gestures plugin); unticked, every tap in a book waited for
+    -- a second one (gzreader_touch.lua forgetKOReaderDoubleTap clears it)
+    screen_disable_double_tap = true,
+    -- Document → Book metadata location and Move book metadata: GZreader's
+    -- Storage and its clean-ups look for a book's .sdr folder next to it
+    document_metadata_location = true,
+    document_metadata_location_move = true,
 }
 
---- Whether the KOReader section shows `item` (a KOReader menu item).
+--- Whether `item` (a KOReader menu item) is shown (not in About → Advanced →
+--- KOReader settings, which shows everything).
 function M.keepKOReaderItem(item)
     return not (type(item) == "table" and type(item.id) == "string" and M.KOREADER_HIDDEN[item.id])
 end
 
---- KOReader menu items the Settings → KOReader section leaves out because
+--- KOReader menu items KOReader's menu (native_menu.settingsItems, filtered) leaves out because
 --- GZreader has them elsewhere. Unlike KOREADER_HIDDEN they still work where
 --- GZreader takes one by its id (Reader → End of book's End of document
 --- action), so only the section drops them (native_menu.settingsItems).
 M.KOREADER_DUPLICATES = {
     -- Settings → General: Language, Time and date, Sleep (and its Automatic
-    -- suspend), Wi-Fi
+    -- suspend), Wi-Fi (and, in Wi-Fi, HTTP proxy and Network info)
     language = true, time = true, screensaver = true, autosuspend = true, network_wifi = true,
+    network_proxy = true, network_info = true,
     -- the History, Favorites and Collections tabs
     history = true, favorites = true, collections = true,
+    -- Settings → General → Screen: KOReader's whole Screen menu (M.screenItem)
+    screen = true,
     -- Settings → Reader → End of book
     document_end_action = true,
     -- the quick panel's Night mode, Rotate, Restart, Sleep and Exit tiles
@@ -82,6 +97,9 @@ M.KOREADER_DUPLICATES = {
     version = true, about = true, quickstart_guide = true,
     -- not used by GZreader
     cloud_storage = true,
+    -- Settings → Interface → Quick panel: Open with a tap / a swipe
+    -- (gzreader_panel.lua openRows; its Auto-show bottom menu does nothing here)
+    menu_activate = true,
 }
 
 --- `list` (rows copied from KOReader's menu for the KOReader section) without
@@ -112,6 +130,115 @@ function M.dropKOReaderDuplicates(list)
         end
     end
     return out
+end
+
+--- Settings → General → Screen: KOReader's Screen menu (DPI, E-ink settings,
+--- Fullscreen, …; out of Settings → KOReader, KOREADER_DUPLICATES.screen),
+--- without what GZreader has elsewhere (Sleep screen, Rotation), and with
+--- GZreader's flash rows (`gz_items`: Flash on every page turn, Flash when
+--- the screen changes, Partial pages refresh) in its E-ink settings after
+--- Full refresh rate. `native`: modules/menu/app_launcher/native_menu. Built
+--- when opened, from the menu of whatever is open (Home or a book).
+function M.screenItem(native, gz_items)
+    local _ = require("gettext")
+    return {
+        text = _("Screen"),
+        sub_item_table_func = function() return M.screenItems(native, gz_items) end,
+    }
+end
+
+--- The rows of Settings → General → Screen (see screenItem).
+function M.screenItems(native, gz_items)
+    gz_items = type(gz_items) == "table" and gz_items or {}
+    local ok, got = pcall(function() return native.settingsItems("active", "screen") end)
+    local screen = ok and type(got) == "table" and got[1]
+    local list
+    if type(screen) == "table" then
+        list = screen.sub_item_table
+        if type(list) ~= "table" and type(screen.sub_item_table_func) == "function" then
+            local okf, l = pcall(screen.sub_item_table_func)
+            list = okf and l or nil
+        end
+    end
+    if type(list) ~= "table" then
+        -- no KOReader menu to take it from: GZreader's own rows alone
+        local out = {}
+        for _i, item in ipairs(gz_items) do out[#out + 1] = item end
+        return out
+    end
+    return M.withFlashRows(M.dropKOReaderDuplicates(list), gz_items)
+end
+
+--- `list` (KOReader's Screen rows) with `gz_items` in its E-ink settings, after
+--- Full refresh rate (at the end of the list when there's no E-ink settings).
+function M.withFlashRows(list, gz_items)
+    if type(list) ~= "table" or #gz_items == 0 then return list end
+    -- (the Settings page builds the list again from KOReader's on a refresh: again with them)
+    for _i, refresh in ipairs({ "_zen_refresh", "refresh_func" }) do
+        if type(list[refresh]) == "function" then
+            local f = list[refresh]
+            list[refresh] = function(...) return M.withFlashRows(f(...), gz_items) end
+        end
+    end
+    local function into(children)
+        if type(children) ~= "table" then return children end
+        local out = {}
+        for key, value in pairs(children) do
+            if type(key) ~= "number" then out[key] = value end
+        end
+        for _i, refresh in ipairs({ "_zen_refresh", "refresh_func" }) do
+            if type(children[refresh]) == "function" then
+                local f = children[refresh]
+                out[refresh] = function(...) return into(f(...)) end
+            end
+        end
+        local at = 0
+        local full = require("gettext")("Full refresh rate")
+        for i, item in ipairs(children) do
+            out[#out + 1] = item
+            if type(item) == "table" and item.text == full then at = i end
+        end
+        for i, item in ipairs(gz_items) do table.insert(out, at + i, item) end
+        if at > 0 then out[at].separator = nil end
+        gz_items[#gz_items].separator = true
+        return out
+    end
+    for _i, item in ipairs(list) do
+        if type(item) == "table" and item.id == "screen_eink_opt" then
+            if type(item.sub_item_table) == "table" then
+                item.sub_item_table = into(item.sub_item_table)
+            elseif type(item.sub_item_table_func) == "function" then
+                local f = item.sub_item_table_func
+                item.sub_item_table_func = function(...) return into(f(...)) end
+            end
+            return list
+        end
+    end
+    if #list > 0 and type(list[#list]) == "table" then list[#list].separator = true end
+    for _i, item in ipairs(gz_items) do list[#list + 1] = item end
+    return list
+end
+
+--- About → Advanced → KOReader settings: KOReader's whole menu, nothing left
+--- out (native_menu.settingsItems unfiltered: also what KOREADER_HIDDEN and
+--- KOREADER_DUPLICATES leave out elsewhere), from the menu of whatever is open
+--- (Home or the book). It was the Settings → KOReader section until the owner
+--- asked for it here (2026-11-11). `plugin_root`: ZenOS's folder (the icon).
+function M.koreaderMenuItem(plugin_root, native)
+    local _ = require("gettext")
+    local T = require("ffi/util").template
+    return {
+        -- (gettext keeps "KOReader settings" as it is; any other string naming KOReader shows GZreader)
+        text = _("KOReader settings"),
+        help_text = T(_("All of %1's own settings, as %1 has them, including those GZreader leaves out elsewhere because they can work against it (plugin and patch management, developer options, Wi-Fi actions). Change them only if you know what they do."), "KOReader"),
+        icon_file = plugin_root and (plugin_root .. "/icons/koreader.png") or nil,
+        _zen_settings_root = "koreader",
+        sub_item_table_func = function()
+            native = native or require("modules/menu/app_launcher/native_menu")
+            local ok, items = pcall(native.settingsItems, "active", nil, { unfiltered = true })
+            return ok and type(items) == "table" and items or {}
+        end,
+    }
 end
 
 --- About's first two lines: GZreader's version, then what it's built on.
@@ -182,7 +309,7 @@ function M.gzreaderVersion()
 end
 
 --- Of GZreader's diagnostics items (Settings → General), the ones that move
---- into General → Advanced: everything but Send debug reports automatically,
+--- into About → Advanced: everything but Send debug reports automatically,
 --- which stays in General where it's easy to find (as Usage statistics did
 --- up to 1.28.1; GZreader no longer sends them).
 function M.splitDiagnostics(items)
@@ -202,7 +329,7 @@ end
 --- Auto; gzreader_net.lua Net.menuItem) with ZenOS's network list after
 --- them, in place of ZenOS's Wi-Fi switch. `zen_item`: ZenOS's Wi-Fi row (its
 --- callback opens the network list), or nil.
-function M.wifiItem(gz_item, zen_item)
+function M.wifiItem(gz_item, zen_item, net)
     if type(gz_item) ~= "table" then return zen_item end
     local items = {}
     for _i, item in ipairs(gz_item.sub_item_table or {}) do items[#items + 1] = item end
@@ -214,8 +341,29 @@ function M.wifiItem(gz_item, zen_item)
             callback = zen_item.callback,
         }
     end
+    -- KOReader's HTTP proxy (tap: on/off; hold: the address) and Network info,
+    -- here instead of Settings → KOReader → Network (KOREADER_DUPLICATES)
+    for _i, item in ipairs(M.networkItems(net)) do items[#items + 1] = item end
     gz_item.sub_item_table = items
     return gz_item
+end
+
+--- KOReader's HTTP proxy and Network info rows (NetworkMgr's own), or none.
+function M.networkItems(net)
+    local out = {}
+    if not net then
+        local ok, mgr = pcall(require, "ui/network/manager")
+        if not ok then return out end
+        net = mgr
+    end
+    for _i, name in ipairs({ "getProxyMenuTable", "getInfoMenuTable" }) do
+        local ok, item = pcall(function() return net[name](net) end)
+        if ok and type(item) == "table" then
+            item.keep_menu_open = true
+            out[#out + 1] = item
+        end
+    end
+    return out
 end
 
 --- GZreader's audio settings, by text: they come with the Reader section's

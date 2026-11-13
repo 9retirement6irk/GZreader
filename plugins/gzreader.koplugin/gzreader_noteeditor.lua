@@ -1,6 +1,8 @@
 --[[--
-The Notes tab's full-page editor (new notes and edits). Memos notes are
-Markdown; a toolbar at the bottom of the page adds it for you:
+The Notes tab's editor (new notes and edits): a full page, or for the quick
+panel's Quick note a window over whatever is on the screen (`showFloating`;
+a tap outside it closes it, as Back does). Memos notes are Markdown; a
+toolbar adds it for you:
 
   • List   ☐ Check   1. Num   H Head   I   B   # Tag   |  Save
 
@@ -15,6 +17,14 @@ Markdown; a toolbar at the bottom of the page adds it for you:
   so those letters aren't shortcuts here.)
 - # Tag: your tags, or a new one (the keyboard has no # key; Sym+G also types #).
 - New notes are private unless you choose otherwise.
+- Draw (touch Kindles): drawings to go with the note
+  (`gzreader_drawscreen.lua`: pages, each on its paper), sent to Memos as
+  drawings you can edit there. A note that has drawings opens them for
+  editing right away (Edit edits the drawings; Done goes back to the text);
+  Done over the old ones replaces them.
+- Touch Kindles edit the note formatted, as in Memos' web editor
+  (`gzreader_richedit.lua`): no Markdown markers or `&nbsp;` to see; hold
+  and drag to select, and the toolbar formats the selection.
 - Back: asks whether to save when something changed.
 ]]
 
@@ -39,6 +49,8 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local util = require("util")
 local Touch = require("gzreader_touch")
+local Log = require("gzreader_log")
+local T = require("ffi/util").template
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -56,8 +68,48 @@ NoteEditor.TOOLS = {
     { id = "tag", label = "# " .. _("Tag"), key = "G", help = _("add a tag") },
 }
 
+-- Touch Kindles edit the note formatted (Memos' web editor); false: Markdown, as on keyboard Kindles.
+NoteEditor.RICH = true
+
+-- The toolbar on touch Kindles (the formatted page): on the selection, or the cursor's line or word.
+NoteEditor.RICH_TOOLS = {
+    { id = "heading", label = "H " .. _("Head") },
+    { id = "bullet", label = "\u{2022} " .. _("List") },
+    { id = "task", label = "\u{2610} " .. _("Check") },
+    { id = "ordered", label = "1. " .. _("Num") },
+    { id = "bold", label = "B" },
+    { id = "italic", label = "I" },
+    { id = "tag", label = "# " .. _("Tag") },
+}
+
 NoteEditor.VISIBILITY = { "PRIVATE", "PROTECTED", "PUBLIC" }
-NoteEditor.VIS_LABEL = { PRIVATE = _("Private"), PROTECTED = _("Signed-in users"), PUBLIC = _("Public") }
+-- In a space (Memos v0.31), also "only its members", second as in Memos' own menu.
+NoteEditor.VISIBILITY_IN_SPACE = { "PRIVATE", "SPACE", "PROTECTED", "PUBLIC" }
+NoteEditor.VIS_LABEL = { PRIVATE = _("Private"), PROTECTED = _("Signed-in users"), PUBLIC = _("Public"),
+    SPACE = _("Space members") }
+
+--- Who can see a note in `space` (nil: none): the choices Alt+V goes through.
+--- (Space members only in a space, or for a note that already has it.)
+function NoteEditor.visibilities(space, current)
+    if space or current == "SPACE" then return NoteEditor.VISIBILITY_IN_SPACE end
+    return NoteEditor.VISIBILITY
+end
+
+--- The next visibility after `current` (Alt+V, a tap).
+function NoteEditor.nextVisibility(current, space)
+    local list = NoteEditor.visibilities(space, current)
+    local i = 1
+    for j, v in ipairs(list) do if v == current then i = j end end
+    return list[i % #list + 1]
+end
+
+--- Moving a note out of its space: "Space members" can't stay (Memos
+--- refuses it without a space), so it becomes Private, as in Memos' own
+--- Move dialog. Otherwise who can see it stays as it was.
+function NoteEditor.visibilityAfterMove(visibility, space)
+    if not space and visibility == "SPACE" then return "PRIVATE" end
+    return visibility
+end
 
 ---------------------------------------------------------------- Markdown edits (plain text, tested)
 
@@ -149,6 +201,24 @@ function NoteEditor.cleanTag(s)
     return s
 end
 
+---------------------------------------------------------------- the window (a quick note)
+
+--- The quick note's window: as wide as fits (a margin each side, no wider
+--- than a Kindle 3's page), its text box about a quarter of the screen,
+--- centred in what the on-screen keyboard leaves (`kb_h`, 0 without one).
+--- `chrome_h`: the window's height without the text; `s`: Screen:scaleBySize.
+--- Returns { x, y, w, h, text_h } (pure: run_tests.lua).
+function NoteEditor.floatingBox(sw, sh, kb_h, chrome_h, s)
+    local gap = s(16)
+    local w = math.min(sw - 2 * gap, s(560))
+    local free = sh - (kb_h or 0)
+    local text_h = math.min(math.floor(sh * 0.28), free - chrome_h - 2 * gap)
+    text_h = math.max(text_h, s(60))
+    local h = chrome_h + text_h
+    local y = math.max(math.min(gap, math.floor(free / 2)), math.floor((free - h) / 2))
+    return { x = math.floor((sw - w) / 2), y = y, w = w, h = h, text_h = text_h }
+end
+
 ---------------------------------------------------------------- the page
 
 local Editor = InputContainer:extend{ covers_fullscreen = true,
@@ -183,6 +253,13 @@ function Editor:init()
     self.visibility = (self.memo and self.memo.visibility) or "PRIVATE"
     self.original = self.memo and self.memo.content or ""
     self.original_vis = self.visibility
+    -- its space (Memos v0.31): a chip beside who can see it, when you have spaces
+    if self.memo then self.space = self.memo.space end -- (a new note: the space it was given, if any)
+    self.original_space = self.space
+    self.has_spaces = (self.spaces and #self.spaces > 0) or self.space ~= nil
+    -- the note's drawings once the drawing screen has been opened: every page,
+    -- { att (in Memos), path, filename, changed, removed } (nil: as in Memos)
+    self.pages = nil
     self.focus_tool = nil
     self.key_events = {
         ToolLeft = { { "Left" } },
@@ -193,9 +270,11 @@ function Editor:init()
         ToolbarToggle = { { "Menu" } },
         CloseDialog = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
     }
-    local margin = S(12)
+    local margin = self.floating and S(10) or S(12)
     self.margin = margin
-    self.inner = sw - 2 * margin
+    -- a quick note: a window (the screen less a margin each side); otherwise the page
+    self.win_w = self.floating and NoteEditor.floatingBox(sw, sh, 0, 0, S).w - 2 * Size.border.window or sw
+    self.inner = self.win_w - 2 * margin
     self.title_h, self.tool_h, self.footer_h = S(44), S(40), S(30)
     local text_h = sh - self.title_h - self.tool_h - self.footer_h - S(28)
     self.touch = Touch.on() and not Touch.keys()
@@ -205,13 +284,39 @@ function Editor:init()
     self.vk = self.touch or self.dpad
     -- (taps and keys reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
     if self.vk then self.is_always_active = true end
+    -- touch: the note formatted, typed into as in Memos' web editor
+    -- (`gzreader_richedit.lua`; Markdown when it can't be read that way).
+    -- (Not in a window over the screen: a quick note keeps its text box.)
+    if self.touch and NoteEditor.RICH and not self.floating then
+        local ok, doc = pcall(require("gzreader_blocks").parse, self.original)
+        if ok then
+            self.rich = true
+            self.doc = doc
+        else
+            Log.warn("notes: not read as blocks, editing Markdown:", tostring(doc))
+        end
+    end
     local function box(h)
+        -- (the formatted page: made once, its own height above its keyboard)
+        if self.rich then
+            self.rich_input = self.rich_input or require("gzreader_richedit"):new{
+                width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
+                doc = self.doc, editor = self, at_start = self.memo == nil,
+                hint = _("Write a note. #words become tags."),
+            }
+            return self.rich_input
+        end
         return makeInput(self, {
             text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
             face = Font:getFace("cfont", 20), parent = self, focused = true,
             padding = S(8), margin = 0, bordersize = Size.border.thin,
             hint = _("Write a note. #words become tags."),
+            gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
         })
+    end
+    if self.floating and not self.vk then
+        self.box = NoteEditor.floatingBox(sw, sh, 0, self:floatingChrome(), S)
+        text_h = self.box.text_h
     end
     self.input = box(text_h)
     if self.vk then
@@ -220,7 +325,12 @@ function Editor:init()
         local kb = self.input.keyboard
         local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
         if self.input.free then pcall(self.input.free, self.input) end
-        self.input = box(sh - self.title_h - self.tool_h - kb_h - S(24) - (self.dpad and S(26) or 0))
+        text_h = sh - self.title_h - self.tool_h - kb_h - S(24) - (self.dpad and S(26) or 0)
+        if self.floating then
+            self.box = NoteEditor.floatingBox(sw, sh, kb_h, self:floatingChrome(), S)
+            text_h = self.box.text_h
+        end
+        self.input = box(text_h)
     end
     self.title_slot = VerticalGroup:new{}
     self.bar_slot = VerticalGroup:new{}
@@ -233,6 +343,7 @@ function Editor:init()
             self.hint_slot, -- (Kindle 4: what the keys do)
             VerticalSpan:new{ width = S(8) },
             self.input,
+            self.floating and VerticalSpan:new{ width = S(8) } or nil,
         }
     else
         column = VerticalGroup:new{ align = "center",
@@ -242,13 +353,75 @@ function Editor:init()
             self.bar_slot, -- at the bottom: ▼ from the last line reaches it, ▲ goes back
             VerticalSpan:new{ width = S(8) },
             self.hint_slot,
+            self.floating and VerticalSpan:new{ width = S(6) } or nil,
         }
     end
-    self[1] = FrameContainer:new{
-        width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
-        column,
-    }
+    if self.floating then
+        -- a window: what's under it (the book, Home) stays on the screen around it
+        self.frame = FrameContainer:new{ padding = 0, bordersize = Size.border.window, radius = Size.radius.window,
+            background = Blitbuffer.COLOR_WHITE, column }
+        self[1] = VerticalGroup:new{ align = "left", VerticalSpan:new{ width = self.box.y },
+            HorizontalGroup:new{ HorizontalSpan:new{ width = self.box.x }, self.frame } }
+        if Touch.on() then
+            self.ges_events = { TapOutside = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
+        end
+    else
+        self[1] = FrameContainer:new{
+            width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+            column,
+        }
+    end
     self:drawChrome()
+end
+
+--- A quick note's window without its text box: title, toolbar, key hints,
+--- the spaces between, the text box's own frame and the window's border.
+function Editor:floatingChrome()
+    local around_text = 2 * (S(8) + Size.border.thin) + 2 * Size.border.window
+    if self.vk then return self.title_h + self.tool_h + self.footer_h + S(8) + S(8) + around_text end
+    return self.title_h + S(10) + self.tool_h + S(8) + self.footer_h + S(6) + around_text
+end
+
+--- A tap outside the quick note's window: as Back (asks to save when
+--- something was written).
+function Editor:onTapOutside(_arg, ges)
+    local d = self.frame and self.frame.dimen
+    if not (d and ges and ges.pos) or ges.pos:intersectWith(d) then return false end
+    return self:onCloseDialog()
+end
+
+--- What a redraw refreshes: the window, or the page.
+function Editor:area()
+    if self.frame and self.frame.dimen then return self.frame.dimen end
+    return self.dimen
+end
+
+--- Touch and the Kindle 4: KOReader keeps the on-screen keyboard above every
+--- other window, so it hid the lower half of `dialog` (Save this note?, Add a
+--- tag, New tag). It steps aside while the dialog is open and comes back
+--- once it's closed, if the note is still the window in front.
+function Editor:keyboardAside(dialog)
+    if not (self.vk and self.input and self.input.onCloseKeyboard) then return end
+    self.input:onCloseKeyboard()
+    local closed = dialog.onCloseWidget
+    dialog.onCloseWidget = function(d, ...)
+        local r
+        if closed then r = closed(d, ...) end
+        UIManager:nextTick(function() self:keyboardBack() end)
+        return r
+    end
+end
+
+--- The keyboard again, when the editor is in front (only the keyboard or a
+--- message above it) and not on the Kindle 4's toolbar.
+function Editor:keyboardBack()
+    if not (self.vk and self.input and self.input.onShowKeyboard) or (self.dpad and self.focus_tool) then return end
+    local st = UIManager._window_stack or {}
+    for i = #st, 1, -1 do
+        local w = st[i].widget
+        if w == self then self.input:onShowKeyboard(); return true end
+        if w.name ~= "VirtualKeyboard" and not w.toast then return end
+    end
 end
 
 --- Touch: `widget`, tapped, runs `fn`.
@@ -266,12 +439,12 @@ function Editor:onCloseWidget()
 end
 
 function Editor:onShow()
-    -- touch: the on-screen keyboard, at once
-    if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    -- touch: the on-screen keyboard, at once (not when the drawing screen opens over it first)
+    if self.vk and not self.drawing_first then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
 end
 
 function Editor:drawChrome()
-    local sw = self.dimen.w
+    local sw = self.win_w
     local margin = self.margin
     self.title_slot:clear()
     self.title_slot[1] = OverlapGroup:new{
@@ -285,6 +458,21 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
+                self:canDraw() and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
+                    background = self:hasDrawing() and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
+                    TextWidget:new{ text = self:drawingLabel(),
+                        face = Font:getFace("cfont", 15), bold = true,
+                        fgcolor = self:hasDrawing() and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
+                    function() self:openDrawing() end)
+                    or HorizontalSpan:new{ width = 0 },
+                HorizontalSpan:new{ width = self:canDraw() and S(8) or 0 },
+                self.has_spaces and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
+                    bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 3)) and Size.border.thick
+                        or (self.dpad and Size.border.thin) or 0,
+                    TextWidget:new{ text = self:spaceLabel() .. ((self.touch or self.dpad) and "  \u{25BE}" or "  (Alt+A)"),
+                        face = Font:getFace("cfont", 15), max_width = math.floor(sw * 0.3) } }, function() self:onShortcut("A") end)
+                    or HorizontalSpan:new{ width = 0 },
+                HorizontalSpan:new{ width = self.has_spaces and S(8) or 0 },
                 tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 2)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
@@ -294,7 +482,7 @@ function Editor:drawChrome()
     }
     local bar = HorizontalGroup:new{ align = "center" }
     local save_w = S(70)
-    local tools = NoteEditor.TOOLS
+    local tools = self:tools()
     local tool_w = math.floor((self.inner - save_w - S(10)) / #tools)
     for i, t in ipairs(tools) do
         local focused = self.focus_tool == i
@@ -329,7 +517,8 @@ function Editor:drawChrome()
     local hint
     if self.dpad then
         hint = self.focus_tool and (_("\u{25C0} \u{25B6} choose   Press apply   Menu: back to the text"))
-            or _("Menu: toolbar, visibility, save     Back: close")
+            or (self.has_spaces and _("Menu: toolbar, visibility, space, save     Back: close")
+                or _("Menu: toolbar, visibility, save     Back: close"))
     elseif t then
         hint = t.help .. "  (Alt+" .. t.key .. ")   \u{00B7}   \u{25C0} \u{25B6} " .. _("choose") .. "   " .. _("Press apply")
             .. "   Menu " .. _("text")
@@ -346,19 +535,31 @@ end
 
 function Editor:redraw()
     self:drawChrome()
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
-function Editor:text() return self.input:getText() or "" end
+--- The toolbar's tools: the formatting tools on touch Kindles, the Markdown ones otherwise.
+function Editor:tools() return self.rich and NoteEditor.RICH_TOOLS or NoteEditor.TOOLS end
+
+--- The note as Markdown (formatted: written back as Memos' rich editor writes it).
+function Editor:text()
+    if self.rich then return require("gzreader_blocks").write(self.doc) end
+    return self.input:getText() or ""
+end
 
 function Editor:apply(new_text, cursor)
     self.input:setText(new_text, true)
     self.input.is_text_edited = true
     self.input:moveCursorToCharPos(cursor)
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
 function Editor:useTool(i)
+    if self.rich then
+        local t = NoteEditor.RICH_TOOLS[i]
+        if not t then return self:save() end
+        return self.input:useTool(t.id)
+    end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
     local pos = self.input.charpos or (#self.input.charlist + 1)
@@ -395,7 +596,8 @@ function Editor:pickTag(pos)
     local rows = {}
     local function insert(tag)
         tag = NoteEditor.cleanTag(tag)
-        if tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
+        if tag ~= "" and self.rich then self.input:insertTag(tag)
+        elseif tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
         self:backToText()
     end
     for i, t in ipairs(self.tags or {}) do
@@ -413,12 +615,14 @@ function Editor:pickTag(pos)
                     UIManager:close(d)
                     insert(v)
                 end } } } }
+        self:keyboardAside(d)
         UIManager:show(d)
         d:onShowKeyboard()
     end } }
     dialog = ButtonDialog:new{ title = _("Add a tag"), buttons = rows }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
 end
 
@@ -426,12 +630,11 @@ end
 function Editor:onShortcut(k)
     if k == "S" then self:save(); return true end
     if k == "V" then
-        local i = 1
-        for j, v in ipairs(NoteEditor.VISIBILITY) do if v == self.visibility then i = j end end
-        self.visibility = NoteEditor.VISIBILITY[i % #NoteEditor.VISIBILITY + 1]
+        self.visibility = NoteEditor.nextVisibility(self.visibility, self.space)
         self:redraw()
         return true
     end
+    if k == "A" and self.has_spaces then self:pickSpace(); return true end
     for i, t in ipairs(NoteEditor.TOOLS) do
         if t.key == k then self:useTool(i); return true end
     end
@@ -460,8 +663,12 @@ function Editor:onToolbarToggle()
     return true
 end
 
---- The toolbar's last cell: Save, then (Kindle 4) who can see the note.
-function Editor:lastTool() return #NoteEditor.TOOLS + (self.dpad and 2 or 1) end
+--- The toolbar's last cell: Save, then (Kindle 4) who can see the note and
+--- its space.
+function Editor:lastTool()
+    if not self.dpad then return #NoteEditor.TOOLS + 1 end
+    return #NoteEditor.TOOLS + (self.has_spaces and 3 or 2)
+end
 
 function Editor:onToolUp()
     if self.focus_tool then self:backToText() end
@@ -485,6 +692,7 @@ end
 function Editor:onToolPress()
     if not self.focus_tool then return false end
     if self.focus_tool == #NoteEditor.TOOLS + 2 then self:onShortcut("V"); return true end
+    if self.focus_tool == #NoteEditor.TOOLS + 3 then self:onShortcut("A"); return true end
     self:useTool(self.focus_tool)
     return true
 end
@@ -502,18 +710,150 @@ function Editor:onKeyPress(key)
 end
 
 function Editor:changed()
-    return self:text() ~= self.original or self.visibility ~= self.original_vis
+    return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
+        or #self:drawingChanges() > 0
+end
+
+--- Draw: on touch Kindles, when the caller allows it (a new note, or one
+--- already in Memos: its drawing, or a first one).
+function Editor:canDraw()
+    return self.touch and self.can_draw == true
+end
+
+--- The Draw chip: Draw, Drawing, or Drawings (n).
+function Editor:drawingLabel()
+    local n = self:drawingCount()
+    if n == 0 then return "\u{270E} " .. _("Draw") end
+    if n == 1 then return "\u{270E} " .. _("Drawing") end
+    return "\u{270E} " .. T(_("Drawings (%1)"), n)
+end
+
+--- The note has drawings (drawn here, or its own from Memos, not taken off): how many.
+function Editor:drawingCount()
+    if not self.pages then return #(self.drawing_atts or {}) end
+    local n = 0
+    for _i, p in ipairs(self.pages) do if not p.removed then n = n + 1 end end
+    return n
+end
+function Editor:hasDrawing() return self:drawingCount() > 0 end
+
+--- What Save sends about the drawings: { att, path, filename } for each
+--- drawn or edited, { att, removed = true } for each taken off.
+function Editor:drawingChanges()
+    local out = {}
+    for _i, p in ipairs(self.pages or {}) do
+        if p.removed and p.att then out[#out + 1] = { att = p.att, removed = true }
+        elseif p.changed and p.path then out[#out + 1] = { att = p.att, path = p.path, filename = p.filename } end
+    end
+    -- the pages' order (Memos lists a note's attachments newest first: put back in this order)
+    if #out > 0 then
+        out.order = {}
+        for _i, p in ipairs(self.pages or {}) do
+            local f = p.filename or (p.att and p.att.filename)
+            if not p.removed and f then out.order[#out.order + 1] = f end
+        end
+    end
+    return out
+end
+
+--- Opens the drawing screen (the note's drawings, or a new page); the
+--- keyboard goes away meanwhile and comes back after. `page`: the page to show first.
+function Editor:openDrawing(page)
+    if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+    local function back()
+        self:redraw()
+        if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    end
+    local DrawScreen = require("gzreader_drawscreen")
+    if not self.pages then
+        -- the note's own drawings, from the copies the Notes tab keeps
+        local Memos = require("gzreader_memos")
+        local pages = {}
+        for _i, att in ipairs(self.drawing_atts or {}) do
+            local scene, err = require("gzreader_drawing").readFile(Memos.filePath(att))
+            if not scene then
+                Log.warn("notes: drawing not opened:", tostring(err))
+                back()
+                return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 4,
+                    text = err == "no-chunk" and _("This picture isn't a drawing that can be edited.")
+                        or _("The drawing isn't on the Kindle yet. Open the note on Wi‑Fi first.") })
+            end
+            pages[#pages + 1] = { att = att, filename = att.filename }
+        end
+        self.pages = pages
+    end
+    DrawScreen.show{
+        pages = self.pages,
+        start = page,
+        on_done = function(res)
+            self.pages = res
+            back()
+        end,
+        on_cancel = function()
+            if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
+            back()
+        end,
+    }
+end
+
+--- The drawings' new files, gone (a note discarded).
+function Editor:dropDrawing()
+    for _i, p in ipairs(self.pages or {}) do
+        if p.path and p.changed then os.remove(p.path) end
+    end
+    self.pages = nil
+end
+
+--- The space chip's text: the note's space, or "No space".
+function Editor:spaceLabel()
+    if not self.space then return _("No space") end
+    return (self.space_title and self.space_title(self.space)) or self.space:match("^spaces/(.+)$") or self.space
+end
+
+--- Choose the note's space (Alt+A, a tap): No space, or one of yours.
+--- (Touch: the on-screen keyboard steps aside while the list is open, or it
+--- would hide the list's last rows; it comes back after.)
+function Editor:pickSpace()
+    local dialog
+    local kb = self.touch and self.input
+    if kb then kb:onCloseKeyboard() end
+    local function back() if kb then kb:onShowKeyboard() end end
+    local function row(name, text)
+        return { { text = text .. (self.space == name and "  \u{2713}" or ""), align = "left", callback = function()
+            UIManager:close(dialog)
+            self.space = name
+            self.visibility = NoteEditor.visibilityAfterMove(self.visibility, name)
+            self:redraw()
+            back()
+        end } }
+    end
+    local rows = { row(nil, _("No space")) }
+    local listed = false
+    for _i, sp in ipairs(self.spaces or {}) do
+        rows[#rows + 1] = row(sp.name, sp.title)
+        if sp.name == self.space then listed = true end
+    end
+    if self.space and not listed then rows[#rows + 1] = row(self.space, self:spaceLabel()) end
+    dialog = ButtonDialog:new{ title = _("Space"), buttons = rows, tap_close_callback = back }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
 end
 
 function Editor:save()
     local text = self:text():gsub("%s+$", "")
-    if text == "" then
+    if text == "" and not self:hasDrawing() then
         UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
         return
     end
     self.saved = true
     UIManager:close(self, "full")
-    if self.on_save then self.on_save(text, self.visibility, self.visibility ~= self.original_vis) end
+    if self.on_save then
+        local drawings = self:drawingChanges()
+        self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
+            #drawings > 0 and drawings or nil)
+    end
 end
 
 --- Back (from the text box or the toolbar).
@@ -522,22 +862,49 @@ function Editor:onCloseDialog()
     local dialog
     dialog = ButtonDialog:new{ title = _("Save this note?"), buttons = {
         { { text = _("Save"), align = "left", callback = function() UIManager:close(dialog); self:save() end } },
-        { { text = _("Discard"), align = "left", callback = function() UIManager:close(dialog); UIManager:close(self, "full") end } },
+        { { text = _("Discard"), align = "left", callback = function()
+            UIManager:close(dialog); self:dropDrawing(); UIManager:close(self, "full")
+        end } },
         { { text = _("Keep writing"), align = "left", callback = function() UIManager:close(dialog) end } },
     } }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
     return true
 end
 
---- opts: memo (nil for a new note), tags ({ {tag=, count=} }), on_save(text, visibility, vis_changed).
+--- opts: memo (nil for a new note), tags ({ {tag=, count=} }), spaces
+--- ({ { name, title } }: your Memos spaces, or nil), space (a new note's:
+--- the one the board shows), space_title(name),
+--- can_draw (drawings: touch Kindles), drawing_atts (the note's drawings
+--- in Memos), open_drawing (open them, or a new page, at once),
+--- on_save(text, visibility, vis_changed, space, space_changed, drawings):
+--- drawings = { { att, path, filename } (drawn or edited: waiting to be
+--- sent), { att, removed = true } } or nil when they're as they were.
 function NoteEditor.show(opts)
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save }
+    local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
+        spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
+        drawing_atts = atts }
+    -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
+    -- only it is drawn; the text page shows when Done or Cancel goes back to it)
+    e.drawing_first = opts.open_drawing and e:canDraw() or nil
     UIManager:show(e, "full")
+    if e.drawing_first then e:openDrawing() end
     return e
 end
 
 NoteEditor.Editor = Editor
+
+--- The same editor as a window over the screen (the quick panel's Quick
+--- note): the book or Home stays visible around it. Same opts as show.
+function NoteEditor.showFloating(opts)
+    local o = { floating = true, covers_fullscreen = false }
+    for k, v in pairs(opts) do o[k] = v end
+    local e = Editor:new(o)
+    UIManager:show(e, function() return "ui", e:area() end)
+    return e
+end
 
 return NoteEditor

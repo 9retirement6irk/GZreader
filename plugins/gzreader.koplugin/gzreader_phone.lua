@@ -8,6 +8,10 @@ and for sending books.
 - Calendar: a CalDAV account (connect, disconnect, show or hide each of its
   calendars) and calendar links (add, rename, replace the link, show or hide,
   remove).
+- Immich: address and API key, the album, what its pictures are for (the
+  sleep screen, the Home wallpaper; gzreader_immich.lua), or disconnect.
+- Sleep screen: pictures made in the browser for this screen (grey, its
+  size) go into the screensavers folder; which sleep screen; take off ones.
 - Send books: files from the browser go into the GZreader folder.
 - Diagnostics (while diagnostic logging is on): download the log.
 
@@ -44,6 +48,7 @@ local Phone = {
     MAX_FAILED = 10,    -- failed sign-ins (all services) before the page closes
     PIN_TRIES = 5,      -- wrong PINs before the PIN stops working
     MAX_MB = 1024,      -- per book
+    MAX_PICTURE_MB = 20, -- per sleep screen picture
     ACCEPT = ".epub,.pdf,.mobi,.azw,.azw3,.prc,.fb2,.fbz,.cbz,.cbr,.cbt,.djvu,.txt,.rtf,.html,.htm,.doc,.docx,.odt,.md,.chm,.zip",
     session = nil,
 }
@@ -147,6 +152,21 @@ local function state(S, flash)
         st.plex = { connected = ps.token ~= nil and ps.server ~= nil, username = ps.username, server = (ps.server or {}).name,
             servers = servers, error = sec == "music" and flash.error or nil }
     end
+    -- Immich: the album's pictures for the sleep screen and the wallpaper
+    local im = store.immich or {}
+    local Immich = require("gzreader_immich")
+    local okw, W = pcall(require, "common/gz_immich_wallpaper")
+    local SleepMode = require("gzsleepmode")
+    st.immich = { connected = Immich:new(im):isConnected(), user = im.user, host = host(im.server),
+        albums = im.albums or {}, album = im.album, count = Immich.count(plugin), counts = Immich.COUNTS,
+        pictures = #Immich.have(), at = im.at, refresh_error = im.error,
+        sleep = SleepMode.current(G_reader_settings), wallpaper = okw and W.isOn() or false,
+        form = sec == "immich" and flash.form or { server = im.server }, error = sec == "immich" and flash.error or nil }
+    -- the sleep screen's pictures (the screensavers folder)
+    local Usb = require("gzreader_usbsync")
+    st.sleep = { mode = SleepMode.current(G_reader_settings), names = Usb.screensavers(), screen = Usb.screenSize(),
+        immich = im.album ~= nil, max_mb = Phone.MAX_PICTURE_MB, received = S.pictures,
+        error = sec == "sleep" and flash.error or nil }
     -- access (Cloudflare)
     local Access = require("gzreader_access")
     local ac = store.access or {}
@@ -157,6 +177,12 @@ local function state(S, flash)
     st.access = { enabled = ac.enabled == true, key = ac.key, hosts = ac.hosts, auto = auto, cf_id = ac.cf_id,
         cf_secret_set = ac.cf_secret ~= nil, rule = ac.key and Access.ruleExpression(plugin) or nil,
         error = sec == "access" and flash.error or nil }
+    -- Home Assistant (the House tab): not on the Kindles without Wi-Fi
+    if not require("gzreader_usbsync").noWifi() then
+        local hs = store.homeassistant or {}
+        st.house = { connected = hs.server ~= nil and hs.token ~= nil, name = hs.name, host = host(hs.server),
+            form = sec == "house" and flash.form or { server = hs.server }, error = sec == "house" and flash.error or nil }
+    end
     st.start = S.opts.section or "grimmory"
     -- diagnostics: the log, while diagnostic logging is on
     if store.logging_disabled ~= true then st.diagnostics = { level = store.log_level } end
@@ -226,6 +252,66 @@ Phone.PORT80 = 80
 
 local function mb(bytes) return string.format("%.1f MB", (bytes or 0) / 1048576) end
 
+--- A sleep screen picture's name in the screensavers folder (`name` from
+--- the browser: letters, digits, spaces, - and _, then .png or .jpg; one
+--- already there gets " (2)"), or nil when it isn't a picture.
+function Phone.pictureName(dir, name)
+    if type(name) ~= "string" then return nil end
+    name = name:match("[^/\\]+$") or ""
+    local stem, ext = name:match("^(.-)%.(%w+)$")
+    ext = ext and ext:lower()
+    if not (ext == "png" or ext == "jpg" or ext == "jpeg") then return nil end
+    stem = stem:gsub("[^%w _%-%(%)]+", "-"):gsub("^[-%s.]+", ""):gsub("[-%s]+$", ""):sub(1, 40)
+    if stem == "" then stem = "picture" end
+    return Phone.freeName(dir, stem .. "." .. ext)
+end
+
+--- `name`, or "<name> (2).<ext>"… when one is there already.
+function Phone.freeName(dir, name)
+    local stem, ext = name:match("^(.-)(%.%w+)$")
+    local final, k = name, 2
+    while lfs.attributes(dir .. "/" .. final, "mode") do
+        final = (stem or name) .. " (" .. k .. ")" .. (ext or "")
+        k = k + 1
+    end
+    return final
+end
+
+--- The upload hook for a sleep screen picture (made to fit by the page).
+function Phone.pictureUpload(S, raw, length)
+    local Usb = require("gzreader_usbsync")
+    local dir = Usb.screensaverDir()
+    if lfs.attributes(dir, "mode") ~= "directory" then lfs.mkdir(dir) end
+    local name = Phone.pictureName(dir, raw)
+    if not name then return { error = 415, message = T(_("%1: not a picture (PNG or JPEG)."), tostring(raw or "?")) } end
+    if not length or length <= 0 then return { error = 411, message = T(_("%1: empty file."), name) } end
+    if length > Phone.MAX_PICTURE_MB * 1048576 then
+        return { error = 413, message = T(_("%1: too big (%2; up to %3 MB)."), name, mb(length), Phone.MAX_PICTURE_MB) }
+    end
+    local free = Phone.freeBytes(dir)
+    if free and free < length + 5 * 1048576 then
+        return { error = 507, message = T(_("%1: not enough space on the Kindle (%2 free)."), name, mb(free)) }
+    end
+    local tmp = dir .. "/.gz-upload-" .. require("gzreader_pairserver").randomToken(4) .. ".part"
+    return {
+        file = tmp,
+        done = function(ok, why)
+            if not ok then
+                os.remove(tmp)
+                Log.warn("phone: sleep screen picture not received:", tostring(why))
+                return 400, "text/plain", T(_("%1: the upload stopped (%2)."), name, tostring(why))
+            end
+            local final = Phone.freeName(dir, name) -- (another of that name may have come meanwhile)
+            os.rename(tmp, dir .. "/" .. final)
+            S.pictures[#S.pictures + 1] = final
+            S.changes.pictures = (S.changes.pictures or 0) + 1
+            Log.info("phone: sleep screen picture received,", length, "bytes")
+            toast(T(_("Sleep screen picture: %1"), final))
+            return 200, "text/plain", T(_("%1 is on the Kindle."), final)
+        end,
+    }
+end
+
 --- Open the page; opts.section ("grimmory", "notes", "calendar", "books")
 --- is where the phone starts; opts.on_close(changes) runs when it closes.
 function Phone.open(plugin, opts)
@@ -233,7 +319,7 @@ function Phone.open(plugin, opts)
     if Phone.session then return Phone.session end
     local PairServer, PairPage = require("gzreader_pairserver"), require("gzreader_pairpage")
     local Api = require("gzreader_api")
-    local S = { plugin = plugin, opts = opts, flashes = {}, failed = 0, received = {}, changes = {},
+    local S = { plugin = plugin, opts = opts, flashes = {}, failed = 0, received = {}, pictures = {}, changes = {},
         sso_cache = {}, last = os.time() }
     S.token = PairServer.randomToken(16)
     S.base = "/phone/" .. S.token
@@ -459,6 +545,25 @@ function Phone.open(plugin, opts)
         Log.info("access: key", ac.enabled and "on" or "off", "service token", ac.cf_id and "set" or "none")
         return back({ ok = true, text = _("Saved."), section = "access" })
     end
+    -- Home Assistant (gzreader_homeassistant.lua): address and long-lived token
+    routes["/house"] = function(form)
+        local HA = require("gzreader_homeassistant")
+        local ok, err = HA.connect(plugin, form.server or "", form.token or "")
+        if not ok then
+            if failedLogin() then return 200, "text/html", PairPage.gone() end
+            return back({ section = "house", error = err, form = { server = form.server } })
+        end
+        S.changes.house = true
+        local name = plugin.store.homeassistant.name or _("Home Assistant")
+        toast(T(_("House: connected to %1."), name))
+        return back({ ok = true, text = T(_("Connected to %1. Turn the House tab on in Settings → Connections → Home Assistant."), name), section = "house" })
+    end
+    routes["/house/disconnect"] = function()
+        require("gzreader_homeassistant").disconnect(plugin)
+        S.changes.house = true
+        toast(_("House: disconnected from Home Assistant."))
+        return back({ ok = true, text = _("Disconnected from Home Assistant."), section = "house" })
+    end
     routes["/memos"] = function(form)
         local ok, err = Notes().connect(plugin, form.server, form.token)
         if not ok then
@@ -469,6 +574,90 @@ function Phone.open(plugin, opts)
         Notes().notes = nil
         toast(T(_("Notes: connected to Memos as %1."), plugin.store.memos.user or "?"))
         return back({ ok = true, text = T(_("Notes connected to Memos as %1."), plugin.store.memos.user or "?"), section = "notes" })
+    end
+    -- Immich (gzreader_immich.lua)
+    local function Immich() return require("gzreader_immich") end
+    routes["/immich"] = function(form)
+        local ok, err = Immich().connect(plugin, form.server or "", form.key or "")
+        if not ok then
+            if failedLogin() then return 200, "text/html", PairPage.gone() end
+            return back({ section = "immich", error = err, form = { server = form.server } })
+        end
+        S.changes.immich = true
+        local st = plugin.store.immich
+        toast(_("Immich: connected."))
+        if st.album then Immich().refresh(plugin, { force = true }) end
+        return back({ ok = true, section = "immich", text = st.album and T(_("Connected to Immich. Album: %1."), st.album.name)
+            or T(_("Connected to Immich (%1 albums). Now choose an album."), #(st.albums or {})) })
+    end
+    routes["/immich/use"] = function(form)
+        local st = plugin.store.immich or {}
+        if not Immich():new(st):isConnected() then return back({ section = "immich", error = _("Connect Immich first.") }) end
+        local was = (st.album or {}).id
+        if form.album and form.album ~= "" then
+            for _i, a in ipairs(st.albums or {}) do if a.id == form.album then Immich().setAlbum(plugin, a) end end
+        end
+        local n = tonumber(form.count)
+        for _i, c in ipairs(Immich().COUNTS) do if c == n then st.count = n end end
+        local SleepMode = require("gzsleepmode")
+        local cur = SleepMode.current(G_reader_settings)
+        if form.sleep == "immich_auto" or form.sleep == "immich" then
+            SleepMode.use(G_reader_settings, form.sleep)
+        elseif form.sleep == "none" and (cur == "immich_auto" or cur == "immich") then
+            SleepMode.use(G_reader_settings, cur == "immich_auto" and "auto" or "random_image")
+        end
+        plugin:save()
+        local okw, W = pcall(require, "common/gz_immich_wallpaper")
+        if okw then
+            if form.wallpaper == "1" and not W.isOn() then W.turnOn(Immich().randomPicture())
+            elseif form.wallpaper ~= "1" and W.isOn() then W.turnOff() end
+        end
+        S.changes.immich = true
+        if st.album and (st.album.id ~= was or #Immich().have() == 0) then Immich().refresh(plugin, { force = true }) end
+        return back({ ok = true, section = "immich", text = st.album and T(_("Saved. Pictures from “%1” come to the Kindle in a minute."), st.album.name)
+            or _("Saved.") })
+    end
+    routes["/immich/albums"] = function()
+        local albums, err = Immich().client(plugin):albums()
+        if not albums then return back({ section = "immich", error = T(_("Couldn't get the albums from Immich (%1)."), tostring(err)) }) end
+        plugin.store.immich.albums = albums
+        plugin:save()
+        return back({ ok = true, section = "immich", text = T(_("%1 albums."), #albums) })
+    end
+    routes["/immich/refresh"] = function()
+        Immich().refresh(plugin, { force = true })
+        return back({ ok = true, section = "immich", text = _("Getting new pictures from the album…") })
+    end
+    routes["/immich/disconnect"] = function()
+        Immich().disconnect(plugin)
+        S.changes.immich = true
+        toast(_("Immich: disconnected."))
+        return back({ ok = true, section = "immich", text = _("Immich disconnected; its pictures are off the Kindle.") })
+    end
+    -- the sleep screen: which one, pictures taken off
+    routes["/sleep/mode"] = function(form)
+        local SleepMode = require("gzsleepmode")
+        local m = form.mode
+        if m == "auto" or m == "immich_auto" or m == "immich" then
+            SleepMode.use(G_reader_settings, m)
+        elseif m == "always" then
+            SleepMode.use(G_reader_settings, "random_image")
+        else
+            return back({ section = "sleep", error = _("Choose a sleep screen.") })
+        end
+        S.changes.sleep = true
+        return back({ ok = true, section = "sleep", text = _("Sleep screen saved.") })
+    end
+    routes["/sleep/remove"] = function(form)
+        local name = form.name or ""
+        local Usb = require("gzreader_usbsync")
+        local known = false
+        for _i, n in ipairs(Usb.screensavers()) do if n == name then known = true end end
+        if not known then return back({ section = "sleep", error = _("That picture isn't on the Kindle.") }) end
+        os.remove(Usb.screensaverDir() .. "/" .. name)
+        S.changes.sleep = true
+        Log.info("phone: sleep screen picture taken off")
+        return back({ ok = true, section = "sleep", text = T(_("%1 taken off."), name) })
     end
     routes["/memos/disconnect"] = function()
         Notes().disconnect(plugin)
@@ -608,6 +797,10 @@ function Phone.open(plugin, opts)
         -- books: the request body is the file
         upload = function(method, full_path, _headers, length)
             local path, query = full_path:match("^([^?]*)%??(.*)$")
+            if not done and method == "POST" and path == S.base .. "/sleep/upload" then
+                touch()
+                return Phone.pictureUpload(S, PairServer.parseForm(query).name, length)
+            end
             if done or method ~= "POST" or path ~= S.base .. "/upload" then return nil end
             touch()
             local dir = plugin:libraryDir()
@@ -712,9 +905,19 @@ function Phone.afterClose(S)
         lines[#lines + 1] = m.token and T(_("Notes: connected to Memos as %1."), m.user or "?") or _("Notes: disconnected.")
     end
     if ch.calendar then lines[#lines + 1] = _("Calendar: updated.") end
+    if ch.immich then
+        local im = plugin.store.immich or {}
+        lines[#lines + 1] = im.key and (im.album and T(_("Immich: album “%1”."), im.album.name) or _("Immich: connected (no album chosen yet)."))
+            or _("Immich: disconnected.")
+    end
+    if ch.pictures then lines[#lines + 1] = T(_("%1 sleep screen pictures received."), ch.pictures) end
     if ch.music then
         local ps = plugin.store.plex or {}
         lines[#lines + 1] = ps.token and T(_("Music: signed in to Plex as %1."), ps.username or "?") or _("Music: signed out of Plex.")
+    end
+    if ch.house then
+        local hs = plugin.store.homeassistant or {}
+        lines[#lines + 1] = hs.token and T(_("House: connected to %1."), hs.name or _("Home Assistant")) or _("House: disconnected.")
     end
     if ch.books then
         lines[#lines + 1] = T(_("%1 books received (the Downloads tab shows them)."), ch.books)

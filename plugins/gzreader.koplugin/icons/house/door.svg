@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800px" height="800px" viewBox="0 0 36 36" fill="none" stroke="#000000" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <title>door</title>
+    <path d="M9 31.5V4.5h18v27M5.25 31.5h25.5"/>
+    <circle cx="22.5" cy="18.75" r="1" fill="#000000"/>
+</svg>
