@@ -67,6 +67,12 @@ echo "== the drawing screen's input (finger; pen only, palm rejection)"
 (cd "$T" && luajit sketch_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; the formatted page)"
+(cd "$T" && luajit blocks_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+(cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== Settings → Downloads → Books: Double-tap only on touch Kindles"
 (cd "$T" && luajit settings_doubletap_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

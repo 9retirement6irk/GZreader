@@ -334,6 +334,16 @@ function E.finger(points, sec)
     for i = 2, n do move(points[i][1], points[i][2], sec * (i - 1) / n) end
     up(sec + 0.02)
 end
+--- Hold at (x1, y1), then drag to (x2, y2) and lift (KOReader: hold, hold_pan, hold_release).
+function E.holdDrag(x1, y1, x2, y2)
+    say("hold and drag", math.floor(x1), math.floor(y1), "->", math.floor(x2), math.floor(y2))
+    -- (in real time: KOReader's hold comes from a timer, not the events' times)
+    down(x1, y1)
+    for i = 1, 5 do
+        later(1.0 + 0.15 * i, function() move(x1 + (x2 - x1) * i / 5, y1 + (y2 - y1) * i / 5) end)
+    end
+    later(2.0, up)
+end
 --- A finger put down and left there (a hand resting on the screen), and lifted.
 function E.fingerDown(x, y, dt) say("finger down", math.floor(x), math.floor(y)); down(x, y, dt) end
 function E.fingerUp(dt) say("finger up"); up(dt) end

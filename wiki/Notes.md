@@ -62,8 +62,36 @@ API to `/api` are found too.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
   backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and
-  the characters themselves. The editor here shows the note as it's written.
-- **Editor:** a full page with a toolbar at the bottom: List, Check, Num,
+  the characters themselves. On touch Kindles the editor shows them that way
+  too (see **Editing on a touch Kindle**); on keyboard Kindles the editor
+  shows the note as it's written.
+- **Editing on a touch Kindle** works like Memos' web editor. The note shows
+  formatted on one page (headings big, lists with • and numbers, checklists
+  with ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see,
+  and you type straight into it.
+  - **Tap** to put the cursor there. Tap a checklist item's **☐** to tick it.
+  - **Hold** a word to select it, and drag to stretch the selection over
+    words and lines. Typing replaces the selection; ⌫ deletes it.
+  - The keyboard has **⮠ Enter** and **← →**. Enter starts a new line (the
+    next item in a list; Enter on an empty item ends the list). ⌫ at the
+    start of a line joins it to the line before. Swipe up or down to scroll a
+    long note.
+  - The toolbar works on the selection, or on the cursor's line or word:
+    - **H Head** makes the lines a heading, then a smaller one, then text again.
+    - **• List**, **☐ Check** and **1. Num** make the lines list items; tap the
+      same one again to make them text.
+    - **B** and ***I*** make the selection bold or italic (or the word at the
+      cursor; with no word there, what you type next).
+    - **# Tag** adds a tag at the cursor.
+  - Code, quotes, tables and pictures show as their Markdown in grey and edit
+    as text.
+  - Save writes the note the way Memos' rich editor writes it. Lines you
+    didn't change are kept exactly as they were.
+- **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
+  in boxes where you type several lines (notes, KOReader's text editor).
+  One-line boxes (search, names, passwords) keep the shorter bottom row, with
+  Enter on the symbols page.
+- **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
   is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼

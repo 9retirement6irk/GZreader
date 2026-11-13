@@ -21,6 +21,9 @@ toolbar adds it for you:
   (`gzreader_drawscreen.lua`), sent to Memos as a drawing you can edit there.
   A note that has a drawing opens it for editing right away (Edit edits the
   drawing; Done goes back to the text); Done over the old one replaces it.
+- Touch Kindles edit the note formatted, as in Memos' web editor
+  (`gzreader_richedit.lua`): no Markdown markers or `&nbsp;` to see; hold
+  and drag to select, and the toolbar formats the selection.
 - Back: asks whether to save when something changed.
 ]]
 
@@ -61,6 +64,20 @@ NoteEditor.TOOLS = {
     { id = "italic", label = "I", key = "K", wrap = "*", help = _("italic") },
     { id = "bold", label = "B", key = "B", wrap = "**", help = _("bold") },
     { id = "tag", label = "# " .. _("Tag"), key = "G", help = _("add a tag") },
+}
+
+-- Touch Kindles edit the note formatted (Memos' web editor); false: Markdown, as on keyboard Kindles.
+NoteEditor.RICH = true
+
+-- The toolbar on touch Kindles (the formatted page): on the selection, or the cursor's line or word.
+NoteEditor.RICH_TOOLS = {
+    { id = "heading", label = "H " .. _("Head") },
+    { id = "bullet", label = "\u{2022} " .. _("List") },
+    { id = "task", label = "\u{2610} " .. _("Check") },
+    { id = "ordered", label = "1. " .. _("Num") },
+    { id = "bold", label = "B" },
+    { id = "italic", label = "I" },
+    { id = "tag", label = "# " .. _("Tag") },
 }
 
 NoteEditor.VISIBILITY = { "PRIVATE", "PROTECTED", "PUBLIC" }
@@ -263,12 +280,34 @@ function Editor:init()
     self.vk = self.touch or self.dpad
     -- (taps and keys reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
     if self.vk then self.is_always_active = true end
+    -- touch: the note formatted, typed into as in Memos' web editor
+    -- (`gzreader_richedit.lua`; Markdown when it can't be read that way).
+    -- (Not in a window over the screen: a quick note keeps its text box.)
+    if self.touch and NoteEditor.RICH and not self.floating then
+        local ok, doc = pcall(require("gzreader_blocks").parse, self.original)
+        if ok then
+            self.rich = true
+            self.doc = doc
+        else
+            Log.warn("notes: not read as blocks, editing Markdown:", tostring(doc))
+        end
+    end
     local function box(h)
+        -- (the formatted page: made once, its own height above its keyboard)
+        if self.rich then
+            self.rich_input = self.rich_input or require("gzreader_richedit"):new{
+                width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
+                doc = self.doc, editor = self, at_start = self.memo == nil,
+                hint = _("Write a note. #words become tags."),
+            }
+            return self.rich_input
+        end
         return makeInput(self, {
             text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
             face = Font:getFace("cfont", 20), parent = self, focused = true,
             padding = S(8), margin = 0, bordersize = Size.border.thin,
             hint = _("Write a note. #words become tags."),
+            gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
         })
     end
     if self.floating and not self.vk then
@@ -439,7 +478,7 @@ function Editor:drawChrome()
     }
     local bar = HorizontalGroup:new{ align = "center" }
     local save_w = S(70)
-    local tools = NoteEditor.TOOLS
+    local tools = self:tools()
     local tool_w = math.floor((self.inner - save_w - S(10)) / #tools)
     for i, t in ipairs(tools) do
         local focused = self.focus_tool == i
@@ -495,7 +534,14 @@ function Editor:redraw()
     UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
-function Editor:text() return self.input:getText() or "" end
+--- The toolbar's tools: the formatting tools on touch Kindles, the Markdown ones otherwise.
+function Editor:tools() return self.rich and NoteEditor.RICH_TOOLS or NoteEditor.TOOLS end
+
+--- The note as Markdown (formatted: written back as Memos' rich editor writes it).
+function Editor:text()
+    if self.rich then return require("gzreader_blocks").write(self.doc) end
+    return self.input:getText() or ""
+end
 
 function Editor:apply(new_text, cursor)
     self.input:setText(new_text, true)
@@ -505,6 +551,11 @@ function Editor:apply(new_text, cursor)
 end
 
 function Editor:useTool(i)
+    if self.rich then
+        local t = NoteEditor.RICH_TOOLS[i]
+        if not t then return self:save() end
+        return self.input:useTool(t.id)
+    end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
     local pos = self.input.charpos or (#self.input.charlist + 1)
@@ -541,7 +592,8 @@ function Editor:pickTag(pos)
     local rows = {}
     local function insert(tag)
         tag = NoteEditor.cleanTag(tag)
-        if tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
+        if tag ~= "" and self.rich then self.input:insertTag(tag)
+        elseif tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
         self:backToText()
     end
     for i, t in ipairs(self.tags or {}) do
