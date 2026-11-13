@@ -10,7 +10,8 @@ servers, in pages:
 3. **Music**: your Plex music ([Music](Music)).
 
 Audiobooks and Music are only on Kindles with a speaker or headphone jack
-(Kindle 2, 3, DX, Touch); the others have the Books page alone.
+(Kindle 2, 3, DX, Touch); the others have the Books page alone, with no
+strip under the title: the search bar sits right below it.
 
 ![The Catalog's Books page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-books.png) ![A book's page: Download, or Download & open](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/download-confirm.png)
 
