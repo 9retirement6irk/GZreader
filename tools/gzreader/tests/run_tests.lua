@@ -6811,13 +6811,19 @@ print("Notes (Memos v0.31)")
     -- the quick panel's Quick note (from a book: the board never loaded)
     do
         local NEq = require("gzreader_noteeditor")
-        local saved_show, qn_opts = NEq.show, nil
-        NEq.show = function(o) qn_opts = o; return o end
+        local saved_show, saved_float, qn_opts, qn_how = NEq.show, NEq.showFloating, nil, nil
+        NEq.show = function(o) qn_opts, qn_how = o, "page"; return o end
+        NEq.showFloating = function(o) qn_opts, qn_how = o, "window"; return o end
         Notes.notes, Notes.board, Notes.last_sync = nil, nil, os.time()
         plugin.store.memos.tag_counts = { reading = 3, travel = 5 }
         Notes.quickNote(plugin)
         check(qn_opts and qn_opts.memo == nil and qn_opts.tags[1] and qn_opts.tags[1].tag == "travel" and qn_opts.tags[2].tag == "reading",
             "Quick note: the new-note editor, your tags from Memos' counts (the notes aren't loaded)")
+        check(qn_how == "window", "…in a window over the screen, not the full page")
+        local qn_kept = qn_opts
+        Notes.edit(plugin)
+        check(qn_how == "page", "the Notes tab's New note: still the full page")
+        qn_opts = qn_kept
         local before_list = select(2, mctl("GET", "/__state"):gsub("GET /api/memos", ""))
         local shown_before = #UI.shown
         local sched_before = {}
@@ -6840,7 +6846,47 @@ print("Notes (Memos v0.31)")
         Notes.loadCache(plugin)
         local tags_loaded = Notes.allTags(plugin)
         check(#tags_loaded > 0 and type(Notes.notes) == "table", "with the notes loaded, tags come from them")
-        NEq.show = saved_show
+        NEq.show, NEq.showFloating = saved_show, saved_float
+
+        -- the quick note's window: where it goes and how big
+        local id = function(px) return px end
+        local k3 = NEq.floatingBox(600, 800, 0, 150, id)
+        check(k3.w == 560 and k3.x == 20 and k3.text_h == 224 and k3.y == math.floor((800 - 374) / 2),
+            "quick note window, Kindle 3: 560 wide, centred, a text box a quarter of the screen tall")
+        local kt = NEq.floatingBox(600, 800, 320, 110, id)
+        check(kt.y >= 16 and kt.y + kt.h <= 800 - 320 - 16 and kt.text_h == 224,
+            "touch Kindle: the window fits above the on-screen keyboard")
+        local small = NEq.floatingBox(600, 800, 420, 300, id)
+        check(small.text_h == 60 and small.y >= 16, "little room above the keyboard: a smaller text box (60 at least)")
+        local pw_s = function(px) return math.ceil(px * 1072 / 600) end -- (as KOReader scales on a Paperwhite 3)
+        local pw = NEq.floatingBox(1072, 1448, 520, pw_s(110), pw_s)
+        check(pw.w == pw_s(560) and pw.w < 1072 - 2 * pw_s(16) and pw.y + pw.h <= 1448 - 520 and pw.x == math.floor((1072 - pw.w) / 2),
+            "Paperwhite 3: as wide as on a Kindle 3 (scaled), a margin each side, above the keyboard")
+        local land = NEq.floatingBox(1448, 1072, 0, pw_s(150), pw_s)
+        check(land.w == pw_s(560) and land.x == math.floor((1448 - land.w) / 2), "landscape: no wider than a page")
+        -- a tap outside the window closes it as Back does (real geometry here)
+        ;(function()
+            local saved_m = { ["ui/geometry"] = package.loaded["ui/geometry"], optmath = package.loaded["optmath"] }
+            package.loaded["optmath"] = { round = function(x) return math.floor(x + 0.5) end }
+            local okg, G = pcall(dofile, arg[5] .. "/frontend/ui/geometry.lua") -- (arg[5]: KOReader)
+            for k, v in pairs(saved_m) do package.loaded[k] = v end
+            if not okg then return check(false, "real geometry: " .. tostring(G)) end
+            local E2, closed = NEq.Editor, 0
+            local win = setmetatable({ frame = { dimen = G:new{ x = 20, y = 200, w = 560, h = 380 } },
+                dimen = G:new{ x = 0, y = 0, w = 600, h = 800 }, onCloseDialog = function() closed = closed + 1; return true end },
+                { __index = function(_t, k) return rawget(E2, k) end })
+            local function tap(x, y) return win:onTapOutside(nil, { pos = G:new{ x = x, y = y, w = 0, h = 0 } }) end
+            check(tap(300, 100) and closed == 1 and tap(300, 700) and closed == 2,
+                "a tap above or below the quick note's window: as Back (asks to save if something was written)")
+            check(not tap(300, 400) and closed == 2, "…a tap inside it isn't")
+            check(win:area() == win.frame.dimen, "the window redraws only itself (the book around it stays)")
+            local page = setmetatable({ dimen = win.dimen }, { __index = function(_t, k) return rawget(E2, k) end })
+            check(page:area() == win.dimen and not page:onTapOutside(nil, { pos = G:new{ x = 1, y = 1, w = 0, h = 0 } }),
+                "the full-page editor: unchanged")
+        end)()
+        local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(esrc:find('local o = { floating = true, covers_fullscreen = false }', 1, true) ~= nil,
+            "the window doesn't cover the screen: the book or Home under it stays drawn")
     end
 
     ;(function() -- Memos v0.31's spaces: Filter → Space…, a note's space when writing it

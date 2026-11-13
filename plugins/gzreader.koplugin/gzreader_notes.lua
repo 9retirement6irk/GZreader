@@ -1508,10 +1508,13 @@ function Notes.newNoteSpace()
     return f.kind == "space" and f.value ~= "" and f.value or nil
 end
 
---- New note (memo nil) or edit one: the full-page editor.
+--- New note (memo nil) or edit one: the full-page editor, or with
+--- opts.floating a window over the screen (the quick panel's Quick note).
 --- opts.on_created(): after a new note was saved (queued).
 function Notes.edit(plugin, memo, opts)
-    require("gzreader_noteeditor").show{
+    local NoteEditor = require("gzreader_noteeditor")
+    local show = opts and opts.floating and NoteEditor.showFloating or NoteEditor.show
+    show{
         plugin = plugin,
         memo = memo,
         tags = Notes.allTags(plugin),
@@ -1543,12 +1546,13 @@ function Notes.edit(plugin, memo, opts)
     }
 end
 
---- The quick panel's Quick note tile: a new note over whatever is on the
---- screen (a book, Home, Settings). Save queues it and sends it in the
---- background; closing the editor leaves you where you were.
+--- The quick panel's Quick note tile: a new note in a window over whatever
+--- is on the screen (a book, Home, Settings), which stays visible around it.
+--- Save queues it and sends it in the background; closing the editor leaves
+--- you where you were.
 function Notes.quickNote(plugin)
     if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
-    return Notes.edit(plugin, nil, { on_created = function()
+    return Notes.edit(plugin, nil, { floating = true, on_created = function()
         info(require("gzreader_net").usb and _("Note saved. It goes to Memos at the next sync with your computer.")
             or _("Note saved. It goes to Memos as soon as GZreader can reach it."), 3)
     end })

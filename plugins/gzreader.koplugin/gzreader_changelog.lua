@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick note opens in a window over your book, not the whole screen", text = "The quick panel's Quick note now opens in a window over whatever is on the screen (the book, Home, Settings) instead of a full page: the page stays visible around it. On touch Kindles the window sits above the on-screen keyboard, and a tap outside it is the same as Back (it asks whether to save when you've written something). New notes and edits from the Notes tab still use the full page." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },
