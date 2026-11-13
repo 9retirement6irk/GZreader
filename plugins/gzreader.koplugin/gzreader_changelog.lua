@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
+            { short = "Kindle 2 and DX: less memory held by GZreader between clean-ups", text = "On Kindles with 128 MB of memory or less (Kindle 2, DX), Lua's garbage collector runs a cycle once memory has grown by 20% since the last one, instead of waiting until it has doubled, so GZreader's peak memory stays lower and more is left for the book." },
         },
     },
     {
