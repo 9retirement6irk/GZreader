@@ -11,7 +11,11 @@ this Kindle, latest first, then what Plex's own players played) and
 **Recently added** (Plex's newest albums, marked NEW), each ending in a
 bundle that opens the whole list, then a bookcase with **Playlists**,
 **Albums** and **Artists** (and *Now playing* when something plays), and
-your Plex account's card in the bottom-right compartment. Music on the Kindle is in the Downloads tab. Albums and
+your Plex account's card in the bottom-right compartment. The card opens a
+list drawn like Settings: who you're signed in as, the Plex server, the music
+library, where audiobooks come from and the quality when converting (each
+with its value on the right; tap to choose), the *Make bigger MP3 and AAC
+smaller* switch, and Sign out. Music on the Kindle is in the Downloads tab. Albums and
 playlists stand on the shelves as **CD cases**, face out: the album's cover
 under the lid (Plex's own small copy, fetched while the list shows and kept
 with the Catalog's covers; a plain insert with the title until it's here),
@@ -27,11 +31,30 @@ Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds 
 to 7 tabs. While music plays or is paused, the quick panel has a **Music**
 tile (*Music ▶* while it plays), at Home and in a book: it opens Now playing.
 
-While music plays, *Now playing* is a portable CD player with headphones: the
-album's cover printed over the whole disc, the track and time on its little display, then the
-track, the controls (Q previous, W play / pause, E next, A shuffle, S repeat,
-D stop; ◀ ▶ change track) and the queue like the back of a CD case (▲ ▼ and
-Press, or tap a track, to play it).
+The player has three tabs along the top, each a whole screen, with big keys
+for touch (the × closes it; the music keeps playing):
+- **Now playing**: a portable CD player with headphones, the album's cover
+  printed over the whole disc and the track and time on its little display;
+  the track; a progress bar you tap to jump to that time; previous · play /
+  pause · next (play is the biggest), then Shuffle, Repeat (all, then one) and
+  the volume (− +).
+- **Queue**: what plays on a strip at the top (tap it for Now playing; its
+  pause key), the tracks in big rows like the back of a CD case (tap one to
+  play it), Up / Down for the other pages, Shuffle and Stop.
+- **Library**: Recently played, Recently added, Playlists, Albums, Artists and
+  On this Kindle on the same CD case, the search field above them, *Shuffle
+  all on Kindle* and your Plex account below. Inside a list, *Back* and where
+  you are (Library › Albums) are at the top.
+
+![The Queue tab](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/music-queue.png) ![The Library tab](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/music-library.png)
+
+Kindle 2, Keyboard and DX: each key's letter is on its button: Q previous,
+W play / pause, E next, A shuffle, S repeat, D stop; Z Now playing, X Queue,
+C Library (F still goes between the queue and the library). On Now playing
+◀ ▶ go 10 s back or ahead and Press plays or pauses; in the queue and the
+library ▲ ▼ choose (a thick outline), Press plays or opens, ◀ ▶ turn the
+page. Back goes back up the library, then closes the player; the volume keys
+show the level on Now playing.
 
 Sign in, either way:
 - on the Kindle: *Plex: sign in with a code*: go to **plex.tv/link** on a
@@ -46,7 +69,9 @@ downloaded downloads it in order and starts as soon as the first track is in;
 Wi‑Fi is on only while downloading. *Downloaded* lists what's on the Kindle
 (`.music` in the GZreader folder); *Shuffle all downloaded* plays it all. Each
 downloaded album or playlist is also in Downloads → **Music** (on the
-bookshelf, the CD player), like audiobooks: open one to play it.
+bookshelf, the CD player), like audiobooks: open one to play it. On its
+shelves each one is a CD facing out with its cover, its name on a plate under
+it.
 
 **Music library**: a Plex server can have several music libraries. GZreader
 uses the server's first until you pick another in Settings → Connections →

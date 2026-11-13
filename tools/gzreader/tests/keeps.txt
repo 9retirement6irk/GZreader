@@ -79,6 +79,7 @@
 1 plugins/zenos.koplugin/modules/filebrowser/patches/zen_renderer.lua
 1 plugins/zenos.koplugin/modules/global/global.lua
 1 plugins/zenos.koplugin/modules/global/patches/nonblocking_wifi.lua
+6 plugins/zenos.koplugin/modules/global/patches/responsive_keyboard.lua
 4 plugins/zenos.koplugin/modules/menu/app_launcher/native_menu.lua
 1 plugins/zenos.koplugin/modules/menu/bluetooth/bluetooth.lua
 1 plugins/zenos.koplugin/modules/menu/bluetooth_switcher.lua
@@ -92,6 +93,7 @@
 2 plugins/zenos.koplugin/modules/reader/end_book.lua
 3 plugins/zenos.koplugin/modules/reader/page_browser_widget.lua
 1 plugins/zenos.koplugin/modules/reader/patches/opening_banner.lua
+1 plugins/zenos.koplugin/modules/reader/patches/reader_flash_cbz.lua
 12 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua
 3 plugins/zenos.koplugin/modules/reader/reference_drawer.lua
 15 plugins/zenos.koplugin/modules/settings/gz_updater.lua

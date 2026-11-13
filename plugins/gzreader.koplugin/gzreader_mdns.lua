@@ -9,6 +9,9 @@ DNS, what AirPrint and Chromecast use), for copying connections between them
 - A device receiving asks for that service ("legacy unicast": the question
   goes to the multicast group from an ordinary port, the answers come back to
   that port) a few times and lists what answers.
+- The House tab looks for Home Assistant the same way (its own service,
+  _home-assistant._tcp.local: browse with opts.service and a collector from
+  M.collectService).
 
 Nothing secret is in the answers: the name, the port, GZreader's version.
 The Kindle's firewall drops what it isn't told to let in: the ports are
@@ -22,6 +25,7 @@ local M = {
     GROUP = "224.0.0.251",
     PORT = 5353,
     SERVICE = "_gzreader._tcp.local",
+    HA_SERVICE = "_home-assistant._tcp.local",
     TTL = 120,
 }
 
@@ -231,9 +235,55 @@ end
 
 ---------------------------------------------------------------- asking
 
-local function query(id)
+local function query(id, service)
     return u16(id) .. u16(0) .. u16(1) .. u16(0) .. u16(0) .. u16(0)
-        .. M.encodeName(M.SERVICE) .. u16(T_PTR) .. u16(0x8001) -- (QU: answer me directly)
+        .. M.encodeName(service or M.SERVICE) .. u16(T_PTR) .. u16(0x8001) -- (QU: answer me directly)
+end
+M._query = query -- (tests)
+
+--- A response's records: { ptr = { instance labels }, srv = { [name] = { port,
+--- target } }, txt = { [name] = { k = v } }, a = { [host] = ip } } for `service`.
+local function records(msg, data, service)
+    local out = { ptr = {}, srv = {}, txt = {}, a = {} }
+    for _i, r in ipairs(msg.answers) do
+        local n = table.concat(r.name, "."):lower()
+        if r.type == T_PTR and n == service then
+            local inst = M.decodeName(data, r.at)
+            if inst then out.ptr[#out.ptr + 1] = inst end
+        elseif r.type == T_SRV and #r.data >= 7 then
+            out.srv[n] = { port = rd16(r.data, 5), target = table.concat(M.decodeName(data, r.at + 6) or {}, "."):lower() }
+        elseif r.type == T_TXT then
+            local t, i = {}, 1
+            while i <= #r.data do
+                local len = r.data:byte(i)
+                local k, v = r.data:sub(i + 1, i + len):match("^([^=]+)=(.*)$")
+                if k then t[k] = v end
+                i = i + 1 + len
+            end
+            out.txt[n] = t
+        elseif r.type == T_A and #r.data == 4 then
+            out.a[n] = table.concat({ r.data:byte(1, 4) }, ".")
+        end
+    end
+    return out
+end
+
+--- A collector for any service's answers (M.browse's opts.collect): merged
+--- into `found` (key = instance name) as { name, port, ip, txt = { k = v } }.
+function M.collectService(service)
+    service = service:lower()
+    return function(found, data, from)
+        local msg = M.parse(data)
+        if not msg or not msg.response then return end
+        local rec = records(msg, data, service)
+        for _i, inst in ipairs(rec.ptr) do
+            local key = table.concat(inst, "."):lower()
+            local srv = rec.srv[key]
+            if srv then
+                found[key] = { name = inst[1], port = srv.port, ip = rec.a[srv.target] or from, txt = rec.txt[key] or {} }
+            end
+        end
+    end
 end
 
 --- What a response says about GZreader devices: merged into `found`
@@ -275,7 +325,8 @@ end
 
 --- Look for GZreader devices: asks now and again after 1 and 3 s.
 --- Poll the returned browser (:poll() / :waitEvent()); :devices() lists what
---- answered so far; :close() when done.
+--- answered so far; :close() when done. opts.service and opts.collect: look
+--- for another service (M.collectService(service)).
 function M.browse(opts)
     opts = opts or {}
     local udp = (socket.udp4 or socket.udp)()
@@ -294,13 +345,14 @@ function M.browse(opts)
         if not self.udp then return end
         local now = socket.gettime() - self.started
         while SCHEDULE[self.sent + 1] and now >= SCHEDULE[self.sent + 1] do
-            pcall(self.udp.sendto, self.udp, query(self.id), opts.to or M.GROUP, opts.port or M.PORT)
+            pcall(self.udp.sendto, self.udp, query(self.id, opts.service), opts.to or M.GROUP, opts.port or M.PORT)
             self.sent = self.sent + 1
         end
         for _i = 1, 32 do
             local data, ip = self.udp:receivefrom()
             if not data then break end
-            M.collect(self.found, data, ip)
+            local collect = opts.collect or M.collect
+            collect(self.found, data, ip)
         end
     end
     function b:waitEvent() self:poll() end

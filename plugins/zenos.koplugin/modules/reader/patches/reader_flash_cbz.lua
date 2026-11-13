@@ -2,7 +2,6 @@ local function apply_reader_flash_cbz()
     local ReaderView = require("apps/reader/modules/readerview")
     local ReaderPaging = require("apps/reader/modules/readerpaging")
     local UIManager = require("ui/uimanager")
-    local plugin = rawget(_G, "__ZEN_UI_PLUGIN")
 
     -- Cached per view; recomputed only when the document path changes.
     local function is_cbz(view)
@@ -14,9 +13,13 @@ local function apply_reader_flash_cbz()
         return view._zen_is_cbz
     end
 
+    -- GZreader: KOReader's "Always flash on pages with images" (Settings →
+    -- General → Screen → E-ink settings → Full refresh rate; on unless
+    -- unticked) decides, as it does for pictures in EPUBs: a comic is pictures.
+    -- ZenOS's own "Flash on every CBZ page turn" (features.reader_flash_cbz) is
+    -- no longer offered.
     local function flash_cbz(view)
-        local features = plugin and plugin.config and plugin.config.features
-        if features and features.reader_flash_cbz == true and is_cbz(view) then
+        if G_reader_settings:nilOrTrue("refresh_on_pages_with_images") and is_cbz(view) then
             UIManager:setDirty(view.dialog, "full")
         end
     end

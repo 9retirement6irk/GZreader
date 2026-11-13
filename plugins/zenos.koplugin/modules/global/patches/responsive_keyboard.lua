@@ -46,6 +46,15 @@ local function apply_responsive_keyboard()
 
     VirtualKeyboard.allow_concurrent_taps = true
 
+    -- GZreader: a box that takes several lines (a note, KOReader's text
+    -- editor) keeps ← → and Enter on the letters' bottom row; one-line boxes
+    -- (search, passwords) get the short row.
+    local function gz_multiline(inputbox)
+        return inputbox ~= nil and (inputbox.gz_multiline == true
+            or (type(inputbox.parent) == "table" and inputbox.parent.allow_newline == true))
+    end
+    VirtualKeyboard._gz_multiline = gz_multiline
+
     if not VirtualKeyboard._zen_touch_qwerty then
         VirtualKeyboard._zen_touch_qwerty = true
         local original_add_keys = VirtualKeyboard.addKeys
@@ -125,6 +134,7 @@ local function apply_responsive_keyboard()
             local bottom_row = keys and keys[5]
             local simplify_bottom = english_letters and Device:isTouchDevice()
                 and bottom_row and #bottom_row == 7 and bottom_row[4][2] == " "
+                and not gz_multiline(self.inputbox)
             local space_width = simplify_bottom and bottom_row[4].width
             local x_key = english_letters and keys[4] and keys[4][3]
             local clean_x_key
