@@ -10161,6 +10161,38 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     Usb.writeOutbox(fake)
     check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
     gsettings.gzreader_update_beta = nil
+    -- written on every save: without loading (and keeping) the calendar, the updater, copying, shelves, Plex
+    do
+        local heavy = { "gzreader_calendar", "gzreader_update", "gzreader_copy", "gzreader_shelfsync", "gzreader_plex" }
+        local kept = {}
+        for _i, m in ipairs(heavy) do kept[m] = package.loaded[m]; package.loaded[m] = nil end
+        Usb.fixed = nil
+        fake.store.calendar_prefs = { days_back = 3, days_ahead = 30 }
+        fake.store.auto_shelf = { id = 9, magic = true, name = "To read" }
+        fake.store.plex = { bitrate = 128, shrink = true }
+        local o1 = Usb.outbox(fake)
+        local loaded = {}
+        for _i, m in ipairs(heavy) do if package.loaded[m] then loaded[#loaded + 1] = m end end
+        check(#loaded == 0, "outbox: none of " .. table.concat(heavy, ", ") .. " left loaded (" .. table.concat(loaded, ", ") .. ")")
+        local Cal, SS, Plex, Copy, Upd = require("gzreader_calendar"), require("gzreader_shelfsync"), require("gzreader_plex"),
+            require("gzreader_copy"), require("gzreader_update")
+        local cp = Cal.prefs(fake)
+        local sh = SS.shelf(fake)
+        local q = Plex.quality(fake.store)
+        check(o1.calendar.days_back == cp.days_back and o1.calendar.days_ahead == cp.days_ahead
+            and o1.auto_shelf.id == sh.id and o1.auto_shelf.magic == true and o1.auto_shelf.name == sh.name
+            and o1.music_quality.bitrate == q.bitrate and o1.music_quality.shrink == q.shrink,
+            "…and what it writes is what those modules say (calendar range, automatic shelf, music quality)")
+        check(o1.gzreader == Upd.currentVersion() and o1.kindle.name == Copy.deviceName(fake) and o1.kindle.id == Copy.deviceId(fake),
+            "…the version and this Kindle's name too (worked out once)")
+        fake.store.calendar_prefs, fake.store.auto_shelf, fake.store.plex = {}, nil, nil
+        local o2 = Usb.outbox(fake)
+        check(o2.calendar.days_back == 14 and o2.calendar.days_ahead == 90 and o2.auto_shelf == nil
+            and o2.music_quality.bitrate == Plex.quality(fake.store).bitrate, "…and their defaults")
+        for _i, m in ipairs(heavy) do package.loaded[m] = kept[m] or package.loaded[m] end
+        fake.store.calendar_prefs = nil
+        Usb.fixed = nil
+    end
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")

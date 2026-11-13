@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
