@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Catalog: the Grimmory card's list looks like Settings, with icons and arrows", text = "Catalog → the Grimmory card opens a list drawn like ZenOS's Settings and the Calendar and Notes connect lists: an icon on each row, an arrow on the ones that do something, ZenOS's row height. The first row says whether you're signed in, with your account and server on the right; then Rebuild library, Reconnect with QR code or Connect with QR code, Connect by typing, Copy from another GZreader (or Sync with computer on a Kindle without Wi-Fi), and About Grimmory." },
+        },
+    },
+    {
         version = "1.29.0",
         changes = {
             { short = "Downloads: audiobooks and music always show their cover, with their name under them", text = "In the Bookshelf view, Downloads → Audiobooks and Downloads → Music no longer stand as thin cassette and CD spines that turn round only when picked: every cassette and CD faces out with its cover showing, and its name is on a little plate on the shelf under it. A tap (or Press, or its letter) opens it straight away; the one the 5-way is on has a frame. With nothing there to turn, the shelves no longer keep a gap for a turned cover, so more fit on a shelf; a page holds as many as fit." },

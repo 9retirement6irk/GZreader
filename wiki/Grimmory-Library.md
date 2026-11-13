@@ -44,8 +44,9 @@ fills in. (A Kindle without Wi‑Fi signs in through the sync page.)
 **The Grimmory card** fills the bottom-right compartment of the Books
 page's bookcase (and the Audiobooks page's, for Grimmory's audiobooks). It
 shows who you're signed in as and where, like the Plex card on the Music
-page. It opens Rebuild library
-and reconnecting. What's on the Kindle is in the Downloads tab.
+page. It opens a list drawn like Settings (an icon on each row): who you're
+signed in as, Rebuild library, reconnecting, and About Grimmory. What's on
+the Kindle is in the Downloads tab.
 
 **An Audiobooks tab** (off until you turn it on: Settings → Interface →
 Navbar → Tabs → Audiobooks, or the setup guide's tab page; Kindles with a
