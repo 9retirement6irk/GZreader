@@ -1214,7 +1214,7 @@ gets a password or token.
 
   // ------------------------------------------------------------ the sync
 
-  var Opt = { covers: true, details: true };
+  var Opt = { covers: true, details: true, slim: true };
 
   function newInbox(prev) {
     var inbox = prev && prev.format === FORMAT ? prev : { format: FORMAT, done: [], books: [], audiobooks: [], music: [] };
@@ -1531,12 +1531,143 @@ gets a password or token.
     var ext = extOf(q.name, String(q.format || "epub").toLowerCase());
     if (ext === "cbx") ext = "cbz";
     var file = "in/book-" + q.id + "." + ext;
-    await Drive.writeStream(Drive.sync, file, r.body, onBytes);
+    var slim = null;
+    if (ext === "epub" && Opt.slim) {
+      // (the whole book here first: its big pictures made the Kindle's size, see Slim)
+      var blob = await new Response(r.body.pipeThrough(new TransformStream({ transform: function (chunk, c) { onBytes(chunk.byteLength); c.enqueue(chunk); } }))).blob();
+      var res = null;
+      try { res = await Slim.epub(blob, Sleep.screen()); } catch (e) { log("“" + q.title + "”: pictures left as they were (" + e.message + ").", "warn"); }
+      if (res && res.changed) {
+        slim = { before: blob.size, after: res.blob.size, pictures: res.changed };
+        log("“" + q.title + "”: " + res.changed + " picture" + (res.changed === 1 ? "" : "s") + " made the Kindle's size, " +
+          Math.round(blob.size / 1024) + " → " + Math.round(res.blob.size / 1024) + " KB.", "ok");
+        blob = res.blob;
+      }
+      await Drive.write(Drive.sync, file, blob);
+    } else {
+      await Drive.writeStream(Drive.sync, file, r.body, onBytes);
+    }
     var progress = null;
     try { progress = progressOf(await G.json("/api/v1/books/" + q.id)); } catch (e) {}
     inbox.books.push({ id: q.id, file: file, name: q.name, title: q.title, authors: q.authors, format: q.format, file_id: q.file_id,
-      subtitle: (K.subtitles || {})[String(q.id)], progress: progress || undefined });
+      subtitle: (K.subtitles || {})[String(q.id)], progress: progress || undefined, slim: slim || undefined });
   }
+
+  // ------------------------------------------------------------ slim EPUB copies
+  // An EPUB's big pictures (scanned pages, full-size covers, photos) made the
+  // Kindle's screen size and grey, before the book goes to the Kindle: the book
+  // engine decodes and scales every picture when it lays a book out, which on
+  // a Kindle 3 or DX is much of a picture-heavy book's open time and memory.
+  // Each picture keeps its name and format (a JPEG stays a JPEG, a PNG a PNG),
+  // so nothing else in the book changes (pages, positions, highlights); one is
+  // replaced only if it gets smaller. Everything else in the zip is copied byte
+  // for byte. Grimmory keeps the original.
+  var Slim = {
+    MIN_BYTES: 64 * 1024, // smaller pictures: left as they are
+    CRC: null,
+    crc32: function (u8) {
+      if (!Slim.CRC) {
+        Slim.CRC = new Uint32Array(256);
+        for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; Slim.CRC[n] = c >>> 0; }
+      }
+      var crc = 0xFFFFFFFF;
+      for (var i = 0; i < u8.length; i++) crc = Slim.CRC[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    },
+    // the zip's entries from its central directory (null: not a zip we can rewrite)
+    entries: async function (blob) {
+      var tailLen = Math.min(blob.size, 65557);
+      var tail = new Uint8Array(await blob.slice(blob.size - tailLen).arrayBuffer());
+      var dv = new DataView(tail.buffer), eocd = -1;
+      for (var i = tail.length - 22; i >= 0; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+      if (eocd < 0) return null;
+      var count = dv.getUint16(eocd + 10, true), cdSize = dv.getUint32(eocd + 12, true), cdOff = dv.getUint32(eocd + 16, true);
+      if (count === 0xFFFF || cdSize === 0xFFFFFFFF || cdOff === 0xFFFFFFFF) return null; // (zip64)
+      var cd = new Uint8Array(await blob.slice(cdOff, cdOff + cdSize).arrayBuffer());
+      var c = new DataView(cd.buffer), dec = new TextDecoder(), out = [];
+      for (var p = 0; p + 46 <= cd.length && c.getUint32(p, true) === 0x02014b50;) {
+        var nlen = c.getUint16(p + 28, true), elen = c.getUint16(p + 30, true), clen = c.getUint16(p + 32, true);
+        out.push({ cdir: cd.slice(p, p + 46 + nlen + elen + clen), name: dec.decode(cd.subarray(p + 46, p + 46 + nlen)),
+          method: c.getUint16(p + 10, true), csize: c.getUint32(p + 20, true), size: c.getUint32(p + 24, true),
+          nameBytes: cd.slice(p + 46, p + 46 + nlen), lho: c.getUint32(p + 42, true) });
+        p += 46 + nlen + elen + clen;
+      }
+      if (out.length !== count) return null;
+      out.cdOff = cdOff;
+      return out;
+    },
+    data: async function (blob, e) {
+      var lh = new DataView(await blob.slice(e.lho, e.lho + 30).arrayBuffer());
+      if (lh.getUint32(0, true) !== 0x04034b50) throw new Error("a damaged zip");
+      var start = e.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+      var raw = blob.slice(start, start + e.csize);
+      if (e.method === 0) return raw;
+      if (e.method === 8) return new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+      return null;
+    },
+    // a picture at most the screen's size, grey, in its own format; null: leave it
+    picture: async function (data, type, screen) {
+      var img;
+      try { img = await createImageBitmap(data); } catch (e) { return null; }
+      var scale = Math.min(screen.w / img.width, screen.h / img.height, 1);
+      var w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+      var canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
+      var ctx = canvas.getContext("2d");
+      ctx.filter = "grayscale(1)";
+      ctx.drawImage(img, 0, 0, w, h);
+      if (img.close) img.close();
+      var out = canvas.convertToBlob ? await canvas.convertToBlob({ type: type, quality: 0.8 })
+        : await new Promise(function (ok) { canvas.toBlob(ok, type, 0.8); });
+      return out && out.type === type && out.size < data.size ? out : null;
+    },
+    epub: async function (blob, screen) {
+      var list = await Slim.entries(blob);
+      if (!list) return null;
+      var TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
+      var parts = [], central = [], offset = 0, changed = 0;
+      // (the local entries in the order they're in the file: each copied up to the next one)
+      var byPos = list.slice().sort(function (a, b) { return a.lho - b.lho; });
+      for (var i = 0; i < byPos.length; i++) byPos[i].end = i + 1 < byPos.length ? byPos[i + 1].lho : list.cdOff;
+      // (written in the file's order: the mimetype stays first; the directory in its own order)
+      for (var j = 0; j < byPos.length; j++) {
+        var e = byPos[j], ext = (e.name.match(/\.([a-z0-9]+)$/i) || [])[1], type = ext && TYPES[ext.toLowerCase()];
+        var repl = null;
+        if (type && e.size >= Slim.MIN_BYTES) {
+          var data = await Slim.data(blob, e);
+          if (data) repl = await Slim.picture(data, type, screen);
+        }
+        var cdir = e.cdir.slice(), cv = new DataView(cdir.buffer);
+        if (repl) {
+          var bytes = new Uint8Array(await repl.arrayBuffer()), crc = Slim.crc32(bytes);
+          var flags = cv.getUint16(8, true) & ~8; // (no data descriptor; a UTF-8 name stays marked)
+          var lh = new Uint8Array(30 + e.nameBytes.length), lv = new DataView(lh.buffer);
+          lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, flags, true); lv.setUint16(8, 0, true);
+          lv.setUint16(10, cv.getUint16(12, true), true); lv.setUint16(12, cv.getUint16(14, true), true); lv.setUint32(14, crc, true);
+          lv.setUint32(18, bytes.length, true); lv.setUint32(22, bytes.length, true);
+          lv.setUint16(26, e.nameBytes.length, true); lv.setUint16(28, 0, true); lh.set(e.nameBytes, 30);
+          cv.setUint16(8, flags, true); cv.setUint16(10, 0, true);
+          cv.setUint32(16, crc, true); cv.setUint32(20, bytes.length, true); cv.setUint32(24, bytes.length, true);
+          cv.setUint32(42, offset, true);
+          parts.push(lh, bytes);
+          offset += lh.length + bytes.length;
+          changed++;
+        } else {
+          var raw = blob.slice(e.lho, e.end);
+          cv.setUint32(42, offset, true);
+          parts.push(raw);
+          offset += raw.size;
+        }
+        e.newDir = cdir;
+      }
+      for (var k = 0; k < list.length; k++) central.push(list[k].newDir);
+      if (!changed) return { changed: 0, blob: blob };
+      var cdSize = central.reduce(function (n, c) { return n + c.length; }, 0);
+      var end = new Uint8Array(22), ev = new DataView(end.buffer);
+      ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, list.length, true); ev.setUint16(10, list.length, true);
+      ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+      return { changed: changed, blob: new Blob(parts.concat(central, [end]), { type: "application/epub+zip" }) };
+    },
+  };
 
   // Grimmory's reading progress of a book: the Kindle opens it there the first time
   var PROGRESS_KEYS = ["epubProgress", "pdfProgress", "cbxProgress", "audiobookProgress"];
@@ -2253,6 +2384,7 @@ gets a password or token.
     $("#done").classList.add("hidden");
     $("#log").textContent = "";
     Opt.covers = $("#o-covers").checked; Opt.details = $("#o-details").checked;
+    Opt.slim = !$("#o-slim") || $("#o-slim").checked;
     var t0 = Date.now();
     try {
       // (asked first, while the button press still counts: the .ics files)
@@ -3189,6 +3321,7 @@ gets a password or token.
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
+    Slim: Slim,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

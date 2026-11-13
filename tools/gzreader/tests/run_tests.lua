@@ -10260,7 +10260,7 @@ print("Sync through a computer (Kindles without Wi-Fi)")
         failed = { { id = rj[13].id, error = "unreachable" } },
         grimmory = { server = "https://books.example.com", user = "reader" },
         books = { { id = 20, file = "in/book-20.epub", name = "Dune.epub", title = "Dune", authors = { "Frank Herbert" }, format = "EPUB", file_id = 200,
-            progress = { epubProgress = { percentage = 40, cfi = "epubcfi(/6/4)" } } } },
+            progress = { epubProgress = { percentage = 40, cfi = "epubcfi(/6/4)" } }, slim = { before = 8000000, after = 900000, pictures = 12 } } },
         audiobooks = { { id = 30, dir = "in/audio-30", primaryFileName = "Walden.mp3", title = "Walden",
             progress = { audiobookProgress = { positionMs = 2000, trackIndex = 0 } },
             info = { title = "Walden", author = "Thoreau", durationMs = 5000, codec = "mp3", bookFileId = 300, folderBased = false } } },
@@ -10270,6 +10270,8 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     local prepared = false
     local r = Usb.import(fake, function() prepared = true end)
     local entry = fake.store.downloads["20"]
+    check(entry and entry.slim and entry.slim.pictures == 12 and entry.slim.after == 900000,
+        "inbox: a slim copy (its pictures made the Kindle's size by the page) is remembered as one")
     check(r and r.books == 1 and entry and entry.path == lib .. "/Dune.epub" and read(entry.path) == "EPUB-DUNE"
         and entry.authors == "Frank Herbert" and entry.file_id == 200 and not Usb.isQueued(fake, 20),
         "inbox: a book into the GZreader folder, as a download, off the queue")

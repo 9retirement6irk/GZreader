@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Sync page: big pictures in EPUBs made the Kindle's size, for quicker opens", text = "Books brought by the sync page (Kindle 2, DX, or any Kindle synced through a computer) have their big pictures (scanned pages, full-size covers, photos) made the Kindle's screen size and grey before they're copied, so the Kindle doesn't decode and scale them every time it lays the book out. Nothing else in the book changes, and Grimmory keeps the original. A new box on the sync page turns it off." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },

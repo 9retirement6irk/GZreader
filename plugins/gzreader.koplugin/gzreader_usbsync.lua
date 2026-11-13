@@ -589,6 +589,14 @@ function Usb.takeBook(plugin, base, b)
     entry.file_id = tonumber(b.file_id) or entry.file_id
     -- (Grimmory's progress: the book opens there the first time)
     entry.grimmory_progress = require("gzreader_sync").progressOf(b.progress) or entry.grimmory_progress
+    -- (the page made its big pictures the Kindle's size: a slim copy, Grimmory has the original)
+    if type(b.slim) == "table" and tonumber(b.slim.pictures) then
+        entry.slim = { before = tonumber(b.slim.before), after = tonumber(b.slim.after), pictures = tonumber(b.slim.pictures) }
+        Log.info("sync: book", id, "a slim copy:", entry.slim.pictures, "pictures,", math.floor((entry.slim.before or 0) / 1024), "→",
+            math.floor((entry.slim.after or 0) / 1024), "KB")
+    else
+        entry.slim = nil
+    end
     plugin.store.downloads[id] = entry
     if entry.subtitle then
         pcall(require("gzreader_titles").apply, path, title, entry.subtitle, authors)
