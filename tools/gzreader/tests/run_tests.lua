@@ -751,6 +751,9 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     local b3 = Browser:new(plugin)
     b3:show({ section = "music" })
     check(b3.section == "books" and b3.menu.onNextPage and not b3:turnSection(1), "no speaker: Books only, nothing to turn to")
+    check(b3.menu.subtitle == false and m.subtitle == nil and Catalog.titleSubtitle({ "books" }) == false
+        and Catalog.titleSubtitle(Catalog.sections(true)) == nil,
+        "one page alone: no empty strip line under the title (the slip right below it); pages to turn: the strip's line")
     -- the Audiobooks tab: the Catalog on its Audiobooks page alone, that tab underlined
     require("gzreader_touch").audio = function() return true end
     local at = Browser:new(plugin)
@@ -761,6 +764,7 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     check(at.section == "audiobooks" and am._gz_navbar_tab_id == "ct_audiobooks" and am.title == "Audiobooks"
         and table.concat(at:sections(), ",") == "audiobooks" and not at:turnSection(1) and not at:turnSection(-1),
         "the Audiobooks tab: the Audiobooks page alone (no Books or Music to swipe to), its tab underlined")
+    check(am.subtitle == false, "the Audiobooks tab: no empty strip line under its title either")
     local cat = Browser:new(plugin)
     cat:show()
     check(cat.menu._gz_navbar_tab_id == "ct_grimmory" and #cat:sections() == 3, "the Catalog tab: its own tab, every page")

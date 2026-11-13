@@ -102,6 +102,8 @@ function Browser:show(opts)
     self.only = opts and opts.only and self.section or nil
     self.menu = Menu:new{
         title = Catalog.title(self.section),
+        -- (one page alone: no strip, so no empty line under the title)
+        subtitle = Catalog.titleSubtitle(self:sections()),
         item_table = self:rootItems(),
         covers_fullscreen = true,
         is_borderless = true,
