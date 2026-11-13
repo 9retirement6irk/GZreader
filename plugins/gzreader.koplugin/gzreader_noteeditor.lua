@@ -64,7 +64,7 @@ NoteEditor.TOOLS = {
     { id = "tag", label = "# " .. _("Tag"), key = "G", help = _("add a tag") },
 }
 
--- Touch Kindles edit in blocks (Memos' rich editor); false: Markdown, as on keyboard Kindles.
+-- Touch Kindles edit the note formatted (Memos' web editor); false: Markdown, as on keyboard Kindles.
 NoteEditor.RICH = true
 
 -- The toolbar on touch Kindles (the formatted page): on the selection, or the cursor's line or word.
@@ -271,6 +271,15 @@ function Editor:init()
         end
     end
     local function box(h)
+        -- (the formatted page: made once, its own height above its keyboard)
+        if self.rich then
+            self.rich_input = self.rich_input or require("gzreader_richedit"):new{
+                width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
+                doc = self.doc, editor = self, at_start = self.memo == nil,
+                hint = _("Write a note. #words become tags."),
+            }
+            return self.rich_input
+        end
         return makeInput(self, {
             text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
             face = Font:getFace("cfont", 20), parent = self, focused = true,
@@ -279,17 +288,8 @@ function Editor:init()
             gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
         })
     end
-    if self.rich then
-        self.footer_h = 0
-        self.input = require("gzreader_richedit"):new{
-            width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
-            doc = self.doc, editor = self, at_start = self.memo == nil,
-            hint = _("Write a note. #words become tags."),
-        }
-    else
-        self.input = box(text_h)
-    end
-    if self.vk and not self.rich then
+    self.input = box(text_h)
+    if self.vk then
         -- touch: the toolbar under the title, the text box above the on-screen keyboard
         self.footer_h = self.dpad and S(26) or 0
         local kb = self.input.keyboard
@@ -301,14 +301,7 @@ function Editor:init()
     self.bar_slot = VerticalGroup:new{}
     self.hint_slot = VerticalGroup:new{}
     local column
-    if self.rich then
-        column = VerticalGroup:new{ align = "center",
-            self.title_slot,
-            self.bar_slot,
-            VerticalSpan:new{ width = S(8) },
-            self.input,
-        }
-    elseif self.vk then
+    if self.vk then
         column = VerticalGroup:new{ align = "center",
             self.title_slot,
             self.bar_slot,
@@ -447,10 +440,10 @@ function Editor:redraw()
     UIManager:setDirty(self, "ui")
 end
 
---- The toolbar's tools: the block tools in blocks, the Markdown ones otherwise.
+--- The toolbar's tools: the formatting tools on touch Kindles, the Markdown ones otherwise.
 function Editor:tools() return self.rich and NoteEditor.RICH_TOOLS or NoteEditor.TOOLS end
 
---- The note as Markdown (blocks: written back as Memos' rich editor writes it).
+--- The note as Markdown (formatted: written back as Memos' rich editor writes it).
 function Editor:text()
     if self.rich then return require("gzreader_blocks").write(self.doc) end
     return self.input:getText() or ""
