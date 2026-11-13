@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>GZreader – Set up a Kindle</title>
+<meta name="description" content="Jailbreak a Kindle and install GZreader step by step: the page puts each file on the Kindle's drive at the right step. Kindle 2, DX, Keyboard, 4, Touch, Paperwhite and newer.">
+<link rel="canonical" href="https://9retirement6irk.github.io/GZreader/setup/">
+<link rel="icon" href="../gzreader-logo.svg" type="image/svg+xml">
+<style>
+  :root {
+    --paper: #f5f2ea; --card: #fffdf8; --ink: #1d1b17; --muted: #5d584e; --line: #dcd5c6; --soft: #ece7db;
+    --good: #2d6a3e; --bad: #9b2c1e; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #171614; --card: #201f1c; --ink: #ecebe6; --muted: #aaa598; --line: #37342e; --soft: #2a2925;
+      --good: #8fd19e; --bad: #e8806f; --shadow: 0 1px 2px rgba(0,0,0,.4); }
+    .logo { filter: invert(1); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 16px 48px; }
+  header { display: flex; align-items: center; gap: 14px; padding: 28px 0 8px; }
+  .logo { width: 44px; height: 44px; }
+  h1 { font: 700 30px/1.1 Georgia, "Times New Roman", serif; margin: 0; }
+  .sub { color: var(--muted); margin: 2px 0 0; }
+  h2 { font: 700 20px/1.25 Georgia, "Times New Roman", serif; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+  h2 .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink);
+    color: var(--paper); font: 700 14px/1 -apple-system, sans-serif; flex: none; }
+  h3 { margin: 0 0 6px; font-size: 18px; }
+  h4 { margin: 14px 0 4px; font-size: 15px; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 16px 0;
+    box-shadow: var(--shadow); }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 3px; }
+  .opts label { display: flex; gap: 8px; align-items: center; color: var(--ink); margin: 4px 0; font-size: 15px; }
+  input[type=text] { width: 100%; max-width: 320px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink); font: inherit; }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); max-width: 100%; }
+  button, a.button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 9px; border: 1.5px solid var(--ink);
+    background: transparent; color: var(--ink); cursor: pointer; margin: 8px 6px 0 0; display: inline-block; text-decoration: none; }
+  button.primary { background: var(--ink); color: var(--paper); }
+  button.link { border: 0; padding: 0; margin: 0; font-weight: 400; text-decoration: underline; color: inherit; text-align: left; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .muted { color: var(--muted); } .small { font-size: 14px; }
+  .warn { background: var(--soft); border-left: 4px solid var(--bad); padding: 10px 12px; border-radius: 6px; margin: 10px 0; }
+  .ok { color: var(--good); } .bad { color: var(--bad); }
+  .hidden { display: none !important; }
+  code { font-size: 14px; background: var(--soft); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+  .steps { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; }
+  ol.step-list { margin: 0; padding: 0 0 0 22px; font-size: 15px; }
+  ol.step-list li { margin: 4px 0; color: var(--muted); }
+  ol.step-list li.on { color: var(--ink); font-weight: 700; }
+  ol.step-list li.done::marker { content: "✓ "; color: var(--good); }
+  ol.step-list li button.link { color: inherit; font-weight: inherit; vertical-align: top; }
+  .device { background: var(--soft); border-radius: 10px; padding: 4px 14px 10px; margin: 14px 0 0; }
+  .device ol { margin: 6px 0 0; padding-left: 20px; }
+  .device li { margin: 4px 0; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer; margin: 8px 0; }
+  .drop.over, .drop:hover { border-color: var(--ink); color: var(--ink); }
+  progress { width: 100%; height: 12px; margin-top: 10px; accent-color: var(--ink); }
+  .navrow { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .done { font-size: 18px; font-weight: 700; }
+  .testbar { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 10px 14px; margin: 10px 0; display: flex;
+    gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 15px; }
+  .testbar button { border-color: var(--paper); color: var(--paper); margin: 0; padding: 5px 10px; font-size: 14px; }
+  footer { color: var(--muted); font-size: 14px; margin-top: 30px; }
+  @media (max-width: 680px) { .steps { grid-template-columns: 1fr; } h1 { font-size: 26px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="logo" src="../gzreader-logo.svg" alt="" width="44" height="44">
+    <div>
+      <h1>Set up a Kindle</h1>
+      <p class="sub">Jailbreak it and install GZreader, step by step. This page puts each file on the Kindle at the right moment.</p>
+    </div>
+  </header>
+
+  <div id="unsupported" class="warn hidden">
+    This page needs <strong>Chrome or Edge</strong> on a computer (Windows, Mac, Linux or a Chromebook): it writes to the Kindle's
+    drive, and other browsers can't. Open <strong>9retirement6irk.github.io/GZreader/setup</strong> there, or follow the
+    <a href="https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting">steps in the wiki</a> by hand.
+  </div>
+  <div id="testbar" class="testbar hidden">
+    <span><strong>Test mode:</strong> a pretend Kindle kept in this browser. Nothing is written to a real Kindle.</span>
+    <span><button id="test-reset">Start over</button> <button id="test-leave">Leave test mode</button></span>
+  </div>
+  <p id="problem" class="warn hidden"></p>
+
+  <section class="card" id="gate">
+    <h2><span class="n">1</span> Connect the Kindle</h2>
+    <p class="small muted">Charge it first. Plug it into the computer with a USB cable: it shows up as a drive. Then choose that drive
+      (the whole drive, not its documents folder). A jailbreak is at your own risk; back up your books first.</p>
+    <div class="row">
+      <button class="primary" id="pick">Choose the Kindle drive</button>
+      <button id="reopen" class="hidden">Use the Kindle from last time</button>
+      <button id="pick-again" class="hidden link">Choose it again</button>
+    </div>
+    <div id="drive-ok" class="hidden"><div id="drive-status"></div></div>
+    <p class="small muted" style="margin-top:12px">No Kindle at hand? <a href="?test">Try the page in test mode</a> with a pretend Kindle.</p>
+  </section>
+
+  <section class="card hidden" id="kindle-card">
+    <h2><span class="n">2</span> Which Kindle</h2>
+    <label for="serial">Its serial number, or at least the first 6 characters</label>
+    <input type="text" id="serial" autocomplete="off" spellcheck="false" placeholder="B00E… / 90D4… / G000…">
+    <p class="small muted">On the Kindle: <b>Menu → Settings</b> (Kindle 2, DX, Keyboard, 4: at the bottom, or press Menu → Device Info),
+      or <b>Settings → Device Options → Device Info</b>. Also on the box. It's only used here, to tell the model; it isn't kept or sent.</p>
+    <p class="small"><span id="serial-status"></span> <span id="serial-err" class="bad"></span></p>
+    <div id="fw-row" class="hidden">
+      <label for="fw">Its firmware version (the same page: "Version", e.g. 3.4.3 or 5.16.2.1.1)</label>
+      <input type="text" id="fw" autocomplete="off" spellcheck="false" inputmode="decimal">
+      <p id="fw-status" class="small"></p>
+    </div>
+    <div id="jb-q" class="hidden opts">
+      <label>Is it jailbroken already?</label>
+      <label><input type="radio" name="jb" id="jb-yes"> Yes: just install GZreader</label>
+      <label><input type="radio" name="jb" id="jb-no"> No: jailbreak it first</label>
+      <p class="small muted" id="jb-hint"></p>
+    </div>
+    <div id="touch-q" class="hidden opts">
+      <div id="q-reg">
+        <label>Is it registered to an Amazon account (or can it be)?</label>
+        <label><input type="radio" name="reg" value="yes"> Yes</label>
+        <label><input type="radio" name="reg" value="no"> No</label>
+      </div>
+      <div id="q-ads">
+        <label>Does it show ads on the lock screen?</label>
+        <label><input type="radio" name="ads" value="yes"> Yes</label>
+        <label><input type="radio" name="ads" value="no"> No</label>
+      </div>
+      <div id="method-row" class="hidden">
+        <label for="method">Jailbreak</label>
+        <select id="method"></select>
+      </div>
+    </div>
+    <p class="small"><button class="link" id="start-over">Start over with another Kindle</button></p>
+  </section>
+
+  <section class="card hidden" id="steps-card">
+    <h2><span class="n">3</span> Step by step</h2>
+    <div class="steps">
+      <ol class="step-list" id="step-list"></ol>
+      <div id="steps"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Everything happens in this browser: the page writes to the Kindle you choose and talks to nothing else, except to download
+      GZreader (from GitHub) and its own files. The jailbreaks are other people's work; the files this page carries and their
+      licences are listed in <a href="https://github.com/9retirement6irk/GZreader/tree/main/docs/setup/files">docs/setup/files</a>.
+      Which jailbreak fits which Kindle follows <a href="https://kindlemodding.org/">kindlemodding.org</a>'s tables, checked
+      against the jailbreaks' own instructions. → <a href="https://github.com/9retirement6irk/GZreader/wiki/Jailbreaking-and-Rooting">Jailbreaking and rooting</a>
+      · <a href="../">GZreader</a> · <a href="../sync/">Sync with computer</a></p>
+  </footer>
+</div>
+<script src="setup.js?v=abd506b63e"></script><!-- (?v= is the script's SHA-256, checked by setup_page_test.py) -->
+</body>
+</html>

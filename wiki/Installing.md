@@ -1,5 +1,7 @@
 ## Before you start
 
+**On a Kindle, the [setup page](https://9retirement6irk.github.io/GZreader/setup/) walks you through it all** (Chrome or Edge on a computer): the jailbreak for your model and firmware, then the right package, each file put on the Kindle at the right step. The steps below are the same, by hand.
+
 1. **Jailbreak the Kindle, or root the Nook.** GZreader runs alongside the device's own software, which needs a jailbreak (Kindles) or root (Nooks): see [Jailbreaking and rooting](Jailbreaking-and-Rooting). Turn on **airplane mode** on a Kindle before you start, so it doesn't update itself to a firmware the jailbreak can't handle.
 2. **Find your package.** Each package is built for one kind of device; the others won't start on it. Download it from the [latest release](https://github.com/9retirement6irk/GZreader/releases/latest):
 
