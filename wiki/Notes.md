@@ -81,8 +81,10 @@ API to `/api` are found too.
   does. The note's page says which space it's in. With an older Memos (no
   spaces) none of this shows.
 - **Quick note:** the quick panel's **Quick note** tile (at Home and in a
-  book, while Memos is connected) opens the same editor over whatever is on
-  the screen, so you can jot something down without leaving the book, Home or
+  book, while Memos is connected) opens the same editor in a window over
+  whatever is on the screen (the page stays visible around it; on touch
+  Kindles it sits above the keyboard, and a tap outside it is the same as
+  Back), so you can jot something down without leaving the book, Home or
   Settings. **Save** (or Back → Save) closes it and you're back where you
   were; "Note saved" says it's on its way. It's sent in the background a
   moment later (Wi‑Fi on Auto turns on for it; on Off it waits), and only the

@@ -1,6 +1,8 @@
 --[[--
-The Notes tab's full-page editor (new notes and edits). Memos notes are
-Markdown; a toolbar at the bottom of the page adds it for you:
+The Notes tab's editor (new notes and edits): a full page, or for the quick
+panel's Quick note a window over whatever is on the screen (`showFloating`;
+a tap outside it closes it, as Back does). Memos notes are Markdown; a
+toolbar adds it for you:
 
   • List   ☐ Check   1. Num   H Head   I   B   # Tag   |  Save
 
@@ -180,6 +182,24 @@ function NoteEditor.cleanTag(s)
     return s
 end
 
+---------------------------------------------------------------- the window (a quick note)
+
+--- The quick note's window: as wide as fits (a margin each side, no wider
+--- than a Kindle 3's page), its text box about a quarter of the screen,
+--- centred in what the on-screen keyboard leaves (`kb_h`, 0 without one).
+--- `chrome_h`: the window's height without the text; `s`: Screen:scaleBySize.
+--- Returns { x, y, w, h, text_h } (pure: run_tests.lua).
+function NoteEditor.floatingBox(sw, sh, kb_h, chrome_h, s)
+    local gap = s(16)
+    local w = math.min(sw - 2 * gap, s(560))
+    local free = sh - (kb_h or 0)
+    local text_h = math.min(math.floor(sh * 0.28), free - chrome_h - 2 * gap)
+    text_h = math.max(text_h, s(60))
+    local h = chrome_h + text_h
+    local y = math.max(math.min(gap, math.floor(free / 2)), math.floor((free - h) / 2))
+    return { x = math.floor((sw - w) / 2), y = y, w = w, h = h, text_h = text_h }
+end
+
 ---------------------------------------------------------------- the page
 
 local Editor = InputContainer:extend{ covers_fullscreen = true,
@@ -229,9 +249,11 @@ function Editor:init()
         ToolbarToggle = { { "Menu" } },
         CloseDialog = { { Device.input and Device.input.group and Device.input.group.Back or "Back" } },
     }
-    local margin = S(12)
+    local margin = self.floating and S(10) or S(12)
     self.margin = margin
-    self.inner = sw - 2 * margin
+    -- a quick note: a window (the screen less a margin each side); otherwise the page
+    self.win_w = self.floating and NoteEditor.floatingBox(sw, sh, 0, 0, S).w - 2 * Size.border.window or sw
+    self.inner = self.win_w - 2 * margin
     self.title_h, self.tool_h, self.footer_h = S(44), S(40), S(30)
     local text_h = sh - self.title_h - self.tool_h - self.footer_h - S(28)
     self.touch = Touch.on() and not Touch.keys()
@@ -249,6 +271,10 @@ function Editor:init()
             hint = _("Write a note. #words become tags."),
         })
     end
+    if self.floating and not self.vk then
+        self.box = NoteEditor.floatingBox(sw, sh, 0, self:floatingChrome(), S)
+        text_h = self.box.text_h
+    end
     self.input = box(text_h)
     if self.vk then
         -- touch: the toolbar under the title, the text box above the on-screen keyboard
@@ -256,7 +282,12 @@ function Editor:init()
         local kb = self.input.keyboard
         local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
         if self.input.free then pcall(self.input.free, self.input) end
-        self.input = box(sh - self.title_h - self.tool_h - kb_h - S(24) - (self.dpad and S(26) or 0))
+        text_h = sh - self.title_h - self.tool_h - kb_h - S(24) - (self.dpad and S(26) or 0)
+        if self.floating then
+            self.box = NoteEditor.floatingBox(sw, sh, kb_h, self:floatingChrome(), S)
+            text_h = self.box.text_h
+        end
+        self.input = box(text_h)
     end
     self.title_slot = VerticalGroup:new{}
     self.bar_slot = VerticalGroup:new{}
@@ -269,6 +300,7 @@ function Editor:init()
             self.hint_slot, -- (Kindle 4: what the keys do)
             VerticalSpan:new{ width = S(8) },
             self.input,
+            self.floating and VerticalSpan:new{ width = S(8) } or nil,
         }
     else
         column = VerticalGroup:new{ align = "center",
@@ -278,13 +310,75 @@ function Editor:init()
             self.bar_slot, -- at the bottom: ▼ from the last line reaches it, ▲ goes back
             VerticalSpan:new{ width = S(8) },
             self.hint_slot,
+            self.floating and VerticalSpan:new{ width = S(6) } or nil,
         }
     end
-    self[1] = FrameContainer:new{
-        width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
-        column,
-    }
+    if self.floating then
+        -- a window: what's under it (the book, Home) stays on the screen around it
+        self.frame = FrameContainer:new{ padding = 0, bordersize = Size.border.window, radius = Size.radius.window,
+            background = Blitbuffer.COLOR_WHITE, column }
+        self[1] = VerticalGroup:new{ align = "left", VerticalSpan:new{ width = self.box.y },
+            HorizontalGroup:new{ HorizontalSpan:new{ width = self.box.x }, self.frame } }
+        if Touch.on() then
+            self.ges_events = { TapOutside = { GestureRange:new{ ges = "tap", range = function() return self.dimen end } } }
+        end
+    else
+        self[1] = FrameContainer:new{
+            width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+            column,
+        }
+    end
     self:drawChrome()
+end
+
+--- A quick note's window without its text box: title, toolbar, key hints,
+--- the spaces between, the text box's own frame and the window's border.
+function Editor:floatingChrome()
+    local around_text = 2 * (S(8) + Size.border.thin) + 2 * Size.border.window
+    if self.vk then return self.title_h + self.tool_h + self.footer_h + S(8) + S(8) + around_text end
+    return self.title_h + S(10) + self.tool_h + S(8) + self.footer_h + S(6) + around_text
+end
+
+--- A tap outside the quick note's window: as Back (asks to save when
+--- something was written).
+function Editor:onTapOutside(_arg, ges)
+    local d = self.frame and self.frame.dimen
+    if not (d and ges and ges.pos) or ges.pos:intersectWith(d) then return false end
+    return self:onCloseDialog()
+end
+
+--- What a redraw refreshes: the window, or the page.
+function Editor:area()
+    if self.frame and self.frame.dimen then return self.frame.dimen end
+    return self.dimen
+end
+
+--- Touch and the Kindle 4: KOReader keeps the on-screen keyboard above every
+--- other window, so it hid the lower half of `dialog` (Save this note?, Add a
+--- tag, New tag). It steps aside while the dialog is open and comes back
+--- once it's closed, if the note is still the window in front.
+function Editor:keyboardAside(dialog)
+    if not (self.vk and self.input and self.input.onCloseKeyboard) then return end
+    self.input:onCloseKeyboard()
+    local closed = dialog.onCloseWidget
+    dialog.onCloseWidget = function(d, ...)
+        local r
+        if closed then r = closed(d, ...) end
+        UIManager:nextTick(function() self:keyboardBack() end)
+        return r
+    end
+end
+
+--- The keyboard again, when the editor is in front (only the keyboard or a
+--- message above it) and not on the Kindle 4's toolbar.
+function Editor:keyboardBack()
+    if not (self.vk and self.input and self.input.onShowKeyboard) or (self.dpad and self.focus_tool) then return end
+    local st = UIManager._window_stack or {}
+    for i = #st, 1, -1 do
+        local w = st[i].widget
+        if w == self then self.input:onShowKeyboard(); return true end
+        if w.name ~= "VirtualKeyboard" and not w.toast then return end
+    end
 end
 
 --- Touch: `widget`, tapped, runs `fn`.
@@ -307,7 +401,7 @@ function Editor:onShow()
 end
 
 function Editor:drawChrome()
-    local sw = self.dimen.w
+    local sw = self.win_w
     local margin = self.margin
     self.title_slot:clear()
     self.title_slot[1] = OverlapGroup:new{
@@ -398,7 +492,7 @@ end
 
 function Editor:redraw()
     self:drawChrome()
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
 function Editor:text() return self.input:getText() or "" end
@@ -407,7 +501,7 @@ function Editor:apply(new_text, cursor)
     self.input:setText(new_text, true)
     self.input.is_text_edited = true
     self.input:moveCursorToCharPos(cursor)
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
 function Editor:useTool(i)
@@ -465,12 +559,14 @@ function Editor:pickTag(pos)
                     UIManager:close(d)
                     insert(v)
                 end } } } }
+        self:keyboardAside(d)
         UIManager:show(d)
         d:onShowKeyboard()
     end } }
     dialog = ButtonDialog:new{ title = _("Add a tag"), buttons = rows }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
 end
 
@@ -684,6 +780,7 @@ function Editor:onCloseDialog()
     } }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
     return true
 end
@@ -706,5 +803,15 @@ function NoteEditor.show(opts)
 end
 
 NoteEditor.Editor = Editor
+
+--- The same editor as a window over the screen (the quick panel's Quick
+--- note): the book or Home stays visible around it. Same opts as show.
+function NoteEditor.showFloating(opts)
+    local o = { floating = true, covers_fullscreen = false }
+    for k, v in pairs(opts) do o[k] = v end
+    local e = Editor:new(o)
+    UIManager:show(e, function() return "ui", e:area() end)
+    return e
+end
 
 return NoteEditor

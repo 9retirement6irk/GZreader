@@ -1,7 +1,8 @@
 -- The quick panel's Quick note tile, in a book: there while Memos is
 -- connected (a stand-in connection: memos.example.com, which never answers), it
--- opens the note editor over the book; Save closes it and the book is still
--- there, the note queued. GZ_EMU_BOOK: an EPUB. Keyboard models: the tile's
+-- opens the note editor in a window over the book (not the whole screen; on
+-- touch models above the on-screen keyboard); Save closes it and the book is
+-- still there, the note queued. GZ_EMU_BOOK: an EPUB. Keyboard models: the tile's
 -- letter and Alt+S; touch models: taps. Writes <out>/quick_note.txt.
 local s = { start = 16 }
 local function add(t) s[#s + 1] = t end
@@ -23,6 +24,8 @@ local function tapTile(E, label)
             if TOUCH[E.model] then
                 local d = p.tile.dimen
                 E.tap({ d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) })
+            elseif E.model == "k4" then -- (no letter keys: as Press on the tile)
+                p.tile.callback()
             else
                 E.key(p.tile.key_letter)
             end
@@ -68,6 +71,24 @@ add({ fn = function()
         "the new-note editor over the book (top: " .. tostring(top() and (top().name or top().input and "editor")) .. ")")
     if ed and ed.input then ed.input:addChars("Remember page 12 #reading") end
 end, after = 3 })
+add({ fn = function(E)
+    local ed = editor()
+    local d = ed and ed.frame and ed.frame.dimen
+    local Screen = require("device").screen
+    local W, H = Screen:getWidth(), Screen:getHeight()
+    local where = d and string.format("%dx%d at %d,%d on %dx%d", d.w, d.h, d.x, d.y, W, H) or "no window"
+    check(ed and ed.covers_fullscreen == false and d and d.x > 0 and d.y > 0 and d.x + d.w < W and d.y + d.h < H
+        and d.h < H / 2, "a window over the book, not the whole screen: " .. where)
+    local st = UIM()._window_stack
+    local under = false
+    for i = 1, #st do if st[i].widget == ed and i > 1 and st[i - 1].widget.covers_fullscreen then under = true end end
+    check(under and require("apps/reader/readerui").instance.document ~= nil, "…the book is under it, still drawn")
+    if TOUCH[E.model] then
+        local kb = ed and ed.input and ed.input.keyboard
+        local kd = kb and kb.dimen
+        check(kd and d and d.y + d.h <= kd.y, "…above the on-screen keyboard (keyboard at y " .. tostring(kd and kd.y) .. ")")
+    end
+end, after = 1 })
 add({ shot = "qn-2-editor" })
 add({ fn = function(E)
     local ed = editor()
@@ -89,6 +110,70 @@ add({ fn = function()
         "…the board's notes weren't loaded")
 end, after = 3 })
 add({ shot = "qn-3-saved" })
+-- touch: a tap outside the window (nothing written) closes it, the book stays
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    require("gzreader_notes").quickNote(plugin())
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local d = editor() and editor().frame.dimen
+    check(d ~= nil, "Quick note again: the window")
+    if d then E.tap({ math.floor(d.x + d.w / 2), math.max(2, d.y - 20) }) end
+end, after = 4 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ReaderUI = require("apps/reader/readerui")
+    check(editor() == nil and ReaderUI.instance ~= nil and ReaderUI.instance.document ~= nil,
+        "…a tap above it closes it (nothing written), the book still open")
+end, after = 1 })
+-- touch: something written, a tap outside asks Save this note?, with the
+-- keyboard out of the way (it used to hide the dialog's lower rows)
+local function kbShown()
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "VirtualKeyboard" then return true end end
+    return false
+end
+local function dialog()
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "Save this note?" then return w.widget end end
+end
+local function askToSave(E)
+    local d = editor() and editor().frame.dimen
+    if d then E.tap({ math.floor(d.x + d.w / 2), math.max(2, d.y - 20) }) end
+end
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    require("gzreader_notes").quickNote(plugin())
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    check(kbShown(), "Quick note: the keyboard is up")
+    editor().input:addChars("Half a thought")
+    askToSave(E)
+end, after = 4 })
+add({ shot = "qn-4-ask" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local dl = dialog()
+    check(dl ~= nil and not kbShown(), "…a tap outside with something written: Save this note?, the keyboard out of the way")
+    E.tap("Keep writing")
+end, after = 4 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    check(dialog() == nil and editor() ~= nil and kbShown(), "Keep writing: back to the note, the keyboard back")
+    askToSave(E)
+end, after = 4 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    -- (the dialog's Save row, just above Discard: "Save" alone would find its title)
+    local dd = E.findText("Discard")
+    if dd then E.tap({ math.floor(dd.x + dd.w / 2), math.floor(dd.y - dd.h / 2) }) end
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local q = plugin().store.memos.queue or {}
+    check(editor() == nil and not kbShown() and #q >= 1 and q[#q].content == "Half a thought",
+        "…Save in the dialog saves the note (" .. #q .. " queued) and the keyboard stays away")
+end, after = 1 })
 add({ fn = function(E)
     local f = io.open(E.out .. "/quick_note.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
