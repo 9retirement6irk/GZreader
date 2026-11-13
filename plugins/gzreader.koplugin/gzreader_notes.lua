@@ -563,6 +563,16 @@ function Notes.canDraw(plugin)
     return Touch.on() and not Touch.keys() and Notes.client(plugin):isConnected()
 end
 
+--- Draw (the Notes tab's button): a new note that opens on a page to draw
+--- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
+function Notes.draw(plugin)
+    if not Notes.canDraw(plugin) then
+        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
+            or _("Drawing needs Memos connected."), 3)
+    end
+    return Notes.edit(plugin, nil, { draw = true })
+end
+
 function Notes.tagsIn(content)
     local tags, seen = {}, {}
     for tag in ((" " .. (content or "")):gmatch("[%s%(]#([%w_%-/]+)")) do
@@ -1297,16 +1307,6 @@ function Notes.actions(plugin)
           label = full and _("Leave full screen") or _("Full screen"),
           callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end },
     }
-end
-
---- Draw (the Notes tab's button): a new note that opens on a page to draw
---- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
-function Notes.draw(plugin)
-    if not Notes.canDraw(plugin) then
-        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
-            or _("Drawing needs Memos connected."), 3)
-    end
-    return Notes.edit(plugin, nil, { draw = true })
 end
 
 --- The Notes tab (the tab bar's Notes button).
