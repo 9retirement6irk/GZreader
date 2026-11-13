@@ -454,6 +454,17 @@ function RichEdit:moveCursorToCharPos(n)
 end
 
 function RichEdit:getText() return Blocks.write(self.doc) end
+
+--- The whole note replaced by Markdown `text` (as InputText:setText), the cursor at its end.
+function RichEdit:setText(text)
+    local doc = Blocks.parse(text or "")
+    if #doc.blocks == 0 then doc.blocks[1] = Blocks.new("paragraph") end
+    self.doc.blocks = doc.blocks
+    self.doc.changed = true
+    local last = self.doc.blocks[#self.doc.blocks]
+    self:setCursor({ b = last, i = #last.chars + 1 })
+    self:update(true)
+end
 function RichEdit:isTextEdited() return Blocks.write(self.doc) ~= self.doc.original end
 
 function RichEdit:onShowKeyboard()

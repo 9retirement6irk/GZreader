@@ -301,5 +301,11 @@ do
         .. (bad and ("\n#" .. bad.n .. " " .. show(bad.md) .. "\n  edited: " .. show(bad.s1) .. "\n  read:   " .. show(bad.s2)) or ""))
 end
 
+do
+    local r = editor("old", false)
+    r:setText("# New\n\n- [ ] item")
+    check(text(r) == "# New\n\n- [ ] item" and r.cur.b == block(r, 2) and r.cur.i == 5, "setText: the whole note replaced, the cursor at its end")
+end
+
 print(("richedit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
