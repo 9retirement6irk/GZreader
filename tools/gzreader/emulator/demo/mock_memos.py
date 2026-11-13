@@ -10,6 +10,9 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
                                  note). --old-upload: no replace_attachment, as Memos v0.31 (400 unknown field).
                                  An attachment whose id starts with "foreign" is someone else's: 403.
   DELETE /api/v1/attachments/<id>
+  GET   /api/v1/memos/<id>         one note
+  PATCH /api/v1/memos/<id>/attachments  {name, attachments: [{name}]}: SetMemoAttachments, in that order
+  (a note's attachments are listed newest first, as Memos orders them: updated_ts desc)
   PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
@@ -311,6 +314,10 @@ class H(BaseHTTPRequestHandler):
                                    "totalMemoCount": len(STATE["memos"])})
         if p == "/spaces" and SPACES:
             return self.send(200, {"spaces": SPACE_LIST, "nextPageToken": ""})
+        one = re.fullmatch(r"/(memos/[\w\-]+)", p)
+        if one:
+            m = next((x for x in STATE["memos"] if x["name"] == one.group(1)), None)
+            return self.send(200, m) if m else self.send(404, {"code": 5, "message": "memo not found"})
         if p == "/memos":
             ok = matcher(q.get("filter"))
             if ok is None:
@@ -405,6 +412,10 @@ class H(BaseHTTPRequestHandler):
                                 STATE["files"][target.split("/")[-1]] = up["data"]
                                 a["filename"], a["type"], a["size"] = att.get("filename", a["filename"]), att.get("type", a["type"]), str(len(up["data"]))
                                 res["attachment"] = a
+                                # (its updated time is now: Memos lists it first)
+                                m["attachments"].remove(a)
+                                m["attachments"].insert(0, a)
+                                break
                 else:
                     with LOCK:
                         new_uid = spec.get("attachment_id") or ("att%d" % STATE["next"])
@@ -413,7 +424,7 @@ class H(BaseHTTPRequestHandler):
                     m = next((x for x in STATE["memos"] if x["name"] == att.get("memo")), None)
                     if m is not None:
                         a["memo"] = m["name"]
-                        m["attachments"].append(a)
+                        m["attachments"].insert(0, a)  # (Memos lists a note's attachments newest first)
                     res["attachment"] = a
                 del UPLOADS[uid]
             return self.send(200, res)
@@ -436,7 +447,7 @@ class H(BaseHTTPRequestHandler):
             a = attachment(uid, b["filename"], b["type"], data)
             if memo is not None:
                 a["memo"] = memo["name"]
-                memo["attachments"].append(a)
+                memo["attachments"].insert(0, a)  # (Memos lists a note's attachments newest first)
             return self.send(200, a)
         return self.send(404, {"message": "not found"})
 
@@ -451,6 +462,23 @@ class H(BaseHTTPRequestHandler):
             return self.missing(u)
         if not self.authed():
             return
+        ma = re.fullmatch(r"/(memos/[\w\-]+)/attachments", p)
+        if ma:
+            # SetMemoAttachments: the note's attachments, in the order given (Memos sets
+            # their updated times so they're listed that way); left out: unlinked
+            m = next((x for x in STATE["memos"] if x["name"] == ma.group(1)), None)
+            if not m:
+                return self.send(404, {"code": 5, "message": "memo not found"})
+            b = self.body()
+            by_name = {a["name"]: a for a in m["attachments"]}
+            order = []
+            for r in b.get("attachments") or []:
+                a = by_name.get(r.get("name"))
+                if a is None:
+                    return self.send(404, {"code": 5, "message": "attachment not found: " + str(r.get("name"))})
+                order.append(a)
+            m["attachments"] = order
+            return self.send(200, {})
         mm = re.fullmatch(r"/(memos/[\w\-]+)", p)
         if not mm:
             return self.send(404, {"message": "not found"})

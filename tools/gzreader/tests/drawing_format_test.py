@@ -17,7 +17,7 @@ offsets from its box's top left, and the file name. memos' own test drawing
 
   python3 drawing_format_test.py <dir with *.canvas.png from drawing_test.lua>
 """
-import json
+import base64, json
 import math
 import os
 import re
@@ -171,6 +171,27 @@ def check_file(path, ours=True, strokes=None):
     return scene
 
 
+def check_background(scene, what):
+    """A background as memos' drawing editor makes one (insertImage with background): an
+    image element at (0, 0), locked, first; its file a PNG or JPEG data URL of that size."""
+    els = (scene or {}).get("elements", [])
+    check(len(els) >= 1 and els[0]["type"] == "image", f"{what}: the picture is the first element (under everything)")
+    if not els or els[0]["type"] != "image":
+        return
+    bg = els[0]
+    check(bg["x"] == 0 and bg["y"] == 0 and bg.get("locked") is True and bg.get("scale") == [1, 1],
+          f"{what}: at (0, 0), locked, scale [1, 1]")
+    f = scene.get("files", {}).get(bg["fileId"])
+    check(isinstance(f, dict) and f.get("mimeType") in ("image/png", "image/jpeg") and isinstance(f.get("created"), (int, float))
+          and f.get("dataURL", "").startswith("data:" + f.get("mimeType", "") + ";base64,"),
+          f"{what}: its file: mimeType, a data URL of that type, created (memos' rules for files)")
+    data = base64.b64decode(f["dataURL"].split(",", 1)[1])
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        w, h = struct.unpack(">II", data[16:24])
+        check((w, h) == (bg["width"], bg["height"]) and max(w, h) <= 1440,
+              f"{what}: the element as big as its picture ({w} x {h}), at most 1440 px (memos' stored size)")
+
+
 def main():
     out = sys.argv[1]
     print("== memos' own test drawing (the checker, checked)")
@@ -186,7 +207,7 @@ def main():
 
     print("== drawings from gzreader_drawing.lua")
     files = sorted(f for f in os.listdir(out) if f.endswith(".canvas.png"))
-    check(len(files) == 5, f"drawing_test.lua left 5 drawings ({len(files)})")
+    check(len(files) == 6, f"drawing_test.lua left 6 drawings ({len(files)})")
     scenes = {f: check_file(os.path.join(out, f)) for f in files}
     s0 = scenes.get("drawing-20261111-201500.canvas.png")
     check(s0 is not None and [e["type"] for e in s0["elements"]] == ["freedraw", "freedraw"], "the two strokes, in order")
@@ -200,6 +221,15 @@ def main():
     s3 = scenes.get("drawing-20261111-201503.canvas.png")
     check(s3 is not None and s3["appState"].get("futureState") == "kept" and len(s3["elements"]) == 1,
           "memos' drawing with a stroke added: memos' unknown field kept")
+    s4 = scenes.get("drawing-20261112-221000.canvas.png")
+    check_background(s4, "a page on College ruled")
+
+    print("== a drawing made in memos over a picture (the owner's, on College ruled paper)")
+    mine = check_file(os.path.join(HERE, "media", "memos-paper.canvas.png"), ours=False, strokes=True)
+    pics = [e for e in (mine or {}).get("elements", []) if e["type"] == "image"]
+    check(len(pics) == 1 and pics[0]["fileId"] in mine["files"]
+          and mine["files"][pics[0]["fileId"]]["dataURL"].startswith("data:image/jpeg;base64,"),
+          "memos keeps the picture in the scene's files as a data URL")
     print(f"drawing format: {passed} passed, {failed} failed")
     return 0 if failed == 0 else 1
 

@@ -17,6 +17,7 @@ package.preload["json"] = function()
         encode = function(v) return dkjson.encode(v) end }
 end
 
+package.preload["gettext"] = package.preload["gettext"] or function() return function(t) return t end end
 local Sketch = require("gzreader_sketch")
 local Drawing = require("gzreader_drawing")
 
@@ -235,6 +236,88 @@ print("== opening a drawing to go on with it (one made in memos' web app)")
     check(ss.per_unit == 2 and #ss.strokes == 1, "a drawing that fits: opened at its size (never enlarged)")
     local empty = Sketch.fromScene(Drawing.newScene(), { canvas = PW3, per_unit = 2 })
     check(empty:isEmpty() and empty.per_unit == 2, "an empty drawing: an empty page")
+end)()
+
+print("== notepaper: a page's background, as memos keeps one")
+;(function()
+    local PW3 = { x = 0, y = 100, w = 1072, h = 1300 }
+    local Notepaper = require("gzreader_notepaper")
+    local sk = Sketch.new{ canvas = PW3, per_unit = 2 }
+    run(sk, { { finger(0, 100, 300) }, { finger(0, 300, 400) }, { lift(0) } })
+    local before = { sk:toScene(sk.strokes[1].points[2][1], sk.strokes[1].points[2][2]) }
+    check(sk:paper() == "blank", "a new page: blank")
+    sk:setPaper("college")
+    local bg = sk.base.elements[1]
+    check(bg and bg.type == "image" and bg.locked == true and bg.x == 0 and bg.y == 0 and bg.width == Notepaper.W
+        and bg.height == Notepaper.H and sk.base.files[bg.fileId].mimeType == "image/png"
+        and sk.base.files[bg.fileId].dataURL:match("^data:image/png;base64,iVBOR") ~= nil,
+        "College ruled: a locked picture at (0, 0) at its stored size, under everything, its PNG in the scene's files")
+    check(sk:paper() == "college", "…and it's known again as College ruled")
+    local after = { sk:toScene(sk.strokes[1].points[2][1], sk.strokes[1].points[2][2]) }
+    check(sk.per_unit < 2 and Notepaper.W * sk.per_unit <= PW3.w and Notepaper.H * sk.per_unit <= PW3.h
+        and math.abs(before[1] - after[1]) < 0.01 and math.abs(before[2] - after[2]) < 0.01,
+        "the page fitted to the screen (" .. string.format("%.2f", sk.per_unit) .. " px a unit); the stroke stays where it was on it")
+    sk:setPaper("graph")
+    local n_bg, n_files = 0, 0
+    for _i, el in ipairs(sk.base.elements) do if el.type == "image" then n_bg = n_bg + 1 end end
+    for _k in pairs(sk.base.files) do n_files = n_files + 1 end
+    check(sk:paper() == "graph" and n_bg == 1 and n_files == 1 and sk.base.elements[1].type == "image",
+        "another paper: in place of the first (one picture, one file)")
+    local out = sk:scene()
+    check(out.elements[1].type == "image" and out.elements[2].type == "freedraw" and out.files[out.elements[1].fileId] ~= nil,
+        "the scene: the paper first, then the strokes")
+    local text = Drawing.encode(out)
+    local back = Drawing.decode(text)
+    check(back and back.elements[1].locked == true and back.files[back.elements[1].fileId].dataURL == Notepaper.dataURL("graph"),
+        "written and read back as memos reads it")
+    sk:clear()
+    check(sk:isEmpty(), "only the paper left: an empty page")
+    sk:setPaper("blank")
+    n_files = 0
+    for _k in pairs(sk.base.files) do n_files = n_files + 1 end
+    check(sk:paper() == "blank" and n_files == 0 and #sk.locked == 0, "Blank: the paper taken off")
+    local only = Sketch.new{ canvas = PW3, per_unit = 2 }
+    only:setPaper("dots")
+    check(only:isEmpty() and only:cropRect() and only:cropRect().w > 500, "a page with only its paper: empty, its PNG the whole page")
+    -- memos' own drawing on paper (a picture added in memos, not locked): kept as it is
+    local mine = Drawing.readFile(HERE .. "/media/memos-paper.canvas.png")
+    local ms = Sketch.fromScene(mine, { canvas = PW3, per_unit = 2 })
+    local pic
+    for _i, el in ipairs(ms.locked) do if el.type == "image" then pic = el end end
+    check(pic and not pic.locked and ms:paper() == "blank" and not ms:isEmpty(),
+        "a drawing made in memos over a picture of College ruled paper (the owner's): the picture is part of the drawing, kept")
+    check(ms:scene().files[pic.fileId] == mine.files[pic.fileId], "…its picture's file kept as it was")
+    -- on paper, strokes stay on it
+    local ps = Sketch.new{ canvas = PW3, per_unit = 2 }
+    ps:setPaper("college")
+    local page = ps:pageRect()
+    check(page and page.w > 800 and page.w < PW3.w and page.x > 0, "the paper's place on the canvas")
+    local r = ps:radius(ps.width)
+    local midy = PW3.y + page.y + page.h / 2
+    -- across the paper's right edge and back
+    local all = run(ps, { { finger(0, page.x + page.w - 100, midy) }, { finger(0, PW3.w - 5, midy) },
+        { finger(0, PW3.w - 3, midy + 40) }, { finger(0, page.x + page.w - 100, midy + 40) }, { lift(0) } })
+    local live = ps:live()
+    local maxx = 0
+    for _i, st in ipairs(live) do for _j, p in ipairs(st.points) do maxx = math.max(maxx, p[1]) end end
+    check(#live == 2 and math.abs(maxx - (page.x + page.w - r)) < 0.01,
+        "a stroke over the paper's edge: two pieces, both ending at the edge (ink inside it): " .. #live .. ", " .. string.format("%.1f", maxx))
+    check(all.segments > 0, "…and ink only on the paper")
+    check(ps:undo() and #ps:live() == 0, "one Undo takes back the whole stroke")
+    -- begun off the paper
+    run(ps, { { finger(0, PW3.w - 4, midy) }, { finger(0, page.x + page.w / 2, midy) }, { lift(0) } })
+    live = ps:live()
+    check(#live == 1 and math.abs(live[1].points[1][1] - (page.x + page.w - r)) < 0.01,
+        "begun off the paper: the stroke starts at its edge")
+    run(ps, { { finger(0, PW3.w - 4, midy) }, { finger(0, PW3.w - 2, midy + 30) }, { lift(0) } })
+    check(#ps:live() == 1 and #ps.history == 1, "all off the paper: nothing drawn")
+    local blank = Sketch.new{ canvas = PW3, per_unit = 2 }
+    check(blank:pageRect() == nil, "a blank page: the whole canvas")
+    -- a drawing made here, opened again: where it was, at its size
+    local here = Drawing.newScene()
+    Drawing.addStroke(here, { { 200, 300 }, { 260, 340 } })
+    local hs = Sketch.fromScene(here, { canvas = PW3, per_unit = 2 })
+    check(hs.ox == 0 and hs.oy == 0 and hs.per_unit == 2, "a drawing made here comes back where it was drawn")
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))

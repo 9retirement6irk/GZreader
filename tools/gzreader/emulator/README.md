@@ -58,6 +58,17 @@ scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
 and checks Memos has the new file under the same attachment; checks go to
 `<out>/notes-drawings-checks.txt`.
 
+`notes_pages.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): the
+Notes tab's Draw button opens a new note on a page (the text page isn't
+drawn first); Paper → College ruled, a stroke, + New page (on College ruled
+too), Paper → Graph, a stroke, + New page → Dot grid and a stroke off the
+paper's edge (it stops there), ◀ ◀, Done: the editor says Drawings (3), each
+page's file has its paper as Memos keeps a background. Save: one note in
+Memos with three drawings in page order (the mock lists a note's attachments
+newest first, as Memos does). Edit opens the pages again, in order. It keeps
+the PNGs as `<out>/page-<n>.canvas.png`; checks go to
+`<out>/notes-pages-checks.txt`.
+
 `notes_richedit.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): puts a
 note written in Memos' rich editor in Memos (a heading, bold and italic, an
 `&nbsp;` line, a checklist, a numbered list, code and a tag), then Edit: it

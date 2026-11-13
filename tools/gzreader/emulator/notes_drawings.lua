@@ -115,7 +115,8 @@ end, after = 3 })
 add({ fn = function(E)
     local e
     for _i, w in ipairs(UIM()._window_stack) do if w.widget.input and w.widget.on_save then e = w.widget end end
-    check(e and e.drawing and e.drawing.path and e:hasDrawing(), "Done: back in the note's editor with the edited drawing")
+    check(e and e.pages and e.pages[1] and e.pages[1].path and e.pages[1].changed and e:hasDrawing(),
+        "Done: back in the note's editor with the edited drawing")
     if e then e:save() end
 end, after = 1 })
 add({ wait_for = function() local q = plugin().store.memos.queue; return q and #q == 0 end, timeout = 25 })

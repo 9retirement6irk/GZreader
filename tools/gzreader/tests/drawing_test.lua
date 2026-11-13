@@ -274,5 +274,31 @@ print("== a drawing made in memos' web app (6 pen strokes, an ellipse, a text)")
     if OUT then writeFile(OUT .. "/drawing-20261112-173500.canvas.png", assert(Drawing.withScene(png, scene))) end
 end)()
 
+print("== notepaper: a background as memos keeps one")
+;(function()
+    package.preload["gettext"] = package.preload["gettext"] or function() return function(t) return t end end
+    local Notepaper = require("gzreader_notepaper")
+    local scene = Notepaper.scene("college")
+    local bg = scene.elements[1]
+    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 6,
+        "a new page on College ruled: its picture under everything, in the scene's files (six papers, Blank first)")
+    for _i, p in ipairs(Notepaper.LIST) do
+        if p.file then
+            local url = Notepaper.dataURL(p.id)
+            local png = url and require("ffi/sha2").base64_to_bin(url:match(",(.*)$"))
+            local w, h = png and png:sub(17, 20), png and png:sub(21, 24)
+            local function be(x) local a, b, c, d = x:byte(1, 4); return ((a * 256 + b) * 256 + c) * 256 + d end
+            check(png and png:sub(1, 8) == "\137PNG\r\n\26\n" and be(w) == Notepaper.W and be(h) == Notepaper.H,
+                p.label .. ": a PNG at memos' stored size (" .. Notepaper.W .. " x " .. Notepaper.H .. ")")
+        end
+    end
+    Drawing.addStroke(scene, { { 100, 120 }, { 400, 160 } })
+    local png = greyPng(4, 4)
+    local out = assert(Drawing.withScene(png, scene))
+    local back = assert(Drawing.readScene(out))
+    check(back.files[back.elements[1].fileId].dataURL == Notepaper.dataURL("college"), "read back: the paper's picture as it was")
+    if OUT then writeFile(OUT .. "/drawing-20261112-221000.canvas.png", out) end
+end)()
+
 print(string.format("drawing: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
