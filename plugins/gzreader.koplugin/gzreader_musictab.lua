@@ -292,6 +292,49 @@ function Tab:rootItems(after)
     return Rows.mark(items)
 end
 
+--- The player's Library tab (gzreader_cdscreen.lua): Recently played,
+--- Recently added, Playlists, Albums, Artists, On this Kindle. Search,
+--- Shuffle all and the Plex account go above and below the list
+--- (items.gz_search, gz_shuffle, gz_account { text, callback }), or with
+--- `inline` are lines of it (Kindles with keys: the 5-way reaches them).
+--- Not signed in to Plex: the first list without Now playing (a tab now).
+function Tab:playerRootItems(inline, after)
+    local plugin = self.plugin
+    local Rows = require("gzreader_rows")
+    after = after or function() self:replace(_("Music"), self:playerRootItems(inline)) end
+    local plex = Music().plex(plugin)
+    if not (require("gzreader_touch").audio() and plex:isConnected()) then
+        local items = {}
+        for _i, it in ipairs(self:rootItems(after)) do
+            if it.text ~= _("Now playing") then items[#items + 1] = it end
+        end
+        return Rows.mark(items)
+    end
+    local list = Music().downloaded(plugin)
+    local items = {
+        { text = _("Recently played"), callback = function() self:openRecent("played") end },
+        { text = _("Recently added"), callback = function() self:openRecent("added") end },
+        { text = _("Playlists"), callback = function() self:openPlaylists() end },
+        { text = _("Albums"), callback = function() self:openSection("albums") end },
+        { text = _("Artists"), callback = function() self:openSection("artists") end },
+    }
+    if #list > 0 then
+        items[#items + 1] = { text = _("On this Kindle"), mandatory = tostring(#list), callback = function() self:openDownloaded() end }
+    end
+    local search = function() self:promptSearch() end
+    local shuffle = #list > 0 and function() Music().shuffleAll(plugin) end or nil
+    local s = plugin.store.plex or {}
+    local account = { text = T(_("Plex: %1 · %2"), s.username or "?", (s.server or {}).name or "?"), callback = function() self:openAccount() end }
+    if inline then
+        table.insert(items, 1, { text = _("Search music…"), callback = search })
+        if shuffle then items[#items + 1] = { text = _("Shuffle all on this Kindle"), callback = shuffle } end
+        items[#items + 1] = { text = account.text, callback = account.callback }
+    else
+        items.gz_search, items.gz_shuffle, items.gz_account = search, shuffle, account
+    end
+    return Rows.mark(items)
+end
+
 --- Sign-in choices (here and in Settings). after() once signed in.
 function Tab.signInItems(plugin, after)
     local Rows = require("gzreader_rows")
@@ -451,6 +494,15 @@ function Tab.libraryText(plugin)
     return _("Music library: the server's first")
 end
 
+--- The music library on its own (the Plex card's value): the one chosen,
+--- or the server's first.
+function Tab.libraryValue(plugin)
+    local s = plugin.store.plex or {}
+    local m = s.music_section
+    if type(m) == "table" and m.title and m.server == (s.server or {}).id then return m.title end
+    return _("The server's first")
+end
+
 --- Pick the music library to browse (a server can have several: Artists,
 --- Albums, Recently added/played, and with several libraries Playlists and
 --- Search, all come from that one). Asks Plex for its libraries first.
@@ -488,6 +540,13 @@ function Tab.audiobooksText(plugin)
     local sec = require("gzreader_plex").audiobookSection(plugin.store.plex)
     if sec then return T(_("Audiobooks: from Plex (%1)"), sec.title or "?") end
     return _("Audiobooks: from Grimmory")
+end
+
+--- Where the audiobooks come from on its own (the Plex card's value).
+function Tab.audiobooksValue(plugin)
+    local sec = require("gzreader_plex").audiobookSection(plugin.store.plex)
+    if sec then return T(_("Plex: %1"), sec.title or "?") end
+    return _("Grimmory")
 end
 
 --- Pick where the Catalog's audiobooks come from: Grimmory, or one of the
@@ -772,54 +831,79 @@ function Tab:openAccount()
     self:push(_("Plex"), self:accountItems())
 end
 
---- Its lines; a change shows them again in place (back still goes to the
---- page it was opened from: 1.28.0 left an empty list there).
+--- Its lines, as ZenOS rows (gzreader_rows.lua, like Settings → Connections
+--- → Plex): who you're signed in as, then each setting with its value on the
+--- right (a choice opens a list), a switch for making big files smaller, and
+--- Sign out. A change shows them again in place (back still goes to the page
+--- it was opened from: 1.28.0 left an empty list there).
 function Tab:accountItems()
     local plugin = self.plugin
     local s = plugin.store.plex
+    local Rows = require("gzreader_rows")
     local items = {}
     local function again()
         if self.closed then return end
         self:replace(_("Plex"), self:accountItems())
     end
-    for _i, b in ipairs(Music().BITRATES) do
-        items[#items + 1] = { text = T(_("Quality when converting: %1 kbps"), b), mandatory = ((s.bitrate or 192) == b) and "\u{2713}" or nil,
-            callback = function()
-                s.bitrate = b
-                plugin:save()
-                again()
-            end }
+    -- a list to pick one from (radio rows); picked: back to the card, shown again
+    local function choose(title, list)
+        self:push(title, Rows.mark(list))
     end
-    items[#items + 1] = { text = s.shrink and _("Bigger MP3 and AAC made smaller: on") or _("Bigger MP3 and AAC made smaller: off"),
+    items[#items + 1] = { text = _("Signed in"), mandatory = T(_("%1 · %2"), s.username or "?", (s.server or {}).name or "?"),
+        gz_icon = "name:settings_account_outline", select_enabled = false }
+    local others = 0
+    for _i, srv in ipairs(s.servers or {}) do
+        if srv.id ~= (s.server or {}).id then others = others + 1 end
+    end
+    items[#items + 1] = { text = _("Plex server"), mandatory = (s.server or {}).name or "?", gz_icon = "connect",
+        -- (one server: nothing to choose, no arrow)
+        select_enabled = others > 0 or nil,
+        callback = others > 0 and function()
+            local list = {}
+            for _i, srv in ipairs(s.servers or {}) do
+                list[#list + 1] = { text = srv.name or "?", radio = true, gz_icon = "connect",
+                    checked_func = function() return (s.server or {}).id == srv.id end,
+                    callback = function()
+                        if (s.server or {}).id == srv.id then return self.menu:onClose() end
+                        self:fetch(_("Connecting…"), function(p)
+                            local ok, err = p:connect(s.token, srv.id)
+                            return ok and p.store or nil, err
+                        end, function(store)
+                            Tab.signedIn(plugin, store)
+                            self.menu:onClose()
+                            again()
+                        end)
+                    end }
+            end
+            choose(_("Plex server"), list)
+        end or nil }
+    items[#items + 1] = { text = _("Music library"), mandatory = Tab.libraryValue(plugin), gz_icon = "settings_library",
+        callback = function() Tab.chooseLibrary(plugin, again) end }
+    items[#items + 1] = { text = _("Audiobooks from"), mandatory = Tab.audiobooksValue(plugin), gz_icon = Rows.FILE.readaloud,
+        callback = function() Tab.chooseAudiobooks(plugin, again) end }
+    items[#items + 1] = { text = _("Quality when converting"), mandatory = T(_("%1 kbps"), s.bitrate or 192), gz_icon = "settings",
+        callback = function()
+            local list = {}
+            for _i, b in ipairs(Music().BITRATES) do
+                list[#list + 1] = { text = T(_("%1 kbps"), b), radio = true, gz_icon = "settings",
+                    checked_func = function() return (s.bitrate or 192) == b end,
+                    callback = function()
+                        s.bitrate = b
+                        plugin:save()
+                        self.menu:onClose()
+                        again()
+                    end }
+            end
+            choose(_("Quality when converting"), list)
+        end }
+    items[#items + 1] = { text = _("Make bigger MP3 and AAC smaller"), gz_icon = "settings_storage",
+        checked_func = function() return s.shrink == true end,
         callback = function()
             s.shrink = not s.shrink or nil
             plugin:save()
             again()
         end }
-    items[#items + 1] = { text = Tab.libraryText(plugin), callback = function()
-        Tab.chooseLibrary(plugin, function()
-            again()
-        end)
-    end }
-    items[#items + 1] = { text = Tab.audiobooksText(plugin), callback = function()
-        Tab.chooseAudiobooks(plugin, function()
-            again()
-        end)
-    end }
-    for _i, srv in ipairs(s.servers or {}) do
-        if srv.id ~= (s.server or {}).id then
-            items[#items + 1] = { text = T(_("Use the server “%1”"), srv.name or "?"), callback = function()
-                self:fetch(_("Connecting…"), function(p)
-                    local ok, err = p:connect(s.token, srv.id)
-                    return ok and p.store or nil, err
-                end, function(store)
-                    Tab.signedIn(plugin, store)
-                    self.menu:onClose()
-                end)
-            end }
-        end
-    end
-    items[#items + 1] = { text = _("Sign out of Plex"), callback = function()
+    items[#items + 1] = { text = _("Sign out of Plex"), gz_icon = "name:quick_exit", callback = function()
         UIManager:show(require("ui/widget/confirmbox"):new{
             text = _("Sign out of Plex on this Kindle? Downloaded music stays."),
             ok_text = _("Sign out"),
@@ -832,7 +916,7 @@ function Tab:accountItems()
             end,
         })
     end }
-    return items
+    return Rows.mark(items)
 end
 
 ---------------------------------------------------------------- Settings

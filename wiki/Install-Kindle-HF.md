@@ -27,7 +27,7 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 ## Notes for these Kindles
 
 - Touch throughout. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
-- Kindles with a frontlight get a light slider in the quick panel.
+- Kindles with a frontlight get a light slider in the quick panel; those with a warm light (Paperwhite 5 and newer, Oasis 3, Scribe, Colorsoft) also a warmth slider, Cool to Warm. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
 - These Kindles have no speaker or headphone jack (the newer ones play audio over Bluetooth only, which GZreader doesn't use): audiobooks, music and read aloud aren't offered.
 
 Updating and uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).

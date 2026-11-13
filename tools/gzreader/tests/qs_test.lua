@@ -109,7 +109,11 @@ do
     local order = table.concat(cfg.navbar.tab_order, ",")
     check(cfg.navbar.show_tabs.favorites == true and cfg.navbar.show_tabs.ct_notes == false and cfg.navbar.show_tabs.ct_grimmory == true,
         "setup tabs: Favorites on, Notes off, Grimmory untouched")
-    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    check(order == "home,books,ct_grimmory,ct_notes,ct_calendar,continue,favorites,ct_music,ct_audiobooks,ct_house,history", "setup tabs: a tab turned on is added to the list (" .. order .. ")")
+    local house_tab
+    for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_house" then house_tab = t end end
+    check(house_tab and house_tab.action.gzreader_house and house_tab.icon == "tab_house" and house_tab.label == "House"
+        and defaults.navbar.show_tabs.ct_house == false, "the House tab (Home Assistant): defined, off by default")
     local ab_tab
     for _, t in ipairs(defaults.navbar.custom_tabs) do if t.id == "ct_audiobooks" then ab_tab = t end end
     check(ab_tab and ab_tab.action.gzreader_audiobooks and ab_tab.icon == "tab_audiobooks" and defaults.navbar.show_tabs.ct_audiobooks == false

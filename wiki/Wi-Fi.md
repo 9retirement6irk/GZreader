@@ -6,7 +6,8 @@ Wi‑Fi is **On**, **Off** or **Auto** (Auto is the default):
   Wi‑Fi auto → Wi‑Fi on. On is drawn white on black; Auto's icon has an **A**
   and still shows whether Wi‑Fi is on right now (crossed out while it's off).
 - **Settings → General → Wi‑Fi** offers the same three, with **Networks**
-  (choosing a network) under them. The row shows the mode.
+  (choosing a network), **HTTP proxy** (tap: on or off; hold: its address)
+  and **Network info** under them. The row shows the mode.
 - **The status bar** (Home's and a book's top bar) shows the Wi‑Fi icon as
   before, on or off; on Auto an **A** follows it.
 
@@ -33,6 +34,8 @@ GZreader turned on.
 
 Turning Wi‑Fi on or off anywhere else (KOReader's Wi‑Fi menu, a gesture, the
 network list) chooses On or Off, so the mode always says what you last asked
-for. The mode is kept in `gzreader_wifi_mode`; settings from before it (the
+for. KOReader's own "Disable Wi‑Fi connection when inactive" isn't offered
+(it turned Wi‑Fi off after five quiet minutes even on On; Auto does that job),
+and a tick saved earlier is cleared when GZreader starts. The mode is kept in `gzreader_wifi_mode`; settings from before it (the
 "Wi‑Fi only when needed" switch, `gzreader_wifi_on_demand`, and
 `gzreader_wifi_kept_off`) become Auto, On or Off.

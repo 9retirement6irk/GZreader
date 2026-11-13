@@ -1,5 +1,5 @@
 --[[--
-What GZreader's own tabs in ZenOS's tab bar (Grimmory, Notes, Calendar)
+What GZreader's own tabs in ZenOS's tab bar (Catalog, Notes, Calendar, House…)
 share: closing each other when one opens, and ZenOS's status row (clock,
 Wi-Fi, battery) as their title.
 ]]
@@ -7,7 +7,7 @@ Wi-Fi, battery) as their title.
 local UIManager = require("ui/uimanager")
 
 local Tabs = {
-    IDS = { ct_grimmory = true, ct_notes = true, ct_calendar = true, ct_music = true, ct_audiobooks = true },
+    IDS = { ct_grimmory = true, ct_notes = true, ct_calendar = true, ct_music = true, ct_audiobooks = true, ct_house = true },
 }
 
 --- Close GZreader's other tab views. ZenOS opens an action tab on top of the

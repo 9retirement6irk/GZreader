@@ -45,3 +45,5 @@ Fastmail (`https://caldav.fastmail.com`), Google
   with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
 - **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,
   the layout it opens in, week start (Sunday / Monday), sync range, storage.
+  M → Calendar settings in the tab opens this same Settings page; the
+  calendar is drawn again when you close it.

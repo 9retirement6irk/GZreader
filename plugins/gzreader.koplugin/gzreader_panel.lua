@@ -5,10 +5,14 @@ the top of the screen. Square tiles, in two groups:
   Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
-             Search, History, View, Sort, Music, Audiobook
+             Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
-             Search book, Font, Layout, Fit pictures, Read aloud, Music,
-             Audiobook
+             Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
+             Music, Audiobook
+
+Quick note is there while Memos is connected (the Notes tab): a new note in
+the full-page editor over whatever is on screen; Save sends it in the
+background and you're back in the book (or Home, or Settings).
 
 Music and Audiobook are there only while one plays (or is paused): they
 open its player. Browsing and downloading music and audiobooks is the
@@ -20,6 +24,9 @@ Kindle 4 (no letter keys) has the 5-way; touch Kindles tap, and have the
 light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
 playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap or drag the light's slider.
+Kindles with a warm light (Device:hasNaturalLight(): Paperwhite 5 and newer,
+Oasis 3, Scribe, Colorsoft) get a warmth slider under it, Cool to Warm, in
+the Kindle's own steps (powerd's native warmth, 0 to 24).
 
 Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
@@ -158,6 +165,7 @@ function Panel.catalog()
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
+            { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
@@ -173,6 +181,7 @@ function Panel.catalog()
             { id = "layout", label = _("Layout") },
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
+            { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
             { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
             { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
         } },
@@ -220,8 +229,48 @@ local function shown(group, list)
 end
 
 --- Settings → Interface → Quick panel: a tick per tile, by group.
+--- How the quick panel opens on a touch Kindle: a tap at the top, a swipe
+--- down from the top, or both. It's KOReader's "Activate menu" (G_reader_settings
+--- activate_menu: "swipe_tap", the default, "tap" or "swipe"), which opens the
+--- quick panel since GZreader puts it in place of KOReader's menu; its row in
+--- Settings → KOReader is left out (zenos common/gz_settings.lua
+--- KOREADER_DUPLICATES.menu_activate), with the "Auto-show bottom menu" under
+--- it (ZenOS keeps KOReader's bottom menu shut on touch Kindles). As there,
+--- unticking one ticks the other: the panel always opens somehow. None on a
+--- Kindle without a touch screen (the Menu key opens it).
+function Panel.openRows()
+    if not require("gzreader_touch").on() then return {} end
+    local function mode() return G_reader_settings:readSetting("activate_menu") or "swipe_tap" end
+    local function set(value)
+        G_reader_settings:saveSetting("activate_menu", value)
+        -- (Home's and an open book's menus read it once, when they're made)
+        for _i, name in ipairs({ "apps/filemanager/filemanager", "apps/reader/readerui" }) do
+            local ok, App = pcall(require, name)
+            local ui = ok and type(App) == "table" and App.instance
+            if ui and ui.menu then ui.menu.activation_menu = value end
+            if ui and ui.config then ui.config.activation_menu = value end
+        end
+    end
+    return {
+        {
+            text = _("Open with a tap at the top"),
+            help_text = _("A tap at the top of the screen opens the quick panel (in a book too). Untick it to open it only with a swipe down."),
+            checked_func = function() return mode() ~= "swipe" end,
+            callback = function() set(mode() ~= "swipe" and "swipe" or "swipe_tap") end,
+        },
+        {
+            text = _("Open with a swipe down from the top"),
+            help_text = _("A swipe down from the top of the screen opens the quick panel (in a book too). Untick it to open it only with a tap at the top."),
+            checked_func = function() return mode() ~= "tap" end,
+            callback = function() set(mode() ~= "tap" and "tap" or "swipe_tap") end,
+            separator = true,
+        },
+    }
+end
+
 function Panel.settingsItem()
     local groups = {}
+    for _i, row in ipairs(Panel.openRows()) do groups[#groups + 1] = row end
     for _i, g in ipairs(Panel.catalog()) do
         local items = {}
         for _j, t in ipairs(g.tiles) do
@@ -252,7 +301,7 @@ function Panel.settingsItem()
     }
     return {
         text = _("Quick panel"),
-        help_text = _("The tiles on the quick panel (Menu, or swipe down from the top). Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
+        help_text = _("How the quick panel opens (touch Kindles: a tap at the top, a swipe down; the Menu key on the others) and its tiles. Home, Settings and Exit to Kindle are always there. Hidden tiles' letters go to the tiles after them."),
         sub_item_table = groups,
     }
 end
@@ -351,6 +400,15 @@ local function audiobookTile(plugin)
 end
 Panel.audiobookTile = audiobookTile
 
+--- The Quick note tile, while Memos is connected: a new note over whatever
+--- is on screen (gzreader_notes is only loaded when it's used).
+local function quickNoteTile(plugin)
+    local store = plugin and plugin.store and plugin.store.memos
+    if not (type(store) == "table" and require("gzreader_memos"):new(store):isConnected()) then return nil end
+    return { id = "note", icon = "quicknote", label = _("Quick note"), run = function() require("gzreader_notes").quickNote(plugin) end }
+end
+Panel.quickNoteTile = quickNoteTile
+
 --- Home's tiles (the file manager).
 function Panel.homeTiles(plugin, book)
     local HomeMenu = require("gzreader_homemenu")
@@ -368,6 +426,7 @@ function Panel.homeTiles(plugin, book)
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }
     list[#list + 1] = { id = "view", icon = "view", label = _("View"), run = function() HomeMenu.showDisplay() end }
     list[#list + 1] = { id = "sort", icon = "sort", label = _("Sort"), run = function() HomeMenu.showSort() end }
+    list[#list + 1] = quickNoteTile(plugin)
     list[#list + 1] = musicTile(plugin)
     list[#list + 1] = audiobookTile(plugin)
     local Tasks = require("gzreader_tasks")
@@ -407,6 +466,7 @@ function Panel.bookTiles(plugin, ui)
     if tts and tts:supported() then
         list[#list + 1] = { id = "readaloud", icon = "readaloud", label = _("Read aloud"), on = tts.active == true, run = function() tts:toggle() end }
     end
+    list[#list + 1] = quickNoteTile(plugin)
     list[#list + 1] = musicTile(plugin)
     list[#list + 1] = audiobookTile(plugin)
     return shown("book", list)
@@ -471,10 +531,11 @@ function PanelWidget:init()
         if #g.tiles > 0 then groups[#groups + 1] = g end
     end
     local light = Device:hasFrontlight() and Device:isTouchDevice()
+    local warmth = light and Panel.hasWarmth()
     -- (fit the screen: smaller tiles on a short one)
     local rows = 0
     for _i, g in ipairs(groups) do rows = rows + math.ceil(#g.tiles / cols) end
-    local fixed = S(40) + (light and S(52) or 0) + #groups * S(30) + S(30)
+    local fixed = S(40) + (light and S(52) or 0) + (warmth and S(52) or 0) + #groups * S(30) + S(30)
     local max_th = math.floor((sh * 0.86 - fixed - (rows - 1) * gap) / math.max(1, rows))
     th = math.max(S(60), math.min(th, max_th))
     self.layout = {}
@@ -482,6 +543,10 @@ function PanelWidget:init()
     local y = S(40)
     if light then
         self.light_y = y
+        y = y + S(52)
+    end
+    if warmth then
+        self.warmth_y = y
         y = y + S(52)
     end
     self.titles = {}
@@ -527,8 +592,11 @@ function PanelWidget:init()
     local whole = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.ges_events = { TapPanel = { GestureRange:new{ ges = "tap", range = whole } } }
     if light then
-        -- drag the slider (pan while moving, then its release; a quick drag is a swipe)
-        local strip = function() return Geom:new{ x = 0, y = self.light_y - S(10), w = sw, h = S(64) } end
+        -- drag the slider (pan while moving, then its release; a quick drag is a swipe;
+        -- the strip covers the warmth slider too when there is one)
+        local strip = function()
+            return Geom:new{ x = 0, y = self.light_y - S(10), w = sw, h = (self.warmth_y or self.light_y) - self.light_y + S(64) }
+        end
         -- (only a drag that starts with a finger put down on the slider: the
         -- swipe down that opens the panel in a book is still going when it
         -- appears, and its rest would set the light where the finger passed)
@@ -539,28 +607,62 @@ function PanelWidget:init()
     end
 end
 
---- The light at the slider's position x (the bar only; − and + are buttons).
-function PanelWidget:lightAt(x, final)
-    local min, max = select(2, self:lightInfo())
+--- The sliders on screen, top to bottom: "light", then "warmth" (a warm light).
+function PanelWidget:sliders()
+    local list = {}
+    if self.light_y then list[#list + 1] = { kind = "light", y = self.light_y } end
+    if self.warmth_y then list[#list + 1] = { kind = "warmth", y = self.warmth_y } end
+    return list
+end
+
+--- The slider a finger at y is on (the one whose bar is nearest), or nil.
+function PanelWidget:sliderAtY(y)
+    local best, dist
+    for _i, s in ipairs(self:sliders()) do
+        if y >= s.y - S(10) and y <= s.y + S(54) then
+            local d = math.abs(y - (s.y + S(20)))
+            if not dist or d < dist then best, dist = s.kind, d end
+        end
+    end
+    return best
+end
+
+function PanelWidget:sliderInfo(kind)
+    if kind == "warmth" then return self:warmthInfo() end
+    return self:lightInfo()
+end
+
+function PanelWidget:setSlider(kind, v, dragging)
+    if kind == "warmth" then return self:setWarmth(v, dragging) end
+    return self:setLight(v, dragging)
+end
+
+--- A slider's value at position x (the bar only; − and + are buttons).
+function PanelWidget:sliderAt(kind, x, final)
+    local min, max = select(2, self:sliderInfo(kind))
     local bar = self:lightBar(0)
     local f = math.max(0, math.min(1, (x - bar.x) / math.max(1, bar.w)))
     local v = math.floor(min + f * (max - min) + 0.5)
     if v == self._dragged and not final then return true end
     self._dragged = v
-    self:setLight(v, not final)
+    self:setSlider(kind, v, not final)
     return true
 end
 
---- A finger put down: the slider follows a drag only if it went down on it.
+--- The light at the slider's position x.
+function PanelWidget:lightAt(x, final) return self:sliderAt("light", x, final) end
+
+--- A finger put down: a slider follows a drag only if it went down on it
+--- (_light_touched: which one, "light" or "warmth", or false).
 function PanelWidget:onTouchPanel(_arg, ges)
     local y = ges and ges.pos and ges.pos.y
-    self._light_touched = (y and self.light_y and y >= self.light_y - S(10) and y <= self.light_y + S(54)) or false
+    self._light_touched = (y and self:sliderAtY(y)) or false
     return false
 end
 
 function PanelWidget:onPanLight(_arg, ges)
     if not (self._light_touched and ges and ges.pos) then return true end
-    return self:lightAt(ges.pos.x)
+    return self:sliderAt(self._light_touched, ges.pos.x)
 end
 
 function PanelWidget:onPanReleaseLight(_arg, ges)
@@ -568,7 +670,7 @@ function PanelWidget:onPanReleaseLight(_arg, ges)
     local touched = self._light_touched
     self._light_touched = false
     if not (touched and ges and ges.pos) then return true end
-    return self:lightAt(ges.pos.x, true)
+    return self:sliderAt(touched, ges.pos.x, true)
 end
 
 function PanelWidget:onSwipeLight(_arg, ges)
@@ -579,7 +681,7 @@ function PanelWidget:onSwipeLight(_arg, ges)
     -- (pos is where it started: end where it went)
     local x = ges.pos.x + (ges.direction == "east" and 1 or -1) * (ges.distance or 0)
     self._dragged = nil
-    return self:lightAt(x, true)
+    return self:sliderAt(touched, x, true)
 end
 
 function PanelWidget:getSize() return self.dimen end
@@ -613,6 +715,7 @@ function PanelWidget:paintTo(bb, x, y)
     rt:paintTo(bb, x + w - S(16) - rt:getSize().w, y + S(10))
     rt:free()
     if self.light_y then self:paintLight(bb, x, y + self.light_y) end
+    if self.warmth_y then self:paintWarmth(bb, x, y + self.warmth_y) end
     for _i, t in ipairs(self.titles) do
         local tw = TextWidget:new{ text = tostring(t.text):upper(), face = Font:getFace("cfont", 12), bold = true,
             fgcolor = Blitbuffer.COLOR_DARK_GRAY }
@@ -631,10 +734,26 @@ end
 
 ---------------------------------------------------------------- the light (touch Kindles)
 
+--- Whether this Kindle has a warm light (its colour can be changed).
+function Panel.hasWarmth()
+    local ok, yes = pcall(function()
+        return Device:hasNaturalLight() and Device:getPowerDevice() ~= nil
+    end)
+    return ok and yes and true or false
+end
+
 function PanelWidget:lightInfo()
     local powerd = Device:getPowerDevice()
     local min, max = powerd.fl_min or 0, powerd.fl_max or 24
     local cur = powerd:frontlightIntensity() or min
+    return powerd, min, max, cur
+end
+
+--- The warmth in the Kindle's own steps (powerd's public warmth is 0 to 100).
+function PanelWidget:warmthInfo()
+    local powerd = Device:getPowerDevice()
+    local min, max = powerd.fl_warmth_min or 0, powerd.fl_warmth_max or 100
+    local cur = powerd:toNativeWarmth(powerd:frontlightWarmth() or 0) or min
     return powerd, min, max, cur
 end
 
@@ -643,8 +762,8 @@ function PanelWidget:lightBar(x)
     return { x = x + S(16) + S(44) + S(8), w = w - 2 * S(16) - 2 * (S(44) + S(8)) }
 end
 
-function PanelWidget:paintLight(bb, x, y)
-    local min, max, cur = select(2, self:lightInfo())
+--- One slider row at y: − and + buttons, the bar filled up to cur (fill: its colour).
+function PanelWidget:paintSlider(bb, x, y, min, max, cur, fill)
     local bar = self:lightBar(x)
     local cy = y + S(20)
     -- − and +
@@ -660,34 +779,69 @@ function PanelWidget:paintLight(bb, x, y)
     bb:paintBorder(bar.x, cy - math.floor(bh / 2), bar.w, bh, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, math.floor(bh / 2))
     local f = (max > min) and (cur - min) / (max - min) or 0
     local fw = math.floor(bar.w * f)
-    if fw > 0 then bb:paintRoundedRect(bar.x, cy - math.floor(bh / 2), fw, bh, Blitbuffer.COLOR_BLACK, math.floor(bh / 2)) end
+    if fw > 0 then bb:paintRoundedRect(bar.x, cy - math.floor(bh / 2), fw, bh, fill, math.floor(bh / 2)) end
     local knob = S(20)
     local kx = bar.x + fw - math.floor(knob / 2)
     bb:paintRoundedRect(kx, cy - math.floor(knob / 2), knob, knob, Blitbuffer.COLOR_WHITE, math.floor(knob / 2))
     bb:paintBorder(kx, cy - math.floor(knob / 2), knob, knob, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, math.floor(knob / 2))
 end
 
+function PanelWidget:paintLight(bb, x, y)
+    local min, max, cur = select(2, self:lightInfo())
+    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_BLACK)
+end
+
+--- The warmth: filled in grey, "Cool" and "Warm" under its ends.
+function PanelWidget:paintWarmth(bb, x, y)
+    local min, max, cur = select(2, self:warmthInfo())
+    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
+    local bar = self:lightBar(x)
+    local face = Font:getFace("cfont", 11)
+    local cool = TextWidget:new{ text = _("Cool"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    cool:paintTo(bb, bar.x, y + S(32))
+    cool:free()
+    local warm = TextWidget:new{ text = _("Warm"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    warm:paintTo(bb, bar.x + bar.w - warm:getSize().w, y + S(32))
+    warm:free()
+end
+
+--- The slider's row to refresh after a change (the bar and the knob).
+function PanelWidget:sliderDirty(kind, dragging)
+    local sy = kind == "warmth" and self.warmth_y or self.light_y
+    -- (while dragging: the quick black-and-white refresh)
+    UIManager:setDirty(self, function()
+        return dragging and "fast" or "ui", Geom:new{ x = 0, y = sy, w = self.w, h = S(44) }
+    end)
+end
+
 function PanelWidget:setLight(v, dragging)
     local powerd, min, max = self:lightInfo()
     v = math.max(min, math.min(max, math.floor(v + 0.5)))
     powerd:setIntensity(v)
-    -- (while dragging: the quick black-and-white refresh)
-    UIManager:setDirty(self, function()
-        return dragging and "fast" or "ui", Geom:new{ x = 0, y = self.light_y, w = self.w, h = S(44) }
-    end)
+    self:sliderDirty("light", dragging)
+end
+
+--- v in the Kindle's own warmth steps (warmthInfo's min to max).
+function PanelWidget:setWarmth(v, dragging)
+    local powerd, min, max = self:warmthInfo()
+    v = math.max(min, math.min(max, math.floor(v + 0.5)))
+    powerd:setWarmth(powerd:fromNativeWarmth(v))
+    self:sliderDirty("warmth", dragging)
 end
 
 function PanelWidget:onTapPanel(_arg, ges)
     local pos = ges and ges.pos
     if not pos then return true end
     if pos.y > self.h then UIManager:close(self); return true end
-    if self.light_y and pos.y >= self.light_y and pos.y <= self.light_y + S(44) then
-        local min, max, cur = select(2, self:lightInfo())
-        local bar = self:lightBar(0)
-        if pos.x < S(16) + S(44) + S(4) then return self:setLight(cur - 1) or true end
-        if pos.x > self.w - S(16) - S(44) - S(4) then return self:setLight(cur + 1) or true end
-        local f = math.max(0, math.min(1, (pos.x - bar.x) / math.max(1, bar.w)))
-        return self:setLight(min + f * (max - min)) or true
+    for _i, s in ipairs(self:sliders()) do
+        if pos.y >= s.y and pos.y <= s.y + S(44) then
+            local min, max, cur = select(2, self:sliderInfo(s.kind))
+            local bar = self:lightBar(0)
+            if pos.x < S(16) + S(44) + S(4) then return self:setSlider(s.kind, cur - 1) or true end
+            if pos.x > self.w - S(16) - S(44) - S(4) then return self:setSlider(s.kind, cur + 1) or true end
+            local f = math.max(0, math.min(1, (pos.x - bar.x) / math.max(1, bar.w)))
+            return self:setSlider(s.kind, min + f * (max - min)) or true
+        end
     end
     return true
 end

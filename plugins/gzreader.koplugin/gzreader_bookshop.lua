@@ -997,6 +997,14 @@ local Page = WidgetContainer:extend{ w = 0, h = 0 }
 
 function Page:getSize() return Geom:new{ w = self.w, h = self.h } end
 
+--- A hold on a ledge's ornament: the ornament settings (gzreader_shelftheme.lua);
+--- the books' and cards' own holds come first.
+function Page:onGesture(ev)
+    if not (ev and ev.ges == "hold" and ev.pos) then return false end
+    local Theme = package.loaded["gzreader_shelftheme"]
+    return Theme ~= nil and Theme.hold(self, ev.pos) or false
+end
+
 local function coverImage(book, w, h, kind)
     local Covers = require("gzreader_covers")
     local img = Covers.image(book.id, kind, w, h)
@@ -1101,7 +1109,7 @@ function Page:paintLedge(bb, ox, oy, i, L)
             local Theme = require("gzreader_shelftheme")
             -- (when the Catalog has them; the lower ledge first, as many ledges as the count allows)
             if not Theme.placeOn("catalog") or i <= 2 - math.min(Theme.count(), 2) then return end
-            Theme.paintOrnament(bb, "catalog", ox + free.x, ox + last.x + last.w, bottom, led.box_h, i)
+            Theme.paintOrnament(bb, "catalog", ox + free.x, ox + last.x + last.w, bottom, led.box_h, i, self)
         end)
     end
 end
@@ -1196,6 +1204,7 @@ end
 
 function Page:paintTo(bb, x, y)
     self.dimen = Geom:new{ x = x, y = y, w = self.w, h = self.h }
+    if package.loaded["gzreader_shelftheme"] then package.loaded["gzreader_shelftheme"].forget(self) end
     local L = self.L
     local menu = self.menu
     paintWall(bb, x, y, self.w, self.h)

@@ -234,6 +234,32 @@ function NoteSettings.items(plugin)
             end,
         }
     end
+    local NL = require("gzreader_notelayout")
+    local view_items = {}
+    for _i, c in ipairs(NL.COLUMNS) do
+        view_items[#view_items + 1] = {
+            text = Notes.columnsLabel(c),
+            radio = true,
+            checked_func = function() return Notes.view(plugin).columns == c end,
+            callback = function() Notes.setView(plugin, "columns", c) end,
+        }
+    end
+    view_items[#view_items].separator = true
+    for _i, d in ipairs(NL.DISPLAYS) do
+        view_items[#view_items + 1] = {
+            text = Notes.displayLabel(d),
+            radio = true,
+            checked_func = function() return Notes.view(plugin).display == d end,
+            callback = function() Notes.setView(plugin, "display", d) end,
+        }
+    end
+    view_items[#view_items].separator = true
+    view_items[#view_items + 1] = {
+        text = _("Full screen: no tab bar"),
+        help_text = _("The Notes tab without the tab bar at the bottom, for more notes on a page. On a touch Kindle the X at the end of the buttons under the title leaves it; Layout on the board has it too. Back (or the quick panel's Home) leaves the tab."),
+        checked_func = function() return Notes.fullscreen(plugin) end,
+        callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end,
+    }
     return {
         icon("connect", {
             text_func = function()
@@ -292,6 +318,11 @@ function NoteSettings.items(plugin)
             end,
             sub_item_table_func = function() return NoteSettings.storageItems(plugin) end,
             separator = true,
+        }),
+        icon("view_mosaic", {
+            text_func = function() return T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))) end,
+            help_text = _("How the Notes tab shows your notes: in a list or side by side (Auto: as many as fit the screen), and all the same size (Compact: a long note is cut off; open it to read it all) or whole (Full: as long as each note needs), and full screen (no tab bar). Also Layout in the Notes tab (or L)."),
+            sub_item_table = view_items,
         }),
         icon("view_list", {
             text_func = function() return T(_("Notes kept on the Kindle: %1"), prefs.keep) end,

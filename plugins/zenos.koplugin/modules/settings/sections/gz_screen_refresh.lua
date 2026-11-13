@@ -1,10 +1,12 @@
--- GZreader: Settings → General → Screen refresh. Every setting about when the
--- e-ink screen flashes clean, in one place (they were in Reader → Appearance
--- and General → Advanced):
+-- GZreader: the flash settings of GZreader and ZenOS, shown in Settings →
+-- General → Screen → E-ink settings after KOReader's Full refresh rate
+-- (common/gz_settings.lua screenItem; until 1.28.3 they were General →
+-- Screen refresh):
 --   Flash on every page turn       (the Kindles' page turns; gzreader_eink)
---   Flash on every CBZ page turn   (ZenOS: comics)
 --   Flash when the screen changes  (Kindles without REAGL only; gzreader_eink)
 --   Partial pages refresh          (ZenOS: a library page that isn't full)
+-- ZenOS's "Flash on every CBZ page turn" isn't offered: KOReader's "Always
+-- flash on pages with images" covers comics too (reader_flash_cbz.lua).
 -- Receives ctx: { plugin, config, ... } as the other sections do.
 
 local _ = require("gettext")
@@ -25,22 +27,11 @@ function M.build(ctx)
     if Eink and Eink.flashPageTurns then
         items[#items + 1] = IconItem.decorate({
             text = _("Flash on every page turn"),
-            help_text = _("Every page turn flashes the screen clean, as the Kindle's own reader does: no grey trace of the last pages. Off: a flash every 6 pages, quicker turns. On by default on the Kindle 2, DX, 3 and 4. Replaces a full refresh rate chosen in a book's menu (Screen → E-ink settings)."),
+            help_text = _("Every page turn flashes the screen clean, as the Kindle's own reader does: no grey trace of the last pages. Off: a flash every 6 pages, quicker turns. On by default on the Kindle 2, DX, 3 and 4. Replaces a Full refresh rate chosen above (or in a book's menu)."),
             checked_func = function() return Eink.pageTurnsTicked() end,
             callback = function() Eink.setFlashPageTurns(not Eink.pageTurnsTicked()) end,
         }, icons.reader_flash_cbz)
     end
-
-    items[#items + 1] = IconItem.decorate({
-        text = _("Flash on every CBZ page turn"),
-        checked_func = function()
-            return config.features.reader_flash_cbz == true
-        end,
-        callback = function()
-            config.features.reader_flash_cbz = config.features.reader_flash_cbz ~= true
-            plugin:saveConfig()
-        end,
-    }, icons.reader_flash_cbz)
 
     -- Kindles without REAGL (Kindle 3 …): flash on screen changes
     if Eink and Eink.applies and Eink.applies() then
