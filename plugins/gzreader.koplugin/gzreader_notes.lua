@@ -1299,6 +1299,16 @@ function Notes.actions(plugin)
     }
 end
 
+--- Draw (the Notes tab's button): a new note that opens on a page to draw
+--- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
+function Notes.draw(plugin)
+    if not Notes.canDraw(plugin) then
+        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
+            or _("Drawing needs Memos connected."), 3)
+    end
+    return Notes.edit(plugin, nil, { draw = true })
+end
+
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
     Notes.closeOtherTabs(Notes.TAB_ID)
@@ -1801,16 +1811,6 @@ function Notes.edit(plugin, memo, opts)
             end
         end,
     }
-end
-
---- Draw (the Notes tab's button): a new note that opens on a page to draw
---- on (Done goes to its text, Save sends it). Drawings need Memos over Wi‑Fi.
-function Notes.draw(plugin)
-    if not Notes.canDraw(plugin) then
-        return info(require("gzreader_net").usb and _("Drawings go to Memos over Wi‑Fi, not through the computer.")
-            or _("Drawing needs Memos connected."), 3)
-    end
-    return Notes.edit(plugin, nil, { draw = true })
 end
 
 --- The quick panel's Quick note tile: a new note over whatever is on the
