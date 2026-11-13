@@ -256,8 +256,9 @@ function Editor:init()
     -- (taps and keys reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
     if self.vk then self.is_always_active = true end
     -- touch: the note in blocks, as Memos' rich editor shows it (Markdown
-    -- when it can't be read that way)
-    if self.touch and NoteEditor.BLOCKS then
+    -- when it can't be read that way). (Not in a window over the screen: a
+    -- quick note keeps its text box, there's no room for the blocks.)
+    if self.touch and NoteEditor.BLOCKS and not self.floating then
         local ok, doc = pcall(BlockEditor.document, self.original)
         if ok then
             self.blocks_mode = true
