@@ -6884,6 +6884,42 @@ print("Notes (Memos v0.31)")
             check(page:area() == win.dimen and not page:onTapOutside(nil, { pos = G:new{ x = 1, y = 1, w = 0, h = 0 } }),
                 "the full-page editor: unchanged")
         end)()
+        -- touch: the keyboard (always above other windows) steps aside for the editor's dialogs
+        ;(function()
+            local UIMk = require("ui/uimanager")
+            local E3 = NEq.Editor
+            local kb = { shown = true }
+            function kb:onCloseKeyboard() self.shown = false end
+            function kb:onShowKeyboard() self.shown = true end
+            local ed = setmetatable({ vk = true, input = kb }, { __index = function(_t, k) return rawget(E3, k) end })
+            local was_stack, was_tick = rawget(UIMk, "_window_stack"), rawget(UIMk, "nextTick")
+            UIMk.nextTick = function(_s, fn) fn() end
+            local own_closed = 0
+            local dlg = { title = "Save this note?", onCloseWidget = function() own_closed = own_closed + 1 end }
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed }, { widget = dlg } }
+            ed:keyboardAside(dlg)
+            check(kb.shown == false, "touch: Save this note? opens with the keyboard out of the way (it hid the dialog's rows)")
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed } }
+            dlg:onCloseWidget()
+            check(own_closed == 1 and kb.shown == true, "…Keep writing (the dialog closed, the note in front): the keyboard comes back")
+            local tagd = {}
+            ed:keyboardAside(tagd)
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed }, { widget = { title = "New tag" } },
+                { widget = { name = "VirtualKeyboard" } } }
+            tagd:onCloseWidget()
+            check(kb.shown == false, "…not while another window with its own keyboard is in front (New tag)")
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } } }
+            ed:keyboardAside({})
+            check(not ed:keyboardBack() and kb.shown == false, "…nor once the note is closed (Save, Discard)")
+            ed.dpad, ed.focus_tool = true, 2
+            UIMk._window_stack = { { widget = ed } }
+            check(not ed:keyboardBack() and kb.shown == false, "Kindle 4: not while on the toolbar")
+            local keys_only = setmetatable({ input = kb }, { __index = function(_t, k) return rawget(E3, k) end })
+            local plain = {}
+            keys_only:keyboardAside(plain)
+            check(plain.onCloseWidget == nil, "keyboard Kindles: nothing to move")
+            UIMk._window_stack, UIMk.nextTick = was_stack, was_tick
+        end)()
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         check(esrc:find('local o = { floating = true, covers_fullscreen = false }', 1, true) ~= nil,
             "the window doesn't cover the screen: the book or Home under it stays drawn")

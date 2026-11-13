@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Quick note opens in a window over your book, not the whole screen", text = "The quick panel's Quick note now opens in a window over whatever is on the screen (the book, Home, Settings) instead of a full page: the page stays visible around it. On touch Kindles the window sits above the on-screen keyboard, and a tap outside it is the same as Back (it asks whether to save when you've written something). New notes and edits from the Notes tab still use the full page." },
+            { short = "Touch Kindles: the keyboard no longer covers Save this note? or Add a tag in the note editor", text = "In the note editor on touch Kindles and the Kindle 4, the on-screen keyboard stayed on top of the Save this note? dialog (Back or ✕ after writing something), so you couldn't reach Save or Keep writing, and of the Add a tag list and the New tag box. The keyboard now steps aside while one of them is open and comes back when you go back to writing." },
         },
     },
     {

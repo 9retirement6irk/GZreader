@@ -347,6 +347,34 @@ function Editor:area()
     return self.dimen
 end
 
+--- Touch and the Kindle 4: KOReader keeps the on-screen keyboard above every
+--- other window, so it hid the lower half of `dialog` (Save this note?, Add a
+--- tag, New tag). It steps aside while the dialog is open and comes back
+--- once it's closed, if the note is still the window in front.
+function Editor:keyboardAside(dialog)
+    if not (self.vk and self.input and self.input.onCloseKeyboard) then return end
+    self.input:onCloseKeyboard()
+    local closed = dialog.onCloseWidget
+    dialog.onCloseWidget = function(d, ...)
+        local r
+        if closed then r = closed(d, ...) end
+        UIManager:nextTick(function() self:keyboardBack() end)
+        return r
+    end
+end
+
+--- The keyboard again, when the editor is in front (only the keyboard or a
+--- message above it) and not on the Kindle 4's toolbar.
+function Editor:keyboardBack()
+    if not (self.vk and self.input and self.input.onShowKeyboard) or (self.dpad and self.focus_tool) then return end
+    local st = UIManager._window_stack or {}
+    for i = #st, 1, -1 do
+        local w = st[i].widget
+        if w == self then self.input:onShowKeyboard(); return true end
+        if w.name ~= "VirtualKeyboard" and not w.toast then return end
+    end
+end
+
 --- Touch: `widget`, tapped, runs `fn`.
 local function tapTarget(widget, fn)
     if not Touch.on() then return widget end
@@ -517,12 +545,14 @@ function Editor:pickTag(pos)
                     UIManager:close(d)
                     insert(v)
                 end } } } }
+        self:keyboardAside(d)
         UIManager:show(d)
         d:onShowKeyboard()
     end } }
     dialog = ButtonDialog:new{ title = _("Add a tag"), buttons = rows }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
 end
 
@@ -674,6 +704,7 @@ function Editor:onCloseDialog()
     } }
     local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
     if add then pcall(add, dialog) end
+    self:keyboardAside(dialog)
     UIManager:show(dialog)
     return true
 end
