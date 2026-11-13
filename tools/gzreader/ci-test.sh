@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Everything CI checks, on Linux x86-64 (GitHub's ubuntu runners):
 # luacheck and the tests (tools/gzreader/tests/run.sh), then GZreader started
-# in the emulator (qemu) on a Kindle 3, Kindle 4, Kindle Touch, Paperwhite 3,
+# in the emulator (qemu) on a Kindle 3, Kindle 4, Kindle DX, DX Graphite (no
+# Wi-Fi: sync through a computer), Kindle Touch, Paperwhite 3,
 # Nook 1st Edition and Nook Simple Touch (GZ_CI_MODELS), with KOReader's
 # official Kindle 2/3/DX binaries, checking what makes it GZreader: menus,
 # names, the Menu key, Settings, launcher, picture books, the Nook's colour
@@ -46,7 +47,7 @@ python3 "$REPO/tools/gzreader/tests/make_epub.py" "$OUT/book.epub"
 python3 "$REPO/tools/gzreader/tests/make_epub.py" --pictures "$OUT/pictures.epub"
 python3 "$REPO/tools/gzreader/tests/make_epub.py" --big "$OUT/big.epub"
 mkdir -p "$OUT/nook-home"
-for model in ${GZ_CI_MODELS:-k3 k4 kt pw3 nook nst}; do
+for model in ${GZ_CI_MODELS:-k3 k4 dx dxg kt pw3 nook nst}; do
     rm -rf "$OUT/nook-home/GZreader"
     GZ_NOOK_HOME="$OUT/nook-home" GZ_EMU_BOOK="$OUT/book.epub" GZ_EMU_PICTURES="$OUT/pictures.epub" GZ_EMU_BIG="$OUT/big.epub" \
         GZ_EMU_TREE="$TREE" GZ_EMU_MODEL=$model EMU_TIMEOUT=420 \

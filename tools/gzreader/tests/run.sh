@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # GZreader's tests, on a computer (no Kindle needed): the plugin against a
 # mock Grimmory / Memos / CalDAV (real LuaSocket, KOReader's UI stubbed),
-# ZenOS's setup guide, the Nooks' screen commands and launcher helper; plus
-# luacheck.
+# ZenOS's setup guide, the Nooks' screen commands and launcher helper, the
+# Kindle start script's USB step-aside; plus luacheck.
 #
 #   tools/gzreader/tests/run.sh <koreader base dir> [port]
 #
@@ -28,6 +28,10 @@ echo "== luacheck"
 
 echo "== GZreader's changes to upstream files kept"
 python3 "$T/keeps.py" || failed=$((failed + 1))
+
+echo "== Kindle start script: USB drive step-aside"
+python3 -I "$T/kindle_usb_test.py" | grep -E "FAIL|passed|failed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== the sync page (a browser, mock servers)"
 mkdir -p "$WORK/work" "$WORK/syncdump"

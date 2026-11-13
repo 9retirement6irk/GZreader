@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Sync with a computer: the USB drive waits for the Kindle to finish starting", text = "Sync with a computer, Kindle 2/3/DX/4: the Kindle's USB drive service waits until the Kindle's own interface has finished starting before the drive goes to the computer (at most 4 minutes), what GZreader wrote is saved to the drive first, and the wait for the drive to come back no longer holds files on it or stops when asked to; after the drive is back it gives the Kindle 15 s before GZreader starts again. (A Kindle DX still restarts while the drive is shared: being worked on.)" },
+            { short = "The diagnostic log shows each step of the USB drive step-aside", text = "The diagnostic log has a \"last USB drive step-aside\" section (each step, a line a minute while waiting, and what still used the drive; kept through a restart), and the Kindle 2/DX's own settings for restarting the Kindle and for USB drive mode." },
+            { short = "Kindle 2 and DX: the Kindle's screen comes back after leaving GZreader", text = "Kindle 2 and DX: the Kindle's screen is restored after leaving GZreader (the helper used head -c, which their older system doesn't have)." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
