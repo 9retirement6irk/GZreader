@@ -137,6 +137,9 @@ print("== the stored text")
         "a stroke without points: invalid-scene")
     check(select(2, Drawing.decode('{"type":"memos-canvas","version":1,"elements":[{"id":"","type":"text","x":1,"y":2,"text":""}]}')) == "invalid-scene",
         "an element without an id: invalid-scene")
+    local nul = Drawing.encode({ type = "memos-canvas", version = 1, elements = Drawing.list({ { id = "t", type = "text", x = 0, y = 0,
+        text = "a", containerId = function() end } }) })
+    check(nul:find('"containerId":null', 1, true) ~= nil, "a JSON library's null placeholder (LuaJSON's is a function) is written as null")
     local ok = pcall(Drawing.encode, { type = "memos-canvas", version = 1, elements = Drawing.list({ { id = "n", type = "x", x = 0 / 0, y = 0 } }) })
     check(not ok, "a number that isn't finite can't be written")
 end)()
