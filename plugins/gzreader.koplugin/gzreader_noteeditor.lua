@@ -19,6 +19,9 @@ Markdown; a toolbar at the bottom of the page adds it for you:
   (`gzreader_drawscreen.lua`), sent to Memos as a drawing you can edit there.
   A note that has a drawing opens it for editing right away (Edit edits the
   drawing; Done goes back to the text); Done over the old one replaces it.
+- Touch Kindles edit in blocks, as Memos' rich editor does
+  (`gzreader_blockeditor.lua`): the note shown formatted, no Markdown
+  markers or `&nbsp;` to see, the toolbar setting the block's kind.
 - Back: asks whether to save when something changed.
 ]]
 
@@ -44,6 +47,7 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local util = require("util")
 local Touch = require("gzreader_touch")
 local Log = require("gzreader_log")
+local BlockEditor = require("gzreader_blockeditor")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -60,6 +64,9 @@ NoteEditor.TOOLS = {
     { id = "bold", label = "B", key = "B", wrap = "**", help = _("bold") },
     { id = "tag", label = "# " .. _("Tag"), key = "G", help = _("add a tag") },
 }
+
+-- Touch Kindles edit in blocks (Memos' rich editor); false: Markdown, as on keyboard Kindles.
+NoteEditor.BLOCKS = true
 
 NoteEditor.VISIBILITY = { "PRIVATE", "PROTECTED", "PUBLIC" }
 -- In a space (Memos v0.31), also "only its members", second as in Memos' own menu.
@@ -192,6 +199,13 @@ local ALT_DIGITS = { Q = "1", W = "2", E = "3", R = "4", T = "5", Y = "6", U = "
 local function makeInput(editor, opts)
     local InputText = require("ui/widget/inputtext")
     local Box = InputText:extend{}
+    -- (blocks: Backspace at the start of a block joins it to the one before)
+    function Box:delChar()
+        if editor.blocks_mode and self.charpos == 1 and not self.readonly then
+            if BlockEditor.onBackspaceAtStart(editor) then return end
+        end
+        return InputText.delChar(self)
+    end
     function Box:onKeyPress(key)
         if not self.focused then return false end
         if key.modifiers and key.modifiers.Alt and not key.modifiers.Shift then
@@ -241,16 +255,45 @@ function Editor:init()
     self.vk = self.touch or self.dpad
     -- (taps and keys reach the editor under the on-screen keyboard, as in KOReader's input dialogs)
     if self.vk then self.is_always_active = true end
+    -- touch: the note in blocks, as Memos' rich editor shows it (Markdown
+    -- when it can't be read that way)
+    if self.touch and NoteEditor.BLOCKS then
+        local ok, doc = pcall(BlockEditor.document, self.original)
+        if ok then
+            self.blocks_mode = true
+            self.doc = doc
+            self.cur = BlockEditor.startBlock(doc, self.memo == nil)
+        else
+            Log.warn("notes: blocks not read, editing Markdown:", tostring(doc))
+        end
+    end
     local function box(h)
-        return makeInput(self, {
+        local o = {
             text = self.original, width = self.inner - 2 * (S(8) + Size.border.thin), height = h, scroll = true,
             face = Font:getFace("cfont", 20), parent = self, focused = true,
             padding = S(8), margin = 0, bordersize = Size.border.thin,
             hint = _("Write a note. #words become tags."),
-        })
+        }
+        if self.blocks_mode then
+            o.text = require("gzreader_blocks").plain(self.cur)
+            o.hint = _("Write here. Enter starts a new line.")
+            o.enter_callback = function() BlockEditor.onEnter(self) end
+            o.edit_callback = function(edited) BlockEditor.onEdit(self, edited) end
+        end
+        return makeInput(self, o)
     end
     self.input = box(text_h)
-    if self.vk then
+    if self.blocks_mode then
+        -- the blocks, formatted, above a small box with the words of the one being edited
+        local kb = self.input.keyboard
+        local kb_h = kb and kb.dimen and kb.dimen.h or math.floor(sh * 0.4)
+        if self.input.free then pcall(self.input.free, self.input) end
+        self.composer_h = S(76) -- (two lines)
+        self.input = box(self.composer_h)
+        self.blocks_h = math.max(S(80), sh - self.title_h - self.tool_h - kb_h - self.composer_h - S(26))
+        self.block_slot = VerticalGroup:new{ align = "left" }
+        self.footer_h = 0
+    elseif self.vk then
         -- touch: the toolbar under the title, the text box above the on-screen keyboard
         self.footer_h = self.dpad and S(26) or 0
         local kb = self.input.keyboard
@@ -262,7 +305,17 @@ function Editor:init()
     self.bar_slot = VerticalGroup:new{}
     self.hint_slot = VerticalGroup:new{}
     local column
-    if self.vk then
+    if self.blocks_mode then
+        column = VerticalGroup:new{ align = "center",
+            self.title_slot,
+            self.bar_slot,
+            VerticalSpan:new{ width = S(6) },
+            FrameContainer:new{ width = self.inner, height = self.blocks_h, padding = 0, margin = 0, bordersize = 0,
+                self.block_slot },
+            VerticalSpan:new{ width = S(6) },
+            self.input,
+        }
+    elseif self.vk then
         column = VerticalGroup:new{ align = "center",
             self.title_slot,
             self.bar_slot,
@@ -285,6 +338,10 @@ function Editor:init()
         column,
     }
     self:drawChrome()
+    if self.blocks_mode then
+        self.input:moveCursorToCharPos(#self.cur.chars + 1)
+        BlockEditor.render(self)
+    end
 end
 
 --- Touch: `widget`, tapped, runs `fn`.
@@ -298,6 +355,7 @@ local function tapTarget(widget, fn)
 end
 
 function Editor:onCloseWidget()
+    self.closed_be = true
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
 end
 
@@ -345,7 +403,7 @@ function Editor:drawChrome()
     }
     local bar = HorizontalGroup:new{ align = "center" }
     local save_w = S(70)
-    local tools = NoteEditor.TOOLS
+    local tools = self:tools()
     local tool_w = math.floor((self.inner - save_w - S(10)) / #tools)
     for i, t in ipairs(tools) do
         local focused = self.focus_tool == i
@@ -401,7 +459,14 @@ function Editor:redraw()
     UIManager:setDirty(self, "ui")
 end
 
-function Editor:text() return self.input:getText() or "" end
+--- The toolbar's tools: the block tools in blocks, the Markdown ones otherwise.
+function Editor:tools() return self.blocks_mode and BlockEditor.TOOLS or NoteEditor.TOOLS end
+
+--- The note as Markdown (blocks: written back as Memos' rich editor writes it).
+function Editor:text()
+    if self.blocks_mode then return BlockEditor.text(self) end
+    return self.input:getText() or ""
+end
 
 function Editor:apply(new_text, cursor)
     self.input:setText(new_text, true)
@@ -411,6 +476,11 @@ function Editor:apply(new_text, cursor)
 end
 
 function Editor:useTool(i)
+    if self.blocks_mode then
+        local t = BlockEditor.TOOLS[i]
+        if not t then return self:save() end
+        return BlockEditor.useTool(self, t.id)
+    end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
     local pos = self.input.charpos or (#self.input.charlist + 1)
@@ -447,7 +517,8 @@ function Editor:pickTag(pos)
     local rows = {}
     local function insert(tag)
         tag = NoteEditor.cleanTag(tag)
-        if tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
+        if tag ~= "" and self.blocks_mode then BlockEditor.insertTag(self, tag)
+        elseif tag ~= "" then self:apply(NoteEditor.insertTag(self:text(), pos, tag)) end
         self:backToText()
     end
     for i, t in ipairs(self.tags or {}) do

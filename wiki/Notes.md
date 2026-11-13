@@ -62,8 +62,33 @@ API to `/api` are found too.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
   backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and
-  the characters themselves. The editor here shows the note as it's written.
-- **Editor:** a full page with a toolbar at the bottom: List, Check, Num,
+  the characters themselves. On touch Kindles the editor shows them that way
+  too (see **Editing on a touch Kindle**); on keyboard Kindles the editor
+  shows the note as it's written.
+- **Editing on a touch Kindle** works like Memos' rich editor. The note shows
+  formatted at the top (headings big, lists with • and numbers, checklists with
+  ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see.
+  The block you're editing has a frame, and its words, without markers, are
+  in the box above the keyboard. Tap another block to edit it, or tap ▲ more
+  above / ▼ more below when the note is longer than the screen.
+  - **Enter** starts the next block: the next item in a list or checklist, a
+    paragraph otherwise. Enter on an empty item ends the list.
+  - **Backspace** at the start of a block joins it to the one before. A list
+    item or heading turns into a paragraph first.
+  - Tap a checklist item's **☐** to tick it.
+  - The toolbar works on the block you're editing:
+    - **H Head** makes it a heading, then a smaller one, then text again.
+    - **• List**, **☐ Check** and **1. Num** make it a list item; tap the same
+      one again to make it text.
+    - **B** and ***I*** make the word at the cursor bold or italic (or the
+      whole block when the cursor isn't on a word).
+    - **# Tag** adds a tag.
+    - **⌫ Block** deletes the block.
+  - Code, quotes, tables and pictures show as they are, with a grey bar
+    beside them, and edit as their Markdown.
+  - Save writes the note the way Memos' rich editor writes it. Blocks you
+    didn't change are kept exactly as they were.
+- **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
   is, so the tool applies there; Menu again (or ▲) goes back to the text. ▼

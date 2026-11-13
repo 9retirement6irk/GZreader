@@ -58,6 +58,15 @@ scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
 and checks Memos has the new file under the same attachment; checks go to
 `<out>/notes-drawings-checks.txt`.
 
+`notes_blocks.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): puts a
+note written in Memos' rich editor in Memos (a heading, bold and italic, an
+`&nbsp;` line, a checklist, a numbered list, code and a tag), then Edit: it
+opens in blocks with no Markdown or `&nbsp;` to see. The tour taps ▲ more
+above to reach the checklist, taps an item and its ☐, presses Enter for a
+new item, taps B on a word and saves. It checks that Memos gets exactly the
+Markdown Memos' own editor would write; checks go to
+`<out>/notes-blocks-checks.txt`.
+
 `GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
 8-bit 1072 × 1448 framebuffer, and scripted touches sent as the panel's
