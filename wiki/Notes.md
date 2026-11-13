@@ -99,6 +99,12 @@ API to `/api` are found too.
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
   26.11.0) opens it as a drawing you can edit there; an older Memos shows it
   as a picture. Until it's sent, the board shows the note with the drawing.
+  - **Seeing drawings** (made on the Kindle or in Memos): on the Notes tab a
+    note with a drawing shows its heading (if it has one) and the drawing
+    as big as the note allows; **Layout → Full** shows it bigger, with all
+    the note's text. Open the note for everything: its text, then the
+    drawing as wide as the page (tap it to see it on its own). Drawings come
+    down by themselves on Wi‑Fi, like the notes' other pictures.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm

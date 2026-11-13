@@ -49,6 +49,12 @@ the pen draws, and it checks palm rejection with `E.fingerDown(x, y, dt)` /
 PNG it sent as `<out>/drawing-sent.canvas.png`; checks go to
 `<out>/drawing-checks.txt`.
 
+`notes_drawings.lua` (`demo/mock_memos.py 18090 --sample`): puts two notes
+with drawings in Memos ("# Garden plan" with a small drawing, and one with a
+big drawing; `GZ_DRAWING_SMALL` / `GZ_DRAWING_BIG`, by default
+`tests/media/memos-drawing.canvas.png`), then shoots the board (Compact and
+Full) and both notes' pages; checks go to `<out>/notes-drawings-checks.txt`.
+
 `GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an
 8-bit 1072 × 1448 framebuffer, and scripted touches sent as the panel's

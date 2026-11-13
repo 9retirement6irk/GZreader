@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Notes: draw in a new note (with a finger; on a Kindle Scribe with the pen), sent to Memos as a drawing", text = "On touch Kindles the new-note editor has Draw: a page to draw on with Thin, Medium and Thick, Eraser (rubs out whole strokes), Undo and Clear. Done keeps the drawing with the note, and Save sends both to Memos, where the drawing is an attachment that Memos (its next version, with drawings) opens as a drawing you can go on editing; older Memos show it as a picture. A note can be just a drawing. On a Kindle with a pen (the Scribe) only the pen draws: fingers don't, and while the pen is near the screen your hand can rest on it (it's ignored); the pen's other end rubs out. Other touch Kindles draw with one finger. Drawings need Memos over Wi‑Fi (not through the computer)." },
+            { short = "Notes: drawings show in the note, on the Notes tab and when you open it", text = "A note's drawing (made on the Kindle or in Memos) now shows as a picture in the note: on the Notes tab under the note's heading, if it has one, as big as the note allows (bigger with Layout → Full), and when you open the note after its text, as wide as the page (tap it to see it on its own). It's no longer only a line under Attachments. Drawings come down by themselves on Wi‑Fi like other pictures, and a note no longer waits for a second look to show a picture that was already downloading." },
         },
     },
     {

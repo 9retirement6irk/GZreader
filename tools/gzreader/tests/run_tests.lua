@@ -7306,6 +7306,54 @@ print("Notes (Memos v0.31)")
         for _i, m in ipairs(mstate().memos) do if m.content == "Lost sketch" then lost = m end end
         check(lost and #lost.attachments == 0 and q3, "…without an attachment")
 
+        -- drawings shown in the note: on the board and on the note's page, as big as there's room for
+        check(select(1, Sticky.fitSize(100, 50, 400, 400, 3)) == 300 and select(2, Sticky.fitSize(100, 50, 400, 400, 3)) == 150,
+            "drawings: a small one enlarged to fit, at most 3 times")
+        check(select(1, Sticky.fitSize(100, 50, 160, 400, 3)) == 160 and Sticky.fitSize(100, 50, 400, 400) == 100,
+            "drawings: enlarged only as far as the room; a photo never enlarged")
+        check(select(1, Sticky.fitSize(2000, 1000, 400, 400, 3)) == 400, "drawings: a big one shrunk as before")
+        check(Notes.isDrawing({ filename = "drawing-20261112-195442.canvas.png" }) and not Notes.isDrawing({ filename = "photo.png" })
+            and not Notes.isDrawing(nil), "drawings: told apart by memos' name for them")
+        local dm = { content = "# Garden plan\nBeds by the fence\n![](/file/attachments/in1/drawing-2.canvas.png)\n- [ ] seeds\n#garden",
+            attachments = { { name = "attachments/d1", filename = "drawing-1.canvas.png", type = "image/png" },
+                { name = "attachments/p1", filename = "photo.jpg", type = "image/jpeg" },
+                { name = "attachments/in1", filename = "drawing-2.canvas.png", type = "image/png" } } }
+        local ds = Notes.drawings(dm)
+        check(#ds == 1 and ds[1].name == "attachments/d1", "drawings: the note page shows those not already pictures in its text")
+        local heading, rest = Notes.headingAndRest(dm.content)
+        check(heading == "Garden plan" and rest == "Beds by the fence\n\u{2610} seeds", "drawings: the heading above the drawing, the rest after")
+        local h2 = Notes.headingAndRest("Just text")
+        check(h2 == nil and select(2, Notes.headingAndRest("Just text")) == "Just text", "drawings: no heading, all the text after")
+        check(Notes.headingAndRest("## Second level\nx") == "Second level", "drawings: a heading of any level")
+        -- the full layout sizes a drawing enlarged to the note's width (a photo isn't)
+        local fd = Notes.fitPicture({ filename = "drawing-20261112-200000.canvas.png" }, 799, 188, 1960, 800)
+        local fp = Notes.fitPicture({ filename = "small.png" }, 799, 188, 1960, 800)
+        check(fd.grow == Notes.DRAWING_GROW and fd.w == 1960 and fp.w == 799 and fp.grow == nil,
+            "full layout: a drawing drawn as wide as the note (" .. fd.w .. "), a photo at its size")
+        local msrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(msrc:find("local p = Notes.fitPicture(a, w, h, inner_w, pic_max_h)", 1, true)
+            and msrc:find("Sticky.picture(p.path, p.w, p.h, p.grow)", 1, true), "full layout: measures and draws pictures by it")
+        -- a picture asked for while it's already coming: told when it's here
+        local fetched = { name = "attachments/fetch1", filename = "drawing-20261112-210000.canvas.png", type = "image/png" }
+        local NetF = require("gzreader_net")
+        local AsyncF = require("gzreader_async")
+        local was_connected, was_run = NetF.connected, AsyncF.run
+        local finish
+        NetF.connected = function() return true end
+        AsyncF.run = function(_c, _job, done) finish = function() done(true) end end
+        local told = {}
+        Notes.fetchFile(plugin, fetched) -- (the sync's prefetch: no callback)
+        Notes.fetchFile(plugin, fetched, function() told[#told + 1] = "board" end)
+        Notes.fetchFile(plugin, fetched, function() told[#told + 1] = "page" end)
+        if finish then finish() end
+        NetF.connected, AsyncF.run = was_connected, was_run
+        check(#told == 2 and told[1] == "board" and Notes.fetching[Memos.filePath(fetched)] == nil,
+            "a picture already coming: the board and the page are told when it's here (one download)")
+        local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("for _i, a in ipairs(Notes.drawings(m)) do", 1, true)
+            and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
+            "drawings: on the board's cards and the note's page, not repeated under Attachments")
+
         -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         check(esrc:find('if text == "" and not self.drawing then', 1, true) and esrc:find("return self.touch and self.memo == nil and self.can_draw == true", 1, true),
