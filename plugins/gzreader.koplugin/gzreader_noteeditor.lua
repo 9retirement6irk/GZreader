@@ -15,8 +15,10 @@ Markdown; a toolbar at the bottom of the page adds it for you:
   so those letters aren't shortcuts here.)
 - # Tag: your tags, or a new one (the keyboard has no # key; Sym+G also types #).
 - New notes are private unless you choose otherwise.
-- Draw (touch Kindles, a new note): a drawing to go with the note
+- Draw (touch Kindles): a drawing to go with the note
   (`gzreader_drawscreen.lua`), sent to Memos as a drawing you can edit there.
+  A note that has a drawing opens it for editing right away (Edit edits the
+  drawing; Done goes back to the text); Done over the old one replaces it.
 - Back: asks whether to save when something changed.
 ]]
 
@@ -41,6 +43,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local util = require("util")
 local Touch = require("gzreader_touch")
+local Log = require("gzreader_log")
 local _ = require("gettext")
 
 local Screen = Device.screen
@@ -215,7 +218,7 @@ function Editor:init()
     if self.memo then self.space = self.memo.space end -- (a new note: the space it was given, if any)
     self.original_space = self.space
     self.has_spaces = (self.spaces and #self.spaces > 0) or self.space ~= nil
-    self.drawing = nil -- { path, filename, sketch } once something is drawn
+    self.drawing = nil -- { path, filename, sketch } once something is drawn, or { removed = true }
     self.focus_tool = nil
     self.key_events = {
         ToolLeft = { { "Left" } },
@@ -319,10 +322,10 @@ function Editor:drawChrome()
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
                 self:canDraw() and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
-                    background = self.drawing and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
-                    TextWidget:new{ text = self.drawing and ("\u{270E} " .. _("Drawing")) or ("\u{270E} " .. _("Draw")),
+                    background = self:hasDrawing() and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
+                    TextWidget:new{ text = self:hasDrawing() and ("\u{270E} " .. _("Drawing")) or ("\u{270E} " .. _("Draw")),
                         face = Font:getFace("cfont", 15), bold = true,
-                        fgcolor = self.drawing and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
+                        fgcolor = self:hasDrawing() and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
                     function() self:openDrawing() end)
                     or HorizontalSpan:new{ width = 0 },
                 HorizontalSpan:new{ width = self:canDraw() and S(8) or 0 },
@@ -559,9 +562,16 @@ function Editor:changed()
         or self.drawing ~= nil
 end
 
---- Draw: on touch Kindles, for a new note, when the caller allows it.
+--- Draw: on touch Kindles, when the caller allows it (a new note, or one
+--- already in Memos: its drawing, or a first one).
 function Editor:canDraw()
-    return self.touch and self.memo == nil and self.can_draw == true
+    return self.touch and self.can_draw == true
+end
+
+--- The note has a drawing (drawn here, or its own from Memos, not taken off).
+function Editor:hasDrawing()
+    if self.drawing then return not self.drawing.removed end
+    return self.drawing_att ~= nil
 end
 
 --- Opens the drawing screen (the drawing so far, if any); the keyboard goes
@@ -572,10 +582,33 @@ function Editor:openDrawing()
         self:redraw()
         if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
     end
-    require("gzreader_drawscreen").show{
+    local DrawScreen = require("gzreader_drawscreen")
+    local scene, path
+    if not self.drawing and self.drawing_att then
+        -- the note's own drawing, from the copy the Notes tab keeps
+        local Memos = require("gzreader_memos")
+        local err
+        scene, err = require("gzreader_drawing").readFile(Memos.filePath(self.drawing_att))
+        if not scene then
+            Log.warn("notes: drawing not opened:", tostring(err))
+            back()
+            return UIManager:show(require("ui/widget/infomessage"):new{ timeout = 4,
+                text = err == "no-chunk" and _("This picture isn't a drawing that can be edited.")
+                    or _("The drawing isn't on the Kindle yet. Open the note on Wi‑Fi first.") })
+        end
+        path = DrawScreen.dir() .. "/" .. (self.drawing_att.filename or "drawing.canvas.png")
+    end
+    DrawScreen.show{
         sketch = self.drawing and self.drawing.sketch,
-        path = self.drawing and self.drawing.path,
-        on_done = function(res) self.drawing = res; back() end,
+        scene = scene,
+        path = (self.drawing and self.drawing.path) or path,
+        on_done = function(res)
+            -- (Done on an empty page: a new note's drawing is dropped; the note's own one taken off)
+            if res then self.drawing = res
+            elseif self.drawing_att then self.drawing = { removed = true }
+            else self.drawing = nil end
+            back()
+        end,
         on_cancel = back,
     }
 end
@@ -625,15 +658,16 @@ end
 
 function Editor:save()
     local text = self:text():gsub("%s+$", "")
-    if text == "" and not self.drawing then
+    if text == "" and not self:hasDrawing() then
         UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
         return
     end
     self.saved = true
     UIManager:close(self, "full")
+    local d = self.drawing
     if self.on_save then
         self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
-            self.drawing and { path = self.drawing.path, filename = self.drawing.filename } or nil)
+            d and (d.removed and { removed = true } or { path = d.path, filename = d.filename }) or nil)
     end
 end
 
@@ -662,8 +696,12 @@ end
 --- drawing = { path, filename } (a memos drawing waiting to be sent) or nil.
 function NoteEditor.show(opts)
     local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
-        spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw }
+        spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
+        drawing_att = opts.drawing_att }
     UIManager:show(e, "full")
+    if opts.open_drawing and e:canDraw() and e.drawing_att then
+        UIManager:nextTick(function() e:openDrawing() end)
+    end
     return e
 end
 

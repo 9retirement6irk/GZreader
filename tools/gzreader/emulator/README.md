@@ -53,7 +53,10 @@ PNG it sent as `<out>/drawing-sent.canvas.png`; checks go to
 with drawings in Memos ("# Garden plan" with a small drawing, and one with a
 big drawing; `GZ_DRAWING_SMALL` / `GZ_DRAWING_BIG`, by default
 `tests/media/memos-drawing.canvas.png`), then shoots the board (Compact and
-Full) and both notes' pages; checks go to `<out>/notes-drawings-checks.txt`.
+Full) and both notes' pages, then Edit on the big one (it opens the drawing,
+scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
+and checks Memos has the new file under the same attachment; checks go to
+`<out>/notes-drawings-checks.txt`.
 
 `GZ_EMU_MODEL=pw3` runs it as a **Kindle Paperwhite 3**: its serial
 (so the real `KindlePaperWhite3` device class, touch, no keys, 300 dpi), an

@@ -7235,7 +7235,8 @@ print("Notes (Memos v0.31)")
         check(Notes.canDraw(plugin) == false, "draw: not when Memos goes through the computer (the sync page doesn't send drawings)")
         NetD.usb = was_usb
         local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc:find("can_draw = memo == nil and Notes.canDraw(plugin)", 1, true) ~= nil, "draw: offered for new notes only")
+        check(nsrc:find("can_draw = Notes.canDraw(plugin)", 1, true) and nsrc:find("drawing_att = memo and Notes.drawings(memo)[1] or nil", 1, true),
+            "draw: offered for new notes, and for notes in Memos (their drawing, or a first one)")
 
         -- queued: shown on the board with its drawing before it's sent
         local d1 = drawingFile("drawing-20261112-180000.canvas.png")
@@ -7306,6 +7307,90 @@ print("Notes (Memos v0.31)")
         for _i, m in ipairs(mstate().memos) do if m.content == "Lost sketch" then lost = m end end
         check(lost and #lost.attachments == 0 and q3, "…without an attachment")
 
+        -- editing a note's drawing: its new file over the old one (same attachment), or taken off
+        local client2 = Notes.client(plugin)
+        local dnote = client2:create("# Sketch to fix #ideas", "PRIVATE")
+        local d3 = drawingFile("drawing-20261112-220000.canvas.png")
+        local datt = dnote and client2:uploadAttachment(d3.path, d3.filename, dnote.name)
+        check(dnote and datt, "editing: a note with a drawing in Memos")
+        sync()
+        local held
+        for _i, m in ipairs(Notes.notes) do if m.name == dnote.name then held = m end end
+        check(held and Notes.drawings(held)[1] and Notes.drawings(held)[1].name == datt.name, "editing: the board has it, with its drawing")
+        -- the edited drawing: another PNG with another scene
+        local Drawing2 = require("gzreader_drawing")
+        local edited_scene = Drawing2.readScene(fixture)
+        Drawing2.addStroke(edited_scene, { { 1, 1 }, { 9, 9 } })
+        local edited = assert(Drawing2.withScene(fixture, edited_scene))
+        local e1 = dir .. "/drawing-20261112-220000.canvas.png"
+        local fh = io.open(e1, "wb"); fh:write(edited); fh:close()
+        Notes.saveDrawing(plugin, held, { path = e1, filename = "drawing-20261112-220000.canvas.png" })
+        local q = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(q.op == "redraw" and q.attachment == datt.name and q.name == dnote.name, "editing: queued as the new file over the old")
+        check(readAll(Memos.filePath(datt)) == edited, "editing: the Kindle shows the new drawing at once")
+        check(sync() and #plugin.store.memos.queue == 0, "editing: sent")
+        local after
+        for _i, m in ipairs(mstate().memos) do if m.name == dnote.name then after = m end end
+        check(after and #after.attachments == 1 and after.attachments[1].name == datt.name, "editing: the same attachment (its name kept), still one")
+        local got3 = WORK .. "/drawing-edited.png"
+        os.remove(got3)
+        check(client2:download({ name = datt.name, filename = datt.filename }, got3) and readAll(got3) == edited,
+            "editing: Memos has the new file, byte for byte")
+        local up = 0
+        for _i, l in ipairs(mstate().log) do if l == "POST /api/v1/attachments:upload" then up = up + 1 end end
+        check(up == 1, "editing: one resumable upload with replace_attachment")
+        -- someone else's drawing: the edit goes beside it
+        local foreign = client2:create("Theirs", "PRIVATE")
+        local fh2 = io.open(dir .. "/f.png", "wb"); fh2:write(fixture); fh2:close()
+        local fcode = foreign and select(1, client2:request("POST", "/attachments:upload", { spec = { attachment = { filename = "drawing-1.canvas.png",
+            type = "image/png", memo = foreign.name }, attachment_id = "foreign1", total_size = #fixture }, write_offset = 0,
+            data = require("ffi/sha2").bin_to_base64(fixture), finish_write = true }))
+        local beside = client2:replaceAttachment("attachments/foreign1", dir .. "/f.png", "drawing-1.canvas.png", foreign and foreign.name)
+        local fm
+        for _i, m in ipairs(mstate().memos) do if foreign and m.name == foreign.name then fm = m end end
+        check(fcode == 200 and beside and beside.name ~= "attachments/foreign1" and fm and #fm.attachments == 2,
+            "editing someone else's drawing: refused to replace (403), so the edit is added beside it")
+        -- taken off: Done on an empty page
+        Notes.saveDrawing(plugin, held, { removed = true })
+        check(plugin.store.memos.queue[#plugin.store.memos.queue].op == "undraw" and #held.attachments == 0, "rubbed out to nothing: queued to be taken off")
+        sync()
+        for _i, m in ipairs(mstate().memos) do if m.name == dnote.name then after = m end end
+        check(#after.attachments == 0 and #plugin.store.memos.queue == 0, "…and gone from the note in Memos")
+        -- a first drawing on a note that had none
+        local plain = client2:create("No drawing yet", "PRIVATE")
+        sync()
+        local pl
+        for _i, m in ipairs(Notes.notes) do if m.name == plain.name then pl = m end end
+        local d4 = drawingFile("drawing-20261112-220100.canvas.png")
+        Notes.saveDrawing(plugin, pl, d4)
+        check(plugin.store.memos.queue[#plugin.store.memos.queue].op == "attach" and Notes.drawings(pl)[1] ~= nil,
+            "a first drawing on a note: queued to be added, shown at once")
+        sync()
+        for _i, m in ipairs(mstate().memos) do if m.name == plain.name then after = m end end
+        check(#after.attachments == 1 and after.attachments[1].filename == d4.filename, "…and on the note in Memos")
+        local esrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc3:find("open_drawing = memo ~= nil and Notes.drawings(memo)[1] ~= nil and Notes.canDraw(plugin)", 1, true)
+            and esrc2:find("if opts.open_drawing and e:canDraw() and e.drawing_att then", 1, true),
+            "Edit on a note with a drawing opens the drawing (touch Kindles)")
+        local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        check(dsrc:find("if self.scene and not self.changed then", 1, true) ~= nil, "a drawing opened and left as it was: nothing sent")
+
+        -- an older Memos (v0.31: no replace_attachment): the new file added to the note, the old one deleted
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --old-upload > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        local client3 = Notes.client(plugin)
+        local onote = client3:create("Old Memos", "PRIVATE")
+        local o1 = drawingFile("drawing-20261112-230000.canvas.png")
+        local oatt = onote and client3:uploadAttachment(o1.path, o1.filename, onote.name)
+        local repl, rerr = client3:replaceAttachment(oatt and oatt.name, o1.path, o1.filename, onote and onote.name)
+        local om
+        for _i, m in ipairs(mstate().memos) do if onote and m.name == onote.name then om = m end end
+        check(repl and om and #om.attachments == 1 and om.attachments[1].name == repl.name and repl.name ~= oatt.name,
+            "an older Memos: the edited drawing added to the note and the old one deleted (" .. tostring(rerr) .. ")")
+
         -- drawings shown in the note: on the board and on the note's page, as big as there's room for
         check(select(1, Sticky.fitSize(100, 50, 400, 400, 3)) == 300 and select(2, Sticky.fitSize(100, 50, 400, 400, 3)) == 150,
             "drawings: a small one enlarged to fit, at most 3 times")
@@ -7356,8 +7441,8 @@ print("Notes (Memos v0.31)")
 
         -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
-        check(esrc:find('if text == "" and not self.drawing then', 1, true) and esrc:find("return self.touch and self.memo == nil and self.can_draw == true", 1, true),
-            "editor: Draw on touch Kindles for a new note; a note with only a drawing can be saved")
+        check(esrc:find('if text == "" and not self:hasDrawing() then', 1, true) and esrc:find("return self.touch and self.can_draw == true", 1, true),
+            "editor: Draw on touch Kindles; a note with only a drawing can be saved")
         check(esrc:find("self:dropDrawing(); UIManager:close(self, \"full\")", 1, true) ~= nil, "editor: Discard throws the drawing away")
     end)()
 

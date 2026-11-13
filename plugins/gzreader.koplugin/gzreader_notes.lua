@@ -464,6 +464,42 @@ function Notes.drawingWidget(plugin, att, max_w, max_h, on_ready)
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
 end
 
+--- A drawing changed in a note already in Memos (`drawing`: { path,
+--- filename } or { removed = true }): queued (its new file over the old one,
+--- the note's first drawing gone, or a first drawing added), and shown here
+--- at once.
+function Notes.saveDrawing(plugin, memo, drawing)
+    local att = Notes.drawings(memo)[1]
+    if drawing.removed then
+        if not att then return end
+        Notes.enqueue(plugin, { op = "undraw", name = memo.name, attachment = att.name })
+        for i, a in ipairs(memo.attachments or {}) do
+            if a == att then table.remove(memo.attachments, i); break end
+        end
+        Log.info("notes: a drawing taken off a note")
+    elseif att then
+        Notes.enqueue(plugin, { op = "redraw", name = memo.name, attachment = att.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        local src = io.open(drawing.path, "rb")
+        local data = src and src:read("*a")
+        if src then src:close() end
+        local dst = data and io.open(Memos.filePath(att), "wb")
+        if dst then dst:write(data); dst:close() end
+        Notes.pic_sizes[Memos.filePath(att)] = nil
+        Log.info("notes: a drawing edited")
+    else
+        local q = Notes.enqueue(plugin, { op = "attach", name = memo.name,
+            drawing = { path = drawing.path, filename = drawing.filename } })
+        Notes.showDrawingNow(q)
+        memo.attachments = memo.attachments or {}
+        table.insert(memo.attachments, Notes.queuedAttachments(q)[1])
+        Log.info("notes: a drawing added to a note")
+    end
+    -- (kept note images, if the board keeps them, show the old drawing: drawn again)
+    if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
 --- Copies a queued drawing to where the board finds the note's pictures.
 function Notes.showDrawingNow(q)
     local att = Notes.queuedAttachments(q)[1]
@@ -1672,11 +1708,15 @@ function Notes.edit(plugin, memo, opts)
         spaces = Notes.spaces(plugin),
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
-        can_draw = memo == nil and Notes.canDraw(plugin),
+        can_draw = Notes.canDraw(plugin),
+        -- an edit of a note with a drawing: Edit opens the drawing (Done goes back to the text)
+        drawing_att = memo and Notes.drawings(memo)[1] or nil,
+        open_drawing = memo ~= nil and Notes.drawings(memo)[1] ~= nil and Notes.canDraw(plugin),
         on_save = function(content, visibility, vis_changed, space, space_changed, drawing)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
+                if drawing then Notes.saveDrawing(plugin, memo, drawing) end
             else
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
                     space = space, drawing = drawing })

@@ -338,7 +338,9 @@ encodeValue = function(v, key, depth)
     if tv == "string" then return quote(v) end
     if tv == "number" then return number(v, key == "angle" or key == "fixedPoint") end
     if tv == "boolean" then return v and "true" or "false" end
-    if v == nil then return "null" end
+    -- (nil, and a JSON library's placeholder for a null read back: LuaJSON's
+    -- is a function, rapidjson's a light userdata)
+    if v == nil or tv == "function" or tv == "userdata" then return "null" end
     error("can't write a " .. tv, 0)
 end
 

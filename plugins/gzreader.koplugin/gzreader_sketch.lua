@@ -48,6 +48,9 @@ function Sketch.new(opts)
     self.pen_only = opts.pen_only == true
     self.pen_slot = opts.pen_slot
     self.per_unit = opts.per_unit or Drawing.SCREEN_PER_UNIT
+    -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
+    self.ox, self.oy = 0, 0
+    self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
     self.tap_slop = opts.tap_slop or Sketch.TAP_SLOP
     self.width = opts.width or 2
     self.tool = "pen" -- or "eraser"
@@ -108,7 +111,47 @@ function Sketch:live()
     return out
 end
 
-function Sketch:isEmpty() return #self:live() == 0 end
+function Sketch:isEmpty() return #self:live() == 0 and #self.locked == 0 end
+
+--- A scene point in canvas pixels, and back.
+function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
+function Sketch:toScene(cx, cy) return cx / self.per_unit + self.ox, cy / self.per_unit + self.oy end
+
+local function snapWidth(w)
+    w = tonumber(w) or 2
+    if w <= 1.5 then return 1 elseif w < 3 then return 2 end
+    return 4
+end
+
+--- A sketch of an existing drawing (a memos scene), to go on with it. It's
+--- scaled down to fit the canvas if it's bigger (never up: `opts.per_unit`
+--- at most) and placed at its top left with a margin. Its pen strokes can be
+--- rubbed out like new ones; everything else (shapes, text, pictures made in
+--- memos) is kept as it is (`locked`). Strokes left alone go back unchanged.
+function Sketch.fromScene(scene, opts)
+    local self = Sketch.new(opts)
+    self.base = scene
+    local b = Drawing.bounds(scene)
+    if not b then return self end
+    local margin = Sketch.PADDING
+    local c = self.canvas
+    local fit = math.min((c.w - 2 * margin) / math.max(1, b.w), (c.h - 2 * margin) / math.max(1, b.h))
+    self.per_unit = math.max(0.05, math.min(self.per_unit, fit))
+    self.ox, self.oy = b.x - margin / self.per_unit, b.y - margin / self.per_unit
+    for _i, el in ipairs(Drawing.liveElements(scene)) do
+        if el.type == "freedraw" and type(el.points) == "table" and #el.points > 0 then
+            local pts = {}
+            for _j, p in ipairs(el.points) do
+                local cx, cy = self:toCanvas((el.x or 0) + (p[1] or 0), (el.y or 0) + (p[2] or 0))
+                pts[#pts + 1] = { cx, cy }
+            end
+            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), el = el }
+        else
+            self.locked[#self.locked + 1] = el
+        end
+    end
+    return self
+end
 
 -- ------------------------------------------------------------------ input
 
@@ -315,6 +358,12 @@ function Sketch:bounds()
             maxY = math.max(maxY or p[2] + r, p[2] + r)
         end
     end
+    for _i, el in ipairs(self.locked) do
+        local x0, y0 = self:toCanvas(el.x or 0, el.y or 0)
+        local x1, y1 = self:toCanvas((el.x or 0) + (tonumber(el.width) or 0), (el.y or 0) + (tonumber(el.height) or 0))
+        minX, minY = math.min(minX or x0, x0, x1), math.min(minY or y0, y0, y1)
+        maxX, maxY = math.max(maxX or x1, x0, x1), math.max(maxY or y1, y0, y1)
+    end
     if not minX then return nil end
     return { x = minX, y = minY, w = maxX - minX, h = maxY - minY }
 end
@@ -332,11 +381,31 @@ function Sketch:cropRect()
     return { x = x0, y = y0, w = math.max(1, x1 - x0), h = math.max(1, y1 - y0) }
 end
 
---- The drawing as a memos scene (scene units: canvas pixels / per_unit).
+--- The drawing as a memos scene. An opened drawing keeps its own elements
+--- in their order (strokes rubbed out left out, the rest unchanged), its
+--- paper, files and anything else it has; new strokes come after.
 function Sketch:scene(paper)
-    local scene = Drawing.newScene(paper)
+    local scene
+    if self.base then
+        scene = {}
+        for k, v in pairs(self.base) do scene[k] = v end
+        local keep = {}
+        for _i, st in ipairs(self:live()) do if st.el then keep[st.el] = true end end
+        local locked = {}
+        for _i, el in ipairs(self.locked) do locked[el] = true end
+        scene.elements = Drawing.list()
+        for _i, el in ipairs(self.base.elements or {}) do
+            if keep[el] or locked[el] then scene.elements[#scene.elements + 1] = el end
+        end
+    else
+        scene = Drawing.newScene(paper)
+    end
     for _i, st in ipairs(self:live()) do
-        Drawing.addStroke(scene, Drawing.fromScreen(st.points, self.per_unit), { width = st.width, color = Drawing.INK })
+        if not st.el then
+            local pts = {}
+            for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+            Drawing.addStroke(scene, pts, { width = st.width, color = Drawing.INK })
+        end
     end
     return scene
 end

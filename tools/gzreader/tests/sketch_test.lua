@@ -1,9 +1,10 @@
 -- The drawing screen's input (gzreader_sketch.lua): finger drawing on touch
 -- Kindles; pen-only drawing with palm rejection on pen Kindles (the Scribe);
 -- the eraser, undo, clear; the PNG's crop and the memos scene.
---   luajit sketch_test.lua <gzreader.koplugin> <tests lib>
-local PLUGIN, LIB = arg[1], arg[2]
-package.path = PLUGIN .. "/?.lua;" .. LIB .. "/?.lua;" .. package.path
+--   luajit sketch_test.lua <gzreader.koplugin> <tests lib> [<koreader base>]
+local PLUGIN, LIB, KOROOT = arg[1], arg[2], arg[3]
+package.path = PLUGIN .. "/?.lua;" .. LIB .. "/?.lua;" .. (KOROOT and (KOROOT .. "/?.lua;") or "") .. package.path
+local HERE = debug.getinfo(1, "S").source:sub(2):match("^(.*)/[^/]*$") or "."
 
 local pass, fail = 0, 0
 local function check(cond, msg)
@@ -177,6 +178,63 @@ print("== painting")
     local d = Sketch.disc(3)
     check(d[0] == 3 and d[3] == 0 and d[-3] == 0 and d[2] == 2, "a disc's rows")
     check(Sketch.distToSegment(5, 5, 0, 0, 10, 0) == 5 and Sketch.distToSegment(-3, 4, 0, 0, 10, 0) == 5, "distance to a segment")
+end)()
+
+print("== opening a drawing to go on with it (one made in memos' web app)")
+;(function()
+    local scene = Drawing.readFile(HERE .. "/media/memos-drawing.canvas.png")
+    check(scene ~= nil, "memos' drawing reads")
+    if not scene then return end
+    local original = Drawing.encode(scene)
+    local PW3 = { x = 0, y = 100, w = 1072, h = 1300 }
+    local sk = Sketch.fromScene(scene, { canvas = PW3, per_unit = 2 })
+    check(#sk.strokes == 6 and #sk.locked == 2, "its 6 pen strokes can be changed; the ellipse and the text are kept as they are")
+    local b = sk:bounds()
+    check(sk.per_unit < 2 and b.x >= 0 and b.y >= 0 and b.x + b.w <= PW3.w + 1 and b.y + b.h <= PW3.h + 1,
+        "bigger than the page: scaled down to fit (" .. string.format("%.2f", sk.per_unit) .. " px a unit), all on the page")
+    check(Drawing.encode(sk:scene()) == original, "nothing changed: the same scene goes back, exactly")
+    check(not sk:isEmpty(), "not empty")
+    -- a stroke from memos maps back to the same scene point
+    local el = sk.strokes[1].el
+    local sx, sy = sk:toScene(sk.strokes[1].points[1][1], sk.strokes[1].points[1][2])
+    check(math.abs(sx - (el.x + el.points[1][1])) < 1e-6 and math.abs(sy - (el.y + el.points[1][2])) < 1e-6,
+        "canvas pixels and scene units: there and back")
+    -- rub out one of memos' strokes, draw a new one
+    local p = sk.strokes[2].points[math.floor(#sk.strokes[2].points / 2)]
+    local cx, cy = p[1] + PW3.x, p[2] + PW3.y
+    sk:setTool("eraser")
+    sk:frame({ finger(0, cx, cy) }, 0); sk:frame({ lift(0) }, 0.1)
+    local erased = 6 - #sk:live()
+    sk:setWidth(2)
+    sk:frame({ finger(0, 50, 1300) }, 1); sk:frame({ finger(0, 200, 1350) }, 1.1); sk:frame({ lift(0) }, 1.2)
+    local out = sk:scene()
+    local kinds = {}
+    for _i, e in ipairs(out.elements) do kinds[#kinds + 1] = e.type end
+    check(erased >= 1 and #out.elements == 8 - erased + 1 and out.elements[#out.elements].type == "freedraw" and not out.elements[#out.elements].el,
+        "rubbed out " .. erased .. ", drew one: the rest kept in order, the new stroke last (" .. table.concat(kinds, " ") .. ")")
+    local kept_same = true
+    for _i, e in ipairs(out.elements) do
+        if e.type ~= "freedraw" or e ~= out.elements[#out.elements] then
+            local found = false
+            for _j, o in ipairs(scene.elements) do if o == e then found = true end end
+            if not found then kept_same = false end
+        end
+    end
+    check(kept_same, "the strokes, ellipse and text left alone are memos' own elements, unchanged")
+    local new = out.elements[#out.elements]
+    local nx, ny = sk:toScene(50 - PW3.x, 1300 - PW3.y)
+    check(math.abs(new.x - Drawing.round2(nx)) < 0.02 and math.abs(new.y - Drawing.round2(ny)) < 0.02,
+        "the new stroke is placed in the drawing's own units (where it was drawn on it)")
+    check(out.appState.viewBackgroundColor == scene.appState.viewBackgroundColor and out.files == scene.files,
+        "its paper and files kept")
+    check(sk:clear() and not sk:isEmpty() and #sk:live() == 0, "Clear rubs out the strokes; memos' shapes and text stay")
+    -- a small drawing isn't enlarged
+    local small = Drawing.newScene()
+    Drawing.addStroke(small, { { 10, 10 }, { 60, 40 } })
+    local ss = Sketch.fromScene(small, { canvas = PW3, per_unit = 2 })
+    check(ss.per_unit == 2 and #ss.strokes == 1, "a drawing that fits: opened at its size (never enlarged)")
+    local empty = Sketch.fromScene(Drawing.newScene(), { canvas = PW3, per_unit = 2 })
+    check(empty:isEmpty() and empty.per_unit == 2, "an empty drawing: an empty page")
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))

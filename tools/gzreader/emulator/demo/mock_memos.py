@@ -5,6 +5,11 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
   POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
   POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
+  POST  /api/v1/attachments:upload  Memos' resumable upload ({spec, upload_id, write_offset, data, finish_write});
+                                 spec.replace_attachment puts the new file over that attachment (same name and
+                                 note). --old-upload: no replace_attachment, as Memos v0.31 (400 unknown field).
+                                 An attachment whose id starts with "foreign" is someone else's: 403.
+  DELETE /api/v1/attachments/<id>
   PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
@@ -33,6 +38,8 @@ if "--prefix" in sys.argv:
     PREFIX = sys.argv[sys.argv.index("--prefix") + 1]
 MEMOS26 = "--memos26" in sys.argv
 SPACES = "--spaces" in sys.argv
+OLD_UPLOAD = "--old-upload" in sys.argv
+UPLOADS = {}  # upload id -> {spec, data}
 # (the spaces user 1 is a member of; "spaces/other" exists but isn't theirs)
 SPACE_LIST = [
     {"name": "spaces/family", "title": "Family", "description": "", "currentUserRole": "ADMIN", "memberCount": 3,
@@ -359,6 +366,57 @@ class H(BaseHTTPRequestHandler):
                 return self.send(400, {"code": 3, "message": "SPACE visibility requires a space"})
             m = add(b.get("content") or "", visibility=vis, space=space)
             return self.send(200, m)
+        if p == "/attachments:upload":
+            b = self.body()
+            try:
+                chunk = base64.b64decode(b.get("data") or "", validate=True)
+            except ValueError:
+                return self.send(400, {"code": 3, "message": "data is not base64"})
+            if b.get("spec"):
+                spec = b["spec"]
+                if spec.get("replace_attachment") and OLD_UPLOAD:
+                    return self.send(400, {"code": 3, "message": "unknown field \"replace_attachment\" in memos.api.v1.UploadAttachmentSpec"})
+                target = spec.get("replace_attachment")
+                if target:
+                    if not any(a["name"] == target for m in STATE["memos"] for a in m["attachments"]):
+                        return self.send(404, {"code": 5, "message": "attachment not found"})
+                    if target.split("/")[-1].startswith("foreign"):
+                        return self.send(403, {"code": 7, "message": "permission denied"})
+                with LOCK:
+                    uid = "up%d" % STATE["next"]
+                    STATE["next"] += 1
+                UPLOADS[uid] = {"spec": spec, "data": b""}
+            else:
+                uid = b.get("upload_id")
+                if uid not in UPLOADS:
+                    return self.send(404, {"code": 5, "message": "upload not found"})
+            up = UPLOADS[uid]
+            if int(b.get("write_offset") or 0) != len(up["data"]):
+                return self.send(400, {"code": 3, "message": "write_offset is not the committed size"})
+            up["data"] += chunk
+            res = {"uploadId": uid, "committedSize": str(len(up["data"])), "maxChunkSize": 2 << 20}
+            if b.get("finish_write"):
+                spec, att = up["spec"], up["spec"].get("attachment") or {}
+                target = spec.get("replace_attachment")
+                if target:
+                    for m in STATE["memos"]:
+                        for a in m["attachments"]:
+                            if a["name"] == target:
+                                STATE["files"][target.split("/")[-1]] = up["data"]
+                                a["filename"], a["type"], a["size"] = att.get("filename", a["filename"]), att.get("type", a["type"]), str(len(up["data"]))
+                                res["attachment"] = a
+                else:
+                    with LOCK:
+                        new_uid = spec.get("attachment_id") or ("att%d" % STATE["next"])
+                        STATE["next"] += 1
+                    a = attachment(new_uid, att.get("filename", "file"), att.get("type", "application/octet-stream"), up["data"])
+                    m = next((x for x in STATE["memos"] if x["name"] == att.get("memo")), None)
+                    if m is not None:
+                        a["memo"] = m["name"]
+                        m["attachments"].append(a)
+                    res["attachment"] = a
+                del UPLOADS[uid]
+            return self.send(200, res)
         if p == "/attachments":
             b = self.body()
             if not b.get("filename") or not b.get("type"):
@@ -439,6 +497,31 @@ class H(BaseHTTPRequestHandler):
         m["updateTime"] = iso(datetime.now(timezone.utc))
         return self.send(200, m)
 
+
+def _delete(self):
+    u = urlparse(self.path)
+    self.note(u)
+    if STATE["offline"]:
+        self.close_connection = True
+        return
+    p = self.api(u.path)
+    if p is None:
+        return self.missing(u)
+    if not self.authed():
+        return
+    mm = re.fullmatch(r"/(attachments/[\w\-]+)", p)
+    if not mm:
+        return self.send(404, {"message": "not found"})
+    for m in STATE["memos"]:
+        for a in list(m["attachments"]):
+            if a["name"] == mm.group(1):
+                m["attachments"].remove(a)
+                STATE["files"].pop(mm.group(1).split("/")[-1], None)
+                return self.send(200, {})
+    return self.send(404, {"code": 5, "message": "attachment not found"})
+
+
+H.do_DELETE = _delete
 
 if SAMPLE:
     sample()

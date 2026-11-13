@@ -45,6 +45,7 @@ local DrawScreen = InputContainer:extend{
     name = "gz_drawscreen",
     covers_fullscreen = true,
     sketch = nil, -- a Sketch to go on with (reopening a drawing)
+    scene = nil, -- a memos scene to go on with (a drawing already in Memos)
     path = nil, -- where the drawing is kept (reopening: the same file)
     on_done = nil, -- function({ path, filename, sketch }) or nil when nothing is drawn
     on_cancel = nil,
@@ -75,7 +76,15 @@ function DrawScreen:init()
     self.button_h, self.hint_h = S(48), S(26)
     self.bar_h = self.button_h + self.hint_h
     local canvas = { x = 0, y = self.bar_h, w = sw, h = sh - self.bar_h }
-    if not self.sketch then
+    if not self.sketch and self.scene then
+        self.sketch = Sketch.fromScene(self.scene, {
+            canvas = canvas,
+            pen_only = self.pen_only,
+            pen_slot = Device.input and Device.input.pen_slot,
+            per_unit = Sketch.perUnitFor(Screen:getDPI()),
+            tap_slop = S(Sketch.TAP_SLOP),
+        })
+    elseif not self.sketch then
         self.sketch = Sketch.new{
             canvas = canvas,
             pen_only = self.pen_only,
@@ -188,9 +197,60 @@ local function strokeSegments(sk, st)
     return out
 end
 
+--- An opened drawing's shapes and text (made in memos), drawn simply: kept
+--- as they are, not changed here.
+function DrawScreen:paintLocked()
+    local sk = self.sketch
+    local c = sk.canvas
+    local function seg(ax, ay, bx, by, r)
+        local x1, y1 = sk:toCanvas(ax, ay)
+        local x2, y2 = sk:toCanvas(bx, by)
+        self:ink({ x1 + c.x, y1 + c.y, x2 + c.x, y2 + c.y, r })
+    end
+    for _i, el in ipairs(sk.locked) do
+        local x, y = tonumber(el.x) or 0, tonumber(el.y) or 0
+        local w, h = tonumber(el.width) or 0, tonumber(el.height) or 0
+        local r = math.max(1, math.floor(Sketch.radiusFor(tonumber(el.strokeWidth) or 2, sk.per_unit) / 2 + 0.5))
+        if el.type == "rectangle" or el.type == "image" then
+            seg(x, y, x + w, y, r); seg(x + w, y, x + w, y + h, r); seg(x + w, y + h, x, y + h, r); seg(x, y + h, x, y, r)
+        elseif el.type == "diamond" then
+            seg(x + w / 2, y, x + w, y + h / 2, r); seg(x + w, y + h / 2, x + w / 2, y + h, r)
+            seg(x + w / 2, y + h, x, y + h / 2, r); seg(x, y + h / 2, x + w / 2, y, r)
+        elseif el.type == "ellipse" then
+            local n, px, py = 48, nil, nil
+            for k = 0, n do
+                local a = 2 * math.pi * k / n
+                local qx, qy = x + w / 2 + w / 2 * math.cos(a), y + h / 2 + h / 2 * math.sin(a)
+                if px then seg(px, py, qx, qy, r) end
+                px, py = qx, qy
+            end
+        elseif (el.type == "line" or el.type == "arrow") and type(el.points) == "table" then
+            local pts = el.points
+            for k = 2, #pts do seg(x + pts[k - 1][1], y + pts[k - 1][2], x + pts[k][1], y + pts[k][2], r) end
+            if el.type == "arrow" and #pts >= 2 then
+                local a, b = pts[#pts - 1], pts[#pts]
+                local ang = math.atan2(b[2] - a[2], b[1] - a[1])
+                local len = 4 * (tonumber(el.strokeWidth) or 2) + 6
+                for _j, d in ipairs({ 2.6, -2.6 }) do
+                    seg(x + b[1], y + b[2], x + b[1] + len * math.cos(ang + d), y + b[2] + len * math.sin(ang + d), r)
+                end
+            end
+        elseif el.type == "text" and type(el.text) == "string" and el.text ~= "" then
+            local cx, cy = sk:toCanvas(x, y)
+            local px = math.max(6, math.floor((tonumber(el.fontSize) or 20) * sk.per_unit))
+            local one = Screen:scaleBySize(100) / 100
+            local tw = TextWidget:new{ text = el.text:gsub("\n", " "), face = Font:getFace("cfont", math.max(6, math.floor(px / one))),
+                fgcolor = Blitbuffer.COLOR_BLACK }
+            tw:paintTo(self.canvas_bb, math.floor(cx), math.floor(cy))
+            tw:free()
+        end
+    end
+end
+
 --- The page drawn again from the strokes (after an undo, a rub-out, Clear).
 function DrawScreen:repaintCanvas()
     self.canvas_bb:fill(Blitbuffer.COLOR_WHITE)
+    self:paintLocked()
     local list = self.sketch:live()
     local cur = self.sketch:current()
     if cur then list[#list + 1] = cur end
@@ -398,6 +458,11 @@ function DrawScreen:save()
 end
 
 function DrawScreen:done()
+    if self.scene and not self.changed then -- (a drawing opened and left as it was: nothing to send)
+        self:close()
+        if self.on_cancel then self.on_cancel() end
+        return
+    end
     if self.sketch:isEmpty() then
         self:close()
         if self.path then os.remove(self.path) end
@@ -415,9 +480,11 @@ function DrawScreen:done()
     if self.on_done then self.on_done(res) end
 end
 
---- opts: sketch and path (to go on with a drawing), on_done(result or nil), on_cancel.
+--- opts: sketch and path (to go on with a drawing drawn here), or scene (a
+--- drawing from Memos to go on with), on_done(result or nil), on_cancel.
 function DrawScreen.show(opts)
-    local w = DrawScreen:new{ sketch = opts.sketch, path = opts.path, on_done = opts.on_done, on_cancel = opts.on_cancel }
+    local w = DrawScreen:new{ sketch = opts.sketch, scene = opts.scene, path = opts.path, on_done = opts.on_done,
+        on_cancel = opts.on_cancel }
     UIManager:show(w, "full")
     return w
 end

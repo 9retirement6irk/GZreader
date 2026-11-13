@@ -99,6 +99,16 @@ API to `/api` are found too.
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
   26.11.0) opens it as a drawing you can edit there; an older Memos shows it
   as a picture. Until it's sent, the board shows the note with the drawing.
+  - **Editing a drawing** (touch Kindles): **Edit** on a note with a drawing
+    opens the drawing. Draw more, rub out (strokes made in Memos too),
+    Undo, Clear; **Done** goes back to the note's text and **Save** sends
+    both. The new drawing goes over the old one in Memos (the same
+    attachment, as Memos' Edit drawing does); an older Memos gets it added
+    and the old one taken off; someone else's drawing keeps theirs and gets
+    yours beside it. A drawing bigger than the screen is shrunk to fit.
+    Shapes and text made in Memos stay as they are (they can't be changed
+    on the Kindle). Done on an empty page takes the drawing off the note.
+    Any note can get a drawing: ✎ Draw in its editor.
   - **Seeing drawings** (made on the Kindle or in Memos): on the Notes tab a
     note with a drawing shows its heading (if it has one) and the drawing
     as big as the note allows; **Layout → Full** shows it bigger, with all

@@ -81,6 +81,60 @@ add({ fn = function(E)
     Notes.setView(plugin(), "display", "full")
 end, after = 5 })
 add({ shot = "4-board-full", after = 1 })
+-- Edit on the note with memos' big drawing: the drawing opens, scaled to fit, its shapes and text kept
+local big, big_att, big_before
+add({ fn = function(E)
+    local Notes = require("gzreader_notes")
+    Notes.setView(plugin(), "display", "compact")
+    for _i, n in ipairs(Notes.notes or {}) do
+        if (n.content or ""):match("^Only a drawing") then big = n end
+    end
+    big_att = big and Notes.drawings(big)[1]
+    local Memos = require("gzreader_memos")
+    local f = big_att and io.open(Memos.filePath(big_att), "rb")
+    big_before = f and f:read("*a")
+    if f then f:close() end
+    Notes.edit(plugin(), big)
+end, after = 4 })
+add({ shot = "5-edit-opens-the-drawing", after = 1 })
+add({ fn = function(E)
+    local d = top()
+    local sk = d and d.sketch
+    check(d and d.name == "gz_drawscreen" and sk and #sk.strokes == 6 and #sk.locked == 2,
+        "Edit on a note with a drawing opens the drawing: its 6 strokes, its ellipse and text kept")
+    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+    E.finger({ { math.floor(W * 0.2), math.floor(H * 0.85) }, { math.floor(W * 0.5), math.floor(H * 0.9) }, { math.floor(W * 0.8), math.floor(H * 0.85) } }, 0.4)
+end, after = 2 })
+add({ shot = "6-edited", after = 0.5 })
+add({ fn = function(E)
+    local d = top()
+    for _i, b in ipairs(d.buttons) do
+        if b.tool.id == "done" then E.tap({ b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) }) end
+    end
+end, after = 3 })
+add({ fn = function(E)
+    local e
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.input and w.widget.on_save then e = w.widget end end
+    check(e and e.drawing and e.drawing.path and e:hasDrawing(), "Done: back in the note's editor with the edited drawing")
+    if e then e:save() end
+end, after = 1 })
+add({ wait_for = function() local q = plugin().store.memos.queue; return q and #q == 0 end, timeout = 25 })
+add({ fn = function(E)
+    local Memos = require("gzreader_memos")
+    local c = Memos:new(plugin().store.memos)
+    local list = c:list(nil, nil, 50)
+    local now
+    for _i, m in ipairs(list and list.memos or {}) do if m.name == big.name then now = m end end
+    local same = now and #now.attachments == 1 and now.attachments[1].name == big_att.name
+    local tmp = E.out .. "/big-after.png"
+    local got = same and c:download(now.attachments[1], tmp)
+    local f = got and io.open(tmp, "rb")
+    local after = f and f:read("*a")
+    if f then f:close() end
+    local scene = after and require("gzreader_drawing").readScene(after)
+    check(same and after and after ~= big_before and scene and #scene.elements == 9,
+        "sent: the same attachment in Memos, its file replaced, 9 elements (8 kept + the new stroke)")
+end, after = 0.5 })
 add({ fn = function(E)
     local f = io.open(E.out .. "/notes-drawings-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
