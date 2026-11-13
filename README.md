@@ -25,28 +25,9 @@ GZreader is [KOReader](https://github.com/koreader/koreader) trimmed down to
 reading, with the [ZenOS](https://github.com/xZenLabs/zen-os) interface and a
 built-in connection to your self-hosted **Grimmory** book server.
 
-| Kindle / Nook | How you use it | Tested |
-| --- | --- | --- |
-| **Kindle 2**, **Keyboard (3)**, **DX** | the keyboard: a letter key for everything | yes |
-| **Kindle 4** | the 5-way and Menu | yes |
-| **Kindle Touch** | touch | yes |
-| **Paperwhite 3** (2015) | touch | yes |
-| Paperwhite 1 (2012) | touch | *untested* |
-| Paperwhite 2 (2013) | touch | *untested* |
-| Paperwhite 4 (2018) | touch | *untested* |
-| Paperwhite 5 (2021), Signature Edition | touch | *untested* |
-| Paperwhite 6 (2024), Signature Edition | touch | *untested* |
-| Kindle Basic 2014 (7th gen), 2016 (8th gen), 2019 (10th gen) | touch | *untested* |
-| Kindle 2022 (11th gen), Kindle 2024 | touch | *untested* |
-| Kindle Voyage | touch | *untested* |
-| Kindle Oasis 1, 2, 3 | touch | *untested* |
-| Kindle Scribe (2022, 2024) | touch | *untested* |
-| Kindle Colorsoft | touch (in greys) | *untested* |
-| **Nook 1st Edition**, **Nook Simple Touch** — *test builds* | the colour touchscreen / touch | yes |
-
-*Tested* means run on that Kindle or its emulator; the untested ones use the
-same KOReader device support and should work, but their screens and buttons
-haven't been tried.
+It runs on Kindles with a keyboard, a 5-way or a touchscreen, and as test
+builds on the Nook 1st Edition and Nook Simple Touch: which ones have been
+tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/wiki/Device-Compatibility).
 
 <table>
 <tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading and your shelf" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-books.png" alt="The Catalog's Books page, laid out like a bookshop" width="200"><br><sub>Catalog: books</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-audiobooks.png" alt="The Catalog's Audiobooks page: Continue listening, Recently added" width="200"><br><sub>Catalog: audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-music.png" alt="The Catalog's Music page: Plex albums as CD cases" width="200"><br><sub>Catalog: music</sub></td></tr>

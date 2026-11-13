@@ -11,7 +11,8 @@ library copy, the books, audiobooks, music, notes, calendars) and what the
 servers got. With a dump dir, the Kindle's GZreader folder as the page left
 it is copied there, for run_tests.lua's import test (GZ_SYNC_DUMP).
 Ports: port (Grimmory) port+1 (its control), port+20 Memos, port+21 Plex,
-port+22 the page.
+port+22 the page, port+23 Immich (with the CORS headers a proxy adds), port+24
+Immich as it is (none).
 """
 import base64, datetime, json, os, shutil, struct, subprocess, sys, tempfile, threading, time, urllib.request
 from functools import partial
@@ -21,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18500
 DUMP = sys.argv[2] if len(sys.argv) > 2 else None
-GP, MP, PP, WP = PORT, PORT + 20, PORT + 21, PORT + 22
+GP, MP, PP, WP, IP = PORT, PORT + 20, PORT + 21, PORT + 22, PORT + 23
 
 passed = failed = 0
 def check(cond, name):
@@ -69,8 +70,11 @@ def wait_port(port):
 TEST_M4A = os.path.join(REPO, "plugins", "gzreader.koplugin", "audio", "test.m4a")
 os.environ.setdefault("GZ_TEST_M4A", TEST_M4A)
 spawn(os.path.join(HERE, "mock_grimmory.py"), str(GP))
-spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample")
+spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_memos.py"), str(MP), "--sample", "--spaces")
 spawn(os.path.join(HERE, "mock_plex.py"), str(PP))
+spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_immich.py"), str(IP), "--cors")
+spawn(os.path.join(REPO, "tools", "gzreader", "emulator", "demo", "mock_immich.py"), str(IP + 1))
+def immich_uid(n, kind="a"): return "%08x-0000-4000-8000-%s%011x" % (n, kind, n)
 
 # the page, as GitHub Pages serves it (/GZreader/…), and a calendar link
 web = tempfile.mkdtemp()
@@ -99,7 +103,7 @@ class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = ThreadingHTTPServer(("127.0.0.1", WP), partial(Quiet, directory=web))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-for p in (GP, MP, PP):
+for p in (GP, MP, PP, IP, IP + 1):
     wait_port(p)
 
 OUTBOX = {
@@ -139,7 +143,11 @@ OUTBOX = {
     ],
     # (empty lists as GZreader 1.24 on a Kindle wrote them: {}, KOReader's JSON)
     "have": {"books": {"1": {"file_id": 1001, "format": "EPUB"}}, "audiobooks": {}, "music": ["album-999"]},
-    "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"}],
+    "notes": {"queue": [{"id": "q1", "op": "create", "content": "Written on the Kindle #kindle", "visibility": "PRIVATE"},
+                        # (Memos v0.31's spaces: a new note in one, a note moved into one)
+                        {"id": "q2", "op": "create", "content": "For the family #kindle", "visibility": "SPACE", "space": "spaces/family"},
+                        {"id": "q3", "op": "update", "name": "memos/m003", "content": "A quote for the book club #quotes",
+                         "visibility": "PRIVATE", "space": "spaces/book-club"}],
               "keep": 100, "files": {}},
     "calendar": {"days_back": 14, "days_ahead": 90},
     # (each book's bookmarks and highlights in a file of its own, marks/<id>.json)
@@ -233,6 +241,28 @@ with sync_playwright() as pw:
     page.click("#m-connect")
     page.wait_for_selector("#c-memos.on")
     check("Connected to" in page.locator("#m-status").inner_text(), "Memos: connected with an access token")
+    # Immich: as it is (no CORS headers) the page can't reach it, and says what to do; through a proxy that adds them, it can
+    page.fill("#i-server", "http://127.0.0.1:%d" % (IP + 1))
+    page.fill("#i-key", "immich-test-key")
+    page.click("#i-connect")
+    page.wait_for_selector("#c-immich .err")
+    check("Couldn't reach Immich from this page" in page.locator("#c-immich .err").inner_text(), "Immich without CORS headers: the page says what's needed")
+    page.evaluate("() => document.querySelector('#c-immich .err').remove()")
+    page.fill("#i-server", "http://127.0.0.1:%d" % IP)
+    page.fill("#i-key", "wrong")
+    page.click("#i-connect")
+    page.wait_for_selector("#c-immich .err")
+    check("didn't accept the API key" in page.locator("#c-immich .err").inner_text(), "Immich: a wrong API key says so")
+    page.fill("#i-server", "http://127.0.0.1:%d/albums/%s?x=1" % (IP, immich_uid(1, "b")))
+    page.fill("#i-key", "immich-test-key")
+    page.click("#i-connect")
+    page.wait_for_selector("#c-immich.on")
+    opts = page.eval_on_selector_all("#i-album option", "os => os.map(o => o.textContent)")
+    check("as Will" in page.locator("#i-status").inner_text() and "Kindle" in page.locator("#i-status").inner_text()
+          and page.locator("#i-album").input_value() == immich_uid(1, "b") and opts == ["Family (2)", "Kindle (30)", "Trip (4)"],
+          "Immich: connected with an album's address: that album chosen, the others (shared ones too) to choose from %r" % opts)
+    page.select_option("#i-count", "10")
+    page.check("#i-wall")
     page.click("#c-cal summary")
     page.fill("#cal-url", "http://127.0.0.1:%d/family.ics" % WP)
     page.click("#cal-add")
@@ -253,7 +283,7 @@ with sync_playwright() as pw:
             } catch (e) { await new Promise(r => setTimeout(r, 200)); }   // (being written)
         }
     }""")
-    check(all(t not in keys for t in ("hunter22", "memos-test-token", "plex-token", "family.ics", "127.0.0.1")) and json.loads(keys)["cipher"] == "AES-256-GCM"
+    check(all(t not in keys for t in ("hunter22", "memos-test-token", "plex-token", "family.ics", "127.0.0.1", "immich-test-key")) and json.loads(keys)["cipher"] == "AES-256-GCM"
           and not page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gzsync.') && k !== 'gzsync.sso').length"),
           "the sign-ins are on the Kindle, encrypted with its PIN (and not in the browser)")
 
@@ -468,6 +498,8 @@ with sync_playwright() as pw:
     page.locator("#ss-list li", has_text="old.png").locator("button").click()
     page.check('input[name="ss-mode"][value="always"]')
     check("taken off with the sync" in page.locator("#ss-list").inner_text(), "…one of the Kindle's to take off")
+    check(page.locator("#ss-immich").is_visible() and page.locator('input[name="ss-mode"][value="immich_auto"]').count() == 1,
+          "sleep screen: with an Immich album, its two choices (the cover and Immich, Immich always) are offered too")
     page.evaluate("() => GZSync.setPanel('sync')")
     # Grimmory has places for the books the sync brings (they open there on the Kindle)
     urllib.request.urlopen("http://127.0.0.1:%d/webprogress?book=3&pct=30&cfi=epubcfi(/6/6!/4/2)&href=Text/ch1.xhtml" % (GP + 1)).read()
@@ -683,6 +715,20 @@ pdata2 = files.get(G + added2[0].get("file", "-"), b"")
 check(added2[0].get("name") == "Beach.png" and len(sst.get("add") or []) == 2 and pdata2[:8] == b"\x89PNG\r\n\x1a\n"
       and struct.unpack(">II", pdata2[16:24]) == (824, 1200),
       "sleep screen pictures: the HEIC photo brought as a PNG too")
+im = inbox.get("immich") or {}
+iadd = im.get("add") or []
+idata = [files.get(G + a.get("file", "-"), b"") for a in iadd]
+isizes = [struct.unpack(">II", d[16:24]) if d[:8] == b"\x89PNG\r\n\x1a\n" else (0, 0) for d in idata]
+check(len(iadd) == 10 and all(a["file"] == "in/immich/%s.png" % a["id"] for a in iadd) and all(320 <= w <= 326 and 200 <= h <= 204 for w, h in isizes)
+      and (im.get("album") or {}).get("id") == immich_uid(1, "b") and im["album"].get("count") == 30 and im.get("keep") == [] and im.get("count") == 10
+      and im.get("wallpaper") is True and "immich-test-key" not in json.dumps(inbox),
+      "Immich: 10 of the album's photos made for this screen (fitted inside it, never bigger), the album, the wallpaper; not the key %r" % (isizes[:2],))
+istate = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % IP).read())
+isearch = [r for r in istate["log"] if r["path"] == "/api/search/metadata" and r["key"] == "ok"]
+check(isearch and isearch[-1]["body"]["albumIds"] == [immich_uid(1, "b")] and isearch[-1]["body"]["type"] == "IMAGE"
+      and len([r for r in istate["log"] if "/thumbnail?size=preview" in r["path"] and r["key"] == "ok"]) == 10,
+      "Immich: the album's photos found with its search, 10 previews asked for, all with the API key")
+check("Immich: 10 new pictures" in log, "the sync's log says what came from Immich")
 usage = state.get("usage", [])
 check(len(usage) == 0 and not [k for k in files if k.startswith(G + "usage/")],
       "usage statistics an older GZreader left: deleted, not sent (GZreader sends none since 1.28.1)")
@@ -720,8 +766,17 @@ check(tc == {"/library/metadata/301": "192", "/library/metadata/304": "192"} and
       "music quality chosen on the page: FLAC and the 320 kbps MP3 converted at 192 kbps; the 200 kbps MP3 as it is; the Kindle told %r" % (tc,))
 notes = json.loads(files.get(G + "in/notes.json", b"{}"))
 memos = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/__state" % MP).read())
-check(inbox.get("notes", {}).get("done") == ["q1"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
+check(inbox.get("notes", {}).get("done") == ["q1", "q2", "q3"] and any("Written on the Kindle" in (m.get("content") or "") for m in memos.get("memos", memos if isinstance(memos, list) else [])),
       "notes: the one written on the Kindle is in Memos")
+by_content = {m.get("content"): m for m in memos.get("memos", [])}
+check("space" not in by_content.get("Written on the Kindle #kindle", {"space": 1})
+      and by_content.get("For the family #kindle", {}).get("space") == "spaces/family"
+      and by_content.get("For the family #kindle", {}).get("visibility") == "SPACE"
+      and by_content.get("A quote for the book club #quotes", {}).get("space") == "spaces/book-club",
+      "notes: a note's space from the Kindle (a new note in Family, one moved to Book club; none sent for a note in no space)")
+check([sp.get("title") for sp in notes.get("spaces") or []] == ["Family", "Book club"]
+      and any(n.get("space") == "spaces/family" for n in notes.get("notes", [])),
+      "notes: your spaces and each note's space, for the Kindle")
 check(len(notes.get("notes", [])) >= 3 and any(f.startswith(G + "in/notes-files/") for f in files),
       "notes: the notes and their pictures, for the Kindle")
 cals = inbox.get("calendars", [])

@@ -8,7 +8,7 @@ of its other screens update without one, so on a Kindle 3 a menu, a tab or
 the quick panel left a grey copy of itself behind (the emulator's
 GZ_EMU_GHOST=1 shows it: 10–25 % of the screen).
 
-Here, on those Kindles (Settings → General → Screen refresh → Flash when the screen changes;
+Here, on those Kindles (Settings → General → Screen → E-ink settings → Flash when the screen changes;
 on by default):
 - an update of most of the screen (60 % or more) that isn't a page turn
   flashes: switching tabs, opening or closing a menu, the quick panel, a list's
@@ -25,12 +25,12 @@ the whole screen but flashing at every step is too much). Inside the
 audiobook and music players (gz_player windows) and the note editor
 (gz_no_flash: typing) nothing flashes but opening and closing them.
 
-Page turns are their own setting (Settings → Reader → Appearance → Flash on
-every page turn; on by default on those Kindles, off elsewhere, offered on
+Page turns are their own setting (Settings → General → Screen → E-ink
+settings → Flash on every page turn; on by default on those Kindles, off elsewhere, offered on
 every device): on, every page turn flashes, as the Kindle's own reader does;
 off, KOReader's every 6 pages (which left a grey trace of the last pages on
-a Kindle 3). A rate chosen in the book's menu (Screen → E-ink settings →
-Full refresh rate) wins until the setting is changed again.
+a Kindle 3). A Full refresh rate chosen just above it (or in the book's menu) wins
+until the setting is changed again.
 ]]
 
 local Eink = {

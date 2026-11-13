@@ -99,8 +99,11 @@ local okb, reader = pcall(require("modules/settings/sections/reader_settings").b
 check(okb and type(reader) == "table", "Reader builds " .. tostring(not okb and reader or ""))
 if okb then
     print("    Reader: " .. texts(reader))
-    check(texts(reader) == "|Appearance|Highlight / Lookup|Gestures and controls|Notes and footnotes|Restore library location on exit|End of book|",
-        "Reader: Appearance, Highlight / Lookup, Gestures and controls, Notes and footnotes, Restore library location on exit, End of book")
+    check(texts(reader) == "|Appearance|Highlight / Lookup|Gestures and controls|Table of contents|Notes and footnotes|Restore library location on exit|End of book|",
+        "Reader: Appearance, Highlight / Lookup, Gestures and controls, Table of contents, Notes and footnotes, Restore library location on exit, End of book")
+    -- (ZenOS 4.3.2's Table of contents: a row of its own, not in a group)
+    local toc = find(reader, "Table of contents")
+    check(toc and texts(toc.sub_item_table) == "|Show chapter page counts|", "Table of contents holds Show chapter page counts")
     check(texts(find(reader, "Gestures and controls").sub_item_table) == "|Bottom swipe gesture|Reader controls|Page Browser|",
         "Gestures and controls holds ZenOS's three")
     check(texts(find(reader, "Notes and footnotes").sub_item_table) == "|Annotation viewer|Footnotes and pinned pages|",

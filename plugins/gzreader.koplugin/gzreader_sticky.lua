@@ -4,12 +4,14 @@ a small tilt), Memos Markdown made readable, and pictures.
 
 KOReader only turns images by 90°, so a note is painted into an 8-bit image
 and turned by a degree or two here (bilinear, a few hundred thousand pixels
-per page; the Notes tab keeps the result while it's open).
+per page; the Notes tab keeps the results and draws a note again only when
+it changes).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Font = require("ui/font")
+local bit = require("bit")
 local ffi = require("ffi")
 
 local Screen = Device.screen
@@ -87,7 +89,13 @@ end
 
 ---------------------------------------------------------------- pictures
 
---- `src` (8-bit gray) turned by `deg` degrees on white, smoothed.
+local rshift, band = bit.rshift, bit.band
+
+--- `src` (8-bit gray) turned by `deg` degrees on white, smoothed (bilinear).
+--- In whole numbers: the place in `src` in 1/65536ths of a pixel, stepped
+--- along each row, the blend in 1/256ths, and only over the part of the row
+--- that lands on `src` (the rest filled white at once): 4.4× faster than in
+--- fractions on a Kindle's LuaJIT, the same picture within 2 levels of 255.
 function Sticky.rotate(src, deg)
     local a = math.rad(deg)
     local ca, sa = math.cos(a), math.sin(a)
@@ -98,23 +106,43 @@ function Sticky.rotate(src, deg)
     local sp, ss = ffi.cast("uint8_t*", src.data), tonumber(src.stride)
     local dp, ds = ffi.cast("uint8_t*", dst.data), tonumber(dst.stride)
     local scx, scy, dcx, dcy = sw / 2, sh / 2, dw / 2, dh / 2
+    local ONE = 65536
+    local dfx, dfy = math.floor(ca * ONE + 0.5), math.floor(-sa * ONE + 0.5)
+    local max_x, max_y = (sw - 1) * ONE, (sh - 1) * ONE
+    local lo, hi
+    -- the x where 0 <= f + x * d < max (f moves by d per pixel)
+    local function inside(f, d, max)
+        if d == 0 then
+            if f < 0 or f >= max then lo, hi = 1, 0 end
+            return
+        end
+        local x1, x2 = -f / d, (max - 1 - f) / d
+        if x1 > x2 then x1, x2 = x2, x1 end
+        lo, hi = math.max(lo, math.ceil(x1)), math.min(hi, math.floor(x2))
+    end
     for y = 0, dh - 1 do
         local ry = y - dcy
         local row = y * ds
-        for x = 0, dw - 1 do
-            local rx = x - dcx
-            local fx = ca * rx + sa * ry + scx
-            local fy = -sa * rx + ca * ry + scy
-            local x0, y0 = math.floor(fx), math.floor(fy)
-            local v = 255
-            if x0 >= 0 and y0 >= 0 and x0 < sw - 1 and y0 < sh - 1 then
-                local tx, ty = fx - x0, fy - y0
-                local i = y0 * ss + x0
-                local top = sp[i] + (sp[i + 1] - sp[i]) * tx
-                local bot = sp[i + ss] + (sp[i + ss + 1] - sp[i + ss]) * tx
-                v = top + (bot - top) * ty
+        local fx = math.floor((sa * ry - ca * dcx + scx) * ONE + 0.5)
+        local fy = math.floor((ca * ry + sa * dcx + scy) * ONE + 0.5)
+        lo, hi = 0, dw - 1
+        inside(fx, dfx, max_x)
+        inside(fy, dfy, max_y)
+        if hi < lo then
+            ffi.fill(dp + row, dw, 255)
+        else
+            if lo > 0 then ffi.fill(dp + row, lo, 255) end
+            if hi < dw - 1 then ffi.fill(dp + row + hi + 1, dw - 1 - hi, 255) end
+            fx, fy = fx + lo * dfx, fy + lo * dfy
+            for x = lo, hi do
+                local i = rshift(fy, 16) * ss + rshift(fx, 16)
+                local tx, ty = rshift(band(fx, 0xffff), 8), rshift(band(fy, 0xffff), 8)
+                local p00, p10 = sp[i], sp[i + ss]
+                local top = p00 * 256 + (sp[i + 1] - p00) * tx
+                local bot = p10 * 256 + (sp[i + ss + 1] - p10) * tx
+                dp[row + x] = rshift(top * 256 + (bot - top) * ty + 32768, 16)
+                fx, fy = fx + dfx, fy + dfy
             end
-            dp[row + x] = v
         end
     end
     return dst
@@ -136,6 +164,28 @@ function Sticky.paper(look)
     return look.shade > 0 and Blitbuffer.gray(look.shade) or Blitbuffer.COLOR_WHITE
 end
 
+-- A note's tilt grows it by its length × sin(angle): a long note (a list's
+-- full width, a whole note in the Full view) is tilted less, so it never
+-- grows more than a note this long (scaled) at the full angle.
+Sticky.TILT_REF = 300
+
+--- The angle a w x h note is turned by (degrees), for `angle` (its look's).
+function Sticky.tilt(angle, w, h, ref)
+    ref = ref or S(Sticky.TILT_REF)
+    local long = math.max(w or 0, h or 0)
+    if long <= ref then return angle end
+    return angle * ref / long
+end
+
+--- Room a w x h note takes on the board: its image's width and height
+--- (the margin for the shadow and tape, then the tilt).
+function Sticky.footprint(w, h, look)
+    local m = S(10)
+    local cw, ch = w + 2 * m, h + 2 * m
+    local a = math.rad(math.abs(Sticky.tilt(look and look.angle or 0, w, h)))
+    return math.ceil(cw * math.cos(a) + ch * math.sin(a)), math.ceil(cw * math.sin(a) + ch * math.cos(a))
+end
+
 --- `widget` (w x h) as a sticky note: shadow, paper, tape, tilt. A new image.
 function Sticky.image(widget, w, h, look, focused)
     local m = S(10)
@@ -155,13 +205,76 @@ function Sticky.image(widget, w, h, look, focused)
         local tx = m + math.floor((w - tw) / 2) + S(look.tape_shift or 0)
         canvas:paintRect(tx, m - math.floor(th / 2), tw, th, Blitbuffer.gray(0.22))
     end
-    local img = Sticky.rotate(canvas, look.angle or 0)
+    local img = Sticky.rotate(canvas, Sticky.tilt(look.angle or 0, w, h))
     canvas:free()
     return img
 end
 
+local function be16(s, i) return s:byte(i) * 256 + s:byte(i + 1) end
+local function le16(s, i) return s:byte(i) + s:byte(i + 1) * 256 end
+
+--- A picture's width and height from the start of its file (PNG, JPEG, GIF,
+--- WebP), without decoding it; nil if it can't be told.
+function Sticky.imageSize(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local head = f:read(64 * 1024) or ""
+    f:close()
+    if head:sub(1, 8) == "\137PNG\r\n\26\n" and #head >= 24 then
+        return be16(head, 17) * 65536 + be16(head, 19), be16(head, 21) * 65536 + be16(head, 23)
+    end
+    if head:sub(1, 6) == "GIF87a" or head:sub(1, 6) == "GIF89a" then
+        if #head >= 10 then return le16(head, 7), le16(head, 9) end
+        return nil
+    end
+    if head:sub(1, 4) == "RIFF" and head:sub(9, 12) == "WEBP" and #head >= 30 then
+        local kind = head:sub(13, 16)
+        if kind == "VP8 " then return le16(head, 27) % 16384, le16(head, 29) % 16384 end
+        if kind == "VP8L" then
+            local b1, b2, b3, b4 = head:byte(22, 25)
+            return 1 + b1 + (b2 % 64) * 256, 1 + math.floor(b2 / 64) + b3 * 4 + (b4 % 16) * 1024
+        end
+        if kind == "VP8X" then
+            return 1 + head:byte(25) + head:byte(26) * 256 + head:byte(27) * 65536,
+                1 + head:byte(28) + head:byte(29) * 256 + head:byte(30) * 65536
+        end
+        return nil
+    end
+    if head:sub(1, 2) == "\255\216" then -- JPEG: the frame header (SOF0–SOF15, not DHT/JPG/DAC)
+        local i = 3
+        while i + 8 <= #head do
+            if head:byte(i) ~= 0xFF then return nil end
+            local marker = head:byte(i + 1)
+            if marker == 0xFF then
+                i = i + 1 -- (padding)
+            elseif marker == 0xD8 or (marker >= 0xD0 and marker <= 0xD7) or marker == 0x01 then
+                i = i + 2 -- (no length)
+            else
+                local len = be16(head, i + 2)
+                if marker >= 0xC0 and marker <= 0xCF and marker ~= 0xC4 and marker ~= 0xC8 and marker ~= 0xCC then
+                    return be16(head, i + 7), be16(head, i + 5)
+                end
+                if len < 2 then return nil end
+                i = i + 2 + len
+            end
+        end
+        return nil
+    end
+    return nil
+end
+
+--- The size Sticky.picture shrinks a w x h picture to, for max_w x max_h.
+--- `grow`: also enlarge a smaller picture to fit, at most `grow` times (a
+--- drawing, which reads better big; photos are never enlarged).
+function Sticky.fitSize(w, h, max_w, max_h, grow)
+    local sc = math.min(max_w / w, max_h / h, (grow and grow > 1) and grow or 1)
+    if sc == 1 then return w, h end
+    return math.max(1, math.floor(w * sc)), math.max(1, math.floor(h * sc))
+end
+
 --- A picture file shrunk to fit max_w x max_h (a new image), or nil.
-function Sticky.picture(path, max_w, max_h)
+--- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
+function Sticky.picture(path, max_w, max_h, grow)
     local f = io.open(path, "rb")
     if not f then return nil end
     local data = f:read("*a")
@@ -169,10 +282,9 @@ function Sticky.picture(path, max_w, max_h)
     local RenderImage = require("ui/renderimage")
     local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
     if not ok or not bb then return nil end
-    local sc = math.min(max_w / bb:getWidth(), max_h / bb:getHeight(), 1)
-    if sc < 1 then
-        bb = RenderImage:scaleBlitBuffer(bb, math.max(1, math.floor(bb:getWidth() * sc)),
-            math.max(1, math.floor(bb:getHeight() * sc)), true)
+    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h, grow)
+    if w ~= bb:getWidth() or h ~= bb:getHeight() then
+        bb = RenderImage:scaleBlitBuffer(bb, w, h, true)
     end
     return bb
 end
@@ -183,10 +295,23 @@ end
 -- well: checklists as boxes, bullets as •, headings on their own, ** and _
 -- markers dropped, links as their text, images as pictures.
 
+-- Memos 26.11's rich editor (@usememos/editor) writes an empty paragraph
+-- as a line of "&nbsp;", characters that would read as Markdown as entities
+-- ("&#124;", "&#10;") or backslash escapes ("\*", "\#"): Memos shows them as
+-- the characters, so does the Kindle (Sticky.plain, Sticky.blankLine).
+
+--- A line that's only non-breaking spaces (an empty paragraph from Memos'
+--- rich editor): a blank line.
+function Sticky.blankLine(line)
+    local rest = line:gsub("&nbsp;", ""):gsub("&#160;", ""):gsub("&#[xX]0*[aA]0;", ""):gsub("\194\160", "")
+    return rest:match("^%s*$") ~= nil
+end
+
 --- The note's lines: { kind = "text"|"check"|"heading"|"image", text, done, level, src }
 function Sticky.lines(content)
     local out = {}
     for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do
+        if line ~= "" and Sticky.blankLine(line) then line = "" end
         local mark, rest = line:match("^%s*[%-%*] %[([ xX])%]%s*(.*)$")
         local hashes, head = line:match("^(#+)%s+(.*)$")
         local src = line:match("^%s*!%[[^%]]*%]%(([^%)%s]+)[^%)]*%)%s*$")
@@ -204,8 +329,61 @@ function Sticky.lines(content)
     return out
 end
 
---- Inline Markdown made plain: **bold**, *it*, `code`, [text](url), bullets.
+local function utf8char(cp)
+    if cp < 0x80 then return string.char(cp) end
+    if cp < 0x800 then return string.char(0xC0 + math.floor(cp / 0x40), 0x80 + cp % 0x40) end
+    if cp < 0x10000 then
+        return string.char(0xE0 + math.floor(cp / 0x1000), 0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+    end
+    return string.char(0xF0 + math.floor(cp / 0x40000), 0x80 + math.floor(cp / 0x1000) % 0x40,
+        0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+end
+
+-- HTML entities a note may hold (named ones Memos' editor or a writer would use)
+Sticky.ENTITIES = { nbsp = " ", amp = "&", lt = "<", gt = ">", quot = '"', apos = "'", ensp = " ", emsp = " ",
+    thinsp = " ", ndash = "\u{2013}", mdash = "\u{2014}", hellip = "\u{2026}", lsquo = "\u{2018}", rsquo = "\u{2019}",
+    ldquo = "\u{201C}", rdquo = "\u{201D}", laquo = "\u{00AB}", raquo = "\u{00BB}", middot = "\u{00B7}", bull = "\u{2022}",
+    copy = "\u{00A9}", reg = "\u{00AE}", trade = "\u{2122}", deg = "\u{00B0}", times = "\u{00D7}", euro = "\u{20AC}",
+    pound = "\u{00A3}", larr = "\u{2190}", rarr = "\u{2192}" }
+
+-- An ASCII punctuation character that came from an escape or an entity is
+-- held as a private-use character while the Markdown markers are taken out
+-- (an escaped "\*" is a star, not italics), then put back.
+local function hold(ch)
+    if #ch == 1 and ch:match("%p") then return utf8char(0xE000 + ch:byte()) end
+    return ch
+end
+local function unhold(s)
+    return (s:gsub("\238\128([\161-\191])", function(c) return string.char(c:byte() - 128) end)
+        :gsub("\238\129([\128-\190])", function(c) return string.char(c:byte() - 64) end))
+end
+
+--- Entities ("&nbsp;", "&amp;", "&#124;", "&#x2014;") and backslash escapes
+--- ("\*") as their characters, held from Markdown (Sticky.plain puts them back).
+local function decode(s)
+    -- (in `code` nothing is an escape or an entity: its punctuation is held as it is)
+    s = s:gsub("`([^`]*)`", function(code) return "`" .. code:gsub("%p", hold) .. "`" end)
+    s = s:gsub("\\(%p)", hold)
+    s = s:gsub("&(#?%w+);", function(name)
+        local cp
+        if name:match("^#[xX]%x+$") then cp = tonumber(name:sub(3), 16)
+        elseif name:match("^#%d+$") then cp = tonumber(name:sub(2)) end
+        if cp then
+            if cp == 0 or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return "\u{FFFD}" end
+            if cp == 0xA0 then return " " end
+            return hold(utf8char(cp))
+        end
+        local v = Sticky.ENTITIES[name]
+        return v and hold(v) or nil -- (an unknown name: left as written)
+    end)
+    return s
+end
+Sticky.decode = function(s) return unhold(decode(s)) end
+
+--- Inline Markdown made plain: **bold**, *it*, `code`, [text](url), bullets;
+--- entities and escapes as their characters.
 function Sticky.plain(s)
+    s = decode(s)
     s = s:gsub("!%[([^%]]*)%]%([^%)]*%)", "%1")
     s = s:gsub("%[([^%]]+)%]%([^%)]*%)", "%1")
     s = s:gsub("%*%*(.-)%*%*", "%1"):gsub("__(.-)__", "%1")
@@ -213,7 +391,7 @@ function Sticky.plain(s)
     s = s:gsub("~~(.-)~~", "%1"):gsub("`([^`]*)`", "%1")
     s = s:gsub("^(%s*)[%-%*%+] ", "%1\u{2022} ")
     s = s:gsub("^>%s?", "\u{201C}")
-    return s
+    return unhold(s)
 end
 
 --- A line with nothing but #tags (shown on their own row instead).

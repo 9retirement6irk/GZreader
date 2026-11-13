@@ -6,13 +6,15 @@ small preview of what it shows, instead of a list of radio buttons.
     from the screensavers folder elsewhere: half of each;
   * Book cover: the last book's cover;
   * A picture from the screensavers folder (a different one each time);
+  * With an Immich album chosen (gzreader_immich.lua): the book's cover while
+    reading and an Immich picture elsewhere, or an Immich picture always;
   * Reading progress (needs reading statistics), Book status;
   * Leave the screen as it is: what the screen showed when Wallpaper opened.
 
 Tap a tile, or on a Kindle with keys press its letter or move to it with the
 5-way and press. Back, Menu, the × or a tap outside the tiles close it.
 The choice is saved as the menu saved it (screensaver_type,
-gzreader_sleep_auto); the other sleep-screen settings are under
+gzreader_sleep_auto, gzreader_sleep_source: frontend/gzsleepmode.lua); the other sleep-screen settings are under
 Wallpaper options (frontend/ui/elements/screensaver_menu.lua).
 ]]
 
@@ -55,30 +57,45 @@ end
 --- The choices, in order: { id, label, enabled }.
 function P.choices()
     local u = ui()
-    return {
+    local immich = G_reader_settings:readSetting("gzreader_immich_album") ~= nil
+        or require("gzsleepmode").source(G_reader_settings) == "immich"
+    local list = {
         { id = "auto", label = _("Book cover while reading, a picture elsewhere"), enabled = true },
         { id = "cover", label = _("Book cover"), enabled = lastFile() ~= nil },
         { id = "random_image", label = _("A picture from the screensavers folder"), enabled = true },
+        -- (with an Immich album: Settings → Connections → Immich)
+        immich and { id = "immich_auto", label = _("Book cover while reading, an Immich picture elsewhere"), enabled = true } or false,
+        immich and { id = "immich", label = _("A picture from your Immich album"), enabled = true } or false,
         { id = "readingprogress", label = _("Reading progress"), enabled = u ~= nil and u.statistics ~= nil },
         { id = "bookstatus", label = _("Book status (while reading)"), enabled = true },
         { id = "disable", label = _("Leave the screen as it is"), enabled = true },
     }
+    local out = {}
+    for _i, c in ipairs(list) do if c then out[#out + 1] = c end end
+    return out
 end
 
 --- The choice in use.
 function P.current()
-    if G_reader_settings:nilOrTrue("gzreader_sleep_auto") then return "auto" end
-    return G_reader_settings:readSetting("screensaver_type") or "disable"
+    return require("gzsleepmode").current(G_reader_settings)
 end
 
 --- Use the choice `id` (as the old radio buttons did).
 function P.choose(id)
-    if id == "auto" then
-        G_reader_settings:makeTrue("gzreader_sleep_auto")
-    else
-        G_reader_settings:saveSetting("screensaver_type", id)
-        G_reader_settings:makeFalse("gzreader_sleep_auto")
+    require("gzsleepmode").use(G_reader_settings, id)
+end
+
+--- The first of the Immich album's pictures on the Kindle, or nil.
+function P.immichPicture()
+    local dir = require("gzsleepmode").immichDir()
+    if lfs.attributes(dir, "mode") ~= "directory" then return nil end
+    local DocumentRegistry = require("document/documentregistry")
+    local names = {}
+    for name in lfs.dir(dir) do
+        if name:sub(1, 1) ~= "." and DocumentRegistry:isImageFile(name) then names[#names + 1] = name end
     end
+    table.sort(names)
+    return names[1] and (dir .. "/" .. names[1]) or nil
 end
 
 --- The first picture a random sleep screen could show (its folder, then the
@@ -150,10 +167,14 @@ function P.preview(id, w, h, snapshot)
     elseif id == "random_image" then
         local f = P.firstPicture()
         return { { widget = picture(f and { file = f } or { icon = zen_icons .. "grid.svg" }, w, h) } }
-    elseif id == "auto" then
+    elseif id == "immich" then
+        local f = P.immichPicture()
+        return { { widget = picture(f and { file = f } or { icon = zen_icons .. "grid.svg" }, w, h) } }
+    elseif id == "auto" or id == "immich_auto" then
         local half = math.floor(w / 2)
         local bb = coverBB(book)
-        local f = P.firstPicture()
+        local f
+        if id == "immich_auto" then f = P.immichPicture() else f = P.firstPicture() end
         return {
             { widget = picture(bb and { image = bb } or { icon = zen_icons .. "book_closed.svg" }, half, h), left = true },
             { widget = picture(f and { file = f } or { icon = zen_icons .. "grid.svg" }, w - half, h), right = true },

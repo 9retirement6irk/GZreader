@@ -267,6 +267,7 @@ function Grimmory:init()
             if not m._gz_full then return require("gzreader_panel").show(plugin) end
             return orig_key and orig_key(m, a, k) or (orig_show and orig_show(m))
         end
+        pcall(function() require("gzreader_touch").forgetKOReaderDoubleTap() end)
         -- a long press on a book on Home: Manage it (Open and Delete, then
         -- ZenOS's own book menu), as the panel's Manage tile does
         rawset(_G, "__GZ_MANAGE_BOOK", function(path, context)
@@ -459,6 +460,10 @@ function Grimmory:onDispatcherRegisterActions()
     })
     Dispatcher:registerAction("gzreader_audiobooks", {
         category = "none", event = "ShowGzAudiobooks", title = _("Audiobooks (the Catalog's page)"),
+        general = true,
+    })
+    Dispatcher:registerAction("gzreader_house", {
+        category = "none", event = "ShowGzHouse", title = _("House (Home Assistant)"),
         general = true,
     })
     Dispatcher:registerAction("grimmory_pair", {
@@ -1245,6 +1250,18 @@ function Grimmory:onShowGzMusic()
     return true
 end
 
+--- The House tab: Home Assistant (ZenOS's tab bar; gzreader_house.lua).
+function Grimmory:onShowGzHouse()
+    if self.ui and self.ui.document then return end -- (file manager's instance)
+    require("gzreader_house").show(self)
+    return true
+end
+
+--- Settings → Connections → Home Assistant (the House tab).
+function Grimmory:houseSettingsItems()
+    return require("gzreader_house").settingsItems(self)
+end
+
 function Grimmory:onGzLauncherContinue() dispatch("open_previous_document") end
 function Grimmory:onGzLauncherSearch() dispatch("file_search") end
 function Grimmory:onGzLauncherHistory() dispatch("history") end
@@ -1563,6 +1580,8 @@ function Grimmory:onNetworkConnected()
     UIManager:scheduleIn(6, function() pcall(require("gzreader_shelfsync").run, self) end)
     -- your shelves: changes made here sent, the shelves kept again (at most every 30 min)
     UIManager:scheduleIn(8, function() pcall(require("gzreader_shelves").sync, self) end)
+    -- the Immich album's pictures (sleep screen, wallpaper), when used (at most every 6 h)
+    UIManager:scheduleIn(12, function() pcall(require("gzreader_immich").onNetworkConnected, self) end)
 end
 
 ---------------------------------------------------------------- reader integration
@@ -1903,6 +1922,11 @@ end
 --- Settings → Connections → Calendar (CalDAV).
 function Grimmory:calendarSettingsItems()
     return require("gzreader_calendar").settingsItems(self)
+end
+
+--- Settings → Connections → Immich (Photos): the album for the sleep screen and the wallpaper.
+function Grimmory:immichSettingsItems()
+    return require("gzreader_immichsettings").items(self)
 end
 
 --- Settings → Notes (ZenOS settings): connection, storage, synced tags, limits.

@@ -235,6 +235,34 @@
           </details>
         </div>
 
+        <div class="conn" id="c-immich">
+          <h3>Immich (Photos)</h3>
+          <p class="status" id="i-status">Not connected</p>
+          <div id="i-form">
+            <label for="i-server">Immich address <span class="muted">(or an album's address)</span></label>
+            <input type="url" id="i-server" placeholder="https://photos.example.com">
+            <label for="i-key">API key <span class="muted">(Immich → Account Settings → API Keys)</span></label>
+            <input type="password" id="i-key" autocomplete="off">
+            <button class="primary" id="i-connect">Connect</button>
+            <p class="small muted">Pictures from one of your albums for the sleep screen and the Home wallpaper, made here to fit
+              the Kindle's screen. Immich only answers web pages it's told to:
+              <a href="https://github.com/9retirement6irk/GZreader/wiki/Home-and-Bookshelves#immich-from-the-sync-page" target="_blank" rel="noopener">what to add to your server</a>.</p>
+          </div>
+          <div id="i-on" class="hidden">
+            <label for="i-album">Album</label>
+            <select id="i-album" aria-label="Album"></select>
+            <div class="opts small">
+              <label>Pictures kept on the Kindle
+                <select id="i-count" aria-label="Pictures kept on the Kindle">
+                  <option value="10">10</option><option value="20">20</option><option value="50">50</option>
+                </select></label>
+              <label><input type="checkbox" id="i-wall"> Home wallpaper: a picture from the album (another one at each sync)</label>
+              <p class="muted">For the sleep screen: Content → Sleep screen pictures. Each sync brings new pictures from the album.</p>
+            </div>
+            <button id="i-out">Disconnect</button>
+          </div>
+        </div>
+
         <div class="conn" id="c-plex">
           <h3>Music (Plex)</h3>
           <p class="status" id="p-status">Not connected</p>
@@ -284,6 +312,10 @@
       <div class="opts small" style="margin-top:8px">
         <label><input type="radio" name="ss-mode" value="auto"> The book's cover while reading, a picture from Home and menus</label>
         <label><input type="radio" name="ss-mode" value="always"> A picture, always</label>
+        <span id="ss-immich" class="hidden">
+          <label><input type="radio" name="ss-mode" value="immich_auto"> The book's cover while reading, a picture from Immich from Home and menus</label>
+          <label><input type="radio" name="ss-mode" value="immich"> A picture from Immich, always</label>
+        </span>
       </div>
       <ul class="items" id="ss-list"></ul>
     </section>
@@ -318,6 +350,6 @@
     <a href="../">GZreader</a> · <a href="https://github.com/9retirement6irk/GZreader/wiki/Sync-with-a-Computer">How syncing with a computer works</a>
   </footer>
 </div>
-<script src="gzsync.js?v=068c3cb809"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
+<script src="gzsync.js?v=cc57d8c878"></script><!-- (?v= is the script's SHA-256, checked by sync_page_test.py: GitHub Pages lets browsers keep files 10 minutes, and a new page with an old script breaks) -->
 </body>
 </html>

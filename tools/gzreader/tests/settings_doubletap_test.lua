@@ -64,21 +64,22 @@ end
 touch = true
 local b = books()
 print("    Books (touch): " .. texts(b))
-check(texts(b):find("|Double-tap to open a book|", 1, true) ~= nil, "a touch Kindle: Double-tap to open a book is there")
+-- (ZenOS 4.3.2: "Double-tap to open a book" became "Double tap", with what a single and a double tap do under it)
+check(texts(b):find("|Double tap|", 1, true) ~= nil, "a touch Kindle: Double tap is there")
 local dt
-for _i, it in ipairs(b) do if it.text == "Double-tap to open a book" then dt = it end end
+for _i, it in ipairs(b) do if it.text == "Double tap" then dt = it end end
 if dt then
     dt.callback()
-    check(config.developer.double_tap_to_open_books == true and dt.checked_func(), "…and still turns ZenOS's setting on")
+    check(config.developer.double_tap == true and dt.checked_func(), "…and still turns ZenOS's setting on")
     dt.callback()
-    check(config.developer.double_tap_to_open_books == false, "…and off")
-    check(texts(dt.sub_item_table) == "|Single tap to open context menu|", "…with Single tap to open context menu under it")
+    check(config.developer.double_tap == false, "…and off")
+    check(texts(dt.sub_item_table) == "|Single tap|Double tap|", "…with Single tap and Double tap under it: " .. texts(dt.sub_item_table))
 end
 
 touch = false
 b = books()
 print("    Books (keys): " .. texts(b))
-check(not texts(b):find("Double-tap", 1, true), "a Kindle with keys or a 5-way: no Double-tap to open a book")
+check(not texts(b):find("|Double tap|", 1, true), "a Kindle with keys or a 5-way: no Double tap")
 for _i, kept in ipairs({ "Book details", "Include new books in TBR", "Treat file updates as New", "Show all files from subfolders" }) do
     check(texts(b):find("|" .. kept .. "|", 1, true) ~= nil, "…the rest of Books stays: " .. kept)
 end

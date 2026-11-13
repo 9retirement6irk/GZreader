@@ -386,6 +386,166 @@ gets a password or token.
     },
   };
 
+  // ------------------------------------------------------------ Immich
+
+  // Pictures from an Immich album for the sleep screen and the wallpaper
+  // (gzreader_immich.lua does the same on Wi‑Fi Kindles). Immich sends no
+  // CORS headers by itself: the server's proxy has to let this page in (the
+  // wiki says how), otherwise every request fails as "Failed to fetch".
+  var I = {
+    // { server, key, user, album: { id, name, count }, albums, count, wall } (in the Vault; wall: the
+    // wallpaper box changed here, for the next sync); { off: true }: disconnected, the Kindle not told yet
+    st: null,
+    PAGE: 250, MAX_LIST: 2000, COUNTS: [10, 20, 50],
+    UUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    connected: function () { return !!(I.st && I.st.server && I.st.key); },
+    ready: function () { return I.connected() && !!(I.st.album && I.st.album.id); },
+    // (as gzreader_immich.lua's normalizeServer: an album's address keeps its id)
+    normalize: function (s) {
+      s = String(s || "").trim();
+      if (!s) return null;
+      if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+      var album = (s.match(/\/albums\/([0-9a-f-]{36})/i) || [])[1] || null;
+      var m = /^(https?:\/\/[^\/?#]+)([^?#]*)/i.exec(s);
+      if (!m) return null;
+      var pages = ["albums", "photos", "share", "sharing", "explore", "people", "places", "user-settings", "admin", "auth", "api", "search",
+        "archive", "favorites", "map", "trash", "memory", "folders", "tags", "utilities", "partners", "locked"];
+      var kept = [];
+      var segs = m[2].split("/").filter(Boolean);
+      for (var i = 0; i < segs.length && pages.indexOf(segs[i]) < 0; i++) kept.push(segs[i]);
+      return { server: m[1] + (kept.length ? "/" + kept.join("/") : ""), album: album };
+    },
+    req: async function (method, path, body, accept) {
+      var h = { "x-api-key": I.st.key, Accept: accept || "application/json" };
+      if (body !== undefined) h["Content-Type"] = "application/json";
+      try {
+        return await fetch(I.st.server + "/api" + path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+      } catch (e) {
+        throw new Error("Couldn't reach Immich from this page. Immich has to be told to answer it: see “what to add to your server” under Connections → Immich.");
+      }
+    },
+    json: async function (r, what) {
+      if (r.status === 401) throw new Error("Immich didn't accept the API key.");
+      if (r.status === 403) throw new Error("The API key can't " + (what || "do that") + ": give it album.read, asset.read and asset.view (or all permissions).");
+      if (!r.ok) throw new HttpError(r.status, "Immich");
+      return await r.json();
+    },
+    albums: async function () {
+      var list = [], seen = {};
+      var mine = await I.json(await I.req("GET", "/albums"), "read albums");
+      var shared = [];
+      try { var r = await I.req("GET", "/albums?shared=true"); if (r.ok) shared = await r.json(); } catch (e) {}
+      mine.concat(shared).forEach(function (a) {
+        if (a && a.id && !seen[a.id]) { seen[a.id] = true; list.push({ id: a.id, name: String(a.albumName || "?"), count: Number(a.assetCount) || 0 }); }
+      });
+      list.sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+      return list;
+    },
+    connect: async function (server, key) {
+      var n = I.normalize(server);
+      key = String(key || "").replace(/\s/g, "");
+      if (!n || !key) throw new Error("Enter the Immich address and an API key.");
+      if (mixedContent(n.server)) throw new Error("A web page can only reach Immich over https://.");
+      var before = I.st;
+      I.st = { server: n.server, key: key, count: (before && before.count) || 20 };
+      try {
+        I.st.albums = await I.albums();
+        try { var me = await (await I.req("GET", "/users/me")).json(); I.st.user = me.name || me.email || null; } catch (e) {}
+        var want = n.album || (before && before.server === n.server && before.album && before.album.id);
+        I.st.albums.forEach(function (a) { if (a.id === want) I.st.album = { id: a.id, name: a.name, count: a.count }; });
+        Vault.save();
+      } catch (e) { I.st = before; throw e; }
+    },
+    // the album's photos (ids): Immich's search, or the album's own list on older servers
+    pictures: async function (albumId) {
+      var ids = [], page = 1;
+      while (ids.length < I.MAX_LIST) {
+        var r = await I.req("POST", "/search/metadata", { albumIds: [albumId], type: "IMAGE", size: I.PAGE, page: page });
+        if (r.status === 401 || r.status === 403) await I.json(r, "read the album's pictures");
+        if (!r.ok) { if (page > 1) break; return await I.picturesOld(albumId); }
+        var a = ((await r.json()) || {}).assets || {};
+        var items = Array.isArray(a.items) ? a.items : [];
+        items.forEach(function (x) { if (x && x.id && (!x.type || x.type === "IMAGE") && !x.isTrashed) ids.push(x.id); });
+        if (!a.nextPage || items.length < I.PAGE) break;
+        page = Number(a.nextPage) || page + 1;
+      }
+      return ids;
+    },
+    picturesOld: async function (albumId) {
+      var d = await I.json(await I.req("GET", "/albums/" + encodeURIComponent(albumId)), "read the album");
+      return (d.assets || []).filter(function (x) { return x && x.id && (!x.type || x.type === "IMAGE") && !x.isTrashed; })
+        .map(function (x) { return x.id; }).slice(0, I.MAX_LIST);
+    },
+    shuffle: function (t) { for (var i = t.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var x = t[i]; t[i] = t[j]; t[j] = x; } return t; },
+    // which to keep, get and drop (as gzreader_immich.lua's Immich.plan)
+    plan: function (album, have, count) {
+      var inAlbum = {}, onKindle = {}, keep = [], drop = [], fresh = [];
+      album.forEach(function (id) { inAlbum[id] = true; });
+      have.forEach(function (id) { if (inAlbum[id] && !onKindle[id]) keep.push(id); else drop.push(id); onKindle[id] = true; });
+      I.shuffle(keep);
+      album.forEach(function (id) { if (!onKindle[id]) fresh.push(id); });
+      I.shuffle(fresh);
+      var keepN = Math.min(keep.length, count);
+      if (fresh.length) keepN = Math.min(keepN, Math.max(count - fresh.length, Math.ceil(count / 2)));
+      while (keep.length > keepN) drop.push(keep.pop());
+      return { keep: keep, get: fresh.slice(0, Math.max(0, count - keep.length)), drop: drop };
+    },
+    // with the sync: new pictures under in/immich/, what to keep in the inbox
+    bring: async function (out, inbox) {
+      var o = out.immich || {};
+      if (I.st && I.st.off) {
+        if (o.album) inbox.immich = { off: true };
+        I.st = null; Vault.save();
+        return;
+      }
+      if (!I.ready()) return;
+      var album = I.st.album;
+      phase("Immich: the album “" + album.name + "”…");
+      var ids = await I.pictures(album.id);
+      var have = asList(o.have).filter(function (id) { return I.UUID.test(String(id)); });
+      // (another album than before: none of those are in it, so they all go)
+      var p = I.plan(ids, have, Number(I.st.count) || 20);
+      var add = [], n = 0, failed = 0;
+      for (var i = 0; i < p.get.length; i++) {
+        bar.set(i, p.get.length);
+        var id = p.get[i];
+        try {
+          var r = await I.req("GET", "/assets/" + encodeURIComponent(id) + "/thumbnail?size=preview", undefined, "image/*");
+          if (!r.ok) { failed++; continue; }
+          var png = await Sleep.fitInside(await r.blob());
+          var file = "in/immich/" + id + ".png";
+          await Drive.write(Drive.sync, file, png);
+          add.push({ file: file, id: id });
+          n++;
+        } catch (e) { failed++; if (/reach Immich/.test(e.message)) throw e; }
+      }
+      bar.hide();
+      album.count = ids.length;
+      inbox.immich = { album: { id: album.id, name: album.name, count: ids.length }, server: I.st.server, add: add,
+        keep: p.keep, count: Number(I.st.count) || 20 };
+      if (typeof I.st.wall === "boolean") inbox.immich.wallpaper = I.st.wall;
+      delete I.st.wall;
+      Vault.save();
+      log("Immich: " + n + " new picture" + (n === 1 ? "" : "s") + " from “" + album.name + "”" + (p.drop.length ? ", " + p.drop.length + " taken off" : "")
+        + (failed ? " (" + failed + " couldn't be brought)" : "") + ".", failed && !n ? "bad" : "ok");
+    },
+    renderAlbums: function () {
+      var sel = $("#i-album");
+      if (!sel || !I.connected()) return;
+      sel.textContent = "";
+      var cur = (I.st.album || {}).id;
+      if (!cur) sel.appendChild(el("option", { value: "" }, "Choose an album…"));
+      (I.st.albums || []).forEach(function (a) {
+        var o = el("option", { value: a.id }, a.name + " (" + a.count + ")");
+        if (a.id === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+      $("#i-count").value = String(I.st.count || 20);
+      var o = (K.out || {}).immich || {};
+      $("#i-wall").checked = typeof I.st.wall === "boolean" ? I.st.wall : !!o.wallpaper;
+    },
+  };
+
   // what the Notes tab keeps of a note (gzreader_memos.lua Memos.slim)
   function slimMemo(m) {
     var loc = m.location && typeof m.location === "object" ? m.location : null;
@@ -393,6 +553,7 @@ gets a password or token.
       name: m.name, content: m.content || "", pinned: m.pinned === true, visibility: m.visibility,
       tags: Array.isArray(m.tags) ? m.tags : [], created: m.createTime, updated: m.updateTime,
       place: loc && loc.placeholder ? loc.placeholder : undefined,
+      space: m.space || undefined,
       attachments: (m.attachments || []).map(function (a) {
         return { name: a.name, filename: a.filename, type: a.type, size: Number(a.size) || undefined, link: a.externalLink || undefined };
       }),
@@ -790,10 +951,10 @@ gets a password or token.
     },
     b64: function (buf) { return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))); },
     unb64: function (s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); },
-    data: function () { return { grimmory: G.st, memos: M.st, plex: P.st, plexClient: Vault.plexClient, calendars: Cal.list }; },
+    data: function () { return { grimmory: G.st, memos: M.st, plex: P.st, plexClient: Vault.plexClient, calendars: Cal.list, immich: I.st }; },
     use: function (d) {
       d = d || {};
-      G.st = d.grimmory || null; M.st = d.memos || null; P.st = d.plex || null;
+      G.st = d.grimmory || null; M.st = d.memos || null; P.st = d.plex || null; I.st = d.immich || null;
       Vault.plexClient = d.plexClient || null; Cal.list = Array.isArray(d.calendars) ? d.calendars : [];
     },
     // a new PIN (or the first one)
@@ -919,7 +1080,7 @@ gets a password or token.
     var has = await Vault.exists();
     $("#unlock-title").textContent = has ? "Unlock the Kindle's connections" : "Choose a PIN for this Kindle";
     $("#unlock-text").textContent = has
-      ? "Enter the PIN you chose for this Kindle: its sign-ins (Grimmory, Memos, Plex, calendars) are kept on it, locked with it."
+      ? "Enter the PIN you chose for this Kindle: its sign-ins (Grimmory, Memos, Plex, Immich, calendars) are kept on it, locked with it."
       : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 4 characters at least; a longer one is safer (someone with the Kindle could try to guess a short one).";
     show("#pin2", !has);
     $("#unlock-go").textContent = has ? "Unlock" : "Keep sign-ins on the Kindle";
@@ -1038,6 +1199,7 @@ gets a password or token.
     notes: { queue: [], keep: 100, files: [] }, calendar: { days_back: 14, days_ahead: 90 },
     disk: { total: 1.4 * 1073741824, available: 1.1 * 1073741824 },
     screensavers: { names: [], mode: "auto" },
+    immich: { have: [], wallpaper: false },
   };
   async function testKindle(reset) {
     var root = await navigator.storage.getDirectory();
@@ -1644,6 +1806,20 @@ gets a password or token.
   };
 
   // 4. notes
+  // (gzreader_memos.lua Memos:create / Memos.updateBody: a space only when
+  // there is one, since Memos before v0.31 refuses the field; "" takes a
+  // note out of its space)
+  function memoCreateBody(q) {
+    var b = { content: q.content, visibility: q.visibility || "PRIVATE" };
+    if (q.space) b.space = q.space;
+    return b;
+  }
+  function memoUpdateBody(q) {
+    var b = { name: q.name, content: q.content }, mask = ["content"];
+    if (q.visibility) { b.visibility = q.visibility; mask.push("visibility"); }
+    if (typeof q.space === "string") { mask.push("space"); if (q.space) b.space = q.space; }
+    return { body: b, mask: mask.join(",") };
+  }
   async function syncNotes(out, inbox) {
     var n = out.notes || {};
     var prev = inbox.notes || {};
@@ -1654,9 +1830,8 @@ gets a password or token.
       var q = n.queue[i];
       if (done.indexOf(q.id) >= 0) continue;
       var r;
-      if (q.op === "create") r = await M.req("POST", "/memos", { content: q.content, visibility: q.visibility || "PRIVATE" });
-      else if (q.op === "update") r = await M.req("PATCH", "/" + q.name, { name: q.name, content: q.content, visibility: q.visibility },
-        { updateMask: q.visibility ? "content,visibility" : "content" });
+      if (q.op === "create") r = await M.req("POST", "/memos", memoCreateBody(q));
+      else if (q.op === "update") { var ub = memoUpdateBody(q); r = await M.req("PATCH", "/" + q.name, ub.body, { updateMask: ub.mask }); }
       else if (q.op === "pin") r = await M.req("PATCH", "/" + q.name, { name: q.name, pinned: q.pinned === true }, { updateMask: "pinned" });
       else { done.push(q.id); continue; }
       if (r.ok) { done.push(q.id); sentNow++; }
@@ -1683,7 +1858,16 @@ gets a password or token.
       var rs = await M.req("GET", "/" + M.st.userName + ":getStats");
       if (rs.ok) { var sd = await rs.json(); tags = sd.tagCounts || sd.tagCount || null; }
     } catch (e) {}
-    await Drive.write(Drive.sync, "in/notes.json", JSON.stringify({ notes: notes, at: Math.floor(Date.now() / 1000), tags: tags }));
+    // your spaces (Memos v0.31; an older Memos has none: no /spaces)
+    var spaces = null;
+    try {
+      var rsp = await M.req("GET", "/spaces", undefined, { pageSize: 100 });
+      if (rsp.ok) {
+        spaces = ((await rsp.json()).spaces || []).filter(function (sp) { return sp && typeof sp.name === "string"; })
+          .map(function (sp) { return { name: sp.name, title: sp.title || sp.name.replace(/^spaces\//, "") }; });
+      }
+    } catch (e) {}
+    await Drive.write(Drive.sync, "in/notes.json", JSON.stringify({ notes: notes, at: Math.floor(Date.now() / 1000), tags: tags, spaces: spaces }));
     // their pictures (not already on the Kindle)
     var have = new Set(n.files || []);
     var budget = (Number(n.files_mb) || 50) * 1048576 * 0.8, pics = [];
@@ -2115,6 +2299,7 @@ gets a password or token.
       try { await dropUsage(); } catch (e) {}
       try { await Report.sendSaved(out); } catch (e) { log("Reports for the developer: " + e.message); }
       if (Sleep.count()) { try { await Sleep.bring(inbox); } catch (e) { log("Sleep screen pictures: " + e.message, "bad"); } }
+      if (I.st) { try { await I.bring(out, inbox); } catch (e) { bar.hide(); log("Immich: " + e.message, "bad"); } }
       // (test builds on or off: the Kindle remembers it, Settings → Updates)
       if (out.gzreader && Update.betaTouched) inbox.test_builds = Update.beta;
       if (P.q) inbox.music_quality = { bitrate: P.q.bitrate, shrink: P.q.shrink }; // (the Kindle's Plex settings follow)
@@ -2145,7 +2330,7 @@ gets a password or token.
   // ------------------------------------------------------------ the page
 
   function updateSyncButton() {
-    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected() || Sleep.count());
+    $("#sync").disabled = !Drive.sync || !(G.connected() || M.connected() || Cal.list.length || P.connected() || Sleep.count() || I.ready() || (I.st && I.st.off));
   }
 
   function renderConnections() {
@@ -2177,6 +2362,13 @@ gets a password or token.
       li.appendChild(b);
       ul.appendChild(li);
     });
+    var im = I.connected();
+    $("#c-immich").classList.toggle("on", im);
+    $("#i-status").textContent = im ? "Connected to " + hostOf(I.st.server) + (I.st.user ? " as " + I.st.user : "") + (I.st.album ? " · " + I.st.album.name : " · choose an album") : "Not connected";
+    $("#i-form").classList.toggle("hidden", im);
+    $("#i-on").classList.toggle("hidden", !im);
+    if (!im && I.st && I.st.server) $("#i-server").value = I.st.server;
+    I.renderAlbums();
     var p = P.connected();
     $("#c-plex").classList.toggle("on", p);
     $("#p-status").textContent = p ? "Signed in" + (P.st.user ? " as " + P.st.user : "") + " · " + (P.st.server.name || "Plex") : "Not connected";
@@ -2695,6 +2887,32 @@ gets a password or token.
       while (taken(name)) name = base + " (" + (k++) + ").png";
       return name;
     },
+    grey: function (g, w, h) {
+      var d = g.getImageData(0, 0, w, h), px = d.data;
+      for (var i = 0; i < px.length; i += 4) {
+        var y = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
+        px[i] = px[i + 1] = px[i + 2] = y; px[i + 3] = 255;
+      }
+      g.putImageData(d, 0, 0);
+    },
+    // an Immich picture made to fit inside the screen (proportions kept, never
+    // bigger, no edges added: the Kindle's own fit settings still apply), in grey
+    fitInside: async function (blob) {
+      var img = await createImageBitmap(blob);
+      var sc = Sleep.screen();
+      var k = Math.min(sc.w / img.width, sc.h / img.height, 1);
+      var w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+      var c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      var g = c.getContext("2d");
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, w, h);
+      g.imageSmoothingQuality = "high";
+      g.drawImage(img, 0, 0, w, h);
+      if (img.close) img.close();
+      Sleep.grey(g, w, h);
+      return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
+    },
     // the picture as the Kindle's screen shows it: its size, in grey
     make: async function (file, fit) {
       var img;
@@ -2714,12 +2932,7 @@ gets a password or token.
       g.imageSmoothingQuality = "high";
       g.drawImage(img, (sc.w - w) / 2, (sc.h - h) / 2, w, h);
       if (img.close) img.close();
-      var d = g.getImageData(0, 0, sc.w, sc.h), px = d.data;
-      for (var i = 0; i < px.length; i += 4) {
-        var y = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
-        px[i] = px[i + 1] = px[i + 2] = y; px[i + 3] = 255;
-      }
-      g.putImageData(d, 0, 0);
+      Sleep.grey(g, sc.w, sc.h);
       return await new Promise(function (ok, bad) { c.toBlob(function (b) { b ? ok(b) : bad(new Error("couldn't make the picture")); }, "image/png"); });
     },
     add: async function (files) {
@@ -2750,6 +2963,8 @@ gets a password or token.
       var sc = Sleep.screen();
       $("#ss-size").textContent = "· made " + sc.w + " × " + sc.h + " for this Kindle";
       var mode = Sleep.mode || ((K.out || {}).screensavers || {}).mode;
+      // (Immich's choices: once an album is chosen, here or on the Kindle)
+      $("#ss-immich").classList.toggle("hidden", !(I.ready() || ((K.out || {}).immich || {}).album || /^immich/.test(mode || "")));
       document.querySelectorAll('input[name="ss-mode"]').forEach(function (r) { r.checked = r.value === mode; });
       Sleep.pending.forEach(function (p) {
         var li = el("li");
@@ -2892,6 +3107,23 @@ gets a password or token.
       renderConnections();
     });
     $("#m-out").onclick = function () { M.st = null; M.save(); renderConnections(); };
+    $("#i-connect").onclick = busy($("#i-connect"), async function () {
+      await I.connect($("#i-server").value, $("#i-key").value);
+      $("#i-key").value = "";
+      renderConnections(); Sleep.render();
+    });
+    $("#i-album").onchange = function () {
+      var id = this.value;
+      (I.st.albums || []).forEach(function (a) { if (a.id === id) I.st.album = { id: a.id, name: a.name, count: a.count }; });
+      Vault.save(); renderConnections(); Sleep.render();
+    };
+    $("#i-count").onchange = function () { I.st.count = Number(this.value) || 20; Vault.save(); };
+    $("#i-wall").onchange = function () { I.st.wall = this.checked; Vault.save(); };
+    $("#i-out").onclick = function () {
+      // (the Kindle forgets the album and its pictures at the next sync)
+      I.st = ((K.out || {}).immich || {}).album ? { off: true } : null;
+      Vault.save(); renderConnections(); Sleep.render();
+    };
     $("#cal-add").onclick = busy($("#cal-add"), async function () {
       var url = $("#cal-url").value.trim();
       if (!/^(webcal|https?):\/\//i.test(url)) throw new Error("Enter a calendar link (webcal:// or https://).");

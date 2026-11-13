@@ -1109,10 +1109,38 @@ function Calendar.showOptions(plugin)
     dialog = Calendar.keyedDialog(_("Calendar") .. "\n" .. synced, rows)
 end
 
---- Settings → Connections → Calendar, from the tab (M → Calendar settings).
---- Built like KOReader's file manager menu: one tab (it needs an icon) in a
---- centered container.
+--- Settings → Connections → Calendar (CalDAV), from the tab (M → Calendar
+--- settings): ZenOS's own Settings page opened there (the same rows,
+--- Calendar.settingsItems), like every other settings page. The calendar is
+--- drawn again when Settings closes (layout, week start, calendars shown…).
+Calendar.SETTINGS_PATH = { _("Connections"), _("Calendar (CalDAV)") }
+
 function Calendar.showSettings(plugin)
+    local ok, page = pcall(function()
+        local zen = require("gzreader_tabs").zen()
+        if not zen then return nil end
+        local path = {}
+        for i, text in ipairs(Calendar.SETTINGS_PATH) do path[i] = { key = "text", value = text } end
+        return require("modules/settings/zen_settings_page").show(zen, { path = path })
+    end)
+    if ok and type(page) == "table" then
+        if not page._gz_calendar_redraw then
+            page._gz_calendar_redraw = true
+            local orig = page.onCloseWidget
+            page.onCloseWidget = function(p, ...)
+                UIManager:nextTick(function() Calendar.redraw() end)
+                if orig then return orig(p, ...) end
+            end
+        end
+        return page
+    end
+    if not ok then require("gzreader_log").warn("calendar: settings page:", tostring(page)) end
+    return Calendar.showSettingsMenu(plugin)
+end
+
+--- Without ZenOS's Settings (it didn't load): the same rows as KOReader's
+--- menu, one tab (it needs an icon) in a centered container.
+function Calendar.showSettingsMenu(plugin)
     local TouchMenu = require("ui/widget/touchmenu")
     local container = CenterContainer:new{ ignore = "height", dimen = Screen:getSize() }
     local items = Calendar.settingsItems(plugin)

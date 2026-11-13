@@ -58,7 +58,14 @@ tap(at(740, 1380), 10)
 tap("headlamp", 5); shot("20-note")
 tap("headlamp", 4); shot("21-note-ticked")
 tap("Close", 4)
-tap("New note", 6); shot("22-editor")
+-- (the Notes tab's Note button: "Note" is in the tab's title too)
+tap(function()
+    local N = require("gzreader_notes")
+    local row = N.board and N.board.title_bar and N.board.title_bar._gz_action_row
+    for _i, w in ipairs(row or {}) do
+        if w.dimen and (w.text == "Note" or w.gz_label == "Note") then return w.dimen.x + w.dimen.w / 2, w.dimen.y + w.dimen.h / 2 end
+    end
+end, 6); shot("22-editor")
 tap(at(70, 40), 3)                    -- ✕ (nothing typed: closes)
 -- the calendar: ▶, an event
 tap(at(918, 1380), 12)

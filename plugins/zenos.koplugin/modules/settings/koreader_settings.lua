@@ -28,7 +28,7 @@ function M.invoke(page, item, callback, ...)
     return ctx.handled and not ctx.tool
 end
 
-function M.copyItems(source, owner, setting, copies)
+function M.copyItems(source, owner, setting, copies, keep)
     copies = copies or {}
     if copies[source] then return copies[source] end
     local items = { _zen_native_owner = owner }
@@ -36,14 +36,16 @@ function M.copyItems(source, owner, setting, copies)
     for key, value in pairs(source) do
         if type(key) ~= "number" then items[key] = value end
     end
-    items._zen_refresh = function() return M.copyItems(source, owner, setting) end
+    items._zen_refresh = function() return M.copyItems(source, owner, setting, nil, keep) end
     if type(source.refresh_func) == "function" then
         items.refresh_func = function()
-            return M.copyItems(source.refresh_func() or source, owner, setting)
+            return M.copyItems(source.refresh_func() or source, owner, setting, nil, keep)
         end
     end
-    -- GZreader: some of KOReader's items left out (common/gz_settings.lua KOREADER_HIDDEN)
-    local keep = require("common/gz_settings").keepKOReaderItem
+    -- GZreader: some of KOReader's items left out (common/gz_settings.lua
+    -- KOREADER_HIDDEN), unless `keep` says otherwise (About → Advanced →
+    -- KOReader settings: everything, native_menu.settingsItems unfiltered)
+    keep = keep or require("common/gz_settings").keepKOReaderItem
     local index = 0
     for _n, original in ipairs(source) do
         if not keep(original) then goto next_item end
@@ -65,13 +67,13 @@ function M.copyItems(source, owner, setting, copies)
             item.sub_item_table_func = function(page)
                 local children = original.sub_item_table_func(page)
                 if type(children) == "table" then
-                    return M.copyItems(children, owner, item._zen_native_setting)
+                    return M.copyItems(children, owner, item._zen_native_setting, nil, keep)
                 end
             end
         elseif type(original.sub_item_table) == "table" then
-            item.sub_item_table = M.copyItems(original.sub_item_table, owner, item._zen_native_setting, copies)
+            item.sub_item_table = M.copyItems(original.sub_item_table, owner, item._zen_native_setting, copies, keep)
         elseif #original > 0 then
-            item.sub_item_table = M.copyItems(original, owner, item._zen_native_setting, copies)
+            item.sub_item_table = M.copyItems(original, owner, item._zen_native_setting, copies, keep)
         end
         if original.id == "document_settings" and owner.ui and owner.ui.config then
             local children = item.sub_item_table or {}
@@ -83,7 +85,7 @@ function M.copyItems(source, owner, setting, copies)
                 end,
             })
             children._zen_refresh = function()
-                return M.copyItems({ original }, owner, setting)[1].sub_item_table
+                return M.copyItems({ original }, owner, setting, nil, keep)[1].sub_item_table
             end
             item.sub_item_table = children
         end

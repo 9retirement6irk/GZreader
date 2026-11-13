@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /opt/x-tools
           key: nook-softfloat-tc-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh') }}
@@ -69,11 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: zip
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ko-out
           key: nook-softfloat-koreader-${{ env.KOREADER_TAG }}-${{ hashFiles('tools/gzreader/nook-softfloat/crosstool.config', 'tools/gzreader/nook-softfloat/toolchain.sh', 'tools/gzreader/nook-softfloat/build-koreader.sh') }}
-      - uses: actions/cache/restore@v5
+      - uses: actions/cache/restore@v6
         if: steps.zip.outputs.cache-hit != 'true'
         with:
           path: /opt/x-tools
