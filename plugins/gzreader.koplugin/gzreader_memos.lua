@@ -346,6 +346,49 @@ function Memos:uploadDrawings(q, name)
     return true
 end
 
+--- Note `atts` (its attachments, as Memos lists them) in the order of
+--- `filenames` (its drawings' pages): those first, in that order, then the
+--- rest as they were. Names, or nil when they're in that order already.
+function Memos.drawingOrder(atts, filenames)
+    local used, out = {}, {}
+    for _i, f in ipairs(filenames or {}) do
+        for k, a in ipairs(atts or {}) do
+            if not used[k] and a.filename == f then used[k] = true; out[#out + 1] = a.name; break end
+        end
+    end
+    for k, a in ipairs(atts or {}) do if not used[k] then out[#out + 1] = a.name end end
+    local same = #out == #(atts or {})
+    for k, a in ipairs(atts or {}) do if out[k] ~= a.name then same = false end end
+    if same then return nil end
+    return out
+end
+
+--- One note, as Memos has it now.
+function Memos:get(name)
+    local _, memo, err = self:request("GET", "/" .. name)
+    if err then return nil, err end
+    if type(memo) ~= "table" or not memo.name then return nil, "http_200" end
+    return memo
+end
+
+--- Puts note `name`'s drawings in the order of their pages (`filenames`):
+--- Memos lists a note's attachments newest first, so pages uploaded one after
+--- the other (or one replaced) come out of order. SetMemoAttachments sets the
+--- order (Memos v0.31 and newer; an older Memos without it: left as it is).
+function Memos:orderDrawings(name, filenames)
+    if type(filenames) ~= "table" or #filenames < 1 then return true end
+    local memo, err = self:get(name)
+    if not memo then return nil, err end
+    local order = Memos.drawingOrder(memo.attachments, filenames)
+    if not order then return true end
+    local list = {}
+    for i, n in ipairs(order) do list[i] = { name = n } end
+    local _, _, perr = self:request("PATCH", "/" .. name .. "/attachments", { name = name, attachments = list })
+    if perr == "http_404" or perr == "http_405" or perr == "http_501" then return true end
+    if perr then return nil, perr end
+    return true
+end
+
 --- A new note with drawings: the note first, then the drawings uploaded
 --- onto it. Returns the note, or nil, err and (the note made but not every
 --- upload) the note's name and how many drawings went.
@@ -360,19 +403,26 @@ end
 --- Run the queued changes (in the background process). Returns the queue
 --- items that went through (their ids), the first error, `attached`:
 --- { [queue id] = note name } for notes made whose drawings didn't all
---- upload yet (the queue then sends only those: op "attach"), and `sent`:
---- { [queue id] = how many of its drawings went } for those cut short.
+--- upload yet (the queue then sends only those: op "attach"), `sent`:
+--- { [queue id] = how many of its drawings went } for those cut short, and
+--- `reorder`: { [queue id] = note name } for notes whose drawings went but
+--- couldn't be put in order yet (the queue then does only that: op "order").
 function Memos:flush(queue)
-    local done, first_err, attached, sent_some = {}, nil, {}, {}
+    local done, first_err, attached, sent_some, reorder = {}, nil, {}, {}, {}
     for _i, q in ipairs(queue or {}) do
         local ok, err, made, sent
         if q.op == "create" and #Memos.queuedDrawings(q) > 0 then
             ok, err, made, sent = self:createWithDrawing(q)
             if made then attached[q.id] = made end
             if sent and sent > 0 then sent_some[q.id] = sent end
+            -- the pages in order (not worth failing the note for: done later)
+            if ok and q.order and not self:orderDrawings(ok.name, q.order) then reorder[q.id] = ok.name end
         elseif q.op == "attach" then
             ok, err, sent = self:uploadDrawings(q, q.name)
             if sent and sent > 0 then sent_some[q.id] = sent end
+            if ok and q.order and not self:orderDrawings(q.name, q.order) then reorder[q.id] = q.name end
+        elseif q.op == "order" then -- a note's drawings in the order of their pages
+            ok, err = self:orderDrawings(q.name, q.order)
         elseif q.op == "redraw" then -- a drawing on a note edited: its new file over the old
             ok, err = self:replaceAttachment(q.attachment, q.drawing and q.drawing.path, q.drawing and q.drawing.filename, q.name)
             if err == "missing_file" then ok = true end
@@ -388,7 +438,7 @@ function Memos:flush(queue)
             if err and err:match("^http_4") then done[#done + 1] = q.id end -- refused for good: drop it
         end
     end
-    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached, sent = sent_some }
+    return { done = done, err = first_err, prefix = self.store.prefix, attached = attached, sent = sent_some, reorder = reorder }
 end
 
 ---------------------------------------------------------------- the cache

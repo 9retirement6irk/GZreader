@@ -411,8 +411,8 @@ function Usb.outbox(plugin)
     local notes_queue = {}
     for _i, q in ipairs(memos.queue or {}) do
         -- (space: Memos v0.31's, "spaces/…", or "" taking a note out of its space)
-        -- (a note with a drawing waits for Wi-Fi: the sync page doesn't send drawings)
-        if not (q.drawing or q.drawings) then
+        -- (a note with a drawing waits for Wi-Fi: the sync page doesn't send drawings, or put them in order)
+        if not (q.drawing or q.drawings) and q.op ~= "order" then
             notes_queue[#notes_queue + 1] = { id = q.id, op = q.op, content = q.content, visibility = q.visibility,
                 name = q.name, pinned = q.pinned, at = q.at, space = q.space }
         end

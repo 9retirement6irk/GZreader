@@ -287,6 +287,32 @@ print("== notepaper: a page's background, as memos keeps one")
     check(pic and not pic.locked and ms:paper() == "blank" and not ms:isEmpty(),
         "a drawing made in memos over a picture of College ruled paper (the owner's): the picture is part of the drawing, kept")
     check(ms:scene().files[pic.fileId] == mine.files[pic.fileId], "…its picture's file kept as it was")
+    -- on paper, strokes stay on it
+    local ps = Sketch.new{ canvas = PW3, per_unit = 2 }
+    ps:setPaper("college")
+    local page = ps:pageRect()
+    check(page and page.w > 800 and page.w < PW3.w and page.x > 0, "the paper's place on the canvas")
+    local r = ps:radius(ps.width)
+    local midy = PW3.y + page.y + page.h / 2
+    -- across the paper's right edge and back
+    local all = run(ps, { { finger(0, page.x + page.w - 100, midy) }, { finger(0, PW3.w - 5, midy) },
+        { finger(0, PW3.w - 3, midy + 40) }, { finger(0, page.x + page.w - 100, midy + 40) }, { lift(0) } })
+    local live = ps:live()
+    local maxx = 0
+    for _i, st in ipairs(live) do for _j, p in ipairs(st.points) do maxx = math.max(maxx, p[1]) end end
+    check(#live == 2 and math.abs(maxx - (page.x + page.w - r)) < 0.01,
+        "a stroke over the paper's edge: two pieces, both ending at the edge (ink inside it): " .. #live .. ", " .. string.format("%.1f", maxx))
+    check(all.segments > 0, "…and ink only on the paper")
+    check(ps:undo() and #ps:live() == 0, "one Undo takes back the whole stroke")
+    -- begun off the paper
+    run(ps, { { finger(0, PW3.w - 4, midy) }, { finger(0, page.x + page.w / 2, midy) }, { lift(0) } })
+    live = ps:live()
+    check(#live == 1 and math.abs(live[1].points[1][1] - (page.x + page.w - r)) < 0.01,
+        "begun off the paper: the stroke starts at its edge")
+    run(ps, { { finger(0, PW3.w - 4, midy) }, { finger(0, PW3.w - 2, midy + 30) }, { lift(0) } })
+    check(#ps:live() == 1 and #ps.history == 1, "all off the paper: nothing drawn")
+    local blank = Sketch.new{ canvas = PW3, per_unit = 2 }
+    check(blank:pageRect() == nil, "a blank page: the whole canvas")
     -- a drawing made here, opened again: where it was, at its size
     local here = Drawing.newScene()
     Drawing.addStroke(here, { { 200, 300 }, { 260, 340 } })

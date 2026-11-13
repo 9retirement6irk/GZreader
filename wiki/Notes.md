@@ -128,14 +128,17 @@ API to `/api` are found too.
   drawings.
   - **Pages:** **+ New page** adds another drawing to the note; **◀ ▶** go
     between them (*Page 1 of 2*). In Memos each page is a drawing of its own,
-    in the order of the pages. A page rubbed out to nothing is left out (or
+    in the order of the pages (Memos v0.31 and newer: GZreader sets the
+    order after sending, since Memos lists a note's newest attachment first). A page rubbed out to nothing is left out (or
     taken off the note, when it's already in Memos).
   - **Paper:** the button with the page's paper (**Blank paper ▾** on a new
     page) puts it on **College ruled**, **Wide ruled**, **Gregg ruled**,
     **Dot grid** or **Graph** paper, or back to **Blank**. New pages start on
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
-    under everything), so Memos shows and keeps it; on the Kindle it's grey. In Memos it's an attachment named
+    under everything), so Memos shows and keeps it; on the Kindle it's grey.
+    On paper you draw only on the paper: a stroke stops at its edge and goes
+    on where it comes back onto it. In Memos it's an attachment named
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
   26.11.0) opens it as a drawing you can edit there; an older Memos shows it
   as a picture. Until it's sent, the board shows the note with the drawing.

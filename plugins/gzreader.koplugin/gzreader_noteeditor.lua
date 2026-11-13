@@ -345,8 +345,8 @@ function Editor:onCloseWidget()
 end
 
 function Editor:onShow()
-    -- touch: the on-screen keyboard, at once
-    if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    -- touch: the on-screen keyboard, at once (not when the drawing screen opens over it first)
+    if self.vk and not self.drawing_first then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
 end
 
 function Editor:drawChrome()
@@ -649,6 +649,14 @@ function Editor:drawingChanges()
         if p.removed and p.att then out[#out + 1] = { att = p.att, removed = true }
         elseif p.changed and p.path then out[#out + 1] = { att = p.att, path = p.path, filename = p.filename } end
     end
+    -- the pages' order (Memos lists a note's attachments newest first: put back in this order)
+    if #out > 0 then
+        out.order = {}
+        for _i, p in ipairs(self.pages or {}) do
+            local f = p.filename or (p.att and p.att.filename)
+            if not p.removed and f then out.order[#out.order + 1] = f end
+        end
+    end
     return out
 end
 
@@ -782,10 +790,11 @@ function NoteEditor.show(opts)
     local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
         drawing_atts = atts }
+    -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
+    -- only it is drawn; the text page shows when Done or Cancel goes back to it)
+    e.drawing_first = opts.open_drawing and e:canDraw() or nil
     UIManager:show(e, "full")
-    if opts.open_drawing and e:canDraw() then
-        UIManager:nextTick(function() e:openDrawing() end)
-    end
+    if e.drawing_first then e:openDrawing() end
     return e
 end
 

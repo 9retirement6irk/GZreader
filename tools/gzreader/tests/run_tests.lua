@@ -7267,7 +7267,7 @@ print("Notes (Memos v0.31)")
 
         -- the sync page doesn't get it
         local usrc = io.open(PLUGIN .. "/gzreader_usbsync.lua"):read("*a")
-        check(usrc:find("if not (q.drawing or q.drawings) then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
+        check(usrc:find("if not (q.drawing or q.drawings) and q.op ~= \"order\" then", 1, true) ~= nil, "the computer's outbox leaves notes with drawings out")
 
         -- sent: the note (no text), then the drawing on it, byte for byte
         check(sync(), "sent")
@@ -7385,15 +7385,27 @@ print("Notes (Memos v0.31)")
         local esrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
         check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))", 1, true)
-            and esrc2:find("if opts.open_drawing and e:canDraw() then", 1, true),
-            "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles)")
+            and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
+            and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
+            and esrc2:find("if self.vk and not self.drawing_first then", 1, true),
+            "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles), the drawing screen up with the editor (no text page first, no keyboard over it)")
+        check(nsrc3:find("space = space, drawings = #list > 0 and list or nil, order = order })", 1, true) ~= nil
+            and esrc2:find("out.order[#out.order + 1] = f", 1, true) ~= nil,
+            "a new note's pages and an edit's: their order goes with them")
+        -- Memos lists a note's attachments newest first: put in the pages' order
+        local atts = { { name = "a3", filename = "p3" }, { name = "a2", filename = "p2" }, { name = "pic", filename = "photo.jpg" },
+            { name = "a1", filename = "p1" } }
+        check(table.concat(Memos.drawingOrder(atts, { "p1", "p2", "p3" }), ",") == "a1,a2,a3,pic"
+            and Memos.drawingOrder({ atts[4], atts[2], atts[1], atts[3] }, { "p1", "p2", "p3" }) == nil,
+            "the pages' order: the drawings in page order, then the rest; nothing to do when they're in it")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")
-        local qm = Notes.enqueue(plugin, { op = "create", content = "Two pages", visibility = "PRIVATE", drawings = { m1, m2 } })
+        local qm = Notes.enqueue(plugin, { op = "create", content = "Two pages", visibility = "PRIVATE", drawings = { m1, m2 },
+            order = { m1.filename, m2.filename } })
         Notes.showDrawingNow(qm)
         local qa = Notes.queuedAttachments(qm)
         check(#qa == 2 and qa[1].filename == m1.filename and qa[2].filename == m2.filename and qa[1].name ~= qa[2].name
@@ -7402,7 +7414,24 @@ print("Notes (Memos v0.31)")
         local two
         for _i, m in ipairs(mstate().memos) do if m.content == "Two pages" then two = m end end
         check(two and #two.attachments == 2 and two.attachments[1].filename == m1.filename and two.attachments[2].filename == m2.filename
-            and not io.open(m1.path, "rb") and not io.open(m2.path, "rb"), "…sent: one note, its two drawings in order; the waiting copies removed")
+            and not io.open(m1.path, "rb") and not io.open(m2.path, "rb"),
+            "…sent: one note, its two drawings in page order (Memos lists them newest first: put back in order); the waiting copies removed")
+        -- the order couldn't be set (offline a moment): only that, next time
+        local m5, m6 = drawingFile("drawing-20261113-093000.canvas.png"), drawingFile("drawing-20261113-093000-2.canvas.png")
+        local real_order = Memos.orderDrawings
+        Memos.orderDrawings = function() return nil, "unreachable" end
+        Notes.enqueue(plugin, { op = "create", content = "Order later", visibility = "PRIVATE", drawings = { m5, m6 },
+            order = { m5.filename, m6.filename } })
+        sync()
+        Memos.orderDrawings = real_order
+        local oq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(#plugin.store.memos.queue == 1 and oq.op == "order" and tostring(oq.name):match("^memos/") and oq.order[1] == m5.filename,
+            "the note and its drawings sent, their order not set: queued on its own")
+        sync()
+        local later
+        for _i, m in ipairs(mstate().memos) do if m.content == "Order later" then later = m end end
+        check(later and #later.attachments == 2 and later.attachments[1].filename == m5.filename and #plugin.store.memos.queue == 0,
+            "…set next time")
         -- the second upload fails: next time only the second goes, onto the same note
         local m3, m4 = drawingFile("drawing-20261113-091000.canvas.png"), drawingFile("drawing-20261113-091000-2.canvas.png")
         local real_up, ups = Memos.uploadAttachment, 0
@@ -7411,7 +7440,8 @@ print("Notes (Memos v0.31)")
             if path == m4.path then return nil, "unreachable" end
             return real_up(c, path, ...)
         end
-        Notes.enqueue(plugin, { op = "create", content = "Half sent", visibility = "PRIVATE", drawings = { m3, m4 } })
+        Notes.enqueue(plugin, { op = "create", content = "Half sent", visibility = "PRIVATE", drawings = { m3, m4 },
+            order = { m3.filename, m4.filename } })
         sync()
         Memos.uploadAttachment = real_up
         local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
@@ -7420,7 +7450,8 @@ print("Notes (Memos v0.31)")
         sync()
         local half
         for _i, m in ipairs(mstate().memos) do if m.content == "Half sent" then half = m end end
-        check(half and #half.attachments == 2 and #plugin.store.memos.queue == 0, "…sent next time: the note has both, once each")
+        check(half and #half.attachments == 2 and #plugin.store.memos.queue == 0 and half.attachments[1].filename == m3.filename
+            and half.attachments[2].filename == m4.filename, "…sent next time: the note has both, once each, in page order")
         -- an edit: one page redrawn, one added, one taken off
         local en = client2:create("Pages to edit", "PRIVATE")
         local e1 = drawingFile("drawing-20261113-092000.canvas.png")
@@ -7431,20 +7462,25 @@ print("Notes (Memos v0.31)")
         local held2
         for _i, m in ipairs(Notes.notes) do if m.name == en.name then held2 = m end end
         check(held2 and #Notes.drawings(held2) == 2, "a note with two drawings: both are its drawings")
-        local redone = drawingFile("drawing-20261113-092000.canvas.png")
+        local first, second = Notes.drawings(held2)[1], Notes.drawings(held2)[2]
+        local redone = drawingFile(first.filename) -- (a page edited keeps its file's name)
         local added = drawingFile("drawing-20261113-092500.canvas.png")
-        Notes.saveDrawings(plugin, held2, { { att = Notes.drawings(held2)[1], path = redone.path, filename = redone.filename },
-            { att = Notes.drawings(held2)[2], removed = true }, { path = added.path, filename = added.filename } })
+        local edits = { { att = first, path = redone.path, filename = redone.filename },
+            { att = second, removed = true }, { path = added.path, filename = added.filename } }
+        edits.order = { first.filename, added.filename }
+        Notes.saveDrawings(plugin, held2, edits)
         local ops = {}
         for _i, qq in ipairs(plugin.store.memos.queue) do ops[#ops + 1] = qq.op end
-        check(table.concat(ops, ",") == "redraw,undraw,attach", "edited pages queued: redraw, undraw, attach (" .. table.concat(ops, ",") .. ")")
+        check(table.concat(ops, ",") == "redraw,undraw,attach,order", "edited pages queued: redraw, undraw, attach, then their order ("
+            .. table.concat(ops, ",") .. ")")
         sync()
         local done2
         for _i, m in ipairs(mstate().memos) do if m.name == en.name then done2 = m end end
         local names = {}
         for _i, a2 in ipairs(done2 and done2.attachments or {}) do names[#names + 1] = a2.name end
-        check(done2 and #done2.attachments == 2 and done2.attachments[1].name == ea1.name and names[2] ~= ea2.name,
-            "…in Memos: the first page kept its attachment, the second gone, a new one added")
+        check(done2 and #done2.attachments == 2 and done2.attachments[1].name == first.name and names[2] ~= second.name
+            and done2.attachments[2].filename == added.filename,
+            "…in Memos: the first page kept its attachment, the second gone, a new one added, in page order")
 
         -- an older Memos (v0.31: no replace_attachment): the new file added to the note, the old one deleted
         os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")

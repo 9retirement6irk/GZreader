@@ -1,9 +1,10 @@
 -- Drawings with pages and notepaper, on a touch Kindle: the Notes tab's Draw
 -- button opens a new note on a page to draw on; Paper puts it on College
 -- ruled; + New page adds a second page (on the same paper), Paper turns it
--- to Graph; ◀ ▶ go between them; Done, a title, Save: Memos gets one note
--- with two drawings, each with its paper as Memos keeps a background. Then
--- Edit opens both pages again.
+-- to Graph; a third on Dot grid, with a stroke off the paper's edge (it stops
+-- there); ◀ ▶ go between them; Done, a title, Save: Memos gets one note with
+-- three drawings in page order, each with its paper as Memos keeps a
+-- background. Then Edit opens the three pages again, in order.
 --   python3 -I demo/mock_memos.py 18090 --sample &
 --   GZ_EMU_MODEL=pw3 GZ_EMU_TREE=<tree>/koreader run.sh notes_pages.lua <out>
 -- Checks go to <out>/notes-pages-checks.txt.
@@ -52,12 +53,23 @@ end, after = 6 })
 add({ shot = "1-board", after = 0.5 })
 add({ fn = function(E)
     check(chip("Note") and chip("Draw"), "the Notes tab has Note and Draw")
+    -- (is the text page drawn before the drawing screen? count its paints)
+    local Ed = require("gzreader_noteeditor").Editor
+    local paint = Ed.paintTo
+    E.editor_paints = 0
+    Ed.paintTo = function(w, ...) E.editor_paints = E.editor_paints + 1; return paint(w, ...) end
+    E.restore_paint = function() Ed.paintTo = paint end
     E.tap(chip("Draw"))
 end, after = 4 })
 add({ shot = "2-draw-opens-a-page", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(d and top() == d and #d.pages == 1 and d.sketch:paper() == "blank", "Draw: a new note on a page to draw on (blank)")
+    local e = editor()
+    E.restore_paint()
+    check(d and top() == d and #d.pages == 1 and d.sketch:paper() == "blank" and e and not e.input:isKeyboardVisible()
+        and E.editor_paints == 0,
+        "Draw: a new note on a page to draw on (blank), the drawing screen up at once (the text page not drawn first, no keyboard) ("
+        .. E.editor_paints .. " paints of the text page)")
     E.tap(button("paper"))
 end, after = 2 })
 add({ shot = "3-paper-list", after = 0.5 })
@@ -87,18 +99,37 @@ add({ shot = "5-graph-page-2", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
     check(d.sketch:paper() == "graph" and #d.sketch:live() == 1, "page 2 on Graph, drawn on")
-    E.tap(button("prev"))
+    E.tap(button("newpage"))
 end, after = 4 })
+add({ fn = function(E) E.tap(button("paper")) end, after = 2 })
+add({ fn = function(E) E.tap("Dot grid") end, after = 4 })
+add({ fn = function(E)
+    -- from the middle of the page off its right edge (and the screen's)
+    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+    E.finger({ { math.floor(W * 0.5), math.floor(H * 0.6) }, { math.floor(W * 0.8), math.floor(H * 0.6) },
+        { W - 3, math.floor(H * 0.6) } }, 0.4)
+end, after = 2 })
+add({ shot = "6-dots-edge", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(d.index == 1 and d.sketch:paper() == "college" and #d.sketch:live() == 1, "◀: back to page 1, as it was")
+    local page = d.sketch:pageRect()
+    local maxx = 0
+    for _i, st in ipairs(d.sketch:live()) do for _j, p in ipairs(st.points) do maxx = math.max(maxx, p[1]) end end
+    check(d.index == 3 and d.sketch:paper() == "dots" and #d.sketch:live() == 1 and page and maxx <= page.x + page.w,
+        "page 3 on Dot grid: a stroke off the paper's edge stops at it (" .. math.floor(maxx) .. " ≤ " .. math.floor(page and page.x + page.w or 0) .. ")")
+    E.tap(button("prev"))
+end, after = 4 })
+add({ fn = function(E) E.tap(button("prev")) end, after = 4 })
+add({ fn = function(E)
+    local d = screen()
+    check(d.index == 1 and d.sketch:paper() == "college" and #d.sketch:live() == 1, "◀ ◀: back to page 1, as it was")
     E.tap(button("done"))
 end, after = 4 })
-add({ shot = "6-editor", after = 0.5 })
+add({ shot = "7-editor", after = 0.5 })
 add({ fn = function(E)
     local e = editor()
-    check(e and not screen() and #e.pages == 2 and e:drawingLabel():match("2") and e.pages[1].path and e.pages[2].path,
-        "Done: the note's editor, Drawings (2)")
+    check(e and not screen() and #e.pages == 3 and e:drawingLabel():match("3") and e.pages[1].path and e.pages[3].path,
+        "Done: the note's editor, Drawings (3)")
     local Drawing = require("gzreader_drawing")
     local Notepaper = require("gzreader_notepaper")
     local s1 = e.pages[1].path and Drawing.readFile(e.pages[1].path)
@@ -106,7 +137,7 @@ add({ fn = function(E)
     local b1, b2 = s1 and Notepaper.background(s1), s2 and Notepaper.background(s2)
     check(b1 and b2 and Notepaper.idOf(s1, b1) == "college" and Notepaper.idOf(s2, b2) == "graph",
         "each page's file: its paper as Memos keeps a background, then its stroke")
-    for i = 1, 2 do os.execute("cp '" .. e.pages[i].path .. "' '" .. E.out .. "/page-" .. i .. ".canvas.png'") end
+    for i = 1, 3 do os.execute("cp '" .. e.pages[i].path .. "' '" .. E.out .. "/page-" .. i .. ".canvas.png'") end
     e.input:setText("# " .. TITLE)
     e:save()
 end, after = 1 })
@@ -116,9 +147,18 @@ add({ fn = function(E)
     local list = c:list(nil, nil, 50)
     local note
     for _i, m in ipairs(list and list.memos or {}) do if m.content == "# " .. TITLE then note = m end end
-    check(note and #note.attachments == 2 and note.attachments[1].filename:match("%.canvas%.png$")
-        and note.attachments[2].filename:match("%.canvas%.png$") and note.attachments[1].filename ~= note.attachments[2].filename,
-        "Save: one note in Memos with its two drawings")
+    -- in Memos, in page order (Memos lists a note's attachments newest first: GZreader puts them back)
+    local papers = {}
+    local Drawing = require("gzreader_drawing")
+    local Notepaper = require("gzreader_notepaper")
+    for i, a in ipairs(note and note.attachments or {}) do
+        local tmp = E.out .. "/memos-" .. i .. ".png"
+        local sc = c:download(a, tmp) and Drawing.readFile(tmp)
+        local bg = sc and Notepaper.background(sc)
+        papers[i] = bg and Notepaper.idOf(sc, bg) or "?"
+    end
+    check(note and #note.attachments == 3 and table.concat(papers, ",") == "college,graph,dots",
+        "Save: one note in Memos with its three drawings, in page order (" .. table.concat(papers, ",") .. ")")
     E.note = note
     local Notes = require("gzreader_notes")
     Notes.refresh(plugin(), function() end)
@@ -130,8 +170,8 @@ end, after = 6 })
 add({ shot = "7-edit-opens-pages", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(d and #d.pages == 2 and d.sketch:paper() == "college" and #d.sketch:live() == 1,
-        "Edit: the note's two drawings open as its pages (page 1 on College ruled)")
+    check(d and #d.pages == 3 and d.sketch:paper() == "college" and #d.sketch:live() == 1,
+        "Edit: the note's three drawings open as its pages, in order (page 1 on College ruled)")
     E.tap(button("next"))
 end, after = 4 })
 add({ fn = function(E)

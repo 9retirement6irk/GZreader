@@ -552,6 +552,18 @@ function Notes.saveDrawings(plugin, memo, list)
             Log.info("notes: a drawing added to a note")
         end
     end
+    -- the pages in their order, in Memos (which lists them newest first) and here
+    if type(list) == "table" and type(list.order) == "table" and #list.order > 1 then
+        Notes.enqueue(plugin, { op = "order", name = memo.name, order = list.order })
+        local names = Memos.drawingOrder(memo.attachments, list.order)
+        if names then
+            local by = {}
+            for _i, a in ipairs(memo.attachments) do by[a.name] = a end
+            local sorted = {}
+            for i, n in ipairs(names) do sorted[i] = by[n] end
+            memo.attachments = sorted
+        end
+    end
     if Notes.dropImages then pcall(Notes.dropImages, true) end
     Notes.sendSoon(plugin)
 end
@@ -664,6 +676,11 @@ function Notes.refresh(plugin, on_done, opts)
                     end
                 end
                 store.queue = left
+                -- notes whose drawings went but aren't in order yet: only that, next time
+                for _i, q in ipairs(queue) do
+                    local name = gone[q.id] and type(res.reorder) == "table" and res.reorder[q.id]
+                    if name and q.order then Notes.enqueue(plugin, { op = "order", name = name, order = q.order }) end
+                end
                 plugin:save()
                 if res.err then Log.warn("notes: queued changes:", tostring(res.err), #left, "left") end
             end
@@ -1789,8 +1806,13 @@ function Notes.edit(plugin, memo, opts)
                 for _i, d in ipairs(drawings or {}) do
                     if d.path then list[#list + 1] = { path = d.path, filename = d.filename } end
                 end
+                local order
+                if #list > 1 then
+                    order = {}
+                    for i, d in ipairs(list) do order[i] = d.filename end
+                end
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
-                    space = space, drawings = #list > 0 and list or nil })
+                    space = space, drawings = #list > 0 and list or nil, order = order })
                 if #list > 0 then
                     Notes.showDrawingNow(q)
                     Log.info("notes: a new note with", #list, "drawing(s) queued")

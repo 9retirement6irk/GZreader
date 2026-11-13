@@ -183,6 +183,7 @@ function Sketch:setPaper(id)
         table.insert(base.elements, 1, el)
         table.insert(self.locked, 1, el)
     end
+    self.paper_changes = (self.paper_changes or 0) + 1
     self:refit()
     return true
 end
@@ -235,15 +236,83 @@ end
 
 -- ------------------------------------------------------------------ input
 
-local function addPoint(self, contact, x, y, out)
-    local cx, cy = x - self.canvas.x, y - self.canvas.y
+--- The page's paper on the canvas (canvas pixels), or nil on a blank page:
+--- strokes stay on the paper.
+function Sketch:pageRect()
+    local key = tostring(self.base) .. ":" .. self.per_unit .. ":" .. self.ox .. ":" .. self.oy .. ":" .. tostring(self.paper_changes)
+    if self._page_key == key then return self._page end
+    local bg = self.base and require("gzreader_notepaper").background(self.base)
+    local rect
+    if bg then
+        local x1, y1 = self:toCanvas(tonumber(bg.x) or 0, tonumber(bg.y) or 0)
+        local x2, y2 = self:toCanvas((tonumber(bg.x) or 0) + (tonumber(bg.width) or 0), (tonumber(bg.y) or 0) + (tonumber(bg.height) or 0))
+        rect = { x = x1, y = y1, w = x2 - x1, h = y2 - y1 }
+    end
+    self._page, self._page_key = rect, key
+    return rect
+end
+
+--- `rect` less `inset` on every side (a stroke's ink stays on the paper).
+local function inset(rect, d)
+    return { x = rect.x + d, y = rect.y + d, w = math.max(0, rect.w - 2 * d), h = math.max(0, rect.h - 2 * d) }
+end
+local function inRect(r, x, y) return x >= r.x and y >= r.y and x <= r.x + r.w and y <= r.y + r.h end
+
+--- Where the line from `a` (on the page) to `b` (off it) leaves `r`.
+function Sketch.edgePoint(r, a, b)
+    local t = 1
+    local dx, dy = b[1] - a[1], b[2] - a[2]
+    if dx > 0 and b[1] > r.x + r.w then t = math.min(t, (r.x + r.w - a[1]) / dx) end
+    if dx < 0 and b[1] < r.x then t = math.min(t, (r.x - a[1]) / dx) end
+    if dy > 0 and b[2] > r.y + r.h then t = math.min(t, (r.y + r.h - a[2]) / dy) end
+    if dy < 0 and b[2] < r.y then t = math.min(t, (r.y - a[2]) / dy) end
+    t = math.max(0, t)
+    return a[1] + dx * t, a[2] + dy * t
+end
+
+--- A point (canvas pixels) onto the contact's stroke, and its ink segment.
+local function appendPoint(self, contact, cx, cy, out)
     local pts = contact.stroke.points
     local last = pts[#pts]
     if last and math.abs(cx - last[1]) < Sketch.MIN_STEP and math.abs(cy - last[2]) < Sketch.MIN_STEP then return end
     pts[#pts + 1] = { cx, cy }
     local r = self:radius(contact.stroke.width)
     local from = last or { cx, cy }
-    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, x, y, r }
+    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r }
+end
+
+--- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
+--- ends where it leaves the paper, and starts again where it comes back.
+local function addPoint(self, contact, x, y, out)
+    local cx, cy = x - self.canvas.x, y - self.canvas.y
+    local page = self:pageRect()
+    if page then
+        page = inset(page, self:radius(contact.width))
+        local inside = inRect(page, cx, cy)
+        local prev = contact.prev
+        contact.prev = { cx, cy, inside }
+        if not inside then
+            if prev and prev[3] and contact.stroke then
+                -- leaving the paper: up to its edge, and that piece is done
+                local ex, ey = Sketch.edgePoint(page, prev, { cx, cy })
+                appendPoint(self, contact, ex, ey, out)
+                contact.pieces[#contact.pieces + 1] = contact.stroke
+                self.strokes[#self.strokes + 1] = contact.stroke
+                contact.stroke = nil
+            end
+            if contact.stroke and #contact.stroke.points == 0 then contact.stroke = nil end -- (begun off the paper)
+            return
+        end
+        if not contact.stroke then
+            contact.stroke = { points = {}, width = contact.width }
+            if prev and not prev[3] then
+                -- back on the paper: from its edge
+                local ex, ey = Sketch.edgePoint(page, { cx, cy }, prev)
+                appendPoint(self, contact, ex, ey, out)
+            end
+        end
+    end
+    appendPoint(self, contact, cx, cy, out)
 end
 
 local function distToSegment(px, py, ax, ay, bx, by)
@@ -311,6 +380,8 @@ local function startContact(self, s, now, out)
         erase(self, c, s.x, s.y, out)
     else
         c.kind = "draw"
+        c.width = self.width
+        c.pieces = {} -- (on paper: the parts of the stroke on it)
         c.stroke = { points = {}, width = self.width }
         self.drawing_slot = s.slot
         addPoint(self, c, s.x, s.y, out)
@@ -324,9 +395,13 @@ local function endContact(self, slot, out)
     if not c then return end
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
-    if c.kind == "draw" and #c.stroke.points > 0 then
-        self.strokes[#self.strokes + 1] = c.stroke
-        self.history[#self.history + 1] = { kind = "add", strokes = { c.stroke } }
+    if c.kind == "draw" and (#c.pieces > 0 or (c.stroke and #c.stroke.points > 0)) then
+        if c.stroke and #c.stroke.points > 0 then
+            c.pieces[#c.pieces + 1] = c.stroke
+            self.strokes[#self.strokes + 1] = c.stroke
+        end
+        -- (one Undo takes back the whole stroke, every piece of it)
+        self.history[#self.history + 1] = { kind = "add", strokes = c.pieces }
         out.stroke_done = true
     elseif c.kind == "erase" and #c.erased > 0 then
         self.history[#self.history + 1] = { kind = "erase", strokes = c.erased }
