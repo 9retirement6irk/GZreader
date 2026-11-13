@@ -1222,16 +1222,37 @@ print("Catalog: not signed in to Grimmory (it opens all the same)")
     local texts = {}
     for _i, it in ipairs(pushed and pushed.list or {}) do texts[#texts + 1] = it.text end
     local tx = table.concat(texts, " | ")
-    check(pushed and pushed.title == "Grimmory" and tx:find("Signed out of " .. plugin.store.username .. " at " .. (plugin.store.server:gsub("^https?://", "")), 1, true) and tx:find("Connect from your browser (QR code)", 1, true)
-        and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true) and not tx:find("Rebuild", 1, true),
-        "the Grimmory card, not signed in: the ways to sign in " .. tx)
+    local host = plugin.store.server:gsub("^https?://", ""):gsub("/+$", "")
+    local out_rows = pushed and pushed.list or {}
+    check(pushed and pushed.title == "Grimmory" and out_rows[1].text == "Signed out"
+        and out_rows[1].mandatory == plugin.store.username .. " · " .. host and out_rows[1].select_enabled == false
+        and tx:find("Connect with QR code", 1, true) and tx:find("Connect by typing", 1, true) and tx:find("Copy from another GZreader", 1, true)
+        and tx:find("About Grimmory", 1, true) and not tx:find("Rebuild", 1, true),
+        "the Grimmory card, not signed in: who was signed in, then the ways to sign in " .. tx)
+    -- (ZenOS rows, as the Calendar and Notes connect lists: an icon on each, an arrow on what opens)
+    local all_rows, arrows_ok = out_rows.gz_rows == true, true
+    for i, it in ipairs(out_rows) do
+        if not (it._zen_settings_row and (it.gz_icon or it.icon_glyph or it.icon_name or it.icon_file)) then all_rows = false end
+        if (i == 1) == (it._zen_has_submenu == true) then arrows_ok = false end
+    end
+    check(all_rows and arrows_ok and out_rows[#out_rows].gz_about,
+        "the Grimmory card: ZenOS rows, an icon on each, an arrow on all but the account line, About last")
     signed_in.push = b.push
     signed_in:openGrimmory()
     texts = {}
     for _i, it in ipairs(pushed.list) do texts[#texts + 1] = it.text end
     tx = table.concat(texts, " | ")
-    check(tx:find("Signed in as " .. plugin.store.username .. " at ", 1, true) and tx:find("Rebuild library", 1, true)
-        and tx:find("Reconnect from your browser (QR code)", 1, true), "the Grimmory card, signed in: the account " .. tx)
+    check(pushed.list[1].text == "Signed in" and pushed.list[1].mandatory == plugin.store.username .. " · " .. host
+        and tx:find("Rebuild library", 1, true) and tx:find("Reconnect with QR code", 1, true) and pushed.list.gz_rows,
+        "the Grimmory card, signed in: the account on the right, Rebuild library, Reconnect " .. tx)
+    local saved_usb = require("gzreader_net").usb
+    require("gzreader_net").usb = true
+    plugin.store.server = nil
+    local usb_rows = Browser.grimmoryItems(b)
+    require("gzreader_net").usb = saved_usb
+    plugin.store.server = saved_server
+    check(usb_rows[1].text == "Not signed in" and usb_rows[2].text == "Sync with computer" and #usb_rows == 3,
+        "the Grimmory card on a Kindle without Wi-Fi: sign in through the sync page")
     -- the Catalog opens, signed out, from its tab (it used to ask to connect instead)
     local Net = require("gzreader_net")
     local saved_run, saved_api = Net.run, plugin.api

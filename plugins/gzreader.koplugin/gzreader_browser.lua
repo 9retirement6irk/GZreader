@@ -284,32 +284,45 @@ end
 
 --- The Grimmory card's list: the account and what to do with it; signed
 --- out, the ways to sign in (as Settings → Connections → Grimmory).
-function Browser:openGrimmory()
+--- The Grimmory card's list, as ZenOS rows (gzreader_rows.lua): who you're
+--- signed in as (the account and server on the right), then what to do,
+--- each with its icon and arrow, and About Grimmory. `self`: the browser
+--- (only `plugin` is used).
+function Browser.grimmoryItems(self)
     local plugin = self.plugin
     local store = plugin.store or {}
+    local Rows = require("gzreader_rows")
+    local usb = require("gzreader_net").usb
+    local function account() return T(_("%1 · %2"), store.username or "?", hostOf(store.server)) end
     local items = {}
-    local function add(text, fn) items[#items + 1] = { text = text, callback = fn } end
+    local function add(text, icon, fn) items[#items + 1] = { text = text, gz_icon = icon, callback = fn } end
     if Browser.signedIn(self) then
-        items[1] = { text = T(_("Signed in as %1 at %2"), store.username or "?", hostOf(store.server)), select_enabled = false }
-        add(_("Rebuild library"), function() plugin:rebuildLibrary() end)
-        if not require("gzreader_net").usb then
-            add(_("Reconnect from your browser (QR code)"), function() plugin:onGrimmoryPair() end)
-            add(_("Connect by typing"), function() plugin:keyboardLogin() end)
+        items[1] = { text = _("Signed in"), mandatory = account(), gz_icon = "name:settings_account_outline", select_enabled = false }
+        add(_("Rebuild library"), "refresh", function() plugin:rebuildLibrary() end)
+        if not usb then
+            add(_("Reconnect with QR code"), "send", function() plugin:onGrimmoryPair() end)
+            add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin() end)
         end
-    elseif require("gzreader_net").usb then
+    elseif usb then
         -- (a Kindle without Wi-Fi signs in through the sync page)
-        items[1] = { text = _("Sign in on the sync page (with a computer)"), select_enabled = false }
-        add(_("Sync with a computer"), function() require("gzreader_usbsync").show(plugin) end)
+        items[1] = { text = _("Not signed in"), gz_icon = "name:settings_account_outline", select_enabled = false }
+        add(_("Sync with computer"), Rows.FILE.usb, function() require("gzreader_usbsync").show(plugin) end)
     else
-        -- (one line: the list cuts longer ones off)
-        items[1] = { text = (store.server and store.username)
-            and T(_("Signed out of %1 at %2"), store.username, hostOf(store.server))
-            or _("Not signed in to Grimmory"), select_enabled = false }
-        add(_("Connect from your browser (QR code)"), function() plugin:onGrimmoryPair() end)
-        add(_("Connect by typing"), function() plugin:keyboardLogin() end)
-        add(_("Copy from another GZreader"), function() require("gzreader_copy").receive(plugin, { only = "grimmory" }) end)
+        items[1] = { text = (store.server and store.username) and _("Signed out") or _("Not signed in"),
+            mandatory = (store.server and store.username) and account() or nil,
+            gz_icon = "name:settings_account_outline", select_enabled = false }
+        add(_("Connect with QR code"), "send", function() plugin:onGrimmoryPair() end)
+        add(_("Connect by typing"), "keyboard", function() plugin:keyboardLogin() end)
+        add(_("Copy from another GZreader"), "copy", function() require("gzreader_copy").receive(plugin, { only = "grimmory" }) end)
     end
-    self:push(_("Grimmory"), items)
+    items[#items + 1] = Rows.about(_("About Grimmory"), usb
+        and _("Grimmory is your book server. This Kindle has no Wi-Fi: sign in on the sync page on a computer, then sync. Books, progress and shelves come and go with each sync.")
+        or _("Grimmory is your book server: the Catalog's books (and audiobooks) come from it, and your reading progress, highlights and shelves go back to it.\n\nConnect with QR code: open the page on your phone and sign in there (also with single sign-on). Connect by typing: the server's address, your user name and password.\n\nRebuild library: Grimmory's list of books fetched again, when the Catalog is missing books or shows old ones."))
+    return Rows.mark(items)
+end
+
+function Browser:openGrimmory()
+    self:push(_("Grimmory"), Browser.grimmoryItems(self))
 end
 
 --- Signed in (or out) while the Catalog is open: its page again, from the top.
