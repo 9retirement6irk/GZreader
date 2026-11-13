@@ -1378,6 +1378,17 @@ gets a password or token.
     } catch (e) {}
     var copy = { format: FORMAT, written_at: Math.floor(Date.now() / 1000), server: G.st.server, user: G.st.user,
       books: books, libraries: libraries, shelves: shelves, lists: lists, full: full, subtitles: subtitles, marks: marks };
+    // a GZreader that asks for it: each book's bookmarks and highlights in a
+    // file of its own (decoded only for that book, not with the whole copy)
+    if (out.copy && out.copy.marks_files) {
+      copy.marks = {};
+      copy.marks_files = true;
+      var mids = Object.keys(marks);
+      for (var mi = 0; mi < mids.length; mi++) {
+        var m = marks[mids[mi]];
+        await Drive.write(Drive.sync, "marks/" + mids[mi] + ".json", JSON.stringify({ written_at: copy.written_at, bookmarks: m.bookmarks, annotations: m.annotations }));
+      }
+    }
     await Drive.write(Drive.sync, "library.json", JSON.stringify(copy));
     inbox.grimmory = { server: G.st.server, user: G.st.user };
     log("Library copy: " + books.length + " books and audiobooks, " + shelves.length + " shelves.", "ok");

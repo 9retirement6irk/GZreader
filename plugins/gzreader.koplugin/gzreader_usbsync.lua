@@ -457,6 +457,9 @@ function Usb.outbox(plugin)
         screensavers = { names = jsonList(cached("screensavers", Usb.screensavers)), mode = Usb.sleepMode() },
         -- the Immich album's pictures on the Kindle (the page brings the others)
         immich = Usb.immichOut(plugin),
+        -- (the library copy: each book's bookmarks and highlights in a file of
+        -- its own, marks/<id>.json, not in library.json: gzreader_offlineapi.lua)
+        copy = { marks_files = true },
         -- (how much room is left on the Kindle, for the page)
         disk = cached("disk", function()
             local ok, du = pcall(function() return require("util").diskUsage(plugin:libraryDir()) end)
