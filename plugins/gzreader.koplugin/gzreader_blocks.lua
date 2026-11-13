@@ -92,7 +92,10 @@ local function closer(s, d, from)
         local a = s:find(d, pos, true)
         if not a then return nil end
         local prev = s:sub(a - 1, a - 1)
-        if a > from and prev ~= " " and prev ~= "\n" and prev ~= "\\" then return a end
+        -- (escaped: after an odd number of backslashes; "\\\\**" closes)
+        local bs, j = 0, a - 1
+        while j >= from and s:sub(j, j) == "\\" do bs = bs + 1; j = j - 1 end
+        if a > from and prev ~= " " and prev ~= "\n" and bs % 2 == 0 then return a end
         pos = a + 1
     end
 end
@@ -654,6 +657,121 @@ function Blocks.toggleMark(b, key, a, z)
         b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link)
     end
     b.dirty = true
+    return true
+end
+
+--- The marks text typed at `pos` in `b` takes: the emphasis of the character
+--- before it (at the start: of the first), a link or code only inside one.
+local function typedMarks(b, pos)
+    local om = b.marks
+    local before, after = om[pos - 1] or false, om[pos] or false
+    local like = before or (pos == 1 and after) or false
+    if not like then return false end
+    local inside = before and after and before.link and before.link == after.link
+    local code = before and after and before.c and after.c
+    return markset(like.b, like.i, like.s, code, inside and before.link or nil)
+end
+Blocks.typedMarks = typedMarks
+
+--- Inserts `text` (no line breaks, except in a block kept as Markdown) into
+--- `b` at character `pos`, with `marks` (nil: as typed there). Returns the
+--- position after it.
+function Blocks.insert(b, pos, text, marks)
+    local add = Blocks.chars(text)
+    pos = math.max(1, math.min(pos, #b.chars + 1))
+    local m = false
+    if b.kind ~= "raw" and b.kind ~= "image" then
+        if marks == nil then m = typedMarks(b, pos) else m = marks end
+    end
+    for k = #add, 1, -1 do
+        table.insert(b.chars, pos, add[k])
+        table.insert(b.marks, pos, m)
+    end
+    if #add > 0 then b.dirty = true end
+    return pos + #add
+end
+
+--- Deletes characters a…z of `b`.
+function Blocks.delete(b, a, z)
+    a = math.max(1, a)
+    z = math.min(z, #b.chars)
+    if z < a then return false end
+    for k = z, a, -1 do table.remove(b.chars, k); table.remove(b.marks, k) end
+    b.dirty = true
+    return true
+end
+
+local function blockIndex(doc, b)
+    for k, x in ipairs(doc.blocks) do if x == b then return k end end
+end
+Blocks.indexOf = blockIndex
+
+--- Orders two positions ({ b, i }) in `doc`: the first, the second.
+function Blocks.order(doc, p, q)
+    local kp, kq = blockIndex(doc, p.b), blockIndex(doc, q.b)
+    if kp < kq or (kp == kq and p.i <= q.i) then return p, q end
+    return q, p
+end
+
+--- Deletes from position `p` to `q` (before character q.i), across blocks:
+--- what's left of the last block joins the first. Returns the position where
+--- they met.
+function Blocks.deleteRange(doc, p, q)
+    p, q = Blocks.order(doc, p, q)
+    if p.b == q.b then
+        Blocks.delete(p.b, p.i, q.i - 1)
+        return { b = p.b, i = p.i }
+    end
+    local kp, kq = blockIndex(doc, p.b), blockIndex(doc, q.b)
+    Blocks.delete(p.b, p.i, #p.b.chars)
+    for k = kq - 1, kp + 1, -1 do table.remove(doc.blocks, k) end
+    local last = q.b
+    for k = q.i, #last.chars do
+        p.b.chars[#p.b.chars + 1] = last.chars[k]
+        p.b.marks[#p.b.marks + 1] = last.marks[k] or false
+    end
+    table.remove(doc.blocks, kp + 1)
+    if doc.blocks[kp + 1] then doc.blocks[kp + 1].moved = true end
+    p.b.dirty = true
+    doc.changed = true
+    return { b = p.b, i = p.i }
+end
+
+--- The blocks from position `p`'s to `q`'s (in order).
+function Blocks.span(doc, p, q)
+    p, q = Blocks.order(doc, p, q)
+    local out = {}
+    for k = blockIndex(doc, p.b), blockIndex(doc, q.b) do out[#out + 1] = doc.blocks[k] end
+    return out
+end
+
+--- Turns mark `key` on or off from `p` to `q` (across blocks): off when every
+--- character there has it, on otherwise. False when there's nothing to mark.
+function Blocks.toggleMarkRange(doc, p, q, key)
+    p, q = Blocks.order(doc, p, q)
+    local parts = {}
+    for _i, b in ipairs(Blocks.span(doc, p, q)) do
+        if b.kind ~= "raw" and b.kind ~= "image" then
+            local a = b == p.b and p.i or 1
+            local z = b == q.b and (q.i - 1) or #b.chars
+            if z >= a then parts[#parts + 1] = { b, a, z } end
+        end
+    end
+    if #parts == 0 then return false end
+    local all = true
+    for _i, part in ipairs(parts) do
+        for k = part[2], part[3] do local m = part[1].marks[k]; if not (m and m[key]) then all = false end end
+    end
+    for _i, part in ipairs(parts) do
+        local b = part[1]
+        for k = part[2], part[3] do
+            local m = b.marks[k] or {}
+            local f = { b = m.b, i = m.i, s = m.s }
+            f[key] = not all or nil
+            b.marks[k] = markset(f.b, f.i, f.s, m.c, m.link)
+        end
+        b.dirty = true
+    end
     return true
 end
 

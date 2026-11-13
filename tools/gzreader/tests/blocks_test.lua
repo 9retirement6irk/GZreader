@@ -92,6 +92,10 @@ print("== escaping only what would read as Markdown")
     eq(w("1. not numbered"), "1\\. not numbered", "…or a numbered item")
     eq(w("# not a heading"), "&#35; not a heading", "…or a heading (# as &#35;, Memos reads \\# as a tag's)")
     eq(w("#tag stays a tag"), "#tag stays a tag", "a #tag isn't escaped")
+    do -- a bold backslash: "**\\\\**" (an escaped backslash) closes the bold
+        local c, m = Blocks.readInline("**\\\\**")
+        eq(table.concat(c) .. (m[1] and m[1].b and "|b" or "|"), "\\|b", "**\\\\** reads as a bold backslash")
+    end
     do -- a "#" or "-" alone before bold: not a heading or a list (the marker follows it)
         local d = Blocks.parse("#tag")
         Blocks.toggleMark(d.blocks[1], "b", 2, 4)

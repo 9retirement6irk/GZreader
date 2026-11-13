@@ -65,29 +65,32 @@ API to `/api` are found too.
   the characters themselves. On touch Kindles the editor shows them that way
   too (see **Editing on a touch Kindle**); on keyboard Kindles the editor
   shows the note as it's written.
-- **Editing on a touch Kindle** works like Memos' rich editor. The note shows
-  formatted at the top (headings big, lists with • and numbers, checklists with
-  ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see.
-  The block you're editing has a frame, and its words, without markers, are
-  in the box above the keyboard. Tap another block to edit it, or tap ▲ more
-  above / ▼ more below when the note is longer than the screen.
-  - **Enter** starts the next block: the next item in a list or checklist, a
-    paragraph otherwise. Enter on an empty item ends the list.
-  - **Backspace** at the start of a block joins it to the one before. A list
-    item or heading turns into a paragraph first.
-  - Tap a checklist item's **☐** to tick it.
-  - The toolbar works on the block you're editing:
-    - **H Head** makes it a heading, then a smaller one, then text again.
-    - **• List**, **☐ Check** and **1. Num** make it a list item; tap the same
-      one again to make it text.
-    - **B** and ***I*** make the word at the cursor bold or italic (or the
-      whole block when the cursor isn't on a word).
-    - **# Tag** adds a tag.
-    - **⌫ Block** deletes the block.
-  - Code, quotes, tables and pictures show as they are, with a grey bar
-    beside them, and edit as their Markdown.
-  - Save writes the note the way Memos' rich editor writes it. Blocks you
+- **Editing on a touch Kindle** works like Memos' web editor. The note shows
+  formatted on one page (headings big, lists with • and numbers, checklists
+  with ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see,
+  and you type straight into it.
+  - **Tap** to put the cursor there. Tap a checklist item's **☐** to tick it.
+  - **Hold** a word to select it, and drag to stretch the selection over
+    words and lines. Typing replaces the selection; ⌫ deletes it.
+  - The keyboard has **⮠ Enter** and **← →**. Enter starts a new line (the
+    next item in a list; Enter on an empty item ends the list). ⌫ at the
+    start of a line joins it to the line before. Swipe up or down to scroll a
+    long note.
+  - The toolbar works on the selection, or on the cursor's line or word:
+    - **H Head** makes the lines a heading, then a smaller one, then text again.
+    - **• List**, **☐ Check** and **1. Num** make the lines list items; tap the
+      same one again to make them text.
+    - **B** and ***I*** make the selection bold or italic (or the word at the
+      cursor; with no word there, what you type next).
+    - **# Tag** adds a tag at the cursor.
+  - Code, quotes, tables and pictures show as their Markdown in grey and edit
+    as text.
+  - Save writes the note the way Memos' rich editor writes it. Lines you
     didn't change are kept exactly as they were.
+- **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
+  in boxes where you type several lines (notes, KOReader's text editor).
+  One-line boxes (search, names, passwords) keep the shorter bottom row, with
+  Enter on the symbols page.
 - **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
