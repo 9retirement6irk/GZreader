@@ -54,8 +54,9 @@ function Sketch.new(opts)
     self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
     self.tap_slop = opts.tap_slop or Sketch.TAP_SLOP
     self.width = opts.width or 2
+    self.color = Sketch.inkColor(opts.color) -- nil: memos' ink
     self.tool = "pen" -- or "eraser"
-    self.strokes = {} -- { points = { {x, y}, … } (canvas px), width, gone }
+    self.strokes = {} -- { points = { {x, y}, … } (canvas px), width, color (nil: memos' ink), gone }
     self.history = {} -- { kind = "add"|"erase"|"clear", strokes = { … } }
     self.contacts = {} -- slot → { kind = "draw"|"erase"|"tap"|"ignore", … }
     self.pen = { near = false, last = nil, left = nil }
@@ -86,9 +87,15 @@ end
 
 function Sketch:radius(width) return Sketch.radiusFor(width or self.width, self.per_unit) end
 
+--- On the page, and not on something laid over it (`holes`: the toolbar,
+--- the page buttons, an open panel; screen rectangles { x, y, w, h }).
 function Sketch:inCanvas(x, y)
     local c = self.canvas
-    return x >= c.x and y >= c.y and x < c.x + c.w and y < c.y + c.h
+    if not (x >= c.x and y >= c.y and x < c.x + c.w and y < c.y + c.h) then return false end
+    for _i, r in ipairs(self.holes or {}) do
+        if x >= r.x and y >= r.y and x < r.x + r.w and y < r.y + r.h then return false end
+    end
+    return true
 end
 
 --- True while finger contacts are ignored: the pen near, or just gone.
@@ -124,6 +131,14 @@ end
 --- The page's paper: one of `gzreader_notepaper.lua`'s ids, "blank", or
 --- "other" (a picture under the drawing that isn't one of them).
 function Sketch:paper()
+    local key = tostring(self.base) .. ":" .. tostring(self.paper_changes)
+    if self._paper_key == key then return self._paper_id end
+    local id = self:paperNow()
+    self._paper_key, self._paper_id = key, id
+    return id
+end
+
+function Sketch:paperNow()
     local Notepaper = require("gzreader_notepaper")
     local bg = self.base and Notepaper.background(self.base)
     if not bg then return "blank" end
@@ -192,10 +207,12 @@ end
 function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
 function Sketch:toScene(cx, cy) return cx / self.per_unit + self.ox, cy / self.per_unit + self.oy end
 
+--- The pen's widths (memos' stroke widths: its own are 1, 2 and 4; any number draws).
+Sketch.WIDTHS = { 0.5, 1, 2, 4, 7 }
+
 local function snapWidth(w)
     w = tonumber(w) or 2
-    if w <= 1.5 then return 1 elseif w < 3 then return 2 end
-    return 4
+    return math.max(0.25, math.min(12, w))
 end
 
 --- A sketch of an existing drawing (a memos scene), to go on with it. It's
@@ -226,7 +243,7 @@ function Sketch.fromScene(scene, opts)
                 local cx, cy = self:toCanvas((el.x or 0) + (p[1] or 0), (el.y or 0) + (p[2] or 0))
                 pts[#pts + 1] = { cx, cy }
             end
-            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), el = el }
+            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), color = Sketch.inkColor(el.strokeColor), el = el }
         else
             self.locked[#self.locked + 1] = el
         end
@@ -278,7 +295,8 @@ local function appendPoint(self, contact, cx, cy, out)
     pts[#pts + 1] = { cx, cy }
     local r = self:radius(contact.stroke.width)
     local from = last or { cx, cy }
-    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r }
+    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
+        contact.stroke.color }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -304,7 +322,7 @@ local function addPoint(self, contact, x, y, out)
             return
         end
         if not contact.stroke then
-            contact.stroke = { points = {}, width = contact.width }
+            contact.stroke = { points = {}, width = contact.width, color = contact.color }
             if prev and not prev[3] then
                 -- back on the paper: from its edge
                 local ex, ey = Sketch.edgePoint(page, { cx, cy }, prev)
@@ -381,8 +399,9 @@ local function startContact(self, s, now, out)
     else
         c.kind = "draw"
         c.width = self.width
+        c.color = self.color
         c.pieces = {} -- (on paper: the parts of the stroke on it)
-        c.stroke = { points = {}, width = self.width }
+        c.stroke = { points = {}, width = self.width, color = self.color }
         self.drawing_slot = s.slot
         addPoint(self, c, s.x, s.y, out)
     end
@@ -402,9 +421,12 @@ local function endContact(self, slot, out)
         end
         -- (one Undo takes back the whole stroke, every piece of it)
         self.history[#self.history + 1] = { kind = "add", strokes = c.pieces }
+        self.redone = {}
         out.stroke_done = true
     elseif c.kind == "erase" and #c.erased > 0 then
         self.history[#self.history + 1] = { kind = "erase", strokes = c.erased }
+        self.redone = {}
+        out.stroke_done = true
     elseif c.kind == "tap" and c.moved <= self.tap_slop then
         out.taps[#out.taps + 1] = { x = c.x0, y = c.y0, pen = c.pen }
     end
@@ -470,14 +492,52 @@ end
 -- ------------------------------------------------------------------ tools
 
 function Sketch:setWidth(w) self.width = w; self.tool = "pen" end
+
+--- The pen's colours: memos' ink, then its drawing editor's seven hues
+--- (web/src/components/DrawingSheet/useCanvasTheme.ts), so a stroke drawn
+--- here is one of the colours Memos offers.
+Sketch.COLORS = {
+    { id = "ink", value = Drawing.INK }, { id = "gray", value = "#868e96" }, { id = "red", value = "#e03131" },
+    { id = "orange", value = "#f08c00" }, { id = "green", value = "#2f9e44" }, { id = "teal", value = "#0c8599" },
+    { id = "blue", value = "#1971c2" }, { id = "violet", value = "#7048e8" },
+}
+
+--- A stroke's colour as kept here: "#rrggbb" in lower case, or nil for memos' ink (and for anything that isn't a colour).
+function Sketch.inkColor(c)
+    if type(c) ~= "string" then return nil end
+    c = c:lower()
+    if not c:match("^#%x%x%x%x%x%x$") or c == Drawing.INK then return nil end
+    return c
+end
+
+function Sketch:setColor(c) self.color = Sketch.inkColor(c); self.tool = "pen" end
 function Sketch:setTool(tool) self.tool = tool end
 
 function Sketch:canUndo() return #self.history > 0 end
+function Sketch:canRedo() return #(self.redone or {}) > 0 end
+
+--- Does again what the last Undo took back. True when something changed.
+function Sketch:redo()
+    local h = table.remove(self.redone or {})
+    if not h then return false end
+    if h.kind == "add" then
+        for _i, st in ipairs(h.strokes) do
+            st.gone, st.undone = false, nil
+            self.strokes[#self.strokes + 1] = st
+        end
+    else
+        for _i, st in ipairs(h.strokes) do st.gone = true end
+    end
+    self.history[#self.history + 1] = h
+    return true
+end
 
 --- Takes back the last stroke, erase or clear. True when something changed.
 function Sketch:undo()
     local h = table.remove(self.history)
     if not h then return false end
+    self.redone = self.redone or {}
+    self.redone[#self.redone + 1] = h
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
@@ -496,6 +556,7 @@ function Sketch:clear()
     if #live == 0 then return false end
     for _i, st in ipairs(live) do st.gone = true end
     self.history[#self.history + 1] = { kind = "clear", strokes = live }
+    self.redone = {}
     return true
 end
 
@@ -559,7 +620,7 @@ function Sketch:scene(paper)
         if not st.el then
             local pts = {}
             for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
-            Drawing.addStroke(scene, pts, { width = st.width, color = Drawing.INK })
+            Drawing.addStroke(scene, pts, { width = st.width, color = st.color or Drawing.INK })
         end
     end
     return scene

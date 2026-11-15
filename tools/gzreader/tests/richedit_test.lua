@@ -307,5 +307,75 @@ do
     check(text(r) == "# New\n\n- [ ] item" and r.cur.b == block(r, 2) and r.cur.i == 5, "setText: the whole note replaced, the cursor at its end")
 end
 
+-- ------------------------------------------------------------ the formatting bar at the selection
+do
+    print("== the formatting bar comes up at the selection (hold), as in Memos' web editor")
+    local r = editor("Pack the tent and the maps.\n\nsecond line here\n\n&nbsp;")
+    local function line(k) for _i, l in ipairs(r.lines) do if l.b == block(r, k) then return l end end end
+    check(r:barRect() == nil and r:barToolAt(20, 20) == nil, "no bar while typing")
+    local l1 = line(1)
+    r:onHoldEdit(nil, ges(l1.x0 + 10 * 10 + 5, l1.y + 5))
+    local rect = r:barRect()
+    check(rect ~= nil and r.bar_open == true, "hold a word: it's selected and the bar comes up")
+    check(rect.y >= l1.y + l1.h and rect.x >= 0 and rect.x + rect.w <= r.width and rect.w == rect.cell * #RE.BAR,
+        "…under the line when there's no room above it, inside the page")
+    local ids = {}
+    for i, t in ipairs(RE.BAR) do ids[i] = t.id end
+    check(table.concat(ids, ",") == "bold,italic,heading,bullet,task,ordered,tag", "its buttons: B, I, H, list, checklist, numbered, tag")
+    r:onHoldPanEdit(nil, ges(l1.x0 + 10 * 26, l1.y + 5))
+    r:onHoldReleaseEdit(nil, ges(l1.x0 + 10 * 26, l1.y + 5))
+    check(r.bar_open == true and r:selection() ~= nil, "drag for more: the bar stays")
+    rect = r:barRect()
+    local function barPoint(i) return ges(rect.x + (i - 1) * rect.cell + 5, rect.y + 5) end
+    check(r:barToolAt(rect.x + 5, rect.y + 5).id == "bold" and r:barToolAt(rect.x + rect.w - 2, rect.y + 5).id == "tag"
+        and r:barToolAt(rect.x + 5, rect.y + rect.h + 3) == nil, "a point on the bar is its button; beside it, none")
+    r:onTapEdit(nil, barPoint(1))
+    check(text(r):match("Pack the %*%*tent and the maps%*%*%.") ~= nil and r.bar_open == true and r:selection() ~= nil,
+        "tap B on the bar: the selection bold, the bar and the selection still there … " .. show(text(r)))
+    check(r:toolOn("bold") == true and r:toolOn("italic") == false and r:toolOn("heading") == false, "…B shown as on")
+    r:onTapEdit(nil, barPoint(2))
+    check(text(r):match("%*%*%*tent and the maps%*%*%*") ~= nil or text(r):match("_") ~= nil or text(r):match("%*%*%*") ~= nil,
+        "…then I: bold and italic … " .. show(text(r)))
+    r:onHoldEdit(nil, barPoint(3))
+    check(r:selection() ~= nil and r.bar_open == true, "a hold on the bar itself changes nothing")
+    r:onTapEdit(nil, barPoint(3))
+    check(block(r, 1).kind == "heading" and r.bar_open == true, "H on the bar: the selection's line a heading")
+    -- a tap on the text puts it away
+    rect = r:barRect()
+    r:onTapEdit(nil, ges(25, rect.y + rect.h + 60))
+    check(r.bar_open == nil and r:barRect() == nil and r:selection() == nil, "a tap on the text: the bar goes away, the cursor there")
+    local l2 = line(2)
+    -- typing puts it away
+    r:onHoldEdit(nil, ges(l2.x0 + 25, l2.y + 5))
+    r:onHoldReleaseEdit(nil, ges(l2.x0 + 25, l2.y + 5))
+    local hp, hq = r:selection()
+    check(r.bar_open == true and hp and hp.i == 1 and hq.i == 7, "hold again (no drag): the bar again, the whole word still chosen when the finger lifts inside it")
+    r:addChars("x")
+    check(r.bar_open == nil, "typing puts it away")
+    -- an empty line: the bar for the line itself
+    local l3 = line(3)
+    r:onHoldEdit(nil, ges(5, l3.y + 5))
+    r:onHoldReleaseEdit(nil, ges(5, l3.y + 5))
+    check(r.bar_open == true and r:selection() == nil, "hold an empty line: the bar, with nothing selected")
+    rect = r:barRect()
+    check(rect.y + rect.h <= line(3).y - r.top, "…above the line when there's room")
+    r:onTapEdit(nil, barPoint(5))
+    check(block(r, 3).kind == "task" and r.bar_open == true, "…its checklist button makes the line a checklist item")
+    r:onTapEdit(nil, barPoint(7))
+    check(r.editor.tag_asked == true, "# on the bar asks for a tag")
+    -- arrows put it away
+    r.bar_open = true
+    r:leftChar()
+    check(r.bar_open == nil, "moving the cursor puts it away")
+    -- painted: its labels
+    r:onHoldEdit(nil, ges(l2.x0 + 25, line(2).y + 5))
+    drawn = {}
+    local rects = 0
+    r:paintTo({ paintRect = function() rects = rects + 1 end, paintRoundedRect = function() rects = rects + 1 end, paintBorder = function() rects = rects + 1 end }, 0, 0)
+    local labels = {}
+    for _i, d in ipairs(drawn) do labels[d.text] = true end
+    check(labels["B"] and labels["I"] and labels["H"] and labels["1."] and labels["#"], "painted with the page: B I H … 1. #")
+end
+
 print(("richedit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

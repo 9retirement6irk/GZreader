@@ -1363,7 +1363,7 @@ gets a password or token.
         var ans = await G.json("/api/v1/annotations/book/" + id);
         marks[id] = { bookmarks: Array.isArray(bms) ? bms : [], annotations: Array.isArray(ans) ? ans : [] };
       } catch (e) { return; }
-      // (left out if Grimmory has no notes yet: the Kindle then leaves its notes as they are)
+      // (left out when Grimmory doesn't list them: the Kindle then leaves its notes as they are)
       try { var nts = await G.json("/api/v2/book-notes/book/" + id); if (Array.isArray(nts)) marks[id].notes = nts; } catch (e) {}
     });
     // subtitles (only the web app's list has them)
@@ -1381,6 +1381,17 @@ gets a password or token.
     } catch (e) {}
     var copy = { format: FORMAT, written_at: Math.floor(Date.now() / 1000), server: G.st.server, user: G.st.user,
       books: books, libraries: libraries, shelves: shelves, lists: lists, full: full, subtitles: subtitles, marks: marks };
+    // a GZreader that asks for it: each book's bookmarks and highlights in a
+    // file of its own (decoded only for that book, not with the whole copy)
+    if (out.copy && out.copy.marks_files) {
+      copy.marks = {};
+      copy.marks_files = true;
+      var mids = Object.keys(marks);
+      for (var mi = 0; mi < mids.length; mi++) {
+        var m = marks[mids[mi]];
+        await Drive.write(Drive.sync, "marks/" + mids[mi] + ".json", JSON.stringify({ written_at: copy.written_at, bookmarks: m.bookmarks, annotations: m.annotations, notes: m.notes }));
+      }
+    }
     await Drive.write(Drive.sync, "library.json", JSON.stringify(copy));
     inbox.grimmory = { server: G.st.server, user: G.st.user };
     log("Library copy: " + books.length + " books and audiobooks, " + shelves.length + " shelves.", "ok");

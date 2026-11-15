@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # (ubuntu-26.04, where ubuntu-latest is moving, has no qemu-user-static package)
     concurrency:
       group: gzreader-updates-branch
       cancel-in-progress: false

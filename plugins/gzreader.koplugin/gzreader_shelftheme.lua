@@ -495,7 +495,7 @@ local BAYER = {
     15, 47,  7, 39, 13, 45,  5, 37,
     63, 31, 55, 23, 61, 29, 53, 21,
 }
-function Theme.dither(bb)
+function Theme.dither(bb, colour)
     local Blitbuffer = require("ffi/blitbuffer")
     local ffi = require("ffi")
     local t = bb:getType()
@@ -504,33 +504,58 @@ function Theme.dither(bb)
     local w, h, stride = bb:getWidth(), bb:getHeight(), tonumber(bb.stride)
     local data = ffi.cast("uint8_t*", bb.data)
     local floor = math.floor
+    -- (a colour screen: each of red, green and blue to its 16 levels, the
+    -- colour kept; a grey one: the picture's grey)
+    local each = colour and px == 4
     for y = 0, h - 1 do
         local row = data + y * stride
         local brow = (y % 8) * 8
         for x = 0, w - 1 do
             local p = row + x * px
-            local v = p[0]
-            if px == 4 then v = floor((p[0] * 77 + p[1] * 151 + p[2] * 28) / 256) end
-            if px == 1 or p[px - 1] > 0 then
-                local q = floor(v / 17 + (BAYER[brow + x % 8 + 1] + 0.5) / 64)
-                if q > 15 then q = 15 end
-                q = q * 17
-                p[0] = q
-                if px == 4 then p[1] = q; p[2] = q end
+            -- (only what's solid: a soft edge's values are already multiplied by
+            -- its transparency, and lifting one past it drew a speck of colour)
+            if px == 1 or p[px - 1] == 255 then
+                local lift = (BAYER[brow + x % 8 + 1] + 0.5) / 64
+                if each then
+                    for c = 0, 2 do
+                        local q = floor(p[c] / 17 + lift)
+                        if q > 15 then q = 15 end
+                        p[c] = q * 17
+                    end
+                else
+                    local v = p[0]
+                    if px == 4 then v = floor((p[0] * 77 + p[1] * 151 + p[2] * 28) / 256) end
+                    local q = floor(v / 17 + lift)
+                    if q > 15 then q = 15 end
+                    q = q * 17
+                    p[0] = q
+                    if px == 4 then p[1] = q; p[2] = q end
+                end
             end
         end
     end
     return true
 end
 
+--- On a colour screen an ornament keeps its colour: the built-in ones have
+--- a colour picture (icons/shelf/colour), your own are shown as they are.
+function Theme.colour()
+    local ok, Colour = pcall(require, "gzreader_colour")
+    return ok and Colour.enabled() or false
+end
+
 local function image(entry, w, h)
-    local key = entry.path .. "@" .. w .. "x" .. h
+    local colour = Theme.colour()
+    local path = entry.path
+    if colour then path = require("gzreader_colour").variant(path) end
+    local key = path .. "@" .. w .. "x" .. h .. (colour and "c" or "")
     local have = Theme.images[key]
     if have ~= nil then return have or nil end
+    local svg = path:lower():match("%.svg$") ~= nil
     local ok, bb = pcall(function()
         local RenderImage = require("ui/renderimage")
-        if entry.path:lower():match("%.svg$") then return RenderImage:renderSVGImageFile(entry.path, w, h) end
-        return RenderImage:renderImageFile(entry.path, false, w, h)
+        if svg then return RenderImage:renderSVGImageFile(path, w, h) end
+        return RenderImage:renderImageFile(path, false, w, h)
     end)
     local n = 0
     for _k in pairs(Theme.images) do n = n + 1 end
@@ -539,9 +564,11 @@ local function image(entry, w, h)
     end
     local got = false
     if ok and bb then
-        pcall(Theme.dither, bb)
+        pcall(Theme.dither, bb, colour)
         local okf, foot = pcall(Theme.emptyFoot, bb)
-        got = { bb = bb, foot = okf and foot or 0 }
+        -- (a PNG comes from MuPDF with its colours already multiplied by its
+        -- transparency; an SVG doesn't)
+        got = { bb = bb, foot = okf and foot or 0, pmul = not svg }
     end
     Theme.images[key] = got
     return got or nil
@@ -565,7 +592,7 @@ function Theme.planFor(entry, free_w, stand_h, small)
     local got = image(entry, w, h)
     if not got then return nil end
     local iw, ih = got.bb:getWidth(), got.bb:getHeight()
-    return { entry = entry, img = got.bb, w = iw, h = ih - got.foot, foot = got.foot, room = iw + 2 * S(Theme.MARGIN) }
+    return { entry = entry, img = got.bb, pmul = got.pmul, w = iw, h = ih - got.foot, foot = got.foot, room = iw + 2 * S(Theme.MARGIN) }
 end
 
 --- Where the ornaments were last drawn, by the shelf that drew them (its
@@ -583,7 +610,10 @@ function Theme.paintPlanned(bb, plan, x, board_y, owner)
     local y = board_y - plan.h
     local Blitbuffer = require("ffi/blitbuffer")
     local t = img:getType()
-    if t == Blitbuffer.TYPE_BBRGB32 or t == Blitbuffer.TYPE_BB8A then
+    if (t == Blitbuffer.TYPE_BBRGB32 or t == Blitbuffer.TYPE_BB8A) and plan.pmul and bb.pmulalphablitFrom then
+        -- (drawn as plain transparency its soft edge came out darker: a rim)
+        bb:pmulalphablitFrom(img, x, y, 0, 0, plan.w, plan.h)
+    elseif t == Blitbuffer.TYPE_BBRGB32 or t == Blitbuffer.TYPE_BB8A then
         bb:alphablitFrom(img, x, y, 0, 0, plan.w, plan.h)
     else
         bb:blitFrom(img, x, y, 0, 0, plan.w, plan.h)

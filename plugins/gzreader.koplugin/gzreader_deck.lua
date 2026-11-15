@@ -26,10 +26,13 @@ local Deck = {}
 
 local svg_cache = {}
 local function body(name, w, h)
-    local key = name .. w .. "x" .. h
+    -- (on a colour screen: the drawing in colour, icons/shelf/colour)
+    local file = root .. "/icons/shelf/" .. name .. ".svg"
+    pcall(function() file = require("gzreader_colour").variant(file) end)
+    local key = file .. w .. "x" .. h
     if svg_cache[key] then return svg_cache[key] end
     local ok, bb = pcall(function()
-        return require("ui/renderimage"):renderSVGImageFile(root .. "/icons/shelf/" .. name .. ".svg", w, h)
+        return require("ui/renderimage"):renderSVGImageFile(file, w, h)
     end)
     if not ok or not bb then return nil end
     for k, v in pairs(svg_cache) do v:free(); svg_cache[k] = nil end -- (one size at a time)

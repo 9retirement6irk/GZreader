@@ -3356,6 +3356,17 @@ do
     UIM._window_stack = was_stack
 end
 
+print("Kindles with 128 MB: the garbage collector starts sooner");
+(function()
+    -- (a lower peak for the Lua heap on the Kindle 2 and DX)
+    local pause_before = collectgarbage("setpause", 200)
+    collectgarbage("setpause", pause_before)
+    check(Grimmory.tuneGC(124532) == 120 and collectgarbage("setpause", pause_before) == 120, "a DX (128 MB): GC pause 120")
+    check(Grimmory.tuneGC(252364) == nil and collectgarbage("setpause", pause_before) == pause_before, "a Kindle 3 (256 MB): Lua's default, untouched")
+    check(Grimmory.tuneGC(509000) == nil, "a Paperwhite 3 (512 MB): untouched")
+    collectgarbage("setpause", pause_before)
+end)()
+
 print("Kindle DX: four shelves in Downloads, two on Home")
 do
     local Device = require("device")
@@ -4895,6 +4906,83 @@ do
     local chapters = {}
     for i = 1, 3 do chapters[i] = string.rep("<p>" .. line .. "</p>", 300) end
     check(not PB.detectWith(epubOf(chapters)), "a novel in three files: not a picture book")
+    -- a fixed-layout EPUB made from a PDF (The BOOK): each page one picture
+    -- plus an invisible text layer positioned over it, the page's size on its body
+    ;(function()
+        local fx = { ["META-INF/container.xml"] = CONTAINER }
+        local man, spi = {}, {}
+        local words = string.rep('<span style="left:203px;top:290px;font-size:21px">experiences</span>\n', 40)
+        for i = 1, 12 do
+            local layer = i % 3 == 0 and '<div class="tx"></div>'
+                or ('<div class="tx"><div class="tx">' .. words .. '</div>' .. words .. '</div>')
+            man[#man + 1] = string.format('<item id="x%d" href="pages/p%d.xhtml" media-type="application/xhtml+xml"/>', i, i)
+            spi[#spi + 1] = string.format('<itemref idref="x%d" properties="page-spread-left"/>', i)
+            fx[string.format("OEBPS/pages/p%d.xhtml", i)] = string.format('<html><head><link rel="stylesheet" href="../style.css"/></head>'
+                .. '<body style="width:1359px;height:2008px">\n<img class="pg" src="../img/p%d.jpg" width="1359" height="2008"/>\n%s\n<p class="after">x</p></body></html>', i, layer)
+        end
+        local opf = '<package version="3.0"><metadata><meta property="rendition:layout">pre-paginated</meta></metadata><manifest>'
+            .. '<item id="css" href="style.css" media-type="text/css"/>' .. table.concat(man) .. "</manifest><spine>" .. table.concat(spi) .. "</spine></package>"
+        local css = "/* the converter's */ @page{margin:0}html,body{margin:0;padding:0;overflow:hidden}\n"
+            .. "img.pg{position:absolute;top:0;left:0;margin:0}\n.tx{position:absolute;top:0;left:0;width:100%;height:100%}\n"
+            .. ".note{position:absolute;top:0}\n.tx span{position:absolute;white-space:nowrap;color:transparent;line-height:1}"
+        fx["OEBPS/content.opf"], fx["OEBPS/style.css"] = opf, css
+        local read = function(p) return fx[p] end
+        local layers = PB.textLayers(read)
+        check(#layers == 1 and layers[1] == ".tx",
+            "fixed-layout book: its invisible text layer found (.tx: absolute, transparent text inside; not the page picture, not a visible note)")
+        check(PB.detectWith(read), "…and it's a picture book: the layer's text doesn't count (it was taken for a converted PDF: the tile did nothing useful)")
+        local stripped = PB.withoutLayers(fx["OEBPS/pages/p1.xhtml"], layers)
+        check(not stripped:find("experiences", 1, true) and stripped:find('<p class="after">x</p>', 1, true) and stripped:find("p1.jpg", 1, true),
+            "…the layer cut out up to its own closing tag (nested ones too), the rest of the page kept")
+        local style = PB.css(99, {}, layers)
+        check(style:find(".tx { display: none !important; }", 1, true) and style:find("body { width: auto !important; height: auto !important; }", 1, true),
+            "fitted: the layer hidden (no blank page after each picture), the body's own 1359 px dropped (the picture was cut off on the right)")
+        check(#PB.textLayers(epubOf(scans)) == 0 and not PB.css(99, {}):find("display: none", 1, true),
+            "a reflowable picture book: no layers, nothing hidden")
+        fx["OEBPS/content.opf"] = opf:gsub("pre%-paginated", "reflowable")
+        check(#PB.textLayers(read) == 0, "…and only for fixed-layout (pre-paginated) books")
+        local fdoc = { getDocumentFileContent = function(_, p) return fx[p] end }
+        fx["OEBPS/content.opf"] = opf
+        check(PB.layersOf(fdoc)[1] == ".tx" and #PB.layersOf(nil) == 0, "the open book's layers")
+        check(PB.isFixedLayout(read) and not PB.isFixedLayout(epubOf(scans)), "fixed layout told from the OPF")
+        -- fitting one: no background job reading every picture (The BOOK's 264 MB
+        -- were read for 13 min on a Paperwhite 3, then the job failed)
+        local fds = { d = {} }
+        function fds:readSetting(k) return self.d[k] end
+        function fds:saveSetting(k, v) self.d[k] = v end
+        function fds:delSetting(k) self.d[k] = nil end
+        local freopen = 0
+        local fui = { doc_settings = fds, view = { footer = { getHeight = function() return 28 end, settings = {} } },
+            styletweak = {}, reloadDocument = function() freopen = freopen + 1 end,
+            document = { file = "/tmp/gz-fixed.epub", info = {}, getDocumentFileContent = function(_, p) return fx[p] end,
+                configurable = { smooth_scaling = 0, h_page_margins = { 15, 15 }, t_page_margin = 10, b_page_margin = 10 } } }
+        local Async = require("gzreader_async")
+        local orig_bg, jobs = Async.background, 0
+        Async.background = function() jobs = jobs + 1 end
+        local UIM = require("ui/uimanager")
+        local orig_tick = UIM.nextTick
+        UIM.nextTick = function(_s, fn) fn() end
+        PB.set(fui, true)
+        check(jobs == 0 and PB.isOn(fui) and #fds.d.gzreader_pb_wide == 0 and freopen == 1
+            and fui.styletweak.book_style_tweak:find(".tx { display: none", 1, true),
+            "fitting a fixed-layout book: no picture sizes read in the background, fitted and reopened at once")
+        -- a fixed-layout book that an older check called "no": checked again once when it opens
+        local orig_isfalse = G_reader_settings.isFalse
+        G_reader_settings.isFalse = function(self, k) return self:readSetting(k) == false end
+        fds.d = { gzreader_picture_book = false }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == true and fds.d.gzreader_pb_check == PB.CHECK and PB.isOn(fui),
+            "a fixed-layout book found \"no\" by 1.30.0: checked again when it opens, and fitted")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_vh = 99 }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false and not PB.isOn(fui), "…not one fitted and then turned off")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_check = PB.CHECK }
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false, "…nor one this check already said no to")
+        Async.background, UIM.nextTick, G_reader_settings.isFalse = orig_bg, orig_tick, orig_isfalse
+    end)()
     -- the picture sizes are read in a background job first, never on the screen's thread
     local reads = 0
     ui.document.getDocumentFileContent = function(_, p) if p:match("%.jpg$") then reads = reads + 1 end return files[p] end
@@ -4972,9 +5060,13 @@ do
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v3 */ img{} /* GZreader picture book: end */"
     ui.styletweak.book_style_tweak_enabled = true
     PB.onOpen(ui)
-    check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v5 */", 1, true), "fitted by an older version: fitted again once")
+    check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true), "fitted by an older version: fitted again once")
+    ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v5 */ img{} /* GZreader picture book: end */"
     PB.onOpen(ui)
-    check(reopened == 4, "…and not again")
+    check(reopened == 5 and PB.VERSION == 6 and ui.styletweak.book_style_tweak:find("/* v6 */", 1, true),
+        "fitted by 1.30.0 (v5, a fixed-layout book's text layers still showing): fitted again once")
+    PB.onOpen(ui)
+    check(reopened == 5, "…and not again")
 
     -- a picture book brought by the computer (or downloaded for later): recognized and
     -- fitted before it's first opened, so it opens once, already fitted
@@ -4990,15 +5082,16 @@ do
         function o:flush() end
         return o
     end
-    check(PB.prefit(pf, true, { "logo.jpg" }), "picture book recognized before it's opened")
+    check(PB.prefit(pf, true, { "logo.jpg" }, { ".tx" }), "picture book recognized before it's opened")
     local dsx = DocSettings:open(pf)
     local tweak = dsx:readSetting("book_style_tweak") or ""
     check(dsx:readSetting("gzreader_picture_book") == true and dsx:readSetting("copt_t_page_margin") == 30
         and dsx:readSetting("copt_b_page_margin") == 4 and dsx:readSetting("copt_h_page_margins")[1] == 0
         and dsx:readSetting("copt_smooth_scaling") == 1 and dsx:readSetting("book_style_tweak_enabled") == true
-        and tweak:find("/* v5 */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
+        and tweak:find("/* v" .. PB.VERSION .. " */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
+        and tweak:find(".tx { display: none", 1, true) and dsx:readSetting("gzreader_pb_layers")[1] == ".tx"
         and type(dsx:readSetting("gzreader_pb_margins")) == "table",
-        "…fitted with this Kindle's layout (from the last picture book fitted here), the old margins kept")
+        "…fitted with this Kindle's layout (from the last picture book fitted here), the old margins kept, a fixed-layout book's text layer hidden")
     check(not PB.prefit(pf, true, {}), "…once")
     ds.d = { gzreader_picture_book = true, gzreader_pb_fit = dsx:readSetting("gzreader_pb_fit") }
     ui.styletweak.book_style_tweak = tweak
@@ -6716,7 +6809,7 @@ print("Notes (Memos v0.31)")
             Scr.scaleBySize = real_scale
             local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
             check(src:find("if m._gz_hold_draw then return end", 1, true) and src:find("_gz_hold_draw = Touch.on() or nil,", 1, true)
-                and src:find("menu._gz_hold_draw = nil\n    Touch.actionRow(menu, Notes.actions(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
+                and src:find("menu._gz_hold_draw = nil\n    menu._gz_home_sig = Notes.homeSignature(plugin)\n    Touch.actionRow(menu, Notes.actions(plugin), Notes.homeRows(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
                 "board: on a touch Kindle drawn once on opening, after its buttons (Menu's own first draw was thrown away)")
         end)()
 
@@ -6762,7 +6855,7 @@ print("Notes (Memos v0.31)")
         check(opened == nil, "board: a letter no note has does nothing")
         Notes.showView = real_show
         local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(not src:find('k == "V"', 1, true) and src:find('_("Layout"), function() Notes.showView(plugin) end', 1, true),
+        check(not src:find('k == "V"', 1, true) and src:find('label = _("Layout"), callback = function() Notes.showView(plugin) end', 1, true),
             "board: no V (the tab bar's), and a Layout button on touch Kindles")
     end)()
 
@@ -7118,11 +7211,11 @@ print("Notes (Memos v0.31)")
             return false
         end
         Notes.showFilter(plugin)
-        check(offered() and #rows == 8, "Filter offers Space… when your Memos has spaces")
+        check(offered() and #rows == 10, "Filter offers Space… when your Memos has spaces")
         local saved_spaces, saved_notes = plugin.store.memos.spaces, Notes.notes
         plugin.store.memos.spaces, Notes.notes = {}, { { content = "x" } }
         Notes.showFilter(plugin)
-        check(not offered() and #rows == 7, "…and not without (an older Memos): the dialog as before")
+        check(not offered() and #rows == 9, "…and not without (an older Memos): the dialog as before")
         plugin.store.memos.spaces, Notes.notes = saved_spaces, saved_notes
 
         -- writing: a new note starts in the space the board shows
@@ -7211,6 +7304,45 @@ print("Notes (Memos v0.31)")
         check(shut_while_open and kb.open == 1 and fake.space == "spaces/book-club",
             "touch: the keyboard steps aside while the space list is open (it hid its last rows), and comes back")
         fake.touch, fake.input = nil, nil
+        do
+            -- the note's sheets in the editor: pages moved in the drawing screen are a change of their own
+            local a1 = { name = "attachments/s1", filename = "drawing-1.canvas.png" }
+            local a2 = { name = "attachments/s2", filename = "drawing-2.canvas.png" }
+            local ed = setmetatable({ drawing_atts = { a1, a2 }, original = "t", visibility = "PRIVATE", original_vis = "PRIVATE",
+                text = function() return "## Trip *plan*\nmore" end, rich = true },
+                { __index = function(_t, k) return rawget(E, k) end })
+            check(ed:drawingCount() == 2 and #ed:sheets() == 2 and ed:sheets()[2].page == 2 and ed:sheets()[1].path == Memos.filePath(a1),
+                "editor: a note's sheets, from Memos (their pictures where the Notes tab keeps them)")
+            check(#ed:drawingChanges() == 0 and ed:drawingChanges().order == nil, "…untouched: nothing to send about them")
+            ed.pages = { { att = a2, filename = a2.filename }, { att = a1, filename = a1.filename } }
+            ed.pages_reordered = true
+            local ch = ed:drawingChanges()
+            check(#ch == 0 and ch.order and table.concat(ch.order, ",") == "drawing-2.canvas.png,drawing-1.canvas.png" and ed:changed(),
+                "pages only moved (All pages → Move): their new order is sent, and the note counts as changed")
+            local sent
+            ed.on_save = function(...) sent = { ... } end
+            ed.saved = nil
+            local kept_close = require("ui/uimanager").close
+            require("ui/uimanager").close = function() end
+            E.save(ed)
+            require("ui/uimanager").close = kept_close
+            check(sent and sent[6] and sent[6].order and #sent[6] == 0 and sent[6].order[1] == "drawing-2.canvas.png", "…Save passes the order on")
+            ed.pages = { { att = a2, filename = a2.filename, removed = true }, { att = a1, filename = a1.filename },
+                { path = "/tmp/new.canvas.png", filename = "drawing-3.canvas.png", changed = true } }
+            check(#ed:sheets() == 2 and ed:sheets()[1].page == 1 and ed:sheets()[2].path == "/tmp/new.canvas.png" and ed:drawingCount() == 2,
+                "…a page taken off isn't among them; a new one shows its waiting picture")
+            check(ed:heading() == "Trip plan", "the drawing screen is titled with the note's first line (no Markdown marks): " .. tostring(ed:heading()))
+            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
+                "the formatted page has no toolbar row (its bar comes up at the selection); Markdown editing keeps its toolbar")
+            -- Kindles without a touch screen never draw
+            ed.touch, ed.can_draw = false, true
+            local no_touch = ed:canDraw()
+            ed.touch, ed.can_draw = true, false
+            local not_connected = ed:canDraw()
+            ed.touch, ed.can_draw = true, true
+            check(no_touch == false and not_connected == false and ed:canDraw() == true,
+                "editor: drawing only on a touch Kindle with Memos connected (keyboard Kindles and the Kindle 4 edit the text only)")
+        end
         fake.dpad = true
         check(fake:lastTool() == #NE.TOOLS + 3, "Kindle 4: the space chip is on the toolbar's row too")
         fake.has_spaces = false
@@ -7246,6 +7378,60 @@ print("Notes (Memos v0.31)")
             "older Memos: no spaces, Filter as before")
         local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
         check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+
+        -- journaling mode (the Memos fork): its settings come with a sync; an entry is a private note with tags
+        check(Memos:new(plugin.store.memos):journalSettings() == false and Notes.journalSettings(plugin).activityTagPrefix == "did/"
+            and #Notes.journalSettings(plugin).activities == 9 and Notes.journalSpace(plugin) == nil,
+            "journal: a Memos without journaling mode (stock): the defaults, no journal space")
+        restart("--sample --spaces --journal")
+        plugin.store.memos.journal, plugin.store.memos.spaces = nil, nil
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        local js = Memos:new(plugin.store.memos):journalSettings()
+        check(js and js.space == "spaces/family" and #js.activities == 4 and js.activities[3].id == "walk" and js.activities[3].label == "A walk"
+            and #js.goals == 2 and js.hiddenImpacts[1] == "dating" and js.reminderToken == nil,
+            "journal: a Memos with journaling mode: your settings from /api/journal/settings (only what a Kindle uses: no tokens)")
+        check(sync() and plugin.store.memos.journal and plugin.store.memos.journal.space == "spaces/family"
+            and Notes.journalSpace(plugin) == "spaces/family" and Notes.journalSettings(plugin).goals[2] == "Stretch",
+            "journal: a sync brings them (entries go to your journal space)")
+        local jshown
+        package.loaded["gzreader_journalscreen"] = { show = function(o) jshown = o end }
+        Notes.journal(plugin)
+        check(jshown and #jshown.settings.activities == 4 and type(jshown.on_save) == "function", "Journal (the button, J): the journal screen, with your settings")
+        local Journal = require("gzreader_journal")
+        local entry = Journal.entry({ valence = "pleasant", kind = "today", feelings = { "grateful" }, impacts = { "family" }, activities = { "walk" },
+            goals = { [1] = true }, body = "A good day.", prompt = Journal.PROMPTS[2] }, jshown.settings, os.time())
+        jshown.on_save(entry)
+        local jq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(jq and jq.op == "create" and jq.visibility == "PRIVATE" and jq.space == "spaces/family"
+            and jq.content == "> What made you smile?\n\nA good day.\n\n- [x] Read 20 pages\n- [ ] Stretch\n\n#mood/pleasant #mood/today #felt/grateful #impact/family #did/walk\n",
+            "Save: queued as a private note in your journal space, written as the web editor writes an entry")
+        check(Notes.notes[1].local_id == jq.id and Notes.notes[1].pending and table.concat(Notes.notes[1].tags, ",") == "mood/pleasant,mood/today,felt/grateful,impact/family,did/walk",
+            "…on the board at once, its mood and activities as tags")
+        check(sync(), "…sent")
+        local jm
+        for _i, m in ipairs(mstate().memos) do if m.content == jq.content then jm = m end end
+        check(jm and jm.space == "spaces/family" and jm.visibility == "PRIVATE", "Memos has the entry, in the journal space")
+        plugin.store.memos.spaces = { { name = "spaces/book-club", title = "Book club" } }
+        check(Notes.journalSpace(plugin) == nil, "a journal space that isn't one of yours any more: entries go to no space")
+        -- not connected: Connect first
+        local kept_connect, asked = Notes.showConnect, nil
+        local kept_client = Notes.client
+        Notes.showConnect = function() asked = true end
+        Notes.client = function() return { isConnected = function() return false end } end
+        jshown = nil
+        Notes.journal(plugin)
+        Notes.showConnect, Notes.client = kept_connect, kept_client
+        check(asked and jshown == nil, "not connected: Journal opens Connect instead")
+        package.loaded["gzreader_journalscreen"] = nil
+        -- back on a Memos without it: the defaults again
+        restart("--sample")
+        plugin.store.memos.spaces = nil
+        Notes.notes = nil
+        check(sync() and plugin.store.memos.journal == nil and #Notes.journalSettings(plugin).activities == 9,
+            "back on a Memos without journaling mode: the defaults again")
+        local msrc = io.open(PLUGIN .. "/gzreader_memos.lua"):read("*a")
+        check(msrc:find('self.store.server .. "/api/journal/settings"', 1, true) ~= nil and msrc:find("return require(\"gzreader_journal\").settings(data)", 1, true) ~= nil,
+            "the settings route is beside the API (not under /api/v1), and only Journal.settings' fields are kept")
     end)()
 
     ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
@@ -7326,26 +7512,97 @@ print("Notes (Memos v0.31)")
         check(show_src and show_src:find("name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil", 1, true)
             and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
             and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
-            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin))", 1, true)
+            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin), Notes.homeRows(plugin))", 1, true)
             and show_src:find("menu.onGzMenu = function() Notes.showMenu(plugin); return true end", 1, true)
+            and show_src:find("menu.onGzOptions = menu.onGzMenu", 1, true)
+            and io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/navbar.lua"):read("*a")
+                :find('if type(m.onGzOptions) == "function" then return m:onGzOptions() end', 1, true)
             and not show_src:find("showOptions", 1, true),
-            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu")
-        -- the buttons (touch): Note, Draw, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu (also when the tab bar takes the key first: onGzOptions)")
+        -- the buttons (touch), one row: Note, Draw, Journal with their pictures, then icons for Sort, Filter, Layout, Search, Full screen
         local acts = Notes.actions(plugin)
         local bnames = {}
-        for i = 1, 6 do bnames[i] = acts[i][1] end
-        check(table.concat(bnames, "|") == "Note|Draw|Filter|Layout|Sort|Connection" and acts[7].icon_file:match("/icons/panel/fullscreen%.svg$")
-            and acts[7].label == "Full screen" and io.open(acts[7].icon_file) ~= nil,
-            "touch: Note, Draw, Filter, Layout, Sort, Connection, and the full screen icon")
+        for i = 1, 3 do bnames[i] = acts[i][1] .. ":" .. tostring(acts[i].icon_file and io.open(acts[i].icon_file) ~= nil) end
+        for i = 4, 8 do bnames[i] = tostring(acts[i].label) .. ":" .. tostring(acts[i][1] == nil and io.open(acts[i].icon_file) ~= nil) end
+        check(table.concat(bnames, "|") == "Note:true|Draw:true|Journal:true|Sort:true|Filter:true|Layout:true|Search:true|Full screen:true"
+            and acts[8].icon_file:match("/icons/panel/fullscreen%.svg$") and #acts == 8,
+            "touch: Note, Draw and Journal (a picture and the word), then icons for Sort, Filter, Layout, Search and Full screen: " .. table.concat(bnames, "|"))
         local opened = {}
         local real = { edit = Notes.edit, draw = Notes.draw, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
-            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen }
-        for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
-        for i = 1, 6 do acts[i][2]() end
-        acts[7].callback()
+            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen, showSearch = Notes.showSearch, journal = Notes.journal,
+            setFilter = Notes.setFilter }
+        for k in pairs(real) do
+            Notes[k] = function(_p, arg2)
+                if type(arg2) == "table" then arg2 = tostring(arg2.kind) .. (arg2.value and (":" .. arg2.value) or "") end
+                opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "")
+            end
+        end
+        for i = 1, 3 do acts[i][2]() end
+        for i = 4, 8 do acts[i].callback() end
+        check(table.concat(opened, ",") == "edit,draw,journal,showSort,showFilter,showView,showSearch,setFullscreen=true",
+            "…each does its job; the last icon turns full screen on: " .. table.concat(opened, ","))
+        -- under them, one more row: All, your most used tags, Drawings
+        local kept_notes, kept_filter, kept_journal = Notes.notes, Notes.filter, plugin.store.memos.journal
+        Notes.notes = {
+            { tags = { "trip", "work" } }, { tags = { "trip" } }, { tags = { "trip", "ideas", "mood/pleasant", "did/work" } },
+            { tags = { "work", "mood/pleasant", "did/work" } }, { tags = { "mood/pleasant", "did/work", "a-very-long-tag-name-here" } },
+            { tags = { "zebra" } },
+        }
+        Notes.filter = { kind = "all" }
+        plugin.store.memos.journal = nil
+        local hrows = Notes.homeRows(plugin)
+        local function names(row) local t = {} for i, a in ipairs(row) do t[i] = a[1] .. (a.chosen and "*" or "") end return table.concat(t, "|") end
+        check(#hrows == 1 and names(hrows[1]) == "All*|#trip|#work|#a-very-long…|Drawings",
+            "touch, the second row: All (chosen), your three most used tags (not a journal entry's mood and activity tags; a long one cut), Drawings: " .. names(hrows[1]))
+        opened = {}
+        for _i, a in ipairs(hrows[1]) do a[2]() end
+        check(table.concat(opened, ",") == "setFilter=all,setFilter=tag:trip,setFilter=tag:work,setFilter=tag:a-very-long-tag-name-here,setFilter=drawings",
+            "…each does its job (Drawings: only the notes with a drawing): " .. table.concat(opened, ","))
+        Notes.filter = { kind = "tag", value = "zebra" }
+        local sig1 = Notes.homeSignature(plugin)
+        check(names(Notes.homeRows(plugin)[1]) == "All|#zebra*|#trip|#work|Drawings",
+            "…the tag being shown has a chip (chosen) even when it isn't among the most used: " .. names(Notes.homeRows(plugin)[1]))
+        Notes.filter = { kind = "drawings" }
+        opened = {}
+        local drow = Notes.homeRows(plugin)[1]
+        drow[#drow][2]()
+        check(drow[#drow].chosen == true and opened[1] == "setFilter=all" and Notes.homeSignature(plugin) ~= sig1,
+            "…Drawings chosen: a tap goes back to all the notes; the chips are put in again when the filter changes")
         for k, fn in pairs(real) do Notes[k] = fn end
-        check(table.concat(opened, ",") == "edit,draw,showFilter,showView,showSort,showConnection,setFullscreen=true",
-            "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
+        -- the Drawings filter: notes with a drawing (worked out on the Kindle: Memos isn't asked)
+        local with = { attachments = { { name = "attachments/a1", filename = "drawing-1.canvas.png" } } }
+        local without = { attachments = { { name = "attachments/a2", filename = "photo.png" } } }
+        check(Notes.keep(with, { kind = "drawings" }) and not Notes.keep(without, { kind = "drawings" }) and not Notes.keep({}, { kind = "drawings" })
+            and Notes.keepHere(with, { kind = "drawings" }) and not Notes.keepHere(without, { kind = "drawings" })
+            and Notes.cel({ kind = "drawings" }) == nil and Notes.filterLabel({ kind = "drawings" }) == "Drawings",
+            "Drawings filter: the notes with a drawing, picked out on the Kindle")
+        Notes.notes, Notes.filter, plugin.store.memos.journal = kept_notes, kept_filter, kept_journal
+        -- Kindles without a touch screen: drawings are shown (every page), never made or changed
+        do
+            local TouchM = require("gzreader_touch")
+            local kept_on, kept_keys = TouchM.on, TouchM.keys
+            local NetM = require("gzreader_net")
+            local kept_usb = NetM.usb
+            NetM.usb = false
+            TouchM.on, TouchM.keys = function() return false end, function() return true end
+            local kb_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = function() return false end, function() return false end
+            local k4_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = function() return true end, function() return false end
+            local touch_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = kept_on, kept_keys
+            NetM.usb = kept_usb
+            check(kb_can == false and k4_can == false and touch_can == true,
+                "drawing: only touch Kindles make or change drawings (not a keyboard Kindle, not the Kindle 4)")
+            local esrc = nsrc:match("function Notes%.edit%(plugin, memo, opts%)(.-)\nend\n")
+            check(esrc and esrc:find("can_draw = Notes.canDraw(plugin)", 1, true)
+                and esrc:find("and Notes.canDraw(plugin),", 1, true),
+                "…Edit on a note with drawings opens its text there (the drawing screen only where drawing is possible)")
+            check(Notes.pageCaption(2, 3) == "Page 2 of 3" and Notes.pageCaption(1, 2, "Q") == "Page 1 of 2  \u{00B7}  Q opens it"
+                and nsrc:find("local sheets = Notes.drawings(m)", 1, true) and nsrc:find("Notes.pageCaption(i, #sheets, key)", 1, true)
+                and nsrc:find("self.picks[#self.picks + 1] = { att = a }", 1, true),
+                "…a note's page shows every sheet, each named (Page 2 of 3) and opened full screen by a tap, Press or its letter")
+        end
         -- Draw: a new note opening on a page to draw on
         local drew
         local real_edit = Notes.edit
@@ -7362,11 +7619,11 @@ print("Notes (Memos v0.31)")
             "Draw: a new note that opens on a page (not when drawings can't go to Memos)")
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
-        check(acts[7].icon_file:match("/icons/panel/close%.svg$") and acts[7].label == "Leave full screen" and io.open(acts[7].icon_file) ~= nil,
+        check(acts[8].icon_file:match("/icons/panel/close%.svg$") and acts[8].label == "Leave full screen" and io.open(acts[8].icon_file) ~= nil,
             "…in full screen the icon is an X, to leave it")
         opened = {}
         Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
-        acts[7].callback()
+        acts[8].callback()
         Notes.setFullscreen = real.setFullscreen
         check(opened[1] == "false", "…which turns it off")
         prefs.fullscreen = nil
@@ -7393,9 +7650,58 @@ print("Notes (Memos v0.31)")
         Notes.showConnect = kept_connect
         check(connected_again and connected_again[1] == plugin and connected_again[2] == true, "…Connect again opens the connect page")
         -- Kindle 4's Menu: what the buttons and letter keys do elsewhere, and Connection
+        local TouchK4 = require("gzreader_touch")
+        local kept_k4_keys = TouchK4.keys
+        TouchK4.keys = function() return false end
         local mtexts, _md, mcbs = texts(Notes.showMenu)
-        check(mtexts:match("^New note|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
-            "Kindle 4's Menu: New note, Filter, Layout, Sort, Full screen, Connection: " .. mtexts)
+        TouchK4.keys = kept_k4_keys
+        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
+        do
+            -- a keyboard Kindle: the same list names each key; a touch Kindle that can draw would get New sheet
+            local TouchM = require("gzreader_touch")
+            local kept_keys, kept_can = TouchM.keys, Notes.canDraw
+            TouchM.keys = function() return true end
+            local ktexts = texts(Notes.showMenu)
+            Notes.canDraw = function() return true end
+            local dtexts = texts(Notes.showMenu)
+            TouchM.keys, Notes.canDraw = kept_keys, kept_can
+            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Filter…  (F)|", 1, true) == 1
+                and ktexts:find("|Sort…  (S)|", 1, true) and ktexts:find("|Connection…  (M)", 1, true) and not ktexts:find("|Draw|", 1, true),
+                "keyboard Kindles: H lists every key: " .. ktexts)
+            check(dtexts:find("New note  (N)|Draw|Journal entry  (J)|", 1, true) == 1, "…Draw only where drawing is possible: " .. dtexts)
+            -- the keys themselves
+            local pressed = {}
+            local kept = {}
+            for _i, k in ipairs({ "edit", "journal", "showSearch", "showTags", "toggleDrawings", "setFilter", "showFilter", "showConnection", "showView", "showSort", "showMenu" }) do
+                kept[k] = Notes[k]
+                Notes[k] = function(_p, a) pressed[#pressed + 1] = k .. (type(a) == "table" and ("=" .. a.kind) or "") end
+            end
+            local fake_board = { plugin = plugin }
+            for _i, key in ipairs({ "N", "J", "K", "G", "D", "A", "F", "M", "L", "S", "H" }) do
+                Notes.Board.onSelectByShortCut(fake_board, nil, { key = key })
+            end
+            for k, fn in pairs(kept) do Notes[k] = fn end
+            check(table.concat(pressed, ",") == "edit,journal,showSearch,showTags,toggleDrawings,setFilter=all,showFilter,showConnection,showView,showSort,showMenu",
+                "keyboard Kindles: N new note, J journal, K search, G tags, D drawings, A all notes, F filter, M connection, L layout, S sort, H all keys: "
+                .. table.concat(pressed, ","))
+            local hint = Notes.KEY_HINT
+            local zsrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/navbar.lua"):read("*a")
+            check(hint:find("N note", 1, true) and hint:find("J journal", 1, true) and hint:find("K search", 1, true)
+                and hint:find("G tags", 1, true) and hint:find("H all keys", 1, true)
+                and zsrc:find('local GZ_TAB_ROW_KEYS = { "Z", "X", "C", "V", "B" }', 1, true),
+                "…the main ones under the title, and H for the whole list (none of them Z X C V B: those switch the bottom tabs)")
+            -- D: on and off
+            local setf = {}
+            local kept_set, kept_f = Notes.setFilter, Notes.filter
+            Notes.setFilter = function(_p, f) setf[#setf + 1] = f.kind end
+            Notes.filter = { kind = "all" }
+            Notes.toggleDrawings(plugin)
+            Notes.filter = { kind = "drawings" }
+            Notes.toggleDrawings(plugin)
+            Notes.setFilter, Notes.filter = kept_set, kept_f
+            check(setf[1] == "drawings" and setf[2] == "all", "D (the Drawings chip): only the notes with drawings, then all again")
+        end
         local opened_conn
         local kept_conn = Notes.showConnection
         Notes.showConnection = function(p) opened_conn = p end
@@ -7404,8 +7710,75 @@ print("Notes (Memos v0.31)")
         check(opened_conn == plugin, "…Connection… opens Connection")
         local Touch = require("gzreader_touch")
         local cw = Touch.chipWidths(564, acts, 6, 46)
-        check(cw[1] == cw[6] and cw[7] == 46 and cw[1] * 6 + 46 + 6 * 6 <= 564 and cw[1] * 6 + 46 + 6 * 6 > 558,
-            "the icon button is narrow; the text buttons share the rest of the row")
+        check(cw[1] == cw[3] and cw[4] == 46 and cw[8] == 46 and cw[1] * 3 + 46 * 5 + 7 * 6 <= 564 and cw[1] * 3 + 46 * 5 + 7 * 6 > 560 and cw[1] >= 90,
+            "the icon buttons are narrow; Note, Draw and Journal share the rest of the row (" .. cw[1] .. " px each on a 600 px screen)")
+        do
+            -- scrolling (touch, Layout → Scroll up and down): one long page moved by the finger
+            local sl = Notes.scrollLayout(0, 1000, 3, 10)
+            check(sl.cell_h == 303 and sl.first == 0 and sl.shift == 0 and sl.rows == 4 and sl.max_y == 2030 and sl.y == 0,
+                "scrolling: three rows fit, so three and a part of the fourth show (a peek of what's next)")
+            sl = Notes.scrollLayout(450, 1000, 3, 10)
+            check(sl.first == 1 and sl.shift == 147 and sl.rows == 4 and sl.y == 450,
+                "…scrolled 450 px: the second row cut off at the top, rows down to the bottom drawn")
+            sl = Notes.scrollLayout(99999, 1000, 3, 10)
+            local neg = Notes.scrollLayout(-50, 1000, 3, 10)
+            local few = Notes.scrollLayout(300, 1000, 3, 2)
+            check(sl.y == 2030 and sl.first == 6 and sl.first + sl.rows == 10 and neg.y == 0 and few.y == 0 and few.max_y == 0 and few.rows == 2,
+                "…never past the last row or above the first; a few notes don't scroll at all")
+            local TouchS = require("gzreader_touch")
+            local kept_on = TouchS.on
+            local pr = Notes.prefs(plugin)
+            local kept_scroll, kept_display = pr.scroll, pr.display
+            TouchS.on = function() return true end
+            pr.scroll, pr.display = nil, "compact"
+            local off = Notes.scrolling(plugin)
+            pr.scroll = true
+            local on = Notes.scrolling(plugin)
+            pr.display = "full"
+            local full = Notes.scrolling(plugin)
+            pr.display = "compact"
+            TouchS.on = function() return false end
+            local keys = Notes.scrolling(plugin)
+            TouchS.on = kept_on
+            pr.scroll, pr.display = kept_scroll, kept_display
+            check(off == false and on == true and full == false and keys == false,
+                "scrolling: only when chosen in Layout, on a touch Kindle, with compact notes (full notes keep their pages)")
+            local drawn = 0
+            local b = setmetatable({ _gz_y = 0, _gz_scroll = { rows = 3, cols = 2, cell_h = 300, view_h = 1000, max_y = 2030 },
+                updateItems = function() drawn = drawn + 1 end },
+                { __index = function(_t, k) return rawget(Notes.Board, k) end })
+            b:onSwipe(nil, { direction = "north", distance = 410 })
+            local y1 = b._gz_y
+            b:onSwipe(nil, { direction = "north", distance = 5000 })
+            b:onSwipe(nil, { direction = "north", distance = 5000 })
+            local y2 = b._gz_y
+            b:onSwipe(nil, { direction = "south", distance = 190 })
+            local y3 = b._gz_y
+            b:onPan(nil, { direction = "south", distance = 800 })
+            local before_release = b._gz_y
+            b:onGzPanRelease()
+            local y4 = b._gz_y
+            b:onSwipe(nil, { direction = "west", distance = 300 })
+            local y5 = b._gz_y
+            b:onSwipe(nil, { direction = "east", distance = 300 })
+            b:scrollBy(-5000)
+            b:scrollBy(-10)
+            check(y1 == 410 and y2 == 2030 and y3 == 1840 and before_release == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn == 7,
+                "scrolling: a swipe moves the notes exactly as far as the finger went, never past the end; a drag moves when the finger lifts; a swipe sideways moves a screenful less a row; redrawn only when it moved ("
+                .. table.concat({ y1, y2, y3, y4, y5, drawn }, ",") .. ")")
+            -- no page number or arrows while scrolling; back with pages
+            local a1, a2, a3 = {}, {}, {}
+            local fm = { page_info = { a1, a2, a3, resetLayout = function() end } }
+            Notes.footerShown(fm, false)
+            local hidden = #fm.page_info
+            Notes.footerShown(fm, false)
+            Notes.footerShown(fm, true)
+            check(hidden == 0 and #fm.page_info == 3 and fm.page_info[1] == a1 and fm.page_info[3] == a3 and fm._gz_footer == nil,
+                "scrolling: no page number or arrows under the notes (their room is the notes'); pages bring them back")
+            check(nsrc:find("if not keep_page then b._gz_y = 0 end", 1, true) and nsrc:find("Notes.Viewport:new{", 1, true)
+                and nsrc:find("Notes.footerShown(m, false)", 1, true) and nsrc:find("m.page, m.page_num = 1, 1", 1, true),
+                "…other notes (a filter): from the top again")
+        end
         -- on top?
         local board = { plugin = plugin }
         Notes.board = board
@@ -7755,7 +8128,7 @@ print("Notes (Memos v0.31)")
         check(#told == 2 and told[1] == "board" and Notes.fetching[Memos.filePath(fetched)] == nil,
             "a picture already coming: the board and the page are told when it's here (one download)")
         local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("for _i, a in ipairs(Notes.drawings(m)) do", 1, true)
+        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("local sheets = Notes.drawings(m)\n    for i, a in ipairs(sheets) do", 1, true)
             and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
             "drawings: on the board's cards and the note's page, not repeated under Attachments")
 
@@ -9006,6 +9379,120 @@ print("The reader's top status bar stays drawn under KOReader's layout menu")
     package.path = saved_path
 end)()
 
+print("Fit pictures: bigger when the bars are hidden, and its options")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_header_reserve"] = nil
+    local H = require("common/gz_header_reserve")
+    local PB = require("gzreader_picturebook")
+    local gs_saved = gsettings.gzreader_pb_fill_hidden
+    local fitted = true
+    local orig_fills = PB.fillsHiddenBars
+    PB.fillsHiddenBars = function() return fitted and PB.fillOn() end
+    local footer = { reclaim_height = false, getHeight = function() return 28 end }
+    local view = { ui = {}, footer = footer }
+    local r, cut = H.margins(view, 40, true, true)
+    check(r == 0 and cut == 28, "a fitted book with both bars hidden: no room kept for the title bar, the status bar's taken off the bottom")
+    r, cut = H.margins(view, 40, false, false)
+    check(r == 40 and cut == 0, "bars shown: as before")
+    r, cut = H.margins(view, 40, true, false)
+    check(r == 0 and cut == 0, "only the title bar hidden: only its room")
+    r, cut = H.margins(view, 40, false, true)
+    check(r == 40 and cut == 28, "only the status bar hidden: only its room")
+    footer.reclaim_height = true
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 0 and cut == 0, "status bar set to overlap the page: its room isn't in the margin, nothing taken off")
+    footer.reclaim_height = false
+    gsettings.gzreader_pb_fill_hidden = false
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 40 and cut == 0 and not PB.fillOn(), "option off: hidden bars keep their room (as before)")
+    gsettings.gzreader_pb_fill_hidden = nil
+    fitted = false
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 40 and cut == 0, "a book whose pictures aren't fitted: as before")
+    fitted = true
+    check(PB.fillOn(), "the option is on unless turned off")
+    -- the title bar alone hidden (Hide on tap: top): the book laid out again
+    local events = {}
+    local ui = { document = { configurable = { b_page_margin = 4 } }, handleEvent = function(_, ev) events[#events + 1] = ev end }
+    H.topToggled({ ui = ui })
+    check(#events == 1 and events[1].name == "SetPageBottomMargin" and events[1].args[1] == 4,
+        "title bar hidden or shown with a tap: margins set again (for a fitted book)")
+    fitted = false
+    H.topToggled({ ui = ui })
+    PB.onBarsChanged(ui)
+    check(#events == 1, "…not for other books")
+    PB.fillsHiddenBars = orig_fills
+    -- PB.fillsHiddenBars itself: the open book's style, or its saved one while it's set up
+    local ds = { d = {} }
+    function ds:readSetting(k) return self.d[k] end
+    check(not PB.fillsHiddenBars({ doc_settings = ds }), "not fitted: no")
+    ds.d = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) }
+    check(PB.fillsHiddenBars({ doc_settings = ds }), "fitted (its saved style, before the reader's style module is up): yes")
+    check(PB.fillsHiddenBars({ styletweak = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) } }), "fitted (the open book's style): yes")
+    -- the hooks in ZenOS's files
+    local function src(rel)
+        local fh = io.open(PLUGIN .. "/../zenos.koplugin/" .. rel)
+        local t = fh and fh:read("*a") or ""
+        if fh then fh:close() end
+        return t
+    end
+    local top = src("modules/reader/patches/reader_top_status_bar.lua")
+    check(top:find('require("common/gz_header_reserve").margins(view, reserve, top_hidden, bottom_hidden)', 1, true)
+        and top:find("bottom - (tonumber(self._gz_bottom_cut) or 0)", 1, true),
+        "ZenOS's margins ask it, and take the status bar's room off the bottom margin")
+    check(src("common/reader_status_bar.lua"):find('require("common/gz_header_reserve").topToggled(view)', 1, true) ~= nil,
+        "ZenOS's tap that hides the title bar alone tells it")
+    local mainf = io.open(PLUGIN .. "/main.lua")
+    local main_src = mainf and mainf:read("*a") or ""
+    if mainf then mainf:close() end
+    check(main_src:find("function Grimmory:onReaderFooterVisibilityChange()", 1, true) ~= nil,
+        "the status bar hidden or shown: GZreader lays a fitted book out again")
+    -- the options, from Fit pictures while a book is fitted
+    local shown, closed = {}, 0
+    local saved_bd = package.loaded["ui/widget/buttondialog"]
+    package.loaded["ui/widget/buttondialog"] = { new = function(_s, o) return o end }
+    local UIM = require("ui/uimanager")
+    local orig_show, orig_close = UIM.show, UIM.close
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    UIM.close = function() closed = closed + 1 end
+    local orig_isfalse = G_reader_settings.isFalse
+    G_reader_settings.isFalse = function(self, k) return self:readSetting(k) == false end
+    local margins = 0
+    local fui = { styletweak = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) },
+        document = { configurable = { b_page_margin = 4 } },
+        handleEvent = function(_, ev) if ev.name == "SetPageBottomMargin" then margins = margins + 1 end end }
+    local orig_set, set_to = PB.set, nil
+    PB.set = function(_u, on) set_to = on; return true end
+    PB.menuItem(fui).callback()
+    local dlg = shown[#shown]
+    check(dlg and dlg.title == "Fit pictures to the screen" and #dlg.buttons == 4
+        and dlg.buttons[1][1].text == "☑ Bigger when the bars are hidden"
+        and dlg.buttons[2][1].text == "☑ Fit picture books when they're opened"
+        and dlg.buttons[3][1].text == "Turn off for this book" and set_to == nil,
+        "Fit pictures while it's on: its options (not turned off at once)")
+    dlg.buttons[1][1].callback()
+    check(gsettings.gzreader_pb_fill_hidden == false and margins == 1 and shown[#shown].buttons[1][1].text == "☐ Bigger when the bars are hidden",
+        "Bigger when the bars are hidden: off (saved, the book laid out for it, shown unticked)")
+    shown[#shown].buttons[2][1].callback()
+    check(gsettings.gzreader_picture_book_auto == false and shown[#shown].buttons[2][1].text == "☐ Fit picture books when they're opened",
+        "Fit picture books when they're opened: off")
+    shown[#shown].buttons[3][1].callback()
+    check(set_to == false, "Turn off for this book")
+    fui.styletweak = {}
+    local before_n = #shown
+    PB.menuItem(fui).callback()
+    check(set_to == true and not (shown[before_n + 1] and shown[before_n + 1].title == "Fit pictures to the screen"),
+        "Fit pictures while it's off: turned on, no options")
+    PB.set = orig_set
+    UIM.show, UIM.close, G_reader_settings.isFalse = orig_show, orig_close, orig_isfalse
+    package.loaded["ui/widget/buttondialog"] = saved_bd
+    gsettings.gzreader_pb_fill_hidden = gs_saved
+    gsettings.gzreader_picture_book_auto = nil
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"
@@ -10161,6 +10648,38 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     Usb.writeOutbox(fake)
     check((JSON.decode(read(lib .. "/.gzsync/outbox.json") or "") or {}).test_builds == true, "outbox: test builds on (the page then brings those)")
     gsettings.gzreader_update_beta = nil
+    -- written on every save: without loading (and keeping) the calendar, the updater, copying, shelves, Plex
+    do
+        local heavy = { "gzreader_calendar", "gzreader_update", "gzreader_copy", "gzreader_shelfsync", "gzreader_plex" }
+        local kept = {}
+        for _i, m in ipairs(heavy) do kept[m] = package.loaded[m]; package.loaded[m] = nil end
+        Usb.fixed = nil
+        fake.store.calendar_prefs = { days_back = 3, days_ahead = 30 }
+        fake.store.auto_shelf = { id = 9, magic = true, name = "To read" }
+        fake.store.plex = { bitrate = 128, shrink = true }
+        local o1 = Usb.outbox(fake)
+        local loaded = {}
+        for _i, m in ipairs(heavy) do if package.loaded[m] then loaded[#loaded + 1] = m end end
+        check(#loaded == 0, "outbox: none of " .. table.concat(heavy, ", ") .. " left loaded (" .. table.concat(loaded, ", ") .. ")")
+        local Cal, SS, Plex, Copy, Upd = require("gzreader_calendar"), require("gzreader_shelfsync"), require("gzreader_plex"),
+            require("gzreader_copy"), require("gzreader_update")
+        local cp = Cal.prefs(fake)
+        local sh = SS.shelf(fake)
+        local q = Plex.quality(fake.store)
+        check(o1.calendar.days_back == cp.days_back and o1.calendar.days_ahead == cp.days_ahead
+            and o1.auto_shelf.id == sh.id and o1.auto_shelf.magic == true and o1.auto_shelf.name == sh.name
+            and o1.music_quality.bitrate == q.bitrate and o1.music_quality.shrink == q.shrink,
+            "…and what it writes is what those modules say (calendar range, automatic shelf, music quality)")
+        check(o1.gzreader == Upd.currentVersion() and o1.kindle.name == Copy.deviceName(fake) and o1.kindle.id == Copy.deviceId(fake),
+            "…the version and this Kindle's name too (worked out once)")
+        fake.store.calendar_prefs, fake.store.auto_shelf, fake.store.plex = {}, nil, nil
+        local o2 = Usb.outbox(fake)
+        check(o2.calendar.days_back == 14 and o2.calendar.days_ahead == 90 and o2.auto_shelf == nil
+            and o2.music_quality.bitrate == Plex.quality(fake.store).bitrate, "…and their defaults")
+        for _i, m in ipairs(heavy) do package.loaded[m] = kept[m] or package.loaded[m] end
+        fake.store.calendar_prefs = nil
+        Usb.fixed = nil
+    end
 
     -- the library copy: browsing without a network
     local api = OfflineApi:new(fake.store, nil, lib .. "/.gzsync")
@@ -10186,6 +10705,53 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     local readable = api:listBooks{ fileType = api.READABLE_TYPES, libraryId = 1, sort = "addedOn", dir = "desc" }
     check(readable.totalElements == 2 and readable.content[1].id == 1 and readable.content[2].id == 4,
         "copy: by type and library; newest first, undated last")
+    -- kept in memory only while it's used (a DX's memory goes to the book)
+    do
+        local t, timers = 1000, {}
+        local real_clock = OfflineApi.clock
+        local OUI = require("ui/uimanager")
+        local real_in, real_un = OUI.scheduleIn, OUI.unschedule
+        OUI.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+        OUI.unschedule = function() end
+        OfflineApi.clock = function() return t end
+        OfflineApi.forget()
+        local n0 = OfflineApi.decoded or 0
+        api:listBooks{}
+        check(OfflineApi.held() and #timers == 1 and timers[1].s == OfflineApi.IDLE, "the copy decoded, and let go after " .. OfflineApi.IDLE .. " s unused")
+        t = t + 40
+        api:listBooks{}
+        t = t + 20
+        timers[1].fn()
+        check(OfflineApi.held() and #timers == 2 and timers[2].s > 30 and timers[2].s < 45, "used again meanwhile: kept for a while more")
+        t = t + 45
+        timers[2].fn()
+        check(not OfflineApi.held() and (OfflineApi.decoded or 0) == n0 + 1, "unused for a minute: let go (decoded once until then)")
+        api:listBooks{}
+        check(OfflineApi.held() and (OfflineApi.decoded or 0) == n0 + 2, "needed again: decoded again")
+        OfflineApi.clock = real_clock
+        OUI.scheduleIn, OUI.unschedule = real_in, real_un
+        local msrc = io.open(PLUGIN .. "/main.lua", "rb")
+        local mt = msrc and msrc:read("*a") or ""
+        if msrc then msrc:close() end
+        check(mt:find('if self.ui and self.ui.document and package.loaded["gzreader_offlineapi"] then', 1, true)
+            and mt:find("OA.forget()", 1, true), "a book opening: let go before it's laid out")
+        OfflineApi.forget()
+    end
+    -- each book's bookmarks and highlights in a file of its own (the outbox asks the page for it)
+    do
+        local copy_text = read(lib .. "/.gzsync/library.json")
+        put(lib .. "/.gzsync/library.json", JSON.encode({ format = 1, written_at = 500, books = books, marks_files = true, marks = {} }))
+        put(lib .. "/.gzsync/marks/4.json", JSON.encode({ written_at = 500, bookmarks = { { id = 41, title = "here" } }, annotations = {} }))
+        put(lib .. "/.gzsync/marks/2.json", JSON.encode({ written_at = 499, bookmarks = { { id = 21 } }, annotations = {} }))
+        OfflineApi.forget()
+        local bm4 = api:listBookmarks(4)
+        check(bm4 and #bm4 == 1 and bm4[1].title == "here", "a book's bookmarks from marks/<id>.json")
+        check(api:listBookmarks(2) == nil, "…but not from a file an older sync left (it would make bookmarks look deleted)")
+        check(Usb.outbox(fake).copy.marks_files == true, "the outbox asks the page for those files")
+        put(lib .. "/.gzsync/library.json", copy_text)
+        os.remove(lib .. "/.gzsync/marks/4.json"); os.remove(lib .. "/.gzsync/marks/2.json")
+        OfflineApi.forget()
+    end
     check(api:listBooks{ shelfId = 7 }.totalElements == 2 and api:listBooks{ magicShelfId = 8 }.content[1].id == 2
         and api:listBooks{ status = { "READING" } }.content[1].id == 1 and api:listBooks{ authors = "Jane Austen" }.totalElements == 2,
         "copy: shelves, magic shelves, reading status, author")

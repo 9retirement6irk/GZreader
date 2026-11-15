@@ -184,7 +184,9 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 UIManager:nextTick(startNext)
                 return
             end
-            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s")
+            local got = (lfs.attributes(dest_path, "size") or 0) - resume_from
+            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s",
+                secs > 0 and string.format("(%d KB/s)", math.floor(got / 1024 / secs + 0.5)) or "")
             -- (laid out in the background if the Kindle is charging: gzreader_layout.lua)
             pcall(function() require("gzreader_layout").schedule(plugin, 60) end)
         else

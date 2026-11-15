@@ -465,11 +465,14 @@ end
 local device_cache = {}
 
 local function deviceImage(name, w, h)
-    local key = name .. w .. "x" .. h
+    -- (on a colour screen: the drawing in colour, icons/shelf/colour)
+    local file = root .. "/icons/shelf/" .. View.SPECIAL[name].icon .. ".svg"
+    pcall(function() file = require("gzreader_colour").variant(file) end)
+    local key = file .. w .. "x" .. h
     if device_cache[key] then return device_cache[key] end
     local ok, bb = pcall(function()
         local RenderImage = require("ui/renderimage")
-        return RenderImage:renderSVGImageFile(root .. "/icons/shelf/" .. View.SPECIAL[name].icon .. ".svg", w, h)
+        return RenderImage:renderSVGImageFile(file, w, h)
     end)
     if not ok or not bb then return nil end
     device_cache[key] = bb

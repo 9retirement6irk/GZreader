@@ -173,7 +173,8 @@ function Update.get(u, path, accept)
         if path then
             local fh = io.open(path, "wb")
             if not fh then return nil, nil, "cannot write " .. path end
-            sink = ltn12.sink.file(fh)
+            -- (its speed every 15 s in the log: gzreader_xferlog.lua)
+            sink = require("gzreader_xferlog").sink(ltn12.sink.file(fh), "update")
         else
             sink = socketutil.table_sink(chunks)
         end

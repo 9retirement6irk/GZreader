@@ -320,5 +320,93 @@ print("== notepaper: a page's background, as memos keeps one")
     check(hs.ox == 0 and hs.oy == 0 and hs.per_unit == 2, "a drawing made here comes back where it was drawn")
 end)()
 
+print("== redo, the controls over the page, pen thicknesses")
+;(function()
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    run(sk, { { finger(0, 300, 400) }, { finger(0, 400, 460) }, { lift(0) } })
+    check(not sk:canRedo() and not sk:redo(), "nothing to redo before an undo")
+    check(sk:undo() and #sk:live() == 1 and sk:canRedo(), "undo: the last stroke gone, redo possible")
+    check(sk:redo() and #sk:live() == 2 and not sk:canRedo() and sk:canUndo(), "redo brings it back (and can be undone again)")
+    check(sk:undo() and sk:undo() and sk:isEmpty() and sk:redo() and sk:redo() and #sk:live() == 2, "two undos, two redos: both strokes back")
+    sk:undo()
+    run(sk, { { finger(0, 500, 600) }, { finger(0, 600, 660) }, { lift(0) } })
+    check(not sk:canRedo() and #sk:live() == 2, "a new stroke after an undo: nothing left to redo")
+    sk:clear()
+    check(sk:isEmpty() and sk:undo() and #sk:live() == 2 and sk:redo() and sk:isEmpty(), "Clear can be undone and redone")
+    sk:undo()
+    -- the toolbar and the page pill lie over the page: a contact there is a tap for them, never ink
+    sk.holes = { { x = 10, y = 120, w = 60, h = 400 } }
+    local before = #sk.strokes
+    local out = run(sk, { { finger(0, 30, 200) }, { finger(0, 32, 202) }, { lift(0) } })
+    check(#out.taps == 1 and out.taps[1].x == 30 and #sk.strokes == before, "a tap on the toolbar (over the page) goes to it and draws nothing")
+    out = run(sk, { { finger(0, 30, 200) }, { finger(0, 300, 500) }, { lift(0) } })
+    check(#sk.strokes == before and #out.taps == 0, "a contact that starts on the toolbar never draws, wherever it goes")
+    out = run(sk, { { finger(0, 300, 300) }, { finger(0, 320, 330) }, { lift(0) } })
+    check(#sk.strokes == before + 1, "beside it, the page draws as before")
+    check(not sk:inCanvas(30, 200) and sk:inCanvas(300, 300) and not sk:inCanvas(500, 40), "inCanvas: on the page and not under a control")
+    -- thicknesses: five, from very fine to very thick; a stroke keeps the one it was drawn with
+    check(#Sketch.WIDTHS == 5 and Sketch.WIDTHS[1] == 0.5 and Sketch.WIDTHS[3] == 2 and Sketch.WIDTHS[5] == 7, "five pen thicknesses (0.5 to 7; memos' own 1, 2 and 4 among them)")
+    sk.holes = nil
+    sk:setWidth(7)
+    run(sk, { { finger(0, 600, 300) }, { finger(0, 700, 330) }, { lift(0) } })
+    sk:setWidth(0.5)
+    run(sk, { { finger(0, 600, 500) }, { finger(0, 700, 530) }, { lift(0) } })
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local widths = {}
+    for _i, el in ipairs(scene and scene.elements or {}) do if el.type == "freedraw" then widths[#widths + 1] = el.strokeWidth end end
+    check(widths[#widths] == 0.5 and widths[#widths - 1] == 7, "…written into the drawing as memos' stroke widths (7 and 0.5)")
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local live = again:live()
+    check(live[#live].width == 0.5 and live[#live - 1].width == 7, "…and read back as drawn")
+end)()
+
+print("== pen colours (colour screens): memos' own palette")
+;(function()
+    local ids, vals = {}, {}
+    for i, c in ipairs(Sketch.COLORS) do ids[i], vals[i] = c.id, c.value end
+    check(table.concat(ids, ",") == "ink,gray,red,orange,green,teal,blue,violet"
+        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#2f9e44,#0c8599,#1971c2,#7048e8",
+        "the colours are memos' ink and its drawing editor's seven hues")
+    check(Sketch.inkColor("#E03131") == "#e03131" and Sketch.inkColor("#1a1a1a") == nil and Sketch.inkColor("#1A1A1A") == nil
+        and Sketch.inkColor("red") == nil and Sketch.inkColor(nil) == nil and Sketch.inkColor("#12345") == nil and Sketch.inkColor(5) == nil,
+        "a colour is kept as #rrggbb in lower case; memos' ink (and anything that isn't a colour) is no colour")
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    local segs = {}
+    local function draw(frames)
+        segs = {}
+        for i, f in ipairs(frames) do
+            for _j, seg in ipairs(sk:frame(f, i * 0.01).segments) do segs[#segs + 1] = seg end
+        end
+    end
+    draw({ { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    check(sk.color == nil and sk:live()[1].color == nil and #segs > 0 and segs[1][6] == nil, "a new drawing draws in memos' ink")
+    sk:setTool("eraser")
+    sk:setColor("#1971C2")
+    check(sk.color == "#1971c2" and sk.tool == "pen", "choosing a colour takes the pen")
+    draw({ { finger(0, 300, 400) }, { finger(0, 400, 460) }, { finger(0, 450, 500) }, { lift(0) } })
+    local live = sk:live()
+    check(#live == 2 and live[2].color == "#1971c2" and live[1].color == nil, "the next stroke is blue; the one before stays as it was")
+    local all_blue = #segs > 0
+    for _i, seg in ipairs(segs) do if seg[6] ~= "#1971c2" then all_blue = false end end
+    check(all_blue, "…and each piece drawn says so (the screen and the PNG paint it in that colour)")
+    sk:setColor("#1a1a1a")
+    run(sk, { { finger(0, 500, 600) }, { finger(0, 600, 660) }, { lift(0) } })
+    check(sk.color == nil and sk:live()[3].color == nil, "back to the ink")
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local cols = {}
+    for _i, el in ipairs(scene.elements) do if el.type == "freedraw" then cols[#cols + 1] = el.strokeColor end end
+    check(table.concat(cols, ",") == "#1a1a1a,#1971c2,#1a1a1a", "written into the drawing as memos' stroke colours: " .. table.concat(cols, ","))
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local l2 = again:live()
+    check(l2[1].color == nil and l2[2].color == "#1971c2" and l2[3].color == nil, "…and read back (a stroke coloured in Memos keeps its colour here too)")
+    again:undo()
+    check(again:scene().elements and true, "an opened drawing still saves")
+    -- a coloured stroke undone and redone keeps its colour
+    sk:undo(); sk:undo()
+    sk:redo()
+    check(sk:live()[2].color == "#1971c2", "undo and redo keep a stroke's colour")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

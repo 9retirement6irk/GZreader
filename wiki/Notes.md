@@ -16,14 +16,22 @@ API to `/api` are found too.
   to the log. An address without `https://` falls back to `http://` for a
   Memos on your home network.
 - **Board:** the letter on a note (Q, W, E…) opens it, ◀ ▶ (or the page keys) turn pages, the 5-way
-  moves around the notes. **N** new note, **F** filter, **L** layout, **S** sort, **M** connection
-  (the Menu key opens the quick panel in tab views).
-  Touch Kindles have buttons under the title instead: **Note** (a new note),
-  **Draw** (a new note that opens on a page to draw on), **Filter**, **Layout**,
-  **Sort**, **Connection**, and an icon for **Full screen** (an **X** while in full screen, to leave it).
-  A Kindle 4 has neither letter keys nor buttons: its **Menu** key on the board
-  opens New note, Filter…, Layout, Sort…, Full screen and Connection….
-- **Connection** (the button, M, or Menu → Connection… on a Kindle 4): your
+  moves around the notes.
+  - **Keyboard Kindles:** **N** new note, **J** journal entry, **K** search, **G** tags,
+    **D** only the notes with drawings (again: all), **A** all notes, **F** filter,
+    **L** layout, **S** sort, **M** connection. **H** lists every key. (Z X C V B
+    switch the bottom tabs; the Menu key opens the quick panel.)
+  - **Touch Kindles** have one row of buttons under the title: **Note** (a new
+    note), **Draw** (a new note that opens on a page to draw on) and
+    **Journal** (a journal entry), then icons for **Sort**, **Filter**,
+    **Layout**, **Search** and **Full screen** (an **X** while in full screen,
+    to leave it). Under it a row chooses what's shown: **All**, your three
+    most used tags (and the tag being shown), and **Drawings** (only the
+    notes with a drawing; tap it again for all). The one in use is in bold.
+  - A **Kindle 4** has neither letter keys nor buttons: its **Menu** key on the board
+    opens New note, Journal entry, Search…, Tags…, Only notes with drawings,
+    Filter…, Layout, Sort…, Full screen and Connection….
+- **Connection** (Filter → Memos connection… on a touch Kindle, M, or Menu → Connection… on a Kindle 4): your
   Memos account only: **Refresh** (with how many changes are waiting to be
   sent), **Connect again** (a new address or access token) and
   **Disconnect** (asks first; the notes kept on the Kindle are removed, your
@@ -50,6 +58,12 @@ API to `/api` are found too.
   - On the Kindles with keys a page holds at most ten notes, one per letter
     Q–P. After a change, the board shows the page with the note that was
     first on screen. The choice is kept.
+  - **Scroll up and down** (touch Kindles, compact notes; off until you
+    turn it on): the Notes tab becomes one long page. A swipe or a drag up
+    or down moves the notes exactly as far as your finger went; notes cut
+    off at the top and bottom show there's more (a part of the next row
+    always shows). There's no page number or arrows under the notes. A swipe
+    sideways moves most of a screenful. Full notes keep their pages.
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings
@@ -77,13 +91,20 @@ API to `/api` are found too.
     next item in a list; Enter on an empty item ends the list). ⌫ at the
     start of a line joins it to the line before. Swipe up or down to scroll a
     long note.
-  - The toolbar works on the selection, or on the cursor's line or word:
-    - **H Head** makes the lines a heading, then a smaller one, then text again.
-    - **• List**, **☐ Check** and **1. Num** make the lines list items; tap the
-      same one again to make them text.
-    - **B** and ***I*** make the selection bold or italic (or the word at the
-      cursor; with no word there, what you type next).
-    - **# Tag** adds a tag at the cursor.
+  - **The formatting bar** comes up at what you hold: a word (drag for
+    more), or an empty line for the line itself. It works on the selection,
+    or on the cursor's line:
+    - **B** and ***I*** make the selection bold or italic.
+    - **H** makes the lines a heading, then a smaller one, then text again.
+    - **•**, **☐** and **1.** make the lines a list, a checklist or a numbered
+      list; tap the same one again to make them text.
+    - **#** adds a tag at the cursor.
+    The button in use is black. The bar stays for another button; a tap on
+    the text, or typing, puts it away. (It sits above the selection, or
+    under it on the first line, where it covers the next line until it goes.)
+  - The row under the title shows the note's **sheets** (its drawings) as
+    small pictures: tap one to draw on it; **✎ Draw** adds the first.
+    **Save** is at its right.
   - Code, quotes, tables and pictures show as their Markdown in grey and edit
     as text.
   - Save writes the note the way Memos' rich editor writes it. Lines you
@@ -122,23 +143,39 @@ API to `/api` are found too.
   computer it goes with the next sync. Hide the tile in **Settings →
   Interface → Quick panel**.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
-  tab, or **✎ Draw** in a note's editor (beside who can see it), for a page
-  to draw on, with **Thin**, **Medium** and **Thick**, **Eraser** (rubs out
-  whole strokes, as in Memos), **Undo** and **Clear**. **Done** keeps the
-  drawings with the note (the button says **✎ Drawing**, or **✎ Drawings (2)**;
-  tap it to go on drawing) and **Save** sends them all. A note can be just
-  drawings.
-  - **Pages:** **+ New page** adds another drawing to the note; **◀ ▶** go
-    between them (*Page 1 of 2*). In Memos each page is a drawing of its own,
+  tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
+  be just drawings.
+  - **At the top:** **✕** (leave without keeping what you drew), the note's
+    name and the page's paper, and **Done** (keeps the drawings with the
+    note; **Save** in the editor sends them).
+  - **The toolbar at the side:** the **pen** (tap it again for five
+    thicknesses; the one you choose is kept; on a Kindle with a colour
+    screen also eight **colours**, the ink and the seven of Memos' drawing
+    editor, shown on the pen's button and kept too), the **eraser** (rubs out whole
+    strokes, as in Memos; tap it again for **Clear page**), **Undo** and
+    **Redo**, **Paper**, **All pages**, a button that puts the toolbar on the
+    **other side** (for the other hand; kept), and one that **hides** it (a
+    small button brings it back). Nothing is drawn under the toolbar: start
+    a stroke beside it.
+  - **The bar at the bottom:** ◀, the page (**2 / 3**), ▶ and **+** for a new
+    page after this one.
+  - **All pages:** every page as a small picture, three across. Tap one to
+    choose it, tap it again (or **Open**) to go to it. **+ Add after**,
+    **Duplicate**, **◀ Move**, **Move ▶** and **Delete** (asks first) work on
+    the chosen page. Memos gets the pages in this order.
+  - **Pages:** in Memos each page is a drawing of its own,
     in the order of the pages (Memos v0.31 and newer: GZreader sets the
     order after sending, since Memos lists a note's newest attachment first). A page rubbed out to nothing is left out (or
     taken off the note, when it's already in Memos).
-  - **Paper:** the button with the page's paper (**Blank paper ▾** on a new
-    page) puts it on **College ruled**, **Wide ruled**, **Gregg ruled**,
-    **Dot grid** or **Graph** paper, or back to **Blank**. New pages start on
+  - **Paper:** shows each paper as a picture: **Blank**, **College ruled**,
+    **Wide ruled**, **Gregg ruled**, **Dot grid**, **Graph**, **Checklist**
+    and **Cornell notes**. Tap one to put the page on it. New pages start on
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
     under everything), so Memos shows and keeps it; on the Kindle it's grey.
+    **Your own paper:** put a PNG file in `koreader/settings/gzreader-notepaper`
+    on the Kindle (at most 1440 pixels on its longer side and 600 KB); it's
+    offered after the others, named after the file.
     On paper you draw only on the paper: a stroke stops at its edge and goes
     on where it comes back onto it. In Memos it's an attachment named
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
@@ -146,7 +183,7 @@ API to `/api` are found too.
   as a picture. Until it's sent, the board shows the note with the drawing.
   - **Editing drawings** (touch Kindles): **Edit** on a note with drawings
     opens them, a page each (pictures added in Memos show too). Draw more, rub out (strokes made in Memos too),
-    Undo, Clear; **Done** goes back to the note's text and **Save** sends
+    Undo, Redo, Clear page; **Done** goes back to the note's text and **Save** sends
     both. The new drawing goes over the old one in Memos (the same
     attachment, as Memos' Edit drawing does); an older Memos gets it added
     and the old one taken off; someone else's drawing keeps theirs and gets
@@ -158,18 +195,52 @@ API to `/api` are found too.
     note with a drawing shows its heading (if it has one) and the drawing
     as big as the note allows; **Layout → Full** shows it bigger, with all
     the note's text. Open the note for everything: its text, then the
-    drawing as wide as the page (tap it to see it on its own). Drawings come
-    down by themselves on Wi‑Fi, like the notes' other pictures.
+    drawing as wide as the page (tap it to see it on its own). A note with
+    several shows them one under another, each with its page (*Page 2 of 3*).
+    Drawings come down by themselves on Wi‑Fi, like the notes' other pictures.
+  - **Kindles without a touch screen** (keyboard Kindles, the Kindle 4) show
+    drawings and never change them: every page is in the note (its letter,
+    or ▲ ▼ and Press, opens one full screen), there is no Draw, and Edit
+    opens the note's text and leaves its drawings as they are.
+  - **Colours:** Memos gets each stroke in its colour. A stroke coloured
+    in Memos keeps its colour when the drawing is saved from any Kindle; a
+    black-and-white screen shows it in black.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
     rejection). The pen's other end rubs out. With the pen away, a finger
-    can tap the buttons at the top.
+    can tap the buttons.
   - **With a finger** (every other touch Kindle): one finger draws; a second
     finger at the same time is ignored.
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
-- **Filters:** tag, date (today, 7 days, 30 days, a year), pinned and search
+- **Journal** (the **Journal** button, **J**, or Menu → Journal entry on a
+  Kindle 4): a journal entry, as the journaling mode of the Memos fork at
+  [github.com/9retirement6irk/memos](https://github.com/9retirement6irk/memos)
+  makes them.
+  - **How have you felt?** **Overall today** or **Right now**, and seven
+    steps from *very unpleasant* to *very pleasant* (the chosen step again
+    takes it back). With a step chosen: **What best describes this feeling?**
+    (the ten words nearest the step; **More feelings…** has them all) and
+    **What's behind it…** (work, family, health…).
+  - **What did you do?** your activities. **Goals:** tick the ones you did.
+  - A **prompt** (**Another prompt** for the next one) and **Write about
+    it…**, a box for the words.
+  - **Save** makes a private note: the prompt as a quote and your words, the
+    goals as a checklist, then the tags, like
+    `#mood/pleasant #mood/today #felt/grateful #impact/work #did/reading`.
+    It's written exactly as the fork's web editor writes an entry, so its
+    Insights count entries from the Kindle; any Memos shows it as a note.
+  - With that fork, your **activities, goals, tag prefixes, hidden causes,
+    whether a prompt and a date heading are used, and your journal space**
+    come from Memos at each sync (Settings → Journal in its web app), and
+    entries go to the journal space. With stock Memos the fork's defaults
+    are used. Place and weather aren't added on the Kindle.
+  - Every button works with a tap, or with the 5-way and Press. On a
+    keyboard Kindle: **Alt+Q … U** (1–7) the step, **T** today / right now,
+    **F** feelings, **I** what's behind it, **A** what you did, **G** goals,
+    **P** another prompt, **W** write, **S** save. Back asks whether to save.
+- **Filters:** **Drawings** (the notes with a drawing), tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).
   **Space…** (when your Memos has spaces): **No space** or one of your

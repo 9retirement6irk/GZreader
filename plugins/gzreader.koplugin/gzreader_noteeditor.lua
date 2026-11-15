@@ -296,6 +296,7 @@ function Editor:init()
             Log.warn("notes: not read as blocks, editing Markdown:", tostring(doc))
         end
     end
+    if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
         if self.rich then
@@ -458,14 +459,14 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
-                self:canDraw() and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
+                (self:canDraw() and not self.rich) and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
                     background = self:hasDrawing() and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
                     TextWidget:new{ text = self:drawingLabel(),
                         face = Font:getFace("cfont", 15), bold = true,
                         fgcolor = self:hasDrawing() and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
                     function() self:openDrawing() end)
                     or HorizontalSpan:new{ width = 0 },
-                HorizontalSpan:new{ width = self:canDraw() and S(8) or 0 },
+                HorizontalSpan:new{ width = (self:canDraw() and not self.rich) and S(8) or 0 },
                 self.has_spaces and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 3)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
@@ -483,7 +484,13 @@ function Editor:drawChrome()
     local bar = HorizontalGroup:new{ align = "center" }
     local save_w = S(70)
     local tools = self:tools()
-    local tool_w = math.floor((self.inner - save_w - S(10)) / #tools)
+    local tool_w = math.floor((self.inner - save_w - S(10)) / math.max(1, #tools))
+    if self.rich then
+        -- the formatted page: formatting comes up at the selection (gzreader_richedit.lua's bar);
+        -- this row is the note's sheets (its drawings), and Save
+        local strip = self:sheetStrip(self.inner - save_w - S(10))
+        bar[#bar + 1] = LeftContainer:new{ dimen = Geom:new{ w = self.inner - save_w - S(10), h = self.tool_h }, strip }
+    end
     for i, t in ipairs(tools) do
         local focused = self.focus_tool == i
         local fg = focused and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
@@ -538,8 +545,73 @@ function Editor:redraw()
     UIManager:setDirty(self, function() return "ui", self:area() end)
 end
 
---- The toolbar's tools: the formatting tools on touch Kindles, the Markdown ones otherwise.
-function Editor:tools() return self.rich and NoteEditor.RICH_TOOLS or NoteEditor.TOOLS end
+--- The toolbar's tools: the Markdown ones (keyboard Kindles, a quick note's window). The
+--- formatted page has none in a row: its bar comes up at the selection.
+function Editor:tools() return self.rich and {} or NoteEditor.TOOLS end
+
+--- The note's sheets shown in the editor: { page (its number), path (its picture, if it's here) }.
+function Editor:sheets()
+    local Memos = require("gzreader_memos")
+    local out = {}
+    if self.pages then
+        for _i, p in ipairs(self.pages) do
+            if not p.removed then out[#out + 1] = { page = #out + 1, path = p.path or (p.att and Memos.filePath(p.att)) } end
+        end
+    else
+        for i, att in ipairs(self.drawing_atts or {}) do out[i] = { page = i, path = Memos.filePath(att) } end
+    end
+    return out
+end
+
+NoteEditor.STRIP_THUMBS = 3 -- sheets pictured in the editor's strip (the rest: "… of n")
+
+--- The formatted page's row under the title: the note's sheets as small pictures (a tap
+--- opens that page to draw on), their count, and "New sheet" for a note without any.
+--- Without drawing (not connected, a pen-less Kindle): how formatting works.
+function Editor:sheetStrip(width)
+    local row = HorizontalGroup:new{ align = "center" }
+    local sheets = self:sheets()
+    self.strip = { thumbs = 0, label = nil }
+    local function label(text, bold, gray)
+        return TextWidget:new{ text = text, face = Font:getFace("cfont", 15), bold = bold,
+            fgcolor = gray and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK, max_width = math.floor(width * 0.6) }
+    end
+    if #sheets == 0 and not self:canDraw() then
+        row[1] = label(_("Hold a word to format it. Drag to choose more."), false, true)
+        return row
+    end
+    local th = self.tool_h - S(8)
+    local tw = math.floor(th * 0.77)
+    if self:canDraw() or #sheets > 0 then
+        local Sticky = require("gzreader_sticky")
+        local ImageWidget = require("ui/widget/imagewidget")
+        for i, sh in ipairs(sheets) do
+            if i > NoteEditor.STRIP_THUMBS then break end
+            local bb = sh.path and Sticky.picture(sh.path, tw - 2, th - 2, 1)
+            local inside = bb and ImageWidget:new{ image = bb, image_disposable = true }
+                or TextWidget:new{ text = tostring(sh.page), face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+            local cell = FrameContainer:new{ width = tw, height = th, padding = 0, margin = 0, bordersize = Size.border.thin,
+                background = Blitbuffer.COLOR_WHITE, CenterContainer:new{ dimen = Geom:new{ w = tw - 2, h = th - 2 }, inside } }
+            row[#row + 1] = self:canDraw() and tapTarget(cell, function() self:openDrawing(sh.page) end) or cell
+            row[#row + 1] = HorizontalSpan:new{ width = S(6) }
+            self.strip.thumbs = self.strip.thumbs + 1
+        end
+    end
+    local text
+    if #sheets == 0 then text = "\u{270E} " .. _("Draw")
+    elseif #sheets == 1 then text = "\u{270E} " .. _("1 sheet")
+    else text = "\u{270E} " .. T(_("%1 sheets"), #sheets) end
+    self.strip.label = text
+    local chip = FrameContainer:new{ padding = S(6), radius = S(6), bordersize = self:canDraw() and Size.border.thick or 0,
+        label(text, true) }
+    row[#row + 1] = self:canDraw() and tapTarget(chip, function() self:openDrawing() end) or chip
+    if #sheets == 0 then
+        row[#row + 1] = HorizontalSpan:new{ width = S(10) }
+        row[#row + 1] = TextWidget:new{ text = _("Hold a word to format it"), face = Font:getFace("cfont", 13),
+            fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = math.max(S(40), width - chip:getSize().w - S(14)) }
+    end
+    return row
+end
 
 --- The note as Markdown (formatted: written back as Memos' rich editor writes it).
 function Editor:text()
@@ -556,9 +628,7 @@ end
 
 function Editor:useTool(i)
     if self.rich then
-        local t = NoteEditor.RICH_TOOLS[i]
-        if not t then return self:save() end
-        return self.input:useTool(t.id)
+        return self:save() -- (its row has only Save: formatting is the bar at the selection)
     end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
@@ -711,7 +781,7 @@ end
 
 function Editor:changed()
     return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
-        or #self:drawingChanges() > 0
+        or #self:drawingChanges() > 0 or self.pages_reordered == true
 end
 
 --- Draw: on touch Kindles, when the caller allows it (a new note, or one
@@ -745,8 +815,9 @@ function Editor:drawingChanges()
         if p.removed and p.att then out[#out + 1] = { att = p.att, removed = true }
         elseif p.changed and p.path then out[#out + 1] = { att = p.att, path = p.path, filename = p.filename } end
     end
-    -- the pages' order (Memos lists a note's attachments newest first: put back in this order)
-    if #out > 0 then
+    -- the pages' order (Memos lists a note's attachments newest first: put back in this order;
+    -- pages only moved: their order alone)
+    if #out > 0 or self.pages_reordered then
         out.order = {}
         for _i, p in ipairs(self.pages or {}) do
             local f = p.filename or (p.att and p.att.filename)
@@ -754,6 +825,15 @@ function Editor:drawingChanges()
         end
     end
     return out
+end
+
+--- The note's name: its first line of words, without Markdown's marks (nil when it has none yet).
+function Editor:heading()
+    for line in (self:text() or ""):gmatch("[^\n]+") do
+        local t = line:gsub("^%s*#+%s*", ""):gsub("^%s*[-*]%s+%[.%]%s*", ""):gsub("^%s*[-*>]%s+", ""):gsub("[*_`]", "")
+        t = t:gsub("^%s+", ""):gsub("%s+$", "")
+        if t ~= "" and t ~= "&nbsp;" then return #t > 48 and (t:sub(1, 48):gsub("[\128-\191]*$", "") .. "…") or t end
+    end
 end
 
 --- Opens the drawing screen (the note's drawings, or a new page); the
@@ -785,7 +865,10 @@ function Editor:openDrawing(page)
     DrawScreen.show{
         pages = self.pages,
         start = page,
+        title = self:heading(),
         on_done = function(res)
+            if res.reordered then self.pages_reordered = true end
+            res.reordered = nil
             self.pages = res
             back()
         end,
@@ -852,7 +935,7 @@ function Editor:save()
     if self.on_save then
         local drawings = self:drawingChanges()
         self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
-            #drawings > 0 and drawings or nil)
+            (#drawings > 0 or drawings.order) and drawings or nil)
     end
 end
 

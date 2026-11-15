@@ -57,6 +57,26 @@ local Grimmory = WidgetContainer:extend{
     is_doc_only = false,
 }
 
+--- Kindles with 128 MB or less (Kindle 2, DX; MemTotal at most
+--- LOW_MEM_KB): LuaJIT's garbage collector starts a cycle when the heap has
+--- grown to GC_PAUSE % of what was live after the last one (Lua's default
+--- 200: twice). There it's 120, so the Lua heap's peak stays lower, for a
+--- little more collecting. total_kb: MemTotal (read from /proc/meminfo when
+--- nil). Returns the pause set, or nil (other Kindles: unchanged).
+Grimmory.GC_PAUSE_LOW = 120
+Grimmory.LOW_MEM_KB = 160 * 1024 -- a Kindle 3 has 256 MB, a DX 128 MB
+function Grimmory.tuneGC(total_kb)
+    if total_kb == nil then
+        local f = io.open("/proc/meminfo", "r")
+        local s = f and f:read("*a") or ""
+        if f then f:close() end
+        total_kb = tonumber(s:match("MemTotal:%s*(%d+)"))
+    end
+    if not total_kb or total_kb > Grimmory.LOW_MEM_KB then return nil end
+    collectgarbage("setpause", Grimmory.GC_PAUSE_LOW)
+    return Grimmory.GC_PAUSE_LOW
+end
+
 function Grimmory:init()
     -- One settings object for the whole run, shared by every instance: KOReader
     -- creates a new plugin instance for each FileManager/ReaderUI, and a
@@ -70,6 +90,8 @@ function Grimmory:init()
         Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
             "device", tostring(Device.model))
         pcall(function() require("gzreader_timezone").apply() end)
+        local pause = Grimmory.tuneGC()
+        if pause then Log.info("memory: 128 MB Kindle, garbage collector pause", pause) end
     end
     pcall(Net.start)
     if not Grimmory.layout_scheduled then
@@ -83,6 +105,15 @@ function Grimmory:init()
         UIManager:scheduleIn(15, function() pcall(function() require("gzreader_remote").forgetUsage() end) end)
     end
     self.settings = Grimmory.shared_settings
+    -- a book opening (this instance is its reader's): the library copy let go
+    -- before the book is laid out (gzreader_offlineapi.lua)
+    if self.ui and self.ui.document and package.loaded["gzreader_offlineapi"] then
+        local OA = package.loaded["gzreader_offlineapi"]
+        if OA.held() then
+            OA.forget()
+            Log.info("library copy: let go while a book opens")
+        end
+    end
     require("gzreader_audioengine").root = self.path
     if Device.gz_menu_perpage and not Grimmory.dx_lists then
         -- (the DX: more to a list's page, the text as big as 14 to a page on a 6" Kindle)
@@ -1820,6 +1851,12 @@ end
 
 function Grimmory:onEndOfBook()
     if self.sync and self:syncEnabled() then self.sync:push(true) end
+end
+
+--- The status bar hidden or shown with a tap: a book with fitted pictures
+--- may give them its room (Fit pictures → Bigger when the bars are hidden).
+function Grimmory:onReaderFooterVisibilityChange()
+    pcall(function() require("gzreader_picturebook").onBarsChanged(self.ui) end)
 end
 
 function Grimmory:onCloseDocument()

@@ -69,7 +69,7 @@ jobs:
 
   merge:
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # (ubuntu-26.04, where ubuntu-latest is moving, has no qemu-user-static package)
     timeout-minutes: 100
     strategy:
       fail-fast: false

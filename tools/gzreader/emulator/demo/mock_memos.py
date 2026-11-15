@@ -18,7 +18,7 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /file/attachments/<uid>/<filename>
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
-  python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces]
+  python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces] [--journal] [--drawings]
 
 --sample fills it with a few notes (with a picture and a PDF), as in the
 mockup. --many N adds N long notes (a big account: replies over 64 KB). --prefix /api serves the newer layout (no /api/v1) instead. --memos26 is
@@ -42,6 +42,18 @@ if "--prefix" in sys.argv:
 MEMOS26 = "--memos26" in sys.argv
 SPACES = "--spaces" in sys.argv
 OLD_UPLOAD = "--old-upload" in sys.argv
+# --journal: a Memos with journaling mode (github.com/9retirement6irk/memos): each user's
+# journal settings at /api/journal/settings (beside the API, not under it)
+JOURNAL = "--journal" in sys.argv
+JOURNAL_SETTINGS = {
+    "space": "spaces/family" if "--spaces" in sys.argv else "",
+    "openInJournalMode": True, "moodTagPrefix": "mood/", "feelingTagPrefix": "felt/", "impactTagPrefix": "impact/",
+    "hiddenImpacts": ["dating"], "activityTagPrefix": "did/",
+    "activities": [{"id": "work", "label": "Work", "icon": "briefcase"}, {"id": "reading", "label": "Reading", "icon": "book-open"},
+                   {"id": "walk", "label": "A walk", "icon": "tree"}, {"id": "family", "label": "Family", "icon": "users"}],
+    "goals": ["Read 20 pages", "Stretch"], "showPrompt": True, "dateHeading": False,
+    "reminderToken": "not-for-the-kindle",
+}
 UPLOADS = {}  # upload id -> {spec, data}
 # (the spaces user 1 is a member of; "spaces/other" exists but isn't theirs)
 SPACE_LIST = [
@@ -155,6 +167,11 @@ def sample():
     add("The view from the ridge, for the sleep screen.\n\n![ridge](/file/attachments/ridge/ridge.png)\n\n#travel",
         ago=timedelta(days=8), place="Blood Mountain", attachments=[pic])
     add("Ask the library about the large-print edition. #reading", ago=timedelta(days=40))
+    if "--drawings" in sys.argv:
+        # (a note with two sheets, as drawn on a touch Kindle: pictures named like memos' drawings)
+        add("## Shelf sketch\n\nTwo pages of measurements. #ideas", ago=timedelta(hours=1), attachments=[
+            attachment("sheet1", "drawing-20261114-100000.canvas.png", "image/png", png(300, 388)),
+            attachment("sheet2", "drawing-20261114-100500.canvas.png", "image/png", png(300, 388))])
     if SPACES:
         add("Grocery run Saturday: who needs what?\n\n- [ ] milk\n- [ ] coffee", visibility="SPACE",
             ago=timedelta(hours=3), space="spaces/family")
@@ -297,6 +314,12 @@ class H(BaseHTTPRequestHandler):
                 return self.send(404, {"message": "not found"})
             typ = "application/pdf" if data.startswith(b"%PDF") else "image/png"
             return self.send(200, ctype=typ, raw=data)
+        if u.path == "/api/journal/settings":
+            if not JOURNAL:  # (stock Memos: its web page, or no such address)
+                return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            if not self.authed():
+                return
+            return self.send(200, JOURNAL_SETTINGS)
         p = self.api(u.path)
         if p is None:
             return self.missing(u)

@@ -112,6 +112,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   and other local work at 19), so a TLS handshake (seconds of CPU on a Kindle 3) doesn't hold up
   page turns.
 
+- On Kindles with 128 MB or less (Kindle 2, DX), Lua's garbage collector
+  starts a cycle once memory has grown by 20% since the last one, instead of
+  Lua's default 100% (`collectgarbage("setpause", 120)`, set when GZreader
+  starts): a lower peak, for a little more CPU.
+
 - Night mode on the Kindle 2, DX and Keyboard is done while packing the
   shadow screen (above). On the Kindle 4 (no shadow screen) it stays off and
   can't be switched on: it has no hardware screen inversion, and KOReader's
@@ -121,6 +126,12 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   worth of books; JSON null still decodes to nil, and lists that must stay
   lists when empty are marked with `Json.list()`. LuaJSON is used if
   rapidjson doesn't load or refuses something.
+- **The library copy on Kindles without Wi‑Fi** (`gzreader_offlineapi.lua`):
+  decoded (rapidjson) when the Grimmory tab or a sync needs it, let go a
+  minute after its last use and when a book starts to open, instead of
+  staying in memory for the whole run (several MB of Lua tables for a big
+  library on a DX with 2–3 MB free). The sync page writes each book's
+  bookmarks and highlights to `marks/<id>.json`, read only for that book.
 
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in
@@ -167,3 +178,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   goes off, GZreader is gone, or after 5 idle minutes.
 - The first open of a big EPUB is slow (crengine renders and caches it; 28 s
   seen for a large book). Later opens use the cache.
+- On a Kindle without Wi‑Fi (Kindle 2, DX), the sync page's outbox is written
+  on every save. It's filled from GZreader's own settings, without loading the
+  calendar, updater, copying, automatic shelf or Plex code just for a field
+  or two; the version and this Kindle's name are worked out once per start.

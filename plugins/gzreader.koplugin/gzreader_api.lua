@@ -683,7 +683,8 @@ function Api:downloadToFile(book_id, path, resume)
     if have > 0 then headers["Range"] = "bytes=" .. have .. "-" end
     local code, _, resp_headers, status = rawRequest("GET", self.store.server .. "/api/v1/books/" .. tostring(book_id) .. "/download", {
         headers = headers,
-        sink = ltn12.sink.file(fh), -- closes the file when the transfer ends
+        -- (closes the file when the transfer ends; its speed every 15 s in the log: gzreader_xferlog.lua)
+        sink = require("gzreader_xferlog").sink(ltn12.sink.file(fh), "book " .. tostring(book_id)),
         timeouts = { 30, -1 },      -- 30 s per block; no overall cap (big books on slow Wi-Fi)
     })
     if code == 206 or (code == 200 and have == 0) or (code == 416 and have > 0) then return true end

@@ -37,13 +37,16 @@ local function key(e, label)
         end
     end
 end
--- toolbar button `i` (1–7; 8: Save), from where it was drawn
+-- a button of the formatting bar that comes up at the selection (1: Head, 5: B), from where
+-- it was drawn; 8: Save, in the row under the title
+local BAR = { [1] = "heading", [5] = "bold" }
 local function tool(e, i)
-    local k = 0
-    for _j, w in ipairs(e.bar_slot[1]) do
-        if w.ges_events and w.dimen then
-            k = k + 1
-            if k == i then return centre(w.dimen) end
+    if i == 8 then return "Save" end
+    local r = e.input
+    local rect = r:barRect()
+    for k, t in ipairs(require("gzreader_richedit").BAR) do
+        if rect and t.id == BAR[i] then
+            return { r.dimen.x + rect.x + math.floor((k - 0.5) * rect.cell), r.dimen.y + rect.y + math.floor(rect.h / 2) }
         end
     end
 end
@@ -131,7 +134,12 @@ end, after = 2 })
 add({ fn = function(E)
     local e = editor()
     check(e.input.cur.b.kind == "heading" and e.input.cur.b.level == 1, "…then text, then heading 1")
-    E.tap((point(e, "Pack the tent and maps.", 3)))
+    E.tap((point(e, "water", 3))) -- (a tap on the text puts the bar away: it lay over the next line)
+end, after = 2 })
+add({ fn = function(E)
+    local e = editor()
+    check(e.input.bar_open == nil, "a tap on the text puts the formatting bar away")
+    E.hold((point(e, "Pack the tent and maps.", 3))) -- (the word, and the bar at it)
 end, after = 2 })
 add({ fn = function(E)
     local e = editor()

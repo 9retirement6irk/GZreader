@@ -136,6 +136,7 @@ function Memos:listAll(filter, max, order)
     local res = { memos = out }
     res.tags = self:tagCounts() -- nil if this Memos doesn't say
     res.spaces = self:spaces() -- nil: a Memos without spaces (before v0.31)
+    res.journal = self:journalSettings() -- false: a Memos without journaling mode (stock Memos)
     -- (run in a background process: the API address it found goes back with the notes)
     res.prefix = self.store.prefix
     return res
@@ -175,6 +176,24 @@ function Memos:spaces()
         token = type(data.nextPageToken) == "string" and data.nextPageToken ~= "" and data.nextPageToken or nil
     until not token or #out >= 500
     return out
+end
+
+--- Your journal settings from a Memos with journaling mode
+--- (github.com/9retirement6irk/memos: /api/journal/settings, beside the
+--- API, not under it): which space entries go to, tag prefixes, activities,
+--- goals. Only those (gzreader_journal.lua's Journal.settings); false when
+--- this Memos hasn't got it (stock Memos answers with its web page, or "not
+--- found"); nil when it didn't answer (what was known stays).
+function Memos:journalSettings()
+    if not (self.store.server and self.store.token) then return nil end
+    local Api = require("gzreader_api")
+    local code, data = Api.rawRequest("GET", self.store.server .. "/api/journal/settings", {
+        headers = { ["Authorization"] = "Bearer " .. self.store.token },
+        timeouts = { 10, 20 },
+    })
+    if code == 200 and type(data) == "table" then return require("gzreader_journal").settings(data) end
+    if code == 200 or code == 404 or code == 405 then return false end
+    return nil
 end
 
 --- Only what the Notes tab uses (the cache stays small).
