@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Fit pictures has options: pages bigger when the bars are hidden", text = "Fit pictures now opens its options while a book's pictures are fitted: Bigger when the bars are hidden (on: when a tap hides the title bar and the status bar, the pictures grow into their room, as much as the screen allows; the book is laid out again each time), Fit picture books when they're opened, and Turn off for this book. When the pictures aren't fitted, Fit pictures turns it on as before." },
             { short = "Fixed-layout books made from a PDF: no blank page after each page, pages fill the screen", text = "Fixed-layout EPUBs made from a PDF (each page a picture with an invisible text layer over it) showed a blank page after every page, and Fit pictures left the pages small at the left of the screen, cut off on the right. Such books are now recognized as picture books and fitted when they open: the invisible layer is hidden and each page fills the screen, centred. A book already fitted is fitted again once when it opens, and one GZreader 1.30.0 had found not to be a picture book is checked again. Fitting such a book no longer reads every picture in the background first (a 264 MB book was read for 13 minutes, slowing the Kindle)." },
         },
     },

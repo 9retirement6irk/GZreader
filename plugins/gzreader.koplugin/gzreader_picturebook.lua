@@ -230,6 +230,9 @@ function PB.layout(ui)
     -- (it doesn't when the status bar overlaps the page: then 0 is reserved,
     -- and 1.2.6 put the page under the clock)
     local zen_reserved = ui.document and tonumber(ui.document._zen_top_status_bar_reserved_height) or 0
+    -- (the title bar hidden with a tap and its room given to the pictures:
+    -- still ZenOS's to reserve when it shows again, PB.fillsHiddenBars)
+    if ui.document and ui.document._gz_top_freed then zen_reserved = math.max(zen_reserved, 1) end
     local top = (header_h > 0 and zen_reserved <= 0) and math.ceil(header_h / scale) + 2 or 0
     -- KOReader adds the status bar's height to the bottom margin, but only
     -- its height when the margins are set: it grows when its text appears
@@ -683,12 +686,80 @@ function PB.prefit(file, yes, wide, layers)
     return true
 end
 
+--- Options (Settings: the whole Kindle)
+--- Pictures bigger when the bars are hidden: a tap that hides the title bar
+--- and the status bar gives their room to the pictures (the book is laid out
+--- again: KOReader keeps the status bar's room in an EPUB while it's hidden,
+--- ZenOS the title bar's). On unless turned off.
+function PB.fillOn()
+    return G_reader_settings:readSetting("gzreader_pb_fill_hidden") ~= false
+end
+
+--- Does this open book's pictures take the room of hidden bars?
+function PB.fillsHiddenBars(ui)
+    if not ui or not PB.fillOn() then return false end
+    if ui.styletweak and PB.isOn(ui) then return true end
+    -- (while the book is still being set up: its saved style)
+    local ds = ui.doc_settings
+    local css = ds and ds:readSetting("book_style_tweak")
+    return ds ~= nil and ds:readSetting("book_style_tweak_enabled") == true and type(css) == "string"
+        and css:find(MARK_BEGIN, 1, true) ~= nil
+end
+
+--- The bars were hidden or shown: the book's margins set again, so the
+--- pictures grow into their room or make room for them.
+function PB.onBarsChanged(ui)
+    if not (ui and ui.document and ui.document.configurable and ui.handleEvent) then return end
+    if not PB.fillsHiddenBars(ui) then return end
+    local Event = require("ui/event")
+    Log.info("picture book: bars hidden or shown, pictures laid out again")
+    ui:handleEvent(Event:new("SetPageBottomMargin", ui.document.configurable.b_page_margin))
+end
+
+--- The options, shown by Fit pictures while a book's pictures are fitted.
+function PB.showOptions(ui)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local d
+    local function tick(on, text) return (on and "☑ " or "☐ ") .. text end
+    local function again() UIManager:close(d); PB.showOptions(ui) end
+    d = ButtonDialog:new{
+        title = _("Fit pictures to the screen"),
+        buttons = {
+            { { text = tick(PB.fillOn(), _("Bigger when the bars are hidden")), callback = function()
+                G_reader_settings:saveSetting("gzreader_pb_fill_hidden", not PB.fillOn())
+                Log.info("picture book: bigger when the bars are hidden", PB.fillOn() and "on" or "off")
+                -- (the bars may be hidden now: lay the book out for the new choice)
+                local Event = require("ui/event")
+                if ui.document and ui.document.configurable and ui.handleEvent then
+                    ui:handleEvent(Event:new("SetPageBottomMargin", ui.document.configurable.b_page_margin))
+                end
+                again()
+            end } },
+            { { text = tick(not G_reader_settings:isFalse("gzreader_picture_book_auto"), _("Fit picture books when they're opened")),
+                callback = function()
+                    G_reader_settings:saveSetting("gzreader_picture_book_auto",
+                        G_reader_settings:isFalse("gzreader_picture_book_auto"))
+                    again()
+                end } },
+            { { text = _("Turn off for this book"), callback = function()
+                UIManager:close(d)
+                PB.set(ui, false)
+            end } },
+            { { text = _("Close"), id = "close", callback = function() UIManager:close(d) end } },
+        },
+    }
+    UIManager:show(d)
+    return d
+end
+
 function PB.menuItem(ui)
     return {
         text_func = function()
             return PB.isOn(ui) and _("Fit pictures to the screen: on") or _("Fit pictures to the screen (picture books)")
         end,
         callback = function()
+            -- on: its options (and turning it off); off: on
+            if PB.isOn(ui) then return PB.showOptions(ui) end
             local on = not PB.isOn(ui)
             if PB.set(ui, on) and on and not PB.isOn(ui) then
                 -- (the pictures are measured first, in the background: say so,

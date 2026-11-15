@@ -134,6 +134,8 @@ function M.toggleTopBar(view)
         }
     end
     require("ui/uimanager"):setDirty(view.dialog, "ui", dimen)
+    -- GZreader: a fitted picture book takes (or gives back) the title bar's room
+    require("common/gz_header_reserve").topToggled(view)
 end
 
 -- Off <-> on regardless of all_at_once (stock tap cycles items when it's off).
