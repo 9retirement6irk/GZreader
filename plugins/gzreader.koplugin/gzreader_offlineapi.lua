@@ -17,6 +17,8 @@ The copy, as the page writes it:
     lists = { shelf = { [id] = { book ids } }, magic = { [id] = {…} },
               continue = { ids }, recent = { ids } },
     full = { [id] = GET /api/v1/books/{id} (books on the Kindle: positions) },
+    marks = { [id] = { bookmarks, annotations } } (books on the Kindle), or
+    marks_files = true and marks/<id>.json = { written_at, bookmarks, annotations },
     audio = { [id] = GET /api/v1/audiobooks/{id}/info },
     subtitles = { [id] = "…" } }
   details/<id>.json = GET /api/v1/app/books/{id} (a book's page)
@@ -35,13 +37,40 @@ function OfflineApi:new(store, on_change, dir)
     return setmetatable({ store = store, on_change = on_change or function() end, dir = dir, offline = true }, self)
 end
 
-local cache = { path = nil, mtime = nil, data = nil }
+--[[ Kept in memory only while it's used. Decoded, a big library's copy is
+several MB of Lua tables, on the Kindles with the least memory (a DX has 2–3
+MB free with a book open). So it's let go IDLE seconds after it was last
+used (it's decoded again, with rapidjson, the next time the Grimmory tab or
+a sync needs it), and when a book starts to open (main.lua), so the book
+engine has that memory to lay the book out. ]]
+OfflineApi.IDLE = 60
+local cache = { path = nil, mtime = nil, data = nil, used = 0 }
+--- (seconds on a clock that doesn't jump; tests set their own)
+function OfflineApi.clock() local T = require("ui/time"); return T.to_s(T.now()) end
+local function now() return OfflineApi.clock() end
 
---- The library copy (read again when the page wrote a new one), or nil.
+local dropWhenIdle
+function dropWhenIdle(delay)
+    if cache.timer or not cache.data then return end
+    local ok, UIManager = pcall(require, "ui/uimanager")
+    if not ok or not UIManager or not UIManager.scheduleIn then return end
+    cache.timer = function()
+        cache.timer = nil
+        if not cache.data then return end
+        local left = OfflineApi.IDLE - (now() - cache.used)
+        if left > 0.5 then return dropWhenIdle(left) end
+        OfflineApi.forget()
+    end
+    UIManager:scheduleIn(delay or OfflineApi.IDLE, cache.timer)
+end
+
+--- The library copy (read again when the page wrote a new one, or after it
+--- was let go), or nil.
 function OfflineApi:snapshot()
     local path = self.dir .. "/library.json"
     local mtime = lfs.attributes(path, "modification")
     if not mtime then return nil end
+    cache.used = now()
     if cache.path == path and cache.mtime == mtime and cache.data then return cache.data end
     local f = io.open(path, "rb")
     if not f then return nil end
@@ -54,10 +83,22 @@ function OfflineApi:snapshot()
         if type(b) == "table" and b.id ~= nil then data.by_id[tostring(b.id)] = b end
     end
     cache.path, cache.mtime, cache.data = path, mtime, data
+    OfflineApi.decoded = (OfflineApi.decoded or 0) + 1
+    dropWhenIdle()
     return data
 end
 
-function OfflineApi.forget() cache.path, cache.mtime, cache.data = nil, nil, nil end
+function OfflineApi.forget()
+    cache.path, cache.mtime, cache.data = nil, nil, nil
+    if cache.timer then
+        local ok, UIManager = pcall(require, "ui/uimanager")
+        if ok and UIManager and UIManager.unschedule then UIManager:unschedule(cache.timer) end
+        cache.timer = nil
+    end
+end
+
+--- Is the copy decoded in memory now?
+function OfflineApi.held() return cache.data ~= nil end
 
 -- Connected: a copy of the library is here (asked often: not read for it).
 function OfflineApi:isPaired() return lfs.attributes(self.dir .. "/library.json", "mode") == "file" end
@@ -349,10 +390,25 @@ function OfflineApi:deleteAnnotation(id)
     return true, nil, 204
 end
 
+--- A book's bookmarks and highlights in their own file (marks/<id>.json),
+--- when the page writes them so (the outbox asks: copy.marks_files): they
+--- aren't in library.json then, so they're decoded only for the book that
+--- needs them. Only a file written with this copy counts (a book's file from
+--- an older sync would make highlights look deleted).
+function OfflineApi:marksFile(book_id, snap)
+    local f = io.open(self.dir .. "/marks/" .. tostring(book_id):gsub("[^%w]", "") .. ".json", "rb")
+    if not f then return nil end
+    local ok, m = pcall(JSON.decode, f:read("*a"))
+    f:close()
+    if not ok or type(m) ~= "table" or m.written_at ~= snap.written_at then return nil end
+    return m
+end
+
 --- Grimmory's list (the page's copy) with the journal applied.
 function OfflineApi:marks(book_id, kind)
     local snap = self:snapshot()
     local m = snap and type(snap.marks) == "table" and snap.marks[tostring(book_id)]
+    if snap and snap.marks_files then m = self:marksFile(book_id, snap) end
     if type(m) ~= "table" or type(m[kind]) ~= "table" then return nil end -- (not in the copy yet: nothing to compare)
     local list, at = {}, {}
     for _i, x in ipairs(m[kind]) do

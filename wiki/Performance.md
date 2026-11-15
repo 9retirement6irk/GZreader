@@ -126,6 +126,12 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   worth of books; JSON null still decodes to nil, and lists that must stay
   lists when empty are marked with `Json.list()`. LuaJSON is used if
   rapidjson doesn't load or refuses something.
+- **The library copy on Kindles without Wi‑Fi** (`gzreader_offlineapi.lua`):
+  decoded (rapidjson) when the Grimmory tab or a sync needs it, let go a
+  minute after its last use and when a book starts to open, instead of
+  staying in memory for the whole run (several MB of Lua tables for a big
+  library on a DX with 2–3 MB free). The sync page writes each book's
+  bookmarks and highlights to `marks/<id>.json`, read only for that book.
 
 - The removed CJK font was still listed as a fallback, so every missing
   glyph made KOReader try to load it again (dozens of errors per screen in
