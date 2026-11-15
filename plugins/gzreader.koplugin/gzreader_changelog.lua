@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Slow downloads show why in the diagnostic log", text = "A book or update download now writes its speed to the diagnostic log every 15 seconds, with how busy the download and the whole processor were, the longest wait for data, and at the start whether Wi-Fi power saving is on, the network receive buffer and the processor's speed setting, so the cause of slow downloads (about 30 KB/s on a Paperwhite 3) can be found. Nothing is measured while diagnostic logging is off; no Wi-Fi network name is written." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },
