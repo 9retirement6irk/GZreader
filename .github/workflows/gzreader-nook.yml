@@ -106,7 +106,7 @@ jobs:
 
   package:
     needs: [koreader, launcher]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # (ubuntu-26.04, where ubuntu-latest is moving, has no qemu-user-static package)
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
