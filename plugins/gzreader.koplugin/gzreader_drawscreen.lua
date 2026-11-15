@@ -3,9 +3,15 @@ The drawing screen (touch Kindles): a page to draw on, saved as a memos
 drawing (`gzreader_drawing.lua`): a PNG named `drawing-…canvas.png` with the
 strokes inside, which memos opens as a drawing you can go on editing.
 
-  [Cancel] [Thin] [Medium] [Thick] [Eraser] [Undo] [Clear] [Done]
-  Draw with the pen. Your hand can rest on the screen.
-  ┌──────────────────────────── the page ───────────────────────────┐
+  [✕]  The note's name                                   [Done]
+  ┌──┐
+  │✎ │  the page, the whole screen under the top bar
+  │⌫ │
+  │↶ │  the tools down one side (icons): pen (again: its thickness),
+  │↷ │  eraser (again: Clear the page), undo, redo, paper, all pages,
+  │▤ │  move the toolbar to the other side, hide it
+  │▦ │
+  └──┘                 ( ◀  2 / 3  ▶  + )
 
 - A pen Kindle (the Scribe) draws with the pen only, and ignores the hand
   while the pen is near (palm rejection); the pen's other end rubs out.
@@ -14,18 +20,18 @@ strokes inside, which memos opens as a drawing you can go on editing.
   (it stands in for KOReader's gesture detector, which gets them back when
   the screen closes or a dialog covers it): `gzreader_sketch.lua` turns them
   into strokes, and new ink is put straight on the screen with the fastest
-  black-and-white refresh (A2).
+  black-and-white refresh (A2). The controls lie over the page: a touch on
+  one is a tap, never ink, and ink running under one isn't painted over it.
 - Eraser rubs out whole strokes, as memos' eraser does. Undo takes back the
-  last stroke, rub-out or Clear.
+  last stroke, rub-out or Clear; Redo does it again.
+- Paper and All pages open their own screens (`gzreader_drawpages.lua`).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
-local CenterContainer = require("ui/widget/container/centercontainer")
 local DataStorage = require("datastorage")
 local Device = require("device")
 local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Size = require("ui/size")
@@ -81,40 +87,56 @@ function DrawScreen.setLastPaper(id)
     if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_paper", id) end
 end
 
-DrawScreen.TOOLS = {
-    { id = "cancel", label = _("Cancel") },
-    { id = "w1", label = _("Thin"), width = 1 },
-    { id = "w2", label = _("Medium"), width = 2 },
-    { id = "w4", label = _("Thick"), width = 4 },
-    { id = "eraser", label = _("Eraser") },
-    { id = "undo", label = _("Undo") },
-    { id = "clear", label = _("Clear") },
-    { id = "done", label = _("Done") },
+DrawScreen.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/draw/"
+
+-- the strip down the side of the page (icons; `label`: what each does, for logs and tests)
+DrawScreen.SIDE_TOOLS = {
+    { id = "pen", icon = "pen", label = _("Pen") },
+    { id = "eraser", icon = "eraser", label = _("Eraser") },
+    { id = "undo", icon = "undo", label = _("Undo") },
+    { id = "redo", icon = "redo", label = _("Redo") },
+    { id = "paper", icon = "paper", label = _("Paper") },
+    { id = "pages", icon = "pages", label = _("All pages") },
+    { id = "side", icon = "side", label = _("Move to the other side") },
+    { id = "hide", icon = "hide", label = _("Hide the toolbar") },
 }
--- the second row: the page's paper, and the note's pages
-DrawScreen.PAGE_TOOLS = {
-    { id = "paper", label = _("Paper"), span = 3 },
-    { id = "prev", label = "\u{25C0}" },
-    { id = "page", label = "", span = 2, passive = true },
-    { id = "next", label = "\u{25B6}" },
-    { id = "newpage", label = "+ " .. _("New page"), span = 2 },
-}
+-- (kept: the tools by id, for callers and tests from before the side strip)
+DrawScreen.TOOLS = DrawScreen.SIDE_TOOLS
+
+--- Which side the toolbar is on ("left" or "right"; left-handers want it on the right).
+function DrawScreen.side()
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_toolbar_side")
+    return v == "right" and "right" or "left"
+end
+--- The pen's width new drawings start with (the last one chosen).
+function DrawScreen.lastWidth()
+    local v = G_reader_settings and tonumber(G_reader_settings:readSetting("gzreader_drawing_width"))
+    for _i, w in ipairs(Sketch.WIDTHS) do if w == v then return v end end
+    return 2
+end
 
 function DrawScreen:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.pen_only = Sketch.penDevice(Device)
-    self.button_h, self.hint_h = S(48), S(26)
-    self.bar_h = 2 * self.button_h + self.hint_h
-    self.canvas = { x = 0, y = self.bar_h, w = sw, h = sh - self.bar_h }
+    self.top_h = S(52)
+    self.bar_h = self.top_h -- (the page starts under the top bar)
+    self.tool_sz = S(48)
+    self.canvas = { x = 0, y = self.top_h, w = sw, h = sh - self.top_h }
     self.pages = self.pages or {}
     if #self.pages == 0 then self.pages[1] = { new = true } end
     self.index = math.max(1, math.min(self.start or 1, #self.pages))
+    self.gone = {} -- pages deleted here: { att, removed = true } for those in Memos
+    self.toolbar_side = DrawScreen.side()
+    self.toolbar_hidden = false
+    self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
+    self.tool, self.width = "pen", DrawScreen.lastWidth()
     local c = self.canvas
     self.canvas_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BB8) -- what's on the screen
     self.ink_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BB8) -- the ink alone (the PNG's ink)
     self.color_bb = nil -- the pictures under the ink, in colour (the PNG's paper), when there are some
     self.discs = {}
+    self.icons = {}
     self:layoutBar()
     self:showPage(self.index, true)
 end
@@ -150,7 +172,7 @@ function DrawScreen:sketchOf(p)
     return p.sketch
 end
 
---- Shows page `i` (`first`: while opening).
+--- Shows page `i` (`first`: while opening; nothing asked of the screen).
 function DrawScreen:showPage(i, first)
     local p = self.pages[i]
     local sk, err = self:sketchOf(p)
@@ -165,6 +187,9 @@ function DrawScreen:showPage(i, first)
     self.sketch = sk
     sk.canvas = self.canvas
     sk.pen_only = self.pen_only
+    sk.holes = self.holes
+    -- (the pen and its width stay as they were from page to page)
+    sk.tool, sk.width = self.tool, self.width
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -172,84 +197,170 @@ end
 --- This page changed (drawn on, rubbed out, its paper).
 function DrawScreen:touched()
     self.page.modified = true
+    self.page.thumb_stale = true
     self.changed = true
 end
--- ------------------------------------------------------------------ the bar
 
+-- ------------------------------------------------------------- the controls
+
+--- Lays out what's over the page: the top bar (Close, the note's name,
+--- Done), the tools down one side, the page buttons at the bottom, and a
+--- panel open beside the toolbar. `self.buttons`: { tool, rect, group }.
 function DrawScreen:layoutBar()
-    local sw = self.dimen.w
-    local gap = S(4)
-    self.buttons = {}
-    local function row(tools, y)
-        local units = 0
-        for _i, t in ipairs(tools) do units = units + (t.span or 1) end
-        local unit = (sw - gap * (#tools + 1)) / units
-        local x = gap
-        for _i, t in ipairs(tools) do
-            local w = math.floor(unit * (t.span or 1))
-            self.buttons[#self.buttons + 1] = { tool = t, rect = Geom:new{ x = math.floor(x), y = y, w = w, h = self.button_h - S(8) } }
-            x = x + w + gap
+    local sw, sh = self.dimen.w, self.dimen.h
+    local ts, pad, gap = self.tool_sz, S(3), S(8)
+    self.buttons, self.holes, self.frames = {}, {}, {}
+    local function add(tool, x, y, w, h, group)
+        self.buttons[#self.buttons + 1] = { tool = tool, rect = Geom:new{ x = math.floor(x), y = math.floor(y), w = math.floor(w), h = math.floor(h) }, group = group }
+    end
+    -- the top bar
+    add({ id = "cancel", icon = "close", label = _("Close") }, S(4), S(4), self.top_h - S(8), self.top_h - S(8), "top")
+    local done_w = S(96)
+    add({ id = "done", label = _("Done") }, sw - done_w - S(6), S(6), done_w, self.top_h - S(12), "top")
+    -- the tools
+    local tools = self.toolbar_hidden and { { id = "show", icon = self.toolbar_side == "left" and "show" or "hide", label = _("Show the toolbar") } }
+        or DrawScreen.SIDE_TOOLS
+    local tw, th = ts + 2 * pad, #tools * ts + 2 * pad
+    local tx = self.toolbar_side == "left" and gap or (sw - gap - tw)
+    local ty = self.top_h + S(12)
+    self.frames.toolbar = Geom:new{ x = tx, y = ty, w = tw, h = th }
+    for k, t in ipairs(tools) do add(t, tx + pad, ty + pad + (k - 1) * ts, ts, ts, "toolbar") end
+    -- the pages: ◀ 2 / 3 ▶ +
+    local lw = S(84)
+    local pw = 3 * ts + lw + 2 * pad
+    local px, py = math.floor((sw - pw) / 2), sh - ts - 2 * pad - S(10)
+    self.frames.pill = Geom:new{ x = px, y = py, w = pw, h = ts + 2 * pad }
+    add({ id = "prev", icon = "left", label = _("Previous page") }, px + pad, py + pad, ts, ts, "pill")
+    add({ id = "page", passive = true }, px + pad + ts, py + pad, lw, ts, "pill")
+    add({ id = "next", icon = "right", label = _("Next page") }, px + pad + ts + lw, py + pad, ts, ts, "pill")
+    add({ id = "newpage", icon = "plus", label = _("New page") }, px + pad + 2 * ts + lw, py + pad, ts, ts, "pill")
+    -- a panel beside the toolbar
+    if self.flyout and not self.toolbar_hidden then
+        local fw, fh, row
+        local head = S(30)
+        if self.flyout == "pen" then
+            fw, fh = #Sketch.WIDTHS * (ts + S(6)) + S(18), head + ts + S(20)
+        else
+            fw, fh = S(200), head + ts + S(20)
+        end
+        local anchor = self.flyout == "pen" and 1 or 2
+        local fx = self.toolbar_side == "left" and (tx + tw + gap) or (tx - gap - fw)
+        local fy = ty + pad + (anchor - 1) * ts
+        self.frames.flyout = Geom:new{ x = fx, y = fy, w = fw, h = fh }
+        row = fy + head + S(8)
+        if self.flyout == "pen" then
+            for k, w in ipairs(Sketch.WIDTHS) do
+                add({ id = "w" .. tostring(w), width = w, label = DrawScreen.WIDTH_NAMES[k] }, fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
+            end
+        else
+            add({ id = "clear", label = _("Clear the page") }, fx + S(12), row, fw - S(24), ts, "flyout")
         end
     end
-    row(DrawScreen.TOOLS, S(4))
-    row(DrawScreen.PAGE_TOOLS, self.button_h + S(4))
+    for _k, r in pairs(self.frames) do self.holes[#self.holes + 1] = r end
+    if self.sketch then self.sketch.holes = self.holes end
 end
+
+DrawScreen.WIDTH_NAMES = { _("Extra thin"), _("Thin"), _("Medium"), _("Thick"), _("Extra thick") }
 
 function DrawScreen:selected(t)
     local sk = self.sketch
     if t.width then return sk.tool == "pen" and sk.width == t.width end
+    if t.id == "pen" then return sk.tool == "pen" end
     if t.id == "eraser" then return sk.tool == "eraser" end
     return false
 end
 
 function DrawScreen:enabled(t)
     if t.id == "undo" then return self.sketch:canUndo() end
+    if t.id == "redo" then return self.sketch:canRedo() end
     if t.id == "clear" then return #self.sketch:live() > 0 end
     if t.id == "prev" then return self.index > 1 end
     if t.id == "next" then return self.index < #self.pages end
     return true
 end
 
---- A button's text (the paper's name, the page number).
+--- A button's text (the page number).
 function DrawScreen:label(t)
-    if t.id == "page" then return T(_("Page %1 of %2"), self.index, #self.pages) end
-    if t.id == "paper" then
-        local id = self.sketch:paper()
-        if id == "blank" then return _("Blank paper") .. " \u{25BE}" end
-        local p = Notepaper.get(id)
-        return (p and p.label or _("Picture")) .. " \u{25BE}"
-    end
+    if t.id == "page" then return self.index .. " / " .. #self.pages end
     return t.label
 end
 
+--- The note's name in the top bar, and what draws under it.
+function DrawScreen:heading() return self.title and self.title ~= "" and self.title or _("Drawing") end
 function DrawScreen:hint()
-    if self.pen_only then return _("Draw with the pen. Your hand can rest on the screen; the pen's other end rubs out.") end
-    return _("Draw with one finger.")
+    local paper = Notepaper.get(self.sketch:paper())
+    local on = paper and paper.id ~= "blank" and paper.label or nil
+    local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
+    return on and (how .. " \u{00B7} " .. on) or how
 end
 
-function DrawScreen:paintBar(bb, x, y)
-    bb:paintRect(x, y, self.dimen.w, self.bar_h, Blitbuffer.COLOR_WHITE)
-    for _i, b in ipairs(self.buttons) do
-        local t, r = b.tool, b.rect
-        local sel, on = self:selected(t), self:enabled(t)
-        local fg = sel and Blitbuffer.COLOR_WHITE or (on and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY)
-        local frame = FrameContainer:new{
-            width = r.w, height = r.h, padding = 0, margin = 0, radius = S(6),
-            bordersize = t.passive and 0 or ((t.id == "done") and Size.border.thick or Size.border.thin),
-            background = sel and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
-            CenterContainer:new{ dimen = Geom:new{ w = r.w - 4, h = r.h - 4 },
-                TextWidget:new{ text = self:label(t), face = Font:getFace("cfont", 16), bold = sel or t.id == "done",
-                    fgcolor = fg, max_width = r.w - S(6) } },
-        }
-        frame:paintTo(bb, x + r.x, y + r.y)
-        frame:free()
+--- An icon, drawn once and kept (`dim`: for a button that does nothing now).
+function DrawScreen:icon(name, size, dim)
+    local key = name .. ":" .. size .. (dim and ":dim" or "")
+    if not self.icons[key] then
+        local IconWidget = require("ui/widget/iconwidget")
+        local file = name == "close" and (DrawScreen.ICON_DIR .. "../panel/close.svg") or (DrawScreen.ICON_DIR .. name .. ".svg")
+        self.icons[key] = IconWidget:new{ file = file, width = size, height = size, alpha = true, dim = dim or nil }
     end
-    local hint = TextWidget:new{ text = self:hint(), face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY,
-        max_width = self.dimen.w - S(16) }
-    local hw = hint:getSize().w
-    hint:paintTo(bb, x + math.floor((self.dimen.w - hw) / 2), y + 2 * self.button_h + S(2))
-    hint:free()
-    bb:paintRect(x, y + self.bar_h - Size.line.medium, self.dimen.w, Size.line.medium, Blitbuffer.COLOR_DARK_GRAY)
+    return self.icons[key]
+end
+
+local function textAt(bb, x, y, w, h, text, size, bold, color)
+    local tw = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = bold, fgcolor = color or Blitbuffer.COLOR_BLACK,
+        max_width = w }
+    local sz = tw:getSize()
+    tw:paintTo(bb, x + math.floor((w - sz.w) / 2), y + math.floor((h - sz.h) / 2))
+    tw:free()
+end
+
+function DrawScreen:paintButton(bb, x, y, b)
+    local t, r = b.tool, b.rect
+    local sel, on = self:selected(t), self:enabled(t)
+    local bx, by = x + r.x, y + r.y
+    if t.icon then
+        local isz = math.floor(r.h * 0.56)
+        self:icon(t.icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
+        if t.id == "pen" then
+            -- the pen's width, as a dot in the corner
+            local d = math.max(2, math.min(S(9), self.sketch:radius(self.width)))
+            bb:paintRoundedRect(bx + r.w - S(8) - d, by + r.h - S(8) - d, 2 * d, 2 * d, Blitbuffer.COLOR_BLACK, d)
+        end
+        if sel then bb:invertRect(bx + S(2), by + S(2), r.w - S(4), r.h - S(4)) end
+    elseif t.width then
+        bb:paintBorder(bx, by, r.w, r.h, sel and Size.border.thick or Size.border.thin, sel and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, S(6))
+        local d = math.max(1, self.sketch:radius(t.width))
+        bb:paintRoundedRect(bx + math.floor(r.w / 2) - d, by + math.floor(r.h / 2) - d, 2 * d + 1, 2 * d + 1, Blitbuffer.COLOR_BLACK, d)
+    elseif t.passive then
+        textAt(bb, bx, by, r.w, r.h, self:label(t), 16, true)
+    else
+        local primary = t.id == "done"
+        bb:paintBorder(bx, by, r.w, r.h, primary and Size.border.thick or Size.border.thin, Blitbuffer.COLOR_BLACK, S(6))
+        textAt(bb, bx + S(4), by, r.w - S(8), r.h, self:label(t), 16, primary, on and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY)
+    end
+end
+
+--- The top bar, the toolbar, the page buttons and an open panel, over the page.
+function DrawScreen:paintBar(bb, x, y)
+    local sw = self.dimen.w
+    bb:paintRect(x, y, sw, self.top_h, Blitbuffer.COLOR_WHITE)
+    bb:paintRect(x, y + self.top_h - Size.line.medium, sw, Size.line.medium, Blitbuffer.COLOR_BLACK)
+    local left, right = self.top_h + S(6), S(96) + S(16)
+    textAt(bb, x + left, y + S(4), sw - left - right, S(24), self:heading(), 17, true)
+    textAt(bb, x + left, y + S(27), sw - left - right, S(20), self:hint(), 12, false, Blitbuffer.COLOR_DARK_GRAY)
+    for _i, name in ipairs({ "toolbar", "pill", "flyout" }) do
+        local f = self.frames[name]
+        if f then
+            local radius = name == "pill" and math.floor(f.h / 2) or S(10)
+            bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, radius)
+            bb:paintBorder(x + f.x, y + f.y, f.w, f.h, name == "flyout" and Size.border.thick or Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
+        end
+    end
+    if self.frames.flyout then
+        local f = self.frames.flyout
+        textAt(bb, x + f.x + S(12), y + f.y + S(6), f.w - S(24), S(24),
+            self.flyout == "pen" and _("Pen thickness") or _("Eraser: rubs out whole strokes"), 14, true)
+    end
+    for _i, b in ipairs(self.buttons) do self:paintButton(bb, x, y, b) end
 end
 
 function DrawScreen:paintTo(bb, x, y)
@@ -257,6 +368,7 @@ function DrawScreen:paintTo(bb, x, y)
     local c = self.canvas
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
     self:paintBar(bb, x, y)
+    self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
 
 -- ---------------------------------------------------------------- the ink
@@ -272,13 +384,23 @@ function DrawScreen:ink(seg, screen_bb)
     local r = seg[5]
     local rows = self:disc(r)
     for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], r)) do
+        -- (ink that runs under the toolbar is on the page, not painted over the toolbar)
+        local under = screen_bb and self:underControls(p[1], p[2], r)
         for dy = -r, r do
             local dx = rows[dy]
             self.canvas_bb:paintRect(p[1] - dx - c.x, p[2] + dy - c.y, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK)
             self.ink_bb:paintRect(p[1] - dx - c.x, p[2] + dy - c.y, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK)
-            if screen_bb then screen_bb:paintRect(p[1] - dx, p[2] + dy, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK) end
+            if screen_bb and not under then screen_bb:paintRect(p[1] - dx, p[2] + dy, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK) end
         end
     end
+end
+
+--- True when a disc of radius `r` at screen (x, y) touches something laid over the page.
+function DrawScreen:underControls(x, y, r)
+    for _i, h in ipairs(self.holes or {}) do
+        if x + r >= h.x and x - r < h.x + h.w and y + r >= h.y and y - r < h.y + h.h then return true end
+    end
+    return false
 end
 
 local function strokeSegments(sk, st)
@@ -477,7 +599,17 @@ function DrawScreen:onContacts(det, tevs)
     self:apply(out)
 end
 
+local function intersects(a, x0, y0, x1, y1)
+    return x1 >= a.x and x0 < a.x + a.w and y1 >= a.y and y0 < a.y + a.h
+end
+
 function DrawScreen:apply(out)
+    if (out.redraw or #out.segments > 0) and self.flyout then
+        -- drawing puts an open panel away
+        self.flyout = nil
+        self:layoutBar()
+        out.redraw = true
+    end
     if out.redraw then
         self:touched()
         self:redrawAll()
@@ -501,61 +633,172 @@ function DrawScreen:apply(out)
             UIManager:setDirty(nil, "a2", Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
         end
     end
-    if out.stroke_done and #self.sketch.history == 1 then
-        -- Undo and Clear wake up after the first stroke
-        self:refreshBar()
+    if out.stroke_done then
+        -- Undo and Redo wake up or go to sleep
+        local shown = self._shown or {}
+        if shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo() then self:refreshBar() end
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
 end
 
 function DrawScreen:tapAt(x, y)
-    for _i, b in ipairs(self.buttons) do
+    for i = #self.buttons, 1, -1 do -- (an open panel's buttons are last: first asked)
+        local b = self.buttons[i]
         local r = b.rect
-        if x >= r.x and x < r.x + r.w and y >= r.y and y < r.y + r.h then return self:use(b.tool) end
+        if x >= r.x and x < r.x + r.w and y >= r.y and y < r.y + r.h then
+            if b.tool.passive then return end
+            return self:use(b.tool)
+        end
     end
+    -- a tap beside an open panel puts it away
+    if self.flyout and not intersects(self.frames.flyout, x, y, x, y) then self:setFlyout(nil) end
 end
 
+--- The toolbar (and the other controls) drawn again.
 function DrawScreen:refreshBar()
-    UIManager:setDirty(self, "ui", Geom:new{ x = 0, y = 0, w = self.dimen.w, h = self.bar_h })
+    UIManager:setDirty(self, "ui")
+end
+
+function DrawScreen:setFlyout(which)
+    self.flyout = which
+    self:layoutBar()
+    UIManager:setDirty(self, "ui")
+end
+
+function DrawScreen:setTool(tool, width)
+    self.tool = tool
+    if width then
+        self.width = width
+        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_width", width) end
+    end
+    self.sketch.tool, self.sketch.width = self.tool, self.width
 end
 
 function DrawScreen:use(t)
     local sk = self.sketch
-    if t.width then sk:setWidth(t.width); self:refreshBar()
-    elseif t.id == "eraser" then sk:setTool(sk.tool == "eraser" and "pen" or "eraser"); self:refreshBar()
+    if t.width then self:setTool("pen", t.width); self:setFlyout(nil)
+    elseif t.id == "pen" then
+        -- the pen; again: its thickness
+        if sk.tool == "pen" then self:setFlyout(self.flyout ~= "pen" and "pen" or nil) else self:setTool("pen"); self:setFlyout(nil) end
+    elseif t.id == "eraser" then
+        -- the eraser; again: Clear the page
+        if sk.tool == "eraser" then self:setFlyout(self.flyout ~= "eraser" and "eraser" or nil) else self:setTool("eraser"); self:setFlyout(nil) end
     elseif t.id == "undo" then if sk:undo() then self:touched(); self:redrawAll() end
-    elseif t.id == "clear" then if sk:clear() then self:touched(); self:redrawAll() end
+    elseif t.id == "redo" then if sk:redo() then self:touched(); self:redrawAll() end
+    elseif t.id == "clear" then
+        self.flyout = nil
+        self:layoutBar()
+        if sk:clear() then self:touched() end
+        self:redrawAll()
     elseif t.id == "cancel" then self:cancel()
     elseif t.id == "done" then self:done()
     elseif t.id == "paper" then self:pickPaper()
+    elseif t.id == "pages" then self:showPages()
+    elseif t.id == "side" then
+        self.toolbar_side = self.toolbar_side == "left" and "right" or "left"
+        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_toolbar_side", self.toolbar_side) end
+        self:setFlyout(nil)
+    elseif t.id == "hide" or t.id == "show" then
+        self.toolbar_hidden = t.id == "hide"
+        self:setFlyout(nil)
     elseif t.id == "prev" then if self.index > 1 then self:showPage(self.index - 1) end
     elseif t.id == "next" then if self.index < #self.pages then self:showPage(self.index + 1) end
     elseif t.id == "newpage" then self:newPage() end
 end
 
---- + New page: another drawing for the note, on the last paper chosen.
-function DrawScreen:newPage()
-    self.pages[#self.pages + 1] = { new = true, paper = DrawScreen.lastPaper(), modified = true }
+-- ------------------------------------------------------------------ pages
+
+--- + New page: another drawing for the note, on the last paper chosen,
+--- after page `after` (the page shown).
+function DrawScreen:newPage(after)
+    after = after or self.index
+    table.insert(self.pages, after + 1, { new = true, paper = DrawScreen.lastPaper(), modified = true })
     self.changed = true
-    self:showPage(#self.pages)
+    if after + 1 < #self.pages then self.reordered = true end
+    self:showPage(after + 1)
     Log.info("drawing: a new page,", #self.pages, "now")
 end
 
---- Paper: the page's background (and the one new pages start on).
-function DrawScreen:pickPaper()
-    local dialog
-    local rows = {}
-    local cur = self.sketch:paper()
-    for _i, p in ipairs(Notepaper.LIST) do
-        rows[#rows + 1] = { { text = p.label .. (p.id == cur and "  \u{2713}" or ""), align = "left", callback = function()
-            UIManager:close(dialog)
-            DrawScreen.setLastPaper(p.id)
-            if p.id ~= cur then self:setPaper(p.id) end
-        end } }
+--- A copy of page `i`, after it.
+function DrawScreen:duplicatePage(i)
+    local sk = self:sketchOf(self.pages[i])
+    if not sk then return false end
+    local copy = Drawing.decode(Drawing.encode(sk:scene()))
+    if not copy then return false end
+    table.insert(self.pages, i + 1, { new = true, modified = true, sketch = self:newSketch(copy) })
+    self.changed, self.reordered = true, true
+    Log.info("drawing: page", i, "duplicated")
+    return true
+end
+
+--- Moves page `i` one place (`d`: -1 earlier, 1 later).
+function DrawScreen:movePage(i, d)
+    local j = i + d
+    if j < 1 or j > #self.pages then return false end
+    self.pages[i], self.pages[j] = self.pages[j], self.pages[i]
+    if self.index == i then self.index = j elseif self.index == j then self.index = i end
+    self.changed, self.reordered = true, true
+    return true
+end
+
+--- Takes page `i` off the note (the only page: emptied instead).
+function DrawScreen:deletePage(i)
+    local p = table.remove(self.pages, i)
+    if not p then return false end
+    self.gone[#self.gone + 1] = p
+    for _k, bb in pairs(p.pictures or {}) do if bb then bb:free() end end
+    p.pictures = nil
+    if p.thumb then p.thumb:free(); p.thumb = nil end
+    if #self.pages == 0 then self.pages[1] = { new = true, paper = DrawScreen.lastPaper(), modified = true } end
+    self.changed = true
+    self:showPage(math.max(1, math.min(self.index > i and self.index - 1 or self.index, #self.pages)), true)
+    Log.info("drawing: page", i, "deleted,", #self.pages, "left")
+    return true
+end
+
+--- Page `i` as a small picture at most w x h (kept until the page changes):
+--- its paper when it has one, else the whole page.
+function DrawScreen:pageThumb(i, w, h)
+    local p = self.pages[i]
+    local key = w .. "x" .. h
+    if p.thumb and not p.thumb_stale and p.thumb_key == key then return p.thumb end
+    if p.thumb then p.thumb:free(); p.thumb = nil end
+    local shown = self.index
+    if shown ~= i then self:showPage(i, true) end
+    local c = self.canvas
+    local r = self.sketch:pageRect()
+    local x0, y0, cw, ch = 0, 0, c.w, c.h
+    if r then
+        x0, y0 = math.max(0, math.floor(r.x)), math.max(0, math.floor(r.y))
+        cw, ch = math.min(c.w - x0, math.floor(r.w)), math.min(c.h - y0, math.floor(r.h))
     end
-    dialog = ButtonDialog:new{ title = _("Paper"), buttons = rows }
-    UIManager:show(dialog)
-    return dialog
+    local scale = math.min(w / cw, h / ch)
+    local part = Blitbuffer.new(cw, ch, Blitbuffer.TYPE_BB8)
+    part:blitFrom(self.canvas_bb, 0, 0, x0, y0, cw, ch)
+    local small = part:scale(math.max(1, math.floor(cw * scale)), math.max(1, math.floor(ch * scale)))
+    part:free()
+    p.thumb, p.thumb_key, p.thumb_stale = small, key, nil
+    if shown ~= i then self:showPage(shown, true) end
+    return small
+end
+
+--- All pages: small pictures of the note's pages, to go to one, add, copy, move or delete.
+function DrawScreen:showPages()
+    self:setFlyout(nil)
+    return require("gzreader_drawpages").showPages(self)
+end
+
+--- Paper: the page's background (and the one new pages start on), picked from pictures of each.
+function DrawScreen:pickPaper()
+    self:setFlyout(nil)
+    return require("gzreader_drawpages").showPapers{
+        current = self.sketch:paper(),
+        title = T(_("Paper for page %1"), self.index),
+        on_pick = function(id)
+            DrawScreen.setLastPaper(id)
+            if id ~= self.sketch:paper() then self:setPaper(id) end
+        end,
+    }
 end
 
 function DrawScreen:setPaper(id)
@@ -581,7 +824,10 @@ function DrawScreen:onCloseWidget()
     for _i, p in ipairs(self.pages or {}) do
         for _k, bb in pairs(p.pictures or {}) do if bb then bb:free() end end
         p.pictures = nil
+        if p.thumb then p.thumb:free(); p.thumb = nil end
     end
+    for _k, icon in pairs(self.icons or {}) do if icon.free then icon:free() end end
+    self.icons = {}
     local sk = self.sketch
     if sk then
         Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
@@ -725,6 +971,12 @@ function DrawScreen:done()
             end
         end
     end
+    -- pages deleted here: gone from Memos too; a new one's waiting file with it
+    for _i, p in ipairs(self.gone or {}) do
+        if p.att then results[#results + 1] = { att = p.att, removed = true, changed = true }
+        elseif p.path then os.remove(p.path) end
+    end
+    results.reordered = self.reordered or nil
     self:close()
     if self.on_done then self.on_done(results) end
 end
@@ -743,7 +995,7 @@ function DrawScreen.show(opts)
     local gone = {}
     for _i, p in ipairs(opts.pages or {}) do if p.removed then gone[#gone + 1] = p end end
     local on_done = opts.on_done
-    local w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel,
+    local w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title,
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             on_done(res)

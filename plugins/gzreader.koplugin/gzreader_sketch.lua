@@ -86,9 +86,15 @@ end
 
 function Sketch:radius(width) return Sketch.radiusFor(width or self.width, self.per_unit) end
 
+--- On the page, and not on something laid over it (`holes`: the toolbar,
+--- the page buttons, an open panel; screen rectangles { x, y, w, h }).
 function Sketch:inCanvas(x, y)
     local c = self.canvas
-    return x >= c.x and y >= c.y and x < c.x + c.w and y < c.y + c.h
+    if not (x >= c.x and y >= c.y and x < c.x + c.w and y < c.y + c.h) then return false end
+    for _i, r in ipairs(self.holes or {}) do
+        if x >= r.x and y >= r.y and x < r.x + r.w and y < r.y + r.h then return false end
+    end
+    return true
 end
 
 --- True while finger contacts are ignored: the pen near, or just gone.
@@ -124,6 +130,14 @@ end
 --- The page's paper: one of `gzreader_notepaper.lua`'s ids, "blank", or
 --- "other" (a picture under the drawing that isn't one of them).
 function Sketch:paper()
+    local key = tostring(self.base) .. ":" .. tostring(self.paper_changes)
+    if self._paper_key == key then return self._paper_id end
+    local id = self:paperNow()
+    self._paper_key, self._paper_id = key, id
+    return id
+end
+
+function Sketch:paperNow()
     local Notepaper = require("gzreader_notepaper")
     local bg = self.base and Notepaper.background(self.base)
     if not bg then return "blank" end
@@ -192,10 +206,12 @@ end
 function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
 function Sketch:toScene(cx, cy) return cx / self.per_unit + self.ox, cy / self.per_unit + self.oy end
 
+--- The pen's widths (memos' stroke widths: its own are 1, 2 and 4; any number draws).
+Sketch.WIDTHS = { 0.5, 1, 2, 4, 7 }
+
 local function snapWidth(w)
     w = tonumber(w) or 2
-    if w <= 1.5 then return 1 elseif w < 3 then return 2 end
-    return 4
+    return math.max(0.25, math.min(12, w))
 end
 
 --- A sketch of an existing drawing (a memos scene), to go on with it. It's
@@ -402,9 +418,12 @@ local function endContact(self, slot, out)
         end
         -- (one Undo takes back the whole stroke, every piece of it)
         self.history[#self.history + 1] = { kind = "add", strokes = c.pieces }
+        self.redone = {}
         out.stroke_done = true
     elseif c.kind == "erase" and #c.erased > 0 then
         self.history[#self.history + 1] = { kind = "erase", strokes = c.erased }
+        self.redone = {}
+        out.stroke_done = true
     elseif c.kind == "tap" and c.moved <= self.tap_slop then
         out.taps[#out.taps + 1] = { x = c.x0, y = c.y0, pen = c.pen }
     end
@@ -473,11 +492,30 @@ function Sketch:setWidth(w) self.width = w; self.tool = "pen" end
 function Sketch:setTool(tool) self.tool = tool end
 
 function Sketch:canUndo() return #self.history > 0 end
+function Sketch:canRedo() return #(self.redone or {}) > 0 end
+
+--- Does again what the last Undo took back. True when something changed.
+function Sketch:redo()
+    local h = table.remove(self.redone or {})
+    if not h then return false end
+    if h.kind == "add" then
+        for _i, st in ipairs(h.strokes) do
+            st.gone, st.undone = false, nil
+            self.strokes[#self.strokes + 1] = st
+        end
+    else
+        for _i, st in ipairs(h.strokes) do st.gone = true end
+    end
+    self.history[#self.history + 1] = h
+    return true
+end
 
 --- Takes back the last stroke, erase or clear. True when something changed.
 function Sketch:undo()
     local h = table.remove(self.history)
     if not h then return false end
+    self.redone = self.redone or {}
+    self.redone[#self.redone + 1] = h
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
@@ -496,6 +534,7 @@ function Sketch:clear()
     if #live == 0 then return false end
     for _i, st in ipairs(live) do st.gone = true end
     self.history[#self.history + 1] = { kind = "clear", strokes = live }
+    self.redone = {}
     return true
 end
 

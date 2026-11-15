@@ -6716,7 +6716,7 @@ print("Notes (Memos v0.31)")
             Scr.scaleBySize = real_scale
             local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
             check(src:find("if m._gz_hold_draw then return end", 1, true) and src:find("_gz_hold_draw = Touch.on() or nil,", 1, true)
-                and src:find("menu._gz_hold_draw = nil\n    Touch.actionRow(menu, Notes.actions(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
+                and src:find("menu._gz_hold_draw = nil\n    menu._gz_home_sig = Notes.homeSignature(plugin)\n    Touch.actionRow(menu, Notes.actions(plugin), Notes.homeRows(plugin))\n    if not menu._gz_drawn then menu:updateItems(1) end", 1, true),
                 "board: on a touch Kindle drawn once on opening, after its buttons (Menu's own first draw was thrown away)")
         end)()
 
@@ -6762,7 +6762,7 @@ print("Notes (Memos v0.31)")
         check(opened == nil, "board: a letter no note has does nothing")
         Notes.showView = real_show
         local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(not src:find('k == "V"', 1, true) and src:find('_("Layout"), function() Notes.showView(plugin) end', 1, true),
+        check(not src:find('k == "V"', 1, true) and src:find('label = _("Layout"), callback = function() Notes.showView(plugin) end', 1, true),
             "board: no V (the tab bar's), and a Layout button on touch Kindles")
     end)()
 
@@ -7118,11 +7118,11 @@ print("Notes (Memos v0.31)")
             return false
         end
         Notes.showFilter(plugin)
-        check(offered() and #rows == 8, "Filter offers Space… when your Memos has spaces")
+        check(offered() and #rows == 10, "Filter offers Space… when your Memos has spaces")
         local saved_spaces, saved_notes = plugin.store.memos.spaces, Notes.notes
         plugin.store.memos.spaces, Notes.notes = {}, { { content = "x" } }
         Notes.showFilter(plugin)
-        check(not offered() and #rows == 7, "…and not without (an older Memos): the dialog as before")
+        check(not offered() and #rows == 9, "…and not without (an older Memos): the dialog as before")
         plugin.store.memos.spaces, Notes.notes = saved_spaces, saved_notes
 
         -- writing: a new note starts in the space the board shows
@@ -7211,6 +7211,45 @@ print("Notes (Memos v0.31)")
         check(shut_while_open and kb.open == 1 and fake.space == "spaces/book-club",
             "touch: the keyboard steps aside while the space list is open (it hid its last rows), and comes back")
         fake.touch, fake.input = nil, nil
+        do
+            -- the note's sheets in the editor: pages moved in the drawing screen are a change of their own
+            local a1 = { name = "attachments/s1", filename = "drawing-1.canvas.png" }
+            local a2 = { name = "attachments/s2", filename = "drawing-2.canvas.png" }
+            local ed = setmetatable({ drawing_atts = { a1, a2 }, original = "t", visibility = "PRIVATE", original_vis = "PRIVATE",
+                text = function() return "## Trip *plan*\nmore" end, rich = true },
+                { __index = function(_t, k) return rawget(E, k) end })
+            check(ed:drawingCount() == 2 and #ed:sheets() == 2 and ed:sheets()[2].page == 2 and ed:sheets()[1].path == Memos.filePath(a1),
+                "editor: a note's sheets, from Memos (their pictures where the Notes tab keeps them)")
+            check(#ed:drawingChanges() == 0 and ed:drawingChanges().order == nil, "…untouched: nothing to send about them")
+            ed.pages = { { att = a2, filename = a2.filename }, { att = a1, filename = a1.filename } }
+            ed.pages_reordered = true
+            local ch = ed:drawingChanges()
+            check(#ch == 0 and ch.order and table.concat(ch.order, ",") == "drawing-2.canvas.png,drawing-1.canvas.png" and ed:changed(),
+                "pages only moved (All pages → Move): their new order is sent, and the note counts as changed")
+            local sent
+            ed.on_save = function(...) sent = { ... } end
+            ed.saved = nil
+            local kept_close = require("ui/uimanager").close
+            require("ui/uimanager").close = function() end
+            E.save(ed)
+            require("ui/uimanager").close = kept_close
+            check(sent and sent[6] and sent[6].order and #sent[6] == 0 and sent[6].order[1] == "drawing-2.canvas.png", "…Save passes the order on")
+            ed.pages = { { att = a2, filename = a2.filename, removed = true }, { att = a1, filename = a1.filename },
+                { path = "/tmp/new.canvas.png", filename = "drawing-3.canvas.png", changed = true } }
+            check(#ed:sheets() == 2 and ed:sheets()[1].page == 1 and ed:sheets()[2].path == "/tmp/new.canvas.png" and ed:drawingCount() == 2,
+                "…a page taken off isn't among them; a new one shows its waiting picture")
+            check(ed:heading() == "Trip plan", "the drawing screen is titled with the note's first line (no Markdown marks): " .. tostring(ed:heading()))
+            check(#ed:tools() == 0 and #E.tools(setmetatable({ rich = false }, { __index = function(_t, k) return rawget(E, k) end })) == #NE.TOOLS,
+                "the formatted page has no toolbar row (its bar comes up at the selection); Markdown editing keeps its toolbar")
+            -- Kindles without a touch screen never draw
+            ed.touch, ed.can_draw = false, true
+            local no_touch = ed:canDraw()
+            ed.touch, ed.can_draw = true, false
+            local not_connected = ed:canDraw()
+            ed.touch, ed.can_draw = true, true
+            check(no_touch == false and not_connected == false and ed:canDraw() == true,
+                "editor: drawing only on a touch Kindle with Memos connected (keyboard Kindles and the Kindle 4 edit the text only)")
+        end
         fake.dpad = true
         check(fake:lastTool() == #NE.TOOLS + 3, "Kindle 4: the space chip is on the toolbar's row too")
         fake.has_spaces = false
@@ -7246,6 +7285,60 @@ print("Notes (Memos v0.31)")
             "older Memos: no spaces, Filter as before")
         local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
         check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
+
+        -- journaling mode (the Memos fork): its settings come with a sync; an entry is a private note with tags
+        check(Memos:new(plugin.store.memos):journalSettings() == false and Notes.journalSettings(plugin).activityTagPrefix == "did/"
+            and #Notes.journalSettings(plugin).activities == 9 and Notes.journalSpace(plugin) == nil,
+            "journal: a Memos without journaling mode (stock): the defaults, no journal space")
+        restart("--sample --spaces --journal")
+        plugin.store.memos.journal, plugin.store.memos.spaces = nil, nil
+        Notes.notes, Notes.filter = nil, { kind = "all" }
+        local js = Memos:new(plugin.store.memos):journalSettings()
+        check(js and js.space == "spaces/family" and #js.activities == 4 and js.activities[3].id == "walk" and js.activities[3].label == "A walk"
+            and #js.goals == 2 and js.hiddenImpacts[1] == "dating" and js.reminderToken == nil,
+            "journal: a Memos with journaling mode: your settings from /api/journal/settings (only what a Kindle uses: no tokens)")
+        check(sync() and plugin.store.memos.journal and plugin.store.memos.journal.space == "spaces/family"
+            and Notes.journalSpace(plugin) == "spaces/family" and Notes.journalSettings(plugin).goals[2] == "Stretch",
+            "journal: a sync brings them (entries go to your journal space)")
+        local jshown
+        package.loaded["gzreader_journalscreen"] = { show = function(o) jshown = o end }
+        Notes.journal(plugin)
+        check(jshown and #jshown.settings.activities == 4 and type(jshown.on_save) == "function", "Journal (the button, J): the journal screen, with your settings")
+        local Journal = require("gzreader_journal")
+        local entry = Journal.entry({ valence = "pleasant", kind = "today", feelings = { "grateful" }, impacts = { "family" }, activities = { "walk" },
+            goals = { [1] = true }, body = "A good day.", prompt = Journal.PROMPTS[2] }, jshown.settings, os.time())
+        jshown.on_save(entry)
+        local jq = plugin.store.memos.queue[#plugin.store.memos.queue]
+        check(jq and jq.op == "create" and jq.visibility == "PRIVATE" and jq.space == "spaces/family"
+            and jq.content == "> What made you smile?\n\nA good day.\n\n- [x] Read 20 pages\n- [ ] Stretch\n\n#mood/pleasant #mood/today #felt/grateful #impact/family #did/walk\n",
+            "Save: queued as a private note in your journal space, written as the web editor writes an entry")
+        check(Notes.notes[1].local_id == jq.id and Notes.notes[1].pending and table.concat(Notes.notes[1].tags, ",") == "mood/pleasant,mood/today,felt/grateful,impact/family,did/walk",
+            "…on the board at once, its mood and activities as tags")
+        check(sync(), "…sent")
+        local jm
+        for _i, m in ipairs(mstate().memos) do if m.content == jq.content then jm = m end end
+        check(jm and jm.space == "spaces/family" and jm.visibility == "PRIVATE", "Memos has the entry, in the journal space")
+        plugin.store.memos.spaces = { { name = "spaces/book-club", title = "Book club" } }
+        check(Notes.journalSpace(plugin) == nil, "a journal space that isn't one of yours any more: entries go to no space")
+        -- not connected: Connect first
+        local kept_connect, asked = Notes.showConnect, nil
+        local kept_client = Notes.client
+        Notes.showConnect = function() asked = true end
+        Notes.client = function() return { isConnected = function() return false end } end
+        jshown = nil
+        Notes.journal(plugin)
+        Notes.showConnect, Notes.client = kept_connect, kept_client
+        check(asked and jshown == nil, "not connected: Journal opens Connect instead")
+        package.loaded["gzreader_journalscreen"] = nil
+        -- back on a Memos without it: the defaults again
+        restart("--sample")
+        plugin.store.memos.spaces = nil
+        Notes.notes = nil
+        check(sync() and plugin.store.memos.journal == nil and #Notes.journalSettings(plugin).activities == 9,
+            "back on a Memos without journaling mode: the defaults again")
+        local msrc = io.open(PLUGIN .. "/gzreader_memos.lua"):read("*a")
+        check(msrc:find('self.store.server .. "/api/journal/settings"', 1, true) ~= nil and msrc:find("return require(\"gzreader_journal\").settings(data)", 1, true) ~= nil,
+            "the settings route is beside the API (not under /api/v1), and only Journal.settings' fields are kept")
     end)()
 
     ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
@@ -7326,26 +7419,97 @@ print("Notes (Memos v0.31)")
         check(show_src and show_src:find("name = Notes.fullscreen(plugin) and Notes.FULLSCREEN_NAME or nil", 1, true)
             and show_src:find("_gz_navbar_tab_id = not Notes.fullscreen(plugin) and Notes.TAB_ID or nil", 1, true)
             and show_src:find("menu._gz_navbar_tab_id = Notes.TAB_ID", 1, true)
-            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin))", 1, true)
+            and show_src:find("Touch.actionRow(menu, Notes.actions(plugin), Notes.homeRows(plugin))", 1, true)
             and show_src:find("menu.onGzMenu = function() Notes.showMenu(plugin); return true end", 1, true)
+            and show_src:find("menu.onGzOptions = menu.onGzMenu", 1, true)
+            and io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/navbar.lua"):read("*a")
+                :find('if type(m.onGzOptions) == "function" then return m:onGzOptions() end', 1, true)
             and not show_src:find("showOptions", 1, true),
-            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu")
-        -- the buttons (touch): Note, Draw, Filter, Layout, Sort, Connection, and Full screen as an icon (an X in full screen)
+            "the board: in full screen a name and its tab's id only once made (ZenOS adds no tab bar then); its buttons; Menu on a Kindle 4: the board's menu (also when the tab bar takes the key first: onGzOptions)")
+        -- the buttons (touch), one row: Note, Draw, Journal with their pictures, then icons for Sort, Filter, Layout, Search, Full screen
         local acts = Notes.actions(plugin)
         local bnames = {}
-        for i = 1, 6 do bnames[i] = acts[i][1] end
-        check(table.concat(bnames, "|") == "Note|Draw|Filter|Layout|Sort|Connection" and acts[7].icon_file:match("/icons/panel/fullscreen%.svg$")
-            and acts[7].label == "Full screen" and io.open(acts[7].icon_file) ~= nil,
-            "touch: Note, Draw, Filter, Layout, Sort, Connection, and the full screen icon")
+        for i = 1, 3 do bnames[i] = acts[i][1] .. ":" .. tostring(acts[i].icon_file and io.open(acts[i].icon_file) ~= nil) end
+        for i = 4, 8 do bnames[i] = tostring(acts[i].label) .. ":" .. tostring(acts[i][1] == nil and io.open(acts[i].icon_file) ~= nil) end
+        check(table.concat(bnames, "|") == "Note:true|Draw:true|Journal:true|Sort:true|Filter:true|Layout:true|Search:true|Full screen:true"
+            and acts[8].icon_file:match("/icons/panel/fullscreen%.svg$") and #acts == 8,
+            "touch: Note, Draw and Journal (a picture and the word), then icons for Sort, Filter, Layout, Search and Full screen: " .. table.concat(bnames, "|"))
         local opened = {}
         local real = { edit = Notes.edit, draw = Notes.draw, showFilter = Notes.showFilter, showView = Notes.showView, showSort = Notes.showSort,
-            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen }
-        for k in pairs(real) do Notes[k] = function(_p, arg2) opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "") end end
-        for i = 1, 6 do acts[i][2]() end
-        acts[7].callback()
+            showConnection = Notes.showConnection, setFullscreen = Notes.setFullscreen, showSearch = Notes.showSearch, journal = Notes.journal,
+            setFilter = Notes.setFilter }
+        for k in pairs(real) do
+            Notes[k] = function(_p, arg2)
+                if type(arg2) == "table" then arg2 = tostring(arg2.kind) .. (arg2.value and (":" .. arg2.value) or "") end
+                opened[#opened + 1] = k .. (arg2 ~= nil and ("=" .. tostring(arg2)) or "")
+            end
+        end
+        for i = 1, 3 do acts[i][2]() end
+        for i = 4, 8 do acts[i].callback() end
+        check(table.concat(opened, ",") == "edit,draw,journal,showSort,showFilter,showView,showSearch,setFullscreen=true",
+            "…each does its job; the last icon turns full screen on: " .. table.concat(opened, ","))
+        -- under them, one more row: All, your most used tags, Drawings
+        local kept_notes, kept_filter, kept_journal = Notes.notes, Notes.filter, plugin.store.memos.journal
+        Notes.notes = {
+            { tags = { "trip", "work" } }, { tags = { "trip" } }, { tags = { "trip", "ideas", "mood/pleasant", "did/work" } },
+            { tags = { "work", "mood/pleasant", "did/work" } }, { tags = { "mood/pleasant", "did/work", "a-very-long-tag-name-here" } },
+            { tags = { "zebra" } },
+        }
+        Notes.filter = { kind = "all" }
+        plugin.store.memos.journal = nil
+        local hrows = Notes.homeRows(plugin)
+        local function names(row) local t = {} for i, a in ipairs(row) do t[i] = a[1] .. (a.chosen and "*" or "") end return table.concat(t, "|") end
+        check(#hrows == 1 and names(hrows[1]) == "All*|#trip|#work|#a-very-long…|Drawings",
+            "touch, the second row: All (chosen), your three most used tags (not a journal entry's mood and activity tags; a long one cut), Drawings: " .. names(hrows[1]))
+        opened = {}
+        for _i, a in ipairs(hrows[1]) do a[2]() end
+        check(table.concat(opened, ",") == "setFilter=all,setFilter=tag:trip,setFilter=tag:work,setFilter=tag:a-very-long-tag-name-here,setFilter=drawings",
+            "…each does its job (Drawings: only the notes with a drawing): " .. table.concat(opened, ","))
+        Notes.filter = { kind = "tag", value = "zebra" }
+        local sig1 = Notes.homeSignature(plugin)
+        check(names(Notes.homeRows(plugin)[1]) == "All|#zebra*|#trip|#work|Drawings",
+            "…the tag being shown has a chip (chosen) even when it isn't among the most used: " .. names(Notes.homeRows(plugin)[1]))
+        Notes.filter = { kind = "drawings" }
+        opened = {}
+        local drow = Notes.homeRows(plugin)[1]
+        drow[#drow][2]()
+        check(drow[#drow].chosen == true and opened[1] == "setFilter=all" and Notes.homeSignature(plugin) ~= sig1,
+            "…Drawings chosen: a tap goes back to all the notes; the chips are put in again when the filter changes")
         for k, fn in pairs(real) do Notes[k] = fn end
-        check(table.concat(opened, ",") == "edit,draw,showFilter,showView,showSort,showConnection,setFullscreen=true",
-            "…each does its job; the icon turns full screen on: " .. table.concat(opened, ","))
+        -- the Drawings filter: notes with a drawing (worked out on the Kindle: Memos isn't asked)
+        local with = { attachments = { { name = "attachments/a1", filename = "drawing-1.canvas.png" } } }
+        local without = { attachments = { { name = "attachments/a2", filename = "photo.png" } } }
+        check(Notes.keep(with, { kind = "drawings" }) and not Notes.keep(without, { kind = "drawings" }) and not Notes.keep({}, { kind = "drawings" })
+            and Notes.keepHere(with, { kind = "drawings" }) and not Notes.keepHere(without, { kind = "drawings" })
+            and Notes.cel({ kind = "drawings" }) == nil and Notes.filterLabel({ kind = "drawings" }) == "Drawings",
+            "Drawings filter: the notes with a drawing, picked out on the Kindle")
+        Notes.notes, Notes.filter, plugin.store.memos.journal = kept_notes, kept_filter, kept_journal
+        -- Kindles without a touch screen: drawings are shown (every page), never made or changed
+        do
+            local TouchM = require("gzreader_touch")
+            local kept_on, kept_keys = TouchM.on, TouchM.keys
+            local NetM = require("gzreader_net")
+            local kept_usb = NetM.usb
+            NetM.usb = false
+            TouchM.on, TouchM.keys = function() return false end, function() return true end
+            local kb_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = function() return false end, function() return false end
+            local k4_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = function() return true end, function() return false end
+            local touch_can = Notes.canDraw(plugin)
+            TouchM.on, TouchM.keys = kept_on, kept_keys
+            NetM.usb = kept_usb
+            check(kb_can == false and k4_can == false and touch_can == true,
+                "drawing: only touch Kindles make or change drawings (not a keyboard Kindle, not the Kindle 4)")
+            local esrc = nsrc:match("function Notes%.edit%(plugin, memo, opts%)(.-)\nend\n")
+            check(esrc and esrc:find("can_draw = Notes.canDraw(plugin)", 1, true)
+                and esrc:find("and Notes.canDraw(plugin),", 1, true),
+                "…Edit on a note with drawings opens its text there (the drawing screen only where drawing is possible)")
+            check(Notes.pageCaption(2, 3) == "Page 2 of 3" and Notes.pageCaption(1, 2, "Q") == "Page 1 of 2  \u{00B7}  Q opens it"
+                and nsrc:find("local sheets = Notes.drawings(m)", 1, true) and nsrc:find("Notes.pageCaption(i, #sheets, key)", 1, true)
+                and nsrc:find("self.picks[#self.picks + 1] = { att = a }", 1, true),
+                "…a note's page shows every sheet, each named (Page 2 of 3) and opened full screen by a tap, Press or its letter")
+        end
         -- Draw: a new note opening on a page to draw on
         local drew
         local real_edit = Notes.edit
@@ -7362,11 +7526,11 @@ print("Notes (Memos v0.31)")
             "Draw: a new note that opens on a page (not when drawings can't go to Memos)")
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
-        check(acts[7].icon_file:match("/icons/panel/close%.svg$") and acts[7].label == "Leave full screen" and io.open(acts[7].icon_file) ~= nil,
+        check(acts[8].icon_file:match("/icons/panel/close%.svg$") and acts[8].label == "Leave full screen" and io.open(acts[8].icon_file) ~= nil,
             "…in full screen the icon is an X, to leave it")
         opened = {}
         Notes.setFullscreen = function(_p, on) opened[#opened + 1] = tostring(on) end
-        acts[7].callback()
+        acts[8].callback()
         Notes.setFullscreen = real.setFullscreen
         check(opened[1] == "false", "…which turns it off")
         prefs.fullscreen = nil
@@ -7393,9 +7557,58 @@ print("Notes (Memos v0.31)")
         Notes.showConnect = kept_connect
         check(connected_again and connected_again[1] == plugin and connected_again[2] == true, "…Connect again opens the connect page")
         -- Kindle 4's Menu: what the buttons and letter keys do elsewhere, and Connection
+        local TouchK4 = require("gzreader_touch")
+        local kept_k4_keys = TouchK4.keys
+        TouchK4.keys = function() return false end
         local mtexts, _md, mcbs = texts(Notes.showMenu)
-        check(mtexts:match("^New note|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
-            "Kindle 4's Menu: New note, Filter, Layout, Sort, Full screen, Connection: " .. mtexts)
+        TouchK4.keys = kept_k4_keys
+        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
+        do
+            -- a keyboard Kindle: the same list names each key; a touch Kindle that can draw would get New sheet
+            local TouchM = require("gzreader_touch")
+            local kept_keys, kept_can = TouchM.keys, Notes.canDraw
+            TouchM.keys = function() return true end
+            local ktexts = texts(Notes.showMenu)
+            Notes.canDraw = function() return true end
+            local dtexts = texts(Notes.showMenu)
+            TouchM.keys, Notes.canDraw = kept_keys, kept_can
+            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Filter…  (F)|", 1, true) == 1
+                and ktexts:find("|Sort…  (S)|", 1, true) and ktexts:find("|Connection…  (M)", 1, true) and not ktexts:find("|Draw|", 1, true),
+                "keyboard Kindles: H lists every key: " .. ktexts)
+            check(dtexts:find("New note  (N)|Draw|Journal entry  (J)|", 1, true) == 1, "…Draw only where drawing is possible: " .. dtexts)
+            -- the keys themselves
+            local pressed = {}
+            local kept = {}
+            for _i, k in ipairs({ "edit", "journal", "showSearch", "showTags", "toggleDrawings", "setFilter", "showFilter", "showConnection", "showView", "showSort", "showMenu" }) do
+                kept[k] = Notes[k]
+                Notes[k] = function(_p, a) pressed[#pressed + 1] = k .. (type(a) == "table" and ("=" .. a.kind) or "") end
+            end
+            local fake_board = { plugin = plugin }
+            for _i, key in ipairs({ "N", "J", "K", "G", "D", "A", "F", "M", "L", "S", "H" }) do
+                Notes.Board.onSelectByShortCut(fake_board, nil, { key = key })
+            end
+            for k, fn in pairs(kept) do Notes[k] = fn end
+            check(table.concat(pressed, ",") == "edit,journal,showSearch,showTags,toggleDrawings,setFilter=all,showFilter,showConnection,showView,showSort,showMenu",
+                "keyboard Kindles: N new note, J journal, K search, G tags, D drawings, A all notes, F filter, M connection, L layout, S sort, H all keys: "
+                .. table.concat(pressed, ","))
+            local hint = Notes.KEY_HINT
+            local zsrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/filebrowser/patches/navbar.lua"):read("*a")
+            check(hint:find("N note", 1, true) and hint:find("J journal", 1, true) and hint:find("K search", 1, true)
+                and hint:find("G tags", 1, true) and hint:find("H all keys", 1, true)
+                and zsrc:find('local GZ_TAB_ROW_KEYS = { "Z", "X", "C", "V", "B" }', 1, true),
+                "…the main ones under the title, and H for the whole list (none of them Z X C V B: those switch the bottom tabs)")
+            -- D: on and off
+            local setf = {}
+            local kept_set, kept_f = Notes.setFilter, Notes.filter
+            Notes.setFilter = function(_p, f) setf[#setf + 1] = f.kind end
+            Notes.filter = { kind = "all" }
+            Notes.toggleDrawings(plugin)
+            Notes.filter = { kind = "drawings" }
+            Notes.toggleDrawings(plugin)
+            Notes.setFilter, Notes.filter = kept_set, kept_f
+            check(setf[1] == "drawings" and setf[2] == "all", "D (the Drawings chip): only the notes with drawings, then all again")
+        end
         local opened_conn
         local kept_conn = Notes.showConnection
         Notes.showConnection = function(p) opened_conn = p end
@@ -7404,8 +7617,52 @@ print("Notes (Memos v0.31)")
         check(opened_conn == plugin, "…Connection… opens Connection")
         local Touch = require("gzreader_touch")
         local cw = Touch.chipWidths(564, acts, 6, 46)
-        check(cw[1] == cw[6] and cw[7] == 46 and cw[1] * 6 + 46 + 6 * 6 <= 564 and cw[1] * 6 + 46 + 6 * 6 > 558,
-            "the icon button is narrow; the text buttons share the rest of the row")
+        check(cw[1] == cw[3] and cw[4] == 46 and cw[8] == 46 and cw[1] * 3 + 46 * 5 + 7 * 6 <= 564 and cw[1] * 3 + 46 * 5 + 7 * 6 > 560 and cw[1] >= 90,
+            "the icon buttons are narrow; Note, Draw and Journal share the rest of the row (" .. cw[1] .. " px each on a 600 px screen)")
+        do
+            -- scrolling (touch, Layout → Scroll up and down): rows moved by a swipe; the board's first row
+            check(Notes.scrollRows(10, 200, 4) == 1 and Notes.scrollRows(390, 200, 4) == 2 and Notes.scrollRows(5000, 200, 4) == 4 and Notes.scrollRows(nil, 200, 4) == 1,
+                "scrolling: a swipe moves the notes as far as the finger went, to the nearest row (at least one, at most a screenful)")
+            local TouchS = require("gzreader_touch")
+            local kept_on = TouchS.on
+            local pr = Notes.prefs(plugin)
+            local kept_scroll, kept_display = pr.scroll, pr.display
+            TouchS.on = function() return true end
+            pr.scroll, pr.display = nil, "compact"
+            local off = Notes.scrolling(plugin)
+            pr.scroll = true
+            local on = Notes.scrolling(plugin)
+            pr.display = "full"
+            local full = Notes.scrolling(plugin)
+            pr.display = "compact"
+            TouchS.on = function() return false end
+            local keys = Notes.scrolling(plugin)
+            TouchS.on = kept_on
+            pr.scroll, pr.display = kept_scroll, kept_display
+            check(off == false and on == true and full == false and keys == false,
+                "scrolling: only when chosen in Layout, on a touch Kindle, with compact notes (full notes keep their pages)")
+            local drawn = 0
+            local b = setmetatable({ _gz_row = 0, _gz_scroll = { rows = 3, cols = 2, cell_h = 200, last = 5 }, updateItems = function() drawn = drawn + 1 end },
+                { __index = function(_t, k) return rawget(Notes.Board, k) end })
+            b:onSwipe(nil, { direction = "north", distance = 410 })
+            local r1 = b._gz_row
+            b:onSwipe(nil, { direction = "north", distance = 5000 })
+            b:onSwipe(nil, { direction = "north", distance = 5000 })
+            local r2 = b._gz_row
+            b:onSwipe(nil, { direction = "south", distance = 190 })
+            local r3 = b._gz_row
+            b:onPan(nil, { direction = "south", distance = 800 })
+            local before_release = b._gz_row
+            b:onGzPanRelease()
+            local r4 = b._gz_row
+            b:scrollBy(-10)
+            b:scrollBy(-10)
+            check(r1 == 2 and r2 == 5 and r3 == 4 and before_release == 4 and r4 == 1 and b._gz_row == 0 and drawn == 5,
+                "scrolling: swipe up moves down two rows, never past the last row; a swipe down goes back; a drag moves when the finger lifts; redrawn only when it moved ("
+                .. table.concat({ r1, r2, r3, r4, drawn }, ",") .. ")")
+            check(nsrc:find("if not keep_page then b._gz_row = 0 end", 1, true) and nsrc:find("offset = m._gz_row * cols", 1, true),
+                "…other notes (a filter): from the top again")
+        end
         -- on top?
         local board = { plugin = plugin }
         Notes.board = board
@@ -7755,7 +8012,7 @@ print("Notes (Memos v0.31)")
         check(#told == 2 and told[1] == "board" and Notes.fetching[Memos.filePath(fetched)] == nil,
             "a picture already coming: the board and the page are told when it's here (one download)")
         local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("for _i, a in ipairs(Notes.drawings(m)) do", 1, true)
+        check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("local sheets = Notes.drawings(m)\n    for i, a in ipairs(sheets) do", 1, true)
             and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
             "drawings: on the board's cards and the note's page, not repeated under Attachments")
 

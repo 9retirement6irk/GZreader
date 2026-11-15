@@ -75,10 +75,10 @@ end
 --- `icon_w` wide; text chips share the rest. Returns { w, … } per action.
 function Touch.chipWidths(width, actions, gap, icon_w)
     local n, icons = #actions, 0
-    for _i, a in ipairs(actions) do if a.icon_file then icons = icons + 1 end end
+    for _i, a in ipairs(actions) do if a.icon_file and not (a.text or a[1]) then icons = icons + 1 end end
     local text_w = n > icons and math.floor((width - gap * (n - 1) - icon_w * icons) / (n - icons)) or 0
     local out = {}
-    for i, a in ipairs(actions) do out[i] = a.icon_file and icon_w or text_w end
+    for i, a in ipairs(actions) do out[i] = (a.icon_file and not (a.text or a[1])) and icon_w or text_w end
     return out
 end
 
@@ -103,10 +103,51 @@ local function iconChip(a, w, h, show_parent)
     return box
 end
 
+--- A chip with a picture and its name beside it (the Notes tab's Note, Draw, Journal):
+--- a thick frame, bold; `h` tall. `text` is on it for tests and logs, as on a Button.
+local function iconTextChip(a, w, h, show_parent)
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local Font = require("ui/font")
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local Geom = require("ui/geometry")
+    local GestureRange = require("ui/gesturerange")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local IconWidget = require("ui/widget/iconwidget")
+    local InputContainer = require("ui/widget/container/inputcontainer")
+    local Size = require("ui/size")
+    local TextWidget = require("ui/widget/textwidget")
+    local S = function(px) return Device.screen:scaleBySize(px) end
+    local b = Size.border.thick
+    local isz = math.floor(h * 0.55)
+    local text = a.text or a[1]
+    local room = w - 2 * b - isz - S(5) - S(6)
+    local label
+    for _i, size in ipairs({ 17, 16, 15, 14, 13 }) do -- (the name whole, smaller on a narrow screen)
+        if label then label:free() end
+        label = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = true, max_width = room }
+        if not label:isTruncated() then break end
+    end
+    local box = InputContainer:new{ dimen = Geom:new{ w = w, h = h }, show_parent = show_parent,
+        FrameContainer:new{ width = w, height = h, padding = 0, margin = 0, bordersize = b, radius = Size.radius.button,
+            CenterContainer:new{ dimen = Geom:new{ w = w - 2 * b, h = h - 2 * b },
+                HorizontalGroup:new{ align = "center",
+                    IconWidget:new{ file = a.icon_file, width = isz, height = isz, alpha = true },
+                    HorizontalSpan:new{ width = S(5) }, label } } } }
+    box.ges_events = { TapChip = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }
+    local callback = a.callback or a[2]
+    function box:onTapChip() if callback then callback() end return true end
+    box.text, box.gz_icon = text, a.icon_file
+    return box
+end
+
 --- A row of rounded buttons ("chips"), spread over `width`. An action is
 --- { text, callback } or { icon_file = "….svg", label, callback } (a
 --- narrower chip with a picture).
-function Touch.chips(width, actions, show_parent)
+--- opts.big: taller chips in bold (a screen's main buttons). An action with
+--- `chosen = true` (the filter in use) is drawn in bold with a thick frame.
+function Touch.chips(width, actions, show_parent, opts)
+    opts = opts or {}
     local Button = require("ui/widget/button")
     local HorizontalGroup = require("ui/widget/horizontalgroup")
     local HorizontalSpan = require("ui/widget/horizontalspan")
@@ -114,7 +155,7 @@ function Touch.chips(width, actions, show_parent)
     local gap = Device.screen:scaleBySize(10)
     local icon_w = Device.screen:scaleBySize(46)
     local nicons = 0
-    for _i, a in ipairs(actions) do if a.icon_file then nicons = nicons + 1 end end
+    for _i, a in ipairs(actions) do if a.icon_file and not (a.text or a[1]) then nicons = nicons + 1 end end
     if nicons > 0 and #actions > 4 then gap = Device.screen:scaleBySize(6) end -- (six on a 600 px screen)
     local widths = Touch.chipWidths(width, actions, gap, icon_w)
     local small = nicons > 0 and #actions > 4
@@ -124,47 +165,74 @@ function Touch.chips(width, actions, show_parent)
         if not a.icon_file then
             made[i] = Button:new{
                 text = a.text or a[1], callback = a.callback or a[2], width = widths[i], show_parent = show_parent,
-                bordersize = Size.border.thin, radius = Size.radius.button, margin = 0,
-                padding = Size.padding.small, text_font_size = small and 16 or 17, text_font_bold = false,
+                bordersize = (a.chosen or opts.big) and Size.border.thick or Size.border.thin, radius = Size.radius.button, margin = 0,
+                padding = opts.big and Size.padding.large or Size.padding.small,
+                text_font_size = opts.big and 20 or (small and 16 or 17), text_font_bold = (opts.big or a.chosen) and true or false,
             }
+            made[i].gz_chosen = a.chosen or nil
             h = h or made[i]:getSize().h
         end
     end
     local row = HorizontalGroup:new{ align = "center" }
     for i, a in ipairs(actions) do
         if i > 1 then row[#row + 1] = HorizontalSpan:new{ width = gap } end
-        row[#row + 1] = made[i] or iconChip(a, widths[i], h or Device.screen:scaleBySize(40), show_parent)
+        local ch = h or Device.screen:scaleBySize(40)
+        row[#row + 1] = made[i] or ((a.text or a[1]) and iconTextChip(a, widths[i], ch, show_parent) or iconChip(a, widths[i], ch, show_parent))
     end
     return row
 end
 
 --- On a touch Kindle: buttons in place of a tab view's key hints (the Menu's
 --- subtitle, under its title). Call after the Menu is built and decorated.
-function Touch.actionRow(menu, actions)
+--- more: rows of chips under that one ({ { actions…, big = true }, … }: the
+--- Notes tab's New note / New sheet and its tags). again: put the rows in
+--- anew (what they show changed: the filter in use).
+function Touch.actionRow(menu, actions, more, again)
     if not Touch.on() then return end
     menu._gz_actions = actions or menu._gz_actions
     actions = menu._gz_actions
+    -- (the title bar made again, gzreader_tabs.decorate: the same rows go back in)
+    menu._gz_more = more or menu._gz_more
+    more = menu._gz_more
     local tb = menu and menu.title_bar
     local sub = tb and (tb.inner_subtitle_group or tb.subtitle_widget)
     if not (tb and sub and tb.title_group and actions) then return end
     local idx
     for i, w in ipairs(tb.title_group) do
-        if w == tb._gz_action_row then return w end -- (there already)
-        if w == sub then idx = i end
+        if tb._gz_action_box and w == tb._gz_action_box then
+            if not again then return tb._gz_action_row end -- (there already)
+            idx = i
+        elseif w == sub and not idx then idx = i end
     end
     if not idx then return end
     local Screen = Device.screen
     local width = math.floor((menu.dimen and menu.dimen.w or Screen:getWidth()) * 0.94)
     local row = Touch.chips(width, actions, menu.show_parent or menu)
-    local old_h = sub:getSize().h
-    tb.title_group[idx] = row
-    tb._gz_action_row = row
+    local box, rows = row, { row }
+    if more and #more > 0 then
+        local VerticalGroup = require("ui/widget/verticalgroup")
+        local VSpan = require("ui/widget/verticalspan")
+        box = VerticalGroup:new{ align = "center", row }
+        for _i, acts in ipairs(more) do
+            local r = Touch.chips(width, acts, menu.show_parent or menu, { big = acts.big })
+            box[#box + 1] = VSpan:new{ width = Screen:scaleBySize(8) }
+            box[#box + 1] = r
+            rows[#rows + 1] = r
+        end
+    end
+    local old_h = tb.title_group[idx]:getSize().h
+    tb.title_group[idx] = box
+    tb._gz_action_row = row   -- the first row (Filter, Layout…)
+    tb._gz_action_rows = rows -- every row of chips
+    tb._gz_action_box = box
     tb.title_group:resetLayout()
     -- the title bar is taller now: the Menu lays its page out from its height
-    local grow = row:getSize().h - old_h
-    if grow > 0 and tb.titlebar_height then
+    local grow = box:getSize().h - old_h
+    if grow ~= 0 and tb.titlebar_height then
         tb.titlebar_height = tb.titlebar_height + grow
         if tb.dimen then tb.dimen.h = tb.dimen.h + grow end
+        -- (the size the Menu lays the page out under: an OverlapGroup keeps its own)
+        if tb._size and tb._size.h then tb._size.h = tb._size.h + grow end
         -- (and its bottom line goes down as much)
         local VerticalSpan = require("ui/widget/verticalspan")
         for _i, w in ipairs(tb) do

@@ -267,7 +267,9 @@ function RichEdit:keepCursorInView()
 end
 
 --- After an edit or a move: lay out, keep the cursor in view, redraw.
-function RichEdit:update(edited)
+--- (The formatting bar goes away with any of them but a hold and its own buttons: keep_bar.)
+function RichEdit:update(edited, keep_bar)
+    if not keep_bar then self.bar_open = nil end
     self:relayout()
     self:keepCursorInView()
     if edited then
@@ -558,6 +560,81 @@ function RichEdit:useTool(id)
     return self:setKind(id)
 end
 
+-- ------------------------------------------------------------ the formatting bar
+
+--- The bar that comes up at a selection (hold a word, drag for more; hold an
+--- empty line for the line itself): Bold, Italic, Heading, List, Checklist,
+--- Numbered, Tag, as in Memos' web editor. A tap on the text or typing puts it away.
+RichEdit.BAR = {
+    { id = "bold", label = "B" },
+    { id = "italic", label = "I" },
+    { id = "heading", label = "H" },
+    { id = "bullet", label = "\u{2022}" },
+    { id = "task", label = "\u{2610}" },
+    { id = "ordered", label = "1." },
+    { id = "tag", label = "#" },
+}
+
+--- Where the bar goes (relative to the widget): above the selection's first
+--- line, under its last one when there's no room above. nil when it's closed.
+function RichEdit:barRect()
+    if not self.bar_open then return nil end
+    local p, q = self:selection()
+    p, q = p or self.cur, q or self.cur
+    local li, x1 = RichEdit.lineOf(self.lines, p)
+    local lj = RichEdit.lineOf(self.lines, q)
+    local first, last = li and self.lines[li], lj and self.lines[lj]
+    if not first then return nil end
+    last = last or first
+    local n = #RichEdit.BAR
+    local cell = math.min(S(54), math.floor(self.width / n))
+    local w, h, gap = cell * n, S(44), S(6)
+    local y = first.y - self.top - h - gap
+    if y < 0 then y = last.y + last.h - self.top + gap end
+    if y + h > self.height then y = math.max(0, self.height - h) end
+    local x = math.max(0, math.min(self.width - w, math.floor((x1 or 0) - w / 4)))
+    return { x = x, y = y, w = w, h = h, cell = cell }
+end
+
+--- The bar's button at (x, y), if the bar is open and the point is on it.
+function RichEdit:barToolAt(x, y)
+    local r = self:barRect()
+    if not r or x < r.x or x >= r.x + r.w or y < r.y or y >= r.y + r.h then return nil end
+    return RichEdit.BAR[math.min(#RichEdit.BAR, math.floor((x - r.x) / r.cell) + 1)]
+end
+
+--- Is this tool on for the selection (or the cursor's line / word)? (drawn inverted)
+function RichEdit:toolOn(id)
+    local p = self:selection()
+    local b = (p or self.cur).b
+    if id == "heading" or id == "bullet" or id == "task" or id == "ordered" then return b.kind == id end
+    local i = (p or self.cur).i
+    local m = b.marks and b.marks[math.min(i, #b.chars)]
+    if id == "bold" then return m and m.b == true or false end
+    if id == "italic" then return m and m.i == true or false end
+    return false
+end
+
+function RichEdit:paintBar(bb, x, y)
+    local r = self:barRect()
+    if not r then return end
+    local bx, by = x + r.x, y + r.y
+    local border = math.max(2, S(2))
+    bb:paintRoundedRect(bx, by, r.w, r.h, Blitbuffer.COLOR_WHITE, S(8))
+    bb:paintBorder(bx, by, r.w, r.h, border, Blitbuffer.COLOR_BLACK, S(8))
+    for i, t in ipairs(RichEdit.BAR) do
+        local cx = bx + (i - 1) * r.cell
+        local on = self:toolOn(t.id)
+        if on then bb:paintRect(cx + border + 1, by + border + 1, r.cell - 2 * border - 2, r.h - 2 * border - 2, Blitbuffer.COLOR_BLACK) end
+        if i > 1 then bb:paintRect(cx, by + S(8), 1, r.h - S(16), Blitbuffer.COLOR_DARK_GRAY) end
+        local face = RichEdit.face(t.id == "task" and 22 or 20, t.id == "bold", t.id == "italic")
+        local tw = RenderText:sizeUtf8Text(0, r.cell, face, t.label, true, false).x
+        local _h, base = lineMetrics(face)
+        RenderText:renderUtf8Text(bb, cx + math.floor((r.cell - tw) / 2), by + math.floor((r.h - _h) / 2) + base, face, t.label,
+            true, false, on and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK)
+    end
+end
+
 -- ------------------------------------------------------------ touch
 
 --- The position at screen point (x, y) (relative to the widget), and the line.
@@ -578,6 +655,16 @@ end
 
 function RichEdit:onTapEdit(_arg, ges)
     local x, y = rel(self, ges)
+    -- the formatting bar: its button, on the selection (the bar stays for another)
+    local tool = self:barToolAt(x, y)
+    if tool then
+        self:useTool(tool.id)
+        if tool.id ~= "tag" then
+            self.bar_open = true
+            UIManager:setDirty(self.editor or self, function() return "ui", self.dimen end)
+        end
+        return true
+    end
     local p, l = self:posAt(x, y)
     if not p then return true end
     -- a checklist item's box: ticks it
@@ -594,6 +681,7 @@ function RichEdit:onTapEdit(_arg, ges)
 end
 
 function RichEdit:onHoldEdit(_arg, ges)
+    if self:barToolAt(rel(self, ges)) then return true end
     local p = self:posAt(rel(self, ges))
     if not p then return true end
     local a, z = Blocks.wordAt(p.b, p.i)
@@ -605,8 +693,10 @@ function RichEdit:onHoldEdit(_arg, ges)
         self.cur = { b = p.b, i = p.i }
     end
     self.selecting = true
+    self.dragged = false
     self.pending = nil
-    self:update()
+    self.bar_open = true -- the formatting bar, at what's chosen
+    self:update(nil, true)
     return true
 end
 
@@ -615,7 +705,8 @@ function RichEdit:onHoldPanEdit(_arg, ges)
     local p = self:posAt(rel(self, ges))
     if p then
         self.cur = p
-        self:update()
+        self.dragged = true
+        self:update(nil, true)
     end
     return true
 end
@@ -623,11 +714,12 @@ end
 function RichEdit:onHoldReleaseEdit(_arg, ges)
     if not self.selecting then return false end
     self.selecting = false
-    if ges and ges.pos then
+    -- (a hold without a drag keeps the word it chose: the finger lifts inside it)
+    if self.dragged and ges and ges.pos then
         local p = self:posAt(rel(self, ges))
         if p and self.anchor and not (p.b == self.anchor.b and p.i == self.anchor.i) then self.cur = p end
     end
-    self:update()
+    self:update(nil, true)
     return true
 end
 
@@ -724,6 +816,7 @@ function RichEdit:paintTo(bb, x, y)
     -- more above / below
     if top > 0 then bb:paintRect(x, y, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
     if top + h < self.total_h then bb:paintRect(x, y + h - 1, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
+    self:paintBar(bb, x, y)
 end
 
 return RichEdit

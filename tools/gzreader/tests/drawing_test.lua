@@ -72,7 +72,10 @@ print("== a stroke")
     check(el.points[1][1] == 0 and el.points[1][2] == 5 and el.points[3][1] == 15.17 and el.points[3][2] == 15.06,
         "points are offsets from x, y, rounded to 2 decimals")
     check(el.simulatePressure == true and el.points[1][3] == 0.5, "no pressure from the pen: simulated (0.5 stored)")
-    check(el.strokeWidth == 4 and el.strokeColor == "#ff0000", "width snapped to memos' 1/2/4; colour lower case")
+    check(el.strokeWidth == 5 and el.strokeColor == "#ff0000"
+        and Drawing.stroke({ { 0, 0 }, { 5, 5 } }, { width = 40 }).strokeWidth == 12 and Drawing.stroke({ { 0, 0 }, { 5, 5 } }, { width = 0 }).strokeWidth == 0.25
+        and Drawing.stroke({ { 0, 0 }, { 5, 5 } }, {}).strokeWidth == 2,
+        "its width kept as given (memos draws any; within 0.25 to 12, 2 when not said); colour lower case")
     check(type(el.id) == "string" and el.id:match("^[0-9A-Za-z]+$") and #el.id == 10, "a 10-character id of letters and digits")
     check(el.seed >= 0 and el.seed < 2^31 and el.seed == math.floor(el.seed), "a 31-bit seed")
     check(el.angle == 0 and el.opacity == 100 and el.isDeleted == false and el.locked == false
@@ -280,8 +283,9 @@ print("== notepaper: a background as memos keeps one")
     local Notepaper = require("gzreader_notepaper")
     local scene = Notepaper.scene("college")
     local bg = scene.elements[1]
-    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 6,
-        "a new page on College ruled: its picture under everything, in the scene's files (six papers, Blank first)")
+    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 8
+        and Notepaper.LIST[1].id == "blank" and Notepaper.get("checklist").label == "Checklist" and Notepaper.get("cornell").label == "Cornell notes",
+        "a new page on College ruled: its picture under everything, in the scene's files (eight papers, Blank first; Checklist and Cornell notes among them)")
     for _i, p in ipairs(Notepaper.LIST) do
         if p.file then
             local url = Notepaper.dataURL(p.id)
@@ -298,6 +302,40 @@ print("== notepaper: a background as memos keeps one")
     local back = assert(Drawing.readScene(out))
     check(back.files[back.elements[1].fileId].dataURL == Notepaper.dataURL("college"), "read back: the paper's picture as it was")
     if OUT then writeFile(OUT .. "/drawing-20261112-221000.canvas.png", out) end
+end)()
+
+print("== your own notepaper (PNG files in settings/gzreader-notepaper)")
+;(function()
+    local Notepaper = require("gzreader_notepaper")
+    package.preload["libs/libkoreader-lfs"] = package.preload["libs/libkoreader-lfs"] or function() return require("lfs") end
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not (ok and lfs and OUT) then print("  (skipped: no lfs / work folder)"); return end
+    local dir = OUT .. "/own-paper"
+    os.execute("mkdir -p '" .. dir .. "'")
+    local real_dir = Notepaper.ownDir
+    Notepaper.ownDir = function() return dir end
+    check(#Notepaper.own() == 0 and #Notepaper.all() == #Notepaper.LIST, "no files: only the papers that come with GZreader")
+    writeFile(dir .. "/Planner page.png", greyPng(60, 80))
+    writeFile(dir .. "/notes.txt", "not a picture")
+    writeFile(dir .. "/broken.png", "PNG? no")
+    writeFile(dir .. "/huge.png", greyPng(1500, 100))
+    local own = Notepaper.own()
+    check(#own == 1 and own[1].id == "own:Planner page.png" and own[1].label == "Planner page" and own[1].w == 60 and own[1].h == 80,
+        "a PNG there is a paper, named after its file (not other files, a broken PNG, or one over 1440 px)")
+    local all = Notepaper.all()
+    check(#all == #Notepaper.LIST + 1 and all[#all].id == "own:Planner page.png" and Notepaper.get("own:Planner page.png") ~= nil
+        and Notepaper.path(Notepaper.get("own:Planner page.png")) == dir .. "/Planner page.png",
+        "…listed after GZreader's own")
+    local scene = Notepaper.scene("own:Planner page.png")
+    local bg = scene.elements[1]
+    check(bg and bg.type == "image" and bg.locked and bg.width == 60 and bg.height == 80
+        and scene.files[bg.fileId].dataURL:match("^data:image/png;base64,") ~= nil,
+        "a page on it: the picture under everything at its own size, as Memos keeps a background")
+    check(Notepaper.idOf(scene, bg) == "own:Planner page.png", "…recognised again when the drawing is opened")
+    os.remove(dir .. "/Planner page.png")
+    check(Notepaper.get("own:Planner page.png") == nil and Notepaper.idOf(scene, bg) == nil,
+        "the file gone: the drawing keeps its picture, the paper is no longer offered")
+    Notepaper.ownDir = real_dir
 end)()
 
 print(string.format("drawing: %d passed, %d failed", pass, fail))

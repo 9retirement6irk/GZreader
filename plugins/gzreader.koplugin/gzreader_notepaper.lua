@@ -6,6 +6,8 @@ moves it); its pixels are in the scene's `files` as a data URL.
 
 The papers here (`notepaper/*.png`) are letter pages at Memos' stored size
 (1113 × 1440: it keeps pictures at most 1440 px on their longest side).
+Your own: PNG files in `settings/gzreader-notepaper/` (at most 1440 px on
+their longest side and 600 KB), listed after these by their file names.
 ]]
 
 local Drawing = require("gzreader_drawing")
@@ -24,19 +26,79 @@ Notepaper.LIST = {
     { id = "gregg", label = _("Gregg ruled"), file = "gregg.png" },
     { id = "dots", label = _("Dot grid"), file = "dots.png" },
     { id = "graph", label = _("Graph"), file = "graph.png" },
+    { id = "checklist", label = _("Checklist"), file = "checklist.png" },
+    { id = "cornell", label = _("Cornell notes"), file = "cornell.png" },
 }
+
+Notepaper.MAX_SIDE, Notepaper.MAX_BYTES = 1440, 600 * 1024
+
+--- Where your own papers go (nil when there's no settings folder: tests).
+function Notepaper.ownDir()
+    local ok, DataStorage = pcall(require, "datastorage")
+    if not ok or not DataStorage then return nil end
+    return DataStorage:getSettingsDir() .. "/gzreader-notepaper"
+end
+
+--- A PNG's width and height from its header (nil when it isn't one).
+function Notepaper.pngSize(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local head = f:read(24)
+    local size = f:seek("end")
+    f:close()
+    if not head or #head < 24 or head:sub(1, 8) ~= "\137PNG\r\n\26\n" then return nil end
+    local function be(i) local a, b, c, d = head:byte(i, i + 3); return ((a * 256 + b) * 256 + c) * 256 + d end
+    return be(17), be(21), size
+end
+
+--- Your own papers: { id = "own:<file>", label, path, w, h }, by name.
+function Notepaper.own()
+    local dir = Notepaper.ownDir()
+    local ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not (dir and ok and lfs and lfs.attributes(dir, "mode") == "directory") then return {} end
+    local out = {}
+    for name in lfs.dir(dir) do
+        if name:lower():match("%.png$") then
+            local w, h, size = Notepaper.pngSize(dir .. "/" .. name)
+            if w and w > 0 and h > 0 and math.max(w, h) <= Notepaper.MAX_SIDE and size <= Notepaper.MAX_BYTES then
+                out[#out + 1] = { id = "own:" .. name, label = (name:gsub("%.[Pp][Nn][Gg]$", "")), path = dir .. "/" .. name,
+                    w = w, h = h, own = true }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.label:lower() < b.label:lower() end)
+    return out
+end
+
+--- Every paper: Blank, the ones that come with GZreader, then your own.
+function Notepaper.all()
+    local out = {}
+    for _i, p in ipairs(Notepaper.LIST) do out[#out + 1] = p end
+    for _i, p in ipairs(Notepaper.own()) do out[#out + 1] = p end
+    return out
+end
 
 function Notepaper.get(id)
     for _i, p in ipairs(Notepaper.LIST) do if p.id == id then return p end end
+    if type(id) == "string" and id:sub(1, 4) == "own:" then
+        for _i, p in ipairs(Notepaper.own()) do if p.id == id then return p end end
+    end
+end
+
+--- Paper `p`'s picture file (nil for blank).
+function Notepaper.path(p)
+    if not p then return nil end
+    return p.path or (p.file and (Notepaper.DIR .. "/" .. p.file)) or nil
 end
 
 local cache = {}
 --- Paper `id`'s picture as a data URL (nil for blank, or a paper that's missing).
 function Notepaper.dataURL(id)
     local p = Notepaper.get(id)
-    if not (p and p.file) then return nil end
+    local path = Notepaper.path(p)
+    if not path then return nil end
     if cache[id] then return cache[id] end
-    local f = io.open(Notepaper.DIR .. "/" .. p.file, "rb")
+    local f = io.open(path, "rb")
     if not f then return nil end
     local data = f:read("*a")
     f:close()
@@ -50,8 +112,9 @@ function Notepaper.element(id, now)
     local url = Notepaper.dataURL(id)
     if not url then return nil end
     local file_id = Drawing.randomId()
+    local p = Notepaper.get(id)
     local el = {
-        id = Drawing.randomId(), type = "image", x = 0, y = 0, width = Notepaper.W, height = Notepaper.H,
+        id = Drawing.randomId(), type = "image", x = 0, y = 0, width = p.w or Notepaper.W, height = p.h or Notepaper.H,
         angle = 0, strokeColor = "#1e1e1e", backgroundColor = "transparent", strokeWidth = 2, opacity = 100,
         isDeleted = false, groupIds = Drawing.list(), boundElements = Drawing.list(),
         seed = Drawing.randomSeed(), locked = true, fileId = file_id, scale = Drawing.list({ 1, 1 }),
@@ -90,6 +153,9 @@ function Notepaper.idOf(scene, el)
     if type(url) ~= "string" then return nil end
     for _i, p in ipairs(Notepaper.LIST) do
         if p.file and Notepaper.dataURL(p.id) == url then return p.id end
+    end
+    for _i, p in ipairs(Notepaper.own()) do
+        if Notepaper.dataURL(p.id) == url then return p.id end
     end
 end
 

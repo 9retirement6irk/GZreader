@@ -320,5 +320,46 @@ print("== notepaper: a page's background, as memos keeps one")
     check(hs.ox == 0 and hs.oy == 0 and hs.per_unit == 2, "a drawing made here comes back where it was drawn")
 end)()
 
+print("== redo, the controls over the page, pen thicknesses")
+;(function()
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    run(sk, { { finger(0, 300, 400) }, { finger(0, 400, 460) }, { lift(0) } })
+    check(not sk:canRedo() and not sk:redo(), "nothing to redo before an undo")
+    check(sk:undo() and #sk:live() == 1 and sk:canRedo(), "undo: the last stroke gone, redo possible")
+    check(sk:redo() and #sk:live() == 2 and not sk:canRedo() and sk:canUndo(), "redo brings it back (and can be undone again)")
+    check(sk:undo() and sk:undo() and sk:isEmpty() and sk:redo() and sk:redo() and #sk:live() == 2, "two undos, two redos: both strokes back")
+    sk:undo()
+    run(sk, { { finger(0, 500, 600) }, { finger(0, 600, 660) }, { lift(0) } })
+    check(not sk:canRedo() and #sk:live() == 2, "a new stroke after an undo: nothing left to redo")
+    sk:clear()
+    check(sk:isEmpty() and sk:undo() and #sk:live() == 2 and sk:redo() and sk:isEmpty(), "Clear can be undone and redone")
+    sk:undo()
+    -- the toolbar and the page pill lie over the page: a contact there is a tap for them, never ink
+    sk.holes = { { x = 10, y = 120, w = 60, h = 400 } }
+    local before = #sk.strokes
+    local out = run(sk, { { finger(0, 30, 200) }, { finger(0, 32, 202) }, { lift(0) } })
+    check(#out.taps == 1 and out.taps[1].x == 30 and #sk.strokes == before, "a tap on the toolbar (over the page) goes to it and draws nothing")
+    out = run(sk, { { finger(0, 30, 200) }, { finger(0, 300, 500) }, { lift(0) } })
+    check(#sk.strokes == before and #out.taps == 0, "a contact that starts on the toolbar never draws, wherever it goes")
+    out = run(sk, { { finger(0, 300, 300) }, { finger(0, 320, 330) }, { lift(0) } })
+    check(#sk.strokes == before + 1, "beside it, the page draws as before")
+    check(not sk:inCanvas(30, 200) and sk:inCanvas(300, 300) and not sk:inCanvas(500, 40), "inCanvas: on the page and not under a control")
+    -- thicknesses: five, from very fine to very thick; a stroke keeps the one it was drawn with
+    check(#Sketch.WIDTHS == 5 and Sketch.WIDTHS[1] == 0.5 and Sketch.WIDTHS[3] == 2 and Sketch.WIDTHS[5] == 7, "five pen thicknesses (0.5 to 7; memos' own 1, 2 and 4 among them)")
+    sk.holes = nil
+    sk:setWidth(7)
+    run(sk, { { finger(0, 600, 300) }, { finger(0, 700, 330) }, { lift(0) } })
+    sk:setWidth(0.5)
+    run(sk, { { finger(0, 600, 500) }, { finger(0, 700, 530) }, { lift(0) } })
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local widths = {}
+    for _i, el in ipairs(scene and scene.elements or {}) do if el.type == "freedraw" then widths[#widths + 1] = el.strokeWidth end end
+    check(widths[#widths] == 0.5 and widths[#widths - 1] == 7, "…written into the drawing as memos' stroke widths (7 and 0.5)")
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local live = again:live()
+    check(live[#live].width == 0.5 and live[#live - 1].width == 7, "…and read back as drawn")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
