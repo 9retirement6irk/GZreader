@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Fixed-layout books made from a PDF: no blank page after each page, pages fill the screen", text = "Fixed-layout EPUBs made from a PDF (each page a picture with an invisible text layer over it) showed a blank page after every page, and Fit pictures left the pages small at the left of the screen, cut off on the right. Such books are now recognized as picture books and fitted when they open: the invisible layer is hidden and each page fills the screen, centred. A book already fitted is fitted again once when it opens." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },

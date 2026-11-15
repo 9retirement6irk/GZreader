@@ -31,3 +31,18 @@ then. Only one book is measured at a time: a second picture book opened (or
 is fitted right after it. Until 2026-11-09's fix it was left as it was, and
 Fit pictures seemed to do nothing. When fitting has to wait for the
 measuring, a note says the pages will be fitted in a moment.
+
+**Fixed-layout EPUBs made from a PDF** (`rendition:layout` pre-paginated:
+each page is one picture of the printed page with an invisible text layer
+positioned over it, and the page's own size, e.g. 1359 x 2008 px, set on it)
+are picture books too. KOReader's EPUB engine can't position that text
+layer over the picture, so it laid it out after it: every page was followed
+by a blank one, and Fit pictures left the pages at the left of the screen,
+cut off on the right. Since the 2026-11-15 fix the invisible layer (a style
+that is positioned absolutely and whose text is transparent) is hidden while
+the pictures are fitted, its text doesn't count when the book is recognized
+(so such a book is fitted by itself when it opens), and each page's own
+width is dropped so the picture is centred and fills the screen. A book
+fitted before the fix is fitted again once when it opens. The invisible text
+can't be searched or selected while the pictures are fitted; turn Fit
+pictures off to get it back (it then shows after each picture again).
