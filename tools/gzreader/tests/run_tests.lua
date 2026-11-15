@@ -4906,6 +4906,83 @@ do
     local chapters = {}
     for i = 1, 3 do chapters[i] = string.rep("<p>" .. line .. "</p>", 300) end
     check(not PB.detectWith(epubOf(chapters)), "a novel in three files: not a picture book")
+    -- a fixed-layout EPUB made from a PDF (The BOOK): each page one picture
+    -- plus an invisible text layer positioned over it, the page's size on its body
+    ;(function()
+        local fx = { ["META-INF/container.xml"] = CONTAINER }
+        local man, spi = {}, {}
+        local words = string.rep('<span style="left:203px;top:290px;font-size:21px">experiences</span>\n', 40)
+        for i = 1, 12 do
+            local layer = i % 3 == 0 and '<div class="tx"></div>'
+                or ('<div class="tx"><div class="tx">' .. words .. '</div>' .. words .. '</div>')
+            man[#man + 1] = string.format('<item id="x%d" href="pages/p%d.xhtml" media-type="application/xhtml+xml"/>', i, i)
+            spi[#spi + 1] = string.format('<itemref idref="x%d" properties="page-spread-left"/>', i)
+            fx[string.format("OEBPS/pages/p%d.xhtml", i)] = string.format('<html><head><link rel="stylesheet" href="../style.css"/></head>'
+                .. '<body style="width:1359px;height:2008px">\n<img class="pg" src="../img/p%d.jpg" width="1359" height="2008"/>\n%s\n<p class="after">x</p></body></html>', i, layer)
+        end
+        local opf = '<package version="3.0"><metadata><meta property="rendition:layout">pre-paginated</meta></metadata><manifest>'
+            .. '<item id="css" href="style.css" media-type="text/css"/>' .. table.concat(man) .. "</manifest><spine>" .. table.concat(spi) .. "</spine></package>"
+        local css = "/* the converter's */ @page{margin:0}html,body{margin:0;padding:0;overflow:hidden}\n"
+            .. "img.pg{position:absolute;top:0;left:0;margin:0}\n.tx{position:absolute;top:0;left:0;width:100%;height:100%}\n"
+            .. ".note{position:absolute;top:0}\n.tx span{position:absolute;white-space:nowrap;color:transparent;line-height:1}"
+        fx["OEBPS/content.opf"], fx["OEBPS/style.css"] = opf, css
+        local read = function(p) return fx[p] end
+        local layers = PB.textLayers(read)
+        check(#layers == 1 and layers[1] == ".tx",
+            "fixed-layout book: its invisible text layer found (.tx: absolute, transparent text inside; not the page picture, not a visible note)")
+        check(PB.detectWith(read), "…and it's a picture book: the layer's text doesn't count (it was taken for a converted PDF: the tile did nothing useful)")
+        local stripped = PB.withoutLayers(fx["OEBPS/pages/p1.xhtml"], layers)
+        check(not stripped:find("experiences", 1, true) and stripped:find('<p class="after">x</p>', 1, true) and stripped:find("p1.jpg", 1, true),
+            "…the layer cut out up to its own closing tag (nested ones too), the rest of the page kept")
+        local style = PB.css(99, {}, layers)
+        check(style:find(".tx { display: none !important; }", 1, true) and style:find("body { width: auto !important; height: auto !important; }", 1, true),
+            "fitted: the layer hidden (no blank page after each picture), the body's own 1359 px dropped (the picture was cut off on the right)")
+        check(#PB.textLayers(epubOf(scans)) == 0 and not PB.css(99, {}):find("display: none", 1, true),
+            "a reflowable picture book: no layers, nothing hidden")
+        fx["OEBPS/content.opf"] = opf:gsub("pre%-paginated", "reflowable")
+        check(#PB.textLayers(read) == 0, "…and only for fixed-layout (pre-paginated) books")
+        local fdoc = { getDocumentFileContent = function(_, p) return fx[p] end }
+        fx["OEBPS/content.opf"] = opf
+        check(PB.layersOf(fdoc)[1] == ".tx" and #PB.layersOf(nil) == 0, "the open book's layers")
+        check(PB.isFixedLayout(read) and not PB.isFixedLayout(epubOf(scans)), "fixed layout told from the OPF")
+        -- fitting one: no background job reading every picture (The BOOK's 264 MB
+        -- were read for 13 min on a Paperwhite 3, then the job failed)
+        local fds = { d = {} }
+        function fds:readSetting(k) return self.d[k] end
+        function fds:saveSetting(k, v) self.d[k] = v end
+        function fds:delSetting(k) self.d[k] = nil end
+        local freopen = 0
+        local fui = { doc_settings = fds, view = { footer = { getHeight = function() return 28 end, settings = {} } },
+            styletweak = {}, reloadDocument = function() freopen = freopen + 1 end,
+            document = { file = "/tmp/gz-fixed.epub", info = {}, getDocumentFileContent = function(_, p) return fx[p] end,
+                configurable = { smooth_scaling = 0, h_page_margins = { 15, 15 }, t_page_margin = 10, b_page_margin = 10 } } }
+        local Async = require("gzreader_async")
+        local orig_bg, jobs = Async.background, 0
+        Async.background = function() jobs = jobs + 1 end
+        local UIM = require("ui/uimanager")
+        local orig_tick = UIM.nextTick
+        UIM.nextTick = function(_s, fn) fn() end
+        PB.set(fui, true)
+        check(jobs == 0 and PB.isOn(fui) and #fds.d.gzreader_pb_wide == 0 and freopen == 1
+            and fui.styletweak.book_style_tweak:find(".tx { display: none", 1, true),
+            "fitting a fixed-layout book: no picture sizes read in the background, fitted and reopened at once")
+        -- a fixed-layout book that an older check called "no": checked again once when it opens
+        local orig_isfalse = G_reader_settings.isFalse
+        G_reader_settings.isFalse = function(self, k) return self:readSetting(k) == false end
+        fds.d = { gzreader_picture_book = false }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == true and fds.d.gzreader_pb_check == PB.CHECK and PB.isOn(fui),
+            "a fixed-layout book found \"no\" by 1.30.0: checked again when it opens, and fitted")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_vh = 99 }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false and not PB.isOn(fui), "…not one fitted and then turned off")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_check = PB.CHECK }
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false, "…nor one this check already said no to")
+        Async.background, UIM.nextTick, G_reader_settings.isFalse = orig_bg, orig_tick, orig_isfalse
+    end)()
     -- the picture sizes are read in a background job first, never on the screen's thread
     local reads = 0
     ui.document.getDocumentFileContent = function(_, p) if p:match("%.jpg$") then reads = reads + 1 end return files[p] end
@@ -4983,9 +5060,13 @@ do
     ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v3 */ img{} /* GZreader picture book: end */"
     ui.styletweak.book_style_tweak_enabled = true
     PB.onOpen(ui)
-    check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v5 */", 1, true), "fitted by an older version: fitted again once")
+    check(reopened == 4 and ui.styletweak.book_style_tweak:find("/* v" .. PB.VERSION .. " */", 1, true), "fitted by an older version: fitted again once")
+    ui.styletweak.book_style_tweak = "/* GZreader picture book: begin */ /* v5 */ img{} /* GZreader picture book: end */"
     PB.onOpen(ui)
-    check(reopened == 4, "…and not again")
+    check(reopened == 5 and PB.VERSION == 6 and ui.styletweak.book_style_tweak:find("/* v6 */", 1, true),
+        "fitted by 1.30.0 (v5, a fixed-layout book's text layers still showing): fitted again once")
+    PB.onOpen(ui)
+    check(reopened == 5, "…and not again")
 
     -- a picture book brought by the computer (or downloaded for later): recognized and
     -- fitted before it's first opened, so it opens once, already fitted
@@ -5001,15 +5082,16 @@ do
         function o:flush() end
         return o
     end
-    check(PB.prefit(pf, true, { "logo.jpg" }), "picture book recognized before it's opened")
+    check(PB.prefit(pf, true, { "logo.jpg" }, { ".tx" }), "picture book recognized before it's opened")
     local dsx = DocSettings:open(pf)
     local tweak = dsx:readSetting("book_style_tweak") or ""
     check(dsx:readSetting("gzreader_picture_book") == true and dsx:readSetting("copt_t_page_margin") == 30
         and dsx:readSetting("copt_b_page_margin") == 4 and dsx:readSetting("copt_h_page_margins")[1] == 0
         and dsx:readSetting("copt_smooth_scaling") == 1 and dsx:readSetting("book_style_tweak_enabled") == true
-        and tweak:find("/* v5 */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
+        and tweak:find("/* v" .. PB.VERSION .. " */", 1, true) and tweak:find('img[src$="logo.jpg"]', 1, true)
+        and tweak:find(".tx { display: none", 1, true) and dsx:readSetting("gzreader_pb_layers")[1] == ".tx"
         and type(dsx:readSetting("gzreader_pb_margins")) == "table",
-        "…fitted with this Kindle's layout (from the last picture book fitted here), the old margins kept")
+        "…fitted with this Kindle's layout (from the last picture book fitted here), the old margins kept, a fixed-layout book's text layer hidden")
     check(not PB.prefit(pf, true, {}), "…once")
     ds.d = { gzreader_picture_book = true, gzreader_pb_fit = dsx:readSetting("gzreader_pb_fit") }
     ui.styletweak.book_style_tweak = tweak

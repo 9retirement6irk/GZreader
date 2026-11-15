@@ -23,6 +23,15 @@ per book:
   (about 385 x 625) enlarged to the screen, and smooth scaling makes the
   enlarged handwriting look much less jagged.
 Reading menu → "Fit pictures to the screen" turns it on or off for the book.
+
+Fixed-layout EPUBs made from a PDF (rendition:layout pre-paginated: each
+page one picture plus an invisible text layer, absolutely positioned over
+it, and the page's own size on its body, e.g. 1359 x 2008 px) came out as
+a picture, then a blank page (crengine ignores position:absolute, so the
+invisible layer was laid out after the picture), and fitted, as a picture
+cut off on the right (the body kept its 1359 px). Such layers (PB.textLayers)
+are hidden while the pictures are fitted and their text doesn't count when
+a book is recognized; the body's own size is dropped.
 ]]
 
 local Notification = require("ui/widget/notification")
@@ -34,14 +43,15 @@ local PB = {}
 
 local MARK_BEGIN = "/* GZreader picture book: begin */"
 local MARK_END = "/* GZreader picture book: end */"
-PB.VERSION = 5
+PB.VERSION = 6
 
 --- The style tweak, with pictures `vh` tall. In crengine 1vh is 1% of the
 --- page's text area (inside the margins), and vh is honoured for pictures
 --- on the Kindle (1.0.30's height:100% was ignored there).
-function PB.css(vh, wide)
+function PB.css(vh, wide, layers)
     local out = { MARK_BEGIN .. string.format([[ /* v%d */
 body, p, div, section, h1, h2, h3, h4, h5, h6, figure, blockquote, center { margin: 0 !important; padding: 0 !important; text-indent: 0 !important; }
+body { width: auto !important; height: auto !important; }
 img { display: block !important; margin: 0 auto !important; padding: 0 !important;
       height: %.1fvh !important; width: auto !important;
       max-height: none !important; max-width: 100vw !important; }]], PB.VERSION, vh) }
@@ -51,8 +61,104 @@ img { display: block !important; margin: 0 auto !important; padding: 0 !importan
         out[#out + 1] = string.format('img[src$="%s"] { height: auto !important; width: auto !important; }',
             name:gsub('[\\"]', ""))
     end
+    -- a fixed-layout book's invisible text layers (PB.textLayers): hidden,
+    -- or each page is followed by a blank one
+    for _i, sel in ipairs(layers or {}) do
+        if sel:match("^[%w]*%.[%w_-]+$") then out[#out + 1] = sel .. " { display: none !important; }" end
+    end
     out[#out + 1] = MARK_END
     return table.concat(out, "\n")
+end
+
+--- A fixed-layout book's invisible text layers (as a PDF converter writes
+--- them): the stylesheets' simple selectors (".tx", "div.tx") that are
+--- positioned absolutely and whose text is invisible (the selector itself or
+--- one inside it: color transparent, opacity 0, visibility hidden). Only for
+--- rendition:layout pre-paginated books. read(path) -> a file in the EPUB.
+local function fixedOpf(read)
+    if type(read) ~= "function" then return nil end
+    local container = read("META-INF/container.xml")
+    local opf_path = container and container:match("<[%w:]*rootfile[^>]-full%-path%s*=%s*[\"']([^\"']+)[\"']")
+    local opf = opf_path and read(opf_path)
+    if not opf or not opf:match("rendition:layout[\"']?%s*>%s*pre%-paginated") then return nil end
+    return opf, opf_path
+end
+
+--- Is it a fixed-layout (rendition:layout pre-paginated) EPUB? Reads only its OPF.
+function PB.isFixedLayout(read)
+    return fixedOpf(read) ~= nil
+end
+
+function PB.textLayers(read)
+    local ok_s, Sync = pcall(require, "gzreader_sync")
+    if not ok_s then return {} end
+    local opf, opf_path = fixedOpf(read)
+    if not opf then return {} end
+    local base = opf_path:match("^(.*/)") or ""
+    local absolute, invisible = {}, {}
+    for item in opf:gmatch("<[%w:]*item%s[^>]*>") do
+        local href = item:match("%shref%s*=%s*[\"']([^\"']+)[\"']")
+        if href and item:match("media%-type%s*=%s*[\"']text/css[\"']") then
+            local css = (read(Sync.normalizeHref(base .. href)) or ""):gsub("/%*.-%*/", "")
+            for sels, body in css:gmatch("([^{}]+){([^{}]*)}") do
+                body = body:lower():gsub("%s+", "")
+                local abs = body:find("position:absolute", 1, true) ~= nil
+                local hid = body:find("color:transparent", 1, true) or body:match("opacity:0[;!]") or body:match("opacity:0$")
+                    or body:find("visibility:hidden", 1, true)
+                for sel in sels:gmatch("[^,]+") do
+                    sel = sel:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+                    if abs then absolute[sel] = true end
+                    if hid then invisible[#invisible + 1] = sel end
+                end
+            end
+        end
+    end
+    local out = {}
+    for sel in pairs(absolute) do
+        local tag = sel:match("^([%w]*)%.[%w_-]+$")
+        if tag and not ({ img = true, svg = true, image = true })[tag:lower()] then
+            for _i, h in ipairs(invisible) do
+                if h == sel or h:sub(1, #sel + 1) == sel .. " " then out[#out + 1] = sel; break end
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+--- html without the elements of these layers (their invisible text).
+function PB.withoutLayers(html, layers)
+    for _i, sel in ipairs(layers or {}) do
+        local want_tag, class = sel:match("^([%w]*)%.([%w_-]+)$")
+        if class then
+            local pos = 1
+            while true do
+                local a, b, tag, attrs = html:find("<([%w:]+)(%s[^>]*)>", pos)
+                if not a then break end
+                local classes = attrs:match("%sclass%s*=%s*[\"]([^\"]*)[\"]") or attrs:match("%sclass%s*=%s*'([^']*)'")
+                local has = false
+                for c in (classes or ""):gmatch("%S+") do if c == class then has = true end end
+                if has and (want_tag == "" or want_tag:lower() == tag:lower()) and not attrs:match("/%s*$") then
+                    -- to its closing tag (the same tag nested inside counts)
+                    local depth, at, stop = 1, b + 1, #html
+                    while depth > 0 do
+                        local c1, c2, close = html:find("<(/?)" .. tag:gsub("%p", "%%%0") .. "[%s>/]", at)
+                        if not c1 then break end
+                        local e = html:find(">", c1, true) or c2
+                        if close == "/" then depth = depth - 1
+                        elseif html:sub(e - 1, e - 1) ~= "/" then depth = depth + 1 end
+                        at = e + 1
+                        if depth == 0 then stop = e end
+                    end
+                    html = html:sub(1, a - 1) .. html:sub(stop + 1)
+                    pos = a
+                else
+                    pos = b + 1
+                end
+            end
+        end
+    end
+    return html
 end
 
 --- Width and height of a JPEG, PNG or GIF from its first bytes, or nil.
@@ -190,6 +296,20 @@ function PB.scanInBackground(ui, lay, on_ready)
 end
 
 
+--- read(path) for the open book's files, or nil.
+function PB.reader(doc)
+    if not doc or type(doc.getDocumentFileContent) ~= "function" then return nil end
+    return function(p) return doc:getDocumentFileContent(p) end
+end
+
+--- The open book's invisible text layers (PB.textLayers), {} when none.
+function PB.layersOf(doc)
+    local read = PB.reader(doc)
+    if not read then return {} end
+    local ok, list = pcall(PB.textLayers, read)
+    return ok and type(list) == "table" and list or {}
+end
+
 --- Is this a picture book? (EPUB whose chapter files are pictures, not text.)
 function PB.detect(doc)
     if not doc or doc.info.has_pages or type(doc.getDocumentFileContent) ~= "function" then return false end
@@ -211,7 +331,11 @@ function PB.detectWith(read)
         text_total = text_total + #text
         if imgs > 0 and #text < 100 * imgs then pictures = pictures + 1 end
     end
-    local function bodyOf(html) return html:match("<[%w:]*body[^>]*>(.*)</[%w:]*body>") or html end
+    local layers = PB.textLayers(read)
+    local function bodyOf(html)
+        local body = html:match("<[%w:]*body[^>]*>(.*)</[%w:]*body>") or html
+        return #layers > 0 and PB.withoutLayers(body, layers) or body
+    end
     local n = #spine.frag
     local unit = "files,"
     if n >= PB.FEW_FILES then
@@ -249,10 +373,14 @@ function PB.detectWith(read)
         unit = "parts of " .. n .. " files,"
     end
     local yes = sampled >= 2 and pictures >= sampled * 0.7 and img_total >= sampled
+    if #layers > 0 then unit = unit .. " invisible text layers " .. table.concat(layers, " ") .. "," end
     Log.info("picture book check:", sampled, unit, pictures, "pictures-only,", img_total, "images,", text_total, "chars ->", yes and "yes" or "no")
     return yes
 end
 PB.FEW_FILES = 6
+--- The check's version, kept with each book checked (2: fixed-layout books'
+--- invisible text layers left out).
+PB.CHECK = 2
 
 local function stripOurs(css)
     if not css then return nil end
@@ -304,6 +432,13 @@ function PB.set(ui, on, opts)
     if on then
         local lay = PB.layout(ui)
         local wide = ui.doc_settings:readSetting("gzreader_pb_wide")
+        if type(wide) ~= "table" and PB.isFixedLayout(PB.reader(ui.document)) then
+            -- a fixed-layout book: every picture is a page, none to keep at its
+            -- own size. (The BOOK's 410 pictures, 264 MB, were read for 13 min
+            -- in the background on a Paperwhite 3, slowing it, then the job failed.)
+            wide = {}
+            ui.doc_settings:saveSetting("gzreader_pb_wide", wide)
+        end
         if type(wide) ~= "table" then
             -- the picture sizes first (wide ones such as a logo or a blank
             -- spacer would otherwise fill a page), then this again
@@ -320,7 +455,9 @@ function PB.set(ui, on, opts)
             if ok and PB.scanning then return true end
             wide = {}
         end
-        st.book_style_tweak = (rest and (rest .. "\n") or "") .. PB.css(lay.vh, wide)
+        local layers = PB.layersOf(ui.document)
+        ui.doc_settings:saveSetting("gzreader_pb_layers", layers)
+        st.book_style_tweak = (rest and (rest .. "\n") or "") .. PB.css(lay.vh, wide, layers)
         st.book_style_tweak_enabled = true
         ui.doc_settings:saveSetting("gzreader_pb_vh", lay.vh)
         if not ui.doc_settings:readSetting("gzreader_pb_margins") then
@@ -357,6 +494,7 @@ function PB.set(ui, on, opts)
         ui.doc_settings:delSetting("gzreader_pb_smooth")
     end
     ui.doc_settings:saveSetting("gzreader_picture_book", on and true or false)
+    ui.doc_settings:saveSetting("gzreader_pb_check", PB.CHECK)
     Log.info("picture book", on and "on" or "off")
     if opts.reopen ~= false then PB.reopen(ui) end
     return true
@@ -369,14 +507,16 @@ function PB.saveWide(ui, ds, list)
     ds:saveSetting("gzreader_pb_wide", list)
     if #list == 0 then return end
     local vh = tonumber(ds:readSetting("gzreader_pb_vh")) or PB.VH
+    local layers = ds:readSetting("gzreader_pb_layers")
+    if type(layers) ~= "table" then layers = nil end
     if ui and ui.styletweak then
         local st = ui.styletweak
-        if PB.isOn(ui) then st.book_style_tweak = (stripOurs(st.book_style_tweak) and (stripOurs(st.book_style_tweak) .. "\n") or "") .. PB.css(vh, list) end
+        if PB.isOn(ui) then st.book_style_tweak = (stripOurs(st.book_style_tweak) and (stripOurs(st.book_style_tweak) .. "\n") or "") .. PB.css(vh, list, layers) end
     else
         local css = ds:readSetting("book_style_tweak")
         if type(css) == "string" and css:find(MARK_BEGIN, 1, true) then
             local rest = stripOurs(css)
-            ds:saveSetting("book_style_tweak", (rest and (rest .. "\n") or "") .. PB.css(vh, list))
+            ds:saveSetting("book_style_tweak", (rest and (rest .. "\n") or "") .. PB.css(vh, list, layers))
         end
     end
 end
@@ -406,10 +546,18 @@ function PB.onOpen(ui)
         UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
         return
     end
+    if known == false and (tonumber(ui.doc_settings:readSetting("gzreader_pb_check")) or 1) < PB.CHECK
+            and ui.doc_settings:readSetting("gzreader_pb_vh") == nil and PB.isFixedLayout(PB.reader(ui.document)) then
+        -- a fixed-layout book found "no" before its invisible text layers
+        -- were left out of the check: once more (not one fitted and then
+        -- turned off: that one has gzreader_pb_vh)
+        known = nil
+    end
     if known ~= nil then return end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
     ui.doc_settings:saveSetting("gzreader_picture_book", yes)
+    ui.doc_settings:saveSetting("gzreader_pb_check", PB.CHECK)
     if yes then
         UIManager:nextTick(function()
             if ui.document and PB.set(ui, true) then
@@ -474,14 +622,16 @@ function PB.prepareNext()
         for _e in r:iterate() do end
         local read = function(p) return r:extractToMemory(p) end
         local yes = PB.detectWith(read)
-        local wide = yes and PB.widePictures(read, w, h) or {}
+        local wide = yes and not PB.isFixedLayout(read) and PB.widePictures(read, w, h) or {}
+        local layers = yes and PB.textLayers(read) or {}
         r:close()
-        return { yes = yes, wide = wide }
+        return { yes = yes, wide = wide, layers = layers }
     end, function(res, err)
         if err == "busy" then return UIManager:scheduleIn(30, PB.safeNext) end -- (another job: later)
         table.remove(PB.queue, 1)
         if type(res) == "table" then
-            local ok, e = pcall(PB.prefit, file, res.yes == true, type(res.wide) == "table" and res.wide or {})
+            local ok, e = pcall(PB.prefit, file, res.yes == true, type(res.wide) == "table" and res.wide or {},
+                type(res.layers) == "table" and res.layers or {})
             if not ok then Log.warn("picture book: couldn't prepare", tostring(e)) end
         else
             Log.info("picture book: not checked before opening:", tostring(err))
@@ -491,15 +641,17 @@ function PB.prepareNext()
 end
 
 --- Save what was found with the book (not when it was opened meanwhile).
-function PB.prefit(file, yes, wide)
+function PB.prefit(file, yes, wide, layers)
     if openNow(file) then return false end
     local DocSettings = require("docsettings")
     local ds = DocSettings:open(file)
     if ds:readSetting("gzreader_picture_book") ~= nil then return false end
     ds:saveSetting("gzreader_picture_book", yes)
+    ds:saveSetting("gzreader_pb_check", PB.CHECK)
     local fitted = false
     if yes then
         ds:saveSetting("gzreader_pb_wide", wide)
+        ds:saveSetting("gzreader_pb_layers", layers or {})
         local lay = G_reader_settings:readSetting("gzreader_pb_layout")
         if type(lay) == "table" and tonumber(lay.top) and tonumber(lay.bottom) then
             local function def(k, d)
@@ -519,7 +671,7 @@ function PB.prefit(file, yes, wide)
             ds:saveSetting("copt_b_page_margin", lay.bottom)
             ds:saveSetting("copt_sync_t_b_page_margins", 0)
             ds:saveSetting("copt_smooth_scaling", 1)
-            ds:saveSetting("book_style_tweak", PB.css(vh, wide))
+            ds:saveSetting("book_style_tweak", PB.css(vh, wide, layers))
             ds:saveSetting("book_style_tweak_enabled", true)
             ds:saveSetting("gzreader_pb_fit", { top = lay.top, bottom = lay.bottom })
             fitted = true
