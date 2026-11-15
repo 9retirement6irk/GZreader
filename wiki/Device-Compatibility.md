@@ -24,7 +24,7 @@ These run the touch packages with the same KOReader device support as the Paperw
 | Paperwhite 1 (2012) | `kindle` |
 | Paperwhite 2 (2013), Voyage, Oasis 1–3, Kindle 2014, 2016 | `kindlepw2` (firmware 5.16.2.x or older) |
 | Paperwhite 4 (2018), Paperwhite 5 and Signature Edition (2021), Kindle 2019, 2022 | `kindlepw2` (firmware ≤ 5.16.2.x) or `kindlehf` (5.16.3 or newer) |
-| Paperwhite 6 and Signature Edition (2024), Kindle 2024, Scribe (2022, 2024), Colorsoft (in greys) | `kindlehf` |
+| Paperwhite 6 and Signature Edition (2024), Kindle 2024, Scribe (2022, 2024), Colorsoft and Scribe Colorsoft (in colour: covers as KOReader shows them, the shelf ornaments and the players) | `kindlehf` |
 
 The firmware version is in the Kindle's Settings → Device Options → Device Info. Packages for another Kindle or firmware don't start (the Kindle flashes and goes back to its home screen; `koreader/crash.log` says why).
 

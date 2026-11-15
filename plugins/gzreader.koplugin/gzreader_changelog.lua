@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Colour Kindles: shelf ornaments, the walkman and the CD player in colour", text = "On a Kindle with a colour screen (the Colorsoft and Scribe Colorsoft) the bookshelf ornaments are shown in colour: the built-in ones have colour pictures now, and your own keep theirs (they were turned to greys). The cassette walkman and the CD player are drawn in colour too, on the Downloads shelf and on the audiobook and music player screens: a red walkman with orange headphones, a blue CD player with yellow ones. Kindles with a grey screen show everything as before; ornaments' soft edges no longer have a thin dark rim. With KOReader's Color rendering switched off, a colour Kindle shows the grey pictures." },
+        },
+    },
+    {
         version = "1.30.0",
         changes = {
             { short = "The Notes tab opens about three times faster, and at once when opened again", text = "The Notes tab opens faster (it took a few seconds on a Paperwhite 3 where Downloads and the Catalog open at once): its sticky notes are tilted about 4 times faster, a touch Kindle draws the board once on opening instead of twice, and each note's picture is kept, so opening the tab again, a sync that changed nothing or going back a page redraws only the notes that changed. The calendar's sticky notes are tilted faster too." },

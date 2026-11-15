@@ -42,4 +42,20 @@ from and their licences are **not recorded here**: add the source and
 licence of each, or replace the picture, before relying on them being free
 to redistribute.
 
+## Colour versions (`colour/`)
+
+For colour screens (the Kindle Colorsoft and Scribe Colorsoft), `colour/`
+holds a colour picture under the same name for each ornament, with the same
+sources and licences as above:
+
+- the 16 Poly Haven ornaments: the colours of Poly Haven's own preview
+  pictures (CC0), put onto the grey pictures here;
+- the three supplied by the owner: the colours of the pictures as he
+  supplied them. Their source and licences are **not recorded**, as above.
+
+`colour/walkman.svg`, `colour/cdplayer.svg`, `colour/walkman_player.svg` and
+`colour/cd_player.svg` are GZreader's own drawings in colour: the same
+shapes as the grey ones next to this file, only the colours differ (a test
+checks it). Change a shape in both.
+
 The other pictures here are GZreader's own.
