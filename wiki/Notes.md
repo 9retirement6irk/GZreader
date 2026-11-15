@@ -59,10 +59,11 @@ API to `/api` are found too.
     Q–P. After a change, the board shows the page with the note that was
     first on screen. The choice is kept.
   - **Scroll up and down** (touch Kindles, compact notes; off until you
-    turn it on): a swipe or a drag up or down moves the notes by rows, as far
-    as your finger went (at least one row, at most a screenful), instead of
-    turning pages sideways. The arrows under the notes and a sideways swipe
-    still move a screenful. Full notes keep their pages.
+    turn it on): the Notes tab becomes one long page. A swipe or a drag up
+    or down moves the notes exactly as far as your finger went; notes cut
+    off at the top and bottom show there's more (a part of the next row
+    always shows). There's no page number or arrows under the notes. A swipe
+    sideways moves most of a screenful. Full notes keep their pages.
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings
@@ -148,7 +149,9 @@ API to `/api` are found too.
     name and the page's paper, and **Done** (keeps the drawings with the
     note; **Save** in the editor sends them).
   - **The toolbar at the side:** the **pen** (tap it again for five
-    thicknesses; the one you choose is kept), the **eraser** (rubs out whole
+    thicknesses; the one you choose is kept; on a Kindle with a colour
+    screen also eight **colours**, the ink and the seven of Memos' drawing
+    editor, shown on the pen's button and kept too), the **eraser** (rubs out whole
     strokes, as in Memos; tap it again for **Clear page**), **Undo** and
     **Redo**, **Paper**, **All pages**, a button that puts the toolbar on the
     **other side** (for the other hand; kept), and one that **hides** it (a
@@ -199,6 +202,9 @@ API to `/api` are found too.
     drawings and never change them: every page is in the note (its letter,
     or ▲ ▼ and Press, opens one full screen), there is no Draw, and Edit
     opens the note's text and leaves its drawings as they are.
+  - **Colours:** Memos gets each stroke in its colour. A stroke coloured
+    in Memos keeps its colour when the drawing is saved from any Kindle; a
+    black-and-white screen shows it in black.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm

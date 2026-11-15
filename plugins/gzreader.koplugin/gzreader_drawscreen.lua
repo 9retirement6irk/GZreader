@@ -108,6 +108,20 @@ function DrawScreen.side()
     local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_toolbar_side")
     return v == "right" and "right" or "left"
 end
+--- A colour screen (Kindle Colorsoft; KOReader's colour rendering on): the pen has colours.
+function DrawScreen.hasColor()
+    local ok, on = pcall(function() return Screen.isColorEnabled and Screen:isColorEnabled() end)
+    return ok and on == true
+end
+
+--- The pen's colour new drawings start with (the last one chosen; memos' ink without a colour screen): nil is the ink.
+function DrawScreen.lastColor()
+    if not DrawScreen.hasColor() then return nil end
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_color")
+    for _i, c in ipairs(Sketch.COLORS) do if c.value == v then return Sketch.inkColor(v) end end
+    return nil
+end
+
 --- The pen's width new drawings start with (the last one chosen).
 function DrawScreen.lastWidth()
     local v = G_reader_settings and tonumber(G_reader_settings:readSetting("gzreader_drawing_width"))
@@ -131,8 +145,12 @@ function DrawScreen:init()
     self.toolbar_hidden = false
     self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
     self.tool, self.width = "pen", DrawScreen.lastWidth()
+    self.has_color = DrawScreen.hasColor()
+    self.color = DrawScreen.lastColor()
     local c = self.canvas
-    self.canvas_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BB8) -- what's on the screen
+    -- what's on the screen (in colour on a colour screen)
+    self.canvas_bb = Blitbuffer.new(c.w, c.h, self.has_color and Blitbuffer.TYPE_BBRGB32 or Blitbuffer.TYPE_BB8)
+    self.tint_bb = nil -- the ink's colour at each point (the PNG's ink colours), once a stroke isn't memos' ink
     self.ink_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BB8) -- the ink alone (the PNG's ink)
     self.color_bb = nil -- the pictures under the ink, in colour (the PNG's paper), when there are some
     self.discs = {}
@@ -189,7 +207,7 @@ function DrawScreen:showPage(i, first)
     sk.pen_only = self.pen_only
     sk.holes = self.holes
     -- (the pen and its width stay as they were from page to page)
-    sk.tool, sk.width = self.tool, self.width
+    sk.tool, sk.width, sk.color = self.tool, self.width, self.color
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -240,6 +258,9 @@ function DrawScreen:layoutBar()
         local head = S(30)
         if self.flyout == "pen" then
             fw, fh = #Sketch.WIDTHS * (ts + S(6)) + S(18), head + ts + S(20)
+            if self.has_color then -- a second row: the colours
+                fw, fh = math.max(fw, #Sketch.COLORS * (ts + S(6)) + S(18)), fh + ts + S(8)
+            end
         else
             fw, fh = S(200), head + ts + S(20)
         end
@@ -251,6 +272,11 @@ function DrawScreen:layoutBar()
         if self.flyout == "pen" then
             for k, w in ipairs(Sketch.WIDTHS) do
                 add({ id = "w" .. tostring(w), width = w, label = DrawScreen.WIDTH_NAMES[k] }, fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
+            end
+            if self.has_color then
+                for k, col in ipairs(Sketch.COLORS) do
+                    add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(12) + (k - 1) * (ts + S(6)), row + ts + S(8), ts, ts, "flyout")
+                end
             end
         else
             add({ id = "clear", label = _("Clear the page") }, fx + S(12), row, fw - S(24), ts, "flyout")
@@ -265,6 +291,7 @@ DrawScreen.WIDTH_NAMES = { _("Extra thin"), _("Thin"), _("Medium"), _("Thick"), 
 function DrawScreen:selected(t)
     local sk = self.sketch
     if t.width then return sk.tool == "pen" and sk.width == t.width end
+    if t.color then return sk.tool == "pen" and Sketch.inkColor(t.color) == sk.color end
     if t.id == "pen" then return sk.tool == "pen" end
     if t.id == "eraser" then return sk.tool == "eraser" end
     return false
@@ -323,9 +350,21 @@ function DrawScreen:paintButton(bb, x, y, b)
         if t.id == "pen" then
             -- the pen's width, as a dot in the corner
             local d = math.max(2, math.min(S(9), self.sketch:radius(self.width)))
-            bb:paintRoundedRect(bx + r.w - S(8) - d, by + r.h - S(8) - d, 2 * d, 2 * d, Blitbuffer.COLOR_BLACK, d)
-        end
-        if sel then bb:invertRect(bx + S(2), by + S(2), r.w - S(4), r.h - S(4)) end
+            if sel then bb:invertRect(bx + S(2), by + S(2), r.w - S(4), r.h - S(4)) end
+            if self.color then
+                -- (its colour too: a square, drawn after the button is inverted)
+                local q = math.max(d, S(5))
+                bb:paintRectRGB32(bx + r.w - S(8) - 2 * q, by + r.h - S(8) - 2 * q, 2 * q, 2 * q, DrawScreen.rgb32(self.color))
+            else
+                bb:paintRoundedRect(bx + r.w - S(8) - d, by + r.h - S(8) - d, 2 * d, 2 * d,
+                    sel and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK, d)
+            end
+        elseif sel then bb:invertRect(bx + S(2), by + S(2), r.w - S(4), r.h - S(4)) end
+    elseif t.color then
+        -- a colour: a filled square; the one in use has a thick frame around it
+        local m = sel and S(7) or S(4)
+        bb:paintRectRGB32(bx + m, by + m, r.w - 2 * m, r.h - 2 * m, DrawScreen.rgb32(t.color))
+        if sel then bb:paintBorder(bx, by, r.w, r.h, Size.border.thick, Blitbuffer.COLOR_BLACK, S(6)) end
     elseif t.width then
         bb:paintBorder(bx, by, r.w, r.h, sel and Size.border.thick or Size.border.thin, sel and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, S(6))
         local d = math.max(1, self.sketch:radius(t.width))
@@ -358,7 +397,8 @@ function DrawScreen:paintBar(bb, x, y)
     if self.frames.flyout then
         local f = self.frames.flyout
         textAt(bb, x + f.x + S(12), y + f.y + S(6), f.w - S(24), S(24),
-            self.flyout == "pen" and _("Pen thickness") or _("Eraser: rubs out whole strokes"), 14, true)
+            self.flyout == "pen" and (self.has_color and _("Pen thickness and colour") or _("Pen thickness"))
+                or _("Eraser: rubs out whole strokes"), 14, true)
     end
     for _i, b in ipairs(self.buttons) do self:paintButton(bb, x, y, b) end
 end
@@ -378,19 +418,42 @@ function DrawScreen:disc(r)
     return self.discs[r]
 end
 
---- Ink for one segment (screen coordinates) into the page, and into `screen_bb` too when given.
+--- "#rrggbb" as a colour to paint with.
+function DrawScreen.rgb32(hex)
+    local r, g, b = DrawScreen.hexRGB(hex)
+    return Blitbuffer.ColorRGB32(r, g, b, 0xFF)
+end
+
+--- Ink for one segment (screen coordinates; seg[6]: its colour, nil for memos'
+--- ink) into the page, and into `screen_bb` too when given. A colour shows
+--- on a colour screen (black on the others) and always goes into the PNG.
 function DrawScreen:ink(seg, screen_bb)
     local c = self.sketch.canvas
     local r = seg[5]
     local rows = self:disc(r)
+    local hex = seg[6]
+    if hex and not self.tint_bb then
+        -- (the first coloured stroke: everything before it is memos' ink)
+        self.tint_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BBRGB24)
+        self.tint_bb:fill(DrawScreen.rgb32(Drawing.INK))
+    end
+    local tint = self.tint_bb and DrawScreen.rgb32(hex or Drawing.INK)
+    local shown = hex and self.has_color and DrawScreen.rgb32(hex)
     for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], r)) do
         -- (ink that runs under the toolbar is on the page, not painted over the toolbar)
         local under = screen_bb and self:underControls(p[1], p[2], r)
         for dy = -r, r do
             local dx = rows[dy]
-            self.canvas_bb:paintRect(p[1] - dx - c.x, p[2] + dy - c.y, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK)
-            self.ink_bb:paintRect(p[1] - dx - c.x, p[2] + dy - c.y, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK)
-            if screen_bb and not under then screen_bb:paintRect(p[1] - dx, p[2] + dy, 2 * dx + 1, 1, Blitbuffer.COLOR_BLACK) end
+            local px, py, pw = p[1] - dx - c.x, p[2] + dy - c.y, 2 * dx + 1
+            self.ink_bb:paintRect(px, py, pw, 1, Blitbuffer.COLOR_BLACK)
+            if tint then self.tint_bb:paintRectRGB32(px, py, pw, 1, tint) end
+            if shown then
+                self.canvas_bb:paintRectRGB32(px, py, pw, 1, shown)
+                if screen_bb and not under then screen_bb:paintRectRGB32(p[1] - dx, p[2] + dy, pw, 1, shown) end
+            else
+                self.canvas_bb:paintRect(px, py, pw, 1, Blitbuffer.COLOR_BLACK)
+                if screen_bb and not under then screen_bb:paintRect(p[1] - dx, p[2] + dy, pw, 1, Blitbuffer.COLOR_BLACK) end
+            end
         end
     end
 end
@@ -408,7 +471,7 @@ local function strokeSegments(sk, st)
     local pts = st.points
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, r }
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, r, st.color }
     end
     return out
 end
@@ -528,6 +591,7 @@ function DrawScreen:repaintCanvas()
     self.canvas_bb:fill(Blitbuffer.COLOR_WHITE)
     self.ink_bb:fill(Blitbuffer.COLOR_WHITE)
     if self.color_bb then self.color_bb:free(); self.color_bb = nil end
+    if self.tint_bb then self.tint_bb:free(); self.tint_bb = nil end
     -- pictures first (the paper at the bottom), then shapes and text, then the strokes
     local pictures, others = {}, {}
     for _i, el in ipairs(self.sketch.locked) do
@@ -665,6 +729,14 @@ function DrawScreen:setFlyout(which)
     UIManager:setDirty(self, "ui")
 end
 
+--- The pen's colour ("#rrggbb"; memos' ink: its own colour or nil), kept for next time.
+function DrawScreen:setColor(hex)
+    self.color = Sketch.inkColor(hex)
+    self.tool = "pen"
+    if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_color", self.color or Drawing.INK) end
+    self.sketch.tool, self.sketch.color = "pen", self.color
+end
+
 function DrawScreen:setTool(tool, width)
     self.tool = tool
     if width then
@@ -677,6 +749,7 @@ end
 function DrawScreen:use(t)
     local sk = self.sketch
     if t.width then self:setTool("pen", t.width); self:setFlyout(nil)
+    elseif t.color then self:setColor(t.color); self:setFlyout(nil)
     elseif t.id == "pen" then
         -- the pen; again: its thickness
         if sk.tool == "pen" then self:setFlyout(self.flyout ~= "pen" and "pen" or nil) else self:setTool("pen"); self:setFlyout(nil) end
@@ -818,7 +891,7 @@ end
 function DrawScreen:onCloseWidget()
     self._closed = true
     self:unhook()
-    for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb" }) do
+    for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb", "tint_bb" }) do
         if self[bb] then self[bb]:free(); self[bb] = nil end
     end
     for _i, p in ipairs(self.pages or {}) do
@@ -862,10 +935,10 @@ function DrawScreen.hexRGB(hex)
 end
 
 --- The PNG's pixels: the cropped page (canvas pixels `crop`), 8-bit RGB rows:
---- the ink (`ink_bb`, grey 0 ink … 255 none) in memos' ink colour over the
---- pictures (`color_bb`, in colour) or memos' paper. Returns a uint8_t array
---- and its size.
-function DrawScreen.pixels(ink_bb, crop, color_bb)
+--- the ink (`ink_bb`, grey 0 ink … 255 none) in memos' ink colour, or in
+--- each stroke's own (`tint_bb`, when a stroke has one), over the pictures
+--- (`color_bb`, in colour) or memos' paper. Returns a uint8_t array and its size.
+function DrawScreen.pixels(ink_bb, crop, color_bb, tint_bb)
     local pr, pg, pb = DrawScreen.hexRGB(Drawing.PAPER)
     local ir, ig, ib = DrawScreen.hexRGB(Drawing.INK)
     local w, h = crop.w, crop.h
@@ -874,7 +947,7 @@ function DrawScreen.pixels(ink_bb, crop, color_bb)
     local data = ink_bb.data and ffi.cast("uint8_t *", ink_bb.data)
     local stride = tonumber(ink_bb.stride)
     local i = 0
-    if not color_bb then
+    if not color_bb and not tint_bb then
         local lr, lg, lb = ffi.new("uint8_t[256]"), ffi.new("uint8_t[256]"), ffi.new("uint8_t[256]")
         for g = 0, 255 do
             local f = g / 255
@@ -892,25 +965,36 @@ function DrawScreen.pixels(ink_bb, crop, color_bb)
         end
         return mem, w * h * 3
     end
-    local cdata = color_bb.data and ffi.cast("uint8_t *", color_bb.data)
-    local cstride = tonumber(color_bb.stride)
+    -- (a 24-bit buffer's rows straight from memory too; otherwise pixel by pixel)
+    local function rows(bb)
+        if not bb then return nil end
+        return bb.data and ffi.cast("uint8_t *", bb.data), tonumber(bb.stride)
+    end
+    local function at(bb, bdata, bstride, x, y, dr, dg, db)
+        if not bb then return dr, dg, db end
+        if bdata then
+            local o = y * bstride + x * 3
+            return bdata[o], bdata[o + 1], bdata[o + 2]
+        end
+        local c = bb:getPixel(x, y)
+        return c.r or dr, c.g or dg, c.b or db
+    end
+    local cdata, cstride = rows(color_bb)
+    local tdata, tstride = rows(tint_bb)
     for y = crop.y, crop.y + h - 1 do
         local row = data and (y * stride)
-        local crow = cdata and (y * cstride)
         for x = crop.x, crop.x + w - 1 do
             local g = data and data[row + x] or ink_bb:getPixel(x, y):getColor8().a
-            local r, gg, b
-            if cdata then
-                local o = crow + x * 3
-                r, gg, b = cdata[o], cdata[o + 1], cdata[o + 2]
-            else
-                local c = color_bb:getPixel(x, y)
-                r, gg, b = c.r or pr, c.g or pg, c.b or pb
-            end
+            local r, gg, b = at(color_bb, cdata, cstride, x, y, pr, pg, pb)
             local f = g / 255
-            mem[i] = math.floor(ir + (r - ir) * f + 0.5)
-            mem[i + 1] = math.floor(ig + (gg - ig) * f + 0.5)
-            mem[i + 2] = math.floor(ib + (b - ib) * f + 0.5)
+            if g == 255 then
+                mem[i], mem[i + 1], mem[i + 2] = r, gg, b
+            else
+                local tr, tg, tb = at(tint_bb, tdata, tstride, x, y, ir, ig, ib)
+                mem[i] = math.floor(tr + (r - tr) * f + 0.5)
+                mem[i + 1] = math.floor(tg + (gg - tg) * f + 0.5)
+                mem[i + 2] = math.floor(tb + (b - tb) * f + 0.5)
+            end
             i = i + 3
         end
     end
@@ -933,7 +1017,7 @@ function DrawScreen:save()
         end
     end
     local tmp = path .. ".pixels.png"
-    local mem = DrawScreen.pixels(self.ink_bb, crop, self.color_bb)
+    local mem = DrawScreen.pixels(self.ink_bb, crop, self.color_bb, self.tint_bb)
     local Png = require("ffi/png")
     local ok, err = Png.encodeToFile(tmp, mem, crop.w, crop.h, 3)
     if ok == false then os.remove(tmp); return nil, err or "png" end

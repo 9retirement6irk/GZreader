@@ -54,8 +54,9 @@ function Sketch.new(opts)
     self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
     self.tap_slop = opts.tap_slop or Sketch.TAP_SLOP
     self.width = opts.width or 2
+    self.color = Sketch.inkColor(opts.color) -- nil: memos' ink
     self.tool = "pen" -- or "eraser"
-    self.strokes = {} -- { points = { {x, y}, … } (canvas px), width, gone }
+    self.strokes = {} -- { points = { {x, y}, … } (canvas px), width, color (nil: memos' ink), gone }
     self.history = {} -- { kind = "add"|"erase"|"clear", strokes = { … } }
     self.contacts = {} -- slot → { kind = "draw"|"erase"|"tap"|"ignore", … }
     self.pen = { near = false, last = nil, left = nil }
@@ -242,7 +243,7 @@ function Sketch.fromScene(scene, opts)
                 local cx, cy = self:toCanvas((el.x or 0) + (p[1] or 0), (el.y or 0) + (p[2] or 0))
                 pts[#pts + 1] = { cx, cy }
             end
-            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), el = el }
+            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), color = Sketch.inkColor(el.strokeColor), el = el }
         else
             self.locked[#self.locked + 1] = el
         end
@@ -294,7 +295,8 @@ local function appendPoint(self, contact, cx, cy, out)
     pts[#pts + 1] = { cx, cy }
     local r = self:radius(contact.stroke.width)
     local from = last or { cx, cy }
-    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r }
+    out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
+        contact.stroke.color }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -320,7 +322,7 @@ local function addPoint(self, contact, x, y, out)
             return
         end
         if not contact.stroke then
-            contact.stroke = { points = {}, width = contact.width }
+            contact.stroke = { points = {}, width = contact.width, color = contact.color }
             if prev and not prev[3] then
                 -- back on the paper: from its edge
                 local ex, ey = Sketch.edgePoint(page, { cx, cy }, prev)
@@ -397,8 +399,9 @@ local function startContact(self, s, now, out)
     else
         c.kind = "draw"
         c.width = self.width
+        c.color = self.color
         c.pieces = {} -- (on paper: the parts of the stroke on it)
-        c.stroke = { points = {}, width = self.width }
+        c.stroke = { points = {}, width = self.width, color = self.color }
         self.drawing_slot = s.slot
         addPoint(self, c, s.x, s.y, out)
     end
@@ -489,6 +492,25 @@ end
 -- ------------------------------------------------------------------ tools
 
 function Sketch:setWidth(w) self.width = w; self.tool = "pen" end
+
+--- The pen's colours: memos' ink, then its drawing editor's seven hues
+--- (web/src/components/DrawingSheet/useCanvasTheme.ts), so a stroke drawn
+--- here is one of the colours Memos offers.
+Sketch.COLORS = {
+    { id = "ink", value = Drawing.INK }, { id = "gray", value = "#868e96" }, { id = "red", value = "#e03131" },
+    { id = "orange", value = "#f08c00" }, { id = "green", value = "#2f9e44" }, { id = "teal", value = "#0c8599" },
+    { id = "blue", value = "#1971c2" }, { id = "violet", value = "#7048e8" },
+}
+
+--- A stroke's colour as kept here: "#rrggbb" in lower case, or nil for memos' ink (and for anything that isn't a colour).
+function Sketch.inkColor(c)
+    if type(c) ~= "string" then return nil end
+    c = c:lower()
+    if not c:match("^#%x%x%x%x%x%x$") or c == Drawing.INK then return nil end
+    return c
+end
+
+function Sketch:setColor(c) self.color = Sketch.inkColor(c); self.tool = "pen" end
 function Sketch:setTool(tool) self.tool = tool end
 
 function Sketch:canUndo() return #self.history > 0 end
@@ -598,7 +620,7 @@ function Sketch:scene(paper)
         if not st.el then
             local pts = {}
             for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
-            Drawing.addStroke(scene, pts, { width = st.width, color = Drawing.INK })
+            Drawing.addStroke(scene, pts, { width = st.width, color = st.color or Drawing.INK })
         end
     end
     return scene

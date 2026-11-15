@@ -7620,9 +7620,18 @@ print("Notes (Memos v0.31)")
         check(cw[1] == cw[3] and cw[4] == 46 and cw[8] == 46 and cw[1] * 3 + 46 * 5 + 7 * 6 <= 564 and cw[1] * 3 + 46 * 5 + 7 * 6 > 560 and cw[1] >= 90,
             "the icon buttons are narrow; Note, Draw and Journal share the rest of the row (" .. cw[1] .. " px each on a 600 px screen)")
         do
-            -- scrolling (touch, Layout → Scroll up and down): rows moved by a swipe; the board's first row
-            check(Notes.scrollRows(10, 200, 4) == 1 and Notes.scrollRows(390, 200, 4) == 2 and Notes.scrollRows(5000, 200, 4) == 4 and Notes.scrollRows(nil, 200, 4) == 1,
-                "scrolling: a swipe moves the notes as far as the finger went, to the nearest row (at least one, at most a screenful)")
+            -- scrolling (touch, Layout → Scroll up and down): one long page moved by the finger
+            local sl = Notes.scrollLayout(0, 1000, 3, 10)
+            check(sl.cell_h == 303 and sl.first == 0 and sl.shift == 0 and sl.rows == 4 and sl.max_y == 2030 and sl.y == 0,
+                "scrolling: three rows fit, so three and a part of the fourth show (a peek of what's next)")
+            sl = Notes.scrollLayout(450, 1000, 3, 10)
+            check(sl.first == 1 and sl.shift == 147 and sl.rows == 4 and sl.y == 450,
+                "…scrolled 450 px: the second row cut off at the top, rows down to the bottom drawn")
+            sl = Notes.scrollLayout(99999, 1000, 3, 10)
+            local neg = Notes.scrollLayout(-50, 1000, 3, 10)
+            local few = Notes.scrollLayout(300, 1000, 3, 2)
+            check(sl.y == 2030 and sl.first == 6 and sl.first + sl.rows == 10 and neg.y == 0 and few.y == 0 and few.max_y == 0 and few.rows == 2,
+                "…never past the last row or above the first; a few notes don't scroll at all")
             local TouchS = require("gzreader_touch")
             local kept_on = TouchS.on
             local pr = Notes.prefs(plugin)
@@ -7642,25 +7651,39 @@ print("Notes (Memos v0.31)")
             check(off == false and on == true and full == false and keys == false,
                 "scrolling: only when chosen in Layout, on a touch Kindle, with compact notes (full notes keep their pages)")
             local drawn = 0
-            local b = setmetatable({ _gz_row = 0, _gz_scroll = { rows = 3, cols = 2, cell_h = 200, last = 5 }, updateItems = function() drawn = drawn + 1 end },
+            local b = setmetatable({ _gz_y = 0, _gz_scroll = { rows = 3, cols = 2, cell_h = 300, view_h = 1000, max_y = 2030 },
+                updateItems = function() drawn = drawn + 1 end },
                 { __index = function(_t, k) return rawget(Notes.Board, k) end })
             b:onSwipe(nil, { direction = "north", distance = 410 })
-            local r1 = b._gz_row
+            local y1 = b._gz_y
             b:onSwipe(nil, { direction = "north", distance = 5000 })
             b:onSwipe(nil, { direction = "north", distance = 5000 })
-            local r2 = b._gz_row
+            local y2 = b._gz_y
             b:onSwipe(nil, { direction = "south", distance = 190 })
-            local r3 = b._gz_row
+            local y3 = b._gz_y
             b:onPan(nil, { direction = "south", distance = 800 })
-            local before_release = b._gz_row
+            local before_release = b._gz_y
             b:onGzPanRelease()
-            local r4 = b._gz_row
+            local y4 = b._gz_y
+            b:onSwipe(nil, { direction = "west", distance = 300 })
+            local y5 = b._gz_y
+            b:onSwipe(nil, { direction = "east", distance = 300 })
+            b:scrollBy(-5000)
             b:scrollBy(-10)
-            b:scrollBy(-10)
-            check(r1 == 2 and r2 == 5 and r3 == 4 and before_release == 4 and r4 == 1 and b._gz_row == 0 and drawn == 5,
-                "scrolling: swipe up moves down two rows, never past the last row; a swipe down goes back; a drag moves when the finger lifts; redrawn only when it moved ("
-                .. table.concat({ r1, r2, r3, r4, drawn }, ",") .. ")")
-            check(nsrc:find("if not keep_page then b._gz_row = 0 end", 1, true) and nsrc:find("offset = m._gz_row * cols", 1, true),
+            check(y1 == 410 and y2 == 2030 and y3 == 1840 and before_release == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn == 7,
+                "scrolling: a swipe moves the notes exactly as far as the finger went, never past the end; a drag moves when the finger lifts; a swipe sideways moves a screenful less a row; redrawn only when it moved ("
+                .. table.concat({ y1, y2, y3, y4, y5, drawn }, ",") .. ")")
+            -- no page number or arrows while scrolling; back with pages
+            local a1, a2, a3 = {}, {}, {}
+            local fm = { page_info = { a1, a2, a3, resetLayout = function() end } }
+            Notes.footerShown(fm, false)
+            local hidden = #fm.page_info
+            Notes.footerShown(fm, false)
+            Notes.footerShown(fm, true)
+            check(hidden == 0 and #fm.page_info == 3 and fm.page_info[1] == a1 and fm.page_info[3] == a3 and fm._gz_footer == nil,
+                "scrolling: no page number or arrows under the notes (their room is the notes'); pages bring them back")
+            check(nsrc:find("if not keep_page then b._gz_y = 0 end", 1, true) and nsrc:find("Notes.Viewport:new{", 1, true)
+                and nsrc:find("Notes.footerShown(m, false)", 1, true) and nsrc:find("m.page, m.page_num = 1, 1", 1, true),
                 "…other notes (a filter): from the top again")
         end
         -- on top?

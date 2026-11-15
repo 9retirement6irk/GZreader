@@ -84,24 +84,38 @@ add({ fn = function(E)
     E.pages_first = N().board._gz_first
     N().setScrolling(plugin(), true)
 end, after = 4 })
+shot("02a-home-scrolling")
 add({ fn = function(E)
     local b = N().board
     local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    check(b._gz_scroll ~= nil and b._gz_row == 0, "Layout → Scroll up and down: the board scrolls (" .. b._gz_scroll.rows .. " rows shown)")
-    E.cell_h = b._gz_scroll.cell_h
-    E.finger({ { W * 0.5, H * 0.75 }, { W * 0.5, H * 0.75 - E.cell_h * 0.5 }, { W * 0.5, H * 0.75 - E.cell_h } }, 0.15)
+    local sc = b._gz_scroll
+    check(sc ~= nil and b._gz_y == 0 and #b.page_info == 0 and b.page_num == 1, "Layout → Scroll up and down: one long page, no page number or arrows under it")
+    local rows = b.item_group[1][1]
+    check(#rows == sc.rows + 1 and sc.cell_h * (sc.rows + 1) > sc.view_h, "…a part of the next row of notes shows at the bottom (" .. #rows .. " rows drawn, " .. sc.rows .. " fit)")
+    E.finger({ { W * 0.5, H * 0.75 }, { W * 0.5, H * 0.75 - 130 }, { W * 0.5, H * 0.75 - 260 } }, 0.15)
 end, after = 4 })
 shot("02b-home-scrolled")
 add({ fn = function(E)
     local b = N().board
-    check(b._gz_row == 1 and b._gz_first == 1 + b._gz_scroll.cols, "a swipe up one note's height: one row down (the second row at the top)")
-    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
-    E.finger({ { W * 0.5, H * 0.5 }, { W * 0.5, H * 0.5 + E.cell_h * 0.5 }, { W * 0.5, H * 0.5 + E.cell_h } }, 0.15)
+    check(b._gz_y > 200 and b._gz_y < 330 and b._gz_scroll.shift == b._gz_y, "a swipe up of 260 px: the notes moved up as far (" .. b._gz_y .. " px), the first row cut off at the top")
+    -- a note still opens by a tap where it's drawn
+    local item = b.item_group[1][1][2][1]
+    E.tap({ item.dimen.x + math.floor(item.dimen.w / 2), item.dimen.y + math.floor(item.dimen.h / 2) })
+end, after = 5 })
+add({ fn = function(E)
+    local v = top()
+    check(v ~= N().board and v.memo ~= nil, "a tap on a note opens it")
+    UIM():close(v)
 end, after = 4 })
 add({ fn = function(E)
-    check(N().board._gz_row == 0 and top() == N().board, "a swipe down: back up (the tab stays open)")
+    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+    E.finger({ { W * 0.5, H * 0.4 }, { W * 0.5, H * 0.4 + 300 }, { W * 0.5, H * 0.4 + 600 } }, 0.15)
+end, after = 4 })
+add({ fn = function(E)
+    check(N().board._gz_y == 0 and top() == N().board, "a swipe down: back to the top (the tab stays open)")
     N().setScrolling(plugin(), false)
 end, after = 4 })
+add({ fn = function(E) check(#N().board.page_info > 0 and N().board._gz_scroll == nil, "scrolling off: pages, with their number and arrows") end, after = 1 })
 
 -- a journal entry
 add({ fn = function(E) E.tap(chip("Journal")) end, after = 4 })
@@ -165,7 +179,8 @@ end, after = 2 })
 add({ fn = function(E) E.tap(button("pen")) end, after = 2 })
 shot("09-pen-thickness")
 add({ fn = function(E)
-    check(screen().flyout == "pen" and button("w0.5") and button("w7"), "the pen again: its thicknesses, five of them")
+    check(screen().flyout == "pen" and button("w0.5") and button("w7") and not button("c-red"),
+        "the pen again: its thicknesses, five of them (no colours on a black-and-white screen)")
     E.tap(button("w7"))
 end, after = 2 })
 add({ fn = function(E)
@@ -205,6 +220,9 @@ add({ fn = function(E)
     E.tap(button("show"))
 end, after = 3 })
 add({ fn = function(E) E.tap(button("side")) end, after = 3 })
+add({ fn = function(E)
+    check(not screen().has_color, "a black-and-white screen: no colours in the pen's choices")
+end, after = 1 })
 add({ fn = function(E) E.tap(button("newpage")) end, after = 3 })
 add({ fn = function(E) stroke(E, 0.3, 0.3, 0.6, 0.6) end, after = 2 })
 add({ fn = function(E) E.tap(button("paper")) end, after = 4 })
@@ -296,6 +314,71 @@ add({ fn = function(E)
         end
     end
     check(table.concat(papers, ",") == "blank,graph,graph", "…in page order: the first sheet, the copy moved before, then the Graph page (" .. table.concat(papers, ",") .. ")")
+end, after = 1 })
+
+-- a colour screen (a Kindle Colorsoft; stood in for here: this panel is grey): the pen has colours
+add({ fn = function(E)
+    local Screen = require("device").screen
+    E.real_color = Screen.isColorEnabled
+    Screen.isColorEnabled = function() return true end
+    G_reader_settings:delSetting("gzreader_drawing_color")
+    G_reader_settings:saveSetting("gzreader_drawing_paper", "blank")
+    require("gzreader_drawscreen").show{ title = "Colours", on_done = function(res) E.colour_pages = res end }
+end, after = 5 })
+add({ fn = function(E)
+    local d = screen()
+    check(d and d.has_color and d.color == nil, "a colour screen: the drawing screen starts in memos' ink")
+    stroke(E, 0.3, 0.3, 0.7, 0.3)
+end, after = 2 })
+add({ fn = function(E) E.tap(button("pen")) end, after = 2 })
+shot("20-pen-colours")
+add({ fn = function(E)
+    check(button("c-ink") and button("c-red") and button("c-violet") and button("w7"), "the pen again: thicknesses, and under them eight colours")
+    E.tap(button("c-red"))
+end, after = 2 })
+add({ fn = function(E)
+    local d = screen()
+    check(d.flyout == nil and d.color == "#e03131" and d.sketch.color == "#e03131" and G_reader_settings:readSetting("gzreader_drawing_color") == "#e03131",
+        "red: chosen (and kept for next time), the choices away")
+    stroke(E, 0.3, 0.5, 0.7, 0.5)
+end, after = 2 })
+add({ fn = function(E)
+    local d = screen()
+    local live = d.sketch:live()
+    check(#live == 2 and live[1].color == nil and live[2].color == "#e03131" and d.tint_bb ~= nil, "the next stroke is red; the first stays ink")
+    E.tap(button("newpage"))
+end, after = 3 })
+add({ fn = function(E)
+    check(screen().sketch.color == "#e03131", "a new page keeps the pen's colour")
+    E.tap(button("prev"))
+end, after = 3 })
+add({ fn = function(E) E.tap(button("done")) end, after = 5 })
+add({ fn = function(E)
+    local Screen = require("device").screen
+    Screen.isColorEnabled = E.real_color
+    local res = E.colour_pages or {}
+    local page = res[1]
+    check(page and page.path, "Done: the page is kept")
+    local Drawing = require("gzreader_drawing")
+    local scene = page and Drawing.readFile(page.path)
+    local cols = {}
+    for _i, el in ipairs(scene and scene.elements or {}) do if el.type == "freedraw" then cols[#cols + 1] = el.strokeColor end end
+    check(table.concat(cols, ",") == "#1a1a1a,#e03131", "the drawing has the strokes' colours, as Memos writes them: " .. table.concat(cols, ","))
+    -- the PNG: a red pixel on the red stroke's line, an ink one on the first
+    local reds, inks = 0, 0
+    local ok, err = pcall(function()
+        local bb = require("ui/renderimage"):renderImageFile(page.path, false)
+        for y = 0, bb:getHeight() - 1, 2 do
+            for x = 0, bb:getWidth() - 1, 2 do
+                local c = bb:getPixel(x, y):getColorRGB32()
+                if c.r > 200 and c.g < 80 and c.b < 80 then reds = reds + 1 end
+                if c.r < 40 and c.g < 40 and c.b < 40 then inks = inks + 1 end
+            end
+        end
+        bb:free()
+    end)
+    check(ok and reds > 20 and inks > 20, "the picture Memos shows has the red stroke in red and the first in ink (" .. reds .. " red, " .. inks .. " ink" .. (ok and "" or (", " .. tostring(err))) .. ")")
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.on_save and w.widget.input then UIM():close(w.widget) end end
     local f = io.open(E.out .. "/notes-scribe-checks.txt", "w")
     f:write(table.concat(lines, "\n") .. "\n")
     f:close()

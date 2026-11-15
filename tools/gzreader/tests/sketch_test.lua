@@ -361,5 +361,52 @@ print("== redo, the controls over the page, pen thicknesses")
     check(live[#live].width == 0.5 and live[#live - 1].width == 7, "…and read back as drawn")
 end)()
 
+print("== pen colours (colour screens): memos' own palette")
+;(function()
+    local ids, vals = {}, {}
+    for i, c in ipairs(Sketch.COLORS) do ids[i], vals[i] = c.id, c.value end
+    check(table.concat(ids, ",") == "ink,gray,red,orange,green,teal,blue,violet"
+        and table.concat(vals, ",") == "#1a1a1a,#868e96,#e03131,#f08c00,#2f9e44,#0c8599,#1971c2,#7048e8",
+        "the colours are memos' ink and its drawing editor's seven hues")
+    check(Sketch.inkColor("#E03131") == "#e03131" and Sketch.inkColor("#1a1a1a") == nil and Sketch.inkColor("#1A1A1A") == nil
+        and Sketch.inkColor("red") == nil and Sketch.inkColor(nil) == nil and Sketch.inkColor("#12345") == nil and Sketch.inkColor(5) == nil,
+        "a colour is kept as #rrggbb in lower case; memos' ink (and anything that isn't a colour) is no colour")
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    local segs = {}
+    local function draw(frames)
+        segs = {}
+        for i, f in ipairs(frames) do
+            for _j, seg in ipairs(sk:frame(f, i * 0.01).segments) do segs[#segs + 1] = seg end
+        end
+    end
+    draw({ { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    check(sk.color == nil and sk:live()[1].color == nil and #segs > 0 and segs[1][6] == nil, "a new drawing draws in memos' ink")
+    sk:setTool("eraser")
+    sk:setColor("#1971C2")
+    check(sk.color == "#1971c2" and sk.tool == "pen", "choosing a colour takes the pen")
+    draw({ { finger(0, 300, 400) }, { finger(0, 400, 460) }, { finger(0, 450, 500) }, { lift(0) } })
+    local live = sk:live()
+    check(#live == 2 and live[2].color == "#1971c2" and live[1].color == nil, "the next stroke is blue; the one before stays as it was")
+    local all_blue = #segs > 0
+    for _i, seg in ipairs(segs) do if seg[6] ~= "#1971c2" then all_blue = false end end
+    check(all_blue, "…and each piece drawn says so (the screen and the PNG paint it in that colour)")
+    sk:setColor("#1a1a1a")
+    run(sk, { { finger(0, 500, 600) }, { finger(0, 600, 660) }, { lift(0) } })
+    check(sk.color == nil and sk:live()[3].color == nil, "back to the ink")
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local cols = {}
+    for _i, el in ipairs(scene.elements) do if el.type == "freedraw" then cols[#cols + 1] = el.strokeColor end end
+    check(table.concat(cols, ",") == "#1a1a1a,#1971c2,#1a1a1a", "written into the drawing as memos' stroke colours: " .. table.concat(cols, ","))
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local l2 = again:live()
+    check(l2[1].color == nil and l2[2].color == "#1971c2" and l2[3].color == nil, "…and read back (a stroke coloured in Memos keeps its colour here too)")
+    again:undo()
+    check(again:scene().elements and true, "an opened drawing still saves")
+    -- a coloured stroke undone and redone keeps its colour
+    sk:undo(); sk:undo()
+    sk:redo()
+    check(sk:live()[2].color == "#1971c2", "undo and redo keep a stroke's colour")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

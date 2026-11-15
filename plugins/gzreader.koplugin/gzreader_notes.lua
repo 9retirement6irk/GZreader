@@ -23,6 +23,7 @@ replaces Favorites); its page is drawn as sticky notes (gzreader_sticky).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
@@ -126,10 +127,12 @@ function Notes.setView(plugin, field, value)
     end
 end
 
---- Touch Kindles, Layout → Scroll up and down: the board moves by rows of
---- notes with a swipe or a drag up or down, like a page that scrolls,
---- instead of turning pages sideways. (Compact notes: they're all one
---- height. Full notes are laid out page by page, so they keep their pages.)
+--- Touch Kindles, Layout → Scroll up and down: the board is one long page
+--- that a swipe or a drag up or down moves as far as the finger went (notes
+--- cut off at the top and bottom show there's more), instead of turning
+--- pages sideways; no page number or arrows under it. (Compact notes:
+--- they're all one height. Full notes are laid out page by page, so they
+--- keep their pages.)
 function Notes.scrolling(plugin)
     return Touch.on() and Notes.prefs(plugin).scroll == true and Notes.view(plugin).display ~= "full"
 end
@@ -145,11 +148,22 @@ function Notes.setScrolling(plugin, on)
     end
 end
 
---- How many rows a swipe or drag of `distance` pixels moves the board: as far
---- as the finger went, to the nearest row; at least one, at most a screenful.
-function Notes.scrollRows(distance, cell_h, rows)
-    local n = math.floor((tonumber(distance) or 0) / math.max(1, cell_h) + 0.5)
-    return math.max(1, math.min(rows, n))
+Notes.SCROLL_PEEK = 0.3 -- scrolling: this much of the next row of notes shows at the bottom
+
+--- Scrolling: where the notes are for a scroll of `y` pixels. `view_h`: the
+--- room for notes (the page number and arrows aren't shown, so down to the
+--- bottom); `fit`: the rows that fit whole. Returns { y (kept between 0 and
+--- the end), cell_h (a row's height: `fit` rows and a part of the next one
+--- show), first (the first row shown, from 0), shift (how much of it is
+--- above the top), rows (rows drawn, the cut-off ones too), max_y }.
+function Notes.scrollLayout(y, view_h, fit, total_rows)
+    local cell_h = math.max(1, math.floor(view_h / (fit + Notes.SCROLL_PEEK)))
+    local max_y = math.max(0, total_rows * cell_h - view_h)
+    y = math.max(0, math.min(max_y, math.floor((tonumber(y) or 0) + 0.5)))
+    local first = math.floor(y / cell_h)
+    local shift = y - first * cell_h
+    local rows = math.min(total_rows - first, math.ceil((view_h + shift) / cell_h))
+    return { y = y, cell_h = cell_h, first = first, shift = shift, rows = math.max(0, rows), max_y = max_y }
 end
 
 --- L on the board (or Layout, More → Layout): side by side, and compact or full.
@@ -1258,21 +1272,30 @@ local function drawCompact(m, select_number, cols, max_items)
     local per = m.perpage
     local offset = (m.page - 1) * per
     m._gz_scroll = nil
-    if Notes.scrolling(m.plugin) then
-        -- scrolling: the first row shown is any row, not only a page's first
-        local total = math.ceil(#m.item_table / cols)
-        local last = math.max(0, total - rows)
-        if m._gz_goto then m._gz_row = math.floor((m._gz_goto - 1) / cols) end
-        m._gz_row = math.max(0, math.min(m._gz_row or 0, last))
-        offset = m._gz_row * cols
-        -- (the page number under the notes: how far down, in screenfuls)
-        m.page = math.max(1, math.min(m.page_num, m._gz_row >= last and m.page_num or (math.floor(m._gz_row / rows) + 1)))
-        m._gz_scroll = { rows = rows, cols = cols, cell_h = math.floor(m.available_height / rows), last = last }
-    end
+    Notes.footerShown(m, true)
     local cell_w = math.floor(m.item_dimen.w / cols)
     local cell_h = math.floor(m.available_height / rows)
+    local count, port = per, nil
+    if Notes.scrolling(m.plugin) then
+        -- scrolling: one long page, moved by `m._gz_y` pixels. No page number or
+        -- arrows: their room is the notes' too.
+        Notes.footerShown(m, false)
+        local view_h = m.inner_dimen.h - ((m.title_bar and not m.no_title) and m.title_bar:getHeight() or 0)
+        local total = math.ceil(#m.item_table / cols)
+        local probe = Notes.scrollLayout(0, view_h, rows, total)
+        if m._gz_goto then m._gz_y = math.floor((m._gz_goto - 1) / cols) * probe.cell_h end
+        local sl = Notes.scrollLayout(m._gz_y or 0, view_h, rows, total)
+        m._gz_y = sl.y
+        offset, count, cell_h = sl.first * cols, sl.rows * cols, sl.cell_h
+        -- (one page: ZenOS's page indicator, painted from these, stays away too)
+        m.page, m.page_num = 1, 1
+        m._gz_scroll = { rows = rows, cols = cols, cell_h = cell_h, view_h = view_h, max_y = sl.max_y, shift = sl.shift }
+        port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
+            VerticalGroup:new{ align = "left" } }
+        table.insert(m.item_group, port)
+    end
     local row, layout_row
-    for i = 1, per do
+    for i = 1, count do
         local e = m.item_table[offset + i]
         if not e then break end
         e.idx = offset + i
@@ -1280,18 +1303,64 @@ local function drawCompact(m, select_number, cols, max_items)
         if (i - 1) % cols == 0 then
             row = HorizontalGroup:new{ align = "top" }
             layout_row = {}
-            table.insert(m.item_group, row)
+            table.insert(port and port[1] or m.item_group, row)
             table.insert(m.layout, layout_row)
         end
         local key = e.memo and Touch.letter(KEYS[i]) or nil
         if e.memo and KEYS[i] then m._gz_keyed[i] = e end
-        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
+        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(port and (offset + i) or i), show_parent = m.show_parent,
             shortcut = key, dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
         table.insert(row, item)
         table.insert(layout_row, item)
     end
     m._gz_first = offset + 1
     return select_number
+end
+
+--- Scrolling: the notes' window. Its rows are painted `shift` pixels up, so
+--- the first is cut off at the top and the last at the bottom: what they'd
+--- paint over (the buttons above, whatever is under) is put back after.
+Notes.Viewport = WidgetContainer:extend{ shift = 0 }
+
+function Notes.Viewport:getSize() return Geom:new{ w = self.dimen.w, h = self.dimen.h } end
+
+function Notes.Viewport:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y
+    local inner = self[1]
+    local w, h = self.dimen.w, self.dimen.h
+    local over = inner:getSize().h - self.shift - h
+    local kept = {}
+    local function keep(sy, sh)
+        sy, sh = math.max(0, sy), math.min(sh, bb:getHeight() - math.max(0, sy))
+        if sh <= 0 then return end
+        local part = Blitbuffer.new(w, sh, bb:getType())
+        part:blitFrom(bb, 0, 0, x, sy, w, sh)
+        kept[#kept + 1] = { part, sy, sh }
+    end
+    if self.shift > 0 then keep(y - self.shift, math.min(self.shift, y)) end
+    if over > 0 then keep(y + h, over) end
+    inner:paintTo(bb, x, y - self.shift)
+    for _i, k in ipairs(kept) do
+        bb:blitFrom(k[1], x, k[2], 0, 0, w, k[3])
+        k[1]:free()
+    end
+end
+
+--- The page number and arrows under the notes: there, or (scrolling) away.
+function Notes.footerShown(m, shown)
+    local pi = m.page_info
+    if not pi then return end
+    if shown then
+        if m._gz_footer then
+            for i, w in ipairs(m._gz_footer) do pi[i] = w end
+            m._gz_footer = nil
+            pi:resetLayout()
+        end
+    elseif not m._gz_footer then
+        m._gz_footer = {}
+        for i = #pi, 1, -1 do m._gz_footer[i] = pi[i]; pi[i] = nil end
+        pi:resetLayout()
+    end
 end
 
 -- Full: each note as long as it needs, in `cols` columns (Memos' masonry);
@@ -1384,24 +1453,30 @@ function Notes.Board:getPageNumber(item_number)
     return Menu.getPageNumber(self, item_number)
 end
 
---- Scrolling (Notes.scrolling): `n` rows down (up: negative). True when it moved.
-function Notes.Board:scrollBy(n)
+--- Scrolling (Notes.scrolling): `dy` pixels down (up: negative). True when it moved.
+function Notes.Board:scrollBy(dy)
     local sc = self._gz_scroll
     if not sc then return false end
-    local to = math.max(0, math.min(sc.last, (self._gz_row or 0) + n))
-    if to == (self._gz_row or 0) then return false end
-    self._gz_row = to
+    local to = math.max(0, math.min(sc.max_y, (self._gz_y or 0) + math.floor(dy + 0.5)))
+    if to == (self._gz_y or 0) then return false end
+    self._gz_y = to
     self:updateItems()
     return true
 end
 
---- Scrolling: a swipe up or down moves the notes as far as the finger went (sideways still turns a screenful).
+--- Scrolling: a swipe up or down moves the notes as far as the finger went;
+--- a swipe sideways, most of a screenful (a row stays in view).
 function Notes.Board:onSwipe(arg, ges)
     local sc = self._gz_scroll
-    if sc and ges and (ges.direction == "north" or ges.direction == "south") then
-        local n = Notes.scrollRows(ges.distance, sc.cell_h, sc.rows)
-        self:scrollBy(ges.direction == "north" and n or -n)
-        return true
+    if sc and ges then
+        local d = ges.direction
+        if d == "north" or d == "south" then
+            self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0))
+            return true
+        elseif d == "west" or d == "east" then
+            self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h))
+            return true
+        end
     end
     return Menu.onSwipe(self, arg, ges)
 end
@@ -1416,20 +1491,22 @@ function Notes.Board:onPan(arg, ges)
 end
 
 function Notes.Board:onGzPanRelease()
-    local pan, sc = self._gz_pan, self._gz_scroll
+    local pan = self._gz_pan
     self._gz_pan = nil
-    if not (pan and sc) then return false end
+    if not (pan and self._gz_scroll) then return false end
     if pan.direction == "north" or pan.direction == "south" then
-        local n = Notes.scrollRows(pan.distance, sc.cell_h, sc.rows)
-        self:scrollBy(pan.direction == "north" and n or -n)
+        self:scrollBy((pan.direction == "north" and 1 or -1) * (tonumber(pan.distance) or 0))
     end
     return true
 end
 
---- Scrolling: the arrows under the notes (and a sideways swipe) move a screenful.
+--- Scrolling: the page keys (if any) move most of a screenful.
 function Notes.Board:onGotoPage(page)
     local sc = self._gz_scroll
-    if sc then self._gz_row = (page - 1) * sc.rows end
+    if sc then
+        self:scrollBy((page > (self.page or 1) and 1 or -1) * (sc.view_h - sc.cell_h))
+        return true
+    end
     return Menu.onGotoPage(self, page)
 end
 
@@ -1471,7 +1548,7 @@ end
 function Notes.reloadBoard(keep_page)
     local b = Notes.board
     if not b or b._gz_closed then return end
-    if not keep_page then b._gz_row = 0 end -- (scrolling: other notes, from the top)
+    if not keep_page then b._gz_y = 0 end -- (scrolling: other notes, from the top)
     b:switchItemTable(Notes.title(), boardItems(b.plugin), keep_page and -1 or nil)
     pcall(Notes.decorate, b)
     -- touch: the tag chips show the filter in use and your most used tags
