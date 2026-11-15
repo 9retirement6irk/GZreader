@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Fixed-layout books made from a PDF: no blank page after each page, pages fill the screen", text = "Fixed-layout EPUBs made from a PDF (each page a picture with an invisible text layer over it) showed a blank page after every page, and Fit pictures left the pages small at the left of the screen, cut off on the right. Such books are now recognized as picture books and fitted when they open: the invisible layer is hidden and each page fills the screen, centred. A book already fitted is fitted again once when it opens." },
+            { short = "Fixed-layout books made from a PDF: no blank page after each page, pages fill the screen", text = "Fixed-layout EPUBs made from a PDF (each page a picture with an invisible text layer over it) showed a blank page after every page, and Fit pictures left the pages small at the left of the screen, cut off on the right. Such books are now recognized as picture books and fitted when they open: the invisible layer is hidden and each page fills the screen, centred. A book already fitted is fitted again once when it opens, and one GZreader 1.30.0 had found not to be a picture book is checked again. Fitting such a book no longer reads every picture in the background first (a 264 MB book was read for 13 minutes, slowing the Kindle)." },
         },
     },
     {

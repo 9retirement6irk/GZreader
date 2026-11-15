@@ -75,13 +75,25 @@ end
 --- positioned absolutely and whose text is invisible (the selector itself or
 --- one inside it: color transparent, opacity 0, visibility hidden). Only for
 --- rendition:layout pre-paginated books. read(path) -> a file in the EPUB.
-function PB.textLayers(read)
-    local ok_s, Sync = pcall(require, "gzreader_sync")
-    if not ok_s or type(read) ~= "function" then return {} end
+local function fixedOpf(read)
+    if type(read) ~= "function" then return nil end
     local container = read("META-INF/container.xml")
     local opf_path = container and container:match("<[%w:]*rootfile[^>]-full%-path%s*=%s*[\"']([^\"']+)[\"']")
     local opf = opf_path and read(opf_path)
-    if not opf or not opf:match("rendition:layout[\"']?%s*>%s*pre%-paginated") then return {} end
+    if not opf or not opf:match("rendition:layout[\"']?%s*>%s*pre%-paginated") then return nil end
+    return opf, opf_path
+end
+
+--- Is it a fixed-layout (rendition:layout pre-paginated) EPUB? Reads only its OPF.
+function PB.isFixedLayout(read)
+    return fixedOpf(read) ~= nil
+end
+
+function PB.textLayers(read)
+    local ok_s, Sync = pcall(require, "gzreader_sync")
+    if not ok_s then return {} end
+    local opf, opf_path = fixedOpf(read)
+    if not opf then return {} end
     local base = opf_path:match("^(.*/)") or ""
     local absolute, invisible = {}, {}
     for item in opf:gmatch("<[%w:]*item%s[^>]*>") do
@@ -284,10 +296,17 @@ function PB.scanInBackground(ui, lay, on_ready)
 end
 
 
+--- read(path) for the open book's files, or nil.
+function PB.reader(doc)
+    if not doc or type(doc.getDocumentFileContent) ~= "function" then return nil end
+    return function(p) return doc:getDocumentFileContent(p) end
+end
+
 --- The open book's invisible text layers (PB.textLayers), {} when none.
 function PB.layersOf(doc)
-    if not doc or type(doc.getDocumentFileContent) ~= "function" then return {} end
-    local ok, list = pcall(PB.textLayers, function(p) return doc:getDocumentFileContent(p) end)
+    local read = PB.reader(doc)
+    if not read then return {} end
+    local ok, list = pcall(PB.textLayers, read)
     return ok and type(list) == "table" and list or {}
 end
 
@@ -359,6 +378,9 @@ function PB.detectWith(read)
     return yes
 end
 PB.FEW_FILES = 6
+--- The check's version, kept with each book checked (2: fixed-layout books'
+--- invisible text layers left out).
+PB.CHECK = 2
 
 local function stripOurs(css)
     if not css then return nil end
@@ -410,6 +432,13 @@ function PB.set(ui, on, opts)
     if on then
         local lay = PB.layout(ui)
         local wide = ui.doc_settings:readSetting("gzreader_pb_wide")
+        if type(wide) ~= "table" and PB.isFixedLayout(PB.reader(ui.document)) then
+            -- a fixed-layout book: every picture is a page, none to keep at its
+            -- own size. (The BOOK's 410 pictures, 264 MB, were read for 13 min
+            -- in the background on a Paperwhite 3, slowing it, then the job failed.)
+            wide = {}
+            ui.doc_settings:saveSetting("gzreader_pb_wide", wide)
+        end
         if type(wide) ~= "table" then
             -- the picture sizes first (wide ones such as a logo or a blank
             -- spacer would otherwise fill a page), then this again
@@ -465,6 +494,7 @@ function PB.set(ui, on, opts)
         ui.doc_settings:delSetting("gzreader_pb_smooth")
     end
     ui.doc_settings:saveSetting("gzreader_picture_book", on and true or false)
+    ui.doc_settings:saveSetting("gzreader_pb_check", PB.CHECK)
     Log.info("picture book", on and "on" or "off")
     if opts.reopen ~= false then PB.reopen(ui) end
     return true
@@ -516,10 +546,18 @@ function PB.onOpen(ui)
         UIManager:nextTick(function() if ui.document then PB.set(ui, true) end end)
         return
     end
+    if known == false and (tonumber(ui.doc_settings:readSetting("gzreader_pb_check")) or 1) < PB.CHECK
+            and ui.doc_settings:readSetting("gzreader_pb_vh") == nil and PB.isFixedLayout(PB.reader(ui.document)) then
+        -- a fixed-layout book found "no" before its invisible text layers
+        -- were left out of the check: once more (not one fitted and then
+        -- turned off: that one has gzreader_pb_vh)
+        known = nil
+    end
     if known ~= nil then return end
     if G_reader_settings:isFalse("gzreader_picture_book_auto") then return end
     local yes = PB.detect(ui.document)
     ui.doc_settings:saveSetting("gzreader_picture_book", yes)
+    ui.doc_settings:saveSetting("gzreader_pb_check", PB.CHECK)
     if yes then
         UIManager:nextTick(function()
             if ui.document and PB.set(ui, true) then
@@ -584,7 +622,7 @@ function PB.prepareNext()
         for _e in r:iterate() do end
         local read = function(p) return r:extractToMemory(p) end
         local yes = PB.detectWith(read)
-        local wide = yes and PB.widePictures(read, w, h) or {}
+        local wide = yes and not PB.isFixedLayout(read) and PB.widePictures(read, w, h) or {}
         local layers = yes and PB.textLayers(read) or {}
         r:close()
         return { yes = yes, wide = wide, layers = layers }
@@ -609,6 +647,7 @@ function PB.prefit(file, yes, wide, layers)
     local ds = DocSettings:open(file)
     if ds:readSetting("gzreader_picture_book") ~= nil then return false end
     ds:saveSetting("gzreader_picture_book", yes)
+    ds:saveSetting("gzreader_pb_check", PB.CHECK)
     local fitted = false
     if yes then
         ds:saveSetting("gzreader_pb_wide", wide)

@@ -4933,6 +4933,44 @@ do
         local fdoc = { getDocumentFileContent = function(_, p) return fx[p] end }
         fx["OEBPS/content.opf"] = opf
         check(PB.layersOf(fdoc)[1] == ".tx" and #PB.layersOf(nil) == 0, "the open book's layers")
+        check(PB.isFixedLayout(read) and not PB.isFixedLayout(epubOf(scans)), "fixed layout told from the OPF")
+        -- fitting one: no background job reading every picture (The BOOK's 264 MB
+        -- were read for 13 min on a Paperwhite 3, then the job failed)
+        local fds = { d = {} }
+        function fds:readSetting(k) return self.d[k] end
+        function fds:saveSetting(k, v) self.d[k] = v end
+        function fds:delSetting(k) self.d[k] = nil end
+        local freopen = 0
+        local fui = { doc_settings = fds, view = { footer = { getHeight = function() return 28 end, settings = {} } },
+            styletweak = {}, reloadDocument = function() freopen = freopen + 1 end,
+            document = { file = "/tmp/gz-fixed.epub", info = {}, getDocumentFileContent = function(_, p) return fx[p] end,
+                configurable = { smooth_scaling = 0, h_page_margins = { 15, 15 }, t_page_margin = 10, b_page_margin = 10 } } }
+        local Async = require("gzreader_async")
+        local orig_bg, jobs = Async.background, 0
+        Async.background = function() jobs = jobs + 1 end
+        local UIM = require("ui/uimanager")
+        local orig_tick = UIM.nextTick
+        UIM.nextTick = function(_s, fn) fn() end
+        PB.set(fui, true)
+        check(jobs == 0 and PB.isOn(fui) and #fds.d.gzreader_pb_wide == 0 and freopen == 1
+            and fui.styletweak.book_style_tweak:find(".tx { display: none", 1, true),
+            "fitting a fixed-layout book: no picture sizes read in the background, fitted and reopened at once")
+        -- a fixed-layout book that an older check called "no": checked again once when it opens
+        local orig_isfalse = G_reader_settings.isFalse
+        G_reader_settings.isFalse = function(self, k) return self:readSetting(k) == false end
+        fds.d = { gzreader_picture_book = false }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == true and fds.d.gzreader_pb_check == PB.CHECK and PB.isOn(fui),
+            "a fixed-layout book found \"no\" by 1.30.0: checked again when it opens, and fitted")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_vh = 99 }
+        fui.styletweak = {}
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false and not PB.isOn(fui), "…not one fitted and then turned off")
+        fds.d = { gzreader_picture_book = false, gzreader_pb_check = PB.CHECK }
+        PB.onOpen(fui)
+        check(fds.d.gzreader_picture_book == false, "…nor one this check already said no to")
+        Async.background, UIM.nextTick, G_reader_settings.isFalse = orig_bg, orig_tick, orig_isfalse
     end)()
     -- the picture sizes are read in a background job first, never on the screen's thread
     local reads = 0

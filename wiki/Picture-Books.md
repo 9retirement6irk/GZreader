@@ -43,6 +43,13 @@ that is positioned absolutely and whose text is transparent) is hidden while
 the pictures are fitted, its text doesn't count when the book is recognized
 (so such a book is fitted by itself when it opens), and each page's own
 width is dropped so the picture is centred and fills the screen. A book
-fitted before the fix is fitted again once when it opens. The invisible text
+fitted before the fix is fitted again once when it opens, and one found not
+to be a picture book before it is checked again (unless Fit pictures was
+turned off in it). Its pictures aren't measured first: every one is a page
+(The BOOK's 410 pictures, 264 MB, were read for 13 minutes in the background
+on a Paperwhite 3, and the job then failed). A very big book is slow to open
+whatever GZreader does: KOReader's EPUB engine reads the whole file each time
+it opens it (to find its saved layout), about 25 s for 264 MB on a
+Paperwhite 3, and fitting it opens it twice once. The invisible text
 can't be searched or selected while the pictures are fitted; turn Fit
 pictures off to get it back (it then shows after each picture again).
