@@ -253,6 +253,74 @@ do
             check(g:getPixel(10, 14):getColor8A().a == before and g:getPixel(10, 14):getColor8A().alpha == 0, "…what's transparent is left alone")
             g:free()
         end
+        -- colour screens (the Colorsoft): ornaments and the players keep their colour
+        do
+            local BBm = require("ffi/blitbuffer")
+            local Colour = dofile(REPO .. "/plugins/gzreader.koplugin/gzreader_colour.lua")
+            package.loaded["gzreader_colour"] = Colour
+            local screen = require("device").screen
+            local SHELF_DIR = REPO .. "/plugins/gzreader.koplugin/icons/shelf"
+            local function read(path) local f = io.open(path, "rb"); local d = f and f:read("*a") or ""; if f then f:close() end; return d end
+            local jug = SHELF_DIR .. "/ornament-photo-jug-01.png"
+            check(not Colour.enabled() and not Theme.colour() and Colour.variant(jug) == jug, "a grey screen: the grey pictures, as before")
+            screen.isColorEnabled = function() return true end
+            check(Colour.enabled() and Theme.colour() and Colour.variant(jug) == SHELF_DIR .. "/colour/ornament-photo-jug-01.png",
+                "a colour screen: an ornament's colour picture (icons/shelf/colour)")
+            check(Colour.variant(SHELF_DIR .. "/plank-oak.png") == SHELF_DIR .. "/plank-oak.png" and Colour.variant("/nowhere/vase.png") == "/nowhere/vase.png",
+                "…a picture without a colour version (your own ornaments too): itself")
+            local missing, grey_ones = {}, 0
+            for _i, e in ipairs(Theme.list()) do
+                if e.photo then
+                    local gp, cp = read(e.path), read(Colour.variant(e.path))
+                    -- (PNG header: width and height at 17..24, colour type at 26: 4 grey + alpha, 6 colour + alpha)
+                    if not (Colour.variant(e.path) ~= e.path and cp:sub(1, 4) == "\137PNG" and cp:byte(26) == 6 and gp:byte(26) == 4 and gp:sub(17, 24) == cp:sub(17, 24)) then
+                        missing[#missing + 1] = e.name
+                    end
+                    grey_ones = grey_ones + 1
+                end
+            end
+            check(grey_ones == 19 and #missing == 0, "all 19 built-in ornaments have a colour picture of the same size (" .. table.concat(missing, ", ") .. ")")
+            local cred = read(SHELF_DIR .. "/CREDITS.md")
+            check(cred:find("colour/", 1, true) ~= nil, "…and the credits say where the colour ones are from")
+            local function shape(svg) return (svg:gsub("#%x%x%x%x%x%x", "#"):gsub("#%x%x%x", "#")) end
+            local function coloured(svg)
+                for r, g2, bl in svg:gmatch("#(%x%x)(%x%x)(%x%x)") do
+                    if math.abs(tonumber(r, 16) - tonumber(bl, 16)) > 40 or math.abs(tonumber(r, 16) - tonumber(g2, 16)) > 40 then return true end
+                end
+                return false
+            end
+            for _i, name in ipairs({ "walkman", "cdplayer", "walkman_player", "cd_player" }) do
+                local grey, col = read(SHELF_DIR .. "/" .. name .. ".svg"), read(SHELF_DIR .. "/colour/" .. name .. ".svg")
+                check(#col > 0 and Colour.variant(SHELF_DIR .. "/" .. name .. ".svg") == SHELF_DIR .. "/colour/" .. name .. ".svg"
+                    and shape(grey) == shape(col) and coloured(col) and not coloured(grey),
+                    name .. ".svg: a colour drawing, the same shapes as the grey one")
+            end
+            check(read(REPO .. "/plugins/gzreader.koplugin/gzreader_shelfview.lua"):find('require("gzreader_colour").variant(file)', 1, true) ~= nil
+                and read(REPO .. "/plugins/gzreader.koplugin/gzreader_deck.lua"):find('require("gzreader_colour").variant(file)', 1, true) ~= nil,
+                "the shelf's players and the player screens ask for the colour drawing")
+            -- dithering keeps the colour there: each of red, green and blue to 16 levels
+            local c = BBm.new(64, 16, BBm.TYPE_BBRGB32)
+            for gx = 0, 63 do for gy = 0, 15 do c:setPixel(gx, gy, BBm.ColorRGB32(200 + math.floor(gx / 4), 110, 40, gy < 12 and 255 or 0)) end end
+            check(Theme.dither(c, true), "a colour picture is dithered")
+            local off, reds, sum_r, sum_g, sum_b = 0, {}, 0, 0, 0
+            for gx = 0, 63 do for gy = 0, 11 do
+                local px = c:getPixel(gx, gy):getColorRGB32()
+                if px.r % 17 ~= 0 or px.g % 17 ~= 0 or px.b % 17 ~= 0 then off = off + 1 end
+                reds[px.r] = true
+                sum_r, sum_g, sum_b = sum_r + px.r, sum_g + px.g, sum_b + px.b
+            end end
+            local n = 64 * 12
+            check(off == 0 and reds[204] and reds[221] and math.abs(sum_r / n - 207.5) < 3 and math.abs(sum_g / n - 110) < 3 and math.abs(sum_b / n - 40) < 3,
+                "…its colour kept: an orange stays orange (" .. string.format("%.0f, %.0f, %.0f", sum_r / n, sum_g / n, sum_b / n) .. ")")
+            local t = c:getPixel(10, 14):getColorRGB32()
+            check(t.alpha == 0 and t.r == 202 and t.g == 110, "…what's transparent is left alone")
+            Theme.dither(c)
+            local gpx = c:getPixel(10, 3):getColorRGB32()
+            check(gpx.r == gpx.g and gpx.g == gpx.b, "a grey screen: the same picture comes out in greys, as before")
+            c:free()
+            screen.isColorEnabled = nil
+            check(not Colour.enabled() and Colour.variant(jug) == jug, "colour switched off (KOReader's Color rendering): the grey pictures again")
+        end
         check(Theme.emptyFoot({ getWidth = function() return 20 end, getHeight = function() return 30 end, getPixel = function() return {} end }) == 0,
             "a picture without transparency stands on its edge")
         -- where, how many, which end

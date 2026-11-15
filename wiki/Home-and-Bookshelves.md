@@ -76,6 +76,10 @@ the book once you open one.
     the shelves or takes it off; a hold only shows it, on your shelf at the
     top (the one shown has a thick frame). The page keys turn its pages when
     your own ornaments make more than fit;
+  - **on a colour screen** (the Colorsoft and Scribe Colorsoft) the
+    ornaments are in colour, your own too, and so are the walkman and the CD
+    player (a red walkman with orange headphones, a blue CD player with
+    yellow ones). Grey screens show them in greys;
   - **your own ornaments**: connect the Kindle to a computer and put PNG or
     SVG pictures in `koreader/settings/gzreader/ornaments` (Settings shows
     the folder and makes it). A picture's bottom edge stands on the plank;
