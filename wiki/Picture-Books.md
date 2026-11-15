@@ -1,5 +1,25 @@
 Books whose pages are pictures (scanned pages, comics as EPUB) are fitted to the screen.
 
+## Fit pictures and its options
+
+In a book, the quick panel's **Fit pictures** fits the book's pictures to the
+screen when they aren't. When they are, it opens its options:
+
+- **Bigger when the bars are hidden** (on unless turned off): when a tap
+  hides the title bar and the status bar, the pictures grow into the room
+  they leave, and shrink back when they show again. KOReader otherwise keeps
+  the status bar's room in an EPUB while it's hidden, and ZenOS the title
+  bar's. Each time, the book is laid out again (a few seconds for a big one).
+  A page keeps its shape: on a Paperwhite 3 a page made from a printed
+  1359 x 2008 page goes from 919 to 965 pixels wide, as tall as the screen.
+  With the status bar settings' "Hide on tap" set to the top bar alone (or the
+  status bar alone), only that bar's room is used.
+- **Fit picture books when they're opened** (on unless turned off): picture
+  books are recognized and fitted when they're opened or downloaded.
+- **Turn off for this book.**
+
+## How it works
+
 EPUBs whose chapter files are pictures with next to no text (scanned pages,
 e.g. Diary of a Wimpy Kid: 385 x 625 JPEG per page) are recognized on
 opening (`gzreader_picturebook.lua`: sampled spine files, ≥ 70 % pictures-only;

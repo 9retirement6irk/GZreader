@@ -1214,6 +1214,8 @@ local function apply_reader_top_status_bar()
             local reserve = tonumber(self._zen_top_status_bar_margin_reserve) or 0
             self._zen_top_status_bar_base_top_margin = top
             self._zen_top_status_bar_reserved_height = reserve
+            -- GZreader: a fitted picture book given the hidden status bar's room
+            bottom = math.max(0, bottom - (tonumber(self._gz_bottom_cut) or 0))
             return orig_setPageMargins(self, left, top + reserve, right, bottom)
         end
     end
@@ -1224,11 +1226,22 @@ local function apply_reader_top_status_bar()
         ReaderTypeset.onSetPageMargins = function(self, margins, ...)
             local document = self.ui and self.ui.document
             if document then
-                document._zen_top_status_bar_margin_reserve = self.view
+                local reserve = self.view
                     and self.view.view_mode == "page" and getReservedHeaderHeight() or 0
+                -- GZreader: a fitted picture book uses the room of bars hidden with a tap
+                local view = self.view
+                local footer = view and view.footer
+                local bottom_hidden = footer ~= nil and footer.mode_list ~= nil and footer.mode == footer.mode_list.off
+                local top_hidden = view ~= nil and (footer_toggled_off(view)
+                    or ReaderStatusBar.isTopBarTapHidden(zen_plugin, footer))
+                local cut
+                reserve, cut = require("common/gz_header_reserve").margins(view, reserve, top_hidden, bottom_hidden)
+                document._zen_top_status_bar_margin_reserve = reserve
+                document._gz_bottom_cut = cut
+                document._gz_top_freed = top_hidden and reserve == 0 and getReservedHeaderHeight() > 0 or nil
             end
             local result = orig_onSetPageMargins(self, margins, ...)
-            if document then document._zen_top_status_bar_margin_reserve = nil end
+            if document then document._zen_top_status_bar_margin_reserve = nil; document._gz_bottom_cut = nil end
             return result
         end
     end

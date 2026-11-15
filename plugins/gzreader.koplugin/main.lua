@@ -1853,6 +1853,12 @@ function Grimmory:onEndOfBook()
     if self.sync and self:syncEnabled() then self.sync:push(true) end
 end
 
+--- The status bar hidden or shown with a tap: a book with fitted pictures
+--- may give them its room (Fit pictures → Bigger when the bars are hidden).
+function Grimmory:onReaderFooterVisibilityChange()
+    pcall(function() require("gzreader_picturebook").onBarsChanged(self.ui) end)
+end
+
 function Grimmory:onCloseDocument()
     nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end

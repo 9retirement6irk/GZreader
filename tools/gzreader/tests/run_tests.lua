@@ -9379,6 +9379,120 @@ print("The reader's top status bar stays drawn under KOReader's layout menu")
     package.path = saved_path
 end)()
 
+print("Fit pictures: bigger when the bars are hidden, and its options")
+;(function()
+    local saved_path = package.path
+    package.path = PLUGIN .. "/../zenos.koplugin/?.lua;" .. package.path
+    package.loaded["common/gz_header_reserve"] = nil
+    local H = require("common/gz_header_reserve")
+    local PB = require("gzreader_picturebook")
+    local gs_saved = gsettings.gzreader_pb_fill_hidden
+    local fitted = true
+    local orig_fills = PB.fillsHiddenBars
+    PB.fillsHiddenBars = function() return fitted and PB.fillOn() end
+    local footer = { reclaim_height = false, getHeight = function() return 28 end }
+    local view = { ui = {}, footer = footer }
+    local r, cut = H.margins(view, 40, true, true)
+    check(r == 0 and cut == 28, "a fitted book with both bars hidden: no room kept for the title bar, the status bar's taken off the bottom")
+    r, cut = H.margins(view, 40, false, false)
+    check(r == 40 and cut == 0, "bars shown: as before")
+    r, cut = H.margins(view, 40, true, false)
+    check(r == 0 and cut == 0, "only the title bar hidden: only its room")
+    r, cut = H.margins(view, 40, false, true)
+    check(r == 40 and cut == 28, "only the status bar hidden: only its room")
+    footer.reclaim_height = true
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 0 and cut == 0, "status bar set to overlap the page: its room isn't in the margin, nothing taken off")
+    footer.reclaim_height = false
+    gsettings.gzreader_pb_fill_hidden = false
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 40 and cut == 0 and not PB.fillOn(), "option off: hidden bars keep their room (as before)")
+    gsettings.gzreader_pb_fill_hidden = nil
+    fitted = false
+    r, cut = H.margins(view, 40, true, true)
+    check(r == 40 and cut == 0, "a book whose pictures aren't fitted: as before")
+    fitted = true
+    check(PB.fillOn(), "the option is on unless turned off")
+    -- the title bar alone hidden (Hide on tap: top): the book laid out again
+    local events = {}
+    local ui = { document = { configurable = { b_page_margin = 4 } }, handleEvent = function(_, ev) events[#events + 1] = ev end }
+    H.topToggled({ ui = ui })
+    check(#events == 1 and events[1].name == "SetPageBottomMargin" and events[1].args[1] == 4,
+        "title bar hidden or shown with a tap: margins set again (for a fitted book)")
+    fitted = false
+    H.topToggled({ ui = ui })
+    PB.onBarsChanged(ui)
+    check(#events == 1, "…not for other books")
+    PB.fillsHiddenBars = orig_fills
+    -- PB.fillsHiddenBars itself: the open book's style, or its saved one while it's set up
+    local ds = { d = {} }
+    function ds:readSetting(k) return self.d[k] end
+    check(not PB.fillsHiddenBars({ doc_settings = ds }), "not fitted: no")
+    ds.d = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) }
+    check(PB.fillsHiddenBars({ doc_settings = ds }), "fitted (its saved style, before the reader's style module is up): yes")
+    check(PB.fillsHiddenBars({ styletweak = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) } }), "fitted (the open book's style): yes")
+    -- the hooks in ZenOS's files
+    local function src(rel)
+        local fh = io.open(PLUGIN .. "/../zenos.koplugin/" .. rel)
+        local t = fh and fh:read("*a") or ""
+        if fh then fh:close() end
+        return t
+    end
+    local top = src("modules/reader/patches/reader_top_status_bar.lua")
+    check(top:find('require("common/gz_header_reserve").margins(view, reserve, top_hidden, bottom_hidden)', 1, true)
+        and top:find("bottom - (tonumber(self._gz_bottom_cut) or 0)", 1, true),
+        "ZenOS's margins ask it, and take the status bar's room off the bottom margin")
+    check(src("common/reader_status_bar.lua"):find('require("common/gz_header_reserve").topToggled(view)', 1, true) ~= nil,
+        "ZenOS's tap that hides the title bar alone tells it")
+    local mainf = io.open(PLUGIN .. "/main.lua")
+    local main_src = mainf and mainf:read("*a") or ""
+    if mainf then mainf:close() end
+    check(main_src:find("function Grimmory:onReaderFooterVisibilityChange()", 1, true) ~= nil,
+        "the status bar hidden or shown: GZreader lays a fitted book out again")
+    -- the options, from Fit pictures while a book is fitted
+    local shown, closed = {}, 0
+    local saved_bd = package.loaded["ui/widget/buttondialog"]
+    package.loaded["ui/widget/buttondialog"] = { new = function(_s, o) return o end }
+    local UIM = require("ui/uimanager")
+    local orig_show, orig_close = UIM.show, UIM.close
+    UIM.show = function(_s, w) shown[#shown + 1] = w end
+    UIM.close = function() closed = closed + 1 end
+    local orig_isfalse = G_reader_settings.isFalse
+    G_reader_settings.isFalse = function(self, k) return self:readSetting(k) == false end
+    local margins = 0
+    local fui = { styletweak = { book_style_tweak_enabled = true, book_style_tweak = PB.css(99, {}) },
+        document = { configurable = { b_page_margin = 4 } },
+        handleEvent = function(_, ev) if ev.name == "SetPageBottomMargin" then margins = margins + 1 end end }
+    local orig_set, set_to = PB.set, nil
+    PB.set = function(_u, on) set_to = on; return true end
+    PB.menuItem(fui).callback()
+    local dlg = shown[#shown]
+    check(dlg and dlg.title == "Fit pictures to the screen" and #dlg.buttons == 4
+        and dlg.buttons[1][1].text == "☑ Bigger when the bars are hidden"
+        and dlg.buttons[2][1].text == "☑ Fit picture books when they're opened"
+        and dlg.buttons[3][1].text == "Turn off for this book" and set_to == nil,
+        "Fit pictures while it's on: its options (not turned off at once)")
+    dlg.buttons[1][1].callback()
+    check(gsettings.gzreader_pb_fill_hidden == false and margins == 1 and shown[#shown].buttons[1][1].text == "☐ Bigger when the bars are hidden",
+        "Bigger when the bars are hidden: off (saved, the book laid out for it, shown unticked)")
+    shown[#shown].buttons[2][1].callback()
+    check(gsettings.gzreader_picture_book_auto == false and shown[#shown].buttons[2][1].text == "☐ Fit picture books when they're opened",
+        "Fit picture books when they're opened: off")
+    shown[#shown].buttons[3][1].callback()
+    check(set_to == false, "Turn off for this book")
+    fui.styletweak = {}
+    local before_n = #shown
+    PB.menuItem(fui).callback()
+    check(set_to == true and not (shown[before_n + 1] and shown[before_n + 1].title == "Fit pictures to the screen"),
+        "Fit pictures while it's off: turned on, no options")
+    PB.set = orig_set
+    UIM.show, UIM.close, G_reader_settings.isFalse = orig_show, orig_close, orig_isfalse
+    package.loaded["ui/widget/buttondialog"] = saved_bd
+    gsettings.gzreader_pb_fill_hidden = gs_saved
+    gsettings.gzreader_picture_book_auto = nil
+    package.path = saved_path
+end)()
+
 print("Kindle Wi-Fi networks (ZenOS's switcher): KOReader's lipc library")
 ;(function()
     local zen = PLUGIN .. "/../zenos.koplugin/?.lua"

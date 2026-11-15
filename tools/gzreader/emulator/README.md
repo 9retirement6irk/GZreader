@@ -293,3 +293,5 @@ generated covers. Read aloud is stubbed (no speech daemon in the emulator), so
 the highlight stays on the first sentence.
 
 `fixed_layout_book.lua` (any model; `GZ_EMU_BOOK` = a fixed-layout EPUB made from a PDF, a page picture plus an invisible text layer per page): the book's page count and pages before and after Fit pictures, in `<out>/fixed_layout.txt` and shots `fixed-*`.
+
+`fit_pictures_bars.lua` (any touch model; `GZ_EMU_BOOK` = a picture book, e.g. a fixed-layout EPUB): Fit pictures → Bigger when the bars are hidden. The book's margins with the bars shown, hidden with a tap, with the option off, and shown again, in `<out>/fit_bars.txt`, with shots `bars-*`.
