@@ -10240,6 +10240,50 @@ print("Sync through a computer (Kindles without Wi-Fi)")
     os.remove(Usb.journalPath(fake))
     fake.store.downloads["1"] = nil
 
+    -- Grimmory's notes (its web reader's Notes tab) without Wi-Fi: the same journal
+    ;(function()
+        OfflineApi.forget()
+        local Anno = require("gzreader_annotations")
+        local CFI = { cfiRangeToXPointers = function(c) return "/p0:" .. c, "/p1:" .. c end }
+        check(api:listBookNotes(1) == nil and select(2, api:listBookNotes(1)) == "usb"
+            and Anno.workNotes(api, 1, {}, {}, {}, {}, CFI, {}).skipped and not io.open(Usb.journalPath(fake), "rb"),
+            "notes: a copy without notes (from an older sync page): nothing compared, nothing sent, the Kindle's notes left as they are")
+        local copy = JSON.decode(read(lib .. "/.gzsync/library.json"))
+        local web_cfi, k_cfi = "epubcfi(/6/4!/4/2,/1:0,/1:5)", "epubcfi(/6/8!/4/2,/1:0,/1:3)"
+        copy.marks["1"].notes = { { id = 601, bookId = 1, cfi = web_cfi, noteContent = "from the web reader", selectedText = "Hello" } }
+        put(lib .. "/.gzsync/library.json", JSON.encode(copy))
+        OfflineApi.forget()
+        local locals = { { pos0 = "/x0", pos1 = "/x1", text = "Abc", note = "typed on the Kindle", grimmory_cfi = k_cfi } }
+        local res = Anno.workNotes(api, 1, locals, {}, {}, {}, CFI, {})
+        local nj = {}
+        for _i, j in ipairs(Usb.jobs(fake)) do if j.kind == "mark" then nj[#nj + 1] = j end end
+        check(res and res.remote and res.remote[web_cfi] and res.remote[web_cfi].note == "from the web reader" and res.xps[web_cfi]
+            and res.remote[k_cfi] and tostring(res.remote[k_cfi].id):match("^usb%-") and res.counts.created == 1,
+            "notes: the merge runs without Wi-Fi: the web reader's note comes to the Kindle, the Kindle's is made (a temporary id)")
+        check(#nj == 1 and nj[1].op == "note+" and nj[1].method == "POST" and nj[1].path == "/api/v2/book-notes"
+            and nj[1].body.noteContent == "typed on the Kindle" and nj[1].body.bookId == 1 and nj[1].temp == res.remote[k_cfi].id,
+            "outbox: the Kindle's new note, for the page to send")
+        local temp = res.remote[k_cfi].id
+        api:updateBookNote(601, { noteContent = "changed on the Kindle" })
+        api:deleteBookNote(temp)
+        local l = api:listBookNotes(1)
+        check(#l == 1 and l[1].id == 601 and l[1].noteContent == "changed on the Kindle",
+            "notes: changed and deleted here, on top of the copy's")
+        nj = {}
+        for _i, j in ipairs(Usb.jobs(fake)) do if j.kind == "mark" then nj[#nj + 1] = j end end
+        check(#nj == 3 and nj[2].op == "note~" and nj[2].method == "PUT" and nj[2].path == "/api/v2/book-notes/{id}" and nj[2].ref == "601"
+            and nj[3].op == "note-" and nj[3].method == "DELETE" and nj[3].ref == tostring(temp),
+            "outbox: …in order, by Grimmory's id or the temporary one")
+        fake.store.downloads["1"] = { note_shadow = { [k_cfi] = { id = temp, note = "typed on the Kindle" }, [web_cfi] = { id = 601 } } }
+        Usb.applyMarks(fake, { [nj[1].id] = true }, { [temp] = 778 })
+        local left = Usb.journal(fake)
+        check(#left == 2 and left[2].ref == "778" and fake.store.downloads["1"].note_shadow[k_cfi].id == 778
+            and fake.store.downloads["1"].note_shadow[web_cfi].id == 601,
+            "inbox: a note made here takes Grimmory's id, in the journal and in what the last pass saw")
+        os.remove(Usb.journalPath(fake))
+        fake.store.downloads["1"] = nil
+    end)()
+
     -- what the page brought
     local base = lib .. "/.gzsync"
     put(base .. "/in/book-20.epub", "EPUB-DUNE")
@@ -10549,6 +10593,9 @@ if os.getenv("GZ_SYNC_DUMP") and require("lfs").attributes(os.getenv("GZ_SYNC_DU
         local anns = api2:listAnnotations(1) or {}
         check(#anns == 1 and anns[1].note == "later" and anns[1].color == "#F87171",
             "e2e: highlights as GZreader sees them: Grimmory's (from the copy) with the journal's change on top")
+        local bnotes = api2:listBookNotes(1) or {}
+        check(#bnotes == 1 and bnotes[1].noteContent == "a note from the Kindle" and tonumber(bnotes[1].id),
+            "e2e: the web reader's notes in the copy, with Grimmory's ids, for GZreader to merge")
         check(r and r.sent == 5 and next(fake.store.pending.progress) == nil and #fake.store.pending.sessions == 0
             and next(fake.store.pending.ratings) == nil, "e2e: what the page sent is off the Kindle's lists (the gone book's position dropped)")
         local b = fake.store.downloads["3"]

@@ -6,7 +6,7 @@ Kindles without Wi-Fi (Kindle 2, DX: gzreader_usbsync.lua).
 
 Reads (book lists, search, libraries, shelves, a book's record with its
 reading positions, its page, an audiobook's details, covers) come from the
-copy. Writes (positions, reading time, ratings, bookmarks) fail as
+copy. Writes (positions, reading time, ratings) fail as
 "usb": the code that sends them keeps them queued, as when Wi-Fi is off, and
 the outbox carries them to the sync page.
 
@@ -72,7 +72,7 @@ function OfflineApi:putProgress() return false, NOT end
 function OfflineApi:postSession() return false, NOT end
 function OfflineApi:hasSession() return nil end
 function OfflineApi:putRating() return false, NOT end
--- (bookmarks and highlights: written to the journal, below)
+-- (bookmarks, highlights and notes: written to the journal, below)
 function OfflineApi:downloadToFile() return false, NOT end
 function OfflineApi:downloadAudio() return false, NOT, false end
 
@@ -265,7 +265,7 @@ end
 
 ---------------------------------------------------------------- bookmarks and highlights
 
---[[ Bookmarks and highlights go through the journal (.gzsync/journal.jsonl):
+--[[ Bookmarks, highlights and Grimmory's notes go through the journal (.gzsync/journal.jsonl):
 each create, change or delete made on the Kindle is a line, as the request
 the sync page sends to Grimmory, in order. Something made here gets a
 temporary id ("usb-…"): the page swaps it for Grimmory's own when it sends
@@ -349,6 +349,40 @@ function OfflineApi:deleteAnnotation(id)
     return true, nil, 204
 end
 
+-- Grimmory's notes (its web reader's Notes tab, /api/v2/book-notes:
+-- gzreader_notesync.lua), through the same journal
+function OfflineApi:createBookNote(body)
+    local temp = "usb-" .. uid()
+    if not self:record{ op = "note+", method = "POST", path = "/api/v2/book-notes", body = body, temp = temp, book = body.bookId } then
+        return nil, NOT
+    end
+    local made = {}
+    for k, v in pairs(body) do made[k] = v end
+    made.id = temp
+    return made, nil, 201
+end
+
+function OfflineApi:updateBookNote(id, body)
+    if not self:record{ op = "note~", method = "PUT", path = "/api/v2/book-notes/{id}", ref = tostring(id), body = body } then
+        return nil, NOT
+    end
+    return true, nil, 200
+end
+
+function OfflineApi:deleteBookNote(id)
+    if not self:record{ op = "note-", method = "DELETE", path = "/api/v2/book-notes/{id}", ref = tostring(id) } then
+        return false, NOT
+    end
+    return true, nil, 204
+end
+
+-- (the journal's operations for each of the copy's lists: made, changed, deleted)
+local OPS = {
+    bookmarks = { "bookmark+", "highlight~", "bookmark-" },
+    annotations = { "highlight+", "highlight~", "highlight-" },
+    notes = { "note+", "note~", "note-" },
+}
+
 --- Grimmory's list (the page's copy) with the journal applied.
 function OfflineApi:marks(book_id, kind)
     local snap = self:snapshot()
@@ -363,8 +397,7 @@ function OfflineApi:marks(book_id, kind)
             at[tostring(c.id)] = c
         end
     end
-    local plus, change, minus = kind == "bookmarks" and "bookmark+" or "highlight+", "highlight~",
-        kind == "bookmarks" and "bookmark-" or "highlight-"
+    local plus, change, minus = OPS[kind][1], OPS[kind][2], OPS[kind][3]
     for _i, j in ipairs(self:journal()) do
         if j.op == plus and type(j.body) == "table" and tostring(j.book or j.body.bookId) == tostring(book_id) then
             local c = {}
@@ -391,6 +424,13 @@ end
 
 function OfflineApi:listAnnotations(book_id)
     local l = self:marks(book_id, "annotations")
+    if l then return l end
+    return nil, NOT
+end
+
+--- (a copy from an older sync page has no notes: nothing to compare, so nothing is taken for deleted)
+function OfflineApi:listBookNotes(book_id)
+    local l = self:marks(book_id, "notes")
     if l then return l end
     return nil, NOT
 end

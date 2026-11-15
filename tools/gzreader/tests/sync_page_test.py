@@ -130,6 +130,11 @@ OUTBOX = {
         {"id": "m:3", "kind": "mark", "op": "highlight~", "method": "PUT", "path": "/api/v1/annotations/{id}", "ref": "usb-2",
          "body": {"color": "#F87171", "style": "highlight", "note": "from the Kindle"}},
         {"id": "m:4", "kind": "mark", "op": "bookmark-", "method": "DELETE", "path": "/api/v1/bookmarks/{id}", "ref": "9999"},
+        # a note for the web reader's Notes tab made on the Kindle, then changed (by its temporary id)
+        {"id": "m:6", "kind": "mark", "op": "note+", "book": 1, "method": "POST", "path": "/api/v2/book-notes",
+         "body": {"bookId": 1, "cfi": "epubcfi(/6/4!/4/2,/1:0,/1:5)", "noteContent": "from the Kindle", "selectedText": "Hello"}, "temp": "usb-3"},
+        {"id": "m:7", "kind": "mark", "op": "note~", "method": "PUT", "path": "/api/v2/book-notes/{id}", "ref": "usb-3",
+         "body": {"noteContent": "a note from the Kindle"}},
         # a book put on a shelf on the Kindle; one put on someone else's shelf (Grimmory refuses it)
         {"id": "sh:3:5", "kind": "shelf", "book": 3, "method": "POST", "path": "/api/v1/books/shelves",
          "body": {"bookIds": [3], "shelvesToAssign": [6], "shelvesToUnassign": []}},
@@ -219,7 +224,7 @@ with sync_playwright() as pw:
     check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
     page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
-    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "11 reading updates" in page.locator("#k-sub").inner_text()
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "13 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
           "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
@@ -644,11 +649,15 @@ check(any(b["id"] == 5 for b in inbox.get("books", [])) and any(a["id"] == 33 fo
       "what was chosen on the page came too (a book and an audiobook)")
 marks = lib.get("marks", {}).get("1", {})
 hl = [a for a in state["annotations"] if a["text"] == "Hello"]
-check(set(inbox.get("created", {})) == {"usb-1", "usb-2"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
+check(set(inbox.get("created", {})) == {"usb-1", "usb-2", "usb-3"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
       and any(b.get("title") == "Kindle" for b in state["bookmarks"]) and {"m:1", "m:2", "m:3", "m:4"} <= set(inbox["done"]),
       "bookmarks and highlights: made, changed (by their new ids) and deleted on Grimmory; the new ids for the Kindle")
 check(any(a.get("note") == "from the Kindle" for a in marks.get("annotations", [])) and any(b.get("title") == "Kindle" for b in marks.get("bookmarks", [])),
       "…and the books' bookmarks and highlights in the copy, for GZreader to merge")
+nt = [n for n in state.get("notes", []) if n["bookId"] == 1 and n["noteContent"] == "a note from the Kindle"]
+check(len(nt) == 1 and inbox["created"].get("usb-3") == nt[0]["id"] and {"m:6", "m:7"} <= set(inbox["done"])
+      and any(n.get("noteContent") == "a note from the Kindle" for n in marks.get("notes", [])),
+      "notes (the web reader's Notes tab): made and changed on Grimmory from the Kindle's journal, and in the copy for GZreader")
 check(not errors, "no script errors" + ("" if not errors else ": " + "; ".join(errors)))
 check(set(inbox.get("done", [])) >= {"p:1:7", "s:1:2026-11-05T10:00:00Z", "r:2:4"},
       "jobs: positions, reading time and ratings reported done")

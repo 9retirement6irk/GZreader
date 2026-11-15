@@ -275,7 +275,7 @@ function Usb.jobs(plugin)
     end
     -- books put on or taken off your shelves here (gzreader_shelves.lua)
     for _i, j in ipairs(require("gzreader_shelves").jobs(plugin)) do jobs[#jobs + 1] = j end
-    -- bookmarks and highlights, in the order they were made (the journal:
+    -- bookmarks, highlights and notes, in the order they were made (the journal:
     -- gzreader_offlineapi.lua); "{id}" in a path and temp/ref ids are for
     -- the page to fill in
     for _i, j in ipairs(Usb.journal(plugin)) do
@@ -328,6 +328,9 @@ function Usb.applyMarks(plugin, done, created)
                             e.anno_shadow[tostring(map[tostring(id)])] = v
                         end
                     end
+                end
+                for _cfi, v in pairs(type(e.note_shadow) == "table" and e.note_shadow or {}) do
+                    if type(v) == "table" and v.id ~= nil and map[tostring(v.id)] then v.id = map[tostring(v.id)] end
                 end
             end
         end
@@ -1074,7 +1077,7 @@ function Usb.summaryText(r)
     if (r.photos or 0) > 0 then parts[#parts + 1] = r.photos == 1 and _("1 picture from Immich") or T(_("%1 pictures from Immich"), r.photos) end
     local text = #parts > 0 and table.concat(parts, ", ") or _("No new books")
     if r.sent > 0 then text = text .. "\n" .. T(_("%1 reading updates sent to Grimmory."), r.sent) end
-    if (r.marks or 0) > 0 then text = text .. "\n" .. T(_("%1 bookmark and highlight changes sent to Grimmory."), r.marks) end
+    if (r.marks or 0) > 0 then text = text .. "\n" .. T(_("%1 bookmark, highlight and note changes sent to Grimmory."), r.marks) end
     if r.failed > 0 then text = text .. "\n" .. T(_("%1 couldn't be sent; they'll go with the next sync."), r.failed) end
     return text
 end

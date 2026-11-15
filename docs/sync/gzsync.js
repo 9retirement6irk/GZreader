@@ -5,7 +5,7 @@ For Kindles without Wi-Fi. GZreader leaves .gzsync/outbox.json in its folder
 on the Kindle (what to send to Grimmory, the sync queue, what's on the
 Kindle); this page, with the Kindle plugged in:
   1. sends the outbox's jobs to Grimmory (positions, reading time, ratings,
-     bookmarks and highlights, books put on or taken off your shelves);
+     bookmarks, highlights and notes, books put on or taken off your shelves);
   2. leaves a copy of the library (library.json, small covers, book pages);
   3. brings what's in the sync queue (books, audiobooks) and the auto-download
      shelf's new books;
@@ -1264,7 +1264,7 @@ gets a password or token.
         inbox.done.push(j.id); badClock++; continue;
       }
       if (j.kind === "mark") {
-        // a bookmark or highlight: ids made on the Kindle ("usb-…") are Grimmory's once created
+        // a bookmark, highlight or note: ids made on the Kindle ("usb-…") are Grimmory's once created
         var ref = j.ref != null ? String(j.ref) : null;
         if (ref && inbox.created[ref]) ref = String(inbox.created[ref]);
         if (ref && /^usb-/.test(ref)) { inbox.done.push(j.id); continue; } // (its creation never went through)
@@ -1292,7 +1292,7 @@ gets a password or token.
     }
     await saveInbox(inbox);
     if (badClock) log(badClock + " reading time" + (badClock === 1 ? "" : "s") + " left out: recorded while the Kindle's clock was wrong (it's set from this computer's now).");
-    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark and highlight change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
+    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark, highlight and note change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
   }
 
   // 2. the library copy
@@ -1353,15 +1353,18 @@ gets a password or token.
         full[id] = keep;
       } catch (e) {}
     });
-    // their bookmarks and highlights (GZreader compares and merges them when the book opens)
+    // their bookmarks, highlights and notes (the web reader's Notes tab: one per place);
+    // GZreader compares and merges them when the book opens
     var marks = {};
-    phase("Reading bookmarks and highlights…");
+    phase("Reading bookmarks, highlights and notes…");
     await pool(Object.keys(have.books || {}), 4, async function (id) {
       try {
         var bms = await G.json("/api/v1/bookmarks/book/" + id);
         var ans = await G.json("/api/v1/annotations/book/" + id);
         marks[id] = { bookmarks: Array.isArray(bms) ? bms : [], annotations: Array.isArray(ans) ? ans : [] };
-      } catch (e) {}
+      } catch (e) { return; }
+      // (left out if Grimmory has no notes yet: the Kindle then leaves its notes as they are)
+      try { var nts = await G.json("/api/v2/book-notes/book/" + id); if (Array.isArray(nts)) marks[id].notes = nts; } catch (e) {}
     });
     // subtitles (only the web app's list has them)
     var subtitles = {};
