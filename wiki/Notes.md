@@ -214,6 +214,9 @@ API to `/api` are found too.
     finger at the same time is ignored.
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
+
+  <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-drawing.png" alt="Drawing in a note on a Paperwhite" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-drawing-note.png" alt="The note with its drawing" width="300">
+
 - **Journal** (the **Journal** button, **J**, or Menu → Journal entry on a
   Kindle 4): a journal entry, as the journaling mode of the Memos fork at
   [github.com/9retirement6irk/memos](https://github.com/9retirement6irk/memos)

@@ -28,6 +28,7 @@ in them). Without it the server is older: no /spaces, and a note with a
 `space` field is refused (400, an unknown field) as gRPC-gateway does.
 Test helpers: GET /__state (all notes), POST /__reset, POST /__offline?on=1.
 """
+import os
 import base64, json, re, sys, time, threading, zlib, struct
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -169,9 +170,17 @@ def sample():
     add("Ask the library about the large-print edition. #reading", ago=timedelta(days=40))
     if "--drawings" in sys.argv:
         # (a note with two sheets, as drawn on a touch Kindle: pictures named like memos' drawings)
+        # (demo/make_sketches.py's shelf plan when it's next to this file, for screenshots; else test stripes)
+        here = os.path.dirname(os.path.abspath(__file__))
+        def sheet(name, fallback):
+            path = os.path.join(here, name)
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    return f.read()
+            return fallback
         add("## Shelf sketch\n\nTwo pages of measurements. #ideas", ago=timedelta(hours=1), attachments=[
-            attachment("sheet1", "drawing-20261114-100000.canvas.png", "image/png", png(300, 388)),
-            attachment("sheet2", "drawing-20261114-100500.canvas.png", "image/png", png(300, 388))])
+            attachment("sheet1", "drawing-20261114-100000.canvas.png", "image/png", sheet("sketch-front.png", png(300, 388))),
+            attachment("sheet2", "drawing-20261114-100500.canvas.png", "image/png", sheet("sketch-side.png", png(300, 388)))])
     if SPACES:
         add("Grocery run Saturday: who needs what?\n\n- [ ] milk\n- [ ] coffee", visibility="SPACE",
             ago=timedelta(hours=3), space="spaces/family")
