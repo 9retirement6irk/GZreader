@@ -73,6 +73,10 @@ echo "== notes formatted (Memos' rich editor: reading and writing its Markdown; 
 (cd "$T" && luajit richedit_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== journal entries (written as the Memos fork's journaling mode writes them)"
+(cd "$T" && luajit journal_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== Settings → Downloads → Books: Double-tap only on touch Kindles"
 (cd "$T" && luajit settings_doubletap_test.lua "$REPO/plugins/zenos.koplugin") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

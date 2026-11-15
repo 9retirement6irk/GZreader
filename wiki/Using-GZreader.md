@@ -76,7 +76,7 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
 
 - **Tabs:** Down from the bottom of Home reaches the tab bar; Left and Right
   choose a tab, Press opens it.
-- **Menu:** the quick panel at Home and in a book (see *The quick panel* above); in Notes and Calendar their options (new note, filter, refresh;
+- **Menu:** the quick panel at Home and in a book (see *The quick panel* above); in Notes and Calendar their options (new note, journal entry, search, filter, refresh;
   today, Agenda / Day / Week / Month, refresh, settings).
 - **Notes:** the 5-way moves between the sticky notes, Press opens one; in a
   note ▲ ▼ choose a checklist item or attachment and Press ticks or opens
@@ -103,7 +103,7 @@ run the same GZreader with ZenOS's touch interface:
   opens the panel moves neither slider.
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
-- **Notes:** Note, Draw (a new note on a page to draw on), Filter, Layout, Sort, Connection (refresh, connect again, disconnect) and a full screen icon are buttons under the title; a note
+- **Notes:** Note, Draw (a new note on a page to draw on) and Journal (a journal entry), then icons for Sort, Filter (with Memos connection), Layout, Search and Full screen, are buttons under the title, with a row of your tags and Drawings under them; a note
   opens with a tap, checklist items tick with a tap, and Edit, Pin, More and
   Close are buttons at the bottom. The editor shows the on-screen keyboard;
   its toolbar (lists, checklists, headings, italic, bold, tags) and Save are

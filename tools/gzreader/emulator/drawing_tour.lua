@@ -31,9 +31,14 @@ local function wave(fx0, fy, fx1)
 end
 local function button(id)
     local d = screen()
-    for _i, b in ipairs(d and d.buttons or {}) do
-        if b.tool.id == id then return { b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) } end
+    local function centreOf()
+        for _i, b in ipairs(d and d.buttons or {}) do
+            if b.tool.id == id then return { b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) } end
+        end
     end
+    -- (a thickness, "w4": in the pen's choices, which the pen's button opens when it's tapped again)
+    if d and id:match("^w") and not centreOf() then d:setFlyout("pen") end
+    return centreOf()
 end
 local function tapButton(E, id) if PEN then E.penTap(button(id)) else E.tap(button(id)) end end
 

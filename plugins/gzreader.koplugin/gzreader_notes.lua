@@ -23,6 +23,7 @@ replaces Favorites); its page is drawn as sticky notes (gzreader_sticky).
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
@@ -126,6 +127,45 @@ function Notes.setView(plugin, field, value)
     end
 end
 
+--- Touch Kindles, Layout → Scroll up and down: the board is one long page
+--- that a swipe or a drag up or down moves as far as the finger went (notes
+--- cut off at the top and bottom show there's more), instead of turning
+--- pages sideways; no page number or arrows under it. (Compact notes:
+--- they're all one height. Full notes are laid out page by page, so they
+--- keep their pages.)
+function Notes.scrolling(plugin)
+    return Touch.on() and Notes.prefs(plugin).scroll == true and Notes.view(plugin).display ~= "full"
+end
+
+function Notes.setScrolling(plugin, on)
+    Notes.prefs(plugin).scroll = on and true or nil
+    plugin:save()
+    Log.info("notes: scrolling", tostring(on))
+    local b = Notes.board
+    if b and not b._gz_closed then
+        b._gz_goto = b._gz_first
+        Notes.reloadBoard(true)
+    end
+end
+
+Notes.SCROLL_PEEK = 0.3 -- scrolling: this much of the next row of notes shows at the bottom
+
+--- Scrolling: where the notes are for a scroll of `y` pixels. `view_h`: the
+--- room for notes (the page number and arrows aren't shown, so down to the
+--- bottom); `fit`: the rows that fit whole. Returns { y (kept between 0 and
+--- the end), cell_h (a row's height: `fit` rows and a part of the next one
+--- show), first (the first row shown, from 0), shift (how much of it is
+--- above the top), rows (rows drawn, the cut-off ones too), max_y }.
+function Notes.scrollLayout(y, view_h, fit, total_rows)
+    local cell_h = math.max(1, math.floor(view_h / (fit + Notes.SCROLL_PEEK)))
+    local max_y = math.max(0, total_rows * cell_h - view_h)
+    y = math.max(0, math.min(max_y, math.floor((tonumber(y) or 0) + 0.5)))
+    local first = math.floor(y / cell_h)
+    local shift = y - first * cell_h
+    local rows = math.min(total_rows - first, math.ceil((view_h + shift) / cell_h))
+    return { y = y, cell_h = cell_h, first = first, shift = shift, rows = math.max(0, rows), max_y = max_y }
+end
+
 --- L on the board (or Layout, More → Layout): side by side, and compact or full.
 function Notes.showView(plugin)
     local dialog
@@ -139,6 +179,14 @@ function Notes.showView(plugin)
     local rows = {}
     for _i, c in ipairs(NL.COLUMNS) do rows[#rows + 1] = row("columns", c, Notes.columnsLabel(c)) end
     for _i, d in ipairs(NL.DISPLAYS) do rows[#rows + 1] = row("display", d, Notes.displayLabel(d)) end
+    if Touch.on() then
+        local on = Notes.prefs(plugin).scroll == true
+        rows[#rows + 1] = { { text = _("Scroll up and down (compact notes)") .. (on and "  \u{2713}" or ""), align = "left",
+            callback = function()
+                UIManager:close(dialog)
+                Notes.setScrolling(plugin, not on)
+            end } }
+    end
     rows[#rows + 1] = { { text = _("Full screen: no tab bar") .. (Notes.fullscreen(plugin) and "  \u{2713}" or ""), align = "left",
         callback = function()
             UIManager:close(dialog)
@@ -312,7 +360,16 @@ function Notes.keep(m, f)
     if require("gzreader_net").usb then return Notes.keepHere(m, f) end
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
+    if f.kind == "drawings" then return Notes.hasDrawing(m) end
     return true
+end
+
+--- A note with a drawing (a sheet): the Drawings filter.
+function Notes.hasDrawing(m)
+    for _i, a in ipairs(m.attachments or {}) do
+        if Notes.isDrawing(a) then return true end
+    end
+    return false
 end
 
 --- Every filter, worked out on the Kindle (syncing through a computer: no Memos to ask).
@@ -331,6 +388,7 @@ function Notes.keepHere(m, f)
     if f.kind == "search" then return tostring(m.content or ""):lower():find(tostring(f.value):lower(), 1, true) ~= nil end
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
+    if f.kind == "drawings" then return Notes.hasDrawing(m) end
     if f.kind == "space" then return (m.space or "") == f.value end
     return true
 end
@@ -349,6 +407,7 @@ function Notes.filterLabel(f)
     if f.kind == "date" then return f.label end
     if f.kind == "place" then return f.value end
     if f.kind == "attachments" then return _("With attachments") end
+    if f.kind == "drawings" then return _("Drawings") end
     if f.kind == "pinned" then return _("Pinned") end
     if f.kind == "search" then return "\u{201C}" .. f.value .. "\u{201D}" end
     if f.kind == "space" then return f.value == "" and _("No space") or (f.label or f.value) end
@@ -468,6 +527,12 @@ function Notes.drawingWidget(plugin, att, max_w, max_h, on_ready)
     local bb = Sticky.picture(path, max_w, max_h, Notes.DRAWING_GROW)
     if not bb then return nil end
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
+end
+
+--- Over each sheet of a note with several: "Page 2 of 3" (keyboard Kindles: and the key that opens it).
+function Notes.pageCaption(i, n, key)
+    local text = T(_("Page %1 of %2"), i, n)
+    return key and (text .. "  \u{00B7}  " .. T(_("%1 opens it"), key)) or text
 end
 
 --- A drawing changed in a note already in Memos (`drawing`: { path,
@@ -638,6 +703,8 @@ function Notes.refresh(plugin, on_done, opts)
             if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix; plugin:save() end
             if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
             if type(res.spaces) == "table" then store.spaces = res.spaces; plugin:save() end
+            -- (false: this Memos has no journaling mode, the defaults again; nil: no answer, as it was)
+            if res.journal ~= nil and (res.journal or nil) ~= store.journal then store.journal = res.journal or nil; plugin:save() end
             Notes.notes = res.memos
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
@@ -1204,10 +1271,31 @@ local function drawCompact(m, select_number, cols, max_items)
     if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
     local per = m.perpage
     local offset = (m.page - 1) * per
+    m._gz_scroll = nil
+    Notes.footerShown(m, true)
     local cell_w = math.floor(m.item_dimen.w / cols)
     local cell_h = math.floor(m.available_height / rows)
+    local count, port = per, nil
+    if Notes.scrolling(m.plugin) then
+        -- scrolling: one long page, moved by `m._gz_y` pixels. No page number or
+        -- arrows: their room is the notes' too.
+        Notes.footerShown(m, false)
+        local view_h = m.inner_dimen.h - ((m.title_bar and not m.no_title) and m.title_bar:getHeight() or 0)
+        local total = math.ceil(#m.item_table / cols)
+        local probe = Notes.scrollLayout(0, view_h, rows, total)
+        if m._gz_goto then m._gz_y = math.floor((m._gz_goto - 1) / cols) * probe.cell_h end
+        local sl = Notes.scrollLayout(m._gz_y or 0, view_h, rows, total)
+        m._gz_y = sl.y
+        offset, count, cell_h = sl.first * cols, sl.rows * cols, sl.cell_h
+        -- (one page: ZenOS's page indicator, painted from these, stays away too)
+        m.page, m.page_num = 1, 1
+        m._gz_scroll = { rows = rows, cols = cols, cell_h = cell_h, view_h = view_h, max_y = sl.max_y, shift = sl.shift }
+        port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
+            VerticalGroup:new{ align = "left" } }
+        table.insert(m.item_group, port)
+    end
     local row, layout_row
-    for i = 1, per do
+    for i = 1, count do
         local e = m.item_table[offset + i]
         if not e then break end
         e.idx = offset + i
@@ -1215,18 +1303,64 @@ local function drawCompact(m, select_number, cols, max_items)
         if (i - 1) % cols == 0 then
             row = HorizontalGroup:new{ align = "top" }
             layout_row = {}
-            table.insert(m.item_group, row)
+            table.insert(port and port[1] or m.item_group, row)
             table.insert(m.layout, layout_row)
         end
         local key = e.memo and Touch.letter(KEYS[i]) or nil
         if e.memo and KEYS[i] then m._gz_keyed[i] = e end
-        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(i), show_parent = m.show_parent,
+        local item = StickyItem:new{ entry = e, menu = m, look = Sticky.look(port and (offset + i) or i), show_parent = m.show_parent,
             shortcut = key, dimen = Geom:new{ w = e.memo and cell_w or m.item_dimen.w, h = cell_h } }
         table.insert(row, item)
         table.insert(layout_row, item)
     end
     m._gz_first = offset + 1
     return select_number
+end
+
+--- Scrolling: the notes' window. Its rows are painted `shift` pixels up, so
+--- the first is cut off at the top and the last at the bottom: what they'd
+--- paint over (the buttons above, whatever is under) is put back after.
+Notes.Viewport = WidgetContainer:extend{ shift = 0 }
+
+function Notes.Viewport:getSize() return Geom:new{ w = self.dimen.w, h = self.dimen.h } end
+
+function Notes.Viewport:paintTo(bb, x, y)
+    self.dimen.x, self.dimen.y = x, y
+    local inner = self[1]
+    local w, h = self.dimen.w, self.dimen.h
+    local over = inner:getSize().h - self.shift - h
+    local kept = {}
+    local function keep(sy, sh)
+        sy, sh = math.max(0, sy), math.min(sh, bb:getHeight() - math.max(0, sy))
+        if sh <= 0 then return end
+        local part = Blitbuffer.new(w, sh, bb:getType())
+        part:blitFrom(bb, 0, 0, x, sy, w, sh)
+        kept[#kept + 1] = { part, sy, sh }
+    end
+    if self.shift > 0 then keep(y - self.shift, math.min(self.shift, y)) end
+    if over > 0 then keep(y + h, over) end
+    inner:paintTo(bb, x, y - self.shift)
+    for _i, k in ipairs(kept) do
+        bb:blitFrom(k[1], x, k[2], 0, 0, w, k[3])
+        k[1]:free()
+    end
+end
+
+--- The page number and arrows under the notes: there, or (scrolling) away.
+function Notes.footerShown(m, shown)
+    local pi = m.page_info
+    if not pi then return end
+    if shown then
+        if m._gz_footer then
+            for i, w in ipairs(m._gz_footer) do pi[i] = w end
+            m._gz_footer = nil
+            pi:resetLayout()
+        end
+    elseif not m._gz_footer then
+        m._gz_footer = {}
+        for i = #pi, 1, -1 do m._gz_footer[i] = pi[i]; pi[i] = nil end
+        pi:resetLayout()
+    end
 end
 
 -- Full: each note as long as it needs, in `cols` columns (Memos' masonry);
@@ -1319,6 +1453,63 @@ function Notes.Board:getPageNumber(item_number)
     return Menu.getPageNumber(self, item_number)
 end
 
+--- Scrolling (Notes.scrolling): `dy` pixels down (up: negative). True when it moved.
+function Notes.Board:scrollBy(dy)
+    local sc = self._gz_scroll
+    if not sc then return false end
+    local to = math.max(0, math.min(sc.max_y, (self._gz_y or 0) + math.floor(dy + 0.5)))
+    if to == (self._gz_y or 0) then return false end
+    self._gz_y = to
+    self:updateItems()
+    return true
+end
+
+--- Scrolling: a swipe up or down moves the notes as far as the finger went;
+--- a swipe sideways, most of a screenful (a row stays in view).
+function Notes.Board:onSwipe(arg, ges)
+    local sc = self._gz_scroll
+    if sc and ges then
+        local d = ges.direction
+        if d == "north" or d == "south" then
+            self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0))
+            return true
+        elseif d == "west" or d == "east" then
+            self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h))
+            return true
+        end
+    end
+    return Menu.onSwipe(self, arg, ges)
+end
+
+--- Scrolling: a slow drag does the same when the finger lifts.
+function Notes.Board:onPan(arg, ges)
+    if self._gz_scroll and ges and not ges.mousewheel_direction then
+        self._gz_pan = { direction = ges.direction, distance = ges.distance }
+        return true
+    end
+    return Menu.onPan(self, arg, ges)
+end
+
+function Notes.Board:onGzPanRelease()
+    local pan = self._gz_pan
+    self._gz_pan = nil
+    if not (pan and self._gz_scroll) then return false end
+    if pan.direction == "north" or pan.direction == "south" then
+        self:scrollBy((pan.direction == "north" and 1 or -1) * (tonumber(pan.distance) or 0))
+    end
+    return true
+end
+
+--- Scrolling: the page keys (if any) move most of a screenful.
+function Notes.Board:onGotoPage(page)
+    local sc = self._gz_scroll
+    if sc then
+        self:scrollBy((page > (self.page or 1) and 1 or -1) * (sc.view_h - sc.cell_h))
+        return true
+    end
+    return Menu.onGotoPage(self, page)
+end
+
 function Notes.Board:onMenuSelect(item)
     if item.memo then Notes.showNote(self.plugin, item.memo) end
     return true
@@ -1327,6 +1518,13 @@ end
 function Notes.Board:onSelectByShortCut(arg, keyevent)
     local k = keyevent and keyevent.key
     if k == "N" then Notes.edit(self.plugin); return true end
+    if k == "J" then Notes.journal(self.plugin); return true end
+    -- (Z X C V B switch the bottom tabs: not those)
+    if k == "K" then Notes.showSearch(self.plugin); return true end
+    if k == "H" then Notes.showMenu(self.plugin); return true end
+    if k == "G" then Notes.showTags(self.plugin); return true end
+    if k == "D" then Notes.toggleDrawings(self.plugin); return true end
+    if k == "A" then Notes.setFilter(self.plugin, { kind = "all" }); return true end
     if k == "F" then Notes.showFilter(self.plugin); return true end
     if k == "M" then Notes.showConnection(self.plugin); return true end
     if k == "L" then Notes.showView(self.plugin); return true end
@@ -1350,8 +1548,15 @@ end
 function Notes.reloadBoard(keep_page)
     local b = Notes.board
     if not b or b._gz_closed then return end
+    if not keep_page then b._gz_y = 0 end -- (scrolling: other notes, from the top)
     b:switchItemTable(Notes.title(), boardItems(b.plugin), keep_page and -1 or nil)
     pcall(Notes.decorate, b)
+    -- touch: the tag chips show the filter in use and your most used tags
+    local sig = Notes.homeSignature(b.plugin)
+    if Touch.on() and b._gz_home_sig ~= sig then
+        b._gz_home_sig = sig
+        Touch.actionRow(b, Notes.actions(b.plugin), Notes.homeRows(b.plugin), true)
+    end
 end
 
 --- ZenOS's status row (clock, battery, Wi-Fi) in the title, like other tabs.
@@ -1364,22 +1569,76 @@ function Notes.closeOtherTabs(keep_id) return require("gzreader_tabs").closeOthe
 
 Notes.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/panel/"
 
---- Touch Kindles: the buttons under the Notes tab's title: Note (a new
---- note), Draw (a new note, drawn), Filter, Layout, Sort, Connection, and an
---- icon for Full screen (an X while in it).
+--- Touch Kindles: the buttons under the Notes tab's title, one row: Note (a
+--- new note), Draw (a new note that opens on a page to draw on) and Journal
+--- (a journal entry), each with its picture; then icons for Sort, Filter,
+--- Layout, Search and Full screen (an X while in it). Under them
+--- (Notes.homeRows): what's shown: All, your tags, Drawings. Connection is
+--- in Filter.
 function Notes.actions(plugin)
     local full = Notes.fullscreen(plugin)
+    local function icon(name) return Notes.ICON_DIR .. name .. ".svg" end
     return {
-        { _("Note"), function() Notes.edit(plugin) end },
-        { _("Draw"), function() Notes.draw(plugin) end },
-        { _("Filter"), function() Notes.showFilter(plugin) end },
-        { _("Layout"), function() Notes.showView(plugin) end },
-        { _("Sort"), function() Notes.showSort(plugin) end },
-        { _("Connection"), function() Notes.showConnection(plugin) end },
-        { icon_file = Notes.ICON_DIR .. (full and "close.svg" or "fullscreen.svg"),
+        { _("Note"), function() Notes.edit(plugin) end, icon_file = icon("quicknote") },
+        { _("Draw"), function() Notes.draw(plugin) end, icon_file = Notes.ICON_DIR .. "../draw/pen.svg" },
+        { _("Journal"), function() Notes.journal(plugin) end, icon_file = icon("journal") },
+        { icon_file = icon("sort"), label = _("Sort"), callback = function() Notes.showSort(plugin) end },
+        { icon_file = icon("filter"), label = _("Filter"), callback = function() Notes.showFilter(plugin) end },
+        { icon_file = icon("layout"), label = _("Layout"), callback = function() Notes.showView(plugin) end },
+        { icon_file = icon("search"), label = _("Search"), callback = function() Notes.showSearch(plugin) end },
+        { icon_file = icon(full and "close" or "fullscreen"),
           label = full and _("Leave full screen") or _("Full screen"),
           callback = function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end },
     }
+end
+
+Notes.HOME_TAGS = 3 -- tags with a chip of their own (the most used; the rest: Filter → Tag)
+
+--- The tags with a chip on the Notes tab: the one being shown, then your most used.
+function Notes.homeTags(plugin)
+    local out, seen = {}, {}
+    local f = Notes.filter
+    if f.kind == "tag" then out[1] = f.value; seen[f.value] = true end
+    -- (not a journal entry's mood and activity tags: every entry has them)
+    local Journal = require("gzreader_journal")
+    local js = Notes.journalSettings(plugin)
+    local skip = {}
+    for _i, k in ipairs({ "moodTagPrefix", "feelingTagPrefix", "impactTagPrefix", "activityTagPrefix" }) do
+        local pre = Journal.normalizePrefix(js[k])
+        if pre ~= "" then skip[#skip + 1] = pre end
+    end
+    for _i, t in ipairs(Notes.allTags(plugin)) do
+        if #out >= Notes.HOME_TAGS then break end
+        local journal = false
+        for _j, pre in ipairs(skip) do if t.tag:sub(1, #pre) == pre then journal = true end end
+        if not seen[t.tag] and not journal then out[#out + 1] = t.tag; seen[t.tag] = true end
+    end
+    return out
+end
+
+--- Touch Kindles, under Notes.actions: a row to choose what's shown: All,
+--- your most used tags, Drawings.
+function Notes.homeRows(plugin)
+    local f = Notes.filter
+    local tags = { { _("All"), function() Notes.setFilter(plugin, { kind = "all" }) end, chosen = f.kind == "all" } }
+    for _i, tag in ipairs(Notes.homeTags(plugin)) do
+        local short = #tag > 12 and (tag:sub(1, 11):gsub("[\128-\191]*$", "") .. "\u{2026}") or tag
+        tags[#tags + 1] = { "#" .. short, function() Notes.setFilter(plugin, { kind = "tag", value = tag }) end,
+            chosen = f.kind == "tag" and f.value == tag }
+    end
+    tags[#tags + 1] = { _("Drawings"), function() Notes.toggleDrawings(plugin) end, chosen = f.kind == "drawings" }
+    return { tags }
+end
+
+--- What the tag chips show (they're put in again only when this changes).
+function Notes.homeSignature(plugin)
+    local f = Notes.filter
+    return table.concat(Notes.homeTags(plugin), ",") .. "|" .. tostring(f.kind) .. "|" .. tostring(f.value)
+end
+
+--- Drawings (a chip; D): only the notes with a sheet, or back to all of them.
+function Notes.toggleDrawings(plugin)
+    return Notes.setFilter(plugin, { kind = Notes.filter.kind == "drawings" and "all" or "drawings" })
 end
 
 --- Keep the board's note images while the tab is closed (not on a Kindle
@@ -1388,6 +1647,9 @@ function Notes.keepImages()
     local ok, possible = pcall(function() return require("gzreader_layout").possible() end)
     return ok and possible == true
 end
+
+-- Keyboard Kindles: the keys under the Notes tab's title (H lists them all).
+Notes.KEY_HINT = _("N note  \u{00B7}  J journal  \u{00B7}  K search  \u{00B7}  G tags  \u{00B7}  H all keys")
 
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
@@ -1401,9 +1663,8 @@ function Notes.show(plugin)
     local menu = Notes.Board:new{
         title = Notes.title(),
         -- (touch: buttons in their place, Notes.actions)
-        subtitle = Touch.text(_("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
-            _("N new note  \u{00B7}  F filter  \u{00B7}  L layout  \u{00B7}  S sort  \u{00B7}  M connection"),
-            _("Menu: new note, filter, layout, sort, full screen  \u{00B7}  Press opens a note")),
+        subtitle = Touch.text(Notes.KEY_HINT, Notes.KEY_HINT,
+            _("Menu: new note, journal, search, filter, layout  \u{00B7}  Press opens a note")),
         item_table = boardItems(plugin),
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_bar_fm_style = true,
         -- Layout → Full screen: a name, so ZenOS doesn't make room for the tab
@@ -1417,11 +1678,19 @@ function Notes.show(plugin)
         _gz_hold_draw = Touch.on() or nil,
     }
     menu._gz_navbar_tab_id = Notes.TAB_ID -- (GZreader's own tabs close each other by it)
+    if Touch.on() then -- (scrolling: a drag ends)
+        menu.ges_events.GzPanRelease = { GestureRange:new{ ges = "pan_release", range = function() return menu.dimen end } }
+    end
     menu.key_events.LeftButtonTap = nil -- (KOReader's Menu also maps the Menu key)
     if Touch.dpad() then
         -- Kindle 4: no letter keys and no buttons; Menu opens what they'd do
+        -- (keyboard Kindles: H lists every key; Menu is the quick panel there)
         menu.key_events.GzMenu = { { "Menu" } }
         menu.onGzMenu = function() Notes.showMenu(plugin); return true end
+        -- (under the tab bar, ZenOS takes the Menu key first and asks the tab for its
+        -- options this way; without it Menu opened the quick panel and the Kindle 4
+        -- had no way to a new note)
+        menu.onGzOptions = menu.onGzMenu
     end
     -- Alt + Q, W, E, R, T… (the Kindle Keyboard's 1-9) switch the bottom tabs, as in the Grimmory tab
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }
@@ -1446,7 +1715,8 @@ function Notes.show(plugin)
     Notes.board = menu
     pcall(Notes.decorate, menu)
     menu._gz_hold_draw = nil
-    Touch.actionRow(menu, Notes.actions(plugin))
+    menu._gz_home_sig = Notes.homeSignature(plugin)
+    Touch.actionRow(menu, Notes.actions(plugin), Notes.homeRows(plugin))
     if not menu._gz_drawn then menu:updateItems(1) end
     UIManager:show(menu)
     Notes.syncOnOpen(plugin)
@@ -1550,12 +1820,20 @@ function NoteView:build()
     flush()
     -- the note's drawings, after its text, as wide as the page (a tap opens one)
     local shown = {}
-    for _i, a in ipairs(Notes.drawings(m)) do
+    local sheets = Notes.drawings(m)
+    for i, a in ipairs(sheets) do
         shown[a] = true
         local pic = Notes.drawingWidget(self.plugin, a, inner, math.floor(sh * 0.55), function()
             if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
         end)
         add(VerticalSpan:new{ width = S(8) })
+        if #sheets > 1 then
+            -- several sheets: which page each is (every Kindle shows them all; only touch Kindles draw)
+            local key = pic and Touch.letter(KEYS[#self.picks + 1])
+            add(TextWidget:new{ text = Notes.pageCaption(i, #sheets, key), face = Font:getFace("cfont", 14),
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY })
+            add(VerticalSpan:new{ width = S(4) })
+        end
         if pic then
             self.picks[#self.picks + 1] = { att = a }
             local focused = self.focus == #self.picks
@@ -1907,6 +2185,55 @@ function Notes.edit(plugin, memo, opts)
     }
 end
 
+--- A new note with `content`, queued for Memos and shown on the board at once.
+function Notes.addNote(plugin, content, visibility, space)
+    local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE", space = space })
+    if Notes.notes then
+        table.insert(Notes.notes, 1, { local_id = q.id, content = content, tags = Notes.tagsIn(content),
+            created = os.date("!%Y-%m-%dT%H:%M:%SZ"), attachments = {}, pinned = false,
+            pending = true, visibility = q.visibility, space = q.space })
+    end
+    Notes.sendSoon(plugin)
+    Notes.reloadBoard(true)
+    return q
+end
+
+--- Your journal settings: the ones the last sync brought from a Memos with
+--- journaling mode, or the defaults (stock Memos: entries are ordinary notes
+--- with tags there too).
+function Notes.journalSettings(plugin)
+    local Journal = require("gzreader_journal")
+    return Journal.settings(plugin.store.memos and plugin.store.memos.journal)
+end
+
+--- The space journal entries go to: the one set in Memos' journal settings,
+--- when it's still one of yours.
+function Notes.journalSpace(plugin)
+    local space = Notes.journalSettings(plugin).space
+    if space == "" then return nil end
+    for _i, sp in ipairs(Notes.spaces(plugin) or {}) do
+        if sp.name == space then return space end
+    end
+    return nil
+end
+
+--- Journal (a button; J): a journal entry, as Memos' journaling mode makes
+--- them (gzreader_journalscreen.lua): how you felt, what you did, a prompt
+--- to write about. Saved as a private note with its mood and activities as
+--- tags, in your journal space if you have one.
+function Notes.journal(plugin)
+    if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
+    return require("gzreader_journalscreen").show{
+        settings = Notes.journalSettings(plugin),
+        on_save = function(content)
+            Notes.addNote(plugin, content, "PRIVATE", Notes.journalSpace(plugin))
+            Log.info("notes: a journal entry queued")
+            info(require("gzreader_net").usb and _("Journal entry saved. It goes to Memos at the next sync with your computer.")
+                or _("Journal entry saved."), 2)
+        end,
+    }
+end
+
 --- The quick panel's Quick note tile: a new note in a window over whatever
 --- is on the screen (a book, Home, Settings), which stays visible around it.
 --- Save queues it and sends it in the background; closing the editor leaves
@@ -2035,13 +2362,7 @@ function Notes.showFilter(plugin)
     local function mark(kind, text) return text .. (cur == kind and "  \u{2713}" or "") end
     dialog = Notes.keyedDialog(_("Show notes"), {
         { { text = mark("all", _("All notes")), align = "left", callback = pick(function() Notes.setFilter(plugin, { kind = "all" }) end) } },
-        { { text = mark("tag", _("Tag…")), align = "left", callback = pick(function()
-            local entries = {}
-            for _i, t in ipairs(Notes.allTags()) do
-                entries[#entries + 1] = { text = "#" .. t.tag, mandatory = count(t.count), tag = t.tag, icon = "label" }
-            end
-            listPicker(_("Filter by tag"), entries, function(e) Notes.setFilter(plugin, { kind = "tag", value = e.tag }) end)
-        end) } },
+        { { text = mark("tag", _("Tag…")), align = "left", callback = pick(function() Notes.showTags(plugin) end) } },
         { { text = mark("date", _("Date…")), align = "left", callback = pick(function()
             local rows = {}
             local d2
@@ -2066,35 +2387,67 @@ function Notes.showFilter(plugin)
             Notes.setFilter(plugin, { kind = "attachments" })
         end) } },
         { { text = mark("pinned", _("Pinned")), align = "left", callback = pick(function() Notes.setFilter(plugin, { kind = "pinned" }) end) } },
-        { { text = mark("search", _("Search text…")), align = "left", callback = pick(function()
-            local InputDialog = require("ui/widget/inputdialog")
-            local d
-            d = InputDialog:new{ title = _("Search notes"), input = "",
-                buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
-                    { text = _("Search"), is_enter_default = true, callback = function()
-                        local q = d:getInputText()
-                        UIManager:close(d)
-                        if q ~= "" then Notes.setFilter(plugin, { kind = "search", value = q }) end
-                    end } } } }
-            UIManager:show(d)
-            d:onShowKeyboard()
-        end) } },
+        { { text = mark("drawings", _("Drawings")), align = "left", callback = pick(function() Notes.setFilter(plugin, { kind = "drawings" }) end) } },
+        { { text = mark("search", _("Search text…")), align = "left", callback = pick(function() Notes.showSearch(plugin) end) } },
+        -- (touch Kindles: the row of buttons has no room for it; keyboard Kindles: M too)
+        { { text = _("Memos connection…"), align = "left", callback = pick(function() Notes.showConnection(plugin) end) } },
     })
 end
 
---- Kindle 4 (no letter keys, no buttons): Menu on the board opens what the
---- touch buttons and the letter keys do elsewhere.
+--- Your tags, most used first: pick one to see its notes (G; Filter → Tag).
+function Notes.showTags(plugin)
+    local entries = {}
+    for _i, t in ipairs(Notes.allTags(plugin)) do
+        entries[#entries + 1] = { text = "#" .. t.tag, mandatory = count(t.count), tag = t.tag, icon = "label" }
+    end
+    if #entries == 0 then return info(_("No tags yet. A #word in a note is a tag."), 3) end
+    return listPicker(_("Filter by tag"), entries, function(e) Notes.setFilter(plugin, { kind = "tag", value = e.tag }) end)
+end
+
+--- Search (a button; K): the notes with these words.
+function Notes.showSearch(plugin)
+    local InputDialog = require("ui/widget/inputdialog")
+    local d
+    d = InputDialog:new{ title = _("Search notes"), input = Notes.filter.kind == "search" and Notes.filter.value or "",
+        buttons = { { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end },
+            { text = _("Search"), is_enter_default = true, callback = function()
+                local q = d:getInputText()
+                UIManager:close(d)
+                if q ~= "" then Notes.setFilter(plugin, { kind = "search", value = q })
+                elseif Notes.filter.kind == "search" then Notes.setFilter(plugin, { kind = "all" }) end
+            end } } } }
+    UIManager:show(d)
+    d:onShowKeyboard()
+    return d
+end
+
+--- Everything the touch buttons do, as a list: Menu on the Kindle 4 (it has
+--- no letter keys, so this is how it reaches them); H on a keyboard Kindle,
+--- where each row names its key. (New sheet only where drawing is
+--- possible, a touch screen: other Kindles open notes with drawings, every
+--- page, but don't make or change them.)
 function Notes.showMenu(plugin)
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
+    local keys = Touch.keys()
+    local function row(text, key, fn)
+        return { { text = (keys and key) and (text .. "  (" .. key .. ")") or text, align = "left", callback = run(fn) } }
+    end
     dialog = Notes.keyedDialog(_("Notes"), {
-        { { text = _("New note"), align = "left", callback = run(function() Notes.edit(plugin) end) } },
-        { { text = _("Filter…"), align = "left", callback = run(function() Notes.showFilter(plugin) end) } },
-        { { text = T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), align = "left", callback = run(function() Notes.showView(plugin) end) } },
-        { { text = _("Sort…"), align = "left", callback = run(function() Notes.showSort(plugin) end) } },
-        { { text = Notes.fullscreen(plugin) and _("Leave full screen") or _("Full screen: no tab bar"), align = "left",
-            callback = run(function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end) } },
-        { { text = _("Connection…"), align = "left", callback = run(function() Notes.showConnection(plugin) end) } },
+        row(_("New note"), "N", function() Notes.edit(plugin) end),
+        Notes.canDraw(plugin) and row(_("Draw"), nil, function() Notes.draw(plugin) end) or false,
+        row(_("Journal entry"), "J", function() Notes.journal(plugin) end),
+        row(_("Search…"), "K", function() Notes.showSearch(plugin) end),
+        row(_("Tags…"), "G", function() Notes.showTags(plugin) end),
+        row(Notes.filter.kind == "drawings" and _("All notes (not only drawings)") or _("Only notes with drawings"), "D",
+            function() Notes.toggleDrawings(plugin) end),
+        Notes.filter.kind ~= "all" and row(_("All notes"), "A", function() Notes.setFilter(plugin, { kind = "all" }) end) or false,
+        row(_("Filter…"), "F", function() Notes.showFilter(plugin) end),
+        row(T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), "L", function() Notes.showView(plugin) end),
+        row(_("Sort…"), "S", function() Notes.showSort(plugin) end),
+        row(Notes.fullscreen(plugin) and _("Leave full screen") or _("Full screen: no tab bar"), nil,
+            function() Notes.setFullscreen(plugin, not Notes.fullscreen(plugin)) end),
+        row(_("Connection…"), "M", function() Notes.showConnection(plugin) end),
     })
     return dialog
 end

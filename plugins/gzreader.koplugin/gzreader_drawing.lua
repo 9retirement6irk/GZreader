@@ -146,17 +146,15 @@ local function hexColor(c)
     return Drawing.INK
 end
 
+-- (memos' own pen has 1, 2 and 4; it draws any width: strokeDiameter. The
+-- drawing screen's five thicknesses are 0.5 to 7.)
 local function nearestWidth(w)
     w = tonumber(w) or 2
-    local best = 2
-    for _i, v in ipairs(Drawing.WIDTHS) do
-        if math.abs(v - w) < math.abs(best - w) then best = v end
-    end
-    return best
+    return math.max(0.25, math.min(12, w))
 end
 
 --- A pen stroke from scene points `{ { x, y [, pressure 0..1] }, … }`.
---- `style`: `color` (`#rrggbb`), `width` (1, 2 or 4), `opacity` (0–100).
+--- `style`: `color` (`#rrggbb`), `width` (memos' 1, 2 or 4, or any from 0.25 to 12), `opacity` (0–100).
 --- Without pressure on every point (the Scribe's pen reports none through
 --- KOReader), memos draws the width from the stroke's speed instead
 --- (`simulatePressure`), as it does for a mouse. Returns nil for no points.

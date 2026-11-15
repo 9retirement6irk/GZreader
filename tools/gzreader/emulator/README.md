@@ -58,6 +58,20 @@ scaled to fit, with memos' ellipse and text), a finger stroke, Done, Save,
 and checks Memos has the new file under the same attachment; checks go to
 `<out>/notes-drawings-checks.txt`.
 
+`notes_scribe.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample --spaces
+--journal`): the Notes tab after the Scribe / reMarkable rework: the home's
+buttons and tag chips, Drawings, scrolling up and down, a journal entry
+(checked in Memos), the drawing screen (thicknesses, undo / redo, the toolbar
+on the other side and hidden), All pages (duplicate, move, add, delete),
+Paper, the editor's sheets strip and the formatting bar at a selection; checks
+in `notes-scribe-checks.txt`.
+
+`notes_keys.lua` (k3, or `GZ_EMU_MODEL=k4`; `demo/mock_memos.py 18090 --sample
+--drawings --journal`): the Notes tab without a touch screen: the keys (J, K,
+G, D, A, H; Menu on a Kindle 4), a note with two sheets shown and its text
+edited (no drawing screen), and a journal entry made with the 5-way and keys;
+checks in `notes-keys-checks.txt`.
+
 `notes_pages.lua` (pw3 or kt; `demo/mock_memos.py 18090 --sample`): the
 Notes tab's Draw button opens a new note on a page (the text page isn't
 drawn first); Paper → College ruled, a stroke, + New page (on College ruled

@@ -29,9 +29,11 @@ local function button(id)
 end
 local function chip(label)
     local N = require("gzreader_notes")
-    local row = N.board and N.board.title_bar and N.board.title_bar._gz_action_row
-    for _i, w in ipairs(row or {}) do
-        if w.dimen and w.text == label then return { w.dimen.x + math.floor(w.dimen.w / 2), w.dimen.y + math.floor(w.dimen.h / 2) } end
+    -- (the rows of buttons under the title: Search, Filter…; New note, New sheet, Journal; All, tags, Drawings)
+    for _r, row in ipairs(N.board and N.board.title_bar and N.board.title_bar._gz_action_rows or {}) do
+        for _i, w in ipairs(row) do
+            if w.dimen and (w.text == label or w.gz_label == label) then return { w.dimen.x + math.floor(w.dimen.w / 2), w.dimen.y + math.floor(w.dimen.h / 2) } end
+        end
     end
 end
 local function stroke(E, x1, y1, x2, y2)
@@ -52,7 +54,7 @@ add({ fn = function(E)
 end, after = 6 })
 add({ shot = "1-board", after = 0.5 })
 add({ fn = function(E)
-    check(chip("Note") and chip("Draw"), "the Notes tab has Note and Draw")
+    check(chip("Note") and chip("Draw") and chip("Journal"), "the Notes tab has Note, Draw and Journal")
     -- (is the text page drawn before the drawing screen? count its paints)
     local Ed = require("gzreader_noteeditor").Editor
     local paint = Ed.paintTo
