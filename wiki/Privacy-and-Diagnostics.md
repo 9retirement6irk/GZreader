@@ -62,6 +62,16 @@ warnings and errors at once, and everything waiting when the Kindle goes to
 sleep, on exit and when you save or send the log), so a burst of sync
 logging is one write to the Kindle's storage, not one per line.
 
+**A slow download** (a book or an update) leaves its own lines, starting
+`transfer`: one at the start with what can hold a download back on this
+Kindle (Wi‑Fi power saving on or off, the network's receive buffer, the
+processor's speed setting and load), one every 15 seconds with the speed,
+how busy GZreader's download and the whole processor were and the longest
+wait for data, and a summary at the end. If downloads crawl, download
+something, then send the log (Diagnostics → Send to the developer) and say
+so in the box. No Wi‑Fi network name is written, only whether power saving
+is on.
+
 Putting the bundle together is quick after the first time: the audio/speech
 survey runs about thirty system commands (around 25 s on a Kindle 3), so
 the answers that only change with the Kindle's firmware are kept in
