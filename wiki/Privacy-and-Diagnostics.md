@@ -62,6 +62,17 @@ warnings and errors at once, and everything waiting when the Kindle goes to
 sleep, on exit and when you save or send the log), so a burst of sync
 logging is one write to the Kindle's storage, not one per line.
 
+**If the Kindle freezes around a book**, three lines say how much memory
+there was: `book open starting: <file>` (before anything of the book is
+read), `book closed` and `Home on screen … after the book closed`. Each has
+the free memory, the file cache, GZreader's own size, its Lua memory and, on
+a Kindle, whether GZreader was started with the Kindle's own interface
+stopped or kept in memory. These three are written at once, not a few
+seconds late, and on Kindles with 128 MB or less (Kindle 2, DX) they are
+forced onto the storage, so the last one is still there after you had to
+restart a frozen Kindle with its power switch. Save or send the log after
+the restart: the last of these lines says how far it got.
+
 **A slow download** (a book or an update) leaves its own lines, starting
 `transfer`: one at the start with what can hold a download back on this
 Kindle (Wi‑Fi power saving on or off, the network's receive buffer, the

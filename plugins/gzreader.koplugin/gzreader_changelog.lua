@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle 2 and DX: the log keeps the memory before a book opens, even if the Kindle then freezes", text = "The diagnostic log has three new lines around a book: when it starts opening (before anything is read), when it closes, and when Home is back on screen. Each says how much memory was free, how big GZreader was and whether the Kindle's own interface was stopped or kept in memory. They are written at once instead of a few seconds late, and on Kindles with 128 MB of memory or less (Kindle 2, DX) they are forced onto the storage, so the last one survives a freeze that needs the power switch. Send the log after such a restart and it shows how far the Kindle got and how little memory it had." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

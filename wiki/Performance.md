@@ -60,7 +60,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   folder.
 - **Opening books**: each open logs a timing line (`gzreader_opentiming.lua`:
   closing the file manager, opening and laying out the document, each
-  module's ReaderReady, screen refreshes, free memory). The crengine layout
+  module's ReaderReady, screen refreshes, free memory), and three memory
+  lines are written at once as a book starts opening, closes and Home is
+  back on screen (synced to storage on Kindles with 128 MB or less: see
+  [Privacy and diagnostics](Privacy-and-Diagnostics#diagnostic-log)). The crengine layout
   cache is 256 MB instead of 64 (a dropped layout means a full re-layout on
   the next open), and `LuaSettings:flush` skips writing a file whose content
   hasn't changed (opening a book wrote `settings.reader.lua` twice).
