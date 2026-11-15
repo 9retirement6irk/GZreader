@@ -1850,7 +1850,11 @@ function Grimmory:onResume()
 end
 
 function Grimmory:onEndOfBook()
-    if self.sync and self:syncEnabled() then self.sync:push(true) end
+    if self.sync and self:syncEnabled() then
+        -- (on the last page the position goes as 100%: Grimmory marks the book Read)
+        Log.info("end of book", tostring(self.sync.book_id), self.sync:atEnd() and "sent as 100%" or "not on the last page")
+        self.sync:push(true)
+    end
 end
 
 --- The status bar hidden or shown with a tap: a book with fitted pictures

@@ -4085,6 +4085,62 @@ check(fp.positionData == nil, "stale web CFI cleared so web reader resumes from 
 check(fp.bookFileId == 1003 and math.abs(fp.progressPercent - 33.3) < 0.1, "push carries file id + whole-book percent")
 check(st.last_put_body.fileProgress.positionData == nil, "no CFI sent")
 
+print("Finishing a book: the last page goes to Grimmory as 100% (it marks the book Read)")
+;(function()
+    local sync, rolling = rplugin.sync, readerui.rolling
+    local before = { pos = reader.pos, pct = sync.entry.last_pushed_pct, href = sync.entry.last_pushed_href }
+    local function sent() return json.decode(ctl("/state")).progress["3"].progressPercent end
+    local function status() return json.decode(ctl("/state")).read_status["3"] end
+    reader.pos, rolling.current_page = 5800, 59
+    sync:push(true)
+    check(not sync:atEnd() and sent() < 99.5 and status() == "READING",
+        "the page before the last: its own figure (" .. tostring(sent()) .. "%), Reading")
+    reader.pos, rolling.current_page = 5900, 60
+    check(sync:atEnd() and sync:localPosition().pct < 100 and sync:sentPosition().pct == 100,
+        "the last page: the top of the page is " .. tostring(sync:localPosition().pct) .. "%, sent as 100%")
+    rplugin:onEndOfBook()
+    check(sent() == 100 and status() == "READ", "turning past the last page sends 100%: Grimmory marks the book Read")
+    local queued = 0
+    local saved_queue = rplugin.queue
+    rplugin.queue = function(...) queued = queued + 1; return saved_queue(...) end
+    sync:push(false) -- (closing the book, going to sleep: still on the last page)
+    check(queued == 0 and status() == "READ", "closing on the last page sends nothing lower: still Read")
+    rplugin.queue = saved_queue
+    -- two pages side by side (landscape): the last spread
+    doc.getVisiblePageNumberCount = function() return 2 end
+    rolling.current_page = 59
+    check(sync:atEnd(), "two pages shown: the spread with the last page counts")
+    doc.getVisiblePageNumberCount = nil
+    -- hidden flows (non-linear files hidden): no next page means the end
+    doc.hasHiddenFlows = function() return true end
+    doc.getNextPage = function(_, page) return page < 55 and page + 1 or 0 end
+    rolling.current_page = 55
+    check(sync:atEnd(), "hidden flows: the last page of what's read counts")
+    rolling.current_page = 54
+    check(not sync:atEnd(), "hidden flows: a page with one after it doesn't")
+    doc.hasHiddenFlows, doc.getNextPage = nil, nil
+    -- scrolling: at ReaderRolling's last position
+    readerui.view.view_mode = "scroll"
+    readerui.dimen = { h = 800 }
+    readerui.view.footer = { getHeight = function() return 30 end }
+    rolling.current_pos = DOC_H - 800 + 30
+    check(sync:atEnd(), "scrolling: the very end counts")
+    rolling.current_pos = DOC_H - 900
+    check(not sync:atEnd(), "scrolling: a screen before the end doesn't")
+    readerui.view.view_mode, readerui.dimen, readerui.view.footer, rolling.current_pos = "page", nil, nil, nil
+    -- going back after finishing: that page's own figure (Grimmory: Reading again)
+    reader.pos, rolling.current_page = 5700, 58
+    sync:push(false)
+    check(sent() < 99.5 and status() == "READING", "going back a page sends that page: Reading again, as in Grimmory")
+    -- a PDF (paged): its last page was already 100%
+    local saved_ui = sync.ui
+    sync.ui = { document = { info = { has_pages = true }, getPageCount = function() return 12 end }, paging = { current_page = 12 } }
+    check(not sync:atEnd() and sync:sentPosition().pct == 100, "a PDF's last page: 100% as before")
+    sync.ui = saved_ui
+    rolling.current_page = nil
+    reader.pos, sync.entry.last_pushed_pct, sync.entry.last_pushed_href = before.pos, before.pct, before.href
+end)()
+
 print("Pull from web reader")
 -- web reader at ch2 with a CFI and only whole-book percent (what it saves)
 ctl("/webprogress?book=3&pct=70&cfi=epubcfi(/6/8!/4/2/10)&href=OEBPS/Text/ch2.xhtml")

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Finishing a book marks it Read in Grimmory", text = "On a book's last page GZreader now sends Grimmory 100%. Grimmory marks a book Read at 99.5%, and GZreader sent the top of the last page, which came to 99.0-99.4% in shorter EPUBs: finishing one left it at Reading. PDFs, comics, FB2 and MOBI were already sent as 100% there." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

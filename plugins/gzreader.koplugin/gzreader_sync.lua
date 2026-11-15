@@ -195,6 +195,41 @@ function Sync:localPosition()
     return p
 end
 
+--- On the book's last page (or, scrolling, at its very end)? Grimmory marks
+--- a book Read at 99.5%, and the percentage worked out above is the top of
+--- the page: an EPUB's last page came to 99.0-99.4% in shorter books, so
+--- finishing one left it at Reading. The last page counts as 100%.
+function Sync:atEnd()
+    local doc, rolling = self.ui.document, self.ui.rolling
+    if not doc or not rolling or not self:isRolling() then return false end
+    local ok, at_end = pcall(function()
+        local view = self.ui.view
+        if view and view.view_mode == "scroll" then
+            local dimen, footer = self.ui.dimen, view.footer
+            local pos, height = tonumber(rolling.current_pos), tonumber(doc.info.doc_height)
+            if not (pos and height and dimen and dimen.h) then return false end
+            local footer_h = footer and footer.getHeight and footer:getHeight() or 0
+            return pos >= height - dimen.h + footer_h - 1 -- ReaderRolling:_gotoPos's last position
+        end
+        local page = tonumber(rolling.current_page)
+        if not page or page < 1 then return false end
+        local shown = doc.getVisiblePageNumberCount and doc:getVisiblePageNumberCount() or 1
+        local last_shown = page + math.max(1, tonumber(shown) or 1) - 1
+        if doc.hasHiddenFlows and doc:hasHiddenFlows() and doc.getNextPage then
+            return doc:getNextPage(last_shown) == 0
+        end
+        return last_shown >= doc:getPageCount()
+    end)
+    return ok and at_end == true
+end
+
+--- The position sent to Grimmory: the local one, 100% on the last page.
+function Sync:sentPosition()
+    local p = self:localPosition()
+    if p.pct < 100 and self:atEnd() then p.pct = 100 end
+    return p
+end
+
 ---------------------------------------------------------------- web reader's percentage
 
 --- Uncompressed size of each spine item, from the EPUB's zip directory
@@ -528,7 +563,7 @@ end
 --- goes to sleep); the CFI is made there too, from the page's XPointer.
 function Sync:push(force, _background)
     if not self.entry.file_id or not self.ui.document then return end
-    local p = self:localPosition()
+    local p = self:sentPosition()
     local last = num(self.entry.last_pushed_pct)
     if not force and last and math.abs(p.pct - last) < 0.05 and self.entry.last_pushed_href == p.href then
         return
@@ -574,7 +609,7 @@ end
 ---------------------------------------------------------------- sessions
 
 function Sync:startSession()
-    self.session = { start = os.time(), start_pct = self:localPosition().pct }
+    self.session = { start = os.time(), start_pct = self:sentPosition().pct }
 end
 
 function Sync:endSession()
@@ -584,7 +619,7 @@ function Sync:endSession()
     local now = os.time()
     local duration = now - s.start
     if duration < MIN_SESSION_SECONDS then return end
-    local end_pct = self:localPosition().pct
+    local end_pct = self:sentPosition().pct
     local body = {
         bookId = tonumber(self.book_id),
         bookType = self.entry.format and self.entry.format:upper() or nil,

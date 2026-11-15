@@ -19,6 +19,7 @@ STATE = {
     "expire_next_access": False,
     "progress": {},        # book_id -> file progress (mirrors UserBookFileProgressEntity)
     "ratings": {},         # book_id -> personalRating (1-10, UserBookProgressEntity)
+    "read_status": {},     # book_id -> READ / READING / UNREAD (calculateReadStatus)
     "sessions": [],
     "offline": False,      # simulate unreachable progress endpoints
     "oidc_enabled": True,
@@ -373,6 +374,11 @@ class H(BaseHTTPRequestHandler):
                 "positionHref": fp.get("positionHref"), "progressPercent": fp["progressPercent"],
                 "contentSourceProgressPercent": fp.get("contentSourceProgressPercent"),
             }
+            # ReadingProgressService.calculateReadStatus: Read from 99.5%, Reading
+            # above 0.1%; only a fall to Unread is refused
+            pct, was = float(fp["progressPercent"]), STATE["read_status"].get(book_id)
+            status = "READ" if pct >= 99.5 else ("READING" if pct > 0.1 else "UNREAD")
+            STATE["read_status"][book_id] = was if status == "UNREAD" and was else status
             STATE["last_put_body"] = b
             return self._json(200)
         if u.path == "/api/v1/books/personal-rating":  # BookController.updatePersonalRating
@@ -769,7 +775,7 @@ if __name__ == "__main__":
                 STATE["kouser"].clear()
             if u.path == "/expire_refresh":
                 STATE["refresh"].clear(); STATE["access"].clear()
-            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "notes": sorted(STATE["notes"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()
+            body = json.dumps({"log": STATE["log"], "kouser": STATE["kouser"], "progress": {str(k): v for k, v in STATE["progress"].items()}, "sessions": STATE["sessions"], "last_put_body": STATE.get("last_put_body"), "last_oidc_origin": STATE.get("last_oidc_origin"), "refresh_calls": STATE["refresh_calls"], "gzip_replies": STATE.get("gzip_replies", 0), "bookmarks": list(STATE["bookmarks"].values()), "annotations": sorted(STATE["annotations"].values(), key=lambda a: a["id"]), "notes": sorted(STATE["notes"].values(), key=lambda a: a["id"]), "usage": STATE.get("usage", []), "last_timeline_query": STATE.get("last_timeline_query"), "ratings": {str(k): v for k, v in STATE["ratings"].items()}, "read_status": {str(k): v for k, v in STATE["read_status"].items()}, "shelves": {str(k): v for k, v in SHELVES.items()}, "last_shelves_body": STATE.get("last_shelves_body")}).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     ctl = ThreadingHTTPServer(("127.0.0.1", port + 1), C)
     threading.Thread(target=ctl.serve_forever, daemon=True).start()
