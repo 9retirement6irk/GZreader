@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Updates: GitHub's certificate is checked before anything is downloaded", text = "The updater now checks that it is really talking to GitHub before it checks for or downloads an update: GitHub's certificate must come from one of the authorities in KOReader's list (data/ca-bundle.crt) and name the address asked for. Before, the connection was encrypted but the certificate wasn't checked, so someone on the same Wi-Fi could have answered in GitHub's place with an update of their own. On a Nook or DX whose clock has run back to 2000 or 1970, a certificate's dates are ignored (only while the clock is before 2026); every other check still applies." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

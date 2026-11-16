@@ -8,7 +8,7 @@
 #
 # <koreader base dir>: an unzipped official KOReader package's koreader/
 # folder (its ffi/ Lua is used; e.g. koreader-kindle-legacy-vX.zip).
-# Needs: luajit, lua-socket, luacheck, python3 with radicale (pip), curl;
+# Needs: luajit, lua-socket, lua-sec, luacheck, python3 with radicale (pip), curl;
 # for the sync page, Playwright with Chromium. Ports port … port+15, port+40 … port+62.
 # Exit status: the number of failed suites.
 set -u
@@ -127,6 +127,10 @@ echo "== Downloads: audiobooks and music face out, named under them"
 
 echo "== Download speed log"
 (cd "$T" && luajit xferlog_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
+echo "== the updater checks GitHub's certificate (real TLS servers, test certificates)"
+(cd "$T" && timeout 120 luajit tls_test.lua "$REPO/plugins/gzreader.koplugin" $((PORT + 90))) 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== release notes from the changelog"
