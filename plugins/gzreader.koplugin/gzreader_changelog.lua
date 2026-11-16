@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Immich: an API key without user.read no longer puts a warning in the log", text = "An Immich API key needs only album.read, asset.read and asset.view. With such a key, Immich answering \"Missing required permission: user.read\" when GZreader asked whose key it is (to show your name) was logged as a warning and went into debug reports. It is an ordinary answer now: GZreader connects and leaves the name out, as before, without the warning." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

@@ -170,7 +170,8 @@ in your phone's browser; Kindles without Wi‑Fi on the
 
 - **Connect**: your Immich address and an API key (Immich → your picture
   → Account Settings → API Keys → New API Key, with at least `album.read`,
-  `asset.read` and `asset.view`, or all permissions). Pasting an album's
+  `asset.read` and `asset.view`, or all permissions; add `user.read` to see
+  your name in GZreader's Immich settings). Pasting an album's
   address from your browser chooses that album too. The key is kept like the
   other sign-ins and never written to the log.
 - **Album**: which album's pictures to use (yours and the ones shared with

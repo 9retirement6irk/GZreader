@@ -11223,6 +11223,17 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     check(not ok and err:match("didn't accept"), "connect: a wrong API key is refused")
     ok, err = Immich.connect(plugin, SERVER, "immich-limited-key")
     check(not ok and err:match("can't read albums") and err:match("album%.read"), "connect: a key without album.read: says which permissions")
+    -- a key with only what GZreader needs (no user.read): connected, no name, and no warning
+    -- in the log (warnings go into debug reports: a Paperwhite 3 sent this one)
+    require("gzreader_log").flush()
+    local warns_before = select(2, logtxt():gsub("%[WARN%][^\n]*users/me", ""))
+    ok, err = Immich.connect(plugin, SERVER, "immich-album-key")
+    require("gzreader_log").flush()
+    local lt = logtxt()
+    check(ok and plugin.store.immich and plugin.store.immich.user == nil and #plugin.store.immich.albums == 3
+        and select(2, lt:gsub("%[WARN%][^\n]*users/me", "")) == warns_before and lt:find("users/me 403", 1, true),
+        "connect: a key without user.read: connected (no name shown); its 403 logged as info, not a warning " .. tostring(err))
+    plugin.store.immich = nil
     ok, err = Immich.connect(plugin, SERVER .. "/albums/" .. KINDLE, " immich-test-key\n")
     local st = plugin.store.immich or {}
     check(ok and st.server == SERVER and st.key == "immich-test-key" and st.user == "Will" and #st.albums == 3
