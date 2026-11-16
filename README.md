@@ -32,6 +32,7 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
 <table>
 <tr><td align="center" width="25%"><img src="docs/screenshots/home.png" alt="Home: the book you're reading and your shelf" width="200"><br><sub>Home</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-books.png" alt="The Catalog's Books page, laid out like a bookshop" width="200"><br><sub>Catalog: books</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-audiobooks.png" alt="The Catalog's Audiobooks page: Continue listening, Recently added" width="200"><br><sub>Catalog: audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/catalog-music.png" alt="The Catalog's Music page: Plex albums as CD cases" width="200"><br><sub>Catalog: music</sub></td></tr>
 <tr><td align="center" width="25%"><img src="docs/screenshots/downloads-shelf.png" alt="Downloads on shelves: books, the audiobook walkman and the CD player" width="200"><br><sub>Downloads on shelves</sub></td><td align="center" width="25%"><img src="docs/screenshots/cd-player.png" alt="Music playing in the CD player" width="200"><br><sub>Music from Plex</sub></td><td align="center" width="25%"><img src="docs/screenshots/audiobook-player.png" alt="The audiobook player: a cassette walkman" width="200"><br><sub>Audiobooks</sub></td><td align="center" width="25%"><img src="docs/screenshots/notes-board.png" alt="Notes from Memos" width="200"><br><sub>Notes from Memos</sub></td></tr>
+<tr><td align="center" width="25%"><img src="docs/screenshots/pw-bookshelf-theme.png" alt="The Bookshelf theme screen: plank, ornaments and a preview of your shelf" width="200"><br><sub>Bookshelf theme and ornaments</sub></td><td align="center" width="25%"><img src="docs/screenshots/pw-drawing.png" alt="Drawing in a note: pen, eraser, undo, paper, pages" width="200"><br><sub>Drawing notes</sub></td><td align="center" width="25%"><img src="docs/screenshots/pw-drawing-board.png" alt="A note's drawing on the Notes tab" width="200"><br><sub>Drawings in Memos notes</sub></td><td align="center" width="25%"><img src="docs/screenshots/pw-house.png" alt="The House tab: Home Assistant rooms, lights and a thermostat" width="200"><br><sub>House: Home Assistant</sub></td></tr>
 </table>
 
 [More screenshots](docs/screenshots/)
@@ -56,6 +57,10 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
 - 🗄️ **Bookshelves:** your books stand on shelves, spines out; the one you pick turns
   to show its cover. Audiobooks sit on the shelf as a cassette walkman (each one a
   cassette tape inside), music as a CD player (each album a CD). Lists and tiles are a tap away.
+- 🪴 **Ornaments:** a plant, a clock, a model ship or a pumpkin in October stands
+  where a shelf has room, on an oak, walnut or plain plank, or your own pictures.
+  Pick them on a screen of tiles with a preview of your shelf (hold an ornament to
+  open it); in colour on the Kindle Colorsoft.
 - 🌐 **Set up from your browser:** scan one QR code, or type the Kindle's address
   into any browser on your Wi‑Fi and enter the PIN it shows. One page connects
   everything (single sign-on works too) and **sends books** straight to the Kindle.
@@ -66,13 +71,21 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
   or the page), notes, calendars, GZreader updates and a copy of your library (to browse
   the Catalog tab) come back.
 - 📝 **Notes:** your [Memos](https://usememos.com) notes as sticky notes; tick
-  checklists, write and edit, offline too.
+  checklists, write and edit (formatted, like Memos' own editor, on touch Kindles),
+  journal entries, offline too.
+- ✏️ **Drawing notes** *(touch Kindles)*: draw in a note with a finger, or with the
+  pen on a Kindle Scribe (your hand can rest on the screen). Pages, notepaper
+  (ruled, Gregg, dot grid, graph, Cornell), undo and redo; drawings go to Memos as
+  Memos' own drawings, and ones made in Memos open on the Kindle.
 - 📅 **Calendar:** CalDAV accounts and calendar links (Proton, Google…): agenda,
   day, week, month.
 - 🎵 **Music** *(Kindles with audio)*: albums and playlists from **Plex**, played
   while you read, in a portable CD player with its queue on the back of the case. The
   quick panel gets a Music tile while it plays. A Music tab of its own is in Settings →
   Interface → Navbar → Tabs.
+- 🏠 **House:** your [Home Assistant](https://www.home-assistant.io) rooms on a
+  tab: switch lights (and dim them), switches, thermostats, locks, garage doors and
+  scenes, straight over your Wi‑Fi.
 - 🔊 **Read aloud** *(Kindle 2, 3, DX, Touch)*: any EPUB, MOBI, AZW3, FB2 or TXT
   read to you in the Kindle's own voice, the sentence being spoken highlighted and the
   pages turning by themselves. Shift + Sym plays and stops, like the stock Kindle.

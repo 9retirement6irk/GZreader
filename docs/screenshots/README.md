@@ -43,6 +43,31 @@ phone-sized browser talking to the emulated Kindle.</sub>
 <tr><td align="center" valign="top" width="33%"><img src="notes-board.png" alt="The Notes tab: Memos notes as sticky notes" width="240"><br><sub>The Notes tab: Memos notes as sticky notes</sub></td><td align="center" valign="top" width="33%"><img src="notes-note.png" alt="A note: tick checklist items with their letter key" width="240"><br><sub>A note: tick checklist items with their letter key</sub></td><td align="center" valign="top" width="33%"><img src="notes-editor.png" alt="Writing a note, with the Markdown toolbar" width="240"><br><sub>Writing a note, with the Markdown toolbar</sub></td></tr>
 </table>
 
+## Drawing notes (touch Kindles)
+
+<sub>Draw with a finger (or the pen on a Kindle Scribe). Drawings go to Memos as Memos' own drawings; ones made in Memos show and open on the Kindle.</sub>
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="pw-drawing-board.png" alt="A note's drawing on the Notes tab (Layout → Full)" width="240"><br><sub>A note's drawing on the Notes tab (Layout → Full)</sub></td><td align="center" valign="top" width="33%"><img src="pw-drawing-note.png" alt="The note: each page of its drawing, as wide as the page" width="240"><br><sub>The note: each page of its drawing, as wide as the page</sub></td><td align="center" valign="top" width="33%"><img src="pw-drawing.png" alt="Drawing: pen, eraser, undo, redo, paper, all pages; the page bar below" width="240"><br><sub>Drawing: pen, eraser, undo, redo, paper, all pages; the page bar below</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="pw-drawing-paper.png" alt="Notepaper for a page: ruled, Gregg, dot grid, graph, and more" width="240"><br><sub>Notepaper for a page: ruled, Gregg, dot grid, graph, and more</sub></td></tr>
+</table>
+
+## Bookshelf theme and ornaments
+
+<sub>Settings → Home → Appearance → Bookshelf theme, or hold an ornament on a shelf. Every choice is a tile with a picture of it, and the preview at the top changes as you choose.</sub>
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="pw-bookshelf-theme.png" alt="Bookshelf theme: the plank, the ornaments, where and how many" width="240"><br><sub>Bookshelf theme: the plank, the ornaments, where and how many</sub></td><td align="center" valign="top" width="33%"><img src="pw-which-ornaments.png" alt="Which ornaments: tap to put one on the shelves, hold to see it" width="240"><br><sub>Which ornaments: tap to put one on the shelves, hold to see it</sub></td><td align="center" valign="top" width="33%"><img src="downloads-shelf.png" alt="A pumpkin in season, where the shelf has room" width="240"><br><sub>A pumpkin in season, where the shelf has room</sub></td></tr>
+</table>
+
+## House (Home Assistant)
+
+<sub>Your Home Assistant rooms on a tab of their own, straight over your Wi‑Fi.</sub>
+
+<table>
+<tr><td align="center" valign="top" width="33%"><img src="pw-house.png" alt="The House tab: rooms, lights, a thermostat" width="240"><br><sub>The House tab: rooms, lights, a thermostat</sub></td><td align="center" valign="top" width="33%"><img src="pw-house-dimmer.png" alt="A dimmable light: on, off, brighter, dimmer" width="240"><br><sub>A dimmable light: on, off, brighter, dimmer</sub></td><td align="center" valign="top" width="33%"><img src="house.png" alt="Kindle Keyboard: a letter key for every row" width="240"><br><sub>Kindle Keyboard: a letter key for every row</sub></td></tr>
+</table>
+
 ## Kindle Touch: the Catalog by touch
 
 <sub>On the emulator as a Kindle Touch (600 × 800, touch, a headphone jack): swipe left for the next page.</sub>
@@ -59,14 +84,14 @@ phone-sized browser talking to the emulated Kindle.</sub>
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="pw-catalog-books.png" alt="The Catalog: Books" width="240"><br><sub>The Catalog: Books</sub></td><td align="center" valign="top" width="33%"><img src="pw-downloads-shelf.png" alt="Downloads on shelves" width="240"><br><sub>Downloads on shelves</sub></td><td align="center" valign="top" width="33%"><img src="pw-panel.png" alt="Swipe down: the quick panel, with the light" width="240"><br><sub>Swipe down: the quick panel, with the light</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="pw-settings.png" alt="Settings" width="240"><br><sub>Settings</sub></td><td align="center" valign="top" width="33%"><img src="pw-notes.png" alt="Notes: New note, Filter and More buttons" width="240"><br><sub>Notes: New note, Filter and More buttons</sub></td><td align="center" valign="top" width="33%"><img src="pw-note.png" alt="A note: tap a checklist item to tick it" width="240"><br><sub>A note: tap a checklist item to tick it</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="pw-note-editor.png" alt="The note editor with the on-screen keyboard" width="240"><br><sub>The note editor with the on-screen keyboard</sub></td><td align="center" valign="top" width="33%"><img src="pw-calendar.png" alt="Calendar: ◀ Today ▶ and More, or swipe" width="240"><br><sub>Calendar: ◀ Today ▶ and More, or swipe</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="pw-settings.png" alt="Settings" width="240"><br><sub>Settings</sub></td><td align="center" valign="top" width="33%"><img src="pw-notes.png" alt="Notes: Note, Draw, Journal, then sort, filter, layout, search; your tags" width="240"><br><sub>Notes: Note, Draw, Journal, then sort, filter, layout, search; your tags</sub></td><td align="center" valign="top" width="33%"><img src="pw-note.png" alt="A note: tap a checklist item to tick it" width="240"><br><sub>A note: tap a checklist item to tick it</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="pw-note-editor.png" alt="The note editor: formatted as in Memos, the formatting bar at the selection" width="240"><br><sub>The note editor: formatted as in Memos, the formatting bar at the selection</sub></td><td align="center" valign="top" width="33%"><img src="pw-calendar.png" alt="Calendar: ◀ Today ▶ and More, or swipe" width="240"><br><sub>Calendar: ◀ Today ▶ and More, or swipe</sub></td></tr>
 </table>
 
 ## Kindle 4 (5-way)
 
 <table>
-<tr><td align="center" valign="top" width="33%"><img src="k4-notes.png" alt="Kindle 4: Notes, with the Menu key for new note, filter…" width="240"><br><sub>Kindle 4: Notes, with the Menu key for new note, filter…</sub></td><td align="center" valign="top" width="33%"><img src="k4-note-editor.png" alt="Kindle 4: typing with the 5-way on the on-screen keyboard" width="240"><br><sub>Kindle 4: typing with the 5-way on the on-screen keyboard</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="k4-notes.png" alt="Kindle 4: Notes, with the Menu key for new note, journal, search, filter…" width="240"><br><sub>Kindle 4: Notes, with the Menu key for new note, journal, search, filter…</sub></td><td align="center" valign="top" width="33%"><img src="k4-note-editor.png" alt="Kindle 4: typing with the 5-way on the on-screen keyboard" width="240"><br><sub>Kindle 4: typing with the 5-way on the on-screen keyboard</sub></td></tr>
 </table>
 
 ## Calendar

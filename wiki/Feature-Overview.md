@@ -6,6 +6,7 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 - **Downloads in the background** — with a progress bar, a queue, resuming after a dropped connection or a restart, and an auto-download shelf. → [Grimmory library](Grimmory-Library#home-folder-and-downloads)
 - **Sync with Grimmory** — reading position (to the exact place, as an EPUB CFI the web reader understands), bookmarks, highlights and notes (both ways, with a three-way merge), ratings and reading sessions. → [Grimmory sync](Grimmory-Sync)
 - **Bookshelves** — books stand on shelves, spines out, the selected one turns to show its cover; audiobooks as a cassette walkman, music as a CD player. Also lists and tiles. → [Home and bookshelves](Home-and-Bookshelves)
+- **Bookshelf theme and ornaments** — an oak, walnut or plain plank, and ornaments on the shelves' free ends (plants, a clock, a model ship…, seasonal ones in their season, or your own pictures). Choose on a screen of tiles with a preview of your shelf, or hold an ornament; in colour on colour Kindles. → [Home and bookshelves](Home-and-Bookshelves)
 - **Grimmory reading stats on Home** — read this week, day streak, books finished, across all your devices. → [Home and bookshelves](Home-and-Bookshelves#reading-stats-on-home)
 - **Picture books** — scanned-page EPUBs are recognized and each page fills the screen. → [Picture books](Picture-Books)
 - **Sleep screen** — the book's cover while reading, your pictures from Home: from the USB drive's `screensavers` folder (send them from your phone's browser) or from an Immich album. → [Home and bookshelves](Home-and-Bookshelves#sleep-screen)
@@ -21,7 +22,8 @@ What GZreader does, in short, with where to read more. Not every feature is on e
 
 ## More than books
 
-- **Notes** — your [Memos](https://usememos.com) notes as sticky notes, in a list or side by side, compact or whole; tick checklists, write and edit, offline too. → [Notes](Notes)
+- **Notes** — your [Memos](https://usememos.com) notes as sticky notes, in a list or side by side, compact or whole; tick checklists, write and edit (formatted, as in Memos' web editor, on touch Kindles), offline too; journal entries. → [Notes](Notes)
+- **Drawing notes** — draw in a note with a finger, or with the pen on a Kindle Scribe: pages, notepaper (ruled, Gregg, dot grid, graph, Cornell…), undo and redo. Drawings go to Memos as Memos' own drawings, and drawings made in Memos show and edit on the Kindle (touch Kindles). → [Notes](Notes)
 - **Calendar** — calendar links (Proton, Google, Outlook…) and CalDAV accounts: agenda, day, week, month. → [Calendar](Calendar)
 - **Music** — albums and playlists from Plex, downloaded and played while you read (Kindles with audio). → [Music](Music)
 - **Audiobooks** — from Grimmory, with your place kept in sync (Kindles with audio). → [Audiobooks and read aloud](Audiobooks-and-Read-Aloud)
