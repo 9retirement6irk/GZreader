@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → General → Bluetooth: turn it on or off, pair and connect headphones and speakers", text = "On Kindles with Bluetooth (Paperwhite 4 and newer, Oasis, Kindle 8th generation and later, Scribe, Colorsoft), Settings → General has a Bluetooth row after Wi-Fi. Its tick turns Bluetooth on or off; a tap opens Bluetooth devices, which searches for devices nearby and lists them with the paired ones: tap one to Pair, Connect, Disconnect or Forget it. It uses Amazon's own Bluetooth service, so devices paired here are paired in Amazon's Settings too. Kindles without Bluetooth (Kindle 2, 3, DX, 4, Touch, Paperwhites 2 and 3) and the Nooks don't show it and never check for it." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
