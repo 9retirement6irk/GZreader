@@ -218,8 +218,8 @@ with sync_playwright() as pw:
           "a new Kindle: a PIN is chosen for it")
     page.fill("#pin", "24"); page.fill("#pin2", "24"); page.click("#unlock-go")
     page.wait_for_selector("#unlock-err:not(.hidden)")
-    check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
-    page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
+    check("At least 8" in page.locator("#unlock-err").inner_text(), "…at least 8 characters (a new PIN)")
+    page.fill("#pin", "24682468"); page.fill("#pin2", "24682468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
     check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "11 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
@@ -306,7 +306,7 @@ with sync_playwright() as pw:
     page.fill("#pin", "1357"); page.click("#unlock-go")
     page.wait_for_selector("#unlock-err:not(.hidden)")
     check("isn't this Kindle's PIN" in page.locator("#unlock-err").inner_text(), "unlock: a wrong PIN says so")
-    page.fill("#pin", "2468"); page.click("#unlock-go")
+    page.fill("#pin", "24682468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
     seen = (page.locator("#c-plex.on").count(), page.locator("#c-grimmory.on").count(), page.locator("#c-memos.on").count(),
             page.locator("#cal-list li").count(), page.locator("nav.main button.on").inner_text())
@@ -626,10 +626,15 @@ with sync_playwright() as pw:
     page2.click("#test-reset")
     page2.wait_for_function("document.querySelector('#unlock-title').innerText.includes('Choose a PIN') && document.activeElement.id === 'pin'")
     page2.wait_for_timeout(300)
-    page2.fill("#pin", "0000"); page2.fill("#pin2", "0000"); page2.click("#unlock-go")
+    page2.fill("#pin", "00000000"); page2.fill("#pin2", "00000000"); page2.click("#unlock-go")
     page2.wait_for_selector("#app:not(.hidden)")
     check(page2.locator("#k-name").inner_text() == "Pretend Kindle" and page2.locator("#c-grimmory.on").count() == 0,
           "test mode: started over, a fresh pretend Kindle to set up")
+    # a Kindle locked with a 4-character PIN before 8 were needed: still unlocks with it
+    old_pin = page2.evaluate("""async () => {
+        const V = GZSync.Vault; await V.create('1234'); V.lock();
+        try { await V.unlock('1234'); return V.mode === 'kindle'; } catch (e) { return String(e); } }""")
+    check(old_pin is True, "a Kindle locked with a short PIN before: it still unlocks with it %r" % (old_pin,))
     browser.close()
 
 files = {k: base64.b64decode(v) for k, v in res.items()}

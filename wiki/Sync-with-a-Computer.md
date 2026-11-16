@@ -15,7 +15,8 @@ Connections → Sync through a computer.
    already plugged in), open the page and choose the Kindle's
    drive (or its `documents/GZreader` folder). Nothing else can be set up
    before a Kindle is chosen.
-3. Enter the Kindle's **PIN**. The first time, you choose one: the sign-ins
+3. Enter the Kindle's **PIN**. The first time, you choose one (8 characters
+   at least: digits, letters or a few words): the sign-ins
    (Grimmory, Memos, Plex, Immich, calendars) are kept on the Kindle, encrypted with
    it, so any computer can sync the Kindle with just the PIN. (Or "Don't keep
    sign-ins on the Kindle": they last until the tab is closed.)
@@ -93,8 +94,11 @@ connections) without a Kindle.
 
 The PIN: the sign-ins file (`.gzsync/keys.json`) is encrypted with AES-256-GCM
 under a key made from the PIN (PBKDF2-SHA-256, 600 000 rounds). Grimmory's
-password is never kept, only its sign-in token. Someone who has the Kindle and
-time could try every short PIN, so a longer one is safer. GZreader on the
+password is never kept, only its sign-in token. Someone who copies the file
+off the Kindle can try PINs on their own computer, as many as they like: every
+4-digit PIN in seconds on a graphics card. So a new PIN needs 8 characters at
+least, and a few words are better still. A Kindle locked with a shorter PIN
+before still unlocks with it (Start over to choose a longer one). GZreader on the
 Kindle never reads the file. Forgot the PIN: "Start over" deletes the file;
 connect again.
 

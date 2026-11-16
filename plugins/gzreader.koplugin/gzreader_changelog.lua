@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Sync page: a new PIN needs 8 characters", text = "The PIN that locks the sign-ins the sync page keeps on a Kindle without Wi-Fi (.gzsync/keys.json) can be tried offline by anyone who copies that file: a 4-digit PIN falls in seconds on a graphics card, even with 600 000 rounds of PBKDF2. A new PIN now needs 8 characters at least (digits, letters or a few words). A Kindle locked with a shorter PIN before still unlocks with it; Start over on the sync page to choose a longer one." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

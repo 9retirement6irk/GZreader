@@ -938,9 +938,11 @@ gets a password or token.
   // key made from the PIN (PBKDF2-SHA-256, 600 000 rounds, AES-256-GCM).
   // Only this page reads it; GZreader on the Kindle never does. Without the
   // PIN it's unreadable, but a short PIN can be guessed by someone who has
-  // the file and time: a longer one is safer.
+  // the file and time (600 000 rounds slow each guess, but 4 digits are only
+  // 10 000 guesses: seconds on a graphics card), so a new PIN needs MIN_PIN
+  // characters. One chosen before stays usable.
   var Vault = {
-    FILE: "keys.json", ROUNDS: 600000,
+    FILE: "keys.json", ROUNDS: 600000, MIN_PIN: 8,
     key: null, salt: null, mode: null, // "kindle" | "session"
     plexClient: null,
     exists: async function () { return !!(Drive.sync && await Drive.has(Drive.sync, Vault.FILE)); },
@@ -1081,7 +1083,7 @@ gets a password or token.
     $("#unlock-title").textContent = has ? "Unlock the Kindle's connections" : "Choose a PIN for this Kindle";
     $("#unlock-text").textContent = has
       ? "Enter the PIN you chose for this Kindle: its sign-ins (Grimmory, Memos, Plex, Immich, calendars) are kept on it, locked with it."
-      : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 4 characters at least; a longer one is safer (someone with the Kindle could try to guess a short one).";
+      : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 8 characters at least (digits, letters or a few words): someone who copies the file off the Kindle can try guesses on their own computer, as many as they like, so a short PIN would be found.";
     show("#pin2", !has);
     $("#unlock-go").textContent = has ? "Unlock" : "Keep sign-ins on the Kindle";
     show("#unlock-reset-wrap", has);
@@ -3071,7 +3073,8 @@ gets a password or token.
       try {
         if (await Vault.exists()) await Vault.unlock(pin);
         else {
-          if (pin.length < 4) throw new Error("At least 4 characters.");
+          // (new PINs only: a Kindle locked with a shorter one before still unlocks with it)
+          if (pin.length < Vault.MIN_PIN) throw new Error("At least " + Vault.MIN_PIN + " characters.");
           if (pin !== $("#pin2").value) throw new Error("The two PINs aren't the same.");
           // (sign-ins made in this tab without a PIN come along)
           if (Vault.mode !== "session") Vault.use(null);
