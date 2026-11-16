@@ -9245,7 +9245,7 @@ print("No plain-HTTP retry with a password for servers on the internet")
     local function plain() for _i, u in ipairs(urls) do if tostring(u):match("^http://") then return u end end return nil end
     local saved = { server = plugin.store.server, username = plugin.store.username, explicit = plugin.api.explicit_https,
         caldav = plugin.store.caldav, memos = plugin.store.memos, immich = plugin.store.immich, ha = plugin.store.homeassistant }
-    local ok, err = pcall(function()
+    local ran_ok, ran_err = pcall(function()
         plugin.api.explicit_https = false
         local good, why = plugin.api:login("https://books.example.com", "reader", "secret")
         check(not good and why == "no_https" and #urls >= 1 and not plain(),
@@ -9256,8 +9256,8 @@ print("No plain-HTTP retry with a password for servers on the internet")
         plugin.api:login("https://192.168.7.9:6060", "reader", "secret")
         check(urls[2] == "http://192.168.7.9:6060/api/v1/auth/login", "Grimmory on the home network: still tried over plain HTTP " .. tostring(urls[2]))
         urls = {}
-        local base, perr = plugin.api:publicSettings("https://books.example.com")
-        check(base == nil and perr == "no_https" and not plain(), "Grimmory's sign-in settings: no plain HTTP for a server on the internet")
+        local sbase, perr = plugin.api:publicSettings("https://books.example.com")
+        check(sbase == nil and perr == "no_https" and not plain(), "Grimmory's sign-in settings: no plain HTTP for a server on the internet")
         urls = {}
         local cok, cmsg = require("gzreader_calendar").connect(plugin, "dav.example.com", "reader", "secret")
         check(not cok and cmsg == Lan.noHttpsText() and #urls >= 1 and not plain(), "CalDAV on the internet: no plain HTTP " .. tostring(plain()))
@@ -9279,7 +9279,7 @@ print("No plain-HTTP retry with a password for servers on the internet")
         check(tostring(urls[1]):match("^http://192%.168%.7%.9:8123/"), "Home Assistant on the home network: its usual http://…:8123 first " .. tostring(urls[1]))
     end)
     http.request = real
-    check(ok, "the plain-HTTP checks ran: " .. tostring(err))
+    check(ran_ok, "the plain-HTTP checks ran: " .. tostring(ran_err))
     plugin.store.server, plugin.store.username, plugin.api.explicit_https = saved.server, saved.username, saved.explicit
     plugin.store.caldav, plugin.store.memos, plugin.store.immich, plugin.store.homeassistant = saved.caldav, saved.memos, saved.immich, saved.ha
 end)()
