@@ -919,8 +919,9 @@ function Player:tick()
         self:pause()
         UIManager:show(InfoMessage:new{ text = _("Sleep timer: paused."), timeout = 4 })
     elseif self.sleep_end_of_chapter then
+        -- (past it: an MP3 started at a chapter can begin a 4 KB block before it)
         local idx = Audiobook.chapterAt(self.book, self:globalPos())
-        if idx ~= self.sleep_end_of_chapter then
+        if idx > self.sleep_end_of_chapter then
             self.sleep_end_of_chapter = nil
             self:pause()
             UIManager:show(InfoMessage:new{ text = _("Sleep timer: paused at the end of the chapter."), timeout = 4 })
