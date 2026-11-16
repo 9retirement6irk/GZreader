@@ -2364,6 +2364,106 @@ do
     for name, obj in pairs(files) do obj.flush = orig[name] end
 end
 
+print("Sign-ins kept off the Kindle's USB drive")
+;(function()
+    local Secrets = require("gzreader_secrets")
+    local Api = require("gzreader_api")
+    local dumpf = require("dump")
+    local LS = require("luasettings")
+    local files = { main = plugin.settings, recent = LS:open(Grimmory.recentPath()) }
+    local last, orig = {}, {}
+    for name, obj in pairs(files) do
+        orig[name] = obj.flush
+        obj.flush = function(o) last[name] = dumpf(o.data, nil, true); return orig[name](o) end
+    end
+    local state = plugin.store
+    local keep = { state.refresh_token, state.access_token, state.caldav, state.memos, state.plex, state.homeassistant, state.immich, state.access, state.calendar_feeds }
+    local saved = { on = Secrets.on, dir = Secrets.DIR, written = Secrets.written, fp = Grimmory.fingerprint }
+    local SECRETS = { "rt-SECRET-1", "at-SECRET-1", "cal-SECRET", "memos-SECRET", "plex-SECRET", "plexsrv-SECRET", "ha-SECRET",
+        "immich-SECRET", "access-SECRET", "cfid-SECRET", "cfsec-SECRET", "key-SECRET" }
+    local ran_ok, ran_err = pcall(function()
+        Secrets.on = nil
+        check(not Secrets.active(), "settings not on the USB drive (a Nook, the emulator): nothing changes")
+        Secrets.on, Secrets.DIR, Secrets.written = true, WORK .. "/var-local-gzreader", nil
+        os.execute("rm -rf '" .. Secrets.DIR .. "'; mkdir -p '" .. Secrets.DIR .. "'")
+        state.refresh_token, state.access_token = "rt-SECRET-1", "at-SECRET-1"
+        state.caldav = { server = "https://dav.example.com", username = "reader", password = "cal-SECRET" }
+        state.memos = { server = "https://memos.example.com", token = "memos-SECRET" }
+        state.plex = { token = "plex-SECRET", server = { name = "Home", token = "plexsrv-SECRET" } }
+        state.homeassistant = { server = "http://192.168.1.5:8123", token = "ha-SECRET" }
+        state.immich = { server = "https://photos.example.com", key = "immich-SECRET" }
+        state.access = { enabled = true, key = "access-SECRET", cf_id = "cfid-SECRET", cf_secret = "cfsec-SECRET" }
+        state.calendar_feeds = { { url = "https://cal.example.com/key-SECRET/basic.ics", name = "Work" } }
+        plugin:saveFull()
+        check(last.main and not last.main:find("SECRET", 1, true) and last.main:find("dav.example.com", 1, true)
+            and last.main:find("reader", 1, true), "a full save: no password, token, key or calendar link in gzreader.lua (the rest is there)")
+        local sf = io.open(Secrets.path())
+        local stext = sf and sf:read("*a") or ""
+        if sf then sf:close() end
+        local all = true
+        for _i, v in ipairs(SECRETS) do if not stext:find(v, 1, true) then all = false end end
+        check(all, "…every one of them is in the file on the Kindle's own disk")
+        check(state.refresh_token == "rt-SECRET-1" and state.caldav.password == "cal-SECRET" and state.plex.server.token == "plexsrv-SECRET"
+            and state.calendar_feeds[1].url:find("key-SECRET", 1, true) and state.access.cf_secret == "cfsec-SECRET",
+            "…and still in memory: everything goes on working")
+        -- a small save (the recent part)
+        Grimmory.fingerprint = function(store)
+            local part = {}
+            for _i, k in ipairs(Grimmory.BIG_KEYS) do part[k] = store[k] end
+            for _i, k in ipairs(Grimmory.FULL_KEYS) do part[k] = store[k] end
+            return dumpf(part, nil, true)
+        end
+        plugin:saveFull()
+        state.pending.progress["994"] = { gz_note = "a small save" }
+        plugin:save()
+        check(Grimmory.recent_written and last.recent and last.recent:find("a small save", 1, true) and not last.recent:find("SECRET", 1, true),
+            "a small save: none in gzreader_recent.lua either")
+        state.pending.progress["994"] = nil
+        Grimmory.fingerprint = saved.fp
+        -- the next start
+        local written = load("return " .. last.main)().state
+        Secrets.written = nil
+        local moving = Secrets.load(written)
+        check(not moving and written.refresh_token == "rt-SECRET-1" and written.caldav.password == "cal-SECRET"
+            and written.plex.server.token == "plexsrv-SECRET" and written.calendar_feeds[1].url == "https://cal.example.com/key-SECRET/basic.ics"
+            and written.immich.key == "immich-SECRET", "the next start: the sign-ins come back from the Kindle's own disk")
+        local older = { refresh_token = "rt-NEWER", caldav = { password = "cal-NEWER" } }
+        check(Secrets.load(older) and older.refresh_token == "rt-NEWER" and older.caldav.password == "cal-NEWER",
+            "settings written by an older GZreader (sign-ins in them): those kept, to be moved at the next save")
+        -- a background process's fresh tokens wait there too
+        Api.writePending({ refresh_token = "rt-SECRET-2", access_token = "at-SECRET-2" }, "rt-SECRET-1")
+        local pf = io.open(Secrets.DIR .. "/gzreader_tokens.pending")
+        check(pf ~= nil and io.open(require("datastorage"):getSettingsDir() .. "/gzreader_tokens.pending") == nil,
+            "a background process's new sign-in token: kept on the Kindle's own disk too")
+        if pf then pf:close() end
+        Api.dropPending()
+        -- the settings' backup copy after the move
+        local sdir = WORK .. "/secrets-settings"
+        os.execute("mkdir -p '" .. sdir .. "'")
+        local function put(where, text) local fh = io.open(where, "w"); fh:write(text); fh:close() end
+        put(sdir .. "/gzreader.lua", "return { state = {} }\n")
+        put(sdir .. "/gzreader.lua.old", 'return { state = { refresh_token = "rt-SECRET-0" } }\n')
+        put(sdir .. "/gzreader_recent.lua", 'return { state = { refresh_token = "rt-SECRET-0" } }\n')
+        Secrets.cleanBackups(sdir .. "/gzreader.lua", sdir .. "/gzreader_recent.lua")
+        local of = io.open(sdir .. "/gzreader.lua.old")
+        local otext = of and of:read("*a") or ""
+        if of then of:close() end
+        check(not otext:find("SECRET", 1, true) and otext:find("state", 1, true) and io.open(sdir .. "/gzreader_recent.lua") == nil,
+            "after the move: the settings' backup copy and the recent part hold no sign-ins either")
+        local msf = io.open(PLUGIN .. "/main.lua", "rb")
+        local msrc = msf and msf:read("*a") or ""
+        if msf then msf:close() end
+        check(msrc:find('require("gzreader_secrets").load(self.store)', 1, true) and msrc:find("local held = Secrets.strip(store)", 1, true)
+            and msrc:find("Secrets.restore(store, held)", 1, true), "GZreader: loaded at start, taken out around every save")
+    end)
+    for name, obj in pairs(files) do obj.flush = orig[name] end
+    Secrets.on, Secrets.DIR, Secrets.written, Grimmory.fingerprint = saved.on, saved.dir, saved.written, saved.fp
+    state.refresh_token, state.access_token, state.caldav, state.memos, state.plex, state.homeassistant, state.immich, state.access, state.calendar_feeds =
+        keep[1], keep[2], keep[3], keep[4], keep[5], keep[6], keep[7], keep[8], keep[9]
+    plugin:saveFull()
+    check(ran_ok, "the sign-in checks ran: " .. tostring(ran_err))
+end)()
+
 print("Tab action reaches the plugin from ZenOS Home")
 local fmui = { menu = { registerToMainMenu = function() end }, active_widgets = {} }
 local fmplug = Grimmory:new{ ui = fmui }

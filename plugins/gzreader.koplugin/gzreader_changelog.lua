@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle: passwords, tokens and calendar links are no longer kept on the USB drive", text = "GZreader's settings on a Kindle are on its USB drive (koreader/settings), which any computer the Kindle is plugged into can read, and they held the CalDAV password, the Grimmory, Memos, Plex and Home Assistant tokens, the Immich key, the Access key and Cloudflare token and the calendar links. These are now kept on the Kindle's own disk (/var/local/gzreader), which isn't shared over USB; the settings on the drive hold everything else. Sign-ins saved by an earlier version move there by themselves a few seconds after starting, and the settings' backup copy is cleaned. Going back to an earlier version afterwards means connecting again." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

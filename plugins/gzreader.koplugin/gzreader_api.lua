@@ -315,7 +315,10 @@ end
 
 local function pendingPath()
     local ok, DataStorage = pcall(require, "datastorage")
-    return ok and (DataStorage:getSettingsDir() .. "/gzreader_tokens.pending") or nil
+    if not ok then return nil end
+    -- (off the USB drive on a Kindle, with the other sign-ins: gzreader_secrets.lua)
+    local okS, dir = pcall(function() return require("gzreader_secrets").pendingDir() end)
+    return ((okS and dir) or DataStorage:getSettingsDir()) .. "/gzreader_tokens.pending"
 end
 
 --- A token's fingerprint (the file never holds the old token itself).
@@ -351,6 +354,15 @@ end
 function Api.recoverPending(store, path)
     path = path or pendingPath()
     local f = path and io.open(path, "r")
+    if not f and path then
+        -- (written next to the settings by a GZreader before the sign-ins moved off the drive)
+        local okd, DataStorage = pcall(require, "datastorage")
+        local legacy = okd and (DataStorage:getSettingsDir() .. "/gzreader_tokens.pending")
+        if legacy and legacy ~= path then
+            f = io.open(legacy, "r")
+            if f then path = legacy end
+        end
+    end
     if not f then return false end
     local old, refresh, access, expires = f:read("*l"), f:read("*l"), f:read("*l"), f:read("*l")
     f:close()

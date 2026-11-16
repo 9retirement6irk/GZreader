@@ -164,6 +164,17 @@ function Grimmory:init()
         -- (written to gzreader.lua at the first save, so a stale recent part can't come back)
         if ok_r and applied then Grimmory.full_due, Grimmory.recent_written = true, true end
     end
+    if not Grimmory.secrets_loaded then
+        -- (a Kindle: sign-ins kept off the USB drive, gzreader_secrets.lua; still in
+        -- the settings, from before: moved at the first save, a few seconds in)
+        Grimmory.secrets_loaded = true
+        local ok_s, moving = pcall(function() return require("gzreader_secrets").load(self.store) end)
+        if ok_s and moving then
+            Grimmory.full_due, Grimmory.secrets_moving = true, true
+            Log.info("secrets: sign-ins in the settings on the USB drive: moved off it at the next save")
+            UIManager:scheduleIn(10, function() pcall(self.save, self) end)
+        end
+    end
     Grimmory.last_instance = self -- (every instance shares the store: the exit's last save)
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
@@ -374,27 +385,39 @@ function Grimmory:save()
     store.save_seq = (tonumber(store.save_seq) or 0) + 1
     local fp = Grimmory.fingerprint(store)
     local now = os.time()
-    if Grimmory.full_due or not fp or fp ~= Grimmory.full_fp or now - (Grimmory.full_at or 0) >= Grimmory.FULL_EVERY then
-        self.settings:saveSetting("state", store)
-        self.settings:flush()
-        Grimmory.full_fp, Grimmory.full_at, Grimmory.full_due = fp, now, false
-        if Grimmory.recent_written then
-            Grimmory.recent_written = false
-            os.remove(Grimmory.recentPath())
-            os.remove(Grimmory.recentPath() .. ".old")
+    -- (sign-ins out of what's written to the drive and back after: gzreader_secrets.lua)
+    local Secrets = require("gzreader_secrets")
+    local held = Secrets.strip(store)
+    local ok_w, err_w = pcall(function()
+        if Grimmory.full_due or not fp or fp ~= Grimmory.full_fp or now - (Grimmory.full_at or 0) >= Grimmory.FULL_EVERY then
+            self.settings:saveSetting("state", store)
+            self.settings:flush()
+            Grimmory.full_fp, Grimmory.full_at, Grimmory.full_due = fp, now, false
+            if Grimmory.recent_written then
+                Grimmory.recent_written = false
+                os.remove(Grimmory.recentPath())
+                os.remove(Grimmory.recentPath() .. ".old")
+            end
+            Grimmory.saves_full = (Grimmory.saves_full or 0) + 1
+        else
+            local small = {}
+            for k, v in pairs(store) do
+                if not BIG[k] then small[k] = v end
+            end
+            Grimmory.recent = Grimmory.recent or LuaSettings:open(Grimmory.recentPath())
+            Grimmory.recent:saveSetting("seq", store.save_seq)
+            Grimmory.recent:saveSetting("state", small)
+            Grimmory.recent:flush()
+            Grimmory.recent_written = true
+            Grimmory.saves_small = (Grimmory.saves_small or 0) + 1
         end
-        Grimmory.saves_full = (Grimmory.saves_full or 0) + 1
-    else
-        local small = {}
-        for k, v in pairs(store) do
-            if not BIG[k] then small[k] = v end
-        end
-        Grimmory.recent = Grimmory.recent or LuaSettings:open(Grimmory.recentPath())
-        Grimmory.recent:saveSetting("seq", store.save_seq)
-        Grimmory.recent:saveSetting("state", small)
-        Grimmory.recent:flush()
-        Grimmory.recent_written = true
-        Grimmory.saves_small = (Grimmory.saves_small or 0) + 1
+    end)
+    Secrets.restore(store, held)
+    if not ok_w then error(err_w, 0) end
+    if held and Grimmory.secrets_moving and not Grimmory.recent_written then
+        Grimmory.secrets_moving = false
+        Secrets.cleanBackups(DataStorage:getSettingsDir() .. "/gzreader.lua", Grimmory.recentPath())
+        Log.info("secrets: sign-ins moved off the USB drive")
     end
     -- syncing through a computer: what it should send and bring, next to the books
     if usb then usb.writeOutbox(self) end
