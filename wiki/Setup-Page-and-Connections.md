@@ -188,3 +188,13 @@ Behind **Cloudflare Access** (Zero Trust login)? Make a service token there
 
 The key and token go only to those servers (never to calendar links on other
 sites, plex.tv or GitHub) and are never written to the log.
+
+**Redirects.** When one of your servers answers with a redirect to another
+server (a sign-in proxy's page, a file host), GZreader follows it without
+your sign-in: Grimmory's token, the Memos, Plex and Home Assistant tokens,
+the Immich key and the Access key and Cloudflare token stay with your own
+server (the Access key still goes to the hosts listed on the Access tab).
+A redirect from `https://` to `http://` isn't followed. A CalDAV account's
+password follows a redirect only within the same site (iCloud's
+`caldav.icloud.com` → `p12-caldav.icloud.com` works); to another site the
+connection stops with a note saying so.

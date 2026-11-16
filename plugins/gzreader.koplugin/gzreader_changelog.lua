@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Your sign-ins aren't sent along when a server redirects to another one", text = "When a server answered with a redirect to another server (a sign-in proxy's page, another site), GZreader followed it with the same headers: Grimmory's sign-in, the Plex and Memos tokens, the Immich key and the Access key went to wherever the redirect pointed. Now a redirect on the same server is followed as before; to another server it's followed without any sign-in (the Access key only goes to the hosts on the Access tab), and from https:// to http:// not at all. A download's file no longer gets the redirect page's own text in front of it. A CalDAV account's password follows a redirect only within the same site (iCloud's partition servers still work)." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
