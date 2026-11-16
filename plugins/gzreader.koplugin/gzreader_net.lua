@@ -119,6 +119,8 @@ end
 function Net.hold(key)
     Net.holders[key] = true
     Net.touch()
+    -- (a download or an update: Wi-Fi power saving off until it's done; gzreader_wifips.lua)
+    pcall(function() require("gzreader_wifips").hold(key) end)
 end
 
 function Net.release(key)
@@ -126,6 +128,7 @@ function Net.release(key)
         Net.holders[key] = nil
         Net.touch()
     end
+    pcall(function() require("gzreader_wifips").release(key) end)
 end
 
 local wrapScan

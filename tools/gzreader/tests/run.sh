@@ -129,6 +129,10 @@ echo "== Download speed log"
 (cd "$T" && luajit xferlog_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== Wi-Fi power saving off while downloading"
+(cd "$T" && luajit wifips_test.lua "$REPO") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== release notes from the changelog"
 timeout 60 python3 "$T/release_notes_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))

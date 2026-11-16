@@ -1,0 +1,91 @@
+--[[--
+Wi-Fi power saving off while a book or an update downloads.
+
+With power saving on, the Wi-Fi chip naps between the access point's beacons
+and takes in a few packets per wake: the owner's Paperwhite 3 downloaded at
+~30 KB/s and his Kindle Scribe installed an update at ~5 KB/s (2026-11-15/16),
+where the same Kindles reach ~1 MB/s. The Nook's start script turns it off
+for good (1.26.7); on a Kindle it's turned off only while `Net.hold` has a
+transfer key (download, update) and put back as it was when the last one ends,
+so reading with Wi-Fi on still saves the battery.
+
+Through the wireless extensions ioctl (`device/nook/wifi_power.lua`,
+SIOCGIWPOWER/SIOCSIWPOWER): it reads and writes only power saving's state,
+never the network's name. Where that ioctl isn't there (no Wi-Fi, a driver
+without it), nothing happens and the reason is logged once per transfer.
+]]
+
+local Log = require("gzreader_log")
+
+local PS = {
+    KEYS = { download = true, update = true }, -- Net.hold keys that are big transfers
+    holding = {},     -- keys of PS.KEYS now held
+    restore = false,  -- we turned it off: put it back on at the end
+    io = nil,         -- tests: { get = fn(ifname), set = fn(ifname, on) }
+}
+
+--- The Wi-Fi interface's name (wlan0 on every Kindle; eth0 on the Nook).
+function PS.ifname()
+    local ok, NetworkMgr = pcall(require, "ui/network/manager")
+    if ok and type(NetworkMgr) == "table" and NetworkMgr.getNetworkInterfaceName then
+        local okn, name = pcall(NetworkMgr.getNetworkInterfaceName, NetworkMgr)
+        if okn and type(name) == "string" and name ~= "" then return name end
+    end
+    return "wlan0"
+end
+
+local function io()
+    if PS.io then return PS.io end
+    local ok, WP = pcall(require, "device/nook/wifi_power")
+    if not ok then return { get = function() return nil, tostring(WP) end, set = function() return nil, tostring(WP) end } end
+    return WP
+end
+
+--- "on", "off", or nil, why.
+function PS.get()
+    local ok, state, err = pcall(io().get, PS.ifname())
+    if not ok then return nil, tostring(state) end
+    return state, err
+end
+
+local function set(on)
+    local ok, res, err = pcall(io().set, PS.ifname(), on)
+    if not ok then return nil, tostring(res) end
+    return res, err
+end
+
+--- Net.hold(key): the first transfer turns power saving off (if it was on).
+function PS.hold(key)
+    if not PS.KEYS[key] or PS.holding[key] then return end
+    local first = next(PS.holding) == nil
+    PS.holding[key] = true
+    if not first then return end
+    local state, why = PS.get()
+    if state ~= "on" then
+        if not state then Log.info("wifi: power saving unknown, left as it is (" .. tostring(why) .. ")") end
+        return
+    end
+    local ok, err = set(false)
+    if ok then
+        PS.restore = true
+        Log.info("wifi: power saving off while transferring (" .. key .. ")")
+    else
+        Log.warn("wifi: couldn't turn power saving off:", tostring(err))
+    end
+end
+
+--- Net.release(key): after the last transfer, power saving back on if we turned it off.
+function PS.release(key)
+    if not PS.holding[key] then return end
+    PS.holding[key] = nil
+    if next(PS.holding) ~= nil or not PS.restore then return end
+    PS.restore = false
+    local ok, err = set(true)
+    if ok then
+        Log.info("wifi: power saving back on")
+    else
+        Log.info("wifi: couldn't turn power saving back on:", tostring(err))
+    end
+end
+
+return PS
