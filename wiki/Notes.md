@@ -208,12 +208,13 @@ API to `/api` are found too.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
-    rejection). The pen's other end rubs out (Premium Pen), and so does the
-    tip while you hold the pen's side (shortcut) button: let go and it draws
-    again, with the Pen tool still chosen. With the pen away, a finger can
-    tap the buttons.
+    rejection). The pen's other end rubs out. With the pen away, a finger
+    can tap the buttons.
   - **With a finger** (every other touch Kindle): one finger draws; a second
     finger at the same time is ignored.
+  - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
+    tip rubs out, like the pen's other end; let go and it draws again, with
+    the Pen tool still chosen.
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 
