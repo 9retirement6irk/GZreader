@@ -394,6 +394,7 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
     pcall(require("gzreader_recovery").audioStarted, plugin, summary, "download") -- picked up after a restart
     local bitrate = plex and require("gzreader_plex").quality(plugin.store).bitrate
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first, as for books)
         api.no_refresh = true
         for i, t in ipairs(book.tracks) do
             local final = dir .. "/" .. t.file

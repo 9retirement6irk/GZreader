@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Page turns stay quick while an audiobook or music downloads", text = "Book downloads have run below the screen's priority since 1.27.0, so a download's encryption work (seconds of processor time on a Kindle 3) doesn't hold up page turns. Audiobook and music downloads didn't: they ran at the same priority as the screen. They now run below it too." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
