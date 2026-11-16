@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings and book sidecar files are read as data, never run as code", text = "KOReader keeps its settings and each book's sidecar (book.sdr/metadata.epub.lua, next to the book) as small Lua files and ran them to read them: anything else written into such a file ran too, with everything the reader can do (on a Nook as root, and a Nook's books are on storage every Android app can write). GZreader now reads them as data only: no commands, files or libraries can be reached from them, a precompiled file is refused and one that loops is stopped. Settings, sidecars, reading history, the old statistics files and ZenOS's quote files read exactly as before; a translation's plural rule (built from its file) can only count." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
