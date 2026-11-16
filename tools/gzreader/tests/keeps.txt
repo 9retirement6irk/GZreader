@@ -50,6 +50,7 @@
 75 plugins/zenos.koplugin/common/quickstart/quickstart_pages.lua
 6 plugins/zenos.koplugin/common/quickstart/quickstart_screen.lua
 2 plugins/zenos.koplugin/common/quickstart/reader_tour.lua
+3 plugins/zenos.koplugin/common/reader_defaults.lua
 2 plugins/zenos.koplugin/common/reader_status_bar.lua
 1 plugins/zenos.koplugin/common/ui/book_progress.lua
 5 plugins/zenos.koplugin/common/ui/icon_menu_item.lua
@@ -96,6 +97,7 @@
 1 plugins/zenos.koplugin/modules/reader/patches/opening_banner.lua
 1 plugins/zenos.koplugin/modules/reader/patches/reader_flash_cbz.lua
 19 plugins/zenos.koplugin/modules/reader/patches/reader_top_status_bar.lua
+3 plugins/zenos.koplugin/modules/reader/patches/status_on_open.lua
 3 plugins/zenos.koplugin/modules/reader/reference_drawer.lua
 15 plugins/zenos.koplugin/modules/settings/gz_updater.lua
 3 plugins/zenos.koplugin/modules/settings/koreader_settings.lua

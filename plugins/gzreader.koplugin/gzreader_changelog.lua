@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle Scribe: books open at font size 14 instead of 23 (large print), the size of 23 on a 6\" Kindle", text = "KOReader's font sizes grow with the screen's width in pixels, so the default (23) made a Kindle Scribe's books large print: about 17 points, against 10 on a Paperwhite. On a screen more than 5 inches across the default is now smaller in step with it: 14 on a Scribe, 16 on a DX. The old default saved for all books (22, 22.5 or 23) is replaced once, and so is the same in a book you had already opened; a size you chose yourself is kept. The setup guide's reading defaults use the new size too." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
