@@ -996,6 +996,22 @@ print("House tab (Home Assistant): connecting, rooms, switching, Settings, the p
     tab2.menu:onCloseWidget()
     plugin.store.homeassistant = hs1
 
+    -- connected from inside the tab: it keeps itself up to date from then on
+    ;(function()
+        plugin.store.homeassistant = nil
+        NetM.holders.house = nil
+        local tab4 = House.show(plugin)
+        check(tab4.house == nil and tab4.tick == nil and not NetM.holders.house and tab4.menu.item_table[1].text == "Connect with QR code",
+            "House tab: not connected: the ways to connect, nothing refreshing, Wi-Fi not held")
+        HA.connect(plugin, "127.0.0.1:" .. HP, "ha-test-token")
+        tab4:reload()
+        check(tab4.house and tab4.tick and UI.scheduled[tab4.tick] ~= nil and NetM.holders.house == true,
+            "House tab: connected from inside the tab: the list, refreshed every 30 s, Wi-Fi held while it's open")
+        tab4.menu:onCloseWidget()
+        check(UI.scheduled[tab4.tick] == nil and not NetM.holders.house, "House tab: …and both let go when it closes")
+        plugin.store.homeassistant = hs1
+    end)()
+
     -- no Wi-Fi (a Kindle 2, or syncing through a computer)
     NetM.usb = true
     local tab3 = House.show(plugin)

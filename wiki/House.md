@@ -74,7 +74,8 @@ What tapping (or the device's letter key) does:
 
 **Refresh** (the first row) fetches everything again. The list also refreshes
 every 30 seconds while the tab is on the screen, and Wi‑Fi stays on while it's
-open (in Auto it goes off a minute after you leave). The last list is kept on
+open (in Auto it goes off a minute after you leave), also right after you
+connect from inside the tab. The last list is kept on
 the Kindle, so the tab opens at once with it and then updates. If Home
 Assistant can't be reached, the last list stays with a line saying why.
 

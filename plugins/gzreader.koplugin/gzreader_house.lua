@@ -223,7 +223,24 @@ function House:reload()
     if self.closed or not self.menu then return end
     self.house, self.err = HA().loadCache(), nil
     self.menu:switchItemTable(nil, self:rootItems())
-    if House.client(self.plugin):isConnected() and not House.noWifi() then self:refresh(true) end
+    self:follow()
+end
+
+--- While connected (and on Wi-Fi): Wi-Fi held and the list asked for now
+--- and every REFRESH seconds; otherwise neither. (Opening the tab, and
+--- connecting from inside it: before, a tab connected from inside never
+--- refreshed by itself until it was opened again.)
+function House:follow()
+    if self.closed then return end
+    if House.client(self.plugin):isConnected() and not House.noWifi() then
+        -- (Wi-Fi stays on while the tab is open: it's asked every REFRESH seconds)
+        pcall(function() Net().hold("house") end)
+        self:refresh(true)
+        self:schedule()
+    else
+        if self.tick then UIManager:unschedule(self.tick) end
+        pcall(function() Net().release("house") end)
+    end
 end
 
 --- Fetch the list. `asked`: you asked for it (Wi-Fi may be turned on);
@@ -418,12 +435,7 @@ function House.show(plugin)
     end
     House.instance = self
     UIManager:show(self.menu)
-    if House.client(plugin):isConnected() and not House.noWifi() then
-        -- (Wi-Fi stays on while the tab is open: it's asked every REFRESH seconds)
-        pcall(function() Net().hold("house") end)
-        self:refresh(true)
-        self:schedule()
-    end
+    if House.client(plugin):isConnected() and not House.noWifi() then self:follow() end
     return self
 end
 

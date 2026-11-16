@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "House: connected from inside the tab, the list now keeps itself up to date", text = "When you connected Home Assistant from the House tab itself (Connect with QR code, Find on this Wi-Fi or Connect by typing), the list was fetched once but then didn't refresh every 30 seconds, and Wi-Fi wasn't kept on for it, until you left the tab and opened it again. It now refreshes and keeps Wi-Fi on from the moment you connect." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
