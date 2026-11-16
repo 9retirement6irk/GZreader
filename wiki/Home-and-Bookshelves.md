@@ -28,8 +28,9 @@ the book once you open one.
   *Downloads* between the clock and the battery, as the other tabs name
   themselves (or the tab's own name, if you renamed it in Settings →
   Interface → Navbar); inside a folder it shows the folder's name.
-- **Home** has one shelf of your most recent books; the DX's taller screen
-  has two (the first filled before the second).
+- **Home** has one shelf of your most recent books; the DX and the Kindle
+  Scribe (any screen more than 5 inches across) have two (the first filled
+  before the second).
 - **The spines** are drawn after
   [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin), AndyHazz's
   KOReader plugin: the shelf is seen from a little above, so each book shows
