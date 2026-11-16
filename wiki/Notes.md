@@ -63,7 +63,9 @@ API to `/api` are found too.
     or down moves the notes exactly as far as your finger went; notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
-    sideways moves most of a screenful. Full notes keep their pages.
+    sideways moves most of a screenful. Full notes keep their pages. The tab
+    bar and the buttons above the notes take taps as usual (before 1.32, a
+    note cut off at the bottom took the tab bar's taps).
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings

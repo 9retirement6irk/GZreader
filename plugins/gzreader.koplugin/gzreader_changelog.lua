@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: the tab bar works again with Scroll up and down on", text = "With the Notes tab's Layout → Scroll up and down, the tabs at the bottom of the screen did nothing when tapped: the note cut off at the bottom of the page reaches under the tab bar, and although it isn't drawn there, it took the taps. A note now only takes taps on the part of the screen where the notes show, so the tab bar (and the buttons above the notes) get theirs." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

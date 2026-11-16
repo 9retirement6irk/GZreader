@@ -1010,12 +1010,26 @@ function StickyItem:onUnfocus()
     return true
 end
 
-function StickyItem:onTapSelect()
+--- Scrolling: whether a gesture at `ges.pos` is on the notes' window. A row
+--- cut off at the bottom (or top) reaches under the tab bar (or the buttons
+--- above): painted over there, but its tap area was still there, so taps on
+--- the tab bar opened a hidden note instead (owner, 2026-11-16).
+function StickyItem:inView(ges)
+    local m = self.menu
+    local port = m and m._gz_scroll and m._gz_port
+    local pos = ges and ges.pos
+    if not port or not pos then return true end
+    local d = port.dimen
+    return pos.x >= d.x and pos.x < d.x + d.w and pos.y >= d.y and pos.y < d.y + d.h
+end
+
+function StickyItem:onTapSelect(_arg, ges)
+    if not self:inView(ges) then return false end -- (the tab bar's, or the buttons')
     if self.entry.memo then self.menu:onMenuSelect(self.entry) end
     return true
 end
 
-function StickyItem:onHoldSelect() return self:onTapSelect() end
+function StickyItem:onHoldSelect(arg, ges) return self:onTapSelect(arg, ges) end
 
 function StickyItem:onCloseWidget()
     self.img = nil -- (kept in Notes.images: let go by Notes.dropImages)
@@ -1271,7 +1285,7 @@ local function drawCompact(m, select_number, cols, max_items)
     if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
     local per = m.perpage
     local offset = (m.page - 1) * per
-    m._gz_scroll = nil
+    m._gz_scroll, m._gz_port = nil, nil
     Notes.footerShown(m, true)
     local cell_w = math.floor(m.item_dimen.w / cols)
     local cell_h = math.floor(m.available_height / rows)
@@ -1293,6 +1307,7 @@ local function drawCompact(m, select_number, cols, max_items)
         port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
             VerticalGroup:new{ align = "left" } }
         table.insert(m.item_group, port)
+        m._gz_port = port
     end
     local row, layout_row
     for i = 1, count do
