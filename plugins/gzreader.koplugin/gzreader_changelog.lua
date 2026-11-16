@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: the pen's pressure and tilt make the line heavier when drawing (Kindle Scribe)", text = "On a Kindle with a pen, a stroke in the drawing screen is now as wide as the pen is pressed: half pressure draws the thickness you chose, a light touch draws down to 0.4 of it and full pressure up to 1.6 of it. Laying the pen over (tilt) makes the line heavier too, as shading with the side of a pencil. Memos gets each point's pressure, so the stroke looks the same there and stays editable. The pen's choices have \"Pressure and tilt: on / off\" for an even line as before. The pen's range is learned as you draw (pens report different numbers), so the first strokes may look lighter or heavier than later ones; the range, two numbers, is written to the diagnostic log." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

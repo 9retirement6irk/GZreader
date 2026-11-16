@@ -205,6 +205,15 @@ API to `/api` are found too.
   - **Colours:** Memos gets each stroke in its colour. A stroke coloured
     in Memos keeps its colour when the drawing is saved from any Kindle; a
     black-and-white screen shows it in black.
+  - **Pressure and tilt** (a Kindle with a pen): the line is as wide as
+    the pen is pressed. Half pressure draws the thickness you chose, a
+    light touch down to 0.4 of it, full pressure up to 1.6 of it; laying the
+    pen over makes it heavier too, as shading with the side of a pencil.
+    Memos gets each point's pressure and draws the stroke by it. The pen's
+    choices (tap the pen again) have **Pressure and tilt: on / off** for an
+    even line. Pens report different numbers, so the range is learned as
+    you draw: the very first strokes can look lighter or heavier than later
+    ones.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
