@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle Scribe: hold the pen's side button to rub out", text = "On the Kindle Scribe's drawing screen, holding the Premium Pen's side (shortcut) button makes the pen's tip rub out, as on the Scribe's own notebooks; let go and it draws again (the Pen tool stays chosen). The pen's eraser end already rubbed out." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

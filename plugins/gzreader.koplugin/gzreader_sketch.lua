@@ -4,7 +4,8 @@ so it's tested on its own (`sketch_test.lua`).
 
 Two ways of drawing, by the Kindle:
   * **a pen** (the Kindle Scribe: KOReader's wacom protocol, the pen in its
-    own slot): only the pen draws. Fingers never draw, and while the pen is
+    own slot): only the pen draws (its other end, or the pen with its side
+    button held — `side_button` — rubs out). Fingers never draw, and while the pen is
     near the screen (hovering or touching) and for a moment after it leaves,
     every finger contact is ignored: a hand resting on the screen while you
     draw does nothing (palm rejection). With the pen away, a finger can still
@@ -61,6 +62,9 @@ function Sketch.new(opts)
     self.contacts = {} -- slot → { kind = "draw"|"erase"|"tap"|"ignore", … }
     self.pen = { near = false, last = nil, left = nil }
     self.stats = { ignored = 0, palm = 0 }
+    -- the pen's side button held (the Scribe's Premium Pen: KOReader's
+    -- input.stylus_eraser_active): the pen rubs out while it's held, as on the Scribe
+    self.side_button = false
     return self
 end
 
@@ -391,7 +395,7 @@ local function startContact(self, s, now, out)
     elseif self.drawing_slot ~= nil and self.drawing_slot ~= s.slot then
         c.kind = "ignore" -- one stroke at a time
         self.stats.ignored = self.stats.ignored + 1
-    elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" then
+    elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" or (pen and self.side_button) then
         c.kind = "erase"
         c.erased = {}
         self.drawing_slot = s.slot

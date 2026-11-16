@@ -252,6 +252,12 @@ function E.pen(points, sec, eraser)
     penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
     penFrame({ { 1, tool, 0 } }, sec + 0.04)
 end
+--- The pen's side button (the Premium Pen's shortcut button): BTN_STYLUS
+--- pressed (`down`) or let go, `dt` seconds from now.
+function E.penSideButton(held, dt)
+    say("pen side button", held and "held" or "let go")
+    penFrame({ { 1, 0x14b, held and 1 or 0 } }, dt or 0)
+end
 --- The pen hovering over (x, y), not touching; and taken away. `dt`: seconds from now.
 function E.penHover(x, y, dt)
     say("pen hovering", math.floor(x), math.floor(y))
