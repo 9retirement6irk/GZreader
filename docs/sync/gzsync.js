@@ -1247,13 +1247,23 @@ gets a password or token.
     return out;
   }
 
+  // What the page sends for the Kindle: only Grimmory's own API (outbox.json is
+  // a file on the Kindle's drive, so anything could have written it), with the
+  // methods GZreader's jobs use. A path is put after the server's address, so
+  // it must start with /api/v1/: ".example.net/x" would be another host.
+  var JOB_METHODS = { POST: true, PUT: true, DELETE: true };
+  function jobAllowed(method, path) {
+    return JOB_METHODS[method] === true && typeof path === "string"
+      && /^\/api\/v1\/[A-Za-z0-9._~%\/-]*$/.test(path) && !/(^|\/)\.\.?(\/|$)/.test(path) && path.indexOf("//") < 0;
+  }
+
   // 1. what the Kindle has to send
   async function sendJobs(out, inbox) {
     var done = new Set(inbox.done);
     var jobs = (out.jobs || []).filter(function (j) { return !done.has(j.id); });
     if (!jobs.length) return;
     phase("Sending reading updates to Grimmory…");
-    var sent = 0, marks = 0, badClock = 0;
+    var sent = 0, marks = 0, badClock = 0, refused = 0;
     inbox.created = inbox.created || {};
     for (var i = 0; i < jobs.length; i++) {
       var j = jobs[i];
@@ -1270,6 +1280,7 @@ gets a password or token.
         if (ref && /^usb-/.test(ref)) { inbox.done.push(j.id); continue; } // (its creation never went through)
         path = path.replace("{id}", encodeURIComponent(ref || ""));
       }
+      if (!jobAllowed(j.method, path)) { inbox.done.push(j.id); refused++; continue; } // (not one of GZreader's: never sent)
       try { r = await G.fetch(path, { method: j.method, body: body }); } catch (e) {
         inbox.failed.push({ id: j.id, error: "unreachable" });
         log("Couldn't reach Grimmory to send the rest: " + e.message, "bad");
@@ -1291,6 +1302,7 @@ gets a password or token.
       bar.set(i + 1, jobs.length);
     }
     await saveInbox(inbox);
+    if (refused) log(refused + " item" + (refused === 1 ? "" : "s") + " in the Kindle's outbox not sent: not a Grimmory reading update.", "bad");
     if (badClock) log(badClock + " reading time" + (badClock === 1 ? "" : "s") + " left out: recorded while the Kindle's clock was wrong (it's set from this computer's now).");
     log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark and highlight change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
   }
@@ -2090,7 +2102,11 @@ gets a password or token.
       "state", "nonce", "token", "id_token", "passwordMD5"],
     feed: function (out) {
       var f = out && out.report && out.report.feed;
-      if (typeof f === "string" && (/^https:\/\/[^\s]+$/.test(f) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(f))) return f.replace(/\/+$/, "");
+      // (only the developer's feed server, or one on this computer for tests: the
+      // outbox is a file on the drive, and this sends the Kindle's logs there)
+      var mine = Report.FEED.replace(/\/open\/feed\/.*$/, "");
+      if (typeof f === "string" && (f.indexOf(mine + "/open/feed/") === 0 && /^[^\s?#]+$/.test(f)
+          || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(f))) return f.replace(/\/+$/, "");
       return Report.FEED;
     },
     // (Log.redact: passwords and tokens out of what's typed and crash.log)
@@ -3200,6 +3216,7 @@ gets a password or token.
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
+    sendJobs: sendJobs, jobAllowed: jobAllowed,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

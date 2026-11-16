@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Sync page: only GZreader's reading updates are sent from the Kindle's outbox", text = "The sync page sends what a Kindle without Wi-Fi queued in .gzsync/outbox.json to Grimmory, with your sign-in. It sent whatever that file said, so an outbox edited on the drive could send your sign-in to another site (a path such as .example.net/x after the server's address) or ask Grimmory for anything. Now only POST, PUT and DELETE to Grimmory's /api/v1/ are sent; anything else is left out, and the page says how many. Reports for the developer go only to the developer's feed server." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
