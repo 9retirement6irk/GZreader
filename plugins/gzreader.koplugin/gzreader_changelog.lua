@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: Save is at the top right of the note editor", text = "On touch Kindles, the note editor's Save button is now at the top right, beside the space and Private menus, where the drawing screen's Done is (it was in the row under the title). For a moment after Done, taps on that top row are ignored: a second tap on a slow Done used to open the Private menu (or would now save the note) by accident. The quick note window and keyboard Kindles keep Save where it was." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

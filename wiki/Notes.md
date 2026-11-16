@@ -104,7 +104,10 @@ API to `/api` are found too.
     under it on the first line, where it covers the next line until it goes.)
   - The row under the title shows the note's **sheets** (its drawings) as
     small pictures: tap one to draw on it; **✎ Draw** adds the first.
-    **Save** is at its right.
+  - **Save** is at the top right, beside the space (▾) and Private (▾),
+    where the drawing screen's **Done** is. For a moment after **Done**, a
+    tap on that row is ignored, so a second tap on a slow Done doesn't open
+    Private or save the note before you meant to.
   - Code, quotes, tables and pictures show as their Markdown in grey and edit
     as text.
   - Save writes the note the way Memos' rich editor writes it. Lines you
