@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: no more gaps where a line crosses the paper's lines", text = "On ruled or squared paper (or a PDF page, or a picture under the drawing), a stroke had gaps wherever it crossed one of the paper's lines. The ink was there; the quickest e-ink refresh only goes cleanly between black and white, and from a grey line pixel it left the ink light. On a page with a paper or picture the ink now goes on with a refresh that turns any grey black, and the stroke is cleaned up once it's done; blank pages keep the quickest one." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

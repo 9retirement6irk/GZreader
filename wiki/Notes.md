@@ -176,6 +176,8 @@ API to `/api` are found too.
     **Your own paper:** put a PNG file in `koreader/settings/gzreader-notepaper`
     on the Kindle (at most 1440 pixels on its longer side and 600 KB); it's
     offered after the others, named after the file.
+    On a paper the ink goes on the screen a little more slowly than on a
+    blank page, so it stays solid where it crosses the paper's lines.
     On paper you draw only on the paper: a stroke stops at its edge and goes
     on where it comes back onto it. In Memos it's an attachment named
   `drawing-<date>-<time>.canvas.png`: Memos with drawings (its version after
