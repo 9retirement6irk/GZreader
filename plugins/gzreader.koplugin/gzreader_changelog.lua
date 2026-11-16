@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: syncing with a stock Memos makes two requests fewer each time", text = "Each Notes sync asked Memos for its spaces and for the journaling mode of the Memos fork. A stock Memos has neither, so every sync made two requests that came back \"not found\" (and wrote two warnings to the diagnostic log). What your Memos lacks is now remembered for 6 hours, and asked again when you connect again, so a server you update is noticed." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

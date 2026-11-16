@@ -2523,6 +2523,7 @@ function Notes.connect(plugin, server_input, token)
         queue = same and old.queue or nil, sync_tags = same and old.sync_tags or nil }
     plugin:save()
     if old.server ~= server then os.remove(Memos.cachePath()); Notes.notes = nil end
+    Memos.forgetLacks() -- (spaces, journaling mode: asked again, in case the server was updated)
     return true
 end
 
