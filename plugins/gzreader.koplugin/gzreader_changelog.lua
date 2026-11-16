@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Nook: GZreader's code on the card is checked before it runs", text = "On a Nook, GZreader keeps most of its files on the card (or the Nook's own storage), which every Android app can write, and runs them as root. The start script now records the fingerprints (SHA-256) of the code it puts there (its Lua and the list of certificate authorities the updater trusts) on the Nook's own disk, and checks them at every start: if anything else changed, added or removed one, GZreader doesn't start and its start log says which (install the Nook package again). Updates record the new code themselves. The check adds a second or two to a Nook's start; fonts, pictures and translations aren't checked (they aren't run)." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

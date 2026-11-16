@@ -610,6 +610,12 @@ function Update.apply(zip, opts)
             end
         end
     end
+    if nook then
+        -- (the Nook's start script records GZreader's code on the card again
+        -- before it runs: platform/nook/gzreader.sh, manifest_check)
+        local m = io.open(base .. "/../app-manifest.renew", "w")
+        if m then m:write(Update.currentVersion(), "\n"); m:close() end
+    end
     Log.info("update installed", Update.currentVersion(), "items", #done)
     return true
 end

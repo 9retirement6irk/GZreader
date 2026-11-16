@@ -5611,6 +5611,8 @@ check(rf(WORK .. "/nook/gzreader/launcher.sh") == "#!/system/bin/sh\n# new helpe
 check(running:read("*a") == "#!/system/bin/sh\n# old\n", "…by a new file: the running script still reads its own copy")
 running:close()
 check(io.popen("ls -a '" .. WORK .. "/nook/gzreader' | grep -c 'gz-new'"):read("*a"):match("^0"), "…no temporary file left")
+check(rf(WORK .. "/nook/gzreader/app-manifest.renew") ~= nil and rf(KO .. "/../app-manifest.renew") == nil,
+    "…and the Nook's start script told to record the new code on the card before it runs (a Kindle: nothing)")
 PKG = { ["koreader/frontend/k.lua"] = "k2", ["koreader/plugins/gzreader.koplugin/main.lua"] = "k main",
     ["koreader/gzreader-version"] = "1.3.1\n", ["koreader/nook-gzreader.sh"] = "not a script" }
 check(Update.apply("pkg.zip") and rf(WORK .. "/nook/gzreader/gzreader.sh") == "#!/system/bin/sh\n# new\n", "a broken start script in the package: the Nook keeps its own")
