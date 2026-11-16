@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Read aloud: turning several pages quickly starts the voice again once, on the page you stop at", text = "While reading aloud, each page you turned yourself started the Kindle voice again 0.3 seconds later, so turning three pages quickly cancelled and resent the speech three times in a row. Requests sent that close together can reach the Kindle's speech service out of order (sentences were dropped on a Kindle 3). Now it starts again once, 0.3 seconds after the last page turn, from the page you're on." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

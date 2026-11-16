@@ -5452,6 +5452,22 @@ do
     check(#sets == 0, "a book closing without read aloud: nothing sent (it started lipc-set-prop each time)")
     TTS.lipc, gsettings.gzreader_tts_template = lipc_was, tpl_was
 end
+;(function()
+    -- pages turned by hand while reading aloud: the voice starts again once, from the last page
+    local RT = TTS.Reader:new(tts_ui)
+    local restarts = 0
+    RT.active = true
+    RT.restartQueue = function() restarts = restarts + 1 end
+    for _i = 1, 3 do RT:onManualPageTurn() end
+    runLoop(function() return restarts > 0 end, 2)
+    runLoop(function() return false end, 0.5)
+    check(restarts == 1, "read aloud: three pages turned in a row start the voice again once (" .. restarts .. ")")
+    RT:onManualPageTurn()
+    RT.restartQueue = nil
+    RT:stop()
+    runLoop(function() return false end, 0.5)
+    check(restarts == 1 and RT.turn_restart == nil, "…and a turn just before stopping doesn't start it again")
+end)()
 TTS.exec = nil; TTS.lipc = nil; TTS.now = nil
 local _ = before
 
