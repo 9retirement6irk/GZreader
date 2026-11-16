@@ -7,6 +7,8 @@ touch Kindle, a tap at the top or a swipe down from the top; [which of
 them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
+Five tiles go across; on a big touch screen (the Kindle Scribe) as many as
+keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 
 - **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi); on the Kindle 2
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,

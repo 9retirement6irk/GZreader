@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindle Scribe (and DX): menus, buttons and text no longer oversized; Settings → Interface → Size of menus and text", text = "KOReader draws menus, buttons and text bigger the more pixels a screen has across, so on a Kindle Scribe everything came out about 1.7 times its size on a 6-inch Kindle. On screens over 5 inches across (the Scribe, the DX) GZreader now sizes them for the screen's density and lets them grow only a little with the screen: about 25% smaller than before on a Scribe, about 20% on a DX. Books look as before (their font size and margins keep their sizes), and a DPI set in KOReader's Screen menu still wins. Settings → Interface → Size of menus and text (on those Kindles only) offers Automatic, Smaller, Larger or As large as KOReader makes them, from the next start." },
+            { short = "Kindle Scribe: the quick panel's tiles no bigger than on other Kindles (seven across)", text = "On a Kindle Scribe the quick panel showed five tiles across the whole screen, each over an inch wide. On a big touch screen (more than 5 inches across) it now puts as many tiles across as keep each under 0.8 inch: seven on a Scribe, eight turned sideways. Other Kindles keep five, and Kindles with a keyboard always do (the letters follow the keyboard's rows)." },
         },
     },
     {
