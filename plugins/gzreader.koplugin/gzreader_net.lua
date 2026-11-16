@@ -242,7 +242,7 @@ wrapScan = function()
         UIManager.show = function(um, w, ...)
             -- (only messages are shown here when it isn't interactive)
             if type(w) == "table" and type(w.text) == "string" and not w.buttons then
-                Log.info("wifi (quiet):", tostring(w.text):gsub("\n", " "))
+                Log.info("wifi (quiet):", (tostring(w.text):gsub("\n", " "))) -- (Log hides the network's name)
                 return
             end
             return show(um, w, ...)
@@ -255,6 +255,7 @@ wrapScan = function()
     end
     NetworkMgr.reconnectOrShowNetworkMenu = Net._scan
 end
+Net._wrapScan = wrapScan -- (for the tests)
 
 --- Wi-Fi switched on or off by you anywhere else (KOReader's Wi-Fi menu, a
 --- gesture, the network list): On or Off. (Net.setMode's own switching goes

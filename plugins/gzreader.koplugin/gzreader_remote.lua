@@ -362,7 +362,7 @@ function R.start(plugin)
             t and (", last seen " .. os.date("%Y-%m-%d %H:%M:%S", tonumber(t)) .. " " .. tostring(what)) or ""),
         { "start" }, false)
     if status == "run" then
-        local crash = readFile("crash.log") and tail("crash.log", 30) or ""
+        local crash = readFile("crash.log") and Log.redact(tail("crash.log", 30)) or ""
         R.event("Previous run ended unexpectedly",
             string.format("Last seen %s, %s.\n\nEnd of the previous log:\n%s\n\nEnd of crash.log:\n%s",
                 os.date("%Y-%m-%d %H:%M:%S", tonumber(t)), tostring(what),

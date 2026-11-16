@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The diagnostic log and debug reports no longer name your Wi-Fi network", text = "On touch Kindles, when GZreader turned the Wi-Fi on by itself, the diagnostic log kept KOReader's \"Connecting to network …\" message with your Wi-Fi network's name, and it went into debug reports and saved logs. The name is now written as <network> there, in the end of KOReader's crash.log that a report or saved log includes, and in lines already in the log from earlier versions." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
