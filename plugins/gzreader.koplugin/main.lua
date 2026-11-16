@@ -1265,7 +1265,7 @@ function Grimmory:onGzLauncherMusicToggle()
     elseif p then require("gzreader_musictab").open(p) end
 end
 
---- The Music tab (ZenOS's tab bar: Settings → Navbar → Tabs → Music).
+--- The Music tab (ZenOS's tab bar: Settings → Interface → Navbar → Tabs → Music).
 function Grimmory:onShowGzMusic()
     if self.ui and self.ui.document then return end -- (file manager's instance)
     require("gzreader_musictab").show(self)

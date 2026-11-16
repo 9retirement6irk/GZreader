@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Settings → Connections → Plex: a Music tab switch, in place of a cut-off line naming the wrong place", text = "Settings → Connections → Plex (Music) ended with a line saying where to turn the Music tab on. It was cut off at the screen's edge, and it named Settings → Navbar, which isn't there (it's Settings → Interface → Navbar → Tabs). It's now a Music tab switch, as Home Assistant has a House tab switch, signed in or not; where headphones and the volume are set is a row of its own; and the sign-in rows have their icons, as in the Music tab." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

@@ -9115,9 +9115,38 @@ print("Music (Plex): the server, downloads, the player")
     check(#servers == 2 and servers[1].text == "Home Server" and servers[1].checked_func() and not servers[2].checked_func(), "Settings → Plex: the account's servers, this one ticked")
     local saved_plex = plugin.store.plex
     plugin.store.plex = { client_id = saved_plex.client_id }
-    st = texts(Tab.settingsItems(plugin))
-    check(st:match("^Plex: sign in with a code") and st:match("QR code") and st:match("Navbar → Tabs"), "Settings → Plex, signed out: the ways to sign in")
+    local so = Tab.settingsItems(plugin)
+    st = texts(so)
+    check(st:match("^Plex: sign in with a code") and st:match("QR code") and st:match("| Music tab$") and not st:find("Navbar", 1, true),
+        "Settings → Plex, signed out: the ways to sign in, then the Music tab switch (not a line cut off at the screen's edge) " .. st)
+    check((so[1].icon_glyph or so[1].icon_file or so[1].icon_name) and (so[2].icon_glyph or so[2].icon_file or so[2].icon_name),
+        "Settings → Plex, signed out: the sign-in rows keep their icons")
     plugin.store.plex = saved_plex
+    ;(function()
+        -- the Music tab switch (both lists), as Settings → Interface → Navbar → Tabs
+        local last = si[#si - 1]
+        check(texts(si):match("| Sign out of Plex | Music tab | Headphones and volume$") and last.checked_func and last.icon_file:match("music%.svg$"),
+            "Settings → Plex, signed in: the Music tab switch, headphones behind a row of its own: " .. texts(si))
+        local saved = 0
+        local zen = { config = { navbar = { show_tabs = { home = true, books = true }, tab_order = { "home", "books" }, custom_tabs = {} } },
+            saveConfig = function() saved = saved + 1 end }
+        local was_zen = rawget(_G, "__ZEN_UI_PLUGIN")
+        local was_fm = package.loaded["apps/filemanager/filemanager"]
+        rawset(_G, "__ZEN_UI_PLUGIN", zen)
+        package.loaded["apps/filemanager/filemanager"] = { instance = nil }
+        check(last.checked_func() == false, "Music tab: off at first")
+        last.callback()
+        check(last.checked_func() == true and zen.config.navbar.show_tabs.ct_music == true and zen.config.navbar.tab_order[3] == "ct_music"
+            and zen.config.navbar.custom_tabs[1].action.gzreader_music and saved == 1, "Music tab: on (in the tab bar, defined, ZenOS's settings saved)")
+        last.callback()
+        check(last.checked_func() == false and zen.config.navbar.show_tabs.ct_music == false and #zen.config.navbar.custom_tabs == 1, "Music tab: off again")
+        for _i, id in ipairs({ "a", "b", "c", "d", "e" }) do zen.config.navbar.show_tabs[id] = true; table.insert(zen.config.navbar.tab_order, id) end
+        captured.info = nil
+        last.callback()
+        check(zen.config.navbar.show_tabs.ct_music == false and (captured.info or ""):match("7 tabs already"), "Music tab: not an eighth tab (it says which to turn off)")
+        rawset(_G, "__ZEN_UI_PLUGIN", was_zen)
+        package.loaded["apps/filemanager/filemanager"] = was_fm
+    end)()
     -- no token in an address (the mock refuses those) or the log
     local pp = io.popen("curl -s http://127.0.0.1:" .. PXP .. "/ctl/log"); local lg = json.decode(pp:read("*a")); pp:close()
     local in_url = false

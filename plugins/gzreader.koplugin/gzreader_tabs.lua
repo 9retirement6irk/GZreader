@@ -28,6 +28,55 @@ function Tabs.zen()
     return (FileManager.instance and FileManager.instance.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
 end
 
+---------------------------------------------------------------- on or off
+
+Tabs.MAX_SHOWN = 7 -- (ZenOS's tab bar)
+
+local function navbar()
+    local zen = Tabs.zen()
+    local nb = zen and type(zen.config) == "table" and zen.config.navbar
+    if type(nb) ~= "table" then return nil end
+    return nb, zen
+end
+
+--- Whether tab `id` is in the tab bar.
+function Tabs.shown(id)
+    local nb = navbar()
+    return nb ~= nil and type(nb.show_tabs) == "table" and nb.show_tabs[id] == true
+end
+
+--- Put tab `id` in the tab bar, or take it out (as Settings → Interface →
+--- Navbar → Tabs does). `entry`: its definition, added to ZenOS's tab list
+--- when it isn't there. False when it can't: no ZenOS, or 7 tabs already
+--- (then `full(message)` is called with what to do).
+function Tabs.setShown(id, on, entry, full)
+    local nb, zen = navbar()
+    if not nb then return false end
+    nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
+    nb.tab_order = type(nb.tab_order) == "table" and nb.tab_order or {}
+    nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
+    local has_tab, listed = false, false
+    for _i, t in ipairs(nb.custom_tabs) do if type(t) == "table" and t.id == id then has_tab = true end end
+    if not has_tab and entry then table.insert(nb.custom_tabs, entry) end
+    for _i, t in ipairs(nb.tab_order) do if t == id then listed = true end end
+    if not listed then table.insert(nb.tab_order, id) end
+    if on and nb.show_tabs[id] ~= true then
+        local count = 0
+        for _i, t in ipairs(nb.tab_order) do if nb.show_tabs[t] == true then count = count + 1 end end
+        if count >= Tabs.MAX_SHOWN then
+            local _ = require("gettext")
+            if full then full(_("The tab bar has 7 tabs already: turn one off first (Settings → Interface → Navbar → Tabs).")) end
+            return false
+        end
+    end
+    nb.show_tabs[id] = on and true or false
+    if type(zen.saveConfig) == "function" then pcall(zen.saveConfig, zen) end
+    local reinject = rawget(_G, "__ZEN_UI_REINJECT_NAVBARS") or rawget(_G, "__ZEN_UI_REINJECT_FM_NAVBAR")
+    if type(reinject) == "function" then UIManager:scheduleIn(0, reinject) end
+    require("gzreader_log").info("tabs:", id, on and "shown" or "hidden")
+    return true
+end
+
 --- ZenOS's status row in a tab view's title, with `label`; no close button.
 function Tabs.decorate(menu, label)
     local zen = Tabs.zen()
