@@ -35,6 +35,7 @@ M.BOOK_CALLERS = {
     ["readerfont.lua"] = true, ["readertypeset.lua"] = true,
     ["readerrolling.lua"] = true, ["readerlink.lua"] = true,
     ["readerpagemap.lua"] = true, ["readerpaging.lua"] = true,
+    ["reader_defaults.lua"] = true, -- (ZenOS's reading defaults set the font size too)
 }
 
 --- The screen's shorter side in inches (nil when the DPI isn't known).

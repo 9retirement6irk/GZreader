@@ -84,6 +84,7 @@ local function callFrom(chunkname)
 end
 check(callFrom("@./frontend/apps/reader/modules/readerfont.lua") == 62, "the book's font size: KOReader's (20 → 62)")
 check(callFrom("@frontend/apps/reader/modules/readertypeset.lua") == 62, "the book's margins: KOReader's")
+check(callFrom("@plugins/zenos.koplugin/common/reader_defaults.lua") == 62, "ZenOS's reading defaults (the setup guide sets the font size): KOReader's")
 check(callFrom("@frontend/document/pdfdocument.lua") == 62, "a document's own (a PDF's reflow font, through CanvasContext): KOReader's")
 check(callFrom("@frontend/apps/reader/modules/readerfooter.lua") == 47, "the book's status bar: GZreader's (20 → 47)")
 check(callFrom("@plugins/zenos.koplugin/modules/filebrowser/patches/home/home_page.lua") == 47, "Home: GZreader's")
