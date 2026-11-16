@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Updates: the Kindle no longer goes to sleep while an update downloads or installs", text = "While GZreader downloaded or installed an update, the Kindle could go to sleep (a Scribe did): the download window takes every tap, so nothing told the Kindle someone was there, and asleep the download stopped. The Kindle now stays awake from the start of the download until GZreader restarts with the update, and may sleep again if the download or the installation fails." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

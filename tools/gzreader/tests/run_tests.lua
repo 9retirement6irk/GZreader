@@ -2679,6 +2679,62 @@ do
     Awake.exec = exec
 end
 
+print("An update keeps the Kindle awake until GZreader restarts")
+;(function()
+    local Update = require("gzreader_update")
+    local Awake = require("gzreader_awake")
+    local fu = require("ffi/util")
+    local kept = { run = fu.runInSubProcess, done = fu.isSubProcessDone, read = fu.readAllFromFD,
+        work = Update.workDir, apply = Update.apply, net = package.loaded["gzreader_net"],
+        prog = package.loaded["gzreader_progress"], exec = Awake.exec, Any = require("device").input.group.Any,
+        scheduled = UI.scheduled }
+    local cmds = {}
+    Awake.exec = function(c) cmds[#cmds + 1] = c end
+    require("device").input.group.Any = {}
+    package.loaded["gzreader_net"] = { hold = function() end, release = function() end }
+    package.loaded["gzreader_progress"] = { new = function(_c, o) o.show = function() end; o.reportProgress = function() end; return o end }
+    local sub_done, answer = false, "ok"
+    fu.runInSubProcess = function() return 4242, 7 end
+    fu.isSubProcessDone = function() return sub_done end
+    fu.readAllFromFD = function() return answer end
+    Update.workDir = function() return WORK, false end
+    -- (the download writes the zip; here the poll finds it as big as said)
+    local zip = require("datastorage"):getDataDir() .. "/cache/gzreader-update.zip"
+    local function run(result, size, apply_ok)
+        UI.scheduled = {}
+        sub_done, answer = false, result
+        Update.apply = function() return apply_ok, apply_ok and nil or "broken zip" end
+        Update.download({ version = "9.9.9", url = "https://example.com/u.zip", size = size })
+        local held_while = Awake.held("update")
+        local function poll() for f, s in pairs(UI.scheduled) do if s == 1 then UI.scheduled[f] = nil; return f() end end end
+        poll() -- still downloading
+        local held_still = Awake.held("update")
+        local f = io.open(zip, "wb"); f:write(string.rep("x", 10)); f:close()
+        sub_done = true
+        poll()
+        return held_while, held_still
+    end
+    local during, still = run("ok", 10, true)
+    check(during and still and cmds[#cmds]:match("preventScreenSaver 1"),
+        "downloading an update: the Kindle doesn't go to sleep (screensaver blocked, autosuspend told)")
+    check(Awake.held("update"), "installed: still kept awake until GZreader restarts")
+    Awake.release("update") -- (the restart ends GZreader)
+    run("err 404", 10, true)
+    check(not Awake.held("update") and cmds[#cmds]:match("preventScreenSaver 0"), "download failed: the Kindle may sleep again")
+    run("ok", 99, true)
+    check(not Awake.held("update"), "incomplete download: let go")
+    run("ok", 10, false)
+    check(not Awake.held("update"), "install failed: let go")
+    local src = io.open(PLUGIN .. "/gzreader_update.lua"):read("*a")
+    check(src:find('Awake.hold("update"', 1, true) ~= nil, "Update.download holds it (source)")
+    os.remove(zip)
+    fu.runInSubProcess, fu.isSubProcessDone, fu.readAllFromFD = kept.run, kept.done, kept.read
+    Update.workDir, Update.apply, Awake.exec = kept.work, kept.apply, kept.exec
+    package.loaded["gzreader_net"], package.loaded["gzreader_progress"] = kept.net, kept.prog
+    require("device").input.group.Any = kept.Any
+    UI.scheduled = kept.scheduled
+end)()
+
 print("Book-open timing only while diagnostic logging is on")
 do
     local Log = require("gzreader_log")

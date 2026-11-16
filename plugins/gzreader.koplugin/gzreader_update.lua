@@ -660,6 +660,16 @@ function Update.download(info)
     end, true)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
     Net.hold("update")
+    -- No sleeping until GZreader restarts (the download, then installing):
+    -- the dialog below swallows every tap, so nothing else tells the Kindle
+    -- someone is there, and a Scribe went to sleep mid-update (2026-11-16).
+    local Awake = require("gzreader_awake")
+    local finished = false
+    Awake.hold("update", { what = "update", still = function() return not finished end })
+    local function ended()
+        finished = true
+        Awake.release("update")
+    end
     -- Can't be closed (unlike book downloads): the update installs and
     -- restarts GZreader as soon as it's downloaded. Modal: keys don't reach
     -- the screens behind it either.
@@ -685,11 +695,13 @@ function Update.download(info)
         Net.release("update")
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
+            ended()
             os.remove(zip)
             return UIManager:show(InfoMessage:new{ text = T(_("Download failed: %1"), res) })
         end
         local final_size = lfs.attributes(zip, "size") or 0
         if info.size and final_size ~= info.size then
+            ended()
             os.remove(zip)
             Log.warn("update download size", final_size, "expected", info.size)
             return UIManager:show(InfoMessage:new{ text = _("The download was incomplete. Try again.") })
@@ -701,6 +713,7 @@ function Update.download(info)
         os.remove(zip)
         UIManager:close(busy)
         if not ok then
+            ended()
             Log.err("update failed:", err)
             return UIManager:show(InfoMessage:new{ text = T(_("Update failed, nothing was changed:\n%1"), tostring(err)) })
         end
