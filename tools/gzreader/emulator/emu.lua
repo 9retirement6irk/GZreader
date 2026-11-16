@@ -265,6 +265,46 @@ function E.penTap(what)
     E.pen({ { x, y } }, 0.05)
 end
 
+--- The pen writing through `points` (as E.pen) while a hand rests on the
+--- screen: `n` contacts around `palm` ({ x, y }) in slots 0..n-1, its frames
+--- between the pen's (as the Scribe's two devices interleave them), each
+--- with the touch screen's single-touch copy of its first contact, and the
+--- hand shifting a little as the pen moves.
+function E.penWithPalm(points, sec, palm, n)
+    sec, n = sec or 0.4, n or 6
+    local px, py = math.floor(palm[1]), math.floor(palm[2])
+    say("pen", #points, "points with a hand of", n, "contacts at", px, py)
+    local function palmFrame(evs, dt) stFrame(evs, dt) end
+    local p1 = points[1]
+    penFrame({ { 1, BTN_TOOL_PEN, 1 }, { 3, ABS_X, math.floor(p1[1]) }, { 3, ABS_Y, math.floor(p1[2]) }, { 3, ABS_PRESSURE, 0 } }, 0)
+    local pdown = {}
+    for k = 0, n - 1 do
+        pdown[#pdown + 1] = { 3, ABS_MT_SLOT, k }
+        pdown[#pdown + 1] = { 3, ABS_MT_TRACKING_ID, 500 + k }
+        pdown[#pdown + 1] = { 3, ABS_MT_X, px + 30 * k }
+        pdown[#pdown + 1] = { 3, ABS_MT_Y, py + 20 * k }
+    end
+    pdown[#pdown + 1] = { 1, BTN_TOUCH, 1 }
+    pdown[#pdown + 1] = { 3, ABS_X, px }
+    pdown[#pdown + 1] = { 3, ABS_Y, py }
+    palmFrame(pdown, 0.005)
+    penFrame({ { 3, ABS_PRESSURE, 1200 }, { 1, BTN_TOUCH, 1 } }, 0.01)
+    local m = #points
+    for i = 2, m do
+        local p = points[i]
+        local t = 0.01 + sec * (i - 1) / m
+        penFrame({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, 1500 } }, t)
+        -- (the kernel leaves ABS_MT_SLOT out: the touch screen's last slot again)
+        palmFrame({ { 3, ABS_MT_X, px + 30 * (n - 1) + i }, { 3, ABS_MT_Y, py + 20 * (n - 1) + i } }, t + 0.002)
+    end
+    penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
+    local pup = {}
+    for k = 0, n - 1 do pup[#pup + 1] = { 3, ABS_MT_SLOT, k }; pup[#pup + 1] = { 3, ABS_MT_TRACKING_ID, -1 } end
+    pup[#pup + 1] = { 1, BTN_TOUCH, 0 }
+    palmFrame(pup, sec + 0.03)
+    penFrame({ { 1, BTN_TOOL_PEN, 0 } }, sec + 0.04)
+end
+
 function E.tap(what)
     local x, y = E.where(what)
     if not x then return say("tap: not on screen:", tostring(what)) end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle Scribe: a hand on the screen no longer draws while you write", text = "On the Kindle Scribe, KOReader kept the pen and the touch screen in one table of contacts, and a hand resting on the screen got mixed up with the pen: a palm's fifth contact landed in the pen's place and drew, and the pen's moves went into a palm contact, so strokes jumped between the pen and your hand (lines and rectangles with a diagonal). The pen and the touch screen are now kept apart: the touch screen's contacts never take the pen's place, its copy of its first contact isn't taken for the pen, and the pen's moves always go to the pen. Fingers still don't draw on the Scribe (only the pen does); a finger still taps the toolbar and the menus." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

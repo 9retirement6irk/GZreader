@@ -135,6 +135,32 @@ add({ fn = function(E)
     if not PEN then return end
     check(screen().sketch.width == 1, "scribe: with the pen away, a finger taps Thin")
 end, after = 0.5 })
+-- scribe: a whole hand (6 contacts) resting while the pen writes, the two
+-- devices' frames interleaved: one stroke, every point on the pen's line
+-- (before: a palm contact drew from the pen's slot and the pen's moves went
+-- into a palm's slot, rectangles with a diagonal; the owner's Scribe)
+add({ fn = function(E)
+    if not PEN then return end
+    E.penWithPalm({ pt(0.2, 0.85), pt(0.3, 0.85), pt(0.4, 0.85), pt(0.5, 0.85), pt(0.6, 0.85), pt(0.7, 0.85) }, 0.4,
+        pt(0.55, 0.55), 6)
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    local d = screen()
+    local live = d.sketch:live()
+    local st = live[#live]
+    local off, c = 0, d.sketch.canvas
+    local line_y = pt(0, 0.85)[2] - c.y
+    for _i, p in ipairs(st and st.points or {}) do if math.abs(p[2] - line_y) > 2 then off = off + 1 end end
+    check(#live == 4 and st and #st.points >= 5 and off == 0,
+        "scribe: a hand of 6 contacts resting while the pen writes: one stroke, all on the pen's line ("
+            .. #live .. " strokes, " .. off .. " point(s) off it)")
+    tapButton(E, "undo")
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    check(strokes() == 3, "scribe: …taken back with Undo")
+end, after = 0.5 })
 add({ shot = "3-drawn", after = 0.5 })
 add({ fn = function(E)
     if PEN then
