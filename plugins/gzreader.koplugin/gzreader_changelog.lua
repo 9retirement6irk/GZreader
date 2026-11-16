@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle Scribe (and DX): menus, buttons and text no longer oversized; Settings → Interface → Size of menus and text", text = "KOReader draws menus, buttons and text bigger the more pixels a screen has across, so on a Kindle Scribe everything came out about 1.7 times its size on a 6-inch Kindle. On screens over 5 inches across (the Scribe, the DX) GZreader now sizes them for the screen's density and lets them grow only a little with the screen: about 25% smaller than before on a Scribe, about 20% on a DX. Books look as before (their font size and margins keep their sizes), and a DPI set in KOReader's Screen menu still wins. Settings → Interface → Size of menus and text (on those Kindles only) offers Automatic, Smaller, Larger or As large as KOReader makes them, from the next start." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

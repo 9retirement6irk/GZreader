@@ -158,6 +158,8 @@ end
 
 -- Setup device
 local Device = require("device")
+-- GZreader: menus and text not oversized on big screens (the Scribe; gzuiscale.lua)
+pcall(function() require("gzuiscale").apply(Device) end)
 
 -- Document renderers canvas
 local CanvasContext = require("document/canvascontext")
