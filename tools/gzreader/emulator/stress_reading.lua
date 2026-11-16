@@ -49,7 +49,8 @@ local function openTimed(path, label, settle)
         local time = require("ui/time")
         local ok = ready()
         local secs = time.to_s(time.now() - R.t0)
-        line(string.format("time %s: %.1f s wall, %.1f s CPU (this process)", label, secs, os.clock() - R.c0))
+        line(string.format("time %s: %.1f s wall%s, %.1f s CPU (this process)", label, secs,
+            settle and string.format(" (with a %d s wait for the reopening)", settle) or "", os.clock() - R.c0))
         check(ok, label .. " opened")
         local ui = reader()
         if ui and ui.document then
