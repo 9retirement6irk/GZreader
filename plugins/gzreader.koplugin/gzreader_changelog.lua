@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Send to the developer no longer freezes the screen while it sends", text = "Settings → Diagnostics → Send to the developer built the diagnostic log and sent it with the screen frozen until it was done (about a minute on a Paperwhite 3). It now builds and sends it in the background: you can carry on reading, and a message says when it's sent, or why it couldn't be." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

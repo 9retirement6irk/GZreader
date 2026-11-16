@@ -40,7 +40,9 @@ the Kindle awake and a read-only audio/speech survey into one
 
 - **Send to the developer:** first a box asks what you were doing and what
   went wrong (type as much as helps, or nothing), then that and the log go
-  straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)). Also
+  straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)).
+  It's sent in the background: you can carry on reading, and a message
+  says when it's sent. Also
   Settings → About → Advanced → Send diagnostic log to the developer. On the
   Kindle 2 and DX (no Wi‑Fi) it says **(at the next sync)**: the same box,
   then the log and what you typed wait in `.gzsync/reports/` and the

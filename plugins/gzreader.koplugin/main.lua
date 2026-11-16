@@ -874,18 +874,46 @@ function Grimmory:sendLogToDeveloper(comment)
     local tmp = DataStorage:getDataDir() .. "/cache"
     require("libs/libkoreader-lfs").mkdir(tmp)
     Log.probe_device = Device:isKindle()
+    -- Built and sent in a background process: on a Paperwhite 3 building the
+    -- log took 12 s and sending it 44 s, with the screen frozen. (Another
+    -- background job running: here, as before.)
+    local function build()
+        local dest, err = Log.exportTo(tmp, DataStorage:getDataDir() .. "/crash.log")
+        if not dest then return nil, err end
+        local parts
+        parts, err = require("gzreader_remote").sendLogs(dest, comment)
+        os.remove(dest)
+        return parts, err
+    end
+    local Async = require("gzreader_async")
+    if not Async.sync and Async.local_jobs == 0 then
+        Log.flush() -- (the background process writes its own lines straight to the log)
+        Net.hold("debug log")
+        local returned, not_started = false, false
+        Async.background(build, function(parts, err)
+            Net.release("debug log")
+            if not returned and err == "busy" then not_started = true; return end -- (couldn't start it: here)
+            self:reportSent(parts, err)
+        end, "sending the debug log", { timeout = 300 })
+        returned = true
+        if not not_started then
+            UIManager:show(InfoMessage:new{
+                text = _("Sending the diagnostic log to the developer… You can carry on; GZreader says when it's sent."), timeout = 4 })
+            return
+        end
+    end
     local busy = InfoMessage:new{ text = _("Sending the diagnostic log to the developer…"), timeout = 0 }
     UIManager:show(busy)
     UIManager:forceRePaint()
-    local dest, err = Log.exportTo(tmp, DataStorage:getDataDir() .. "/crash.log")
-    local parts
-    if dest then
-        Net.hold("debug log")
-        parts, err = require("gzreader_remote").sendLogs(dest, comment)
-        Net.release("debug log")
-        os.remove(dest)
-    end
+    Net.hold("debug log")
+    local parts, err = build()
+    Net.release("debug log")
     UIManager:close(busy)
+    self:reportSent(parts, err)
+end
+
+--- What Send to the developer says when it's done.
+function Grimmory:reportSent(parts, err)
     if parts then
         UIManager:show(InfoMessage:new{ text = _("Diagnostic log sent to the developer. Thank you!"), timeout = 4 })
     else
