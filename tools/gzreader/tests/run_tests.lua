@@ -1780,7 +1780,12 @@ ctl("/set?dl_stall=false")
     os.time = real_time -- luacheck: ignore
     check(not (captured.info or ""):match("stalled") and (require("libs/libkoreader-lfs").attributes(WORK .. "/home/GZreader/clock.epub", "size") or 0) == 2 * 1024 * 1024,
         "the clock set 20 years forward mid-download: it carries on to the end (not \"stalled\") " .. tostring(captured.info))
-    ctl("/set?dl_big=false&dl_slow=false")
+    -- (as it was: the stalled book's continuing below expects the big book, and no other download)
+    ctl("/set?dl_big=true&dl_slow=false")
+    os.remove(WORK .. "/home/GZreader/clock.epub")
+    plugin.store.downloads["7"] = nil
+    pcall(function() require("gzreader_recovery").bookDone(plugin, 7) end)
+    captured.info, captured.confirm = nil, nil
 end)()
 
 print("The Kindle 2/3/DX's screen: four pixels packed at a time, the same bytes")
