@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindles with Bluetooth: turning Wi-Fi off no longer turns Bluetooth off", text = "A Kindle can only turn its Wi-Fi off with Amazon's airplane mode, which turns Bluetooth off too: with Wi-Fi on Auto or Off, GZreader cut off Bluetooth headphones and speakers whenever it turned Wi-Fi off. On Kindles with Bluetooth (Paperwhite 4 and newer, Oasis, Kindle 8th generation and later, Scribe, Colorsoft), when Bluetooth was on, GZreader turns it on again right after and reconnects the device that was connected a few seconds later. Bluetooth that was off stays off." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

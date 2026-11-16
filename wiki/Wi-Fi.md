@@ -39,3 +39,14 @@ for. KOReader's own "Disable Wi‑Fi connection when inactive" isn't offered
 and a tick saved earlier is cleared when GZreader starts. The mode is kept in `gzreader_wifi_mode`; settings from before it (the
 "Wi‑Fi only when needed" switch, `gzreader_wifi_on_demand`, and
 `gzreader_wifi_kept_off`) become Auto, On or Off.
+
+**Kindles with Bluetooth keep it on.** A Kindle can't turn off only its
+Wi‑Fi: GZreader (like KOReader) turns Wi‑Fi off with Amazon's airplane mode,
+which turns Bluetooth off too and cut off headphones and speakers. On the
+Kindles with Bluetooth (2016 and newer: Kindle 8th generation and later,
+Oasis, Paperwhite 4 and newer, Scribe, Colorsoft), when Bluetooth was on,
+GZreader turns it on again right after and, a few seconds later, reconnects
+the device that was connected (by its name in Amazon's list of paired
+devices; with only one paired device, that one). Bluetooth that was off stays
+off. The log says `GZreader: Bluetooth turned on again after airplane mode`,
+never the device's name or address.
