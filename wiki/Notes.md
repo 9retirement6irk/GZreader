@@ -226,8 +226,9 @@ API to `/api` are found too.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
-    rejection). The pen's other end rubs out. With the pen away, a finger
-    can tap the buttons.
+    rejection), even a whole hand while you write (before 1.32, a hand's
+    touches could get mixed into the pen's line). The pen's other end rubs
+    out. With the pen away, a finger can tap the buttons.
   - **With a finger** (every other touch Kindle): one finger draws; a second
     finger at the same time is ignored.
   - Not on Kindles syncing through a computer (the sync page doesn't send

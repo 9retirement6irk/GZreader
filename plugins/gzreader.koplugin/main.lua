@@ -51,6 +51,8 @@ local MAX_QUEUED_SESSIONS = 200
 pcall(function() require("gzreader_nightguard").install() end)
 -- Kindles without REAGL: flash when most of the screen changes (less ghosting).
 pcall(function() require("gzreader_eink").install() end)
+-- Pen Kindles (the Scribe): the pen and the touch screen kept apart (a palm drew).
+pcall(function() require("gzreader_peninput").install(require("device").input) end)
 
 local Grimmory = WidgetContainer:extend{
     name = "gzreader",
