@@ -318,6 +318,10 @@ function DrawScreen:hint()
     local paper = Notepaper.get(self.sketch:paper())
     local on = paper and paper.id ~= "blank" and paper.label or nil
     local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
+    -- zoomed (pinch): how much, and how back
+    if self.sketch.zoomed then
+        return string.format("%.1f\u{00D7}", self.sketch:zoom()) .. " \u{00B7} " .. _("pinch in for the whole page")
+    end
     return on and (how .. " \u{00B7} " .. on) or how
 end
 
@@ -492,10 +496,12 @@ function DrawScreen:picture(el, w, h)
         local ok, data = pcall(require("ffi/sha2").base64_to_bin, b64)
         if ok and data then
             local okr, img = pcall(function()
+                -- (0 x 0: as it is, for a zoomed page's part)
+                if w == 0 then return require("ui/renderimage"):renderImageData(data, #data, false) end
                 return require("ui/renderimage"):renderImageData(data, #data, false, w, h)
             end)
             if okr and img then
-                if img:getWidth() ~= w or img:getHeight() ~= h then
+                if w > 0 and (img:getWidth() ~= w or img:getHeight() ~= h) then
                     img = require("ui/renderimage"):scaleBlitBuffer(img, w, h, true)
                 end
                 bb = img
@@ -517,6 +523,7 @@ function DrawScreen:paintPicture(el)
     x1, y1, x2, y2 = math.floor(x1 + 0.5), math.floor(y1 + 0.5), math.floor(x2 + 0.5), math.floor(y2 + 0.5)
     local w, h = x2 - x1, y2 - y1
     if w < 2 or h < 2 then return false end
+    if sk.zoomed then return self:paintPicturePart(el, x1, y1, w, h) end
     local bb = self:picture(el, w, h)
     if not bb then return false end
     -- (only what's on the canvas)
@@ -530,6 +537,35 @@ function DrawScreen:paintPicture(el)
         self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
     end
     self.color_bb:blitFrom(bb, dx, dy, sx, sy, bw, bh)
+    return true
+end
+
+--- Zoomed: only the part of picture `el` (w x h at x1, y1 on the canvas)
+--- that's on the canvas, scaled from the picture as it is (not the whole
+--- picture at the zoomed size: at 4x a page would be tens of MB).
+function DrawScreen:paintPicturePart(el, x1, y1, w, h)
+    local c = self.canvas
+    local src = self:picture(el, 0, 0)
+    if not src then return false end
+    local iw, ih = src:getWidth(), src:getHeight()
+    local dx0, dy0 = math.max(0, x1), math.max(0, y1)
+    local dx1, dy1 = math.min(c.w, x1 + w), math.min(c.h, y1 + h)
+    if dx1 - dx0 < 1 or dy1 - dy0 < 1 then return true end
+    local sx0, sy0 = math.floor((dx0 - x1) * iw / w), math.floor((dy0 - y1) * ih / h)
+    local sx1, sy1 = math.ceil((dx1 - x1) * iw / w), math.ceil((dy1 - y1) * ih / h)
+    sx1, sy1 = math.min(iw, math.max(sx0 + 1, sx1)), math.min(ih, math.max(sy0 + 1, sy1))
+    local view = src:viewport(sx0, sy0, sx1 - sx0, sy1 - sy0)
+    local ok, part = pcall(function()
+        return require("ui/renderimage"):scaleBlitBuffer(view, dx1 - dx0, dy1 - dy0, false)
+    end)
+    if not ok or not part then return false end
+    self.canvas_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    if not self.color_bb then
+        self.color_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BBRGB24)
+        self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
+    end
+    self.color_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    part:free()
     return true
 end
 
@@ -668,6 +704,9 @@ local function intersects(a, x0, y0, x1, y1)
 end
 
 function DrawScreen:apply(out)
+    if out.zoom then
+        Log.info(string.format("drawing: zoom %.2fx -> %.2fx", out.zoom.from, out.zoom.to))
+    end
     if (out.redraw or #out.segments > 0) and self.flyout then
         -- drawing puts an open panel away
         self.flyout = nil
@@ -1005,6 +1044,8 @@ end
 --- the scene inside. Returns { path, filename } or nil, err.
 function DrawScreen:save()
     local sk, p = self.sketch, self.page
+    -- (zoomed: the whole page again first; the picture is made from the screen's)
+    if sk:unzoom() then self:repaintCanvas() end
     local crop = sk:cropRect()
     if not crop then return nil, "empty" end
     local path, filename = p.path, p.path and p.path:match("[^/]+$")

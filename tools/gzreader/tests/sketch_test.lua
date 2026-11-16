@@ -63,8 +63,8 @@ print("== a finger Kindle (Paperwhite 3)")
     check(#sk.strokes == 1 and #sk.strokes[1].points == 3, "a finger draws one stroke (a repeated point left out)")
     check(out.segments == 3, "each new point gives a segment to paint")
     check(sk.strokes[1].points[1][1] == 100 and sk.strokes[1].points[1][2] == 100, "points relative to the canvas")
-    -- a second finger while drawing: ignored
-    run(sk, { { finger(0, 300, 300) }, { finger(1, 600, 600), finger(0, 320, 310) }, { finger(1, 650, 650) }, { lift(1) }, { lift(0) } })
+    -- a second finger while drawing (after the pinch window): ignored
+    run(sk, { { finger(0, 300, 300) }, { finger(1, 600, 600), finger(0, 320, 310) }, { finger(1, 650, 650) }, { lift(1) }, { lift(0) } }, 0, Sketch.PINCH_WINDOW + 0.05)
     check(#sk.strokes == 2 and #sk.strokes[2].points == 2, "a second finger while drawing doesn't draw")
     -- a tap outside the canvas: for the toolbar
     out = run(sk, { { finger(0, 500, 40) }, { finger(0, 505, 45) }, { lift(0) } })
@@ -120,6 +120,77 @@ print("== palm rejection")
     -- a finger Kindle has no palm guard
     local f = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     check(f:palmGuard(0) == false, "a finger Kindle never ignores fingers")
+end)()
+
+print("== pinch to zoom")
+;(function()
+    local W, H = CANVAS.w, CANVAS.h
+    local function pinch(sk, a0, b0, a1, b1, t0, ta)
+        return run(sk, { { finger(0, a0[1], a0[2]) }, { finger(0, a0[1], a0[2]), finger(1, b0[1], b0[2]) },
+            { finger(0, a1[1], a1[2]), finger(1, b1[1], b1[2]) }, { lift(1) }, { lift(0) } }, t0 or 0, ta or 0.05)
+    end
+    -- a finger Kindle: a stroke, then two fingers apart from the middle
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 200, 300) }, { finger(0, 300, 300) }, { lift(0) } })
+    local before = { sk.strokes[1].points[1][1], sk.strokes[1].points[1][2] }
+    local sx, sy = sk:toScene(before[1], before[2])
+    local out = pinch(sk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 10)
+    check(out.redraw and math.abs(sk:zoom() - 2) < 0.01 and sk.zoomed and #sk.strokes == 1,
+        "two fingers spread twice as far: the page twice as big (the stroke kept, no stroke from the fingers)")
+    local ax, ay = sk:toScene(sk.strokes[1].points[1][1], sk.strokes[1].points[1][2])
+    check(math.abs(ax - sx) < 0.01 and math.abs(ay - sy) < 0.01 and sk.strokes[1].points[1][1] ~= before[1],
+        "…the stroke is in the same place on the page, bigger on the screen")
+    check(math.abs(sk:radius(2) - Sketch.radiusFor(2, 4)) < 0.01, "…and drawn thicker (the pen's width is the page's)")
+    -- a stroke drawn while zoomed: the right size on the page
+    run(sk, { { finger(0, 100, 100) }, { finger(0, 300, 100) }, { lift(0) } }, 20)
+    local p1x = sk:toScene(100, 100)
+    local p2x = sk:toScene(300, 100)
+    check(#sk.strokes == 2 and math.abs((p2x - p1x) - 50) < 0.01, "a stroke of 200 px at 2x is 50 units long on the page (100 at 1x)")
+    -- pinched in again: back to the fitted page
+    pinch(sk, { 300, 500 }, { 700, 500 }, { 450, 500 }, { 550, 500 }, 30)
+    check(not sk.zoomed and sk:zoom() == 1 and math.abs(sk:toScene(before[1], before[2]) - sx) < 0.01
+        and sk.strokes[1].points[1][1] == before[1], "pinched in: back to the page as it fits (never smaller)")
+    -- at most MAX_ZOOM
+    pinch(sk, { 480, 500 }, { 520, 500 }, { 100, 500 }, { 900, 500 }, 40)
+    check(math.abs(sk:zoom() - Sketch.MAX_ZOOM) < 0.01, "at most " .. Sketch.MAX_ZOOM .. "x")
+    -- two fingers dragged while zoomed: moved, not zoomed; never past the page's edge
+    local z, ox = sk:zoom(), sk.ox
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 300, 500 }, { 400, 500 }, 50)
+    check(sk:zoom() == z and sk.ox > ox, "two fingers dragged left while zoomed: the page moves, same size")
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 400 + 3000, 500 }, { 500 + 3000, 500 }, 60)
+    local f = sk:fitView()
+    check(math.abs(sk.ox - f.ox) < 0.01, "…dragged far: stops at the page's edge")
+    -- unzoom (before saving)
+    check(sk:unzoom() and not sk.zoomed and sk.per_unit == f.per_unit and not sk:unzoom(), "unzoom: the fitted page again (once)")
+    -- two fingers resting (not moving): nothing
+    out = pinch(sk, { 400, 500 }, { 500, 500 }, { 402, 500 }, { 501, 500 }, 70)
+    check(not out.zoom and not sk.zoomed, "two fingers resting, not moving: nothing")
+    -- a second finger after the pinch window: no pinch, the stroke is drawn
+    local n = #sk.strokes
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 350, 600 }, { 550, 500 }, 80, Sketch.PINCH_WINDOW + 0.1)
+    check(not sk.zoomed and #sk.strokes == n + 1, "a second finger later than " .. Sketch.PINCH_WINDOW .. " s: no zoom, the first finger's stroke kept")
+    -- a pen Kindle: two fingers zoom when the pen is away; a hand (3 contacts) or the pen near: no
+    local pk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 100)
+    check(math.abs(pk:zoom() - 2) < 0.01 and #pk.strokes == 0, "a pen Kindle: two fingers spread: zoomed (fingers still never draw)")
+    pk:unzoom()
+    run(pk, { { finger(0, 400, 500) }, { finger(0, 400, 500), finger(1, 500, 500) }, { finger(0, 400, 500), finger(1, 500, 500), finger(2, 600, 700) },
+        { finger(0, 300, 500), finger(1, 700, 500), finger(2, 600, 700) }, { lift(0), lift(1), lift(2) } }, 110)
+    check(not pk.zoomed, "…a hand (a third contact): no zoom")
+    run(pk, { { hover(100, 100) } }, 120)
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 120.1)
+    check(not pk.zoomed, "…the pen near the screen: fingers are a palm, no zoom")
+    run(pk, { { penGone() } }, 121)
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 125, Sketch.PINCH_PAIR + 0.1)
+    check(not pk.zoomed, "…two fingers landing " .. Sketch.PINCH_PAIR .. " s apart: no zoom")
+    -- zoomed, the page kept for the PNG: the scene doesn't change with the view
+    local zk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(zk, { { finger(0, 200, 300) }, { finger(0, 300, 300) }, { lift(0) } })
+    local s1 = zk:scene().elements[1]
+    pinch(zk, { 400, 500 }, { 500, 500 }, { 300, 500 }, { 600, 500 }, 10)
+    local s2 = zk:scene().elements[1]
+    check(math.abs(s1.x - s2.x) < 0.01 and math.abs(s1.y - s2.y) < 0.01 and #s1.points == #s2.points,
+        "the drawing saved is the same zoomed or not")
 end)()
 
 print("== the eraser, undo, clear")

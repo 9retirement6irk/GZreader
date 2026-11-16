@@ -265,6 +265,32 @@ function E.penTap(what)
     E.pen({ { x, y } }, 0.05)
 end
 
+--- Two fingers (slots 0 and 1) from `a0`, `b0` to `a1`, `b1` ({ x, y }) in
+--- `sec`, then lifted: a pinch (apart: bigger), or a two-finger drag.
+function E.pinch(a0, b0, a1, b1, sec)
+    sec = sec or 0.4
+    say("pinch", math.floor(a0[1]), math.floor(b0[1]), "->", math.floor(a1[1]), math.floor(b1[1]))
+    local function at(p) return math.floor(p[1] * TOUCH_SCALE[1]), math.floor(p[2] * TOUCH_SCALE[2]) end
+    local ia, ib = touch_id + 1, touch_id + 2
+    touch_id = touch_id + 2
+    local ax, ay = at(a0)
+    local bx, by = at(b0)
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, ia }, { ABS_MT_X, ax }, { ABS_MT_Y, ay } }, 0)
+    frame({ { ABS_MT_SLOT, 1 }, { ABS_MT_TRACKING_ID, ib }, { ABS_MT_X, bx }, { ABS_MT_Y, by } }, 0.03)
+    local n = 8
+    for i = 1, n do
+        local f = i / n
+        local pa = { a0[1] + (a1[1] - a0[1]) * f, a0[2] + (a1[2] - a0[2]) * f }
+        local pb = { b0[1] + (b1[1] - b0[1]) * f, b0[2] + (b1[2] - b0[2]) * f }
+        ax, ay = at(pa)
+        bx, by = at(pb)
+        frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, ax }, { ABS_MT_Y, ay }, { ABS_MT_SLOT, 1 }, { ABS_MT_X, bx }, { ABS_MT_Y, by } },
+            0.03 + sec * f)
+    end
+    frame({ { ABS_MT_SLOT, 1 }, { ABS_MT_TRACKING_ID, -1 } }, sec + 0.05)
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, sec + 0.07)
+end
+
 function E.tap(what)
     local x, y = E.where(what)
     if not x then return say("tap: not on screen:", tostring(what)) end

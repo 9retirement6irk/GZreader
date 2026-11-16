@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: pinch to zoom", text = "On the drawing screen (touch Kindles), two fingers apart make the page bigger, up to 4x, and together make it smaller again, down to the whole page; moving two fingers moves a zoomed page. The line under Drawing shows the zoom. You draw and rub out as usual while zoomed (lines keep their size on the page), and Done or another page saves the whole page. On a finger Kindle the second finger has to land within a third of a second of the first; on the Kindle Scribe two fingers zoom when the pen is away, and a resting hand or any touch while the pen is near doesn't." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
