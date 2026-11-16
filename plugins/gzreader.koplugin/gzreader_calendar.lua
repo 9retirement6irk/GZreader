@@ -1227,8 +1227,8 @@ function Calendar.connect(plugin, server_input, username, password)
     Log.info("calendar: connecting to", server, found and (#found.calendars .. " calendars") or ("failed: " .. tostring(err)))
     if not found then
         if err == "unauthorized" then return false, _("The server didn't accept that user name and password.") end
-        if err == "redirected_away" then return false, _("That server sends calendar sign-ins on to another site, so GZreader didn't follow it (your password would go there). Use the address of the CalDAV server itself.") end
         if err == "unreachable" then return false, _("Couldn't reach a server at that address.") end
+        if err == "redirected_away" then return false, _("That server sends calendar sign-ins on to another site, so GZreader didn't follow it (your password would go there). Use the address of the CalDAV server itself.") end
         return false, T(_("No calendars found there (%1)."), tostring(err))
     end
     if #found.calendars == 0 then return false, _("Signed in, but there are no calendars with events in this account.") end
