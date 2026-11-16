@@ -5838,21 +5838,22 @@ end
 -- download a folder audiobook from Grimmory
 plugin:connect("http://127.0.0.1:" .. PORT, "will", "hunter22")
 local ab_done
-local ab_nice_file = WORK .. "/ab-download-nice"
-os.remove(ab_nice_file)
-local ab_dl = plugin.api.downloadAudio
-plugin.api.downloadAudio = function(self, ...)
-    -- (in the download's own process: its priority, for the check below)
-    local ffi = require("ffi")
-    pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
-    local nf = io.open(ab_nice_file, "wb"); nf:write(tostring(ffi.C.getpriority(0, 0))); nf:close()
-    return ab_dl(self, ...)
-end
+;(function()
+    os.remove(WORK .. "/ab-download-nice")
+    local ab_dl = plugin.api.downloadAudio
+    plugin.api.downloadAudio = function(self, ...)
+        -- (in the download's own process: its priority, for the check below)
+        local ffi = require("ffi")
+        pcall(ffi.cdef, "int getpriority(int which, unsigned int who);")
+        local nf = io.open(WORK .. "/ab-download-nice", "wb"); nf:write(tostring(ffi.C.getpriority(0, 0))); nf:close()
+        return ab_dl(self, ...)
+    end
+end)()
 Audiobook.download(plugin, { id = 32, title = "Book 32" }, function(b, err) ab_done = b or err end)
 runLoop(function() return ab_done ~= nil end, 30)
 plugin.api.downloadAudio = nil
 ;(function()
-    local nf = io.open(ab_nice_file, "rb"); local n = nf and tonumber(nf:read("*a")); if nf then nf:close() end
+    local nf = io.open(WORK .. "/ab-download-nice", "rb"); local n = nf and tonumber(nf:read("*a")); if nf then nf:close() end
     check(n and n >= require("gzreader_async").NICE, "audiobook download: its process runs below the screen (nice " .. tostring(n) .. "), as book downloads do")
     local msrc = io.open(PLUGIN .. "/gzreader_music.lua"):read("*a")
     local child = msrc:match("runInSubProcess%(function%(%)(.-)local out = io%.open%(report")
