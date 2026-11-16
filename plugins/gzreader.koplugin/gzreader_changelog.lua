@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindles with Bluetooth: turning Wi-Fi off no longer turns Bluetooth off", text = "A Kindle can only turn its Wi-Fi off with Amazon's airplane mode, which turns Bluetooth off too: with Wi-Fi on Auto or Off, GZreader cut off Bluetooth headphones and speakers whenever it turned Wi-Fi off. On Kindles with Bluetooth (Paperwhite 4 and newer, Oasis, Kindle 8th generation and later, Scribe, Colorsoft), when Bluetooth was on, GZreader turns it on again right after and reconnects the device that was connected a few seconds later. Bluetooth that was off stays off." },
+            { short = "Kindles with Bluetooth: Bluetooth off while the Kindle sleeps, back on when it wakes", text = "On Kindles with Bluetooth, GZreader turns Bluetooth off when the Kindle goes to sleep (saving the battery, and so headphones don't stay connected to a sleeping Kindle), and when it wakes turns it on again and reconnects the device that was connected a few seconds later, only if Bluetooth was on before. Bluetooth that was off stays off." },
         },
     },
     {
