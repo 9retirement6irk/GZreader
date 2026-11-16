@@ -6891,6 +6891,69 @@ print("Notes (Memos v0.31)")
     check(#Notes.visible() == 2, "with attachments (on the Kindle)")
     Notes.setFilter(plugin, { kind = "all" })
     check(#Memos.loadCache().notes == 7, "a filtered list doesn't replace the kept one")
+    ;(function()
+        -- a tag chip with Wi-Fi off (only on when needed): the tag's notes at once from the kept ones,
+        -- Wi-Fi turned on for Memos' answer (it was asked with Wi-Fi off: "Couldn't reach Memos")
+        local NetF = require("gzreader_net")
+        local kept_run, waiting, why = NetF.run, nil, nil
+        NetF.run = function(fn, o) waiting, why = fn, o end
+        Notes.setFilter(plugin, { kind = "tag", value = "travel" })
+        check(Notes.from_cache == true and #Notes.notes == 7 and #Notes.visible() == 2 and type(waiting) == "function"
+            and why and why.quiet == true and why.reason == "notes filter",
+            "a tag chosen with Wi-Fi off: its notes at once, from the ones kept on the Kindle; Memos asked once Wi-Fi is on")
+        waiting()
+        check(Notes.from_cache == false and #Notes.notes == 2 and #Notes.visible() == 2, "…then Memos' answer for the tag")
+        -- Memos can't be reached: the kept notes stay, without a message
+        local kept_refresh = Notes.refresh
+        Notes.refresh = function(_p, cb) cb(false, "unreachable") end
+        NetF.run = function(fn) fn() end
+        local fsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a"):match("function Notes%.setFilter%(plugin, f%)(.-)\nend\n")
+        Notes.setFilter(plugin, { kind = "search", value = "ghosts" })
+        check(#Notes.visible() == 1 and Notes.from_cache == true
+            and logtxt():find("notes: filter shown from the kept notes: unreachable", 1, true) ~= nil
+            and fsrc and select(2, fsrc:gsub("[^.]info%(", "")) == 1 and fsrc:find('elseif err == "unauthorized" then\n                info(describe(err), 3)', 1, true),
+            "Memos not reachable: the kept notes with the words, and no “Couldn't reach Memos” over them")
+        Notes.refresh = function(_p, cb) cb(false, "unauthorized") end
+        Notes.setFilter(plugin, { kind = "pinned" })
+        check(#Notes.visible() == 1, "signed out (the one thing still said): the kept notes show all the same")
+        Notes.refresh = kept_refresh
+        -- a filter chosen while Memos is still answering for another: its notes, not the first answer's
+        AsyncMod.sync = false
+        local first, second
+        Notes.filter = { kind = "all" }
+        Notes.refresh(plugin, function(ok) first = ok end)
+        Notes.filter = { kind = "tag", value = "travel" }
+        Notes.loadCache(plugin)
+        Notes.refresh(plugin, function(ok) second = ok end)
+        check(Notes.refresh_again ~= nil and Notes.refreshing == true, "a filter chosen while Memos answers for another waits its turn")
+        runLoop(function() return second ~= nil end, 20)
+        check(second == true and first == nil and Notes.from_cache == false and #Notes.notes == 2 and Notes.refresh_again == nil
+            and #Memos.loadCache().notes == 7,
+            "…the first answer isn't shown as the tag's notes (nor kept as all the notes); the tag is asked for and shown")
+        AsyncMod.sync = true
+        NetF.run = kept_run
+        -- the tags list: kept from the last sync, whole while one tag's notes are shown
+        local all = Notes.allTags(plugin)
+        local names = {}
+        for i, t in ipairs(all) do names[i] = t.tag .. "=" .. t.count end
+        check(type(plugin.store.memos.tag_counts) == "table" and #all >= 4 and #Notes.notes == 2,
+            "tags: the whole list is kept at each sync and shown while the board has one tag's notes: " .. table.concat(names, " "))
+        local kept_counts, kept_notes = plugin.store.memos.tag_counts, Notes.notes
+        Notes.notes = nil
+        check(#Notes.allTags(plugin) == #all, "…and before the notes are loaded (no connection)")
+        Notes.notes = { { pending = true, local_id = "q1", tags = { "brand-new", "travel" } }, { tags = { "old-only" } } }
+        local with_new = {}
+        for _i, t in ipairs(Notes.allTags(plugin)) do with_new[t.tag] = t.count end
+        check(with_new["brand-new"] == 1 and with_new["old-only"] == nil and with_new["travel"] == (kept_counts["travel"] or 0) + 1,
+            "…a note not yet sent adds its tags")
+        plugin.store.memos.tag_counts = nil
+        Notes.notes = { { tags = { "a", "b" } }, { tags = { "a" } } }
+        local counted = Notes.allTags(plugin)
+        check(counted[1].tag == "a" and counted[1].count == 2 and counted[2].tag == "b", "nothing kept yet: counted from the notes there are")
+        check(Notes.countTags(Notes.notes).a == 2, "a Memos that doesn't count tags: counted from the notes it sent, and kept")
+        plugin.store.memos.tag_counts, Notes.notes = kept_counts, kept_notes
+        Notes.setFilter(plugin, { kind = "all" })
+    end)()
 
     -- tick a box: saved to Memos
     trip.content = Sticky.toggle(trip.content, 2)
@@ -7070,7 +7133,7 @@ print("Notes (Memos v0.31)")
             "…only the note was sent (no list fetched while reading); the tab syncs when it next opens")
         Notes.loadCache(plugin)
         local tags_loaded = Notes.allTags(plugin)
-        check(#tags_loaded > 0 and type(Notes.notes) == "table", "with the notes loaded, tags come from them")
+        check(#tags_loaded > 0 and type(Notes.notes) == "table", "with the notes loaded, the tags list is there")
         NEq.show, NEq.showFloating = saved_show, saved_float
 
         -- the quick note's window: where it goes and how big
@@ -7550,6 +7613,8 @@ print("Notes (Memos v0.31)")
         }
         Notes.filter = { kind = "all" }
         plugin.store.memos.journal = nil
+        local kept_tag_counts = plugin.store.memos.tag_counts
+        plugin.store.memos.tag_counts = Notes.countTags(Notes.notes) -- (as a sync keeps them)
         local hrows = Notes.homeRows(plugin)
         local function names(row) local t = {} for i, a in ipairs(row) do t[i] = a[1] .. (a.chosen and "*" or "") end return table.concat(t, "|") end
         check(#hrows == 1 and names(hrows[1]) == "All*|#trip|#work|#a-very-long…|Drawings",
@@ -7577,6 +7642,7 @@ print("Notes (Memos v0.31)")
             and Notes.cel({ kind = "drawings" }) == nil and Notes.filterLabel({ kind = "drawings" }) == "Drawings",
             "Drawings filter: the notes with a drawing, picked out on the Kindle")
         Notes.notes, Notes.filter, plugin.store.memos.journal = kept_notes, kept_filter, kept_journal
+        plugin.store.memos.tag_counts = kept_tag_counts
         -- Kindles without a touch screen: drawings are shown (every page), never made or changed
         do
             local TouchM = require("gzreader_touch")
@@ -7763,9 +7829,21 @@ print("Notes (Memos v0.31)")
             b:onSwipe(nil, { direction = "east", distance = 300 })
             b:scrollBy(-5000)
             b:scrollBy(-10)
-            check(y1 == 410 and y2 == 2030 and y3 == 1840 and before_release == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn == 7,
+            local drawn_scrolls = drawn
+            check(y1 == 410 and y2 == 2030 and y3 == 1840 and before_release == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn_scrolls == 7,
                 "scrolling: a swipe moves the notes exactly as far as the finger went, never past the end; a drag moves when the finger lifts; a swipe sideways moves a screenful less a row; redrawn only when it moved ("
                 .. table.concat({ y1, y2, y3, y4, y5, drawn }, ",") .. ")")
+            -- a swipe that starts above the notes (the top of the screen) isn't the notes': the quick panel opens
+            b._gz_y = 600
+            b._gz_scroll.port = { dimen = { x = 0, y = 240, w = 600, h = 1000 } }
+            local top_swipe = b:onSwipe(nil, { direction = "south", distance = 500, pos = { x = 300, y = 30 } })
+            local top_pan = b:onPan(nil, { direction = "south", distance = 500, pos = { x = 300, y = 30 } })
+            local y_top = b._gz_y
+            local in_swipe = b:onSwipe(nil, { direction = "south", distance = 500, pos = { x = 300, y = 700 } })
+            check(top_swipe == false and top_pan == false and b._gz_pan == nil and y_top == 600 and in_swipe == true and b._gz_y == 100,
+                "scrolling: a swipe down from the top of the screen is left for the quick panel (the notes don't move); one on the notes scrolls")
+            b._gz_scroll.port = nil
+            b._gz_y = 0
             -- no page number or arrows while scrolling; back with pages
             local a1, a2, a3 = {}, {}, {}
             local fm = { page_info = { a1, a2, a3, resetLayout = function() end } }
