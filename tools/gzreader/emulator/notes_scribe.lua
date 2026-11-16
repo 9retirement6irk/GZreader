@@ -113,8 +113,18 @@ add({ fn = function(E)
 end, after = 4 })
 add({ fn = function(E)
     check(N().board._gz_y == 0 and top() == N().board, "a swipe down: back to the top (the tab stays open)")
-    N().setScrolling(plugin(), false)
+    -- from the top edge of the screen: the quick panel, as on every other screen
+    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+    E.finger({ { W * 0.5, 6 }, { W * 0.5, H * 0.2 }, { W * 0.5, H * 0.4 } }, 0.15)
 end, after = 4 })
+shot("02c-quick-panel")
+add({ fn = function(E)
+    local t = top()
+    check(t ~= N().board and tostring(t.name):match("quick panel") ~= nil and N().board._gz_y == 0,
+        "scrolling: a swipe down from the top of the screen opens the quick panel (" .. tostring(t.name) .. ")")
+    if t ~= N().board then UIM():close(t) end
+end, after = 3 })
+add({ fn = function(E) N().setScrolling(plugin(), false) end, after = 4 })
 add({ fn = function(E) check(#N().board.page_info > 0 and N().board._gz_scroll == nil, "scrolling off: pages, with their number and arrows") end, after = 1 })
 
 -- a journal entry

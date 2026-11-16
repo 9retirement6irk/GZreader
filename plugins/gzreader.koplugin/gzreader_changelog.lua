@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: a tag (or any filter) shows its notes at once, also with Wi-Fi off; no more \"Couldn't reach Memos\"", text = "Tapping a tag on the Notes tab, or choosing any filter or a search, now shows the matching notes at once from the notes kept on the Kindle. Memos is then asked for the rest, with Wi-Fi turned on for it when Wi-Fi is only on when needed: before, it was asked with Wi-Fi off and answered \"Couldn't reach Memos. Check Wi-Fi and the address.\" When Memos really can't be reached the kept notes stay, without a message. A filter chosen while Memos was still answering for another no longer shows the other one's notes." },
+            { short = "Notes: your tags list is kept on the Kindle", text = "The list of your tags (the chips on the Notes tab, Filter → Tag, G on a keyboard Kindle) is kept from the last sync. It is there without a connection and stays whole while the tab shows one tag's notes; before, the chips changed to that tag's notes' tags." },
+            { short = "Notes: with Scroll up and down on, a swipe down from the top opens the quick panel again", text = "With Layout → Scroll up and down on, a swipe down from the top of the screen scrolled the notes instead of opening the quick panel. A swipe or drag that starts above the notes is no longer taken as scrolling." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
