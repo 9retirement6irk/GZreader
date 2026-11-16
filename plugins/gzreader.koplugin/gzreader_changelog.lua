@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A tap on the bottom status bar hides it (after the setup guide)", text = "After the setup guide, a tap on a book's bottom status bar went on to the next page: ZenOS's status bar settings lock the bar. The setup guide now leaves Hide on tap at Bottom, so a tap hides the bar and a second tap shows it again. Kindles already set up keep their setting: Settings → Reader → Appearance → Bottom status bar → Hide on tap." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
