@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The page browser tip no longer closes GZreader when a picture book reopens", text = "The first book you open shows a tip: swipe up to open the page browser. A picture book closes and opens again a second after it opens (with its fitted layout), and the tip, still on screen, then opened the page browser of the book that had been closed: GZreader quit and the Kindle's home screen came back (seen on a Kindle Scribe). The tip now opens the page browser of the book that is open." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
