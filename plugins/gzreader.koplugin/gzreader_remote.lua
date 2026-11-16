@@ -384,7 +384,7 @@ function R.start(plugin)
             pcall(R.trace.tick, function(text) R.event("GZreader busy", text, { "busy" }, true) end)
             pcall(R.trace.checkStuck, function(text) R.event("Screen not answering keys", text, { "freeze" }, false) end)
         end
-        R.beat("run")
+        R.periodicBeat()
         UIManager:scheduleIn(require("gzreader_ticks").untilNext(R.HEARTBEAT), tick)
     end
     -- (on the quarter minutes, with GZreader's other timers: gzreader_ticks.lua)
@@ -447,8 +447,13 @@ function R.keepPreviousLog()
     if s then writeFile(d .. "/gzreader.log.prev", s:sub(-20000)) end
 end
 
-function R.onSuspend() if R.on then R.beat("sleep") end end
-function R.onResume() if R.on then R.beat("run"); R.startWatchdog() end end
+--- The 15 s beat. The screensaver is up for a while before the Kindle really
+--- sleeps: that's still asleep, not running (a beat saying "run" then made the
+--- watchdog report a freeze when the Kindle woke up).
+function R.periodicBeat() R.beat(R.asleep and "sleep" or "run") end
+
+function R.onSuspend() R.asleep = true; if R.on then R.beat("sleep") end end
+function R.onResume() R.asleep = nil; if R.on then R.beat("run"); R.startWatchdog() end end
 
 ---------------------------------------------------------------- settings
 

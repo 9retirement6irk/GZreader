@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Debug reports: no \"Kindle unresponsive\" when the Kindle wakes up", text = "With debug reports on, a Kindle that went to sleep with the screensaver up sometimes reported \"Kindle unresponsive\" as soon as it woke, followed seconds later by \"responsive again\": GZreader's 15-second heartbeat said it was running while the screensaver was up, and the watchdog counted the whole sleep as a freeze. The heartbeat now says asleep until the Kindle wakes, and the watchdog counts from the moment it woke. A real freeze is still reported." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

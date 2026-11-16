@@ -6240,6 +6240,13 @@ print("Remote debugging (debug reports on)")
     check(R.pending and #R.pending == 1 and R.pending[1]:match("something odd"), "warnings gathered for one report")
     R.onSuspend()
     check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ sleep "), "asleep: the watchdog doesn't call it a freeze")
+    R.periodicBeat()
+    check(io.open(dir .. "/heartbeat"):read("*a"):match("^%d+ sleep ") and (io.open(R.livePath()):read("*a") or ""):match("^%d+ sleep "),
+        "the 15 s beat while the screensaver is up (before the Kindle really sleeps): still asleep")
+    R.onResume()
+    R.periodicBeat()
+    check(io.open(R.livePath()):read("*a"):match("^%d+ run "), "…and running again once it wakes")
+    R.onSuspend()
     R.event("queued before turning it off", "x")
     R.setSetting(false) -- (Settings or the setup guide: off; stops it)
     local left = 0
