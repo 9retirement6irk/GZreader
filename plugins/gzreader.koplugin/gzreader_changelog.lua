@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Nook and Kindle DX: a download no longer stops as \"stalled\" when the clock gets set", text = "A Nook or Kindle DX whose battery ran down starts with its clock in 2000 or 1970, and GZreader sets it from the first server that answers. A book download running at that moment was timed by the clock, saw \"no data for 26 years\" and was stopped as stalled; an audiobook being prepared could stop with \"no progress for 5 minutes\" the same way, and a book being laid out in the background with \"too long\". These are now timed on a clock that only goes forward." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

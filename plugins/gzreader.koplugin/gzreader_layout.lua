@@ -224,7 +224,8 @@ function Layout.start(plugin, id, entry, on_done, forced)
     if Layout.running then return false end
     local p = fork(entry.path)
     if not p then return false end
-    local job = { id = tostring(id), entry = entry, proc = p, started = os.time(), on_done = on_done, forced = forced }
+    -- (started: on a clock that only goes forward, for the timeout)
+    local job = { id = tostring(id), entry = entry, proc = p, started = require("ui/time").now(), on_done = on_done, forced = forced }
     Layout.running = job
     Log.info("layout: book", job.id, "laid out in the background (charging, on Home)")
     local function poll()
@@ -234,7 +235,7 @@ function Layout.start(plugin, id, entry, on_done, forced)
         local busy = Layout.busy()
         local why = (not charging() and not job.forced and "the charger unplugged") or (readerOpen() and "a book opened")
             or (busy == "a download" and "a download started")
-            or (os.time() - job.started > Layout.TIMEOUT and "too long")
+            or (require("ui/time").to_s(require("ui/time").now() - job.started) > Layout.TIMEOUT and "too long")
         if why then
             p.stop()
             Layout.running = nil
