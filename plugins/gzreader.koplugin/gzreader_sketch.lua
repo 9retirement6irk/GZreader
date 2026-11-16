@@ -99,6 +99,58 @@ end
 
 function Sketch:radius(width) return Sketch.radiusFor(width or self.width, self.per_unit) end
 
+-- ------------------------------------------------------------ pen pressure and tilt
+
+--- What the pen has been seen to report (kept between drawings by the
+--- drawing screen): its pressure and tilt come as raw numbers whose top
+--- differs between pens and Kindles, so the range is learned from the pen.
+--- p_seen / t_seen: the highest pressure and tilt seen; n: samples.
+Sketch.range = { p_seen = 0, t_seen = 0, n = 0 }
+Sketch.PRESSURE_GUESS = 4095 -- (a Wacom EMR pen's 4096 levels, until the pen shows otherwise)
+Sketch.PRESSURE_SAMPLES = 300 -- after this many, a pen that never came near the guess sets the top itself
+Sketch.TILT_DEGREES = 60 -- a pen laid this far over counts as fully tilted
+
+function Sketch.noteRange(range, pressure, tx, ty)
+    if type(pressure) == "number" and pressure > 0 then
+        range.n = (range.n or 0) + 1
+        if pressure > (range.p_seen or 0) then range.p_seen = pressure end
+    end
+    local t = math.max(math.abs(tonumber(tx) or 0), math.abs(tonumber(ty) or 0))
+    if t > (range.t_seen or 0) then range.t_seen = t end
+end
+
+--- The pressure that counts as full.
+function Sketch.pressureTop(range)
+    local seen, n = range.p_seen or 0, range.n or 0
+    if seen > Sketch.PRESSURE_GUESS then return seen end
+    if n >= Sketch.PRESSURE_SAMPLES and seen > 0 and seen < 0.6 * Sketch.PRESSURE_GUESS then return seen end
+    return Sketch.PRESSURE_GUESS
+end
+
+--- The tilt that counts as full: pens report degrees (up to about 60 to 90)
+--- or hundredths of a degree (up to 9000).
+function Sketch.tiltTop(range)
+    return (range.t_seen or 0) > 127 and Sketch.TILT_DEGREES * 100 or Sketch.TILT_DEGREES
+end
+
+--- How heavy the line is at a point, 0 to 1 (0.5: the chosen thickness, as
+--- a stroke without pressure), from the pen's pressure and tilt: pressing
+--- harder makes it heavier, and so does laying the pen over (as shading
+--- with the side of a pencil). nil without a pressure.
+function Sketch.weight(range, pressure, tx, ty)
+    if type(pressure) ~= "number" or pressure <= 0 then return nil end
+    local p = math.min(1, pressure / Sketch.pressureTop(range))
+    tx, ty = tonumber(tx) or 0, tonumber(ty) or 0
+    local t = math.min(1, math.sqrt(tx * tx + ty * ty) / Sketch.tiltTop(range))
+    return math.max(0.05, math.min(1, p * (1 + 0.9 * t)))
+end
+
+--- The ink's radius for a weight: from 0.4 of the chosen thickness's to 1.6 of it.
+function Sketch.weightRadius(r, w)
+    if not w then return r end
+    return math.max(1, math.floor(r * (0.4 + 1.2 * w) + 0.5))
+end
+
 --- On the page, and not on something laid over it (`holes`: the toolbar,
 --- the page buttons, an open panel; screen rectangles { x, y, w, h }).
 function Sketch:inCanvas(x, y)
@@ -164,7 +216,7 @@ function Sketch:refit()
     local scene_pts = {}
     for i, st in ipairs(self.strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
         scene_pts[i] = pts
     end
     local minX, minY, maxX, maxY
@@ -187,7 +239,7 @@ function Sketch:refit()
     -- (in the middle across, at the top)
     self.ox, self.oy = minX - (c.w / self.per_unit - (maxX - minX)) / 2, minY - margin / self.per_unit
     for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do st.points[j] = { self:toCanvas(p[1], p[2]) } end
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
     end
     self.fit, self.zoomed = { per_unit = self.per_unit, ox = self.ox, oy = self.oy }, false
 end
@@ -205,12 +257,12 @@ function Sketch:setView(per_unit, ox, oy)
     local scene_pts = {}
     for i, st in ipairs(self.strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
         scene_pts[i] = pts
     end
     self.per_unit, self.ox, self.oy = per_unit, ox, oy
     for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do st.points[j] = { self:toCanvas(p[1], p[2]) } end
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
     end
 end
 
@@ -310,7 +362,8 @@ function Sketch.fromScene(scene, opts)
             local pts = {}
             for _j, p in ipairs(el.points) do
                 local cx, cy = self:toCanvas((el.x or 0) + (p[1] or 0), (el.y or 0) + (p[2] or 0))
-                pts[#pts + 1] = { cx, cy }
+                -- (drawn with a pen's pressure, here or in Memos: each point's weight)
+                pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
             self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), color = Sketch.inkColor(el.strokeColor), el = el }
         else
@@ -361,8 +414,11 @@ local function appendPoint(self, contact, cx, cy, out)
     local pts = contact.stroke.points
     local last = pts[#pts]
     if last and math.abs(cx - last[1]) < Sketch.MIN_STEP and math.abs(cy - last[2]) < Sketch.MIN_STEP then return end
-    pts[#pts + 1] = { cx, cy }
+    -- (a pen that tells how hard it's pressed: each point's weight, and the line as wide)
+    local w = contact.weight
+    pts[#pts + 1] = { cx, cy, w }
     local r = self:radius(contact.stroke.width)
+    if w then r = Sketch.weightRadius(r, last and last[3] and (last[3] + w) / 2 or w) end
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
         contact.stroke.color }
@@ -514,6 +570,11 @@ local function startContact(self, s, now, out)
         c.pieces = {} -- (on paper: the parts of the stroke on it)
         c.stroke = { points = {}, width = self.width, color = self.color }
         self.drawing_slot = s.slot
+        -- a pen with pressure (and the setting on): the whole stroke has weights
+        if self.pressure_on ~= false and pen and s.pressure ~= nil then
+            c.pressured = true
+            c.weight = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y) or 0.5
+        end
         addPoint(self, c, s.x, s.y, out)
     end
     self.contacts[s.slot] = c
@@ -603,6 +664,7 @@ function Sketch:frame(slots, now)
                 self.pen.near = false
             end
         end
+        if s.pressure ~= nil or s.tilt_x ~= nil then Sketch.noteRange(Sketch.range, s.pressure, s.tilt_x, s.tilt_y) end
         local c = self.contacts[s.slot]
         local down = s.id ~= nil and s.id ~= -1 and s.x ~= nil and s.y ~= nil
         if down then
@@ -615,6 +677,11 @@ function Sketch:frame(slots, now)
                 end
             else
                 c.moved = math.max(c.moved, math.abs(s.x - c.x0), math.abs(s.y - c.y0))
+                if c.kind == "draw" and c.pressured then
+                    -- (eased: a pen's pressure jumps about from sample to sample)
+                    local w = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y)
+                    if w then c.weight = 0.5 * c.weight + 0.5 * w end
+                end
                 c.x, c.y = s.x, s.y
                 if c.kind == "pinch" and self.pinch then
                     local p = self.pinch
@@ -759,7 +826,10 @@ function Sketch:scene(paper)
     for _i, st in ipairs(self:live()) do
         if not st.el then
             local pts = {}
-            for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+            for j, p in ipairs(st.points) do
+                local sx, sy = self:toScene(p[1], p[2])
+                pts[j] = { sx, sy, p[3] }
+            end
             Drawing.addStroke(scene, pts, { width = st.width, color = st.color or Drawing.INK })
         end
     end

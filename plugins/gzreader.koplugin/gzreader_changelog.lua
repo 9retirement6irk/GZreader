@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Drawing: pinch to zoom", text = "On the drawing screen (touch Kindles), two fingers apart make the page bigger, up to 4x, and together make it smaller again, down to the whole page; moving two fingers moves a zoomed page. The line under Drawing shows the zoom. You draw and rub out as usual while zoomed (lines keep their size on the page), and Done or another page saves the whole page. On a finger Kindle the second finger has to land within a third of a second of the first; on the Kindle Scribe two fingers zoom when the pen is away, and a resting hand or any touch while the pen is near doesn't." },
+            { short = "Notes: the pen's pressure and tilt make the line heavier when drawing (Kindle Scribe)", text = "On a Kindle with a pen, a stroke in the drawing screen is now as wide as the pen is pressed: half pressure draws the thickness you chose, a light touch draws down to 0.4 of it and full pressure up to 1.6 of it. Laying the pen over (tilt) makes the line heavier too, as shading with the side of a pencil. Memos gets each point's pressure, so the stroke looks the same there and stays editable. The pen's choices have \"Pressure and tilt: on / off\" for an even line as before. The pen's range is learned as you draw (pens report different numbers), so the first strokes may look lighter or heavier than later ones; the range, two numbers, is written to the diagnostic log." },
         },
     },
     {

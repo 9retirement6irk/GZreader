@@ -230,10 +230,12 @@ end
 -- tool keys, single-touch ABS_X / ABS_Y, BTN_TOUCH for contact; KOReader puts
 -- it in its own slot (pen_slot), tagged pen or eraser
 local BTN_TOOL_PEN, BTN_TOOL_RUBBER, BTN_TOUCH = 320, 321, 330
-local ABS_X, ABS_Y, ABS_PRESSURE = 0, 1, 24
+local ABS_X, ABS_Y, ABS_PRESSURE, ABS_TILT_X, ABS_TILT_Y = 0, 1, 24, 26, 27
 local function penFrame(evs, dt) stFrame(evs, dt) end
---- One pen stroke through `points` ({ { x, y }, … }, screen pixels; one point:
---- a tap), `sec` long; `eraser`: the pen's other end.
+--- One pen stroke through `points` ({ { x, y [, pressure [, tilt x [, tilt y]]] }, … },
+--- screen pixels; one point: a tap), `sec` long; `eraser`: the pen's other end.
+--- A point's pressure (as the pen reports it, of 4095; 1500 when not given)
+--- and tilt (degrees; not sent when not given).
 function E.pen(points, sec, eraser)
     if type(points) ~= "table" or #points == 0 then return say("pen: no points") end
     sec = sec or 0.3
@@ -242,11 +244,17 @@ function E.pen(points, sec, eraser)
     say(eraser and "eraser" or "pen", #points, "points from", math.floor(p1[1]), math.floor(p1[2]))
     -- hovering in, then down
     penFrame({ { 1, tool, 1 }, { 3, ABS_X, math.floor(p1[1]) }, { 3, ABS_Y, math.floor(p1[2]) }, { 3, ABS_PRESSURE, 0 } }, 0)
-    penFrame({ { 3, ABS_PRESSURE, 1200 }, { 1, BTN_TOUCH, 1 } }, 0.01)
+    local function tilt(evs, p)
+        if p[4] then evs[#evs + 1] = { 3, ABS_TILT_X, math.floor(p[4]) } end
+        if p[5] then evs[#evs + 1] = { 3, ABS_TILT_Y, math.floor(p[5]) } end
+        return evs
+    end
+    penFrame(tilt({ { 3, ABS_PRESSURE, math.floor(p1[3] or 1200) }, { 1, BTN_TOUCH, 1 } }, p1), 0.01)
     local n = #points
     for i = 2, n do
         local p = points[i]
-        penFrame({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, 1500 } }, 0.01 + sec * (i - 1) / n)
+        penFrame(tilt({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, math.floor(p[3] or 1500) } }, p),
+            0.01 + sec * (i - 1) / n)
     end
     -- lifted, then out of range
     penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)

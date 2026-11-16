@@ -141,6 +141,13 @@ print("== pinch to zoom")
     check(math.abs(ax - sx) < 0.01 and math.abs(ay - sy) < 0.01 and sk.strokes[1].points[1][1] ~= before[1],
         "…the stroke is in the same place on the page, bigger on the screen")
     check(math.abs(sk:radius(2) - Sketch.radiusFor(2, 4)) < 0.01, "…and drawn thicker (the pen's width is the page's)")
+    -- a point's own weight (a pen's pressure) goes with it through a zoom
+    sk.strokes[1].points[1][3] = 0.7
+    sk:zoomBy(1.5, 100, 100, 100, 100)
+    local kept = sk.strokes[1].points[1][3] == 0.7
+    sk:unzoom()
+    check(kept and sk.strokes[1].points[1][3] == 0.7, "…a point's pressure weight kept through zooming in and out")
+    sk:zoomBy(2, 0, 0, 0, 0)
     -- a stroke drawn while zoomed: the right size on the page
     run(sk, { { finger(0, 100, 100) }, { finger(0, 300, 100) }, { lift(0) } }, 20)
     local p1x = sk:toScene(100, 100)
@@ -477,6 +484,93 @@ print("== pen colours (colour screens): memos' own palette")
     sk:undo(); sk:undo()
     sk:redo()
     check(sk:live()[2].color == "#1971c2", "undo and redo keep a stroke's colour")
+end)()
+
+print("== pen pressure and tilt (a Kindle with a pen)")
+;(function()
+    local kept_range = Sketch.range
+    local R = { p_seen = 0, t_seen = 0, n = 0 }
+    check(Sketch.pressureTop(R) == 4095 and Sketch.tiltTop(R) == 60, "before the pen has shown its range: 4095 levels of pressure, 60 degrees of tilt")
+    check(Sketch.weight(R, nil) == nil and Sketch.weight(R, 0) == nil, "no pressure (a finger, a hovering pen): no weight")
+    local half = Sketch.weight(R, 2048)
+    check(math.abs(half - 0.5) < 0.01 and Sketch.weight(R, 4095) == 1 and Sketch.weight(R, 100) == 0.05,
+        "pressure alone: half pressure is the chosen thickness, full is the heaviest, the lightest touch still leaves a line")
+    check(Sketch.weight(R, 2048, 60, 0) > 0.94 and Sketch.weight(R, 2048, 30, 0) > half and Sketch.weight(R, 2048, 0, -60) > 0.94
+        and Sketch.weight(R, 4095, 60, 60) == 1,
+        "tilt: the pen laid over makes the line heavier, whichever way it leans (as shading with the side of a pencil)")
+    check(Sketch.weightRadius(10, nil) == 10 and Sketch.weightRadius(10, 0.5) == 10 and Sketch.weightRadius(10, 1) == 16
+        and Sketch.weightRadius(10, 0.05) == 5 and Sketch.weightRadius(1, 0.05) == 1,
+        "the line's width: the chosen thickness at half weight, 0.4 to 1.6 of it across the range")
+    -- the range is learned from the pen
+    Sketch.noteRange(R, 8000, 0, 0)
+    check(Sketch.pressureTop(R) == 8000 and R.n == 1, "a pen that reports more than 4095: its own top")
+    R = { p_seen = 0, t_seen = 0, n = 0 }
+    for _i = 1, 299 do Sketch.noteRange(R, 1000, 5, -8) end
+    local early = Sketch.pressureTop(R)
+    Sketch.noteRange(R, 1023, 0, 0)
+    check(early == 4095 and Sketch.pressureTop(R) == 1023 and R.t_seen == 8, "a pen that never comes near it (1024 levels): after 300 samples, its own top")
+    Sketch.noteRange(R, 500, -4200, 100)
+    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.weight(R, 512, 3000, 0) - 0.5 * 1.45) < 0.02,
+        "a pen that reports tilt in hundredths of a degree is read that way")
+    -- strokes
+    Sketch.range = { p_seen = 0, t_seen = 0, n = 0 }
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2, pen_only = true }
+    local function pen(x, y, pr, tx) return { slot = 4, id = 4, x = x, y = y, tool = Sketch.TOOL_PEN, pressure = pr, tilt_x = tx } end
+    local function up() return { slot = 4, id = -1, tool = Sketch.TOOL_PEN, pressure = 0 } end
+    local segs = {}
+    local function draw(frames)
+        segs = {}
+        for i, f in ipairs(frames) do
+            for _j, seg in ipairs(sk:frame(f, 100 + i * 0.01).segments) do segs[#segs + 1] = seg end
+        end
+    end
+    draw({ { pen(100, 300, 600) }, { pen(200, 300, 600) }, { pen(300, 300, 600) }, { pen(400, 300, 4095) }, { pen(500, 300, 4095) },
+        { pen(600, 300, 4095) }, { pen(700, 300, 4095) }, { up() } })
+    local st = sk:live()[1]
+    local base = sk:radius(st.width)
+    check(st and #st.points == 7 and st.points[1][3] ~= nil and st.points[1][3] < 0.2 and st.points[7][3] > 0.9,
+        "a pen stroke: every point has its weight (light, then pressed hard)")
+    check(segs[1][5] < base and segs[#segs][5] > base and segs[#segs][5] > segs[1][5],
+        "…drawn thin where it was light and wide where it was pressed (" .. segs[1][5] .. " to " .. segs[#segs][5] .. " px around " .. base .. ")")
+    check(Sketch.range.p_seen == 4095 and Sketch.range.n == 7, "…and the pen's range is noted as it draws")
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local el
+    for _i, e in ipairs(scene.elements) do if e.type == "freedraw" then el = e end end
+    check(el and el.simulatePressure == false and el.points[1][3] < 0.2 and el.points[#el.points][3] > 0.9,
+        "written into the drawing as memos' pressures (it draws the stroke by them, not by speed)")
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local st2 = again:live()[1]
+    check(st2.points[1][3] ~= nil and math.abs(st2.points[1][3] - el.points[1][3]) < 0.01 and st2.points[#st2.points][3] > 0.9,
+        "…and read back: an opened drawing shows the stroke as wide as it was pressed")
+    -- tilt on a stroke
+    draw({ { pen(100, 500, 2048, 0) }, { pen(200, 500, 2048, 0) }, { pen(300, 500, 2048, 55) }, { pen(400, 500, 2048, 55) },
+        { pen(500, 500, 2048, 55) }, { pen(600, 500, 2048, 55) }, { up() } })
+    local tilted = sk:live()[2]
+    check(tilted.points[#tilted.points][3] > tilted.points[1][3] + 0.25, "laying the pen over part way through a stroke widens it from there")
+    -- turned off: uniform, as a pen without pressure
+    sk.pressure_on = false
+    draw({ { pen(100, 700, 600) }, { pen(300, 700, 4095) }, { pen(500, 700, 4095) }, { up() } })
+    local flat = sk:live()[3]
+    local off_scene = sk:scene()
+    local off_el = off_scene.elements[#off_scene.elements]
+    check(flat.points[1][3] == nil and segs[1][5] == base and segs[#segs][5] == base and off_el.simulatePressure == true,
+        "Pressure and tilt off: an even line of the chosen thickness, saved as before")
+    sk.pressure_on = true
+    -- a finger (no pressure reported) and a pen that reports none: as before
+    local fsk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(fsk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    local fscene = fsk:scene()
+    check(fsk:live()[1].points[1][3] == nil and fscene.elements[#fscene.elements].simulatePressure == true,
+        "a finger: no weights, memos draws the stroke by its speed as before")
+    local psk = Sketch.new{ canvas = CANVAS, per_unit = 2, pen_only = true }
+    psk:frame({ { slot = 4, id = 4, x = 100, y = 300, tool = Sketch.TOOL_PEN } }, 1)
+    psk:frame({ { slot = 4, id = 4, x = 300, y = 300, tool = Sketch.TOOL_PEN } }, 1.01)
+    psk:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 1.02)
+    check(psk:live()[1] and psk:live()[1].points[1][3] == nil, "a pen that reports no pressure draws as before too")
+    -- undo / redo keep the weights; the eraser ignores pressure
+    sk:undo(); sk:undo(); sk:redo()
+    check(sk:live()[2].points[3][3] ~= nil, "undo and redo keep a stroke's weights")
+    Sketch.range = kept_range
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))
