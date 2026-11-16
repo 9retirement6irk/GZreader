@@ -10,7 +10,7 @@ usage statistics since: R.setting carries a Full choice over.) Releases report t
 test builds (a version like 1.26.7-beta.abc1234) to another. GZ_REMOTE_FEED
 (environment) points it elsewhere, for the emulator's feed.py.
 
-What is sent (log lines are already redacted: no passwords or tokens):
+What is sent (log lines are already redacted: no passwords, tokens or Wi-Fi names):
 - "started": version, battery, free memory, how the previous run ended;
 - after a run that ended without closing normally (hard reboot, battery
   ran out, crash, freeze): what GZreader was doing last, and the end of the
@@ -126,7 +126,7 @@ function R.setSetting(on)
 end
 
 --- What it sends (the Settings item's help, the setup guide's page).
-R.WHAT_IS_SENT = require("gettext")("When GZreader starts, how the previous run ended; warnings and errors from its log; freezes and crashes. Sent to the developer only while Wi-Fi is on. Log lines can name the book or file GZreader was working on; never passwords or tokens.")
+R.WHAT_IS_SENT = require("gettext")("When GZreader starts, how the previous run ended; warnings and errors from its log; freezes and crashes. Sent to the developer only while Wi-Fi is on. Log lines can name the book or file GZreader was working on; never passwords, tokens or your Wi-Fi network's name.")
 
 --- Settings → About: "Send debug reports automatically" (nil on a Kindle
 --- without Wi-Fi: Send diagnostic log to the developer still works there,

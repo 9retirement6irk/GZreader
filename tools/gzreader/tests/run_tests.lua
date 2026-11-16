@@ -6219,7 +6219,7 @@ print("No usage statistics (since 1.28.1); debug reports have their own setting"
     -- Settings → General: the switch
     local item = R.menuItem()
     check(item and item.text == "Send debug reports automatically" and not item.checked_func()
-        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords or tokens", 1, true),
+        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords, tokens or your Wi-Fi network's name", 1, true),
         "Settings → General → Send debug reports automatically (says what it sends)")
     local Net = require("gzreader_net")
     local was_usb = Net.usb
