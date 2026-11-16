@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Calendar links: \"first Monday\", \"last weekday\" and weekday-only repeats show on the right days", text = "Repeating events from calendar links (webcal / ICS, e.g. Outlook, Apple or Proton) and from the sync page are expanded on the Kindle. Rules made by Outlook and Apple Calendar such as \"the first Monday of the month\" or \"the last weekday of the month\" (BYSETPOS) showed on every Monday or every weekday; \"every weekday\" written as a daily rule showed on weekends too; every-other-week events that start their week on Monday (or say so) could land in the wrong weeks; and a yearly event in a month other than its first date's showed in the wrong month. These now follow the calendar standard (RFC 5545): BYSETPOS, BYDAY on daily rules, BYMONTH and the week's first day (WKST), and BYDAY with BYMONTHDAY together (Friday the 13th)." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
