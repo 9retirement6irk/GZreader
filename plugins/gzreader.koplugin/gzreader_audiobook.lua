@@ -832,6 +832,9 @@ function Player:seekTo(g)
     Engine.stop()
     self.playing = false
     self.pos = g
+    -- Sleep at the end of the chapter: the chapter you moved to (a chapter
+    -- skipped to, or 30 s back over a chapter's start, paused at once before)
+    if self.sleep_end_of_chapter then self.sleep_end_of_chapter = Audiobook.chapterAt(self.book, g) end
     if was_playing and not self:play() then self:keepAwake(false) end
     self:save()
 end

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Audiobooks: the sleep timer's \"end of chapter\" no longer pauses as soon as you skip a chapter", text = "With the sleep timer set to the end of the chapter, moving to the next or previous chapter (or 30 seconds back over a chapter's start) paused the audiobook a second later, as if the chapter had ended. The timer now follows you: it pauses at the end of the chapter you're listening to." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
