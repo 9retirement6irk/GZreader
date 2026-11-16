@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "The setup page's server no longer lets a slow connection freeze the Kindle", text = "While a QR code page was open (setup, sending books, the diagnostic log, copying connections), the Kindle's small web server read each request while the screen waited: a phone, or anything else on the Wi-Fi, that connected and then sent slowly or not at all could freeze the Kindle for minutes. Each connection is now read and answered a piece at a time between screen updates; one that doesn't finish its request in 15 seconds is dropped, and at most a few are kept at once." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
