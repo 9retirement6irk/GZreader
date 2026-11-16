@@ -124,7 +124,7 @@ function PenInput.install(input)
     -- the instance field it saves and puts back is this wrapper)
     wrap("handleTouchEv")
     wrap("handleKeyBoardEv")
-    pcall(function() require("logger").info("gzreader: pen and touch screen kept apart, pen slot", state.pen_slot) end)
+    pcall(function() require("gzreader_log").info("pen: pen and touch screen kept apart, pen slot", state.pen_slot) end)
     return true
 end
 
