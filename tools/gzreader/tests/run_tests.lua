@@ -8601,7 +8601,7 @@ print("Redirects: the sign-in stays with your own server")
         return 1, a[1], rh, "HTTP/1.1 " .. a[1] .. " X"
     end
     local saved_access, saved_extra, saved_ap = plugin.store.access, Api.extra_headers, Access.plugin
-    local ok, err = pcall(function()
+    local ran_ok, ran_err = pcall(function()
         Access.plugin, Api.extra_headers = plugin, Access.headersFor
         plugin.store.access = { enabled = true, key = "access-key-1", hosts = "books.example.com" }
         local auth = { ["Authorization"] = "Bearer grimmory-token", ["Accept"] = "application/json", ["X-Plex-Token"] = "plex-token" }
@@ -8610,8 +8610,8 @@ print("Redirects: the sign-in stays with your own server")
             ["https://books.example.com/api/v1/b"] = { 200, nil, "{}" },
         }
         seen = {}
-        local code = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
-        check(code == 200 and #seen == 2 and seen[2].headers["authorization"] == "Bearer grimmory-token"
+        local rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        check(rcode == 200 and #seen == 2 and seen[2].headers["authorization"] == "Bearer grimmory-token"
             and seen[2].headers["x-gzreader-key"] == "access-key-1", "a redirect on the same server: followed, signed in as before")
         check(seen[1].redirect == false and seen[2].redirect == false, "LuaSocket never follows a redirect by itself")
         answers = {
@@ -8619,9 +8619,9 @@ print("Redirects: the sign-in stays with your own server")
             ["https://login.example.net/auth?next=1"] = { 200, nil, "{}" },
         }
         seen = {}
-        code = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
         local h2 = seen[2] and seen[2].headers or {}
-        check(code == 200 and #seen == 2 and h2["authorization"] == nil and h2["x-plex-token"] == nil and h2["x-gzreader-key"] == nil
+        check(rcode == 200 and #seen == 2 and h2["authorization"] == nil and h2["x-plex-token"] == nil and h2["x-gzreader-key"] == nil
             and h2["accept"] == "application/json", "a redirect to another server: followed without the sign-in, the token or the Access key")
         answers = {
             ["https://books.example.com/api/v1/a"] = { 302, "https://cdn.books.example.com/f" },
@@ -8634,27 +8634,27 @@ print("Redirects: the sign-in stays with your own server")
             "another server under one of your Access hosts: the Access key goes (as Access says), the sign-in doesn't")
         answers = { ["https://books.example.com/api/v1/a"] = { 301, "http://books.example.com/api/v1/a" } }
         seen = {}
-        code = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
-        check(code == 301 and #seen == 1, "from https to http: not followed")
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        check(rcode == 301 and #seen == 1, "from https to http: not followed")
         answers = { ["https://books.example.com/loop"] = { 302, "/loop" } }
         seen = {}
-        code = Api.rawRequest("GET", "https://books.example.com/loop", { headers = auth })
-        check(code == 302 and #seen == Api.MAX_REDIRECTS + 1, "a redirect loop ends " .. #seen)
+        rcode = Api.rawRequest("GET", "https://books.example.com/loop", { headers = auth })
+        check(rcode == 302 and #seen == Api.MAX_REDIRECTS + 1, "a redirect loop ends " .. #seen)
         answers = { ["https://books.example.com/api/v1/p"] = { 307, "https://login.example.net/x" } }
         seen = {}
-        code = Api.rawRequest("POST", "https://books.example.com/api/v1/p", { headers = auth, body = { a = 1 } })
-        check(code == 307 and #seen == 1, "a POST isn't redirected (as before)")
+        rcode = Api.rawRequest("POST", "https://books.example.com/api/v1/p", { headers = auth, body = { a = 1 } })
+        check(rcode == 307 and #seen == 1, "a POST isn't redirected (as before)")
         -- a download: the redirect's own body doesn't end up in the file
         answers = {
             ["https://books.example.com/api/v1/books/1/download"] = { 302, "https://files.example.net/1.epub", "<html>Moved</html>" },
             ["https://files.example.net/1.epub"] = { 200, nil, "EPUB-BYTES" },
         }
         seen = {}
-        local path = WORK .. "/redirected.epub"
-        local fh = io.open(path, "wb")
-        code = Api.rawRequest("GET", "https://books.example.com/api/v1/books/1/download", { headers = auth, sink = ltn12.sink.file(fh) })
-        local got = io.open(path, "rb"):read("*a")
-        check(code == 200 and got == "EPUB-BYTES" and seen[2].headers["authorization"] == nil,
+        local epub = WORK .. "/redirected.epub"
+        local fh = io.open(epub, "wb")
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/books/1/download", { headers = auth, sink = ltn12.sink.file(fh) })
+        local got = io.open(epub, "rb"):read("*a")
+        check(rcode == 200 and got == "EPUB-BYTES" and seen[2].headers["authorization"] == nil,
             "a download redirected to another server: only the book in the file, no sign-in sent there " .. got)
         -- CalDAV: the password follows within the site only
         for _i, c in ipairs({ { "https://caldav.icloud.com/", "https://p12-caldav.icloud.com/123/", true },
@@ -8674,7 +8674,7 @@ print("Redirects: the sign-in stays with your own server")
     end)
     http.request = real
     plugin.store.access, Api.extra_headers, Access.plugin = saved_access, saved_extra, saved_ap
-    check(ok, "the redirect checks ran: " .. tostring(err))
+    check(ran_ok, "the redirect checks ran: " .. tostring(ran_err))
 end)()
 
 print("Music (Plex): the server, downloads, the player")
