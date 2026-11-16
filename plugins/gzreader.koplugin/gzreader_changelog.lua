@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Single sign-on: the hand-off page names your sign-in server before opening it the first time", text = "The single sign-on hand-off page (oauth2-callback on GitHub Pages, or your own copy) opened any https:// address it was given, so a link to it could send someone to any site. It now opens only a sign-in request that comes back to it (a code with PKCE, its redirect_uri the page's own address), and the first time a browser signs in through it, it shows \"Sign in at\" and your sign-in server's name with a Continue button; that browser goes straight there after that." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
