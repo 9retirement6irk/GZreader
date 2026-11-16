@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Downloads and updates much faster: Wi-Fi power saving off while they run", text = "While a book or an update downloads, Wi-Fi power saving is turned off, and back on after the last download if it was on. With it on, the Wi-Fi chip naps between the router's beacons: downloads crawled at about 30 KB/s on a Paperwhite 3 and an update at 5 KB/s on a Scribe. The download speed log also no longer costs as much as the download itself (its clock was set up again for every 2 KB)." },
+            { short = "Downloads, updates and uploads much faster: Wi-Fi power saving off while they run", text = "While a book, an update, an audiobook or music downloads, while notes with drawings go to Memos and while the phone page is open, Wi-Fi power saving is turned off, and back on after the last of them if it was on. With it on, the Wi-Fi chip naps between the router's beacons: downloads crawled at about 30 KB/s on a Paperwhite 3 and an update at 5 KB/s on a Scribe. The download speed log also no longer costs as much as the download itself (its clock was set up again for every 2 KB)." },
         },
     },
     {

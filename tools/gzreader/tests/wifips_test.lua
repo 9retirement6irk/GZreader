@@ -18,7 +18,7 @@ package.loaded["ui/network/manager"] = { getNetworkInterfaceName = function() re
 local PS = require("gzreader_wifips")
 
 local state, sets, fail_get, fail_set = "on", {}, nil, nil
-PS.io = {
+local stub = {
     get = function(ifname)
         if fail_get then return nil, fail_get end
         check(ifname == "wlan0", "the Kindle's interface")
@@ -31,6 +31,7 @@ PS.io = {
         return true
     end,
 }
+PS.io = stub
 local function reset(s) state, sets, lines, fail_get, fail_set = s, {}, {}, nil, nil; PS.holding, PS.restore = {}, false end
 
 print("== Wi-Fi power saving while downloading")
@@ -86,11 +87,42 @@ check(#sets == 0, "and not turned on afterwards")
     check(okr and (st ~= nil or why ~= nil), "the real ioctl answers or says why (" .. tostring(st or why) .. ")")
 end)()
 
+PS.io = stub
+reset("on")
+PS.hold("audiobook-download-42")
+check(sets[1] == false, "an audiobook download turns it off")
+PS.hold("music-/mnt/us/music/Album")
+PS.release("audiobook-download-42")
+check(#sets == 1, "still off while an album downloads")
+PS.release("music-/mnt/us/music/Album")
+check(sets[2] == true, "back on after the album")
+for _i, k in ipairs({ "memos-upload", "phone" }) do
+    reset("on")
+    PS.hold(k); PS.release(k)
+    check(sets[1] == false and sets[2] == true, k .. ": off while it runs, back on after")
+end
+check(not PS.transfer("audiobook-prepare-x") and not PS.transfer("house") and not PS.transfer("index"),
+    "preparing an audiobook (no network), Home Assistant, the library index: not transfers")
+
 ;(function()
     local function src(p) local f = assert(io.open(REPO .. "/" .. p)); local s = f:read("*a"); f:close(); return s end
     local net = src("plugins/gzreader.koplugin/gzreader_net.lua")
     check(net:find('require("gzreader_wifips").hold(key)', 1, true) ~= nil, "Net.hold asks it")
     check(net:find('require("gzreader_wifips").release(key)', 1, true) ~= nil, "Net.release asks it")
+    check(src("plugins/gzreader.koplugin/gzreader_audiobook.lua"):find('local awake_key = "audiobook-download-" ..', 1, true) ~= nil
+        and src("plugins/gzreader.koplugin/gzreader_audiobook.lua"):find('require("gzreader_net").hold(awake_key)', 1, true) ~= nil,
+        "audiobook downloads hold Wi-Fi under the key it knows")
+    check(src("plugins/gzreader.koplugin/gzreader_music.lua"):find('local key = "music-" .. dir', 1, true) ~= nil
+        and src("plugins/gzreader.koplugin/gzreader_music.lua"):find('require("gzreader_net").hold(key)', 1, true) ~= nil,
+        "music downloads hold Wi-Fi under the key it knows")
+    local notes = src("plugins/gzreader.koplugin/gzreader_notes.lua")
+    check(notes:find('require("gzreader_wifips").hold("memos-upload")', 1, true) ~= nil
+        and notes:find('require("gzreader_wifips").release("memos-upload")', 1, true) ~= nil,
+        "notes with drawings to send: off, then back after the queue's answer")
+    local phone = src("plugins/gzreader.koplugin/gzreader_phone.lua")
+    check(phone:find('require("gzreader_wifips").hold("phone")', 1, true) ~= nil
+        and phone:find('require("gzreader_wifips").release("phone")', 1, true) ~= nil,
+        "the phone page: off while open, back when it closes")
     local mod = src("plugins/gzreader.koplugin/gzreader_wifips.lua")
     check(not mod:find("ESSID", 1, true) and not mod:find("popen", 1, true) and not mod:find("wpa", 1, true),
         "no network name read, no shell commands")

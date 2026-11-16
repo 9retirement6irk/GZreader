@@ -7,7 +7,9 @@ and takes in a few packets per wake: the owner's Paperwhite 3 downloaded at
 where the same Kindles reach ~1 MB/s. The Nook's start script turns it off
 for good (1.26.7); on a Kindle it's turned off only while `Net.hold` has a
 transfer key (download, update) and put back as it was when the last one ends,
-so reading with Wi-Fi on still saves the battery.
+so reading with Wi-Fi on still saves the battery. The same for audiobook and
+music downloads, notes with drawings going to Memos, and while the phone page
+is open (uploads from the phone).
 
 Through the wireless extensions ioctl (`device/nook/wifi_power.lua`,
 SIOCGIWPOWER/SIOCSIWPOWER): it reads and writes only power saving's state,
@@ -18,7 +20,11 @@ without it), nothing happens and the reason is logged once per transfer.
 local Log = require("gzreader_log")
 
 local PS = {
-    KEYS = { download = true, update = true }, -- Net.hold keys that are big transfers
+    -- big transfers: Net.hold's keys for books, updates, audiobooks
+    -- ("audiobook-download-<id>") and music ("music-<folder>"), and the keys
+    -- Memos uploads and the phone page pass to PS.hold themselves
+    KEYS = { download = true, update = true, ["memos-upload"] = true, phone = true },
+    PREFIXES = { "audiobook-download-", "music-" },
     holding = {},     -- keys of PS.KEYS now held
     restore = false,  -- we turned it off: put it back on at the end
     io = nil,         -- tests: { get = fn(ifname), set = fn(ifname, on) }
@@ -54,9 +60,19 @@ local function set(on)
     return res, err
 end
 
+--- Whether `key` is a big transfer.
+function PS.transfer(key)
+    if type(key) ~= "string" then return false end
+    if PS.KEYS[key] then return true end
+    for _i, p in ipairs(PS.PREFIXES) do
+        if key:sub(1, #p) == p then return true end
+    end
+    return false
+end
+
 --- Net.hold(key): the first transfer turns power saving off (if it was on).
 function PS.hold(key)
-    if not PS.KEYS[key] or PS.holding[key] then return end
+    if not PS.transfer(key) or PS.holding[key] then return end
     local first = next(PS.holding) == nil
     PS.holding[key] = true
     if not first then return end
