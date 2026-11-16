@@ -1016,7 +1016,7 @@ end
 --- the tab bar opened a hidden note instead (owner, 2026-11-16).
 function StickyItem:inView(ges)
     local m = self.menu
-    local port = m and m._gz_scroll and m._gz_port
+    local port = m and m._gz_scroll and m._gz_scroll.port
     local pos = ges and ges.pos
     if not port or not pos then return true end
     local d = port.dimen
@@ -1285,7 +1285,7 @@ local function drawCompact(m, select_number, cols, max_items)
     if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
     local per = m.perpage
     local offset = (m.page - 1) * per
-    m._gz_scroll, m._gz_port = nil, nil
+    m._gz_scroll = nil
     Notes.footerShown(m, true)
     local cell_w = math.floor(m.item_dimen.w / cols)
     local cell_h = math.floor(m.available_height / rows)
@@ -1307,7 +1307,7 @@ local function drawCompact(m, select_number, cols, max_items)
         port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
             VerticalGroup:new{ align = "left" } }
         table.insert(m.item_group, port)
-        m._gz_port = port
+        m._gz_scroll.port = port
     end
     local row, layout_row
     for i = 1, count do

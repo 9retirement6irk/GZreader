@@ -116,7 +116,7 @@ add({ fn = function(E)
     -- the tab bar under the notes: its first tab (Home), under the row cut off at the bottom
     local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
     local b = N().board
-    local port = b._gz_port
+    local port = b._gz_scroll and b._gz_scroll.port
     E.under_port = port and (port.dimen.y + port.dimen.h < H - 10)
     E.tap({ math.floor(W * 0.08), H - math.floor(H * 0.02) })
 end, after = 4 })
