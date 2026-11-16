@@ -7628,7 +7628,7 @@ print("Notes (Memos v0.31)")
             local shown, opens, edited = {}, {}, nil
             UIMk.show = function(_s, w) shown[#shown + 1] = w end
             UIMk.close = function() end
-            Notes.withAttachment = function(_p, _a, fn) return fn("/x/report.pdfAtt") end
+            Notes.withAttachment = function(_p, _a, fn) return fn("/x/report.pdf") end
             Notes.edit = function(_p, memo, o) edited = { memo = memo, pages = o and o.markup_pages } end
             Notes.openAttachment = function(_p, a) opens[#opens + 1] = a.filename end
             local PM = dofile(PLUGIN .. "/gzreader_pdfmarkup.lua")
@@ -7644,25 +7644,25 @@ print("Notes (Memos v0.31)")
                 return o
             end }
             local memo = { name = "memos/77", content = "Read this", attachments = {} }
-            local pdfAtt = { name = "attachments/p", filename = "report.pdfAtt", type = "application/pdfAtt" }
+            local pdfAtt = { name = "attachments/p", filename = "report.pdf", type = "application/pdf" }
             local picAtt = { name = "attachments/i", filename = "photo.jpg", type = "image/jpeg" }
             Notes.canDraw = function() return true end
             check(Notes.canMarkUp(plugin, memo, pdfAtt) and not Notes.canMarkUp(plugin, memo, picAtt)
                 and not Notes.canMarkUp(plugin, { content = "not sent yet" }, pdfAtt)
-                and not Notes.canMarkUp(plugin, memo, { filename = "x.pdfAtt", link = "https://example.com/x.pdfAtt" }),
+                and not Notes.canMarkUp(plugin, memo, { filename = "x.pdf", link = "https://example.com/x.pdf" }),
                 "mark up: a PDF of a note in Memos (not a picture, a note not sent yet, or a link)")
             Notes.tapAttachment(plugin, memo, picAtt)
             local pdlg = Notes.tapAttachment(plugin, memo, pdfAtt)
-            check(opens[1] == "photo.jpg" and pdlg and pdlg.title == "report.pdfAtt" and pdlg.buttons[1][1].text == "Open"
+            check(opens[1] == "photo.jpg" and pdlg and pdlg.title == "report.pdf" and pdlg.buttons[1][1].text == "Open"
                 and pdlg.buttons[2][1].text == "Mark up pages", "…a tap on a PDF asks Open or Mark up pages; a picture just opens")
             pdlg.buttons[1][1].callback()
-            check(opens[2] == "report.pdfAtt", "…Open opens it in the reader as before")
+            check(opens[2] == "report.pdf", "…Open opens it in the reader as before")
             pdlg.buttons[2][1].callback()
             local ask = shown[#shown]
             check(ask and ask.title == "Pages to mark up (1–5)" and ask.input == "1", "Mark up pages: which pages (page 1 offered)")
             ask.buttons[1][2].callback()
             check(pmade and table.concat(pmade, ",") == "2,3" and edited and edited.memo == memo and #edited.pages == 2
-                and edited.pages[1].pdf_page == 2, "…pages 2-3 pmade, then the note's editor opens on them")
+                and edited.pages[1].pdf_page == 2, "…pages 2-3 made, then the note's editor opens on them")
             pmade, edited, typed = nil, nil, "4-20"
             ask.buttons[1][2].callback()
             check(pmade == nil and edited == nil, "…pages the PDF hasn't: asked again")
@@ -7672,7 +7672,7 @@ print("Notes (Memos v0.31)")
             Notes.canDraw = function() return false end
             opens = {}
             Notes.tapAttachment(plugin, memo, pdfAtt)
-            check(opens[1] == "report.pdfAtt", "where drawings can't be pmade (no touch, no Memos over Wi-Fi): a PDF just opens")
+            check(opens[1] == "report.pdf", "where drawings can't be made (no touch, no Memos over Wi-Fi): a PDF just opens")
             UIMk.show, UIMk.close, Notes.withAttachment, Notes.edit, Notes.canDraw, Notes.openAttachment =
                 kept_show, kept_close, kept_with, kept_edit2, kept_can2, kept_open
             package.loaded["gzreader_pdfmarkup"], package.loaded["ui/widget/inputdialog"] = kept_pm, kept_id
