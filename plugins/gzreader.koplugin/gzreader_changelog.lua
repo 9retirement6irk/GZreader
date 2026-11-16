@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick panel: the Wi-Fi tile switches Wi-Fi without closing the panel", text = "A tap on the quick panel's Wi-Fi tile (On, Off, Auto) used to close the panel. It now stays open: the tile shows the new mode straight away, and the tile and the status row follow when Wi-Fi comes on or goes off while the panel is open." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

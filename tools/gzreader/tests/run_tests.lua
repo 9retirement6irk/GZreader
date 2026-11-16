@@ -3952,6 +3952,45 @@ print("Wi-Fi: on, off, auto")
     t.run()
     check(Net.mode() == "on" and NET.connected, "a tap: On (Wi-Fi switched on)")
 
+    -- a tap on the panel's Wi-Fi tile leaves the panel open and redraws the tile
+    ;(function()
+        local UIMp = require("ui/uimanager")
+        local net = rawget(_G, "NET")
+        local ui_saved = { close = UIMp.close, tick = UIMp.nextTick, dirty = UIMp.setDirty, sched = UIMp.scheduleIn }
+        local closed, dirty = 0, 0
+        UIMp.close = function() closed = closed + 1 end
+        UIMp.nextTick = function(_s, fn) fn() end
+        UIMp.setDirty = function() dirty = dirty + 1 end
+        UIMp.scheduleIn = function() end
+        local PW = Panel._Widget
+        local w = setmetatable({}, { __index = PW })
+        local wt = Panel.wifiTile()
+        local tile = { icon = wt.icon, label = wt.label, on = wt.on, gz_tile = wt }
+        w.placed = { { tile = tile } }
+        check(wt.stay and Net.mode() == "on" and tile.on, "the Wi-Fi tile stays (On to start)")
+        w:pick(wt, tile)
+        check(closed == 0 and Net.mode() == "off" and not net.connected, "a tap: Wi-Fi off, the panel still open")
+        check(tile.label == "Wi-Fi off" and tile.icon == "wifi_off" and tile.on == false and dirty >= 1,
+            "…and the tile is drawn again as Off " .. tostring(tile.label))
+        w:pick(wt, tile)
+        check(closed == 0 and Net.mode() == "auto" and tile.label == "Wi-Fi auto",
+            "a second tap: Auto (the tile's tap follows the mode it now shows)")
+        -- Wi-Fi coming on by itself (Auto, something needed it): the tile follows
+        net.connected = true
+        w:onNetworkConnected()
+        check(tile.icon == "wifi_auto", "Wi-Fi connected while the panel is open: Auto's icon unslashed")
+        net.connected = false
+        w:onNetworkDisconnected()
+        check(tile.icon == "wifi_auto_off", "…and slashed again when it goes off")
+        w:pick(wt, tile)
+        check(closed == 0 and Net.mode() == "on" and tile.on == true, "a third tap: On, drawn inverted")
+        -- other tiles still close the panel
+        local rotated = false
+        w:pick({ id = "rotate", run = function() rotated = true end }, {})
+        check(closed == 1 and rotated, "another tile (Rotate) still closes the panel")
+        UIMp.close, UIMp.nextTick, UIMp.setDirty, UIMp.scheduleIn = ui_saved.close, ui_saved.tick, ui_saved.dirty, ui_saved.sched
+    end)()
+
     -- Settings → General → Wi-Fi
     local item = Net.menuItem()
     local names = {}
