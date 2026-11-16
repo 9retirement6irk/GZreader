@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: mark up a PDF's pages with the pen or a finger", text = "On touch Kindles, tapping a PDF attached to a note now asks Open or Mark up pages. Mark up pages asks which pages (for example 2, or 1-3, 7; at most 10 at a time; a one-page PDF goes straight to it) and opens them in the drawing screen, each PDF page under your ink like a notepaper, after the note's own drawings. Done goes back to the note, and Save adds the pages you drew on to the note as drawings: Memos shows them and opens them in its drawing editor with the PDF's page underneath. Pages you didn't draw on aren't kept, and the PDF itself isn't changed. Needs Memos over Wi-Fi, as drawing does." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

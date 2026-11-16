@@ -49,6 +49,15 @@ the pen draws, and it checks palm rejection with `E.fingerDown(x, y, dt)` /
 PNG it sent as `<out>/drawing-sent.canvas.png`; checks go to
 `<out>/drawing-checks.txt`.
 
+`pdf_markup.lua` (pw3 or kt; `demo/mock_memos.py 18090` running): Mark up a
+PDF. It makes a note in the mock, puts a two-page PDF it writes itself where
+the Notes tab keeps attachments, taps it (Open / Mark up pages), asks for
+pages 1-2, draws on page 1 over the page the Kindle's MuPDF rendered, then
+Done and Save. It checks that only the page drawn on is kept, that it is a
+Memos drawing with the PDF's page locked underneath, and that it reaches the
+note in Memos. It keeps the PNG it sent as `<out>/markup-sent.canvas.png`;
+checks go to `<out>/pdf-markup-checks.txt`.
+
 `notes_drawings.lua` (`demo/mock_memos.py 18090 --sample`): puts two notes
 with drawings in Memos ("# Garden plan" with a small drawing, and one with a
 big drawing; `GZ_DRAWING_SMALL` / `GZ_DRAWING_BIG`, by default

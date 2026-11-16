@@ -7617,6 +7617,72 @@ print("Notes (Memos v0.31)")
         Notes.edit, Notes.canDraw = real_edit, real_can
         check(before_info and before_info.memo == nil and before_info.draw == true and drew == nil,
             "Draw: a new note that opens on a page (not when drawings can't go to Memos)")
+        -- Mark up a PDF: a PDF attachment asks Open or Mark up pages; its pages open after the note's drawings
+        do
+            local UIMk = require("ui/uimanager")
+            local kept_show, kept_close, kept_with, kept_edit2, kept_can2, kept_open = UIMk.show, UIMk.close, Notes.withAttachment,
+                Notes.edit, Notes.canDraw, Notes.openAttachment
+            local kept_pm, kept_id = package.loaded["gzreader_pdfmarkup"], package.loaded["ui/widget/inputdialog"]
+            local kept_bd = package.loaded["ui/widget/buttondialog"]
+            package.loaded["ui/widget/buttondialog"] = { new = function(_s, o) return o end }
+            local shown, opens, edited = {}, {}, nil
+            UIMk.show = function(_s, w) shown[#shown + 1] = w end
+            UIMk.close = function() end
+            Notes.withAttachment = function(_p, _a, fn) return fn("/x/report.pdfAtt") end
+            Notes.edit = function(_p, memo, o) edited = { memo = memo, pages = o and o.markup_pages } end
+            Notes.openAttachment = function(_p, a) opens[#opens + 1] = a.filename end
+            local PM = dofile(PLUGIN .. "/gzreader_pdfmarkup.lua")
+            local count, pmade = 5, nil
+            PM.open = function() return { count = count, close = function() end } end
+            PM.pages = function(_path, wanted) pmade = wanted; local out = {}
+                for i, pn in ipairs(wanted) do out[i] = { new = true, scene = {}, pdf_page = pn } end; return out end
+            package.loaded["gzreader_pdfmarkup"] = PM
+            local typed = "2-3"
+            package.loaded["ui/widget/inputdialog"] = { new = function(_s, o)
+                o.getInputText = function() return typed end
+                o.onShowKeyboard = function() end
+                return o
+            end }
+            local memo = { name = "memos/77", content = "Read this", attachments = {} }
+            local pdfAtt = { name = "attachments/p", filename = "report.pdfAtt", type = "application/pdfAtt" }
+            local picAtt = { name = "attachments/i", filename = "photo.jpg", type = "image/jpeg" }
+            Notes.canDraw = function() return true end
+            check(Notes.canMarkUp(plugin, memo, pdfAtt) and not Notes.canMarkUp(plugin, memo, picAtt)
+                and not Notes.canMarkUp(plugin, { content = "not sent yet" }, pdfAtt)
+                and not Notes.canMarkUp(plugin, memo, { filename = "x.pdfAtt", link = "https://example.com/x.pdfAtt" }),
+                "mark up: a PDF of a note in Memos (not a picture, a note not sent yet, or a link)")
+            Notes.tapAttachment(plugin, memo, picAtt)
+            local pdlg = Notes.tapAttachment(plugin, memo, pdfAtt)
+            check(opens[1] == "photo.jpg" and pdlg and pdlg.title == "report.pdfAtt" and pdlg.buttons[1][1].text == "Open"
+                and pdlg.buttons[2][1].text == "Mark up pages", "…a tap on a PDF asks Open or Mark up pages; a picture just opens")
+            pdlg.buttons[1][1].callback()
+            check(opens[2] == "report.pdfAtt", "…Open opens it in the reader as before")
+            pdlg.buttons[2][1].callback()
+            local ask = shown[#shown]
+            check(ask and ask.title == "Pages to mark up (1–5)" and ask.input == "1", "Mark up pages: which pages (page 1 offered)")
+            ask.buttons[1][2].callback()
+            check(pmade and table.concat(pmade, ",") == "2,3" and edited and edited.memo == memo and #edited.pages == 2
+                and edited.pages[1].pdf_page == 2, "…pages 2-3 pmade, then the note's editor opens on them")
+            pmade, edited, typed = nil, nil, "4-20"
+            ask.buttons[1][2].callback()
+            check(pmade == nil and edited == nil, "…pages the PDF hasn't: asked again")
+            count = 1
+            Notes.markUpPdf(plugin, memo, pdfAtt)
+            check(pmade and #pmade == 1 and pmade[1] == 1 and edited, "a PDF of one page: no question, straight to it")
+            Notes.canDraw = function() return false end
+            opens = {}
+            Notes.tapAttachment(plugin, memo, pdfAtt)
+            check(opens[1] == "report.pdfAtt", "where drawings can't be pmade (no touch, no Memos over Wi-Fi): a PDF just opens")
+            UIMk.show, UIMk.close, Notes.withAttachment, Notes.edit, Notes.canDraw, Notes.openAttachment =
+                kept_show, kept_close, kept_with, kept_edit2, kept_can2, kept_open
+            package.loaded["gzreader_pdfmarkup"], package.loaded["ui/widget/inputdialog"] = kept_pm, kept_id
+            package.loaded["ui/widget/buttondialog"] = kept_bd
+            local nsrc4 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrc4:find("extra_pages = opts and opts.markup_pages or nil,", 1, true) ~= nil
+                and nsrc4:find("or (opts and opts.markup_pages ~= nil)) and Notes.canDraw(plugin),", 1, true) ~= nil
+                and nsrc4:find("Notes.tapAttachment(self.plugin, self.memo, pick.att)", 1, true) ~= nil,
+                "…the editor gets the pages and opens the drawing screen on them; a note's page asks on a tap")
+        end
         prefs.fullscreen = true
         acts = Notes.actions(plugin)
         check(acts[8].icon_file:match("/icons/panel/close%.svg$") and acts[8].label == "Leave full screen" and io.open(acts[8].icon_file) ~= nil,
@@ -7971,7 +8037,7 @@ print("Notes (Memos v0.31)")
         check(#after.attachments == 1 and after.attachments[1].filename == d4.filename, "…and on the note in Memos")
         local esrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
         local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
-        check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))", 1, true)
+        check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw)", 1, true)
             and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
             and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
             and esrc2:find("if self.vk and not self.drawing_first then", 1, true),
