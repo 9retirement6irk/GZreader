@@ -137,9 +137,12 @@ what you typed and starts with it ("What happened: …"; a password or token
 typed there is redacted like the log's). `<id>` is the start of the
 Kindle's random ID (not the serial number).
 
-Sleep is not a freeze (the heartbeat says "sleep" from the screensaver until
-the Kindle wakes, and the watchdog notices the clock jump after waking and
-counts from then). Log lines are redacted (no passwords or
+Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
+the clock jump after waking). Log lines are redacted (no passwords or
 tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued
 messages, the freeze alert with its snapshot, "responsive again", the crash
 report, and no crash report after a normal close.
+
+The heartbeat says "sleep" from the moment the screensaver shows until the
+Kindle wakes, and after waking the watchdog counts from then, so a long
+sleep (or the seconds a Kindle takes to wake) is never reported as a freeze.
