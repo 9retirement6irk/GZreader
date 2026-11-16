@@ -348,7 +348,8 @@ function Immich.connect(plugin, server_input, key)
     if key == "" then return false, _("Paste an API key from Immich (Account Settings → API Keys).") end
     local trial = Immich:new({ server = server, key = key })
     local albums, err = trial:albums()
-    if not albums and err == "unreachable" and not server_input:match("^%s*https?://") then
+    local Lan = require("gzreader_lan")
+    if not albums and err == "unreachable" and Lan.plainRetry(server_input) then
         -- no https:// typed and no HTTPS there: an Immich on the home network (http)
         local plain = server:gsub("^https://", "http://")
         local t2 = Immich:new({ server = plain, key = key })
@@ -359,6 +360,7 @@ function Immich.connect(plugin, server_input, key)
     if not albums then
         if err == "unauthorized" then return false, _("Immich didn't accept that API key.") end
         if err == "forbidden" then return false, _("That API key can't read albums: give it album.read, asset.read and asset.view (or all permissions).") end
+        if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach Immich at that address.") end
         return false, _T(_("That doesn't look like an Immich server (%1)."), tostring(err))
     end

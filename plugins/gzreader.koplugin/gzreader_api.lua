@@ -374,8 +374,10 @@ end
 --- Log in with a username/password. Returns true or false, error_message.
 --- On a scheme-less address we try https first, then plain http (common on LANs).
 function Api:login(server, username, password)
+    -- no scheme typed and no HTTPS: plain HTTP only on the home network (gzreader_lan.lua)
     local candidates = { server }
-    if server:match("^https://") and not self.explicit_https then
+    local typed_bare = server:match("^https://") and not self.explicit_https
+    if typed_bare and require("gzreader_lan").isPrivate(server) then
         candidates[2] = "http://" .. server:sub(9)
     end
     local last_err
@@ -400,6 +402,7 @@ function Api:login(server, username, password)
             last_err = "unreachable"
         end
     end
+    if last_err == "unreachable" and typed_bare and not candidates[2] then last_err = "no_https" end
     return false, last_err
 end
 
@@ -978,10 +981,12 @@ function Api.fetchJson(full_url)
 end
 
 --- Grimmory's public settings (SSO on/off, provider details). Tries https
---- then http for a scheme-less address, like login. Returns base, settings.
+--- then (on the home network) http for a scheme-less address, like login.
+--- Returns base, settings.
 function Api:publicSettings(server)
     local candidates = { server }
-    if server:match("^https://") and not self.explicit_https then
+    local typed_bare = server:match("^https://") and not self.explicit_https
+    if typed_bare and require("gzreader_lan").isPrivate(server) then
         candidates[2] = "http://" .. server:sub(9)
     end
     local last_err
@@ -991,6 +996,7 @@ function Api:publicSettings(server)
         last_err = err
         if err ~= "unreachable" then break end
     end
+    if last_err == "unreachable" and typed_bare and not candidates[2] then last_err = "no_https" end
     return nil, last_err
 end
 

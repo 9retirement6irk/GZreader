@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Passwords aren't sent over plain HTTP to a server on the internet unless you typed http://", text = "An address typed without https:// that didn't answer over HTTPS was tried again over plain HTTP, with the password, token or calendar link in the clear: someone on the same Wi-Fi could block HTTPS to get them. GZreader now tries plain HTTP by itself only for servers on your home network (192.168.x, 10.x, Tailscale's 100.x, names like nas or box.local). For a server on the internet, the message says to type http:// in front if it really has no HTTPS. This applies to Grimmory (password and single sign-on), Memos, CalDAV accounts, webcal:// calendar links, Immich and Home Assistant, which no longer tries http://…:8123 first for an internet address." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

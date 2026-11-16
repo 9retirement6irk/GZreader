@@ -2503,7 +2503,8 @@ function Notes.connect(plugin, server_input, token)
     if token == "" then return false, _("Paste an access token from Memos (Settings → Access Tokens).") end
     local trial = Memos:new{ server = server, token = token }
     local user, err = trial:me()
-    if not user and err == "unreachable" and not server_input:match("^%s*https?://") then
+    local Lan = require("gzreader_lan")
+    if not user and err == "unreachable" and Lan.plainRetry(server_input) then
         -- no https:// typed and no HTTPS there: a Memos on the home network (http)
         local plain = server:gsub("^https://", "http://")
         local t2 = Memos:new{ server = plain, token = token }
@@ -2513,6 +2514,7 @@ function Notes.connect(plugin, server_input, token)
     Log.info("notes: connecting to", server, user and "ok" or ("failed: " .. tostring(err)))
     if not user then
         if err == "unauthorized" then return false, _("Memos didn't accept that access token.") end
+        if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach Memos at that address.") end
         return false, T(_("That doesn't look like a Memos server (%1)."), tostring(err))
     end

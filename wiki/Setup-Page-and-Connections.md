@@ -58,6 +58,18 @@ the PIN; passwords
 and tokens are sent once to the Kindle and only Grimmory's login tokens,
 the Memos token and the CalDAV password are kept (never logged).
 
+**Addresses without `https://`.** An address typed without `http://` or
+`https://` is tried over HTTPS. Only when the server is on your home network
+(an address like `192.168.1.20`, `10.0.0.5` or `100.x` for Tailscale, a name
+with no dot such as `nas`, or one ending in `.local`, `.lan`, `.home` or
+`.internal`) does GZreader try plain HTTP by itself when HTTPS doesn't answer.
+A server on the internet isn't: someone on the same Wi‑Fi could block its
+HTTPS to have your password or token sent again in the clear. If such a
+server really has no HTTPS, type its address with `http://` in front. This
+goes for Grimmory, Memos, CalDAV accounts, `webcal://` calendar links,
+Immich and Home Assistant (which, on the home network, is still tried at
+`http://…:8123` first).
+
 Where to open it: the setup guide's first page (**Set up from your browser**),
 the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar /

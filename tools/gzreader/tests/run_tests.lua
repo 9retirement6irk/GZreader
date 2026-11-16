@@ -9227,6 +9227,63 @@ print("Wi-Fi turned on by GZreader: no scan messages (touch Kindles)")
     local _unused = orig_show
 end)()
 
+print("No plain-HTTP retry with a password for servers on the internet")
+;(function()
+    local Lan = require("gzreader_lan")
+    for _i, c in ipairs({ { "192.168.1.5:6060", true }, { "http://10.0.0.2", true }, { "172.20.1.1", true }, { "172.32.1.1", false },
+            { "100.101.2.3", true }, { "169.254.9.9", true }, { "127.0.0.1:8123", true }, { "nas:6060", true }, { "NAS.local", true },
+            { "box.lan", true }, { "pi.home.arpa", true }, { "[fd12::1]:443", true }, { "[2001:db8::1]", false },
+            { "books.example.com", false }, { "https://user:pw@books.example.com/x", false }, { "8.8.8.8", false } }) do
+        check(Lan.isPrivate(c[1]) == c[2], "home network or not: " .. c[1])
+    end
+    check(Lan.plainRetry("192.168.1.5:6060") and not Lan.plainRetry("http://192.168.1.5") and not Lan.plainRetry("books.example.com"),
+        "plain HTTP is tried only for a home-network address typed without a scheme")
+    -- every request recorded, none answered (as when someone blocks HTTPS)
+    local http = require("socket.http")
+    local real, urls = http.request, {}
+    http.request = function(reqt) urls[#urls + 1] = type(reqt) == "table" and reqt.url or reqt; return nil, "connection refused" end
+    local function plain() for _i, u in ipairs(urls) do if tostring(u):match("^http://") then return u end end return nil end
+    local saved = { server = plugin.store.server, username = plugin.store.username, explicit = plugin.api.explicit_https,
+        caldav = plugin.store.caldav, memos = plugin.store.memos, immich = plugin.store.immich, ha = plugin.store.homeassistant }
+    local ok, err = pcall(function()
+        plugin.api.explicit_https = false
+        local good, why = plugin.api:login("https://books.example.com", "reader", "secret")
+        check(not good and why == "no_https" and #urls >= 1 and not plain(),
+            "Grimmory on the internet, HTTPS blocked: the password isn't sent again over plain HTTP " .. tostring(plain()))
+        check(plugin:describeError(why) == Lan.noHttpsText() and plugin:describeError(why):find("http://", 1, true),
+            "…and the message says to type http:// for a server with no HTTPS")
+        urls = {}
+        plugin.api:login("https://192.168.7.9:6060", "reader", "secret")
+        check(urls[2] == "http://192.168.7.9:6060/api/v1/auth/login", "Grimmory on the home network: still tried over plain HTTP " .. tostring(urls[2]))
+        urls = {}
+        local base, perr = plugin.api:publicSettings("https://books.example.com")
+        check(base == nil and perr == "no_https" and not plain(), "Grimmory's sign-in settings: no plain HTTP for a server on the internet")
+        urls = {}
+        local cok, cmsg = require("gzreader_calendar").connect(plugin, "dav.example.com", "reader", "secret")
+        check(not cok and cmsg == Lan.noHttpsText() and #urls >= 1 and not plain(), "CalDAV on the internet: no plain HTTP " .. tostring(plain()))
+        urls = {}
+        require("gzreader_calendar").checkFeed("webcal://cal.example.com/secret-key/basic.ics")
+        check(#urls >= 1 and not plain(), "a webcal:// link on the internet: not fetched over plain HTTP " .. tostring(plain()))
+        urls = {}
+        local nok, nmsg = require("gzreader_notes").connect(plugin, "memos.example.com", "memos-token")
+        check(not nok and nmsg == Lan.noHttpsText() and #urls >= 1 and not plain(), "Memos on the internet: no plain HTTP " .. tostring(plain()))
+        urls = {}
+        local iok, imsg = require("gzreader_immich").connect(plugin, "photos.example.com", "immich-key")
+        check(not iok and imsg == Lan.noHttpsText() and #urls >= 1 and not plain(), "Immich on the internet: no plain HTTP " .. tostring(plain()))
+        urls = {}
+        local hok, hmsg = require("gzreader_homeassistant").connect(plugin, "ha.example.com", "ha-token")
+        check(not hok and hmsg == Lan.noHttpsText() and #urls >= 1 and not plain() and tostring(urls[1]):match("^https://ha%.example%.com/"),
+            "Home Assistant on the internet: HTTPS only, the token never over plain HTTP " .. tostring(urls[1]))
+        urls = {}
+        require("gzreader_homeassistant").connect(plugin, "192.168.7.9", "ha-token")
+        check(tostring(urls[1]):match("^http://192%.168%.7%.9:8123/"), "Home Assistant on the home network: its usual http://…:8123 first " .. tostring(urls[1]))
+    end)
+    http.request = real
+    check(ok, "the plain-HTTP checks ran: " .. tostring(err))
+    plugin.store.server, plugin.store.username, plugin.api.explicit_https = saved.server, saved.username, saved.explicit
+    plugin.store.caldav, plugin.store.memos, plugin.store.immich, plugin.store.homeassistant = saved.caldav, saved.memos, saved.immich, saved.ha
+end)()
+
 print("Downloads tab: its name in the title bar, like the other tabs")
 ;(function()
     local saved_path = package.path

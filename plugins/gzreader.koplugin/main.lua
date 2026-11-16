@@ -788,6 +788,7 @@ local ERRORS = {
     bad_credentials = _("Wrong username or password."),
     rate_limited = _("Too many attempts. Wait a minute and try again."),
     usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
+    no_https = require("gzreader_lan").noHttpsText(),
 }
 
 function Grimmory:describeError(err)
