@@ -2085,6 +2085,13 @@ function NoteView:onClose()
 end
 
 function Notes.showNote(plugin, memo)
+    -- A note that is only a drawing (its name and tags, no words of its own) opens on
+    -- its drawing, as a new one does: Done saves and comes back here (the owner, 2026-11-16).
+    if memo and Notes.canDraw(plugin) and Notes.drawings(memo)[1] ~= nil
+        and require("gzreader_newdrawing").parse(memo.content) ~= nil then
+        Log.info("notes: a drawing note opened on its drawing")
+        return Notes.edit(plugin, memo, { drawing_note = true })
+    end
     local v = NoteView:new{ memo = memo, plugin = plugin }
     UIManager:show(v, "full")
     return v
@@ -2329,6 +2336,8 @@ function Notes.edit(plugin, memo, opts)
             or (opts and opts.markup_pages ~= nil)) and Notes.canDraw(plugin),
         -- Draw (a new note): after Done, the New drawing window (title, tags, Save)
         new_drawing = memo == nil and opts and opts.draw or nil,
+        -- a note that's only a drawing, tapped: its drawing screen, named and tagged there; Done saves and closes
+        drawing_note = memo ~= nil and opts and opts.drawing_note or nil,
         on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
             if memo then
                 memo.content = content

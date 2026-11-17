@@ -162,34 +162,55 @@ API to `/api` are found too.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
   tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
   be just drawings.
-  - **A new drawing** (**Draw** on the Notes tab): **Done** opens a small
-    **New drawing** window, not the note's page: type a **title** (it
-    becomes the note's heading; you can leave it empty), tap **# Tag** to
-    add your tags (your most used ones, or **New tag…**; tap one again to
-    take it off), then **Save**. **Back to drawing** goes back to the
-    drawing. ✕ on an empty page just closes it.
-  - **At the top:** **✕** (leave without keeping what you drew), the note's
-    name and the page's paper, and **Done** (keeps the drawings with the
-    note; **Save** in the editor sends them).
-  - **Writing tools** (as on the Kindle Scribe): tap the pen, then tap it
-    again for its panel, which starts with four tools. **Pen** is the line
-    you had before. **Pencil** is a thinner grey line. **Fountain pen**
-    makes pressure matter much more: a light touch is very thin, pressing
-    makes the line swell to almost three times the thickness (the thickness
-    you choose sets the middle); without a pen that reports pressure it
-    draws an even line. **Highlighter** is a broad, light grey band that
-    stays under your writing. The toolbar's pen shows the tool in hand, and
-    the tool is kept for next time. In Memos the pencil and the highlighter
-    are see-through strokes, and each stroke opens again with its tool.
-  - **The toolbar at the side:** the **pen** (tap it again for five
-    thicknesses; the one you choose is kept; on a Kindle with a colour
-    screen also eight **colours**, the ink and the seven of Memos' drawing
-    editor, shown on the pen's button and kept too), the **eraser** (rubs out whole
-    strokes, as in Memos; tap it again for **Clear page**), **Undo** and
-    **Redo**, **Paper**, **All pages**, a button that puts the toolbar on the
-    **other side** (for the other hand; kept), and one that **hides** it (a
-    small button brings it back). Nothing is drawn under the toolbar: start
-    a stroke beside it.
+  - **The drawing screen is laid out as the Kindle Scribe's notebook.** The
+    page is the whole screen; the bar at the top and the tools at the side
+    lie over it and fold away.
+  - **At the top:** **←** (leave; asks first when you drew something), the
+    drawing's name, then **All pages**, **Paper**, **Tags** (a new drawing),
+    **⋮ Options** (**New page**, **Erase page**, **Close without saving**)
+    and **Done** (keeps the drawings with the note). The small tab under the
+    bar **folds the bar away** so you can draw on the top of the page; the
+    tab stays at the top edge to bring it back.
+  - **A new drawing** (**Draw** on the Notes tab) is named and tagged from
+    the top bar: tap its name (**Untitled drawing** ✎) to type a title,
+    which becomes the note's heading; tap **Tags** for your most used tags
+    (tap one to add it, again to take it off) or **+ New tag**. The tags
+    show under the name. **Done** saves the note at once with that title
+    and those tags; no window comes after.
+  - **The tools at the side** (tap one to take it in hand, tap it again for
+    its choices, a list as on the Scribe):
+    - **Pen:** **Pen**, **Fountain pen** (pressure matters much more: light
+      is very thin, pressing swells the line to almost three times),
+      **Marker** (black, broad, the same width however you press) and
+      **Pencil** (a thinner grey line); then five thicknesses, **Fine** to
+      **Heavy**; on a colour screen eight **colours**; on a Kindle with a
+      pen, **Pressure and tilt** on or off.
+    - **Highlighter:** a broad light grey band that stays under your
+      writing, in five widths of its own.
+    - **Shapes:** **Square**, **Circle**, **Triangle**, **Line** and
+      **Arrow**. Put the pen down at one corner and lift it at the other;
+      the shape appears when you lift. It's drawn in the pen's thickness
+      and colour, and is undone and rubbed out like a stroke (Memos gets
+      it as a stroke along the outline).
+    - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
+      a stroke it has to pass) and **Erase page**.
+    - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
+      hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
+      button does; each tap takes the next tool).
+    - The **round button** above the tools folds them into one dark button
+      showing the tool in hand; tap it to bring them back.
+    The pencil and the highlighter show as black points while you draw (so
+    they keep up with the pen) and turn grey when you lift.
+    **Zoom:** pinch to zoom in (up to 4×) and the page follows your fingers;
+    two fingers move a zoomed page, and on a Kindle with a pen one finger
+    does too. Pinch in for the whole page.
+    **A note that's only a drawing** (a title and tags, no other words)
+    opens on its drawing when you tap it; **Done** saves and goes back to
+    the Notes tab.
+    The tools, widths and shape are kept for next time. In Memos the pencil
+    and the highlighter are see-through strokes, and each stroke opens again
+    with its tool. Nothing is drawn under the tools: start a stroke beside
+    them.
   - **The bar at the bottom:** ◀, the page (**2 / 3**), ▶ and **+** for a new
     page after this one.
   - **All pages:** every page as a small picture, three across. Tap one to

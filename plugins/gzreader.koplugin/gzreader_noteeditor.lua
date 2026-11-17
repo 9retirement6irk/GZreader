@@ -964,17 +964,24 @@ function Editor:openDrawing(page)
         choose_paper = true, -- (a new drawing: which paper first)
         start = page,
         title = self:heading(),
+        -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
+        meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
         on_done = function(res)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
+            local title, tags = res.title, res.tags
+            res.title, res.tags = nil, nil
+            self.draw_title, self.draw_tags = title, tags
             self.pages = res
-            if self.popup_only then return self:newDrawingDone() end
+            if self.popup_only then return self:newDrawingDone(title, tags) end
             back()
         end,
         on_cancel = function()
             if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
             -- (a new drawing left at once: nothing to save, the Notes tab again)
             if self.popup_only and not self:hasDrawing() then return UIManager:close(self, "full") end
+            -- (a drawing note left without keeping anything: the Notes tab again, the note as it was)
+            if self.drawing_note then self:dropDrawing(); return UIManager:close(self, "full") end
             if self.popup_only then return self:newDrawingDone() end
             -- (Mark up left at once: the note as it was, not its editor)
             if extra and not self:changed() then return UIManager:close(self, "full") end
@@ -1039,9 +1046,26 @@ end
 
 --- A new drawing (the Notes tab's Draw) after Done: the New drawing window
 --- (a title and tags, then Save), not the note's page; nothing drawn: closed.
-function Editor:newDrawingDone()
-    if not self:hasDrawing() then return UIManager:close(self, "full") end
+function Editor:newDrawingDone(title, tags)
     local NewDrawing = require("gzreader_newdrawing")
+    if not self:hasDrawing() and not self.drawing_note then return UIManager:close(self, "full") end
+    if title and self.drawing_note then
+        -- a drawing note opened on its drawing: saved when something changed (a page, its name, its tags)
+        local text = NewDrawing.content(title, tags)
+        local changes = self:drawingChanges()
+        UIManager:setDirty("all", "full")
+        if text == (self.memo and self.memo.content or "") and #changes == 0 and not changes.order then
+            return UIManager:close(self, "full")
+        end
+        Log.info("notes: a drawing note saved from the drawing screen")
+        return self:saveText(text)
+    end
+    if title then
+        -- Done on the drawing screen, its name and tags given there: saved at once (no window after)
+        Log.info("notes: a new drawing saved from the drawing screen,", self:drawingCount(), "page(s),", #(tags or {}), "tag(s)")
+        UIManager:setDirty("all", "full")
+        return self:saveText(NewDrawing.content(title, tags))
+    end
     -- (what's under: the Notes tab, painted again where the drawing screen was)
     UIManager:setDirty("all", "full")
     return NewDrawing.show{
@@ -1119,6 +1143,10 @@ function NoteEditor.show(opts)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil
     -- a new drawing: Done opens the New drawing window, the note's page never shows
     if opts.new_drawing and e.drawing_first then e.popup_only, e.covers_fullscreen = true, false end
+    if opts.drawing_note and opts.memo and e.drawing_first then
+        e.popup_only, e.covers_fullscreen, e.drawing_note = true, false, true
+        e.draw_title, e.draw_tags = require("gzreader_newdrawing").parse(opts.memo.content)
+    end
     UIManager:show(e, "full")
     if e.drawing_first then e:openDrawing() end
     return e

@@ -9247,7 +9247,35 @@ print("Notes (Memos v0.31)")
             and psrc:find("self.cropping_widget = self.scroller", 1, true) ~= nil
             and pshow:find("PaperList:new{", 1, true) ~= nil and not pshow:find("Grid:new", 1, true),
             "Paper: small tiles six to a row sized to the screen's width, in a grid that scrolls (no pages)")
+        -- a note that's only a drawing (its name and tags) opens on its drawing
+        ;(function()
+            local ND = require("gzreader_newdrawing")
+            local t1, g1 = ND.parse("# Garden plan\n\n#garden #ideas")
+            local t2, g2 = ND.parse("")
+            local t3, g3 = ND.parse("#solo")
+            check(t1 == "Garden plan" and g1[1] == "garden" and g1[2] == "ideas" and t2 == "" and #g2 == 0 and t3 == "" and g3[1] == "solo"
+                and ND.parse("# Garden plan\n\nSome words") == nil and ND.parse("Just words") == nil
+                and ND.parse("# One\n\n# Two") == nil and ND.content(ND.parse("# Garden plan\n\n#garden #ideas")) == "# Garden plan\n\n#garden #ideas",
+                "a drawing note: only a name and tags (parsed back as written); a note with words of its own isn't one")
+            local nsrc4 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrc4:find('return Notes.edit(plugin, memo, { drawing_note = true })', 1, true) ~= nil
+                and esrc2:find('e.popup_only, e.covers_fullscreen, e.drawing_note = true, false, true', 1, true) ~= nil
+                and esrc2:find('if self.drawing_note then self:dropDrawing(); return UIManager:close(self, "full") end', 1, true) ~= nil,
+                "a tap on a drawing note opens its drawing; Done saves (when something changed) and Close leaves it, both back on the Notes tab")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
+        check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
+            and dsrcp:find('add({ id = "topfold", icon = self.top_hidden and "down" or "up"', 1, true) ~= nil
+            and dsrcp:find('add({ id = "show", round = true, dark = true', 1, true) ~= nil
+            and dsrcp:find('if w.meta then res.title, res.tags = w.meta.title, w.meta.tags end', 1, true) ~= nil
+            and esrc2:find('meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil', 1, true) ~= nil
+            and esrc2:find('return self:saveText(NewDrawing.content(title, tags))', 1, true) ~= nil,
+            "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
+        local ids = {}
+        for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
+        check(table.concat(ids, ",") == "pen,highlighter,shape,eraser,sep,undo,redo,more",
+            "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
             and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil
@@ -9259,11 +9287,14 @@ print("Notes (Memos v0.31)")
         check(dsrc:find('self:inkRefresh(), Geom:new{ x = x0, y = y0', 1, true) ~= nil
             and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
-            and dsrc:find('UIManager:setDirty(nil, "ui", Geom:new{ x = d.x0, y = d.y0', 1, true) ~= nil,
+            and dsrc:find('local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
+            and dsrc:find('UIManager:setDirty(nil, "ui", area)', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
-        check(dsrc:find('UIManager:setDirty(nil, grey and "ui" or self:inkRefresh(), Geom:new{', 1, true) ~= nil
-            and dsrc:find('if seg[7] then grey = true end', 1, true) ~= nil,
-            "drawing: a grey tool's ink (pencil, highlighter) goes on with \"ui\" (A2 and DU showed it white or black)")
+        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })', 1, true) ~= nil
+            and not dsrc:find('grey and "ui"', 1, true)
+            and dsrc:find('(gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
+            and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
+            "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")

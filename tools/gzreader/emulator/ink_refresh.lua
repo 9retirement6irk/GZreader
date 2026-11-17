@@ -31,6 +31,8 @@ local function record()
     local orig = U.setDirty
     U.setDirty = function(self, widget, mode, region)
         if widget == nil and type(mode) == "string" and region then modes[#modes + 1] = mode end
+        -- (a stroke's end with a grey tool: the page painted again, its refresh given as a function)
+        if widget and widget.name == "gz_drawscreen" and type(mode) == "function" then modes[#modes + 1] = (mode()) end
         return orig(self, widget, mode, region)
     end
 end
@@ -88,8 +90,17 @@ end, after = 3 })
 add({ fn = function(E)
     local d = screen()
     if d.setWriting then
-        check(#modes > 0 and seen("ui") and not seen("a2") and not seen("fast"),
-            "the pencil on a blank page: its grey ink refreshed with \"ui\" (A2 showed it white) (" .. table.concat(modes, ",") .. ")")
+        -- (while the pen moves: black points with the pen's own fast refresh; one "ui" when the stroke ends, for the real grey)
+        local ui = 0
+        for _i, m in ipairs(modes) do if m == "ui" then ui = ui + 1 end end
+        local st = d.sketch:live()
+        st = st[#st]
+        local c = d.canvas
+        local mid = st.points[math.floor(#st.points / 2)]
+        local g = d.canvas_bb:getPixel(mid[1], mid[2]):getColor8().a
+        check(#modes > 3 and seen("a2") and ui == 1 and modes[#modes] == "ui" and g > 0x30 and g < 0xA0 and c ~= nil,
+            "the pencil on a blank page: shown as fast as the pen while drawing (a2), its grey once at the end (" .. ui .. " ui of "
+                .. #modes .. " refreshes; grey " .. g .. " on the page)")
     end
     local f = io.open(E.out .. "/ink-refresh-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
