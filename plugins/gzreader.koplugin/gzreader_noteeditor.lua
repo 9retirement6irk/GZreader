@@ -470,12 +470,27 @@ function Editor:topTap(widget, fn)
 end
 
 function Editor:onCloseWidget()
+    self.closed = true
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+end
+
+--- The on-screen keyboard back a moment later, if the note is still open
+--- then: closed meanwhile (a tap outside the quick note while the Kindle
+--- was still redrawing after the drawing screen), the keyboard stayed over
+--- the book with nothing under it (the owner, 2026-11-16).
+function Editor:keyboardSoon()
+    if not self.vk then return end
+    UIManager:nextTick(function()
+        if self.closed or not self.input or not self.input.onShowKeyboard then return end
+        for _i, w in ipairs(UIManager._window_stack or {}) do
+            if w.widget == self then return self.input:onShowKeyboard() end
+        end
+    end)
 end
 
 function Editor:onShow()
     -- touch: the on-screen keyboard, at once (not when the drawing screen opens over it first)
-    if self.vk and not self.drawing_first then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+    if not self.drawing_first then self:keyboardSoon() end
 end
 
 function Editor:drawChrome()
@@ -915,7 +930,7 @@ function Editor:openDrawing(page)
     local function back()
         self.drawing_closed_at = Editor.now()
         self:redraw()
-        if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
+        self:keyboardSoon()
     end
     local DrawScreen = require("gzreader_drawscreen")
     if not self.pages then
