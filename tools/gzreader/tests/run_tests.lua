@@ -6723,6 +6723,26 @@ print("Calendar (CalDAV, against Radicale)")
     local m = CalDAV.expandRule(mrule, base - 1, base + 120 * 86400)
     local d1 = m[1] and os.date("*t", m[1])
     check(#m == 3 and d1.wday == 3 and d1.day <= 7, "monthly: first Tuesday")
+    ;(function()
+        -- rules from Outlook, Apple and Google calendar links (RFC 5545)
+        local function starts(rrule, days, start)
+            start = start or base
+            local r = CalDAV.expandRule({ start = start, finish = start + 3600, exdates = {}, rrule = rrule }, start - 1, start + days * 86400)
+            local out = {}
+            for _i, x in ipairs(r) do out[#out + 1] = os.date("%m-%d", x) end
+            return table.concat(out, " ")
+        end
+        check(starts("FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", 92) == "11-02 12-07 01-04 02-01", "BYSETPOS: the first Monday, not every Monday")
+        check(starts("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", 92) == "11-30 12-31 01-29", "BYSETPOS: the last weekday of the month")
+        check(starts("FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR", 10) == "11-02 11-03 11-04 11-05 11-06 11-09 11-10 11-11", "daily on weekdays: no weekends")
+        check(starts("FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;COUNT=5", 30, base + 4 * 86400) == "11-06 11-09 11-10 11-11 11-12", "daily on weekdays: COUNT counts weekdays only")
+        check(starts("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;WKST=MO", 30) == "11-02 11-08 11-16 11-22 11-30", "every other week, weeks from Monday (WKST=MO)")
+        check(starts("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;WKST=SU", 30) == "11-02 11-15 11-16 11-29 11-30", "every other week, weeks from Sunday (WKST=SU)")
+        check(starts("FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=15", 800) == "03-15 03-15", "yearly BYMONTH: the month of the rule, not of the first date")
+        check(starts("FREQ=MONTHLY;BYDAY=FR;BYMONTHDAY=13", 800) == "11-13 08-13 10-13", "BYDAY with BYMONTHDAY: Friday the 13th")
+        check(starts("FREQ=MONTHLY;BYMONTH=1,4,7,10;BYMONTHDAY=1", 400) == "01-01 04-01 07-01 10-01", "monthly in some months only")
+        check(starts("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30", 800) == "", "a rule that never happens: nothing (and it stops)")
+    end)()
     -- discovery and events from Radicale
     local store = { server = "http://127.0.0.1:" .. CPORT .. "/", username = "reader", password = "wrong" }
     local c = CalDAV:new(store)
