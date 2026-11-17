@@ -3,7 +3,7 @@
 3 frontend/apps/filemanager/filemanagermenu.lua
 1 frontend/apps/reader/modules/readerback.lua
 3 frontend/device.lua
-1 frontend/device/input.lua
+2 frontend/device/input.lua
 7 frontend/device/kindle/device.lua
 14 frontend/device/kindle/shadowfb.lua
 15 frontend/device/nook/device.lua

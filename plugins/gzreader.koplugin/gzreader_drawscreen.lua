@@ -122,6 +122,29 @@ function DrawScreen.lastColor()
     return nil
 end
 
+--- Pen pressure and tilt (a Kindle with a pen): on unless turned off in the pen's choices.
+function DrawScreen.pressureOn()
+    return not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_pressure"))
+end
+
+--- What the pen has been seen to report, kept between drawings (Sketch.range).
+function DrawScreen.loadPenRange()
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_pen_range")
+    if type(v) == "table" then
+        Sketch.range = { p_seen = tonumber(v.p_seen) or 0, t_seen = tonumber(v.t_seen) or 0, n = tonumber(v.n) or 0 }
+    end
+    return Sketch.range
+end
+
+function DrawScreen.savePenRange(before)
+    local r = Sketch.range
+    if (r.n or 0) == 0 or not G_reader_settings then return end
+    if before and before.p_seen == r.p_seen and before.t_seen == r.t_seen and (before.n or 0) >= Sketch.PRESSURE_SAMPLES then return end
+    G_reader_settings:saveSetting("gzreader_pen_range", { p_seen = r.p_seen, t_seen = r.t_seen, n = math.min(r.n, 100000) })
+    -- (numbers only: what the pen's range is, for a report)
+    Log.info("drawing: pen pressure up to", r.p_seen, "of", Sketch.pressureTop(r), "tilt up to", r.t_seen, "of", Sketch.tiltTop(r), "samples", r.n)
+end
+
 --- The pen's width new drawings start with (the last one chosen).
 function DrawScreen.lastWidth()
     local v = G_reader_settings and tonumber(G_reader_settings:readSetting("gzreader_drawing_width"))
@@ -146,6 +169,10 @@ function DrawScreen:init()
     self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
     self.tool, self.width = "pen", DrawScreen.lastWidth()
     self.has_color = DrawScreen.hasColor()
+    -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
+    self.pressure_on = DrawScreen.pressureOn()
+    local was = DrawScreen.loadPenRange()
+    self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
     local c = self.canvas
     -- what's on the screen (in colour on a colour screen)
@@ -208,6 +235,7 @@ function DrawScreen:showPage(i, first)
     sk.holes = self.holes
     -- (the pen and its width stay as they were from page to page)
     sk.tool, sk.width, sk.color = self.tool, self.width, self.color
+    sk.pressure_on = self.pressure_on
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -261,6 +289,9 @@ function DrawScreen:layoutBar()
             if self.has_color then -- a second row: the colours
                 fw, fh = math.max(fw, #Sketch.COLORS * (ts + S(6)) + S(18)), fh + ts + S(8)
             end
+            if self.pen_only then -- a Kindle with a pen: pressure and tilt, on or off
+                fw, fh = math.max(fw, S(300)), fh + ts + S(8)
+            end
         else
             fw, fh = S(200), head + ts + S(20)
         end
@@ -277,6 +308,10 @@ function DrawScreen:layoutBar()
                 for k, col in ipairs(Sketch.COLORS) do
                     add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(12) + (k - 1) * (ts + S(6)), row + ts + S(8), ts, ts, "flyout")
                 end
+            end
+            if self.pen_only then
+                add({ id = "pressure", label = self.pressure_on and _("Pressure and tilt: on") or _("Pressure and tilt: off") },
+                    fx + S(12), row + (self.has_color and 2 or 1) * (ts + S(8)), fw - S(24), ts, "flyout")
             end
         else
             add({ id = "clear", label = _("Clear the page") }, fx + S(12), row, fw - S(24), ts, "flyout")
@@ -471,7 +506,9 @@ local function strokeSegments(sk, st)
     local pts = st.points
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, r, st.color }
+        -- (a stroke with a pen's pressure: as wide as it was pressed)
+        local pr = b[3] and Sketch.weightRadius(r, a[3] and (a[3] + b[3]) / 2 or b[3]) or r
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color }
     end
     return out
 end
@@ -655,7 +692,8 @@ function DrawScreen:onContacts(det, tevs)
             if det.adjustGesCoordinate then pcall(det.adjustGesCoordinate, det, ges) end
             x, y = ges.pos.x, ges.pos.y
         end
-        slots[#slots + 1] = { slot = tev.slot, id = tev.id, x = x, y = y, tool = tev.tool }
+        slots[#slots + 1] = { slot = tev.slot, id = tev.id, x = x, y = y, tool = tev.tool,
+            pressure = tev.gz_pressure, tilt_x = tev.gz_tilt_x, tilt_y = tev.gz_tilt_y }
         if tev.timev and not now then now = time.to_s(tev.timev) end
     end
     now = now or time.to_s(time.now())
@@ -750,6 +788,11 @@ function DrawScreen:use(t)
     local sk = self.sketch
     if t.width then self:setTool("pen", t.width); self:setFlyout(nil)
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
+    elseif t.id == "pressure" then
+        self.pressure_on = not self.pressure_on
+        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_pressure", self.pressure_on) end
+        self.sketch.pressure_on = self.pressure_on
+        self:setFlyout("pen") -- (laid out again: its words changed)
     elseif t.id == "pen" then
         -- the pen; again: its thickness
         if sk.tool == "pen" then self:setFlyout(self.flyout ~= "pen" and "pen" or nil) else self:setTool("pen"); self:setFlyout(nil) end
@@ -891,6 +934,7 @@ end
 function DrawScreen:onCloseWidget()
     self._closed = true
     self:unhook()
+    pcall(DrawScreen.savePenRange, self._pen_range_was)
     for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb", "tint_bb" }) do
         if self[bb] then self[bb]:free(); self[bb] = nil end
     end
