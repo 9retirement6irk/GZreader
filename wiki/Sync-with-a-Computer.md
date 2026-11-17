@@ -15,7 +15,8 @@ Connections → Sync through a computer.
    already plugged in), open the page and choose the Kindle's
    drive (or its `documents/GZreader` folder). Nothing else can be set up
    before a Kindle is chosen.
-3. Enter the Kindle's **PIN**. The first time, you choose one: the sign-ins
+3. Enter the Kindle's **PIN**. The first time, you choose one (8 characters
+   at least: digits, letters or a few words): the sign-ins
    (Grimmory, Memos, Plex, Immich, calendars) are kept on the Kindle, encrypted with
    it, so any computer can sync the Kindle with just the PIN. (Or "Don't keep
    sign-ins on the Kindle": they last until the tab is closed.)
@@ -86,6 +87,14 @@ report a Wi‑Fi Kindle sends with **Send to the developer**:
 Passwords and tokens are never in the log; it can name books and files.
 Reports go to the developer's report feed, like a Wi‑Fi Kindle's, tagged
 `sync-page` ([Privacy and diagnostics](Privacy-and-Diagnostics#diagnostic-log)).
+The page sends them only to that feed's server, whatever the Kindle's
+outbox says.
+
+What the page sends to Grimmory for the Kindle is limited the same way:
+only GZreader's reading updates (`POST`, `PUT` or `DELETE` to Grimmory's
+`/api/v1/…`). Anything else found in `.gzsync/outbox.json` (which anyone
+with the Kindle's drive could edit) is left out and the page says so; your
+sign-in never goes anywhere but your Grimmory.
 
 **Test mode**: <https://9retirement6irk.github.io/GZreader/sync/?test> works
 with a pretend Kindle kept in the browser, to try the page (and your
@@ -93,8 +102,11 @@ connections) without a Kindle.
 
 The PIN: the sign-ins file (`.gzsync/keys.json`) is encrypted with AES-256-GCM
 under a key made from the PIN (PBKDF2-SHA-256, 600 000 rounds). Grimmory's
-password is never kept, only its sign-in token. Someone who has the Kindle and
-time could try every short PIN, so a longer one is safer. GZreader on the
+password is never kept, only its sign-in token. Someone who copies the file
+off the Kindle can try PINs on their own computer, as many as they like: every
+4-digit PIN in seconds on a graphics card. So a new PIN needs 8 characters at
+least, and a few words are better still. A Kindle locked with a shorter PIN
+before still unlocks with it (Start over to choose a longer one). GZreader on the
 Kindle never reads the file. Forgot the PIN: "Start over" deletes the file;
 connect again.
 
@@ -111,12 +123,12 @@ What a sync does:
 
 | | Kindle → computer | Computer → Kindle |
 | --- | --- | --- |
-| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
+| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks, highlights and notes |
 | Downloads | The **sync queue**: in the Catalog tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
-| Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker or headphone jack) |
+| Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker, headphone jack or Bluetooth) |
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 
@@ -127,13 +139,17 @@ queued book offers to take it off; Settings → Connections → Sync through a
 computer → Sync queue lists them). The quick panel's **Sync** tile shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 
-Bookmarks and highlights sync as with Wi-Fi, a sync later: what you add,
-change or delete on the Kindle is kept in a journal (`.gzsync/journal.jsonl`,
-in order) that the page sends to Grimmory; something made on the Kindle gets
-a temporary id until then, and Grimmory's own after the next start. The page
-brings each downloaded book's bookmarks and highlights, which GZreader
-compares and merges when the book opens (a highlight changed in both places
-since the last sync is left as it is in each, as with Wi-Fi).
+Bookmarks, highlights and notes sync as with Wi-Fi, a sync later: what you
+add, change or delete on the Kindle is kept in a journal
+(`.gzsync/journal.jsonl`, in order) that the page sends to Grimmory; something
+made on the Kindle gets a temporary id until then, and Grimmory's own after
+the next start. The page brings each downloaded book's bookmarks, highlights
+and notes, which GZreader compares and merges when the book opens (a
+highlight or note changed in both places since the last sync is left as it is
+in each, as with Wi-Fi). Notes include the ones in the Notes tab of
+Grimmory's web reader ([Grimmory Sync](Grimmory-Sync#highlight-and-note-sync)):
+a note typed on the Kindle shows there after the sync, and one written there
+comes to the Kindle with the next sync (merged when the book opens).
 
 Covers: Grimmory doesn't let other web pages read its covers (only show
 them), so the page takes an EPUB's cover from the book itself and an

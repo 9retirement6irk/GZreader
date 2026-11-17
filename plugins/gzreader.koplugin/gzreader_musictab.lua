@@ -1,6 +1,6 @@
 --[[--
-The Music tab (ZenOS tab bar, off until turned on in Settings → Navbar →
-Tabs), and "Now playing": music from Plex (gzreader_music.lua,
+The Music tab (ZenOS tab bar, off until turned on in Settings → Interface →
+Navbar → Tabs, or Settings → Connections → Plex (Music) → Music tab), and "Now playing": music from Plex (gzreader_music.lua,
 gzreader_plex.lua).
 
   Now playing: Title — Artist
@@ -100,7 +100,7 @@ end
 --- The CD player with its library (1.22: all of music happens there); the
 --- list menu below only if it fails, or without a speaker (it says why).
 function Tab.player(plugin, opts)
-    if Tab.LIST_PLAYER or not require("gzreader_touch").audio() then return nil end
+    if Tab.LIST_PLAYER or not require("gzreader_touch").player() then return nil end
     local ok, w = pcall(function() return require("gzreader_cdscreen").show(plugin, opts) end)
     if ok then return w end
     require("gzreader_log").warn("CD player screen:", tostring(w))
@@ -262,9 +262,9 @@ end
 function Tab:rootItems(after)
     local plugin = self.plugin
     local Rows = require("gzreader_rows")
-    if not require("gzreader_touch").audio() then
+    if not require("gzreader_touch").player() then
         return Rows.mark({ Rows.about(_("No speaker on this Kindle"),
-            _("This Kindle has no speaker or headphone jack, so it can't play music. The Kindle 2, Keyboard, DX and Touch can.")) })
+            _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).")) })
     end
     local plex = Music().plex(plugin)
     local items = {}
@@ -303,7 +303,7 @@ function Tab:playerRootItems(inline, after)
     local Rows = require("gzreader_rows")
     after = after or function() self:replace(_("Music"), self:playerRootItems(inline)) end
     local plex = Music().plex(plugin)
-    if not (require("gzreader_touch").audio() and plex:isConnected()) then
+    if not (require("gzreader_touch").player() and plex:isConnected()) then
         local items = {}
         for _i, it in ipairs(self:rootItems(after)) do
             if it.text ~= _("Now playing") then items[#items + 1] = it end
@@ -934,10 +934,13 @@ function Tab.settingsItems(plugin)
         for _i, it in ipairs(Tab.signInItems(plugin)) do
             local cb = it.callback
             items[#items + 1] = { text = it.text, enabled = cb ~= nil,
+                -- (its icon, as in the Music tab: Rows.mark made it)
+                icon_glyph = it.icon_glyph, icon_name = it.icon_name, icon_file = it.icon_file,
                 -- (About keeps Settings open)
             callback = cb and function(touchmenu) if not it.gz_about then closeTouchMenu(touchmenu) end cb() end or nil }
         end
-        items[#items + 1] = { text = _("Then turn the Music tab on: Settings → Navbar → Tabs."), enabled = false }
+        items[#items].separator = true
+        items[#items + 1] = Tab.tabItem()
         return items
     end
     local items = {
@@ -1028,9 +1031,31 @@ function Tab.settingsItems(plugin)
                 end,
             })
         end },
-        { text = _("The Music tab: Settings → Navbar → Tabs. Headphones: Settings → General → Audio."), enabled = false },
+        Tab.tabItem(),
+        require("gzreader_rows").about(_("Headphones and volume"), _("Headphones, the speaker and the volume: Settings → General → Audio.")),
     }
     return items
+end
+
+--- Settings → Connections → Plex (Music): the Music tab on or off (a long
+--- line saying where to turn it on was cut off at the screen's edge, and
+--- named the wrong place: Settings → Navbar instead of Interface → Navbar).
+function Tab.tabItem()
+    return {
+        text = _("Music tab"), icon_file = require("gzreader_rows").FILE.music,
+        help_text = _("Its own tab in the tab bar, with your albums, playlists and what's playing. It can also be turned on or moved in Settings → Interface → Navbar → Tabs."),
+        checked_func = function() return require("gzreader_tabs").shown(Tab.TAB_ID) end,
+        callback = function()
+            local Tabs = require("gzreader_tabs")
+            Tabs.setShown(Tab.TAB_ID, not Tabs.shown(Tab.TAB_ID), Tab.tabEntry(),
+                function(msg) UIManager:show(InfoMessage:new{ text = msg }) end)
+        end,
+    }
+end
+
+--- The tab's entry in ZenOS's tab list (config/defaults.lua has the same).
+function Tab.tabEntry()
+    return { id = Tab.TAB_ID, type = "action", action = { gzreader_music = true }, label = "Music", icon = "tab_music" }
 end
 
 ---------------------------------------------------------------- now playing

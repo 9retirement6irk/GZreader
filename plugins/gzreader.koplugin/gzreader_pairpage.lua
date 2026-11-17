@@ -314,7 +314,7 @@ local function musicSection(st, base)
     local m = st.plex
     if not m then return "" end
     local parts = { '<section id="music" class="tab"><h2>Music (Plex)</h2>',
-        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Navbar → Tabs).</p>' }
+        '<p class="what">Albums and playlists from your Plex Media Server, to play while you read (the Music tab; turn it on in Settings → Connections → Plex (Music) → Music tab).</p>' }
     if m.error then parts[#parts + 1] = '<p class="err">' .. esc(m.error) .. "</p>" end
     if m.connected then
         parts[#parts + 1] = status(true, "Signed in as <b>" .. esc(m.username) .. "</b> · " .. esc(m.server))

@@ -28,8 +28,11 @@ the book once you open one.
   *Downloads* between the clock and the battery, as the other tabs name
   themselves (or the tab's own name, if you renamed it in Settings →
   Interface → Navbar); inside a folder it shows the folder's name.
-- **Home** has one shelf of your most recent books; the DX's taller screen
-  has two (the first filled before the second).
+- **Home** has one shelf of your most recent books; the DX and the Kindle
+  Scribe (any screen more than 5 inches across) have two (the first filled
+  before the second). On the Scribe, the Downloads tab has four shelves a
+  page, as tall as Home's two and level with them, so the books are the same
+  size on both.
 - **The spines** are drawn after
   [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin), AndyHazz's
   KOReader plugin: the shelf is seen from a little above, so each book shows
@@ -67,7 +70,9 @@ the book once you open one.
     model ship, binoculars, a seashell, a flowered jug) and a tabby cat.
     Two seasonal ones stand in their season and then take about two places
     of three: a **Christmas tree** (20 November to 6 January) and a pumpkin
-    (mid-September to November). **Which
+    (mid-September to November). Each stands level on its base, flush
+    with the plank (your own pictures stand as you made them: crop them
+    with the base level). **Which
     ornaments** has a tick for each: tick a seasonal one to have it all
     year, untick any to never see it; *Seasonal ones in their season again*
     undoes that. It's a grid of the ornaments, each standing on a piece of
@@ -172,7 +177,8 @@ in your phone's browser; Kindles without Wi‑Fi on the
 
 - **Connect**: your Immich address and an API key (Immich → your picture
   → Account Settings → API Keys → New API Key, with at least `album.read`,
-  `asset.read` and `asset.view`, or all permissions). Pasting an album's
+  `asset.read` and `asset.view`, or all permissions; add `user.read` to see
+  your name in GZreader's Immich settings). Pasting an album's
   address from your browser chooses that album too. The key is kept like the
   other sign-ins and never written to the log.
 - **Album**: which album's pictures to use (yours and the ones shared with

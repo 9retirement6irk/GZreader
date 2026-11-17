@@ -27,6 +27,10 @@ KO="$G/koreader"
 # Kindle-only parts
 rm -f "$KO/fbink" "$KO/koreader.sh" "$KO/libkohelper.sh" "$KO/wmctrl"
 rm -rf "$KO/frontend/device/kindle"
+# (the audio decoder for Kindles with Bluetooth: built for a VFP CPU, and a Nook
+# has no Bluetooth; the 1st Edition's package must hold nothing built for VFP)
+rm -f "$KO/plugins/gzreader.koplugin/bin/gzdecode-armhf"
+rmdir "$KO/plugins/gzreader.koplugin/bin" 2>/dev/null || true
 cp -r "$RUNTIME" "$G/runtime"
 rm -f "$G/runtime/SOURCES.txt"
 cp "$RUNTIME/SOURCES.txt" "$G/runtime-SOURCES.txt" 2>/dev/null || true

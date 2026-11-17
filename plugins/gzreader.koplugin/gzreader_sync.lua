@@ -195,6 +195,41 @@ function Sync:localPosition()
     return p
 end
 
+--- On the book's last page (or, scrolling, at its very end)? Grimmory marks
+--- a book Read at 99.5%, and the percentage worked out above is the top of
+--- the page: an EPUB's last page came to 99.0-99.4% in shorter books, so
+--- finishing one left it at Reading. The last page counts as 100%.
+function Sync:atEnd()
+    local doc, rolling = self.ui.document, self.ui.rolling
+    if not doc or not rolling or not self:isRolling() then return false end
+    local ok, at_end = pcall(function()
+        local view = self.ui.view
+        if view and view.view_mode == "scroll" then
+            local dimen, footer = self.ui.dimen, view.footer
+            local pos, height = tonumber(rolling.current_pos), tonumber(doc.info.doc_height)
+            if not (pos and height and dimen and dimen.h) then return false end
+            local footer_h = footer and footer.getHeight and footer:getHeight() or 0
+            return pos >= height - dimen.h + footer_h - 1 -- ReaderRolling:_gotoPos's last position
+        end
+        local page = tonumber(rolling.current_page)
+        if not page or page < 1 then return false end
+        local shown = doc.getVisiblePageNumberCount and doc:getVisiblePageNumberCount() or 1
+        local last_shown = page + math.max(1, tonumber(shown) or 1) - 1
+        if doc.hasHiddenFlows and doc:hasHiddenFlows() and doc.getNextPage then
+            return doc:getNextPage(last_shown) == 0
+        end
+        return last_shown >= doc:getPageCount()
+    end)
+    return ok and at_end == true
+end
+
+--- The position sent to Grimmory: the local one, 100% on the last page.
+function Sync:sentPosition()
+    local p = self:localPosition()
+    if p.pct < 100 and self:atEnd() then p.pct = 100 end
+    return p
+end
+
 ---------------------------------------------------------------- web reader's percentage
 
 --- Uncompressed size of each spine item, from the EPUB's zip directory
@@ -411,6 +446,7 @@ function Sync:pull(interactive, saved)
     if not self.ui.document or self.plugin.sync ~= self then return end
     local talk = self:canTalk()
     if not talk and not saved then
+        self.opening = nil -- (nothing to ask: what's read from here on is sent)
         if interactive then self.plugin:showError("unreachable") end
         return
     end
@@ -433,6 +469,7 @@ function Sync:pull(interactive, saved)
     end
     local function done(book, err)
         if not self.ui.document or self.plugin.sync ~= self then return end
+        self.opening = nil -- (Grimmory's place has been looked at: pushes may follow)
         if type(book) ~= "table" and saved and not talk then book, err = saved, nil end -- (the background was busy)
         if saved and type(book) == "table" then Log.info("sync pull book", self.book_id, "with the progress kept at download") end
         self:applyRemote(book, interactive, err)
@@ -528,7 +565,7 @@ end
 --- goes to sleep); the CFI is made there too, from the page's XPointer.
 function Sync:push(force, _background)
     if not self.entry.file_id or not self.ui.document then return end
-    local p = self:localPosition()
+    local p = self:sentPosition()
     local last = num(self.entry.last_pushed_pct)
     if not force and last and math.abs(p.pct - last) < 0.05 and self.entry.last_pushed_href == p.href then
         return
@@ -574,7 +611,7 @@ end
 ---------------------------------------------------------------- sessions
 
 function Sync:startSession()
-    self.session = { start = os.time(), start_pct = self:localPosition().pct }
+    self.session = { start = os.time(), start_pct = self:sentPosition().pct }
 end
 
 function Sync:endSession()
@@ -584,7 +621,7 @@ function Sync:endSession()
     local now = os.time()
     local duration = now - s.start
     if duration < MIN_SESSION_SECONDS then return end
-    local end_pct = self:localPosition().pct
+    local end_pct = self:sentPosition().pct
     local body = {
         bookId = tonumber(self.book_id),
         bookType = self.entry.format and self.entry.format:upper() or nil,
@@ -619,7 +656,13 @@ function Sync:onReady()
     -- let the first page render before talking to the network; then the
     -- book's sync in one go (main.lua openSync: one background process for
     -- its place, queued updates, bookmarks and highlights)
+    -- Until that sync has looked at Grimmory's place, this book's place isn't
+    -- sent: a book closed straight away (a picture book reopened with its new
+    -- layout, 1 s after its first page) sent its first page and replaced
+    -- Grimmory's place with it, and its kept progress was gone too.
+    self.opening = { at = self:openingMark(), saved = saved }
     UIManager:scheduleIn(Sync.OPEN_SYNC_DELAY, function()
+        if not self.plugin:syncEnabled() then self.opening = nil end
         if self.plugin.openSync then return self.plugin:openSync(self, saved) end
         self.plugin:flushPending()
         if self.plugin:syncEnabled() then self:pull(false, saved) end
@@ -635,8 +678,31 @@ function Sync:onPageTurned()
     end
 end
 
-function Sync:onLeave()
-    if self.plugin:syncEnabled() then
+--- Where the book is now, exactly (a page turn always changes it).
+function Sync:openingMark()
+    local ok, p = pcall(self.localPosition, self)
+    if not ok or type(p) ~= "table" then return nil end
+    return tostring(p.pos or p.page or p.pct) .. " " .. tostring(p.xp)
+end
+
+--- Closed (or asleep) before the open sync looked at Grimmory, still on the
+--- page the book opened at: nothing read here to send.
+function Sync:leftUnread()
+    local o = self.opening
+    if not o or not o.at then return false end
+    return self:openingMark() == o.at
+end
+
+--- closing: the book is closing (not just the Kindle going to sleep).
+function Sync:onLeave(closing)
+    if self.plugin:syncEnabled() and self:leftUnread() then
+        if closing and self.opening.saved and type(self.entry) == "table" and not self.entry.grimmory_progress then
+            -- for the next opening (the same book reopened with its new layout)
+            self.entry.grimmory_progress = self.opening.saved
+            self.plugin:save()
+        end
+        Log.info("sync book", self.book_id, "left before Grimmory's place was looked at, still where it opened: nothing sent")
+    elseif self.plugin:syncEnabled() then
         self:push(false)
         local ok, queued = pcall(require("gzreader_ratings").check, self.plugin, self.book_id, self.entry, self.ui.doc_settings)
         if ok and queued and self:canTalk() then self.plugin:flushPending() end

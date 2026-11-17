@@ -97,6 +97,55 @@ function Memos:request(method, path, body, params, opts)
     return code, data
 end
 
+---------------------------------------------------------------- what this Memos lacks
+--[[ A stock Memos has no spaces (before v0.31) and no journaling mode (the
+fork's /api/journal/settings): every sync asked for both and got "not found"
+twice, two requests (and two warnings in the log) each time. What a server
+lacks is kept for LACKS_TTL in a small file (the sync runs in a background
+process, which can't change the plugin's settings), and asked again after
+that, or when you connect again (Memos:me): a server updated meanwhile. ]]
+Memos.LACKS_TTL = 6 * 3600
+
+function Memos.lacksPath() return DataStorage:getSettingsDir() .. "/gzreader-memos-lacks.json" end
+
+local function readLacks()
+    local f = io.open(Memos.lacksPath(), "rb")
+    if not f then return {} end
+    local ok, t = pcall(JSON.decode, f:read("*a"))
+    f:close()
+    return ok and type(t) == "table" and t or {}
+end
+
+local function writeLacks(t)
+    if next(t) == nil then os.remove(Memos.lacksPath()); return end
+    local f = io.open(Memos.lacksPath(), "wb")
+    if f then f:write(JSON.encode(t)); f:close() end
+end
+
+--- Whether this server was found without `what` ("spaces", "journal") lately.
+function Memos:lacks(what)
+    local server = self.store.server
+    local at = server and (readLacks()[server] or {})[what]
+    local now = os.time()
+    return type(at) == "number" and at <= now and now - at < Memos.LACKS_TTL
+end
+
+--- Note that this server has `what` (has = true) or hasn't.
+function Memos:noteLacks(what, has)
+    local server = self.store.server
+    if not server then return end
+    local t = readLacks()
+    local cur = t[server] and t[server][what]
+    if has and cur == nil then return end -- (nothing kept: nothing to write)
+    t[server] = t[server] or {}
+    t[server][what] = not has and os.time() or nil
+    if next(t[server]) == nil then t[server] = nil end
+    writeLacks(t)
+end
+
+--- Forget what any server lacked (connecting again, tests).
+function Memos.forgetLacks() os.remove(Memos.lacksPath()) end
+
 --- The signed-in user ({ name, username, displayName }), or nil, err.
 function Memos:me()
     local code, data, err = self:request("GET", "/auth/me")
@@ -182,10 +231,13 @@ end
 --- order: { { name = "spaces/…", title = "…" }, … }, or nil when this Memos
 --- has none to offer (older: no /spaces) or didn't answer.
 function Memos:spaces()
+    if self:lacks("spaces") then return nil end
     local out, token = {}, nil
     repeat
         local code, data, err = self:request("GET", "/spaces", nil, { pageSize = 100, pageToken = token }, { here_only = true })
+        if (code == 404 or code == 405) and not token then self:noteLacks("spaces", false) end
         if err or code ~= 200 or type(data) ~= "table" then return nil end
+        if not token then self:noteLacks("spaces", true) end
         for _i, sp in ipairs(type(data.spaces) == "table" and data.spaces or {}) do
             if type(sp) == "table" and type(sp.name) == "string" then
                 out[#out + 1] = { name = sp.name, title = (type(sp.title) == "string" and sp.title ~= "") and sp.title
@@ -205,13 +257,20 @@ end
 --- found"); nil when it didn't answer (what was known stays).
 function Memos:journalSettings()
     if not (self.store.server and self.store.token) then return nil end
+    if self:lacks("journal") then return false end
     local Api = require("gzreader_api")
     local code, data = Api.rawRequest("GET", self.store.server .. "/api/journal/settings", {
         headers = { ["Authorization"] = "Bearer " .. self.store.token },
         timeouts = { 10, 20 },
     })
-    if code == 200 and type(data) == "table" then return require("gzreader_journal").settings(data) end
-    if code == 200 or code == 404 or code == 405 then return false end
+    if code == 200 and type(data) == "table" then
+        self:noteLacks("journal", true)
+        return require("gzreader_journal").settings(data)
+    end
+    if code == 200 or code == 404 or code == 405 then
+        self:noteLacks("journal", false)
+        return false
+    end
     return nil
 end
 

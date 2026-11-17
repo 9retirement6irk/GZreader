@@ -60,7 +60,10 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   folder.
 - **Opening books**: each open logs a timing line (`gzreader_opentiming.lua`:
   closing the file manager, opening and laying out the document, each
-  module's ReaderReady, screen refreshes, free memory). The crengine layout
+  module's ReaderReady, screen refreshes, free memory), and three memory
+  lines are written at once as a book starts opening, closes and Home is
+  back on screen (synced to storage on Kindles with 128 MB or less: see
+  [Privacy and diagnostics](Privacy-and-Diagnostics#diagnostic-log)). The crengine layout
   cache is 256 MB instead of 64 (a dropped layout means a full re-layout on
   the next open), and `LuaSettings:flush` skips writing a file whose content
   hasn't changed (opening a book wrote `settings.reader.lua` twice).
@@ -83,6 +86,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   changed. The last page's pictures stay while the tab is closed (a few MB;
   not on the Kindle 2 and DX). In the emulator (Paperwhite 3): 1.4 s of CPU
   to open before, 0.5 s now, 0.25 s when opened again.
+- **Notes syncs ask only what your Memos has** (`gzreader_memos.lua`): a
+  stock Memos has no spaces and no journaling mode, and each sync asked for
+  both and got "not found" (two requests and two warnings in the log every
+  time). What a server lacks is now remembered for 6 hours (and asked again
+  when you connect again), so a sync is the notes and your tags only.
 - **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
   lines, unused: GZreader's updater replaces it) isn't loaded at all; a
   small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is
@@ -107,7 +115,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
 - **Background processes below the screen's priority** (`gzreader_async.lua`):
-  syncing, downloads, the library index and update checks
+  syncing, downloads (books, audiobooks and music), the library index and update checks
   run at nice 5 (longer jobs such as matching highlights at 10, cover sizing
   and other local work at 19), so a TLS handshake (seconds of CPU on a Kindle 3) doesn't hold up
   page turns.

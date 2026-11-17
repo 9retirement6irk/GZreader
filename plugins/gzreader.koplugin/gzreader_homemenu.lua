@@ -338,7 +338,7 @@ function HomeMenu.items(plugin)
         { text = _("Sort"), callback = function() HomeMenu.showSort() end },
         usb and { text = _("Sync with computer…"), callback = function() require("gzreader_usbsync").show(plugin) end } or nil,
         not usb and { text = _("Set up or send books from a browser (QR code)"), callback = function() plugin:openPhonePage("books") end } or nil,
-        require("gzreader_touch").audio() and require("gzreader_musictab").menuItem(plugin) or nil,
+        require("gzreader_touch").player() and require("gzreader_musictab").menuItem(plugin) or nil,
         { text_func = function()
             return T(_("Display: %1"), HomeMenu.displayLabel(HomeMenu.displayMode()))
         end, callback = function() HomeMenu.showDisplay() end },

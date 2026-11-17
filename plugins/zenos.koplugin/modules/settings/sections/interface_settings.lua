@@ -498,6 +498,11 @@ function M.build(ctx, extras_items)
 
     IconItem.decorate(items[#items], icons.settings_background)
     move_item(extras_items, _("Custom icons"), items)
+    -- GZreader: on big screens (the Scribe, the DX), how big menus and text
+    -- are drawn (frontend/gzuiscale.lua; nil elsewhere)
+    local ok_size, GzUiScale = pcall(require, "gzuiscale")
+    local size_item = ok_size and GzUiScale.menuItem and GzUiScale.menuItem() or nil
+    if size_item then items[#items + 1] = IconItem.decorate(size_item, icons.settings_layout) end
     -- (GZreader: Blur menu background was in Controls; it applies to every
     -- touch menu, Settings too. Zen mode is always on: no toggle.)
     table.insert(items, IconItem.decorate({

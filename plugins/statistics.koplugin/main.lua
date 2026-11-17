@@ -2695,7 +2695,7 @@ function ReaderStatistics:importFromFile(base_path, item)
         if lfs.attributes(statistic_file, "mode") == "directory" then
             return
         end
-        local ok, stored = pcall(dofile, statistic_file)
+        local ok, stored = pcall(require("gzdataload").file, statistic_file) -- GZreader: read as data, not run (gzdataload.lua)
         if ok then
             return stored
         end

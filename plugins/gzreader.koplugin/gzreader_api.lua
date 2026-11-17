@@ -145,9 +145,81 @@ local function keepOrClose(conn, code, resp_headers, status)
     conn.inner = nil
 end
 
+--[[ Redirects. LuaSocket follows a GET's redirect by itself, to any host,
+with the same headers: the Grimmory sign-in (Authorization), Plex's token,
+Immich's key and the Access key / Cloudflare token went wherever a server
+redirected (a sign-in proxy's page, another site). rawRequest follows
+redirects itself instead: on the same server (scheme, host and port) as
+before; to another one only with the harmless headers (SAFE_ON_REDIRECT), the
+Access headers worked out again for the new host (gzreader_access.lua), and
+never from https to http. ]]
+Api.REDIRECTS = { [301] = true, [302] = true, [303] = true, [307] = true, [308] = true }
+Api.MAX_REDIRECTS = 5
+Api.SAFE_ON_REDIRECT = { ["accept"] = true, ["accept-encoding"] = true, ["accept-language"] = true,
+    ["user-agent"] = true, ["range"] = true }
+
+--- scheme://host:port of a URL (lower case, the default port filled in).
+function Api.originOf(u)
+    local p = url.parse(tostring(u or ""))
+    if not p or not p.scheme or not p.host then return nil end
+    local scheme = p.scheme:lower()
+    return scheme .. "://" .. p.host:lower() .. ":" .. tostring(p.port or (scheme == "https" and 443 or 80))
+end
+
+--- The headers that may go to another server after a redirect.
+function Api.safeHeaders(h)
+    local out = {}
+    for k, v in pairs(h or {}) do
+        if Api.SAFE_ON_REDIRECT[tostring(k):lower()] then out[k] = v end
+    end
+    return out
+end
+
+--- A sink that holds the start of a body (up to `limit` bytes, 4 KB: a
+--- redirect's page is a few hundred bytes, and a download's progress shouldn't
+--- wait longer) until the answer is known: a redirect's body is dropped
+--- instead of ending up in the file being downloaded.
+function Api.deferredSink(real, limit)
+    limit = limit or 4096
+    local buf, size, through, ended = {}, 0, false, false
+    local d = {}
+    d.sink = function(chunk, err)
+        if through then return real(chunk, err) end
+        if chunk == nil then ended = true; return 1 end
+        buf[#buf + 1] = chunk
+        size = size + #chunk
+        if size > limit then
+            through = true
+            for _i, c in ipairs(buf) do
+                local ok, e = real(c)
+                if not ok then buf = {}; return nil, e end
+            end
+            buf = {}
+        end
+        return 1
+    end
+    --- (a redirect) drop what was held; false if some of it was passed on already
+    function d.discard()
+        local clean = not through
+        buf, size, ended = {}, 0, false
+        return clean
+    end
+    --- (the real answer) pass on what was held, and the end if it came
+    function d.finish()
+        if through then return end
+        through = true
+        for _i, c in ipairs(buf) do real(c) end
+        buf = {}
+        if ended then real(nil) end
+    end
+    return d
+end
+
 --- opts.log_url: what the log shows instead of the address (a secret link,
 --- e.g. a calendar link with its keys in it). opts.want_raw: the body as
---- text (gzip unpacked) instead of decoded JSON.
+--- text (gzip unpacked) instead of decoded JSON. opts.expected: error codes
+--- that are an answer, not a problem ({ [403] = true }): logged as info, not
+--- as a warning (warnings go into debug reports).
 local function rawRequest(method, full_url, opts)
     opts = opts or {}
     local shown_url = opts.log_url or full_url
@@ -168,6 +240,10 @@ local function rawRequest(method, full_url, opts)
     end
     local chunks = {}
     local sink = opts.sink or socketutil.table_sink(chunks)
+    -- (a GET or HEAD may be redirected: hold the start of a download's body until that's known)
+    local follows = method == "GET" or method == "HEAD"
+    local deferred = follows and opts.sink and Api.deferredSink(opts.sink) or nil
+    if deferred then sink = deferred.sink end
     -- JSON replies: ask for gzip (5-10x smaller to receive and decrypt)
     local gzip = not opts.sink and Gzip.available()
     if gzip then headers["Accept-Encoding"] = "gzip" end
@@ -197,6 +273,7 @@ local function rawRequest(method, full_url, opts)
             headers = headers,
             source = body and ltn12.source.string(body) or nil,
             sink = sink,
+            redirect = false, -- (followed below, without the sign-in to other servers)
         }
         if helper_port and not direct then
             local h2 = {}
@@ -255,6 +332,25 @@ local function rawRequest(method, full_url, opts)
     socketutil:reset_timeout()
     pcall(function() require("gzreader_net").touch() end)
     local ms = math.floor((socket.gettime() - t0) * 1000)
+    if pcall_ok and follows and Api.REDIRECTS[code] and type(resp_headers) == "table" and resp_headers["location"]
+            and (opts._hops or 0) < Api.MAX_REDIRECTS then
+        local next_url = url.absolute(full_url, (tostring(resp_headers["location"]):gsub("%s", "")))
+        local from, to = Api.originOf(full_url), Api.originOf(next_url)
+        local same = from ~= nil and from == to
+        local downgrade = from and from:match("^https:") and not (to or ""):match("^https:")
+        if to and to:match("^https?:") and not downgrade and (not deferred or deferred.discard()) then
+            local o2 = {}
+            for k, v in pairs(opts) do o2[k] = v end
+            o2._hops = (opts._hops or 0) + 1
+            o2.log_url = opts.log_url or next_url:gsub("[?#].*$", "")
+            if deferred then o2.sink = opts.sink end
+            if not same then o2.headers = Api.safeHeaders(opts.headers) end
+            Log.info("HTTP", method, shown_url, code, ms .. "ms", same and "redirected"
+                or "redirected to another server (without the sign-in)")
+            return rawRequest(method, next_url, o2)
+        end
+    end
+    if deferred then deferred.finish() end
     if not pcall_ok then
         logger.warn("Grimmory: request failed", method, shown_url, code)
         Log.err("HTTP", method, shown_url, "raised:", code, ms .. "ms")
@@ -282,7 +378,9 @@ local function rawRequest(method, full_url, opts)
         Log.warn("HTTP", method, shown_url, "network error:", code, ms .. "ms")
         return nil, data, resp_headers, code
     end
-    if code >= 400 then
+    if code >= 400 and opts.expected and opts.expected[code] then
+        Log.info("HTTP", method, shown_url, code, ms .. "ms", "(an answer: " .. (raw ~= "" and raw:sub(1, 120) or "?") .. ")")
+    elseif code >= 400 then
         Log.warn("HTTP", method, shown_url, code, ms .. "ms", raw ~= "" and raw:sub(1, 300) or "")
     else
         Log.info("HTTP", method, shown_url, code, ms .. "ms")
@@ -315,7 +413,10 @@ end
 
 local function pendingPath()
     local ok, DataStorage = pcall(require, "datastorage")
-    return ok and (DataStorage:getSettingsDir() .. "/gzreader_tokens.pending") or nil
+    if not ok then return nil end
+    -- (off the USB drive on a Kindle, with the other sign-ins: gzreader_secrets.lua)
+    local okS, dir = pcall(function() return require("gzreader_secrets").pendingDir() end)
+    return ((okS and dir) or DataStorage:getSettingsDir()) .. "/gzreader_tokens.pending"
 end
 
 --- A token's fingerprint (the file never holds the old token itself).
@@ -351,6 +452,15 @@ end
 function Api.recoverPending(store, path)
     path = path or pendingPath()
     local f = path and io.open(path, "r")
+    if not f and path then
+        -- (written next to the settings by a GZreader before the sign-ins moved off the drive)
+        local okd, DataStorage = pcall(require, "datastorage")
+        local legacy = okd and (DataStorage:getSettingsDir() .. "/gzreader_tokens.pending")
+        if legacy and legacy ~= path then
+            f = io.open(legacy, "r")
+            if f then path = legacy end
+        end
+    end
     if not f then return false end
     local old, refresh, access, expires = f:read("*l"), f:read("*l"), f:read("*l"), f:read("*l")
     f:close()
@@ -374,8 +484,10 @@ end
 --- Log in with a username/password. Returns true or false, error_message.
 --- On a scheme-less address we try https first, then plain http (common on LANs).
 function Api:login(server, username, password)
+    -- no scheme typed and no HTTPS: plain HTTP only on the home network (gzreader_lan.lua)
     local candidates = { server }
-    if server:match("^https://") and not self.explicit_https then
+    local typed_bare = server:match("^https://") and not self.explicit_https
+    if typed_bare and require("gzreader_lan").isPrivate(server) then
         candidates[2] = "http://" .. server:sub(9)
     end
     local last_err
@@ -400,6 +512,7 @@ function Api:login(server, username, password)
             last_err = "unreachable"
         end
     end
+    if last_err == "unreachable" and typed_bare and not candidates[2] then last_err = "no_https" end
     return false, last_err
 end
 
@@ -978,10 +1091,12 @@ function Api.fetchJson(full_url)
 end
 
 --- Grimmory's public settings (SSO on/off, provider details). Tries https
---- then http for a scheme-less address, like login. Returns base, settings.
+--- then (on the home network) http for a scheme-less address, like login.
+--- Returns base, settings.
 function Api:publicSettings(server)
     local candidates = { server }
-    if server:match("^https://") and not self.explicit_https then
+    local typed_bare = server:match("^https://") and not self.explicit_https
+    if typed_bare and require("gzreader_lan").isPrivate(server) then
         candidates[2] = "http://" .. server:sub(9)
     end
     local last_err
@@ -991,6 +1106,7 @@ function Api:publicSettings(server)
         last_err = err
         if err ~= "unreachable" then break end
     end
+    if last_err == "unreachable" and typed_bare and not candidates[2] then last_err = "no_https" end
     return nil, last_err
 end
 

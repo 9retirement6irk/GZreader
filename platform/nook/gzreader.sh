@@ -110,6 +110,57 @@ export GZ_NOOK_HOME
 [ -f "$GZ/app-here" ] && GZ_NOOK_APP=here
 APP_PARTS="frontend plugins fonts data resources ffi jit l10n cache"
 APP_BOUND=
+APP_MOVED=
+# GZreader's code on the card is checked before it runs (as root). Every
+# Android app can write the card (and a computer over USB), so the
+# fingerprints (SHA-256) of what runs there (the Lua and libraries in
+# CODE_PARTS, and data/ca-bundle.crt, which the updater trusts) are kept on
+# the Nook's own disk ($GZ/app-manifest, root's), made when GZreader puts
+# them there, and compared at every start: a file changed, added or removed
+# since stops GZreader starting. After an update (gzreader_update.lua leaves
+# $GZ/app-manifest.renew) they're made again before GZreader runs again.
+CODE_PARTS="frontend plugins ffi jit"
+MANIFEST=$GZ/app-manifest
+code_list() {
+    (
+        cd "$GZ/koreader" || exit 1
+        for P in $CODE_PARTS; do
+            case " $APP_BOUND " in *" $P "*) find "$P/" -type f \( -name '*.lua' -o -name '*.so' \) 2>/dev/null ;; esac
+        done
+        case " $APP_BOUND " in *" data "*) [ -f data/ca-bundle.crt ] && echo data/ca-bundle.crt ;; esac
+    ) | sort | (cd "$GZ/koreader" && xargs -r sha256sum)
+}
+manifest_write() {
+    code_list > "$MANIFEST.new" && mv "$MANIFEST.new" "$MANIFEST" && rm -f "$MANIFEST.renew"
+}
+# (0: as recorded; 1: changed, logged and said)
+manifest_check() {
+    [ -n "$APP_BOUND" ] || return 0
+    if [ -n "$APP_MOVED" ] || [ -f "$MANIFEST.renew" ]; then
+        manifest_write && log "app: the code on the card recorded ($(wc -l < "$MANIFEST") files)"
+        return 0
+    fi
+    if [ ! -s "$MANIFEST" ]; then
+        # (on the card from before this check existed: recorded as it is)
+        manifest_write && log "app: the code on the card recorded for the first time ($(wc -l < "$MANIFEST") files)"
+        return 0
+    fi
+    code_list > "$MANIFEST.now"
+    # (what was recorded for the parts on the card now: one brought back to the Nook's disk isn't on it)
+    awk -v parts=" $APP_BOUND " '{ split($2, a, "/"); if (index(parts, " " a[1] " ")) print }' "$MANIFEST" > "$MANIFEST.was"
+    if cmp -s "$MANIFEST.was" "$MANIFEST.now"; then
+        rm -f "$MANIFEST.now" "$MANIFEST.was"
+        log "app: the code on the card is as GZreader left it"
+        return 0
+    fi
+    changed=$(awk 'NR == FNR { seen[$0] = 1; next } !($0 in seen) { n++; if (n <= 5) printf "%s ", $2 } END { print "(" n + 0 ")" }' "$MANIFEST.now" "$MANIFEST.was")
+    added=$(awk 'NR == FNR { seen[$0] = 1; next } !($0 in seen) { n++; if (n <= 5) printf "%s ", $2 } END { print "(" n + 0 ")" }' "$MANIFEST.was" "$MANIFEST.now")
+    rm -f "$MANIFEST.now" "$MANIFEST.was"
+    log "app: the code on the card changed since GZreader put it there: changed or gone $changed; new or changed $added"
+    echo "GZreader's files on the card ($APP) were changed by something other than GZreader, so it won't run them."
+    echo "Install the Nook package again (see the wiki: Install-Nook-1st-Edition)."
+    return 1
+}
 bind_part() { mount -o bind "$1" "$2"; }
 unbind_part() { umount "$1" 2>/dev/null || umount -l "$1" 2>/dev/null; }
 part_bound() { awk -v d="$1" '$2 == d { found = 1 } END { exit !found }' "$MOUNTS" 2>/dev/null; }
@@ -169,6 +220,7 @@ app_parts() {
             log "app: moving $P to $APP ($(du -sk "$K" | cut -f1) KB)"
             if copy_part "$K" "$APP/$P"; then
                 rm -rf "$K"
+                APP_MOVED=1
             else
                 log "app: couldn't copy $P (card full?): it stays on the Nook's own disk"
                 continue
@@ -186,6 +238,12 @@ app_parts() {
         fi
     done
     log "app: on $APP:$APP_BOUND"
+    if ! manifest_check; then
+        unbind_app
+        return 1
+    fi
+    # (Lua compiled at run time isn't cached on the card either: release packages come compiled)
+    [ -n "$APP_BOUND" ] && export KO_NO_BYTECODE_CACHE=1
     return 0
 }
 # (end app parts)
@@ -340,6 +398,8 @@ export HOME=$GZ_NOOK_HOME
 mkdir -p "$GZ_NOOK_HOME/GZreader" 2>/dev/null
 RETURN_VALUE=85
 while [ "$RETURN_VALUE" -eq 85 ]; do
+    # (an update just installed: its code on the card recorded before it runs)
+    [ -f "$MANIFEST.renew" ] && [ -n "$APP_BOUND" ] && manifest_write && log "app: the code on the card recorded after an update"
     ./luajit ./reader.lua "$@" >> crash.log 2>&1
     RETURN_VALUE=$?
     log "GZreader exited with $RETURN_VALUE"

@@ -273,7 +273,7 @@ function DocSettings:open(doc_path)
         candidate_path = t.path
         -- Ignore empty files
         if lfs.attributes(candidate_path, "size") > 0 then
-            ok, stored = pcall(dofile, candidate_path)
+            ok, stored = pcall(require("gzdataload").file, candidate_path) -- GZreader: read as data, not run (gzdataload.lua)
             -- Ignore empty tables
             if ok and next(stored) ~= nil then
                 logger.dbg("DocSettings: data is read from", candidate_path)
@@ -302,7 +302,7 @@ function DocSettings.openSettingsFile(sidecar_file)
     local new = DocSettings:extend{}
     local ok, stored
     if sidecar_file then
-        ok, stored = pcall(dofile, sidecar_file)
+        ok, stored = pcall(require("gzdataload").file, sidecar_file) -- GZreader: read as data, not run (gzdataload.lua)
     end
     if ok and next(stored) ~= nil then
         new.data = stored

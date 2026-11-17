@@ -754,6 +754,9 @@ function M.build(books, opts)
     local rows = math.max(1, opts.rows or 1)
     local gap = S(10)
     local row_h = math.floor((height - gap * (rows - 1)) / rows)
+    -- (GZreader: opts.pitch, board to board: the Downloads tab's shelf height
+    -- on a big screen; its books stand as tall as there, S(10) under the top)
+    if tonumber(opts.pitch) then row_h = math.floor(opts.pitch) - gap end
     local area_h = row_h - S(M.BOARD_H) - S(M.UNDER_H)
     local ratio = tonumber(CoverUtils.getRatio and CoverUtils.getRatio()) or 2 / 3
     -- (the size the cover is drawn at, so a pre-sized one is found)

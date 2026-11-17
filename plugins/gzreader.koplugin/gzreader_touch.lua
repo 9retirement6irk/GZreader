@@ -33,6 +33,29 @@ function Touch.audio()
     return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3" or m == "KindleTouch"
 end
 
+--- A Kindle with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer…,
+--- firmware 5.x): sound only through Amazon's mixersink (GStreamer 1.0),
+--- out over Bluetooth. GZreader plays audiobooks and music there with its
+--- own decoder (gzreader_audioengine). Looked for once (files on the Kindle).
+Touch.GST1 = "/usr/bin/gst-launch-1.0"
+Touch.MIXERSINK = "/usr/lib/gstreamer-1.0/libgstmixersink.so"
+local bt_audio
+function Touch.btAudio()
+    if bt_audio == nil then
+        local okk, kindle = pcall(function() return Device:isKindle() end)
+        local lfs = require("libs/libkoreader-lfs")
+        bt_audio = (okk and kindle and not Touch.audio()
+            and lfs.attributes(Touch.GST1, "mode") == "file"
+            and lfs.attributes(Touch.MIXERSINK, "mode") == "file") and true or false
+    end
+    return bt_audio
+end
+function Touch._forgetBtAudio() bt_audio = nil end
+
+--- Can this Kindle play audiobooks and music (a speaker or headphone jack,
+--- or Bluetooth)?
+function Touch.player() return Touch.audio() or Touch.btAudio() end
+
 --- The DX or DX Graphite: the 9.7" 824 × 1200 screen (KOReader's Kindle 2
 --- class runs the DX, so by its size).
 function Touch.dx()
@@ -43,9 +66,26 @@ function Touch.dx()
     return ok and small > 600 or false
 end
 
---- Read aloud (the Kindle's voice): every Kindle with audio. Shift + Sym on
---- a keyboard; the quick panel's Read aloud button on a touch screen.
-function Touch.tts() return Touch.audio() end
+--- Amazon's Ivona voice (einkttsdaemon, behind Assistive Reader): the
+--- Kindles with Bluetooth on firmware 5.x (Scribe, Paperwhite 5 and newer,
+--- Colorsoft…). It speaks through Bluetooth headphones or a speaker. Looked
+--- for once (a file on the Kindle).
+Touch.IVONA_BIN = "/usr/bin/einkttsdaemon"
+local ivona_found
+function Touch.ivona()
+    if ivona_found == nil then
+        local okk, kindle = pcall(function() return Device:isKindle() end)
+        local lfs = require("libs/libkoreader-lfs")
+        ivona_found = (okk and kindle and lfs.attributes(Touch.IVONA_BIN, "mode") == "file") and true or false
+    end
+    return ivona_found
+end
+function Touch._forgetIvona() ivona_found = nil end -- (tests)
+
+--- Read aloud (the Kindle's voice): every Kindle with audio, and the Kindles
+--- with Amazon's Ivona voice (over Bluetooth). Shift + Sym on a keyboard; the
+--- quick panel's Read aloud button on a touch screen.
+function Touch.tts() return Touch.audio() or Touch.ivona() end
 
 --- The letter for a list item only when there are keys to press it.
 function Touch.letter(key) if Touch.keys() then return key end end

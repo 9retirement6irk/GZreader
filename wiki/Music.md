@@ -1,6 +1,7 @@
-Albums and playlists from your Plex server, on Kindles with a speaker or headphone jack.
+Albums and playlists from your Plex server, on Kindles with a speaker or headphone jack, or with Bluetooth.
 
-Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
+Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with
+Bluetooth (Scribe, Paperwhite 5 and newer…: through Bluetooth headphones or a speaker): albums and
 playlists from your Plex Media Server, played while you read.
 
 Music is the **Catalog** tab's third page: swipe left twice from Books, or
@@ -26,8 +27,9 @@ albums and tracks together).
 
 ![The Catalog's Music page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-music.png) ![An album playing in the CD player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/cd-player.png)
 
-There is also a **Music tab**, off until you turn it on: Settings → Interface →
-Navbar → Tabs → Music (or in the setup guide's tab page). The tab bar holds up
+There is also a **Music tab**, off until you turn it on: Settings →
+Connections → Plex (Music) → Music tab, or Settings → Interface → Navbar →
+Tabs → Music (or in the setup guide's tab page). The tab bar holds up
 to 7 tabs. While music plays or is paused, the quick panel has a **Music**
 tile (*Music ▶* while it plays), at Home and in a book: it opens Now playing.
 

@@ -60,15 +60,22 @@ API to `/api` are found too.
     first on screen. The choice is kept.
   - **Scroll up and down** (touch Kindles, compact notes; off until you
     turn it on): the Notes tab becomes one long page. A swipe or a drag up
-    or down moves the notes exactly as far as your finger went; notes cut
+    or down moves the notes exactly as far as your finger went, and a drag
+    moves them while your finger is still down (in steps, about five a
+    second: e-ink can't follow every movement; an opened note that's longer
+    than the screen follows your finger the same way); notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
-    sideways moves most of a screenful. Full notes keep their pages.
+    sideways moves most of a screenful. Full notes keep their pages. A swipe
+    down that starts at the top of the screen still opens the quick panel.
+    The tab bar and the buttons above the notes take taps as usual (before
+    1.32, a note cut off at the bottom took the tab bar's taps).
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings
     it back; Back or the quick panel's Home leave the tab.
-- **A note:** the text in Patrick Hand, checklist items with letter keys
+- **A note:** the text in the note editor's font (the sticky notes on the
+  Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
   the note shown inline, its tags and place, and its attachments (PDFs and
   other documents open in the reader, pictures in the image viewer; each is
@@ -337,6 +344,11 @@ API to `/api` are found too.
     keyboard Kindle: **Alt+Q … U** (1–7) the step, **T** today / right now,
     **F** feelings, **I** what's behind it, **A** what you did, **G** goals,
     **P** another prompt, **W** write, **S** save. Back asks whether to save.
+- **A filter shows its notes at once**, from the notes kept on the Kindle,
+  then asks Memos (it may have older ones than the Kindle keeps), turning
+  Wi‑Fi on for that when it's only on when needed. Without a connection the
+  kept notes stay. Your **tags list** is kept from the last sync, so the tag
+  chips and Filter → Tag work without a connection too.
 - **Filters:** **Drawings** (the notes with a drawing), tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).

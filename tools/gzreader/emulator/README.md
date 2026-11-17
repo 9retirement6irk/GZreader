@@ -167,6 +167,22 @@ Press/Back answer), and the order things happen in on a first start.
   render time compared with a copy that wasn't.
 - `picture_book.lua` — open `GZ_EMU_BOOK` (e.g. Diary of a Wimpy Kid), turn
   pages, close.
+- `stress_reading.lua` (any model; `GZ_STRESS_HUGE` a big EPUB, e.g. 30 MB
+  and 20,000 pages, `GZ_STRESS_PICS` a big picture book) — the big book
+  opened and timed, a page turn, jumps to 50 % and 95 %, a highlight and a
+  highlight with a note, two bookmarks, read aloud across pages and through a
+  manual page turn (models with the Kindle voice; emu.lua's lipc stand-in),
+  closed and opened again (the layout cache; the marks and the place kept);
+  then the picture book opened (timed to its reopening after it's fitted),
+  five page turns, opened again. Checks and times in `<out>/stress.txt`.
+- `settings_walk.lua` (any model) — every Settings menu as GZreader builds it
+  (`zen_settings.build`): each submenu opened down to 8 levels and every
+  row's `text_func`, `checked_func`, `enabled_func`, `mandatory_func`,
+  `help_text_func` run (callbacks aren't: they change settings), any error
+  with its menu path; then the first 40 first- and second-level menus
+  (`GZ_WALK_SHOTS`) opened on the screen through Settings' own page and shot.
+  Checks in `<out>/settings_walk.txt` (2026-11-16, 1.31.0: about 290 menus
+  and 1,850 rows on k3, pw3 and k4, no errors).
 - `downloads_status.lua` — the download status in the status bar changing
   (Downloads tab and Home) and a book arriving on the Downloads tab with no key
   pressed: what reaches the screen, after GZreader's e-ink rules (no flash),

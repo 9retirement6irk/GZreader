@@ -1711,9 +1711,8 @@ local function update_staged_hash_identity(directory, book_path, staged_book)
         or "metadata." .. (book_path:match(".*%.(.+)") or "_") .. ".lua"
     local sidecar = directory .. "/" .. filename
     if not regular_file(sidecar) then return true end
-    local loader, load_err = loadfile(sidecar)
-    local called, data
-    if loader then called, data = pcall(loader) end
+    local called, data = pcall(require("gzdataload").file, sidecar) -- GZreader: read as data, not run (gzdataload.lua)
+    local loader, load_err = called, nil
     if not loader or not called or type(data) ~= "table" then
         return nil, load_err or data or "invalid hash sidecar settings"
     end
@@ -1724,8 +1723,8 @@ local function update_staged_hash_identity(directory, book_path, staged_book)
     local content = "return " .. require("dump")(data, nil, true) .. "\n"
     local ok, err = write_bytes(sidecar, content)
     if not ok then return nil, err end
-    loader, load_err = loadfile(sidecar)
-    if loader then called, data = pcall(loader) end
+    called, data = pcall(require("gzdataload").file, sidecar) -- GZreader: read as data, not run (gzdataload.lua)
+    loader = called
     if not loader or not called or type(data) ~= "table"
             or data.partial_md5_checksum ~= hash or data.doc_path ~= book_path then
         return nil, load_err or data or "invalid rewritten hash sidecar settings"

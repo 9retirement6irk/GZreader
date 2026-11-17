@@ -15,7 +15,7 @@
 # changes nothing the emulator runs: tools/gzreader/ci_emulator_needed.py).
 #
 # Writes <out dir>/summary.md and screenshots; exit status: what failed.
-# Needs: luajit lua-socket lua-check python3 (+ radicale) curl rsync unzip
+# Needs: luajit lua-socket lua-sec lua-check python3 (+ radicale) curl rsync unzip
 #        qemu-user-static libc6-armel-cross libgcc-s1-armel-cross, a writable /mnt/us.
 set -u
 REPO=$(cd "$(dirname "$0")/../.." && pwd)

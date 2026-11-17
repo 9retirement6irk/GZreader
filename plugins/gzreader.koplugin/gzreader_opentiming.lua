@@ -9,12 +9,22 @@ Where the time goes when a book opens: one line in the log per book opened,
 Times are wall-clock. Wall time well above the CPU time means waiting:
 reading the book and its cache from storage, memory being short (files read
 again), or the e-ink panel.
+
+And three memory lines around a book, each written to the log at once (on
+Kindles with 128 MB or less: forced onto the storage too), so the last one
+is still there when the Kindle froze and had to be restarted:
+
+  book open starting: Some Book.epub | free memory 9 MB (+ 36 MB cache),
+  GZreader 52 MB (Lua 14.1 MB), the Kindle's own interface stopped
+  (or: … kept in memory (31 MB), when GZreader was started with it paused)
+  book closed | free memory …
+  Home on screen 6.2 s after the book closed | free memory …
 ]]
 
 local Log = require("gzreader_log")
 local time = require("ui/time")
 
-local OT = { installed = false, LIMIT = 90, BOOT_FALLBACK = 60 }
+local OT = { installed = false, LIMIT = 90, BOOT_FALLBACK = 60, SYNC_BELOW_KB = 160 * 1024 }
 
 local function now() return time.now() end
 local function secs(d) return time.to_s(d) end
@@ -26,7 +36,7 @@ local function meminfo()
     f:close()
     local free = tonumber(s:match("MemFree:%s+(%d+)"))
     local cached = tonumber(s:match("\nCached:%s+(%d+)"))
-    return free and math.floor(free / 1024), cached and math.floor(cached / 1024)
+    return free and math.floor(free / 1024), cached and math.floor(cached / 1024), tonumber(s:match("MemTotal:%s+(%d+)"))
 end
 
 local function rss()
@@ -38,21 +48,130 @@ local function rss()
     return kb and math.floor(kb / 1024)
 end
 
+--- How much memory the Kindle's own interface (its Java program, cvm) holds
+--- while it is only paused, in MB; nil when it isn't running. Its process is
+--- looked for once (`proc`, `dir`: /proc and its listing, for tests).
+local cvm_pid
+function OT.interfaceMB(proc, dir)
+    proc = proc or "/proc"
+    local function size(pid)
+        local f = io.open(proc .. "/" .. pid .. "/status", "rb")
+        if not f then return nil end
+        local s = f:read("*a")
+        f:close()
+        if s:match("Name:%s*(%S+)") ~= "cvm" then return nil end
+        return math.floor((tonumber(s:match("VmRSS:%s+(%d+)")) or 0) / 1024)
+    end
+    local mb = cvm_pid and size(cvm_pid)
+    if mb then return mb end
+    cvm_pid = nil
+    local ok = pcall(function()
+        for name in (dir or require("libs/libkoreader-lfs").dir)(proc) do
+            if name:match("^%d+$") then
+                mb = size(name)
+                if mb then cvm_pid = name; break end
+            end
+        end
+    end)
+    return ok and mb or nil
+end
+
+--- What's on screen, from UIManager's windows: "Home", "a book" or nil.
+local function windowIs(stack)
+    for i = #(stack or {}), 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if type(w) == "table" then
+            if rawget(w, "_zen_home_focus_targets") ~= nil or w._zen_home_focus_targets ~= nil then return "Home" end
+            if w.name == "ReaderUI" then return "a book" end
+        end
+    end
+end
+OT.windowIs = windowIs
+
+---------------------------------------------------------------- memory lines
+
+--- Memory as it is now: { free, cached (MB), total_kb, rss (MB), lua_mb,
+--- interface, interface_mb }. `interface`: "yes" when GZreader was started
+--- with the Kindle's own interface stopped (Shift G N, "no framework"), "no"
+--- when it is only paused and still in memory (`interface_mb`: how much of
+--- it), nil off a Kindle (koreader.sh's STOP_FRAMEWORK).
+function OT.memoryNow()
+    local free, cached, total_kb = meminfo()
+    local interface = os.getenv("STOP_FRAMEWORK")
+    return { free = free, cached = cached, total_kb = total_kb, rss = rss(),
+        lua_mb = collectgarbage("count") / 1024, interface = interface,
+        interface_mb = interface == "no" and OT.interfaceMB() or nil }
+end
+
+--- The text of a memory line (pure: run_tests.lua).
+function OT.memoryText(m)
+    local t = string.format("free memory %s MB (+ %s MB cache), GZreader %s MB (Lua %s MB)",
+        tostring(m.free or "?"), tostring(m.cached or "?"), tostring(m.rss or "?"),
+        m.lua_mb and string.format("%.1f", m.lua_mb) or "?")
+    if m.interface == "yes" then
+        t = t .. ", the Kindle's own interface stopped"
+    elseif m.interface == "no" then
+        t = t .. ", the Kindle's own interface kept in memory" .. (m.interface_mb and string.format(" (%d MB)", m.interface_mb) or "")
+    end
+    return t
+end
+
+--- A Kindle with 128 MB or less (Kindle 2, DX): its memory lines are forced
+--- onto the storage, for it is the one that freezes when memory runs out.
+function OT.lowMemory(total_kb)
+    return total_kb ~= nil and total_kb <= OT.SYNC_BELOW_KB
+end
+
+--- "<what> | <memory>", written to the log at once. Nothing with diagnostic
+--- logging off. `m`: OT.memoryNow() when the caller has it already.
+function OT.mark(what, m)
+    if not Log.enabled then return end
+    m = m or OT.memoryNow()
+    Log.infoNow(OT.lowMemory(m.total_kb), what .. " | " .. OT.memoryText(m))
+end
+
+--- The book closes (you went Home, or another book opens): a memory line
+--- now, and one more when Home is on screen (the refresh wrapper below).
+function OT.closed()
+    if not Log.enabled then
+        OT.home = nil
+        return
+    end
+    OT.home = { t0 = now() }
+    OT.mark("book closed")
+end
+
+--- A screen refresh after a book closed: Home on screen ends the wait.
+function OT.homeRefresh(stack)
+    local h = OT.home
+    if type(h) ~= "table" then return end
+    local waited = secs(now() - h.t0)
+    if windowIs(stack) == "Home" then
+        OT.home = nil
+        OT.mark(string.format("Home on screen %.1f s after the book closed", waited))
+    elseif waited > OT.LIMIT then
+        OT.home = nil -- (you start on the file browser, say)
+    end
+end
+
 --- A book starts opening. With diagnostic logging off nothing is measured:
 --- the line would be thrown away, so no /proc reads and no timing (every
 --- wrapper below does nothing while OT.cur is nil).
 function OT.start(file)
+    OT.home = nil
     if not Log.enabled then
         OT.cur = nil
         return
     end
-    local free, cached = meminfo()
+    local m = OT.memoryNow()
     local lfs = require("libs/libkoreader-lfs")
     OT.cur = {
         file = file, t0 = now(), c0 = os.clock(), phases = {}, order = {}, modules = {},
-        refreshes = 0, refresh_time = 0, free = free, cached = cached,
+        refreshes = 0, refresh_time = 0, free = m.free, cached = m.cached,
         size = lfs.attributes(file, "size"),
     }
+    -- (before anything of the book is read: the line a freeze leaves behind)
+    OT.mark("book open starting: " .. tostring(tostring(file):match("[^/]+$") or file), m)
 end
 
 local function addPhase(name, d)
@@ -169,16 +288,6 @@ function OT.bootReady()
     b.setup = secs(now() - b.t0)
 end
 
-local function windowIs(stack)
-    for i = #(stack or {}), 1, -1 do
-        local w = stack[i] and stack[i].widget
-        if type(w) == "table" then
-            if rawget(w, "_zen_home_focus_targets") ~= nil or w._zen_home_focus_targets ~= nil then return "Home" end
-            if w.name == "ReaderUI" then return "a book" end
-        end
-    end
-end
-OT.windowIs = windowIs
 
 --- A screen refresh while the start is being timed (`stack`: UIManager's windows).
 function OT.bootRefresh(stack)
@@ -261,11 +370,13 @@ function OT.install()
         if type(orig) == "function" then
             Screen[name] = function(self, ...)
                 local cur = OT.cur
-                if not cur and not OT.boot then return orig(self, ...) end
+                if not cur and not OT.boot and not OT.home then return orig(self, ...) end
                 local t = now()
                 local r = { orig(self, ...) }
                 -- (the start being timed: this refresh may be the first with Home)
                 if OT.boot then pcall(OT.bootRefresh, require("ui/uimanager")._window_stack) end
+                -- (a book closed: this refresh may be Home back on screen)
+                if OT.home then pcall(OT.homeRefresh, require("ui/uimanager")._window_stack) end
                 if cur then
                     cur.refreshes = cur.refreshes + 1
                     cur.refresh_time = cur.refresh_time + (now() - t)

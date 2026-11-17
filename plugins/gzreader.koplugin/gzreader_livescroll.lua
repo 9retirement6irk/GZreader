@@ -1,0 +1,113 @@
+--[[--
+Scrolling that follows the finger (the owner, 2026-11-16): the notes list
+and an opened note moved only when the finger lifted. They now move while
+it drags, a step at a time (an e-ink screen can't redraw at every sample:
+at most one step each `INTERVAL` seconds, and only once the finger has gone
+`MIN_STEP` pixels further), and settle where the finger lifts.
+
+`LiveScroll.step(state, rel, now)` is the rule (pure, tested):
+state = { applied, at } (how far the finger had gone at the last step, and when).
+`LiveScroll.on(scroller)` puts it on a KOReader ScrollableContainer.
+]]
+
+local LiveScroll = { INTERVAL = 0.18, MIN_STEP = 12 }
+
+--- The finger is `rel` pixels from where the drag began, at time `now`
+--- (seconds): how far to scroll now (0: not yet). Updates `state`.
+function LiveScroll.step(state, rel, now)
+    local d = rel - (state.applied or 0)
+    if math.abs(d) < LiveScroll.MIN_STEP then return 0 end
+    if state.at and now - state.at < LiveScroll.INTERVAL then return 0 end
+    state.applied, state.at = rel, now
+    return d
+end
+
+--- Runs `fn` with every screen refresh it asks for turned into `mode`
+--- ("fast": straight to black or white, no flash; greys look rough until
+--- the next ordinary refresh). The steps of a drag are shown this way: the
+--- usual refresh flashed dark behind what changed at every step (the owner,
+--- 2026-11-16); the page is refreshed properly once when the finger lifts.
+function LiveScroll.quiet(fn, mode)
+    local UIManager = require("ui/uimanager")
+    mode = mode or LiveScroll.STEP_REFRESH
+    local orig = UIManager.setDirty
+    UIManager.setDirty = function(self, widget, refresh, region, dither)
+        if type(refresh) == "function" then
+            local inner = refresh
+            refresh = function()
+                local _, r, d = inner()
+                return mode, r, d
+            end
+        elseif refresh ~= nil then
+            refresh = mode
+        end
+        return orig(self, widget, refresh, region, dither)
+    end
+    local ok, err = pcall(fn)
+    UIManager.setDirty = orig
+    if not ok then error(err, 0) end
+end
+LiveScroll.STEP_REFRESH = "fast"
+
+local function seconds()
+    local ok, time = pcall(require, "ui/time")
+    if ok and time then return time.to_s(time.now()) end
+    return os.clock()
+end
+LiveScroll.now = seconds
+
+--- `scroller` (a ScrollableContainer) follows the finger. What was moved
+--- while dragging is taken back just before KOReader's own handlers move
+--- it by the whole drag (a lift) or by a swipe, so nothing counts twice.
+function LiveScroll.on(scroller)
+    if not scroller or scroller._gz_live then return scroller end
+    local function fresh() return { x = {}, y = {}, moved_x = 0, moved_y = 0 } end
+    scroller._gz_live = fresh()
+    local pan, release, swipe = scroller.onScrollablePan, scroller.onScrollablePanRelease, scroller.onScrollableSwipe
+    local function takeBack(self)
+        local live = self._gz_live
+        self._scroll_offset_x = self._scroll_offset_x - live.moved_x
+        self._scroll_offset_y = self._scroll_offset_y - live.moved_y
+        self._gz_live = fresh()
+    end
+    function scroller:onScrollablePan(arg, ges)
+        local was = self._scrolling
+        local handled = pan(self, arg, ges)
+        if handled and self._scrolling and ges.relative then
+            if not was then self._gz_live = fresh() end
+            local live, now = self._gz_live, LiveScroll.now()
+            local dy = LiveScroll.step(live.y, ges.relative.y or 0, now)
+            local dx = self._max_scroll_offset_x > 0 and LiveScroll.step(live.x, ges.relative.x or 0, now) or 0
+            if dx ~= 0 or dy ~= 0 then
+                local x0, y0 = self._scroll_offset_x, self._scroll_offset_y
+                LiveScroll.quiet(function() self:_scrollBy(-dx, -dy) end)
+                live.rough = true
+                -- (at an end it moves less than asked: what really moved is what's taken back)
+                live.moved_x = live.moved_x + self._scroll_offset_x - x0
+                live.moved_y = live.moved_y + self._scroll_offset_y - y0
+            end
+        end
+        return handled
+    end
+    -- (after steps shown roughly: the page once more, properly, even when it ends where the last step left it)
+    local function settle(self, rough)
+        if rough then require("ui/uimanager"):setDirty(self.show_parent, function() return "ui", self.dimen end) end
+    end
+    function scroller:onScrollablePanRelease(arg, ges)
+        local rough = self._gz_live.rough
+        if self._scrolling then takeBack(self) end
+        local r = release(self, arg, ges)
+        settle(self, rough)
+        return r
+    end
+    function scroller:onScrollableSwipe(arg, ges)
+        local rough = self._gz_live.rough
+        if self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then takeBack(self) end
+        local r = swipe(self, arg, ges)
+        settle(self, rough)
+        return r
+    end
+    return scroller
+end
+
+return LiveScroll
