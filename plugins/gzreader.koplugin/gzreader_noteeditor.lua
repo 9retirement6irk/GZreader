@@ -1430,8 +1430,9 @@ end
 --- sent), { att, removed = true } } or nil when they're as they were.
 function NoteEditor.show(opts)
     local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save, immich = opts.immich, photo_atts = opts.photo_atts,
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
+        immich = opts.immich, photo_atts = opts.photo_atts, -- (the Photos chip; the note's photos)
         drawing_atts = atts, extra_pages = opts.extra_pages }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)

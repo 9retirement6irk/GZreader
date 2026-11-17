@@ -3,9 +3,7 @@
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
-  POST  /api/v1/memos            {content, visibility, space, attachments: [{name}]} (content may be empty, as in
-                                 Memos; attachments sent before without a note become the new note's)
-  (--journal / --immich, the fork: a picture in a note's text must be one of its attachments, else 400)
+  POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
   POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
   POST  /api/v1/attachments:upload  Memos' resumable upload ({spec, upload_id, write_offset, data, finish_write});
                                  spec.replace_attachment puts the new file over that attachment (same name and
@@ -18,6 +16,8 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
+A new note's `attachments: [{name}]`: attachments sent before without a note become its own.
+--journal / --immich (the fork): a picture in a note's text must be one of its attachments, else 400.
 --immich: the fork's Immich connection (github.com/9retirement6irk/memos, server/immich), set up:
   GET   /api/immich/connection   {configured, url}; with --journal but no --immich: {configured: false}
   GET   /api/immich/albums       [{id, name, photoCount, thumbnailPhotoId}]

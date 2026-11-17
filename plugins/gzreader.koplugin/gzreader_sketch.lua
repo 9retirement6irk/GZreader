@@ -966,9 +966,7 @@ function Sketch:canRedo() return #(self.redone or {}) > 0 end
 function Sketch:redo()
     local h = table.remove(self.redone or {})
     if not h then return false end
-    if h.kind == "picture" then
-        putPicture(self, h.el)
-    elseif h.kind == "add" then
+    if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do
             st.gone, st.undone = false, nil
             self.strokes[#self.strokes + 1] = st
@@ -986,9 +984,7 @@ function Sketch:undo()
     if not h then return false end
     self.redone = self.redone or {}
     self.redone[#self.redone + 1] = h
-    if h.kind == "picture" then
-        dropPicture(self, h.el)
-    elseif h.kind == "add" then
+    if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
         for _i, st in ipairs(h.strokes) do st.gone = false end
@@ -1080,6 +1076,32 @@ function Sketch:scene(paper)
         end
     end
     return scene
+end
+
+-- undo and redo of a picture put on the page (Sketch:addPicture): around the strokes' own
+do
+    local strokes_undo, strokes_redo = Sketch.undo, Sketch.redo
+    function Sketch:undo()
+        local h = self.history[#self.history]
+        if h and h.kind == "picture" then
+            table.remove(self.history)
+            self.redone = self.redone or {}
+            self.redone[#self.redone + 1] = h
+            dropPicture(self, h.el)
+            return true
+        end
+        return strokes_undo(self)
+    end
+    function Sketch:redo()
+        local h = self.redone and self.redone[#self.redone]
+        if h and h.kind == "picture" then
+            table.remove(self.redone)
+            putPicture(self, h.el)
+            self.history[#self.history + 1] = h
+            return true
+        end
+        return strokes_redo(self)
+    end
 end
 
 --- The centres of the discs that paint a segment of radius `r` (one every

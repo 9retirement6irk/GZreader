@@ -351,7 +351,7 @@ function DrawScreen:flyoutRows(which)
         end
     elseif which == "options" then
         rows[#rows + 1] = { id = "newpage2", row = true, label = _("New page") }
-        if self.immich then rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") } end
+        if DrawScreen.immich then rows[#rows + 1] = { id = "immich", row = true, label = _("Picture from Immich…") } end
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
@@ -1424,7 +1424,7 @@ end
 --- Photos from Immich (gzreader_immichpick.lua), placed on the page as
 --- memos' drawing sheet places them: in the middle of what's shown.
 function DrawScreen:pickPictures()
-    require("gzreader_immichpick").show(self.immich, { on_pick = function(files)
+    require("gzreader_immichpick").show(DrawScreen.immich, { on_pick = function(files)
         if self._closed then for _i, f in ipairs(files) do os.remove(f.path) end; return end
         self:addPictures(files)
     end })
@@ -1684,6 +1684,8 @@ end
 --- which paper first, as the Kindle Scribe's Create notebook does (Cancel
 --- there: on_cancel, nothing opened).
 function DrawScreen.show(opts)
+    -- (the plugin, when a way to Immich is set up: Picture from Immich in ⋮; one drawing screen at a time)
+    DrawScreen.immich = opts.immich
     if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then
         return require("gzreader_drawpages").showPapers{
             create = true,
@@ -1713,7 +1715,6 @@ function DrawScreen.show(opts)
     local on_done = opts.on_done
     local w
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
-        immich = opts.immich, -- (the plugin, when a way to Immich is set up: Picture from Immich in ⋮)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a new drawing: the name and tags given in the top bar)
