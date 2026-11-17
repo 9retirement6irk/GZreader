@@ -863,6 +863,58 @@ end)()
         "a pinch: the page zooms while the fingers are still down (2x, part of the way, 4x), told once when they lift")
 end)()
 
+-- the hand tool, and a finger moving a zoomed page while something else rests on the screen
+;(function()
+    local function sketch(pen_only)
+        local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 1, tap_slop = 8, pen_only = pen_only, pen_slot = pen_only and 4 or nil }
+        sk:zoomBy(2, 300, 400, 300, 400)
+        return sk
+    end
+    -- a thumb at the screen's edge first, then a finger: the finger moves the page
+    local sk = sketch(true)
+    local oy0 = sk.oy
+    sk:frame({ { slot = 0, id = 1, x = 20, y = 700 } }, 1)
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 } }, 3)
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = 2, x = 300, y = 400 } }, 4)
+    local o = sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = 2, x = 300, y = 300 } }, 4.5)
+    check(o.redraw and o.view and math.abs((sk.oy - oy0) - 50) < 0.5 and sk.stats.panned == 1,
+        "a thumb resting at the edge, then a finger: the finger moves the zoomed page (it didn't: only a first, lone finger could)")
+    sk:frame({ { slot = 0, id = 1, x = 21, y = 701 }, { slot = 1, id = -1 } }, 5)
+    -- the thumb shuffles a little afterwards: under the limit, nothing; the next finger moves the page again
+    local o2 = sk:frame({ { slot = 0, id = 1, x = 24, y = 704 } }, 6)
+    sk:frame({ { slot = 0, id = 1, x = 24, y = 704 }, { slot = 2, id = 3, x = 300, y = 400 } }, 7)
+    local o3 = sk:frame({ { slot = 0, id = 1, x = 24, y = 704 }, { slot = 2, id = 3, x = 300, y = 440 } }, 7.5)
+    check(not o2.redraw and o3.view and sk.pan_slot == 2 and sk.stats.panned == 2, "…and again with the next finger; the thumb's small shuffle moves nothing")
+    -- the pen arrives while a finger holds the page: the finger is dropped, and later fingers still move it
+    sk:frame({ { slot = 4, id = 9, x = 100, y = 100, tool = Sketch.TOOL_PEN } }, 8)
+    sk:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 8.1)
+    sk:frame({ { slot = 2, id = -1 }, { slot = 0, id = -1 } }, 8.2)
+    sk:frame({ { slot = 4, id = -1 } }, 12)
+    sk:frame({ { slot = 1, id = 5, x = 300, y = 400 } }, 20)
+    local o4 = sk:frame({ { slot = 1, id = 5, x = 300, y = 460 } }, 20.5)
+    check(o4.view == true, "after the pen has come and gone: a finger moves the page as before")
+    -- the hand tool: the pen moves the page and draws nothing; on a finger Kindle a finger does
+    local hp = sketch(true)
+    hp.tool = "hand"
+    local hy0 = hp.oy
+    hp:frame({ { slot = 4, id = 9, x = 300, y = 400, tool = Sketch.TOOL_PEN } }, 30)
+    local h1 = hp:frame({ { slot = 4, id = 9, x = 300, y = 340, tool = Sketch.TOOL_PEN } }, 30.4)
+    local h2 = hp:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 30.5)
+    check(h1.view and #h1.segments == 0 and math.abs((hp.oy - hy0) - 30) < 0.5 and #hp:live() == 0 and not h2.stroke_done and not hp:canUndo(),
+        "the hand tool: the pen moves the page (60 px up the screen at 2x: 30 of the page) and draws nothing")
+    local hf = sketch(false)
+    hf.tool = "hand"
+    local fy0 = hf.oy
+    hf:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 40)
+    local f1 = hf:frame({ { slot = 0, id = 1, x = 300, y = 480 } }, 40.4)
+    hf:frame({ { slot = 0, id = -1 } }, 40.5)
+    hf.tool = "pen"
+    hf:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 41)
+    hf:frame({ { slot = 0, id = 1, x = 320, y = 420 } }, 41.1)
+    hf:frame({ { slot = 0, id = -1 } }, 41.2)
+    check(f1.view and math.abs((hf.oy - fy0) + 40) < 0.5 and #hf:live() == 1, "…a finger Kindle: a finger moves the page with the hand, and draws again with the pen")
+end)()
+
 -- the pencil's grain
 ;(function()
     local lo, hi, sum, same = 1, 0, 0, true

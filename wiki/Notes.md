@@ -210,6 +210,8 @@ API to `/api` are found too.
       and text boxes made in Memos can be moved and retyped here.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**.
+    - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
+      page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
       button does; each tap takes the next tool).

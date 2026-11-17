@@ -104,6 +104,7 @@ DrawScreen.SIDE_TOOLS = {
     { id = "shape", icon = "shapes", label = _("Shapes") },
     { id = "text", icon = "text", label = _("Text") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
+    { id = "hand", icon = "hand", label = _("Move the page") },
     { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
     { id = "redo", icon = "redo", label = _("Redo") },
@@ -508,7 +509,7 @@ function DrawScreen:selected(t)
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" then return self.tool == t.id end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
     return false
@@ -1570,6 +1571,10 @@ function DrawScreen:use(t)
         self:syncTool()
         self:setFlyout("pen") -- (laid out again: its switch changed)
     elseif t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then tool(t.id)
+    elseif t.id == "hand" then
+        -- the hand: the pen (or a finger) moves the page about, and nothing is drawn
+        self:setTool("hand"); self:setFlyout(nil)
+        Log.info("drawing: the hand tool")
     elseif t.id == "text" then
         self:setTool("text"); self:setFlyout(nil)
         Log.info("drawing: the text tool")
@@ -1734,7 +1739,7 @@ function DrawScreen:onCloseWidget()
     local sk = self.sketch
     if sk then
         Log.info("drawing: closed;", #self.pages, "pages;", #sk:live(), "strokes on the last;", sk.stats.palm,
-            "palm contacts and", sk.stats.ignored, "other contacts ignored")
+            "palm contacts and", sk.stats.ignored, "other contacts ignored;", sk.stats.panned or 0, "moves of the page by a finger or the hand tool")
     end
 end
 

@@ -723,14 +723,21 @@ local function startContact(self, s, now, out)
         c.kind, c.pull = "tap", true
     elseif not inside then
         c.kind = "tap"
+    elseif self.tool == "hand" then
+        -- the hand: the pen (or a finger) takes hold of the page and moves it
+        c.kind, c.slot = "pan", s.slot
+        c.px, c.py, c.at = s.x, s.y, now
     elseif self.tool == "text" then
         -- the text tool: a box under the finger or pen moves (its corner: resizes); a tap elsewhere adds one
         local el, part = self:textAt(s.x - self.canvas.x, s.y - self.canvas.y)
         c.kind, c.el, c.part, c.at = "text", el, part, now
         if el then c.orig = { x = el.x, y = el.y, width = el.width, height = el.height } end
-    elseif self.pen_only and not pen and self.zoomed and next(self.contacts) == nil then
-        -- a pen Kindle, zoomed in: one finger moves the page (a second, at once: a pinch)
-        c.kind = "pan"
+    elseif self.pen_only and not pen and self.zoomed then
+        -- A pen Kindle, zoomed in: a finger moves the page (a second, at once: a pinch).
+        -- Whatever else rests on the screen: only "the first finger down, nothing else
+        -- there" could move it before, and a thumb holding the Kindle by its edge was
+        -- enough for no finger to (the owner, 2026-11-17).
+        c.kind, c.slot = "pan", s.slot
         c.px, c.py, c.at = s.x, s.y, now
     elseif self.pen_only and not pen then
         c.kind = "ignore" -- fingers don't draw on a pen Kindle
@@ -819,6 +826,13 @@ local function applyPan(self, c, out)
     local dx, dy = c.x - c.px, c.y - c.py
     if not c.panning and math.abs(dx) < Sketch.PAN_MIN and math.abs(dy) < Sketch.PAN_MIN then return false end
     if dx == 0 and dy == 0 then return false end
+    -- (the first to move is the one that moves the page: a thumb resting at the
+    -- screen's edge, or the side of a hand, is another contact and stays still)
+    local holder = self.pan_slot ~= nil and self.contacts[self.pan_slot]
+    if not (holder and holder.kind == "pan") then self.pan_slot = nil end -- (lifted, or dropped when the pen came)
+    if self.pan_slot ~= nil and self.pan_slot ~= c.slot then return false end
+    if not c.panning then self.stats.panned = (self.stats.panned or 0) + 1 end
+    self.pan_slot = c.slot
     c.panning = true
     local cv = self.canvas
     self:zoomBy(1, c.px - cv.x, c.py - cv.y, c.x - cv.x, c.y - cv.y)
@@ -833,7 +847,11 @@ local function endContact(self, slot, out)
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
-    if c.kind == "pan" then applyPan(self, c, out); return end
+    if c.kind == "pan" then
+        applyPan(self, c, out)
+        if self.pan_slot == slot then self.pan_slot = nil end
+        return
+    end
     if c.kind == "text" then
         if c.moved <= self.tap_slop then
             out.text_tap = { el = c.el, x = c.x0 - self.canvas.x, y = c.y0 - self.canvas.y }

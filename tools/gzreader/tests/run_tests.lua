@@ -9552,7 +9552,7 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,sep,undo,redo,more",
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,hand,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
