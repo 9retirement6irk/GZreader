@@ -377,26 +377,6 @@ do
     check(labels["B"] and labels["I"] and labels["H"] and labels["1."] and labels["#"], "painted with the page: B I H … 1. #")
 end
 
--- ------------------------------------------------------------ lined paper (a journal entry)
-do
-    local r = editor("", true)
-    local told = 0
-    r.on_show_keyboard = function() told = told + 1 end
-    r:onShowKeyboard()
-    check(told == 1 and r.keyboard.visible, "the keyboard coming up is told (a journal entry makes room for it)")
-    r:setHeight(240)
-    check(r.height == 240 and r.dimen.h == 240, "a new height when the page around it is laid out again")
-    local rules = RE.rules(26, 0, 100)
-    check(#rules == 3 and rules[1] == 25 and rules[3] == 77, "lined paper: a rule under each line, the text's line height apart")
-    rules = RE.rules(26, 30, 100)
-    check(rules[1] == 21 and #rules == 4, "…scrolled, the rules move with the words")
-    r.ruled = true
-    local lines_drawn = 0
-    r:paintTo({ paintRect = function(_b, _x, _y, _w, h) if h == 1 then lines_drawn = lines_drawn + 1 end end,
-        paintRoundedRect = function() end, paintBorder = function() end }, 0, 0)
-    check(lines_drawn >= 8, "a ruled page paints its rules (" .. lines_drawn .. ")")
-end
-
 -- ------------------------------------------------------------ the keyboard while writing a note
 do
     local HashKey = require("gzreader_hashkey")

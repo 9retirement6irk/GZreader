@@ -193,6 +193,18 @@ function DrawScreen:init()
     self.tool_sz = S(48)
     -- the page is the whole screen: the top bar lies over it, and folds away (its tab)
     self.canvas = { x = 0, y = 0, w = sw, h = sh }
+    if self.inline then
+        -- Inline (a journal entry's box): a window onto a page as big as the
+        -- screen, moved around by a finger (a pen Kindle) or the hand tool;
+        -- touches outside the window go to the screen under it.
+        local r = self.inline.rect
+        self.window = Geom:new{ x = r.x, y = r.y, w = r.w, h = r.h }
+        self.dimen = Geom:new{ x = r.x, y = r.y, w = r.w, h = r.h }
+        self.covers_fullscreen = false
+        self.pan_x, self.pan_y = 0, 0
+        self.canvas = { x = r.x, y = r.y, w = math.max(r.w, sw), h = math.max(r.h, sh) }
+        self._passing = {}
+    end
     -- a new drawing: its name and tags, set from the top bar ({ title, tags, offered })
     if self.meta then
         self.meta.title = self.meta.title or ""
@@ -316,6 +328,11 @@ function DrawScreen:syncTool()
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
+    if self.window then
+        -- inline: the page moves under the window (a finger on a pen Kindle, or the hand tool)
+        sk.inline_pan = true
+        sk.on_pan = function(dx, dy) return self:panBy(dx, dy) end
+    end
 end
 
 --- The rows of the panel `which` (a list, as the Kindle Scribe's: a name at
@@ -380,6 +397,7 @@ DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("
 --- button that folds them into one; the page buttons at the bottom; and a
 --- panel open beside what was tapped. `self.buttons`: { tool, rect, group }.
 function DrawScreen:layoutBar()
+    if self.window then return self:layoutInline() end
     local sw, sh = self.dimen.w, self.dimen.h
     local ts, pad, gap = self.tool_sz, S(3), S(8)
     self.buttons, self.holes, self.frames = {}, {}, {}
@@ -493,6 +511,7 @@ DrawScreen.EDGE = function() return S(24) end
 DrawScreen.FLYOUT_ANCHOR = { tags = "tag" }
 
 function DrawScreen:selected(t)
+    if t.id == "hand" then return self.tool == "hand" end
     if t.writing then return self.tool == "pen" and self.writing == t.writing end
     if t.width then return self.tool ~= "highlighter" and self.width == t.width end
     if t.hl_width then return self.hl_width == t.hl_width end
@@ -687,11 +706,99 @@ function DrawScreen:paintBar(bb, x, y)
 end
 
 function DrawScreen:paintTo(bb, x, y)
+    if self.window then return self:paintInline(bb) end
     self.dimen.x, self.dimen.y = x, y
     local c = self.canvas
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
     self:paintBar(bb, x, y)
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
+end
+
+-- ------------------------------------------------------------- inline (a journal entry)
+
+DrawScreen.INLINE_TOOLS = {
+    { id = "pen", icon = "pen", label = _("Pen") },
+    { id = "eraser", icon = "eraser", label = _("Eraser") },
+    { id = "hand", icon = "hand", label = _("Move the page") },
+    { id = "undo", icon = "undo", label = _("Undo") },
+    { id = "redo", icon = "redo", label = _("Redo") },
+    { id = "typing", label = _("Aa"), label_button = true },
+}
+
+--- Inline: the tools in a row along the window's top right corner (they're
+--- over the page: a touch there is a tap, never ink).
+function DrawScreen:layoutInline()
+    local w = self.window
+    local ts, gap = S(44), S(4)
+    self.buttons, self.holes, self.frames = {}, {}, {}
+    local n = #DrawScreen.INLINE_TOOLS
+    local typing_w = S(56)
+    local bar_w = (n - 1) * ts + typing_w + (n + 1) * gap
+    local bx, by = w.x + w.w - bar_w - S(4), w.y + S(4)
+    self.frames.toolbar = Geom:new{ x = bx, y = by, w = bar_w, h = ts + 2 * gap }
+    local x = bx + gap
+    for _i, t in ipairs(DrawScreen.INLINE_TOOLS) do
+        local bw = t.label_button and typing_w or ts
+        self.buttons[#self.buttons + 1] = { tool = t, rect = Geom:new{ x = x, y = by + gap, w = bw, h = ts }, group = "inline" }
+        x = x + bw + gap
+    end
+    self.holes[1] = self.frames.toolbar
+    if self.sketch then self.sketch.holes = self.holes end
+end
+
+--- Inline: the window onto the page, its frame, the tools.
+function DrawScreen:paintInline(bb)
+    local w, c = self.window, self.canvas
+    bb:blitFrom(self.canvas_bb, w.x, w.y, w.x - c.x, w.y - c.y, w.w, w.h)
+    bb:paintBorder(w.x, w.y, w.w, w.h, Size.border.thin, Blitbuffer.COLOR_BLACK, S(4))
+    local f = self.frames.toolbar
+    bb:paintRoundedRect(f.x, f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, S(8))
+    bb:paintBorder(f.x, f.y, f.w, f.h, Size.border.thin, Blitbuffer.COLOR_BLACK, S(8))
+    for _i, b in ipairs(self.buttons) do
+        if b.tool.label_button then
+            local r = b.rect
+            bb:paintBorder(r.x, r.y + S(4), r.w, r.h - S(8), Size.border.thick, Blitbuffer.COLOR_BLACK, S(6))
+            textAt(bb, r.x, r.y, r.w, r.h, b.tool.label, 16, true)
+        else
+            self:paintButton(bb, 0, 0, b)
+        end
+    end
+    self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
+end
+
+--- Inline: the page moved under the window by (dx, dy) screen pixels (as a
+--- finger drags it), kept on the page. True when it moved.
+function DrawScreen:panBy(dx, dy)
+    local w, c = self.window, self.canvas
+    local px = math.max(0, math.min(c.w - w.w, self.pan_x - dx))
+    local py = math.max(0, math.min(c.h - w.h, self.pan_y - dy))
+    if px == self.pan_x and py == self.pan_y then return false end
+    self.pan_x, self.pan_y = px, py
+    c.x, c.y = w.x - px, w.y - py
+    return true
+end
+
+--- Inline: whether this input frame is the screen under the window's (a
+--- touch that started outside the window, until it's lifted).
+function DrawScreen:passThrough(det, tevs)
+    local w = self.window
+    local pass = false
+    for _i, t in ipairs(tevs) do
+        local s = t.slot
+        if self._passing[s] then
+            pass = true
+            if t.id == -1 then self._passing[s] = nil end
+        elseif t.id ~= -1 and not (self.sketch and self.sketch.contacts[s]) and t.x and t.y then
+            local ges = { ges = "tap", pos = Geom:new{ x = t.x, y = t.y, w = 0, h = 0 } }
+            if det and det.adjustGesCoordinate then pcall(det.adjustGesCoordinate, det, ges) end
+            local x, y = ges.pos.x, ges.pos.y
+            if not (x >= w.x and x < w.x + w.w and y >= w.y and y < w.y + w.h) then
+                self._passing[s] = true
+                pass = true
+            end
+        end
+    end
+    return pass
 end
 
 -- ---------------------------------------------------------------- the ink
@@ -786,6 +893,8 @@ end
 
 --- True when a disc of radius `r` at screen (x, y) touches something laid over the page.
 function DrawScreen:underControls(x, y, r)
+    local w = self.window
+    if w and (x - r < w.x or x + r >= w.x + w.w or y - r < w.y or y + r >= w.y + w.h) then return true end
     for _i, h in ipairs(self.holes or {}) do
         if x + r >= h.x and x - r < h.x + h.w and y + r >= h.y and y - r < h.y + h.h then return true end
     end
@@ -993,6 +1102,8 @@ function DrawScreen:hook()
     local screen = self
     rawset(gd, "feedEvent", function(det, tevs)
         if screen._closed or UIManager:getTopmostVisibleWidget() ~= screen then return orig(det, tevs) end
+        -- (inline: a touch that starts outside the window is the screen under it's)
+        if screen.window and screen:passThrough(det, tevs) then return orig(det, tevs) end
         -- (the pen's side button, as KOReader reads it: BTN_STYLUS or BTN_STYLUS2; held, the pen rubs out)
         if screen.sketch then
             local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true
@@ -1085,6 +1196,7 @@ function DrawScreen:apply(out)
         self:layoutBar()
         out.redraw = true
     end
+    if out.panned then UIManager:setDirty(self, "ui") end
     if out.redraw then
         -- (the view moved, by a pinch or a finger: the page itself is as it was)
         if not out.view then self:touched() end
@@ -1184,6 +1296,7 @@ function DrawScreen:refreshBar()
 end
 
 function DrawScreen:setFlyout(which)
+    if self.window then which = nil end -- (inline: no panels; its few tools are all in its row)
     self.flyout = which
     self:layoutBar()
     UIManager:setDirty(self, "ui")
@@ -1338,6 +1451,11 @@ function DrawScreen:use(t)
         sk:unzoom()
         self:redrawAll()
     elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
+    elseif t.id == "hand" then self:setTool("hand"); self:setFlyout(nil); Log.info("drawing: the hand tool")
+    elseif t.id == "typing" then
+        -- inline: back to typing (the drawing kept, given back to the journal)
+        Log.info("drawing: inline, back to typing")
+        self:done()
     elseif t.id == "done" then self:done()
     elseif t.id == "paper" then self:pickPaper()
     elseif t.id == "pages" then self:showPages()
@@ -1686,13 +1804,14 @@ function DrawScreen.show(opts)
     local w
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
         plugin = opts.plugin, -- (the quick panel, pulled down)
+        inline = opts.inline, -- { rect }: drawn in a box on the screen under it (a journal entry)
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a new drawing: the name and tags given in the top bar)
             if w.meta then res.title, res.tags = w.meta.title, w.meta.tags end
             on_done(res)
         end }
-    UIManager:show(w, "full")
+    UIManager:show(w, opts.inline and "ui" or "full")
     return w
 end
 
