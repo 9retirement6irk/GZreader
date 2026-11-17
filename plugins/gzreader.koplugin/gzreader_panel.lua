@@ -379,7 +379,7 @@ end
 --- The Music tile, while music plays or is paused (its player: the CD
 --- player). Nothing else: music is browsed in the Catalog.
 local function musicTile(plugin)
-    if not Touch.audio() then return nil end
+    if not Touch.player() then return nil end
     local okm, M = pcall(require, "gzreader_music")
     local cur = okm and M.current
     if not cur then return nil end
@@ -391,7 +391,7 @@ Panel.musicTile = musicTile
 
 --- The Audiobook tile, while one plays or is paused (its player).
 local function audiobookTile(plugin)
-    if not Touch.audio() then return nil end
+    if not Touch.player() then return nil end
     local okA, Audiobook = pcall(require, "gzreader_audiobook")
     local cur = okA and Audiobook.current
     if not (cur and cur.book) then return nil end
