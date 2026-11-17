@@ -386,6 +386,62 @@ function Sketch:setPaper(id)
     return true
 end
 
+--- Puts a picture on the page, as memos' drawing sheet places one: an
+--- `image` element `w` x `h` (scene units) centred on scene point (cx, cy),
+--- its pixels a file of the scene (`data_url`, `mime`). It's kept like
+--- memos' own pictures (shown, under the ink, not changed here); undo takes
+--- it off. Returns the element.
+function Sketch:addPicture(data_url, mime, w, h, cx, cy, now)
+    if not self.base then self.base = Drawing.newScene() end
+    local base = self.base
+    base.files = type(base.files) == "table" and base.files or {}
+    local file_id = Drawing.randomId()
+    base.files[file_id] = { mimeType = mime or "image/jpeg", id = file_id, dataURL = data_url, created = now or (os.time() * 1000) }
+    local el = {
+        id = Drawing.randomId(), type = "image", x = cx - w / 2, y = cy - h / 2, width = w, height = h,
+        angle = 0, strokeColor = "transparent", backgroundColor = "transparent", strokeWidth = 1, opacity = 100,
+        isDeleted = false, groupIds = Drawing.list(), boundElements = Drawing.list(), seed = Drawing.randomSeed(),
+        locked = false, fileId = file_id, status = "saved", scale = Drawing.list({ 1, 1 }),
+        version = 1, versionNonce = Drawing.randomSeed(), updated = now or (os.time() * 1000),
+    }
+    base.elements = base.elements or Drawing.list()
+    base.elements[#base.elements + 1] = el
+    self.locked[#self.locked + 1] = el
+    self.history[#self.history + 1] = { kind = "picture", el = el, strokes = {} }
+    self.redone = {}
+    return el
+end
+
+Sketch.PICTURE_SHARE = 0.6 -- a picture placed at most this share of the page shown, across and down
+Sketch.PICTURE_STEP = 24 -- several pictures fan out by this (scene units), as memos' drawing sheet does
+
+--- Where pictures go and how big (scene units): `n` pictures, each { w, h }
+--- pixels, centred on the middle of what's shown (fanned out a step down and
+--- to the right each, as memos' drawing sheet places several), each at most
+--- PICTURE_SHARE of the page shown and never bigger than its own pixels.
+--- Returns { { cx, cy, w, h } }.
+function Sketch.placePictures(sizes, view)
+    local out = {}
+    local n = #sizes
+    for i, sz in ipairs(sizes) do
+        local pw, ph = math.max(1, sz.w or 1), math.max(1, sz.h or 1)
+        local fit = math.min(1, view.w * Sketch.PICTURE_SHARE / pw, view.h * Sketch.PICTURE_SHARE / ph)
+        local off = (i - (n + 1) / 2) * Sketch.PICTURE_STEP
+        out[i] = { cx = view.cx + off, cy = view.cy + off, w = pw * fit, h = ph * fit }
+    end
+    return out
+end
+
+local function dropPicture(self, el)
+    for i, x in ipairs(self.base and self.base.elements or {}) do if x == el then table.remove(self.base.elements, i); break end end
+    for i, x in ipairs(self.locked) do if x == el then table.remove(self.locked, i); break end end
+end
+
+local function putPicture(self, el)
+    self.base.elements[#self.base.elements + 1] = el
+    self.locked[#self.locked + 1] = el
+end
+
 --- A scene point in canvas pixels, and back.
 function Sketch:toCanvas(sx, sy) return (sx - self.ox) * self.per_unit, (sy - self.oy) * self.per_unit end
 function Sketch:toScene(cx, cy) return cx / self.per_unit + self.ox, cy / self.per_unit + self.oy end
@@ -910,7 +966,9 @@ function Sketch:canRedo() return #(self.redone or {}) > 0 end
 function Sketch:redo()
     local h = table.remove(self.redone or {})
     if not h then return false end
-    if h.kind == "add" then
+    if h.kind == "picture" then
+        putPicture(self, h.el)
+    elseif h.kind == "add" then
         for _i, st in ipairs(h.strokes) do
             st.gone, st.undone = false, nil
             self.strokes[#self.strokes + 1] = st
@@ -928,7 +986,9 @@ function Sketch:undo()
     if not h then return false end
     self.redone = self.redone or {}
     self.redone[#self.redone + 1] = h
-    if h.kind == "add" then
+    if h.kind == "picture" then
+        dropPicture(self, h.el)
+    elseif h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
         for _i, st in ipairs(h.strokes) do st.gone = false end

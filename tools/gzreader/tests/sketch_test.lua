@@ -742,5 +742,50 @@ end)()
         "a pinch: the page zooms while the fingers are still down (2x, part of the way, 4x), told once when they lift")
 end)()
 
+print("== pictures (photos from Immich), as memos' drawing sheet places them")
+;(function()
+    -- placing: in the middle of what's shown, at most 60 % of it, never enlarged; several fanned out
+    local view = { cx = 500, cy = 400, w = 1000, h = 800 }
+    local one = Sketch.placePictures({ { w = 1440, h = 1080 } }, view)
+    check(math.abs(one[1].w - 600) < 0.01 and math.abs(one[1].h - 450) < 0.01 and one[1].cx == 500 and one[1].cy == 400,
+        "a big photo: 60 % of the page shown (here across: 600 of 1000), its shape kept, in its middle")
+    local small = Sketch.placePictures({ { w = 200, h = 100 } }, view)
+    check(small[1].w == 200 and small[1].h == 100, "a small one: its own size")
+    local three = Sketch.placePictures({ { w = 100, h = 100 }, { w = 100, h = 100 }, { w = 100, h = 100 } }, view)
+    check(three[1].cx == 500 - Sketch.PICTURE_STEP and three[2].cx == 500 and three[3].cy == 400 + Sketch.PICTURE_STEP,
+        "three: fanned out from the middle, a step down and to the right each")
+    -- on the page: an image element and its file in the scene; undo takes it off, redo puts it back
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 100, 200) }, { finger(0, 300, 200) }, { lift(0) } })
+    local url = "data:image/jpeg;base64,/9j/AAAA"
+    local el = sk:addPicture(url, "image/jpeg", 320, 240, 250, 300, 1700000000000)
+    check(el.type == "image" and el.x == 90 and el.y == 180 and el.width == 320 and el.height == 240 and el.locked == false
+        and sk.base.files[el.fileId].dataURL == url and sk.base.files[el.fileId].mimeType == "image/jpeg",
+        "a picture: an image element centred where asked, its pixels a file of the scene (movable in memos)")
+    local scene = sk:scene()
+    local kinds = {}
+    for _i, e in ipairs(scene.elements) do kinds[#kinds + 1] = e.type end
+    local live = Drawing.liveScene and Drawing.liveScene(scene) or scene
+    check(table.concat(kinds, ",") == "image,freedraw" and live.files[el.fileId] ~= nil,
+        "the drawing as memos keeps it: the picture, the ink drawn before it, the file kept (" .. table.concat(kinds, ",") .. ")")
+    local b = sk:bounds()
+    check(b and b.w >= 320 * 2 and b.h >= 240 * 2, "the drawing's picture (its crop) takes the picture in")
+    check(sk:undo() and #sk:scene().elements == 1 and sk:scene().elements[1].type == "freedraw", "undo: the picture off, the ink left")
+    check(sk:redo() and sk:scene().elements[1] == el and #sk:scene().elements == 2, "redo: back")
+    -- on a new page with nothing drawn
+    local sk2 = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    local el2 = sk2:addPicture(url, "image/jpeg", 100, 50, 0, 0)
+    check(sk2.base and #sk2:scene().elements == 1 and sk2:scene().elements[1] == el2, "a blank page: the picture alone")
+    -- a page that was in memos: its own pictures stay, the new one goes after
+    local old = Drawing.newScene()
+    old.elements[1] = { id = "x", type = "image", x = 0, y = 0, width = 10, height = 10, fileId = "f1", locked = true }
+    old.files = { f1 = { mimeType = "image/png", dataURL = "data:image/png;base64,AA" } }
+    local sk3 = Sketch.fromScene(old, { canvas = CANVAS, per_unit = 2 })
+    local el3 = sk3:addPicture(url, "image/jpeg", 10, 10, 50, 50)
+    local s3 = sk3:scene()
+    check(#s3.elements == 2 and s3.elements[1].id == "x" and s3.elements[2] == el3 and s3.files.f1 and s3.files[el3.fileId],
+        "an opened drawing: its own picture first, the new one after, both files kept")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

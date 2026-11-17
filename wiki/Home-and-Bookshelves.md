@@ -200,6 +200,10 @@ in your phone's browser; Kindles without Wi‑Fi on the
   to another one.
 - **Disconnect**: the pictures are removed, the sleep screen goes back to the
   screensavers folder and the wallpaper to what it was.
+- The same connection also lets you put **photos in a note or a drawing**
+  (Notes: **+ Photos** in the editor, **Picture from Immich…** in a
+  drawing's ⋮), when your Memos server doesn't have an Immich connection of
+  its own. See [Notes](Notes).
 
 ### Immich from the sync page
 

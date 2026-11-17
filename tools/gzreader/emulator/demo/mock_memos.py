@@ -16,6 +16,11 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
+--immich: the fork's Immich connection (github.com/9retirement6irk/memos, server/immich), set up:
+  GET   /api/immich/connection   {configured, url}; with --journal but no --immich: {configured: false}
+  GET   /api/immich/albums       [{id, name, photoCount, thumbnailPhotoId}]
+  GET   /api/immich/photos       ?album=&next= -> {photos: [{id, fileName, mimeType, takenAt, width, height}], next ("p:2")}
+  GET   /api/immich/photos/<id>/thumbnail | /preview  (a small JPEG)
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
 
   python3 -I mock_memos.py PORT [--sample] [--prefix /api] [--memos26] [--spaces] [--journal] [--drawings]
@@ -46,6 +51,25 @@ OLD_UPLOAD = "--old-upload" in sys.argv
 # --journal: a Memos with journaling mode (github.com/9retirement6irk/memos): each user's
 # journal settings at /api/journal/settings (beside the API, not under it)
 JOURNAL = "--journal" in sys.argv
+IMMICH = "--immich" in sys.argv
+# a small grey JPEG (96 x 64): what the Immich proxy sends as a thumbnail or a preview
+TEST_JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//wAALCABAAGABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/AL/iTxC+hyWccVi1290WVVV9pyNuABg5zurO/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4ij/AIS3WP8AoUr783/+Io/4S3WP+hSvvzf/AOIo/wCEt1j/AKFK+/N//iKP+Et1j/oUr783/wDiKP8AhLdY/wChSvvzf/4ij/hLdY/6FK+/N/8A4itHw34hfXJLyOWxa0e1Kqys+45O7IIwMY21neMv+Rh8M/8AX3/7PHXXUUUVRutZ020fZPdxhskELliCOoOM4/GmQa9pU7lUvYwQM/OCg/NgK0aKKK5Hwb/yMPib/r7/APZ5KPGX/Iw+Gf8Ar7/9njrrqKK4/wAR+IPP32Vg/wC66SSg/f8AYe3v3+nXmaK3PD2utpzi3uSWtGP1MZ9R7eo/H69yjK6K6MGVhkEHII9aWiuR8G/8jD4m/wCvv/2eSjxl/wAjD4Z/6+//AGeOuuoqjrly1po11MmdwTaCGwQWOM59s5rzeiiiu98J3LXGior5zC5jyWzkcEfocfhWzRXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRWd4hhafQrtEIBCb+fRSGP6CvOqKKK7rwfC0Wi72IxLKzrjsOF5/FTW5RXI+Df+Rh8Tf9ff/s8lHjL/AJGHwz/19/8As8dddRRXC+IdCbTnNxbAtaMfqYz6H29D+H1w6K1ND0aXVZ8nKWyH55PX2Hv/AC/n6BFGkMKRRjakahVGc4A4FOorkfBv/Iw+Jv8Ar7/9nko8Zf8AIw+Gf+vv/wBnjrrqKKR1V0ZHUMrDBBGQR6Vj3XhjTLh9ypJAcknymwDn2OcfhimQeFNMics/nTDGNrvgD3+UCtqKKOGMRwxpGg6KowB+FOoorkfBv/Iw+Jv+vv8A9nkrR8SeHn1ySzkivmtHtSzKypuOTtwQcjGNtZ3/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXR/wAIlrH/AENt9+T/APxdH/CJax/0Nt9+T/8AxdH/AAiWsf8AQ2335P8A/F0f8IlrH/Q2335P/wDF0f8ACJax/wBDbffk/wD8XR/wiWsf9Dbffk//AMXWj4b8PPocl5JLfNdvdFWZmTacjdkk5Oc7q//Z")
+
+
+def immich_id(n, kind="a"):
+    return "%08x-0000-4000-8000-%s%011x" % (n, kind, n)
+
+
+# the fork's Immich: "Garden" (70 photos: two pages of 60) and "Kids" (3)
+IMMICH_ALBUMS = [
+    {"id": immich_id(1, "b"), "name": "Garden", "photos": [immich_id(i) for i in range(1, 71)]},
+    {"id": immich_id(2, "b"), "name": "Kids", "photos": [immich_id(i) for i in range(101, 104)]},
+]
+IMMICH_PHOTOS = {}
+for _a in IMMICH_ALBUMS:
+    for _k, _pid in enumerate(_a["photos"]):
+        IMMICH_PHOTOS[_pid] = {"id": _pid, "fileName": "IMG_%04d.HEIC" % int(_pid[:8], 16), "mimeType": "image/heic",
+                               "takenAt": "2026-11-%02dT10:00:00.000Z" % (1 + _k % 28), "width": 4032, "height": 3024}
 JOURNAL_SETTINGS = {
     "space": "spaces/family" if "--spaces" in sys.argv else "",
     "openInJournalMode": True, "moodTagPrefix": "mood/", "feelingTagPrefix": "felt/", "impactTagPrefix": "impact/",
@@ -309,7 +333,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         self.note(u)
         if u.path == "/__state":
-            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"]})
+            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", [])})
         if STATE["offline"]:
             self.close_connection = True
             return
@@ -321,8 +345,38 @@ class H(BaseHTTPRequestHandler):
             data = STATE["files"].get(uid)
             if data is None:
                 return self.send(404, {"message": "not found"})
-            typ = "application/pdf" if data.startswith(b"%PDF") else "image/png"
+            typ = "application/pdf" if data.startswith(b"%PDF") else ("image/jpeg" if data.startswith(b"\xff\xd8") else "image/png")
             return self.send(200, ctype=typ, raw=data)
+        if u.path.startswith("/api/immich/"):
+            if not (IMMICH or JOURNAL):  # (stock Memos: no such address)
+                return self.send(404, raw=b"404 page not found", ctype="text/plain")
+            if not self.authed():
+                return
+            rest = u.path[len("/api/immich"):]
+            if rest == "/connection":
+                return self.send(200, {"configured": IMMICH, "url": "https://photos.example.com" if IMMICH else ""})
+            if not IMMICH:
+                return self.send(404, {"message": "connect Immich in Settings first"})
+            if rest == "/albums":
+                return self.send(200, [{"id": a["id"], "name": a["name"], "photoCount": len(a["photos"]),
+                                        "thumbnailPhotoId": a["photos"][0]} for a in IMMICH_ALBUMS])
+            if rest == "/photos":
+                q = parse_qs(u.query)
+                album = q.get("album", [""])[0]
+                ids = []
+                for a in IMMICH_ALBUMS:
+                    if not album or a["id"] == album:
+                        ids += a["photos"]
+                nxt = q.get("next", [""])[0]
+                page = int(nxt[2:]) if nxt.startswith("p:") else 1
+                chunk = ids[(page - 1) * 60: page * 60]
+                return self.send(200, {"photos": [IMMICH_PHOTOS[i] for i in chunk],
+                                       "next": ("p:%d" % (page + 1)) if page * 60 < len(ids) else ""})
+            m = re.match(r"^/photos/([0-9a-f-]+)/(thumbnail|preview|original)$", rest)
+            if m and m.group(1) in IMMICH_PHOTOS:
+                STATE.setdefault("immich_fetched", []).append(m.group(2) + " " + m.group(1))
+                return self.send(200, ctype="image/jpeg", raw=TEST_JPEG)
+            return self.send(404, {"message": "not found"})
         if u.path == "/api/journal/settings":
             if not JOURNAL:  # (stock Memos: its web page, or no such address)
                 return self.send(404, raw=b"404 page not found", ctype="text/plain")

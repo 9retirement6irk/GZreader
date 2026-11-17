@@ -121,6 +121,22 @@ API to `/api` are found too.
     under it on the first line, where it covers the next line until it goes.)
   - The row under the title shows the note's **sheets** (its drawings) as
     small pictures: tap one to draw on it; **✎ Draw** adds the first.
+  - **+ Photos** (beside Draw, when Immich is connected): photos from your
+    Immich, which go with the note as its attachments, as **Insert image →
+    From Immich** does in your Memos fork's web app. It opens your albums
+    (**All photos** first); tap an album for a grid of its photos, tap the
+    ones you want (each gets a thick frame and its number in the order
+    picked; tap again to let one go), turn pages with **‹ ›** or a swipe,
+    then **Add**. The chip then says how many (**2 photos**); tap it to add
+    more or take one off. **Save** sends them with the note. What's sent is
+    Immich's preview of each photo (a JPEG up to 1440 pixels a side, quick
+    over the Kindle's Wi‑Fi), named like the photo (`IMG_1234.jpg`).
+    Immich is reached through your **Memos fork's own Immich connection**
+    (Settings → Immich in its web app; the Immich key stays on the Memos
+    server), or else through **GZreader's Immich connection** (the sleep
+    screen's, [Pictures from Immich](Home-and-Bookshelves#pictures-from-immich)).
+    With both, the albums list has **Use GZreader's Immich connection** /
+    **Use Memos' Immich connection** at the top to switch.
   - **Save** is at the top right, beside the space (▾) and Private (▾),
     where the drawing screen's **Done** is. For a moment after **Done**, a
     tap on that row is ignored, so a second tap on a slow Done doesn't open
@@ -170,10 +186,18 @@ API to `/api` are found too.
     lie over it and fold away.
   - **At the top:** **←** (leave; asks first when you drew something), the
     drawing's name, then **All pages**, **Paper**, **Tags** (a new drawing),
-    **⋮ Options** (**New page**, **Erase page**, **Close without saving**)
+    **⋮ Options** (**New page**, **Picture from Immich…** when Immich is
+    connected, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
     tab stays at the top edge to bring it back.
+  - **Picture from Immich…** (⋮ Options): the same albums and grid as the
+    editor's **+ Photos**; the photos you pick are placed **in the middle
+    of the page you see**, at most 60 % of it (never enlarged), several
+    fanned out a step down and to the right, as the fork's drawing sheet
+    places them. They're part of the drawing, under your ink; **Undo**
+    takes one off. Memos shows them in the drawing and can move or resize
+    them there (on the Kindle they stay where they were placed).
   - **A new drawing** (**Draw** on the Notes tab) is named and tagged from
     the top bar: tap its name (**Untitled drawing** ✎) to type a title,
     which becomes the note's heading; tap **Tags** for your most used tags

@@ -464,7 +464,7 @@ function Notes.queuedAttachments(q)
     for k, d in ipairs(Memos.queuedDrawings(q)) do
         if d.filename then
             out[#out + 1] = { name = "attachments/local-" .. tostring(q.id) .. (k > 1 and ("-" .. k) or ""),
-                filename = d.filename, type = "image/png" }
+                filename = d.filename, type = d.type or "image/png" }
         end
     end
     return out
@@ -575,6 +575,21 @@ function Notes.saveDrawing(plugin, memo, drawing)
     end
     -- (kept note images, if the board keeps them, show the old drawing: drawn again)
     if Notes.dropImages then pcall(Notes.dropImages, true) end
+    Notes.sendSoon(plugin)
+end
+
+--- Photos picked from Immich for note `memo` (already in Memos): queued to
+--- go with it as attachments, as the fork's Insert image → From Immich does,
+--- and shown here at once.
+function Notes.addPhotos(plugin, memo, photos)
+    local list = {}
+    for _i, f in ipairs(photos or {}) do list[#list + 1] = { path = f.path, filename = f.filename, type = f.type } end
+    if #list == 0 then return end
+    local q = Notes.enqueue(plugin, { op = "attach", name = memo.name, drawings = list })
+    Notes.showDrawingNow(q)
+    memo.attachments = memo.attachments or {}
+    for _i, a in ipairs(Notes.queuedAttachments(q)) do table.insert(memo.attachments, a) end
+    Log.info("notes:", #list, "photo(s) from Immich added to a note")
     Notes.sendSoon(plugin)
 end
 
@@ -2362,6 +2377,8 @@ function Notes.edit(plugin, memo, opts)
         space = (memo == nil) and Notes.newNoteSpace() or nil, -- (an edit: the note's own)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
         can_draw = Notes.canDraw(plugin),
+        -- the Photos chip: when a way to Immich is set up (the Memos fork's or GZreader's)
+        immich = Touch.on() and #require("gzreader_immichpick").sources(plugin) > 0 and plugin or nil,
         -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
         -- Draw (a new note): a page to draw on at once; Mark up (a PDF): its pages after the note's drawings
         drawing_atts = memo and Notes.drawings(memo) or nil,
@@ -2372,11 +2389,12 @@ function Notes.edit(plugin, memo, opts)
         new_drawing = memo == nil and opts and opts.draw or nil,
         -- a note that's only a drawing, tapped: its drawing screen, named and tagged there; Done saves and closes
         drawing_note = memo ~= nil and opts and opts.drawing_note or nil,
-        on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
+        on_save = function(content, visibility, vis_changed, space, space_changed, drawings, photos)
             if memo then
                 memo.content = content
                 Notes.saveContent(plugin, memo, vis_changed and visibility or nil, space_changed and (space or "") or nil)
                 if drawings then Notes.saveDrawings(plugin, memo, drawings) end
+                if photos then Notes.addPhotos(plugin, memo, photos) end
             else
                 local list = {}
                 for _i, d in ipairs(drawings or {}) do
@@ -2387,6 +2405,9 @@ function Notes.edit(plugin, memo, opts)
                     order = {}
                     for i, d in ipairs(list) do order[i] = d.filename end
                 end
+                -- photos from Immich go after the drawings (attachments, not pages)
+                for _i, f in ipairs(photos or {}) do list[#list + 1] = { path = f.path, filename = f.filename, type = f.type } end
+                if photos then Log.info("notes: a new note with", #photos, "photo(s) from Immich") end
                 local q = Notes.enqueue(plugin, { op = "create", content = content, visibility = visibility or "PRIVATE",
                     space = space, drawings = #list > 0 and list or nil, order = order })
                 if #list > 0 then

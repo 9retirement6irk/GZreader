@@ -666,7 +666,16 @@ function Editor:sheetStrip(width)
     local chip = FrameContainer:new{ padding = S(6), radius = S(6), bordersize = self:canDraw() and Size.border.thick or 0,
         label(text, true) }
     row[#row + 1] = self:canDraw() and tapTarget(chip, function() self:openDrawing() end) or chip
-    if #sheets == 0 then
+    if self.immich then
+        -- photos from Immich (as the Memos fork's Insert image → From Immich): they go with the note
+        local n = #(self.photos or {})
+        local ptext = n == 0 and ("+ " .. _("Photos")) or (n == 1 and _("1 photo") or T(_("%1 photos"), n))
+        self.strip.photos = ptext
+        row[#row + 1] = HorizontalSpan:new{ width = S(8) }
+        row[#row + 1] = tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick, label(ptext, true) },
+            function() self:photosMenu() end)
+    end
+    if #sheets == 0 and not self.immich then
         row[#row + 1] = HorizontalSpan:new{ width = S(10) }
         row[#row + 1] = TextWidget:new{ text = _("Hold a word to format it"), face = Font:getFace("cfont", 13),
             fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = math.max(S(40), width - chip:getSize().w - S(14)) }
@@ -842,7 +851,38 @@ end
 
 function Editor:changed()
     return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
-        or #self:drawingChanges() > 0 or self.pages_reordered == true
+        or #self:drawingChanges() > 0 or self.pages_reordered == true or #(self.photos or {}) > 0
+end
+
+--- Photos from Immich (gzreader_immichpick.lua), added to the note's list.
+function Editor:addPhotos()
+    if self.vk and self.input and self.input.onCloseKeyboard then self.input:onCloseKeyboard() end
+    require("gzreader_immichpick").show(self.immich, { on_pick = function(files)
+        if self.closed then for _i, f in ipairs(files) do os.remove(f.path) end; return end
+        self.photos = self.photos or {}
+        for _i, f in ipairs(files) do self.photos[#self.photos + 1] = f end
+        Log.info("notes: editor:", #files, "photo(s) from Immich to go with the note")
+        self:redraw()
+    end })
+end
+
+--- The Photos chip: Immich's albums at once; with photos picked, those
+--- (a tap takes one off) and Add more.
+function Editor:photosMenu()
+    if #(self.photos or {}) == 0 then return self:addPhotos() end
+    local dialog
+    local rows = { { { text = _("Add more from Immich…"), align = "left", callback = function() UIManager:close(dialog); self:addPhotos() end } } }
+    for i, f in ipairs(self.photos) do
+        rows[#rows + 1] = { { text = "\u{2715}  " .. f.filename, align = "left", callback = function()
+            UIManager:close(dialog)
+            local gone = table.remove(self.photos, i)
+            if gone then os.remove(gone.path) end
+            self:redraw()
+        end } }
+    end
+    dialog = ButtonDialog:new{ title = _("Photos that go with the note (a tap takes one off)"), buttons = rows }
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
 end
 
 --- The screen turned (a Kindle with auto-rotate, gzreader_rotation.lua): the
@@ -850,7 +890,7 @@ end
 --- what was written, who can see it, its space and its drawings.
 function Editor:gzRelayout()
     local keep = {}
-    for _i, k in ipairs({ "visibility", "space", "original", "original_vis", "original_space", "pages", "pages_reordered", "saved" }) do
+    for _i, k in ipairs({ "visibility", "space", "original", "original_vis", "original_space", "pages", "pages_reordered", "saved", "photos" }) do
         keep[k] = self[k]
     end
     local text = not self.rich and self:text() or nil
@@ -966,6 +1006,7 @@ function Editor:openDrawing(page)
         title = self:heading(),
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
         meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
+        immich = self.immich,
         on_done = function(res)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
@@ -996,6 +1037,8 @@ function Editor:dropDrawing()
         if p.path and p.changed then os.remove(p.path) end
     end
     self.pages = nil
+    for _i, f in ipairs(self.photos or {}) do os.remove(f.path) end
+    self.photos = nil
 end
 
 --- The space chip's text: the note's space, or "No space".
@@ -1037,9 +1080,12 @@ end
 
 function Editor:save()
     local text = self:text():gsub("%s+$", "")
+    local has_photos = #(self.photos or {}) > 0 -- (a note can be just photos from Immich, too)
     if text == "" and not self:hasDrawing() then
-        UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
-        return
+        if not has_photos then
+            UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
+            return
+        end
     end
     return self:saveText(text)
 end
@@ -1102,7 +1148,7 @@ function Editor:saveText(text)
     if self.on_save then
         local drawings = self:drawingChanges()
         self.on_save(text, self.visibility, self.visibility ~= self.original_vis, self.space, self.space ~= self.original_space,
-            (#drawings > 0 or drawings.order) and drawings or nil)
+            (#drawings > 0 or drawings.order) and drawings or nil, #(self.photos or {}) > 0 and self.photos or nil)
     end
 end
 
@@ -1130,12 +1176,14 @@ end
 --- can_draw (drawings: touch Kindles), drawing_atts (the note's drawings
 --- in Memos), extra_pages (new pages ready to draw on, after them: a PDF's
 --- pages to mark up), open_drawing (open them, or a new page, at once),
---- on_save(text, visibility, vis_changed, space, space_changed, drawings):
+--- immich (the plugin, when a way to Immich is set up: the Photos chip),
+--- on_save(text, visibility, vis_changed, space, space_changed, drawings, photos):
+--- photos = { { path, filename, type } } picked from Immich (to go with the note), or nil;
 --- drawings = { { att, path, filename } (drawn or edited: waiting to be
 --- sent), { att, removed = true } } or nil when they're as they were.
 function NoteEditor.show(opts)
     local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save, immich = opts.immich,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
         drawing_atts = atts, extra_pages = opts.extra_pages }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so

@@ -418,7 +418,7 @@ end
 --- is skipped: nothing left to send.)
 function Memos:uploadDrawings(q, name)
     for i, d in ipairs(Memos.queuedDrawings(q)) do
-        local att, err = self:uploadAttachment(d.path, d.filename, name)
+        local att, err = self:uploadAttachment(d.path, d.filename, name, d.type) -- (a photo: its own type)
         if not att and err ~= "missing_file" then return nil, err, i - 1 end
     end
     return true

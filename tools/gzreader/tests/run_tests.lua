@@ -13407,5 +13407,121 @@ print("Immich: an album's pictures for the sleep screen and the Home wallpaper")
     plugin.store.immich = nil
 end)()
 
+print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos fork's connection, or GZreader's")
+;(function()
+    local Pick = require("gzreader_immichpick")
+    local Memos = require("gzreader_memos")
+    local Notes = require("gzreader_notes")
+    local lfs = require("libs/libkoreader-lfs")
+    local MP, IP = PORT + 86, PORT + 87
+    local function start(script, port, flags, name)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/" .. script .. " " .. port .. " " .. flags
+            .. " > " .. WORK .. "/" .. name .. ".log 2>&1 & echo $! > " .. WORK .. "/" .. name .. ".pid")
+        for _try = 1, 50 do
+            local pp = io.popen("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:" .. port .. "/__state"); local cc = pp:read("*a"); pp:close()
+            if cc == "200" then break end
+            socket.sleep(0.2)
+        end
+    end
+    local function stop(name) os.execute("kill $(cat " .. WORK .. "/" .. name .. ".pid) 2>/dev/null") end
+    local function uid(n, kind) return string.format("%08x-0000-4000-8000-%s%011x", n, kind or "a", n) end
+
+    -- the pure parts
+    check(Pick.fileName("IMG_0001.HEIC", uid(1)) == "IMG_0001.jpg" and Pick.fileName("a/b:c.png") == "a_b_c.jpg"
+        and Pick.fileName("", uid(7)) == "photo-00000007.jpg" and Pick.fileName("notes") == "notes.jpg",
+        "a picked photo's name: its own, as a JPEG (the preview is one), safe as a file name")
+    local mp = Pick.parseMemosPage({ photos = { { id = uid(1), fileName = "A.jpg", width = 40, height = 30 }, { id = "../x" } }, next = "c:abc" })
+    check(#mp.photos == 1 and mp.photos[1].filename == "A.jpg" and mp.photos[1].w == 40 and mp.next == "c:abc"
+        and Pick.parseMemosPage({ photos = {}, next = "" }).next == nil, "the fork's page: photos (not an id: left out), next; empty next: the end")
+    local ip = Pick.parseImmichPage({ assets = { items = { { id = uid(2), type = "IMAGE", originalFileName = "B.HEIC", exifInfo = { exifImageWidth = 9, exifImageHeight = 6 } },
+        { id = uid(3), type = "VIDEO" }, { id = uid(4), type = "IMAGE", isTrashed = true } }, nextPage = "2" } })
+    check(#ip.photos == 1 and ip.photos[1].w == 9 and ip.next == "p:2" and Pick.parseImmichPage({ assets = { items = {}, nextCursor = "zz" } }).next == "c:zz"
+        and Pick.parseImmichPage({ assets = { items = {}, nextPage = json.null } }).next == nil,
+        "Immich's own search: photos only, not in the bin; its next page or cursor, as the fork pages")
+    local cols, rows = Pick.grid(1072, 1300)
+    local cols2 = Pick.grid(600, 700)
+    check(cols == 4 and rows >= 4 and cols2 == 3, "the grid: 4 across on a big screen, 3 on a small one")
+
+    -- which ways in
+    local saved = { memos = plugin.store.memos, immich = plugin.store.immich }
+    plugin.store.memos, plugin.store.immich = nil, nil
+    check(#Pick.sources(plugin) == 0, "no Memos, no Immich: no way in (the Photos chip isn't offered)")
+    plugin.store.memos = { server = "http://127.0.0.1:" .. MP, token = "memos-test-token", prefix = "/api/v1" }
+    plugin.store.immich = { server = "http://127.0.0.1:" .. IP, key = "immich-test-key" }
+    local srcs = Pick.sources(plugin)
+    check(#srcs == 2 and srcs[1].kind == "memos" and srcs[2].kind == "immich", "both: Memos' connection first, then GZreader's")
+
+    -- the fork's connection, through its /api/immich (the Memos sign-in; the Immich key stays on the server)
+    start("mock_memos.py", MP, "--immich", "pm")
+    local m = srcs[1]
+    check(m.connected() == true, "the fork: Immich is connected there")
+    local albums = m.albums()
+    check(albums and #albums == 2 and albums[1].name == "Garden" and albums[1].count == 70, "…its albums, by name, with their counts")
+    local p1 = m.photos(albums[1].id)
+    local p2 = p1 and m.photos(albums[1].id, p1.next)
+    check(p1 and #p1.photos == 60 and p1.next == "p:2" and p2 and #p2.photos == 10 and p2.next == nil and p1.photos[1].filename == "IMG_0001.HEIC",
+        "…an album's photos a page at a time (60, then the last 10)")
+    local all = m.photos(nil)
+    check(all and #all.photos == 60 and all.next, "…All photos")
+    local _dir, thumbs = Pick.dir()
+    local tpath = thumbs .. "/" .. p1.photos[1].id
+    check(m.thumbnail(p1.photos[1].id, tpath) and lfs.attributes(tpath, "size") > 100, "…a thumbnail")
+    os.remove(tpath)
+    local files = Pick.fetchPreviews(m, { p1.photos[2], p1.photos[1] })
+    check(files and #files == 2 and files[1].filename == "IMG_0002.jpg" and files[1].type == "image/jpeg" and files[1].w == 96 and files[1].h == 64
+        and lfs.attributes(files[1].path, "size") > 100 and files[2].id == p1.photos[1].id,
+        "Add: the previews fetched in the order picked, as JPEGs, their size read")
+    local st = json.decode(io.popen("curl -s http://127.0.0.1:" .. MP .. "/__state"):read("*a"))
+    local fetched = table.concat(st.immich_fetched or {}, ",")
+    check(fetched:find("preview " .. p1.photos[2].id, 1, true) and not fetched:find("original", 1, true),
+        "…Immich's preview, not the original (a Kindle's size; quick on its Wi-Fi)")
+    -- the photos go with a note: queued as its attachments, sent as JPEGs
+    local c = Memos:new(plugin.store.memos)
+    local note = c:create("Garden visit", "PRIVATE")
+    local q = { op = "attach", name = note.name, drawings = { { path = files[1].path, filename = files[1].filename, type = files[1].type } } }
+    check(Notes.queuedAttachments(q)[1].type == "image/jpeg" and Notes.queuedAttachments(q)[1].filename == "IMG_0002.jpg",
+        "a queued photo shows as a JPEG attachment at once")
+    check(c:uploadDrawings(q, note.name), "…sent")
+    local got = c:get(note.name)
+    check(got and got.attachments and got.attachments[1] and got.attachments[1].filename == "IMG_0002.jpg" and got.attachments[1].type == "image/jpeg"
+        and not Notes.isDrawing(got.attachments[1]), "…in Memos: the note's attachment, a JPEG, not taken for a drawing")
+    local held = { name = note.name, attachments = {}, content = "Garden visit" }
+    local queue_before = #(plugin.store.memos.queue or {})
+    local real_send = Notes.sendSoon
+    Notes.sendSoon = function() end
+    Notes.addPhotos(plugin, held, { files[2] })
+    Notes.sendSoon = real_send
+    local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
+    check(#plugin.store.memos.queue == queue_before + 1 and lq.op == "attach" and lq.name == note.name and lq.drawings[1].type == "image/jpeg"
+        and #held.attachments == 1 and held.attachments[1].type == "image/jpeg", "a photo added in the editor: queued for the note, shown with it at once")
+    table.remove(plugin.store.memos.queue)
+    for _i, f in ipairs(files) do os.remove(f.path) end
+    stop("pm")
+
+    -- a fork without Immich set up, and stock Memos: GZreader's own connection
+    start("mock_memos.py", MP, "--journal", "pm")
+    check(srcs[1].connected() == false, "the fork, Immich not set up there: not a way in")
+    stop("pm")
+    start("mock_memos.py", MP, "", "pm")
+    check(srcs[1].connected() == false, "stock Memos (no /api/immich): not a way in")
+    stop("pm")
+    start("mock_immich.py", IP, "", "pi")
+    local im = srcs[2]
+    check(im.connected(), "GZreader's Immich connection")
+    local ia = im.albums()
+    check(ia and #ia == 3 and ia[1].name == "Family", "…its albums (shared ones too)")
+    local ipg = im.photos(nil)
+    check(ipg and #ipg.photos == 33 and ipg.next == nil, "…All photos: the timeline (the Kindle album's 30 and the trip's 3)")
+    local kin
+    for _i, a in ipairs(ia) do if a.name == "Kindle" then kin = a end end
+    local kp = im.photos(kin.id)
+    check(kp and #kp.photos == 30 and kp.photos[1].filename == "IMG_0001.JPG" and kp.photos[1].w == 4000, "…an album's photos, with their names and sizes")
+    local ifiles = Pick.fetchPreviews(im, { kp.photos[1] })
+    check(ifiles and ifiles[1].filename == "IMG_0001.jpg" and ifiles[1].w and ifiles[1].w > 300, "…a preview fetched")
+    for _i, f in ipairs(ifiles or {}) do os.remove(f.path) end
+    stop("pi")
+    plugin.store.memos, plugin.store.immich = saved.memos, saved.immich
+end)()
+
 print(string.format("\n%d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

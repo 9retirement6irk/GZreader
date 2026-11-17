@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: photos from Immich in a note or a drawing", text = "The note editor has + Photos (touch Kindles, when Immich is connected): pick photos from your Immich albums in a grid of thumbnails, and they go with the note as attachments, as Insert image → From Immich does in your Memos fork's web app. A drawing's ⋮ has Picture from Immich…, which places the photos in the middle of the page you see, as the fork's drawing sheet does. Immich is reached through your Memos fork's own Immich connection, or else through GZreader's (the sleep screen's); with both you can switch. Each photo is sent as Immich's preview (a JPEG up to 1440 pixels a side)." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
