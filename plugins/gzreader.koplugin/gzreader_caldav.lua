@@ -10,7 +10,8 @@ fetches their events for a date range.
   the server to expand repeating events (<C:expand>, times then come in
   UTC). Servers that don't expand send the RRULE: it's expanded here
   (DAILY / WEEKLY / MONTHLY / YEARLY with INTERVAL, COUNT, UNTIL, BYDAY,
-  BYMONTHDAY; EXDATE; changed single occurrences via RECURRENCE-ID).
+  BYMONTHDAY, BYMONTH, BYSETPOS, WKST; EXDATE; changed single occurrences
+  via RECURRENCE-ID).
 - Sign-in: HTTP Basic with your user name and password. Use an app password
   where the server has them (Nextcloud, iCloud, Fastmail, Google…): it's
   kept in GZreader's settings like the Memos token, and never logged (the
@@ -141,6 +142,22 @@ function CalDAV:request(method, url, body, depth, opts)
     return code, out, resp_headers
 end
 
+--- May a request carrying the account's password follow a redirect from
+--- `from` to `to`? Not from https to http, and only within the same site: the
+--- same host, one under it, or one beside it under a parent that has a dot
+--- (iCloud sends caldav.icloud.com to p12-caldav.icloud.com; dav.example.com
+--- may not send it to example.net).
+function CalDAV.mayFollow(from, to)
+    local fs, fh = tostring(from):lower():match("^(https?)://([^/:?#]+)")
+    local ts, th = tostring(to):lower():match("^(https?)://([^/:?#]+)")
+    if not fs or not ts then return false end
+    if fs == "https" and ts ~= "https" then return false end
+    if th == fh or th:sub(-(#fh + 1)) == "." .. fh then return true end
+    local parent = fh:match("^[^.]+%.(.+)$")
+    if not parent or not parent:find(".", 1, true) or parent:match("^[%d.]+$") then return false end
+    return th == parent or th:sub(-(#parent + 1)) == "." .. parent
+end
+
 --- PROPFIND, following redirects. Returns responses, final url, err.
 function CalDAV:propfind(url, depth, props)
     local body = '<?xml version="1.0" encoding="utf-8"?>'
@@ -152,7 +169,13 @@ function CalDAV:propfind(url, depth, props)
         if code >= 300 and code < 400 then
             local loc = headers and (headers.location or headers.Location)
             if not loc then return nil, url, "http_" .. code end
-            url = CalDAV.absolute(url, loc)
+            local to = CalDAV.absolute(url, loc)
+            -- (the password goes with every request: not to another site, never from https to http)
+            if not CalDAV.mayFollow(url, to) then
+                require("gzreader_log").warn("calendar: not following a redirect from", origin(url), "to", origin(to))
+                return nil, url, "redirected_away"
+            end
+            url = to
         else
             local list, perr = CalDAV.parseMultistatus(out)
             if not list then return nil, url, perr end
@@ -447,15 +470,44 @@ end
 
 local function daysInMonth(y, m) return os.date("*t", os.time{ year = y, month = m + 1, day = 0, hour = 12 }).day end
 
+--- BYSETPOS: of a period's candidates (sorted), the ones at these places
+--- (1 the first, -1 the last).
+local function setPos(cands, spec)
+    if not spec or #cands == 0 then return cands end
+    local keep, out = {}, {}
+    for v in spec:gmatch("[+-]?%d+") do
+        local k = tonumber(v)
+        local i = k > 0 and k or #cands + k + 1
+        if k ~= 0 and i >= 1 and i <= #cands then keep[i] = true end
+    end
+    for i, d in ipairs(cands) do if keep[i] then out[#out + 1] = d end end
+    return out
+end
+
+--- A rule's list of numbers ("1,4,7") as a set, or nil.
+local function numSet(spec)
+    if not spec then return nil end
+    local set, any = {}, false
+    for v in spec:gmatch("[+-]?%d+") do set[tonumber(v)] = true; any = true end
+    return any and set or nil
+end
+
 --- The starts of a repeating event between from and to (epoch), at most `max`.
+--- RFC 5545's common parts: FREQ DAILY / WEEKLY / MONTHLY / YEARLY with
+--- INTERVAL, COUNT, UNTIL, BYDAY (a filter on DAILY; with a number, e.g.
+--- 2TU / -1FR, in a month), BYMONTHDAY, BYMONTH, BYSETPOS (within each month:
+--- Outlook's and Apple's "first Monday", "last weekday") and WKST (the
+--- week's first day, Monday unless the rule says, for every-other-week rules).
 function CalDAV.expandRule(ev, from, to, max)
     max = max or 500
     local rule = {}
     for k, v in (ev.rrule or ""):gmatch("([^=;]+)=([^;]+)") do rule[k:upper()] = v end
     local freq = (rule.FREQ or ""):upper()
     local interval = tonumber(rule.INTERVAL) or 1
+    if interval < 1 then interval = 1 end
     local count = tonumber(rule.COUNT)
     local untilt = rule.UNTIL and CalDAV.parseTime(rule.UNTIL)
+    local months = numSet(rule.BYMONTH)
     local s = os.date("*t", ev.start)
     local out, n = {}, 0
     local function emit(t)
@@ -471,47 +523,85 @@ function CalDAV.expandRule(ev, from, to, max)
     end
     local guard = 0
     if freq == "DAILY" then
+        -- (BYDAY and BYMONTH only filter a daily rule: "every weekday")
+        local wdays
+        for code in (rule.BYDAY or ""):gmatch("(%a%a)") do
+            wdays = wdays or {}
+            local wd = WEEKDAYS[code:upper()]
+            if wd then wdays[wd] = true end
+        end
         local t = ev.start
         while guard < 20000 do
             guard = guard + 1
-            if not emit(t) then break end
-            local d = os.date("*t", t); d.day = d.day + interval; d.isdst = nil; t = os.time(d)
+            local d = os.date("*t", t)
+            if (not wdays or wdays[d.wday]) and (not months or months[d.month]) then
+                if not emit(t) then break end
+            elseif t >= to or (untilt and t > untilt) then
+                break
+            end
+            d.day = d.day + interval; d.isdst = nil; t = os.time(d)
         end
     elseif freq == "WEEKLY" then
-        local days = {}
-        for code in (rule.BYDAY or ""):gmatch("(%a%a)") do days[#days + 1] = WEEKDAYS[code:upper()] end
-        if #days == 0 then days = { s.wday } end
-        table.sort(days)
-        local week = os.time{ year = s.year, month = s.month, day = s.day - (s.wday - 1), hour = 12 }
+        local wkst = WEEKDAYS[(rule.WKST or "MO"):upper()] or 2
+        local offsets = {}
+        for code in (rule.BYDAY or ""):gmatch("(%a%a)") do
+            local wd = WEEKDAYS[code:upper()]
+            if wd then offsets[#offsets + 1] = (wd - wkst) % 7 end
+        end
+        if #offsets == 0 then offsets = { (s.wday - wkst) % 7 } end
+        table.sort(offsets)
+        local week = os.time{ year = s.year, month = s.month, day = s.day - (s.wday - wkst) % 7, hour = 12 }
         local done = false
         while not done and guard < 5000 do
             guard = guard + 1
             local w = os.date("*t", week)
-            for _i, wd in ipairs(days) do
-                if not emit(at(w.year, w.month, w.day + wd - 1)) then done = true; break end
+            for i, off in ipairs(offsets) do
+                local t = at(w.year, w.month, w.day + off)
+                if offsets[i - 1] ~= off and (not months or months[os.date("*t", t).month]) then
+                    if not emit(t) then done = true; break end
+                end
             end
+            if not done and (week >= to + 7 * 86400 or (untilt and week > untilt)) then done = true end
             w.day = w.day + 7 * interval; w.isdst = nil; week = os.time(w)
         end
     elseif freq == "MONTHLY" or freq == "YEARLY" then
-        local step = freq == "MONTHLY" and interval or 12 * interval
-        local base = os.time{ year = s.year, month = s.month, day = 1, hour = 12 }
+        -- YEARLY with BYMONTH goes month by month through each year it's in
+        local by_month = freq == "YEARLY" and months ~= nil
+        local step = freq == "MONTHLY" and interval or (by_month and 1 or 12 * interval)
+        local base = os.time{ year = s.year, month = by_month and 1 or s.month, day = 1, hour = 12 }
         local done = false
-        while not done and guard < 2000 do
+        while not done and guard < 4000 do
             guard = guard + 1
             local m = os.date("*t", base)
             local cands = {}
             local dim = daysInMonth(m.year, m.month)
-            if rule.BYDAY and (freq == "MONTHLY" or rule.BYMONTH) then
+            local in_period = true
+            if by_month then
+                in_period = months[m.month] and (m.year - s.year) % interval == 0
+            elseif months and not months[m.month] then
+                in_period = false -- (MONTHLY;BYMONTH=…: only those months)
+            end
+            if not in_period then
+                cands = {}
+            elseif rule.BYDAY and (freq == "MONTHLY" or rule.BYMONTH) then
+                local first_wday = os.date("*t", os.time{ year = m.year, month = m.month, day = 1, hour = 12 }).wday
                 for nth, code in rule.BYDAY:gmatch("([+-]?%d*)(%a%a)") do
                     local wd = WEEKDAYS[code:upper()]
                     local list = {}
-                    for d = 1, dim do
-                        if os.date("*t", os.time{ year = m.year, month = m.month, day = d, hour = 12 }).wday == wd then list[#list + 1] = d end
+                    if wd then
+                        for d = 1 + (wd - first_wday) % 7, dim, 7 do list[#list + 1] = d end
                     end
                     local k = tonumber(nth)
                     if not k then for _i, d in ipairs(list) do cands[#cands + 1] = d end
                     elseif k > 0 and list[k] then cands[#cands + 1] = list[k]
                     elseif k < 0 and list[#list + k + 1] then cands[#cands + 1] = list[#list + k + 1] end
+                end
+                -- (BYMONTHDAY too: both must hold, e.g. Friday the 13th)
+                local days = numSet(rule.BYMONTHDAY)
+                if days then
+                    local keep = {}
+                    for _i, d in ipairs(cands) do if days[d] or days[d - dim - 1] then keep[#keep + 1] = d end end
+                    cands = keep
                 end
             elseif rule.BYMONTHDAY then
                 for v in rule.BYMONTHDAY:gmatch("[+-]?%d+") do
@@ -519,13 +609,18 @@ function CalDAV.expandRule(ev, from, to, max)
                     local d = k > 0 and k or dim + k + 1
                     if d >= 1 and d <= dim then cands[#cands + 1] = d end
                 end
-            else
-                if freq == "YEARLY" and m.month ~= s.month then cands = {} elseif s.day <= dim then cands = { s.day } end
+            elseif by_month or freq == "MONTHLY" or m.month == s.month then
+                if s.day <= dim then cands = { s.day } end
             end
             table.sort(cands)
+            local uniq = {}
+            for i, d in ipairs(cands) do if cands[i - 1] ~= d then uniq[#uniq + 1] = d end end
+            cands = setPos(uniq, rule.BYSETPOS)
             for _i, d in ipairs(cands) do
                 if not emit(at(m.year, m.month, d)) then done = true; break end
             end
+            -- (a rule that matches nothing more: stop once past the range)
+            if not done and (base >= to + 31 * 86400 or (untilt and base > untilt)) then done = true end
             base = addMonths(base, step)
         end
     else

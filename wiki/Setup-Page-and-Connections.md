@@ -58,6 +58,18 @@ the PIN; passwords
 and tokens are sent once to the Kindle and only Grimmory's login tokens,
 the Memos token and the CalDAV password are kept (never logged).
 
+**Addresses without `https://`.** An address typed without `http://` or
+`https://` is tried over HTTPS. Only when the server is on your home network
+(an address like `192.168.1.20`, `10.0.0.5` or `100.x` for Tailscale, a name
+with no dot such as `nas`, or one ending in `.local`, `.lan`, `.home` or
+`.internal`) does GZreader try plain HTTP by itself when HTTPS doesn't answer.
+A server on the internet isn't: someone on the same Wi‑Fi could block its
+HTTPS to have your password or token sent again in the clear. If such a
+server really has no HTTPS, type its address with `http://` in front. This
+goes for Grimmory, Memos, CalDAV accounts, `webcal://` calendar links,
+Immich and Home Assistant (which, on the home network, is still tried at
+`http://…:8123` first).
+
 Where to open it: the setup guide's first page (**Set up from your browser**),
 the quick panel → **Send books**, the Catalog, Notes and Calendar tabs'
 *Connect with QR code*, Settings → Connections → Grimmory / Memos / Calendar /
@@ -114,6 +126,11 @@ forwards to a Kindle's address on a private network (port 8642). So:
 - While signing in, the phone has to be on the same Wi‑Fi as the Kindle
   (any Wi‑Fi: the reader's own, or the Kindle on the phone's hotspot), like
   the rest of the setup page.
+- The first time a phone signs in through the page, it shows **Sign in at**
+  and your sign-in server's name, with a **Continue** button, instead of
+  going there by itself; that browser goes straight there after that. The
+  page only opens a sign-in request that comes back to it (so a link to it
+  can't be used to send someone to another site).
 
 Under **Single sign-on (SSO)** you can also choose:
 
@@ -188,3 +205,13 @@ Behind **Cloudflare Access** (Zero Trust login)? Make a service token there
 
 The key and token go only to those servers (never to calendar links on other
 sites, plex.tv or GitHub) and are never written to the log.
+
+**Redirects.** When one of your servers answers with a redirect to another
+server (a sign-in proxy's page, a file host), GZreader follows it without
+your sign-in: Grimmory's token, the Memos, Plex and Home Assistant tokens,
+the Immich key and the Access key and Cloudflare token stay with your own
+server (the Access key still goes to the hosts listed on the Access tab).
+A redirect from `https://` to `http://` isn't followed. A CalDAV account's
+password follows a redirect only within the same site (iCloud's
+`caldav.icloud.com` → `p12-caldav.icloud.com` works); to another site the
+connection stops with a note saying so.

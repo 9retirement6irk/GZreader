@@ -393,10 +393,16 @@ function Notes.keepHere(m, f)
     return true
 end
 
+--- The notes the board shows. While they're the saved copy (every note kept
+--- on the Kindle, before Memos has answered for this filter, or when it
+--- can't be reached) the filter is worked out here.
 function Notes.visible()
     local out = {}
+    local here = Notes.from_cache == true
     for _i, m in ipairs(Notes.notes or {}) do
-        if Notes.keep(m) then out[#out + 1] = m end
+        local ok
+        if here then ok = Notes.keepHere(m, Notes.filter) else ok = Notes.keep(m) end
+        if ok then out[#out + 1] = m end
     end
     return out
 end
@@ -419,6 +425,7 @@ function Notes.loadCache(plugin)
     local cache = Memos.loadCache()
     Notes.notes = cache and cache.notes or {}
     Notes.cached_at = cache and cache.at
+    Notes.from_cache = true -- (all the kept notes: Notes.visible filters them here)
     Notes.applyQueue(plugin)
 end
 
@@ -684,8 +691,22 @@ function Notes.refresh(plugin, on_done, opts)
     if require("gzreader_net").usb then return on_done and on_done(false, "usb") end
     local client = Notes.client(plugin)
     if not client:isConnected() then return on_done and on_done(false, "not_connected") end
-    if Notes.refreshing then return end
+    if Notes.refreshing then
+        -- (one at a time. A filter chosen meanwhile is asked for when this one is back:
+        -- its answer isn't shown as the new filter's notes)
+        if not (opts and opts.send_only) then Notes.refresh_again = { on_done = on_done, opts = opts } end
+        return
+    end
     Notes.refreshing = true
+    -- another refresh asked for while this one ran: now
+    local function andThen(ok, err, stale)
+        local again = Notes.refresh_again
+        Notes.refresh_again = nil
+        if stale and not again then again = { on_done = on_done } end
+        if not again then return end
+        if stale then return Notes.refresh(plugin, again.on_done, again.opts) end
+        if again.on_done then again.on_done(ok, err) end -- (the same notes: this answer is its too)
+    end
     local Async = require("gzreader_async")
     local store = plugin.store.memos
     local function fetch()
@@ -694,18 +715,33 @@ function Notes.refresh(plugin, on_done, opts)
         local order = Notes.orderBy(plugin)
         Async.run(client, function(c) return c:listAll(query, keep, order) end, function(res, err)
             Notes.refreshing = false
+            local stale = Notes.query(plugin) ~= query or Notes.orderBy(plugin) ~= order
             if not res then
                 Log.warn("notes: refresh failed:", tostring(err))
                 Notes.last_error = err
-                return on_done and on_done(false, err)
+                if on_done and not stale then on_done(false, err) end
+                return andThen(false, err, stale)
             end
             Notes.last_error = nil
             if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix; plugin:save() end
-            if type(res.tags) == "table" then store.tag_counts = res.tags; plugin:save() end
+            if type(res.tags) == "table" then
+                store.tag_counts = res.tags
+                plugin:save()
+            elseif not Notes.cel() then
+                -- (a Memos that doesn't say: counted from all the notes it sent, and kept)
+                store.tag_counts = Notes.countTags(res.memos)
+                plugin:save()
+            end
             if type(res.spaces) == "table" then store.spaces = res.spaces; plugin:save() end
             -- (false: this Memos has no journaling mode, the defaults again; nil: no answer, as it was)
             if res.journal ~= nil and (res.journal or nil) ~= store.journal then store.journal = res.journal or nil; plugin:save() end
+            if stale then
+                -- (the filter changed while Memos answered: these aren't its notes)
+                Log.info("notes: an answer for another filter, asking again")
+                return andThen(true, nil, true)
+            end
             Notes.notes = res.memos
+            Notes.from_cache = false -- (Memos' answer for this filter)
             Notes.applyQueue(plugin)
             if not Notes.cel() then Memos.saveCache({ notes = res.memos, at = os.time() }) end
             Notes.cached_at = os.time()
@@ -713,11 +749,19 @@ function Notes.refresh(plugin, on_done, opts)
             Notes.last_sync = os.time()
             Notes.prefetchPictures(plugin)
             if on_done then on_done(true) end
+            andThen(true)
         end, "notes: list")
     end
     if store.queue and #store.queue > 0 then
         local queue = store.queue
+        -- drawings to send: Wi-Fi power saving off until they're done (gzreader_wifips.lua)
+        local uploads = false
+        for _i, q in ipairs(queue) do
+            if q.op == "redraw" or #Memos.queuedDrawings(q) > 0 then uploads = true break end
+        end
+        if uploads then pcall(function() require("gzreader_wifips").hold("memos-upload") end) end
         Async.run(client, function(c) return c:flush(queue) end, function(res)
+            if uploads then pcall(function() require("gzreader_wifips").release("memos-upload") end) end
             if type(res) == "table" then
                 if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix end
                 local gone = {}
@@ -755,13 +799,15 @@ function Notes.refresh(plugin, on_done, opts)
                 Notes.refreshing = false
                 Notes.last_sync = nil -- (the board fetches the list when it next opens)
                 local sent = type(res) == "table" and not res.err
-                return on_done and on_done(sent, not sent and (type(res) == "table" and res.err or "failed") or nil)
+                if on_done then on_done(sent, not sent and (type(res) == "table" and res.err or "failed") or nil) end
+                return andThen(true, nil, Notes.refresh_again ~= nil)
             end
             fetch()
         end, "notes: send changes")
     elseif opts and opts.send_only then
         Notes.refreshing = false
         if on_done then on_done(true) end
+        andThen(true, nil, Notes.refresh_again ~= nil)
     else
         fetch()
     end
@@ -1010,12 +1056,26 @@ function StickyItem:onUnfocus()
     return true
 end
 
-function StickyItem:onTapSelect()
+--- Scrolling: whether a gesture at `ges.pos` is on the notes' window. A row
+--- cut off at the bottom (or top) reaches under the tab bar (or the buttons
+--- above): painted over there, but its tap area was still there, so taps on
+--- the tab bar opened a hidden note instead (owner, 2026-11-16).
+function StickyItem:inView(ges)
+    local m = self.menu
+    local port = m and m._gz_scroll and m._gz_scroll.port
+    local pos = ges and ges.pos
+    if not port or not pos then return true end
+    local d = port.dimen
+    return pos.x >= d.x and pos.x < d.x + d.w and pos.y >= d.y and pos.y < d.y + d.h
+end
+
+function StickyItem:onTapSelect(_arg, ges)
+    if not self:inView(ges) then return false end -- (the tab bar's, or the buttons')
     if self.entry.memo then self.menu:onMenuSelect(self.entry) end
     return true
 end
 
-function StickyItem:onHoldSelect() return self:onTapSelect() end
+function StickyItem:onHoldSelect(arg, ges) return self:onTapSelect(arg, ges) end
 
 function StickyItem:onCloseWidget()
     self.img = nil -- (kept in Notes.images: let go by Notes.dropImages)
@@ -1293,6 +1353,7 @@ local function drawCompact(m, select_number, cols, max_items)
         port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
             VerticalGroup:new{ align = "left" } }
         table.insert(m.item_group, port)
+        m._gz_scroll.port = port
     end
     local row, layout_row
     for i = 1, count do
@@ -1464,27 +1525,72 @@ function Notes.Board:scrollBy(dy)
     return true
 end
 
+--- Scrolling: did this gesture start on the notes? One that starts above
+--- them (the top of the screen, the buttons) isn't the notes': a swipe down
+--- from the top still opens the quick panel.
+function Notes.Board:onNotes(ges)
+    local sc = self._gz_scroll
+    local top = sc and sc.port and sc.port.dimen and sc.port.dimen.y
+    local y = ges and ges.pos and ges.pos.y
+    return not (top and y) or y >= top
+end
+
 --- Scrolling: a swipe up or down moves the notes as far as the finger went;
 --- a swipe sideways, most of a screenful (a row stays in view).
 function Notes.Board:onSwipe(arg, ges)
     local sc = self._gz_scroll
+    if sc and ges and not self:onNotes(ges) then return false end -- (the quick panel's, the tab bar's)
     if sc and ges then
         local d = ges.direction
+        -- (a drag that ended as a swipe: from where the notes were when it began, not from where they followed to)
+        local pan = self._gz_pan
+        self._gz_pan = nil
+        if pan and (pan.y0 ~= (self._gz_y or 0) or pan.rough) then self._gz_y = pan.y0; self._gz_moved = true end
+        if self._gz_moved and not (d == "north" or d == "south" or d == "west" or d == "east") then
+            self._gz_moved = nil
+            self:updateItems()
+            return true
+        end
         if d == "north" or d == "south" then
-            self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0))
+            if not self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0)) and self._gz_moved then self:updateItems() end
+            self._gz_moved = nil
             return true
         elseif d == "west" or d == "east" then
-            self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h))
+            if not self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h)) and self._gz_moved then self:updateItems() end
+            self._gz_moved = nil
             return true
         end
     end
     return Menu.onSwipe(self, arg, ges)
 end
 
---- Scrolling: a slow drag does the same when the finger lifts.
+--- Scrolling: to `y` pixels down the notes. True when it moved.
+function Notes.Board:scrollTo(y)
+    return self:scrollBy(y - (self._gz_y or 0))
+end
+
+--- Scrolling: a drag moves the notes with the finger, a step at a time
+--- (gzreader_livescroll: an e-ink screen can't follow every sample), and
+--- they settle where it lifts.
 function Notes.Board:onPan(arg, ges)
     if self._gz_scroll and ges and not ges.mousewheel_direction then
-        self._gz_pan = { direction = ges.direction, distance = ges.distance }
+        if not self:onNotes(ges) then self._gz_pan = nil; return false end
+        local pan = self._gz_pan
+        if not pan then
+            pan = { y0 = self._gz_y or 0, live = {} }
+            self._gz_pan = pan
+        end
+        -- (how far the finger is from where it began: down is positive)
+        local rel = ges.relative and ges.relative.y
+        if not rel then
+            rel = (ges.direction == "north" and -1 or ges.direction == "south" and 1 or 0) * (tonumber(ges.distance) or 0)
+        end
+        pan.rel = rel
+        local LiveScroll = require("gzreader_livescroll")
+        if LiveScroll.step(pan.live, rel, LiveScroll.now()) ~= 0 then
+            -- (a step: shown without the flash of an ordinary refresh; properly when the finger lifts)
+            LiveScroll.quiet(function() if self:scrollTo(pan.y0 - rel) then pan.rough = true end end)
+        end
         return true
     end
     return Menu.onPan(self, arg, ges)
@@ -1494,8 +1600,8 @@ function Notes.Board:onGzPanRelease()
     local pan = self._gz_pan
     self._gz_pan = nil
     if not (pan and self._gz_scroll) then return false end
-    if pan.direction == "north" or pan.direction == "south" then
-        self:scrollBy((pan.direction == "north" and 1 or -1) * (tonumber(pan.distance) or 0))
+    if not self:scrollTo(pan.y0 - (pan.rel or 0)) and pan.rough then
+        UIManager:setDirty(self.show_parent or self, function() return "ui", self.dimen end)
     end
     return true
 end
@@ -1725,6 +1831,16 @@ end
 
 ---------------------------------------------------------------- one note
 
+--- A note's own page reads in the note editor's font (KOReader's, as
+--- gzreader_richedit.lua's RichEdit.face: the same sizes), so a note looks
+--- the same opened as written; the Notes tab's sticky notes keep the
+--- handwriting font (the owner, 2026-11-16).
+Notes.PAGE_TEXT = 20
+Notes.PAGE_HEADING = { 28, 24, 22, 21, 20, 20 }
+function Notes.pageFace(size, bold)
+    return Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size) or Font:getFace("cfont", size)
+end
+
 local NoteView = InputContainer:extend{ covers_fullscreen = true, memo = nil, plugin = nil, focus = nil }
 
 function NoteView:init()
@@ -1785,7 +1901,7 @@ function NoteView:build()
     local function flush()
         local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
         para = {}
-        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Sticky.hand(24), width = inner }) end
+        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
     end
     local n_check = 0
     for _i, l in ipairs(Sticky.lines(m.content)) do
@@ -1800,13 +1916,13 @@ function NoteView:build()
                 HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                     TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
                     HorizontalSpan:new{ width = S(8) },
-                    TextWidget:new{ text = Sticky.plain(l.text), face = Sticky.hand(24), max_width = inner - S(90),
+                    TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = inner - S(90),
                         fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
         elseif l.kind == "heading" then
             flush()
             add(VerticalSpan:new{ width = S(6) })
-            add(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Sticky.hand(l.level <= 1 and 32 or (l.level == 2 and 29 or 26)),
-                bold = true, width = inner })
+            add(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
+                width = inner })
         elseif l.kind == "image" then
             flush()
             local pic = Notes.pictureFor(self.plugin, m, l.src, inner, math.floor(sh * 0.45), function()
@@ -1847,7 +1963,7 @@ function NoteView:build()
     if #(m.tags or {}) > 0 then
         local tags = {}
         for _i, t in ipairs(m.tags) do tags[#tags + 1] = "#" .. t end
-        add(iconLine("tag", table.concat(tags, "  "), Sticky.hand(20), true))
+        add(iconLine("tag", table.concat(tags, "  "), Notes.pageFace(18, true), false))
     end
     if m.place then
         add(VerticalSpan:new{ width = S(4) })
@@ -1907,6 +2023,7 @@ function NoteView:build()
         dimen = Geom:new{ w = sw, h = content_h }, show_parent = self,
         HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, g },
     }
+    require("gzreader_livescroll").on(self.scroller) -- (the note moves with the finger)
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{
@@ -2370,14 +2487,36 @@ end
 
 --- Your tags, most used first: from the notes loaded, or (notes not loaded,
 --- e.g. a quick note from a book) from the counts Memos sent at the last sync.
-function Notes.allTags(plugin)
+function Notes.countTags(notes)
     local count = {}
-    for _i, m in ipairs(Notes.notes or {}) do
+    for _i, m in ipairs(notes or {}) do
         for _j, t in ipairs(m.tags or {}) do count[t] = (count[t] or 0) + 1 end
     end
+    return count
+end
+
+--- Your tags, most used first: { { tag, count } }. From the list kept at the
+--- last sync (Memos' own count of every note, or counted from the notes it
+--- sent), so it's whole while the board shows one tag's notes and there
+--- without a connection; tags of notes not yet sent are added.
+function Notes.allTags(plugin)
     local saved = plugin and plugin.store and plugin.store.memos and plugin.store.memos.tag_counts
-    if not Notes.notes and type(saved) == "table" then
-        for t, n in pairs(saved) do if type(t) == "string" then count[t] = tonumber(n) or 0 end end
+    local count = {}
+    local kept = false
+    if type(saved) == "table" then
+        for t, n in pairs(saved) do
+            if type(t) == "string" then count[t] = tonumber(n) or 0; kept = true end
+        end
+    end
+    if not kept then
+        -- (never synced with this version: from the notes there are; all of them unless a filter's answer is shown)
+        count = Notes.countTags(Notes.notes)
+    else
+        for _i, m in ipairs(Notes.notes or {}) do
+            if m.pending and m.local_id then
+                for _j, t in ipairs(m.tags or {}) do count[t] = (count[t] or 0) + 1 end
+            end
+        end
     end
     local list = {}
     for t, n in pairs(count) do list[#list + 1] = { tag = t, count = n } end
@@ -2396,14 +2535,30 @@ local function allPlaces()
     return list
 end
 
+--- Show the notes for a filter (a tag chip, Filter, search). At once from
+--- the notes kept on the Kindle, picked out here; then Memos is asked (Wi-Fi
+--- turned on for it when it's only on when needed), since it may have older
+--- notes than the Kindle keeps. When Memos can't be reached the kept notes
+--- stay, without a message: they're what there is.
 function Notes.setFilter(plugin, f)
     Notes.filter = f
-    -- place, attachments: picked out on the Kindle from all the notes
-    if not Notes.cel(f) then Notes.loadCache(plugin) end
+    Notes.loadCache(plugin)
     Notes.reloadBoard(false)
-    Notes.refresh(plugin, function(ok, err)
-        if ok then Notes.reloadBoard(false) elseif err ~= "not_connected" and err ~= "usb" then info(describe(err), 3) end
-    end)
+    local Net = require("gzreader_net")
+    if Net.usb or not Notes.client(plugin):isConnected() then return end
+    local asked = f
+    Net.run(function()
+        Notes.refresh(plugin, function(ok, err)
+            if Notes.filter ~= asked then return end -- (another filter since: its own answer comes)
+            if ok then
+                Notes.reloadBoard(false)
+            elseif err == "unauthorized" then
+                info(describe(err), 3)
+            else
+                Log.info("notes: filter shown from the kept notes:", tostring(err))
+            end
+        end)
+    end, { quiet = true, reason = "notes filter" })
 end
 
 local function count(n) return n == 1 and _("1 note") or T(_("%1 notes"), n) end
@@ -2612,7 +2767,8 @@ function Notes.connect(plugin, server_input, token)
     if token == "" then return false, _("Paste an access token from Memos (Settings → Access Tokens).") end
     local trial = Memos:new{ server = server, token = token }
     local user, err = trial:me()
-    if not user and err == "unreachable" and not server_input:match("^%s*https?://") then
+    local Lan = require("gzreader_lan")
+    if not user and err == "unreachable" and Lan.plainRetry(server_input) then
         -- no https:// typed and no HTTPS there: a Memos on the home network (http)
         local plain = server:gsub("^https://", "http://")
         local t2 = Memos:new{ server = plain, token = token }
@@ -2622,6 +2778,7 @@ function Notes.connect(plugin, server_input, token)
     Log.info("notes: connecting to", server, user and "ok" or ("failed: " .. tostring(err)))
     if not user then
         if err == "unauthorized" then return false, _("Memos didn't accept that access token.") end
+        if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach Memos at that address.") end
         return false, T(_("That doesn't look like a Memos server (%1)."), tostring(err))
     end
@@ -2632,6 +2789,7 @@ function Notes.connect(plugin, server_input, token)
         queue = same and old.queue or nil, sync_tags = same and old.sync_tags or nil }
     plugin:save()
     if old.server ~= server then os.remove(Memos.cachePath()); Notes.notes = nil end
+    Memos.forgetLacks() -- (spaces, journaling mode: asked again, in case the server was updated)
     return true
 end
 

@@ -5,7 +5,7 @@ For Kindles without Wi-Fi. GZreader leaves .gzsync/outbox.json in its folder
 on the Kindle (what to send to Grimmory, the sync queue, what's on the
 Kindle); this page, with the Kindle plugged in:
   1. sends the outbox's jobs to Grimmory (positions, reading time, ratings,
-     bookmarks and highlights, books put on or taken off your shelves);
+     bookmarks, highlights and notes, books put on or taken off your shelves);
   2. leaves a copy of the library (library.json, small covers, book pages);
   3. brings what's in the sync queue (books, audiobooks) and the auto-download
      shelf's new books;
@@ -938,9 +938,11 @@ gets a password or token.
   // key made from the PIN (PBKDF2-SHA-256, 600 000 rounds, AES-256-GCM).
   // Only this page reads it; GZreader on the Kindle never does. Without the
   // PIN it's unreadable, but a short PIN can be guessed by someone who has
-  // the file and time: a longer one is safer.
+  // the file and time (600 000 rounds slow each guess, but 4 digits are only
+  // 10 000 guesses: seconds on a graphics card), so a new PIN needs MIN_PIN
+  // characters. One chosen before stays usable.
   var Vault = {
-    FILE: "keys.json", ROUNDS: 600000,
+    FILE: "keys.json", ROUNDS: 600000, MIN_PIN: 8,
     key: null, salt: null, mode: null, // "kindle" | "session"
     plexClient: null,
     exists: async function () { return !!(Drive.sync && await Drive.has(Drive.sync, Vault.FILE)); },
@@ -1081,7 +1083,7 @@ gets a password or token.
     $("#unlock-title").textContent = has ? "Unlock the Kindle's connections" : "Choose a PIN for this Kindle";
     $("#unlock-text").textContent = has
       ? "Enter the PIN you chose for this Kindle: its sign-ins (Grimmory, Memos, Plex, Immich, calendars) are kept on it, locked with it."
-      : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 4 characters at least; a longer one is safer (someone with the Kindle could try to guess a short one).";
+      : "Your sign-ins are kept on the Kindle, locked with this PIN, so any computer can sync it with the PIN. 8 characters at least (digits, letters or a few words): someone who copies the file off the Kindle can try guesses on their own computer, as many as they like, so a short PIN would be found.";
     show("#pin2", !has);
     $("#unlock-go").textContent = has ? "Unlock" : "Keep sign-ins on the Kindle";
     show("#unlock-reset-wrap", has);
@@ -1247,13 +1249,25 @@ gets a password or token.
     return out;
   }
 
+  // What the page sends for the Kindle: only Grimmory's own API (outbox.json is
+  // a file on the Kindle's drive, so anything could have written it), with the
+  // methods GZreader's jobs use. A path is put after the server's address, so
+  // it must start with /api/v1/ (or be the web reader's notes, /api/v2/book-notes):
+  // ".example.net/x" would be another host.
+  var JOB_METHODS = { POST: true, PUT: true, DELETE: true };
+  function jobAllowed(method, path) {
+    return JOB_METHODS[method] === true && typeof path === "string"
+      && (/^\/api\/v1\/[A-Za-z0-9._~%\/-]*$/.test(path) || /^\/api\/v2\/book-notes(\/[A-Za-z0-9._~%-]+)?$/.test(path))
+      && !/(^|\/)\.\.?(\/|$)/.test(path) && path.indexOf("//") < 0;
+  }
+
   // 1. what the Kindle has to send
   async function sendJobs(out, inbox) {
     var done = new Set(inbox.done);
     var jobs = (out.jobs || []).filter(function (j) { return !done.has(j.id); });
     if (!jobs.length) return;
     phase("Sending reading updates to Grimmory…");
-    var sent = 0, marks = 0, badClock = 0;
+    var sent = 0, marks = 0, badClock = 0, refused = 0;
     inbox.created = inbox.created || {};
     for (var i = 0; i < jobs.length; i++) {
       var j = jobs[i];
@@ -1264,12 +1278,13 @@ gets a password or token.
         inbox.done.push(j.id); badClock++; continue;
       }
       if (j.kind === "mark") {
-        // a bookmark or highlight: ids made on the Kindle ("usb-…") are Grimmory's once created
+        // a bookmark, highlight or note: ids made on the Kindle ("usb-…") are Grimmory's once created
         var ref = j.ref != null ? String(j.ref) : null;
         if (ref && inbox.created[ref]) ref = String(inbox.created[ref]);
         if (ref && /^usb-/.test(ref)) { inbox.done.push(j.id); continue; } // (its creation never went through)
         path = path.replace("{id}", encodeURIComponent(ref || ""));
       }
+      if (!jobAllowed(j.method, path)) { inbox.done.push(j.id); refused++; continue; } // (not one of GZreader's: never sent)
       try { r = await G.fetch(path, { method: j.method, body: body }); } catch (e) {
         inbox.failed.push({ id: j.id, error: "unreachable" });
         log("Couldn't reach Grimmory to send the rest: " + e.message, "bad");
@@ -1291,8 +1306,9 @@ gets a password or token.
       bar.set(i + 1, jobs.length);
     }
     await saveInbox(inbox);
+    if (refused) log(refused + " item" + (refused === 1 ? "" : "s") + " in the Kindle's outbox not sent: not a Grimmory reading update.", "bad");
     if (badClock) log(badClock + " reading time" + (badClock === 1 ? "" : "s") + " left out: recorded while the Kindle's clock was wrong (it's set from this computer's now).");
-    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark and highlight change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
+    log("Sent " + sent + " reading update" + (sent === 1 ? "" : "s") + (marks ? " and " + marks + " bookmark, highlight and note change" + (marks === 1 ? "" : "s") : "") + " to Grimmory.", "ok");
   }
 
   // 2. the library copy
@@ -1353,15 +1369,18 @@ gets a password or token.
         full[id] = keep;
       } catch (e) {}
     });
-    // their bookmarks and highlights (GZreader compares and merges them when the book opens)
+    // their bookmarks, highlights and notes (the web reader's Notes tab: one per place);
+    // GZreader compares and merges them when the book opens
     var marks = {};
-    phase("Reading bookmarks and highlights…");
+    phase("Reading bookmarks, highlights and notes…");
     await pool(Object.keys(have.books || {}), 4, async function (id) {
       try {
         var bms = await G.json("/api/v1/bookmarks/book/" + id);
         var ans = await G.json("/api/v1/annotations/book/" + id);
         marks[id] = { bookmarks: Array.isArray(bms) ? bms : [], annotations: Array.isArray(ans) ? ans : [] };
-      } catch (e) {}
+      } catch (e) { return; }
+      // (left out when Grimmory doesn't list them: the Kindle then leaves its notes as they are)
+      try { var nts = await G.json("/api/v2/book-notes/book/" + id); if (Array.isArray(nts)) marks[id].notes = nts; } catch (e) {}
     });
     // subtitles (only the web app's list has them)
     var subtitles = {};
@@ -1386,7 +1405,7 @@ gets a password or token.
       var mids = Object.keys(marks);
       for (var mi = 0; mi < mids.length; mi++) {
         var m = marks[mids[mi]];
-        await Drive.write(Drive.sync, "marks/" + mids[mi] + ".json", JSON.stringify({ written_at: copy.written_at, bookmarks: m.bookmarks, annotations: m.annotations }));
+        await Drive.write(Drive.sync, "marks/" + mids[mi] + ".json", JSON.stringify({ written_at: copy.written_at, bookmarks: m.bookmarks, annotations: m.annotations, notes: m.notes }));
       }
     }
     await Drive.write(Drive.sync, "library.json", JSON.stringify(copy));
@@ -2090,7 +2109,11 @@ gets a password or token.
       "state", "nonce", "token", "id_token", "passwordMD5"],
     feed: function (out) {
       var f = out && out.report && out.report.feed;
-      if (typeof f === "string" && (/^https:\/\/[^\s]+$/.test(f) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(f))) return f.replace(/\/+$/, "");
+      // (only the developer's feed server, or one on this computer for tests: the
+      // outbox is a file on the drive, and this sends the Kindle's logs there)
+      var mine = Report.FEED.replace(/\/open\/feed\/.*$/, "");
+      if (typeof f === "string" && (f.indexOf(mine + "/open/feed/") === 0 && /^[^\s?#]+$/.test(f)
+          || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(f))) return f.replace(/\/+$/, "");
       return Report.FEED;
     },
     // (Log.redact: passwords and tokens out of what's typed and crash.log)
@@ -3071,7 +3094,8 @@ gets a password or token.
       try {
         if (await Vault.exists()) await Vault.unlock(pin);
         else {
-          if (pin.length < 4) throw new Error("At least 4 characters.");
+          // (new PINs only: a Kindle locked with a shorter one before still unlocks with it)
+          if (pin.length < Vault.MIN_PIN) throw new Error("At least " + Vault.MIN_PIN + " characters.");
           if (pin !== $("#pin2").value) throw new Error("The two PINs aren't the same.");
           // (sign-ins made in this tab without a PIN come along)
           if (Vault.mode !== "session") Vault.use(null);
@@ -3200,6 +3224,7 @@ gets a password or token.
     open: openDrive, sync: runSync, demuxTs: demuxTs, memoFileName: memoFileName, slimMemo: slimMemo,
     G: G, M: M, P: P, K: K, Cal: Cal, Vault: Vault, Picks: Picks, Update: Update, zipEntryText: zipEntryText, Browse: Browse,
     testKindle: testKindle, setPanel: setPanel, isoWeekOfYear: isoWeekOfYear, Sleep: Sleep, Heic: Heic, Mp4: Mp4, Report: Report,
+    sendJobs: sendJobs, jobAllowed: jobAllowed,
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

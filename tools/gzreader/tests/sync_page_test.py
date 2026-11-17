@@ -130,6 +130,11 @@ OUTBOX = {
         {"id": "m:3", "kind": "mark", "op": "highlight~", "method": "PUT", "path": "/api/v1/annotations/{id}", "ref": "usb-2",
          "body": {"color": "#F87171", "style": "highlight", "note": "from the Kindle"}},
         {"id": "m:4", "kind": "mark", "op": "bookmark-", "method": "DELETE", "path": "/api/v1/bookmarks/{id}", "ref": "9999"},
+        # a note for the web reader's Notes tab made on the Kindle, then changed (by its temporary id)
+        {"id": "m:6", "kind": "mark", "op": "note+", "book": 1, "method": "POST", "path": "/api/v2/book-notes",
+         "body": {"bookId": 1, "cfi": "epubcfi(/6/4!/4/2,/1:0,/1:5)", "noteContent": "from the Kindle", "selectedText": "Hello"}, "temp": "usb-3"},
+        {"id": "m:7", "kind": "mark", "op": "note~", "method": "PUT", "path": "/api/v2/book-notes/{id}", "ref": "usb-3",
+         "body": {"noteContent": "a note from the Kindle"}},
         # a book put on a shelf on the Kindle; one put on someone else's shelf (Grimmory refuses it)
         {"id": "sh:3:5", "kind": "shelf", "book": 3, "method": "POST", "path": "/api/v1/books/shelves",
          "body": {"bookIds": [3], "shelvesToAssign": [6], "shelvesToUnassign": []}},
@@ -218,10 +223,10 @@ with sync_playwright() as pw:
           "a new Kindle: a PIN is chosen for it")
     page.fill("#pin", "24"); page.fill("#pin2", "24"); page.click("#unlock-go")
     page.wait_for_selector("#unlock-err:not(.hidden)")
-    check("At least 4" in page.locator("#unlock-err").inner_text(), "…at least 4 characters")
-    page.fill("#pin", "2468"); page.fill("#pin2", "2468"); page.click("#unlock-go")
+    check("At least 8" in page.locator("#unlock-err").inner_text(), "…at least 8 characters (a new PIN)")
+    page.fill("#pin", "24682468"); page.fill("#pin2", "24682468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
-    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "11 reading updates" in page.locator("#k-sub").inner_text()
+    check("Kindle 2 · 3F2A" in page.locator("#k-name").inner_text() and "13 reading updates" in page.locator("#k-sub").inner_text()
           and page.locator("nav.main button.on").inner_text() == "Connections",
           "unlocked: the Kindle, what's waiting; Connections first while there are none")
 
@@ -306,7 +311,7 @@ with sync_playwright() as pw:
     page.fill("#pin", "1357"); page.click("#unlock-go")
     page.wait_for_selector("#unlock-err:not(.hidden)")
     check("isn't this Kindle's PIN" in page.locator("#unlock-err").inner_text(), "unlock: a wrong PIN says so")
-    page.fill("#pin", "2468"); page.click("#unlock-go")
+    page.fill("#pin", "24682468"); page.click("#unlock-go")
     page.wait_for_selector("#app:not(.hidden)")
     seen = (page.locator("#c-plex.on").count(), page.locator("#c-grimmory.on").count(), page.locator("#c-memos.on").count(),
             page.locator("#cal-list li").count(), page.locator("nav.main button.on").inner_text())
@@ -445,6 +450,32 @@ with sync_playwright() as pw:
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
     check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
+    # outbox.json is a file on the drive (anything could have written it): only Grimmory's own API is sent from it
+    res = page.evaluate("""async () => {
+        const seen = [], real = GZSync.G.fetch, inbox = { done: [], failed: [], created: {} };
+        GZSync.G.fetch = async (p, o) => { seen.push(o.method + ' ' + p); return new Response('{}', { status: 200 }); };
+        try {
+            await GZSync.sendJobs({ jobs: [
+                { id: 'ok1', kind: 'progress', method: 'PUT', path: '/api/v1/app/books/1/progress', body: {} },
+                { id: 'ok2', kind: 'mark', method: 'DELETE', path: '/api/v1/bookmarks/{id}', ref: '77' },
+                { id: 'ok3', kind: 'mark', method: 'PUT', path: '/api/v2/book-notes/{id}', ref: '78', body: {} },
+                { id: 'bad5', kind: 'progress', method: 'DELETE', path: '/api/v2/users/1' },
+                { id: 'bad1', kind: 'progress', method: 'PUT', path: '.attacker.example/steal', body: {} },
+                { id: 'bad2', kind: 'progress', method: 'GET', path: '/api/v1/users/me' },
+                { id: 'bad3', kind: 'progress', method: 'DELETE', path: '/api/v1/../v2/users/1' },
+                { id: 'bad4', kind: 'progress', method: 'POST', path: '@attacker.example/x', body: {} } ] }, inbox);
+        } finally { GZSync.G.fetch = real; }
+        return { seen: seen, done: inbox.done, feeds: [
+            GZSync.Report.feed({ report: { feed: 'https://attacker.example/open/feed/x' } }),
+            GZSync.Report.feed({ report: { feed: GZSync.Report.FEED.replace(/[^/]+$/, 'other123') } }),
+            GZSync.Report.feed({ report: { feed: 'http://127.0.0.1:9/open/feed/t' } }) ] };
+    }""")
+    check(res["seen"] == ["PUT /api/v1/app/books/1/progress", "DELETE /api/v1/bookmarks/77", "PUT /api/v2/book-notes/78"]
+          and {"ok1", "ok2", "ok3", "bad1", "bad2", "bad3", "bad4", "bad5"} <= set(res["done"]),
+          "outbox: only POST/PUT/DELETE to /api/v1/… and the notes' /api/v2/book-notes sent; another host, GET, other /api/v2 or ../ dropped, never fetched %r" % (res["seen"],))
+    check(res["feeds"][0] != "https://attacker.example/open/feed/x" and res["feeds"][1].endswith("/other123")
+          and res["feeds"][2] == "http://127.0.0.1:9/open/feed/t",
+          "outbox: Kindle reports go only to the developer's feed server (or one on this computer, for tests)")
     cmp = page.evaluate("""() => [GZSync.Update.compare('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0-beta.5995ce3', '1.27.0'),
         GZSync.Update.offered('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0', '1.27.0'),
         GZSync.Update.compare('1.10.0', '1.9.2'), GZSync.Update.compare('v1.26.10', '1.27.0-beta.1')]""")
@@ -626,10 +657,15 @@ with sync_playwright() as pw:
     page2.click("#test-reset")
     page2.wait_for_function("document.querySelector('#unlock-title').innerText.includes('Choose a PIN') && document.activeElement.id === 'pin'")
     page2.wait_for_timeout(300)
-    page2.fill("#pin", "0000"); page2.fill("#pin2", "0000"); page2.click("#unlock-go")
+    page2.fill("#pin", "00000000"); page2.fill("#pin2", "00000000"); page2.click("#unlock-go")
     page2.wait_for_selector("#app:not(.hidden)")
     check(page2.locator("#k-name").inner_text() == "Pretend Kindle" and page2.locator("#c-grimmory.on").count() == 0,
           "test mode: started over, a fresh pretend Kindle to set up")
+    # a Kindle locked with a 4-character PIN before 8 were needed: still unlocks with it
+    old_pin = page2.evaluate("""async () => {
+        const V = GZSync.Vault; await V.create('1234'); V.lock();
+        try { await V.unlock('1234'); return V.mode === 'kindle'; } catch (e) { return String(e); } }""")
+    check(old_pin is True, "a Kindle locked with a short PIN before: it still unlocks with it %r" % (old_pin,))
     browser.close()
 
 files = {k: base64.b64decode(v) for k, v in res.items()}
@@ -649,11 +685,15 @@ check(lib.get("marks_files") is True and lib.get("marks") == {} and mfile.get("w
       "the copy: bookmarks and highlights in marks/<id>.json (with the copy's time), not in library.json")
 marks = mfile
 hl = [a for a in state["annotations"] if a["text"] == "Hello"]
-check(set(inbox.get("created", {})) == {"usb-1", "usb-2"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
+check(set(inbox.get("created", {})) == {"usb-1", "usb-2", "usb-3"} and hl and hl[0]["note"] == "from the Kindle" and hl[0]["color"] == "#F87171"
       and any(b.get("title") == "Kindle" for b in state["bookmarks"]) and {"m:1", "m:2", "m:3", "m:4"} <= set(inbox["done"]),
       "bookmarks and highlights: made, changed (by their new ids) and deleted on Grimmory; the new ids for the Kindle")
 check(any(a.get("note") == "from the Kindle" for a in marks.get("annotations", [])) and any(b.get("title") == "Kindle" for b in marks.get("bookmarks", [])),
       "…and the books' bookmarks and highlights in the copy, for GZreader to merge")
+nt = [n for n in state.get("notes", []) if n["bookId"] == 1 and n["noteContent"] == "a note from the Kindle"]
+check(len(nt) == 1 and inbox["created"].get("usb-3") == nt[0]["id"] and {"m:6", "m:7"} <= set(inbox["done"])
+      and any(n.get("noteContent") == "a note from the Kindle" for n in marks.get("notes", [])),
+      "notes (the web reader's Notes tab): made and changed on Grimmory from the Kindle's journal, and in the copy for GZreader")
 check(not errors, "no script errors" + ("" if not errors else ": " + "; ".join(errors)))
 check(set(inbox.get("done", [])) >= {"p:1:7", "s:1:2026-11-05T10:00:00Z", "r:2:4"},
       "jobs: positions, reading time and ratings reported done")

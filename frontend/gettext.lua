@@ -140,7 +140,11 @@ local function getPluralFunc(pl_tests, nplurals, plural_default)
         end
     end
     logger.dbg("gettext: plural function", plural_func_str)
-    return loadstring(plural_func_str)()
+    -- GZreader: built from the translation file's header: it gets nothing but n
+    -- (an empty environment), whatever the header says
+    local plural_chunk = loadstring(plural_func_str)
+    setfenv(plural_chunk, {})
+    return plural_chunk()
 end
 
 local function addTranslation(msgctxt, msgid, msgstr, n)

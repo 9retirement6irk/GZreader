@@ -517,16 +517,27 @@ function HA.connect(plugin, server_input, token)
     token = tostring(token or ""):gsub("%s+", "")
     if not server then return false, _("That address doesn't look right.") end
     if token == "" then return false, _("Paste a long-lived access token from Home Assistant (your profile → Security).") end
-    local info, err = HA:new({ server = server, token = token }):check()
-    if not info and err == "unreachable" and server:match("^http://") and not tostring(server_input):match("^%s*http://") then
-        -- (no scheme typed: Home Assistant behind HTTPS, e.g. Nabu Casa's address)
-        local tls = server:gsub("^http://", "https://"):gsub(":" .. HA.PORT .. "$", "")
-        local t2 = HA:new({ server = tls, token = token })
-        local i2, e2 = t2:check()
-        if i2 or e2 ~= "unreachable" then info, err, server = i2, e2, tls end
+    local Lan = require("gzreader_lan")
+    local bare = not tostring(server_input):match("^%s*%a[%w+.-]*://") -- (no scheme typed)
+    local info, err
+    if bare and not Lan.isPrivate(server) then
+        -- an address on the internet: HTTPS only (the token isn't sent over plain
+        -- HTTP unless http:// is typed), e.g. Nabu Casa's address
+        server = server:gsub("^http://", "https://"):gsub(":" .. HA.PORT .. "$", "")
+        info, err = HA:new({ server = server, token = token }):check()
+        if not info and err == "unreachable" then err = "no_https" end
+    else
+        info, err = HA:new({ server = server, token = token }):check()
+        if not info and err == "unreachable" and bare and server:match("^http://") then
+            -- (no scheme typed, on the home network: Home Assistant behind HTTPS there)
+            local tls = server:gsub("^http://", "https://"):gsub(":" .. HA.PORT .. "$", "")
+            local t2 = HA:new({ server = tls, token = token })
+            local i2, e2 = t2:check()
+            if i2 or e2 ~= "unreachable" then info, err, server = i2, e2, tls end
+        end
     end
     require("gzreader_log").info("house: connecting to", server, info and "ok" or ("failed: " .. tostring(err)))
-    if not info then return false, HA.why(err) end
+    if not info then return false, err == "no_https" and Lan.noHttpsText() or HA.why(err) end
     local old = plugin.store.homeassistant or {}
     local same = old.server == server
     plugin.store.homeassistant = { server = server, token = token, name = info.name, version = info.version,

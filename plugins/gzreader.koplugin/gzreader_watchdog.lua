@@ -59,6 +59,9 @@ local function writeFile(p, s)
     f:close()
     return os.rename(p .. ".tmp", p)
 end
+-- Wi-Fi network names out of what's sent (crash.log's end, an older log)
+local hide_ok, hideNetworks = pcall(dofile, ((arg[0] or ""):match("^(.*)/") or ".") .. "/gzreader_netname.lua")
+if not hide_ok or type(hideNetworks) ~= "function" then hideNetworks = function(s) return s end end
 local function tail(p, n, max_chars)
     local s = readFile(p)
     if not s then return "" end
@@ -69,7 +72,7 @@ local function tail(p, n, max_chars)
     end
     local out = table.concat(lines, "\n")
     if max_chars and #out > max_chars then out = out:sub(-max_chars) end
-    return out
+    return hideNetworks(out)
 end
 local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
 
@@ -256,7 +259,7 @@ end
 local own_pid = (readFile("/proc/self/stat") or ""):match("^(%d+)")
 writeFile(dir .. "/watchdog.pid", tostring(own_pid or "") .. "\n")
 local device = select(2, config())
-local frozen_since, last_loop, slow_reported = nil, now(), 0
+local frozen_since, last_loop, slow_reported, woke_at = nil, now(), 0, nil
 W.SLOW = tonumber(os.getenv("GZ_WD_SLOW")) or 45
 local function tagged(extra) local t = { "gzreader", device } for _i, x in ipairs(extra) do t[#t + 1] = x end return t end
 local state_id = "gzreader-frozen-" .. device:gsub("[^%w%-]", "-")
@@ -264,8 +267,9 @@ local state_id = "gzreader-frozen-" .. device:gsub("[^%w%-]", "-")
 while true do
     local t = now()
     if t - last_loop > W.TICK * 6 then
-        -- the Kindle was asleep (everything stops): not a freeze
-        frozen_since = nil
+        -- the Kindle was asleep (everything stops): not a freeze, and GZreader's
+        -- last beat is from before it slept: the time since waking counts
+        frozen_since, woke_at = nil, t
     end
     last_loop = t
     if not alive(ppid) then
@@ -292,7 +296,7 @@ while true do
         os.exit(0)
     end
     if status == "run" and hb then
-        local stale = t - hb
+        local stale = t - math.max(hb, woke_at or 0)
         if stale > W.SLOW and stale <= W.STALL and not frozen_since and t - slow_reported > 600 then
             slow_reported = t
             spool("send", { eventName = "GZreader slow (" .. device .. ")", important = false, source = "gzreader",

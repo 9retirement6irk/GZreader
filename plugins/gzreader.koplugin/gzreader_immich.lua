@@ -82,6 +82,7 @@ function Immich:request(method, path, body, opts)
         body = body,
         timeouts = opts.timeouts or { 10, 30 },
         sink = opts.sink,
+        expected = opts.expected,
     })
     if type(code) ~= "number" then return nil, nil, "unreachable" end
     if code == 401 then return code, data, "unauthorized" end
@@ -91,9 +92,9 @@ function Immich:request(method, path, body, opts)
 end
 
 --- Who the key is (name), or nil, err. "forbidden": a key without user.read
---- (it may still read albums).
+--- (it may still read albums: not a problem, so not a warning in the log).
 function Immich:me()
-    local code, data, err = self:request("GET", "/users/me")
+    local code, data, err = self:request("GET", "/users/me", nil, { expected = { [403] = true } })
     if err then return nil, err end
     if code ~= 200 or type(data) ~= "table" then return nil, "not_immich" end
     return { name = data.name ~= "" and data.name or data.email, email = data.email }
@@ -348,7 +349,8 @@ function Immich.connect(plugin, server_input, key)
     if key == "" then return false, _("Paste an API key from Immich (Account Settings → API Keys).") end
     local trial = Immich:new({ server = server, key = key })
     local albums, err = trial:albums()
-    if not albums and err == "unreachable" and not server_input:match("^%s*https?://") then
+    local Lan = require("gzreader_lan")
+    if not albums and err == "unreachable" and Lan.plainRetry(server_input) then
         -- no https:// typed and no HTTPS there: an Immich on the home network (http)
         local plain = server:gsub("^https://", "http://")
         local t2 = Immich:new({ server = plain, key = key })
@@ -359,6 +361,7 @@ function Immich.connect(plugin, server_input, key)
     if not albums then
         if err == "unauthorized" then return false, _("Immich didn't accept that API key.") end
         if err == "forbidden" then return false, _("That API key can't read albums: give it album.read, asset.read and asset.view (or all permissions).") end
+        if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach Immich at that address.") end
         return false, _T(_("That doesn't look like an Immich server (%1)."), tostring(err))
     end

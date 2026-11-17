@@ -7,7 +7,12 @@ provider, and when the provider sends the phone back here (?code&state),
 forwards that to the Kindle, which finishes signing in with Grimmory.
 
 So the identity provider needs only this one redirect address for every
-Kindle, wherever it is, instead of each Kindle's own address. Nothing is
+Kindle, wherever it is, instead of each Kindle's own address. It only opens
+a sign-in request that comes back to this page (response_type=code with
+PKCE, its redirect_uri this page's own address), and the first time it meets
+a sign-in server it asks before going there ("Sign in at …"; remembered in
+this browser): so a link to this page can't send anyone to just any site.
+Nothing is
 sent anywhere but the provider and the Kindle; the sign-in code is useless
 without the secret the Kindle keeps (PKCE). The page only ever forwards to
 a Kindle on a private network (192.168.x, 10.x, 172.16-31.x, a phone's
@@ -30,6 +35,7 @@ Single sign-on redirect).
   main { max-width: 34rem; margin: 10vh auto; background: #fff; border: 1px solid #ddd9cf; border-radius: 14px; padding: 22px; }
   h1 { font-size: 20px; margin: 0 0 8px; }
   p { margin: 8px 0; color: #4a4741; }
+  a.go { display: inline-block; margin-top: 10px; padding: 10px 18px; border-radius: 10px; background: #1c1b19; color: #fff; text-decoration: none; font-weight: 600; }
   .bad { color: #9b2c1e; }
   @media (prefers-color-scheme: dark) {
     body { background: #161513; color: #ecebe6; } main { background: #1f1e1b; border-color: #3a3833; } p { color: #bdbab2; } .bad { color: #e8806f; }
@@ -40,6 +46,7 @@ Single sign-on redirect).
 <main>
   <h1 id="title">Signing in…</h1>
   <p id="msg">One moment.</p>
+  <p id="act" hidden><a class="go" id="go" href="#">Continue</a></p>
 </main>
 <script>
 (function () {
@@ -79,6 +86,29 @@ Single sign-on redirect).
     return a.origin === location.origin && a.pathname === dir + "sync/" && !a.search && !a.hash && !a.username;
   }
   function allowed(u) { return kindleCallback(u) || syncPage(u); }
+  // The provider's sign-in, as the Kindle and the sync page build it: a code
+  // with PKCE, coming back to this very page. Anything else isn't followed.
+  function here(u) { return String(u || "").replace(/[?#].*$/, "").replace(/\.html$/, ""); }
+  function signInRequest(u) {
+    var a;
+    try { a = new URL(u); } catch (e) { return null; }
+    if (a.protocol !== "https:" && a.hostname !== "localhost" && a.hostname !== "127.0.0.1" || a.username || a.password) return null;
+    var q = a.searchParams;
+    if (q.get("response_type") !== "code" || !q.get("client_id") || !q.get("state") || !q.get("code_challenge")
+        || q.get("code_challenge_method") !== "S256" || here(q.get("redirect_uri")) !== here(location.origin + location.pathname)) return null;
+    return a;
+  }
+  var KNOWN = "gzreader-sso-providers";
+  function known(host) {
+    try { return (JSON.parse(localStorage.getItem(KNOWN) || "[]") || []).indexOf(host) >= 0; } catch (e) { return false; }
+  }
+  function remember(host) {
+    try {
+      var list = JSON.parse(localStorage.getItem(KNOWN) || "[]") || [];
+      if (list.indexOf(host) < 0) list.push(host);
+      localStorage.setItem(KNOWN, JSON.stringify(list.slice(-20)));
+    } catch (e) {}
+  }
   function store(k, v) {
     try { sessionStorage.setItem(k, v); } catch (e) {}
     try { localStorage.setItem(k, v); } catch (e) {}
@@ -92,9 +122,8 @@ Single sign-on redirect).
   var h = params(location.hash);
   if (h.back && h.go) {
     // 1. from the Kindle: remember the way back (by the sign-in's state), go to the provider
-    var go, state;
-    try { go = new URL(h.go); state = go.searchParams.get("state"); } catch (e) {}
-    if (!go || go.protocol !== "https:" && go.hostname !== "localhost" && go.hostname !== "127.0.0.1" || !state) {
+    var go = signInRequest(h.go), state = go && go.searchParams.get("state");
+    if (!go || !state) {
       return show("Can't sign in", "The link from the Kindle is incomplete. Start again from the QR code on the Kindle.", true);
     }
     if (!allowed(h.back)) {
@@ -102,8 +131,19 @@ Single sign-on redirect).
     }
     store(KEY + state, JSON.stringify({ back: h.back, at: Date.now() }));
     history.replaceState(null, "", location.pathname);
-    show("Opening your sign-in…", "");
-    location.replace(go.href);
+    if (known(go.host)) {
+      show("Opening your sign-in…", "");
+      location.replace(go.href);
+      return;
+    }
+    // a sign-in server this browser hasn't used from here: say where it goes first
+    show("Sign in at " + go.host, "Your Kindle asks you to sign in to Grimmory with your sign-in server, " + go.host
+      + ". Continue only if that's the one you use.");
+    var a = document.getElementById("go");
+    a.href = go.href;
+    a.textContent = "Continue to " + go.host;
+    a.onclick = function () { remember(go.host); };
+    document.getElementById("act").hidden = false;
     return;
   }
   var q = params(location.search);

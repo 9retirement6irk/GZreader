@@ -13,10 +13,20 @@ plugin calls it when the Kindle goes to sleep, on exit and before the log is
 exported). A burst of sync logging is then one write to the Kindle's flash
 instead of one per line. Background processes (forks) write each line at
 once, and drop what the parent hadn't written yet (it's the parent's).
+
+Log.infoNow(sync, ...) is for the few lines that must survive the Kindle
+freezing a moment later (memory before a book opens): written at once, with
+what was waiting, and with `sync` forced onto the storage (fsync). Without
+that a line only reaches the Kindle's flash when the kernel gets round to
+it, up to half a minute later: a Kindle restarted by holding its power
+switch loses it.
 ]]
 
 local ffi = require("ffi")
 pcall(ffi.cdef, "int getpid(void);")
+-- (KOReader's ffi/posix_h declares these two on a device: then these do nothing)
+pcall(ffi.cdef, "int fileno(void *);")
+pcall(ffi.cdef, "int fsync(int);")
 
 local MAX_BYTES = 512 * 1024
 
@@ -41,14 +51,18 @@ function Log.init(dir)
     Log.main_pid = pid()
 end
 
+local hideNetworks = require("gzreader_netname")
+Log.hideNetworks = hideNetworks
+
 local SECRET_KEYS = {
     "password", "accessToken", "refreshToken", "access_token", "refresh_token",
     "code", "code_verifier", "state", "nonce", "token", "id_token", "passwordMD5",
 }
 
---- Remove secrets from arbitrary text (URLs, JSON, form bodies, headers).
+--- Remove secrets from arbitrary text (URLs, JSON, form bodies, headers),
+--- and Wi-Fi network names.
 function Log.redact(s)
-    s = tostring(s)
+    s = hideNetworks(s)
     s = s:gsub("([Bb]earer%s+)[%w%-%._~+/=]+", "%1<redacted>")
     s = s:gsub("(/pair/)%x+", "%1<token>")
     -- every pattern below needs "=" or a quoted key: most lines have neither
@@ -77,12 +91,22 @@ local function rotateIfNeeded(adding)
     end
 end
 
-local function append(text)
+--- Force an open file's data onto the storage. Returns true when it was.
+function Log.fsync(f)
+    local ok, r = pcall(function()
+        f:flush()
+        return ffi.C.fsync(ffi.C.fileno(f))
+    end)
+    return ok and r == 0
+end
+
+local function append(text, sync)
     pcall(function()
         rotateIfNeeded(#text)
         local f = io.open(Log.path, "ab")
         if f then
             f:write(text)
+            if sync then Log.synced = (Log.synced or 0) + (Log.fsync(f) and 1 or 0) end
             f:close()
         end
     end)
@@ -109,6 +133,7 @@ local function scheduleFlush()
     end)
 end
 
+local now_mode -- (inside Log.infoNow: true, or "sync")
 local function write(level, ...)
     if not Log.enabled or not Log.path then return end
     local parts = {}
@@ -119,9 +144,9 @@ local function write(level, ...)
     local line = string.format("%s [%s] %s\n", os.date("%Y-%m-%d %H:%M:%S"), level,
         Log.redact(table.concat(parts, " ")))
     if Log.on_line and level ~= "INFO" then pcall(Log.on_line, level, line) end -- remote debugging
-    if not Log.buffered or (Log.main_pid and pid() ~= Log.main_pid) then
+    if now_mode or not Log.buffered or (Log.main_pid and pid() ~= Log.main_pid) then
         if #buf > 0 then Log.flush() end -- (a fork: drops the parent's)
-        return append(line)
+        return append(line, now_mode == "sync")
     end
     buf[#buf + 1] = line
     buf_bytes = buf_bytes + #line
@@ -135,6 +160,15 @@ end
 function Log.info(...) write("INFO", ...) end
 function Log.warn(...) write("WARN", ...) end
 function Log.err(...) write("ERROR", ...) end
+
+--- An INFO line written at once (after the lines that were waiting), not
+--- FLUSH_AFTER seconds later; `sync` true: and forced onto the storage, so it
+--- is still there if the Kindle freezes or is restarted right after.
+function Log.infoNow(sync, ...)
+    now_mode = sync and "sync" or true
+    pcall(write, "INFO", ...)
+    now_mode = nil
+end
 
 --- Copy the log (and the current KOReader crash.log tail) somewhere visible
 --- over USB. Returns the destination path or nil, err.
@@ -154,7 +188,8 @@ function Log.exportTo(dir, crash_log_path)
     for _, p in ipairs({ Log.path .. ".1", Log.path }) do
         local f = io.open(p, "rb")
         if f then
-            out:write(f:read("*a"))
+            -- (a log written before 1.32 can name the Wi-Fi network)
+            out:write(hideNetworks(f:read("*a")))
             f:close()
         end
     end

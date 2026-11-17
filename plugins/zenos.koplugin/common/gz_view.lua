@@ -39,16 +39,50 @@ function M.isBookshelf()
 end
 
 --- GZreader: how many shelves Home's bookshelf has: two on the DX (its tall
---- screen left one shelf with a lot of empty wall), one elsewhere.
+--- screen left one shelf with a lot of empty wall) and on any screen more
+--- than BIG_SCREEN_IN inches across (the Kindle Scribe: 6.2"), one elsewhere.
 M.DX_HOME_SHELVES = 2
+M.BIG_SCREEN_IN = 5.0
+
+--- Whether the screen's shorter side is more than BIG_SCREEN_IN inches
+--- (by the device's own DPI; false when it isn't known).
+function M.bigScreen(Device)
+    local dpi = Device.display_dpi
+    if not (dpi and dpi > 0) then return false end
+    return math.min(Device.screen:getWidth(), Device.screen:getHeight()) / dpi > M.BIG_SCREEN_IN
+end
+
 function M.homeShelves()
-    local ok, dx = pcall(function()
+    local ok, two = pcall(function()
         local Device = require("device")
+        if M.bigScreen(Device) then return true end
         local m = Device.model or ""
         if m ~= "Kindle2" and m ~= "KindleDX" and m ~= "KindleDXG" then return false end
         return math.min(Device.screen:getWidth(), Device.screen:getHeight()) > 600
     end)
-    return (ok and dx) and M.DX_HOME_SHELVES or 1
+    return (ok and two) and M.DX_HOME_SHELVES or 1
+end
+
+--- GZreader: on a big screen (the Scribe) Home's shelves are as tall as the
+--- Downloads tab's and level with them; still homeShelves() of them (two),
+--- at the bottom of `room` px (shelves `gap` apart). Returns rows, pitch
+--- (board to board), lift (px left under the bottom shelf, as in Downloads),
+--- or nil (elsewhere, before Downloads has been laid out, or when two that
+--- tall don't fit: the shelves share the room).
+function M.homeShelfPitch(room, gap, Device, row_h, rows, slack)
+    local ok, big = pcall(function() return M.bigScreen(Device or require("device")) end)
+    if not (ok and big) then return nil end
+    if row_h == nil then
+        local okv, View = pcall(require, "gzreader_shelfview")
+        if okv and type(View) == "table" and View.rowHeight then row_h, slack = View.rowHeight() end
+    end
+    row_h = tonumber(row_h)
+    if not row_h or row_h <= gap or not tonumber(room) then return nil end
+    rows = rows or M.homeShelves()
+    row_h = math.floor(row_h)
+    slack = math.max(0, math.floor(tonumber(slack) or 0))
+    if rows * row_h - gap + slack > room then return nil end
+    return rows, row_h, slack
 end
 
 --- Home's strip is a shelf (its config allows it, and the view is the bookshelf)?

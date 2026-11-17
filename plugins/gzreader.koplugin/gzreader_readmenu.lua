@@ -39,7 +39,7 @@ function ReadMenu.items(plugin)
             callback = function() tts:toggle() end,
         }
     end
-    if require("gzreader_touch").audio() then
+    if require("gzreader_touch").player() then
         items[#items + 1] = require("gzreader_musictab").menuItem(plugin)
     end
     items[#items + 1] = { text = _("Font, size and layout"), callback = send("ShowConfigMenu") }

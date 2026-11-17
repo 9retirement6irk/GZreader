@@ -247,6 +247,7 @@ end
 local function describe(err)
     if err == "unauthorized" then return _("The calendar server didn't accept the user name or password. Connect again (M → Settings).") end
     if err == "unreachable" then return _("Couldn't reach the calendar server. Check Wi-Fi and the address.") end
+    if err == "redirected_away" then return _("The calendar server sent the sign-in on to another site; GZreader didn't follow it.") end
     if err == "timeout" then return _("The calendar server took too long to answer.") end
     if err == "not_connected" then return _("Not connected to a calendar.") end
     if err == "usb" then return _("Calendars come through your computer: they're brought with each sync (Menu → Sync with computer).") end
@@ -1217,7 +1218,8 @@ function Calendar.connect(plugin, server_input, username, password)
     if not server then return false, _("That address doesn't look right.") end
     if username == "" or not password or password == "" then return false, _("Enter your user name and password (an app password if your server has them).") end
     local found, err = CalDAV:new{ server = server, username = username, password = password }:discover()
-    if not found and err == "unreachable" and not server_input:match("^%s*https?://") then
+    local Lan = require("gzreader_lan")
+    if not found and err == "unreachable" and Lan.plainRetry(server_input) then
         local plain = server:gsub("^https://", "http://")
         local t2 = CalDAV:new{ server = plain, username = username, password = password }
         local f2, e2 = t2:discover()
@@ -1226,7 +1228,9 @@ function Calendar.connect(plugin, server_input, username, password)
     Log.info("calendar: connecting to", server, found and (#found.calendars .. " calendars") or ("failed: " .. tostring(err)))
     if not found then
         if err == "unauthorized" then return false, _("The server didn't accept that user name and password.") end
+        if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach a server at that address.") end
+        if err == "redirected_away" then return false, _("That server sends calendar sign-ins on to another site, so GZreader didn't follow it (your password would go there). Use the address of the CalDAV server itself.") end
         return false, T(_("No calendars found there (%1)."), tostring(err))
     end
     if #found.calendars == 0 then return false, _("Signed in, but there are no calendars with events in this account.") end
@@ -1278,8 +1282,10 @@ function Calendar.checkFeed(raw)
     if not url then return nil, _("not a link") end
     local today = dayStart()
     local res, err = CalDAV.fetchFeed(url, today, addDays(today, 31))
-    if not res and err == "unreachable" and tostring(raw):match("^%s*[Ww][Ee][Bb][Cc][Aa][Ll]://") then
-        -- webcal:// is plain HTTP on some (older) servers
+    if not res and err == "unreachable" and tostring(raw):match("^%s*[Ww][Ee][Bb][Cc][Aa][Ll]://")
+            and require("gzreader_lan").isPrivate(url) then
+        -- webcal:// is plain HTTP on some (older) servers: only tried on the home
+        -- network (a calendar link is secret; anywhere else, type http://)
         local plain = url:gsub("^https://", "http://")
         local r2, e2 = CalDAV.fetchFeed(plain, today, addDays(today, 31))
         if r2 or e2 ~= "unreachable" then res, err, url = r2, e2, plain end
