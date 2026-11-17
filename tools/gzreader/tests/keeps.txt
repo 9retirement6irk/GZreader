@@ -4,7 +4,7 @@
 1 frontend/apps/reader/modules/readerback.lua
 3 frontend/device.lua
 2 frontend/device/input.lua
-14 frontend/device/kindle/device.lua
+19 frontend/device/kindle/device.lua
 1 frontend/device/kindle/gzbluetooth.lua
 14 frontend/device/kindle/shadowfb.lua
 15 frontend/device/nook/device.lua

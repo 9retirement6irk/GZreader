@@ -59,3 +59,10 @@ the device that was connected (by its name in Amazon's list of paired
 devices; with only one paired device, that one). Bluetooth that was off stays
 off. The log says `GZreader: Bluetooth turned on again after airplane mode`,
 never the device's name or address.
+
+**While the Kindle sleeps, Bluetooth is off.** Going to sleep, GZreader turns
+Bluetooth off if it's on (Wi‑Fi turned off at sleep doesn't bring it back);
+waking up, it turns it on again and reconnects the device that was connected
+a few seconds later — only if it was on before sleep. The log says
+`GZreader: Bluetooth off for sleep` and `GZreader: Bluetooth on again after
+sleep`.

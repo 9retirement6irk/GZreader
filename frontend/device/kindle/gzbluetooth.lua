@@ -15,6 +15,8 @@ mode (`com.lab126.btfd BTenable 1:1`) and the device reconnected
     local BT = require("device/kindle/gzbluetooth")
     local before = BT.before(lipc_handle)   -- before wirelessEnable 0
     BT.after(lipc_handle, before, open, schedule)
+    BT.sleep(open)                          -- going to sleep: Bluetooth off
+    BT.wake(open, schedule)                 -- waking: on again if it was
 
 The device's name and address are never logged.
 ]]
@@ -44,6 +46,8 @@ end
 --- What to bring back after airplane mode: nil when Bluetooth is off or
 --- missing; otherwise { name = the connected device's name, or nil }.
 function BT.before(lipc)
+    -- asleep: Bluetooth stays off (BT.sleep), Wi-Fi off doesn't bring it back
+    if BT.asleep then return nil end
     local state = BT.state(lipc)
     if not state or state == 0 then return nil end
     local name = call(lipc.get_string_property, lipc, BT.SERVICE, "BTconnectedDevName")
@@ -99,19 +103,56 @@ BT.readConfig = readConfig
 --- later, through `schedule(seconds, fn)`) the device that was connected
 --- asked to connect, on a handle from `open()` (closed after).
 --- Returns true when Bluetooth was turned on again.
+local function reconnectLater(name, open, schedule)
+    if not schedule then return end
+    schedule(BT.CONNECT_DELAY, function()
+        if BT.asleep then return end -- went to sleep meanwhile
+        local address = BT.addressFor(BT.readConfig(), name)
+        if not address then return end
+        local h = open and call(open)
+        if not h then return end
+        call(h.set_string_property, h, BT.SERVICE, "Connect", address)
+        call(h.close, h)
+    end)
+end
+
 function BT.after(lipc, before, open, schedule)
     if not before or not lipc then return false end
     call(lipc.set_string_property, lipc, BT.SERVICE, "BTenable", "1:1")
-    if schedule then
-        schedule(BT.CONNECT_DELAY, function()
-            local address = BT.addressFor(BT.readConfig(), before.name)
-            if not address then return end
-            local h = open and call(open)
-            if not h then return end
-            call(h.set_string_property, h, BT.SERVICE, "Connect", address)
-            call(h.close, h)
-        end)
-    end
+    reconnectLater(before.name, open, schedule)
+    return true
+end
+
+--- Going to sleep (the Kindle's screensaver): Bluetooth off when it's on,
+--- remembering the connected device for BT.wake. Returns true when it was
+--- turned off. Kindles without Bluetooth (or lipc): nothing.
+BT.asleep = false
+BT.was_on = nil
+function BT.sleep(open)
+    if BT.asleep then return false end
+    local h = open and call(open)
+    local before = h and BT.before(h)
+    BT.asleep = true
+    BT.was_on = before
+    if before then call(h.set_string_property, h, BT.SERVICE, "BTenable", "0:1") end
+    if h then call(h.close, h) end
+    return before ~= nil
+end
+
+--- Waking up: Bluetooth on again and the device reconnected (CONNECT_DELAY
+--- seconds later), only if it was on when the Kindle went to sleep. Returns
+--- true when it was turned on.
+function BT.wake(open, schedule)
+    if not BT.asleep then return false end
+    BT.asleep = false
+    local before = BT.was_on
+    BT.was_on = nil
+    if not before then return false end
+    local h = open and call(open)
+    if not h then return false end
+    call(h.set_string_property, h, BT.SERVICE, "BTenable", "1:1")
+    call(h.close, h)
+    reconnectLater(before.name, open, schedule)
     return true
 end
 

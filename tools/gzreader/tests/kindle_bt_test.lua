@@ -104,6 +104,80 @@ print("== after airplane mode: Bluetooth on again, the device reconnected")
     check(pcall(BT.after, cranky, { name = "Car Radio" }, open, schedule), "a lipc error while turning it on: no error")
 end)()
 
+print("== asleep: Bluetooth off, back on at wake if it was on")
+;(function()
+    BT.readConfig = function() return CONFIG end
+    BT.asleep, BT.was_on = false, nil
+    local props = { ["com.lab126.btfd"] = { BTstate = 2, BTconnectedDevName = "Car Radio" } }
+    local log, later, opened = {}, {}, 0
+    local function open() opened = opened + 1; return handle(props, log) end
+    local function schedule(s, fn) later[#later + 1] = { s = s, fn = fn } end
+
+    check(BT.sleep(open) == true and log[1] == "com.lab126.btfd BTenable 0:1", "going to sleep with Bluetooth on: BTenable 0:1")
+    check(BT.asleep and BT.was_on and BT.was_on.name == "Car Radio", "the connected device remembered")
+    props["com.lab126.btfd"].BTstate = 0
+    check(BT.sleep(open) == false and #log == 1, "a second sleep event: nothing more")
+    -- Wi-Fi turned off while asleep (GZreader does it at sleep): Bluetooth stays off
+    local h = handle(props, log)
+    props["com.lab126.btfd"].BTstate = 2 -- even if it still reads on for a moment
+    check(BT.before(h) == nil and BT.after(h, BT.before(h), open, schedule) == false and #log == 1,
+        "Wi-Fi off while asleep doesn't turn Bluetooth on again")
+    props["com.lab126.btfd"].BTstate = 0
+
+    check(BT.wake(open, schedule) == true and log[2] == "com.lab126.btfd BTenable 1:1", "waking: BTenable 1:1")
+    check(not BT.asleep and BT.was_on == nil, "not asleep any more, nothing remembered")
+    check(#later == 1 and later[1].s == BT.CONNECT_DELAY, "the reconnect waits a few seconds")
+    later[1].fn()
+    check(log[3] == "com.lab126.btfd Connect AA:BB:CC:00:00:02", "then Connect to the device that was connected")
+    check(BT.wake(open, schedule) == false and #log == 3, "a second wake event: nothing more")
+
+    -- Bluetooth off at sleep: stays off at wake
+    log, later = {}, {}
+    props["com.lab126.btfd"].BTstate = 0
+    check(BT.sleep(open) == false and #log == 0, "going to sleep with Bluetooth off: nothing set")
+    check(BT.wake(open, schedule) == false and #log == 0 and #later == 0, "…and waking: it stays off")
+
+    -- asleep again before a reconnect fired: no Connect while asleep
+    log, later = {}, {}
+    props["com.lab126.btfd"].BTstate = 2
+    BT.sleep(open); BT.wake(open, schedule)
+    BT.sleep(open)
+    local n = #log
+    later[1].fn()
+    check(#log == n, "a reconnect due after the Kindle went back to sleep is dropped")
+    BT.wake(open, schedule)
+
+    -- a reconnect from Wi-Fi off, due after the Kindle went to sleep: dropped too
+    log, later = {}, {}
+    props["com.lab126.btfd"].BTstate = 2
+    BT.after(handle(props, log), { name = "Car Radio" }, open, schedule)
+    BT.sleep(open)
+    n = #log
+    later[1].fn()
+    check(#log == n, "Wi-Fi off's reconnect, due while asleep: dropped")
+    BT.wake(open, schedule)
+
+    -- a Kindle without Bluetooth / without lipc
+    BT.asleep, BT.was_on = false, nil
+    log = {}
+    check(BT.sleep(function() return handle({}, log) end) == false and #log == 0, "no Bluetooth service: nothing at sleep")
+    check(BT.wake(function() return handle({}, log) end, schedule) == false and #log == 0, "…nor at wake")
+    check(BT.sleep(function() return nil end) == false and BT.wake(function() return nil end, schedule) == false,
+        "no lipc (Kindle 3): nothing, no error")
+    BT.asleep, BT.was_on = false, nil
+end)()
+
+print("== device.lua: sleep and wake go through it")
+;(function()
+    local src = assert(io.open(REPO .. "/frontend/device/kindle/device.lua")):read("*a")
+    local into = src:match("function Kindle:intoScreenSaver%(source%)(.-)\nend\n") or ""
+    local out = src:match("function Kindle:outofScreenSaver%(source%)(.-)\nend\n") or ""
+    check(into:find('gzbluetooth").sleep(gzLipc)', 1, true) ~= nil, "the screensaver turns Bluetooth off")
+    local wake = out:find('gzbluetooth").wake(gzLipc, gzSchedule)', 1, true)
+    local resume = out:find("self.powerd:afterResume()", 1, true)
+    check(wake and resume and resume < wake, "waking turns it on again, after KOReader's own resume")
+end)()
+
 print("== device.lua: Wi‑Fi off goes through it")
 ;(function()
     local f = assert(io.open(REPO .. "/frontend/device/kindle/device.lua"))
