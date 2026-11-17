@@ -156,15 +156,20 @@ Settings). Without one, Read aloud says so instead of starting.
 - In a book, **Read aloud** in the quick panel starts and stops it; the
   sentence being read is highlighted and pages turn by themselves, as on the
   Kindle 3.
-- **Settings → General → Audio → Read aloud** has Slower / Faster and **Test
-  the Kindle voice** (there's nothing to find on these Kindles, and no
-  Volume: use the Bluetooth device's). Audio has only Read aloud here (no
-  audiobook test or headphone jack).
+- **Settings → General → Audio → Read aloud** has **Quieter / Louder**,
+  Slower / Faster and **Test the Kindle voice** (there's nothing to find on
+  these Kindles). Quieter / Louder moves the Kindle's own Bluetooth volume,
+  the one Amazon's quick-settings slider moves, in its 8 steps (it's Amazon's
+  setting, so the slider shows the same; the Bluetooth device's own volume
+  still adds to it). Audio has only Read aloud here (no audiobook test or
+  headphone jack).
 - How it works: the voice (`einkttsdaemon`, Amazon's job `eink_ttsd`) isn't
   running until something starts it; GZreader starts it when reading begins.
   Each sentence goes to it as plain text (`com.lab126.ivonatts playSnippet`),
   the next one sent ahead (they queue, so the voice doesn't stop between
-  them); Stop is `stopReading`, the speed `speechRate` (100 → 1, 150 → 1.5).
+  them); Stop is `stopReading`, the speed `speechRate` (100 → 1, 150 → 1.5),
+  the volume `com.lab126.audiomgrd speakerVolume` (a step 1–8 written, read
+  back as 10–80; a bigger number written counts as the loudest).
   It sends no "sentence done" message, but it logs every buffer of sound it
   plays in the Kindle's system log (`/var/log/messages`), and each
   sentence's last buffer is shorter than the others: GZreader reads the new

@@ -553,12 +553,36 @@ function TTS.speed() return settings():readSetting("gzreader_tts_speed") or 100 
 
 --- Speaker volume, 0-15 (com.lab126.audio CmdIVolume; the Kindle's own range).
 TTS.VOLUME_MAX = 15
-function TTS.volume() return settings():readSetting("gzreader_tts_volume") or 10 end
+--- Kindles with Bluetooth: the Kindle's own Bluetooth volume, the one
+--- Amazon's quick-settings slider moves (checked on a Scribe, 5.20.2):
+--- com.lab126.audiomgrd speakerVolume takes a step 1-8 and reads back ten
+--- times it (10-80); a bigger number written counts as 8 (the loudest).
+TTS.BT_VOLUME_MAX = 8
+TTS.BT_VOLUME_DEFAULT = 4
+
+function TTS.volumeMax() return TTS.hasIvona() and TTS.BT_VOLUME_MAX or TTS.VOLUME_MAX end
+
+--- The Kindle's Bluetooth volume step (1-8), or nil if it can't be asked.
+function TTS.btVolume()
+    local v = intGet("com.lab126.audiomgrd", "speakerVolume")
+    if not v then return nil end
+    return math.max(1, math.min(TTS.BT_VOLUME_MAX, math.floor(v / 10 + 0.5)))
+end
+
+function TTS.volume()
+    if TTS.hasIvona() then return TTS.btVolume() or TTS.BT_VOLUME_DEFAULT end
+    return settings():readSetting("gzreader_tts_volume") or 10
+end
 
 function TTS.setVolume(v)
+    if TTS.hasIvona() then
+        -- the Kindle's own setting (Amazon's slider shows it too): not kept by GZreader
+        v = math.max(1, math.min(TTS.BT_VOLUME_MAX, v))
+        intProp("com.lab126.audiomgrd", "speakerVolume", v)
+        return
+    end
     v = math.max(0, math.min(TTS.VOLUME_MAX, v))
     settings():saveSetting("gzreader_tts_volume", v)
-    if TTS.hasIvona() then return end -- (the volume is the Bluetooth device's)
     intProp("com.lab126.audio", "CmdIVolume", v)
 end
 

@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so." },
+            { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Quieter / Louder (the Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider), Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so." },
         },
     },
     {

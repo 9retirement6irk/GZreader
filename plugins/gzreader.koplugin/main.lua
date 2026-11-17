@@ -1678,7 +1678,7 @@ function Grimmory:showTtsSettings()
         UIManager:setDirty(dialog, "ui", btn.dimen)
     end
     local function speedText() return T(_("Speed %1"), Mod.TTS.speed()) end
-    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) end
+    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.volumeMax()) end
     local function setSpeed(v)
         Mod.TTS.setSpeed(math.max(50, math.min(200, v)))
         relabel("speed", speedText())
@@ -1689,16 +1689,15 @@ function Grimmory:showTtsSettings()
         Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
     end
     -- Amazon's Bluetooth voice (Scribe and other Bluetooth Kindles): the
-    -- volume is the Bluetooth device's, and there is nothing to find
+    -- volume is the Kindle's Bluetooth volume (1-8, as Amazon's slider), and
+    -- there is nothing to find
     local bt = Mod.TTS.hasIvona()
     local buttons = {}
-    if not bt then
-        buttons[#buttons + 1] = {
-            { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
-            { id = "volume", text = volumeText(), enabled = false },
-            { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
-        }
-    end
+    buttons[#buttons + 1] = {
+        { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
+        { id = "volume", text = volumeText(), enabled = false },
+        { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
+    }
     buttons[#buttons + 1] = {
         { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
         { id = "speed", text = speedText(), enabled = false },

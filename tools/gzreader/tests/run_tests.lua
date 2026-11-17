@@ -5244,7 +5244,7 @@ check(not pdf.active and captured.info:match("not PDFs"), "PDFs: explains it's f
 print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.ivonatts)")
 ;(function()
     local lipc_was, exec_was, tpl_was = TTS.lipc, TTS.exec, gsettings.gzreader_tts_template
-    local iv = { sets = {}, cmds = {}, started = 1, bt = 1 }
+    local iv = { sets = {}, cmds = {}, started = 1, bt = 1, vol = 40 }
     TTS.lipc = { open_no_name = function()
         return {
             set_string_property = function(_h, pub, prop, v) iv.sets[#iv.sets + 1] = { pub = pub, prop = prop, v = v } end,
@@ -5252,6 +5252,7 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
             get_int_property = function(_h, pub, prop)
                 if pub == "com.lab126.ivonatts" and prop == "ivonaStarted" then return iv.started end
                 if pub == "com.lab126.audiomgrd" and prop == "audioOutputConnected" then return iv.bt end
+                if pub == "com.lab126.audiomgrd" and prop == "speakerVolume" then return iv.vol end
                 error("no such property")
             end,
             close = function() end,
@@ -5290,10 +5291,22 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     TTS.setSpeed(150)
     check(propsSet("speechRate")[1] == "1.5" and #propsSet("TtsISpeed") == 0, "Faster: speechRate 1.5 (not ttsd's TtsISpeed)")
     gsettings.gzreader_tts_speed = nil
+    -- volume: the Kindle's own Bluetooth volume, steps 1-8 (speakerVolume reads 10× the step)
+    check(TTS.volumeMax() == 8 and TTS.volume() == 4, "Bluetooth volume: step 4 of 8 (speakerVolume reads 40)")
     iv.sets = {}
     TTS.setVolume(5)
-    check(#iv.sets == 0, "no volume to set (it's the Bluetooth device's)")
-    gsettings.gzreader_tts_volume = nil
+    check(#iv.sets == 1 and iv.sets[1].pub == "com.lab126.audiomgrd" and iv.sets[1].prop == "speakerVolume" and iv.sets[1].v == 5
+        and gsettings.gzreader_tts_volume == nil,
+        "Louder: speakerVolume 5 (a step, not 50: anything above 8 is the loudest), not kept as a GZreader setting")
+    iv.sets = {}
+    TTS.setVolume(12); TTS.setVolume(0)
+    check(iv.sets[1].v == 8 and iv.sets[2].v == 1, "kept between 1 and 8 (never silent, never past the loudest)")
+    iv.vol = nil
+    check(TTS.volume() == 4, "the volume can't be read: step 4 shown")
+    iv.vol = 40
+    iv.sets = {}
+    TTS.applySettings()
+    check(#propsSet("speakerVolume") == 0 and #propsSet("CmdIVolume") == 0, "reading starts without touching the volume")
     TTS.cancel()
     check(#propsSet("stopReading") == 1 and #propsSet("cancelSnippetPlayback") == 0 and #propsSet("stop") == 0, "stop: stopReading only")
 
@@ -5423,8 +5436,8 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     check(src:find("if not Mod.Touch.audio() and not Mod.Touch.tts() then return {} end", 1, true)
         and src:find("if not Mod.Touch.audio() then return items end", 1, true),
         "Settings → General → Audio: Read aloud alone on a Kindle without a speaker (no audiobook test, no headphone jack)")
-    check(src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
-        "its read aloud settings: no Volume row (the Bluetooth device's), \"Test the Kindle voice\"")
+    check(src:find("Mod.TTS.volumeMax()", 1, true) and not src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
+        "its read aloud settings: Volume n / 8 (the Kindle's Bluetooth volume), \"Test the Kindle voice\"")
 
     TTS.lipc, TTS.exec, gsettings.gzreader_tts_template = lipc_was, exec_was, tpl_was
     TTS.syslog = syslog_was
