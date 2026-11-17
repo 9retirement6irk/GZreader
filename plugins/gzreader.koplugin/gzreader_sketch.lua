@@ -164,15 +164,31 @@ end
 --- The paper's tooth at pixel (x, y), 0 to 1: the same for the same pixel
 --- every time (a page drawn again looks the same), uneven from one pixel
 --- to the next and in small clumps, as graphite catches on paper.
-function Sketch.grain(x, y)
-    local function hash(a, b)
-        local h = bit.bxor(bit.tobit(a * 374761393), bit.tobit(b * 668265263))
-        h = bit.bxor(h, bit.rshift(h, 15))
-        h = bit.tobit(bit.band(h, 0xFFFF) * 40503 + bit.rshift(h, 16) * 30011)
-        h = bit.bxor(h, bit.rshift(h, 13))
-        return bit.band(h, 0xFFFF) / 65536
+local bxor, tobit, rshift, band, floor = bit.bxor, bit.tobit, bit.rshift, bit.band, math.floor
+local function grainHash(a, b)
+    local h = bxor(tobit(a * 374761393), tobit(b * 668265263))
+    h = bxor(h, rshift(h, 15))
+    h = tobit(band(h, 0xFFFF) * 40503 + rshift(h, 16) * 30011)
+    h = bxor(h, rshift(h, 13))
+    return band(h, 0xFFFF) / 65536
+end
+-- (worked out once for a 256 x 256 patch that repeats over the page: a pencil
+-- line asks for every pixel under it, several times over)
+local GRAIN_SIDE = 256
+local grain_patch
+local function grainPatch()
+    if not grain_patch then
+        grain_patch = {}
+        for y = 0, GRAIN_SIDE - 1 do
+            for x = 0, GRAIN_SIDE - 1 do
+                grain_patch[y * GRAIN_SIDE + x] = 0.65 * grainHash(x, y) + 0.35 * grainHash(floor(x / 2), floor(y / 2) + 7919)
+            end
+        end
     end
-    return 0.65 * hash(x, y) + 0.35 * hash(math.floor(x / 2), math.floor(y / 2) + 7919)
+    return grain_patch
+end
+function Sketch.grain(x, y)
+    return (grain_patch or grainPatch())[band(y, GRAIN_SIDE - 1) * GRAIN_SIDE + band(x, GRAIN_SIDE - 1)]
 end
 
 --- How much of the paper a tool with a grain covers, 0 to 1, at weight `w`

@@ -9558,6 +9558,9 @@ print("Notes (Memos v0.31)")
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
+            and dsrc:find('if ink[i] > gray then', 1, true) ~= nil and dsrc:find('if page[i] > gray then page[i] = gray end', 1, true) ~= nil
+            and dsrc:find('if scr[i] > gray then scr[i] = 0 end', 1, true) ~= nil
+            and dsrc:find('if not bb or bb:getType() ~= Blitbuffer.TYPE_BB8 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
 

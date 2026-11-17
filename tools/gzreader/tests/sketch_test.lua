@@ -754,6 +754,8 @@ end)()
     end
     check(same and lo >= 0 and hi < 1 and lo < 0.1 and hi > 0.9 and math.abs(sum / 10000 - 0.5) < 0.03,
         "the paper's tooth: between 0 and 1, the same for a pixel every time, even over a patch (mean " .. string.format("%.2f", sum / 10000) .. ")")
+    check(Sketch.grain(3, 9) == Sketch.grain(259, 9) and Sketch.grain(3, 9) == Sketch.grain(3, 265) and Sketch.grain(-1, -1) == Sketch.grain(255, 255),
+        "…worked out once for a 256-pixel patch that repeats (looked up, not worked out, for each pixel of a line)")
     local function covered(density, d2, r)
         local n = 0
         for y = 0, 99 do for x = 0, 99 do if Sketch.grainHit(x, y, density, d2, r) then n = n + 1 end end end
