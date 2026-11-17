@@ -1684,8 +1684,6 @@ end
 --- which paper first, as the Kindle Scribe's Create notebook does (Cancel
 --- there: on_cancel, nothing opened).
 function DrawScreen.show(opts)
-    -- (the plugin, when a way to Immich is set up: Picture from Immich in ⋮; one drawing screen at a time)
-    DrawScreen.immich = opts.immich
     if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then
         return require("gzreader_drawpages").showPapers{
             create = true,
@@ -1702,6 +1700,9 @@ function DrawScreen.show(opts)
             on_back = function() if opts.on_cancel then opts.on_cancel() end end,
         }
     end
+    -- (the plugin, when a way to Immich is set up: Picture from Immich in ⋮; one drawing screen at a time)
+    DrawScreen.immich = opts.immich
+
     local pages = {}
     for _i, p in ipairs(opts.pages or {}) do
         if not p.removed then

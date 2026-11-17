@@ -1008,6 +1008,32 @@ end
 
 -- ----------------------------------------------------------------- output
 
+-- undo and redo of a picture put on the page (Sketch:addPicture): around the strokes' own
+do
+    local strokes_undo, strokes_redo = Sketch.undo, Sketch.redo
+    function Sketch:undo()
+        local h = self.history[#self.history]
+        if h and h.kind == "picture" then
+            table.remove(self.history)
+            self.redone = self.redone or {}
+            self.redone[#self.redone + 1] = h
+            dropPicture(self, h.el)
+            return true
+        end
+        return strokes_undo(self)
+    end
+    function Sketch:redo()
+        local h = self.redone and self.redone[#self.redone]
+        if h and h.kind == "picture" then
+            table.remove(self.redone)
+            putPicture(self, h.el)
+            self.history[#self.history + 1] = h
+            return true
+        end
+        return strokes_redo(self)
+    end
+end
+
 --- The box the live strokes cover, in canvas pixels, ink included; nil when empty.
 function Sketch:bounds()
     local minX, minY, maxX, maxY
@@ -1076,32 +1102,6 @@ function Sketch:scene(paper)
         end
     end
     return scene
-end
-
--- undo and redo of a picture put on the page (Sketch:addPicture): around the strokes' own
-do
-    local strokes_undo, strokes_redo = Sketch.undo, Sketch.redo
-    function Sketch:undo()
-        local h = self.history[#self.history]
-        if h and h.kind == "picture" then
-            table.remove(self.history)
-            self.redone = self.redone or {}
-            self.redone[#self.redone + 1] = h
-            dropPicture(self, h.el)
-            return true
-        end
-        return strokes_undo(self)
-    end
-    function Sketch:redo()
-        local h = self.redone and self.redone[#self.redone]
-        if h and h.kind == "picture" then
-            table.remove(self.redone)
-            putPicture(self, h.el)
-            self.history[#self.history + 1] = h
-            return true
-        end
-        return strokes_redo(self)
-    end
 end
 
 --- The centres of the discs that paint a segment of radius `r` (one every
