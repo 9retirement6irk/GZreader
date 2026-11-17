@@ -91,10 +91,12 @@ end
 --- marks and emphasis off), at most 48 characters; nil when it has none.
 function NoteBar.nameOf(text)
     for l in (text or ""):gmatch("[^\n]+") do
+        -- (a line of only #tags: not a name; "# Heading" has a space after #)
+        if l:gsub("#[^%s#]+", ""):match("^%s*$") then l = "" end
         local t = l:gsub("^%s*#+%s*", ""):gsub("^%s*[-*]%s+%[.%]%s*", ""):gsub("^%s*[-*>]%s+", ""):gsub("[*_`]", "")
         t = t:gsub("^%s+", ""):gsub("%s+$", "")
         -- (not a picture, not a line of only #tags)
-        if t ~= "" and t ~= "&nbsp;" and not t:match("^!%[") and not require("gzreader_sticky").tagsOnly(t) then
+        if t ~= "" and t ~= "&nbsp;" and not t:match("^!%[") then
             return #t > 48 and (t:sub(1, 48):gsub("[\128-\191]*$", "") .. "…") or t
         end
     end

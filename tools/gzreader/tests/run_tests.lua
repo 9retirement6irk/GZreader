@@ -8575,7 +8575,7 @@ print("Notes (Memos v0.31)")
                 and vsrc:find('{ "delete", "trash", function() self:onDelete() end }', 1, true) ~= nil
                 and vsrc:find('action = { "restore", _("Restore"), function() self:onArchive(false) end }', 1, true) ~= nil
                 and vsrc:find('{ "options", "more", function() self:onOptions() end }', 1, true) ~= nil
-                and vsrc:find('action = { "edit", _("Edit"), function() self:onEdit() end }', 1, true) ~= nil
+                and vsrc:find('{ "edit", _("Edit"), function() self:onEdit() end }', 1, true) ~= nil
                 and vsrc:find('back = function() self:onClose() end', 1, true) ~= nil
                 and not vsrc:find('{ _("More"), function() self:onOptions() end }', 1, true),
                 "an opened note (touch): the same top bar, ← name … pin, Archive, Delete, ⋮, Edit (archived: Delete, ⋮, Restore); no buttons along the bottom")
