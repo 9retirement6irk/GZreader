@@ -230,6 +230,15 @@ API to `/api` are found too.
     even line. Pens report different numbers, so the range is learned as
     you draw: the very first strokes can look lighter or heavier than later
     ones.
+  - **Pinch to zoom:** two fingers apart make the page bigger (up to 4×),
+    together make it smaller again, down to the whole page; moving two
+    fingers moves a zoomed page. The line under *Drawing* says how far it's
+    zoomed. Draw and rub out as usual while zoomed: the pen's width is the
+    page's, so lines come out the same size. **Done** (or another page)
+    saves the whole page, zoomed or not. On a finger Kindle the second
+    finger has to land within a third of a second of the first (later, it's
+    ignored as before); on the Scribe, two fingers zoom when the pen is
+    away, and a whole hand, or any touch while the pen is near, doesn't.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm

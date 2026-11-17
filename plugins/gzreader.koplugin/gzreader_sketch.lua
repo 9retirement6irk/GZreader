@@ -37,6 +37,17 @@ local Sketch = {
     MIN_STEP = 1,
     --- Padding around the drawing in the PNG, in scene units (memos' export).
     PADDING = 24,
+    --- Pinch to zoom: at most this many times the page's fitted size.
+    MAX_ZOOM = 4,
+    --- A finger Kindle: a second finger this soon after the first makes a
+    --- pinch (the first's stroke just begun is dropped); later, it's ignored.
+    PINCH_WINDOW = 0.3,
+    --- A pen Kindle: the two fingers of a pinch land within this of each other.
+    PINCH_PAIR = 0.5,
+    --- A pinch that changes the size less than this (a share) and moves less
+    --- than PAN_MIN screen pixels does nothing (two fingers resting).
+    PINCH_MIN = 0.08,
+    PAN_MIN = 24,
 }
 Sketch.__index = Sketch
 
@@ -50,6 +61,7 @@ function Sketch.new(opts)
     self.pen_slot = opts.pen_slot
     self.per_unit = opts.per_unit or Drawing.SCREEN_PER_UNIT
     self.max_per_unit = self.per_unit -- (an opened drawing is shrunk to fit, never enlarged past this)
+    self.zoomed = false -- (pinched bigger than the page's fit: `fit` keeps the fitted view)
     -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
     self.ox, self.oy = 0, 0
     self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
@@ -208,7 +220,7 @@ function Sketch:refit()
     local scene_pts = {}
     for i, st in ipairs(self.strokes) do
         local pts = {}
-        for j, p in ipairs(st.points) do pts[j] = { self:toScene(p[1], p[2]) } end
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
         scene_pts[i] = pts
     end
     local minX, minY, maxX, maxY
@@ -231,9 +243,66 @@ function Sketch:refit()
     -- (in the middle across, at the top)
     self.ox, self.oy = minX - (c.w / self.per_unit - (maxX - minX)) / 2, minY - margin / self.per_unit
     for i, st in ipairs(self.strokes) do
-        for j, p in ipairs(scene_pts[i]) do st.points[j] = { self:toCanvas(p[1], p[2]) } end
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
+    end
+    self.fit, self.zoomed = { per_unit = self.per_unit, ox = self.ox, oy = self.oy }, false
+end
+
+-- ------------------------------------------------------------- zoom
+
+--- The view the page has when it isn't zoomed (refit's, or as it was made).
+function Sketch:fitView()
+    return self.fit or { per_unit = self.max_per_unit or self.per_unit, ox = 0, oy = 0 }
+end
+
+--- Moves the view to `per_unit`, `ox`, `oy`; the strokes (kept in canvas
+--- pixels) move with it.
+function Sketch:setView(per_unit, ox, oy)
+    local scene_pts = {}
+    for i, st in ipairs(self.strokes) do
+        local pts = {}
+        for j, p in ipairs(st.points) do local x, y = self:toScene(p[1], p[2]); pts[j] = { x, y, p[3] } end
+        scene_pts[i] = pts
+    end
+    self.per_unit, self.ox, self.oy = per_unit, ox, oy
+    for i, st in ipairs(self.strokes) do
+        for j, p in ipairs(scene_pts[i]) do local x, y = self:toCanvas(p[1], p[2]); st.points[j] = { x, y, p[3] } end
     end
 end
+
+--- Back to the page's fitted view (before saving: the picture is made from what's on screen).
+function Sketch:unzoom()
+    if not self.zoomed then return false end
+    local f = self:fitView()
+    self:setView(f.per_unit, f.ox, f.oy)
+    self.zoomed = false
+    return true
+end
+
+--- Zoomed by `scale` around canvas point (fx, fy), which ends up at (tx, ty)
+--- (a pinch: the fingers' middle at the start and at the end). Never smaller
+--- than the fitted page (near it: back to it), at most MAX_ZOOM times it, and
+--- never moved off the page. Returns the zoom now (1: fitted).
+function Sketch:zoomBy(scale, fx, fy, tx, ty)
+    local f = self:fitView()
+    local pu = math.max(f.per_unit, math.min(f.per_unit * Sketch.MAX_ZOOM, self.per_unit * scale))
+    if pu <= f.per_unit * 1.03 then
+        self:unzoom()
+        return 1
+    end
+    local sx, sy = self:toScene(fx, fy)
+    local ox, oy = sx - tx / pu, sy - ty / pu
+    -- (the window stays on the page: within the fitted view)
+    local c = self.canvas
+    ox = math.max(f.ox, math.min(f.ox + c.w / f.per_unit - c.w / pu, ox))
+    oy = math.max(f.oy, math.min(f.oy + c.h / f.per_unit - c.h / pu, oy))
+    self:setView(pu, ox, oy)
+    self.zoomed = true
+    return pu / f.per_unit
+end
+
+--- The zoom now (1: the fitted page).
+function Sketch:zoom() return self.per_unit / self:fitView().per_unit end
 
 --- Puts the page on paper `id` (`gzreader_notepaper.lua`; "blank": none),
 --- in place of its paper if it had one, and fits it to the canvas again.
@@ -439,10 +508,52 @@ local function erase(self, contact, x, y, out)
     contact.last = { cx, cy }
 end
 
+--- A finger landing at `s` while one other finger is down: the pinch's other
+--- finger's slot, or nil. A finger Kindle: the other is drawing, begun within
+--- PINCH_WINDOW. A pen Kindle: the other (fingers don't draw there) landed
+--- within PINCH_PAIR, and nothing else is down (a hand is three or more).
+local function pinchPartner(self, s, now)
+    local other, n = nil, 0
+    for slot, c in pairs(self.contacts) do
+        if slot ~= s.slot and c.kind ~= "tap" then
+            n = n + 1
+            other = slot
+        end
+    end
+    if n ~= 1 then return nil end
+    local oc = self.contacts[other]
+    if oc.pen or not oc.inside or oc.palm then return nil end
+    if self.pen_only then
+        if oc.kind == "ignore" and oc.t0 and now - oc.t0 <= Sketch.PINCH_PAIR then return other end
+    elseif oc.kind == "draw" and oc.t0 and now - oc.t0 <= Sketch.PINCH_WINDOW then
+        return other
+    end
+end
+
 local function startContact(self, s, now, out)
     local pen = isPen(self, s)
     local inside = self:inCanvas(s.x, s.y)
-    local c = { x0 = s.x, y0 = s.y, moved = 0, pen = pen }
+    local c = { x0 = s.x, y0 = s.y, moved = 0, pen = pen, t0 = now, inside = inside, x = s.x, y = s.y }
+    if inside and not pen and self.pinch then
+        -- a third finger: not a pinch (a hand)
+        self.pinch.cancel = true
+        c.kind = "ignore"
+        self.contacts[s.slot] = c
+        return c
+    end
+    local partner = inside and not pen and pinchPartner(self, s, now)
+    if partner then
+        local oc = self.contacts[partner]
+        if oc.kind == "draw" then
+            -- (a finger Kindle: the stroke the first finger began is dropped)
+            if self.drawing_slot == partner then self.drawing_slot = nil end
+            out.redraw = true
+        end
+        oc.kind, c.kind = "pinch", "pinch"
+        self.pinch = { a = partner, b = s.slot, a0 = { oc.x, oc.y }, b0 = { s.x, s.y }, a1 = { oc.x, oc.y }, b1 = { s.x, s.y } }
+        self.contacts[s.slot] = c
+        return c
+    end
     if not inside then
         c.kind = "tap"
     elseif self.pen_only and not pen then
@@ -474,11 +585,36 @@ local function startContact(self, s, now, out)
     return c
 end
 
+--- The pinch over (a finger lifted): zoomed (and moved) as the fingers did.
+local function endPinch(self, out)
+    local p = self.pinch
+    self.pinch = nil
+    for _i, slot in ipairs({ p.a, p.b }) do
+        local c = self.contacts[slot]
+        if c then c.kind = "ignore" end -- (the other finger, still down, does nothing more)
+    end
+    if p.cancel then return end
+    local function dist(a, b) return math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2) end
+    local d0, d1 = math.max(1, dist(p.a0, p.b0)), dist(p.a1, p.b1)
+    local scale = d1 / d0
+    local m0 = { (p.a0[1] + p.b0[1]) / 2, (p.a0[2] + p.b0[2]) / 2 }
+    local m1 = { (p.a1[1] + p.b1[1]) / 2, (p.a1[2] + p.b1[2]) / 2 }
+    local moved = dist(m0, m1)
+    if math.abs(scale - 1) < Sketch.PINCH_MIN and (moved < Sketch.PAN_MIN or not self.zoomed) then return end
+    if math.abs(scale - 1) < Sketch.PINCH_MIN then scale = 1 end -- (two fingers dragged: moved, not zoomed)
+    local cv = self.canvas
+    local before = self:zoom()
+    local now_zoom = self:zoomBy(scale, m0[1] - cv.x, m0[2] - cv.y, m1[1] - cv.x, m1[2] - cv.y)
+    out.redraw = true
+    out.zoom = { from = before, to = now_zoom }
+end
+
 local function endContact(self, slot, out)
     local c = self.contacts[slot]
     if not c then return end
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
+    if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
     if c.kind == "draw" and (#c.pieces > 0 or (c.stroke and #c.stroke.points > 0)) then
         if c.stroke and #c.stroke.points > 0 then
             c.pieces[#c.pieces + 1] = c.stroke
@@ -538,7 +674,7 @@ function Sketch:frame(slots, now)
         if down then
             if not c then
                 if not pen and self:palmGuard(now) then
-                    self.contacts[s.slot] = { kind = "ignore", x0 = s.x, y0 = s.y, moved = 0 }
+                    self.contacts[s.slot] = { kind = "ignore", x0 = s.x, y0 = s.y, moved = 0, palm = true }
                     self.stats.palm = self.stats.palm + 1
                 else
                     startContact(self, s, now, out)
@@ -550,7 +686,11 @@ function Sketch:frame(slots, now)
                     local w = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y)
                     if w then c.weight = 0.5 * c.weight + 0.5 * w end
                 end
-                if c.kind == "draw" then addPoint(self, c, s.x, s.y, out)
+                c.x, c.y = s.x, s.y
+                if c.kind == "pinch" and self.pinch then
+                    local p = self.pinch
+                    if s.slot == p.a then p.a1 = { s.x, s.y } elseif s.slot == p.b then p.b1 = { s.x, s.y } end
+                elseif c.kind == "draw" then addPoint(self, c, s.x, s.y, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
         elseif c then
