@@ -30,7 +30,8 @@ the book once you open one.
   Interface → Navbar); inside a folder it shows the folder's name.
 - **Home** has one shelf of your most recent books; the DX and the Kindle
   Scribe (any screen more than 5 inches across) have two (the first filled
-  before the second).
+  before the second). On the Scribe, Home's two shelves are as tall as the
+  Downloads tab's, so their books are the same size on both.
 - **The spines** are drawn after
   [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin), AndyHazz's
   KOReader plugin: the shelf is seen from a little above, so each book shows

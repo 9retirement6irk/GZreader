@@ -76,6 +76,18 @@ function View.maxRows()
     return nil
 end
 
+--- How tall a shelf is in the Downloads tab as it's laid out now (board to
+--- board, px), nil before it has been laid out in the bookshelf view. Home's
+--- shelves take this height on big screens (gz_view.homeShelfPitch).
+function View.rowHeight()
+    local ok, h = pcall(function()
+        local fm = require("apps/filemanager/filemanager").instance
+        local fc = fm and fm.file_chooser
+        return fc and View.applies(fc) and fc._gz_row_h or nil
+    end)
+    return ok and tonumber(h) or nil
+end
+
 local function areaH(row_h)
     return row_h - S(Shelf().BOARD_H) - S(Shelf().UNDER_H) - S(10)
 end

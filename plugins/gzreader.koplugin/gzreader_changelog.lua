@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindle Scribe: two shelves of recent books on Home, as on the DX", text = "Home's bookshelf has two shelves of your most recent books on a Kindle Scribe (and any Kindle whose screen is more than 5 inches across), as on the DX: one shelf left most of the tall screen empty. The first shelf is filled before the second. Other Kindles keep one." },
+            { short = "Kindle Scribe: Home's shelves as tall as the Downloads tab's", text = "On a Kindle Scribe, Home's two shelves are now as tall as the shelves in the Downloads tab, so the books on them are the same size: Home's shelves were taller, with bigger spines. If two shelves that tall don't fit, Home's two shelves share the room as before." },
         },
     },
     {

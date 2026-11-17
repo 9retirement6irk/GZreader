@@ -63,6 +63,26 @@ function M.homeShelves()
     return (ok and two) and M.DX_HOME_SHELVES or 1
 end
 
+--- GZreader: on a big screen (the Scribe) Home's shelves are as tall as the
+--- Downloads tab's, so the two look the same; still homeShelves() of them (two),
+--- standing on the navbar in `room` px (shelves `gap` apart). Returns rows,
+--- pitch (board to board), or nil (elsewhere, before Downloads has been laid
+--- out, or when two that tall don't fit: the shelves share the room).
+function M.homeShelfPitch(room, gap, Device, row_h, rows)
+    local ok, big = pcall(function() return M.bigScreen(Device or require("device")) end)
+    if not (ok and big) then return nil end
+    if row_h == nil then
+        local okv, View = pcall(require, "gzreader_shelfview")
+        row_h = okv and type(View) == "table" and View.rowHeight and View.rowHeight() or nil
+    end
+    row_h = tonumber(row_h)
+    if not row_h or row_h <= gap or not tonumber(room) then return nil end
+    rows = rows or M.homeShelves()
+    row_h = math.floor(row_h)
+    if rows * row_h - gap > room then return nil end
+    return rows, row_h
+end
+
 --- Home's strip is a shelf (its config allows it, and the view is the bookshelf)?
 function M.stripShelf(module_cfg)
     return type(module_cfg) == "table" and module_cfg.shelf == true and M.isBookshelf()

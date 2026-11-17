@@ -3417,6 +3417,22 @@ do
     check(okg and GzView.homeShelves() == 1, "Paperwhite 3 with its DPI: one")
     dpi("KindleScribe", 1860, 2480, nil)
     check(okg and GzView.homeShelves() == 1, "no DPI known: one")
+    -- Home's shelves as tall as the Downloads tab's on a big screen, still two
+    dpi("KindleScribe", 1860, 2480, 300)
+    local hr, hp = GzView.homeShelfPitch(1000, 10, nil, 444)
+    check(hr == 2 and hp == 444, "Scribe: Home's two shelves as tall as Downloads' (444) " .. tostring(hr) .. " " .. tostring(hp))
+    hr, hp = GzView.homeShelfPitch(1400, 10, nil, 444)
+    check(hr == 2 and hp == 444, "…still two with room for three")
+    check(GzView.homeShelfPitch(1000, 10, nil, 712) == nil, "…two that tall don't fit: two sharing the room, as before")
+    check(GzView.homeShelfPitch(1000, 10, nil, nil) == nil, "…Downloads not laid out yet: as before")
+    dpi("KindlePaperWhite3", 1072, 1448, 300)
+    check(GzView.homeShelfPitch(1000, 10, nil, 300) == nil, "Paperwhite 3: Home's shelf as before")
+    local ShelfSrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):read("*a")
+    local StripSrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):read("*a")
+    check(ShelfSrc:find("if tonumber(opts.pitch) then row_h = math.floor(opts.pitch) - gap end", 1, true)
+        and StripSrc:find("homeShelfPitch(shelf_h, Screen:scaleBySize(10))", 1, true)
+        and StripSrc:find("per_row = per_row, pitch = pitch,", 1, true), "Home's shelf passes the pitch to the shelves")
+    check(okv and type(View.rowHeight) == "function" and View.rowHeight() == nil, "Downloads' shelf height: nil with no file manager")
     Device.display_dpi = nil
     Device.model, Device.screen = was_model, was_screen
 end
