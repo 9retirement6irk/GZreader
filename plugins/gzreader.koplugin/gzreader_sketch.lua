@@ -817,8 +817,9 @@ local function startContact(self, s, now, out)
         c.kind, c.pull = "tap", true
     elseif not inside then
         c.kind = "tap"
-    elseif self.tool == "hand" then
-        -- the hand: the pen (or a finger) takes hold of the page and moves it
+    elseif self.tool == "hand" or (self.inline_pan and self.pen_only and not pen) then
+        -- the hand: the pen (or a finger) takes hold of the page and moves it; and (a
+        -- journal's inline drawing) a finger on a pen Kindle moves the page under the window
         c.kind, c.slot = "pan", s.slot
         c.px, c.py, c.at = s.x, s.y, now
     elseif self.tool == "text" then
@@ -928,6 +929,12 @@ local function applyPan(self, c, out)
     if not c.panning then self.stats.panned = (self.stats.panned or 0) + 1 end
     self.pan_slot = c.slot
     c.panning = true
+    if self.on_pan then
+        -- (inline: the window moves over the page, the page itself stays as it is)
+        if self.on_pan(dx, dy) then out.panned = true end
+        c.px, c.py = c.x, c.y
+        return true
+    end
     local cv = self.canvas
     self:zoomBy(1, c.px - cv.x, c.py - cv.y, c.x - cv.x, c.y - cv.y)
     c.px, c.py = c.x, c.y
