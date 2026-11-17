@@ -145,6 +145,29 @@ Kindle DX), then as a small text file in `/tmp` (or `/var/tmp`) whose path
 goes to `playFile`. If none works, the diagnostic log lists the files and
 paths the speech service knows about.
 
+### Read aloud on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…)
+
+These Kindles have no speaker: read aloud uses **Amazon's own voice** (the
+Ivona voice behind Assistive Reader, in English, German, Spanish, French,
+Italian and Portuguese) and speaks through **Bluetooth headphones or a
+speaker** — connect one first (Settings → General → Bluetooth, or Amazon's
+Settings). Without one, Read aloud says so instead of starting.
+
+- In a book, **Read aloud** in the quick panel starts and stops it; the
+  sentence being read is highlighted and pages turn by themselves, as on the
+  Kindle 3.
+- **Settings → General → Audio → Read aloud** has Slower / Faster and **Test
+  the Kindle voice** (there's nothing to find on these Kindles, and no
+  Volume: use the Bluetooth device's). Audio has only Read aloud here (no
+  audiobook test or headphone jack).
+- How it works: the voice (`einkttsdaemon`, Amazon's job `eink_ttsd`) isn't
+  running until something starts it; GZreader starts it when reading begins.
+  Each sentence goes to it as plain text (`com.lab126.ivonatts playSnippet`),
+  the next one sent ahead (they queue, so the voice doesn't stop between
+  them); Stop is `stopReading`, the speed `speechRate` (100 → 1, 150 → 1.5).
+  It doesn't say when a sentence ends, so the highlight moves on after a time
+  worked out from the sentence's length and the speed.
+
 ## Headphones
 
 **Kindle 3:** it shows headphones nowhere GZreader can look; its hardware

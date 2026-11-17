@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

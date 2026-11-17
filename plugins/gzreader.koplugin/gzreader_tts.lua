@@ -35,6 +35,20 @@ being spoken is highlighted, pages turn by themselves, Shift + Sym plays and
 stops (like the stock Kindle). The next sentence starts after a time worked
 out from the sentence length and the speed setting.
 
+Kindles with Bluetooth on firmware 5.x (a Scribe on 5.20.2, the owner's,
+over SSH): no ttsd. Amazon's Ivona voice (the one behind Assistive Reader)
+is einkttsdaemon, upstart job eink_ttsd (not running until something starts
+it), on lipc as com.lab126.ivonatts:
+  playSnippet  (string) the text itself, spoken as given (JSON is read out
+               too); requests queue: a second one waits for the first
+  stopReading  (string) stops at once
+  speechRate   (string) "1" normal, "1.5" faster
+  ivonaStarted (int) 1 once it's up
+It sends no events (none seen with lipc-wait-event, nor in playermgr or
+audiomgrd), so reading is paced by estimates, a sentence sent ahead so the
+voice doesn't stop between them. It speaks through Bluetooth (audiomgrd's
+audioOutputConnected): no voice set-up, no discovery (TTS.IVONA).
+
 Reflowable books only (EPUB, FB2, MOBI, AZW3, TXT, HTML); not PDF or comics.
 ]]
 
@@ -96,6 +110,88 @@ end
 local function run(cmd)
     if TTS.exec then return TTS.exec(cmd) end
     return os.execute(cmd)
+end
+
+---------------------------------------------------------------- Ivona (Bluetooth Kindles)
+
+TTS.IVONA = { pub = "com.lab126.ivonatts", prop = "playSnippet", ivona = true }
+TTS.IVONA_JOB = "eink_ttsd"
+TTS.IVONA_WAIT = 10 -- seconds for the voice to start
+
+--- This Kindle has Amazon's Ivona voice (gzreader_touch: the daemon's file).
+function TTS.hasIvona()
+    if TTS.ivona_present ~= nil then return TTS.ivona_present end -- (tests)
+    local ok, Touch = pcall(require, "gzreader_touch")
+    return ok and Touch.ivona and Touch.ivona() or false
+end
+
+function TTS.isIvona(template)
+    return type(template) == "table" and type(template.target) == "table" and template.target.ivona == true
+end
+
+--- Shell-quote for lipc-set-prop (single quotes).
+local function shq(text)
+    return "'" .. tostring(text):gsub("'", "'\\''") .. "'"
+end
+
+--- A string property of the Ivona voice; `wait`: before returning (else in
+--- the background, the UI never waits).
+local function ivonaSet(prop, value, wait)
+    local h = openLipc()
+    if h then
+        local ok, err = pcall(h.set_string_property, h, TTS.IVONA.pub, prop, tostring(value))
+        pcall(h.close, h)
+        if ok then return true end
+        return nil, tostring(err)
+    end
+    run(string.format("lipc-set-prop %s %s %s >/dev/null 2>&1%s", TTS.IVONA.pub, prop, shq(value), wait and "" or " &"))
+    return true
+end
+
+local function intGet(pub, prop)
+    local h = openLipc()
+    if not h then return nil end
+    local ok, v = pcall(h.get_int_property, h, pub, prop)
+    pcall(h.close, h)
+    return ok and tonumber(v) or nil
+end
+
+--- Is the Ivona voice up (com.lab126.ivonatts answers ivonaStarted = 1)?
+function TTS.ivonaUp() return intGet(TTS.IVONA.pub, "ivonaStarted") == 1 end
+
+--- A Bluetooth audio device is connected (audiomgrd: where sound goes).
+--- nil when it can't be asked.
+function TTS.bluetoothAudio()
+    local v = intGet("com.lab126.audiomgrd", "audioOutputConnected")
+    if v == nil then return nil end
+    return v == 1
+end
+
+--- Start the Ivona voice if it isn't running, then on_ready(true) once it
+--- answers, or on_ready(false) after IVONA_WAIT seconds. upstart's `start`
+--- waits until the job is up, so it runs in the background.
+function TTS.ensureIvona(on_ready)
+    if TTS.ivonaUp() then return on_ready(true) end
+    Log.info("tts: starting Amazon's voice (" .. TTS.IVONA_JOB .. ")")
+    run("start " .. TTS.IVONA_JOB .. " >/dev/null 2>&1 &")
+    local tries = 0
+    local function check()
+        tries = tries + 1
+        if TTS.ivonaUp() then return on_ready(true) end
+        if tries >= TTS.IVONA_WAIT * 2 then
+            Log.warn("tts: Amazon's voice didn't start")
+            return on_ready(false)
+        end
+        UIManager:scheduleIn(0.5, check)
+    end
+    UIManager:scheduleIn(0.5, check)
+end
+
+--- speechRate for GZreader's speed (100 = normal): "1", "1.5", "0.8".
+function TTS.ivonaRate(speed)
+    local r = math.floor((speed or 100) / 10 + 0.5) / 10
+    if r == math.floor(r) then return tostring(math.floor(r)) end
+    return tostring(r)
 end
 
 function TTS.backend()
@@ -235,6 +331,7 @@ end
 --- Send one request. Returns a result handle for TTS.result, or nil, err.
 function TTS.send(target, fields)
     if target.file then return playFileRequest(target, fields) end
+    if target.ivona then return ivonaSet(target.prop, TTS.plainText(textOf(fields))) end
     local h = openLipc()
     if not h then
         return hashPropAsync(target.pub, target.prop, TTS.hashText(fields))
@@ -271,7 +368,12 @@ local function fieldsFor(template, text, id)
     return fields
 end
 
-function TTS.template() return settings():readSetting("gzreader_tts_template") end
+--- How to reach this Kindle's voice: Amazon's Ivona voice where there is
+--- one (nothing to find), else what "Find the Kindle voice" saved.
+function TTS.template()
+    if TTS.hasIvona() then return { target = TTS.IVONA, fields = { { "text", str = "" } } } end
+    return settings():readSetting("gzreader_tts_template")
+end
 
 TTS.next_id = 100
 
@@ -367,6 +469,7 @@ end
 --- can be speaking, nothing sent.
 function TTS.cancel(template)
     template = template or TTS.template()
+    if TTS.isIvona(template) then ivonaSet("stopReading", ""); return end
     if template then
         if not TTS.oneAtATime(template) then intProp("com.lab126.ttsd", "cancelSnippetPlayback", 1) end
         intProp("com.lab126.tts", "stop", 1)
@@ -377,6 +480,7 @@ end
 --- Like TTS.cancel, but waits until ttsd has it (so a request sent right
 --- after can't be cancelled by it).
 function TTS.cancelNow()
+    if TTS.isIvona(TTS.template()) then ivonaSet("stopReading", "", true); return end
     local pub, prop = "com.lab126.ttsd", "cancelSnippetPlayback"
     if TTS.oneAtATime() then pub, prop = "com.lab126.tts", "stop" end
     local h = openLipc()
@@ -405,10 +509,12 @@ function TTS.volume() return settings():readSetting("gzreader_tts_volume") or 10
 function TTS.setVolume(v)
     v = math.max(0, math.min(TTS.VOLUME_MAX, v))
     settings():saveSetting("gzreader_tts_volume", v)
+    if TTS.hasIvona() then return end -- (the volume is the Bluetooth device's)
     intProp("com.lab126.audio", "CmdIVolume", v)
 end
 
 function TTS.applySettings()
+    if TTS.hasIvona() then ivonaSet("speechRate", TTS.ivonaRate(TTS.speed())); return end
     intProp("com.lab126.tts", "TtsISpeed", TTS.speed())
     if settings():readSetting("gzreader_tts_volume") then
         intProp("com.lab126.audio", "CmdIVolume", TTS.volume())
@@ -417,6 +523,7 @@ end
 
 function TTS.setSpeed(v)
     settings():saveSetting("gzreader_tts_speed", v)
+    if TTS.hasIvona() then ivonaSet("speechRate", TTS.ivonaRate(v)); return end
     intProp("com.lab126.tts", "TtsISpeed", v)
 end
 
@@ -532,6 +639,7 @@ end
 --- Menu action: find the request shape, then check it was heard.
 function TTS.findVoice(on_done)
     if TTS.testing then return end
+    if TTS.hasIvona() then return TTS.testIvona(on_done) end
     TTS.testing = true
     Log.info("tts backend", TTS.backend())
     local busy = InfoMessage:new{ text = _("Finding the Kindle's voice… Listen for \"This is the Kindle voice test\"."), timeout = 0 }
@@ -564,6 +672,47 @@ function TTS.findVoice(on_done)
         })
         -- say it once more while the question is up
         TTS.say(TTS.TEST_TEXT, template)
+    end)
+end
+
+--- Why the Ivona voice can't be heard now (no Bluetooth audio device), or nil.
+function TTS.ivonaBlocked()
+    if TTS.bluetoothAudio() == false then
+        return _("Connect Bluetooth headphones or a speaker first (Settings → General → Bluetooth): this Kindle reads aloud through Bluetooth.")
+    end
+end
+
+--- Kindles with Amazon's Ivona voice: start it if needed and say the test
+--- sentence, asking whether it was heard.
+function TTS.testIvona(on_done)
+    local blocked = TTS.ivonaBlocked()
+    if blocked then UIManager:show(InfoMessage:new{ text = blocked }); return end
+    TTS.testing = true
+    local busy = InfoMessage:new{ text = _("Starting the Kindle's voice… Listen for \"This is the Kindle voice test\"."), timeout = 0 }
+    UIManager:show(busy)
+    TTS.ensureIvona(function(up)
+        UIManager:close(busy)
+        TTS.testing = false
+        if not up then
+            UIManager:show(InfoMessage:new{ text = _("The Kindle's voice didn't start. Try again in a moment; if it stays silent, save the diagnostic log (Settings → General) and send it.") })
+            return
+        end
+        TTS.applySettings()
+        TTS.say(TTS.TEST_TEXT)
+        local ConfirmBox = require("ui/widget/confirmbox")
+        UIManager:show(ConfirmBox:new{
+            text = _("Did you hear \"This is the Kindle voice test\"?"),
+            ok_text = _("Yes"),
+            cancel_text = _("No"),
+            ok_callback = function()
+                Log.info("tts: Amazon's voice heard")
+                if on_done then on_done(TTS.template()) end
+            end,
+            cancel_callback = function()
+                Log.warn("tts: Amazon's voice not heard")
+                UIManager:show(InfoMessage:new{ text = _("Check that the Bluetooth device is connected and its volume is up, then try again. If it stays silent, save the diagnostic log (Settings → General) and send it.") })
+            end,
+        })
     end)
 end
 
@@ -695,14 +844,33 @@ function Reader:start()
     if not TTS.template() then
         return TTS.findVoice(function() self:start() end)
     end
+    self.ivona = TTS.isIvona(TTS.template())
+    if self.ivona and not self.ivona_ready then
+        -- Amazon's voice (Bluetooth Kindles): a Bluetooth device, and the voice started
+        local blocked = TTS.ivonaBlocked()
+        if blocked then UIManager:show(InfoMessage:new{ text = blocked }); return end
+        if self.starting then return end
+        self.starting = true
+        return TTS.ensureIvona(function(up)
+            self.starting = false
+            if not up then
+                UIManager:show(InfoMessage:new{ text = _("The Kindle's voice didn't start. Try again in a moment.") })
+                return
+            end
+            self.ivona_ready = true
+            self:start()
+            self.ivona_ready = nil
+        end)
+    end
     -- the Kindle voice needs the sound device: no audiobook player holding it
     pcall(function() require("gzreader_abfolder").releaseAudio("read aloud", true) end)
     self.active, self.paused = true, false
     TTS.applySettings()
     self.one = TTS.oneAtATime()
-    if not self.one then TTS.startEvents() end
+    if not self.one and not self.ivona then TTS.startEvents() end
     self.events_ok = nil
-    if self.one then self.events_ok = false end -- (firmware 2.x: no events, paced by estimates)
+    -- (firmware 2.x and Amazon's Ivona voice: no events, paced by estimates)
+    if self.one or self.ivona then self.events_ok = false end
     self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
@@ -711,11 +879,11 @@ function Reader:start()
     self:restartQueue()
     self.poller = function() self.poller_scheduled = false; self:poll() end
     self:schedulePoll()
-    -- headphones unplugged: stop rather than read out loud
-    pcall(function() require("gzreader_jack").watch("tts", function()
+    -- headphones unplugged: stop rather than read out loud (Bluetooth: no jack)
+    if not self.ivona then pcall(function() require("gzreader_jack").watch("tts", function()
         self:stop()
         UIManager:show(InfoMessage:new{ text = _("Headphones unplugged: read aloud stopped."), timeout = 3 })
-    end) end)
+    end) end) end
 end
 
 function Reader:schedulePoll()
