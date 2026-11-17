@@ -4323,6 +4323,78 @@ print("Wi-Fi: on, off, auto")
         UIMp.close, UIMp.nextTick, UIMp.setDirty, UIMp.scheduleIn = ui_saved.close, ui_saved.tick, ui_saved.dirty, ui_saved.sched
     end)()
 
+    -- the panel's Bluetooth tile (Kindles with Bluetooth): ZenOS's Bluetooth module stood in
+    ;(function()
+        local UIMp = require("ui/uimanager")
+        local ui_saved = { close = UIMp.close, tick = UIMp.nextTick, dirty = UIMp.setDirty, show = UIMp.show }
+        local closed, shown = 0, {}
+        UIMp.close = function() closed = closed + 1 end
+        UIMp.nextTick = function(_s, fn) fn() end
+        UIMp.setDirty = function() end
+        UIMp.show = function(_s, w) shown[#shown + 1] = w end
+        local saved_bt = package.loaded["modules/menu/bluetooth/bluetooth"]
+        local saved_sw = package.loaded["modules/menu/bluetooth_switcher"]
+        local fake = { available = false, on = true, changing = false, toggles = 0 }
+        package.loaded["modules/menu/bluetooth/bluetooth"] = {
+            isAvailable = function() return fake.available end,
+            getCachedState = function() return fake.cached end,
+            isEnabled = function() return fake.on end,
+            isChanging = function() return fake.changing end,
+            toggle = function(done)
+                fake.toggles = fake.toggles + 1
+                if fake.fail then done(false, "Bluetooth is unavailable."); return end
+                fake.on = not fake.on; fake.cached = fake.on
+                done(true)
+            end,
+        }
+        local opened = {}
+        package.loaded["modules/menu/bluetooth_switcher"] = { open = function(...) opened[#opened + 1] = { ... } end }
+        local function ids(list)
+            local out = {}
+            for _i, tl in ipairs(list) do out[#out + 1] = tl.id end
+            return "|" .. table.concat(out, "|") .. "|"
+        end
+        check(not ids(Panel.controls(nil)):find("|bluetooth|", 1, true) and Panel.bluetoothTile() == nil,
+            "no Bluetooth (Kindle 3, PW3, Nook): no Bluetooth tile")
+        local cat_bt
+        for _i, g in ipairs(Panel.catalog()) do
+            for _j, tl in ipairs(g.tiles) do if tl.id == "bluetooth" then cat_bt = tl end end
+        end
+        check(cat_bt and cat_bt.available() == false, "…and Settings → Interface → Quick panel lists it as not on this Kindle")
+        fake.available = true
+        check(cat_bt.available() == true, "a Kindle with Bluetooth: it's there")
+        local c = ids(Panel.controls(nil))
+        check(c:find("|wifi|bluetooth|", 1, true) ~= nil, "Bluetooth comes right after Wi-Fi in Controls " .. c)
+        local bt = Panel.bluetoothTile()
+        check(bt.label == "Bluetooth" and bt.icon == "bluetooth" and bt.on == true and bt.stay, "on: \"Bluetooth\", drawn inverted, stays")
+        local PW = Panel._Widget
+        local w = setmetatable({}, { __index = PW })
+        local tile = { icon = bt.icon, label = bt.label, on = bt.on, gz_tile = bt }
+        w.placed = { { tile = tile } }
+        w:pick(bt, tile)
+        check(closed == 0 and fake.toggles == 1 and not fake.on, "a tap: Bluetooth off, the panel still open")
+        w:onBluetoothStateChanged()
+        check(tile.label == "Bluetooth off" and tile.icon == "bluetooth_off" and tile.on == false, "…and the tile is drawn again as off")
+        w:pick(bt, tile)
+        w:onBluetoothStateChanged()
+        check(fake.on and tile.label == "Bluetooth" and tile.on == true, "a second tap: on again")
+        fake.changing, fake.cached = true, nil
+        check(Panel.bluetoothTile().label == "Bluetooth…", "while it switches: \"Bluetooth…\"")
+        fake.changing, fake.cached = false, true
+        fake.fail = true
+        w:pick(bt, tile)
+        check(#shown == 1, "it can't be switched: a message says why")
+        fake.fail = nil
+        package.loaded["apps/filemanager/filemanager"] = { instance = { zenos = "ZEN" } }
+        bt.hold()
+        check(#opened == 1 and opened[1][2] == false and opened[1][3] == "ZEN",
+            "a hold: ZenOS's Bluetooth devices list (search, pair, connect), with a close button")
+        package.loaded["apps/filemanager/filemanager"] = nil
+        package.loaded["modules/menu/bluetooth/bluetooth"] = saved_bt
+        package.loaded["modules/menu/bluetooth_switcher"] = saved_sw
+        UIMp.close, UIMp.nextTick, UIMp.setDirty, UIMp.show = ui_saved.close, ui_saved.tick, ui_saved.dirty, ui_saved.show
+    end)()
+
     -- Settings → General → Wi-Fi
     local item = Net.menuItem()
     local names = {}

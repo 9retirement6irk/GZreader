@@ -11,7 +11,8 @@ Five tiles go across; on a big touch screen (the Kindle Scribe) as many as
 keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 
 - **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi), and the panel stays open; on the Kindle 2
-  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
+  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
+  on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
