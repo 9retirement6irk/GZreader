@@ -75,6 +75,11 @@ on the other side and hidden), All pages (duplicate, move, add, delete),
 Paper, the editor's sheets strip and the formatting bar at a selection; checks
 in `notes-scribe-checks.txt`.
 
+`pen_pressure.lua` (scribe): the pen's pressure and tilt in the drawing
+screen (`E.pen` points take a pressure and a tilt): strokes as wide as they're
+pressed, memos' pressures in the drawing, Pressure and tilt off; checks in
+`pen-pressure-checks.txt`.
+
 `notes_keys.lua` (k3, or `GZ_EMU_MODEL=k4`; `demo/mock_memos.py 18090 --sample
 --drawings --journal`): the Notes tab without a touch screen: the keys (J, K,
 G, D, A, H; Menu on a Kindle 4), a note with two sheets shown and its text

@@ -1056,6 +1056,16 @@ attribute of the current slot.
 --]]
 function Input:handleTouchEv(ev)
     if ev.type == C.EV_ABS then
+        -- GZreader: a pen's pressure and tilt stay with its slot (gz_pressure, gz_tilt_x,
+        -- gz_tilt_y, as the pen reports them), for the Notes tab's drawing screen: KOReader
+        -- itself uses a pen's position and whether it touches, nothing more.
+        if ev.code == C.ABS_PRESSURE then
+            self:setCurrentMtSlot("gz_pressure", ev.value)
+        elseif ev.code == C.ABS_TILT_X then
+            self:setCurrentMtSlot("gz_tilt_x", ev.value)
+        elseif ev.code == C.ABS_TILT_Y then
+            self:setCurrentMtSlot("gz_tilt_y", ev.value)
+        end
         -- NOTE: Ideally, an input frame starts with either ABS_MT_SLOT or ABS_MT_TRACKING_ID,
         --       but they *both* may be omitted if the last contact point just moved without lift.
         --       The use of setCurrentMtSlotChecked instead of setCurrentMtSlot ensures

@@ -222,13 +222,35 @@ API to `/api` are found too.
   - **Colours:** Memos gets each stroke in its colour. A stroke coloured
     in Memos keeps its colour when the drawing is saved from any Kindle; a
     black-and-white screen shows it in black.
+  - **Pressure and tilt** (a Kindle with a pen): the line is as wide as
+    the pen is pressed. Half pressure draws the thickness you chose, a
+    light touch down to 0.4 of it, full pressure up to 1.6 of it; laying the
+    pen over makes it heavier too, as shading with the side of a pencil.
+    Memos gets each point's pressure and draws the stroke by it. The pen's
+    choices (tap the pen again) have **Pressure and tilt: on / off** for an
+    even line. Pens report different numbers, so the range is learned as
+    you draw: the very first strokes can look lighter or heavier than later
+    ones.
+  - **Pinch to zoom:** two fingers apart make the page bigger (up to 4×),
+    together make it smaller again, down to the whole page; moving two
+    fingers moves a zoomed page. The line under *Drawing* says how far it's
+    zoomed. Draw and rub out as usual while zoomed: the pen's width is the
+    page's, so lines come out the same size. **Done** (or another page)
+    saves the whole page, zoomed or not. On a finger Kindle the second
+    finger has to land within a third of a second of the first (later, it's
+    ignored as before); on the Scribe, two fingers zoom when the pen is
+    away, and a whole hand, or any touch while the pen is near, doesn't.
   - **With a pen** (Kindle Scribe): only the pen draws. Fingers on the page
     draw nothing, and while the pen is near the screen, and for a moment
     after it leaves, your hand can rest anywhere on it: it's ignored (palm
-    rejection). The pen's other end rubs out. With the pen away, a finger
-    can tap the buttons.
+    rejection), even a whole hand while you write (before 1.32, a hand's
+    touches could get mixed into the pen's line). The pen's other end rubs
+    out. With the pen away, a finger can tap the buttons.
   - **With a finger** (every other touch Kindle): one finger draws; a second
     finger at the same time is ignored.
+  - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
+    tip rubs out, like the pen's other end; let go and it draws again, with
+    the Pen tool still chosen.
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 

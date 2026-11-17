@@ -128,6 +128,29 @@ function DrawScreen.lastColor()
     return nil
 end
 
+--- Pen pressure and tilt (a Kindle with a pen): on unless turned off in the pen's choices.
+function DrawScreen.pressureOn()
+    return not (G_reader_settings and G_reader_settings:isFalse("gzreader_drawing_pressure"))
+end
+
+--- What the pen has been seen to report, kept between drawings (Sketch.range).
+function DrawScreen.loadPenRange()
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_pen_range")
+    if type(v) == "table" then
+        Sketch.range = { p_seen = tonumber(v.p_seen) or 0, t_seen = tonumber(v.t_seen) or 0, n = tonumber(v.n) or 0 }
+    end
+    return Sketch.range
+end
+
+function DrawScreen.savePenRange(before)
+    local r = Sketch.range
+    if (r.n or 0) == 0 or not G_reader_settings then return end
+    if before and before.p_seen == r.p_seen and before.t_seen == r.t_seen and (before.n or 0) >= Sketch.PRESSURE_SAMPLES then return end
+    G_reader_settings:saveSetting("gzreader_pen_range", { p_seen = r.p_seen, t_seen = r.t_seen, n = math.min(r.n, 100000) })
+    -- (numbers only: what the pen's range is, for a report)
+    Log.info("drawing: pen pressure up to", r.p_seen, "of", Sketch.pressureTop(r), "tilt up to", r.t_seen, "of", Sketch.tiltTop(r), "samples", r.n)
+end
+
 --- The pen's width new drawings start with (the last one chosen).
 function DrawScreen.lastWidth()
     local v = G_reader_settings and tonumber(G_reader_settings:readSetting("gzreader_drawing_width"))
@@ -152,6 +175,10 @@ function DrawScreen:init()
     self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
     self.tool, self.width = "pen", DrawScreen.lastWidth()
     self.has_color = DrawScreen.hasColor()
+    -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
+    self.pressure_on = DrawScreen.pressureOn()
+    local was = DrawScreen.loadPenRange()
+    self._pen_range_was = { p_seen = was.p_seen, t_seen = was.t_seen, n = was.n }
     self.color = DrawScreen.lastColor()
     local c = self.canvas
     -- what's on the screen (in colour on a colour screen)
@@ -220,6 +247,7 @@ function DrawScreen:showPage(i, first)
     sk.holes = self.holes
     -- (the pen and its width stay as they were from page to page)
     sk.tool, sk.width, sk.color = self.tool, self.width, self.color
+    sk.pressure_on = self.pressure_on
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -273,6 +301,9 @@ function DrawScreen:layoutBar()
             if self.has_color then -- a second row: the colours
                 fw, fh = math.max(fw, #Sketch.COLORS * (ts + S(6)) + S(18)), fh + ts + S(8)
             end
+            if self.pen_only then -- a Kindle with a pen: pressure and tilt, on or off
+                fw, fh = math.max(fw, S(300)), fh + ts + S(8)
+            end
         else
             fw, fh = S(200), head + ts + S(20)
         end
@@ -289,6 +320,10 @@ function DrawScreen:layoutBar()
                 for k, col in ipairs(Sketch.COLORS) do
                     add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(12) + (k - 1) * (ts + S(6)), row + ts + S(8), ts, ts, "flyout")
                 end
+            end
+            if self.pen_only then
+                add({ id = "pressure", label = self.pressure_on and _("Pressure and tilt: on") or _("Pressure and tilt: off") },
+                    fx + S(12), row + (self.has_color and 2 or 1) * (ts + S(8)), fw - S(24), ts, "flyout")
             end
         else
             add({ id = "clear", label = _("Clear the page") }, fx + S(12), row, fw - S(24), ts, "flyout")
@@ -330,6 +365,10 @@ function DrawScreen:hint()
     local paper = Notepaper.get(self.sketch:paper())
     local on = paper and paper.id ~= "blank" and paper.label or nil
     local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
+    -- zoomed (pinch): how much, and how back
+    if self.sketch.zoomed then
+        return string.format("%.1f\u{00D7}", self.sketch:zoom()) .. " \u{00B7} " .. _("pinch in for the whole page")
+    end
     return on and (how .. " \u{00B7} " .. on) or how
 end
 
@@ -483,7 +522,9 @@ local function strokeSegments(sk, st)
     local pts = st.points
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, r, st.color }
+        -- (a stroke with a pen's pressure: as wide as it was pressed)
+        local pr = b[3] and Sketch.weightRadius(r, a[3] and (a[3] + b[3]) / 2 or b[3]) or r
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color }
     end
     return out
 end
@@ -504,10 +545,12 @@ function DrawScreen:picture(el, w, h)
         local ok, data = pcall(require("ffi/sha2").base64_to_bin, b64)
         if ok and data then
             local okr, img = pcall(function()
+                -- (0 x 0: as it is, for a zoomed page's part)
+                if w == 0 then return require("ui/renderimage"):renderImageData(data, #data, false) end
                 return require("ui/renderimage"):renderImageData(data, #data, false, w, h)
             end)
             if okr and img then
-                if img:getWidth() ~= w or img:getHeight() ~= h then
+                if w > 0 and (img:getWidth() ~= w or img:getHeight() ~= h) then
                     img = require("ui/renderimage"):scaleBlitBuffer(img, w, h, true)
                 end
                 bb = img
@@ -529,6 +572,7 @@ function DrawScreen:paintPicture(el)
     x1, y1, x2, y2 = math.floor(x1 + 0.5), math.floor(y1 + 0.5), math.floor(x2 + 0.5), math.floor(y2 + 0.5)
     local w, h = x2 - x1, y2 - y1
     if w < 2 or h < 2 then return false end
+    if sk.zoomed then return self:paintPicturePart(el, x1, y1, w, h) end
     local bb = self:picture(el, w, h)
     if not bb then return false end
     -- (only what's on the canvas)
@@ -542,6 +586,35 @@ function DrawScreen:paintPicture(el)
         self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
     end
     self.color_bb:blitFrom(bb, dx, dy, sx, sy, bw, bh)
+    return true
+end
+
+--- Zoomed: only the part of picture `el` (w x h at x1, y1 on the canvas)
+--- that's on the canvas, scaled from the picture as it is (not the whole
+--- picture at the zoomed size: at 4x a page would be tens of MB).
+function DrawScreen:paintPicturePart(el, x1, y1, w, h)
+    local c = self.canvas
+    local src = self:picture(el, 0, 0)
+    if not src then return false end
+    local iw, ih = src:getWidth(), src:getHeight()
+    local dx0, dy0 = math.max(0, x1), math.max(0, y1)
+    local dx1, dy1 = math.min(c.w, x1 + w), math.min(c.h, y1 + h)
+    if dx1 - dx0 < 1 or dy1 - dy0 < 1 then return true end
+    local sx0, sy0 = math.floor((dx0 - x1) * iw / w), math.floor((dy0 - y1) * ih / h)
+    local sx1, sy1 = math.ceil((dx1 - x1) * iw / w), math.ceil((dy1 - y1) * ih / h)
+    sx1, sy1 = math.min(iw, math.max(sx0 + 1, sx1)), math.min(ih, math.max(sy0 + 1, sy1))
+    local view = src:viewport(sx0, sy0, sx1 - sx0, sy1 - sy0)
+    local ok, part = pcall(function()
+        return require("ui/renderimage"):scaleBlitBuffer(view, dx1 - dx0, dy1 - dy0, false)
+    end)
+    if not ok or not part then return false end
+    self.canvas_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    if not self.color_bb then
+        self.color_bb = Blitbuffer.new(c.w, c.h, Blitbuffer.TYPE_BBRGB24)
+        self.color_bb:fill(Blitbuffer.ColorRGB24(DrawScreen.hexRGB(Drawing.PAPER)))
+    end
+    self.color_bb:blitFrom(part, dx0, dy0, 0, 0, dx1 - dx0, dy1 - dy0)
+    part:free()
     return true
 end
 
@@ -637,6 +710,15 @@ function DrawScreen:hook()
     local screen = self
     rawset(gd, "feedEvent", function(det, tevs)
         if screen._closed or UIManager:getTopmostVisibleWidget() ~= screen then return orig(det, tevs) end
+        -- (the pen's side button, as KOReader reads it: BTN_STYLUS or BTN_STYLUS2; held, the pen rubs out)
+        if screen.sketch then
+            local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true
+            if held ~= screen.sketch.side_button then
+                Log.info("drawing: the pen's side button", held and "held (rubs out)" or "let go",
+                    input.stylus_eraser_active and "BTN_STYLUS" or input.stylus_highlighter_active and "BTN_STYLUS2" or "")
+            end
+            screen.sketch.side_button = held
+        end
         local ok, err = pcall(screen.onContacts, screen, det, tevs)
         if not ok then Log.warn("drawing: input:", tostring(err)) end
         return {}
@@ -667,7 +749,8 @@ function DrawScreen:onContacts(det, tevs)
             if det.adjustGesCoordinate then pcall(det.adjustGesCoordinate, det, ges) end
             x, y = ges.pos.x, ges.pos.y
         end
-        slots[#slots + 1] = { slot = tev.slot, id = tev.id, x = x, y = y, tool = tev.tool }
+        slots[#slots + 1] = { slot = tev.slot, id = tev.id, x = x, y = y, tool = tev.tool,
+            pressure = tev.gz_pressure, tilt_x = tev.gz_tilt_x, tilt_y = tev.gz_tilt_y }
         if tev.timev and not now then now = time.to_s(tev.timev) end
     end
     now = now or time.to_s(time.now())
@@ -680,6 +763,9 @@ local function intersects(a, x0, y0, x1, y1)
 end
 
 function DrawScreen:apply(out)
+    if out.zoom then
+        Log.info(string.format("drawing: zoom %.2fx -> %.2fx", out.zoom.from, out.zoom.to))
+    end
     if (out.redraw or #out.segments > 0) and self.flyout then
         -- drawing puts an open panel away
         self.flyout = nil
@@ -762,6 +848,11 @@ function DrawScreen:use(t)
     local sk = self.sketch
     if t.width then self:setTool("pen", t.width); self:setFlyout(nil)
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
+    elseif t.id == "pressure" then
+        self.pressure_on = not self.pressure_on
+        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_pressure", self.pressure_on) end
+        self.sketch.pressure_on = self.pressure_on
+        self:setFlyout("pen") -- (laid out again: its words changed)
     elseif t.id == "pen" then
         -- the pen; again: its thickness
         if sk.tool == "pen" then self:setFlyout(self.flyout ~= "pen" and "pen" or nil) else self:setTool("pen"); self:setFlyout(nil) end
@@ -903,6 +994,7 @@ end
 function DrawScreen:onCloseWidget()
     self._closed = true
     self:unhook()
+    pcall(DrawScreen.savePenRange, self._pen_range_was)
     for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb", "tint_bb" }) do
         if self[bb] then self[bb]:free(); self[bb] = nil end
     end
@@ -1017,6 +1109,8 @@ end
 --- the scene inside. Returns { path, filename } or nil, err.
 function DrawScreen:save()
     local sk, p = self.sketch, self.page
+    -- (zoomed: the whole page again first; the picture is made from the screen's)
+    if sk:unzoom() then self:repaintCanvas() end
     local crop = sk:cropRect()
     if not crop then return nil, "empty" end
     local path, filename = p.path, p.path and p.path:match("[^/]+$")

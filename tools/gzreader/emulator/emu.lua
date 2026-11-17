@@ -230,10 +230,12 @@ end
 -- tool keys, single-touch ABS_X / ABS_Y, BTN_TOUCH for contact; KOReader puts
 -- it in its own slot (pen_slot), tagged pen or eraser
 local BTN_TOOL_PEN, BTN_TOOL_RUBBER, BTN_TOUCH = 320, 321, 330
-local ABS_X, ABS_Y, ABS_PRESSURE = 0, 1, 24
+local ABS_X, ABS_Y, ABS_PRESSURE, ABS_TILT_X, ABS_TILT_Y = 0, 1, 24, 26, 27
 local function penFrame(evs, dt) stFrame(evs, dt) end
---- One pen stroke through `points` ({ { x, y }, … }, screen pixels; one point:
---- a tap), `sec` long; `eraser`: the pen's other end.
+--- One pen stroke through `points` ({ { x, y [, pressure [, tilt x [, tilt y]]] }, … },
+--- screen pixels; one point: a tap), `sec` long; `eraser`: the pen's other end.
+--- A point's pressure (as the pen reports it, of 4095; 1500 when not given)
+--- and tilt (degrees; not sent when not given).
 function E.pen(points, sec, eraser)
     if type(points) ~= "table" or #points == 0 then return say("pen: no points") end
     sec = sec or 0.3
@@ -242,15 +244,27 @@ function E.pen(points, sec, eraser)
     say(eraser and "eraser" or "pen", #points, "points from", math.floor(p1[1]), math.floor(p1[2]))
     -- hovering in, then down
     penFrame({ { 1, tool, 1 }, { 3, ABS_X, math.floor(p1[1]) }, { 3, ABS_Y, math.floor(p1[2]) }, { 3, ABS_PRESSURE, 0 } }, 0)
-    penFrame({ { 3, ABS_PRESSURE, 1200 }, { 1, BTN_TOUCH, 1 } }, 0.01)
+    local function tilt(evs, p)
+        if p[4] then evs[#evs + 1] = { 3, ABS_TILT_X, math.floor(p[4]) } end
+        if p[5] then evs[#evs + 1] = { 3, ABS_TILT_Y, math.floor(p[5]) } end
+        return evs
+    end
+    penFrame(tilt({ { 3, ABS_PRESSURE, math.floor(p1[3] or 1200) }, { 1, BTN_TOUCH, 1 } }, p1), 0.01)
     local n = #points
     for i = 2, n do
         local p = points[i]
-        penFrame({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, 1500 } }, 0.01 + sec * (i - 1) / n)
+        penFrame(tilt({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, math.floor(p[3] or 1500) } }, p),
+            0.01 + sec * (i - 1) / n)
     end
     -- lifted, then out of range
     penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
     penFrame({ { 1, tool, 0 } }, sec + 0.04)
+end
+--- The pen's side button (the Premium Pen's shortcut button): BTN_STYLUS
+--- pressed (`down`) or let go, `dt` seconds from now.
+function E.penSideButton(held, dt)
+    say("pen side button", held and "held" or "let go")
+    penFrame({ { 1, 0x14b, held and 1 or 0 } }, dt or 0)
 end
 --- The pen hovering over (x, y), not touching; and taken away. `dt`: seconds from now.
 function E.penHover(x, y, dt)
@@ -263,6 +277,72 @@ function E.penTap(what)
     local x, y = E.where(what)
     if not x then return say("pen tap: not on screen:", tostring(what)) end
     E.pen({ { x, y } }, 0.05)
+end
+
+--- The pen writing through `points` (as E.pen) while a hand rests on the
+--- screen: `n` contacts around `palm` ({ x, y }) in slots 0..n-1, its frames
+--- between the pen's (as the Scribe's two devices interleave them), each
+--- with the touch screen's single-touch copy of its first contact, and the
+--- hand shifting a little as the pen moves.
+function E.penWithPalm(points, sec, palm, n)
+    sec, n = sec or 0.4, n or 6
+    local px, py = math.floor(palm[1]), math.floor(palm[2])
+    say("pen", #points, "points with a hand of", n, "contacts at", px, py)
+    local function palmFrame(evs, dt) stFrame(evs, dt) end
+    local p1 = points[1]
+    penFrame({ { 1, BTN_TOOL_PEN, 1 }, { 3, ABS_X, math.floor(p1[1]) }, { 3, ABS_Y, math.floor(p1[2]) }, { 3, ABS_PRESSURE, 0 } }, 0)
+    local pdown = {}
+    for k = 0, n - 1 do
+        pdown[#pdown + 1] = { 3, ABS_MT_SLOT, k }
+        pdown[#pdown + 1] = { 3, ABS_MT_TRACKING_ID, 500 + k }
+        pdown[#pdown + 1] = { 3, ABS_MT_X, px + 30 * k }
+        pdown[#pdown + 1] = { 3, ABS_MT_Y, py + 20 * k }
+    end
+    pdown[#pdown + 1] = { 1, BTN_TOUCH, 1 }
+    pdown[#pdown + 1] = { 3, ABS_X, px }
+    pdown[#pdown + 1] = { 3, ABS_Y, py }
+    palmFrame(pdown, 0.005)
+    penFrame({ { 3, ABS_PRESSURE, 1200 }, { 1, BTN_TOUCH, 1 } }, 0.01)
+    local m = #points
+    for i = 2, m do
+        local p = points[i]
+        local t = 0.01 + sec * (i - 1) / m
+        penFrame({ { 3, ABS_X, math.floor(p[1]) }, { 3, ABS_Y, math.floor(p[2]) }, { 3, ABS_PRESSURE, 1500 } }, t)
+        -- (the kernel leaves ABS_MT_SLOT out: the touch screen's last slot again)
+        palmFrame({ { 3, ABS_MT_X, px + 30 * (n - 1) + i }, { 3, ABS_MT_Y, py + 20 * (n - 1) + i } }, t + 0.002)
+    end
+    penFrame({ { 3, ABS_PRESSURE, 0 }, { 1, BTN_TOUCH, 0 } }, sec + 0.02)
+    local pup = {}
+    for k = 0, n - 1 do pup[#pup + 1] = { 3, ABS_MT_SLOT, k }; pup[#pup + 1] = { 3, ABS_MT_TRACKING_ID, -1 } end
+    pup[#pup + 1] = { 1, BTN_TOUCH, 0 }
+    palmFrame(pup, sec + 0.03)
+    penFrame({ { 1, BTN_TOOL_PEN, 0 } }, sec + 0.04)
+end
+
+--- Two fingers (slots 0 and 1) from `a0`, `b0` to `a1`, `b1` ({ x, y }) in
+--- `sec`, then lifted: a pinch (apart: bigger), or a two-finger drag.
+function E.pinch(a0, b0, a1, b1, sec)
+    sec = sec or 0.4
+    say("pinch", math.floor(a0[1]), math.floor(b0[1]), "->", math.floor(a1[1]), math.floor(b1[1]))
+    local function at(p) return math.floor(p[1] * TOUCH_SCALE[1]), math.floor(p[2] * TOUCH_SCALE[2]) end
+    local ia, ib = touch_id + 1, touch_id + 2
+    touch_id = touch_id + 2
+    local ax, ay = at(a0)
+    local bx, by = at(b0)
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, ia }, { ABS_MT_X, ax }, { ABS_MT_Y, ay } }, 0)
+    frame({ { ABS_MT_SLOT, 1 }, { ABS_MT_TRACKING_ID, ib }, { ABS_MT_X, bx }, { ABS_MT_Y, by } }, 0.03)
+    local n = 8
+    for i = 1, n do
+        local f = i / n
+        local pa = { a0[1] + (a1[1] - a0[1]) * f, a0[2] + (a1[2] - a0[2]) * f }
+        local pb = { b0[1] + (b1[1] - b0[1]) * f, b0[2] + (b1[2] - b0[2]) * f }
+        ax, ay = at(pa)
+        bx, by = at(pb)
+        frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_X, ax }, { ABS_MT_Y, ay }, { ABS_MT_SLOT, 1 }, { ABS_MT_X, bx }, { ABS_MT_Y, by } },
+            0.03 + sec * f)
+    end
+    frame({ { ABS_MT_SLOT, 1 }, { ABS_MT_TRACKING_ID, -1 } }, sec + 0.05)
+    frame({ { ABS_MT_SLOT, 0 }, { ABS_MT_TRACKING_ID, -1 } }, sec + 0.07)
 end
 
 function E.tap(what)

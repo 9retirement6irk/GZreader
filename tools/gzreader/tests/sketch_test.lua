@@ -63,8 +63,8 @@ print("== a finger Kindle (Paperwhite 3)")
     check(#sk.strokes == 1 and #sk.strokes[1].points == 3, "a finger draws one stroke (a repeated point left out)")
     check(out.segments == 3, "each new point gives a segment to paint")
     check(sk.strokes[1].points[1][1] == 100 and sk.strokes[1].points[1][2] == 100, "points relative to the canvas")
-    -- a second finger while drawing: ignored
-    run(sk, { { finger(0, 300, 300) }, { finger(1, 600, 600), finger(0, 320, 310) }, { finger(1, 650, 650) }, { lift(1) }, { lift(0) } })
+    -- a second finger while drawing (after the pinch window): ignored
+    run(sk, { { finger(0, 300, 300) }, { finger(1, 600, 600), finger(0, 320, 310) }, { finger(1, 650, 650) }, { lift(1) }, { lift(0) } }, 0, Sketch.PINCH_WINDOW + 0.05)
     check(#sk.strokes == 2 and #sk.strokes[2].points == 2, "a second finger while drawing doesn't draw")
     -- a tap outside the canvas: for the toolbar
     out = run(sk, { { finger(0, 500, 40) }, { finger(0, 505, 45) }, { lift(0) } })
@@ -122,6 +122,84 @@ print("== palm rejection")
     check(f:palmGuard(0) == false, "a finger Kindle never ignores fingers")
 end)()
 
+print("== pinch to zoom")
+;(function()
+    local W, H = CANVAS.w, CANVAS.h
+    local function pinch(sk, a0, b0, a1, b1, t0, ta)
+        return run(sk, { { finger(0, a0[1], a0[2]) }, { finger(0, a0[1], a0[2]), finger(1, b0[1], b0[2]) },
+            { finger(0, a1[1], a1[2]), finger(1, b1[1], b1[2]) }, { lift(1) }, { lift(0) } }, t0 or 0, ta or 0.05)
+    end
+    -- a finger Kindle: a stroke, then two fingers apart from the middle
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(sk, { { finger(0, 200, 300) }, { finger(0, 300, 300) }, { lift(0) } })
+    local before = { sk.strokes[1].points[1][1], sk.strokes[1].points[1][2] }
+    local sx, sy = sk:toScene(before[1], before[2])
+    local out = pinch(sk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 10)
+    check(out.redraw and math.abs(sk:zoom() - 2) < 0.01 and sk.zoomed and #sk.strokes == 1,
+        "two fingers spread twice as far: the page twice as big (the stroke kept, no stroke from the fingers)")
+    local ax, ay = sk:toScene(sk.strokes[1].points[1][1], sk.strokes[1].points[1][2])
+    check(math.abs(ax - sx) < 0.01 and math.abs(ay - sy) < 0.01 and sk.strokes[1].points[1][1] ~= before[1],
+        "…the stroke is in the same place on the page, bigger on the screen")
+    check(math.abs(sk:radius(2) - Sketch.radiusFor(2, 4)) < 0.01, "…and drawn thicker (the pen's width is the page's)")
+    -- a point's own weight (a pen's pressure) goes with it through a zoom
+    sk.strokes[1].points[1][3] = 0.7
+    sk:zoomBy(1.5, 100, 100, 100, 100)
+    local kept = sk.strokes[1].points[1][3] == 0.7
+    sk:unzoom()
+    check(kept and sk.strokes[1].points[1][3] == 0.7, "…a point's pressure weight kept through zooming in and out")
+    sk:zoomBy(2, 0, 0, 0, 0)
+    -- a stroke drawn while zoomed: the right size on the page
+    run(sk, { { finger(0, 100, 100) }, { finger(0, 300, 100) }, { lift(0) } }, 20)
+    local p1x = sk:toScene(100, 100)
+    local p2x = sk:toScene(300, 100)
+    check(#sk.strokes == 2 and math.abs((p2x - p1x) - 50) < 0.01, "a stroke of 200 px at 2x is 50 units long on the page (100 at 1x)")
+    -- pinched in again: back to the fitted page
+    pinch(sk, { 300, 500 }, { 700, 500 }, { 450, 500 }, { 550, 500 }, 30)
+    check(not sk.zoomed and sk:zoom() == 1 and math.abs(sk:toScene(before[1], before[2]) - sx) < 0.01
+        and sk.strokes[1].points[1][1] == before[1], "pinched in: back to the page as it fits (never smaller)")
+    -- at most MAX_ZOOM
+    pinch(sk, { 480, 500 }, { 520, 500 }, { 100, 500 }, { 900, 500 }, 40)
+    check(math.abs(sk:zoom() - Sketch.MAX_ZOOM) < 0.01, "at most " .. Sketch.MAX_ZOOM .. "x")
+    -- two fingers dragged while zoomed: moved, not zoomed; never past the page's edge
+    local z, ox = sk:zoom(), sk.ox
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 300, 500 }, { 400, 500 }, 50)
+    check(sk:zoom() == z and sk.ox > ox, "two fingers dragged left while zoomed: the page moves, same size")
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 400 + 3000, 500 }, { 500 + 3000, 500 }, 60)
+    local f = sk:fitView()
+    check(math.abs(sk.ox - f.ox) < 0.01, "…dragged far: stops at the page's edge")
+    -- unzoom (before saving)
+    check(sk:unzoom() and not sk.zoomed and sk.per_unit == f.per_unit and not sk:unzoom(), "unzoom: the fitted page again (once)")
+    -- two fingers resting (not moving): nothing
+    out = pinch(sk, { 400, 500 }, { 500, 500 }, { 402, 500 }, { 501, 500 }, 70)
+    check(not out.zoom and not sk.zoomed, "two fingers resting, not moving: nothing")
+    -- a second finger after the pinch window: no pinch, the stroke is drawn
+    local n = #sk.strokes
+    pinch(sk, { 400, 500 }, { 500, 500 }, { 350, 600 }, { 550, 500 }, 80, Sketch.PINCH_WINDOW + 0.1)
+    check(not sk.zoomed and #sk.strokes == n + 1, "a second finger later than " .. Sketch.PINCH_WINDOW .. " s: no zoom, the first finger's stroke kept")
+    -- a pen Kindle: two fingers zoom when the pen is away; a hand (3 contacts) or the pen near: no
+    local pk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 100)
+    check(math.abs(pk:zoom() - 2) < 0.01 and #pk.strokes == 0, "a pen Kindle: two fingers spread: zoomed (fingers still never draw)")
+    pk:unzoom()
+    run(pk, { { finger(0, 400, 500) }, { finger(0, 400, 500), finger(1, 500, 500) }, { finger(0, 400, 500), finger(1, 500, 500), finger(2, 600, 700) },
+        { finger(0, 300, 500), finger(1, 700, 500), finger(2, 600, 700) }, { lift(0), lift(1), lift(2) } }, 110)
+    check(not pk.zoomed, "…a hand (a third contact): no zoom")
+    run(pk, { { hover(100, 100) } }, 120)
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 120.1)
+    check(not pk.zoomed, "…the pen near the screen: fingers are a palm, no zoom")
+    run(pk, { { penGone() } }, 121)
+    pinch(pk, { 400, 500 }, { 500, 500 }, { 350, 500 }, { 550, 500 }, 125, Sketch.PINCH_PAIR + 0.1)
+    check(not pk.zoomed, "…two fingers landing " .. Sketch.PINCH_PAIR .. " s apart: no zoom")
+    -- zoomed, the page kept for the PNG: the scene doesn't change with the view
+    local zk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(zk, { { finger(0, 200, 300) }, { finger(0, 300, 300) }, { lift(0) } })
+    local s1 = zk:scene().elements[1]
+    pinch(zk, { 400, 500 }, { 500, 500 }, { 300, 500 }, { 600, 500 }, 10)
+    local s2 = zk:scene().elements[1]
+    check(math.abs(s1.x - s2.x) < 0.01 and math.abs(s1.y - s2.y) < 0.01 and #s1.points == #s2.points,
+        "the drawing saved is the same zoomed or not")
+end)()
+
 print("== the eraser, undo, clear")
 ;(function()
     local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
@@ -132,6 +210,19 @@ print("== the eraser, undo, clear")
     local out = run(sk, { { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) }, { penGone() } }, 10)
     check(#sk:live() == 1 and out.redraw and sk:live()[1].points[1][2] == 500, "the pen's eraser end rubs out the stroke it crosses")
     check(sk:undo() and #sk:live() == 2, "undo brings it back")
+    -- the pen's side button held (the Premium Pen): the tip rubs out; let go, it draws again
+    sk.side_button = true
+    run(sk, { { hover(200, 150) }, { pen(200, 150) }, { pen(200, 260) }, { hover(200, 260) }, { penGone() } }, 12)
+    local rubbed = #sk:live() == 1 and sk.tool == "pen"
+    sk.side_button = false
+    check(rubbed and sk:undo() and #sk:live() == 2, "the side button held: the pen tip rubs out (the Pen tool stays chosen)")
+    run(sk, { { hover(700, 150) }, { pen(700, 150) }, { pen(700, 260) }, { hover(700, 260) }, { penGone() } }, 14)
+    check(#sk:live() == 3, "…let go: the tip draws again")
+    sk:undo()
+    sk.side_button = true
+    run(sk, { { finger(0, 200, 150) }, { finger(0, 200, 260) }, { lift(0) } }, 40)
+    sk.side_button = false
+    check(#sk:live() == 2, "…a finger with the button held doesn't rub out (fingers don't draw or erase on a pen Kindle)")
     sk:setTool("eraser")
     run(sk, { { hover(200, 600) }, { pen(200, 600) }, { hover(200, 600) }, { penGone() } }, 20)
     check(#sk:live() == 1, "the Eraser tool: the pen tip rubs out too")
@@ -406,6 +497,93 @@ print("== pen colours (colour screens): memos' own palette")
     sk:undo(); sk:undo()
     sk:redo()
     check(sk:live()[2].color == "#1971c2", "undo and redo keep a stroke's colour")
+end)()
+
+print("== pen pressure and tilt (a Kindle with a pen)")
+;(function()
+    local kept_range = Sketch.range
+    local R = { p_seen = 0, t_seen = 0, n = 0 }
+    check(Sketch.pressureTop(R) == 4095 and Sketch.tiltTop(R) == 60, "before the pen has shown its range: 4095 levels of pressure, 60 degrees of tilt")
+    check(Sketch.weight(R, nil) == nil and Sketch.weight(R, 0) == nil, "no pressure (a finger, a hovering pen): no weight")
+    local half = Sketch.weight(R, 2048)
+    check(math.abs(half - 0.5) < 0.01 and Sketch.weight(R, 4095) == 1 and Sketch.weight(R, 100) == 0.05,
+        "pressure alone: half pressure is the chosen thickness, full is the heaviest, the lightest touch still leaves a line")
+    check(Sketch.weight(R, 2048, 60, 0) > 0.94 and Sketch.weight(R, 2048, 30, 0) > half and Sketch.weight(R, 2048, 0, -60) > 0.94
+        and Sketch.weight(R, 4095, 60, 60) == 1,
+        "tilt: the pen laid over makes the line heavier, whichever way it leans (as shading with the side of a pencil)")
+    check(Sketch.weightRadius(10, nil) == 10 and Sketch.weightRadius(10, 0.5) == 10 and Sketch.weightRadius(10, 1) == 16
+        and Sketch.weightRadius(10, 0.05) == 5 and Sketch.weightRadius(1, 0.05) == 1,
+        "the line's width: the chosen thickness at half weight, 0.4 to 1.6 of it across the range")
+    -- the range is learned from the pen
+    Sketch.noteRange(R, 8000, 0, 0)
+    check(Sketch.pressureTop(R) == 8000 and R.n == 1, "a pen that reports more than 4095: its own top")
+    R = { p_seen = 0, t_seen = 0, n = 0 }
+    for _i = 1, 299 do Sketch.noteRange(R, 1000, 5, -8) end
+    local early = Sketch.pressureTop(R)
+    Sketch.noteRange(R, 1023, 0, 0)
+    check(early == 4095 and Sketch.pressureTop(R) == 1023 and R.t_seen == 8, "a pen that never comes near it (1024 levels): after 300 samples, its own top")
+    Sketch.noteRange(R, 500, -4200, 100)
+    check(Sketch.tiltTop(R) == 6000 and math.abs(Sketch.weight(R, 512, 3000, 0) - 0.5 * 1.45) < 0.02,
+        "a pen that reports tilt in hundredths of a degree is read that way")
+    -- strokes
+    Sketch.range = { p_seen = 0, t_seen = 0, n = 0 }
+    local sk = Sketch.new{ canvas = CANVAS, per_unit = 2, pen_only = true }
+    local function pen(x, y, pr, tx) return { slot = 4, id = 4, x = x, y = y, tool = Sketch.TOOL_PEN, pressure = pr, tilt_x = tx } end
+    local function up() return { slot = 4, id = -1, tool = Sketch.TOOL_PEN, pressure = 0 } end
+    local segs = {}
+    local function draw(frames)
+        segs = {}
+        for i, f in ipairs(frames) do
+            for _j, seg in ipairs(sk:frame(f, 100 + i * 0.01).segments) do segs[#segs + 1] = seg end
+        end
+    end
+    draw({ { pen(100, 300, 600) }, { pen(200, 300, 600) }, { pen(300, 300, 600) }, { pen(400, 300, 4095) }, { pen(500, 300, 4095) },
+        { pen(600, 300, 4095) }, { pen(700, 300, 4095) }, { up() } })
+    local st = sk:live()[1]
+    local base = sk:radius(st.width)
+    check(st and #st.points == 7 and st.points[1][3] ~= nil and st.points[1][3] < 0.2 and st.points[7][3] > 0.9,
+        "a pen stroke: every point has its weight (light, then pressed hard)")
+    check(segs[1][5] < base and segs[#segs][5] > base and segs[#segs][5] > segs[1][5],
+        "…drawn thin where it was light and wide where it was pressed (" .. segs[1][5] .. " to " .. segs[#segs][5] .. " px around " .. base .. ")")
+    check(Sketch.range.p_seen == 4095 and Sketch.range.n == 7, "…and the pen's range is noted as it draws")
+    local scene = Drawing.decode(Drawing.encode(sk:scene()))
+    local el
+    for _i, e in ipairs(scene.elements) do if e.type == "freedraw" then el = e end end
+    check(el and el.simulatePressure == false and el.points[1][3] < 0.2 and el.points[#el.points][3] > 0.9,
+        "written into the drawing as memos' pressures (it draws the stroke by them, not by speed)")
+    local again = Sketch.fromScene(scene, { canvas = CANVAS, per_unit = 2 })
+    local st2 = again:live()[1]
+    check(st2.points[1][3] ~= nil and math.abs(st2.points[1][3] - el.points[1][3]) < 0.01 and st2.points[#st2.points][3] > 0.9,
+        "…and read back: an opened drawing shows the stroke as wide as it was pressed")
+    -- tilt on a stroke
+    draw({ { pen(100, 500, 2048, 0) }, { pen(200, 500, 2048, 0) }, { pen(300, 500, 2048, 55) }, { pen(400, 500, 2048, 55) },
+        { pen(500, 500, 2048, 55) }, { pen(600, 500, 2048, 55) }, { up() } })
+    local tilted = sk:live()[2]
+    check(tilted.points[#tilted.points][3] > tilted.points[1][3] + 0.25, "laying the pen over part way through a stroke widens it from there")
+    -- turned off: uniform, as a pen without pressure
+    sk.pressure_on = false
+    draw({ { pen(100, 700, 600) }, { pen(300, 700, 4095) }, { pen(500, 700, 4095) }, { up() } })
+    local flat = sk:live()[3]
+    local off_scene = sk:scene()
+    local off_el = off_scene.elements[#off_scene.elements]
+    check(flat.points[1][3] == nil and segs[1][5] == base and segs[#segs][5] == base and off_el.simulatePressure == true,
+        "Pressure and tilt off: an even line of the chosen thickness, saved as before")
+    sk.pressure_on = true
+    -- a finger (no pressure reported) and a pen that reports none: as before
+    local fsk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
+    run(fsk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })
+    local fscene = fsk:scene()
+    check(fsk:live()[1].points[1][3] == nil and fscene.elements[#fscene.elements].simulatePressure == true,
+        "a finger: no weights, memos draws the stroke by its speed as before")
+    local psk = Sketch.new{ canvas = CANVAS, per_unit = 2, pen_only = true }
+    psk:frame({ { slot = 4, id = 4, x = 100, y = 300, tool = Sketch.TOOL_PEN } }, 1)
+    psk:frame({ { slot = 4, id = 4, x = 300, y = 300, tool = Sketch.TOOL_PEN } }, 1.01)
+    psk:frame({ { slot = 4, id = -1, tool = Sketch.TOOL_PEN } }, 1.02)
+    check(psk:live()[1] and psk:live()[1].points[1][3] == nil, "a pen that reports no pressure draws as before too")
+    -- undo / redo keep the weights; the eraser ignores pressure
+    sk:undo(); sk:undo(); sk:redo()
+    check(sk:live()[2].points[3][3] ~= nil, "undo and redo keep a stroke's weights")
+    Sketch.range = kept_range
 end)()
 
 print(string.format("sketch: %d passed, %d failed", pass, fail))

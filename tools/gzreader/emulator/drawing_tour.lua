@@ -141,6 +141,48 @@ add({ fn = function(E)
     if not PEN then return end
     check(screen().sketch.width == 1, "scribe: with the pen away, a finger taps Thin")
 end, after = 0.5 })
+-- scribe: a whole hand (6 contacts) resting while the pen writes, the two
+-- devices' frames interleaved: one stroke, every point on the pen's line
+-- (before: a palm contact drew from the pen's slot and the pen's moves went
+-- into a palm's slot, rectangles with a diagonal; the owner's Scribe)
+add({ fn = function(E)
+    if not PEN then return end
+    E.penWithPalm({ pt(0.2, 0.85), pt(0.3, 0.85), pt(0.4, 0.85), pt(0.5, 0.85), pt(0.6, 0.85), pt(0.7, 0.85) }, 0.4,
+        pt(0.55, 0.55), 6)
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    local d = screen()
+    local live = d.sketch:live()
+    local st = live[#live]
+    local off, c = 0, d.sketch.canvas
+    local line_y = pt(0, 0.85)[2] - c.y
+    for _i, p in ipairs(st and st.points or {}) do if math.abs(p[2] - line_y) > 2 then off = off + 1 end end
+    check(#live == 4 and st and #st.points >= 5 and off == 0,
+        "scribe: a hand of 6 contacts resting while the pen writes: one stroke, all on the pen's line ("
+            .. #live .. " strokes, " .. off .. " point(s) off it)")
+    tapButton(E, "undo")
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    check(strokes() == 3, "scribe: …taken back with Undo")
+end, after = 0.5 })
+-- pinch to zoom: two fingers apart, the page bigger; together again, back to the page as it fits
+add({ fn = function(E)
+    E.zoom_strokes = strokes()
+    E.pinch(pt(0.45, 0.5), pt(0.55, 0.5), pt(0.35, 0.5), pt(0.65, 0.5), 0.4)
+end, after = 3 })
+add({ shot = "3a-zoomed", after = 0.5 })
+add({ fn = function(E)
+    local sk = screen().sketch
+    check(sk.zoomed and math.abs(sk:zoom() - 3) < 0.3 and strokes() == E.zoom_strokes,
+        MODEL .. ": two fingers spread: the page about 3x as big (" .. string.format("%.2f", sk:zoom()) .. "x), nothing drawn by them")
+    E.pinch(pt(0.3, 0.5), pt(0.7, 0.5), pt(0.48, 0.5), pt(0.52, 0.5), 0.4)
+end, after = 3 })
+add({ fn = function(E)
+    local sk = screen().sketch
+    check(not sk.zoomed and sk:zoom() == 1 and strokes() == E.zoom_strokes, MODEL .. ": pinched in: the page as it fits again")
+end, after = 0.5 })
 add({ shot = "3-drawn", after = 0.5 })
 add({ fn = function(E)
     if PEN then
@@ -155,6 +197,31 @@ add({ fn = function(E)
     if PEN then check(strokes() == 2, "scribe: the eraser end rubbed out a stroke (" .. strokes() .. ")")
     else check(strokes() == 1, "pw3: Undo took back the last stroke") end
 end, after = 0.5 })
+-- scribe: the pen's side button held, the tip across a stroke: rubbed out; Undo puts it back
+add({ fn = function(E)
+    if not PEN then return end
+    E.penSideButton(true)
+    E.pen({ pt(0.3, 0.45), pt(0.3, 0.56) }, 0.3)
+    E.penSideButton(false, 0.5)
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    local d = screen()
+    check(strokes() == 1 and d.sketch.tool == "pen" and d.sketch.side_button == false,
+        "scribe: the side button held, the pen tip rubs out a stroke (" .. strokes() .. " left; the Pen tool still chosen)")
+    tapButton(E, "undo")
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    check(strokes() == 2, "scribe: …Undo brings it back")
+end, after = 0.5 })
+-- zoomed when Done is tapped (next): the page is saved whole (unzoomed first)
+add({ fn = function(E)
+    local crop = screen().sketch:cropRect()
+    E.crop_w = crop and crop.w
+    E.pinch(pt(0.45, 0.5), pt(0.55, 0.5), pt(0.35, 0.5), pt(0.65, 0.5), 0.4)
+end, after = 3 })
+add({ fn = function(E) E.zoomed_at_done = screen().sketch.zoomed end, after = 0.5 })
 add({ shot = "4-after-erase-or-undo", after = 0.5 })
 add({ fn = function(E) tapButton(E, "done") end, after = 3 })
 add({ shot = "5-editor-with-drawing", after = 1 })
@@ -168,6 +235,11 @@ add({ fn = function(E)
         "Done: back in the editor, the drawing kept (" .. tostring(path) .. ")")
     check(scene and #scene.elements == (PEN and 2 or 1) and scene.elements[1].type == "freedraw",
         "the file is a memos drawing with the strokes (" .. tostring(scene and #scene.elements) .. ")")
+    -- (zoomed at Done: the PNG's picture is still the whole drawing, at the page's size)
+    local png_w = path and require("gzreader_notepaper").pngSize(path)
+    check(E.zoomed_at_done and png_w and E.crop_w and math.abs(png_w - E.crop_w) <= 2,
+        "Done while zoomed: saved as the whole page, not the zoomed screen (picture " .. tostring(png_w) .. " px wide, the page's "
+            .. tostring(E.crop_w) .. ")")
     local f = path and io.open(path, "rb")
     local size = f and f:seek("end") or 0
     if f then f:close() end
