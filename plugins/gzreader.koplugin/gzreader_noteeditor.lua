@@ -862,8 +862,17 @@ function Editor:openDrawing(page)
         end
         self.pages = pages
     end
+    -- (a PDF's pages to mark up: after the note's own drawings, shown first; once)
+    local list, extra = self.pages, self.extra_pages
+    self.extra_pages = nil
+    if extra and #extra > 0 then
+        list = {}
+        for _i, p in ipairs(self.pages) do list[#list + 1] = p end
+        page = page or (#list + 1)
+        for _i, p in ipairs(extra) do list[#list + 1] = p end
+    end
     DrawScreen.show{
-        pages = self.pages,
+        pages = list,
         start = page,
         title = self:heading(),
         on_done = function(res)
@@ -874,6 +883,8 @@ function Editor:openDrawing(page)
         end,
         on_cancel = function()
             if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
+            -- (Mark up left at once: the note as it was, not its editor)
+            if extra and not self:changed() then return UIManager:close(self, "full") end
             back()
         end,
     }
@@ -961,7 +972,8 @@ end
 --- ({ { name, title } }: your Memos spaces, or nil), space (a new note's:
 --- the one the board shows), space_title(name),
 --- can_draw (drawings: touch Kindles), drawing_atts (the note's drawings
---- in Memos), open_drawing (open them, or a new page, at once),
+--- in Memos), extra_pages (new pages ready to draw on, after them: a PDF's
+--- pages to mark up), open_drawing (open them, or a new page, at once),
 --- on_save(text, visibility, vis_changed, space, space_changed, drawings):
 --- drawings = { { att, path, filename } (drawn or edited: waiting to be
 --- sent), { att, removed = true } } or nil when they're as they were.
@@ -969,7 +981,7 @@ function NoteEditor.show(opts)
     local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
     local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
-        drawing_atts = atts }
+        drawing_atts = atts, extra_pages = opts.extra_pages }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil

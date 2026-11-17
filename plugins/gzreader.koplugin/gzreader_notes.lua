@@ -2012,7 +2012,7 @@ function NoteView:pickIndex(idx)
         Notes.saveContent(self.plugin, self.memo)
         self:refresh()
     elseif pick.att then
-        Notes.openAttachment(self.plugin, pick.att)
+        Notes.tapAttachment(self.plugin, self.memo, pick.att)
     end
     return true
 end
@@ -2073,13 +2073,29 @@ function Notes.pictureFor(plugin, m, src, max_w, max_h, on_ready)
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
 end
 
+--- `att`'s file on the Kindle: downloaded first when it isn't here yet
+--- (Wi‑Fi), then `fn(path)`. Kept on the Kindle afterwards.
+function Notes.withAttachment(plugin, att, fn)
+    local path = Memos.filePath(att)
+    if lfs.attributes(path, "mode") == "file" then
+        pcall(lfs.touch, path) -- used now: kept longest when space runs short
+        return fn(path)
+    end
+    local busy = InfoMessage:new{ text = T(_("Downloading %1…"), att.filename or ""), timeout = 0 }
+    UIManager:show(busy)
+    require("gzreader_net").run(function()
+        require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
+            UIManager:close(busy)
+            if got then Notes.pruneFiles(plugin, path); fn(path) else info(describe(err)) end
+        end, "notes: attachment")
+    end, { reason = "a note's attachment" })
+end
+
 --- Open an attachment: PDFs and other documents in the reader, pictures in
 --- the image viewer. Downloaded once and kept on the Kindle.
 function Notes.openAttachment(plugin, att)
     if att.link then return info(T(_("This attachment is a link:\n%1"), att.link)) end
-    local path = Memos.filePath(att)
-    local function open()
-        pcall(lfs.touch, path) -- used now: kept longest when space runs short
+    return Notes.withAttachment(plugin, att, function(path)
         if tostring(att.type):match("^image/") then
             local ImageViewer = require("ui/widget/imageviewer")
             local RenderImage = require("ui/renderimage")
@@ -2092,16 +2108,91 @@ function Notes.openAttachment(plugin, att)
             return info(T(_("The Kindle can't open %1 files."), (att.filename or ""):match("%.(%w+)$") or att.type or "?"))
         end
         require("apps/reader/readerui"):showReader(path)
-    end
-    if lfs.attributes(path, "mode") == "file" then return open() end
-    local busy = InfoMessage:new{ text = T(_("Downloading %1…"), att.filename or ""), timeout = 0 }
-    UIManager:show(busy)
-    require("gzreader_net").run(function()
-        require("gzreader_async").run(Notes.client(plugin), function(c) return c:download(att, path) end, function(got, err)
+    end)
+end
+
+--- Mark up a PDF: on touch Kindles that draw (Memos over Wi‑Fi), a note
+--- that's in Memos.
+function Notes.canMarkUp(plugin, memo, att)
+    return memo ~= nil and memo.name ~= nil and not att.link and require("gzreader_pdfmarkup").isPdf(att)
+        and Notes.canDraw(plugin)
+end
+
+--- A tap on an attachment: a PDF asks Open or Mark up (where it can be
+--- marked up); anything else opens.
+function Notes.tapAttachment(plugin, memo, att)
+    if not Notes.canMarkUp(plugin, memo, att) then return Notes.openAttachment(plugin, att) end
+    local dialog
+    dialog = require("ui/widget/buttondialog"):new{ title = att.filename or _("PDF"), buttons = {
+        { { text = _("Open"), align = "left", callback = function()
+            UIManager:close(dialog); Notes.openAttachment(plugin, att)
+        end } },
+        { { text = _("Mark up pages"), align = "left", callback = function()
+            UIManager:close(dialog); Notes.markUpPdf(plugin, memo, att)
+        end } },
+    } }
+    local add = rawget(_G, "__ZEN_DIALOG_SHORTCUTS")
+    if add then pcall(add, dialog) end
+    UIManager:show(dialog)
+    return dialog
+end
+
+--- Mark up pages: which pages (a PDF of one page: that one), then the
+--- drawing screen on them, in the note's editor (Done goes back to the
+--- note's text; Save sends the drawings with the note).
+function Notes.markUpPdf(plugin, memo, att)
+    local PdfMarkup = require("gzreader_pdfmarkup")
+    return Notes.withAttachment(plugin, att, function(path)
+        local doc, err = PdfMarkup.open(path)
+        if not doc then
+            Log.warn("notes: PDF not opened for markup:", tostring(err))
+            return info(PdfMarkup.message(err), 4)
+        end
+        local count = doc.count
+        doc.close()
+        local function go(list)
+            local busy = InfoMessage:new{ text = T(_("Preparing %1 page(s)…"), #list), timeout = 0 }
+            UIManager:show(busy)
+            UIManager:forceRePaint()
+            -- (where drawings wait to be sent: the pictures made on the way, removed after)
+            local dir = require("datastorage"):getSettingsDir() .. "/gzreader-drawings"
+            lfs.mkdir(dir)
+            local pages, why, detail = PdfMarkup.pages(path, list, dir)
             UIManager:close(busy)
-            if got then Notes.pruneFiles(plugin, path); open() else info(describe(err)) end
-        end, "notes: attachment")
-    end, { reason = "a note's attachment" })
+            if not pages then
+                Log.warn("notes: PDF pages not made:", tostring(why), tostring(detail))
+                return info(PdfMarkup.message(why), 4)
+            end
+            Log.info("notes: marking up", #pages, "PDF page(s) of", count)
+            return Notes.edit(plugin, memo, { markup_pages = pages })
+        end
+        if count == 1 then return go({ 1 }) end
+        local InputDialog = require("ui/widget/inputdialog")
+        local dialog
+        local function pick()
+            local list, why = PdfMarkup.parsePages(dialog:getInputText(), count)
+            if not list then
+                return info(why == "many" and T(_("At most %1 pages at a time."), PdfMarkup.MAX_PAGES)
+                    or why == "empty" and _("Type the pages to mark up.")
+                    or T(_("This PDF has pages 1 to %1."), count), 3)
+            end
+            UIManager:close(dialog)
+            go(list)
+        end
+        dialog = InputDialog:new{
+            title = T(_("Pages to mark up (1–%1)"), count),
+            description = T(_("For example 2, or 1-3, 7. At most %1."), PdfMarkup.MAX_PAGES),
+            input = PdfMarkup.suggest(count),
+            buttons = { {
+                { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+                { text = _("Mark up"), is_enter_default = true, callback = pick },
+            } },
+        }
+        UIManager:show(dialog)
+        dialog:onShowKeyboard()
+        Notes.markup_dialog = dialog
+        return dialog
+    end)
 end
 
 ---------------------------------------------------------------- saving
@@ -2194,10 +2285,11 @@ function Notes.edit(plugin, memo, opts)
         space_title = function(name) return Notes.spaceTitle(plugin, name) end,
         can_draw = Notes.canDraw(plugin),
         -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
-        -- Draw (a new note): a page to draw on at once
+        -- Draw (a new note): a page to draw on at once; Mark up (a PDF): its pages after the note's drawings
         drawing_atts = memo and Notes.drawings(memo) or nil,
-        open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))
-            and Notes.canDraw(plugin),
+        extra_pages = opts and opts.markup_pages or nil,
+        open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw)
+            or (opts and opts.markup_pages ~= nil)) and Notes.canDraw(plugin),
         on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
             if memo then
                 memo.content = content
