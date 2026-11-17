@@ -173,6 +173,16 @@ Sketch.TOOL_STYLE = {
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
 }
 
+--- What the pen's shortcut (side) button switches to while it's held:
+--- "eraser" (as on the Scribe out of the box) or a writing tool (Settings →
+--- Notes → Pen's shortcut button; `sketch.shortcut`).
+Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "highlighter" }
+function Sketch.shortcutTool(sk)
+    local v = sk and sk.shortcut
+    if v == "eraser" or Sketch.TOOL_STYLE[v] then return v end
+    return "eraser"
+end
+
 --- A tool's style (unknown: the pen's).
 function Sketch.toolStyle(kind) return Sketch.TOOL_STYLE[kind or "pen"] or Sketch.TOOL_STYLE.pen end
 
@@ -608,7 +618,7 @@ local function startContact(self, s, now, out)
     elseif self.drawing_slot ~= nil and self.drawing_slot ~= s.slot then
         c.kind = "ignore" -- one stroke at a time
         self.stats.ignored = self.stats.ignored + 1
-    elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" or (pen and self.side_button) then
+    elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" or (pen and self.side_button and Sketch.shortcutTool(self) == "eraser") then
         c.kind = "erase"
         c.erased = {}
         self.drawing_slot = s.slot
@@ -620,7 +630,9 @@ local function startContact(self, s, now, out)
         c.pieces = {} -- (on paper: the parts of the stroke on it)
         -- (the writing tool: the pen's own stroke has no kind; the pencil and the
         -- highlighter are grey, so they take no colour)
-        local kind = self.writing ~= "pen" and Sketch.TOOL_STYLE[self.writing] and self.writing or nil
+        -- (the pen's shortcut button held: its tool instead of the one in hand)
+        local writing = (pen and self.side_button) and Sketch.shortcutTool(self) or self.writing
+        local kind = writing ~= "pen" and Sketch.TOOL_STYLE[writing] and writing or nil
         local style = Sketch.toolStyle(kind)
         c.writing = kind
         c.color = not style.gray and self.color or nil
