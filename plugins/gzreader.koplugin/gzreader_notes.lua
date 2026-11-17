@@ -328,10 +328,14 @@ function Notes.query(plugin, f)
         parts[#parts + 1] = "tag in [" .. table.concat(q, ", ") .. "]"
     end
     local cel = Notes.cel(f)
-    if cel then parts[#parts + 1] = cel end
-    if #parts == 0 then return nil end
-    if #parts == 1 then return parts[1] end
-    return "(" .. table.concat(parts, ") && (") .. ")"
+    local archived = (f or Notes.filter).kind == "archived"
+    if cel and not archived then parts[#parts + 1] = cel end
+    local q
+    if #parts == 1 then q = parts[1]
+    elseif #parts > 1 then q = "(" .. table.concat(parts, ") && (") .. ")" end
+    -- (the archived notes: Memos lists them by their state, not by a filter)
+    if archived then return Memos.archived(q) end
+    return q
 end
 
 local function closeTop(w, mode) if w then UIManager:close(w, mode or "ui") end end
@@ -346,6 +350,8 @@ function Notes.cel(f)
     if require("gzreader_net").usb then return nil end -- (no Memos to ask: Notes.keep filters here)
     if f.kind == "tag" then return string.format('%q in tags', f.value) end
     if f.kind == "pinned" then return "pinned == true" end
+    -- (asked of Memos by state, Notes.query; the kept notes are never shown for it, nor replaced by it)
+    if f.kind == "archived" then return Memos.ARCHIVED_MARK end
     if f.kind == "date" then return string.format('created_ts > now - duration("%dh")', f.value * 24) end
     if f.kind == "search" then return string.format("content.contains(%q)", f.value) end
     if f.kind == "space" then -- ("" for notes in no space)
@@ -361,6 +367,8 @@ function Notes.keep(m, f)
     if f.kind == "place" then return m.place == f.value end
     if f.kind == "attachments" then return #(m.attachments or {}) > 0 end
     if f.kind == "drawings" then return Notes.hasDrawing(m) end
+    -- (until Memos answers, the notes on the board are the others: none of them shown)
+    if f.kind == "archived" then return m.archived == true end
     return true
 end
 
@@ -409,6 +417,7 @@ function Notes.filterLabel(f)
     if f.kind == "attachments" then return _("With attachments") end
     if f.kind == "drawings" then return _("Drawings") end
     if f.kind == "pinned" then return _("Pinned") end
+    if f.kind == "archived" then return _("Archived") end
     if f.kind == "search" then return "\u{201C}" .. f.value .. "\u{201D}" end
     if f.kind == "space" then return f.value == "" and _("No space") or (f.label or f.value) end
     return _("All notes")
@@ -443,11 +452,86 @@ function Notes.applyQueue(plugin)
                         if q.space then m.space = q.space ~= "" and q.space or nil end
                     end
                     if q.op == "pin" then m.pinned = q.pinned end
+                    if q.op == "archive" then m.archived = q.archived or nil end
                     m.pending = true
                 end
             end
+            -- archived, brought back or deleted: off this list until Memos says otherwise
+            if q.op == "delete" or q.op == "archive" then Notes.drop(q.name, q.op == "archive" and q.archived) end
         end
     end
+end
+
+--- Note `name` taken off the board's list: deleted (`archived` nil), or
+--- archived / brought back (`archived` true / false) and so not in the
+--- list being shown (the Archived notes, or the others).
+function Notes.drop(name, archived)
+    local showing_archived = Notes.filter and Notes.filter.kind == "archived"
+    if archived ~= nil and (archived == true) == showing_archived then return false end
+    for i = #(Notes.notes or {}), 1, -1 do
+        if Notes.notes[i].name == name then table.remove(Notes.notes, i) end
+    end
+    return true
+end
+
+--- Archive a note (`archived` true) or bring it back from the archive
+--- (false): queued and sent soon, off the board's list at once.
+function Notes.archive(plugin, m, archived)
+    if not m.name then info(_("This note isn't in Memos yet; archive it once it's sent."), 3); return false end
+    Notes.enqueue(plugin, { op = "archive", name = m.name, archived = archived == true })
+    m.archived = archived == true or nil
+    Notes.drop(m.name, archived == true)
+    Log.info("notes: a note", archived and "archived" or "brought back from the archive")
+    Notes.sendSoon(plugin)
+    Notes.reloadBoard(true)
+    return true
+end
+
+--- Delete a note for good (asked first by the caller). A note not sent yet
+--- is only taken out of the queue (and its drawings' files with it).
+function Notes.delete(plugin, m)
+    local store = plugin.store.memos
+    if m.name then
+        -- (its other changes waiting to be sent: no longer worth sending)
+        local left = {}
+        for _i, q in ipairs(store.queue or {}) do
+            if q.name ~= m.name or q.op == "delete" then left[#left + 1] = q end
+        end
+        store.queue = left
+        Notes.enqueue(plugin, { op = "delete", name = m.name })
+        Notes.drop(m.name)
+        Notes.sendSoon(plugin)
+    elseif m.local_id then
+        local left = {}
+        for _i, q in ipairs(store.queue or {}) do
+            if q.id == m.local_id then
+                for _k, d in ipairs(Memos.queuedDrawings(q)) do if d.path then os.remove(d.path) end end
+            else
+                left[#left + 1] = q
+            end
+        end
+        store.queue = left
+        plugin:save()
+        for i = #(Notes.notes or {}), 1, -1 do
+            if Notes.notes[i].local_id == m.local_id then table.remove(Notes.notes, i) end
+        end
+    end
+    Log.info("notes: a note deleted", m.name and "(in Memos)" or "(not sent yet)")
+    Notes.reloadBoard(true)
+    return true
+end
+
+--- Asks, then deletes (`after`: once it's gone).
+function Notes.confirmDelete(plugin, m, after)
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = _("Delete this note for good?\n\nIt's deleted in Memos too, with its drawings and attachments. Archive it instead to keep it out of the way."),
+        ok_text = _("Delete"),
+        ok_callback = function()
+            Notes.delete(plugin, m)
+            if after then after() end
+        end,
+    })
 end
 
 --- A queued note's drawings as attachments the board can show before
@@ -1986,11 +2070,33 @@ end
 function NoteView:onOptions()
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
-    dialog = Notes.keyedDialog(_("Note"), {
-        { { text = _("Edit"), align = "left", callback = run(function() self:onEdit() end) } },
-        { { text = self.memo.pinned and _("Unpin") or _("Pin"), align = "left", callback = run(function() self:onPin() end) } },
-        { { text = _("Back to the board"), align = "left", callback = run(function() self:onClose() end) } },
-    })
+    local m = self.memo
+    local rows = {}
+    if m.archived then
+        -- (an archived note: back to the board's notes, or gone for good)
+        rows[#rows + 1] = { { text = _("Restore from the archive"), align = "left", callback = run(function() self:onArchive(false) end) } }
+    else
+        rows[#rows + 1] = { { text = _("Edit"), align = "left", callback = run(function() self:onEdit() end) } }
+        rows[#rows + 1] = { { text = m.pinned and _("Unpin") or _("Pin"), align = "left", callback = run(function() self:onPin() end) } }
+        rows[#rows + 1] = { { text = _("Archive"), align = "left", callback = run(function() self:onArchive(true) end) } }
+    end
+    rows[#rows + 1] = { { text = _("Delete…"), align = "left", callback = run(function() self:onDelete() end) } }
+    rows[#rows + 1] = { { text = _("Back to the board"), align = "left", callback = run(function() self:onClose() end) } }
+    dialog = Notes.keyedDialog(_("Note"), rows)
+    return true
+end
+
+--- Archive (or restore) this note, and back to the board, where it's gone from the list.
+function NoteView:onArchive(archived)
+    if Notes.archive(self.plugin, self.memo, archived) then
+        info(archived and _("Archived. Notes → Archived notes shows it.") or _("Restored: it's back with your notes."), 2)
+        self:onClose()
+    end
+    return true
+end
+
+function NoteView:onDelete()
+    Notes.confirmDelete(self.plugin, self.memo, function() self:onClose() end)
     return true
 end
 
@@ -2551,6 +2657,9 @@ function Notes.showMenu(plugin)
         row(Notes.filter.kind == "drawings" and _("All notes (not only drawings)") or _("Only notes with drawings"), "D",
             function() Notes.toggleDrawings(plugin) end),
         Notes.filter.kind ~= "all" and row(_("All notes"), "A", function() Notes.setFilter(plugin, { kind = "all" }) end) or false,
+        -- (the archive: only Memos has it, not the kept notes)
+        (Notes.filter.kind ~= "archived" and not require("gzreader_net").usb)
+            and row(_("Archived notes"), nil, function() Notes.setFilter(plugin, { kind = "archived" }) end) or false,
         row(_("Filter…"), "F", function() Notes.showFilter(plugin) end),
         row(T(_("Layout: %1"), Notes.viewLabel(Notes.view(plugin))), "L", function() Notes.showView(plugin) end),
         row(_("Sort…"), "S", function() Notes.showSort(plugin) end),

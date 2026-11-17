@@ -7494,6 +7494,86 @@ print("Notes (Memos v0.31)")
             "the settings route is beside the API (not under /api/v1), and only Journal.settings' fields are kept")
     end)()
 
+    ;(function() -- archive, delete, and the archived notes
+        os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
+        socket.sleep(0.3)
+        os.execute("python3 -I " .. PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py " .. MPORT .. " --sample > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
+        runLoop(function() return mctl("GET", "/__state"):match("memos") ~= nil end, 10)
+        plugin.store.memos.prefix, plugin.store.memos.queue = "/api/v1", {}
+        local function arSync()
+            local res
+            Notes.refresh(plugin, function(ok2) res = ok2 end)
+            runLoop(function() return res ~= nil end, 20)
+            return res
+        end
+        local function stateOf(name)
+            for _i, m in ipairs(mstate().memos) do if m.name == name then return m.state end end
+            return "gone"
+        end
+        local function listed(name)
+            for _i, m in ipairs(Notes.notes or {}) do if m.name == name then return true end end
+            return false
+        end
+        Notes.notes, Notes.filter, Notes.board = nil, { kind = "all" }, nil
+        check(arSync() and #Notes.notes > 3, "the notes, from Memos")
+        local first, second = Notes.notes[2], Notes.notes[3]
+        local n_all = #Notes.notes
+        check(Memos.splitState(Memos.archived(nil)) == nil and select(2, Memos.splitState(Memos.archived('"a" in tags'))) == "ARCHIVED"
+            and Memos.splitState(Memos.archived('"a" in tags')) == '"a" in tags' and select(2, Memos.splitState("pinned == true")) == nil,
+            "the archived notes are asked for by Memos' state, beside any filter")
+        -- archive one: off the board at once, then in Memos
+        Notes.archive(plugin, first, true)
+        check(not listed(first.name) and #Notes.notes == n_all - 1 and plugin.store.memos.queue[1].op == "archive",
+            "Archive: off the board at once, queued")
+        check(arSync() and stateOf(first.name) == "ARCHIVED" and #plugin.store.memos.queue == 0 and not listed(first.name),
+            "…archived in Memos (state ARCHIVED); the board's list doesn't have it")
+        local ar_patched = false
+        for _i, l in ipairs(mstate().log) do if l:match("^PATCH /api/v1/" .. first.name .. "%?updateMask=state$") then ar_patched = true end end
+        check(ar_patched, "…PATCH with updateMask=state")
+        -- the archived notes
+        local before_cache = Memos.loadCache()
+        Notes.setFilter(plugin, { kind = "archived" })
+        runLoop(function() return listed(first.name) end, 20)
+        check(#Notes.notes == 1 and listed(first.name) and Notes.notes[1].archived and #Notes.visible() == 1,
+            "Archived notes: only the archived one, from Memos")
+        check(Notes.title():find("Archived", 1, true) ~= nil, "…the title says so")
+        local after_cache = Memos.loadCache()
+        check(before_cache and after_cache and #after_cache.notes == #before_cache.notes, "…the kept notes aren't replaced by the archive")
+        -- restore it
+        Notes.archive(plugin, Notes.notes[1], false)
+        check(#Notes.notes == 0, "Restore: off the archived list at once")
+        check(arSync() and stateOf(first.name) == "NORMAL", "…back with the others in Memos")
+        Notes.setFilter(plugin, { kind = "all" })
+        runLoop(function() return listed(first.name) end, 20)
+        check(listed(first.name), "All notes: it's back")
+        -- delete
+        Notes.delete(plugin, second)
+        check(not listed(second.name) and plugin.store.memos.queue[#plugin.store.memos.queue].op == "delete", "Delete: off the board, queued")
+        check(arSync() and stateOf(second.name) == "gone" and #plugin.store.memos.queue == 0, "…deleted in Memos")
+        -- a note not sent yet: only out of the queue
+        local nq = Notes.enqueue(plugin, { op = "create", content = "never mind" })
+        Notes.applyQueue(plugin)
+        local local_note
+        for _i, m in ipairs(Notes.notes) do if m.local_id == nq.id then local_note = m end end
+        Notes.delete(plugin, local_note or {})
+        check(local_note and #plugin.store.memos.queue == 0 and not Notes.notes[1].local_id, "deleting a note not sent yet: out of the queue, nothing sent")
+        -- archiving a note not sent yet: said, not done
+        local shown = #UI.shown
+        check(Notes.archive(plugin, { local_id = "q999", content = "x" }, true) == false and #UI.shown == shown + 1,
+            "archiving a note not sent yet: says to wait for it to be sent")
+        -- a note deleted elsewhere: the delete still counts as done
+        local c = Memos:new(plugin.store.memos)
+        check(c:deleteMemo(second.name) == true, "deleting a note that's gone already: done")
+        -- the Notes menu offers the archive; a note's More offers Archive and Delete (Restore when archived)
+        local nsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc:find('row(_("Archived notes"), nil', 1, true) and nsrc:find('_("Restore from the archive")', 1, true)
+            and nsrc:find('{ text = _("Archive"), align = "left"', 1, true) and nsrc:find('_("Delete…")', 1, true),
+            "Notes menu: Archived notes; a note's options: Archive / Restore, Delete…")
+        -- the sync page's outbox carries them (Kindles syncing through a computer)
+        local gz = io.open(PLUGIN .. "/../../docs/sync/gzsync.js"):read("*a")
+        check(gz:find('q.op === "archive"', 1, true) and gz:find('q.op === "delete"', 1, true), "the sync page sends archive and delete too")
+    end)()
+
     ;(function() -- the Notes tab's board: sorting, full screen, keys, its buttons
         local UIM = require("ui/uimanager")
         os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
@@ -7781,8 +7861,8 @@ print("Notes (Memos v0.31)")
         TouchK4.keys = function() return false end
         local mtexts, _md, mcbs = texts(Notes.showMenu)
         TouchK4.keys = kept_k4_keys
-        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
-            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
+        check(mtexts:match("^New note|Journal entry|Search…|Tags…|Only notes with drawings|Archived notes|Filter…|Layout: [^|]+|Sort…|Full screen: no tab bar|Connection…$") ~= nil,
+            "Kindle 4's Menu: New note, Journal entry, Search, Tags, Only notes with drawings, Archived notes, Filter, Layout, Sort, Full screen, Connection (no New sheet: drawing needs a touch screen): " .. mtexts)
         do
             -- a keyboard Kindle: the same list names each key; a touch Kindle that can draw would get New sheet
             local TouchM = require("gzreader_touch")
@@ -7792,7 +7872,7 @@ print("Notes (Memos v0.31)")
             Notes.canDraw = function() return true end
             local dtexts = texts(Notes.showMenu)
             TouchM.keys, Notes.canDraw = kept_keys, kept_can
-            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Filter…  (F)|", 1, true) == 1
+            check(ktexts:find("New note  (N)|Journal entry  (J)|Search…  (K)|Tags…  (G)|Only notes with drawings  (D)|Archived notes|Filter…  (F)|", 1, true) == 1
                 and ktexts:find("|Sort…  (S)|", 1, true) and ktexts:find("|Connection…  (M)", 1, true) and not ktexts:find("|Draw|", 1, true),
                 "keyboard Kindles: H lists every key: " .. ktexts)
             check(dtexts:find("New note  (N)|Draw|Journal entry  (J)|", 1, true) == 1, "…Draw only where drawing is possible: " .. dtexts)
