@@ -6548,6 +6548,44 @@ print("Remote debugging (debug reports on)")
     UIManager.nextTick, UIManager.show, UIManager.close = orig_tick, orig_show, orig_close
     check(dlg.title == "Send to the developer" and dlg.allow_newline and sent_with == "the calendar was empty",
         "Send to the developer asks what happened first, and sends what was typed")
+    -- the send itself: built and sent in a background process, the screen free meanwhile
+    -- (a Paperwhite 3 froze 12 s building the log and 44 s sending it)
+    local Async = require("gzreader_async")
+    local NetS, LogS = require("gzreader_net"), require("gzreader_log")
+    local saved = { Async.sync, NetS.usb, NetS.connected, R.sendLogs, LogS.exportTo, UIManager.show, UIManager.close, UIManager.forceRePaint }
+    Async.sync, NetS.usb, NetS.connected = false, false, function() return true end
+    LogS.exportTo = function(dir)
+        local p = dir .. "/fake-report.txt"
+        local f = io.open(p, "wb"); f:write("the log"); f:close()
+        return p
+    end
+    R.sendLogs = function(_path, note) socket.sleep(1.5); if note == "it froze" then return 2 end; return nil, "wrong note" end
+    local texts = {}
+    UIManager.show = function(_s, w) if type(w) == "table" and w.text then texts[#texts + 1] = w.text end end
+    UIManager.close, UIManager.forceRePaint = function() end, function() end
+    local t0 = socket.gettime()
+    plugin:sendLogToDeveloper("it froze")
+    local took = socket.gettime() - t0
+    check(took < 1 and tostring(texts[1]):match("You can carry on") and NetS.holders["debug log"] and Async.local_jobs == 1,
+        string.format("Send to the developer: back to the screen at once (%.1f s), sending in the background, Wi-Fi kept on meanwhile", took))
+    runLoop(function() return #texts >= 2 end, 15)
+    check(texts[2] == "Diagnostic log sent to the developer. Thank you!" and not NetS.holders["debug log"] and Async.local_jobs == 0,
+        "…and says when it's sent (" .. tostring(texts[2]) .. "); Wi-Fi no longer held")
+    -- another background job running (one at a time: memory): sent here, as before
+    texts = {}
+    Async.local_jobs = 1
+    R.sendLogs = function(_path, note) if note == "again" then return 1 end; return nil, "wrong note" end
+    plugin:sendLogToDeveloper("again")
+    Async.local_jobs = 0
+    check(texts[1] == "Sending the diagnostic log to the developer…" and texts[2] == "Diagnostic log sent to the developer. Thank you!"
+        and not NetS.holders["debug log"], "another background job running: sent while the message shows, as before")
+    texts = {}
+    R.sendLogs = function() return nil, "unreachable" end
+    Async.sync = true
+    plugin:sendLogToDeveloper("offline")
+    check(tostring(texts[#texts]):match("Couldn't send the log %(unreachable%)"), "not sent: says why")
+    Async.sync, NetS.usb, NetS.connected, R.sendLogs, LogS.exportTo = saved[1], saved[2], saved[3], saved[4], saved[5]
+    UIManager.show, UIManager.close, UIManager.forceRePaint = saved[6], saved[7], saved[8]
 end)()
 
 print("The log: lines written together, not one write per line")
