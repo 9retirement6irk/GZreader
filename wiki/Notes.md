@@ -77,10 +77,12 @@ API to `/api` are found too.
 - **A note:** the text in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
-  the note shown inline, its tags and place, and its attachments (PDFs and
-  other documents open in the reader, pictures in the image viewer; each is
-  downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
-  pins, page keys scroll a long note.
+  the note shown inline, its tags and place, and its attachments: photos
+  attached to it (not in its text) as a **gallery of pictures** under the
+  text, two or three across as Memos' web app shows them (a tap opens one
+  full screen), and the rest as rows (PDFs and other documents open in the
+  reader). Each is downloaded once into `cache/gzreader-notes`. **Alt+E**
+  edits, **Alt+P** pins, page keys scroll a long note.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
@@ -121,22 +123,33 @@ API to `/api` are found too.
     under it on the first line, where it covers the next line until it goes.)
   - The row under the title shows the note's **sheets** (its drawings) as
     small pictures: tap one to draw on it; **✎ Draw** adds the first.
-  - **+ Photos** (beside Draw, when Immich is connected): photos from your
-    Immich, which go with the note as its attachments, as **Insert image →
-    From Immich** does in your Memos fork's web app. It opens your albums
-    (**All photos** first); tap an album for a grid of its photos, tap the
-    ones you want (each gets a thick frame and its number in the order
-    picked; tap again to let one go), turn pages with **‹ ›** or a swipe,
-    then **Add**. The chip then says how many (**2 photos**); tap it to add
-    more or take one off. **Save** sends them with the note. What's sent is
-    Immich's preview of each photo (a JPEG up to 1440 pixels a side, quick
-    over the Kindle's Wi‑Fi), named like the photo (`IMG_1234.jpg`).
+  - **The note's photos** (pictures attached to it, not drawings) show in
+    the same row as small pictures, after Draw; one shown in the text has a
+    thick frame (**+n** beyond three: a list of them all). Tap one for:
+    **Put it in the text, at the cursor** (or **Take it out of the text**,
+    keeping it attached), **Remove it from the note…** (it's deleted in
+    Memos when you save; its picture leaves the text too) and **Show it**.
+  - **+ Photos** (when Immich is connected): photos from your Immich. It
+    opens your albums (**All photos** first); tap an album for a grid of its
+    photos, tap the ones you want (each gets a thick frame and its number in
+    the order picked; tap again to let one go), turn pages with **‹ ›** or a
+    swipe, then **Add**. You're asked each time where they go:
+    **In the text, at the cursor** (a picture line for each, as **Insert
+    image** puts one in Memos' web app; they're sent to Memos right away,
+    because Memos only accepts a picture in a note's text when the picture
+    is one of the note's attachments), or **With the note, as attachments**
+    (as **Insert image → From Immich** does in your fork; sent with the
+    note when you save). Leaving the note without saving deletes photos
+    that were already sent. What's sent is Immich's preview of each photo
+    (a JPEG up to 1440 pixels a side, quick over the Kindle's Wi‑Fi), named
+    like the photo (`IMG_1234.jpg`).
     Immich is reached through your **Memos fork's own Immich connection**
     (Settings → Immich in its web app; the Immich key stays on the Memos
     server), or else through **GZreader's Immich connection** (the sleep
     screen's, [Pictures from Immich](Home-and-Bookshelves#pictures-from-immich)).
     With both, the albums list has **Use GZreader's Immich connection** /
-    **Use Memos' Immich connection** at the top to switch.
+    **Use Memos' Immich connection** at the top to switch. (Not for a note
+    still waiting to go to Memos.)
   - **Save** is at the top right, beside the space (▾) and Private (▾),
     where the drawing screen's **Done** is. For a moment after **Done**, a
     tap on that row is ignored, so a second tap on a slow Done doesn't open

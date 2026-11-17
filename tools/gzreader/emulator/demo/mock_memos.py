@@ -3,7 +3,9 @@
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
   GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
-  POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
+  POST  /api/v1/memos            {content, visibility, space, attachments: [{name}]} (content may be empty, as in
+                                 Memos; attachments sent before without a note become the new note's)
+  (--journal / --immich, the fork: a picture in a note's text must be one of its attachments, else 400)
   POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
   POST  /api/v1/attachments:upload  Memos' resumable upload ({spec, upload_id, write_offset, data, finish_write});
                                  spec.replace_attachment puts the new file over that attachment (same name and
@@ -93,7 +95,19 @@ GONE_MESSAGE = ("API v1 has been removed. Use /api/... for REST and /memos.api.<
                 "See https://github.com/usememos/memos/blob/main/proto/api/CHANGELOG.md")
 
 LOCK = threading.Lock()
-STATE = {"memos": [], "next": 1, "log": [], "offline": False, "files": {}}
+STATE = {"memos": [], "next": 1, "log": [], "offline": False, "files": {}, "loose": {}}
+# the fork (journaling mode or its Immich): a picture in a note's text must be one of the note's
+# attachments, as its UpdateMemo / CreateMemo check ("managed image attachment … must be bound to the memo")
+FORK = "--journal" in sys.argv or "--immich" in sys.argv
+
+
+def unbound_picture(content, attachments):
+    """The first /file/attachments/<uid> in `content` that isn't one of `attachments`, or None."""
+    have = {a["name"].split("/")[-1] for a in attachments}
+    for uid in re.findall(r"\(/file/attachments/([\w\-]+)", content or ""):
+        if uid not in have:
+            return uid
+    return None
 
 
 def png(w, h):
@@ -333,7 +347,8 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         self.note(u)
         if u.path == "/__state":
-            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", [])})
+            return self.send(200, {"memos": STATE["memos"], "log": STATE["log"], "immich_fetched": STATE.get("immich_fetched", []),
+                                   "loose": sorted(STATE["loose"].keys())})
         if STATE["offline"]:
             self.close_connection = True
             return
@@ -429,7 +444,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         self.note(u)
         if u.path == "/__reset":
-            STATE["memos"].clear(); STATE["log"].clear(); STATE["files"].clear(); STATE["next"] = 1
+            STATE["memos"].clear(); STATE["log"].clear(); STATE["files"].clear(); STATE["loose"].clear(); STATE["next"] = 1
             if "sample=1" in u.query:
                 sample()
             return self.send(200, {})
@@ -457,7 +472,23 @@ class H(BaseHTTPRequestHandler):
                 return self.send(403, {"code": 7, "message": "not a member of the space"})
             if vis == "SPACE" and not space:
                 return self.send(400, {"code": 3, "message": "SPACE visibility requires a space"})
+            # attachments sent before (unlinked): the note is made with them
+            linked = []
+            for r in b.get("attachments") or []:
+                a = STATE["loose"].pop(r.get("name"), None)
+                if a is None:
+                    return self.send(404, {"code": 5, "message": "attachment not found: " + str(r.get("name"))})
+                linked.append(a)
+            if FORK:
+                uid = unbound_picture(b.get("content") or "", linked)
+                if uid:
+                    for a in linked:
+                        STATE["loose"][a["name"]] = a
+                    return self.send(400, {"code": 9, "message": "managed image attachment %s must be bound to the memo" % uid})
             m = add(b.get("content") or "", visibility=vis, space=space)
+            for a in linked:
+                a["memo"] = m["name"]
+                m["attachments"].insert(0, a)
             return self.send(200, m)
         if p == "/attachments:upload":
             b = self.body()
@@ -534,6 +565,8 @@ class H(BaseHTTPRequestHandler):
             if memo is not None:
                 a["memo"] = memo["name"]
                 memo["attachments"].insert(0, a)  # (Memos lists a note's attachments newest first)
+            else:
+                STATE["loose"][a["name"]] = a  # (not a note's yet: a note made later can have it)
             return self.send(200, a)
         return self.send(404, {"message": "not found"})
 
@@ -592,6 +625,9 @@ class H(BaseHTTPRequestHandler):
             return self.send(400, {"code": 3, "message": "moving a memo with SPACE visibility requires an explicit visibility update"})
         for field in fields:
             if field == "content":
+                if FORK and unbound_picture(b.get("content", m["content"]), m["attachments"]):
+                    return self.send(400, {"code": 9, "message": "managed image attachment %s must be bound to the memo"
+                                           % unbound_picture(b.get("content", m["content"]), m["attachments"])})
                 m["content"] = b.get("content", m["content"])
                 m["tags"] = tags_of(m["content"])
                 m["property"]["hasTaskList"] = "- [" in m["content"]
@@ -632,6 +668,9 @@ def _delete(self):
                 m["attachments"].remove(a)
                 STATE["files"].pop(mm.group(1).split("/")[-1], None)
                 return self.send(200, {})
+    if STATE["loose"].pop(mm.group(1), None) is not None:
+        STATE["files"].pop(mm.group(1).split("/")[-1], None)
+        return self.send(200, {})
     return self.send(404, {"code": 5, "message": "attachment not found"})
 
 

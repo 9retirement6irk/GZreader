@@ -9669,7 +9669,7 @@ print("Notes (Memos v0.31)")
             "a picture already coming: the board and the page are told when it's here (one download)")
         local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
         check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("local sheets = Notes.drawings(m)\n    for i, a in ipairs(sheets) do", 1, true)
-            and nsrc2:find("if not shown[a] then listed[#listed + 1] = a end", 1, true),
+            and nsrc2:find("if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end", 1, true),
             "drawings: on the board's cards and the note's page, not repeated under Attachments")
 
         -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
@@ -13494,6 +13494,56 @@ print("Immich photos for notes and drawings (gzreader_immichpick.lua): the Memos
     local lq = plugin.store.memos.queue[#plugin.store.memos.queue]
     check(#plugin.store.memos.queue == queue_before + 1 and lq.op == "attach" and lq.name == note.name and lq.drawings[1].type == "image/jpeg"
         and #held.attachments == 1 and held.attachments[1].type == "image/jpeg", "a photo added in the editor: queued for the note, shown with it at once")
+    table.remove(plugin.store.memos.queue)
+
+    -- photos in the text (asked each time, in the editor): sent when picked, the note made with them
+    local NoteEditor = { pictureLine = require("gzreader_sticky").pictureLine }
+    check(NoteEditor.pictureLine({ name = "attachments/att9", filename = "IMG 0002.jpg" }) == "![IMG 0002](/file/attachments/att9/IMG%200002.jpg)",
+        "a photo's line in the text, as Memos' editor writes it")
+    local loose = c:uploadAttachment(files[1].path, files[1].filename, nil, files[1].type)
+    local luid = loose and tostring(loose.name):match("attachments/(.+)$")
+    local line = loose and NoteEditor.pictureLine(loose)
+    local refused, rerr = c:create("Text first\n" .. tostring(line), "PRIVATE")
+    check(loose and refused == nil and rerr == "http_400", "the fork: a note whose text shows a picture it doesn't have is refused (" .. tostring(rerr) .. ")")
+    local made = c:create("Text first\n" .. line, "PRIVATE", nil, { loose.name })
+    local mm = made and c:get(made.name)
+    check(mm and mm.attachments[1] and mm.attachments[1].name == loose.name and mm.content:find("/file/attachments/" .. luid, 1, true),
+        "…made with it: the photo is the note's, shown in its text")
+    local q2 = { op = "create", content = "Queued with a photo\n" .. line:gsub(luid, "x"), visibility = "PRIVATE" }
+    local loose2 = c:uploadAttachment(files[2].path, files[2].filename, nil, files[2].type)
+    q2.content = "Queued with a photo\n" .. NoteEditor.pictureLine(loose2)
+    q2.attachments = { loose2.name }
+    q2.id = 999001
+    local res = c:flush({ q2 })
+    local qm
+    for _i, m in ipairs(c:list().memos or {}) do if (m.content or ""):find("Queued with a photo", 1, true) then qm = m end end
+    check(res and #res.done == 1 and qm and qm.attachments[1] and qm.attachments[1].name == loose2.name, "…from the queue too (a new note: its photos sent already)")
+    -- in a note already in Memos: sent onto it, its text can show it at once
+    local onto = c:uploadAttachment(files[1].path, files[1].filename, made.name, files[1].type)
+    local upd, uerr = c:update(made.name, mm.content .. "\n" .. NoteEditor.pictureLine(onto))
+    check(upd and onto, "a note in Memos: the photo sent onto it, its text shows it (" .. tostring(uerr) .. ")")
+    -- the note's photos, the gallery's, and taking one off
+    local held2 = { name = made.name, attachments = {
+        { name = loose.name, filename = "IMG_0002.jpg", type = "image/jpeg" },
+        { name = "attachments/d1", filename = "drawing-20261117-100000.canvas.png", type = "image/png" },
+        { name = "attachments/local-5", filename = "IMG_9.jpg", type = "image/jpeg" },
+        { name = "attachments/pdf", filename = "Map.pdf", type = "application/pdf" },
+        { name = onto.name, filename = "IMG_0001.jpg", type = "image/jpeg" } } }
+    local ph = Notes.photos(held2)
+    check(#ph == 2 and ph[1].name == loose.name and ph[2].name == onto.name, "a note's photos: pictures, not drawings, not ones still to be sent, not a PDF")
+    check(Notes.isGalleryPhoto(held2.attachments[1]) and not Notes.isGalleryPhoto(held2.attachments[2]) and not Notes.isGalleryPhoto(held2.attachments[4])
+        and not Notes.isGalleryPhoto({ type = "image/png", filename = "x.png", link = "https://example.com/x.png" }),
+        "the note's page shows photos as pictures (not drawings, PDFs or links)")
+    Notes.sendSoon = function() end
+    Notes.dropAttachments(plugin, held2, { onto.name })
+    Notes.sendSoon = real_send
+    local dq = plugin.store.memos.queue[#plugin.store.memos.queue]
+    check(dq and dq.op == "undraw" and dq.attachment == onto.name and #held2.attachments == 4, "a photo taken off in the editor: queued to be deleted, gone here at once")
+    local dres = c:flush({ dq })
+    local after = c:get(made.name)
+    local still = false
+    for _i, a in ipairs(after and after.attachments or {}) do if a.name == onto.name then still = true end end
+    check(dres and #dres.done == 1 and not still, "…deleted in Memos")
     table.remove(plugin.store.memos.queue)
     for _i, f in ipairs(files) do os.remove(f.path) end
     stop("pm")
