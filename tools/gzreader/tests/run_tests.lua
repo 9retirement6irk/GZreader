@@ -3720,6 +3720,21 @@ do
     check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Kindle 3: as before")
     as("KindlePaperWhite3", 1072, 1448)
     check(not Touch.dx() and okv and View.maxRows() == nil and okg and GzView.homeShelves() == 1, "Paperwhite 3: as before")
+    -- bigger screens by their size in inches (the device's own DPI)
+    local function dpi(model, w, h, d) as(model, w, h); Device.display_dpi = d end
+    dpi("KindleScribe", 1860, 2480, 300)
+    check(okg and GzView.homeShelves() == 2 and not Touch.dx() and View.maxRows() == nil, "Scribe (6.2\" across): Home two shelves, Downloads as before")
+    dpi("KindleScribe", 2480, 1860, 300)
+    check(okg and GzView.homeShelves() == 2, "…turned sideways too")
+    dpi("KindleScribeColorSoft", 1986, 2648, 300)
+    check(okg and GzView.homeShelves() == 2, "Scribe Colorsoft: two")
+    dpi("KindleOasis3", 1264, 1680, 300)
+    check(okg and GzView.homeShelves() == 1, "Oasis / Colorsoft (4.2\" across): one")
+    dpi("KindlePaperWhite3", 1072, 1448, 300)
+    check(okg and GzView.homeShelves() == 1, "Paperwhite 3 with its DPI: one")
+    dpi("KindleScribe", 1860, 2480, nil)
+    check(okg and GzView.homeShelves() == 1, "no DPI known: one")
+    Device.display_dpi = nil
     Device.model, Device.screen = was_model, was_screen
 end
 

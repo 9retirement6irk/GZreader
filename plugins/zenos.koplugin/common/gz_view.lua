@@ -39,16 +39,28 @@ function M.isBookshelf()
 end
 
 --- GZreader: how many shelves Home's bookshelf has: two on the DX (its tall
---- screen left one shelf with a lot of empty wall), one elsewhere.
+--- screen left one shelf with a lot of empty wall) and on any screen more
+--- than BIG_SCREEN_IN inches across (the Kindle Scribe: 6.2"), one elsewhere.
 M.DX_HOME_SHELVES = 2
+M.BIG_SCREEN_IN = 5.0
+
+--- Whether the screen's shorter side is more than BIG_SCREEN_IN inches
+--- (by the device's own DPI; false when it isn't known).
+function M.bigScreen(Device)
+    local dpi = Device.display_dpi
+    if not (dpi and dpi > 0) then return false end
+    return math.min(Device.screen:getWidth(), Device.screen:getHeight()) / dpi > M.BIG_SCREEN_IN
+end
+
 function M.homeShelves()
-    local ok, dx = pcall(function()
+    local ok, two = pcall(function()
         local Device = require("device")
+        if M.bigScreen(Device) then return true end
         local m = Device.model or ""
         if m ~= "Kindle2" and m ~= "KindleDX" and m ~= "KindleDXG" then return false end
         return math.min(Device.screen:getWidth(), Device.screen:getHeight()) > 600
     end)
-    return (ok and dx) and M.DX_HOME_SHELVES or 1
+    return (ok and two) and M.DX_HOME_SHELVES or 1
 end
 
 --- Home's strip is a shelf (its config allows it, and the view is the bookshelf)?
