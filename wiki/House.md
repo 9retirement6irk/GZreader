@@ -6,6 +6,8 @@ browser involved, and nothing goes through anyone else's server.
 
 Not on the Kindle 2 and DX: they have no Wi‑Fi.
 
+<img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house.png" alt="The House tab on a Paperwhite" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-house-dimmer.png" alt="A dimmable light's buttons" width="300">
+
 ## Turning it on
 
 1. **Settings → Connections → Home Assistant (House)**, and connect (below).
