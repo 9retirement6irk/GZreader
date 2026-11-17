@@ -846,8 +846,10 @@ function DrawScreen:apply(out)
         self:touched()
         local screen_bb = Screen.bb
         local x0, y0, x1, y1
+        local grey = false
         for _i, seg in ipairs(out.segments) do
             self:ink(seg, screen_bb)
+            if seg[7] then grey = true end
             local r = seg[5]
             x0 = math.min(x0 or math.huge, seg[1] - r, seg[3] - r)
             y0 = math.min(y0 or math.huge, seg[2] - r, seg[4] - r)
@@ -859,9 +861,23 @@ function DrawScreen:apply(out)
         x1, y1 = math.min(c.x + c.w, math.ceil(x1) + 1), math.min(c.y + c.h, math.ceil(y1) + 1)
         if x1 > x0 and y1 > y0 then
             -- (the ink is on the screen already: only a refresh, no repaint)
-            UIManager:setDirty(nil, "a2", Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            -- (a grey tool's ink: a refresh that shows greys — A2 and DU make it white or black)
+            UIManager:setDirty(nil, grey and "ui" or self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            if grey then self._stroke_grey = true end
+            -- (the stroke's area, cleaned up once it's done)
+            local d = self._stroke_area
+            if d then
+                d.x0, d.y0, d.x1, d.y1 = math.min(d.x0, x0), math.min(d.y0, y0), math.max(d.x1, x1), math.max(d.y1, y1)
+            else
+                self._stroke_area = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+            end
         end
     end
+    if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
+        local d = self._stroke_area
+        UIManager:setDirty(nil, "ui", Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+    end
+    if out.stroke_done then self._stroke_area, self._stroke_grey = nil, nil end
     if out.stroke_done then
         -- Undo and Redo wake up or go to sleep
         local shown = self._shown or {}
@@ -869,6 +885,20 @@ function DrawScreen:apply(out)
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
 end
+
+--- How fresh ink is put on the e-ink screen. A2 (the quickest) only goes
+--- cleanly between black and white: from a grey pixel (a notepaper's lines,
+--- a PDF page, a picture) its black came out light, so a stroke had gaps
+--- wherever it crossed a ruled line (the owner's Scribe, 2026-11-16). With
+--- a picture under the page: DU ("fast"), which goes from any grey to black.
+function DrawScreen.inkRefreshFor(locked)
+    for _i, el in ipairs(locked or {}) do
+        if el.type == "image" then return "fast" end
+    end
+    return "a2"
+end
+
+function DrawScreen:inkRefresh() return DrawScreen.inkRefreshFor(self.sketch.locked) end
 
 function DrawScreen:tapAt(x, y)
     for i = #self.buttons, 1, -1 do -- (an open panel's buttons are last: first asked)
