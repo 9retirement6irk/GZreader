@@ -90,6 +90,8 @@ function Grimmory:init()
         Log.info("---- plugin loaded", "koreader", tostring(require("version"):getCurrentRevision()),
             "device", tostring(Device.model))
         pcall(function() require("gzreader_timezone").apply() end)
+        -- Home and books keep the screen's rotation (once; gzreader_rotation.lua)
+        pcall(function() require("gzreader_rotation").setup() end)
         local pause = Grimmory.tuneGC()
         if pause then Log.info("memory: 128 MB Kindle, garbage collector pause", pause) end
     end

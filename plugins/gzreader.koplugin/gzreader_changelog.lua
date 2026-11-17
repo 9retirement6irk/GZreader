@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Auto-rotate tile on Kindles that turn the screen themselves (Oasis, Scribe)", text = "On a Kindle with an accelerometer (Oasis, Scribe) the quick panel's Controls have an Auto-rotate tile: a tap turns automatic rotation on or off (on by default, drawn white on black while it's on). Settings → Interface → Quick panel has a tick for it. Other Kindles don't show it." },
+            { short = "Going Home from a book read sideways keeps the screen sideways", text = "Home and books now keep the screen's rotation: a book turned to landscape no longer turns back to portrait when you go Home, and the next book opens the same way. It's KOReader's \"Keep current rotation across views\", ticked once; untick it in Settings → About → Advanced → KOReader settings → Screen → Rotation to give Home and each book their own rotation again." },
+            { short = "Notes turn with the screen: a note, the note editor, a quick note and a journal entry", text = "On Kindles with auto-rotate, turning the Kindle while a note is open (from the Notes tab), while writing one (the editor, or a quick note's window over a book) or while filling in a journal entry turns the screen and lays the page out again for the new shape, keeping what you've typed, the note's tags, space and drawings. The book or Home underneath turns with it, and the Notes tab is laid out again when you go back to it. Before, the screen stayed as it was until the note was closed. The drawing screen still keeps the shape it opened with." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

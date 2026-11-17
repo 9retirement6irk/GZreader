@@ -12,6 +12,7 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 - **Updates from GitHub** (its own updater), debug reports (only if you choose) and diagnostics. → [Updates](Updates-and-Test-Builds), [Privacy and diagnostics](Privacy-and-Diagnostics)
 - **The quick panel**, replacing KOReader's top and bottom menus and ZenOS's touch menu on every device. → [Using GZreader](Using-GZreader)
 - An English dictionary.
+- **One rotation for Home and books:** KOReader's "Keep current rotation across views" is ticked once, so going Home from a book read sideways keeps the screen sideways (KOReader turned Home back to its own rotation, portrait). It can be unticked in Settings → About → Advanced → KOReader settings → Screen → Rotation. → [Using GZreader](Using-GZreader#turning-the-screen)
 
 **Changed in KOReader's own code:**
 
