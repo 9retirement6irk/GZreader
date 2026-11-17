@@ -8576,6 +8576,21 @@ print("Notes (Memos v0.31)")
                 and nsrc:find("Notes.footerShown(m, false)", 1, true) and nsrc:find("m.page, m.page_num = 1, 1", 1, true),
                 "…other notes (a filter): from the top again")
         end
+        -- scrolling: a row cut off at the bottom reaches under the tab bar; it
+        -- takes no tap there (the tab bar does), only on the notes' window
+        do
+            local selected = {}
+            local port = { dimen = { x = 0, y = 120, w = 600, h = 560 } }
+            local menu = { _gz_scroll = { port = port }, onMenuSelect = function(_m, e) selected[#selected + 1] = e end }
+            local it = setmetatable({ entry = { memo = { name = "memos/9" } }, menu = menu }, { __index = Notes._StickyItem })
+            local below = it:onTapSelect(nil, { pos = { x = 300, y = 720 } })
+            local above = it:onHoldSelect(nil, { pos = { x = 300, y = 60 } })
+            local inside = it:onTapSelect(nil, { pos = { x = 300, y = 600 } })
+            menu._gz_scroll = nil
+            local paged = it:onTapSelect(nil, { pos = { x = 300, y = 720 } })
+            check(below == false and above == false and inside == true and paged == true and #selected == 2,
+                "scrolling: a note takes taps only on the notes' window (the tab bar below and the buttons above keep theirs)")
+        end
         -- on top?
         local board = { plugin = plugin }
         Notes.board = board
