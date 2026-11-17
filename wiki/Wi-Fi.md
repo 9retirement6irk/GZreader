@@ -39,6 +39,13 @@ last of them ends it turns it back on (only if it was on before), so reading
 with Wi‑Fi on still saves battery. The log says `wifi: power saving off while
 transferring`; a Kindle whose Wi‑Fi can't be asked leaves it as it is.
 
+**When the scan finds nothing.** Right after GZreader or the Kindle restarted,
+a Paperwhite or Touch sometimes got an empty list from the Wi‑Fi scan, so
+GZreader couldn't connect while the Wi‑Fi menu still could. GZreader then
+asks the Kindle to join the network it has saved, as the Wi‑Fi menu does
+(the log says `wifi: the scan found no network; asked the Kindle to join its
+saved one`).
+
 Wi‑Fi that was already on when GZreader started or woke up counts as
 GZreader's on Auto (off after a minute unused). Going to sleep turns off Wi‑Fi
 GZreader turned on.
