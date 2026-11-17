@@ -6172,6 +6172,120 @@ print("A line in the log for each start: how long until Home is on screen")
     OT.boot = saved_boot
 end)()
 
+print("Memory lines around a book, written at once (a freeze leaves the last one behind)")
+;(function()
+    local OT = require("gzreader_opentiming")
+    local Log = require("gzreader_log")
+    -- the text
+    local text = OT.memoryText({ free = 9, cached = 36, rss = 52, lua_mb = 14.06, interface = "yes" })
+    check(text == "free memory 9 MB (+ 36 MB cache), GZreader 52 MB (Lua 14.1 MB), the Kindle's own interface stopped",
+        "the memory text, started without the Kindle's interface (" .. text .. ")")
+    check(OT.memoryText({ free = 2, cached = 43, rss = 58, lua_mb = 15, interface = "no" }):find("the Kindle's own interface kept in memory$"),
+        "started with the Kindle's interface paused: it says it is still in memory")
+    check(OT.memoryText({ free = 2, cached = 43, rss = 58, lua_mb = 15, interface = "no", interface_mb = 31 }):find("kept in memory %(31 MB%)$"),
+        "…and how much of it")
+    -- the Kindle's interface (cvm), found among the processes
+    local fake_proc = WORK .. "/fake-proc"
+    os.execute("mkdir -p '" .. fake_proc .. "/12' '" .. fake_proc .. "/345' '" .. fake_proc .. "/bus'")
+    local function status(pid, name, kb)
+        local sf = io.open(fake_proc .. "/" .. pid .. "/status", "wb")
+        sf:write("Name:\t", name, "\nState:\tT (stopped)\nVmRSS:\t   ", kb, " kB\n"); sf:close()
+    end
+    status("12", "powerd", 900); status("345", "cvm", 32768)
+    local listed = 0
+    local function ls() local pids, i = { "bus", "12", "345" }, 0; listed = listed + 1; return function() i = i + 1; return pids[i] end end
+    check(OT.interfaceMB(fake_proc, ls) == 32, "the paused interface's size, from its process")
+    status("345", "cvm", 20480)
+    check(OT.interfaceMB(fake_proc, ls) == 20 and listed == 1, "asked again: the same process, not looked for again")
+    status("345", "sh", 500)
+    check(OT.interfaceMB(fake_proc, ls) == nil and listed == 2, "the interface isn't running any more: nothing")
+    os.execute("rm -rf '" .. fake_proc .. "'")
+    check(OT.memoryText({}) == "free memory ? MB (+ ? MB cache), GZreader ? MB (Lua ? MB)", "missing figures: \"?\", and nothing about the interface off a Kindle")
+    local m = OT.memoryNow()
+    check(type(m.free) == "number" and type(m.total_kb) == "number" and type(m.rss) == "number" and m.lua_mb > 0,
+        "this machine's memory, from /proc")
+    check(OT.lowMemory(127128) and not OT.lowMemory(256 * 1024) and not OT.lowMemory(nil),
+        "a DX (127 MB) is a low-memory Kindle, a Kindle 3 (256 MB) isn't")
+    -- the log: a line at once, ahead of the wait, and synced when asked
+    local keep = { path = Log.path, main = Log.main_pid, buffered = Log.buffered, enabled = Log.enabled, synced = Log.synced,
+        cur = OT.cur, home = OT.home, low = OT.SYNC_BELOW_KB, limit = OT.LIMIT }
+    local ml_path = WORK .. "/memory-lines.log"
+    os.remove(ml_path)
+    Log.init(WORK)
+    Log.path = ml_path
+    Log.buffered, Log.enabled, Log.synced = true, true, 0
+    local LUI = require("ui/uimanager")
+    local real_in, timers = LUI.scheduleIn, {}
+    LUI.scheduleIn = function(_ui, _s, fn) timers[#timers + 1] = fn end
+    local function logged()
+        local lf = io.open(ml_path, "rb"); local t = lf and lf:read("*a") or ""; if lf then lf:close() end
+        return t
+    end
+    Log.info("a line that waits")
+    check(logged() == "", "an ordinary line waits to be written with others")
+    Log.infoNow(false, "written at once")
+    local t = logged()
+    check(t:find("a line that waits\n.*written at once\n$") and Log.synced == 0,
+        "infoNow: on the storage's file at once, after the lines that were waiting; not synced unless asked")
+    Log.infoNow(true, "and synced")
+    check(logged():find("and synced\n$") and Log.synced == 1, "infoNow with sync: the line is forced onto the storage (fsync)")
+    Log.info("waits again")
+    check(not logged():find("waits again"), "lines after it wait as before")
+    Log.flush()
+    local fh = io.open(ml_path, "ab")
+    check(Log.fsync(fh) == true, "fsync works on an open file")
+    fh:close()
+    Log.enabled = false
+    Log.infoNow(true, "logging off")
+    check(not logged():find("logging off"), "diagnostic logging off: nothing written")
+    -- the three lines: a book opening, closing, Home back on screen
+    Log.enabled = true
+    OT.SYNC_BELOW_KB = math.huge -- (this machine counts as a low-memory Kindle)
+    Log.synced = 0
+    OT.start(WORK .. "/Some Book.epub")
+    check(logged():find("%[INFO%] book open starting: Some Book%.epub | free memory %d+ MB %(%+ %d+ MB cache%), GZreader %d+ MB %(Lua [%d.]+ MB%)")
+        and Log.synced == 1, "a book starts opening: its name and the memory, synced on a low-memory Kindle")
+    OT.cur = nil
+    OT.closed()
+    check(logged():find("%[INFO%] book closed | free memory") and Log.synced == 2 and type(OT.home) == "table",
+        "the book closes: a memory line, and Home is waited for")
+    OT.homeRefresh({ { widget = { name = "ReaderUI" } } })
+    OT.homeRefresh({ { widget = { name = "filemanager" } } })
+    check(type(OT.home) == "table" and not logged():find("Home on screen"), "refreshes without Home on screen: still waiting")
+    OT.homeRefresh({ { widget = { name = "filemanager" } }, { widget = { _zen_home_focus_targets = {} } } })
+    check(logged():find("%[INFO%] Home on screen [%d.]+ s after the book closed | free memory") and Log.synced == 3 and OT.home == nil,
+        "Home on screen: the third line, once")
+    OT.homeRefresh({ { widget = { _zen_home_focus_targets = {} } } })
+    check(select(2, logged():gsub("Home on screen", "")) == 1, "later refreshes of Home: no more lines")
+    OT.closed()
+    OT.start(WORK .. "/Another.epub")
+    check(OT.home == nil, "another book opened straight away: Home isn't waited for")
+    OT.cur = nil
+    OT.closed()
+    OT.LIMIT = -1 -- (a long time without Home: the file browser, say)
+    OT.homeRefresh({ { widget = { name = "filemanager" } } })
+    OT.LIMIT = keep.limit
+    check(OT.home == nil and select(2, logged():gsub("Home on screen", "")) == 1, "no Home within the limit: the wait ends without a line")
+    OT.SYNC_BELOW_KB = 0 -- (a Kindle with more memory)
+    Log.synced = 0
+    OT.mark("book closed")
+    check(Log.synced == 0 and select(2, logged():gsub("%] book closed |", "")) == 4, "with more memory: written at once, not synced")
+    Log.enabled = false
+    local so_far = logged()
+    OT.closed(); OT.start(WORK .. "/Some Book.epub")
+    check(logged() == so_far and OT.home == nil and OT.cur == nil, "logging off: no memory lines, nothing measured")
+    -- the book's close is hooked
+    local src = io.open(PLUGIN .. "/main.lua", "rb")
+    local mtext = src and src:read("*a") or ""; if src then src:close() end
+    check(mtext:find('function Grimmory:onCloseDocument%(%)\n[^\n]*\n    pcall%(function%(%) require%("gzreader_opentiming"%)%.closed%(%) end%)'),
+        "closing a book calls it")
+    for _i, fn in ipairs(timers) do fn() end -- (the planned writes: none left waiting for the next block)
+    LUI.scheduleIn = real_in
+    os.remove(ml_path)
+    Log.path, Log.main_pid, Log.buffered, Log.enabled, Log.synced = keep.path, keep.main, keep.buffered, keep.enabled, keep.synced
+    OT.cur, OT.home, OT.SYNC_BELOW_KB = keep.cur, keep.home, keep.low
+end)()
+
 print("No usage statistics (since 1.28.1); debug reports have their own setting")
 ;(function()
     local R = require("gzreader_remote")

@@ -1864,6 +1864,8 @@ function Grimmory:onReaderFooterVisibilityChange()
 end
 
 function Grimmory:onCloseDocument()
+    -- memory as the book closes, and again once Home is back (gzreader_opentiming.lua)
+    pcall(function() require("gzreader_opentiming").closed() end)
     nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
