@@ -615,7 +615,10 @@ local function startContact(self, s, now, out)
         self.contacts[s.slot] = c
         return c
     end
-    if not inside then
+    if self.pull_zone and s.y < self.pull_zone and not (pen and inside) then
+        -- from the top edge (or the top bar): a tap there, or a pull down that opens the quick panel
+        c.kind, c.pull = "tap", true
+    elseif not inside then
         c.kind = "tap"
     elseif self.pen_only and not pen and self.zoomed and next(self.contacts) == nil then
         -- a pen Kindle, zoomed in: one finger moves the page (a second, at once: a pinch)
@@ -741,6 +744,8 @@ local function endContact(self, slot, out)
         self.history[#self.history + 1] = { kind = "erase", strokes = c.erased }
         self.redone = {}
         out.stroke_done = true
+    elseif c.kind == "tap" and c.pull and Sketch.pulledDown(c.x0, c.y0, c.x, c.y, self.pull_distance or Sketch.PULL_DISTANCE) then
+        out.pull = true
     elseif c.kind == "tap" and c.moved <= self.tap_slop then
         out.taps[#out.taps + 1] = { x = c.x0, y = c.y0, pen = c.pen }
     end
@@ -823,6 +828,17 @@ end
 --- The shapes (the Kindle Scribe's): drawn corner to corner, kept as a
 --- stroke along the shape's outline (Memos' drawings have no triangle, and
 --- a stroke is undone, rubbed out and sent like any other).
+--- A pull down from the top edge: the quick panel, as at Home and in a book.
+--- `pull_zone` (screen pixels from the top; set by the drawing screen: its top
+--- bar, or a strip when it's folded away) is where one may start.
+Sketch.PULL_DISTANCE = 60
+
+--- True when a contact from (x0, y0) to (x1, y1) went down far enough, more down than across.
+function Sketch.pulledDown(x0, y0, x1, y1, distance)
+    local dy = (y1 or y0) - y0
+    return dy >= (distance or Sketch.PULL_DISTANCE) and math.abs((x1 or x0) - x0) < dy
+end
+
 Sketch.SHAPES = { "square", "circle", "triangle", "line", "arrow" }
 Sketch.SHAPE_SET = { square = true, circle = true, triangle = true, line = true, arrow = true }
 Sketch.ERASER_WIDTHS = { 1, 2, 4, 7, 12 } -- how near a stroke the eraser takes it (the pen's widths, and a wider one)

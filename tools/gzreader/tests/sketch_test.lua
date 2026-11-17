@@ -122,6 +122,46 @@ print("== palm rejection")
     check(f:palmGuard(0) == false, "a finger Kindle never ignores fingers")
 end)()
 
+print("== a pull down from the top: the quick panel")
+;(function()
+    local function pulled(sk, frames)
+        local any, taps, t = false, 0, 0
+        for _i, f in ipairs(frames) do
+            local out = sk:frame(f, t)
+            any = any or out.pull == true
+            taps = taps + #out.taps
+            t = t + 0.01
+        end
+        return any, taps
+    end
+    -- a finger Kindle, the top bar shown (it's a hole, 52 px high)
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.holes, sk.pull_zone, sk.pull_distance = { { x = 0, y = 0, w = 1000, h = 52 } }, 52, 60
+    local p, taps = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 505, 90) }, { finger(0, 510, 200) }, { lift(0) } })
+    check(p and taps == 0 and #sk.strokes == 0, "a finger pulled down from the top bar: the quick panel, no ink, no tap")
+    p, taps = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 502, 22) }, { lift(0) } })
+    check(not p and taps == 1, "a tap on the top bar is still a tap (its buttons)")
+    p = pulled(sk, { { finger(0, 500, 20) }, { finger(0, 700, 60) }, { lift(0) } })
+    check(not p, "a drag along the bar isn't a pull")
+    p = pulled(sk, { { finger(0, 500, 400) }, { finger(0, 500, 700) }, { lift(0) } })
+    check(not p and #sk.strokes == 1, "a stroke down the page draws, as before")
+    -- the top bar folded away: only a strip at the very top
+    sk.holes, sk.pull_zone = {}, 24
+    p = pulled(sk, { { finger(0, 300, 5) }, { finger(0, 300, 150) }, { lift(0) } })
+    check(p and #sk.strokes == 1, "folded away: a pull from the top edge still opens it")
+    p = pulled(sk, { { finger(0, 300, 40) }, { finger(0, 300, 200) }, { lift(0) } })
+    check(not p and #sk.strokes == 2, "…a stroke starting under that strip draws")
+    -- a pen Kindle: a finger pulls; the pen on the page still draws, even at the top
+    local pk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    pk.holes, pk.pull_zone, pk.pull_distance = {}, 24, 60
+    p = pulled(pk, { { finger(0, 400, 4) }, { finger(0, 400, 160) }, { lift(0) } })
+    check(p and #pk.strokes == 0, "a pen Kindle: a finger pulled down from the top edge opens it")
+    p = pulled(pk, { { pen(400, 10) }, { pen(400, 200) }, { hover(400, 200) } })
+    check(not p and #pk.strokes == 1, "…the pen there draws")
+    check(Sketch.pulledDown(0, 0, 10, 80, 60) and not Sketch.pulledDown(0, 0, 10, 40, 60) and not Sketch.pulledDown(0, 0, 90, 80, 60),
+        "far enough down, and more down than across")
+end)()
+
 print("== pinch to zoom")
 ;(function()
     local W, H = CANVAS.w, CANVAS.h
