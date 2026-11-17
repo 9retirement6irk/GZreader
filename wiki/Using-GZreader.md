@@ -120,7 +120,9 @@ run the same GZreader with ZenOS's touch interface:
   GZreader. It replaces ZenOS's "ZenOS" one from earlier versions.
 - **Reading:** tap the right side for the next page, the left side for the
   previous one, the top for the menu (contents, bookmarks, search, fonts…);
-  swipe up for the page browser.
+  swipe up for the page browser. A tap on the bottom status bar hides it
+  and a second tap shows it again (Settings → Reader → Appearance → Bottom
+  status bar → Hide on tap: Off makes that tap turn the page instead).
 - **The first-time tour:** after the setup guide, a short tour opens the
   quick panel and shows how to open and close it, Settings and the Home
   tiles (on the first book, if it didn't run at Home: This book's tiles). It

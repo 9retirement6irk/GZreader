@@ -240,6 +240,10 @@ function M.apply(settings, config)
     local is_color = ok_device and Device and type(Device.hasColorScreen) == "function"
         and Device:hasColorScreen()
     preset.footer.container_bottom_padding = is_color and 6 or 1
+    -- GZreader: a tap on the bottom status bar hides it (and shows it again).
+    -- ZenOS's presets lock the bar (lock_tap), so after the setup guide a tap
+    -- there went on to the next page instead (owner's Kindle Scribe).
+    preset.footer.lock_tap = false
     settings:saveSetting("footer", copy_value(preset.footer))
     settings:saveSetting("reader_footer_mode", preset.reader_footer_mode)
     settings:saveSetting("reader_footer_custom_text", preset.reader_footer_custom_text)
@@ -259,6 +263,7 @@ function M.apply(settings, config)
         config.reader_footer = {}
     end
     config.reader_footer.chapter_time_format = preset.chapter_time_format
+    config.reader_footer.tap_hide = "bottom" -- GZreader: Hide on tap: Bottom
     if type(config.features) ~= "table" then
         config.features = {}
     end
