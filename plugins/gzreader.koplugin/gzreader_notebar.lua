@@ -15,21 +15,6 @@ same thing from widgets, with the same icons (icons/draw/).
   → the bar widget, { [id] = its tap target } (back is "back").
 ]]
 
-local Blitbuffer = require("ffi/blitbuffer")
-local CenterContainer = require("ui/widget/container/centercontainer")
-local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
-local Geom = require("ui/geometry")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
-local IconWidget = require("ui/widget/iconwidget")
-local LeftContainer = require("ui/widget/container/leftcontainer")
-local LineWidget = require("ui/widget/linewidget")
-local OverlapGroup = require("ui/widget/overlapgroup")
-local RightContainer = require("ui/widget/container/rightcontainer")
-local Size = require("ui/size")
-local TextWidget = require("ui/widget/textwidget")
-local VerticalGroup = require("ui/widget/verticalgroup")
 local Screen = require("device").screen
 
 local function S(n) return Screen:scaleBySize(n) end
@@ -42,6 +27,22 @@ NoteBar.HEIGHT = 52 -- (scaled) the drawing screen's
 function NoteBar.height() return S(NoteBar.HEIGHT) end
 
 function NoteBar.build(o)
+    -- (KOReader's widgets, loaded when a bar is built: the tests' stand-ins load this module without them)
+    local Blitbuffer = require("ffi/blitbuffer")
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local Font = require("ui/font")
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local Geom = require("ui/geometry")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local HorizontalSpan = require("ui/widget/horizontalspan")
+    local IconWidget = require("ui/widget/iconwidget")
+    local LeftContainer = require("ui/widget/container/leftcontainer")
+    local LineWidget = require("ui/widget/linewidget")
+    local OverlapGroup = require("ui/widget/overlapgroup")
+    local RightContainer = require("ui/widget/container/rightcontainer")
+    local Size = require("ui/size")
+    local TextWidget = require("ui/widget/textwidget")
+    local VerticalGroup = require("ui/widget/verticalgroup")
     local sw, h = o.width, o.height or NoteBar.height()
     local line = Size.line.medium
     local bh = h - S(8)

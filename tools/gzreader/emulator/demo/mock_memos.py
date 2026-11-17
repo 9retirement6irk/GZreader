@@ -2,7 +2,7 @@
 
 Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
   GET   /api/v1/auth/me
-  GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset)
+  GET   /api/v1/memos            pageSize, pageToken, orderBy, filter (CEL subset), state (NORMAL / ARCHIVED)
   POST  /api/v1/memos            {content, visibility, space} (content may be empty, as in Memos)
   POST  /api/v1/attachments      {filename, type, content (base64), memo}: memo links it to that note
   POST  /api/v1/attachments:upload  Memos' resumable upload ({spec, upload_id, write_offset, data, finish_write});
@@ -10,10 +10,11 @@ Mirrors the parts of Memos' REST API (v0.31.0, /api/v1) GZreader uses:
                                  note). --old-upload: no replace_attachment, as Memos v0.31 (400 unknown field).
                                  An attachment whose id starts with "foreign" is someone else's: 403.
   DELETE /api/v1/attachments/<id>
+  DELETE /api/v1/memos/<id>        the note and its attachments
   GET   /api/v1/memos/<id>         one note
   PATCH /api/v1/memos/<id>/attachments  {name, attachments: [{name}]}: SetMemoAttachments, in that order
   (a note's attachments are listed newest first, as Memos orders them: updated_ts desc)
-  PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned
+  PATCH /api/v1/memos/<id>       ?updateMask=content,visibility,space,pinned,state
   GET   /api/v1/spaces           (--spaces: the spaces you're a member of)
   GET   /file/attachments/<uid>/<filename>
 Sign-in: "Authorization: Bearer <token>" (TOKEN below).
@@ -354,7 +355,11 @@ class H(BaseHTTPRequestHandler):
             ok = matcher(q.get("filter"))
             if ok is None:
                 return self.send(400, {"code": 3, "message": "invalid filter"})
-            items = [m for m in STATE["memos"] if m["state"] == "NORMAL" and ok(m)]
+            # state: NORMAL (Memos' default) or ARCHIVED, as ListMemosRequest.state
+            want = q.get("state") or "NORMAL"
+            if want not in ("NORMAL", "ARCHIVED"):
+                return self.send(400, {"code": 3, "message": "invalid state"})
+            items = [m for m in STATE["memos"] if m["state"] == want and ok(m)]
             # orderBy: "pinned desc, create_time desc" (Memos' default) or other
             # fields of pinned, create_time, update_time, each asc or desc
             order = [o.split() for o in (q.get("orderBy") or "create_time desc").split(",") if o.strip()]
@@ -552,6 +557,10 @@ class H(BaseHTTPRequestHandler):
                     m.pop("space", None)
             elif field == "pinned":
                 m["pinned"] = bool(b.get("pinned"))
+            elif field == "state":
+                if b.get("state") not in ("NORMAL", "ARCHIVED"):
+                    return self.send(400, {"code": 3, "message": "invalid state"})
+                m["state"] = b["state"]
             else:
                 return self.send(400, {"code": 3, "message": "unsupported update mask: " + field})
         m["updateTime"] = iso(datetime.now(timezone.utc))
@@ -569,6 +578,16 @@ def _delete(self):
         return self.missing(u)
     if not self.authed():
         return
+    md = re.fullmatch(r"/(memos/[\w\-]+)", p)
+    if md:
+        # DeleteMemo: the note and its attachments
+        m = next((x for x in STATE["memos"] if x["name"] == md.group(1)), None)
+        if not m:
+            return self.send(404, {"code": 5, "message": "memo not found"})
+        STATE["memos"].remove(m)
+        for a in m["attachments"]:
+            STATE["files"].pop(a["name"].split("/")[-1], None)
+        return self.send(200, {})
     mm = re.fullmatch(r"/(attachments/[\w\-]+)", p)
     if not mm:
         return self.send(404, {"message": "not found"})

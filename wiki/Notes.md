@@ -85,6 +85,16 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
+- **Archive and delete:** a note's **More** (**M** on keyboard Kindles,
+  Menu on a Kindle 4) has **Archive** (the note goes into Memos' archive:
+  off the board, kept) and **Delete…** (asks first; gone for good, in Memos
+  too, with its drawings and attachments). A note not sent yet can be
+  deleted (it's never sent) but not archived until it's in Memos.
+  **Menu → Archived notes** shows the archive (Memos over Wi‑Fi; not on a
+  Kindle syncing through a computer). There a note's **More** has **Restore
+  from the archive** and **Delete…**; **All notes** goes back. Changes wait
+  for Wi‑Fi like any other, and the sync page sends them for the Kindle 2
+  and DX.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
