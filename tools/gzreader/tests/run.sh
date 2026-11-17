@@ -207,6 +207,10 @@ echo "== CI's CPU budgets (the emulator perf run)"
 timeout 60 python3 "$T/perf_check_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== the shelf ornaments stand level"
+timeout 60 python3 -I "$T/ornament_level_test.py" 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== the wiki's links"
 timeout 60 python3 "$T/wiki_test.py" 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
