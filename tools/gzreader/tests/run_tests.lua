@@ -7546,6 +7546,7 @@ print("Notes (Memos v0.31)")
     ;(function() -- Memos v0.31's spaces: Filter → Space…, a note's space when writing it
         local MOCKM = PLUGIN .. "/../../tools/gzreader/emulator/demo/mock_memos.py"
         local function restart(flags)
+            Memos.forgetLacks() -- (another server at the same address: as when connecting again)
             os.execute("kill $(cat " .. WORK .. "/memos.pid) 2>/dev/null")
             socket.sleep(0.3)
             os.execute("python3 -I " .. MOCKM .. " " .. MPORT .. " " .. flags .. " > " .. WORK .. "/memos.log 2>&1 & echo $! > " .. WORK .. "/memos.pid")
@@ -7769,6 +7770,24 @@ print("Notes (Memos v0.31)")
         Notes.notes, Notes.filter = nil, { kind = "all" }
         check(Memos:new(plugin.store.memos):spaces() == nil and sync() and Notes.spaces(plugin) == nil and not Notes.spacesShown(plugin),
             "older Memos: no spaces, Filter as before")
+        ;(function()
+            -- what it lacks is kept: the next syncs don't ask again (two requests and two warnings each)
+            local function asked(path)
+                local n = 0
+                for _i, l in ipairs(mstate().log or {}) do if l:find(path, 1, true) then n = n + 1 end end
+                return n
+            end
+            local before_sp, before_j = asked("/spaces"), asked("/journal/settings")
+            check(sync() and sync() and asked("/spaces") == before_sp and asked("/journal/settings") == before_j,
+                "older Memos: no spaces and no journaling mode remembered: the next syncs don't ask for them")
+            local f = io.open(Memos.lacksPath()); local kept = f and f:read("*a") or ""; if f then f:close() end
+            check(kept:find(plugin.store.memos.server, 1, true) and not kept:find(plugin.store.memos.token, 1, true),
+                "…kept per server (never the token)")
+            local was_ttl = Memos.LACKS_TTL
+            Memos.LACKS_TTL = 0
+            check(sync() and asked("/spaces") == before_sp + 1, "…and asked again once that's old")
+            Memos.LACKS_TTL = was_ttl
+        end)()
         local ok_c = Memos:new(plugin.store.memos):create("Plain note", "PRIVATE", nil)
         check(ok_c and inMemos("Plain note"), "older Memos: a note in no space is sent without the field (it would refuse it)")
 

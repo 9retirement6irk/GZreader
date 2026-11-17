@@ -86,6 +86,11 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   changed. The last page's pictures stay while the tab is closed (a few MB;
   not on the Kindle 2 and DX). In the emulator (Paperwhite 3): 1.4 s of CPU
   to open before, 0.5 s now, 0.25 s when opened again.
+- **Notes syncs ask only what your Memos has** (`gzreader_memos.lua`): a
+  stock Memos has no spaces and no journaling mode, and each sync asked for
+  both and got "not found" (two requests and two warnings in the log every
+  time). What a server lacks is now remembered for 6 hours (and asked again
+  when you connect again), so a sync is the notes and your tags only.
 - **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
   lines, unused: GZreader's updater replaces it) isn't loaded at all; a
   small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is
