@@ -279,6 +279,86 @@ print("== the eraser, undo, clear")
     check(not sk:clear(), "clearing an empty page changes nothing")
 end)()
 
+print("== text boxes: added, moved, resized, undone; in the memos scene")
+;(function()
+    local DrawText = require("gzreader_drawtext")
+    local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 }
+    sk.tool, sk.text_handle = "text", 40
+    sk.text_height = function(el) return 25 * math.ceil(#el.text * 10 / (el.width * 2)) / 2 end
+    local function frames(list)
+        local last
+        for i, f in ipairs(list) do last = sk:frame(f, i * 0.4) end
+        return last
+    end
+    -- a tap where there's no box: the drawing screen asks for its words
+    local out = frames({ { finger(0, 200, 300) }, { lift(0) } })
+    check(out.text_tap and out.text_tap.el == nil and out.text_tap.x == 200 and out.text_tap.y == 300 and #sk.strokes == 0,
+        "the text tool: a tap on the page is for a new box there (no ink)")
+    local el = DrawText.element(100, 150, 200, "Buy milk", nil)
+    sk:addText(el)
+    check(not sk:isEmpty() and #sk:liveTexts() == 1 and el.type == "text" and el.autoWidth == false and el.fontSize == 20
+        and el.fontFamily == "system-ui, sans-serif" and el.height == 25, "a box: memos' text element, 20 units, wrapping at its width")
+    -- canvas: x 200..600, y 300..350 (2 px a unit)
+    local hit, part = sk:textAt(300, 320)
+    check(hit == el and part == "move", "a point in it: the box, to move")
+    hit, part = sk:textAt(590, 345)
+    check(hit == el and part == "resize", "its bottom right corner: to resize")
+    check(sk:textAt(700, 700) == nil, "elsewhere: no box")
+    out = frames({ { finger(0, 300, 320) }, { lift(0) } })
+    check(out.text_tap and out.text_tap.el == el, "a tap on a box: that box (chosen, or its words to change)")
+    -- drag it 100 px right, 60 down
+    out = frames({ { finger(0, 300, 320) }, { finger(0, 350, 350) }, { finger(0, 400, 380) }, { lift(0) } })
+    check(el.x == 150 and el.y == 180 and out.stroke_done and out.redraw and #sk.strokes == 0, "dragged: the box moves with it (in scene units), no ink")
+    -- resize from its corner: 200 px wider
+    local cx, cy = sk:toCanvas(el.x + el.width, el.y + el.height)
+    frames({ { finger(0, cx - 5, cy - 5) }, { finger(0, cx + 95, cy) }, { finger(0, cx + 195, cy - 5) }, { lift(0) } })
+    check(el.width == 300 and el.x == 150 and el.height >= 25, "its corner dragged: wider (" .. el.width .. "), not moved, never shorter than its lines")
+    local narrow = frames({ { finger(0, sk:toCanvas(el.x + el.width, el.y + el.height)) }, { finger(0, 120, 500) }, { lift(0) } })
+    check(narrow and el.width == DrawText.MIN_WIDTH, "…never narrower than " .. DrawText.MIN_WIDTH .. " units")
+    sk:undo()
+    check(el.width == 300, "Undo: the size back")
+    sk:undo()
+    check(el.width == 200 and el.x == 150, "…again: the size before")
+    sk:undo()
+    check(el.x == 100 and el.y == 150, "…again: where it was")
+    sk:redo()
+    check(el.x == 150 and el.y == 180, "Redo: moved again")
+    sk:changeText(el, { text = "Buy oat milk" })
+    sk:removeText(el)
+    check(#sk:liveTexts() == 0 and sk:isEmpty(), "deleted: off the page")
+    sk:undo()
+    check(#sk:liveTexts() == 1 and el.text == "Buy oat milk", "Undo: back, its words as changed")
+    sk:undo()
+    check(el.text == "Buy milk", "…and its words before")
+    -- Clear takes boxes too; Undo brings them back
+    check(sk:clear() and #sk:liveTexts() == 0, "Erase page: the boxes go too")
+    sk:undo()
+    check(#sk:liveTexts() == 1, "…Undo: back")
+    -- the scene: the box, as memos reads text (containerId null)
+    local scene = sk:scene()
+    local found
+    for _i, e in ipairs(scene.elements) do if e.type == "text" then found = e end end
+    local txt = Drawing.encode(scene)
+    check(found == el and txt:find('"containerId":null', 1, true) and txt:find('"text":"Buy milk"', 1, true)
+        and txt:find('"autoWidth":false', 1, true), "the memos scene has it: a text element, containerId null")
+    -- a drawing with a box (made here or in memos): the box can be moved, and goes back in its place
+    local back = Drawing.decode(txt)
+    local sk2 = Sketch.fromScene(back, { canvas = { x = 0, y = 0, w = 1000, h = 1400 }, per_unit = 2 })
+    check(#sk2:liveTexts() == 1 and #sk2.locked == 0, "opened again: its box is a box (not kept as it is)")
+    sk2.tool, sk2.text_handle = "text", 40
+    local bx, by = sk2:toCanvas(sk2.texts[1].x + 10, sk2.texts[1].y + 5)
+    for i, f in ipairs({ { finger(0, bx, by) }, { finger(0, bx + 40, by) }, { finger(0, bx + 80, by) }, { lift(0) } }) do sk2:frame(f, i * 0.4) end
+    local s2 = sk2:scene()
+    local n_text = 0
+    for _i, e in ipairs(s2.elements) do if e.type == "text" then n_text = n_text + 1 end end
+    check(n_text == 1 and s2.elements[#s2.elements].type == "text" and s2.elements[#s2.elements].x > back.elements[#back.elements].x - 1,
+        "…moved, written back once, in its place")
+    -- the pen draws as before when the tool isn't text
+    sk.tool = "pen"
+    frames({ { finger(0, 600, 900) }, { finger(0, 650, 950) }, { lift(0) } })
+    check(#sk.strokes == 1, "another tool: a stroke over the box draws as before")
+end)()
+
 print("== the PNG's crop and the memos scene")
 ;(function()
     local sk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
@@ -320,7 +400,8 @@ print("== opening a drawing to go on with it (one made in memos' web app)")
     local original = Drawing.encode(scene)
     local PW3 = { x = 0, y = 100, w = 1072, h = 1300 }
     local sk = Sketch.fromScene(scene, { canvas = PW3, per_unit = 2 })
-    check(#sk.strokes == 6 and #sk.locked == 2, "its 6 pen strokes can be changed; the ellipse and the text are kept as they are")
+    check(#sk.strokes == 6 and #sk.locked == 1 and #sk:liveTexts() == 1,
+        "its 6 pen strokes can be changed; its text is a box to move or retype; the ellipse is kept as it is")
     local b = sk:bounds()
     check(sk.per_unit < 2 and b.x >= 0 and b.y >= 0 and b.x + b.w <= PW3.w + 1 and b.y + b.h <= PW3.h + 1,
         "bigger than the page: scaled down to fit (" .. string.format("%.2f", sk.per_unit) .. " px a unit), all on the page")
@@ -359,7 +440,7 @@ print("== opening a drawing to go on with it (one made in memos' web app)")
         "the new stroke is placed in the drawing's own units (where it was drawn on it)")
     check(out.appState.viewBackgroundColor == scene.appState.viewBackgroundColor and out.files == scene.files,
         "its paper and files kept")
-    check(sk:clear() and not sk:isEmpty() and #sk:live() == 0, "Clear rubs out the strokes; memos' shapes and text stay")
+    check(sk:clear() and not sk:isEmpty() and #sk:live() == 0 and #sk:liveTexts() == 0, "Clear rubs out the strokes and text boxes; memos' shapes stay")
     -- a small drawing isn't enlarged
     local small = Drawing.newScene()
     Drawing.addStroke(small, { { 10, 10 }, { 60, 40 } })

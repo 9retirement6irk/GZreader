@@ -102,6 +102,7 @@ DrawScreen.SIDE_TOOLS = {
     { id = "pen", icon = "pen", label = _("Pen") },
     { id = "highlighter", icon = "highlighter", label = _("Highlighter") },
     { id = "shape", icon = "shapes", label = _("Shapes") },
+    { id = "text", icon = "text", label = _("Text") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
     { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
@@ -281,6 +282,7 @@ function DrawScreen:showPage(i, first)
     self.index = i
     self.page = p
     self.sketch = sk
+    self.text_sel = nil -- (a text box chosen on another page)
     sk.canvas = self.canvas
     sk.pen_only = self.pen_only
     sk.holes = self.holes
@@ -316,6 +318,9 @@ function DrawScreen:syncTool()
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
+    -- text boxes: their corner handle, and how tall their lines are
+    sk.text_handle = S(44)
+    sk.text_height = function(el) return self:textHeight(el) end
 end
 
 --- The rows of the panel `which` (a list, as the Kindle Scribe's: a name at
@@ -503,7 +508,7 @@ function DrawScreen:selected(t)
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" then return self.tool == t.id end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
     return false
@@ -512,7 +517,7 @@ end
 function DrawScreen:enabled(t)
     if t.id == "undo" then return self.sketch:canUndo() end
     if t.id == "redo" then return self.sketch:canRedo() end
-    if t.id == "clear" then return #self.sketch:live() > 0 end
+    if t.id == "clear" then return #self.sketch:live() > 0 or #self.sketch:liveTexts() > 0 end
     if t.id == "prev" then return self.index > 1 end
     if t.id == "next" then return self.index < #self.pages end
     return true
@@ -540,6 +545,10 @@ function DrawScreen:hint()
         local out = {}
         for i, name in ipairs(self.meta.tags) do out[i] = "#" .. name end
         return table.concat(out, " ")
+    end
+    if self.tool == "text" then
+        return self.text_sel and _("Drag the box to move it, its corner to resize it; tap it to change its words")
+            or _("Tap where a text box goes; tap a box to choose it")
     end
     local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
     return on and (how .. " \u{00B7} " .. on) or how
@@ -690,6 +699,7 @@ function DrawScreen:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     local c = self.canvas
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
+    self:paintSelection(bb, x + c.x, y + c.y)
     self:paintBar(bb, x, y)
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
@@ -960,6 +970,7 @@ function DrawScreen:repaintCanvas()
     end
     self:paintLocked(pictures)
     self:paintLocked(others)
+    for _i, el in ipairs(self.sketch:liveTexts()) do self:paintText(el) end
     local list = self.sketch:live()
     local cur = self.sketch:current()
     if cur then list[#list + 1] = cur end
@@ -1137,6 +1148,7 @@ function DrawScreen:apply(out)
         if shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo() then self:refreshBar() end
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
+    if out.text_tap then self:textTap(out.text_tap) end
     if out.pull then self:pullPanel() end
 end
 
@@ -1149,6 +1161,130 @@ function DrawScreen:pullPanel()
     Log.info("drawing: the quick panel pulled down")
     require("gzreader_panel").show(self.plugin)
     return true
+end
+
+-- ----------------------------------------------------------- text boxes
+
+--- A box's lines as KOReader lays them out: its text at its size, as wide as the box (canvas pixels).
+function DrawScreen:textWidget(el)
+    local TextBoxWidget = require("ui/widget/textboxwidget")
+    local sk = self.sketch
+    local px = math.max(6, math.floor((tonumber(el.fontSize) or 20) * sk.per_unit))
+    local one = Screen:scaleBySize(100) / 100
+    return TextBoxWidget:new{ text = el.text ~= "" and el.text or " ", face = Font:getFace("cfont", math.max(6, math.floor(px / one))),
+        width = math.max(S(20), math.floor((tonumber(el.width) or 100) * sk.per_unit)), fgcolor = Blitbuffer.COLOR_BLACK }
+end
+
+--- How tall a box's lines are, in scene units.
+function DrawScreen:textHeight(el)
+    local tw = self:textWidget(el)
+    local h = tw:getSize().h
+    tw:free()
+    return h / self.sketch.per_unit
+end
+
+--- A box into the page (and the PNG's ink).
+function DrawScreen:paintText(el)
+    local cx, cy = self.sketch:toCanvas(tonumber(el.x) or 0, tonumber(el.y) or 0)
+    local tw = self:textWidget(el)
+    tw:paintTo(self.canvas_bb, math.floor(cx), math.floor(cy))
+    tw:paintTo(self.ink_bb, math.floor(cx), math.floor(cy))
+    tw:free()
+end
+
+--- The chosen box: a frame around it and its resize handle (on the screen only, never in the PNG).
+function DrawScreen:paintSelection(bb, x, y)
+    local el = self.text_sel
+    if not el or self.sketch.text_gone[el] then return end
+    local DrawText = require("gzreader_drawtext")
+    local sk = self.sketch
+    local r = DrawText.rect(el, function(sx, sy) return sk:toCanvas(sx, sy) end)
+    local pad = S(4)
+    bb:paintBorder(x + math.floor(r.x) - pad, y + math.floor(r.y) - pad, math.floor(r.w) + 2 * pad, math.floor(r.h) + 2 * pad,
+        Size.border.thin, Blitbuffer.COLOR_BLACK, S(4))
+    local hs = S(18)
+    local hx, hy = x + math.floor(r.x + r.w) - math.floor(hs / 2), y + math.floor(r.y + r.h) - math.floor(hs / 2)
+    bb:paintRect(hx, hy, hs, hs, Blitbuffer.COLOR_BLACK)
+    bb:paintRect(hx + S(4), hy + S(4), hs - S(8), hs - S(8), Blitbuffer.COLOR_WHITE)
+end
+
+--- A tap with the text tool: on the chosen box, its words to change; on
+--- another box, that one chosen; elsewhere, a new box there (or, with one
+--- chosen, nothing chosen).
+function DrawScreen:textTap(t)
+    if t.el then
+        if t.el == self.text_sel then return self:editText(t.el) end
+        self.text_sel = t.el
+        UIManager:setDirty(self, "ui")
+        return
+    end
+    if self.text_sel then
+        self.text_sel = nil
+        UIManager:setDirty(self, "ui")
+        return
+    end
+    return self:newText(t.x, t.y)
+end
+
+--- Asks for the words of a box: `text` to start with; on_done(text) or on_delete().
+function DrawScreen:askText(title, text, on_done, on_delete)
+    local InputDialog = require("ui/widget/inputdialog")
+    local d
+    local row = { { text = _("Cancel"), id = "close", callback = function() UIManager:close(d) end } }
+    if on_delete then
+        row[#row + 1] = { text = _("Delete"), callback = function() UIManager:close(d); on_delete() end }
+    end
+    row[#row + 1] = { text = text == "" and _("Add") or _("Save"), is_enter_default = false, callback = function()
+        local v = d:getInputText() or ""
+        UIManager:close(d)
+        on_done(v)
+    end }
+    d = InputDialog:new{ title = title, input = text, allow_newline = true, gz_multiline = true, gz_hash_key = true, buttons = { row } }
+    self.text_dialog = d
+    UIManager:show(d)
+    d:onShowKeyboard()
+    return d
+end
+
+--- A new box at canvas point (x, y): its words asked for, then on the page, chosen.
+function DrawScreen:newText(x, y)
+    local sk = self.sketch
+    local c = self.canvas
+    return self:askText(_("Text box"), "", function(text)
+        if text:gsub("%s", "") == "" then return end
+        local DrawText = require("gzreader_drawtext")
+        local sx, sy = sk:toScene(x, y)
+        local w = math.max(S(120), math.min(c.w * 0.5, c.w - x - S(16))) / sk.per_unit
+        local el = DrawText.element(sx, sy, w, text, self.color)
+        el.height = Drawing.round2(math.max(el.height, self:textHeight(el)))
+        sk:addText(el)
+        self.text_sel = el
+        self:touched()
+        self:redrawAll()
+        Log.info("drawing: a text box added")
+    end)
+end
+
+--- The chosen box's words: changed, or the box deleted.
+function DrawScreen:editText(el)
+    local sk = self.sketch
+    return self:askText(_("Text box"), el.text, function(text)
+        if text:gsub("%s", "") == "" then
+            sk:removeText(el)
+            self.text_sel = nil
+        else
+            local probe = { text = text, width = el.width, fontSize = el.fontSize }
+            sk:changeText(el, { text = text, height = Drawing.round2(math.max(el.height, self:textHeight(probe))) })
+        end
+        self:touched()
+        self:redrawAll()
+    end, function()
+        sk:removeText(el)
+        self.text_sel = nil
+        self:touched()
+        self:redrawAll()
+        Log.info("drawing: a text box deleted")
+    end)
 end
 
 --- How fresh ink is put on the e-ink screen. A2 (the quickest) only goes
@@ -1199,6 +1335,7 @@ end
 
 --- The tool in hand ("pen", "highlighter", "shape", "eraser"), and the pen's width.
 function DrawScreen:setTool(tool, width)
+    if tool ~= "text" and self.text_sel then self.text_sel = nil; UIManager:setDirty(self, "ui") end
     self.tool = tool
     if width then
         self.width = width
@@ -1323,6 +1460,9 @@ function DrawScreen:use(t)
         self:syncTool()
         self:setFlyout("pen") -- (laid out again: its switch changed)
     elseif t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then tool(t.id)
+    elseif t.id == "text" then
+        self:setTool("text"); self:setFlyout(nil)
+        Log.info("drawing: the text tool")
     elseif t.id == "more" or t.id == "options" then self:setFlyout(self.flyout ~= t.id and t.id or nil)
     elseif t.id == "shortcut" then self:nextShortcut(); self:setFlyout("more")
     elseif t.id == "undo" then if sk:undo() then self:touched(); self:redrawAll() end

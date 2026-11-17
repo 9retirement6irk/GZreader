@@ -66,7 +66,10 @@ function Sketch.new(opts)
     self.zoomed = false -- (pinched bigger than the page's fit: `fit` keeps the fitted view)
     -- the scene point at the canvas's top left (an opened drawing is moved and scaled to fit)
     self.ox, self.oy = 0, 0
-    self.locked = {} -- an opened drawing's shapes and text: kept as they are, shown, not changed here
+    self.locked = {} -- an opened drawing's shapes and pictures: kept as they are, shown, not changed here
+    self.texts = {} -- text boxes (memos' text elements, gzreader_drawtext.lua): moved, resized, typed in here
+    self.text_gone = {} -- [box] = true: taken off (deleted, undone, cleared)
+    self.base_texts = {} -- [box] = true: the opened drawing's own (written back in their place)
     self.tap_slop = opts.tap_slop or Sketch.TAP_SLOP
     self.width = opts.width or 2
     self.color = Sketch.inkColor(opts.color) -- nil: memos' ink
@@ -245,9 +248,56 @@ function Sketch:live()
     return out
 end
 
+--- The text boxes on the page (not taken off).
+function Sketch:liveTexts()
+    local out = {}
+    for _i, el in ipairs(self.texts) do if not self.text_gone[el] then out[#out + 1] = el end end
+    return out
+end
+
+--- The text box at canvas point (x, y), top one first, and which part:
+--- "resize" (its corner handle) or "move". nil when there's none.
+function Sketch:textAt(x, y)
+    local DrawText = require("gzreader_drawtext")
+    local live = self:liveTexts()
+    local function toCanvas(sx, sy) return self:toCanvas(sx, sy) end
+    for i = #live, 1, -1 do
+        local part = DrawText.partAt(DrawText.rect(live[i], toCanvas), x, y, self.text_handle)
+        if part then return live[i], part end
+    end
+end
+
+local function textChanged(self, el, before)
+    local DrawText = require("gzreader_drawtext")
+    self.history[#self.history + 1] = { kind = "text", el = el, before = before, after = DrawText.snap(el, self.text_gone[el]) }
+    self.redone = {}
+end
+
+--- A new text box (gzreader_drawtext.lua's element) on the page; Undo takes it off.
+function Sketch:addText(el)
+    self.texts[#self.texts + 1] = el
+    self.text_gone[el] = nil
+    textChanged(self, el, { gone = true, x = el.x, y = el.y, width = el.width, height = el.height, text = el.text })
+end
+
+--- A box's `fields` (text, x, y, width, height) changed; Undo puts them back.
+function Sketch:changeText(el, fields)
+    local before = require("gzreader_drawtext").snap(el, self.text_gone[el])
+    for k, v in pairs(fields) do el[k] = v end
+    textChanged(self, el, before)
+end
+
+--- A box taken off the page; Undo brings it back.
+function Sketch:removeText(el)
+    local before = require("gzreader_drawtext").snap(el, self.text_gone[el])
+    self.text_gone[el] = true
+    textChanged(self, el, before)
+end
+
 --- Nothing on the page: no strokes, no shapes or text (its paper doesn't count).
 function Sketch:isEmpty()
     if #self:live() > 0 then return false end
+    if #self:liveTexts() > 0 then return false end
     for _i, el in ipairs(self.locked) do
         if not (self.base and require("gzreader_notepaper").isBackground(self.base, el)) then return false end
     end
@@ -431,6 +481,10 @@ function Sketch.fromScene(scene, opts)
             -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
             local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
             self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
+        elseif el.type == "text" and type(el.text) == "string" then
+            -- (a text box, here or from memos: moved, resized and typed in like a new one)
+            self.texts[#self.texts + 1] = el
+            self.base_texts[el] = true
         else
             self.locked[#self.locked + 1] = el
         end
@@ -620,6 +674,11 @@ local function startContact(self, s, now, out)
         c.kind, c.pull = "tap", true
     elseif not inside then
         c.kind = "tap"
+    elseif self.tool == "text" then
+        -- the text tool: a box under the finger or pen moves (its corner: resizes); a tap elsewhere adds one
+        local el, part = self:textAt(s.x - self.canvas.x, s.y - self.canvas.y)
+        c.kind, c.el, c.part, c.at = "text", el, part, now
+        if el then c.orig = { x = el.x, y = el.y, width = el.width, height = el.height } end
     elseif self.pen_only and not pen and self.zoomed and next(self.contacts) == nil then
         -- a pen Kindle, zoomed in: one finger moves the page (a second, at once: a pinch)
         c.kind = "pan"
@@ -726,6 +785,17 @@ local function endContact(self, slot, out)
     if self.drawing_slot == slot then self.drawing_slot = nil end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
     if c.kind == "pan" then applyPan(self, c, out); return end
+    if c.kind == "text" then
+        if c.moved <= self.tap_slop then
+            out.text_tap = { el = c.el, x = c.x0 - self.canvas.x, y = c.y0 - self.canvas.y }
+        elseif c.el then
+            Sketch.dragText(self, c)
+            local o = c.orig
+            textChanged(self, c.el, { x = o.x, y = o.y, width = o.width, height = o.height, text = c.el.text })
+            out.redraw, out.stroke_done = true, true
+        end
+        return
+    end
     if c.kind == "draw" and c.shape then
         local pts = c.moved > self.tap_slop and self:shapePoints(c.shape, c.x0, c.y0, c.x, c.y) or {}
         for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
@@ -812,6 +882,13 @@ function Sketch:frame(slots, now)
                     if not p.cancel and now - p.at >= Sketch.LIVE_INTERVAL and applyPinch(self, out, false) then p.at = now end
                 elseif c.kind == "pan" then
                     if now - c.at >= Sketch.LIVE_INTERVAL and applyPan(self, c, out) then c.at = now end
+                elseif c.kind == "text" then
+                    -- (the box follows, a step at a time: e-ink can't redraw at every sample)
+                    if c.el and c.moved > self.tap_slop and now - c.at >= Sketch.LIVE_INTERVAL then
+                        Sketch.dragText(self, c)
+                        out.redraw = true
+                        c.at = now
+                    end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
@@ -926,6 +1003,12 @@ function Sketch:canRedo() return #(self.redone or {}) > 0 end
 function Sketch:redo()
     local h = table.remove(self.redone or {})
     if not h then return false end
+    if h.kind == "text" then
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.after) or nil
+        self.history[#self.history + 1] = h
+        return true
+    end
+    for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = h.kind == "clear" or nil end
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do
             st.gone, st.undone = false, nil
@@ -944,6 +1027,11 @@ function Sketch:undo()
     if not h then return false end
     self.redone = self.redone or {}
     self.redone[#self.redone + 1] = h
+    if h.kind == "text" then
+        self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.before) or nil
+        return true
+    end
+    for _i, el in ipairs(h.texts or {}) do self.text_gone[el] = nil end
     if h.kind == "add" then
         for _i, st in ipairs(h.strokes) do st.gone = true; st.undone = true end
     else
@@ -958,10 +1046,11 @@ end
 
 --- Clears the page (undo brings it back). True when something changed.
 function Sketch:clear()
-    local live = self:live()
-    if #live == 0 then return false end
+    local live, texts = self:live(), self:liveTexts()
+    if #live == 0 and #texts == 0 then return false end
     for _i, st in ipairs(live) do st.gone = true end
-    self.history[#self.history + 1] = { kind = "clear", strokes = live }
+    for _i, el in ipairs(texts) do self.text_gone[el] = true end
+    self.history[#self.history + 1] = { kind = "clear", strokes = live, texts = texts }
     self.redone = {}
     return true
 end
@@ -980,7 +1069,10 @@ function Sketch:bounds()
             maxY = math.max(maxY or p[2] + r, p[2] + r)
         end
     end
-    for _i, el in ipairs(self.locked) do
+    local boxes = {}
+    for _i, el in ipairs(self.locked) do boxes[#boxes + 1] = el end
+    for _i, el in ipairs(self:liveTexts()) do boxes[#boxes + 1] = el end
+    for _i, el in ipairs(boxes) do
         local x0, y0 = self:toCanvas(el.x or 0, el.y or 0)
         local x1, y1 = self:toCanvas((el.x or 0) + (tonumber(el.width) or 0), (el.y or 0) + (tonumber(el.height) or 0))
         minX, minY = math.min(minX or x0, x0, x1), math.min(minY or y0, y0, y1)
@@ -1015,6 +1107,7 @@ function Sketch:scene(paper)
         for _i, st in ipairs(self:live()) do if st.el then keep[st.el] = true end end
         local locked = {}
         for _i, el in ipairs(self.locked) do locked[el] = true end
+        for _i, el in ipairs(self:liveTexts()) do locked[el] = true end
         scene.elements = Drawing.list()
         for _i, el in ipairs(self.base.elements or {}) do
             if keep[el] or locked[el] then scene.elements[#scene.elements + 1] = el end
@@ -1035,7 +1128,29 @@ function Sketch:scene(paper)
             if el and st.kind then el.customData = { gzTool = st.kind } end
         end
     end
+    -- text boxes made here: after the strokes (memos draws them on top)
+    for _i, el in ipairs(self:liveTexts()) do
+        if not self.base_texts[el] then scene.elements[#scene.elements + 1] = el end
+    end
     return scene
+end
+
+--- A text box dragged by contact `c`: moved, or (its corner) resized; its
+--- lines wrap at the new width, and it's never shorter than they are
+--- (`text_height(el)`, the drawing screen's measure, in scene units).
+function Sketch.dragText(self, c)
+    local el, o = c.el, c.orig
+    if not (el and o) then return end
+    local dx, dy = (c.x - c.x0) / self.per_unit, (c.y - c.y0) / self.per_unit
+    local round2 = Drawing.round2
+    if c.part == "resize" then
+        local DrawText = require("gzreader_drawtext")
+        el.width = round2(math.max(DrawText.MIN_WIDTH, o.width + dx))
+        local need = self.text_height and self.text_height(el) or 0
+        el.height = round2(math.max(need, o.height + dy, (tonumber(el.fontSize) or DrawText.SIZE) * DrawText.LINE_HEIGHT))
+    else
+        el.x, el.y = round2(o.x + dx), round2(o.y + dy)
+    end
 end
 
 --- The centres of the discs that paint a segment of radius `r` (one every

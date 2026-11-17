@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Drawing: typed text boxes you can move and resize", text = "The drawing screen's tools have Text: tap the page and type, and a text box goes there. Drag a box to move it, drag its corner to resize it (the words wrap at its width), tap it to change its words or delete it; Undo and Redo work on them. Memos gets them as its own text boxes, and text boxes made in Memos can now be moved and retyped on the Kindle." },
             { short = "Notes: the quick panel pulls down while you write or draw", text = "A swipe down from the top opens the quick panel over the note editor (the keyboard steps aside), a drawing and a journal entry, as at Home and in a book; what you were doing is still there when it closes. In a drawing, pull down from the top bar, or from the very top edge with the bar folded away: that never draws, and on the Scribe the pen still draws up to the edge." },
         },
     },
