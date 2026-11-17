@@ -8555,13 +8555,28 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
             and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
-            and select(2, nesrc:gsub("self:topTap%(", "")) == 6,
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 5,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
         check(nesrc:find("self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
-            and nesrc:find('local t = guarded and self:topTap(w, fn) or tapTarget(w, fn)', 1, true) ~= nil
-            and nesrc:find('iconButton("back", "back", function() self:onCloseDialog() end)', 1, true) ~= nil
-            and nesrc:find('TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 16), bold = true } }, function() self:save() end)', 1, true) ~= nil,
+            and nesrc:find('tap = function(w, fn, guarded) return guarded and self:topTap(w, fn) or tapTarget(w, fn) end', 1, true) ~= nil
+            and nesrc:find('back = function() self:onCloseDialog() end', 1, true) ~= nil
+            and nesrc:find('action = { "done", _("Done"), function() self:save() end, true }', 1, true) ~= nil,
             "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
+        ;(function() -- the same bar on an opened note (touch), and the bar's name for a note
+            local NoteBar = require("gzreader_notebar")
+            check(NoteBar.nameOf("# Weekend\n\nBike") == "Weekend" and NoteBar.nameOf("#plans #trip\n- [ ] milk") == "milk"
+                and NoteBar.nameOf("![](x.png)\n**Hi** there") == "Hi there" and NoteBar.nameOf("#a #b") == nil
+                and NoteBar.nameOf(string.rep("word ", 20)):sub(-3) == "…",
+                "the bar's name: a note's first line of words (marks off, not a picture or a line of tags, 48 characters at most)")
+            local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(vsrc:find("Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{", 1, true) ~= nil
+                and vsrc:find('{ "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }', 1, true) ~= nil
+                and vsrc:find('{ "options", "more", function() self:onOptions() end }', 1, true) ~= nil
+                and vsrc:find('action = { "edit", _("Edit"), function() self:onEdit() end }', 1, true) ~= nil
+                and vsrc:find('back = function() self:onClose() end', 1, true) ~= nil
+                and not vsrc:find('{ _("More"), function() self:onOptions() end }', 1, true),
+                "an opened note (touch): the same top bar, ← name … pin ⋮ Edit; no buttons along the bottom")
+        end)()
         -- a new drawing's window: a title and tags, then Save
         local ND = require("gzreader_newdrawing")
         check(ND.content("Garden plan", { "home", "#garden", "home" }) == "# Garden plan\n\n#home #garden"
