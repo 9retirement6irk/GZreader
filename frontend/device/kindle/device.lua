@@ -280,8 +280,21 @@ local function kindleEnableWifi(toggle)
             lipc_handle:set_int_property("com.lab126.cmd", "wirelessEnable", 1)
             lipc_handle:set_int_property("com.lab126.wifid", "enable", 1)
         else
+            -- GZreader: wirelessEnable 0 is airplane mode, which turns
+            -- Bluetooth off too: on Kindles with Bluetooth, turn it on again
+            -- and reconnect the headphones/speaker (device/kindle/gzbluetooth).
+            local GzBT = require("device/kindle/gzbluetooth")
+            local gz_bt = GzBT.before(lipc_handle)
             lipc_handle:set_int_property("com.lab126.wifid", "enable", 0)
             lipc_handle:set_int_property("com.lab126.cmd", "wirelessEnable", 0)
+            if GzBT.after(lipc_handle, gz_bt,
+                    function() return lipc.init("com.github.koreader.networkmgr") end,
+                    function(s, fn)
+                        UIManager = UIManager or require("ui/uimanager")
+                        UIManager:scheduleIn(s, fn)
+                    end) then
+                logger.info("GZreader: Bluetooth turned on again after airplane mode")
+            end
         end
         lipc_handle:close()
     else
