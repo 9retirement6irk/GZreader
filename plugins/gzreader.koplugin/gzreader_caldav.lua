@@ -142,6 +142,22 @@ function CalDAV:request(method, url, body, depth, opts)
     return code, out, resp_headers
 end
 
+--- May a request carrying the account's password follow a redirect from
+--- `from` to `to`? Not from https to http, and only within the same site: the
+--- same host, one under it, or one beside it under a parent that has a dot
+--- (iCloud sends caldav.icloud.com to p12-caldav.icloud.com; dav.example.com
+--- may not send it to example.net).
+function CalDAV.mayFollow(from, to)
+    local fs, fh = tostring(from):lower():match("^(https?)://([^/:?#]+)")
+    local ts, th = tostring(to):lower():match("^(https?)://([^/:?#]+)")
+    if not fs or not ts then return false end
+    if fs == "https" and ts ~= "https" then return false end
+    if th == fh or th:sub(-(#fh + 1)) == "." .. fh then return true end
+    local parent = fh:match("^[^.]+%.(.+)$")
+    if not parent or not parent:find(".", 1, true) or parent:match("^[%d.]+$") then return false end
+    return th == parent or th:sub(-(#parent + 1)) == "." .. parent
+end
+
 --- PROPFIND, following redirects. Returns responses, final url, err.
 function CalDAV:propfind(url, depth, props)
     local body = '<?xml version="1.0" encoding="utf-8"?>'
@@ -153,7 +169,13 @@ function CalDAV:propfind(url, depth, props)
         if code >= 300 and code < 400 then
             local loc = headers and (headers.location or headers.Location)
             if not loc then return nil, url, "http_" .. code end
-            url = CalDAV.absolute(url, loc)
+            local to = CalDAV.absolute(url, loc)
+            -- (the password goes with every request: not to another site, never from https to http)
+            if not CalDAV.mayFollow(url, to) then
+                require("gzreader_log").warn("calendar: not following a redirect from", origin(url), "to", origin(to))
+                return nil, url, "redirected_away"
+            end
+            url = to
         else
             local list, perr = CalDAV.parseMultistatus(out)
             if not list then return nil, url, perr end

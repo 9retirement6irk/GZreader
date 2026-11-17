@@ -9064,6 +9064,102 @@ print("Calendar tab")
     os.execute("kill $(cat " .. WORK .. "/caldav2.pid) 2>/dev/null")
 end)()
 
+print("Redirects: the sign-in stays with your own server")
+;(function()
+    local Api = require("gzreader_api")
+    local Access = require("gzreader_access")
+    local CalDAV = require("gzreader_caldav")
+    local http = require("socket.http")
+    -- scripted answers: url -> { code, location, body }; every request recorded
+    local real, seen, answers = http.request, {}, {}
+    http.request = function(reqt)
+        local h = {}
+        for k, v in pairs(reqt.headers or {}) do h[k:lower()] = v end
+        seen[#seen + 1] = { url = reqt.url, method = reqt.method, headers = h, redirect = reqt.redirect }
+        local a = answers[reqt.url] or { 404 }
+        if a[3] and reqt.sink then reqt.sink(a[3]) end
+        if reqt.sink then reqt.sink(nil) end
+        local rh = { ["content-length"] = tostring(#(a[3] or "")) }
+        if a[2] then rh["location"] = a[2] end
+        return 1, a[1], rh, "HTTP/1.1 " .. a[1] .. " X"
+    end
+    local saved_access, saved_extra, saved_ap = plugin.store.access, Api.extra_headers, Access.plugin
+    local ran_ok, ran_err = pcall(function()
+        Access.plugin, Api.extra_headers = plugin, Access.headersFor
+        plugin.store.access = { enabled = true, key = "access-key-1", hosts = "books.example.com" }
+        local auth = { ["Authorization"] = "Bearer grimmory-token", ["Accept"] = "application/json", ["X-Plex-Token"] = "plex-token" }
+        answers = {
+            ["https://books.example.com/api/v1/a"] = { 302, "/api/v1/b" },
+            ["https://books.example.com/api/v1/b"] = { 200, nil, "{}" },
+        }
+        seen = {}
+        local rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        check(rcode == 200 and #seen == 2 and seen[2].headers["authorization"] == "Bearer grimmory-token"
+            and seen[2].headers["x-gzreader-key"] == "access-key-1", "a redirect on the same server: followed, signed in as before")
+        check(seen[1].redirect == false and seen[2].redirect == false, "LuaSocket never follows a redirect by itself")
+        answers = {
+            ["https://books.example.com/api/v1/a"] = { 302, "https://login.example.net/auth?next=1" },
+            ["https://login.example.net/auth?next=1"] = { 200, nil, "{}" },
+        }
+        seen = {}
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        local h2 = seen[2] and seen[2].headers or {}
+        check(rcode == 200 and #seen == 2 and h2["authorization"] == nil and h2["x-plex-token"] == nil and h2["x-gzreader-key"] == nil
+            and h2["accept"] == "application/json", "a redirect to another server: followed without the sign-in, the token or the Access key")
+        answers = {
+            ["https://books.example.com/api/v1/a"] = { 302, "https://cdn.books.example.com/f" },
+            ["https://cdn.books.example.com/f"] = { 200, nil, "{}" },
+        }
+        seen = {}
+        Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        h2 = seen[2] and seen[2].headers or {}
+        check(h2["authorization"] == nil and h2["x-gzreader-key"] == "access-key-1",
+            "another server under one of your Access hosts: the Access key goes (as Access says), the sign-in doesn't")
+        answers = { ["https://books.example.com/api/v1/a"] = { 301, "http://books.example.com/api/v1/a" } }
+        seen = {}
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/a", { headers = auth })
+        check(rcode == 301 and #seen == 1, "from https to http: not followed")
+        answers = { ["https://books.example.com/loop"] = { 302, "/loop" } }
+        seen = {}
+        rcode = Api.rawRequest("GET", "https://books.example.com/loop", { headers = auth })
+        check(rcode == 302 and #seen == Api.MAX_REDIRECTS + 1, "a redirect loop ends " .. #seen)
+        answers = { ["https://books.example.com/api/v1/p"] = { 307, "https://login.example.net/x" } }
+        seen = {}
+        rcode = Api.rawRequest("POST", "https://books.example.com/api/v1/p", { headers = auth, body = { a = 1 } })
+        check(rcode == 307 and #seen == 1, "a POST isn't redirected (as before)")
+        -- a download: the redirect's own body doesn't end up in the file
+        answers = {
+            ["https://books.example.com/api/v1/books/1/download"] = { 302, "https://files.example.net/1.epub", "<html>Moved</html>" },
+            ["https://files.example.net/1.epub"] = { 200, nil, "EPUB-BYTES" },
+        }
+        seen = {}
+        local epub = WORK .. "/redirected.epub"
+        local fh = io.open(epub, "wb")
+        rcode = Api.rawRequest("GET", "https://books.example.com/api/v1/books/1/download", { headers = auth, sink = ltn12.sink.file(fh) })
+        local got = io.open(epub, "rb"):read("*a")
+        check(rcode == 200 and got == "EPUB-BYTES" and seen[2].headers["authorization"] == nil,
+            "a download redirected to another server: only the book in the file, no sign-in sent there " .. got)
+        -- CalDAV: the password follows within the site only
+        for _i, c in ipairs({ { "https://caldav.icloud.com/", "https://p12-caldav.icloud.com/123/", true },
+                { "https://dav.example.com/", "https://dav.example.com/remote.php/dav/", true },
+                { "https://fastmail.com/", "https://caldav.fastmail.com/dav/", true },
+                { "https://dav.example.com/", "https://example.net/", false },
+                { "https://fastmail.com/", "https://evil.com/", false },
+                { "https://dav.example.com/", "http://dav.example.com/", false },
+                { "https://192.168.1.5/", "https://10.1.1.5/", false } }) do
+            check(CalDAV.mayFollow(c[1], c[2]) == c[3], "CalDAV redirect " .. c[1] .. " → " .. c[2] .. ": " .. tostring(c[3]))
+        end
+        answers = { ["https://dav.example.com/.well-known/caldav"] = { 301, "https://collector.example.net/" } }
+        seen = {}
+        local dav = CalDAV:new{ server = "https://dav.example.com", username = "reader", password = "secret" }
+        local list, _, derr = dav:propfind("https://dav.example.com/.well-known/caldav", "0", "<d:current-user-principal/>")
+        check(list == nil and derr == "redirected_away" and #seen == 1, "CalDAV sent to another site: the password isn't sent after it")
+    end)
+    http.request = real
+    plugin.store.access, Api.extra_headers, Access.plugin = saved_access, saved_extra, saved_ap
+    check(ran_ok, "the redirect checks ran: " .. tostring(ran_err))
+end)()
+
 print("Music (Plex): the server, downloads, the player")
 ;(function()
     local Plex = require("gzreader_plex")

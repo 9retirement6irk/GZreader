@@ -247,6 +247,7 @@ end
 local function describe(err)
     if err == "unauthorized" then return _("The calendar server didn't accept the user name or password. Connect again (M → Settings).") end
     if err == "unreachable" then return _("Couldn't reach the calendar server. Check Wi-Fi and the address.") end
+    if err == "redirected_away" then return _("The calendar server sent the sign-in on to another site; GZreader didn't follow it.") end
     if err == "timeout" then return _("The calendar server took too long to answer.") end
     if err == "not_connected" then return _("Not connected to a calendar.") end
     if err == "usb" then return _("Calendars come through your computer: they're brought with each sync (Menu → Sync with computer).") end
@@ -1229,6 +1230,7 @@ function Calendar.connect(plugin, server_input, username, password)
         if err == "unauthorized" then return false, _("The server didn't accept that user name and password.") end
         if err == "unreachable" and not server_input:match("^%s*https?://") and not Lan.isPrivate(server) then return false, Lan.noHttpsText() end
         if err == "unreachable" then return false, _("Couldn't reach a server at that address.") end
+        if err == "redirected_away" then return false, _("That server sends calendar sign-ins on to another site, so GZreader didn't follow it (your password would go there). Use the address of the CalDAV server itself.") end
         return false, T(_("No calendars found there (%1)."), tostring(err))
     end
     if #found.calendars == 0 then return false, _("Signed in, but there are no calendars with events in this account.") end

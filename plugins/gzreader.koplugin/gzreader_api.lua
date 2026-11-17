@@ -145,6 +145,76 @@ local function keepOrClose(conn, code, resp_headers, status)
     conn.inner = nil
 end
 
+--[[ Redirects. LuaSocket follows a GET's redirect by itself, to any host,
+with the same headers: the Grimmory sign-in (Authorization), Plex's token,
+Immich's key and the Access key / Cloudflare token went wherever a server
+redirected (a sign-in proxy's page, another site). rawRequest follows
+redirects itself instead: on the same server (scheme, host and port) as
+before; to another one only with the harmless headers (SAFE_ON_REDIRECT), the
+Access headers worked out again for the new host (gzreader_access.lua), and
+never from https to http. ]]
+Api.REDIRECTS = { [301] = true, [302] = true, [303] = true, [307] = true, [308] = true }
+Api.MAX_REDIRECTS = 5
+Api.SAFE_ON_REDIRECT = { ["accept"] = true, ["accept-encoding"] = true, ["accept-language"] = true,
+    ["user-agent"] = true, ["range"] = true }
+
+--- scheme://host:port of a URL (lower case, the default port filled in).
+function Api.originOf(u)
+    local p = url.parse(tostring(u or ""))
+    if not p or not p.scheme or not p.host then return nil end
+    local scheme = p.scheme:lower()
+    return scheme .. "://" .. p.host:lower() .. ":" .. tostring(p.port or (scheme == "https" and 443 or 80))
+end
+
+--- The headers that may go to another server after a redirect.
+function Api.safeHeaders(h)
+    local out = {}
+    for k, v in pairs(h or {}) do
+        if Api.SAFE_ON_REDIRECT[tostring(k):lower()] then out[k] = v end
+    end
+    return out
+end
+
+--- A sink that holds the start of a body (up to `limit` bytes, 4 KB: a
+--- redirect's page is a few hundred bytes, and a download's progress shouldn't
+--- wait longer) until the answer is known: a redirect's body is dropped
+--- instead of ending up in the file being downloaded.
+function Api.deferredSink(real, limit)
+    limit = limit or 4096
+    local buf, size, through, ended = {}, 0, false, false
+    local d = {}
+    d.sink = function(chunk, err)
+        if through then return real(chunk, err) end
+        if chunk == nil then ended = true; return 1 end
+        buf[#buf + 1] = chunk
+        size = size + #chunk
+        if size > limit then
+            through = true
+            for _i, c in ipairs(buf) do
+                local ok, e = real(c)
+                if not ok then buf = {}; return nil, e end
+            end
+            buf = {}
+        end
+        return 1
+    end
+    --- (a redirect) drop what was held; false if some of it was passed on already
+    function d.discard()
+        local clean = not through
+        buf, size, ended = {}, 0, false
+        return clean
+    end
+    --- (the real answer) pass on what was held, and the end if it came
+    function d.finish()
+        if through then return end
+        through = true
+        for _i, c in ipairs(buf) do real(c) end
+        buf = {}
+        if ended then real(nil) end
+    end
+    return d
+end
+
 --- opts.log_url: what the log shows instead of the address (a secret link,
 --- e.g. a calendar link with its keys in it). opts.want_raw: the body as
 --- text (gzip unpacked) instead of decoded JSON. opts.expected: error codes
@@ -170,6 +240,10 @@ local function rawRequest(method, full_url, opts)
     end
     local chunks = {}
     local sink = opts.sink or socketutil.table_sink(chunks)
+    -- (a GET or HEAD may be redirected: hold the start of a download's body until that's known)
+    local follows = method == "GET" or method == "HEAD"
+    local deferred = follows and opts.sink and Api.deferredSink(opts.sink) or nil
+    if deferred then sink = deferred.sink end
     -- JSON replies: ask for gzip (5-10x smaller to receive and decrypt)
     local gzip = not opts.sink and Gzip.available()
     if gzip then headers["Accept-Encoding"] = "gzip" end
@@ -199,6 +273,7 @@ local function rawRequest(method, full_url, opts)
             headers = headers,
             source = body and ltn12.source.string(body) or nil,
             sink = sink,
+            redirect = false, -- (followed below, without the sign-in to other servers)
         }
         if helper_port and not direct then
             local h2 = {}
@@ -257,6 +332,25 @@ local function rawRequest(method, full_url, opts)
     socketutil:reset_timeout()
     pcall(function() require("gzreader_net").touch() end)
     local ms = math.floor((socket.gettime() - t0) * 1000)
+    if pcall_ok and follows and Api.REDIRECTS[code] and type(resp_headers) == "table" and resp_headers["location"]
+            and (opts._hops or 0) < Api.MAX_REDIRECTS then
+        local next_url = url.absolute(full_url, (tostring(resp_headers["location"]):gsub("%s", "")))
+        local from, to = Api.originOf(full_url), Api.originOf(next_url)
+        local same = from ~= nil and from == to
+        local downgrade = from and from:match("^https:") and not (to or ""):match("^https:")
+        if to and to:match("^https?:") and not downgrade and (not deferred or deferred.discard()) then
+            local o2 = {}
+            for k, v in pairs(opts) do o2[k] = v end
+            o2._hops = (opts._hops or 0) + 1
+            o2.log_url = opts.log_url or next_url:gsub("[?#].*$", "")
+            if deferred then o2.sink = opts.sink end
+            if not same then o2.headers = Api.safeHeaders(opts.headers) end
+            Log.info("HTTP", method, shown_url, code, ms .. "ms", same and "redirected"
+                or "redirected to another server (without the sign-in)")
+            return rawRequest(method, next_url, o2)
+        end
+    end
+    if deferred then deferred.finish() end
     if not pcall_ok then
         logger.warn("Grimmory: request failed", method, shown_url, code)
         Log.err("HTTP", method, shown_url, "raised:", code, ms .. "ms")
