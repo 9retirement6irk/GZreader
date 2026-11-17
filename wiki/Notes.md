@@ -233,7 +233,10 @@ API to `/api` are found too.
     finger at the same time is ignored.
   - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
     tip rubs out, like the pen's other end; let go and it draws again, with
-    the Pen tool still chosen.
+    the Pen tool still chosen. **Settings → Notes → Pen's shortcut button**
+    chooses what holding it does: **Eraser** (the default), or a writing
+    tool: **Pen**, **Pencil**, **Fountain pen** or **Highlighter** (draw
+    with it while the button is held, then you're back to the tool in hand).
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 

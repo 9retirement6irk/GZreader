@@ -529,7 +529,21 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     check(Sketch.toolOf({ opacity = 30 }) == "highlighter" and Sketch.toolOf({ opacity = 80 }) == "pencil"
         and Sketch.toolOf({ opacity = 100 }) == nil and Sketch.toolOf({ opacity = 30, customData = { gzTool = "fountain" } }) == "fountain",
         "a see-through stroke drawn in Memos opens as a highlighter or a pencil")
+    -- the pen's shortcut button: held, its tool (Settings → Notes); the eraser by default
     sk.writing = "pen"
+    sk.side_button, sk.shortcut = true, "highlighter"
+    draw({ { pen(100, 1250, 2000) }, { pen(300, 1250, 2000) }, { up() } })
+    local viaButton = sk:live()[#sk:live()]
+    sk.shortcut = "fountain"
+    draw({ { pen(100, 1280, 2000) }, { pen(300, 1280, 2000) }, { up() } })
+    local viaFountain = sk:live()[#sk:live()]
+    sk.side_button = false
+    draw({ { pen(100, 1310, 2000) }, { pen(300, 1310, 2000) }, { up() } })
+    local after = sk:live()[#sk:live()]
+    check(viaButton.kind == "highlighter" and viaFountain.kind == "fountain" and after.kind == nil and sk.writing == "pen",
+        "the shortcut button held: its tool (highlighter, fountain pen); let go: the tool in hand again")
+    check(Sketch.shortcutTool({}) == "eraser" and Sketch.shortcutTool({ shortcut = "nonsense" }) == "eraser"
+        and Sketch.shortcutTool({ shortcut = "pencil" }) == "pencil", "the shortcut button's tool: the eraser unless chosen")
     -- a finger (no pressure reported) and a pen that reports none: as before
     local fsk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     run(fsk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })

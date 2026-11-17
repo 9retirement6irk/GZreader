@@ -151,6 +151,13 @@ function DrawScreen.lastWriting()
     return Sketch.TOOL_STYLE[v] and v or "pen"
 end
 
+--- The pen's shortcut button's tool (Settings → Notes): Sketch.SHORTCUTS, "eraser" by default.
+function DrawScreen.shortcut()
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_shortcut")
+    for _i, id in ipairs(Sketch.SHORTCUTS) do if id == v then return v end end
+    return "eraser"
+end
+
 DrawScreen.WRITING_NAMES = { pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"), highlighter = _("Highlighter") }
 
 --- The pen's width new drawings start with (the last one chosen).
@@ -725,10 +732,11 @@ function DrawScreen:hook()
         if screen.sketch then
             local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true
             if held ~= screen.sketch.side_button then
-                Log.info("drawing: the pen's side button", held and "held (rubs out)" or "let go",
+                Log.info("drawing: the pen's side button", held and ("held (" .. DrawScreen.shortcut() .. ")") or "let go",
                     input.stylus_eraser_active and "BTN_STYLUS" or input.stylus_highlighter_active and "BTN_STYLUS2" or "")
             end
             screen.sketch.side_button = held
+            screen.sketch.shortcut = DrawScreen.shortcut()
         end
         local ok, err = pcall(screen.onContacts, screen, det, tevs)
         if not ok then Log.warn("drawing: input:", tostring(err)) end

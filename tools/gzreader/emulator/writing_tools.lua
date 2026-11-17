@@ -117,6 +117,21 @@ add({ fn = function(E)
     check(st and st.kind == "highlighter" and beside > 0x80 and beside < 0xF0,
         "Highlighter: a broad light grey band (" .. beside .. ")")
     check(cross < 0x30, "…across the pen's line, the ink stays black under it (" .. cross .. ")")
+    if PEN then
+        -- the pen's shortcut button set to the fountain pen: held, a fountain stroke; the highlighter still in hand
+        G_reader_settings:saveSetting("gzreader_drawing_shortcut", "fountain")
+        E.penSideButton(true)
+        line(E, 0.8, 0.2, 0.8)
+        E.penSideButton(false, 0.6)
+    end
+end, after = 3 })
+add({ fn = function(E)
+    if PEN then
+        local st = last()
+        check(st and st.kind == "fountain" and screen().writing == "highlighter",
+            "the shortcut button (Fountain pen) held: a fountain pen stroke; the highlighter still in hand")
+        G_reader_settings:delSetting("gzreader_drawing_shortcut")
+    end
     local f = io.open(E.out .. "/writing-tools-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l in ipairs(lines) do E.say("check", l) end

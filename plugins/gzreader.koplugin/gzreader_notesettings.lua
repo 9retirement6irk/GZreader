@@ -336,7 +336,41 @@ function NoteSettings.items(plugin)
             help_text = _("Attachments and pictures you open are downloaded once and kept. Past this limit, the ones used longest ago are removed (they stay in Memos)."),
             sub_item_table = files_items,
         }),
+        NoteSettings.shortcutItem(icon),
     }
+end
+
+NoteSettings.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
+    highlighter = _("Highlighter") }
+
+--- Pen's shortcut button (a Kindle with a pen: the Scribe's Premium Pen):
+--- what holding its side button switches to while drawing. Nil elsewhere
+--- (the menu leaves it out).
+function NoteSettings.shortcutItem(icon, device)
+    local Sketch = require("gzreader_sketch")
+    if not Sketch.penDevice(device or require("device")) then return nil end
+    local function current()
+        local v = G_reader_settings:readSetting("gzreader_drawing_shortcut")
+        return NoteSettings.SHORTCUT_NAMES[v] and v or "eraser"
+    end
+    local sub = {}
+    for _i, id in ipairs(Sketch.SHORTCUTS) do
+        sub[#sub + 1] = {
+            text = NoteSettings.SHORTCUT_NAMES[id],
+            radio = true,
+            checked_func = function() return current() == id end,
+            callback = function()
+                G_reader_settings:saveSetting("gzreader_drawing_shortcut", id)
+                Log.info("notes: the pen's shortcut button now switches to the", id)
+            end,
+        }
+    end
+    local item = {
+        text_func = function() return T(_("Pen's shortcut button: %1"), NoteSettings.SHORTCUT_NAMES[current()]) end,
+        help_text = _("While drawing, holding the pen's side (shortcut) button switches to this tool; let go and you're back to the one in hand. Eraser rubs out with the tip, as on the Kindle Scribe out of the box."),
+        sub_item_table = sub,
+    }
+    return icon and icon("edit", item) or item
 end
 
 return NoteSettings
