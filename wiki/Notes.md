@@ -223,9 +223,11 @@ API to `/api` are found too.
       showing the tool in hand; tap it to bring them back.
     The pencil's specks go on as you draw and stay as they are; the
     highlighter shows as a light pattern while you draw and turns grey when
-    you lift. In Memos the pencil's ink is a picture laid in the drawing (so
-    its texture shows there too); its strokes are kept for the Kindle but
-    can't be moved or erased in Memos' own editor.
+    you lift. In Memos the note shows the page as the Kindle drew it, the
+    pencil's texture included. In Memos' own drawing editor the pencil's
+    strokes are plain see-through lines you can move and erase; a drawing
+    saved from there shows them that way until it's opened and saved on the
+    Kindle again.
     **Zoom:** pinch to zoom in (up to 4×) and the page follows your fingers;
     two fingers move a zoomed page, and on a Kindle with a pen one finger
     does too. Pinch in for the whole page.

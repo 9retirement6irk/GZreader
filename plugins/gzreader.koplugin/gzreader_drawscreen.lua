@@ -1957,33 +1957,6 @@ end
 
 --- Saves the page shown: the PNG of the page (cropped, memos' colours) with
 --- the scene inside. Returns { path, filename } or nil, err.
---- The pencil's ink put in `scene` as a picture, for Memos (Sketch.pencilLayer):
---- encoded as a PNG (grey and see-through), carried in the scene's files.
-function DrawScreen.addPencilLayer(scene, sk, path)
-    local layer = sk:pencilLayer()
-    if not layer then return false end
-    local tmp = path .. ".pencil.png"
-    local ok = require("ffi/png").encodeToFile(tmp, layer.mem, layer.w, layer.h, layer.n)
-    local f = ok ~= false and io.open(tmp, "rb")
-    local data = f and f:read("*a")
-    if f then f:close() end
-    os.remove(tmp)
-    if not data or #data == 0 then return false end
-    local file_id = Drawing.randomId()
-    scene.files = type(scene.files) == "table" and scene.files or {}
-    scene.files[file_id] = { mimeType = "image/png", dataURL = "data:image/png;base64," .. require("ffi/sha2").bin_to_base64(data),
-        created = os.time() * 1000 }
-    local hidden = Sketch.hidePencil(scene, {
-        id = Drawing.randomId(), type = "image", x = layer.x, y = layer.y, width = layer.w, height = layer.h,
-        angle = 0, strokeColor = "#1e1e1e", backgroundColor = "transparent", strokeWidth = 2, opacity = 100,
-        isDeleted = false, groupIds = Drawing.list(), boundElements = Drawing.list(),
-        seed = Drawing.randomSeed(), locked = true, fileId = file_id, scale = Drawing.list({ 1, 1 }),
-        customData = { gzLayer = "pencil" },
-    })
-    Log.info("drawing: the pencil's ink as a picture for Memos,", hidden, "strokes,", layer.w .. "x" .. layer.h, #data, "bytes")
-    return true
-end
-
 function DrawScreen:save()
     local sk, p = self.sketch, self.page
     -- (zoomed: the whole page again first; the picture is made from the screen's)
@@ -2005,7 +1978,6 @@ function DrawScreen:save()
     local ok, err = Png.encodeToFile(tmp, mem, crop.w, crop.h, 3)
     if ok == false then os.remove(tmp); return nil, err or "png" end
     local scene = sk:scene()
-    pcall(DrawScreen.addPencilLayer, scene, sk, path)
     local wrote, why = Drawing.writeFile(tmp, scene, path)
     os.remove(tmp)
     if not wrote then return nil, why end
