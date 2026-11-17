@@ -8729,6 +8729,19 @@ print("Notes (Memos v0.31)")
         local jm
         for _i, m in ipairs(mstate().memos) do if m.content == jq.content then jm = m end end
         check(jm and jm.space == "spaces/family" and jm.visibility == "PRIVATE", "Memos has the entry, in the journal space")
+        ;(function() -- a journal entry with a drawing (touch Kindles: ✎ in the corner of its words)
+            local dpath = WORK .. "/journal-drawing.canvas.png"
+            local df = io.open(dpath, "w"); df:write("png"); df:close()
+            local n_before = #plugin.store.memos.queue
+            jshown.on_save("A drawing day.\n", { { path = dpath, filename = "drawing-20261117-010000.canvas.png" } })
+            local dq = plugin.store.memos.queue[#plugin.store.memos.queue]
+            check(#plugin.store.memos.queue == n_before + 1 and dq.op == "create" and dq.drawings and dq.drawings[1].path == dpath
+                and dq.space == "spaces/family" and dq.visibility == "PRIVATE", "a journal entry with a drawing: queued with it (a note with a drawing)")
+            check(Notes.notes[1].local_id == dq.id and #Notes.notes[1].attachments == 1, "…on the board at once, with its drawing")
+            table.remove(plugin.store.memos.queue)
+            table.remove(Notes.notes, 1)
+            os.remove(dpath)
+        end)()
         plugin.store.memos.spaces = { { name = "spaces/book-club", title = "Book club" } }
         check(Notes.journalSpace(plugin) == nil, "a journal space that isn't one of yours any more: entries go to no space")
         -- not connected: Connect first
