@@ -2232,6 +2232,66 @@ print("Diagnostic log files don't pile up")
         "the log as text for sending: its file is deleted again")
 end)()
 
+print("Wi-Fi network names stay out of the log and reports")
+;(function()
+    local Log = require("gzreader_log")
+    local hide = require("gzreader_netname")
+    local FSI, PDI = "\226\129\168", "\226\129\169" -- (KOReader's BD.wrap around the name)
+    check(hide("Connecting to network " .. FSI .. "Example Net" .. PDI .. "…") == "Connecting to network <network>…"
+        and hide("Connected to network Example Net") == "Connected to network <network>"
+        and hide("Already connected to network Example Net.") == "Already connected to network <network>."
+        and hide("NetworkMgr: wpa_supplicant automatically connected to network Example Net (after 1.5 seconds)")
+            == "NetworkMgr: wpa_supplicant automatically connected to network <network> (after 1.5 seconds)"
+        and hide("NetworkMgr: Failed to connect: timeout ; last attempt on ssid: Example Net")
+            == "NetworkMgr: Failed to connect: timeout ; last attempt on ssid: <network>"
+        and hide("NetworkMgr: lease_ssid set to Example Net") == "NetworkMgr: lease_ssid set to <network>"
+        and hide("stale DHCP lease detected (lease_ssid=Example Net), forcing re-DHCP") == "stale DHCP lease detected (lease_ssid=<network>), forcing re-DHCP"
+        and hide("NetworkMgr:getCurrentNetwork: Current network: Example Net") == "NetworkMgr:getCurrentNetwork: Current network: <network>"
+        and hide("NetworkMgr: Attempting to authenticate on preferred network Example Net") == "NetworkMgr: Attempting to authenticate on preferred network <network>",
+        "the network's name hidden in each of KOReader's messages that carry it")
+    local plain = "Scanning for networks…\nwifi: connected\nforcing re-DHCP for current network\nwifi: no connection after 90 s for sync"
+    check(hide(plain) == plain and hide("a\nConnected to network Example Net\nb") == "a\nConnected to network <network>\nb"
+        and hide("Connected to network <network>") == "Connected to network <network>",
+        "other lines untouched; only the line with the name changes")
+    -- the quiet Wi-Fi scan (touch Kindles): what it would have shown is logged without the name
+    local Net = require("gzreader_net")
+    local NM = require("ui/network/manager")
+    local UIM = require("ui/uimanager")
+    local saved = { NM.reconnectOrShowNetworkMenu, Net._scan, Net.automatic }
+    NM.reconnectOrShowNetworkMenu = function(_self, cb)
+        UIM:show({ text = "Scanning for networks…" })
+        UIM:show({ text = "Connecting to network " .. FSI .. "Example Net" .. PDI .. "…" })
+        if cb then cb() end
+    end
+    Net._scan = nil
+    Net._wrapScan()
+    Net.automatic = true
+    NM:reconnectOrShowNetworkMenu(function() end, false)
+    Log.flush()
+    local lf = io.open(Log.path, "rb"); local logged = lf and lf:read("*a") or ""; if lf then lf:close() end
+    check(logged:find("wifi (quiet): Connecting to network <network>…\n", 1, true) and logged:find("wifi (quiet): Scanning for networks…\n", 1, true)
+        and not logged:find("Example Net", 1, true),
+        "the quiet scan's messages logged, without the network's name (or a stray number after them)")
+    NM.reconnectOrShowNetworkMenu, Net._scan, Net.automatic = saved[1], saved[2], saved[3]
+    -- a saved or sent log: an older log line and crash.log's end too
+    Log.flush()
+    local f = io.open(Log.path, "ab"); f:write("11/14 08:01:02 [1] INFO wifi (quiet): Connected to network Example Net\n"); f:close()
+    local crash = WORK .. "/netname-crash.log"
+    f = io.open(crash, "wb"); f:write("11/14 08:01:00 DEBUG NetworkMgr: Connected to network Example Net\n"); f:close()
+    local text = Log.exportText(WORK, crash)
+    check(text and text:find("Connected to network <network>", 1, true) and not text:find("Example Net", 1, true),
+        "a saved or sent log: names from older lines and crash.log hidden too")
+    os.remove(crash)
+    -- the watchdog (its own process) loads the same thing next to it, for crash.log's end
+    local wsrc = io.open(PLUGIN .. "/gzreader_watchdog.lua"):read("*a")
+    local loaded = dofile(PLUGIN .. "/gzreader_netname.lua")
+    check(wsrc:find('"/gzreader_netname.lua"', 1, true) and wsrc:find("return hideNetworks(out)", 1, true)
+        and type(loaded) == "function" and loaded("to network Example Net") == "to network <network>",
+        "the watchdog's crash report hides names too (the module needs nothing else)")
+    local rsrc = io.open(PLUGIN .. "/gzreader_remote.lua"):read("*a")
+    check(rsrc:find('Log.redact(tail("crash.log", 30))', 1, true), "…and so does the report after an unexpected restart")
+end)()
+
 print("Grimmory folder is the home folder")
 local libdir = WORK .. "/home/GZreader"
 check(plugin.store.library_dir == libdir, "Grimmory folder created under the device's documents folder")
@@ -6329,7 +6389,7 @@ print("No usage statistics (since 1.28.1); debug reports have their own setting"
     -- Settings → General: the switch
     local item = R.menuItem()
     check(item and item.text == "Send debug reports automatically" and not item.checked_func()
-        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords or tokens", 1, true),
+        and item.help_text:find("freezes and crashes", 1, true) and item.help_text:find("never passwords, tokens or your Wi-Fi network's name", 1, true),
         "Settings → General → Send debug reports automatically (says what it sends)")
     local Net = require("gzreader_net")
     local was_usb = Net.usb

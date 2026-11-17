@@ -51,14 +51,18 @@ function Log.init(dir)
     Log.main_pid = pid()
 end
 
+local hideNetworks = require("gzreader_netname")
+Log.hideNetworks = hideNetworks
+
 local SECRET_KEYS = {
     "password", "accessToken", "refreshToken", "access_token", "refresh_token",
     "code", "code_verifier", "state", "nonce", "token", "id_token", "passwordMD5",
 }
 
---- Remove secrets from arbitrary text (URLs, JSON, form bodies, headers).
+--- Remove secrets from arbitrary text (URLs, JSON, form bodies, headers),
+--- and Wi-Fi network names.
 function Log.redact(s)
-    s = tostring(s)
+    s = hideNetworks(s)
     s = s:gsub("([Bb]earer%s+)[%w%-%._~+/=]+", "%1<redacted>")
     s = s:gsub("(/pair/)%x+", "%1<token>")
     -- every pattern below needs "=" or a quoted key: most lines have neither
@@ -184,7 +188,8 @@ function Log.exportTo(dir, crash_log_path)
     for _, p in ipairs({ Log.path .. ".1", Log.path }) do
         local f = io.open(p, "rb")
         if f then
-            out:write(f:read("*a"))
+            -- (a log written before 1.32 can name the Wi-Fi network)
+            out:write(hideNetworks(f:read("*a")))
             f:close()
         end
     end

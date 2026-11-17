@@ -59,6 +59,9 @@ local function writeFile(p, s)
     f:close()
     return os.rename(p .. ".tmp", p)
 end
+-- Wi-Fi network names out of what's sent (crash.log's end, an older log)
+local hide_ok, hideNetworks = pcall(dofile, ((arg[0] or ""):match("^(.*)/") or ".") .. "/gzreader_netname.lua")
+if not hide_ok or type(hideNetworks) ~= "function" then hideNetworks = function(s) return s end end
 local function tail(p, n, max_chars)
     local s = readFile(p)
     if not s then return "" end
@@ -69,7 +72,7 @@ local function tail(p, n, max_chars)
     end
     local out = table.concat(lines, "\n")
     if max_chars and #out > max_chars then out = out:sub(-max_chars) end
-    return out
+    return hideNetworks(out)
 end
 local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
 

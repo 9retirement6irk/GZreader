@@ -1,4 +1,4 @@
-What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log.
+What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log, and neither is the name of your Wi-Fi network.
 
 ## Debug reports
 
@@ -21,7 +21,8 @@ problems on real Kindles can be found and fixed:
 
 Reports carry GZreader's version, the Kindle model and lines of GZreader's
 log, which can name the book or file it was working on. Never passwords,
-tokens or anything you type (except what you type for Send to the
+tokens, your Wi-Fi network's name (it's written as `<network>`, also in
+the end of KOReader's crash.log) or anything you type (except what you type for Send to the
 developer). Each Kindle is named by a random ID, not its serial number, so
 reports from two Kindles can be told apart. The Kindle 2 and DX have no
 Wi‑Fi, so they never send reports by themselves (Send to the developer
@@ -149,7 +150,7 @@ typed there is redacted like the log's). `<id>` is the start of the
 Kindle's random ID (not the serial number).
 
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
-the clock jump after waking). Log lines are redacted (no passwords or
-tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued
+the clock jump after waking). Log lines are redacted (no passwords,
+tokens or Wi-Fi network names). Checked with the Kindle 3's LuaJIT against a local feed: queued
 messages, the freeze alert with its snapshot, "responsive again", the crash
 report, and no crash report after a normal close.
