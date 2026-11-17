@@ -569,6 +569,59 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     check(flat.points[1][3] == nil and segs[1][5] == base and segs[#segs][5] == base and off_el.simulatePressure == true,
         "Pressure and tilt off: an even line of the chosen thickness, saved as before")
     sk.pressure_on = true
+    -- the writing tools (as on the Kindle Scribe): pen, pencil, fountain pen, highlighter
+    local function stroke(tool, y)
+        sk.writing = tool
+        draw({ { pen(100, y, 400) }, { pen(250, y, 400) }, { pen(400, y, 4095) }, { pen(550, y, 4095) }, { up() } })
+        local l = sk:live()
+        return l[#l], { light = segs[2][5], hard = segs[#segs][5], gray = segs[#segs][7] }
+    end
+    local stp, pn = stroke("pen", 900)
+    local stf, fo = stroke("fountain", 1000)
+    local stc, pc = stroke("pencil", 1100)
+    local sth, hl = stroke("highlighter", 1200)
+    check(stp.kind == nil and stf.kind == "fountain" and stc.kind == "pencil" and sth.kind == "highlighter",
+        "each stroke keeps its tool (the pen's has none, as before)")
+    check(fo.light < pn.light and fo.hard > pn.hard,
+        "fountain pen: thinner than the pen when light, wider when pressed (" .. fo.light .. "–" .. fo.hard .. " px; pen "
+            .. pn.light .. "–" .. pn.hard .. ")")
+    check(pc.gray and pc.gray > 0 and pc.gray < 0xC0 and pc.hard < pn.hard and pc.hard - pc.light < pn.hard - pn.light,
+        "pencil: grey, thinner, and pressure changes it less")
+    check(hl.gray and hl.gray > pc.gray and hl.light == hl.hard and hl.hard > 3 * pn.light and sth.points[1][3] == nil,
+        "highlighter: light grey, broad, even (no pressure)")
+    local tsc = Drawing.decode(Drawing.encode(sk:scene()))
+    local byTool = {}
+    for _i, e in ipairs(tsc.elements) do
+        if e.type == "freedraw" then byTool[(e.customData and e.customData.gzTool) or "pen"] = e end
+    end
+    check(byTool.fountain and byTool.pencil.opacity == 70 and byTool.highlighter.opacity == 35 and byTool.highlighter.simulatePressure == true
+        and byTool.highlighter.strokeWidth > byTool.pen.strokeWidth and byTool.pen.opacity == 100,
+        "saved for Memos: the tool kept (customData), the pencil and highlighter see-through, the highlighter broad")
+    local back = Sketch.fromScene(tsc, { canvas = CANVAS, per_unit = 2 })
+    local kinds = {}
+    for _i, bst in ipairs(back:live()) do kinds[#kinds + 1] = bst.kind or "pen" end
+    local hb
+    for _i, bst in ipairs(back:live()) do if bst.kind == "highlighter" then hb = bst end end
+    check(table.concat(kinds, ","):find("pen,fountain,pencil,highlighter", 1, true) and hb.width == sth.width,
+        "…read back with their tools, the highlighter at the thickness it was drawn with")
+    check(Sketch.toolOf({ opacity = 30 }) == "highlighter" and Sketch.toolOf({ opacity = 80 }) == "pencil"
+        and Sketch.toolOf({ opacity = 100 }) == nil and Sketch.toolOf({ opacity = 30, customData = { gzTool = "fountain" } }) == "fountain",
+        "a see-through stroke drawn in Memos opens as a highlighter or a pencil")
+    -- the pen's shortcut button: held, its tool (Settings → Notes); the eraser by default
+    sk.writing = "pen"
+    sk.side_button, sk.shortcut = true, "highlighter"
+    draw({ { pen(100, 1250, 2000) }, { pen(300, 1250, 2000) }, { up() } })
+    local viaButton = sk:live()[#sk:live()]
+    sk.shortcut = "fountain"
+    draw({ { pen(100, 1280, 2000) }, { pen(300, 1280, 2000) }, { up() } })
+    local viaFountain = sk:live()[#sk:live()]
+    sk.side_button = false
+    draw({ { pen(100, 1310, 2000) }, { pen(300, 1310, 2000) }, { up() } })
+    local after = sk:live()[#sk:live()]
+    check(viaButton.kind == "highlighter" and viaFountain.kind == "fountain" and after.kind == nil and sk.writing == "pen",
+        "the shortcut button held: its tool (highlighter, fountain pen); let go: the tool in hand again")
+    check(Sketch.shortcutTool({}) == "eraser" and Sketch.shortcutTool({ shortcut = "nonsense" }) == "eraser"
+        and Sketch.shortcutTool({ shortcut = "pencil" }) == "pencil", "the shortcut button's tool: the eraser unless chosen")
     -- a finger (no pressure reported) and a pen that reports none: as before
     local fsk = Sketch.new{ canvas = CANVAS, per_unit = 2 }
     run(fsk, { { finger(0, 100, 200) }, { finger(0, 200, 260) }, { lift(0) } })

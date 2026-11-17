@@ -167,6 +167,16 @@ API to `/api` are found too.
   - **At the top:** **✕** (leave without keeping what you drew), the note's
     name and the page's paper, and **Done** (keeps the drawings with the
     note; **Save** in the editor sends them).
+  - **Writing tools** (as on the Kindle Scribe): tap the pen, then tap it
+    again for its panel, which starts with four tools. **Pen** is the line
+    you had before. **Pencil** is a thinner grey line. **Fountain pen**
+    makes pressure matter much more: a light touch is very thin, pressing
+    makes the line swell to almost three times the thickness (the thickness
+    you choose sets the middle); without a pen that reports pressure it
+    draws an even line. **Highlighter** is a broad, light grey band that
+    stays under your writing. The toolbar's pen shows the tool in hand, and
+    the tool is kept for next time. In Memos the pencil and the highlighter
+    are see-through strokes, and each stroke opens again with its tool.
   - **The toolbar at the side:** the **pen** (tap it again for five
     thicknesses; the one you choose is kept; on a Kindle with a colour
     screen also eight **colours**, the ink and the seven of Memos' drawing
@@ -259,7 +269,10 @@ API to `/api` are found too.
     finger at the same time is ignored.
   - **The pen's side button** (Kindle Scribe, Premium Pen): hold it and the
     tip rubs out, like the pen's other end; let go and it draws again, with
-    the Pen tool still chosen.
+    the Pen tool still chosen. **Settings → Notes → Pen's shortcut button**
+    chooses what holding it does: **Eraser** (the default), or a writing
+    tool: **Pen**, **Pencil**, **Fountain pen** or **Highlighter** (draw
+    with it while the button is held, then you're back to the tool in hand).
   - Not on Kindles syncing through a computer (the sync page doesn't send
     drawings).
 
