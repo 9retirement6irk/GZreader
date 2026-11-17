@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Shelf ornaments sit flush on the shelf instead of leaning", text = "Several shelf ornaments leaned in their pictures and stood on one corner of the plank: the mantel clock, the alarm clock, the seashell, the binoculars, the model ship, the jug, the pumpkin and the porcelain horse. They're turned so their base sits level on the shelf, in grey and in colour." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

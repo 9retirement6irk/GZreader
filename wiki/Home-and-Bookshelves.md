@@ -67,7 +67,9 @@ the book once you open one.
     model ship, binoculars, a seashell, a flowered jug) and a tabby cat.
     Two seasonal ones stand in their season and then take about two places
     of three: a **Christmas tree** (20 November to 6 January) and a pumpkin
-    (mid-September to November). **Which
+    (mid-September to November). Each stands level on its base, flush
+    with the plank (your own pictures stand as you made them: crop them
+    with the base level). **Which
     ornaments** has a tick for each: tick a seasonal one to have it all
     year, untick any to never see it; *Seasonal ones in their season again*
     undoes that. It's a grid of the ornaments, each standing on a piece of
