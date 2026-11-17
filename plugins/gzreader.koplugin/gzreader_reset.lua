@@ -6,16 +6,17 @@ account forgotten on it, then a restart into the setup guide.
 What goes (`Reset.plan`):
 - KOReader's and ZenOS's settings: `settings.reader.lua`, `history.lua`, the
   whole settings folder (GZreader's state with its accounts, ZenOS's config,
-  collections, the notes and calendar copies, drawings, the shelf ornaments…)
-  except the reading statistics (`KEEP`: they're only on the device);
+  collections, the notes and calendar copies, drawings, the shelf ornaments,
+  the reading statistics — in the settings folder or, as KOReader may keep
+  them, `statistics.sqlite3` in its own folder);
 - the GZreader folder's contents (books, audiobooks, music, the sync page's
   `.gzsync` with its saved keys and reports) — books elsewhere stay;
 - the cache, the sleep screen pictures, the remote debugging spool, the
   Immich wallpaper, KOReader's other book-settings folders;
 - on a Kindle, the sign-ins kept off the USB drive (`gzreader_secrets.lua`'s
   folder).
-What stays: the program, its logs (gzreader.log, crash.log), the reading
-statistics, the device's own Wi-Fi networks. Accounts are only forgotten
+What stays: the program, its logs (gzreader.log, crash.log), books outside
+the GZreader folder, the device's own Wi-Fi networks. Accounts are only forgotten
 here: nothing is sent to the servers (Grimmory's sign-out would sign out
 every device of the user).
 
@@ -33,11 +34,6 @@ device's home folder, or a folder that holds the program.
 local Log = require("gzreader_log")
 
 local Reset = {
-    -- in the settings folder: kept (reading statistics, KOReader's database)
-    KEEP = {
-        ["statistics.sqlite3"] = true, ["statistics.sqlite3-wal"] = true,
-        ["statistics.sqlite3-shm"] = true, ["statistics.sqlite3-journal"] = true,
-    },
     armed = nil, -- the plan Device:exit carries out
     wrapped = nil,
     RESTART_DELAY = 1, -- s: the message on screen, the book closed
@@ -161,7 +157,11 @@ function Reset.plan(plugin, over)
         file(data .. "/" .. name)
         file(data .. "/" .. name .. ".old")
     end
-    empty(d.settings, Reset.KEEP, "settings")
+    -- the reading statistics where KOReader keeps them by default (ZenOS's db_connection.lua)
+    for _i, suffix in ipairs({ "", "-wal", "-shm", "-journal" }) do
+        file(data .. "/statistics.sqlite3" .. suffix)
+    end
+    empty(d.settings, nil, "settings")
     for _i, name in ipairs({ "cache", "screensavers", "gzreader-remote", "gzreader-usage", "docsettings", "hashdocsettings" }) do
         empty(data .. "/" .. name, nil, name)
     end
@@ -260,7 +260,7 @@ function Reset.question()
         .. _("• Every setting goes back to its default.") .. "\n"
         .. _("• Every downloaded book, audiobook and song is removed from this device (the GZreader folder is emptied).") .. "\n"
         .. _("• Every account is forgotten on this device: Grimmory, Plex, Memos, calendars, Home Assistant, Immich. Your servers and your other devices aren't touched.") .. "\n\n"
-        .. _("Changes not sent yet (reading progress, notes) are lost. Reading statistics and books outside the GZreader folder stay.") .. "\n\n"
+        .. _("Your reading statistics are removed too. Changes not sent yet (reading progress, notes) are lost. Books outside the GZreader folder stay.") .. "\n\n"
         .. _("GZreader then restarts with the setup guide.")
 end
 

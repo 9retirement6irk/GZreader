@@ -55,8 +55,9 @@ local function device()
         "settings/zenos/config.lua", "settings/gzreader-notes.json", "settings/gzreader-drawings/a.png",
         "cache/gzreader-covers/1.jpg", "cache/zen-i18n-en.lua", "screensavers/mine.png",
         "gzreader-remote/spool/1.json", "gzreader-immich-wallpaper.png",
+        "settings/statistics.sqlite3", "statistics.sqlite3", "statistics.sqlite3-wal",
         -- stay
-        "settings/statistics.sqlite3", "gzreader.log", "crash.log", "gzreader-version",
+        "gzreader.log", "crash.log", "gzreader-version",
         "plugins/gzreader.koplugin/main.lua", "frontend/x.lua",
     }) do write(d.data .. "/" .. p) end
     for _i, p in ipairs({ "Book One.epub", "Book One.sdr/metadata.epub.lua", ".audiobooks/7/a.mp3",
@@ -102,14 +103,15 @@ local removed, nfailed = Reset.wipe(plan)
 local gone, stayed = {}, {}
 for _i, p in ipairs({ "settings.reader.lua", "settings.reader.lua.old", "history.lua", "settings/gzreader.lua", "settings/gzreader_recent.lua",
     "settings/collection.lua", "settings/zenos", "settings/gzreader-notes.json", "settings/gzreader-drawings",
-    "cache/gzreader-covers", "cache/zen-i18n-en.lua", "screensavers/mine.png", "gzreader-remote/spool", "gzreader-immich-wallpaper.png" }) do
+    "cache/gzreader-covers", "cache/zen-i18n-en.lua", "screensavers/mine.png", "gzreader-remote/spool", "gzreader-immich-wallpaper.png",
+    "settings/statistics.sqlite3", "statistics.sqlite3", "statistics.sqlite3-wal" }) do
     if exists(d.data .. "/" .. p) then stayed[#stayed + 1] = p end
 end
-check(#stayed == 0 and removed > 20 and nfailed == 0, "settings, history, caches, sleep pictures gone (left: " .. table.concat(stayed, ",") .. ")")
-for _i, p in ipairs({ "settings/statistics.sqlite3", "gzreader.log", "crash.log", "gzreader-version", "plugins/gzreader.koplugin/main.lua", "frontend/x.lua" }) do
+check(#stayed == 0 and removed > 20 and nfailed == 0, "settings, history, reading statistics (both places), caches, sleep pictures gone (left: " .. table.concat(stayed, ",") .. ")")
+for _i, p in ipairs({ "gzreader.log", "crash.log", "gzreader-version", "plugins/gzreader.koplugin/main.lua", "frontend/x.lua" }) do
     if not exists(d.data .. "/" .. p) then gone[#gone + 1] = p end
 end
-check(#gone == 0, "the program, its logs and the reading statistics stay (gone: " .. table.concat(gone, ",") .. ")")
+check(#gone == 0, "the program and its logs stay (gone: " .. table.concat(gone, ",") .. ")")
 check(lfs.attributes(d.settings, "mode") == "directory" and lfs.attributes(d.data .. "/cache", "mode") == "directory",
     "the folders themselves stay (the Nook's cache is a mount point)")
 local left = {}
@@ -141,7 +143,7 @@ check(not okx and not exists(d.data .. "/settings.reader.lua"), "Device:exit fai
 -- the confirmation
 local q = Reset.question()
 check(q:find("default", 1, true) and q:find("downloaded", 1, true) and q:find("account", 1, true)
-    and q:find("setup guide", 1, true) and q:find("Reading statistics", 1, true) and q:find("other devices", 1, true),
+    and q:find("setup guide", 1, true) and q:find("reading statistics are removed", 1, true) and q:find("other devices", 1, true),
     "the question says what goes, what stays, and the setup guide")
 local box = Reset.confirm(plugin)
 check(box.kind == "confirm" and shown[#shown] == box and box.ok_text == "Reset" and restarted == 0 and Reset.armed == nil,
@@ -172,8 +174,8 @@ check(restarted == 0 and #timers == 2, "an open book: closed first")
 timers[2].fn()
 check(restarted == 1, "then GZreader restarts")
 package.loaded["device"]:exit()
-check(not exists(d.library .. "/Book One.epub") and not exists(d.settings .. "/gzreader.lua") and exists(d.settings .. "/statistics.sqlite3"),
-    "at the exit: downloads and settings gone, statistics kept")
+check(not exists(d.library .. "/Book One.epub") and not exists(d.settings .. "/gzreader.lua") and not exists(d.settings .. "/statistics.sqlite3"),
+    "at the exit: downloads, settings and reading statistics gone")
 local said = table.concat(logged, "\n")
 check(said:find("reset: done", 1, true) and not said:find("token", 1, true), "the log says it was done (no sign-in in it)")
 

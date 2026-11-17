@@ -12,12 +12,12 @@ More: [Updates and test builds](Updates-and-Test-Builds).
 
 **Settings → About → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
 
-- every setting goes back to its default;
+- every setting goes back to its default, and your reading statistics are removed;
 - everything GZreader downloaded is removed: the **GZreader** folder is emptied (books, audiobooks, music, and the sync page's saved keys and reports);
 - every account is forgotten on this device: Grimmory, Plex, Memos, calendars, Home Assistant, Immich. Nothing is signed out on the servers, so your other devices stay signed in;
 - GZreader restarts and the setup guide opens, as on the first start.
 
-Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Your reading statistics, books outside the GZreader folder (for example in `documents`), the diagnostic log and the device's Wi‑Fi networks stay.
+Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Books outside the GZreader folder (for example in `documents`), the diagnostic log and the device's Wi‑Fi networks stay.
 
 ## Uninstalling
 

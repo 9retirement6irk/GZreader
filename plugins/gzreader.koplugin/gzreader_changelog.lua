@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Reset GZreader (About → Advanced): default settings, downloads and accounts removed, the setup guide again", text = "Settings → About → Advanced has a new last item, Reset GZreader. After you confirm, every setting goes back to its default, everything GZreader downloaded is removed (the GZreader folder is emptied: books, audiobooks, music) and every account is forgotten on this device (Grimmory, Plex, Memos, calendars, Home Assistant, Immich, the sync page's saved keys). GZreader then restarts with the setup guide, as on its first start. Your accounts aren't signed out on the servers, so your other devices stay signed in. Changes not sent yet (reading progress, notes) are lost; reading statistics, books outside the GZreader folder and the diagnostic log stay." },
+            { short = "Reset GZreader (About → Advanced): default settings, downloads and accounts removed, the setup guide again", text = "Settings → About → Advanced has a new last item, Reset GZreader. After you confirm, every setting goes back to its default, your reading statistics are removed, everything GZreader downloaded is removed (the GZreader folder is emptied: books, audiobooks, music) and every account is forgotten on this device (Grimmory, Plex, Memos, calendars, Home Assistant, Immich, the sync page's saved keys). GZreader then restarts with the setup guide, as on its first start. Your accounts aren't signed out on the servers, so your other devices stay signed in. Changes not sent yet (reading progress, notes) are lost; books outside the GZreader folder and the diagnostic log stay." },
         },
     },
     {
