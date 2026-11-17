@@ -2118,9 +2118,10 @@ function NoteView:build()
 end
 
 --- Touch: the drawing screen's top bar (gzreader_notebar.lua), as the editor has:
----   ←  The note's name                           📌  ⋮  [Edit]
+---   ←  The note's name                     📌  🗃  🗑  ⋮  [Edit]
 ---      when · its space · pinned · not sent yet
---- ← back to the board, the pin pins or unpins, ⋮ is the note's More, Edit edits.
+--- ← back to the board, the pin pins or unpins, 🗃 archives, 🗑 deletes (asks
+--- first), ⋮ is the note's More, Edit edits. An archived note: 🗑 ⋮ [Restore].
 function NoteView:topBar(sw, h, space)
     local NoteBar = require("gzreader_notebar")
     local m = self.memo
@@ -2130,15 +2131,23 @@ function NoteView:topBar(sw, h, space)
     if m.pending then hint[#hint + 1] = _("not sent yet") end
     local heading = Notes.headingAndRest(m.content or "")
     self.bar_title = heading and NoteBar.nameOf(heading) or NoteBar.nameOf(m.content) or _("Note")
+    if m.archived then hint[#hint + 1] = _("archived") end
     self.bar_hint = table.concat(hint, " \u{00B7} ")
+    -- (an archived note: Delete, More, and Restore where Edit is)
+    local icons, action = {}, { "edit", _("Edit"), function() self:onEdit() end }
+    if m.archived then
+        action = { "restore", _("Restore"), function() self:onArchive(false) end }
+    else
+        icons[#icons + 1] = { "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }
+        icons[#icons + 1] = { "archive", "archive", function() self:onArchive(true) end }
+    end
+    icons[#icons + 1] = { "delete", "trash", function() self:onDelete() end }
+    icons[#icons + 1] = { "options", "more", function() self:onOptions() end }
     local bar, buttons = NoteBar.build{
         width = sw, height = h, title = self.bar_title, hint = self.bar_hint,
         back = function() self:onClose() end,
-        icons = {
-            { "pin", m.pinned and "pinned" or "pin", function() self:onPin() end },
-            { "options", "more", function() self:onOptions() end },
-        },
-        action = { "edit", _("Edit"), function() self:onEdit() end },
+        icons = icons,
+        action = action,
         tap = function(w, fn)
             local box = InputContainer:new{ dimen = Geom:new{ w = w:getSize().w, h = w:getSize().h }, w }
             box.ges_events = { TapBar = { GestureRange:new{ ges = "tap", range = function() return box.dimen end } } }

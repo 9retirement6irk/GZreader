@@ -8571,11 +8571,14 @@ print("Notes (Memos v0.31)")
             local vsrc = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
             check(vsrc:find("Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{", 1, true) ~= nil
                 and vsrc:find('{ "pin", m.pinned and "pinned" or "pin", function() self:onPin() end }', 1, true) ~= nil
+                and vsrc:find('{ "archive", "archive", function() self:onArchive(true) end }', 1, true) ~= nil
+                and vsrc:find('{ "delete", "trash", function() self:onDelete() end }', 1, true) ~= nil
+                and vsrc:find('action = { "restore", _("Restore"), function() self:onArchive(false) end }', 1, true) ~= nil
                 and vsrc:find('{ "options", "more", function() self:onOptions() end }', 1, true) ~= nil
                 and vsrc:find('action = { "edit", _("Edit"), function() self:onEdit() end }', 1, true) ~= nil
                 and vsrc:find('back = function() self:onClose() end', 1, true) ~= nil
                 and not vsrc:find('{ _("More"), function() self:onOptions() end }', 1, true),
-                "an opened note (touch): the same top bar, ← name … pin ⋮ Edit; no buttons along the bottom")
+                "an opened note (touch): the same top bar, ← name … pin, Archive, Delete, ⋮, Edit (archived: Delete, ⋮, Restore); no buttons along the bottom")
         end)()
         -- a new drawing's window: a title and tags, then Save
         local ND = require("gzreader_newdrawing")

@@ -77,7 +77,9 @@ API to `/api` are found too.
 - **A note:** on touch Kindles, the drawing screen's top bar, as in the
   note editor: **←** (back to the board), the note's name with when it was
   written, its space and whether it's pinned under it, then the **pin**
-  (pin or unpin), **⋮** (the note's More) and **Edit**. Below it, the text
+  (pin or unpin), **Archive** (the box), **Delete** (the bin; asks first),
+  **⋮** (the note's More) and **Edit**. An archived note has **Delete**,
+  **⋮** and **Restore** instead. Below it, the text
   in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from
