@@ -3406,7 +3406,7 @@ do
     -- bigger screens by their size in inches (the device's own DPI)
     local function dpi(model, w, h, d) as(model, w, h); Device.display_dpi = d end
     dpi("KindleScribe", 1860, 2480, 300)
-    check(okg and GzView.homeShelves() == 2 and not Touch.dx() and View.maxRows() == nil, "Scribe (6.2\" across): Home two shelves, Downloads as before")
+    check(okg and GzView.homeShelves() == 2 and not Touch.dx() and View.maxRows() == 4, "Scribe (6.2\" across): Home two shelves, Downloads four a page (were five)")
     dpi("KindleScribe", 2480, 1860, 300)
     check(okg and GzView.homeShelves() == 2, "…turned sideways too")
     dpi("KindleScribeColorSoft", 1986, 2648, 300)
@@ -3415,6 +3415,7 @@ do
     check(okg and GzView.homeShelves() == 1, "Oasis / Colorsoft (4.2\" across): one")
     dpi("KindlePaperWhite3", 1072, 1448, 300)
     check(okg and GzView.homeShelves() == 1, "Paperwhite 3 with its DPI: one")
+    check(View.maxRows() == nil, "…and Downloads as many as fit, as before")
     dpi("KindleScribe", 1860, 2480, nil)
     check(okg and GzView.homeShelves() == 1, "no DPI known: one")
     -- Home's shelves as tall as the Downloads tab's on a big screen, still two

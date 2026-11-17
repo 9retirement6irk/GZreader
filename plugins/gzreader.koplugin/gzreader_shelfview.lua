@@ -68,11 +68,16 @@ end
 ---------------------------------------------------------------- sizes
 
 --- At most this many shelves on a page: the DX's tall screen fitted six,
---- each book small; four make them bigger. nil: as many as fit.
+--- each book small; four make them bigger. The Scribe (any screen more than
+--- 5" across, gz_view.bigScreen) fitted five: four, as tall as Home's.
+--- nil: as many as fit.
 View.DX_ROWS = 4
+View.BIG_ROWS = 4
 function View.maxRows()
     local ok, dx = pcall(function() return require("gzreader_touch").dx() end)
     if ok and dx then return View.DX_ROWS end
+    local okb, big = pcall(function() return require("common/gz_view").bigScreen(Device) end)
+    if okb and big then return View.BIG_ROWS end
     return nil
 end
 
