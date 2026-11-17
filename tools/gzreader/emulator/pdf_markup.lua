@@ -31,7 +31,7 @@ end
 
 -- a small PDF of two pages (letter, then A4 sideways): text and a box
 local function writePdf(path)
-    local content = "BT /F1 36 Tf 72 700 Td (Chapter 3 questions) Tj ET 72 72 468 300 re S"
+    local content = "BT /F1 36 Tf 72 700 Td (Chapter 3 questions) Tj ET 72 72 468 300 re S 0.85 0.1 0.1 rg 100 420 200 120 re f"
     local objs = {
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>",
@@ -117,6 +117,22 @@ add({ fn = function(E)
     check(screen() == nil and #changes == 1, "Done: back at the note, only the page drawn on kept (" .. #changes .. ")")
     check(table.concat(kinds, ",") == "image,freedraw" and scene.elements[1].locked == true,
         "the drawing: the PDF's page (locked, underneath) and the stroke (" .. table.concat(kinds, ",") .. ")")
+    -- a colour PDF stays in colour: the red box, in the page kept in the drawing and in the picture sent
+    local function redAt(path)
+        local ok, res = pcall(function()
+            local okd, img = require("ffi/png").decodeFromFile(path, 3)
+            if not okd or not img then return nil end
+            local d = require("ffi").cast("uint8_t*", img.data)
+            local n = 0
+            for i = 0, img.width * img.height - 1 do
+                if d[i * 3] > 150 and d[i * 3 + 1] < 90 and d[i * 3 + 2] < 90 then n = n + 1 end
+            end
+            return n
+        end)
+        return ok and res or nil
+    end
+    local sent_red = changes[1] and redAt(changes[1].path)
+    check(sent_red and sent_red > 2000, "the picture for Memos: the PDF's red box is red (" .. tostring(sent_red) .. " red pixels; it was grey)")
     if changes[1] then os.execute("cp '" .. changes[1].path .. "' '" .. E.out .. "/markup-sent.canvas.png'") end
     e:save()
 end, after = 1 })

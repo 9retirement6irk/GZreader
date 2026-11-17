@@ -9,7 +9,9 @@ drawing editor, with the PDF's page under your ink. The PDF itself isn't
 changed.
 
 - Pages are rendered with MuPDF (`ffi/mupdf`) at Memos' picture size (at
-  most 1440 px on the longest side) as grey PNGs, then kept in the drawing.
+  most 1440 px on the longest side) as PNGs, then kept in the drawing: in
+  colour when the page has any (the Kindle's screen shows it grey, Memos in
+  its colours), grey when it hasn't (a smaller picture).
 - At most `MAX_PAGES` at a time: each page is a picture in memory while the
   drawing screen is open.
 - A page left blank isn't kept (as an empty drawing page isn't).
@@ -23,6 +25,8 @@ local PdfMarkup = {}
 PdfMarkup.MAX_PAGES = 10
 PdfMarkup.MAX_SIDE = 1440 -- Memos keeps pictures at most this long
 PdfMarkup.MAX_BYTES = 1536 * 1024 -- a page's picture: rendered smaller when bigger
+PdfMarkup.MAX_BYTES_COLOR = 3072 * 1024 -- (in colour: three times the data, so more room before it's made smaller)
+PdfMarkup.COLOR_MIN = 12 -- how far a pixel's red, green and blue must differ to count as colour (not a scan's faint tint)
 
 --- A PDF attachment (by its type, else its file name).
 function PdfMarkup.isPdf(att)
@@ -101,7 +105,54 @@ function PdfMarkup.scene(path, w, h, now)
     return scene
 end
 
---- Opens the PDF at `path`: { count, render(n, png_path, max_side) → w, h | nil, err; close() },
+--- Writes the page's picture `bb` (as MuPDF drew it) to `png_path`. Drawn in
+--- colour (RGB32), it's kept in colour when the page has any, and written as
+--- a grey picture when it hasn't. Returns true when it's in colour.
+--- (Pages were always drawn grey; a colour PDF marked up was grey in Memos.
+--- The owner, 2026-11-17.)
+function PdfMarkup.writePage(bb, png_path, bgr)
+    local ok, colour = pcall(function()
+        local Blitbuffer = require("ffi/blitbuffer")
+        if bb:getType() ~= Blitbuffer.TYPE_BBRGB32 then return nil end
+        local ffi = require("ffi")
+        local w, h, stride = bb:getWidth(), bb:getHeight(), bb.stride
+        local src = ffi.cast("uint8_t*", bb.data)
+        local min = PdfMarkup.COLOR_MIN
+        local coloured = false
+        for y = 0, h - 1 do
+            local row = src + y * stride
+            for x = 0, w - 1 do
+                local r, g, b = row[x * 4], row[x * 4 + 1], row[x * 4 + 2]
+                if r - g > min or g - r > min or g - b > min or b - g > min or r - b > min or b - r > min then coloured = true; break end
+            end
+            if coloured then break end
+        end
+        local n = coloured and 3 or 1
+        local mem = ffi.new("uint8_t[?]", w * h * n)
+        local ri, bi = bgr and 2 or 0, bgr and 0 or 2
+        local i = 0
+        for y = 0, h - 1 do
+            local row = src + y * stride
+            for x = 0, w - 1 do
+                local r, g, b = row[x * 4 + ri], row[x * 4 + 1], row[x * 4 + bi]
+                if coloured then
+                    mem[i], mem[i + 1], mem[i + 2] = r, g, b
+                    i = i + 3
+                else
+                    mem[i] = (r * 77 + g * 151 + b * 28) / 256
+                    i = i + 1
+                end
+            end
+        end
+        if require("ffi/png").encodeToFile(png_path, mem, w, h, n) == false then return nil end
+        return coloured
+    end)
+    if ok and colour ~= nil then return colour end
+    bb:writePNG(png_path) -- (a grey buffer, or the above couldn't: as it's always been written)
+    return false
+end
+
+--- Opens the PDF at `path`: { count, render(n, png_path, max_side) → w, h, colour | nil, err; close() },
 --- or nil and why ("open", "password", "empty").
 function PdfMarkup.open(path)
     local ok, mupdf = pcall(require, "ffi/mupdf")
@@ -112,10 +163,12 @@ function PdfMarkup.open(path)
     if okp and needs then pcall(doc.close, doc); return nil, "password" end
     local okc, count = pcall(function() return doc:getPages() end)
     if not okc or not count or count < 1 then pcall(doc.close, doc); return nil, "empty" end
+    -- (in colour: MuPDF draws grey unless asked; see writePage)
+    pcall(function() if doc.setColorRendering then doc:setColorRendering(true) else doc.color = true end end)
     local DrawContext = require("ffi/drawcontext")
     local h = { count = count }
     function h.render(n, png_path, max_side)
-        local okr, w, ht = pcall(function()
+        local okr, w, ht, colour = pcall(function()
             local page = doc:openPage(n)
             local pw, ph = page:getSize(DrawContext.new())
             local zoom, w, ht = PdfMarkup.fit(pw, ph, max_side)
@@ -123,12 +176,12 @@ function PdfMarkup.open(path)
             dc:setZoom(zoom)
             local bb = page:draw_new(dc, w, ht, 0, 0)
             page:close()
-            bb:writePNG(png_path)
+            local colour = PdfMarkup.writePage(bb, png_path, mupdf.bgr)
             bb:free()
-            return w, ht
+            return w, ht, colour
         end)
         if not okr then return nil, tostring(w) end
-        return w, ht
+        return w, ht, colour
     end
     function h.close() pcall(doc.close, doc) end
     return h
@@ -143,13 +196,13 @@ function PdfMarkup.pages(path, list, dir)
     local out = {}
     for _i, n in ipairs(list) do
         local png = dir .. "/pdf-page-" .. n .. ".png"
-        local side, w, h, why, size = PdfMarkup.MAX_SIDE, nil, nil, nil, nil
+        local side, w, h, why, size, colour = PdfMarkup.MAX_SIDE, nil, nil, nil, nil, nil
         -- (a busy page, a scan: smaller until it's a size Memos and the Kindle handle well)
         for _try = 1, 3 do
-            w, h = doc.render(n, png, side)
+            w, h, colour = doc.render(n, png, side)
             if not w then why = h; break end
             size = select(3, PdfMarkup.pngInfo(png)) or 0
-            if size <= PdfMarkup.MAX_BYTES then break end
+            if size <= (colour and PdfMarkup.MAX_BYTES_COLOR or PdfMarkup.MAX_BYTES) then break end
             side = math.floor(side * 0.7)
         end
         if not w then
@@ -160,7 +213,7 @@ function PdfMarkup.pages(path, list, dir)
         local scene = PdfMarkup.scene(png, w, h)
         os.remove(png)
         if not scene then doc.close(); return nil, "render" end
-        out[#out + 1] = { new = true, modified = true, scene = scene, pdf_page = n, size = size }
+        out[#out + 1] = { new = true, modified = true, scene = scene, pdf_page = n, size = size, colour = colour == true }
     end
     doc.close()
     return out
