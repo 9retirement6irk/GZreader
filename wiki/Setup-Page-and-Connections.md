@@ -126,6 +126,11 @@ forwards to a Kindle's address on a private network (port 8642). So:
 - While signing in, the phone has to be on the same Wi‑Fi as the Kindle
   (any Wi‑Fi: the reader's own, or the Kindle on the phone's hotspot), like
   the rest of the setup page.
+- The first time a phone signs in through the page, it shows **Sign in at**
+  and your sign-in server's name, with a **Continue** button, instead of
+  going there by itself; that browser goes straight there after that. The
+  page only opens a sign-in request that comes back to it (so a link to it
+  can't be used to send someone to another site).
 
 Under **Single sign-on (SSO)** you can also choose:
 

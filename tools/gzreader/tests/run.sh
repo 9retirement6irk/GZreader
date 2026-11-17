@@ -113,6 +113,14 @@ echo "== the shelves' look"
 (cd "$T" && luajit shelf_look_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== single sign-on hand-off page (a browser)"
+if python3 -c "import playwright" 2>/dev/null; then
+  timeout 180 python3 "$T/sso_handoff_test.py" $((PORT + 95)) 2>&1 | grep -E "FAIL|passed|Error"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+else
+  echo "skipped: no Playwright"
+fi
+
 echo "== Nook launcher helper"
 timeout 120 python3 "$T/nook_launcher_test.py" 2>&1 | grep -E "FAIL|passed|BusyBox"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
