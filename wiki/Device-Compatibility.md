@@ -28,6 +28,8 @@ These run the touch packages with the same KOReader device support as the Paperw
 
 The firmware version is in the Kindle's Settings → Device Options → Device Info. Packages for another Kindle or firmware don't start (the Kindle flashes and goes back to its home screen; `koreader/crash.log` says why).
 
+**Big screens (Scribe, DX).** KOReader draws menus, buttons and text bigger the more pixels a screen has across, so on a Scribe they came out about 1.7 times their size on a 6" Kindle. GZreader sizes them for the screen's density instead and lets them grow only a little on a bigger screen (on a Scribe about 1.3 times a 6" Kindle's, on a DX a fifth smaller than before). Books look as before: their font size and margins aren't changed. On those Kindles **Settings → Interface → Size of menus and text** offers Automatic, Smaller, Larger or As large as KOReader makes them (after a restart).
+
 ## What each device does
 
 | | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Nook 1st Edition (test) | Nook Simple Touch (test) |

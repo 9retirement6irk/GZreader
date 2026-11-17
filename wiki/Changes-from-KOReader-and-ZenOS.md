@@ -26,6 +26,7 @@ GZreader is a fork of [KOReader](https://github.com/koreader/koreader) (currentl
 | Book layout (`frontend/document/credocument.lua`) | A bigger crengine cache (256 MB instead of 64) |
 | Sleep screen (`frontend/ui/screensaver.lua`) | GZreader's own sleep screen: the book's cover while reading and a picture elsewhere, whatever sleep screen was saved before (`frontend/gzsleepmode.lua`); "Custom image or cover" shows the book's cover while reading and the image elsewhere; Scale cover to fill screen (proportions kept, edges cut off; `frontend/gzsleepfit.lua`); with an Immich album chosen, a picture comes from its pictures first, then the folders (`gzsleepmode.pictureDirs`) |
 | Menus (`frontend/ui/widget/touchmenu.lua`, menu orders) | Letter keys in KOReader's menus; GZreader's items in place of removed plugins' |
+| Sizes on big screens (`frontend/gzuiscale.lua`, called from `reader.lua`) | On a screen over 5 inches across (the Scribe, the DX), menus, buttons and text are sized for the screen's density and grow only a little with its size, instead of with its width in pixels (a Scribe: 2.31 instead of 3.10). A book's font size and margins keep KOReader's sizes, and a DPI set in KOReader's Screen menu still wins |
 | Home folder (`frontend/apps/filemanager/`) | No Home folder settings (Set, Shorten, Lock) in the file manager's menu and no "Set as HOME folder" buttons: the home folder is always the GZreader folder |
 | Back key (`readerback.lua`), translations (`gettext.lua`), plugin loading | Small fixes for the trimmed build |
 
