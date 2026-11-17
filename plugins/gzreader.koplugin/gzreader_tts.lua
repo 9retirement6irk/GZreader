@@ -856,15 +856,19 @@ function Reader:sentenceAt(xp)
     local cur_end = first_end
     local start_page = pageOf(doc, start)
     local turn_xp
+    local glued = "" -- punctuation right after the last word (crengine's words leave it out)
     for n = 1, Reader.MAX_WORDS do
         last_end = cur_end
         local word = trim(doc:getTextFromXPointers(doc:getPrevVisibleWordStart(cur_end) or start, cur_end, false))
-        if word:find(SENTENCE_END) then break end
-        if n >= Reader.CLAUSE_WORDS and word:find(CLAUSE_END) then break end
         local next_start = doc:getNextVisibleWordStart(cur_end)
+        local gap = next_start and (doc:getTextFromXPointers(cur_end, next_start, false) or "") or ""
+        glued = gap:match("^[%.!%?…,;:—–'\"”’%)%]]+") or ""
+        local tail = word .. glued
+        if tail:find(SENTENCE_END) then break end
+        if n >= Reader.CLAUSE_WORDS and tail:find(CLAUSE_END) then break end
+        glued = ""
         if not next_start then break end
         -- a paragraph (or heading, list item) ends here
-        local gap = doc:getTextFromXPointers(cur_end, next_start, false) or ""
         if gap:find("\n") then break end
         local next_end = doc:getNextVisibleWordEnd(next_start)
         if not next_end or next_end == cur_end then break end
@@ -875,6 +879,7 @@ function Reader:sentenceAt(xp)
         cur_end = next_end
     end
     local text = trim(doc:getTextFromXPointers(start, last_end, false))
+    if text ~= "" and glued ~= "" and text:sub(-#glued) ~= glued then text = text .. glued end
     if text == "" then
         local nxt = doc:getNextVisibleWordStart(last_end)
         if not nxt or nxt == xp then return nil end
@@ -976,6 +981,7 @@ function Reader:start()
     end) end) end
 end
 
+Reader.IVONA_HEARD = 1.2 -- seconds from the voice's sentence end in the log to hearing it (Scribe, Bluetooth)
 Reader.IVONA_POLL = 0.25 -- (the system log: the highlight within a quarter second of the voice)
 
 function Reader:schedulePoll()
@@ -1165,11 +1171,16 @@ function Reader:poll()
                 "buffers " .. seen.buffers, "ends " .. table.concat(seen.ends, " "), self.ivona_skip and "(left out: restart)" or "")
         end
         if self.ivona_skip then self.ivona_skip = false; ends = 0 end
+        -- (the voice hands its sound over about a second before it's heard
+        -- through Bluetooth: the highlight moves on IVONA_HEARD later)
         for _i = 1, ends do
-            local head = self.queue[1]
-            if not (self.active and head and head.shown) then break end
             self.ivona_marks = (self.ivona_marks or 0) + 1
-            self:advance(head.id, "log")
+            local gen = self.generation
+            UIManager:scheduleIn(Reader.IVONA_HEARD, function()
+                if not self.active or self.generation ~= gen then return end
+                local head = self.queue[1]
+                if head and head.shown then self:advance(head.id, "log") end
+            end)
         end
         if not self.active then return end
     end
