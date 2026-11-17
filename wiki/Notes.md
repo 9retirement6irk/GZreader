@@ -167,9 +167,11 @@ API to `/api` are found too.
     in the order of the pages (Memos v0.31 and newer: GZreader sets the
     order after sending, since Memos lists a note's newest attachment first). A page rubbed out to nothing is left out (or
     taken off the note, when it's already in Memos).
-  - **Paper:** shows each paper as a picture: **Blank**, **College ruled**,
+  - **Paper:** shows each paper as a picture, three to a row in a grid you
+    scroll with a finger: **Blank**, **College ruled**,
     **Wide ruled**, **Gregg ruled**, **Dot grid**, **Graph**, **Checklist**
-    and **Cornell notes**. Tap one to put the page on it. New pages start on
+    and **Cornell notes**, then your own. The page's paper has a thick
+    border and a ✓. Tap one to put the page on it. New pages start on
     the paper you chose last. The paper goes to Memos with the drawing as its
     background, as Memos' own drawing editor keeps one (a locked picture
     under everything), so Memos shows and keeps it; on the Kindle it's grey.

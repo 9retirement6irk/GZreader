@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: Paper scrolls instead of turning pages, and fits the Scribe's screen", text = "In a drawing, Paper shows the papers three to a row, sized so the whole row fits the screen (on the Kindle Scribe the third column was cut off at the right), in a grid you scroll with a finger instead of turning pages with arrows. The page's paper has a thick border and a tick and is scrolled into view; your own papers come after GZreader's." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

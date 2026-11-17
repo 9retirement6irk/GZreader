@@ -7988,6 +7988,16 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
+        -- Paper: three to a row that fit the screen, in a grid that scrolls (not pages;
+        -- the sizes are checked on Kindle 2 to Scribe screens by emulator/paper_list.lua)
+        local psrc = io.open(PLUGIN .. "/gzreader_drawpages.lua"):read("*a")
+        local pshow = psrc:match("function Pages%.showPapers%(opts%)(.-)\nend") or ""
+        check(psrc:find("local cols = 3", 1, true) ~= nil
+            and psrc:find("local cell_w = math.floor((width - ScrollableContainer:getScrollbarWidth() - S(12) - gap * (cols + 1)) / cols)", 1, true) ~= nil
+            and psrc:find("self.scroller = ScrollableContainer:new{", 1, true) ~= nil
+            and psrc:find("self.cropping_widget = self.scroller", 1, true) ~= nil
+            and pshow:find("PaperList:new{", 1, true) ~= nil and not pshow:find("Grid:new", 1, true),
+            "Paper: three to a row sized to the screen's width, in a grid that scrolls (no pages)")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")

@@ -7,8 +7,8 @@ of small pictures:
   act on the chosen page: Add after, Duplicate, Move earlier / later,
   Delete.
 - Paper: every paper (Blank, the ones that come with GZreader, your own
-  PNGs in settings/gzreader-notepaper) as a picture; tap one to put the
-  page on it.
+  PNGs in settings/gzreader-notepaper) as pictures, three to a row, in a grid
+  that scrolls; tap one to put the page on it.
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -31,6 +31,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Notepaper = require("gzreader_notepaper")
+local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local T = require("ffi/util").template
 local _ = require("gettext")
 
@@ -247,30 +248,112 @@ end
 
 -- ------------------------------------------------------------------ paper
 
+--- The papers in a grid that scrolls (the owner, 2026-11-16: the old grid
+--- went off the Scribe's screen at the right and needed pages; a list was
+--- tried, then a grid that scrolls was asked for). Three to a row, sized so
+--- the row fits the screen, each a picture with its name under it (the
+--- page's: a thick border and ✓); moved with a finger, a tap picks.
+local PaperList = InputContainer:extend{
+    name = "gz_paperlist",
+    covers_fullscreen = true,
+    kind = "papers",
+    title = "", papers = nil, current = nil, on_pick = nil,
+}
+
+--- A cell's size for a screen `width` wide: columns, picture w/h, cell w/h.
+function Pages.paperCell(width)
+    local cols = 3
+    local gap = S(14)
+    local cell_w = math.floor((width - ScrollableContainer:getScrollbarWidth() - S(12) - gap * (cols + 1)) / cols)
+    local pw = cell_w
+    local ph = math.floor(pw * 1.3)
+    return cols, pw, ph, cell_w, ph + S(40), gap
+end
+
+function PaperList:init()
+    local sw, sh = Screen:getWidth(), Screen:getHeight()
+    self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    local back = Button:new{ text = "\u{2190} " .. _("Back"), callback = function() self:back() end, show_parent = self,
+        bordersize = Size.border.thin, radius = Size.radius.button, margin = 0, padding = Size.padding.small, text_font_size = 17 }
+    local head = VerticalGroup:new{ align = "left", VerticalSpan:new{ width = S(6) },
+        HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = S(8) }, back, HorizontalSpan:new{ width = S(12) },
+            TextWidget:new{ text = self.title, face = Font:getFace("cfont", 19), bold = true, max_width = sw - back:getSize().w - S(40) } },
+        VerticalSpan:new{ width = S(4) },
+        HorizontalGroup:new{ HorizontalSpan:new{ width = S(12) },
+            TextWidget:new{ text = _("Tap a paper to use it on this page. New pages start on the last one you chose."),
+                face = Font:getFace("cfont", 14), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = sw - S(24) } },
+        VerticalSpan:new{ width = S(8) } }
+    local cols, pw, ph, cell_w, cell_h, gap = Pages.paperCell(sw)
+    local grid = VerticalGroup:new{ align = "left" }
+    local line
+    self.rows = {}
+    for i, paper in ipairs(self.papers) do
+        local chosen = paper.id == self.current
+        local path = Notepaper.path(paper)
+        local b = chosen and Size.border.thick or Size.border.thin
+        local pic = path and ImageWidget:new{ file = path, width = pw - 2 * b - 2, height = ph - 2 * b - 2, scale_factor = 0 }
+            or HorizontalSpan:new{ width = 1 }
+        local cell = InputContainer:new{ dimen = Geom:new{ w = cell_w, h = cell_h }, show_parent = self,
+            VerticalGroup:new{ align = "center",
+                FrameContainer:new{ width = pw, height = ph, padding = 0, margin = 0, bordersize = b, radius = S(3),
+                    color = chosen and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, background = Blitbuffer.COLOR_WHITE,
+                    CenterContainer:new{ dimen = Geom:new{ w = pw - 2 * b, h = ph - 2 * b }, pic } },
+                VerticalSpan:new{ width = S(6) },
+                CenterContainer:new{ dimen = Geom:new{ w = cell_w, h = cell_h - ph - S(6) },
+                    TextWidget:new{ text = paper.label .. (chosen and " \u{2713}" or ""), face = Font:getFace("cfont", 16),
+                        bold = chosen, max_width = cell_w } } } }
+        cell.ges_events = { TapPaper = { GestureRange:new{ ges = "tap", range = function() return cell.dimen end } } }
+        local me = self
+        function cell:onTapPaper() me:pick(i); return true end
+        self.rows[i] = cell
+        if (i - 1) % cols == 0 then
+            line = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = gap } }
+            grid[#grid + 1] = line
+            grid[#grid + 1] = VerticalSpan:new{ width = gap }
+        end
+        line[#line + 1] = cell
+        line[#line + 1] = HorizontalSpan:new{ width = gap }
+    end
+    local view_h = sh - head:getSize().h - S(8)
+    self.scroller = ScrollableContainer:new{ dimen = Geom:new{ w = sw - S(12), h = view_h }, show_parent = self,
+        swipe_full_view = false, grid }
+    self.cropping_widget = self.scroller
+    self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, margin = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
+        VerticalGroup:new{ align = "left", head, HorizontalGroup:new{ HorizontalSpan:new{ width = S(6) }, self.scroller } } }
+    -- (the page's paper in view)
+    local row_h = cell_h + gap
+    local total = math.ceil(#self.papers / cols) * row_h
+    for i, paper in ipairs(self.papers) do
+        local r = math.floor((i - 1) / cols)
+        if paper.id == self.current and (r + 1) * row_h > view_h and total > view_h then
+            self.scroller:scrollToRatio(0, math.min(1, (r * row_h + view_h / 2) / total))
+        end
+    end
+end
+
+function PaperList:pick(i)
+    UIManager:close(self, "ui")
+    if self.on_pick then self.on_pick(self.papers[i].id) end
+end
+
+function PaperList:back()
+    UIManager:close(self, "ui")
+    if self.on_back then self.on_back() end
+end
+
+Pages.PaperList = PaperList
+
 --- opts: current (the page's paper id), title, on_pick(id).
 function Pages.showPapers(opts)
-    local list = Notepaper.all()
-    local grid
-    grid = Grid:new{
+    local list = PaperList:new{
         title = opts.title or _("Paper"),
-        hint = _("Tap a paper to use it on this page. New pages start on the last one you chose."),
-        count = function() return #list end,
-        picture = function(i, w, h)
-            local path = Notepaper.path(list[i])
-            if not path then return nil end
-            return ImageWidget:new{ file = path, width = w, height = h, scale_factor = 0 }
-        end,
-        caption = function(i) return list[i].label .. (list[i].id == opts.current and (" \u{2713}") or "") end,
-        chosen = function(i) return list[i].id == opts.current end,
-        on_tap = function(i)
-            UIManager:close(grid, "ui")
-            if opts.on_pick then opts.on_pick(list[i].id) end
-        end,
+        papers = Notepaper.all(),
+        current = opts.current,
+        on_pick = opts.on_pick,
+        on_back = opts.on_back,
     }
-    grid.kind = "papers"
-    grid.papers = list
-    UIManager:show(grid, "ui")
-    return grid
+    UIManager:show(list, "ui")
+    return list
 end
 
 return Pages
