@@ -1002,6 +1002,18 @@ function DrawScreen:hook()
         if not ok then Log.warn("drawing: input:", tostring(err)) end
         return {}
     end)
+    -- A Kindle with a pen: its pressure and tilt from the digitizer itself, when
+    -- the device KOReader reads the pen from doesn't pass them on (gzreader_penraw).
+    if self.pen_only and not self.penraw then
+        local PenRaw = require("gzreader_penraw")
+        local raw, why = PenRaw.open()
+        self.penraw = raw
+        if raw then
+            Log.info("drawing: pen pressure and tilt also read from", raw.name, raw.event, "abs", PenRaw.absCaps(raw.event))
+        else
+            Log.info("drawing: the pen's digitizer not read:", tostring(why))
+        end
+    end
     -- (a tap still under way, e.g. the one that opened this screen, is forgotten)
     pcall(gd.dropContacts, gd)
     if input.clearTimeouts then pcall(input.clearTimeouts, input) end
@@ -1012,6 +1024,13 @@ function DrawScreen:unhook()
     if not gd then return end
     rawset(gd, "feedEvent", self._own_feed)
     self._gd = nil
+    if self.penraw then
+        -- (numbers only: where the pen's pressure came from, for a report)
+        Log.info("drawing: pen pressure from KOReader's events:", self._pressure_events or 0, "frames; from the digitizer:",
+            self._pressure_raw or 0, "frames;", self.penraw.state.n or 0, "values read")
+        require("gzreader_penraw").close(self.penraw)
+        self.penraw = nil
+    end
     pcall(gd.dropContacts, gd)
     local input = Device.input
     if input and input.clearTimeouts then pcall(input.clearTimeouts, input) end
@@ -1021,6 +1040,9 @@ end
 function DrawScreen:onContacts(det, tevs)
     local time = require("ui/time")
     local slots, now = {}, nil
+    -- (the digitizer's latest pressure and tilt, for the pen's slot when KOReader's event has none)
+    local raw = self.penraw and require("gzreader_penraw").read(self.penraw)
+    local pen_slot = Device.input and Device.input.pen_slot
     for _i, tev in ipairs(tevs) do
         local x, y = tev.x, tev.y
         if x and y then
@@ -1028,8 +1050,15 @@ function DrawScreen:onContacts(det, tevs)
             if det.adjustGesCoordinate then pcall(det.adjustGesCoordinate, det, ges) end
             x, y = ges.pos.x, ges.pos.y
         end
+        local pressure, tilt_x, tilt_y = tev.gz_pressure, tev.gz_tilt_x, tev.gz_tilt_y
+        if pressure ~= nil then
+            self._pressure_events = (self._pressure_events or 0) + 1
+        elseif raw and raw.pressure ~= nil and pen_slot ~= nil and tev.slot == pen_slot then
+            pressure, tilt_x, tilt_y = raw.pressure, tilt_x or raw.tilt_x, tilt_y or raw.tilt_y
+            self._pressure_raw = (self._pressure_raw or 0) + 1
+        end
         slots[#slots + 1] = { slot = tev.slot, id = tev.id, x = x, y = y, tool = tev.tool,
-            pressure = tev.gz_pressure, tilt_x = tev.gz_tilt_x, tilt_y = tev.gz_tilt_y }
+            pressure = pressure, tilt_x = tilt_x, tilt_y = tilt_y }
         if tev.timev and not now then now = time.to_s(tev.timev) end
     end
     now = now or time.to_s(time.now())

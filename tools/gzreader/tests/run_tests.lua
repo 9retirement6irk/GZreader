@@ -8139,6 +8139,27 @@ print("Notes (Memos v0.31)")
                 and esrc2:find('if self.drawing_note then self:dropDrawing(); return UIManager:close(self, "full") end', 1, true) ~= nil,
                 "a tap on a drawing note opens its drawing; Done saves (when something changed) and Close leaves it, both back on the Notes tab")
         end)()
+        -- the Scribe's pen pressure and tilt, read from the digitizer on the side
+        ;(function()
+            local PenRaw = require("gzreader_penraw")
+            local devices = table.concat({
+                'I: Bus=0018 Vendor=056a Product=0000 Version=0100', 'N: Name="WacomDigitizer"', 'P: Phys=', 'H: Handlers=event3 ', 'B: ABS=d000003', '',
+                'I: Bus=0000 Vendor=0000 Product=0000 Version=0000', 'N: Name="pt_mt"', 'H: Handlers=kbd event4 ', '',
+                'I: Bus=0006 Vendor=0000 Product=0000 Version=0000', 'N: Name="stylus-custom"', 'H: Handlers=mouse0 event6 ', '' }, "\n")
+            check(PenRaw.eventOf(devices, "WacomDigitizer") == "event3" and PenRaw.eventOf(devices, "stylus-custom") == "event6"
+                and PenRaw.eventOf(devices, "Wacom") == nil and PenRaw.eventOf("", "WacomDigitizer") == nil and PenRaw.eventOf(nil, "x") == nil,
+                "pen: the digitizer's input device found by its name (event3), not another's")
+            local st = { n = 0 }
+            check(PenRaw.take(st, 3, 0x18, 1800) and PenRaw.take(st, 3, 0x1a, -20) and PenRaw.take(st, 3, 0x1b, 35)
+                and not PenRaw.take(st, 3, 0x00, 500) and not PenRaw.take(st, 1, 0x18, 1) and not PenRaw.take(st, 0, 0, 0)
+                and st.pressure == 1800 and st.tilt_x == -20 and st.tilt_y == 35 and st.n == 3,
+                "pen: only pressure and tilt are taken from it (not its positions or keys)")
+            local dsrcq = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            check(dsrcq:find('elseif raw and raw.pressure ~= nil and pen_slot ~= nil and tev.slot == pen_slot then', 1, true) ~= nil
+                and dsrcq:find('if self.pen_only and not self.penraw then', 1, true) ~= nil
+                and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
+                "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
