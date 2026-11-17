@@ -263,7 +263,7 @@ add({ fn = function(E)
     if path then os.execute("cp '" .. path .. "' '" .. E.out .. "/drawing-sent.canvas.png'") end
     e.input:setText("Sketch from the " .. MODEL, true)
     -- Save: at the top right now (touch)
-    if PEN then E.penTap("Save") else E.tap("Save") end
+    if PEN then E.penTap("Done") else E.tap("Done") end -- (the top bar's Done saves)
 end, after = 1 })
 add({ wait_for = function()
     local q = plugin().store.memos.queue

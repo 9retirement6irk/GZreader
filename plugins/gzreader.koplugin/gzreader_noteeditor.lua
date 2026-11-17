@@ -40,6 +40,7 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
+local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
@@ -311,6 +312,8 @@ function Editor:init()
     end
     -- touch, the full page: Save at the top right (beside Space and Private, where the drawing screen's Done is)
     self.save_top = self.touch and not self.floating or nil
+    -- (and its top row is the drawing screen's bar: ←, the note's name, ✎ # ⋮ Done; Editor:notebookBar)
+    if self.save_top then self.title_h = S(52) end
     if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save off touch)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
@@ -524,7 +527,7 @@ function Editor:drawChrome()
     local sw = self.win_w
     local margin = self.margin
     self.title_slot:clear()
-    self.title_slot[1] = OverlapGroup:new{
+    self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{
         dimen = Geom:new{ w = sw, h = self.title_h },
         LeftContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{ HorizontalSpan:new{ width = margin },
@@ -626,6 +629,83 @@ function Editor:drawChrome()
     self.hint_slot:clear()
     self.hint_slot[1] = CenterContainer:new{ dimen = Geom:new{ w = sw, h = self.footer_h },
         TextWidget:new{ text = hint, face = Font:getFace("cfont", 13), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = self.inner } }
+end
+
+--- The touch editor's top bar, as the drawing screen's (gzreader_drawscreen.lua):
+---   ←  The note's name                       ✎  #  ⋮  [Done]
+---      Private · its space · #tags
+--- ← leaves (asks to save when something changed); ✎ draws (its sheets);
+--- # adds a tag; ⋮ has who can see it, its space, Draw and Close; Done saves.
+function Editor:notebookBar(sw)
+    local DrawScreen = require("gzreader_drawscreen")
+    local IconWidget = require("ui/widget/iconwidget")
+    local h = self.title_h
+    local line = Size.line.medium
+    local bh = h - S(8)
+    self.bar_buttons = {}
+    local function iconButton(id, icon, fn, guarded)
+        local isz = math.floor(bh * 0.56)
+        local w = FrameContainer:new{ width = bh, height = bh, padding = 0, margin = 0, bordersize = 0,
+            CenterContainer:new{ dimen = Geom:new{ w = bh, h = bh },
+                IconWidget:new{ file = DrawScreen.ICON_DIR .. icon .. ".svg", width = isz, height = isz, alpha = true } } }
+        local t = guarded and self:topTap(w, fn) or tapTarget(w, fn)
+        self.bar_buttons[id] = t
+        return t
+    end
+    local back = iconButton("back", "back", function() self:onCloseDialog() end)
+    local done = self:topTap(FrameContainer:new{ padding = S(6), padding_left = S(18), padding_right = S(18), margin = 0,
+        radius = S(6), bordersize = Size.border.thick, background = Blitbuffer.COLOR_WHITE,
+        TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 16), bold = true } }, function() self:save() end)
+    self.bar_buttons.done = done
+    local right = HorizontalGroup:new{ align = "center" }
+    if self:canDraw() then right[#right + 1] = iconButton("draw", "pen", function() self:openDrawing() end, true) end
+    right[#right + 1] = iconButton("tag", "tag", function() self:pickTag() end, true)
+    right[#right + 1] = iconButton("options", "more", function() self:barOptions() end, true)
+    right[#right + 1] = HorizontalSpan:new{ width = S(4) }
+    right[#right + 1] = done
+    right[#right + 1] = HorizontalSpan:new{ width = S(6) }
+    local left_w = S(4) + bh + S(6)
+    local title_w = math.max(S(60), sw - left_w - right:getSize().w - S(10))
+    local hint = { NoteEditor.VIS_LABEL[self.visibility] or "" }
+    if self.has_spaces then hint[#hint + 1] = self:spaceLabel() end
+    local tags = {}
+    for tag in (" " .. self:text()):gmatch("%s#([^%s#]+)") do
+        if #tags < 4 then tags[#tags + 1] = "#" .. tag end
+    end
+    if #tags > 0 then hint[#hint + 1] = table.concat(tags, " ") end
+    self.bar_title = self:heading() or (self.memo and _("Edit note") or _("New note"))
+    local title = VerticalGroup:new{ align = "left",
+        TextWidget:new{ text = self.bar_title, face = Font:getFace("cfont", 17), bold = true, max_width = title_w },
+        TextWidget:new{ text = table.concat(hint, " \u{00B7} "), face = Font:getFace("cfont", 12),
+            fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = title_w } }
+    return VerticalGroup:new{ align = "left",
+        OverlapGroup:new{ dimen = Geom:new{ w = sw, h = h - line },
+            LeftContainer:new{ dimen = Geom:new{ w = sw, h = h - line },
+                HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = S(4) }, back, HorizontalSpan:new{ width = S(6) }, title } },
+            RightContainer:new{ dimen = Geom:new{ w = sw, h = h - line }, right } },
+        LineWidget:new{ background = Blitbuffer.COLOR_BLACK, dimen = Geom:new{ w = sw, h = line } } }
+end
+
+--- The top bar's ⋮: who can see the note, its space, Draw, Close.
+function Editor:barOptions()
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    local rows = {
+        { { text = T(_("Who can see it: %1"), NoteEditor.VIS_LABEL[self.visibility] or ""), align = "left",
+            callback = run(function() self:onShortcut("V") end) } },
+    }
+    if self.has_spaces then
+        rows[#rows + 1] = { { text = T(_("Space: %1"), self:spaceLabel()), align = "left", callback = run(function() self:pickSpace() end) } }
+    end
+    if self:canDraw() then
+        rows[#rows + 1] = { { text = self:hasDrawing() and self:drawingLabel() or _("Draw"), align = "left", callback = run(function() self:openDrawing() end) } }
+    end
+    rows[#rows + 1] = { { text = _("Close"), align = "left", callback = run(function() self:onCloseDialog() end) } }
+    dialog = ButtonDialog:new{ title = _("Note"), buttons = rows }
+    self.options_dialog = dialog
+    self:keyboardAside(dialog)
+    UIManager:show(dialog)
+    return dialog
 end
 
 function Editor:redraw()

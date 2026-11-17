@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Notes editor: the drawing screen's top bar", text = "On touch Kindles the note editor's top row is now the drawing screen's bar: ← to leave, the note's name with who can see it, its space and tags under it, then ✎ (draw), # (add a tag), ⋮ (who can see it, space, draw, close) and Done, which saves." },
             { short = "Notes: the quick panel pulls down while you write or draw", text = "A swipe down from the top opens the quick panel over the note editor (the keyboard steps aside), a drawing and a journal entry, as at Home and in a book; what you were doing is still there when it closes. In a drawing, pull down from the top bar, or from the very top edge with the bar folded away: that never draws, and on the Scribe the pen still draws up to the edge." },
         },
     },
