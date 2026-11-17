@@ -124,6 +124,21 @@ add({ fn = function(E)
         "scrolling: a swipe down from the top of the screen opens the quick panel (" .. tostring(t.name) .. ")")
     if t ~= N().board then UIM():close(t) end
 end, after = 3 })
+-- the tab bar under the notes: its first tab (Home), under the row cut off at the bottom
+add({ fn = function(E)
+    local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
+    local b = N().board
+    local port = b._gz_scroll and b._gz_scroll.port
+    E.under_port = port and (port.dimen.y + port.dimen.h < H - 10)
+    E.tap({ math.floor(W * 0.08), H - math.floor(H * 0.02) })
+end, after = 4 })
+add({ fn = function(E)
+    local v = top()
+    local fm = require("apps/filemanager/filemanager").instance
+    check(E.under_port and v ~= N().board and v.memo == nil and N().onTop() == false and fm ~= nil,
+        "scrolling: a tap on the tab bar under the notes goes to its tab (Home), not to the note cut off there")
+    N().show(plugin())
+end, after = 4 })
 add({ fn = function(E) N().setScrolling(plugin(), false) end, after = 4 })
 add({ fn = function(E) check(#N().board.page_info > 0 and N().board._gz_scroll == nil, "scrolling off: pages, with their number and arrows") end, after = 1 })
 
