@@ -79,7 +79,10 @@ API to `/api` are found too.
   written, its space and whether it's pinned under it, then the **pin**
   (pin or unpin), **Archive** (the box), **Delete** (the bin; asks first),
   **⋮** (the note's More) and **Edit**. An archived note has **Delete**,
-  **⋮** and **Restore** instead. Below it, the text
+  **⋮** and **Restore** instead. (The note editor's **⋮** and, for a note
+  that's already there, the drawing screen's **⋮** have **Archive note**
+  and **Delete note…** too: Archive saves what you changed first; Delete
+  asks, and drops what wasn't saved.) Below it, the text
   in the note editor's font (the sticky notes on the
   Notes tab stay handwritten, in Patrick Hand), checklist items with letter keys
   (press one to tick or untick it; the change goes to Memos), pictures from

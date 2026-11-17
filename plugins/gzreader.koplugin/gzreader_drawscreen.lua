@@ -355,6 +355,11 @@ function DrawScreen:flyoutRows(which)
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
+        -- (a note that's already there: its archive and delete, as in its own menus)
+        if self.note_actions then
+            rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }
+            rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }
+        end
     elseif which == "tags" then
         local seen = {}
         local function tag(name)
@@ -1338,6 +1343,12 @@ function DrawScreen:use(t)
         sk:unzoom()
         self:redrawAll()
     elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
+    elseif t.id == "archive-note" or t.id == "delete-note" then
+        self.flyout = nil
+        self:layoutBar()
+        self:redrawAll()
+        Log.info("drawing:", t.id)
+        if t.id == "archive-note" then self.note_actions.archive(self) else self.note_actions.delete(self) end
     elseif t.id == "done" then self:done()
     elseif t.id == "paper" then self:pickPaper()
     elseif t.id == "pages" then self:showPages()
@@ -1686,6 +1697,7 @@ function DrawScreen.show(opts)
     local w
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
         plugin = opts.plugin, -- (the quick panel, pulled down)
+        note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a new drawing: the name and tags given in the top bar)

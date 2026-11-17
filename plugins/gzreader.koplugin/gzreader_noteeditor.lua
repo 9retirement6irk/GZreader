@@ -661,7 +661,39 @@ function Editor:notebookBar(sw)
     return bar
 end
 
---- The top bar's ⋮: who can see the note, its space, Draw, Close.
+--- Whether the editor is still open (saving closes it).
+function Editor:isShown()
+    for _i, w in ipairs(UIManager._window_stack or {}) do if w.widget == self then return true end end
+    return false
+end
+
+--- Archive this note (the ⋮ menus here and on the drawing screen): changes
+--- saved first (queued before the archive), the editor closed, the note
+--- off the board. A note not sent yet can't be archived (it says so).
+function Editor:archiveNote()
+    local Notes = require("gzreader_notes")
+    local m = self.memo
+    if not (m and m.name) then return Notes.archive(self.plugin, m or {}, true) end
+    if self:isShown() and self:changed() then self:save() end
+    if self:isShown() then UIManager:close(self, "full") end
+    Log.info("notes: a note archived from its editor")
+    return Notes.archive(self.plugin, m, true)
+end
+
+--- Delete this note (asked first): what wasn't saved is dropped, the
+--- drawing screen (`screen`, when it's open) and the editor closed.
+function Editor:deleteNote(screen)
+    local Notes = require("gzreader_notes")
+    return Notes.confirmDelete(self.plugin, self.memo, function()
+        if screen then screen:close() end
+        self:dropDrawing()
+        if self:isShown() then UIManager:close(self, "full") end
+        UIManager:setDirty("all", "full")
+        Log.info("notes: a note deleted from its editor")
+    end)
+end
+
+--- The top bar's ⋮: who can see the note, its space, Draw, Archive, Delete, Close.
 function Editor:barOptions()
     local dialog
     local function run(fn) return function() UIManager:close(dialog); fn() end end
@@ -674,6 +706,10 @@ function Editor:barOptions()
     end
     if self:canDraw() then
         rows[#rows + 1] = { { text = self:hasDrawing() and self:drawingLabel() or _("Draw"), align = "left", callback = run(function() self:openDrawing() end) } }
+    end
+    if self.memo then
+        rows[#rows + 1] = { { text = _("Archive note"), align = "left", callback = run(function() self:archiveNote() end) } }
+        rows[#rows + 1] = { { text = _("Delete note…"), align = "left", callback = run(function() self:deleteNote() end) } }
     end
     rows[#rows + 1] = { { text = _("Close"), align = "left", callback = run(function() self:onCloseDialog() end) } }
     dialog = ButtonDialog:new{ title = _("Note"), buttons = rows }
@@ -1049,6 +1085,14 @@ function Editor:openDrawing(page)
         title = self:heading(),
         -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
         meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
+        -- (an existing note: Archive note and Delete note… in the drawing screen's ⋮ too)
+        note_actions = self.memo and {
+            archive = function(screen)
+                screen:done() -- (what was drawn is saved first, then the note archived)
+                self:archiveNote()
+            end,
+            delete = function(screen) self:deleteNote(screen) end,
+        } or nil,
         on_done = function(res)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
