@@ -227,10 +227,22 @@ function TTS.ivonaEnds()
     chunk = chunk:sub(1, last_nl)
     TTS.ivona_log_offset = off + #chunk
     local n = 0
+    -- (for the trace: what the voice did since the last look, never its text)
+    local seen = { ends = {}, received = 0, stops = 0, synth_ended = 0, buffers = 0 }
+    TTS.ivona_seen = seen
     for line in chunk:gmatch("[^\n]+") do
         if line:find("einkttsd[", 1, true) then
             local bytes = tonumber(line:match("ReleaseBufPlay numBytes=(%d+)"))
-            if bytes and bytes ~= TTS.IVONA_BUF then n = n + 1 end
+            if bytes then
+                seen.buffers = seen.buffers + 1
+                if bytes ~= TTS.IVONA_BUF then
+                    n = n + 1
+                    seen.ends[#seen.ends + 1] = (line:match("^%d+:(%d+%.%d+)") or "?") .. "/" .. bytes
+                end
+            elseif line:find("playSnippet prop callback", 1, true) then seen.received = seen.received + 1
+            elseif line:find("STOP_READING", 1, true) then seen.stops = seen.stops + 1
+            elseif line:find("Synthesis has ended", 1, true) then seen.synth_ended = seen.synth_ended + 1
+            end
         end
     end
     return n
@@ -947,6 +959,7 @@ function Reader:start()
     if self.one or self.ivona then self.events_ok = false end
     self.ivona_log = self.ivona and TTS.ivonaLogStart() or false
     self.ivona_marks, self.ivona_backstops = 0, 0
+    self.traced, self.trace_t0 = 0, require("ui/time").to_s(require("ui/time").now())
     if self.ivona then Log.info("tts: Amazon's voice,", self.ivona_log and "following its sentence ends in the system log" or "paced by estimates (system log unreadable)") end
     self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
@@ -984,6 +997,7 @@ function Reader:restartQueue()
     -- flushes that queue, and requests sent close together could reach ttsd
     -- out of order, which dropped whole sentences (seen on a Kindle 3).
     TTS.cancelNow()
+    if self.ivona then self:trace("restart (stop, then from the page on screen)") end
     if self.ivona_log then
         -- the sentence cut off may still log a short buffer: start from here,
         -- and leave out what the next look finds
@@ -1016,6 +1030,20 @@ function Reader:fill()
     end
 end
 
+-- The read-aloud trace in gzreader.log (diagnostic logging on): sentences
+-- sent, the voice's sentence ends, highlight moves. Numbers and word counts
+-- only, never the book's text; at most TRACE_MAX lines a session.
+Reader.TRACE_MAX = 300
+local function words(text) local n = 0; for _w in tostring(text):gmatch("%S+") do n = n + 1 end; return n end
+function Reader:trace(...)
+    if not Log.enabled then return end
+    self.traced = (self.traced or 0) + 1
+    if self.traced > Reader.TRACE_MAX then return end
+    if self.traced == Reader.TRACE_MAX then Log.info("tts trace: (no more this time)"); return end
+    local t0 = self.trace_t0 or 0
+    Log.info(string.format("tts trace +%.1fs", (require("ui/time").to_s(require("ui/time").now()) - t0)), ...)
+end
+
 --- Send queued sentences to ttsd one at a time, each only after ttsd has
 --- answered the previous request, so they arrive in order.
 function Reader:sendNext()
@@ -1029,6 +1057,7 @@ function Reader:sendNext()
         return
     end
     item.id = id
+    if self.ivona then self:trace("sent", id, words(item.text) .. " words", "(queue " .. #self.queue .. ")") end
     if type(handle) ~= "string" then return self:sendNext() end -- answered already (lipc library)
     self.sending = handle
     local gen, tries = self.generation, 0
@@ -1055,6 +1084,8 @@ function Reader:playHead()
     if not self.active or not head or head.shown then return end
     head.shown = true
     head.shown_at = os.time()
+    if self.ivona then self:trace("highlight", head.id, words(head.text) .. " words",
+        head.turn_xp and string.format("(page turns at %d%%, est. %.1fs)", math.floor((head.turn_frac or 0) * 100), TTS.duration(head.text) * (head.turn_frac or 0)) or "") end
     if self.one then
         -- firmware 2.x: no queue in ttsd; this sentence now
         local since = (self.said or 0) < 3 and os.date("!%y%m%d:%H%M%S", os.time() - 2) or nil
@@ -1083,6 +1114,7 @@ function Reader:playHead()
         -- the sentence goes on overleaf: turn when the voice gets there
         self.turn_timer = function()
             self.turn_timer = nil
+            if self.ivona then self:trace("page turn (estimate)", head.id) end
             if self.active and self.queue[1] == head then
                 self:follow(head.turn_xp)
                 self:highlight(head.xp0, head.xp1)
@@ -1100,7 +1132,7 @@ function Reader:armTimer(head)
         self.timer = nil
         if self.queue[1] == head then
             if self.ivona_log then self.ivona_backstops = (self.ivona_backstops or 0) + 1 end
-            self:advance(head.id)
+            self:advance(head.id, "estimate")
         end
     end
     local wait = TTS.duration(head.text)
@@ -1110,10 +1142,14 @@ function Reader:armTimer(head)
 end
 
 --- Snippet `id` is done: drop it (and anything before it), refill, show the next.
-function Reader:advance(id)
+function Reader:advance(id, why)
     local idx
     for i, q in ipairs(self.queue) do if q.id == id then idx = i; break end end
     if not idx then return end
+    if self.ivona then
+        local q = self.queue[idx]
+        self:trace("done", id, why or "?", q and q.shown_at and string.format("shown %ds", os.time() - q.shown_at) or "")
+    end
     for _i = 1, idx do table.remove(self.queue, 1) end
     self:fill()
     self:playHead()
@@ -1123,12 +1159,17 @@ function Reader:poll()
     if not self.active then return end
     if self.ivona_log then
         local ends = TTS.ivonaEnds()
+        local seen = TTS.ivona_seen
+        if seen and (seen.received + seen.stops + seen.synth_ended + #seen.ends) > 0 then
+            self:trace("voice:", "received " .. seen.received, "synthesized " .. seen.synth_ended, "stops " .. seen.stops,
+                "buffers " .. seen.buffers, "ends " .. table.concat(seen.ends, " "), self.ivona_skip and "(left out: restart)" or "")
+        end
         if self.ivona_skip then self.ivona_skip = false; ends = 0 end
         for _i = 1, ends do
             local head = self.queue[1]
             if not (self.active and head and head.shown) then break end
             self.ivona_marks = (self.ivona_marks or 0) + 1
-            self:advance(head.id)
+            self:advance(head.id, "log")
         end
         if not self.active then return end
     end
