@@ -331,6 +331,7 @@ function Editor:init()
             padding = S(8), margin = 0, bordersize = Size.border.thin,
             hint = _("Write a note. #words become tags."),
             gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
+            gz_hash_key = true, -- (and has a # key: gzreader_hashkey.lua)
         })
     end
     if self.floating and not self.vk then

@@ -44,6 +44,7 @@ local RichEdit = InputContainer:extend{
     hint = nil,
     on_change = nil,
     gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
+    gz_hash_key = true, -- (and a # key for tags: gzreader_hashkey.lua)
     focused = true,
 }
 
