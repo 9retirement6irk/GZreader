@@ -762,7 +762,18 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                     if tint then self.tint_bb:setPixel(px + k, py, tint) end
                 end
                 darken(self.canvas_bb, px + k, py, cw, ch)
-                if screen_bb and not under then darken(screen_bb, p[1] - dx + k, p[2] + dy, sw, sh) end
+                if screen_bb and not under then
+                    -- On the screen, while the pen moves: black points an e-ink screen shows at once
+                    -- (the pencil: all of them; the highlighter: one in four, so it reads as light).
+                    -- A refresh that shows greys takes about half a second each time, which made the
+                    -- pencil lag far behind the pen (the owner, 2026-11-16). The real grey is on the
+                    -- page (canvas_bb) and shows when the stroke ends.
+                    local sx, sy = p[1] - dx + k, p[2] + dy
+                    if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (gray < 0x80 or (sx + 2 * sy) % 4 == 0)
+                        and screen_bb:getPixel(sx, sy):getColor8().a > gray then
+                        screen_bb:setPixel(sx, sy, Blitbuffer.COLOR_BLACK)
+                    end
+                end
             end
         end
     end
@@ -1041,7 +1052,8 @@ function DrawScreen:apply(out)
         out.redraw = true
     end
     if out.redraw then
-        self:touched()
+        -- (the view moved, by a pinch or a finger: the page itself is as it was)
+        if not out.view then self:touched() end
         self:redrawAll()
     elseif #out.segments > 0 then
         self:touched()
@@ -1062,8 +1074,8 @@ function DrawScreen:apply(out)
         x1, y1 = math.min(c.x + c.w, math.ceil(x1) + 1), math.min(c.y + c.h, math.ceil(y1) + 1)
         if x1 > x0 and y1 > y0 then
             -- (the ink is on the screen already: only a refresh, no repaint)
-            -- (a grey tool's ink: a refresh that shows greys — A2 and DU make it white or black)
-            UIManager:setDirty(nil, grey and "ui" or self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            -- (a grey tool's ink is on the screen as black points for now: the same fast refresh as the pen's)
+            UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
             if grey then self._stroke_grey = true end
             -- (the stroke's area, cleaned up once it's done)
             local d = self._stroke_area
@@ -1076,7 +1088,13 @@ function DrawScreen:apply(out)
     end
     if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
         local d = self._stroke_area
-        UIManager:setDirty(nil, "ui", Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+        local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }
+        if self._stroke_grey then
+            -- (a grey tool's stroke: the page painted again, so its real grey replaces the black points)
+            UIManager:setDirty(self, function() return "ui", area end)
+        else
+            UIManager:setDirty(nil, "ui", area)
+        end
     end
     if out.stroke_done then self._stroke_area, self._stroke_grey = nil, nil end
     if out.stroke_done then

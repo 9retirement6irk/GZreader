@@ -699,5 +699,48 @@ end)()
         "the eraser: Fine passes a stroke 5 px away, Heavy takes it")
 end)()
 
+-- zoomed in: the page follows a pinch as it goes, and (a pen Kindle) one finger moves it
+;(function()
+    local function sketch()
+        local sk = Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 1, tap_slop = 8, pen_only = true, pen_slot = 4 }
+        sk:zoomBy(2, 300, 400, 300, 400)
+        return sk
+    end
+    local sk = sketch()
+    local ox0, oy0 = sk.ox, sk.oy
+    check(sk.zoomed and math.abs(sk:zoom() - 2) < 0.01, "zoomed to 2x")
+    local o1 = sk:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 10)
+    local o2 = sk:frame({ { slot = 0, id = 1, x = 300, y = 340 } }, 10.1)
+    local o3 = sk:frame({ { slot = 0, id = 1, x = 300, y = 300 } }, 10.4)
+    local mid_oy = sk.oy
+    local o4 = sk:frame({ { slot = 0, id = 1, x = 300, y = 280 } }, 10.45)
+    local o5 = sk:frame({ { slot = 0, id = -1 } }, 10.5)
+    check(not o1.redraw and not o2.redraw and o3.redraw and o3.view and math.abs((mid_oy - oy0) - 50) < 0.5 and sk.ox == ox0,
+        "a pen Kindle, zoomed: one finger moves the page while it's still down (100 px up the screen at 2x: 50 of the page), a step at a time")
+    check(not o4.redraw and o5.redraw and o5.view and math.abs((sk.oy - oy0) - 60) < 0.5 and #sk:live() == 0 and not sk:canUndo(),
+        "…and it settles where the finger lifts; nothing is drawn, nothing to undo")
+    local un = Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 1, tap_slop = 8, pen_only = true, pen_slot = 4 }
+    un:frame({ { slot = 0, id = 1, x = 300, y = 400 } }, 1)
+    local u2 = un:frame({ { slot = 0, id = 1, x = 300, y = 200 } }, 2)
+    check(not u2.redraw and un.contacts[0].kind == "ignore", "not zoomed: a finger does nothing, as before")
+    -- the pen near: a hand on the screen doesn't move the page
+    local pk = sketch()
+    pk:frame({ { slot = 4, id = 4, x = 100, y = 100, tool = Sketch.TOOL_PEN } }, 20)
+    pk:frame({ { slot = 0, id = 1, x = 300, y = 500 } }, 20.1)
+    local p3 = pk:frame({ { slot = 0, id = 1, x = 300, y = 300 } }, 20.6)
+    check(not p3.view and pk.contacts[0].kind == "ignore", "the pen writing: a hand resting on the zoomed page doesn't move it")
+    -- a pinch follows the fingers too
+    local pz = sketch()
+    pz:frame({ { slot = 0, id = 1, x = 250, y = 400 } }, 30)
+    pz:frame({ { slot = 0, id = 1, x = 250, y = 400 }, { slot = 1, id = 2, x = 350, y = 400 } }, 30.05)
+    local z1 = pz:frame({ { slot = 0, id = 1, x = 220, y = 400 }, { slot = 1, id = 2, x = 380, y = 400 } }, 30.5)
+    local zmid = pz:zoom()
+    local z2 = pz:frame({ { slot = 0, id = 1, x = 200, y = 400 }, { slot = 1, id = 2, x = 400, y = 400 } }, 30.9)
+    local z3 = pz:frame({ { slot = 0, id = -1 }, { slot = 1, id = 2, x = 400, y = 400 } }, 31)
+    check(z1.redraw and z1.view and z1.zoom == nil and zmid > 2.4 and zmid < 3.3 and z2.redraw and math.abs(pz:zoom() - 4) < 0.05
+        and z3.zoom and math.abs(z3.zoom.from - 2) < 0.01 and math.abs(z3.zoom.to - 4) < 0.05,
+        "a pinch: the page zooms while the fingers are still down (2x, part of the way, 4x), told once when they lift")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

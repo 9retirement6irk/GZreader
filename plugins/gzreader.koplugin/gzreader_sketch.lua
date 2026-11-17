@@ -46,6 +46,8 @@ local Sketch = {
     PINCH_PAIR = 0.5,
     --- A pinch that changes the size less than this (a share) and moves less
     --- than PAN_MIN screen pixels does nothing (two fingers resting).
+    --- A pinch or a one-finger pan shows on the page as it goes, at most once in this many seconds.
+    LIVE_INTERVAL = 0.3,
     PINCH_MIN = 0.08,
     PAN_MIN = 24,
 }
@@ -583,7 +585,7 @@ local function pinchPartner(self, s, now)
     local oc = self.contacts[other]
     if oc.pen or not oc.inside or oc.palm then return nil end
     if self.pen_only then
-        if oc.kind == "ignore" and oc.t0 and now - oc.t0 <= Sketch.PINCH_PAIR then return other end
+        if (oc.kind == "ignore" or oc.kind == "pan") and oc.t0 and now - oc.t0 <= Sketch.PINCH_PAIR then return other end
     elseif oc.kind == "draw" and oc.t0 and now - oc.t0 <= Sketch.PINCH_WINDOW then
         return other
     end
@@ -609,12 +611,16 @@ local function startContact(self, s, now, out)
             out.redraw = true
         end
         oc.kind, c.kind = "pinch", "pinch"
-        self.pinch = { a = partner, b = s.slot, a0 = { oc.x, oc.y }, b0 = { s.x, s.y }, a1 = { oc.x, oc.y }, b1 = { s.x, s.y } }
+        self.pinch = { a = partner, b = s.slot, a0 = { oc.x, oc.y }, b0 = { s.x, s.y }, a1 = { oc.x, oc.y }, b1 = { s.x, s.y }, at = now }
         self.contacts[s.slot] = c
         return c
     end
     if not inside then
         c.kind = "tap"
+    elseif self.pen_only and not pen and self.zoomed and next(self.contacts) == nil then
+        -- a pen Kindle, zoomed in: one finger moves the page (a second, at once: a pinch)
+        c.kind = "pan"
+        c.px, c.py, c.at = s.x, s.y, now
     elseif self.pen_only and not pen then
         c.kind = "ignore" -- fingers don't draw on a pen Kindle
         self.stats.ignored = self.stats.ignored + 1
@@ -660,27 +666,54 @@ local function startContact(self, s, now, out)
 end
 
 --- The pinch over (a finger lifted): zoomed (and moved) as the fingers did.
-local function endPinch(self, out)
+--- The pinch so far, put on the page: zoomed and moved as the fingers have
+--- gone since it was last put on (true when the view changed). `final`: the
+--- fingers lifted (the small-movement limits are for a whole pinch).
+local function applyPinch(self, out, final)
     local p = self.pinch
-    self.pinch = nil
-    for _i, slot in ipairs({ p.a, p.b }) do
-        local c = self.contacts[slot]
-        if c then c.kind = "ignore" end -- (the other finger, still down, does nothing more)
-    end
-    if p.cancel then return end
     local function dist(a, b) return math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2) end
     local d0, d1 = math.max(1, dist(p.a0, p.b0)), dist(p.a1, p.b1)
     local scale = d1 / d0
     local m0 = { (p.a0[1] + p.b0[1]) / 2, (p.a0[2] + p.b0[2]) / 2 }
     local m1 = { (p.a1[1] + p.b1[1]) / 2, (p.a1[2] + p.b1[2]) / 2 }
     local moved = dist(m0, m1)
-    if math.abs(scale - 1) < Sketch.PINCH_MIN and (moved < Sketch.PAN_MIN or not self.zoomed) then return end
-    if math.abs(scale - 1) < Sketch.PINCH_MIN then scale = 1 end -- (two fingers dragged: moved, not zoomed)
+    -- (once it has shown on the page, the rest follows however small)
+    if not p.live and math.abs(scale - 1) < Sketch.PINCH_MIN and (moved < Sketch.PAN_MIN or not self.zoomed) then return false end
+    if not p.live and math.abs(scale - 1) < Sketch.PINCH_MIN then scale = 1 end -- (two fingers dragged: moved, not zoomed)
+    if p.live and not final and math.abs(scale - 1) < 0.02 and moved < 4 then return false end
     local cv = self.canvas
     local before = self:zoom()
     local now_zoom = self:zoomBy(scale, m0[1] - cv.x, m0[2] - cv.y, m1[1] - cv.x, m1[2] - cv.y)
-    out.redraw = true
-    out.zoom = { from = before, to = now_zoom }
+    p.a0, p.b0 = { p.a1[1], p.a1[2] }, { p.b1[1], p.b1[2] }
+    p.from = p.from or before
+    p.live = true
+    out.redraw, out.view = true, true
+    if final then out.zoom = { from = p.from, to = now_zoom } end
+    return true
+end
+
+local function endPinch(self, out)
+    local p = self.pinch
+    for _i, slot in ipairs({ p.a, p.b }) do
+        local c = self.contacts[slot]
+        if c then c.kind = "ignore" end -- (the other finger, still down, does nothing more)
+    end
+    if not p.cancel then applyPinch(self, out, true) end
+    self.pinch = nil
+end
+
+--- One finger on a zoomed page (a pen Kindle: fingers don't draw there)
+--- moves the page with it. True when the view changed.
+local function applyPan(self, c, out)
+    local dx, dy = c.x - c.px, c.y - c.py
+    if not c.panning and math.abs(dx) < Sketch.PAN_MIN and math.abs(dy) < Sketch.PAN_MIN then return false end
+    if dx == 0 and dy == 0 then return false end
+    c.panning = true
+    local cv = self.canvas
+    self:zoomBy(1, c.px - cv.x, c.py - cv.y, c.x - cv.x, c.y - cv.y)
+    c.px, c.py = c.x, c.y
+    out.redraw, out.view = true, true
+    return true
 end
 
 local function endContact(self, slot, out)
@@ -689,6 +722,7 @@ local function endContact(self, slot, out)
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
+    if c.kind == "pan" then applyPan(self, c, out); return end
     if c.kind == "draw" and c.shape then
         local pts = c.moved > self.tap_slop and self:shapePoints(c.shape, c.x0, c.y0, c.x, c.y) or {}
         for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
@@ -769,6 +803,10 @@ function Sketch:frame(slots, now)
                 if c.kind == "pinch" and self.pinch then
                     local p = self.pinch
                     if s.slot == p.a then p.a1 = { s.x, s.y } elseif s.slot == p.b then p.b1 = { s.x, s.y } end
+                    -- (the page follows the fingers, a step at a time: e-ink can't redraw at every sample)
+                    if not p.cancel and now - p.at >= Sketch.LIVE_INTERVAL and applyPinch(self, out, false) then p.at = now end
+                elseif c.kind == "pan" then
+                    if now - c.at >= Sketch.LIVE_INTERVAL and applyPan(self, c, out) then c.at = now end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end

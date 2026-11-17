@@ -37,6 +37,32 @@ function NewDrawing.content(title, tags)
     return table.concat(parts, "\n\n")
 end
 
+--- A note that is only a drawing's name and tags (what `content` writes: a
+--- `# title` line, a line of #tags, either or neither): its title and tags.
+--- Anything else in it: nil (a note with words of its own).
+function NewDrawing.parse(text)
+    local title, tags = "", {}
+    local seen_tags = false
+    for line in (tostring(text or "") .. "\n"):gmatch("(.-)\r?\n") do
+        local l = line:gsub("^%s+", ""):gsub("%s+$", "")
+        if l ~= "" then
+            local t = l:match("^#%s+(.+)$")
+            if t and title == "" and not seen_tags then
+                title = t
+            else
+                -- a line of tags only
+                for word in l:gmatch("%S+") do
+                    local tag = word:match("^#([^#%s]+)$")
+                    if not tag then return nil end
+                    tags[#tags + 1] = tag
+                end
+                seen_tags = true
+            end
+        end
+    end
+    return title, tags
+end
+
 --- `tags` with `tag` added, or taken off when it's there (a new list).
 function NewDrawing.toggle(tags, tag)
     tag = clean(tag)

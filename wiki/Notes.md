@@ -195,6 +195,14 @@ API to `/api` are found too.
       button does; each tap takes the next tool).
     - The **round button** above the tools folds them into one dark button
       showing the tool in hand; tap it to bring them back.
+    The pencil and the highlighter show as black points while you draw (so
+    they keep up with the pen) and turn grey when you lift.
+    **Zoom:** pinch to zoom in (up to 4×) and the page follows your fingers;
+    two fingers move a zoomed page, and on a Kindle with a pen one finger
+    does too. Pinch in for the whole page.
+    **A note that's only a drawing** (a title and tags, no other words)
+    opens on its drawing when you tap it; **Done** saves and goes back to
+    the Notes tab.
     The tools, widths and shape are kept for next time. In Memos the pencil
     and the highlighter are see-through strokes, and each stroke opens again
     with its tool. Nothing is drawn under the tools: start a stroke beside

@@ -91,6 +91,36 @@ add({ fn = function(E)
     local pic = found and found.attachments and found.attachments[1]
     check(found and pic and tostring(pic.filename):match("%.canvas%.png$"),
         "in Memos: \"# Garden plan\", #garden and the drawing (" .. tostring(found and #found.attachments) .. " attachment)")
+    -- the note is only a drawing: a tap on it (the Notes tab) opens the drawing, not the note's page
+    E.memo = found
+    require("gzreader_notes").refresh(plugin())
+end, after = 8 })
+add({ fn = function(E)
+    local N = require("gzreader_notes")
+    check(E.memo ~= nil and N.drawings(E.memo)[1] ~= nil, "the note has its drawing")
+    if E.memo then N.showNote(plugin(), E.memo) end
+end, after = 5 })
+add({ shot = "3-drawing-note-opened", after = 0.5 })
+add({ fn = function(E)
+    local d = screen()
+    local view
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.scroller and w.widget.memo then view = w.widget end end
+    check(d and view == nil and d:heading() == "Garden plan" and d.meta and d.meta.tags[1] == "garden" and #d.sketch:live() == 1,
+        "a tap on it: its drawing (the name and tag in the top bar, the stroke there), not the note's page")
+    draw(E, 0.6)
+end, after = 3 })
+add({ fn = function(E) tapAt(E, button("done")) end, after = 3 })
+add({ wait_for = function()
+    local q = plugin().store.memos.queue
+    return q and #q == 0
+end, timeout = 25 })
+add({ fn = function(E)
+    local Memos = require("gzreader_memos")
+    local list = Memos:new(plugin().store.memos):list(nil, nil, 20)
+    local found, n = nil, 0
+    for _i, m in ipairs(list and list.memos or {}) do if m.content == "# Garden plan\n\n#garden" then found = m; n = n + 1 end end
+    check(screen() == nil and editor() == nil and n == 1 and found and #found.attachments == 1,
+        "Done: back on the Notes tab, the same note saved with its drawing (" .. n .. " note, " .. tostring(found and #found.attachments) .. " drawing)")
     local f = io.open(E.out .. "/new-drawing-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l in ipairs(lines) do E.say("check", l) end
