@@ -5273,6 +5273,8 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
         return out
     end
 
+    local syslog_was = TTS.syslog
+    TTS.syslog = WORK .. "/no-such-syslog" -- (estimates first; the system log further down)
     TTS.ivona_present = true
     gsettings.gzreader_tts_template = nil
     local tpl = TTS.template()
@@ -5311,6 +5313,50 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     check(#s == 3 and s[3] == "On the next page. " and page == 2 and not R5.active and tts_ui.hl == nil,
         "reads sentence after sentence, turns the page, stops at the end " .. #s)
     check(#propsSet("stopReading") >= 1, "the voice is stopped at the end")
+
+    -- following the voice in the system log: its sentence ends
+    local SL = WORK .. "/ivona-messages"
+    local function logAppend(lines)
+        local lf = io.open(SL, "ab"); lf:write(table.concat(lines, "\n") .. "\n"); lf:close()
+    end
+    local function buf(bytes) return "261116:203227.005 einkttsd[16142]: I Mixer_MixerAPI:TRACE:ReleaseBufPlay numBytes=" .. bytes .. " name=/mstream16142_3718:" end
+    os.remove(SL)
+    logAppend({ "261116:203224.554 einkttsd[16142]: I einkttsd:playSnippet prop callback:text:Old.:" })
+    TTS.syslog = SL
+    check(TTS.ivonaLogStart() and TTS.ivonaEnds() == 0, "the system log is followed from its end (what was there before isn't counted)")
+    logAppend({ buf(2400), buf(2400), "261116:203227.164 audiomgrdv2[2438]: I Mixer_InputDataTrans:TRACE:GetReadBuff size=1438:", buf(1438), buf(2400) })
+    check(TTS.ivonaEnds() == 1, "one sentence ended: the voice's short buffer (1438), not its full ones (2400) nor audiomgrd's read of it")
+    local fh = io.open(SL, "ab"); fh:write(buf(2398)); fh:close() -- (no newline yet)
+    check(TTS.ivonaEnds() == 0, "a line still being written isn't read")
+    fh = io.open(SL, "ab"); fh:write("\n"); fh:close()
+    check(TTS.ivonaEnds() == 1, "…it is once it's whole")
+    fh = io.open(SL, "wb"); fh:write(""); fh:close() -- (the log rotated)
+    logAppend({ buf(1000) })
+    check(TTS.ivonaEnds() <= 1 and TTS.ivonaEnds() == 0, "a rotated log doesn't stop it (followed from its new end)")
+
+    page = 1
+    iv.sets = {}
+    local R9 = TTS.Reader:new(tts_ui)
+    -- (runLoop runs every timer at once, whatever its delay: no estimate backstop here)
+    R9.armTimer = function() end
+    R9:start()
+    check(R9.active and R9.ivona_log and tts_ui.hl == "s1", "reading follows the system log where it can be read")
+    logAppend({ buf(2400), buf(2400) })
+    runLoop(function() return false end, 0.4)
+    check(tts_ui.hl == "s1", "full buffers: still the first sentence")
+    logAppend({ buf(1438) })
+    runLoop(function() return tts_ui.hl == "s2" end, 1)
+    check(tts_ui.hl == "s2", "its last buffer logged: the highlight moves on at once (not after an estimate)")
+    -- a page turned by hand: the sentence cut off may log a short buffer, left out
+    R9.next_xp = "s2" -- (as a page turned by hand sets it)
+    R9:restartQueue()
+    logAppend({ buf(700) })
+    runLoop(function() return false end, 0.4)
+    check(R9.active and R9.queue[1] and tts_ui.hl == R9.queue[1].xp0, "after a restart, the cut-off sentence's short buffer isn't taken as the new one's end")
+    R9:stop()
+    check(not R9.active, "stopped")
+    TTS.syslog = WORK .. "/no-such-syslog"
+    os.remove(SL)
 
     -- no Bluetooth headphones or speaker connected
     iv.bt, captured.info, iv.sets = 0, nil, {}
@@ -5354,7 +5400,7 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     local Device = require("device")
     local bin_was, kindle_was = Touch.IVONA_BIN, Device.isKindle
     local fake = WORK .. "/einkttsdaemon"
-    local fh = io.open(fake, "w"); fh:write("x"); fh:close()
+    local bin_f = io.open(fake, "w"); bin_f:write("x"); bin_f:close()
     Touch.IVONA_BIN = fake
     Device.isKindle = function() return true end
     Touch._forgetIvona()
@@ -5381,6 +5427,7 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
         "its read aloud settings: no Volume row (the Bluetooth device's), \"Test the Kindle voice\"")
 
     TTS.lipc, TTS.exec, gsettings.gzreader_tts_template = lipc_was, exec_was, tpl_was
+    TTS.syslog = syslog_was
 end)()
 
 print("Read aloud on the Kindle 3: learning ttsd's request from its log")

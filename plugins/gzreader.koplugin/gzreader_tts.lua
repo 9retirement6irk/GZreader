@@ -44,10 +44,15 @@ it), on lipc as com.lab126.ivonatts:
   stopReading  (string) stops at once
   speechRate   (string) "1" normal, "1.5" faster
   ivonaStarted (int) 1 once it's up
-It sends no events (none seen with lipc-wait-event, nor in playermgr or
-audiomgrd), so reading is paced by estimates, a sentence sent ahead so the
-voice doesn't stop between them. It speaks through Bluetooth (audiomgrd's
-audioOutputConnected): no voice set-up, no discovery (TTS.IVONA).
+It sends no lipc events (none with lipc-wait-event, nor from playermgr or
+audiomgrd), but it writes its audio to Amazon's mixer in 2400-byte buffers
+and says so in the system log ("einkttsd[pid]: … ReleaseBufPlay
+numBytes=2400 …", every 40 ms); each sentence's last buffer is shorter
+(1438, 2398 on the Scribe), logged when that sentence's sound ends. Reading
+follows those lines (TTS.ivonaEnds), a sentence sent ahead so the voice
+doesn't stop between them; the estimate is only a backstop. It speaks
+through Bluetooth (audiomgrd's audioOutputConnected): no voice set-up, no
+discovery (TTS.IVONA). (The daemon itself logs each sentence's text there.)
 
 Reflowable books only (EPUB, FB2, MOBI, AZW3, TXT, HTML); not PDF or comics.
 ]]
@@ -185,6 +190,50 @@ function TTS.ensureIvona(on_ready)
         UIManager:scheduleIn(0.5, check)
     end
     UIManager:scheduleIn(0.5, check)
+end
+
+-- Following the voice in the system log: where we've read up to.
+TTS.IVONA_BUF = 2400        -- bytes of every audio buffer but a sentence's last
+TTS.IVONA_LOG_MAX = 1048576 -- bytes read per look at most (more: skipped)
+TTS.ivona_log_offset = nil
+
+--- Start following the system log from its end. False if it can't be read.
+function TTS.ivonaLogStart()
+    local f = io.open(TTS.syslog, "rb")
+    if not f then TTS.ivona_log_offset = nil; return false end
+    TTS.ivona_log_offset = f:seek("end")
+    f:close()
+    return TTS.ivona_log_offset ~= nil
+end
+
+--- Sentences the voice finished since the last look: its audio buffers'
+--- lines whose size isn't IVONA_BUF (each sentence's last). Only whole lines;
+--- a log that got shorter (rotated) is followed from its new end.
+function TTS.ivonaEnds()
+    local off = TTS.ivona_log_offset
+    if not off then return 0 end
+    local f = io.open(TTS.syslog, "rb")
+    if not f then return 0 end
+    local size = f:seek("end") or 0
+    if size < off then off = size end
+    if size - off > TTS.IVONA_LOG_MAX then
+        TTS.ivona_log_offset = size; f:close(); return 0
+    end
+    f:seek("set", off)
+    local chunk = f:read(size - off) or ""
+    f:close()
+    local last_nl = chunk:match(".*()\n")
+    if not last_nl then TTS.ivona_log_offset = off; return 0 end
+    chunk = chunk:sub(1, last_nl)
+    TTS.ivona_log_offset = off + #chunk
+    local n = 0
+    for line in chunk:gmatch("[^\n]+") do
+        if line:find("einkttsd[", 1, true) then
+            local bytes = tonumber(line:match("ReleaseBufPlay numBytes=(%d+)"))
+            if bytes and bytes ~= TTS.IVONA_BUF then n = n + 1 end
+        end
+    end
+    return n
 end
 
 --- speechRate for GZreader's speed (100 = normal): "1", "1.5", "0.8".
@@ -869,8 +918,12 @@ function Reader:start()
     self.one = TTS.oneAtATime()
     if not self.one and not self.ivona then TTS.startEvents() end
     self.events_ok = nil
-    -- (firmware 2.x and Amazon's Ivona voice: no events, paced by estimates)
+    -- (firmware 2.x and Amazon's Ivona voice: no events, paced by estimates;
+    -- the Ivona voice by its sentence ends in the system log where it can be read)
     if self.one or self.ivona then self.events_ok = false end
+    self.ivona_log = self.ivona and TTS.ivonaLogStart() or false
+    self.ivona_marks, self.ivona_backstops = 0, 0
+    if self.ivona then Log.info("tts: Amazon's voice,", self.ivona_log and "following its sentence ends in the system log" or "paced by estimates (system log unreadable)") end
     self.started_at = os.time()
     self.next_xp = self.ui.document:getXPointer()
     Log.info("tts start")
@@ -886,10 +939,12 @@ function Reader:start()
     end) end) end
 end
 
+Reader.IVONA_POLL = 0.25 -- (the system log: the highlight within a quarter second of the voice)
+
 function Reader:schedulePoll()
     if self.active and not self.poller_scheduled then
         self.poller_scheduled = true
-        UIManager:scheduleIn(Reader.POLL, self.poller)
+        UIManager:scheduleIn(self.ivona_log and Reader.IVONA_POLL or Reader.POLL, self.poller)
     end
 end
 
@@ -905,6 +960,12 @@ function Reader:restartQueue()
     -- flushes that queue, and requests sent close together could reach ttsd
     -- out of order, which dropped whole sentences (seen on a Kindle 3).
     TTS.cancelNow()
+    if self.ivona_log then
+        -- the sentence cut off may still log a short buffer: start from here,
+        -- and leave out what the next look finds
+        TTS.ivonaLogStart()
+        self.ivona_skip = true
+    end
     self:fill()
     self:playHead()
 end
@@ -1013,9 +1074,15 @@ function Reader:armTimer(head)
     if self.timer then UIManager:unschedule(self.timer) end
     self.timer = function()
         self.timer = nil
-        if self.queue[1] == head then self:advance(head.id) end
+        if self.queue[1] == head then
+            if self.ivona_log then self.ivona_backstops = (self.ivona_backstops or 0) + 1 end
+            self:advance(head.id)
+        end
     end
-    UIManager:scheduleIn(TTS.duration(head.text), self.timer)
+    local wait = TTS.duration(head.text)
+    -- following the voice in the log: the estimate only in case a sentence's end isn't seen
+    if self.ivona_log then wait = wait * 1.5 + 1.5 end
+    UIManager:scheduleIn(wait, self.timer)
 end
 
 --- Snippet `id` is done: drop it (and anything before it), refill, show the next.
@@ -1030,6 +1097,17 @@ end
 
 function Reader:poll()
     if not self.active then return end
+    if self.ivona_log then
+        local ends = TTS.ivonaEnds()
+        if self.ivona_skip then self.ivona_skip = false; ends = 0 end
+        for _i = 1, ends do
+            local head = self.queue[1]
+            if not (self.active and head and head.shown) then break end
+            self.ivona_marks = (self.ivona_marks or 0) + 1
+            self:advance(head.id)
+        end
+        if not self.active then return end
+    end
     for _i, ev in ipairs(TTS.readEvents()) do
         self.logged_events = (self.logged_events or 0) + 1
         if self.logged_events <= 12 then Log.info("tts event", ev.name, ev.id, "queue head", self.queue[1] and self.queue[1].id) end
@@ -1077,7 +1155,8 @@ function Reader:stop()
     if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
     if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end
     if self.active then
-        Log.info("tts stop")
+        Log.info("tts stop", self.ivona_log and string.format("(sentence ends seen in the log: %d, by estimate: %d)",
+            self.ivona_marks or 0, self.ivona_backstops or 0) or "")
     end
     local was_active = self.active
     self.active, self.paused = false, false
