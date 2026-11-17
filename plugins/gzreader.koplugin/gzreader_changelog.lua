@@ -7,7 +7,7 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
-        version = "next",
+        version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
             { short = "Finishing a book marks it Read in Grimmory", text = "On a book's last page GZreader now sends Grimmory 100%. Grimmory marks a book Read at 99.5%, and GZreader sent the top of the last page, which came to 99.0-99.4% in shorter EPUBs: finishing one left it at Reading. PDFs, comics, FB2 and MOBI were already sent as 100% there." },
