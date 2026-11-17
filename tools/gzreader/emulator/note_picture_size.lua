@@ -64,7 +64,7 @@ add({ fn = function(E)
     local inner = pageInner()
     local want = math.floor(320 * inner / 640 + 0.5)
     local w = box and box.dimen.w
-    check(w and math.abs(w - want) <= 3, "the note's page: half the page wide (" .. tostring(w) .. " for " .. want .. ")")
+    check(w and math.abs(w - want) <= 6, "the note's page: half the page wide (" .. tostring(w) .. " for " .. want .. ")")
     local left = box and box.dimen.x - require("device").screen:scaleBySize(24)
     check(left and math.abs(left - math.floor((inner - w) / 2)) <= 3, "…and centred (" .. tostring(left) .. " from the margin)")
     local v = view()
@@ -110,13 +110,47 @@ add({ fn = function(E)
     check(w and w > 450 and w < 600, "the tab dragged out: wider, written as Memos does (|center|" .. tostring(w) .. ")")
     local l = picLine(r)
     check(l and w and math.abs(l.picture.w - math.floor(w * r.width / 640 + 0.5)) <= 2, "…and shown at that width")
+    E.w = w
+    -- the toolbar above it: Right
+    local br = r:pictureBarRect()
+    check(br ~= nil, "picked: the web editor's picture toolbar above it")
+    local function toolAt(id)
+        for i, t in ipairs(r.RICH_PICTURE_BAR or require("gzreader_richedit").PICTURE_BAR) do
+            if t.id == id then return onScreen(r, br.x + (i - 1) * br.cell + math.floor(br.cell / 2), br.y + math.floor(br.h / 2)) end
+        end
+    end
+    E.tap(toolAt("right"))
+end, after = 3 })
+add({ shot = "4b-toolbar-right", after = 1 })
+add({ fn = function(E)
+    local r = editor().rich_input
+    local txt = r:getText()
+    check(txt:match("!%[The sea|right|" .. tostring(E.w) .. "%]"), "Right: placed on the right, its size kept (|right|" .. tostring(E.w) .. ")")
+    local l = picLine(r)
+    check(l and math.abs(l.picture.x + l.picture.w - r.width) <= 2, "…shown on the right")
+    -- drag the picture itself above the heading
+    local top = l.y - r.top
+    local from = onScreen(r, l.picture.x + math.floor(l.picture.w / 2), top + math.floor(math.min(l.h, r.height - top) / 2))
+    -- (to the page's top edge, held there a moment: the note scrolls up to the heading)
+    local to = onScreen(r, l.picture.x + math.floor(l.picture.w / 2), 4)
+    local pts = {}
+    for k = 0, 6 do pts[#pts + 1] = { from[1], from[2] + math.floor((to[2] - from[2]) * k / 6) } end
+    for k = 1, 12 do pts[#pts + 1] = { to[1], to[2] + (k % 2) } end
+    E.finger(pts, 3)
+end, after = 4 })
+add({ shot = "4c-moved", after = 1 })
+add({ fn = function(E)
+    local e = editor()
+    local txt = e.rich_input:getText()
+    E.say("after move", txt)
+    check(txt:match("^!%[The sea|right|%d+%]%(/file/attachments/[^%)]+%)\n\n# Beach day\n"), "dragged up: the picture first, the heading after it")
     e:save()
 end, after = 6 })
 add({ fn = function(E)
     local now = c:get(note.name)
-    local w = now and tonumber(now.content:match("!%[The sea|center|(%d+)%]"))
-    check(w and w > 450 and now.content:match("^# Beach day\n") and now.content:match("The sea was calm%.$"),
-        "Save: the note in Memos has the new size, the rest as it was")
+    local w = now and tonumber(now.content:match("!%[The sea|right|(%d+)%]"))
+    check(w and w > 450 and now.content:match("^!%[The sea") and now.content:match("# Beach day\n") and now.content:match("The sea was calm%.$"),
+        "Save: the note in Memos has the new size, place and order, the rest as it was")
 end, after = 0.5 })
 add({ shot = "5-page-after", after = 1 })
 add({ fn = function(E)

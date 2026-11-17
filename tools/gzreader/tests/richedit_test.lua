@@ -353,6 +353,30 @@ do
     pd:onPanEdit(nil, { start_pos = { x = l1.picture.x + 20, y = sy1 }, relative = { x = 0, y = pd.total_h - pd.top - sy1 + 50 } })
     pd:onPanReleaseEdit(nil, {})
     check(text(pd) == "One\n\nTwo\n\nThree\n\n![p](/file/attachments/here/b.jpg)", "dragged below the end: last … " .. show(text(pd)))
+    -- a long note: dragged to the top edge, it scrolls up under the finger
+    local paras = {}
+    for i = 1, 40 do paras[#paras + 1] = "Paragraph " .. i end
+    local pl2 = picDoc(table.concat(paras, "\n\n") .. "\n\n![p](/file/attachments/here/c.jpg)")
+    pl2.top = math.max(0, pl2.total_h - pl2.height)
+    tapPic(pl2)
+    local lp = pl(pl2)
+    local top_before = pl2.top
+    local sy2 = lp.y - pl2.top + 10
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + 20, y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + 20, y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    check(pl2.moving and pl2.top < top_before, "dragged to the page's top edge: the note scrolls up under it")
+    local Screen = require("device").screen
+    local rr2 = pl2:panRange()
+    check(rr2.w == Screen:getWidth() and rr2.h == Screen:getHeight(), "…and the finger is followed off the page too")
+    pl2:onPanReleaseEdit(nil, {})
+    check(pl2:panRange() == pl2.dimen, "let go: pans on the page only again")
+    local kbd = editor("Hi\n\n![p](/file/attachments/here/a.jpg)")
+    kbd.pictures = pictures
+    kbd:relayout()
+    kbd.keyboard:showKeyboard()
+    local kl = pl(kbd)
+    kbd:onTapEdit(nil, ges(kl.picture.x + 5, kl.y - kbd.top + 5))
+    check(kbd.picked and not kbd.keyboard:isVisible(), "picking a picture puts the keyboard away")
     -- a tab still resizes (not a move)
     tapPic(pd)
     local tr = pd:tabs().right
