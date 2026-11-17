@@ -154,3 +154,7 @@ the clock jump after waking). Log lines are redacted (no passwords,
 tokens or Wi-Fi network names). Checked with the Kindle 3's LuaJIT against a local feed: queued
 messages, the freeze alert with its snapshot, "responsive again", the crash
 report, and no crash report after a normal close.
+
+The heartbeat says "sleep" from the moment the screensaver shows until the
+Kindle wakes, and after waking the watchdog counts from then, so a long
+sleep (or the seconds a Kindle takes to wake) is never reported as a freeze.

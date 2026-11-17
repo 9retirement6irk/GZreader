@@ -105,6 +105,10 @@ echo "== Nook screens"
 (cd "$T" && luajit nook_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
+echo "== the watchdog (its own process: freezes, waking up)"
+(cd "$T" && luajit watchdog_test.lua "$REPO/plugins/gzreader.koplugin" "$WORK") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== the shelves' look"
 (cd "$T" && luajit shelf_look_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
