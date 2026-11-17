@@ -9,7 +9,8 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Quieter / Louder (the Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider), Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so." },
+            { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Quieter / Louder (the Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider), Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so. The highlight moves on when you hear the sentence end (Bluetooth sound arrives about a second after the voice makes it)." },
+            { short = "Read aloud highlights one sentence at a time", text = "Read aloud (every Kindle that has it) now ends a piece at each sentence's full stop, question or exclamation mark. Before, in many books it missed them and highlighted and read 50 to 80 words at once." },
         },
     },
     {

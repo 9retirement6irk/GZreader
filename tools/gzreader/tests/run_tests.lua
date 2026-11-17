@@ -5234,6 +5234,32 @@ do
     local _t, _a, _b, extra = R3:sentenceAt("w1")
     check(extra and extra.turn_xp == "w5" and extra.turn_frac > 0.4 and extra.turn_frac < 0.8,
         "a sentence crossing the page knows where, so the page turns while it's said")
+    -- crengine's words leave out the punctuation after them: the full stop is
+    -- in the gap before the next word (seen on a Scribe: pieces of 60-80 words)
+    local function puncDoc(words, after)
+        return {
+            info = { has_pages = false },
+            getNextVisibleWordEnd = function(_, xp) local i = tonumber(xp:match("^w(%d+)$")); return i and words[i] and ("e" .. i) or nil end,
+            getNextVisibleWordStart = function(_, xp) local i = tonumber(xp:match("^e(%d+)$")); return i and words[i + 1] and ("w" .. (i + 1)) or nil end,
+            getPrevVisibleWordStart = function(_, xp) return "w" .. xp:match("(%d+)") end,
+            getTextFromXPointers = function(_, a, b)
+                local i, j = tonumber(a:match("(%d+)")), tonumber(b:match("(%d+)"))
+                if a:sub(1, 1) == "e" and b:sub(1, 1) == "w" then return (after[i] or "") .. " " end
+                local t = {}
+                for k = i, j do t[#t + 1] = words[k] .. ((k < j or b:sub(1, 1) == "w") and (after[k] or "") or "") end
+                return table.concat(t, " ")
+            end,
+        }
+    end
+    local pw = { "If", "the", "events", "are", "dependent", "we", "need", "to", "understand", "it", "For", "example", "two", "Aces", "Overall", "it", "is", "Then" }
+    local pd = puncDoc(pw, { [5] = ",", [10] = ".", [14] = "!", [17] = "." })
+    local PR = TTS.Reader:new({ document = pd })
+    local p1, _p1a, p1b = PR:sentenceAt("w1")
+    local p2, _p2a, p2b = PR:sentenceAt(pd:getNextVisibleWordStart(p1b))
+    local p3 = PR:sentenceAt(pd:getNextVisibleWordStart(p2b))
+    check(p1 == "If the events are dependent, we need to understand it." and p2 == "For example two Aces!"
+            and p3 == "Overall it is.",
+        "a full stop after the word (not in it) ends the sentence, and is spoken: " .. tostring(p1) .. " | " .. tostring(p2) .. " | " .. tostring(p3))
     check(TTS.speakable("Web link (Huffman): http://asecuritysite.com/coding/huff and https://x.y/z?a=1 www.example.com/page")
         == "Web link (Huffman): and", "web addresses aren't read out " .. TTS.speakable("Web link (Huffman): http://asecuritysite.com/coding/huff and https://x.y/z?a=1 www.example.com/page"))
 end
@@ -5358,8 +5384,17 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
     runLoop(function() return false end, 0.4)
     check(tts_ui.hl == "s1", "full buffers: still the first sentence")
     logAppend({ buf(1438) })
-    runLoop(function() return tts_ui.hl == "s2" end, 1)
-    check(tts_ui.hl == "s2", "its last buffer logged: the highlight moves on at once (not after an estimate)")
+    local UIM = require("ui/uimanager")
+    local sched_was, later = UIM.scheduleIn, {}
+    UIM.scheduleIn = function(_self, secs, fn) later[#later + 1] = { secs = secs, fn = fn } end
+    R9:poll()
+    UIM.scheduleIn = sched_was
+    local heard
+    for _i, l in ipairs(later) do if l.secs == TTS.Reader.IVONA_HEARD then heard = l end end
+    check(tts_ui.hl == "s1" and heard and TTS.Reader.IVONA_HEARD >= 0.8 and TTS.Reader.IVONA_HEARD <= 2,
+        "its last buffer logged: the highlight waits until it's heard (the voice hands its sound over ~1 s early)")
+    heard.fn()
+    check(tts_ui.hl == "s2", "…then moves on (not after an estimate)")
     -- a page turned by hand: the sentence cut off may log a short buffer, left out
     R9.next_xp = "s2" -- (as a page turned by hand sets it)
     R9:restartQueue()
