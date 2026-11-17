@@ -10,7 +10,7 @@ black when it's on (Wi‑Fi, night mode, a bookmark on this page).
 Five tiles go across; on a big touch screen (the Kindle Scribe) as many as
 keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 
-- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi); on the Kindle 2
+- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi), and the panel stays open; on the Kindle 2
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).

@@ -5,6 +5,8 @@ Wi‑Fi is **On**, **Off** or **Auto** (Auto is the default):
 - **The quick panel's Wi‑Fi tile** goes through them: Wi‑Fi on → Wi‑Fi off →
   Wi‑Fi auto → Wi‑Fi on. On is drawn white on black; Auto's icon has an **A**
   and still shows whether Wi‑Fi is on right now (crossed out while it's off).
+  The panel stays open after a tap, so you can tap again to reach the mode you
+  want.
 - **Settings → General → Wi‑Fi** offers the same three, with **Networks**
   (choosing a network), **HTTP proxy** (tap: on or off; hold: its address)
   and **Network info** under them. The row shows the mode.

@@ -336,13 +336,14 @@ end
 
 --- The Wi-Fi tile: On, Off or Auto (gzreader_net.lua); a tap goes to the
 --- next one (on → off → auto → on). On is drawn inverted; Auto's icon has an
---- "A" and still shows whether Wi-Fi is on right now.
+--- "A" and still shows whether Wi-Fi is on right now. It stays: the panel
+--- stays open and the tile is drawn again (`stay`, `refresh`).
 function Panel.wifiTile()
     local Net = require("gzreader_net")
     local mode = Net.mode()
     local d = Net.describe(mode)
-    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", run = function()
-        local next_mode = Net.nextMode(mode)
+    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", stay = true, refresh = Panel.wifiTile, run = function()
+        local next_mode = Net.nextMode(Net.mode())
         local switching = Net.setMode(next_mode)
         -- (KOReader says "Turning on Wi-Fi…" / "Wi-Fi off." when it switches)
         if not switching or next_mode == "auto" then
@@ -590,7 +591,9 @@ function PanelWidget:init()
             end
             local tile = Tile:new{ w = tw, h = th, icon = t.icon, label = t.label, on = t.on,
                 key = keys and g.letters[i] or nil,
-                callback = function() self:pick(t) end }
+                callback = nil }
+            tile.callback = function() self:pick(t, tile) end
+            tile.gz_tile = t
             tile.key_letter = g.letters[i]
             row[#row + 1] = tile
             self[#self + 1] = tile
@@ -713,13 +716,45 @@ end
 
 function PanelWidget:getSize() return self.dimen end
 
-function PanelWidget:pick(t)
+function PanelWidget:pick(t, tile)
+    -- (a tile that stays, e.g. Wi-Fi: run it and draw it again, the panel open)
+    if t.stay and tile then
+        UIManager:nextTick(function()
+            if t.run then t.run() end
+            self:refreshTile(t, tile)
+        end)
+        return
+    end
     UIManager:close(self)
     if t.run then UIManager:nextTick(function()
         t.run()
         if t.full then UIManager:scheduleIn(0.4, function() UIManager:setDirty(nil, "full") end) end
     end) end
 end
+
+--- A tile that stays, drawn again from its refresh (its icon, label, on,
+--- what a tap does next), with the status row (Wi-Fi on/off).
+function PanelWidget:refreshTile(t, tile)
+    local fresh = t.refresh and t.refresh()
+    if fresh then
+        for k, v in pairs(fresh) do t[k] = v end
+        t.on = fresh.on -- (nil when off)
+        tile.icon, tile.label, tile.on = fresh.icon, fresh.label, fresh.on and true or false
+    end
+    UIManager:setDirty(self, "ui")
+end
+
+--- Wi-Fi went on or off (KOReader tells every window): the Wi-Fi tile and
+--- the status row follow while the panel is open.
+function PanelWidget:refreshStaying()
+    for _i, p in ipairs(self.placed or {}) do
+        local t = p.tile and p.tile.gz_tile
+        if t and t.stay then self:refreshTile(t, p.tile) end
+    end
+end
+function PanelWidget:onNetworkConnected() self:refreshStaying() end
+function PanelWidget:onNetworkDisconnected() self:refreshStaying() end
+function PanelWidget:onNetworkStateChanged() self:refreshStaying() end
 
 function PanelWidget:paintTo(bb, x, y)
     local w, h = self.w, self.h
