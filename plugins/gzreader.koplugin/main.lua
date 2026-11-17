@@ -717,7 +717,8 @@ function Grimmory:sectionItems(section)
             }),
         }
     elseif section == "reader" then
-        if not Mod.Touch.audio() then return {} end -- (no speaker: no read aloud, no audiobooks)
+        -- (no speaker: no audiobooks; read aloud only with Amazon's Bluetooth voice)
+        if not Mod.Touch.audio() and not Mod.Touch.tts() then return {} end
         local items = {}
         -- (read aloud: Shift + Sym, the Kindles with a keyboard)
         if Mod.Touch.tts() then
@@ -729,6 +730,7 @@ function Grimmory:sectionItems(section)
                 callback = function() self:showTtsSettings() end,
             })
         end
+        if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no audiobook test, no headphone jack)
         items[#items + 1] = icon("check", {
             text = _("Test audiobook playback"),
             help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
@@ -1732,7 +1734,7 @@ function Grimmory:showTtsSettings()
         UIManager:setDirty(dialog, "ui", btn.dimen)
     end
     local function speedText() return T(_("Speed %1"), Mod.TTS.speed()) end
-    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) end
+    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.volumeMax()) end
     local function setSpeed(v)
         Mod.TTS.setSpeed(math.max(50, math.min(200, v)))
         relabel("speed", speedText())
@@ -1742,24 +1744,29 @@ function Grimmory:showTtsSettings()
         relabel("volume", volumeText())
         Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
     end
+    -- Amazon's Bluetooth voice (Scribe and other Bluetooth Kindles): the
+    -- volume is the Kindle's Bluetooth volume (1-8, as Amazon's slider), and
+    -- there is nothing to find
+    local bt = Mod.TTS.hasIvona()
+    local buttons = {}
+    buttons[#buttons + 1] = {
+        { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
+        { id = "volume", text = volumeText(), enabled = false },
+        { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
+    }
+    buttons[#buttons + 1] = {
+        { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
+        { id = "speed", text = speedText(), enabled = false },
+        { text = _("Faster"), callback = function() setSpeed(Mod.TTS.speed() + 10) end },
+    }
+    buttons[#buttons + 1] = { { text = bt and _("Test the Kindle voice") or _("Find the Kindle voice (test)"), callback = function()
+        UIManager:close(dialog); Mod.TTS.findVoice()
+    end } }
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
     dialog = ButtonDialog:new{
-        title = _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
-        buttons = {
-            {
-                { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
-                { id = "volume", text = volumeText(), enabled = false },
-                { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
-            },
-            {
-                { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
-                { id = "speed", text = speedText(), enabled = false },
-                { text = _("Faster"), callback = function() setSpeed(Mod.TTS.speed() + 10) end },
-            },
-            { { text = _("Find the Kindle voice (test)"), callback = function()
-                UIManager:close(dialog); Mod.TTS.findVoice()
-            end } },
-            { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
-        },
+        title = bt and _("Read aloud\nThrough Bluetooth headphones or a speaker. In a book, Read aloud in the quick panel starts and stops it. The sentence being read is highlighted and pages turn by themselves.")
+            or _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
+        buttons = buttons,
     }
     UIManager:show(dialog)
 end

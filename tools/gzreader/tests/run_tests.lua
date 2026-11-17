@@ -5733,12 +5733,249 @@ do
     local _t, _a, _b, extra = R3:sentenceAt("w1")
     check(extra and extra.turn_xp == "w5" and extra.turn_frac > 0.4 and extra.turn_frac < 0.8,
         "a sentence crossing the page knows where, so the page turns while it's said")
+    -- crengine's words leave out the punctuation after them: the full stop is
+    -- in the gap before the next word (seen on a Scribe: pieces of 60-80 words)
+    local function puncDoc(words, after)
+        return {
+            info = { has_pages = false },
+            getNextVisibleWordEnd = function(_, xp) local i = tonumber(xp:match("^w(%d+)$")); return i and words[i] and ("e" .. i) or nil end,
+            getNextVisibleWordStart = function(_, xp) local i = tonumber(xp:match("^e(%d+)$")); return i and words[i + 1] and ("w" .. (i + 1)) or nil end,
+            getPrevVisibleWordStart = function(_, xp) return "w" .. xp:match("(%d+)") end,
+            getTextFromXPointers = function(_, a, b)
+                local i, j = tonumber(a:match("(%d+)")), tonumber(b:match("(%d+)"))
+                if a:sub(1, 1) == "e" and b:sub(1, 1) == "w" then return (after[i] or "") .. " " end
+                local t = {}
+                for k = i, j do t[#t + 1] = words[k] .. ((k < j or b:sub(1, 1) == "w") and (after[k] or "") or "") end
+                return table.concat(t, " ")
+            end,
+        }
+    end
+    local pw = { "If", "the", "events", "are", "dependent", "we", "need", "to", "understand", "it", "For", "example", "two", "Aces", "Overall", "it", "is", "Then" }
+    local pd = puncDoc(pw, { [5] = ",", [10] = ".", [14] = "!", [17] = "." })
+    local PR = TTS.Reader:new({ document = pd })
+    local p1, _p1a, p1b = PR:sentenceAt("w1")
+    local p2, _p2a, p2b = PR:sentenceAt(pd:getNextVisibleWordStart(p1b))
+    local p3 = PR:sentenceAt(pd:getNextVisibleWordStart(p2b))
+    check(p1 == "If the events are dependent, we need to understand it." and p2 == "For example two Aces!"
+            and p3 == "Overall it is.",
+        "a full stop after the word (not in it) ends the sentence, and is spoken: " .. tostring(p1) .. " | " .. tostring(p2) .. " | " .. tostring(p3))
     check(TTS.speakable("Web link (Huffman): http://asecuritysite.com/coding/huff and https://x.y/z?a=1 www.example.com/page")
         == "Web link (Huffman): and", "web addresses aren't read out " .. TTS.speakable("Web link (Huffman): http://asecuritysite.com/coding/huff and https://x.y/z?a=1 www.example.com/page"))
 end
 local pdf = TTS.Reader:new({ document = { info = { has_pages = true } } })
 pdf:start()
 check(not pdf.active and captured.info:match("not PDFs"), "PDFs: explains it's for reflowable books")
+
+print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.ivonatts)")
+;(function()
+    local lipc_was, exec_was, tpl_was = TTS.lipc, TTS.exec, gsettings.gzreader_tts_template
+    local iv = { sets = {}, cmds = {}, started = 1, bt = 1, vol = 40 }
+    TTS.lipc = { open_no_name = function()
+        return {
+            set_string_property = function(_h, pub, prop, v) iv.sets[#iv.sets + 1] = { pub = pub, prop = prop, v = v } end,
+            set_int_property = function(_h, pub, prop, v) iv.sets[#iv.sets + 1] = { pub = pub, prop = prop, v = v } end,
+            get_int_property = function(_h, pub, prop)
+                if pub == "com.lab126.ivonatts" and prop == "ivonaStarted" then return iv.started end
+                if pub == "com.lab126.audiomgrd" and prop == "audioOutputConnected" then return iv.bt end
+                if pub == "com.lab126.audiomgrd" and prop == "speakerVolume" then return iv.vol end
+                error("no such property")
+            end,
+            close = function() end,
+        }
+    end }
+    TTS.exec = function(cmd)
+        iv.cmds[#iv.cmds + 1] = cmd
+        if cmd:find("start eink_ttsd", 1, true) and iv.starts_on then iv.started = 1 end
+        return 0
+    end
+    local function said()
+        local out = {}
+        for _i, ev in ipairs(iv.sets) do if ev.prop == "playSnippet" then out[#out + 1] = ev.v end end
+        return out
+    end
+    local function propsSet(name)
+        local out = {}
+        for _i, ev in ipairs(iv.sets) do if ev.prop == name then out[#out + 1] = ev.v end end
+        return out
+    end
+
+    local syslog_was = TTS.syslog
+    TTS.syslog = WORK .. "/no-such-syslog" -- (estimates first; the system log further down)
+    TTS.ivona_present = true
+    gsettings.gzreader_tts_template = nil
+    local tpl = TTS.template()
+    check(TTS.isIvona(tpl) and tpl.target.pub == "com.lab126.ivonatts" and tpl.target.prop == "playSnippet",
+        "a Kindle with Amazon's voice: no voice to find, it's com.lab126.ivonatts playSnippet")
+    check(not TTS.oneAtATime(tpl), "…which queues requests (a second sentence waits for the first)")
+    TTS.say("He said \u{201C}hi\u{201D} \u{2014} then left.")
+    check(said()[1]:match('^He said "hi" ,%s+then left%. $') ~= nil,
+        "a sentence goes as plain text (no JSON: it would be read out), typographic quotes as plain ones: " .. said()[1])
+    check(TTS.ivonaRate(100) == "1" and TTS.ivonaRate(150) == "1.5" and TTS.ivonaRate(80) == "0.8" and TTS.ivonaRate(200) == "2",
+        "speed → speechRate: 100 → \"1\", 150 → \"1.5\"")
+    iv.sets = {}
+    TTS.setSpeed(150)
+    check(propsSet("speechRate")[1] == "1.5" and #propsSet("TtsISpeed") == 0, "Faster: speechRate 1.5 (not ttsd's TtsISpeed)")
+    gsettings.gzreader_tts_speed = nil
+    -- volume: the Kindle's own Bluetooth volume, steps 1-8 (speakerVolume reads 10× the step)
+    check(TTS.volumeMax() == 8 and TTS.volume() == 4, "Bluetooth volume: step 4 of 8 (speakerVolume reads 40)")
+    iv.sets = {}
+    TTS.setVolume(5)
+    check(#iv.sets == 1 and iv.sets[1].pub == "com.lab126.audiomgrd" and iv.sets[1].prop == "speakerVolume" and iv.sets[1].v == 5
+        and gsettings.gzreader_tts_volume == nil,
+        "Louder: speakerVolume 5 (a step, not 50: anything above 8 is the loudest), not kept as a GZreader setting")
+    iv.sets = {}
+    TTS.setVolume(12); TTS.setVolume(0)
+    check(iv.sets[1].v == 8 and iv.sets[2].v == 1, "kept between 1 and 8 (never silent, never past the loudest)")
+    iv.vol = nil
+    check(TTS.volume() == 4, "the volume can't be read: step 4 shown")
+    iv.vol = 40
+    iv.sets = {}
+    TTS.applySettings()
+    check(#propsSet("speakerVolume") == 0 and #propsSet("CmdIVolume") == 0, "reading starts without touching the volume")
+    TTS.cancel()
+    check(#propsSet("stopReading") == 1 and #propsSet("cancelSnippetPlayback") == 0 and #propsSet("stop") == 0, "stop: stopReading only")
+
+    -- reading a book
+    page = 1
+    iv.sets, iv.cmds = {}, {}
+    local R5 = TTS.Reader:new(tts_ui)
+    R5:start()
+    check(R5.active and R5.ivona and R5.events_ok == false, "reading starts at once (voice up, Bluetooth connected), paced by estimates (it sends no events)")
+    check(tts_ui.hl == "s1" and #said() >= 2 and said()[1] == "First sentence here. ",
+        "the first sentence is highlighted, and the next already sent (it queues, so the voice doesn't stop between them)")
+    local waits = 0
+    for _i, c in ipairs(iv.cmds) do if c:find("lipc-wait-event", 1, true) then waits = waits + 1 end end
+    check(waits == 0, "no ttsd event listener started")
+    runLoop(function() return not R5.active end, 30)
+    local s = said()
+    check(#s == 3 and s[3] == "On the next page. " and page == 2 and not R5.active and tts_ui.hl == nil,
+        "reads sentence after sentence, turns the page, stops at the end " .. #s)
+    check(#propsSet("stopReading") >= 1, "the voice is stopped at the end")
+
+    -- following the voice in the system log: its sentence ends
+    local SL = WORK .. "/ivona-messages"
+    local function logAppend(lines)
+        local lf = io.open(SL, "ab"); lf:write(table.concat(lines, "\n") .. "\n"); lf:close()
+    end
+    local function buf(bytes) return "261116:203227.005 einkttsd[16142]: I Mixer_MixerAPI:TRACE:ReleaseBufPlay numBytes=" .. bytes .. " name=/mstream16142_3718:" end
+    os.remove(SL)
+    logAppend({ "261116:203224.554 einkttsd[16142]: I einkttsd:playSnippet prop callback:text:Old.:" })
+    TTS.syslog = SL
+    check(TTS.ivonaLogStart() and TTS.ivonaEnds() == 0, "the system log is followed from its end (what was there before isn't counted)")
+    logAppend({ buf(2400), buf(2400), "261116:203227.164 audiomgrdv2[2438]: I Mixer_InputDataTrans:TRACE:GetReadBuff size=1438:", buf(1438), buf(2400) })
+    check(TTS.ivonaEnds() == 1, "one sentence ended: the voice's short buffer (1438), not its full ones (2400) nor audiomgrd's read of it")
+    local fh = io.open(SL, "ab"); fh:write(buf(2398)); fh:close() -- (no newline yet)
+    check(TTS.ivonaEnds() == 0, "a line still being written isn't read")
+    fh = io.open(SL, "ab"); fh:write("\n"); fh:close()
+    check(TTS.ivonaEnds() == 1, "…it is once it's whole")
+    fh = io.open(SL, "wb"); fh:write(""); fh:close() -- (the log rotated)
+    logAppend({ buf(1000) })
+    check(TTS.ivonaEnds() <= 1 and TTS.ivonaEnds() == 0, "a rotated log doesn't stop it (followed from its new end)")
+
+    page = 1
+    iv.sets = {}
+    local R9 = TTS.Reader:new(tts_ui)
+    -- (runLoop runs every timer at once, whatever its delay: no estimate backstop here)
+    R9.armTimer = function() end
+    R9:start()
+    check(R9.active and R9.ivona_log and tts_ui.hl == "s1", "reading follows the system log where it can be read")
+    logAppend({ buf(2400), buf(2400) })
+    runLoop(function() return false end, 0.4)
+    check(tts_ui.hl == "s1", "full buffers: still the first sentence")
+    logAppend({ buf(1438) })
+    local UIM = require("ui/uimanager")
+    local sched_was, later = UIM.scheduleIn, {}
+    UIM.scheduleIn = function(_self, secs, fn) later[#later + 1] = { secs = secs, fn = fn } end
+    R9:poll()
+    UIM.scheduleIn = sched_was
+    local heard
+    for _i, l in ipairs(later) do if l.secs == TTS.Reader.IVONA_HEARD then heard = l end end
+    check(tts_ui.hl == "s1" and heard and TTS.Reader.IVONA_HEARD >= 0.8 and TTS.Reader.IVONA_HEARD <= 2,
+        "its last buffer logged: the highlight waits until it's heard (the voice hands its sound over ~1 s early)")
+    heard.fn()
+    check(tts_ui.hl == "s2", "…then moves on (not after an estimate)")
+    -- a page turned by hand: the sentence cut off may log a short buffer, left out
+    R9.next_xp = "s2" -- (as a page turned by hand sets it)
+    R9:restartQueue()
+    logAppend({ buf(700) })
+    runLoop(function() return false end, 0.4)
+    check(R9.active and R9.queue[1] and tts_ui.hl == R9.queue[1].xp0, "after a restart, the cut-off sentence's short buffer isn't taken as the new one's end")
+    R9:stop()
+    check(not R9.active, "stopped")
+    TTS.syslog = WORK .. "/no-such-syslog"
+    os.remove(SL)
+
+    -- no Bluetooth headphones or speaker connected
+    iv.bt, captured.info, iv.sets = 0, nil, {}
+    page = 1
+    local R6 = TTS.Reader:new(tts_ui)
+    R6:start()
+    check(not R6.active and #said() == 0 and tostring(captured.info):find("Bluetooth", 1, true),
+        "no Bluetooth audio device: doesn't start, says to connect one")
+    iv.bt = 1
+
+    -- the voice isn't running: started first (upstart's eink_ttsd), then reading
+    iv.started, iv.starts_on, iv.sets, iv.cmds = 0, true, {}, {}
+    page = 1
+    local R7 = TTS.Reader:new(tts_ui)
+    R7:start()
+    local started
+    for _i, c in ipairs(iv.cmds) do if c:find("start eink_ttsd", 1, true) and c:find("&", 1, true) then started = true end end
+    check(started and not R7.active, "the voice not running: `start eink_ttsd` in the background (it waits until the job is up)")
+    runLoop(function() return R7.active end, 5)
+    check(R7.active and said()[1] == "First sentence here. ", "…then reading starts once it answers")
+    R7:stop()
+    -- …and one that never comes up
+    iv.started, iv.starts_on, captured.info = 0, false, nil
+    local wait_was = TTS.IVONA_WAIT
+    TTS.IVONA_WAIT = 1
+    local R8 = TTS.Reader:new(tts_ui)
+    R8:start()
+    runLoop(function() return captured.info ~= nil end, 5)
+    check(not R8.active and tostring(captured.info):find("didn't start", 1, true), "the voice doesn't start: says so, doesn't read")
+    TTS.IVONA_WAIT = wait_was
+    iv.started = 1
+
+    -- other Kindles: unchanged
+    TTS.ivona_present = false
+    gsettings.gzreader_tts_template = TPL
+    check(TTS.template() == TPL and not TTS.isIvona(TTS.template()), "a Kindle 3: its learned ttsd request, as before")
+    TTS.ivona_present = nil
+
+    -- which Kindles: the daemon's file on a Kindle
+    local Touch = require("gzreader_touch")
+    local Device = require("device")
+    local bin_was, kindle_was = Touch.IVONA_BIN, Device.isKindle
+    local fake = WORK .. "/einkttsdaemon"
+    local bin_f = io.open(fake, "w"); bin_f:write("x"); bin_f:close()
+    Touch.IVONA_BIN = fake
+    Device.isKindle = function() return true end
+    Touch._forgetIvona()
+    local audio_was = Touch.audio
+    Touch.audio = function() return false end
+    check(Touch.ivona() and Touch.tts(), "a Kindle with einkttsdaemon (Scribe): read aloud is offered (no speaker needed)")
+    Device.isKindle = function() return false end
+    Touch._forgetIvona()
+    check(not Touch.ivona() and not Touch.tts(), "not a Kindle: no")
+    Device.isKindle = function() return true end
+    Touch.IVONA_BIN = WORK .. "/nothing-here"
+    Touch._forgetIvona()
+    check(not Touch.ivona() and not Touch.tts(), "a Paperwhite 3 (no einkttsdaemon, no speaker): no read aloud, as before")
+    Touch.IVONA_BIN, Device.isKindle, Touch.audio = bin_was, kindle_was, audio_was
+    Touch._forgetIvona()
+    os.remove(fake)
+
+    -- Settings → General → Audio on such a Kindle: Read aloud only; its dialog without Volume
+    local src = io.open(PLUGIN .. "/main.lua"):read("*a")
+    check(src:find("if not Mod.Touch.audio() and not Mod.Touch.tts() then return {} end", 1, true)
+        and src:find("if not Mod.Touch.audio() then return items end", 1, true),
+        "Settings → General → Audio: Read aloud alone on a Kindle without a speaker (no audiobook test, no headphone jack)")
+    check(src:find("Mod.TTS.volumeMax()", 1, true) and not src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
+        "its read aloud settings: Volume n / 8 (the Kindle's Bluetooth volume), \"Test the Kindle voice\"")
+
+    TTS.lipc, TTS.exec, gsettings.gzreader_tts_template = lipc_was, exec_was, tpl_was
+    TTS.syslog = syslog_was
+end)()
 
 print("Read aloud on the Kindle 3: learning ttsd's request from its log")
 TTS.lipc = { open_no_name = function() error("undefined symbol: LipcGetServiceName") end }

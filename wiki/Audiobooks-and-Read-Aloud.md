@@ -148,6 +148,42 @@ Kindle DX), then as a small text file in `/tmp` (or `/var/tmp`) whose path
 goes to `playFile`. If none works, the diagnostic log lists the files and
 paths the speech service knows about.
 
+### Read aloud on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…)
+
+These Kindles have no speaker: read aloud uses **Amazon's own voice** (the
+Ivona voice behind Assistive Reader, in English, German, Spanish, French,
+Italian and Portuguese) and speaks through **Bluetooth headphones or a
+speaker** — connect one first (Settings → General → Bluetooth, or Amazon's
+Settings). Without one, Read aloud says so instead of starting.
+
+- In a book, **Read aloud** in the quick panel starts and stops it; the
+  sentence being read is highlighted and pages turn by themselves, as on the
+  Kindle 3.
+- **Settings → General → Audio → Read aloud** has **Quieter / Louder**,
+  Slower / Faster and **Test the Kindle voice** (there's nothing to find on
+  these Kindles). Quieter / Louder moves the Kindle's own Bluetooth volume,
+  the one Amazon's quick-settings slider moves, in its 8 steps (it's Amazon's
+  setting, so the slider shows the same; the Bluetooth device's own volume
+  still adds to it). Audio has only Read aloud here (no audiobook test or
+  headphone jack).
+- How it works: the voice (`einkttsdaemon`, Amazon's job `eink_ttsd`) isn't
+  running until something starts it; GZreader starts it when reading begins.
+  Each sentence goes to it as plain text (`com.lab126.ivonatts playSnippet`),
+  the next one sent ahead (they queue, so the voice doesn't stop between
+  them); Stop is `stopReading`, the speed `speechRate` (100 → 1, 150 → 1.5),
+  the volume `com.lab126.audiomgrd speakerVolume` (a step 1–8 written, read
+  back as 10–80; a bigger number written counts as the loudest).
+  It sends no "sentence done" message, but it logs every buffer of sound it
+  plays in the Kindle's system log (`/var/log/messages`), and each
+  sentence's last buffer is shorter than the others: GZreader reads the new
+  lines of that log four times a second and moves the highlight on when one
+  of those appears, so it follows the voice. A time worked out from the
+  sentence's length and the speed is kept only as a backstop (if a
+  sentence's end is never seen). The diagnostic log's `tts stop` line says
+  how many sentence ends were seen and how many went by the backstop. (The
+  voice also writes each sentence's text into that system log; GZreader
+  doesn't copy it anywhere.)
+
 ## Headphones
 
 **Kindle 3:** it shows headphones nowhere GZreader can look; its hardware

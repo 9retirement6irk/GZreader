@@ -43,9 +43,26 @@ function Touch.dx()
     return ok and small > 600 or false
 end
 
---- Read aloud (the Kindle's voice): every Kindle with audio. Shift + Sym on
---- a keyboard; the quick panel's Read aloud button on a touch screen.
-function Touch.tts() return Touch.audio() end
+--- Amazon's Ivona voice (einkttsdaemon, behind Assistive Reader): the
+--- Kindles with Bluetooth on firmware 5.x (Scribe, Paperwhite 5 and newer,
+--- Colorsoft…). It speaks through Bluetooth headphones or a speaker. Looked
+--- for once (a file on the Kindle).
+Touch.IVONA_BIN = "/usr/bin/einkttsdaemon"
+local ivona_found
+function Touch.ivona()
+    if ivona_found == nil then
+        local okk, kindle = pcall(function() return Device:isKindle() end)
+        local lfs = require("libs/libkoreader-lfs")
+        ivona_found = (okk and kindle and lfs.attributes(Touch.IVONA_BIN, "mode") == "file") and true or false
+    end
+    return ivona_found
+end
+function Touch._forgetIvona() ivona_found = nil end -- (tests)
+
+--- Read aloud (the Kindle's voice): every Kindle with audio, and the Kindles
+--- with Amazon's Ivona voice (over Bluetooth). Shift + Sym on a keyboard; the
+--- quick panel's Read aloud button on a touch screen.
+function Touch.tts() return Touch.audio() or Touch.ivona() end
 
 --- The letter for a list item only when there are keys to press it.
 function Touch.letter(key) if Touch.keys() then return key end end
