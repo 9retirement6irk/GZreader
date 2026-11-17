@@ -218,6 +218,149 @@ do
         "the heading drawn big and bold")
 end
 
+-- ------------------------------------------------------------ pictures, sized with pull tabs
+do
+    local made = {}
+    local function fakeBB(w, h) return { w = w, h = h, getWidth = function(b) return b.w end, getHeight = function(b) return b.h end } end
+    local pictures = {
+        size = function(src) if src:match("here") then return 400, 200 end end,
+        bb = function(src, w, h) made[#made + 1] = src .. " " .. w .. "x" .. h; return fakeBB(w, h) end,
+    }
+    local doc = Blocks.parse("Trip\n\n![sea|center|320](/file/attachments/here/a.jpg)\n\n![far](/file/attachments/away/b.jpg)\n\nend")
+    local r = RE:new{ width = 300, max_height = 900, doc = doc, editor = {}, hint = "Write", pictures = pictures }
+    local pl
+    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
+    check(pl and pl.picture.w == 150 and pl.h == 75 and pl.picture.x == 75,
+        "a picture sized in Memos (|center|320): half of the page (its share of Memos' 640-pixel column), centred")
+    local far
+    for _i, l in ipairs(r.lines) do if l.b.kind == "image" and not l.picture then far = l end end
+    check(far ~= nil, "a picture not on the Kindle yet: its Markdown until it comes")
+    local blits = {}
+    local bb = { paintRect = function() end, paintBorder = function() end,
+        blitFrom = function(_s, src, x, y) blits[#blits + 1] = { w = src.w, x = x, y = y } end }
+    r.top = 0
+    r:paintTo(bb, 0, 0)
+    check(#blits == 1 and blits[1].w == 150 and blits[1].x == 75, "painted as the picture, where it's placed")
+    -- a tap picks it: its pull tabs
+    r:onTapEdit(nil, ges(150, pl.y + 30))
+    check(r.picked == pl.b and r:onPicture(), "a tap on the picture picks it")
+    local t = r:tabs()
+    check(t and math.abs(t.left.x + t.left.w / 2 - 75) <= 1 and math.abs(t.right.x + t.right.w / 2 - 225) <= 1,
+        "its pull tabs on its left and right sides")
+    local tabs_drawn = 0
+    r:paintTo({ paintRect = function(_s, _x, _y, w, h) if w == RE.TAB_W and h == RE.TAB_H then tabs_drawn = tabs_drawn + 1 end end,
+        paintBorder = function() end, blitFrom = function() end, paintRoundedRect = function() end }, 0, 0)
+    check(tabs_drawn == 2, "both tabs drawn")
+    check(RE.tabY(-100, 400, 48, 200) == 76 and RE.tabY(10, 100, 48, 500) == 36 and RE.tabY(480, 300, 48, 500) == 606,
+        "the tabs: in the middle of the part of a tall picture on the page (all of it when too little shows)")
+    -- drag the right tab out by 30: centred, so 60 wider
+    local rx, ry = t.right.x + 5, t.right.y + 5
+    check(r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 20, y = ry }, relative = { x = 20, y = 0 } }), "a drag from a tab is the tab's")
+    r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 30, y = ry }, relative = { x = 30, y = 0 } })
+    check(r.drag and r.drag.w == 210, "while dragging: the new width (both sides, it's centred)")
+    r:onPanReleaseEdit(nil, { pos = { x = rx + 30, y = ry } })
+    check(text(r):match("!%[sea|center|448%]%(/file/attachments/here/a%.jpg%)"),
+        "let go: written as Memos' web editor writes it (210 of 300 = 448 of 640) … " .. show(text(r)))
+    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
+    check(pl.picture.w == 210 and r.picked == pl.b, "shown at the new width, still picked")
+    -- the left tab of a left-placed picture: drag it right to narrow it
+    local d2 = Blocks.parse("![p](/file/attachments/here/c.jpg)")
+    local r2 = RE:new{ width = 300, max_height = 900, doc = d2, editor = {}, pictures = pictures }
+    local l2 = r2.lines[1]
+    check(l2.picture and l2.picture.w == 300 and l2.picture.x == 0, "no size: as wide as fits (a photo only shrinks)")
+    r2:onTapEdit(nil, ges(100, l2.y + 10))
+    local lt = r2:tabs().left
+    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 150, y = 0 } })
+    r2:onPanReleaseEdit(nil, {})
+    check(Blocks.write(r2.doc) == "![p|320](/file/attachments/here/c.jpg)", "the left tab dragged in by half: |320 … " .. show(Blocks.write(r2.doc)))
+    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
+    lt = r2:tabs().left
+    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 290, y = 0 } })
+    check(r2.drag.w == RE.MIN_PICTURE, "never narrower than " .. RE.MIN_PICTURE)
+    r2:onPanReleaseEdit(nil, {})
+    -- a quick drag comes as a swipe
+    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
+    local rt = r2:tabs().right
+    r2:onSwipeEdit(nil, { direction = "east", distance = 500, pos = { x = rt.x + 2, y = rt.y + 2 } })
+    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)", "a quick drag (a swipe) out: the page's width, |640 … " .. show(Blocks.write(r2.doc)))
+    -- typing with it picked: a new line after it
+    r2:addChars("caption")
+    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)\n\ncaption" and not r2.picked,
+        "typing with a picture picked: the words on a new line after it")
+    -- a tap elsewhere lets it go
+    r:onTapEdit(nil, ges(5, r.lines[1].y + 5))
+    check(r.picked == nil and r:tabs() == nil, "a tap elsewhere: no picture picked")
+    -- without `pictures` (a quick note): its Markdown, as before
+    local r3 = RE:new{ width = 300, max_height = 900, doc = Blocks.parse("![p|320](/x.jpg)"), editor = {} }
+    check(r3.lines[1].picture == nil and r3.lines[1].st.mono, "without pictures: the picture's Markdown in grey")
+
+    -- the picked picture's toolbar (the web's: Left, Center, Right, then ↑ ↓, Alt, 1:1, ✕) and moving it
+    local function picDoc(content)
+        local d = Blocks.parse(content)
+        local ed = RE:new{ width = 300, max_height = 900, doc = d, editor = {}, pictures = pictures }
+        return ed, d
+    end
+    local function pl(ed) for _i, l in ipairs(ed.lines) do if l.picture then return l end end end
+    local function tapPic(ed) local l = pl(ed); ed:onTapEdit(nil, ges(l.picture.x + 5, l.y - ed.top + 5)) end
+    local function tapTool(ed, id)
+        local rr = ed:pictureBarRect()
+        for i, t in ipairs(RE.PICTURE_BAR) do
+            if t.id == id then return ed:onTapEdit(nil, ges(rr.x + (i - 1) * rr.cell + 2, rr.y + 2)) end
+        end
+    end
+    local pe = picDoc("Before\n\n![sea|320](/file/attachments/here/a.jpg)\n\nAfter")
+    check(pe:pictureBarRect() == nil, "nothing picked: no picture toolbar")
+    tapPic(pe)
+    local br = pe:pictureBarRect()
+    local bl = pl(pe)
+    check(br and (br.y + br.h <= bl.y - pe.top or br.y >= bl.y - pe.top + bl.h), "picked: its toolbar above it (or under it), not over it")
+    local painted = {}
+    pe:paintTo({ paintRect = function() end, paintBorder = function() end, blitFrom = function() end,
+        paintRoundedRect = function(_s, _x, _y, w, h) painted[#painted + 1] = w .. "x" .. h end }, 0, 0)
+    check(#painted >= 1, "…drawn")
+    tapTool(pe, "center")
+    check(text(pe):find("![sea|center|320](", 1, true) ~= nil, "Center: written as the web does (|center|320) … " .. show(text(pe)))
+    tapTool(pe, "right")
+    check(text(pe):find("![sea|right|320](", 1, true) ~= nil and pe.picked ~= nil, "Right: |right|320, still picked")
+    tapTool(pe, "left")
+    check(text(pe):find("![sea|320](", 1, true) ~= nil, "Left: the place left out (left is the web's default)")
+    tapTool(pe, "reset")
+    check(text(pe):find("![sea](", 1, true) ~= nil, "1:1: its own size again")
+    tapTool(pe, "up")
+    check(text(pe) == "![sea](/file/attachments/here/a.jpg)\n\nBefore\n\nAfter", "↑: up a paragraph … " .. show(text(pe)))
+    tapTool(pe, "up")
+    check(text(pe) == "![sea](/file/attachments/here/a.jpg)\n\nBefore\n\nAfter", "↑ at the top: stays")
+    tapTool(pe, "down"); tapTool(pe, "down")
+    check(text(pe) == "Before\n\nAfter\n\n![sea](/file/attachments/here/a.jpg)", "↓ ↓: to the end … " .. show(text(pe)))
+    check(RE.withAlt("![sea|center|320](/x.jpg)", "A calm [sea]") == "![A calm  sea |center|320](/x.jpg)",
+        "Alt: the description changed, its size and place kept")
+    tapTool(pe, "delete")
+    check(text(pe) == "Before\n\nAfter" and pe.picked == nil, "✕: the picture deleted … " .. show(text(pe)))
+    -- dragging the picture itself: to another place, a line showing where
+    local pd = picDoc("One\n\nTwo\n\n![p](/file/attachments/here/b.jpg)\n\nThree")
+    tapPic(pd)
+    local l0 = pl(pd)
+    local sy = l0.y - pd.top + 10
+    local first_y = pd.lines[1].y - pd.top
+    check(pd:onPanEdit(nil, { start_pos = { x = l0.picture.x + 20, y = sy }, pos = { x = 0, y = 0 }, relative = { x = 0, y = first_y + 2 - sy } }),
+        "the picture dragged (not a tab): it's being moved")
+    check(pd.moving and pd.moving.at == 1 and pd.moving.line_y == first_y, "…a line where it goes (before One)")
+    pd:onPanReleaseEdit(nil, {})
+    check(text(pd) == "![p](/file/attachments/here/b.jpg)\n\nOne\n\nTwo\n\nThree", "let go: there … " .. show(text(pd)))
+    tapPic(pd)
+    local l1 = pl(pd)
+    local sy1 = l1.y - pd.top + 10
+    pd:onPanEdit(nil, { start_pos = { x = l1.picture.x + 20, y = sy1 }, relative = { x = 0, y = pd.total_h - pd.top - sy1 + 50 } })
+    pd:onPanReleaseEdit(nil, {})
+    check(text(pd) == "One\n\nTwo\n\nThree\n\n![p](/file/attachments/here/b.jpg)", "dragged below the end: last … " .. show(text(pd)))
+    -- a tab still resizes (not a move)
+    tapPic(pd)
+    local tr = pd:tabs().right
+    pd:onPanEdit(nil, { start_pos = { x = tr.x + 2, y = tr.y + 2 }, relative = { x = -60, y = 0 } })
+    check(pd.drag ~= nil and pd.moving == nil, "a pull tab dragged: resizing, not moving")
+    pd:onPanReleaseEdit(nil, {})
+end
+
 -- ------------------------------------------------------------ a long note scrolls
 do
     local parts = {}
@@ -375,83 +518,6 @@ do
     local labels = {}
     for _i, d in ipairs(drawn) do labels[d.text] = true end
     check(labels["B"] and labels["I"] and labels["H"] and labels["1."] and labels["#"], "painted with the page: B I H … 1. #")
-end
-
--- ------------------------------------------------------------ pictures, sized with pull tabs
-do
-    local made = {}
-    local function fakeBB(w, h) return { w = w, h = h, getWidth = function(b) return b.w end, getHeight = function(b) return b.h end } end
-    local pictures = {
-        size = function(src) if src:match("here") then return 400, 200 end end,
-        bb = function(src, w, h) made[#made + 1] = src .. " " .. w .. "x" .. h; return fakeBB(w, h) end,
-    }
-    local doc = Blocks.parse("Trip\n\n![sea|center|320](/file/attachments/here/a.jpg)\n\n![far](/file/attachments/away/b.jpg)\n\nend")
-    local r = RE:new{ width = 300, max_height = 900, doc = doc, editor = {}, hint = "Write", pictures = pictures }
-    local pl
-    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
-    check(pl and pl.picture.w == 150 and pl.h == 75 and pl.picture.x == 75,
-        "a picture sized in Memos (|center|320): half of the page (its share of Memos' 640-pixel column), centred")
-    local far
-    for _i, l in ipairs(r.lines) do if l.b.kind == "image" and not l.picture then far = l end end
-    check(far ~= nil, "a picture not on the Kindle yet: its Markdown until it comes")
-    local blits = {}
-    local bb = { paintRect = function() end, paintBorder = function() end,
-        blitFrom = function(_s, src, x, y) blits[#blits + 1] = { w = src.w, x = x, y = y } end }
-    r.top = 0
-    r:paintTo(bb, 0, 0)
-    check(#blits == 1 and blits[1].w == 150 and blits[1].x == 75, "painted as the picture, where it's placed")
-    -- a tap picks it: its pull tabs
-    r:onTapEdit(nil, ges(150, pl.y + 30))
-    check(r.picked == pl.b and r:onPicture(), "a tap on the picture picks it")
-    local t = r:tabs()
-    check(t and math.abs(t.left.x + t.left.w / 2 - 75) <= 1 and math.abs(t.right.x + t.right.w / 2 - 225) <= 1,
-        "its pull tabs on its left and right sides")
-    local tabs_drawn = 0
-    r:paintTo({ paintRect = function(_s, _x, _y, w, h) if w == RE.TAB_W and h == RE.TAB_H then tabs_drawn = tabs_drawn + 1 end end,
-        paintBorder = function() end, blitFrom = function() end }, 0, 0)
-    check(tabs_drawn == 2, "both tabs drawn")
-    check(RE.tabY(-100, 400, 48, 200) == 76 and RE.tabY(10, 100, 48, 500) == 36 and RE.tabY(480, 300, 48, 500) == 606,
-        "the tabs: in the middle of the part of a tall picture on the page (all of it when too little shows)")
-    -- drag the right tab out by 30: centred, so 60 wider
-    local rx, ry = t.right.x + 5, t.right.y + 5
-    check(r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 20, y = ry }, relative = { x = 20, y = 0 } }), "a drag from a tab is the tab's")
-    r:onPanEdit(nil, { start_pos = { x = rx, y = ry }, pos = { x = rx + 30, y = ry }, relative = { x = 30, y = 0 } })
-    check(r.drag and r.drag.w == 210, "while dragging: the new width (both sides, it's centred)")
-    r:onPanReleaseEdit(nil, { pos = { x = rx + 30, y = ry } })
-    check(text(r):match("!%[sea|center|448%]%(/file/attachments/here/a%.jpg%)"),
-        "let go: written as Memos' web editor writes it (210 of 300 = 448 of 640) … " .. show(text(r)))
-    for _i, l in ipairs(r.lines) do if l.picture then pl = l end end
-    check(pl.picture.w == 210 and r.picked == pl.b, "shown at the new width, still picked")
-    -- the left tab of a left-placed picture: drag it right to narrow it
-    local d2 = Blocks.parse("![p](/file/attachments/here/c.jpg)")
-    local r2 = RE:new{ width = 300, max_height = 900, doc = d2, editor = {}, pictures = pictures }
-    local l2 = r2.lines[1]
-    check(l2.picture and l2.picture.w == 300 and l2.picture.x == 0, "no size: as wide as fits (a photo only shrinks)")
-    r2:onTapEdit(nil, ges(100, l2.y + 10))
-    local lt = r2:tabs().left
-    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 150, y = 0 } })
-    r2:onPanReleaseEdit(nil, {})
-    check(Blocks.write(r2.doc) == "![p|320](/file/attachments/here/c.jpg)", "the left tab dragged in by half: |320 … " .. show(Blocks.write(r2.doc)))
-    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
-    lt = r2:tabs().left
-    r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 290, y = 0 } })
-    check(r2.drag.w == RE.MIN_PICTURE, "never narrower than " .. RE.MIN_PICTURE)
-    r2:onPanReleaseEdit(nil, {})
-    -- a quick drag comes as a swipe
-    r2:onTapEdit(nil, ges(10, r2.lines[1].y + 5))
-    local rt = r2:tabs().right
-    r2:onSwipeEdit(nil, { direction = "east", distance = 500, pos = { x = rt.x + 2, y = rt.y + 2 } })
-    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)", "a quick drag (a swipe) out: the page's width, |640 … " .. show(Blocks.write(r2.doc)))
-    -- typing with it picked: a new line after it
-    r2:addChars("caption")
-    check(Blocks.write(r2.doc) == "![p|640](/file/attachments/here/c.jpg)\n\ncaption" and not r2.picked,
-        "typing with a picture picked: the words on a new line after it")
-    -- a tap elsewhere lets it go
-    r:onTapEdit(nil, ges(5, r.lines[1].y + 5))
-    check(r.picked == nil and r:tabs() == nil, "a tap elsewhere: no picture picked")
-    -- without `pictures` (a quick note): its Markdown, as before
-    local r3 = RE:new{ width = 300, max_height = 900, doc = Blocks.parse("![p|320](/x.jpg)"), editor = {} }
-    check(r3.lines[1].picture == nil and r3.lines[1].st.mono, "without pictures: the picture's Markdown in grey")
 end
 
 print(("richedit: %d passed, %d failed"):format(pass, fail))

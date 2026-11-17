@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Notes: pictures at the size set in Memos, resized with pull tabs in the editor", text = "A picture in a note now shows at the size and place it was given in Memos' web editor (smaller, or left, center or right), taking the same share of the page as of Memos' column, instead of always as big as fits. On touch Kindles the note editor shows the picture itself (not its Markdown): tap it for a frame with a pull tab on each side, and drag a tab to make it wider or narrower. Save sends the size in the web editor's own way, so the web shows it alike." },
+            { short = "Notes: pictures in the editor, sized, aligned and moved as in your Memos web app", text = "A picture in a note now shows at the size and place it was given in Memos' web editor (smaller, or left, center or right), taking the same share of the page as of Memos' column, instead of always as big as fits. On touch Kindles the note editor shows the picture itself (not its Markdown): tap it for a frame with a pull tab on each side to make it wider or narrower, and the web editor's picture toolbar (align left, center or right, move up or down, alt text, its own size, delete); drag the picture to move it elsewhere in the note. Save writes it the web editor's way, so the web shows it alike." },
         },
     },
     {

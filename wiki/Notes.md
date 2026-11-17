@@ -81,15 +81,6 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
-- **Picture sizes:** a picture in a note shows at the size and place it was
-  given in Memos' web editor (dragged smaller, or set left, center or right):
-  the same share of the page as of Memos' column. To change it, **Edit** the
-  note (touch Kindles): the formatted page shows the picture; tap it to pick
-  it (a frame and a **pull tab** on each side) and drag a tab to make it
-  wider or narrower (a centred picture grows on both sides). Typing while
-  it's picked starts a line after it; a tap elsewhere lets it go. **Save**
-  sends the size the way the web editor writes it (at the end of the
-  picture's alt text, e.g. `photo|center|320`), so both show it alike.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
@@ -151,6 +142,20 @@ API to `/api` are found too.
   Alt+B bold, Alt+G tag, Alt+S save, Alt+V who can see it, Alt+A its space.
   Alt + the top row types 1–0 here. New notes are **private** unless you
   change it. Back asks whether to save.
+- **Pictures in a note** show at the size and place they were given in
+  Memos' web editor (dragged smaller, or set left, center or right): the
+  same share of the page as of Memos' column. In the **editor** (touch
+  Kindles, the formatted page) a picture in the text shows as the picture,
+  not its Markdown. Tap it to pick it: a frame, a **pull tab** on each side
+  (drag one to make it wider or narrower; a centred picture grows on both
+  sides) and, above it, the web editor's picture toolbar: **Align left /
+  center / right**, **↑ ↓** (move it up or down a paragraph), **Alt** (its
+  description), **1:1** (its own size again) and **✕** (delete it). **Drag
+  the picture itself** to move it elsewhere in the note: a thick line shows
+  where it goes. Typing while it's picked starts a line after it; a tap
+  elsewhere lets it go. **Save** writes it the way the web editor does (the
+  size and place at the end of the alt text, e.g. `photo|center|320`), so
+  both show it alike.
 - **Spaces** (Memos v0.31 and newer): beside who can see the note, the editor
   shows its **space** (tap it, Alt+A, or on a Kindle 4 Menu → ◀ ▶ to it).
   Choose **No space** or one of the spaces you're a member of. A new note
