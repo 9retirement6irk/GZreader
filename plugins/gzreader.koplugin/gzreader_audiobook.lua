@@ -313,14 +313,18 @@ function Audiobook.prepare(dir, tracks, title, on_done)
     pcall(function() require("gzreader_tasks").changed() end)
     state.open_dialog()
     Log.info("audiobook: preparing", #todo, "file(s) for the Kindle,", total, "bytes")
-    local started = os.time()
-    local i, before, prog, last_change, last_text = 0, 0, nil, os.time(), nil
+    -- (durations on a clock that only goes forward: a clock set by the first
+    -- HTTPS answer, gzreader_clock.lua, made it "no progress for 5 minutes")
+    local time = require("ui/time")
+    local function secs() return time.to_s(time.now()) end
+    local started = secs()
+    local i, before, prog, last_change, last_text = 0, 0, nil, secs(), nil
     local function finish(ok, err)
         Awake.release(awake_key)
         Audiobook.active_prepare = nil
         pcall(function() require("gzreader_tasks").changed() end)
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
-        if ok then Log.info("audiobook: prepared in", (os.time() - started) .. "s")
+        if ok then Log.info("audiobook: prepared in", math.floor(secs() - started + 0.5) .. "s")
         else Log.warn("audiobook: preparing failed:", tostring(err)) end
         on_done(ok, err)
     end
@@ -330,7 +334,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         local t = todo[i]
         if not t then return finish(true) end
         prog = Audiobook.startConversion(dir, t)
-        last_change = os.time()
+        last_change = secs()
         UIManager:scheduleIn(1, poll)
     end
     poll = function()
@@ -338,7 +342,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         local f = io.open(prog, "rb")
         local text = f and f:read("*l")
         if f then f:close() end
-        if text and text ~= last_text then last_text, last_change = text, os.time() end
+        if text and text ~= last_text then last_text, last_change = text, secs() end
         local d = text and tonumber(text:match("^(%d+) %d+$"))
         if d then state.done = math.min(total, before + d) end
         if d and dialog then dialog:reportProgress(state.done) end
@@ -357,7 +361,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
             local code = ef:read("*l"); ef:close()
             return finish(false, "the conversion stopped (exit " .. tostring(code) .. ")")
         end
-        if os.time() - last_change > 300 then return finish(false, "no progress for 5 minutes") end
+        if secs() - last_change > 300 then return finish(false, "no progress for 5 minutes") end
         UIManager:scheduleIn(1, poll)
     end
     nextTrack()

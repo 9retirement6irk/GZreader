@@ -1782,6 +1782,27 @@ stuck_part = require("libs/libkoreader-lfs").attributes(WORK .. "/home/GZreader/
 check(stuck_part > 0, "stalled: the part downloaded is kept, to continue")
 Download.STALL_SECONDS = nil
 ctl("/set?dl_stall=false")
+;(function()
+    -- the wall clock set decades forward mid-download (a Nook or DX whose clock
+    -- had run down, set by the first HTTPS answer): not taken for a stall
+    ctl("/set?dl_big=true&dl_slow=true")
+    captured.info, captured.confirm = nil, nil
+    local real_time = os.time
+    plugin:downloadAndOpen({ id = 7, title = "Clock Book", primaryFileName = "clock.epub", primaryFileType = "EPUB", fileSizeKb = 2048 },
+        nil, { no_open = true })
+    runLoop(function() return Download.active and (Download.active.last_size or 0) > 0 end, 10)
+    os.time = function(t) if t then return real_time(t) end return real_time() + 20 * 365 * 86400 end -- luacheck: ignore
+    runLoop(function() return Download.active == nil end, 30)
+    os.time = real_time -- luacheck: ignore
+    check(not (captured.info or ""):match("stalled") and (require("libs/libkoreader-lfs").attributes(WORK .. "/home/GZreader/clock.epub", "size") or 0) == 2 * 1024 * 1024,
+        "the clock set 20 years forward mid-download: it carries on to the end (not \"stalled\") " .. tostring(captured.info))
+    -- (as it was: the stalled book's continuing below expects the big book, and no other download)
+    ctl("/set?dl_big=true&dl_slow=false")
+    os.remove(WORK .. "/home/GZreader/clock.epub")
+    plugin.store.downloads["7"] = nil
+    pcall(function() require("gzreader_recovery").bookDone(plugin, 7) end)
+    captured.info, captured.confirm = nil, nil
+end)()
 
 print("The Kindle 2/3/DX's screen: four pixels packed at a time, the same bytes")
 ;(function()

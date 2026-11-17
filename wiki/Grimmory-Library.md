@@ -119,7 +119,9 @@ progress bar (percentage, MB received of the total; the Kindle stays awake
 until it's done). Picking more books while one downloads queues them; they
 download one after another (lists show "queued"; the download options can
 empty the queue) (press any key for Stop / Continue in background / Keep
-watching); a transfer that stalls for 90 s is stopped.
+watching); a transfer that stalls for 90 s is stopped (timed on a clock that
+only goes forward: a Nook or DX whose clock is set while a book downloads
+carries on).
 
 A backup list of downloaded books (`.gzreader-library.json`) is kept in the
 GZreader folder. If KOReader's settings are lost (for example the `koreader`
