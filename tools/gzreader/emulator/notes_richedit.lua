@@ -78,6 +78,12 @@ add({ fn = function(E)
     check(not all:find("&nbsp;", 1, true) and not all:find("**", 1, true) and not all:find("- [", 1, true),
         "nothing to see of the Markdown: " .. all)
     check(key(e, "⮠") and key(e, "←") and key(e, "→"), "the keyboard has Enter and ← → on its letters page")
+    local hash, left, q, comma, stop = key(e, "#"), key(e, "←"), key(e, "q"), key(e, ","), key(e, ".")
+    check(hash and left and q and hash.key == "#" and hash.dimen.y == left.dimen.y and hash.dimen.y < q.dimen.y
+        and hash.dimen.h < q.dimen.h and key(e, "↑") and key(e, "↓"),
+        "…a slim bar on top of the keyboard: # and the arrow keys")
+    check(comma and stop and comma.dimen.y == stop.dimen.y and comma.dimen.x < stop.dimen.x,
+        "…and a comma on the letters page, before the full stop")
     check(e:text() == CONTENT and not e:changed(), "nothing changed yet: it would be saved exactly as it was")
     E.tap((point(e, "stove", 6)))
 end, after = 2 })
@@ -171,10 +177,15 @@ add({ fn = function(E)
     local d = E.one_line
     local kb = d._input_widget and d._input_widget.keyboard
     local enter = false
+    local hash = false
     for _i, row in ipairs(kb and kb.layout or {}) do
-        for _j, k in ipairs(row) do if k.label == "⮠" then enter = true end end
+        for _j, k in ipairs(row) do
+            if k.label == "⮠" then enter = true end
+            if k.label == "#" then hash = true end
+        end
     end
     check(kb and not enter, "a one-line box keeps ZenOS' short bottom row (no Enter on the letters page)")
+    check(kb and not hash, "…and no # key (only where you write a note)")
     UIM():close(d)
 end, after = 1 })
 add({ fn = function(E)

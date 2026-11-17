@@ -125,7 +125,11 @@ API to `/api` are found too.
 - **The on-screen keyboard** keeps **⮠ Enter** and **← →** on its letters page
   in boxes where you type several lines (notes, KOReader's text editor).
   One-line boxes (search, names, passwords) keep the shorter bottom row, with
-  Enter on the symbols page.
+  Enter on the symbols page. Where you write a note (the editor, a quick
+  note, a journal entry) a **slim bar on top of the keyboard** has **#**
+  (for tags) and the arrow keys **← ↑ ↓ →** (hold ← → for the start or end
+  of the line, ↑ ↓ to scroll), on every page of the keyboard. The letters
+  page then has a **comma** before the full stop, and a wider space bar.
 - **Editor (keyboard Kindles):** a full page with a toolbar at the bottom: List, Check, Num,
   Head, *I*, **B**, # Tag and Save. **Menu** jumps to the toolbar from
   anywhere in the text (on the tool used last) and the cursor stays where it
