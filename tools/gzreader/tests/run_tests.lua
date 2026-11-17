@@ -8193,6 +8193,22 @@ print("Notes (Memos v0.31)")
             local plain = {}
             keys_only:keyboardAside(plain)
             check(plain.onCloseWidget == nil, "keyboard Kindles: nothing to move")
+            -- back from the drawing screen: the keyboard a moment later, only if the note is still open
+            local ed2 = setmetatable({ vk = true, input = kb }, { __index = function(_t, k) return rawget(E3, k) end })
+            local later = {}
+            UIMk.nextTick = function(_s, fn) later[#later + 1] = fn end
+            kb.shown = false
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } }, { widget = ed2 } }
+            ed2:keyboardSoon()
+            later[1]()
+            check(kb.shown == true, "back from the drawing screen: the keyboard comes back with the note")
+            kb.shown = false
+            ed2:keyboardSoon()
+            UIMk._window_stack = { { widget = { name = "ReaderUI" } } }
+            ed2:onCloseWidget()
+            later[2]()
+            check(kb.shown == false and ed2.closed,
+                "…not when the note was closed meanwhile (a quick tap outside): no keyboard left over the book")
             UIMk._window_stack, UIMk.nextTick = was_stack, was_tick
         end)()
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
@@ -9183,7 +9199,7 @@ print("Notes (Memos v0.31)")
         check(nsrc3:find("open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw)", 1, true)
             and esrc2:find("e.drawing_first = opts.open_drawing and e:canDraw() or nil", 1, true)
             and esrc2:find("if e.drawing_first then e:openDrawing() end", 1, true)
-            and esrc2:find("if self.vk and not self.drawing_first then", 1, true),
+            and esrc2:find("if not self.drawing_first then self:keyboardSoon() end", 1, true),
             "Edit on a note with drawings opens them; Draw opens a page at once (touch Kindles), the drawing screen up with the editor (no text page first, no keyboard over it)")
         check(nsrc3:find("space = space, drawings = #list > 0 and list or nil, order = order })", 1, true) ~= nil
             and esrc2:find("out.order[#out.order + 1] = f", 1, true) ~= nil,

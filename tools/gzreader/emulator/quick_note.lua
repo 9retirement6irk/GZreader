@@ -9,7 +9,7 @@ local function add(t) s[#s + 1] = t end
 local lines = {}
 local function check(ok, what) lines[#lines + 1] = (ok and "ok   " or "FAIL ") .. what end
 local function UIM() return require("ui/uimanager") end
-local TOUCH = { kt = true, pw3 = true, nst = true }
+local TOUCH = { kt = true, pw3 = true, nst = true, scribe = true }
 local function top() local st = UIM()._window_stack; return st[#st] and st[#st].widget end
 --- The note editor (on a touch model the on-screen keyboard is above it).
 local function editor()
@@ -174,6 +174,69 @@ add({ fn = function(E)
     check(editor() == nil and not kbShown() and #q >= 1 and q[#q].content == "Half a thought",
         "…Save in the dialog saves the note (" .. #q .. " queued) and the keyboard stays away")
 end, after = 1 })
+-- touch: Draw from the quick note, Close the drawing screen, then a tap
+-- outside: the note and its keyboard both go (the keyboard used to stay
+-- over the book; the owner, 2026-11-16)
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    require("gzreader_notes").quickNote(plugin())
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local d = E.findText("Draw")
+    check(d ~= nil, "Quick note: Draw on its toolbar")
+    if d then E.tap({ d.x + math.floor(d.w / 2), d.y + math.floor(d.h / 2) }) end
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ds
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
+    check(ds ~= nil and not kbShown(), "Draw: the drawing screen, no keyboard over it")
+    for _i, b in ipairs(ds and ds.buttons or {}) do
+        if b.tool.id == "cancel" then E.tap({ b.rect.x + math.floor(b.rect.w / 2), b.rect.y + math.floor(b.rect.h / 2) }) end
+    end
+end, after = 5 })
+add({ shot = "qn-5-after-draw" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    check(editor() ~= nil and kbShown(), "Close: back to the quick note, the keyboard back")
+    askToSave(E)
+end, after = 5 })
+add({ shot = "qn-6-closed" })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local n = 0
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "VirtualKeyboard" then n = n + 1 end end
+    local ReaderUI = require("apps/reader/readerui")
+    check(editor() == nil and n == 0 and ReaderUI.instance ~= nil and ReaderUI.instance.document ~= nil,
+        "…a tap outside: the note closes and the keyboard goes with it (" .. n .. " keyboards left), the book there")
+end, after = 1 })
+-- the same, with the note closed at once (a tap outside while the Kindle
+-- is still redrawing after the drawing screen): the keyboard, due back a
+-- moment later, mustn't come up for a note that's gone
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    require("gzreader_notes").quickNote(plugin())
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    editor():openDrawing()
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local ds
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "gz_drawscreen" then ds = w.widget end end
+    local ed = editor()
+    ds:cancel()
+    ed:onCloseDialog()
+end, after = 5 })
+add({ fn = function(E)
+    if not TOUCH[E.model] then return end
+    local n = 0
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == "VirtualKeyboard" then n = n + 1 end end
+    check(editor() == nil and n == 0, "…the note closed straight after the drawing screen: no keyboard left over the book (" .. n .. ")")
+end, after = 1 })
+add({ shot = "qn-7-race" })
 add({ fn = function(E)
     local f = io.open(E.out .. "/quick_note.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
