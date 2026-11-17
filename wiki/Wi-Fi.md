@@ -28,6 +28,15 @@ On Auto:
 | Page turns, bookmarks, highlights, sleep | not turned on: changes wait for the next sync |
 | Daily update check, library index refresh | only if Wi-Fi is already on |
 
+**Downloads run with Wi‑Fi power saving off.** With power saving on, the
+Wi‑Fi chip naps between the router's beacons and downloads crawl (about
+30 KB/s on a Paperwhite 3, 5 KB/s on a Scribe). While a book, an update,
+an audiobook or music downloads, while notes with drawings go to Memos and
+while the phone page is open, GZreader turns power saving off, and when the
+last of them ends it turns it back on (only if it was on before), so reading
+with Wi‑Fi on still saves battery. The log says `wifi: power saving off while
+transferring`; a Kindle whose Wi‑Fi can't be asked leaves it as it is.
+
 Wi‑Fi that was already on when GZreader started or woke up counts as
 GZreader's on Auto (off after a minute unused). Going to sleep turns off Wi‑Fi
 GZreader turned on.

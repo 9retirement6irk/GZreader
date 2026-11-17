@@ -754,7 +754,14 @@ function Notes.refresh(plugin, on_done, opts)
     end
     if store.queue and #store.queue > 0 then
         local queue = store.queue
+        -- drawings to send: Wi-Fi power saving off until they're done (gzreader_wifips.lua)
+        local uploads = false
+        for _i, q in ipairs(queue) do
+            if q.op == "redraw" or #Memos.queuedDrawings(q) > 0 then uploads = true break end
+        end
+        if uploads then pcall(function() require("gzreader_wifips").hold("memos-upload") end) end
         Async.run(client, function(c) return c:flush(queue) end, function(res)
+            if uploads then pcall(function() require("gzreader_wifips").release("memos-upload") end) end
             if type(res) == "table" then
                 if res.prefix and res.prefix ~= store.prefix then store.prefix = res.prefix end
                 local gone = {}
