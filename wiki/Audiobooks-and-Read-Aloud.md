@@ -133,7 +133,8 @@ sentence at a time (split only when a sentence passes 30 words at a comma,
 semicolon, colon or dash, or 80 words; paragraph and heading ends always end
 a piece); web addresses are left out. When a sentence runs onto the next
 page, the page turns part-way through, at the share of the sentence's
-characters already said. The speech
+characters already said. Turn pages yourself and it carries on from the page
+you stop at (once, 0.3 s after the last turn). The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
 settings: Settings → General → Audio → Read aloud → Slower / Faster). The diagnostic log records every step.

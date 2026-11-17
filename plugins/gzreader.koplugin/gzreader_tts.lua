@@ -907,6 +907,7 @@ function Reader:stop()
     pcall(function() require("gzreader_jack").unwatch("tts") end)
     if self.timer then UIManager:unschedule(self.timer); self.timer = nil end
     if self.turn_timer then UIManager:unschedule(self.turn_timer); self.turn_timer = nil end
+    if self.turn_restart then UIManager:unschedule(self.turn_restart); self.turn_restart = nil end
     if self.poller then UIManager:unschedule(self.poller); self.poller_scheduled = false end
     if self.active then
         Log.info("tts stop")
@@ -926,12 +927,18 @@ function Reader:toggle()
 end
 
 --- A page turned by the reader (not by us): continue from the new page.
+--- Several turns in a row start the voice again once, 0.3 s after the
+--- last (each used to cancel and resend to ttsd, which can reorder
+--- requests sent close together and drop sentences).
 function Reader:onManualPageTurn()
     if not self.active or self.turning then return end
     self.next_xp = self.ui.document:getXPointer()
-    UIManager:scheduleIn(0.3, function()
+    if self.turn_restart then UIManager:unschedule(self.turn_restart) end
+    self.turn_restart = function()
+        self.turn_restart = nil
         if self.active then self:restartQueue() end
-    end)
+    end
+    UIManager:scheduleIn(0.3, self.turn_restart)
 end
 
 return TTS
