@@ -113,7 +113,7 @@ from [Grimmory-KOReader-Client](https://github.com/ManorianOTP/Grimmory-KOReader
   sent back to Grimmory as a highlight). Deleting a note, or its highlight,
   on the Kindle deletes it there; deleting it in the web reader deletes it
   here. Editing a note that already exists is noticed when the book closes
-  (KOReader doesn't announce it) and sent then. Kindle 2 / DX: not through
-  the sync page yet (highlights are).
+  (KOReader doesn't announce it) and sent then. Kindle 2 / DX: through the
+  sync page, a sync later ([Sync with a Computer](Sync-with-a-Computer)).
 - Page bookmarks stay with bookmark sync. Switch: Settings → Connections →
   Grimmory → Sync highlights and notes.

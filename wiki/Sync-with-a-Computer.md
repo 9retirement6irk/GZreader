@@ -111,7 +111,7 @@ What a sync does:
 
 | | Kindle → computer | Computer → Kindle |
 | --- | --- | --- |
-| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks and highlights |
+| Grimmory | Reading positions (with their exact place for the web reader), reading time, ratings, bookmarks, highlights and notes made, changed or deleted, books put on or taken off your shelves | A copy of your library for the Grimmory tab: every book and audiobook, libraries, shelves (which are yours, and the books on them: the book menu's [Add to shelf](Grimmory-Library#putting-a-book-on-a-shelf)), Continue reading, Recently added, small covers, book descriptions, where you are in the books on the Kindle elsewhere, and their bookmarks, highlights and notes |
 | Downloads | The **sync queue**: in the Catalog tab, Download (or an audiobook's Add to sync queue) puts a book there | The books and audiobooks in the queue or chosen on the page, and new books on the auto-download shelf (up to 20 a sync) |
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
@@ -127,13 +127,17 @@ queued book offers to take it off; Settings → Connections → Sync through a
 computer → Sync queue lists them). The quick panel's **Sync** tile shows the
 steps, what's waiting to be sent and the queue, with **Exit GZreader now**.
 
-Bookmarks and highlights sync as with Wi-Fi, a sync later: what you add,
-change or delete on the Kindle is kept in a journal (`.gzsync/journal.jsonl`,
-in order) that the page sends to Grimmory; something made on the Kindle gets
-a temporary id until then, and Grimmory's own after the next start. The page
-brings each downloaded book's bookmarks and highlights, which GZreader
-compares and merges when the book opens (a highlight changed in both places
-since the last sync is left as it is in each, as with Wi-Fi).
+Bookmarks, highlights and notes sync as with Wi-Fi, a sync later: what you
+add, change or delete on the Kindle is kept in a journal
+(`.gzsync/journal.jsonl`, in order) that the page sends to Grimmory; something
+made on the Kindle gets a temporary id until then, and Grimmory's own after
+the next start. The page brings each downloaded book's bookmarks, highlights
+and notes, which GZreader compares and merges when the book opens (a
+highlight or note changed in both places since the last sync is left as it is
+in each, as with Wi-Fi). Notes include the ones in the Notes tab of
+Grimmory's web reader ([Grimmory Sync](Grimmory-Sync#highlight-and-note-sync)):
+a note typed on the Kindle shows there after the sync, and one written there
+comes to the Kindle with the next sync (merged when the book opens).
 
 Covers: Grimmory doesn't let other web pages read its covers (only show
 them), so the page takes an EPUB's cover from the book itself and an

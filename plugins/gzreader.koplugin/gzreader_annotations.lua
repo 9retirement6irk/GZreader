@@ -73,10 +73,14 @@ local function key(p0, p1) return tostring(p0) .. "\n" .. tostring(p1) end
 --- items: AS.fromLocal's records (their CFIs); xps: conversions already made.
 function Anno.workNotes(api, book_id, locals, items, rejected, shadow, CFI, xps)
     local NS = require("gzreader_notesync")
-    -- (no Wi-Fi: the sync page's journal has no notes yet; they go with Wi-Fi)
-    if api.offline or not api.listBookNotes then return { skipped = true } end
+    -- (no Wi-Fi: the sync page's copy and journal, gzreader_offlineapi.lua; a
+    -- copy without notes answers "usb" below and nothing is merged)
+    if not api.listBookNotes then return { skipped = true } end
     local remote_list, lerr = api:listBookNotes(book_id)
-    if type(remote_list) ~= "table" then return { error = "list: " .. tostring(lerr) } end
+    if type(remote_list) ~= "table" then
+        if api.offline then return { skipped = true } end -- (not in the copy yet: the next sync brings them)
+        return { error = "list: " .. tostring(lerr) }
+    end
     local here, cfi_of = {}, {}
     local function add(a, cfi)
         if not here[cfi] or (not here[cfi].note and NS.text(a.note)) then
