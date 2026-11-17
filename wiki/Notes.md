@@ -63,7 +63,8 @@ API to `/api` are found too.
     or down moves the notes exactly as far as your finger went; notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
-    sideways moves most of a screenful. Full notes keep their pages.
+    sideways moves most of a screenful. Full notes keep their pages. A swipe
+    down that starts at the top of the screen still opens the quick panel.
   - **Full screen: no tab bar** (also the full-screen icon on a touch Kindle,
     and Menu on a Kindle 4) hides the tab bar at the bottom of the Notes tab, for more
     notes on a page. The X where the icon was (or Layout) brings
@@ -243,6 +244,11 @@ API to `/api` are found too.
     keyboard Kindle: **Alt+Q … U** (1–7) the step, **T** today / right now,
     **F** feelings, **I** what's behind it, **A** what you did, **G** goals,
     **P** another prompt, **W** write, **S** save. Back asks whether to save.
+- **A filter shows its notes at once**, from the notes kept on the Kindle,
+  then asks Memos (it may have older ones than the Kindle keeps), turning
+  Wi‑Fi on for that when it's only on when needed. Without a connection the
+  kept notes stay. Your **tags list** is kept from the last sync, so the tag
+  chips and Filter → Tag work without a connection too.
 - **Filters:** **Drawings** (the notes with a drawing), tag, date (today, 7 days, 30 days, a year), pinned and search
   are Memos filters; place and "with attachments" are picked out on the
   Kindle (Memos v0.31 can't filter by them).
