@@ -11090,6 +11090,38 @@ print("The first tour on a touch Kindle: GZreader's quick panel")
     if src then src:close() end
     check(text:find("meta.quickstart_menu_tour_pending == true or GzTour.active then return false end", 1, true)
         and text:find("GzTour.closePanel()", 1, true), "ZenOS's page browser tour waits for it and never shows under the panel")
+    -- The tip's swipe opens the page browser of the book open *now*: a picture
+    -- book reopens with the tip on screen, and the closed book's page browser
+    -- quit GZreader (`document` nil, a Kindle Scribe, 2026-11-16).
+    local pb = io.open(debug.getinfo(Tour.start, "S").source:sub(2):gsub("gzreader%.koplugin/gzreader_tour%.lua$",
+        "zenos.koplugin/modules/reader/patches/page_browser.lua"), "rb")
+    local pb_text = pb and pb:read("*a") or ""
+    if pb then pb:close() end
+    local fn_src = pb_text:match("\n(    local function start_reader_tour%(ui%).-\n    end)\n")
+    local opened, action = {}, nil
+    local fake_readerui = { instance = nil }
+    local env = setmetatable({
+        _plugin_ref = {},
+        open_page_browser = function(ui, from_hold, layout) opened[#opened + 1] = { ui = ui, layout = layout }; return "browser" end,
+        require = function(name)
+            if name == "common/quickstart/reader_tour" then
+                return { start = function(_p, _ui, fn) action = fn end }
+            elseif name == "apps/reader/readerui" then return fake_readerui end
+            return require(name)
+        end,
+    }, { __index = _G })
+    local chunk = fn_src and load(fn_src .. "\nreturn start_reader_tour", "start_reader_tour", "t", env)
+    local start_reader_tour = chunk and chunk()
+    local first, second = { document = {} }, { document = {} }
+    if start_reader_tour then start_reader_tour(first) end
+    first.document = nil -- closed: the picture book reopens as `second`
+    fake_readerui.instance = second
+    local r1 = action and action("grid")
+    check(action ~= nil and #opened == 1 and opened[1].ui == second and opened[1].layout == "grid" and r1 == "browser",
+        "page browser tip after the book reopened: opens the open book's page browser, not the closed one's")
+    fake_readerui.instance = nil
+    local r2 = action and action()
+    check(action ~= nil and #opened == 1 and r2 == nil, "page browser tip with no book open: opens nothing")
 end)()
 
 print("What's new after an update: GZreader's version and short points")
