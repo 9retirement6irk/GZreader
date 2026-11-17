@@ -162,7 +162,9 @@ function Net.run(fn, opts)
         if not opts.quiet then pcall(Net.onUsb, opts.reason) end
         return
     end
-    local function go() Net.touch(); fn() end
+    -- (a clock that ran down, e.g. a Touch back in 2013 after a reboot: set
+    -- from a time server first; one comparison when it's right)
+    local function go() Net.touch(); pcall(function() require("gzreader_clock").online() end); fn() end
     if Net.connected() then return go() end
     local mode = Net.mode()
     if opts.quiet and mode == "off" then return end -- you turned it off: background work waits

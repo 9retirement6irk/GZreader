@@ -4720,6 +4720,40 @@ do
         "a clock in the year 2000 (a Nook's after its battery ran down): set from the server's")
     set_to = nil
     check(not Clock.fromServer({ date = "Sat, 07 Nov 2026 06:58:01 GMT" }, 946729600) and set_to == nil, "…once per start")
+    -- as soon as Wi-Fi connects: a time server (NTP), or GitHub's Date
+    local function ntpAnswer(t)
+        local s = t + 2208988800
+        return string.rep("\0", 40) .. string.char(math.floor(s / 16777216) % 256, math.floor(s / 65536) % 256,
+            math.floor(s / 256) % 256, s % 256) .. string.rep("\0", 4)
+    end
+    check(Clock.parseNtp(ntpAnswer(1794034621)) == 1794034621 and Clock.parseNtp("short") == nil
+        and Clock.parseNtp(string.rep("\0", 48)) == nil, "an NTP answer read (seconds since 1900 -> 1970)")
+    local sent, heads = {}, 0
+    local answer
+    Clock.udp = function()
+        return { settimeout = function() end, close = function() end,
+            sendto = function(_u, data, host, port) sent[#sent + 1] = { #data, data:byte(1), host, port }; return #data end,
+            receive = function() if answer then return answer end; return nil, "timeout" end }
+    end
+    Clock.head = function(url) heads = heads + 1; return url == "https://github.com/" and { date = "Sat, 07 Nov 2026 06:57:01 GMT" } or nil end
+    set_to, Clock.done = nil, false
+    check(not Clock.online(1794030000) and #sent == 0 and heads == 0 and Clock.done,
+        "Wi-Fi connected, the clock right: no request at all")
+    Clock.done, answer = false, ntpAnswer(1794034700)
+    local Touch2013 = 1364846400 -- (2013-04-01, the Kindle Touch after its reboot)
+    check(Clock.online(Touch2013) and set_to == 1794034700 and sent[1][1] == 48 and sent[1][2] == 0x1B
+        and sent[1][3] == "pool.ntp.org" and sent[1][4] == 123 and heads == 0,
+        "a clock in 2013: set from a time server (NTP) as soon as Wi-Fi connects")
+    set_to = nil
+    check(not Clock.online(Touch2013) and set_to == nil, "…once per start")
+    Clock.done, answer, sent = false, nil, {}
+    check(Clock.online(Touch2013) and set_to == 1794034621 and #sent == 1 and heads == 1,
+        "NTP blocked (no answer): set from GitHub's Date instead")
+    Clock.done, set_to = false, nil
+    Clock.head = function() return nil end
+    check(not Clock.online(Touch2013) and set_to == nil and not Clock.done,
+        "neither answers: left for the next server answer (fromServer)")
+    Clock.udp, Clock.head = nil, nil
     Clock.set, Clock.done = orig_set, true
 end
 

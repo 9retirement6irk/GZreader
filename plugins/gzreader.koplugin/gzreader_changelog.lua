@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A Kindle whose clock ran down sets it as soon as Wi-Fi connects", text = "A Kindle Touch came back from a reboot with its clock in 2013. GZreader set the clock only from the first answer of your Grimmory server. Now, as soon as Wi-Fi connects and the clock is plainly wrong (before 2024), GZreader asks a time server (pool.ntp.org) for the time, or, if that's blocked, takes it from GitHub's answer. A right clock is left alone, with no request." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
