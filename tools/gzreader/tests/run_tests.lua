@@ -3425,7 +3425,7 @@ do
     check(hr == 2 and hp == 444, "…still two with room for three")
     check(GzView.homeShelfPitch(1000, 10, nil, 712) == nil, "…two that tall don't fit: two sharing the room, as before")
     check(GzView.homeShelfPitch(1000, 10, nil, nil) == nil, "…Downloads not laid out yet: as before")
-    local _r, _p, lift = GzView.homeShelfPitch(1000, 10, nil, 444, nil, 3)
+    local lift = select(3, GzView.homeShelfPitch(1000, 10, nil, 444, nil, 3))
     check(lift == 3 and select(3, GzView.homeShelfPitch(1000, 10, nil, 444)) == 0,
         "…lifted as far as Downloads' bottom shelf stands above the navbar (3 px), level with it")
     check(GzView.homeShelfPitch(880, 10, nil, 444, nil, 3) == nil, "…the lift counts in what fits")
