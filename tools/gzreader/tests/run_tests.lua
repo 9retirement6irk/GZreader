@@ -11335,6 +11335,91 @@ print("Quick panel's light: the swipe that opens it doesn't move the light")
     Screen.scaleBySize = was_scale
 end)()
 
+print("Quick panel: a volume slider on touch Kindles with sound")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    local Device = require("device")
+    local Touch = require("gzreader_touch")
+    local TTS = require("gzreader_tts")
+    local Screen = Device.screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    local saved = { touch = Device.isTouchDevice, audio = Touch.audio, ivona = Touch.ivona,
+        hasIvona = TTS.hasIvona, volume = TTS.volume, setVolume = TTS.setVolume, volumeMax = TTS.volumeMax }
+    Panel.volume_present = nil
+    -- which Kindles get it
+    Device.isTouchDevice = function() return true end
+    Touch.audio = function() return false end
+    Touch.ivona = function() return false end
+    check(Panel.hasVolume() == false, "a touch Kindle without sound (Paperwhite 1-3, Voyage, Oasis 1): no volume slider")
+    Touch.audio = function() return true end
+    check(Panel.hasVolume() == true, "the Kindle Touch (speaker, headphones): a volume slider")
+    Touch.audio = function() return false end
+    Touch.ivona = function() return true end
+    check(Panel.hasVolume() == true, "a Bluetooth Kindle (Scribe, Paperwhite 5…): a volume slider")
+    Device.isTouchDevice = function() return false end
+    Touch.audio = function() return true end
+    check(Panel.hasVolume() == false, "the Kindle 3 (volume buttons, no touch): no slider")
+    -- the Bluetooth volume: steps 1 to 8, written as is
+    local sets, vol = {}, 4
+    TTS.hasIvona = function() return true end
+    TTS.volumeMax = function() return 8 end
+    TTS.volume = function() return vol end
+    TTS.setVolume = function(v) sets[#sets + 1] = v; vol = v end
+    local w = setmetatable({ light_y = 40, warmth_y = 92, volume_y = 144, w = 600, h = 700 }, { __index = PW })
+    local min, max, cur = select(2, w:volumeInfo())
+    check(min == 1 and max == 8 and cur == 4, "Bluetooth: 1 to 8, now 4 (" .. tostring(min) .. "-" .. tostring(max) .. ", " .. tostring(cur) .. ")")
+    local function at(x, y) return { pos = { x = x, y = y } } end
+    local vol_bar = 144 + 20
+    check(w:sliderAtY(vol_bar) == "volume" and w:sliderAtY(92 + 20) == "warmth" and w:sliderAtY(40 + 20) == "light",
+        "three sliders: a finger is on the one whose bar is nearest")
+    w:onTapPanel(nil, at(20, 144 + 10))
+    w:onTapPanel(nil, at(590, 144 + 10))
+    w:onTapPanel(nil, at(590, 144 + 10))
+    check(sets[1] == 3 and sets[2] == 4 and sets[3] == 5, "− one step quieter, + one louder (" .. table.concat(sets, ",") .. ")")
+    sets = {}
+    w:onTapPanel(nil, at(590, 144 + 10)); w:onTapPanel(nil, at(590, 144 + 10)); w:onTapPanel(nil, at(590, 144 + 10))
+    w:onTapPanel(nil, at(590, 144 + 10))
+    check(vol == 8 and #sets == 3, "never above the loudest step (8), and no write when it's already there")
+    vol = 1; sets = {}
+    w:onTapPanel(nil, at(20, 144 + 10))
+    check(vol == 1 and #sets == 0, "never below the quietest step (1)")
+    -- a drag that starts on it moves the volume only
+    local light = {}
+    w.setLight = function(_self, v) light[#light + 1] = v end
+    w:onTouchPanel(nil, at(100, vol_bar))
+    w:onPanLight(nil, at(300, vol_bar))
+    w:onPanLight(nil, at(500, 40 + 20)) -- (straying up over the light: still the volume)
+    w:onPanReleaseLight(nil, at(1000, 40 + 20))
+    check(#light == 0 and vol == 8, "a drag on the volume moves the volume only, all the way right: the loudest (" .. vol .. ")")
+    w:onTouchPanel(nil, at(400, vol_bar))
+    w:onSwipeLight(nil, { pos = at(400, vol_bar).pos, direction = "west", distance = 500 })
+    check(vol == 1, "a quick swipe to the left: the quietest (" .. vol .. ")")
+    -- the Kindle Touch: 0 (silent) to 15
+    TTS.hasIvona = function() return false end
+    TTS.volumeMax = function() return 15 end
+    vol = 10
+    min, max, cur = select(2, w:volumeInfo())
+    check(min == 0 and max == 15 and cur == 10, "Kindle Touch: 0 to 15, now 10")
+    w:onTapPanel(nil, at(300, vol_bar))
+    check(vol == 8, "the middle of the bar: halfway, 8 of 15 (" .. vol .. ")")
+    -- only the volume: no light (a Kindle Touch has none)
+    local w2 = setmetatable({ volume_y = 40, w = 600 }, { __index = PW })
+    check(#w2:sliders() == 1 and w2:sliderAtY(60) == "volume", "no front light (Kindle Touch): only the volume slider")
+    -- the panel makes room for it and paints it
+    local pf = io.open(debug.getinfo(PW.init, "S").source:sub(2), "rb")
+    local src = pf and pf:read("*a") or ""
+    if pf then pf:close() end
+    check(src:find("local volume = Panel.hasVolume()", 1, true) and src:find("(volume and S(52) or 0)", 1, true)
+            and src:find("self.volume_y = y", 1, true) and src:find("if light or volume then", 1, true)
+            and src:find("if self.volume_y then self:paintVolume(bb, x, y + self.volume_y) end", 1, true),
+        "the panel lays out, paints and lets you drag the volume row")
+    Device.isTouchDevice, Touch.audio, Touch.ivona = saved.touch, saved.audio, saved.ivona
+    TTS.hasIvona, TTS.volume, TTS.setVolume, TTS.volumeMax = saved.hasIvona, saved.volume, saved.setVolume, saved.volumeMax
+    Screen.scaleBySize = was_scale
+end)()
+
 print("Quick panel: a warmth slider on Kindles with a warm light")
 ;(function()
     local Panel = require("gzreader_panel")

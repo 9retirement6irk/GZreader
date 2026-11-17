@@ -121,6 +121,12 @@ run the same GZreader with ZenOS's touch interface:
   newer, Oasis 3, Scribe, Colorsoft) a second slider under the light's goes
   from **Cool** to **Warm**: tap or drag it, − and + step. The swipe that
   opens the panel moves neither slider.
+- **Volume:** on touch Kindles with sound, a slider under those sets the
+  volume: on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…) the
+  Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider; on
+  the Kindle Touch its speaker and headphones, 0 to 15, the volume read
+  aloud and audiobooks use. Tap − or +, tap the bar, or drag. (The Kindle 2,
+  3 and DX use their volume buttons.)
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
 - **Notes:** Note, Draw (a new note on a page to draw on) and Journal (a journal entry), then icons for Sort, Filter (with Memos connection), Layout, Search and Full screen, are buttons under the title, with a row of your tags and Drawings under them; a note
