@@ -283,10 +283,54 @@ print("== notepaper: a background as memos keeps one")
     local Notepaper = require("gzreader_notepaper")
     local scene = Notepaper.scene("college")
     local bg = scene.elements[1]
-    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 8
+    check(bg and bg.type == "image" and bg.locked and scene.files[bg.fileId] and #Notepaper.LIST == 18
         and Notepaper.LIST[1].id == "blank" and Notepaper.get("checklist").label == "Checklist" and Notepaper.get("cornell").label == "Cornell notes",
-        "a new page on College ruled: its picture under everything, in the scene's files (eight papers, Blank first; Checklist and Cornell notes among them)")
+        "a new page on College ruled: its picture under everything, in the scene's files (eighteen papers offered, Blank first; the earlier ones still known)")
+    local labels = {}
+    for _i, p in ipairs(Notepaper.all()) do labels[#labels + 1] = p.label end
+    check(table.concat(labels, "|") == "Blank|Medium ruled|Medium ruled with margin|Wide ruled|Wide ruled with margin|Narrow ruled|"
+        .. "Narrow ruled with margin|Vertical ruled|Vertical ruled with margin|Graph|Dotted|Checklist|Daily planner|Weekly planner|"
+        .. "Monthly planner|Habit tracker|Storyboard|Music",
+        "the papers offered: the Kindle Scribe's templates, in its order after Blank")
+    local function isFile(path) local f = path and io.open(path, "rb"); if f then f:close() end; return f ~= nil end
+    local tiles, seen = true, {}
     for _i, p in ipairs(Notepaper.LIST) do
+        if seen[p.id] or (p.file and not (isFile(Notepaper.path(p)) and isFile(Notepaper.tile(p)))) then tiles = false end
+        seen[p.id] = true
+    end
+    check(tiles and Notepaper.tile(Notepaper.get("blank")) == nil, "…each has its page and the chooser's small tile (Blank: neither)")
+    -- in colour (blue rules, a red margin line): shown so on a colour screen and in Memos
+    local function coloured(path)
+        local f = io.open(path, "rb"); local data = f:read("*a"); f:close()
+        local at = data:find("PLTE", 1, true)
+        if not at then return false end
+        local n = ((data:byte(at - 4) * 256 + data:byte(at - 3)) * 256 + data:byte(at - 2)) * 256 + data:byte(at - 1)
+        for i = at + 4, at + 3 + n - 2, 3 do
+            local r, g, b = data:byte(i, i + 2)
+            if math.abs(r - b) > 30 or math.abs(r - g) > 30 then return true end
+        end
+        return false
+    end
+    local grey = {}
+    for _i, p in ipairs(Notepaper.LIST) do
+        if p.file and p.id ~= "dots" and not coloured(Notepaper.path(p)) then grey[#grey + 1] = p.id end
+    end
+    check(#grey == 0 and coloured(Notepaper.path(Notepaper.get("ruled-medium-margin")))
+        and coloured(Notepaper.tile(Notepaper.get("weekly"))),
+        "the papers are in colour (a colour screen and Memos show them so; Dotted is grey dots): " .. table.concat(grey, ","))
+    local msc = Notepaper.scene("music")
+    check(msc.files[msc.elements[1].fileId].dataURL == Notepaper.dataURL("music")
+        and require("ffi/sha2").base64_to_bin(Notepaper.dataURL("music"):match(",(.*)$")) == io.open(Notepaper.path(Notepaper.get("music")), "rb"):read("*a"),
+        "a page on a paper carries the paper's own PNG to Memos, byte for byte (its colours with it)")
+    for _i, p in ipairs(Notepaper.EARLIER) do
+        local sc = Notepaper.scene(p.id)
+        check(not seen[p.id] and sc.elements[1] and Notepaper.idOf(sc, sc.elements[1]) == p.id,
+            p.label .. " (offered before): not in the chooser, a page on it still known as it")
+    end
+    local every = {}
+    for _i, p in ipairs(Notepaper.LIST) do every[#every + 1] = p end
+    for _i, p in ipairs(Notepaper.EARLIER) do every[#every + 1] = p end
+    for _i, p in ipairs(every) do
         if p.file then
             local url = Notepaper.dataURL(p.id)
             local png = url and require("ffi/sha2").base64_to_bin(url:match(",(.*)$"))

@@ -164,6 +164,12 @@ add({ fn = function(E)
         "Save: Memos has the entry, private, in your journal space")
     E.tap(chip("Draw"))
 end, after = 5 })
+-- (a new drawing asks which paper first: Create, on the one chosen)
+add({ fn = function(E)
+    for _i, w in ipairs(require("ui/uimanager")._window_stack) do
+        if w.widget.name == "gz_paperlist" and w.widget.create then E.tap("Create") end
+    end
+end, after = 4 })
 
 -- the drawing screen
 shot("08-sheet")
@@ -231,7 +237,7 @@ add({ fn = function(E)
     local g = grid()
     local ids = {}
     for i, p in ipairs(g and g.papers or {}) do ids[i] = p.id end
-    check(g and g.kind == "papers" and table.concat(ids, ","):match("^blank,college,wide,gregg,dots,graph") ~= nil,
+    check(g and g.kind == "papers" and table.concat(ids, ","):match("^blank,ruled%-medium,ruled%-medium%-margin,ruled%-wide") ~= nil,
         "Paper: every paper pictured: " .. table.concat(ids, ","))
     E.tap("Graph")
 end, after = 4 })

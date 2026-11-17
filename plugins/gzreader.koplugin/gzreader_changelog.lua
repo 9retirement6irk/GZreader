@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Drawing: Paper scrolls instead of turning pages, and fits the Scribe's screen", text = "In a drawing, Paper shows the papers three to a row, sized so the whole row fits the screen (on the Kindle Scribe the third column was cut off at the right), in a grid you scroll with a finger instead of turning pages with arrows. The page's paper has a thick border and a tick and is scrolled into view; your own papers come after GZreader's." },
+            { short = "Drawing: the Kindle Scribe's notebook templates, and a new drawing asks which paper", text = "Starting a new drawing now asks which paper to use first, as the Kindle Scribe's Create notebook does: tap a template, then Create (Cancel goes back to the note). The papers are the Scribe's: Blank, Medium, Wide and Narrow ruled (each also with a margin), Vertical ruled (and with a margin), Graph, Dotted, Checklist, Daily, Weekly and Monthly planner, Habit tracker, Storyboard and Music, then your own. The chooser (also Paper on the drawing screen) is a grid of small square tiles, six to a row, each showing a corner of the paper large enough to tell it by; it fits the Scribe's screen (the third column used to be cut off) and scrolls with a finger where there are more rows than fit, instead of turning pages. College ruled, the punched Wide ruled, Gregg ruled and Cornell notes are no longer offered; pages already drawn on them stay as they are." },
         },
     },
     {
