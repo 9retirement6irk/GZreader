@@ -1535,22 +1535,52 @@ function Notes.Board:onSwipe(arg, ges)
     if sc and ges and not self:onNotes(ges) then return false end -- (the quick panel's, the tab bar's)
     if sc and ges then
         local d = ges.direction
+        -- (a drag that ended as a swipe: from where the notes were when it began, not from where they followed to)
+        local pan = self._gz_pan
+        self._gz_pan = nil
+        if pan and pan.y0 ~= (self._gz_y or 0) then self._gz_y = pan.y0; self._gz_moved = true end
+        if self._gz_moved and not (d == "north" or d == "south" or d == "west" or d == "east") then
+            self._gz_moved = nil
+            self:updateItems()
+            return true
+        end
         if d == "north" or d == "south" then
-            self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0))
+            if not self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0)) and self._gz_moved then self:updateItems() end
+            self._gz_moved = nil
             return true
         elseif d == "west" or d == "east" then
-            self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h))
+            if not self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h)) and self._gz_moved then self:updateItems() end
+            self._gz_moved = nil
             return true
         end
     end
     return Menu.onSwipe(self, arg, ges)
 end
 
---- Scrolling: a slow drag does the same when the finger lifts.
+--- Scrolling: to `y` pixels down the notes. True when it moved.
+function Notes.Board:scrollTo(y)
+    return self:scrollBy(y - (self._gz_y or 0))
+end
+
+--- Scrolling: a drag moves the notes with the finger, a step at a time
+--- (gzreader_livescroll: an e-ink screen can't follow every sample), and
+--- they settle where it lifts.
 function Notes.Board:onPan(arg, ges)
     if self._gz_scroll and ges and not ges.mousewheel_direction then
         if not self:onNotes(ges) then self._gz_pan = nil; return false end
-        self._gz_pan = { direction = ges.direction, distance = ges.distance }
+        local pan = self._gz_pan
+        if not pan then
+            pan = { y0 = self._gz_y or 0, live = {} }
+            self._gz_pan = pan
+        end
+        -- (how far the finger is from where it began: down is positive)
+        local rel = ges.relative and ges.relative.y
+        if not rel then
+            rel = (ges.direction == "north" and -1 or ges.direction == "south" and 1 or 0) * (tonumber(ges.distance) or 0)
+        end
+        pan.rel = rel
+        local LiveScroll = require("gzreader_livescroll")
+        if LiveScroll.step(pan.live, rel, LiveScroll.now()) ~= 0 then self:scrollTo(pan.y0 - rel) end
         return true
     end
     return Menu.onPan(self, arg, ges)
@@ -1560,9 +1590,7 @@ function Notes.Board:onGzPanRelease()
     local pan = self._gz_pan
     self._gz_pan = nil
     if not (pan and self._gz_scroll) then return false end
-    if pan.direction == "north" or pan.direction == "south" then
-        self:scrollBy((pan.direction == "north" and 1 or -1) * (tonumber(pan.distance) or 0))
-    end
+    self:scrollTo(pan.y0 - (pan.rel or 0))
     return true
 end
 
@@ -1973,6 +2001,7 @@ function NoteView:build()
         dimen = Geom:new{ w = sw, h = content_h }, show_parent = self,
         HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, g },
     }
+    require("gzreader_livescroll").on(self.scroller) -- (the note moves with the finger)
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{

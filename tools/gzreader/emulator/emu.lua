@@ -347,6 +347,8 @@ end
 --- A finger put down and left there (a hand resting on the screen), and lifted.
 function E.fingerDown(x, y, dt) say("finger down", math.floor(x), math.floor(y)); down(x, y, dt) end
 function E.fingerUp(dt) say("finger up"); up(dt) end
+--- The finger, already down, to (x, y) `dt` seconds on (and it stays down).
+function E.fingerMove(x, y, dt) say("finger to", math.floor(x), math.floor(y)); move(x, y, dt) end
 
 function E.swipe(x1, y1, x2, y2, sec)
     say("swipe", x1, y1, "->", x2, y2)

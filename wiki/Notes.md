@@ -60,7 +60,10 @@ API to `/api` are found too.
     first on screen. The choice is kept.
   - **Scroll up and down** (touch Kindles, compact notes; off until you
     turn it on): the Notes tab becomes one long page. A swipe or a drag up
-    or down moves the notes exactly as far as your finger went; notes cut
+    or down moves the notes exactly as far as your finger went, and a drag
+    moves them while your finger is still down (in steps, about five a
+    second: e-ink can't follow every movement; an opened note that's longer
+    than the screen follows your finger the same way); notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
     sideways moves most of a screenful. Full notes keep their pages. A swipe
