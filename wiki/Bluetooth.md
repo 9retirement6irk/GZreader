@@ -39,9 +39,10 @@ does. Settings → Interface → Quick panel can take it off the panel.
 
 ## What GZreader plays over it
 
-Not yet: audiobooks, music and read aloud aren't offered on these Kindles
-(they have no speaker or headphone jack; playing through Bluetooth is being
-worked on).
+Audiobooks, music and read aloud, through Bluetooth headphones or a speaker
+(these Kindles have no speaker or headphone jack): connect one here first.
+See [Audiobooks and Read Aloud](Audiobooks-and-Read-Aloud#on-kindles-with-bluetooth-scribe-paperwhite-5-and-newer)
+and [Music](Music).
 
 The log (crash.log) has Bluetooth lines for power changes and device
 counts; device names and addresses aren't written to it.

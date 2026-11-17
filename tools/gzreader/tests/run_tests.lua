@@ -11792,6 +11792,75 @@ print("The quick panel on big screens: more tiles across, not bigger ones")
     check(src:find("local cols = Panel.columns(sw, pad, gap, keys)", 1, true) ~= nil, "the panel lays out by Panel.columns")
 end)()
 
+print("Quick panel: the sliders' − and + show what they turn down and up")
+;(function()
+    local Panel = require("gzreader_panel")
+    local PW = Panel._Widget
+    local Screen = require("device").screen
+    local was_scale = rawget(Screen, "scaleBySize")
+    Screen.scaleBySize = function(_s, px) return px end
+    -- paintSlider's IconWidget and TextWidget, recorded
+    local painted, words = {}, {}
+    local fake_icon = { new = function(_c, o)
+        return { paintTo = function(_s, _bb, x, y) painted[#painted + 1] = { file = o.file, x = x, y = y } end, free = function() end }
+    end }
+    local fake_text = { new = function(_c, o)
+        words[#words + 1] = o.text
+        return { paintTo = function() end, free = function() end, getSize = function() return { w = 10, h = 10 } end }
+    end }
+    local function swap(fn, name, value)
+        for i = 1, 60 do
+            local upname, v = debug.getupvalue(fn, i)
+            if not upname then return nil end
+            if upname == name then debug.setupvalue(fn, i, value); return v end
+        end
+    end
+    local was_icon = swap(PW.paintSlider, "IconWidget", fake_icon)
+    local was_text = swap(PW.paintSlider, "TextWidget", fake_text)
+    local bb = { paintBorder = function() end, paintRoundedRect = function() end }
+    local w = setmetatable({ w = 600, h = 700 }, { __index = PW })
+    local function icons(kind)
+        painted, words = {}, {}
+        w:paintSlider(bb, 0, 40, kind, 0, 10, 5, nil)
+        local got = {}
+        for i, p in ipairs(painted) do got[i] = (p.file:match("([^/]+)%.svg$")) end
+        return got
+    end
+    local l, wa, v = icons("light"), icons("warmth"), icons("volume")
+    check(l[1] == "light_low" and l[2] == "light_high", "light: a small dim sun on −, a big bright one on + (" .. table.concat(l, ",") .. ")")
+    check(wa[1] == "warmth_low" and wa[2] == "warmth_high", "warmth: a snowflake on −, a flame on + (" .. table.concat(wa, ",") .. ")")
+    check(v[1] == "volume_low" and v[2] == "volume_high", "volume: a quiet speaker on −, a loud one on + (" .. table.concat(v, ",") .. ")")
+    icons("volume")
+    check(#words == 0 and painted[1].x < 60 and painted[2].x > 540, "icons in place of the − and + signs, − on the left (" .. #words .. " texts)")
+    -- the knob (20 wide, centred on the bar's end) clears the buttons
+    local bar = w:lightBar(0)
+    check(bar.x - 10 >= 16 + 44 + 8 and bar.x + bar.w + 10 <= 600 - 16 - 44 - 8,
+        "the knob at either end of the bar keeps clear of − and + (bar " .. bar.x .. " to " .. (bar.x + bar.w) .. ")")
+    local here = debug.getinfo(PW.init, "S").source:sub(2):match("^(.*)/[^/]+$")
+    local missing = {}
+    for _k, pair in pairs(Panel.SLIDER_ICONS) do
+        for _i, name in ipairs(pair) do
+            local fh = io.open(here .. "/icons/panel/" .. name .. ".svg", "rb")
+            if fh then fh:close() else missing[#missing + 1] = name end
+        end
+    end
+    check(#missing == 0, "every slider icon ships in icons/panel (" .. table.concat(missing, ",") .. ")")
+    -- no words under the warmth and volume bars any more
+    local function uses(fn, name)
+        for i = 1, 60 do
+            local upname = debug.getupvalue(fn, i)
+            if not upname then return false end
+            if upname == name then return true end
+        end
+        return false
+    end
+    check(not uses(PW.paintWarmth, "TextWidget") and not uses(PW.paintVolume, "TextWidget"),
+        "no Cool / Warm or Volume / level words under the bars")
+    swap(PW.paintSlider, "IconWidget", was_icon)
+    swap(PW.paintSlider, "TextWidget", was_text)
+    Screen.scaleBySize = was_scale
+end)()
+
 print("The first tour on a touch Kindle: GZreader's quick panel")
 ;(function()
     local Tour = require("gzreader_tour")

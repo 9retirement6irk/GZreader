@@ -25,7 +25,7 @@ light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
 playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap or drag the light's slider.
 Kindles with a warm light (Device:hasNaturalLight(): Paperwhite 5 and newer,
-Oasis 3, Scribe, Colorsoft) get a warmth slider under it, Cool to Warm, in
+Oasis 3, Scribe, Colorsoft) get a warmth slider under it, cool to warm, in
 the Kindle's own steps (powerd's native warmth, 0 to 24).
 Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
 slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
@@ -880,23 +880,43 @@ function PanelWidget:warmthInfo()
     return powerd, min, max, cur
 end
 
+--- The room between a slider's − / + button and its bar.
+function Panel.BAR_GAP() return S(20) end
+
 function PanelWidget:lightBar(x)
     local w = self.w
-    return { x = x + S(16) + S(44) + S(8), w = w - 2 * S(16) - 2 * (S(44) + S(8)) }
+    -- (S(20) from each button: half the knob (S(10)) plus room, so the knob
+    -- at either end of the bar clears the − and + buttons)
+    return { x = x + S(16) + S(44) + Panel.BAR_GAP(), w = w - 2 * S(16) - 2 * (S(44) + Panel.BAR_GAP()) }
 end
 
---- One slider row at y: − and + buttons, the bar filled up to cur (fill: its colour).
-function PanelWidget:paintSlider(bb, x, y, min, max, cur, fill)
+--- Each slider's − and + icons (icons/panel/<name>.svg): lower and higher.
+Panel.SLIDER_ICONS = {
+    light = { "light_low", "light_high" },   -- a small dim sun, a big bright one
+    warmth = { "warmth_low", "warmth_high" }, -- a snowflake (cool), a flame (warm)
+    volume = { "volume_low", "volume_high" }, -- a quiet speaker, a loud one
+}
+
+--- One slider row at y: − and + buttons (each with its kind's icon), the bar
+--- filled up to cur (fill: its colour).
+function PanelWidget:paintSlider(bb, x, y, kind, min, max, cur, fill)
     local bar = self:lightBar(x)
     local cy = y + S(20)
-    -- − and +
+    local icons = Panel.SLIDER_ICONS[kind]
+    local isz = S(28)
     for i, label in ipairs({ "\u{2212}", "+" }) do
         local bx = i == 1 and (x + S(16)) or (x + self.w - S(16) - S(44))
         bb:paintBorder(bx, y, S(44), S(40), math.max(2, S(2)), Blitbuffer.COLOR_BLACK, S(8))
-        local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 20), bold = true }
-        local ts = t:getSize()
-        t:paintTo(bb, bx + math.floor((S(44) - ts.w) / 2), y + math.floor((S(40) - ts.h) / 2))
-        t:free()
+        if icons then
+            local icon = IconWidget:new{ file = iconFile(icons[i]), width = isz, height = isz, alpha = true }
+            icon:paintTo(bb, bx + math.floor((S(44) - isz) / 2), y + math.floor((S(40) - isz) / 2))
+            icon:free()
+        else
+            local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 20), bold = true }
+            local ts = t:getSize()
+            t:paintTo(bb, bx + math.floor((S(44) - ts.w) / 2), y + math.floor((S(40) - ts.h) / 2))
+            t:free()
+        end
     end
     local bh = S(10)
     bb:paintBorder(bar.x, cy - math.floor(bh / 2), bar.w, bh, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, math.floor(bh / 2))
@@ -911,21 +931,13 @@ end
 
 function PanelWidget:paintLight(bb, x, y)
     local min, max, cur = select(2, self:lightInfo())
-    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_BLACK)
+    self:paintSlider(bb, x, y, "light", min, max, cur, Blitbuffer.COLOR_BLACK)
 end
 
---- The warmth: filled in grey, "Cool" and "Warm" under its ends.
+--- The warmth: filled in grey; a snowflake on −, a flame on +.
 function PanelWidget:paintWarmth(bb, x, y)
     local min, max, cur = select(2, self:warmthInfo())
-    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
-    local bar = self:lightBar(x)
-    local face = Font:getFace("cfont", 11)
-    local cool = TextWidget:new{ text = _("Cool"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    cool:paintTo(bb, bar.x, y + S(32))
-    cool:free()
-    local warm = TextWidget:new{ text = _("Warm"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    warm:paintTo(bb, bar.x + bar.w - warm:getSize().w, y + S(32))
-    warm:free()
+    self:paintSlider(bb, x, y, "warmth", min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
 end
 
 --- The slider's row to refresh after a change (the bar and the knob).
@@ -975,18 +987,10 @@ function PanelWidget:volumeInfo()
     return TTS, min, max, cur
 end
 
---- The volume: filled in grey, "Volume" and the level under its ends.
+--- The volume: filled in grey; a quiet speaker on −, a loud one on +.
 function PanelWidget:paintVolume(bb, x, y)
     local min, max, cur = select(2, self:volumeInfo())
-    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
-    local bar = self:lightBar(x)
-    local face = Font:getFace("cfont", 11)
-    local name = TextWidget:new{ text = _("Volume"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    name:paintTo(bb, bar.x, y + S(32))
-    name:free()
-    local level = TextWidget:new{ text = T(_("%1 / %2"), cur, max), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    level:paintTo(bb, bar.x + bar.w - level:getSize().w, y + S(32))
-    level:free()
+    self:paintSlider(bb, x, y, "volume", min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
 end
 
 function PanelWidget:setVolume(v, dragging)
