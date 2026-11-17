@@ -161,6 +161,12 @@ API to `/api` are found too.
 - **Drawings** (touch Kindles, Memos over Wi‑Fi): tap **Draw** on the Notes
   tab, or **✎ Draw** in a note's editor, for a page to draw on. A note can
   be just drawings.
+  - **A new drawing** (**Draw** on the Notes tab): **Done** opens a small
+    **New drawing** window, not the note's page: type a **title** (it
+    becomes the note's heading; you can leave it empty), tap **# Tag** to
+    add your tags (your most used ones, or **New tag…**; tap one again to
+    take it off), then **Save**. **Back to drawing** goes back to the
+    drawing. ✕ on an empty page just closes it.
   - **At the top:** **✕** (leave without keeping what you drew), the note's
     name and the page's paper, and **Done** (keeps the drawings with the
     note; **Save** in the editor sends them).

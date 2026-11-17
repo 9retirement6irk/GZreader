@@ -924,10 +924,14 @@ function Editor:openDrawing(page)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
             self.pages = res
+            if self.popup_only then return self:newDrawingDone() end
             back()
         end,
         on_cancel = function()
             if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
+            -- (a new drawing left at once: nothing to save, the Notes tab again)
+            if self.popup_only and not self:hasDrawing() then return UIManager:close(self, "full") end
+            if self.popup_only then return self:newDrawingDone() end
             -- (Mark up left at once: the note as it was, not its editor)
             if extra and not self:changed() then return UIManager:close(self, "full") end
             back()
@@ -986,6 +990,45 @@ function Editor:save()
         UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
         return
     end
+    return self:saveText(text)
+end
+
+--- A new drawing (the Notes tab's Draw) after Done: the New drawing window
+--- (a title and tags, then Save), not the note's page; nothing drawn: closed.
+function Editor:newDrawingDone()
+    if not self:hasDrawing() then return UIManager:close(self, "full") end
+    local NewDrawing = require("gzreader_newdrawing")
+    -- (what's under: the Notes tab, painted again where the drawing screen was)
+    UIManager:setDirty("all", "full")
+    return NewDrawing.show{
+        tags = self.tags,
+        on_save = function(text)
+            Log.info("notes: a new drawing saved from its window,", self:drawingCount(), "page(s)")
+            self:saveText(text)
+        end,
+        on_back = function()
+            local n = 0
+            for _i, p in ipairs(self.pages or {}) do if not p.removed then n = n + 1 end end
+            self:openDrawing(math.max(1, n))
+        end,
+    }
+end
+
+--- The editor out of sight: a new drawing's (only its drawing screen and
+--- the New drawing window show; the Notes tab stays under them).
+function Editor:paintTo(bb, x, y)
+    if self.popup_only then return end
+    return InputContainer.paintTo(self, bb, x, y)
+end
+
+function Editor:handleEvent(ev)
+    -- (out of sight: nothing reaches it, nor what's under it)
+    if self.popup_only then return ev.handler == "onGesture" or nil end
+    return InputContainer.handleEvent(self, ev)
+end
+
+--- Saves the note as `text` with its drawings (Save, and the New drawing window's Save).
+function Editor:saveText(text)
     self.saved = true
     UIManager:close(self, "full")
     if self.on_save then
@@ -1030,6 +1073,8 @@ function NoteEditor.show(opts)
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil
+    -- a new drawing: Done opens the New drawing window, the note's page never shows
+    if opts.new_drawing and e.drawing_first then e.popup_only, e.covers_fullscreen = true, false end
     UIManager:show(e, "full")
     if e.drawing_first then e:openDrawing() end
     return e
