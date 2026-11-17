@@ -191,6 +191,24 @@ add({ fn = function(E)
     if PEN then check(strokes() == 2, "scribe: the eraser end rubbed out a stroke (" .. strokes() .. ")")
     else check(strokes() == 1, "pw3: Undo took back the last stroke") end
 end, after = 0.5 })
+-- scribe: the pen's side button held, the tip across a stroke: rubbed out; Undo puts it back
+add({ fn = function(E)
+    if not PEN then return end
+    E.penSideButton(true)
+    E.pen({ pt(0.3, 0.45), pt(0.3, 0.56) }, 0.3)
+    E.penSideButton(false, 0.5)
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    local d = screen()
+    check(strokes() == 1 and d.sketch.tool == "pen" and d.sketch.side_button == false,
+        "scribe: the side button held, the pen tip rubs out a stroke (" .. strokes() .. " left; the Pen tool still chosen)")
+    tapButton(E, "undo")
+end, after = 2 })
+add({ fn = function(E)
+    if not PEN then return end
+    check(strokes() == 2, "scribe: …Undo brings it back")
+end, after = 0.5 })
 -- zoomed when Done is tapped (next): the page is saved whole (unzoomed first)
 add({ fn = function(E)
     local crop = screen().sketch:cropRect()

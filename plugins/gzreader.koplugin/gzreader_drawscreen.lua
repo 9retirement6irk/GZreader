@@ -698,6 +698,15 @@ function DrawScreen:hook()
     local screen = self
     rawset(gd, "feedEvent", function(det, tevs)
         if screen._closed or UIManager:getTopmostVisibleWidget() ~= screen then return orig(det, tevs) end
+        -- (the pen's side button, as KOReader reads it: BTN_STYLUS or BTN_STYLUS2; held, the pen rubs out)
+        if screen.sketch then
+            local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true
+            if held ~= screen.sketch.side_button then
+                Log.info("drawing: the pen's side button", held and "held (rubs out)" or "let go",
+                    input.stylus_eraser_active and "BTN_STYLUS" or input.stylus_highlighter_active and "BTN_STYLUS2" or "")
+            end
+            screen.sketch.side_button = held
+        end
         local ok, err = pcall(screen.onContacts, screen, det, tevs)
         if not ok then Log.warn("drawing: input:", tostring(err)) end
         return {}
