@@ -17,6 +17,14 @@ KOReader-compatible endpoint.
   count 0), so Grimmory's figure matches its web reader on the same page.
   KOReader's footer counts rendered height and still shows its own figure
   (e.g. 11% on the Kindle where the web reader says 15%).
+- Finishing a book: on its last page (scrolling: at its very end) the
+  position goes to Grimmory as 100%, so Grimmory marks the book Read (it
+  does from 99.5%) and fills in the date finished. Before, an EPUB's last
+  page was sent as the top of that page, 99.0–99.4% in shorter books, and
+  the book stayed at Reading. Going back a few pages afterwards sends that
+  page's figure again, and Grimmory puts the book back to Reading. Marking
+  a book Finished on the Kindle (its menu, its status page) isn't sent to
+  Grimmory.
 - Pull: a CFI from the web reader is converted back to an XPointer and the
   Kindle goes to that exact page; ahead / behind / same page is decided on
   KOReader's positions for both, so the two percentage scales don't mix.
