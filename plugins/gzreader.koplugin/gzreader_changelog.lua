@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick note: the keyboard no longer stays over the book after Draw", text = "Closing a quick note straight after leaving its drawing screen (Draw, then Close, then a tap outside the note) could leave the on-screen keyboard over the book with nothing to type into, because it came back a moment after the note had gone. It now comes back only while the note is still open." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },
