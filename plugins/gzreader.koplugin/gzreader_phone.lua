@@ -143,7 +143,7 @@ local function state(S, flash)
     end
     st.links = { list = links, error = sec == "links" and flash.error or nil, results = flash.links_html }
     -- music (Plex): Kindles with audio
-    if require("gzreader_touch").audio() then
+    if require("gzreader_touch").player() then
         local ps = store.plex or {}
         local servers = {}
         for _i, sv in ipairs(ps.servers or {}) do

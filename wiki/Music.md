@@ -1,6 +1,7 @@
-Albums and playlists from your Plex server, on Kindles with a speaker or headphone jack.
+Albums and playlists from your Plex server, on Kindles with a speaker or headphone jack, or with Bluetooth.
 
-Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): albums and
+Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with
+Bluetooth (Scribe, Paperwhite 5 and newer…: through Bluetooth headphones or a speaker): albums and
 playlists from your Plex Media Server, played while you read.
 
 Music is the **Catalog** tab's third page: swipe left twice from Books, or

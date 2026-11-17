@@ -116,7 +116,7 @@ What a sync does:
 | GZreader | Its version | A newer GZreader, installed at the next start |
 | Notes | Notes written, edited, ticked or pinned on the Kindle | Your notes (the synced tags, as many as Settings → Notes keeps) and their pictures |
 | Calendars | | Calendar links, CalDAV calendars and `.ics` files, as the Calendar tab's events |
-| Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker or headphone jack) |
+| Music | | The Plex albums and playlists chosen on the page, and Plex audiobooks (Kindles with a speaker, headphone jack or Bluetooth) |
 
 What's already on the Kindle is never brought again: the page shows it as **On the Kindle**, and a pick that reached the Kindle another way (a sync from another computer, a download over Wi‑Fi) comes off the page's list, so it doesn't come back after you delete it from the Kindle.
 

@@ -1893,10 +1893,10 @@ end
 
 --- The Audiobooks tab: the Catalog, open on its Audiobooks page.
 function Grimmory:onShowGzAudiobooks(touchmenu)
-    if not require("gzreader_touch").audio() then
-        -- (a Kindle without a speaker or headphone jack: no Audiobooks page at all)
+    if not require("gzreader_touch").player() then
+        -- (a Kindle without a speaker, headphone jack or Bluetooth: no Audiobooks page at all)
         closeTouchMenu(touchmenu)
-        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker or headphone jack, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can.") })
+        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).") })
         return true
     end
     return self:onShowGrimmoryLibrary(touchmenu, { section = "audiobooks", tab_id = "ct_audiobooks", only = true })

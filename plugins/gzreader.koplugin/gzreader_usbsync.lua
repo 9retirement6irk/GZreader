@@ -461,7 +461,7 @@ function Usb.outbox(plugin)
         gzreader = version,
         -- (Settings → Updates → Test builds: the page then brings those)
         test_builds = G_reader_settings:isTrue("gzreader_update_beta") or nil, -- (gzreader_update.betaEnabled)
-        kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").audio() == true,
+        kindle = { model = tostring(Device.model), name = name, id = id, audio = require("gzreader_touch").player() == true,
             screen = Usb.screenSize() },
         -- (Plex music's quality: the page converts at it, and shrinks bigger MP3/AAC if asked)
         music_quality = Usb.musicQuality(store),

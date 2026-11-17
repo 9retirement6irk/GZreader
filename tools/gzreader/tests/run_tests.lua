@@ -780,7 +780,7 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     Browser.show = function(_s, o) opened_with = o end
     plugin:onShowGzAudiobooks()
     Browser.show = saved_show
-    check(opened_with == nil and tostring(captured.info):match("no speaker or headphone jack"),
+    check(opened_with == nil and tostring(captured.info):match("no speaker, headphone jack or Bluetooth"),
         "a Kindle without audio: the tab says it can't play audiobooks (no Catalog page)")
     require("gzreader_touch").audio = saved_audio
     -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself

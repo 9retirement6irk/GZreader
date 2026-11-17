@@ -166,8 +166,8 @@ function Panel.catalog()
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
-            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
         } },
         { id = "book", title = _("This book"), tiles = {
@@ -182,8 +182,8 @@ function Panel.catalog()
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
-            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },
         } },
     }
 end
