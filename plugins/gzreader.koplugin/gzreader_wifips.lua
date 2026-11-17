@@ -15,6 +15,12 @@ Through the wireless extensions ioctl (`device/nook/wifi_power.lua`,
 SIOCGIWPOWER/SIOCSIWPOWER): it reads and writes only power saving's state,
 never the network's name. Where that ioctl isn't there (no Wi-Fi, a driver
 without it), nothing happens and the reason is logged once per transfer.
+
+Not on the Kindle 3: its driver accepted "off" but still read "on", and the
+update it was downloading crawled at 1–8 KB/s with waits of up to 29 s and
+broke off (2026-11-17; it downloaded at ~250 KB/s before). Anywhere else a
+driver that accepts "off" but doesn't take it gets power saving put back at
+once, and isn't asked again until GZreader restarts.
 ]]
 
 local Log = require("gzreader_log")
@@ -28,7 +34,17 @@ local PS = {
     holding = {},     -- keys of PS.KEYS now held
     restore = false,  -- we turned it off: put it back on at the end
     io = nil,         -- tests: { get = fn(ifname), set = fn(ifname, on) }
+    -- models it's never touched on (see above)
+    SKIP_MODELS = { Kindle3 = true },
+    ignored = false,  -- "off" didn't take on this Kindle: not asked again
+    model = nil,      -- tests: the device's model
 }
+
+local function model()
+    if PS.model then return PS.model end
+    local ok, Device = pcall(require, "device")
+    return ok and type(Device) == "table" and Device.model or nil
+end
 
 --- The Wi-Fi interface's name (wlan0 on every Kindle; eth0 on the Nook).
 function PS.ifname()
@@ -76,13 +92,19 @@ function PS.hold(key)
     local first = next(PS.holding) == nil
     PS.holding[key] = true
     if not first then return end
+    if PS.SKIP_MODELS[model() or ""] or PS.ignored then return end
     local state, why = PS.get()
     if state ~= "on" then
         if not state then Log.info("wifi: power saving unknown, left as it is (" .. tostring(why) .. ")") end
         return
     end
     local ok, err = set(false)
-    if ok then
+    if ok and PS.get() ~= "off" then
+        -- accepted but not taken: back as it was, and left alone from now on
+        set(true)
+        PS.ignored = true
+        Log.info("wifi: power saving didn't turn off (driver); left on")
+    elseif ok then
         PS.restore = true
         Log.info("wifi: power saving off while transferring (" .. key .. ")")
     else
