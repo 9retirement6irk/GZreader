@@ -440,6 +440,12 @@ function JournalScreen:onShow()
     return true
 end
 
+--- The screen turned (auto-rotate, gzreader_rotation.lua): the entry laid out again at the new size, as filled in.
+require("gzreader_rotation").follow(JournalScreen, function(w)
+    w.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+    w:rebuild()
+end)
+
 --- opts: settings (Journal.settings(…)), on_save(content)
 function JournalScreen.show(opts)
     local w = JournalScreen:new{ settings = opts.settings, on_save = opts.on_save, prompt_i = opts.prompt_i }

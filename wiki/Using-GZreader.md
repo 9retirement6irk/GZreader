@@ -51,6 +51,23 @@ hidden isn't shown.
 
 ![The quick panel at Home](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/home-menu.png)
 
+### Turning the screen
+
+**Rotate** (in Controls) turns the screen a quarter turn. Home and books stay
+turned: going Home from a book read sideways keeps the screen sideways, and
+the next book opens the same way. (That's KOReader's **Keep current rotation
+across views**, ticked by GZreader; untick it in Settings → About → Advanced
+→ KOReader settings → Screen → Rotation to give Home and each book their own
+rotation again.)
+
+On a Kindle that turns the screen by itself when you turn it (Oasis,
+Scribe), Controls also has **Auto-rotate**: a tap turns that on or off (on
+by default; the tile is white on black while it's on). Notes turn with the
+screen too: a note open from the Notes tab, the note editor (what you've
+typed, its tags, space and drawings stay), a quick note's window and a
+journal entry are laid out again for the new shape, and so is the Notes tab
+when you go back to it. The drawing screen keeps the shape it opened with.
+
 ## Keyboard (Kindle 2, 3, DX)
 
 The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.

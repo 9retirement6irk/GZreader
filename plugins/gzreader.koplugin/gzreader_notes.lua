@@ -2016,6 +2016,12 @@ function NoteView:refresh()
     UIManager:setDirty(self, "ui")
 end
 
+--- The screen turned (auto-rotate, gzreader_rotation.lua): the note laid out again at the new size.
+require("gzreader_rotation").follow(NoteView, function(v)
+    v.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+    v:build()
+end)
+
 function NoteView:onPageDown()
     if self.scroller and self.scroller._scrollBy then self.scroller:_scrollBy(0, math.floor(self.scroller.dimen.h * 0.8)) end
     UIManager:setDirty(self, "ui")
