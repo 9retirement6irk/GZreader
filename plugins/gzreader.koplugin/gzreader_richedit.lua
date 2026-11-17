@@ -293,8 +293,9 @@ function RichEdit:init()
         HoldPanEdit = { GestureRange:new{ ges = "hold_pan", range = function() return self.dimen end } },
         HoldReleaseEdit = { GestureRange:new{ ges = "hold_release", range = function() return self.dimen end } },
         SwipeEdit = { GestureRange:new{ ges = "swipe", range = function() return self.dimen end } },
-        PanEdit = { GestureRange:new{ ges = "pan", range = function() return self.dimen end } },
-        PanReleaseEdit = { GestureRange:new{ ges = "pan_release", range = function() return self.dimen end } },
+        -- (a picture moved or sized follows the finger anywhere on the screen)
+        PanEdit = { GestureRange:new{ ges = "pan", range = function() return self:panRange() end } },
+        PanReleaseEdit = { GestureRange:new{ ges = "pan_release", range = function() return self:panRange() end } },
     }
     self:relayout()
     self:keepCursorInView()
@@ -337,7 +338,10 @@ function RichEdit:keepCursorInView()
     local li = RichEdit.lineOf(self.lines, self.cur)
     local l = li and self.lines[li]
     if not l then return end
-    if l.y < self.top then self.top = l.y
+    if l.picture and l.h > self.height - S(60) then
+        -- (a picture taller than the page: its top in view, a little above it showing)
+        if l.y < self.top or l.y > self.top + self.height - S(60) then self.top = math.max(0, l.y - S(60)) end
+    elseif l.y < self.top then self.top = l.y
     elseif l.y + l.h > self.top + self.height then self.top = l.y + l.h - self.height end
     self.top = math.max(0, math.min(self.top, math.max(0, self.total_h - self.height)))
 end
@@ -581,6 +585,16 @@ function RichEdit:askAlt(b)
     UIManager:show(dialog)
     dialog:onShowKeyboard()
 end
+
+--- Where pans are taken: the page; the whole screen while a picture is being moved or sized.
+function RichEdit:panRange()
+    if self.moving or self.drag then
+        return Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+    end
+    return self.dimen
+end
+
+RichEdit.EDGE = 48 -- a picture dragged this near the page's top or bottom scrolls the note
 
 --- Where a picture dragged to `y` (on the widget) goes: the block position
 --- (1 … #blocks + 1) and the line's y on the widget, to show it.
@@ -955,6 +969,8 @@ function RichEdit:onTapEdit(_arg, ges)
         self.picked = l.b
         self.anchor = nil
         self.cur = { b = l.b, i = #l.b.chars + 1 }
+        -- (the keyboard away: room for the picture, its toolbar and moving it)
+        if self.keyboard and self.keyboard:isVisible() then self:onCloseKeyboard() end
         self:update(nil, true)
         return true
     end
@@ -1033,7 +1049,21 @@ function RichEdit:onPanEdit(_arg, ges)
     if self.moving then
         local m = self.moving
         local dy = (ges.relative and ges.relative.y) or 0
-        m.at, m.line_y = self:dropAt(m.start_y + dy)
+        local fy = m.start_y + dy
+        -- (near the top or the bottom: the note scrolls under the finger)
+        local edge = S(RichEdit.EDGE)
+        local max_top = math.max(0, self.total_h - self.height)
+        local step = S(RichEdit.EDGE)
+        if fy < edge and self.top > 0 then
+            local was = self.top
+            self.top = math.max(0, self.top - step)
+            m.start_y = m.start_y + (was - self.top)
+        elseif fy > self.height - edge and self.top < max_top then
+            local was = self.top
+            self.top = math.min(max_top, self.top + step)
+            m.start_y = m.start_y - (self.top - was)
+        end
+        m.at, m.line_y = self:dropAt(math.max(0, math.min(self.height, m.start_y + dy)))
         UIManager:setDirty(self.editor or self, function() return "fast", self.dimen end)
         return true
     end
