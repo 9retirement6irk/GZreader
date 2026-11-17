@@ -59,7 +59,33 @@ local Panel = {
     TOP_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
     SECOND_KEYS = { "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M" },
     COLUMNS = 5,
+    -- (big screens: a tile at most TILE_MAX_IN inches wide, a little more
+    -- than on a Paperwhite (0.63") or an Oasis (0.74"), so more of them go
+    -- across instead of each one growing with the screen)
+    TILE_MAX_IN = 0.8, MAX_COLUMNS = 8, BIG_SCREEN_IN = 5.0,
 }
+
+--- Whether the screen's shorter side is more than BIG_SCREEN_IN inches
+--- (the Kindle Scribe, the DX; by the device's own DPI).
+function Panel.bigScreen(dev)
+    dev = dev or Device
+    local dpi = dev.display_dpi
+    if not (dpi and dpi > 0 and dev.screen) then return false end
+    return math.min(dev.screen:getWidth(), dev.screen:getHeight()) / dpi > Panel.BIG_SCREEN_IN
+end
+
+--- How many tiles go across. COLUMNS everywhere, but on a big touch screen
+--- as many as keep each at most TILE_MAX_IN wide (at most MAX_COLUMNS): five across a
+--- Scribe made each tile over an inch wide (1.13"). Kindles with keys keep
+--- five (the letters follow the keyboard's rows: Q to T, then Y to P).
+function Panel.columns(sw, pad, gap, keys, dev)
+    dev = dev or Device
+    local cols = Panel.COLUMNS
+    if keys or not Panel.bigScreen(dev) then return cols end
+    local max_w = math.floor(dev.display_dpi * Panel.TILE_MAX_IN)
+    local fit = math.ceil((sw - 2 * pad + gap) / (max_w + gap)) -- (enough for none to be wider)
+    return math.max(cols, math.min(fit, Panel.MAX_COLUMNS))
+end
 
 local root = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
 local function iconFile(name) return root .. "/icons/panel/" .. name .. ".svg" end
@@ -519,11 +545,12 @@ local PanelWidget = FocusManager:extend{ name = "gzreader quick panel", modal = 
 function PanelWidget:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     local pad, gap = S(16), S(10)
-    local cols = Panel.COLUMNS
-    local tw = math.floor((sw - 2 * pad - (cols - 1) * gap) / cols)
-    local th = tw
     local keys = Touch.keys()
     self.keys = keys
+    local cols = Panel.columns(sw, pad, gap, keys)
+    self.cols = cols
+    local tw = math.floor((sw - 2 * pad - (cols - 1) * gap) / cols)
+    local th = tw
     -- (a group with every tile hidden in Settings isn't drawn)
     local groups = {}
     for _i, g in ipairs({ { title = _("Controls"), tiles = self.controls, letters = Panel.TOP_KEYS },
