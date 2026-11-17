@@ -183,6 +183,12 @@ end
 --- Page `p`'s sketch, read from its file the first time (nil, err when it can't be).
 function DrawScreen:sketchOf(p)
     if p.sketch then return p.sketch end
+    if p.scene then
+        -- (a page made ready elsewhere: a PDF's page to mark up)
+        p.sketch = self:newSketch(p.scene)
+        p.scene = nil
+        return p.sketch
+    end
     if p.new then
         p.sketch = self:newSketch(nil, p.paper or DrawScreen.lastPaper())
         return p.sketch
@@ -1072,7 +1078,8 @@ function DrawScreen:done()
 end
 
 --- opts: pages ({ att, path, filename, changed, removed }: the note's
---- drawings; none: a new page), start (the page shown first),
+--- drawings, or { scene }: a new page ready to draw on, e.g. a PDF's page;
+--- none: a new page), start (the page shown first),
 --- on_done(pages), on_cancel; choose_paper: a new drawing (no pages) asks
 --- which paper first, as the Kindle Scribe's Create notebook does (Cancel
 --- there: on_cancel, nothing opened).
@@ -1096,7 +1103,8 @@ function DrawScreen.show(opts)
     local pages = {}
     for _i, p in ipairs(opts.pages or {}) do
         if not p.removed then
-            pages[#pages + 1] = { att = p.att, path = p.path, filename = p.filename, changed = p.changed }
+            pages[#pages + 1] = { att = p.att, path = p.path, filename = p.filename, changed = p.changed,
+                new = p.scene and true or nil, scene = p.scene, modified = p.scene and true or nil }
         end
     end
     -- (pages taken off earlier stay off: given back as they were)
