@@ -10321,6 +10321,10 @@ print("Quick panel: the sliders' − and + show what they turn down and up")
     check(v[1] == "volume_low" and v[2] == "volume_high", "volume: a quiet speaker on −, a loud one on + (" .. table.concat(v, ",") .. ")")
     icons("volume")
     check(#words == 0 and painted[1].x < 60 and painted[2].x > 540, "icons in place of the − and + signs, − on the left (" .. #words .. " texts)")
+    -- the knob (20 wide, centred on the bar's end) clears the buttons
+    local bar = w:lightBar(0)
+    check(bar.x - 10 >= 16 + 44 + 8 and bar.x + bar.w + 10 <= 600 - 16 - 44 - 8,
+        "the knob at either end of the bar keeps clear of − and + (bar " .. bar.x .. " to " .. (bar.x + bar.w) .. ")")
     local here = debug.getinfo(PW.init, "S").source:sub(2):match("^(.*)/[^/]+$")
     local missing = {}
     for _k, pair in pairs(Panel.SLIDER_ICONS) do

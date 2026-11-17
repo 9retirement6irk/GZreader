@@ -771,9 +771,14 @@ function PanelWidget:warmthInfo()
     return powerd, min, max, cur
 end
 
+--- The room between a slider's − / + button and its bar.
+function Panel.BAR_GAP() return S(20) end
+
 function PanelWidget:lightBar(x)
     local w = self.w
-    return { x = x + S(16) + S(44) + S(8), w = w - 2 * S(16) - 2 * (S(44) + S(8)) }
+    -- (S(20) from each button: half the knob (S(10)) plus room, so the knob
+    -- at either end of the bar clears the − and + buttons)
+    return { x = x + S(16) + S(44) + Panel.BAR_GAP(), w = w - 2 * S(16) - 2 * (S(44) + Panel.BAR_GAP()) }
 end
 
 --- Each slider's − and + icons (icons/panel/<name>.svg): lower and higher.
