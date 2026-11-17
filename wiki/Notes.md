@@ -81,6 +81,15 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
+- **Picture sizes:** a picture in a note shows at the size and place it was
+  given in Memos' web editor (dragged smaller, or set left, center or right):
+  the same share of the page as of Memos' column. To change it, **Edit** the
+  note (touch Kindles): the formatted page shows the picture; tap it to pick
+  it (a frame and a **pull tab** on each side) and drag a tab to make it
+  wider or narrower (a centred picture grows on both sides). Typing while
+  it's picked starts a line after it; a tap elsewhere lets it go. **Save**
+  sends the size the way the web editor writes it (at the end of the
+  picture's alt text, e.g. `photo|center|320`), so both show it alike.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips

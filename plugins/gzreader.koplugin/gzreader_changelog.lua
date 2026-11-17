@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: pictures at the size set in Memos, resized with pull tabs in the editor", text = "A picture in a note now shows at the size and place it was given in Memos' web editor (smaller, or left, center or right), taking the same share of the page as of Memos' column, instead of always as big as fits. On touch Kindles the note editor shows the picture itself (not its Markdown): tap it for a frame with a pull tab on each side, and drag a tab to make it wider or narrower. Save sends the size in the web editor's own way, so the web shows it alike." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
