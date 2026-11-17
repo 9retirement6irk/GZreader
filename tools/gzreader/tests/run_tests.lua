@@ -7779,6 +7779,16 @@ print("Notes (Memos v0.31)")
                 and nsrc:find("Notes.footerShown(m, false)", 1, true) and nsrc:find("m.page, m.page_num = 1, 1", 1, true),
                 "…other notes (a filter): from the top again")
         end
+        -- on top?
+        local board = { plugin = plugin }
+        Notes.board = board
+        local stack = UIM._window_stack
+        UIM._window_stack = { { widget = {} }, { widget = board } }
+        local top1 = Notes.onTop()
+        UIM._window_stack = { { widget = board }, { widget = {} } }
+        local top2 = Notes.onTop()
+        UIM._window_stack = stack
+        check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
         -- a note's page in the editor's font, the sticky notes handwritten
         do
             local nsrc6 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
@@ -7795,16 +7805,6 @@ print("Notes (Memos v0.31)")
                 and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,
                 "…at the editor's sizes and faces (RichEdit.TEXT_SIZE, HEADING_SIZE, cfont / Noto Sans Bold)")
         end
-        -- on top?
-        local board = { plugin = plugin }
-        Notes.board = board
-        local stack = UIM._window_stack
-        UIM._window_stack = { { widget = {} }, { widget = board } }
-        local top1 = Notes.onTop()
-        UIM._window_stack = { { widget = board }, { widget = {} } }
-        local top2 = Notes.onTop()
-        UIM._window_stack = stack
-        check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
         -- S sorts (keyboard Kindles)
         local sorted_shown
         local real_sort = Notes.showSort
