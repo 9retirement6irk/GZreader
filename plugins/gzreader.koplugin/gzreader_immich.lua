@@ -82,6 +82,7 @@ function Immich:request(method, path, body, opts)
         body = body,
         timeouts = opts.timeouts or { 10, 30 },
         sink = opts.sink,
+        expected = opts.expected,
     })
     if type(code) ~= "number" then return nil, nil, "unreachable" end
     if code == 401 then return code, data, "unauthorized" end
@@ -91,9 +92,9 @@ function Immich:request(method, path, body, opts)
 end
 
 --- Who the key is (name), or nil, err. "forbidden": a key without user.read
---- (it may still read albums).
+--- (it may still read albums: not a problem, so not a warning in the log).
 function Immich:me()
-    local code, data, err = self:request("GET", "/users/me")
+    local code, data, err = self:request("GET", "/users/me", nil, { expected = { [403] = true } })
     if err then return nil, err end
     if code ~= 200 or type(data) ~= "table" then return nil, "not_immich" end
     return { name = data.name ~= "" and data.name or data.email, email = data.email }

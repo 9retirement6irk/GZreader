@@ -147,7 +147,9 @@ end
 
 --- opts.log_url: what the log shows instead of the address (a secret link,
 --- e.g. a calendar link with its keys in it). opts.want_raw: the body as
---- text (gzip unpacked) instead of decoded JSON.
+--- text (gzip unpacked) instead of decoded JSON. opts.expected: error codes
+--- that are an answer, not a problem ({ [403] = true }): logged as info, not
+--- as a warning (warnings go into debug reports).
 local function rawRequest(method, full_url, opts)
     opts = opts or {}
     local shown_url = opts.log_url or full_url
@@ -282,7 +284,9 @@ local function rawRequest(method, full_url, opts)
         Log.warn("HTTP", method, shown_url, "network error:", code, ms .. "ms")
         return nil, data, resp_headers, code
     end
-    if code >= 400 then
+    if code >= 400 and opts.expected and opts.expected[code] then
+        Log.info("HTTP", method, shown_url, code, ms .. "ms", "(an answer: " .. (raw ~= "" and raw:sub(1, 120) or "?") .. ")")
+    elseif code >= 400 then
         Log.warn("HTTP", method, shown_url, code, ms .. "ms", raw ~= "" and raw:sub(1, 300) or "")
     else
         Log.info("HTTP", method, shown_url, code, ms .. "ms")
