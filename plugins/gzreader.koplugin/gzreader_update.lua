@@ -22,7 +22,9 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     other than the one installed is offered. Switched off, the next release
     is offered as usual (1.2.0 is newer than 1.2.0-beta.7);
   * no hashing on the Kindle: the download comes over HTTPS straight from
-    GitHub (which protects it in transit), its size must match the size
+    GitHub, with GitHub's certificate checked against KOReader's list of
+    authorities (gzreader_tls.lua: without that, anyone on the same Wi-Fi
+    could have answered as GitHub), its size must match the size
     GitHub lists for the asset, and the zip must open and contain a
     complete GZreader layout before anything is replaced.
 
@@ -168,6 +170,9 @@ function Update.get(u, path, accept)
     local socketutil = require("socketutil")
     for _hop = 1, 6 do
         if not TRUSTED[host(u) or ""] then return nil, nil, "untrusted host: " .. tostring(host(u)) end
+        -- (GitHub's certificate checked: gzreader_tls.lua; nothing is sent without it)
+        local create, terr = require("gzreader_tls").create(host(u))
+        if not create then return nil, nil, terr end
         local chunks = {}
         local sink
         if path then
@@ -181,7 +186,7 @@ function Update.get(u, path, accept)
         socketutil:set_timeout(path and 30 or 10, path and -1 or 30)
         local ok, code, headers = pcall(function()
             return socket.skip(1, http.request{
-                url = u, method = "GET", sink = sink, redirect = false,
+                url = u, method = "GET", sink = sink, redirect = false, create = create,
                 -- downloads accept anything: GitHub's API answers 415 to
                 -- "application/octet-stream" for a release's source code zip
                 headers = { ["User-Agent"] = "GZreader", ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
