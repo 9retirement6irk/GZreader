@@ -200,7 +200,7 @@ end
 --- solid. nil for a tool without a grain.
 function Sketch.grainDensity(kind, w)
     if not Sketch.toolStyle(kind).grain then return nil end
-    return 0.3 + 0.5 * math.max(0, math.min(1, w or 0.5))
+    return 0.38 + 0.47 * math.max(0, math.min(1, w or 0.5))
 end
 
 --- True when a grained tool marks pixel (x, y), `d2` the square of its
@@ -311,7 +311,10 @@ Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
 Sketch.TOOL_STYLE = {
     pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
     -- (grain: drawn as graphite on the paper's tooth, see Sketch.grain; `gray` is the tone it reads as)
-    pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70, grain = true },
+    -- (scale: wider than the pen's line. At 0.7 a pencil line at Fine to Medium was two or three
+    -- pixels across: too thin for its grain to show, a faint hairline once the picture was
+    -- shown smaller than the Kindle's screen, as in Memos; the owner, 2026-11-17)
+    pencil = { icon = "pencil", scale = 1.3, lo = 0.75, hi = 1.2, gray = 0x60, opacity = 70, grain = true },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
     marker = { icon = "marker", scale = 1.9, flat = true }, -- (a felt tip: black, as wide all along)
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
