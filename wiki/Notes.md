@@ -170,6 +170,16 @@ API to `/api` are found too.
   - **At the top:** **✕** (leave without keeping what you drew), the note's
     name and the page's paper, and **Done** (keeps the drawings with the
     note; **Save** in the editor sends them).
+  - **Writing tools** (as on the Kindle Scribe): tap the pen, then tap it
+    again for its panel, which starts with four tools. **Pen** is the line
+    you had before. **Pencil** is a thinner grey line. **Fountain pen**
+    makes pressure matter much more: a light touch is very thin, pressing
+    makes the line swell to almost three times the thickness (the thickness
+    you choose sets the middle); without a pen that reports pressure it
+    draws an even line. **Highlighter** is a broad, light grey band that
+    stays under your writing. The toolbar's pen shows the tool in hand, and
+    the tool is kept for next time. In Memos the pencil and the highlighter
+    are see-through strokes, and each stroke opens again with its tool.
   - **The toolbar at the side:** the **pen** (tap it again for five
     thicknesses; the one you choose is kept; on a Kindle with a colour
     screen also eight **colours**, the ink and the seven of Memos' drawing

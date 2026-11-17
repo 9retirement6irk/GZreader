@@ -69,6 +69,7 @@ function Sketch.new(opts)
     self.width = opts.width or 2
     self.color = Sketch.inkColor(opts.color) -- nil: memos' ink
     self.tool = "pen" -- or "eraser"
+    self.writing = opts.writing or "pen" -- the writing tool: Sketch.TOOL_IDS
     self.strokes = {} -- { points = { {x, y}, … } (canvas px), width, color (nil: memos' ink), gone }
     self.history = {} -- { kind = "add"|"erase"|"clear", strokes = { … } }
     self.contacts = {} -- slot → { kind = "draw"|"erase"|"tap"|"ignore", … }
@@ -153,6 +154,48 @@ end
 function Sketch.weightRadius(r, w)
     if not w then return r end
     return math.max(1, math.floor(r * (0.4 + 1.2 * w) + 0.5))
+end
+
+-- ------------------------------------------------------------ writing tools
+
+--- The writing tools (as on the Kindle Scribe): how each draws. `scale`:
+--- its width against the pen's at the same thickness; `lo`..`hi`: the
+--- radius from the lightest to the heaviest press (`curve`: pressure raised
+--- to it first: the fountain pen stays thin until you press, then swells);
+--- `flat`: no pressure; `gray`: its ink on the screen (0 black … 255 paper),
+--- painted only where it darkens, so it never lightens ink under it;
+--- `opacity`: Memos' for it. A stroke keeps its tool (`kind`; nil: the pen).
+Sketch.TOOL_IDS = { "pen", "pencil", "fountain", "highlighter" }
+Sketch.TOOL_STYLE = {
+    pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
+    pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70 },
+    fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
+    highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
+}
+
+--- A tool's style (unknown: the pen's).
+function Sketch.toolStyle(kind) return Sketch.TOOL_STYLE[kind or "pen"] or Sketch.TOOL_STYLE.pen end
+
+--- The ink's radius for tool `kind`, from the pen's radius `r` at the chosen
+--- thickness and the point's weight `w` (0..1, nil: no pressure).
+function Sketch.toolRadius(kind, r, w)
+    local st = Sketch.toolStyle(kind)
+    local base = r * st.scale
+    if st.flat or not w then return math.max(1, math.floor(base + 0.5)) end
+    local wc = st.curve and (w ^ st.curve) or w
+    return math.max(1, math.floor(base * (st.lo + (st.hi - st.lo) * wc) + 0.5))
+end
+
+--- The tool a stroke from Memos was drawn with: ours (customData.gzTool),
+--- else a see-through one is a highlighter (opacity ≤ 50) or a pencil (< 100).
+function Sketch.toolOf(el)
+    local cd = type(el) == "table" and el.customData
+    local id = type(cd) == "table" and cd.gzTool
+    if id and Sketch.TOOL_STYLE[id] then return id ~= "pen" and id or nil end
+    local o = tonumber(type(el) == "table" and el.opacity) or 100
+    if o <= 50 then return "highlighter" end
+    if o < 100 then return "pencil" end
+    return nil
 end
 
 --- On the page, and not on something laid over it (`holes`: the toolbar,
@@ -369,7 +412,10 @@ function Sketch.fromScene(scene, opts)
                 -- (drawn with a pen's pressure, here or in Memos: each point's weight)
                 pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
-            self.strokes[#self.strokes + 1] = { points = pts, width = snapWidth(el.strokeWidth), color = Sketch.inkColor(el.strokeColor), el = el }
+            local kind = Sketch.toolOf(el)
+            -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
+            local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
+            self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
         else
             self.locked[#self.locked + 1] = el
         end
@@ -421,11 +467,11 @@ local function appendPoint(self, contact, cx, cy, out)
     -- (a pen that tells how hard it's pressed: each point's weight, and the line as wide)
     local w = contact.weight
     pts[#pts + 1] = { cx, cy, w }
-    local r = self:radius(contact.stroke.width)
-    if w then r = Sketch.weightRadius(r, last and last[3] and (last[3] + w) / 2 or w) end
+    local kind = contact.stroke.kind
+    local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil)
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
-        contact.stroke.color }
+        contact.stroke.color, Sketch.toolStyle(kind).gray }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it
@@ -451,7 +497,7 @@ local function addPoint(self, contact, x, y, out)
             return
         end
         if not contact.stroke then
-            contact.stroke = { points = {}, width = contact.width, color = contact.color }
+            contact.stroke = { points = {}, width = contact.width, color = contact.color, kind = contact.writing }
             if prev and not prev[3] then
                 -- back on the paper: from its edge
                 local ex, ey = Sketch.edgePoint(page, { cx, cy }, prev)
@@ -572,10 +618,16 @@ local function startContact(self, s, now, out)
         c.width = self.width
         c.color = self.color
         c.pieces = {} -- (on paper: the parts of the stroke on it)
-        c.stroke = { points = {}, width = self.width, color = self.color }
+        -- (the writing tool: the pen's own stroke has no kind; the pencil and the
+        -- highlighter are grey, so they take no colour)
+        local kind = self.writing ~= "pen" and Sketch.TOOL_STYLE[self.writing] and self.writing or nil
+        local style = Sketch.toolStyle(kind)
+        c.writing = kind
+        c.color = not style.gray and self.color or nil
+        c.stroke = { points = {}, width = self.width, color = c.color, kind = kind }
         self.drawing_slot = s.slot
-        -- a pen with pressure (and the setting on): the whole stroke has weights
-        if self.pressure_on ~= false and pen and s.pressure ~= nil then
+        -- a pen with pressure (and the setting on): the whole stroke has weights (not a highlighter's)
+        if self.pressure_on ~= false and pen and s.pressure ~= nil and not style.flat then
             c.pressured = true
             c.weight = Sketch.weight(Sketch.range, s.pressure, s.tilt_x, s.tilt_y) or 0.5
         end
@@ -834,7 +886,10 @@ function Sketch:scene(paper)
                 local sx, sy = self:toScene(p[1], p[2])
                 pts[j] = { sx, sy, p[3] }
             end
-            Drawing.addStroke(scene, pts, { width = st.width, color = st.color or Drawing.INK })
+            local style = Sketch.toolStyle(st.kind)
+            local el = Drawing.addStroke(scene, pts, { width = math.min(12, st.width * style.scale),
+                color = st.color or Drawing.INK, opacity = style.opacity })
+            if el and st.kind then el.customData = { gzTool = st.kind } end
         end
     end
     return scene

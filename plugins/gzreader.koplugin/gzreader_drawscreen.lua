@@ -145,6 +145,14 @@ function DrawScreen.savePenRange(before)
     Log.info("drawing: pen pressure up to", r.p_seen, "of", Sketch.pressureTop(r), "tilt up to", r.t_seen, "of", Sketch.tiltTop(r), "samples", r.n)
 end
 
+--- The writing tool new drawings start with (the last one chosen: Sketch.TOOL_IDS).
+function DrawScreen.lastWriting()
+    local v = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_writing")
+    return Sketch.TOOL_STYLE[v] and v or "pen"
+end
+
+DrawScreen.WRITING_NAMES = { pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"), highlighter = _("Highlighter") }
+
 --- The pen's width new drawings start with (the last one chosen).
 function DrawScreen.lastWidth()
     local v = G_reader_settings and tonumber(G_reader_settings:readSetting("gzreader_drawing_width"))
@@ -168,6 +176,7 @@ function DrawScreen:init()
     self.toolbar_hidden = false
     self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
     self.tool, self.width = "pen", DrawScreen.lastWidth()
+    self.writing = DrawScreen.lastWriting()
     self.has_color = DrawScreen.hasColor()
     -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
     self.pressure_on = DrawScreen.pressureOn()
@@ -241,6 +250,7 @@ function DrawScreen:showPage(i, first)
     sk.holes = self.holes
     -- (the pen and its width stay as they were from page to page)
     sk.tool, sk.width, sk.color = self.tool, self.width, self.color
+    sk.writing = self.writing or DrawScreen.lastWriting()
     sk.pressure_on = self.pressure_on
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
@@ -291,7 +301,8 @@ function DrawScreen:layoutBar()
         local fw, fh, row
         local head = S(30)
         if self.flyout == "pen" then
-            fw, fh = #Sketch.WIDTHS * (ts + S(6)) + S(18), head + ts + S(20)
+            -- (a row of writing tools above the thicknesses)
+            fw, fh = #Sketch.WIDTHS * (ts + S(6)) + S(18), head + 2 * ts + S(28)
             if self.has_color then -- a second row: the colours
                 fw, fh = math.max(fw, #Sketch.COLORS * (ts + S(6)) + S(18)), fh + ts + S(8)
             end
@@ -307,6 +318,11 @@ function DrawScreen:layoutBar()
         self.frames.flyout = Geom:new{ x = fx, y = fy, w = fw, h = fh }
         row = fy + head + S(8)
         if self.flyout == "pen" then
+            for k, id in ipairs(Sketch.TOOL_IDS) do
+                add({ id = "t-" .. id, writing = id, icon = Sketch.TOOL_STYLE[id].icon, label = DrawScreen.WRITING_NAMES[id] },
+                    fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
+            end
+            row = row + ts + S(8)
             for k, w in ipairs(Sketch.WIDTHS) do
                 add({ id = "w" .. tostring(w), width = w, label = DrawScreen.WIDTH_NAMES[k] }, fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
             end
@@ -331,6 +347,7 @@ DrawScreen.WIDTH_NAMES = { _("Extra thin"), _("Thin"), _("Medium"), _("Thick"), 
 
 function DrawScreen:selected(t)
     local sk = self.sketch
+    if t.writing then return sk.tool == "pen" and (sk.writing or "pen") == t.writing end
     if t.width then return sk.tool == "pen" and sk.width == t.width end
     if t.color then return sk.tool == "pen" and Sketch.inkColor(t.color) == sk.color end
     if t.id == "pen" then return sk.tool == "pen" end
@@ -391,7 +408,9 @@ function DrawScreen:paintButton(bb, x, y, b)
     local bx, by = x + r.x, y + r.y
     if t.icon then
         local isz = math.floor(r.h * 0.56)
-        self:icon(t.icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
+        -- (the toolbar's pen shows the writing tool in hand)
+        local icon = t.id == "pen" and Sketch.toolStyle(self.writing).icon or t.icon
+        self:icon(icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
         if t.id == "pen" then
             -- the pen's width, as a dot in the corner
             local d = math.max(2, math.min(S(9), self.sketch:radius(self.width)))
@@ -442,7 +461,7 @@ function DrawScreen:paintBar(bb, x, y)
     if self.frames.flyout then
         local f = self.frames.flyout
         textAt(bb, x + f.x + S(12), y + f.y + S(6), f.w - S(24), S(24),
-            self.flyout == "pen" and (self.has_color and _("Pen thickness and colour") or _("Pen thickness"))
+            self.flyout == "pen" and (self.has_color and _("Writing tool, thickness and colour") or _("Writing tool and thickness"))
                 or _("Eraser: rubs out whole strokes"), 14, true)
     end
     for _i, b in ipairs(self.buttons) do self:paintButton(bb, x, y, b) end
@@ -484,6 +503,7 @@ function DrawScreen:ink(seg, screen_bb)
     end
     local tint = self.tint_bb and DrawScreen.rgb32(hex or Drawing.INK)
     local shown = hex and self.has_color and DrawScreen.rgb32(hex)
+    if seg[7] then return self:inkGray(seg, screen_bb, rows, tint) end
     for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], r)) do
         -- (ink that runs under the toolbar is on the page, not painted over the toolbar)
         local under = screen_bb and self:underControls(p[1], p[2], r)
@@ -503,6 +523,37 @@ function DrawScreen:ink(seg, screen_bb)
     end
 end
 
+--- A grey tool's ink (the pencil, the highlighter: seg[7], 0 black … 255
+--- paper): painted only where it darkens a pixel, so ink already there (and
+--- written over a highlighter later) stays as dark as it was.
+function DrawScreen:inkGray(seg, screen_bb, rows, tint)
+    local c = self.sketch.canvas
+    local r, gray = seg[5], seg[7]
+    local g8 = Blitbuffer.Color8(gray)
+    local cw, ch = self.ink_bb:getWidth(), self.ink_bb:getHeight()
+    local sw, sh = screen_bb and screen_bb:getWidth() or 0, screen_bb and screen_bb:getHeight() or 0
+    local function darken(bb, x, y, bw, bh)
+        if x < 0 or y < 0 or x >= bw or y >= bh then return end
+        if bb:getPixel(x, y):getColor8().a > gray then bb:setPixel(x, y, g8) end
+    end
+    for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], r)) do
+        local under = screen_bb and self:underControls(p[1], p[2], r)
+        for dy = -r, r do
+            local dx = rows[dy]
+            local px, py = p[1] - dx - c.x, p[2] + dy - c.y
+            for k = 0, 2 * dx do
+                local before = (px + k >= 0 and py >= 0 and px + k < cw and py < ch) and self.ink_bb:getPixel(px + k, py):getColor8().a
+                if before and before > gray then
+                    self.ink_bb:setPixel(px + k, py, g8)
+                    if tint then self.tint_bb:setPixel(px + k, py, tint) end
+                end
+                darken(self.canvas_bb, px + k, py, cw, ch)
+                if screen_bb and not under then darken(screen_bb, p[1] - dx + k, p[2] + dy, sw, sh) end
+            end
+        end
+    end
+end
+
 --- True when a disc of radius `r` at screen (x, y) touches something laid over the page.
 function DrawScreen:underControls(x, y, r)
     for _i, h in ipairs(self.holes or {}) do
@@ -514,11 +565,12 @@ end
 local function strokeSegments(sk, st)
     local c, r, out = sk.canvas, sk:radius(st.width), {}
     local pts = st.points
+    local gray = Sketch.toolStyle(st.kind).gray
     for i = 1, #pts do
         local a, b = pts[math.max(1, i - 1)], pts[i]
-        -- (a stroke with a pen's pressure: as wide as it was pressed)
-        local pr = b[3] and Sketch.weightRadius(r, a[3] and (a[3] + b[3]) / 2 or b[3]) or r
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color }
+        -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
+        local pr = Sketch.toolRadius(st.kind, r, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil)
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray }
     end
     return out
 end
@@ -681,6 +733,13 @@ function DrawScreen:repaintCanvas()
     local list = self.sketch:live()
     local cur = self.sketch:current()
     if cur then list[#list + 1] = cur end
+    -- (highlighters under the rest: drawn first)
+    local under, over = {}, {}
+    for _i, st in ipairs(list) do
+        if st.kind == "highlighter" then under[#under + 1] = st else over[#over + 1] = st end
+    end
+    for _i, st in ipairs(over) do under[#under + 1] = st end
+    list = under
     for _i, st in ipairs(list) do
         for _j, seg in ipairs(strokeSegments(self.sketch, st)) do self:ink(seg) end
     end
@@ -864,9 +923,20 @@ function DrawScreen:setTool(tool, width)
     self.sketch.tool, self.sketch.width = self.tool, self.width
 end
 
+--- The writing tool (Sketch.TOOL_IDS), kept for next time; the pen in hand.
+function DrawScreen:setWriting(id)
+    if not Sketch.TOOL_STYLE[id] then return end
+    self.writing = id
+    if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_writing", id) end
+    self:setTool("pen")
+    self.sketch.writing = id
+    Log.info("drawing: writing with the", id)
+end
+
 function DrawScreen:use(t)
     local sk = self.sketch
-    if t.width then self:setTool("pen", t.width); self:setFlyout(nil)
+    if t.writing then self:setWriting(t.writing); self:setFlyout("pen") -- (stays open: a thickness next)
+    elseif t.width then self:setTool("pen", t.width); self:setFlyout(nil)
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
     elseif t.id == "pressure" then
         self.pressure_on = not self.pressure_on
