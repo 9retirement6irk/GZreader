@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Kindles with Bluetooth (Scribe…): read aloud through Bluetooth headphones or a speaker", text = "On Kindles with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer, Colorsoft…), read aloud uses Amazon's own voice (the one behind Assistive Reader) and speaks through Bluetooth headphones or a speaker: Read aloud in a book's quick panel starts and stops it, the sentence being read is highlighted and pages turn by themselves. Settings → General → Audio → Read aloud has Quieter / Louder (the Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider), Slower / Faster and Test the Kindle voice. Connect a Bluetooth device first; without one, Read aloud says so." },
+            { short = "A volume slider in the quick panel (Kindle Touch, Kindles with Bluetooth)", text = "Touch Kindles with sound get a volume slider in the quick panel, under the light: on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…) it's the Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider; on the Kindle Touch the speaker and headphones, 0 to 15, the same volume read aloud and the audiobook player use. Tap − or +, tap the bar, or drag. (The Kindle 2, 3 and DX keep their volume buttons.)" },
         },
     },
     {
