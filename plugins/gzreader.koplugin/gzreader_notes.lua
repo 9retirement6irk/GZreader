@@ -1725,6 +1725,16 @@ end
 
 ---------------------------------------------------------------- one note
 
+--- A note's own page reads in the note editor's font (KOReader's, as
+--- gzreader_richedit.lua's RichEdit.face: the same sizes), so a note looks
+--- the same opened as written; the Notes tab's sticky notes keep the
+--- handwriting font (the owner, 2026-11-16).
+Notes.PAGE_TEXT = 20
+Notes.PAGE_HEADING = { 28, 24, 22, 21, 20, 20 }
+function Notes.pageFace(size, bold)
+    return Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size) or Font:getFace("cfont", size)
+end
+
 local NoteView = InputContainer:extend{ covers_fullscreen = true, memo = nil, plugin = nil, focus = nil }
 
 function NoteView:init()
@@ -1785,7 +1795,7 @@ function NoteView:build()
     local function flush()
         local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
         para = {}
-        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Sticky.hand(24), width = inner }) end
+        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
     end
     local n_check = 0
     for _i, l in ipairs(Sticky.lines(m.content)) do
@@ -1800,13 +1810,13 @@ function NoteView:build()
                 HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
                     TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
                     HorizontalSpan:new{ width = S(8) },
-                    TextWidget:new{ text = Sticky.plain(l.text), face = Sticky.hand(24), max_width = inner - S(90),
+                    TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = inner - S(90),
                         fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
         elseif l.kind == "heading" then
             flush()
             add(VerticalSpan:new{ width = S(6) })
-            add(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Sticky.hand(l.level <= 1 and 32 or (l.level == 2 and 29 or 26)),
-                bold = true, width = inner })
+            add(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
+                width = inner })
         elseif l.kind == "image" then
             flush()
             local pic = Notes.pictureFor(self.plugin, m, l.src, inner, math.floor(sh * 0.45), function()
@@ -1847,7 +1857,7 @@ function NoteView:build()
     if #(m.tags or {}) > 0 then
         local tags = {}
         for _i, t in ipairs(m.tags) do tags[#tags + 1] = "#" .. t end
-        add(iconLine("tag", table.concat(tags, "  "), Sticky.hand(20), true))
+        add(iconLine("tag", table.concat(tags, "  "), Notes.pageFace(18, true), false))
     end
     if m.place then
         add(VerticalSpan:new{ width = S(4) })
