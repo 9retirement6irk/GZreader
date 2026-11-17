@@ -8729,6 +8729,22 @@ print("Notes (Memos v0.31)")
         local top2 = Notes.onTop()
         UIM._window_stack = stack
         check(top1 and not top2, "the Notes tab is on top only when nothing is over it")
+        -- a note's page in the editor's font, the sticky notes handwritten
+        do
+            local nsrc6 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            local resrc = io.open(PLUGIN .. "/gzreader_richedit.lua"):read("*a")
+            local a = nsrc6:find("function NoteView:build()", 1, true)
+            local b = nsrc6:find("\nfunction ", a + 10, true)
+            local page = nsrc6:sub(a, b)
+            local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 4
+                and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
+                "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
+            check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil
+                and resrc:find("RichEdit.HEADING_SIZE = { " .. table.concat(Notes.PAGE_HEADING, ", ") .. " }", 1, true) ~= nil
+                and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,
+                "…at the editor's sizes and faces (RichEdit.TEXT_SIZE, HEADING_SIZE, cfont / Noto Sans Bold)")
+        end
         -- S sorts (keyboard Kindles)
         local sorted_shown
         local real_sort = Notes.showSort
