@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: going back to the board, filters and syncs are quick however many notes you keep", text = "The Notes tab got slower with every note kept on the Kindle: each time the board was shown again (the tab opened, a note closed, a filter or tag chosen, a sync that came back) GZreader made the text of every kept note plain again, though only the notes on the page are drawn, and each page read every note's text once more to find its pictures. Now that work is done only for the notes on the page, and in the Full view a note is laid out again only when it changed. With the 100 notes kept by default, on an emulated Paperwhite 3: closing a note takes a third of the time it did, a sync that changed nothing a fifth, opening the tab again and a page turn in the Full view less than half." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },

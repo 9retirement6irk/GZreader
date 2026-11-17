@@ -75,6 +75,18 @@ open("cold open 1", true)
 open("cold open 2", true)
 open("open again 1")
 open("open again 2")
+-- the board shown again with the same notes (a note closed, a sync that changed nothing):
+-- with many notes kept (mock_memos.py --many 90) this was mostly reading every note's text
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
+    local Notes = require("gzreader_notes")
+    local c0 = os.clock()
+    Notes.reloadBoard(true)
+    UIManager:forceRePaint()
+    local line = string.format("the board again (%d notes kept): %.2f s CPU", #(Notes.notes or {}), os.clock() - c0)
+    lines[#lines + 1] = line
+    E.say(line)
+end, after = 4 })
 add({ fn = function() require("gzreader_notes").board:onNextPage() end, after = 8 })
 add({ shot = "notes-speed-page2" })
 add({ fn = function() require("gzreader_notes").board:onPrevPage() end, after = 8 })

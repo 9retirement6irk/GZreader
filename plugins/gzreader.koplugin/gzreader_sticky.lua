@@ -394,6 +394,51 @@ function Sticky.plain(s)
     return unhold(s)
 end
 
+--- A small keep of what's worked out from a note's text, under that text:
+--- `get(key)`, `set(key, value)`, `clear()`. At most 2 x `limit` values: when
+--- `limit` new ones are in, the ones not asked for since are let go.
+function Sticky.keep(limit)
+    local now, before, n = {}, {}, 0
+    local K = {}
+    function K.set(key, value)
+        if now[key] == nil then
+            if n >= limit then before, now, n = now, {}, 0 end
+            n = n + 1
+        end
+        now[key] = value
+    end
+    function K.get(key)
+        local value = now[key]
+        if value == nil then
+            value = before[key]
+            if value ~= nil then K.set(key, value) end
+        end
+        return value
+    end
+    function K.clear() now, before, n = {}, {}, 0 end
+    return K
+end
+
+local NO_LINES = {}
+local image_lines = Sticky.keep(600)
+
+--- The note's picture lines (Sticky.lines' "image" ones), in order. The
+--- board asks this of every note each time it's drawn (which pictures a
+--- note has decides what it shows), so a note without "![" isn't read at
+--- all, and the others' answers are kept. Not to be changed by the caller.
+function Sticky.imageLines(content)
+    if type(content) ~= "string" or not content:find("![", 1, true) then return NO_LINES end
+    local out = image_lines.get(content)
+    if not out then
+        out = {}
+        for _i, l in ipairs(Sticky.lines(content)) do
+            if l.kind == "image" then out[#out + 1] = l end
+        end
+        image_lines.set(content, out)
+    end
+    return out
+end
+
 --- A line with nothing but #tags (shown on their own row instead).
 function Sticky.tagsOnly(text)
     local n = 0

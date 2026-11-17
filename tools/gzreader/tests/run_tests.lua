@@ -7982,6 +7982,75 @@ print("Notes (Memos v0.31)")
         local pa = Notes.pictureAttachments(pm)
         check(#pa == 2 and pa[1].name == "attachments/bbb" and pa[2].name == "attachments/aaa", "a note's pictures: the one in its text first, no PDFs")
 
+        -- a reload of the board (the tab opened again, a note closed, a sync) doesn't read every note's text again
+        ;(function()
+            local real_lines, real_preview = Sticky.lines, Sticky.preview
+            local parsed, plain = 0, 0
+            Sticky.lines = function(...) parsed = parsed + 1; return real_lines(...) end
+            Sticky.preview = function(...) plain = plain + 1; return real_preview(...) end
+            local with_pic = "x\n![b](/file/attachments/bbb/b.png)\ny ![not a line of its own](z.png) y\n![c](/file/attachments/ccc/c.png)"
+            check(#Sticky.imageLines("no pictures here\n- [ ] a box") == 0 and #Sticky.imageLines(nil) == 0 and parsed == 0,
+                "picture lines: a note without a picture isn't read at all")
+            local il = Sticky.imageLines(with_pic)
+            check(#il == 2 and il[1].src == "/file/attachments/bbb/b.png" and il[2].src == "/file/attachments/ccc/c.png" and parsed == 1,
+                "picture lines: a note's pictures, in order")
+            check(Sticky.imageLines(with_pic) == il and parsed == 1, "picture lines: asked again, the note isn't read again")
+            parsed = 0
+            for _i = 1, 3 do Notes.pictureAttachments(pm); Notes.drawings(pm) end
+            check(parsed <= 1 and #Notes.pictureAttachments(pm) == 2, "a note's pictures: its text read once, however often the board asks")
+
+            local keep = Sticky.keep(2)
+            keep.set("a", 1); keep.set("b", 2); keep.set("c", 3)
+            check(keep.get("a") == 1 and keep.get("b") == 2 and keep.get("c") == 3, "kept answers: more than the limit are still there…")
+            keep.set("d", 4); keep.set("e", 5)
+            check(keep.get("c") == 3, "…one asked for again stays…")
+            keep.set("f", 6); keep.set("g", 7); keep.set("h", 8)
+            check(keep.get("a") == nil and keep.get("b") == nil and keep.get("h") == 8, "…the ones not asked for while new ones came are let go")
+            keep.clear()
+            check(keep.get("e") == nil, "kept answers: cleared")
+
+            local saved_notes, saved_filter, saved_cache = Notes.notes, Notes.filter, Notes.from_cache
+            Notes.filter, Notes.from_cache = { kind = "all" }, false
+            Notes.notes = {}
+            for i = 1, 40 do Notes.notes[i] = { name = "memos/k" .. i, content = "# Note " .. i .. "\n**bold** text", created = "2026-11-10T10:00:00Z" } end
+            parsed, plain = 0, 0
+            local items = Notes._boardItems(plugin)
+            check(#items == 40 and parsed == 0 and plain == 0, "board: its notes listed without making each one plain (" .. parsed .. ", " .. plain .. ")")
+            check(items[1].memo ~= nil and items[1].text == real_preview(items[1].memo.content) and plain == 1,
+                "board: a note's plain text is still there when asked for…")
+            check(items[1].text == real_preview(items[1].memo.content) and plain == 1 and items[1].nothing == nil, "…worked out once")
+            Notes.notes = {}
+            local empty = Notes._boardItems(plugin)
+            check(#empty == 1 and empty[1].memo == nil and type(empty[1].text) == "string" and empty[1].text ~= "", "board: with no notes, the line that says so")
+            Notes.notes, Notes.filter, Notes.from_cache = saved_notes, saved_filter, saved_cache
+            Sticky.lines, Sticky.preview = real_lines, real_preview
+
+            -- the Full view: a note's measure is kept under its text (a sync brings the same notes as new tables)
+            local laid = 0
+            local function measure(m, w)
+                local c = Notes.measured[m]
+                if c and c.content == m.content and c.sig == w then return c end
+                laid = laid + 1
+                c = { content = m.content, sig = w }
+                Notes.measured[m] = c
+                return c
+            end
+            Notes.measured_text.clear()
+            local n1 = { content = "Buy milk" }
+            local c1 = Notes.measureKept(measure, n1, 300, 800)
+            local c2 = Notes.measureKept(measure, { content = "Buy milk" }, 300, 800)
+            check(laid == 1 and c1 == c2, "full view: the same note as a new table (a sync, a filter) isn't laid out again")
+            local c3 = Notes.measureKept(measure, { content = "Buy oat milk" }, 300, 800)
+            local c4 = Notes.measureKept(measure, { content = "Buy milk" }, 400, 800)
+            check(laid == 3 and c3 ~= c1 and c4 ~= c1 and c4.sig == 400, "full view: …a changed note, or another width, is")
+            check(Notes.measureKept(measure, { content = "Buy milk" }, 400, 800) == c4 and Notes.measureKept(measure, {}, 400, 800) ~= nil and laid == 4,
+                "full view: the newest measure is the one kept; a note without text is measured as before")
+            Notes.measured_text.clear()
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("function Notes.measure(m, note_w, page_h) return Notes.measureKept(measure, m, note_w, page_h) end", 1, true)
+                and src:find("items[#items + 1] = setmetatable({ memo = m }, BoardEntry)", 1, true), "board: both are what the board uses")
+        end)()
+
         -- the layout is kept (Settings → Notes) and the board shows the page with its first note
         local saved_plugin_store = plugin.store.notes_prefs
         plugin.store.notes_prefs = {}

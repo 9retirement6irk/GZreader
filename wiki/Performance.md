@@ -86,6 +86,20 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   changed. The last page's pictures stay while the tab is closed (a few MB;
   not on the Kindle 2 and DX). In the emulator (Paperwhite 3): 1.4 s of CPU
   to open before, 0.5 s now, 0.25 s when opened again.
+- **The Notes tab stays quick with many notes** (`gzreader_notes.lua`,
+  `gzreader_sticky.lua`): every time the board was shown again (the tab
+  opened, a note closed, a filter chosen, a sync that came back) the text of
+  every note kept on the Kindle was made plain again, though only the six or
+  so on the page are drawn, and each draw read every note's text once more to
+  find its pictures. With the 100 notes kept by default that was most of the
+  time: the more notes, the slower. Now a note's plain text is worked out
+  only when the note is drawn, a note without a picture isn't read at all,
+  and in the Full view a note's layout is kept under its text, so a sync or a
+  filter (which bring the same notes back) lays out only the notes that
+  changed. In the emulator (Paperwhite 3, 97 notes, CPU time): the tab opened
+  again 0.56 s → 0.25 s; closing a note 0.35 s → 0.11 s; a sync that changed
+  nothing 0.44 s → 0.08 s; in the Full view a page turn 0.24 s → 0.10 s and
+  the board after a sync 0.60 s → 0.03 s.
 - **Notes syncs ask only what your Memos has** (`gzreader_memos.lua`): a
   stock Memos has no spaces and no journaling mode, and each sync asked for
   both and got "not found" (two requests and two warnings in the log every
