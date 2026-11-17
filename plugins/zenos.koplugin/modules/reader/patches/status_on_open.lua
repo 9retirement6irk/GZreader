@@ -3,6 +3,8 @@ local function apply_status_on_open()
     local ReaderUI = require("apps/reader/readerui")
     if ReaderUI._zen_new_status_on_open_patched then return end
     ReaderUI._zen_new_status_on_open_patched = true
+    -- GZreader: a book's default font size on big screens (common/gz_book_font.lua)
+    pcall(function() require("common/gz_book_font").install() end)
 
     local book_status = require("common/book_status")
     local UIManager = require("ui/uimanager")

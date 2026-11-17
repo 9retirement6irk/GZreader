@@ -267,6 +267,16 @@ local function kindleScanThenGetResults()
     end
 end
 
+-- GZreader: a lipc handle and a timer for device/kindle/gzbluetooth.
+local function gzLipc()
+    local ok, lipc = pcall(require, "liblipclua")
+    if ok and lipc then return lipc.init("com.github.koreader.networkmgr") end
+end
+local function gzSchedule(s, fn)
+    UIManager = UIManager or require("ui/uimanager")
+    UIManager:scheduleIn(s, fn)
+end
+
 local function kindleEnableWifi(toggle)
     local haslipc, lipc = pcall(require, "liblipclua")
     local lipc_handle
@@ -280,8 +290,16 @@ local function kindleEnableWifi(toggle)
             lipc_handle:set_int_property("com.lab126.cmd", "wirelessEnable", 1)
             lipc_handle:set_int_property("com.lab126.wifid", "enable", 1)
         else
+            -- GZreader: wirelessEnable 0 is airplane mode, which turns
+            -- Bluetooth off too: on Kindles with Bluetooth, turn it on again
+            -- and reconnect the headphones/speaker (device/kindle/gzbluetooth).
+            local GzBT = require("device/kindle/gzbluetooth")
+            local gz_bt = GzBT.before(lipc_handle)
             lipc_handle:set_int_property("com.lab126.wifid", "enable", 0)
             lipc_handle:set_int_property("com.lab126.cmd", "wirelessEnable", 0)
+            if GzBT.after(lipc_handle, gz_bt, gzLipc, gzSchedule) then
+                logger.info("GZreader: Bluetooth turned on again after airplane mode")
+            end
         end
         lipc_handle:close()
     else
@@ -764,6 +782,11 @@ local POWERD_EVENT_SOURCES = {
 
 function Kindle:intoScreenSaver(source)
     logger.dbg("Kindle:intoScreenSaver via", POWERD_EVENT_SOURCES[source] or string.format("UNKNOWN_SUSPEND (%d)", source or -1))
+    -- GZreader: Bluetooth off while asleep, back on at wake if it was on
+    -- (device/kindle/gzbluetooth).
+    if require("device/kindle/gzbluetooth").sleep(gzLipc) then
+        logger.info("GZreader: Bluetooth off for sleep")
+    end
     if not self.screen_saver_mode then
         if self:supportsScreensaver() then
             -- NOTE: Meaning this is not a SO device ;)
@@ -839,6 +862,9 @@ function Kindle:outofScreenSaver(source)
     end
 
     self.powerd:afterResume()
+    if require("device/kindle/gzbluetooth").wake(gzLipc, gzSchedule) then -- GZreader
+        logger.info("GZreader: Bluetooth on again after sleep")
+    end
 end
 
 -- On stock, there's a distinction between OutOfSS (which *requests* closing the SS) and ExitingSS, which fires once they're *actually* closed...

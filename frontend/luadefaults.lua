@@ -26,13 +26,13 @@ function LuaDefaults:open(path)
     -- so logger.warn() only if there was an existing file
     local existing = lfs.attributes(new.file, "mode") == "file"
 
-    ok, stored = pcall(dofile, new.file)
+    ok, stored = pcall(require("gzdataload").file, new.file) -- GZreader: read as data, not run (gzdataload.lua)
     if ok and stored then
         new.rw = stored
     else
         if existing then logger.warn("LuaDefaults: Failed reading", new.file, "(probably corrupted).") end
         -- Fallback to .old if it exists
-        ok, stored = pcall(dofile, new.file..".old")
+        ok, stored = pcall(require("gzdataload").file, new.file..".old") -- GZreader: read as data, not run (gzdataload.lua)
         if ok and stored then
             if existing then logger.warn("LuaDefaults: read from backup file", new.file..".old") end
             new.rw = stored

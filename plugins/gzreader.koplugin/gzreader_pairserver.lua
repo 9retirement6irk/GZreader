@@ -13,6 +13,12 @@ and only answers requests carrying the random per-session token.
 Uploads (books sent from the phone): the `upload` hook may take a POST whose
 body is a raw file; it's written to disk as it arrives, a piece on every
 poll, so the Kindle stays responsive and the file never sits in memory.
+
+Every connection is read and answered the same way, a piece on each poll
+(never waiting on one): a phone, or anything else on the Wi-Fi, that
+connects and then sends slowly or not at all only holds its own connection
+(dropped after REQUEST_S), never the Kindle's screen. At most MAX_CONNS at
+once; the oldest goes when another comes.
 ]]
 
 local Device = require("device")
@@ -23,6 +29,7 @@ local MAX_BODY = 65536 -- forms (calendar links pasted on the phone)
 local MAX_HEADER_LINES = 64
 local UPLOAD_STALL_S = 60 -- an upload with no data for this long is dropped
 local UPLOAD_READ_PER_POLL = 1048576
+local MAX_HEADER_BYTES = 16384
 
 local PairServer = {
     port = 8642,
@@ -32,6 +39,9 @@ local PairServer = {
     upload = nil,
     exact_port = false, -- only `port` (otherwise the next few if it's taken)
     keep_wifi = true,   -- hold Wi-Fi on while it runs
+    REQUEST_S = 15,     -- to send the request (line, headers, body)
+    ANSWER_S = 120,     -- to take the answer (the diagnostic log on slow Wi-Fi)
+    MAX_CONNS = 8,      -- connections being read or answered at once
 }
 
 function PairServer:new(o)
@@ -74,6 +84,11 @@ function PairServer:start()
 end
 
 function PairServer:stop()
+    -- (the connection whose request stopped it still gets its answer: waitEvent)
+    for _i, c in ipairs(self.conns or {}) do
+        if c ~= self.handling then pcall(c.client.close, c.client) end
+    end
+    self.conns = nil
     for _i, up in ipairs(self.uploads or {}) do
         pcall(up.fh.close, up.fh)
         os.remove(up.file)
@@ -93,26 +108,12 @@ local REASONS = { [200] = "OK", [302] = "Found", [303] = "See Other", [400] = "B
     [405] = "Method Not Allowed", [409] = "Conflict", [411] = "Length Required", [413] = "Payload Too Large",
     [415] = "Unsupported Media Type", [500] = "Internal Server Error", [507] = "Insufficient Storage" }
 
+local answer -- (below)
+
+--- An upload's result (a short answer: sent at once).
 local function respond(client, code, content_type, body, extra_headers)
-    body = body or ""
-    local lines = { string.format("HTTP/1.0 %d %s", code, REASONS[code] or "OK") }
-    for k, v in pairs(type(extra_headers) == "table" and extra_headers or {}) do
-        if tostring(k):match("^[%w%-]+$") and not tostring(v):find("[\r\n]") then
-            lines[#lines + 1] = k .. ": " .. tostring(v)
-        end
-    end
-    if code == 302 or code == 303 then
-        -- the handler returns the redirect target as the body
-        lines[#lines + 1] = "Location: " .. body
-        body, content_type = "", "text/plain"
-    end
-    lines[#lines + 1] = "Content-Type: " .. (content_type or "text/plain") .. "; charset=utf-8"
-    lines[#lines + 1] = "Content-Length: " .. #body
-    lines[#lines + 1] = "Cache-Control: no-store"
-    lines[#lines + 1] = "Referrer-Policy: no-referrer"
-    lines[#lines + 1] = "X-Frame-Options: DENY"
-    lines[#lines + 1] = "Connection: close"
-    client:send(table.concat(lines, "\r\n") .. "\r\n\r\n" .. body)
+    client:settimeout(10)
+    client:send(answer(code, content_type, body, extra_headers))
     client:close()
 end
 
@@ -158,66 +159,139 @@ end
 
 function PairServer:uploading() return self.uploads ~= nil and #self.uploads > 0 end
 
--- Called by UIManager:processZMQs() as an iterator; we handle at most one
--- connection per pass and always end the iteration by returning nil.
-function PairServer:waitEvent()
-    if not self.server then return nil end
-    self:pumpUploads()
-    local client = self.server:accept()
-    if not client then return nil end
-    client:settimeout(3)
-
-    local request_line = client:receive("*l")
-    if not request_line then client:close() return nil end
-    local method, path = request_line:match("^(%u+) (%S+) HTTP/%d%.%d$")
-    if not method then
-        respond(client, 400, "text/plain", "Bad request")
-        return nil
+function answer(code, content_type, body, extra_headers)
+    body = body or ""
+    local lines = { string.format("HTTP/1.0 %d %s", code, REASONS[code] or "OK") }
+    for k, v in pairs(type(extra_headers) == "table" and extra_headers or {}) do
+        if tostring(k):match("^[%w%-]+$") and not tostring(v):find("[\r\n]") then
+            lines[#lines + 1] = k .. ": " .. tostring(v)
+        end
     end
+    if code == 302 or code == 303 then
+        lines[#lines + 1] = "Location: " .. body
+        body, content_type = "", "text/plain"
+    end
+    lines[#lines + 1] = "Content-Type: " .. (content_type or "text/plain") .. "; charset=utf-8"
+    lines[#lines + 1] = "Content-Length: " .. #body
+    lines[#lines + 1] = "Cache-Control: no-store"
+    lines[#lines + 1] = "Referrer-Policy: no-referrer"
+    lines[#lines + 1] = "X-Frame-Options: DENY"
+    lines[#lines + 1] = "Connection: close"
+    return table.concat(lines, "\r\n") .. "\r\n\r\n" .. body
+end
+PairServer._answer = answer -- (tests)
 
+--- The request line and headers, once the buffer holds them all:
+--- method, path, headers, the bytes after them; or nil (not yet); or false (bad).
+local function parseHead(buf)
+    local stop, after = buf:find("\r?\n\r?\n")
+    if not stop then return #buf > MAX_HEADER_BYTES and false or nil end
+    local head, rest = buf:sub(1, stop - 1), buf:sub(after + 1)
+    local lines = {}
+    for line in (head .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = (line:gsub("\r$", "")) end
+    local method, path = (lines[1] or ""):match("^(%u+) (%S+) HTTP/%d%.%d$")
+    if not method or #lines - 1 > MAX_HEADER_LINES then return false end
     local headers = {}
-    for _ = 1, MAX_HEADER_LINES do
-        local line = client:receive("*l")
-        if not line or line == "" then break end
-        local k, v = line:match("^([^:]+):%s*(.*)$")
+    for i = 2, #lines do
+        local k, v = lines[i]:match("^([^:]+):%s*(.*)$")
         if k then headers[k:lower()] = v end
     end
+    return method, path, headers, rest
+end
 
-    local body = ""
+--- Answer `c` (sent a piece at a time by step()).
+function PairServer:reply(c, code, ctype, body, extra)
+    c.state, c.out, c.sent, c.deadline = "write", answer(code or 200, ctype, body, extra), 0, socket.gettime() + self.ANSWER_S
+end
+
+--- The request is all here: an upload goes on to pumpUploads, anything else to the handler.
+function PairServer:dispatch(c, method, path, headers, rest)
     local length = tonumber(headers["content-length"] or "0") or 0
     local up = self.upload and self.upload(method, path, headers, length)
     if up then
-        if up.error then
-            respond(client, up.error, up.ctype or "text/plain", up.message or "")
-            return nil
-        end
+        if up.error then return self:reply(c, up.error, up.ctype or "text/plain", up.message or "") end
         local fh = io.open(up.file, "wb")
-        if not fh then
-            respond(client, 507, "text/plain", "The Kindle couldn't save the file.")
+        if not fh then return self:reply(c, 507, "text/plain", "The Kindle couldn't save the file.") end
+        if (headers["expect"] or ""):lower() == "100-continue" then c.client:send("HTTP/1.1 100 Continue\r\n\r\n") end
+        local first = rest:sub(1, length)
+        if #first > 0 then fh:write(first) end
+        c.state = "upload"
+        self.uploads = self.uploads or {}
+        table.insert(self.uploads, { client = c.client, fh = fh, file = up.file, done = up.done,
+            remaining = length - #first, received = #first, last = socket.gettime() })
+        return
+    end
+    if length > MAX_BODY then return self:reply(c, 413, "text/plain", "Too large") end
+    c.state, c.method, c.path, c.headers, c.length, c.buf = "body", method, path, headers, length, rest
+end
+
+--- One connection, as far as what has arrived lets it go. true when it's finished with.
+function PairServer:step(c, now)
+    if now > c.deadline then pcall(c.client.close, c.client); return true end
+    if c.state == "head" or c.state == "body" then
+        local data, err, partial = c.client:receive(8192)
+        data = data or partial
+        if data and #data > 0 then c.buf = c.buf .. data end
+        if err == "closed" and (not data or #data == 0) then pcall(c.client.close, c.client); return true end
+        if c.state == "head" then
+            local method, path, headers, rest = parseHead(c.buf)
+            if method == false then self:reply(c, 400, "text/plain", "Bad request")
+            elseif method then self:dispatch(c, method, path, headers, rest) end
+            if c.state == "upload" then return true end
+        end
+        if c.state == "body" and #c.buf >= c.length then
+            self.handling = c
+            local ok, code, ctype, resp, extra = pcall(self.handler, c.method, c.path, c.headers, c.buf:sub(1, c.length))
+            self.handling = nil
+            if not ok then
+                logger.err("Grimmory pairing handler error:", code)
+                self:reply(c, 400, "text/plain", "Something went wrong on the Kindle.")
+            else
+                self:reply(c, code, ctype, resp, extra)
+            end
+        end
+    end
+    if c.state == "write" then
+        local last, err, partial = c.client:send(c.out, c.sent + 1)
+        c.sent = last or partial or c.sent
+        if c.sent >= #c.out or (err and err ~= "timeout") then pcall(c.client.close, c.client); return true end
+    end
+    return false
+end
+
+-- Called by UIManager:processZMQs() as an iterator; always ends the
+-- iteration by returning nil. Nothing here waits on a connection.
+function PairServer:waitEvent()
+    if not self.server then return nil end
+    self:pumpUploads()
+    self.conns = self.conns or {}
+    local now = socket.gettime()
+    for _i = 1, 4 do -- (a few new connections per poll)
+        local client = self.server:accept()
+        if not client then break end
+        client:settimeout(0)
+        if #self.conns >= self.MAX_CONNS then
+            local oldest = table.remove(self.conns, 1)
+            pcall(oldest.client.close, oldest.client)
+        end
+        self.conns[#self.conns + 1] = { client = client, state = "head", buf = "", deadline = now + self.REQUEST_S }
+    end
+    local conns = self.conns
+    for i = #conns, 1, -1 do
+        local c = conns[i]
+        local okc, finished = pcall(self.step, self, c, now)
+        self.handling = nil
+        if not okc then logger.err("pairing connection error:", finished); pcall(c.client.close, c.client) end
+        if not okc or finished then table.remove(conns, i) end
+        if not self.server then
+            -- (stopped by what this request did: its answer still goes, the others are closed)
+            if okc and not finished and c.state == "write" then
+                c.client:settimeout(10)
+                pcall(c.client.send, c.client, c.out, c.sent + 1)
+                pcall(c.client.close, c.client)
+            end
             return nil
         end
-        if (headers["expect"] or ""):lower() == "100-continue" then client:send("HTTP/1.1 100 Continue\r\n\r\n") end
-        client:settimeout(0)
-        self.uploads = self.uploads or {}
-        table.insert(self.uploads, { client = client, fh = fh, file = up.file, done = up.done,
-            remaining = length, received = 0, last = socket.gettime() })
-        self:pumpUploads()
-        return nil
-    end
-    if length > MAX_BODY then
-        respond(client, 413, "text/plain", "Too large")
-        return nil
-    elseif length > 0 then
-        body = client:receive(length) or ""
-    end
-
-    local ok, code, ctype, resp, extra = pcall(self.handler, method, path, headers, body)
-    if not ok then
-        logger.err("Grimmory pairing handler error:", code)
-        respond(client, 400, "text/plain", "Something went wrong on the Kindle.")
-    else
-        client:settimeout(30) -- big responses (the diagnostic log) on slow Wi-Fi
-        respond(client, code or 200, ctype, resp, extra)
     end
     return nil
 end

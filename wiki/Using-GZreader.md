@@ -7,9 +7,12 @@ touch Kindle, a tap at the top or a swipe down from the top; [which of
 them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
+Five tiles go across; on a big touch screen (the Kindle Scribe) as many as
+keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
 
-- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi); on the Kindle 2
-  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), Night mode, Rotate, Restart, Sleep, Home,
+- **Controls:** Wi‑Fi (a tap goes on → off → [auto](Wi-Fi), and the panel stays open; on the Kindle 2
+  and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
+  on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
   General) and Exit to Kindle (Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
@@ -113,11 +116,19 @@ run the same GZreader with ZenOS's touch interface:
 
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light
-  slider on Kindles with a frontlight. A tap below it closes it.
+  slider on Kindles with a frontlight: a small sun on its − button, a big
+  bright one on +. A tap below it closes it.
 - **Warmth:** on Kindles whose light can be made warmer (Paperwhite 5 and
   newer, Oasis 3, Scribe, Colorsoft) a second slider under the light's goes
-  from **Cool** to **Warm**: tap or drag it, − and + step. The swipe that
-  opens the panel moves neither slider.
+  from cool to warm, with a snowflake on − and a flame on +: tap or drag it,
+  − and + step. The swipe that opens the panel moves neither slider.
+- **Volume:** on touch Kindles with sound, a slider under those sets the
+  volume: on Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…) the
+  Kindle's own Bluetooth volume, in the same 8 steps as Amazon's slider; on
+  the Kindle Touch its speaker and headphones, 0 to 15, the volume read
+  aloud and audiobooks use. Its − has a quiet speaker, + a loud one. Tap −
+  or +, tap the bar, or drag. (The Kindle 2,
+  3 and DX use their volume buttons.)
 - **Hold a book** at Home or in Downloads for Manage book (Open, Delete from
   this Kindle, then the book's menu).
 - **Notes:** Note, Draw (a new note on a page to draw on) and Journal (a journal entry), then icons for Sort, Filter (with Memos connection), Layout, Search and Full screen, are buttons under the title, with a row of your tags and Drawings under them; a note
@@ -135,7 +146,9 @@ run the same GZreader with ZenOS's touch interface:
   GZreader. It replaces ZenOS's "ZenOS" one from earlier versions.
 - **Reading:** tap the right side for the next page, the left side for the
   previous one, the top for the menu (contents, bookmarks, search, fonts…);
-  swipe up for the page browser.
+  swipe up for the page browser. A tap on the bottom status bar hides it
+  and a second tap shows it again (Settings → Reader → Appearance → Bottom
+  status bar → Hide on tap: Off makes that tap turn the page instead).
 - **The first-time tour:** after the setup guide, a short tour opens the
   quick panel and shows how to open and close it, Settings and the Home
   tiles (on the first book, if it didn't run at Home: This book's tiles). It

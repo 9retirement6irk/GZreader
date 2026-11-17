@@ -22,7 +22,9 @@ Source: https://github.com/9retirement6irk/GZreader/releases
     other than the one installed is offered. Switched off, the next release
     is offered as usual (1.2.0 is newer than 1.2.0-beta.7);
   * no hashing on the Kindle: the download comes over HTTPS straight from
-    GitHub (which protects it in transit), its size must match the size
+    GitHub, with GitHub's certificate checked against KOReader's list of
+    authorities (gzreader_tls.lua: without that, anyone on the same Wi-Fi
+    could have answered as GitHub), its size must match the size
     GitHub lists for the asset, and the zip must open and contain a
     complete GZreader layout before anything is replaced.
 
@@ -168,6 +170,9 @@ function Update.get(u, path, accept)
     local socketutil = require("socketutil")
     for _hop = 1, 6 do
         if not TRUSTED[host(u) or ""] then return nil, nil, "untrusted host: " .. tostring(host(u)) end
+        -- (GitHub's certificate checked: gzreader_tls.lua; nothing is sent without it)
+        local create, terr = require("gzreader_tls").create(host(u))
+        if not create then return nil, nil, terr end
         local chunks = {}
         local sink
         if path then
@@ -181,7 +186,7 @@ function Update.get(u, path, accept)
         socketutil:set_timeout(path and 30 or 10, path and -1 or 30)
         local ok, code, headers = pcall(function()
             return socket.skip(1, http.request{
-                url = u, method = "GET", sink = sink, redirect = false,
+                url = u, method = "GET", sink = sink, redirect = false, create = create,
                 -- downloads accept anything: GitHub's API answers 415 to
                 -- "application/octet-stream" for a release's source code zip
                 headers = { ["User-Agent"] = "GZreader", ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
@@ -610,6 +615,12 @@ function Update.apply(zip, opts)
             end
         end
     end
+    if nook then
+        -- (the Nook's start script records GZreader's code on the card again
+        -- before it runs: platform/nook/gzreader.sh, manifest_check)
+        local m = io.open(base .. "/../app-manifest.renew", "w")
+        if m then m:write(Update.currentVersion(), "\n"); m:close() end
+    end
     Log.info("update installed", Update.currentVersion(), "items", #done)
     return true
 end
@@ -644,6 +655,24 @@ function Update.run()
     end, { reason = "checking for updates" })
 end
 
+--- Before restarting: an open book is closed the usual way first (its page,
+--- bookmarks and highlights written to its file; its place queued for
+--- Grimmory). Restarting quit with the book open, so none of that was
+--- written: on a Kindle Scribe a book read for minutes reopened at its
+--- first page and lost the bookmarks Grimmory had given it (2026-11-16).
+--- Returns true when a book was open (the restart then waits a moment).
+function Update.closeBook()
+    local ReaderUI = package.loaded["apps/reader/readerui"]
+    local reader = ReaderUI and ReaderUI.instance
+    if not reader or not reader.document then return false end
+    Log.info("update: closing the open book before restarting")
+    -- to Home (as the Home button does): closing the reader alone leaves
+    -- nothing on screen, and KOReader then quits for good instead of restarting
+    local ok = pcall(reader.onHome, reader)
+    if not ok then pcall(reader.onClose, reader) end
+    return true
+end
+
 function Update.download(info)
     local ProgressbarDialog = require("gzreader_progress")
     local Net = require("gzreader_net")
@@ -660,6 +689,16 @@ function Update.download(info)
     end, true)
     if not pid then return UIManager:show(InfoMessage:new{ text = _("Couldn't start the download.") }) end
     Net.hold("update")
+    -- No sleeping until GZreader restarts (the download, then installing):
+    -- the dialog below swallows every tap, so nothing else tells the Kindle
+    -- someone is there, and a Scribe went to sleep mid-update (2026-11-16).
+    local Awake = require("gzreader_awake")
+    local finished = false
+    Awake.hold("update", { what = "update", still = function() return not finished end })
+    local function ended()
+        finished = true
+        Awake.release("update")
+    end
     -- Can't be closed (unlike book downloads): the update installs and
     -- restarts GZreader as soon as it's downloaded. Modal: keys don't reach
     -- the screens behind it either.
@@ -685,11 +724,13 @@ function Update.download(info)
         Net.release("update")
         local res = ffiutil.readAllFromFD(fd)
         if res ~= "ok" then
+            ended()
             os.remove(zip)
             return UIManager:show(InfoMessage:new{ text = T(_("Download failed: %1"), res) })
         end
         local final_size = lfs.attributes(zip, "size") or 0
         if info.size and final_size ~= info.size then
+            ended()
             os.remove(zip)
             Log.warn("update download size", final_size, "expected", info.size)
             return UIManager:show(InfoMessage:new{ text = _("The download was incomplete. Try again.") })
@@ -701,6 +742,7 @@ function Update.download(info)
         os.remove(zip)
         UIManager:close(busy)
         if not ok then
+            ended()
             Log.err("update failed:", err)
             return UIManager:show(InfoMessage:new{ text = T(_("Update failed, nothing was changed:\n%1"), tostring(err)) })
         end
@@ -708,8 +750,12 @@ function Update.download(info)
         UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 installed. Restarting…"), info.version), timeout = 2 })
         -- (not in the middle of a request to Grimmory: a new login it brings
         -- back would be lost; 20 s at most)
-        local waited = 0
+        local waited, book_closed = 0, false
         local function restart()
+            if not book_closed then
+                book_closed = true
+                if Update.closeBook() then return UIManager:scheduleIn(1, restart) end
+            end
             local Async = package.loaded["gzreader_async"]
             if Async and (Async.busy or #(Async.queue or {}) > 0) and waited < 20 then
                 waited = waited + 1

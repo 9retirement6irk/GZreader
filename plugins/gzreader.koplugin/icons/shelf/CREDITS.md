@@ -33,6 +33,16 @@ Credit is given gladly; the file names keep Poly Haven's:
 | `lambis-shell` | lambis_shell | Kuutti Siitonen |
 | `jug-01` | jug_01 | Kuutti Siitonen |
 
+### Levelled
+
+Eight ornaments (seven of Poly Haven's and the owner's pumpkin) are turned
+from their source pictures so their base sits level on the shelf (grey and
+colour alike, then cropped): `alarm-clock-01`
+5.5° clockwise, `dutch-ship-medium` 5°, `mantel-clock-01` 6°,
+`vintage-binocular` 9°, `pumpkin` 3°, `horse-statue-01` 2°; `jug-01` 3°
+and `lambis-shell` 6° anticlockwise. `tools/gzreader/tests/ornament_level_test.py`
+checks that the ones with a flat base stand level.
+
 ## Pictures supplied by the owner
 
 `ornament-photo-christmas-tree.png`, `ornament-photo-pumpkin.png` and

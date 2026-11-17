@@ -14,6 +14,12 @@ with character precision.
 State kept per book in the download entry:
   entry.bookmarks = { [tostring(xp_or_page)] = grimmory_id }   -- synced pairs
   entry.bm_pending = { add = { [key]=true }, del = { [tostring(id)]=true } }  -- offline
+and a copy of the synced pairs in the book's own settings file (its .sdr,
+`gzreader_bookmarks`), written together with the bookmarks themselves: a
+synced bookmark missing from the book counts as deleted here only when that
+copy says the book had it. (GZreader restarted with a book open and the
+book's file not saved: its bookmarks from Grimmory were missing at the next
+opening and were deleted in Grimmory too, 2026-11-16.)
 ]]
 
 local Event = require("ui/event")
@@ -161,6 +167,26 @@ function BM:new(sync)
     return setmetatable({ sync = sync, ui = sync.ui, api = sync.api, entry = entry, plugin = sync.plugin }, self)
 end
 
+--- Keep the synced pairs in the book's own settings file too (saved with
+--- its bookmarks, so both are from the same moment).
+function BM:remember()
+    local ds = self.ui and self.ui.doc_settings
+    if not ds or not ds.saveSetting then return end
+    local copy = {}
+    for k, id in pairs(self.entry.bookmarks) do copy[k] = id end
+    ds:saveSetting("gzreader_bookmarks", copy)
+end
+
+--- Did the book itself (its settings file) have this synced bookmark?
+--- No: it was never saved there (GZreader stopped before the book's file
+--- was written), so it's missing because of that, not deleted here.
+function BM:bookHad(key, id)
+    local ds = self.ui and self.ui.doc_settings
+    if not ds or not ds.readSetting then return true end -- (no settings file to ask: as before)
+    local kept = ds and ds.readSetting and ds:readSetting("gzreader_bookmarks")
+    return type(kept) == "table" and kept[key] ~= nil and tostring(kept[key]) == tostring(id)
+end
+
 function BM:enabled()
     return self.plugin:syncEnabled() and self.plugin.store.bookmark_sync_disabled ~= true
 end
@@ -276,11 +302,13 @@ function BM:pushAll(items)
         end
         return out
     end, function(res)
+        local changed
         for key, r in pairs(type(res) == "table" and res or {}) do
             if r.id then
                 self.entry.bookmarks[key] = r.id
                 self.entry.bm_pending.add[key] = nil
                 Log.info("bookmark pushed", self.sync.book_id, tostring(key), "id", r.id)
+                changed = true
             elseif r.exists then
                 self.entry.bm_pending.add[key] = nil
                 Log.info("bookmark exists on server", tostring(key))
@@ -288,6 +316,7 @@ function BM:pushAll(items)
                 Log.warn("bookmark push failed", tostring(r.err))
             end
         end
+        if changed and self.ui.document then self:remember() end
         self.plugin:save()
     end, "bookmarks")
 end
@@ -326,7 +355,7 @@ end
 
 function BM:apply(remote)
     local locals = self:localBookmarks()
-    local remote_ids, added, removed = {}, 0, 0
+    local remote_ids, added, removed, restored = {}, 0, 0, 0
     local key_of_id = {}
     for k, id in pairs(self.entry.bookmarks) do key_of_id[tostring(id)] = k end
     local deleted_here = {}
@@ -334,12 +363,23 @@ function BM:apply(remote)
         if type(bm) == "table" and realId(bm.id) and not BM.isAudio(bm) and not self.entry.bm_pending.del[tostring(bm.id)] then
             remote_ids[tostring(bm.id)] = true
             local known = key_of_id[tostring(bm.id)]
-            if known and locals[known] == nil then
+            if known and locals[known] == nil and self:bookHad(known, bm.id) then
                 -- synced, then removed here without KOReader telling (the
                 -- bookmark list's delete): remove it in Grimmory too
                 deleted_here[#deleted_here + 1] = bm.id
                 self.entry.bookmarks[known] = nil
                 self.entry.bm_pending.del[tostring(bm.id)] = true
+            elseif known and locals[known] == nil then
+                -- the book never kept it (not saved before GZreader stopped):
+                -- put it back here, don't delete it in Grimmory
+                local key = self:toLocal(bm)
+                key = key and tostring(key)
+                if key then
+                    self:addLocal(key, bm); added = added + 1; restored = restored + 1
+                    if key ~= known then self.entry.bookmarks[known] = nil end
+                    self.entry.bookmarks[key] = bm.id
+                    locals[key] = locals[key] or true
+                end
             elseif not known then
                 local key = self:toLocal(bm)
                 key = key and tostring(key)
@@ -366,7 +406,9 @@ function BM:apply(remote)
     end
     if added + removed > 0 then refreshDogear(self.ui) end
     Log.info("bookmarks reconciled", self.sync.book_id, "remote", #remote, "added", added,
-        "removed", removed, "pushed", pushed, "deleted there", #deleted_here)
+        "removed", removed, "pushed", pushed, "deleted there", #deleted_here,
+        restored > 0 and ("(" .. restored .. " put back: the book hadn't kept them)") or "")
+    self:remember()
     if pushed > 0 then self:pushAll(todo) end
     if #deleted_here > 0 then self:sendDeletes(deleted_here) end
 end
@@ -403,6 +445,7 @@ function BM:onAnnotationsModified(items)
         if id then
             self.entry.bookmarks[key] = nil
             self.entry.bm_pending.del[tostring(id)] = true
+            self:remember()
             Log.info("bookmark removed", self.sync.book_id, tostring(id))
             if self:enabled() and self:online() then
                 require("gzreader_async").call(self.api, "deleteBookmark", { id }, function(ok)

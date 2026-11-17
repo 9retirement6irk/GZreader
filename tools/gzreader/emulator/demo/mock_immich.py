@@ -8,7 +8,9 @@ Mirrors the parts of Immich's API (v1.1xx to 3.x, under /api) GZreader uses:
                                    (404 with --old: a server without album search)
   GET  /api/assets/<id>/thumbnail  ?size=preview: a PNG picture (Immich's are JPEG or WebP)
 Sign-in: "x-api-key: <key>". KEY reads everything; LIMITED_KEY has no
-album.read (403), as an API key made with too few permissions.
+album.read (403), as an API key made with too few permissions; ALBUM_KEY
+has what GZreader needs (album.read, asset.read, asset.view) but no
+user.read.
 CORS: only with --cors (Immich sends none; a proxy in front has to): the
 Origin is let in, preflights answered.
 
@@ -22,6 +24,7 @@ from urllib.parse import urlparse, parse_qs
 
 KEY = "immich-test-key"
 LIMITED_KEY = "immich-limited-key"
+ALBUM_KEY = "immich-album-key"
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 CORS = "--cors" in sys.argv
 OLD = "--old" in sys.argv
@@ -105,11 +108,12 @@ class H(BaseHTTPRequestHandler):
     def note(self, method, path, body=None):
         with LOCK:
             STATE["log"].append({"method": method, "path": path, "body": body,
-                                 "key": "ok" if self.headers.get("x-api-key") == KEY else ("limited" if self.headers.get("x-api-key") == LIMITED_KEY else "none")})
+                                 "key": "ok" if self.headers.get("x-api-key") == KEY else ("limited" if self.headers.get("x-api-key") == LIMITED_KEY
+                                         else ("album" if self.headers.get("x-api-key") == ALBUM_KEY else "none"))})
 
     def auth(self):
         k = self.headers.get("x-api-key")
-        if k in (KEY, LIMITED_KEY):
+        if k in (KEY, LIMITED_KEY, ALBUM_KEY):
             return k
         self.send(401, {"message": "Invalid API key", "statusCode": 401})
         return None
@@ -125,7 +129,7 @@ class H(BaseHTTPRequestHandler):
         if not k:
             return
         if u.path == "/api/users/me":
-            if k == LIMITED_KEY:
+            if k in (LIMITED_KEY, ALBUM_KEY):
                 return self.send(403, {"message": "Missing required permission: user.read"})
             return self.send(200, {"id": "u1", "name": "Will", "email": "will@example.com"})
         if u.path == "/api/albums":

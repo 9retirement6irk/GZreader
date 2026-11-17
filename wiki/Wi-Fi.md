@@ -5,6 +5,8 @@ Wi‑Fi is **On**, **Off** or **Auto** (Auto is the default):
 - **The quick panel's Wi‑Fi tile** goes through them: Wi‑Fi on → Wi‑Fi off →
   Wi‑Fi auto → Wi‑Fi on. On is drawn white on black; Auto's icon has an **A**
   and still shows whether Wi‑Fi is on right now (crossed out while it's off).
+  The panel stays open after a tap, so you can tap again to reach the mode you
+  want.
 - **Settings → General → Wi‑Fi** offers the same three, with **Networks**
   (choosing a network), **HTTP proxy** (tap: on or off; hold: its address)
   and **Network info** under them. The row shows the mode.
@@ -28,6 +30,15 @@ On Auto:
 | Page turns, bookmarks, highlights, sleep | not turned on: changes wait for the next sync |
 | Daily update check, library index refresh | only if Wi-Fi is already on |
 
+**Downloads run with Wi‑Fi power saving off.** With power saving on, the
+Wi‑Fi chip naps between the router's beacons and downloads crawl (about
+30 KB/s on a Paperwhite 3, 5 KB/s on a Scribe). While a book, an update,
+an audiobook or music downloads, while notes with drawings go to Memos and
+while the phone page is open, GZreader turns power saving off, and when the
+last of them ends it turns it back on (only if it was on before), so reading
+with Wi‑Fi on still saves battery. The log says `wifi: power saving off while
+transferring`; a Kindle whose Wi‑Fi can't be asked leaves it as it is.
+
 Wi‑Fi that was already on when GZreader started or woke up counts as
 GZreader's on Auto (off after a minute unused). Going to sleep turns off Wi‑Fi
 GZreader turned on.
@@ -39,3 +50,21 @@ for. KOReader's own "Disable Wi‑Fi connection when inactive" isn't offered
 and a tick saved earlier is cleared when GZreader starts. The mode is kept in `gzreader_wifi_mode`; settings from before it (the
 "Wi‑Fi only when needed" switch, `gzreader_wifi_on_demand`, and
 `gzreader_wifi_kept_off`) become Auto, On or Off.
+
+**Kindles with Bluetooth keep it on.** A Kindle can't turn off only its
+Wi‑Fi: GZreader (like KOReader) turns Wi‑Fi off with Amazon's airplane mode,
+which turns Bluetooth off too and cut off headphones and speakers. On the
+Kindles with Bluetooth (2016 and newer: Kindle 8th generation and later,
+Oasis, Paperwhite 4 and newer, Scribe, Colorsoft), when Bluetooth was on,
+GZreader turns it on again right after and, a few seconds later, reconnects
+the device that was connected (by its name in Amazon's list of paired
+devices; with only one paired device, that one). Bluetooth that was off stays
+off. The log says `GZreader: Bluetooth turned on again after airplane mode`,
+never the device's name or address.
+
+**While the Kindle sleeps, Bluetooth is off.** Going to sleep, GZreader turns
+Bluetooth off if it's on (Wi‑Fi turned off at sleep doesn't bring it back);
+waking up, it turns it on again and reconnects the device that was connected
+a few seconds later — only if it was on before sleep. The log says
+`GZreader: Bluetooth off for sleep` and `GZreader: Bluetooth on again after
+sleep`.

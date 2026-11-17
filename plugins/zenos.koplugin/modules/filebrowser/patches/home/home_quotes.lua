@@ -128,7 +128,7 @@ end
 
 local function load_quote_file(filename)
     if not is_quote_filename(filename) then return {} end
-    local ok, raw = pcall(dofile, quote_file_path(filename))
+    local ok, raw = pcall(require("gzdataload").file, quote_file_path(filename)) -- GZreader: read as data, not run (gzdataload.lua)
     return ok and normalize(raw) or {}
 end
 

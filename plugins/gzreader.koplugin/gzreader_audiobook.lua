@@ -313,14 +313,18 @@ function Audiobook.prepare(dir, tracks, title, on_done)
     pcall(function() require("gzreader_tasks").changed() end)
     state.open_dialog()
     Log.info("audiobook: preparing", #todo, "file(s) for the Kindle,", total, "bytes")
-    local started = os.time()
-    local i, before, prog, last_change, last_text = 0, 0, nil, os.time(), nil
+    -- (durations on a clock that only goes forward: a clock set by the first
+    -- HTTPS answer, gzreader_clock.lua, made it "no progress for 5 minutes")
+    local time = require("ui/time")
+    local function secs() return time.to_s(time.now()) end
+    local started = secs()
+    local i, before, prog, last_change, last_text = 0, 0, nil, secs(), nil
     local function finish(ok, err)
         Awake.release(awake_key)
         Audiobook.active_prepare = nil
         pcall(function() require("gzreader_tasks").changed() end)
         if dialog then dialog.dismiss_callback = nil; UIManager:close(dialog); dialog = nil end
-        if ok then Log.info("audiobook: prepared in", (os.time() - started) .. "s")
+        if ok then Log.info("audiobook: prepared in", math.floor(secs() - started + 0.5) .. "s")
         else Log.warn("audiobook: preparing failed:", tostring(err)) end
         on_done(ok, err)
     end
@@ -330,7 +334,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         local t = todo[i]
         if not t then return finish(true) end
         prog = Audiobook.startConversion(dir, t)
-        last_change = os.time()
+        last_change = secs()
         UIManager:scheduleIn(1, poll)
     end
     poll = function()
@@ -338,7 +342,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
         local f = io.open(prog, "rb")
         local text = f and f:read("*l")
         if f then f:close() end
-        if text and text ~= last_text then last_text, last_change = text, os.time() end
+        if text and text ~= last_text then last_text, last_change = text, secs() end
         local d = text and tonumber(text:match("^(%d+) %d+$"))
         if d then state.done = math.min(total, before + d) end
         if d and dialog then dialog:reportProgress(state.done) end
@@ -357,7 +361,7 @@ function Audiobook.prepare(dir, tracks, title, on_done)
             local code = ef:read("*l"); ef:close()
             return finish(false, "the conversion stopped (exit " .. tostring(code) .. ")")
         end
-        if os.time() - last_change > 300 then return finish(false, "no progress for 5 minutes") end
+        if secs() - last_change > 300 then return finish(false, "no progress for 5 minutes") end
         UIManager:scheduleIn(1, poll)
     end
     nextTrack()
@@ -394,6 +398,7 @@ function Audiobook.download(plugin, summary, on_done, attempt, info)
     pcall(require("gzreader_recovery").audioStarted, plugin, summary, "download") -- picked up after a restart
     local bitrate = plex and require("gzreader_plex").quality(plugin.store).bitrate
     local pid, fd = ffiutil.runInSubProcess(function(_p, wfd)
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first, as for books)
         api.no_refresh = true
         for i, t in ipairs(book.tracks) do
             local final = dir .. "/" .. t.file
@@ -832,6 +837,9 @@ function Player:seekTo(g)
     Engine.stop()
     self.playing = false
     self.pos = g
+    -- Sleep at the end of the chapter: the chapter you moved to (a chapter
+    -- skipped to, or 30 s back over a chapter's start, paused at once before)
+    if self.sleep_end_of_chapter then self.sleep_end_of_chapter = Audiobook.chapterAt(self.book, g) end
     if was_playing and not self:play() then self:keepAwake(false) end
     self:save()
 end
@@ -916,8 +924,9 @@ function Player:tick()
         self:pause()
         UIManager:show(InfoMessage:new{ text = _("Sleep timer: paused."), timeout = 4 })
     elseif self.sleep_end_of_chapter then
+        -- (past it: an MP3 started at a chapter can begin a 4 KB block before it)
         local idx = Audiobook.chapterAt(self.book, self:globalPos())
-        if idx ~= self.sleep_end_of_chapter then
+        if idx > self.sleep_end_of_chapter then
             self.sleep_end_of_chapter = nil
             self:pause()
             UIManager:show(InfoMessage:new{ text = _("Sleep timer: paused at the end of the chapter."), timeout = 4 })
@@ -1178,8 +1187,8 @@ function Screen:build()
     }, kh))
     self.actions[3] = { function() self:onVolDown() end, function() self:onVolUp() end }
     gap(10)
-    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = 15,
-        value_text = T("%1 / %2", Engine.volume(), 15), label = _("volume"),
+    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = Engine.volumeMax(),
+        value_text = T("%1 / %2", Engine.volume(), Engine.volumeMax()), label = _("volume"),
         letters = Touch.keys() and { "A", "S" } or nil,
         focused = self.focus and self.focus[1] == 3 and (self.focus[2] == 1 and "minus" or "plus") or nil,
         minus = function() self:onVolDown() end, plus = function() self:onVolUp() end })

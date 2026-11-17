@@ -312,9 +312,8 @@ local function write_checked_sidecar(stage, target, data)
         remove_file(stage)
         return nil, "short sidecar write"
     end
-    local loader, load_err = loadfile(stage)
-    local ok, decoded
-    if loader then ok, decoded = pcall(loader) end
+    local ok, decoded = pcall(require("gzdataload").file, stage) -- GZreader: read as data, not run (gzdataload.lua)
+    local loader, load_err = ok, nil
     if not loader or not ok or type(decoded) ~= "table" then
         remove_file(stage)
         return nil, load_err or decoded or "invalid sidecar"

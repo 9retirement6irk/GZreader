@@ -168,6 +168,17 @@ function Grimmory:init()
         -- (written to gzreader.lua at the first save, so a stale recent part can't come back)
         if ok_r and applied then Grimmory.full_due, Grimmory.recent_written = true, true end
     end
+    if not Grimmory.secrets_loaded then
+        -- (a Kindle: sign-ins kept off the USB drive, gzreader_secrets.lua; still in
+        -- the settings, from before: moved at the first save, a few seconds in)
+        Grimmory.secrets_loaded = true
+        local ok_s, moving = pcall(function() return require("gzreader_secrets").load(self.store) end)
+        if ok_s and moving then
+            Grimmory.full_due, Grimmory.secrets_moving = true, true
+            Log.info("secrets: sign-ins in the settings on the USB drive: moved off it at the next save")
+            UIManager:scheduleIn(10, function() pcall(self.save, self) end)
+        end
+    end
     Grimmory.last_instance = self -- (every instance shares the store: the exit's last save)
     self.store.downloads = self.store.downloads or {}
     self.store.pending = self.store.pending or { progress = {}, sessions = {} }
@@ -224,7 +235,7 @@ function Grimmory:init()
             pcall(self.restoreFromManifest, self)
         end
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
-        if Mod.Touch.audio() then
+        if Mod.Touch.player() then
             pcall(function() require("gzreader_abfolder").start(self) end)
             -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
             pcall(function() require("gzreader_musicfolder").start(self) end)
@@ -378,27 +389,39 @@ function Grimmory:save()
     store.save_seq = (tonumber(store.save_seq) or 0) + 1
     local fp = Grimmory.fingerprint(store)
     local now = os.time()
-    if Grimmory.full_due or not fp or fp ~= Grimmory.full_fp or now - (Grimmory.full_at or 0) >= Grimmory.FULL_EVERY then
-        self.settings:saveSetting("state", store)
-        self.settings:flush()
-        Grimmory.full_fp, Grimmory.full_at, Grimmory.full_due = fp, now, false
-        if Grimmory.recent_written then
-            Grimmory.recent_written = false
-            os.remove(Grimmory.recentPath())
-            os.remove(Grimmory.recentPath() .. ".old")
+    -- (sign-ins out of what's written to the drive and back after: gzreader_secrets.lua)
+    local Secrets = require("gzreader_secrets")
+    local held = Secrets.strip(store)
+    local ok_w, err_w = pcall(function()
+        if Grimmory.full_due or not fp or fp ~= Grimmory.full_fp or now - (Grimmory.full_at or 0) >= Grimmory.FULL_EVERY then
+            self.settings:saveSetting("state", store)
+            self.settings:flush()
+            Grimmory.full_fp, Grimmory.full_at, Grimmory.full_due = fp, now, false
+            if Grimmory.recent_written then
+                Grimmory.recent_written = false
+                os.remove(Grimmory.recentPath())
+                os.remove(Grimmory.recentPath() .. ".old")
+            end
+            Grimmory.saves_full = (Grimmory.saves_full or 0) + 1
+        else
+            local small = {}
+            for k, v in pairs(store) do
+                if not BIG[k] then small[k] = v end
+            end
+            Grimmory.recent = Grimmory.recent or LuaSettings:open(Grimmory.recentPath())
+            Grimmory.recent:saveSetting("seq", store.save_seq)
+            Grimmory.recent:saveSetting("state", small)
+            Grimmory.recent:flush()
+            Grimmory.recent_written = true
+            Grimmory.saves_small = (Grimmory.saves_small or 0) + 1
         end
-        Grimmory.saves_full = (Grimmory.saves_full or 0) + 1
-    else
-        local small = {}
-        for k, v in pairs(store) do
-            if not BIG[k] then small[k] = v end
-        end
-        Grimmory.recent = Grimmory.recent or LuaSettings:open(Grimmory.recentPath())
-        Grimmory.recent:saveSetting("seq", store.save_seq)
-        Grimmory.recent:saveSetting("state", small)
-        Grimmory.recent:flush()
-        Grimmory.recent_written = true
-        Grimmory.saves_small = (Grimmory.saves_small or 0) + 1
+    end)
+    Secrets.restore(store, held)
+    if not ok_w then error(err_w, 0) end
+    if held and Grimmory.secrets_moving and not Grimmory.recent_written then
+        Grimmory.secrets_moving = false
+        Secrets.cleanBackups(DataStorage:getSettingsDir() .. "/gzreader.lua", Grimmory.recentPath())
+        Log.info("secrets: sign-ins moved off the USB drive")
     end
     -- syncing through a computer: what it should send and bring, next to the books
     if usb then usb.writeOutbox(self) end
@@ -694,7 +717,8 @@ function Grimmory:sectionItems(section)
             }),
         }
     elseif section == "reader" then
-        if not Mod.Touch.audio() then return {} end -- (no speaker: no read aloud, no audiobooks)
+        -- (no speaker: no audiobooks; read aloud only with Amazon's Bluetooth voice)
+        if not Mod.Touch.player() and not Mod.Touch.tts() then return {} end
         local items = {}
         -- (read aloud: Shift + Sym, the Kindles with a keyboard)
         if Mod.Touch.tts() then
@@ -706,12 +730,15 @@ function Grimmory:sectionItems(section)
                 callback = function() self:showTtsSettings() end,
             })
         end
+        if not Mod.Touch.player() then return items end
         items[#items + 1] = icon("check", {
             text = _("Test audiobook playback"),
-            help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
+            help_text = Mod.Touch.audio() and _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard.")
+                or _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) through your Bluetooth headphones or speaker and asks whether you heard them."),
             keep_menu_open = true, -- the test's messages show over Settings
             callback = function() require("gzreader_audioengine").test() end,
         })
+        if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)
         items[#items + 1] = icon("check", {
             text = _("Pause when headphones are unplugged"),
             help_text = _("Music, audiobooks and read aloud pause instead of carrying on out of the speaker. Needs to know where this Kindle says the headphones are plugged in: Find the headphone jack."),
@@ -792,6 +819,7 @@ local ERRORS = {
     bad_credentials = _("Wrong username or password."),
     rate_limited = _("Too many attempts. Wait a minute and try again."),
     usb = _("This Kindle syncs with Grimmory through a computer: Menu → Sync with computer."),
+    no_https = require("gzreader_lan").noHttpsText(),
 }
 
 function Grimmory:describeError(err)
@@ -878,18 +906,46 @@ function Grimmory:sendLogToDeveloper(comment)
     local tmp = DataStorage:getDataDir() .. "/cache"
     require("libs/libkoreader-lfs").mkdir(tmp)
     Log.probe_device = Device:isKindle()
+    -- Built and sent in a background process: on a Paperwhite 3 building the
+    -- log took 12 s and sending it 44 s, with the screen frozen. (Another
+    -- background job running: here, as before.)
+    local function build()
+        local dest, err = Log.exportTo(tmp, DataStorage:getDataDir() .. "/crash.log")
+        if not dest then return nil, err end
+        local parts
+        parts, err = require("gzreader_remote").sendLogs(dest, comment)
+        os.remove(dest)
+        return parts, err
+    end
+    local Async = require("gzreader_async")
+    if not Async.sync and Async.local_jobs == 0 then
+        Log.flush() -- (the background process writes its own lines straight to the log)
+        Net.hold("debug log")
+        local returned, not_started = false, false
+        Async.background(build, function(parts, err)
+            Net.release("debug log")
+            if not returned and err == "busy" then not_started = true; return end -- (couldn't start it: here)
+            self:reportSent(parts, err)
+        end, "sending the debug log", { timeout = 300 })
+        returned = true
+        if not not_started then
+            UIManager:show(InfoMessage:new{
+                text = _("Sending the diagnostic log to the developer… You can carry on; GZreader says when it's sent."), timeout = 4 })
+            return
+        end
+    end
     local busy = InfoMessage:new{ text = _("Sending the diagnostic log to the developer…"), timeout = 0 }
     UIManager:show(busy)
     UIManager:forceRePaint()
-    local dest, err = Log.exportTo(tmp, DataStorage:getDataDir() .. "/crash.log")
-    local parts
-    if dest then
-        Net.hold("debug log")
-        parts, err = require("gzreader_remote").sendLogs(dest, comment)
-        Net.release("debug log")
-        os.remove(dest)
-    end
+    Net.hold("debug log")
+    local parts, err = build()
+    Net.release("debug log")
     UIManager:close(busy)
+    self:reportSent(parts, err)
+end
+
+--- What Send to the developer says when it's done.
+function Grimmory:reportSent(parts, err)
     if parts then
         UIManager:show(InfoMessage:new{ text = _("Diagnostic log sent to the developer. Thank you!"), timeout = 4 })
     else
@@ -1200,7 +1256,7 @@ function Grimmory:addLauncherEntries()
     end
     for _i, def in ipairs(LAUNCHER) do
         local e = find(cfg.entries, def[3])
-        local skip = def[5] == "audio" and not Mod.Touch.audio() -- (no speaker: not added)
+        local skip = def[5] == "audio" and not Mod.Touch.player() -- (no sound at all: not added)
         if e then
             e.gz_context = def[4] -- (1.12.2: Phone and Send books are Home's)
         elseif not skip then
@@ -1269,7 +1325,7 @@ function Grimmory:onGzLauncherMusicToggle()
     elseif p then require("gzreader_musictab").open(p) end
 end
 
---- The Music tab (ZenOS's tab bar: Settings → Navbar → Tabs → Music).
+--- The Music tab (ZenOS's tab bar: Settings → Interface → Navbar → Tabs → Music).
 function Grimmory:onShowGzMusic()
     if self.ui and self.ui.document then return end -- (file manager's instance)
     require("gzreader_musictab").show(self)
@@ -1680,7 +1736,7 @@ function Grimmory:showTtsSettings()
         UIManager:setDirty(dialog, "ui", btn.dimen)
     end
     local function speedText() return T(_("Speed %1"), Mod.TTS.speed()) end
-    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.VOLUME_MAX) end
+    local function volumeText() return T(_("Volume %1 / %2"), Mod.TTS.volume(), Mod.TTS.volumeMax()) end
     local function setSpeed(v)
         Mod.TTS.setSpeed(math.max(50, math.min(200, v)))
         relabel("speed", speedText())
@@ -1690,24 +1746,29 @@ function Grimmory:showTtsSettings()
         relabel("volume", volumeText())
         Mod.TTS.say("Volume " .. Mod.TTS.volume() .. ".")
     end
+    -- Amazon's Bluetooth voice (Scribe and other Bluetooth Kindles): the
+    -- volume is the Kindle's Bluetooth volume (1-8, as Amazon's slider), and
+    -- there is nothing to find
+    local bt = Mod.TTS.hasIvona()
+    local buttons = {}
+    buttons[#buttons + 1] = {
+        { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
+        { id = "volume", text = volumeText(), enabled = false },
+        { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
+    }
+    buttons[#buttons + 1] = {
+        { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
+        { id = "speed", text = speedText(), enabled = false },
+        { text = _("Faster"), callback = function() setSpeed(Mod.TTS.speed() + 10) end },
+    }
+    buttons[#buttons + 1] = { { text = bt and _("Test the Kindle voice") or _("Find the Kindle voice (test)"), callback = function()
+        UIManager:close(dialog); Mod.TTS.findVoice()
+    end } }
+    buttons[#buttons + 1] = { { text = _("Close"), callback = function() UIManager:close(dialog) end } }
     dialog = ButtonDialog:new{
-        title = _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
-        buttons = {
-            {
-                { text = _("Quieter"), callback = function() setVolume(Mod.TTS.volume() - 1) end },
-                { id = "volume", text = volumeText(), enabled = false },
-                { text = _("Louder"), callback = function() setVolume(Mod.TTS.volume() + 1) end },
-            },
-            {
-                { text = _("Slower"), callback = function() setSpeed(Mod.TTS.speed() - 10) end },
-                { id = "speed", text = speedText(), enabled = false },
-                { text = _("Faster"), callback = function() setSpeed(Mod.TTS.speed() + 10) end },
-            },
-            { { text = _("Find the Kindle voice (test)"), callback = function()
-                UIManager:close(dialog); Mod.TTS.findVoice()
-            end } },
-            { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
-        },
+        title = bt and _("Read aloud\nThrough Bluetooth headphones or a speaker. In a book, Read aloud in the quick panel starts and stops it. The sentence being read is highlighted and pages turn by themselves.")
+            or _("Read aloud\nShift + Sym starts and stops reading. The sentence being read is highlighted and pages turn by themselves."),
+        buttons = buttons,
     }
     UIManager:show(dialog)
 end
@@ -1854,7 +1915,11 @@ function Grimmory:onResume()
 end
 
 function Grimmory:onEndOfBook()
-    if self.sync and self:syncEnabled() then self.sync:push(true) end
+    if self.sync and self:syncEnabled() then
+        -- (on the last page the position goes as 100%: Grimmory marks the book Read)
+        Log.info("end of book", tostring(self.sync.book_id), self.sync:atEnd() and "sent as 100%" or "not on the last page")
+        self.sync:push(true)
+    end
 end
 
 --- The status bar hidden or shown with a tap: a book with fitted pictures
@@ -1864,6 +1929,8 @@ function Grimmory:onReaderFooterVisibilityChange()
 end
 
 function Grimmory:onCloseDocument()
+    -- memory as the book closes, and again once Home is back (gzreader_opentiming.lua)
+    pcall(function() require("gzreader_opentiming").closed() end)
     nookChange()
     if self.tts then self.tts:stop(); self.tts = nil end
     self.bookmarks = nil
@@ -1872,7 +1939,7 @@ function Grimmory:onCloseDocument()
         self.annotations = nil
     end
     if self.sync then
-        self.sync:onLeave()
+        self.sync:onLeave(true)
         pcall(self.sync.releaseCfi, self.sync)
         self.sync = nil
     end
@@ -1888,10 +1955,10 @@ end
 
 --- The Audiobooks tab: the Catalog, open on its Audiobooks page.
 function Grimmory:onShowGzAudiobooks(touchmenu)
-    if not require("gzreader_touch").audio() then
-        -- (a Kindle without a speaker or headphone jack: no Audiobooks page at all)
+    if not require("gzreader_touch").player() then
+        -- (a Kindle without a speaker, headphone jack or Bluetooth: no Audiobooks page at all)
         closeTouchMenu(touchmenu)
-        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker or headphone jack, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can.") })
+        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).") })
         return true
     end
     return self:onShowGrimmoryLibrary(touchmenu, { section = "audiobooks", tab_id = "ct_audiobooks", only = true })

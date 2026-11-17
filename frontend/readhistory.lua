@@ -107,7 +107,7 @@ function ReadHistory:_read(force_read)
     end
     if force_read or (history_file_modification_time > self.last_read_time) then
         self.last_read_time = history_file_modification_time
-        local ok, data = pcall(dofile, history_file)
+        local ok, data = pcall(require("gzdataload").file, history_file) -- GZreader: read as data, not run (gzdataload.lua)
         if ok and data then
             self.hist = {}
             for _, v in ipairs(data) do

@@ -73,8 +73,13 @@ add({ shot = "2-reopened" })
 -- a highlight with a note (as KOReader's own Add note makes it)
 add({ fn = function(E)
     local ui = reader()
-    local p0 = "/body/DocFragment[1]/body/div/p[3]/text().0"
-    local p1 = "/body/DocFragment[1]/body/div/p[3]/text().20"
+    -- (four words on the page shown, whatever the book's markup: a fixed
+    -- path such as …/body/div/p[3] isn't in every book, and then the
+    -- highlight was "not convertible" and never reached Grimmory)
+    local doc = ui.document
+    local p0 = doc:getNextVisibleWordStart(doc:getXPointer()) or doc:getXPointer()
+    local p1 = p0
+    for _i = 1, 4 do p1 = doc:getNextVisibleWordEnd(p1) or p1 end
     local item = { page = p0, pos0 = p0, pos1 = p1, drawer = "lighten", color = "yellow",
         text = ui.document:getTextFromXPointers(p0, p1), note = "Kindle note", chapter = "Chapter 1" }
     local index = ui.annotation:addItem(item)
