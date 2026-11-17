@@ -320,10 +320,17 @@ API to `/api` are found too.
     (the ten words nearest the step; **More feelings…** has them all) and
     **What's behind it…** (work, family, health…).
   - **What did you do?** your activities. **Goals:** tick the ones you did.
-  - A **prompt** (**Another prompt** for the next one) and **Write about
-    it…**, a box for the words.
+  - A **prompt** (**↻ Another** for the next one) and, right under it, your
+    **words on lined paper**, typed straight in and formatted as in the note
+    editor (hold a word for the formatting bar). A tap in it brings the
+    keyboard; the questions above fold away while you type, so only the
+    prompt and your words show. **Done** (top left) puts the keyboard away.
+    **✎** in the box's top right corner **draws** instead (or as well): a
+    page on lined paper, with the drawing screen's tools; **Done** there
+    brings you back, and ✎ then shows how many sheets go with the entry.
+    (Kindles with keys: **W** writes in a box of its own, as before.)
   - **Save** makes a private note: the prompt as a quote and your words, the
-    goals as a checklist, then the tags, like
+    goals as a checklist, any drawings as the note's drawings, then the tags, like
     `#mood/pleasant #mood/today #felt/grateful #impact/work #did/reading`.
     It's written exactly as the fork's web editor writes an entry, so its
     Insights count entries from the Kindle; any Memos shows it as a note.

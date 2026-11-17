@@ -44,6 +44,8 @@ local RichEdit = InputContainer:extend{
     hint = nil,
     on_change = nil,
     gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
+    ruled = false, -- lined paper: a rule under every line (a journal entry)
+    on_show_keyboard = nil, -- told when the keyboard comes up (a tap in the text)
     focused = true,
 }
 
@@ -471,7 +473,31 @@ function RichEdit:isTextEdited() return Blocks.write(self.doc) ~= self.doc.origi
 
 function RichEdit:onShowKeyboard()
     if self.keyboard then self.keyboard:showKeyboard() end
+    if self.on_show_keyboard then self.on_show_keyboard() end
     return true
+end
+
+--- A new height for the page (the window around it laid out again), the cursor kept in view.
+function RichEdit:setHeight(h)
+    self.height = math.max(S(60), math.floor(h))
+    self.dimen.h = self.height
+    self:keepCursorInView()
+end
+
+--- Where lined paper's rules go: every `pitch` pixels down the page, from its
+--- top (the text's own line height), as y offsets inside a page `h` high
+--- scrolled `top` down.
+function RichEdit.rules(pitch, top, h)
+    local out = {}
+    if not pitch or pitch < 4 then return out end
+    local k = math.floor(top / pitch) + 1
+    while true do
+        local y = k * pitch - top - 1
+        if y >= h then break end
+        if y >= 0 then out[#out + 1] = y end
+        k = k + 1
+    end
+    return out
 end
 function RichEdit:onCloseKeyboard()
     if self.keyboard then self.keyboard:hideKeyboard() end
@@ -737,6 +763,13 @@ function RichEdit:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     bb:paintRect(x, y, self.width, self.height, Blitbuffer.COLOR_WHITE)
     local top, h = self.top, self.height
+    if self.ruled then
+        -- lined paper: the text's line height apart, under the words
+        local pitch = lineMetrics(RichEdit.face(RichEdit.TEXT_SIZE))
+        for _i, ry in ipairs(RichEdit.rules(pitch, top, h)) do
+            bb:paintRect(x, y + ry, self.width, 1, Blitbuffer.COLOR_LIGHT_GRAY)
+        end
+    end
     local p, q = self:selection()
     local doc_empty = #self.doc.blocks == 1 and #self.doc.blocks[1].chars == 0 and self.doc.blocks[1].kind == "paragraph"
     if doc_empty and self.hint then

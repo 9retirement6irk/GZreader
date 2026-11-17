@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Journal: write right under the prompt, on lined paper, or draw", text = "On touch Kindles a journal entry's words go in a box right under the prompt, on lined paper, typed straight in and formatted as in the note editor; there's no Write about it button any more. While you type, the questions fold away so the prompt and your words sit above the keyboard; Done puts it away. ✎ in the box's corner opens a drawing on lined paper, saved with the entry. Another prompt sits beside the prompt." },
             { short = "Notes: the quick panel pulls down while you write or draw", text = "A swipe down from the top opens the quick panel over the note editor (the keyboard steps aside), a drawing and a journal entry, as at Home and in a book; what you were doing is still there when it closes. In a drawing, pull down from the top bar, or from the very top edge with the bar folded away: that never draws, and on the Scribe the pen still draws up to the edge." },
         },
     },
