@@ -17,7 +17,8 @@ Writes, into plugins/gzreader.koplugin/notepaper/:
     python3 tools/gzreader/make_notepaper.py [font.ttf]
 
 The font is for the planners' few words (times, days, numbers): NotoSans
-from a KOReader folder, DejaVu Sans otherwise. Run again only to change a
+from a KOReader folder, DejaVu Sans otherwise. The `*-plain.png` files are the margin papers as they
+were before they had holes: kept as they are, for pages drawn on them. Run again only to change a
 paper: a page drawn on one is known by its picture's bytes, so a changed
 file is a new paper to pages already drawn on the old one.
 """
@@ -69,14 +70,31 @@ def dashed(d, y, x0, x1, grey=SOFT, dash=10, gap=8):
         x += dash + gap
 
 
+HOLE_X, HOLE_R, HOLES_Y = 95, 19, (163, 719, 1277)  # as College ruled's were
+HOLE_FILL, HOLE_EDGE = (236, 236, 236), (218, 218, 218)
+
+
+def holes(d):
+    """The three punched holes of notebook paper, down the left edge."""
+    for y in HOLES_Y:
+        d.ellipse([HOLE_X - HOLE_R, y - HOLE_R, HOLE_X + HOLE_R, y + HOLE_R], fill=HOLE_FILL, outline=HOLE_EDGE, width=2)
+
+
 def ruled(step, margin=False):
+    """Ruled paper; with a margin it's notebook paper: its lines from edge to
+    edge, a red margin line, and three punched holes (the owner, 2026-11-17:
+    the holes went when the Scribe's templates came)."""
     im, d = page()
     y = TOP
     while y <= BOTTOM:
-        hline(d, y)
+        if margin:
+            hline(d, y, 0, W)
+        else:
+            hline(d, y)
         y += step
     if margin:
-        vline(d, MARGIN_X, 60, H - 40, RED)
+        vline(d, MARGIN_X, 0, H, RED)
+        holes(d)
     return im
 
 
@@ -232,7 +250,7 @@ EARLIER = ["college", "wide", "gregg", "dots", "graph", "checklist", "cornell"]
 TILE, CROP = 200, 360
 
 
-def tile(im):
+def tile(im, punched=False):
     """The chooser's picture: the page's top-left corner, its lines darker
     (in their colours: a colour screen shows the tiles so too)."""
     t = im.convert("RGB").crop((40, 80, 40 + CROP, 80 + CROP)).resize((TILE, TILE), Image.LANCZOS)
@@ -240,7 +258,9 @@ def tile(im):
     for y in range(TILE):
         for x in range(TILE):
             r, g, b = px[x, y]
-            if min(r, g, b) <= 246:
+            if punched and abs(r - g) < 4 and abs(g - b) < 4 and r >= 230:
+                pass  # (a punched hole's pale fill: as it is, not a dark blot)
+            elif min(r, g, b) <= 246:
                 px[x, y] = (int(r * 0.5), int(g * 0.5), int(b * 0.5))
             else:
                 px[x, y] = WHITE
@@ -256,7 +276,7 @@ def main():
     for name, make in PAPERS:
         im = make()
         save(im, os.path.join(OUT, name + ".png"))
-        save(tile(im), os.path.join(OUT, "tiles", name + ".png"))
+        save(tile(im, name.endswith("-margin") and name.startswith("ruled-")), os.path.join(OUT, "tiles", name + ".png"))
     for name in EARLIER:
         save(tile(Image.open(os.path.join(OUT, name + ".png"))), os.path.join(OUT, "tiles", name + ".png"))
     for f in sorted(os.listdir(OUT)):
