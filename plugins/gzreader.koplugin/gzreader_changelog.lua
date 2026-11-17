@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: a new drawing gets a title and tags in a small window", text = "Draw on the Notes tab, then Done: instead of the whole note page, a New drawing window asks for a title (the note's heading; optional) and tags (# Tag: your most used tags or a new one), then Save sends the drawing as a note. Back to drawing returns to it. Editing a note's drawings still goes back to its page." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

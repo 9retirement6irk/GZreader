@@ -2146,6 +2146,8 @@ function Notes.edit(plugin, memo, opts)
         drawing_atts = memo and Notes.drawings(memo) or nil,
         open_drawing = ((memo ~= nil and Notes.drawings(memo)[1] ~= nil) or (memo == nil and opts and opts.draw))
             and Notes.canDraw(plugin),
+        -- Draw (a new note): after Done, the New drawing window (title, tags, Save)
+        new_drawing = memo == nil and opts and opts.draw or nil,
         on_save = function(content, visibility, vis_changed, space, space_changed, drawings)
             if memo then
                 memo.content = content
