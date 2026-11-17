@@ -7274,6 +7274,34 @@ print("Notes (Memos v0.31)")
             and NE.nextVisibility("PUBLIC", "spaces/a") == "PRIVATE", "Alt+V goes round the choices for the note's space")
         check(NE.visibilityAfterMove("SPACE", nil) == "PRIVATE" and NE.visibilityAfterMove("SPACE", "spaces/b") == "SPACE"
             and NE.visibilityAfterMove("PUBLIC", nil) == "PUBLIC", "out of its space, Space members becomes Private (as in Memos)")
+        -- touch: Save at the top right; taps there ignored just after the drawing screen's Done
+        check(not NE.guarded(nil, 10) and NE.guarded(10, 10.2) and NE.guarded(10, 10 + NE.TAP_GUARD_S - 0.01)
+            and not NE.guarded(10, 10 + NE.TAP_GUARD_S) and not NE.guarded(10, 9),
+            "editor: the top row ignores taps for " .. NE.TAP_GUARD_S .. " s after the drawing screen closes, then takes them")
+        local nesrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(nesrc:find("self.save_top = self.touch and not self.floating or nil", 1, true) ~= nil
+            and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
+            and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
+            and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 4,
+            "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
+        -- a new drawing's window: a title and tags, then Save
+        local ND = require("gzreader_newdrawing")
+        check(ND.content("Garden plan", { "home", "#garden", "home" }) == "# Garden plan\n\n#home #garden"
+            and ND.content("", { "a" }) == "#a" and ND.content("  Two\nlines ", {}) == "# Two lines" and ND.content("", {}) == "",
+            "New drawing: the title as the heading, then the tags (each once); either can be left out")
+        local tg = ND.toggle({ "a", "b" }, "#b")
+        tg = ND.toggle(tg, "new tag")
+        check(table.concat(tg, ",") == "a,new-tag" and #ND.toggle({}, "  ") == 0,
+            "New drawing: a tag chosen again comes off; a new one is cleaned like the editor's")
+        check(ND.tagLine({}):find("# Tag", 1, true) ~= nil and ND.tagLine({ "a", "b" }) == "Tags: #a #b",
+            "New drawing: the chosen tags under the title")
+        local nesrc2 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        local nsrc5 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nesrc2:find("if self.popup_only then return self:newDrawingDone() end", 1, true) ~= nil
+            and nesrc2:find("if opts.new_drawing and e.drawing_first then e.popup_only, e.covers_fullscreen = true, false end", 1, true) ~= nil
+            and nsrc5:find("new_drawing = memo == nil and opts and opts.draw or nil,", 1, true) ~= nil,
+            "Draw: Done opens the New drawing window, not the note's page (an edit of a note's drawings still goes back to it)")
         local E = NE.Editor
         local saved_args
         local fake = setmetatable({ space = "spaces/family", original_space = "spaces/family", visibility = "SPACE",

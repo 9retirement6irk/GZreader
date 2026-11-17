@@ -85,6 +85,17 @@ NoteEditor.RICH_TOOLS = {
 NoteEditor.VISIBILITY = { "PRIVATE", "PROTECTED", "PUBLIC" }
 -- In a space (Memos v0.31), also "only its members", second as in Memos' own menu.
 NoteEditor.VISIBILITY_IN_SPACE = { "PRIVATE", "SPACE", "PROTECTED", "PUBLIC" }
+--- Seconds the top row ignores taps after the drawing screen closes (Done is
+--- in the same corner as Private ▾ and Save: a second tap on a slow Done
+--- landed on them).
+NoteEditor.TAP_GUARD_S = 0.8
+
+--- True while taps on the top row are ignored: within TAP_GUARD_S of `since`
+--- (seconds; nil: never).
+function NoteEditor.guarded(since, now)
+    return since ~= nil and now ~= nil and now >= since and now - since < NoteEditor.TAP_GUARD_S
+end
+
 NoteEditor.VIS_LABEL = { PRIVATE = _("Private"), PROTECTED = _("Signed-in users"), PUBLIC = _("Public"),
     SPACE = _("Space members") }
 
@@ -296,7 +307,9 @@ function Editor:init()
             Log.warn("notes: not read as blocks, editing Markdown:", tostring(doc))
         end
     end
-    if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save)
+    -- touch, the full page: Save at the top right (beside Space and Private, where the drawing screen's Done is)
+    self.save_top = self.touch and not self.floating or nil
+    if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save off touch)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
         if self.rich then
@@ -435,6 +448,25 @@ local function tapTarget(widget, fn)
     return box
 end
 
+--- Seconds now (monotonic).
+function Editor.now()
+    local time = require("ui/time")
+    return time.to_s(time.now())
+end
+
+--- A tap target in the top row: ignored just after the drawing screen closed
+--- (NoteEditor.TAP_GUARD_S), so a second tap on its Done does nothing here.
+function Editor:topTap(widget, fn)
+    return tapTarget(widget, function()
+        if NoteEditor.guarded(self.drawing_closed_at, Editor.now()) then
+            Log.info("notes: a tap on the editor's top row right after the drawing closed: ignored")
+            self.taps_ignored = (self.taps_ignored or 0) + 1
+            return
+        end
+        fn()
+    end)
+end
+
 function Editor:onCloseWidget()
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
 end
@@ -459,7 +491,7 @@ function Editor:drawChrome()
                 TextWidget:new{ text = self.memo and _("Edit note") or _("New note"), face = Font:getFace("smalltfont", 21), bold = true } } },
         RightContainer:new{ dimen = Geom:new{ w = sw, h = self.title_h },
             HorizontalGroup:new{
-                (self:canDraw() and not self.rich) and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
+                (self:canDraw() and not self.rich) and self:topTap(FrameContainer:new{ padding = S(6), radius = S(6), bordersize = Size.border.thick,
                     background = self:hasDrawing() and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
                     TextWidget:new{ text = self:drawingLabel(),
                         face = Font:getFace("cfont", 15), bold = true,
@@ -467,29 +499,39 @@ function Editor:drawChrome()
                     function() self:openDrawing() end)
                     or HorizontalSpan:new{ width = 0 },
                 HorizontalSpan:new{ width = (self:canDraw() and not self.rich) and S(8) or 0 },
-                self.has_spaces and tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
+                self.has_spaces and self:topTap(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 3)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
                     TextWidget:new{ text = self:spaceLabel() .. ((self.touch or self.dpad) and "  \u{25BE}" or "  (Alt+A)"),
-                        face = Font:getFace("cfont", 15), max_width = math.floor(sw * 0.3) } }, function() self:onShortcut("A") end)
+                        face = Font:getFace("cfont", 15), max_width = math.floor(sw * (self.save_top and 0.22 or 0.3)) } },
+                        function() self:onShortcut("A") end)
                     or HorizontalSpan:new{ width = 0 },
                 HorizontalSpan:new{ width = self.has_spaces and S(8) or 0 },
-                tapTarget(FrameContainer:new{ padding = S(6), radius = S(6),
+                self:topTap(FrameContainer:new{ padding = S(6), radius = S(6),
                     bordersize = (self.touch or (self.dpad and self.focus_tool == #NoteEditor.TOOLS + 2)) and Size.border.thick
                         or (self.dpad and Size.border.thin) or 0,
                     TextWidget:new{ text = NoteEditor.VIS_LABEL[self.visibility] .. ((self.touch or self.dpad) and "  \u{25BE}" or "  (Alt+V)"),
                         face = Font:getFace("cfont", 15) } }, function() self:onShortcut("V") end),
+                -- touch: Save at the top right, where the drawing screen's Done is
+                self.save_top and HorizontalSpan:new{ width = S(10) } or HorizontalSpan:new{ width = 0 },
+                self.save_top and self:topTap(FrameContainer:new{ padding = S(6), padding_left = S(14), padding_right = S(14),
+                    radius = S(6), bordersize = Size.border.thick, background = Blitbuffer.COLOR_BLACK,
+                    TextWidget:new{ text = _("Save"), face = Font:getFace("cfont", 16), bold = true, fgcolor = Blitbuffer.COLOR_WHITE } },
+                    function() self:save() end)
+                    or HorizontalSpan:new{ width = 0 },
                 HorizontalSpan:new{ width = margin } } },
     }
     local bar = HorizontalGroup:new{ align = "center" }
-    local save_w = S(70)
+    -- (Save at the top on touch: this row is all the tools', or the sheets')
+    local save_w = self.save_top and 0 or S(70)
+    local save_gap = self.save_top and 0 or S(10)
     local tools = self:tools()
-    local tool_w = math.floor((self.inner - save_w - S(10)) / math.max(1, #tools))
+    local tool_w = math.floor((self.inner - save_w - save_gap) / math.max(1, #tools))
     if self.rich then
         -- the formatted page: formatting comes up at the selection (gzreader_richedit.lua's bar);
-        -- this row is the note's sheets (its drawings), and Save
-        local strip = self:sheetStrip(self.inner - save_w - S(10))
-        bar[#bar + 1] = LeftContainer:new{ dimen = Geom:new{ w = self.inner - save_w - S(10), h = self.tool_h }, strip }
+        -- this row is the note's sheets (its drawings), and Save (at the top on touch)
+        local strip = self:sheetStrip(self.inner - save_w - save_gap)
+        bar[#bar + 1] = LeftContainer:new{ dimen = Geom:new{ w = self.inner - save_w - save_gap, h = self.tool_h }, strip }
     end
     for i, t in ipairs(tools) do
         local focused = self.focus_tool == i
@@ -508,15 +550,17 @@ function Editor:drawChrome()
             CenterContainer:new{ dimen = Geom:new{ w = tool_w - 2, h = self.tool_h - 2 }, txt },
         }, function() self:useTool(i) end)
     end
-    bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }
     local save_focused = self.focus_tool == #tools + 1
-    bar[#bar + 1] = tapTarget(FrameContainer:new{
-        width = save_w, height = self.tool_h, padding = 0, bordersize = Size.border.thick, radius = S(6),
-        background = save_focused and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
-        CenterContainer:new{ dimen = Geom:new{ w = save_w - 4, h = self.tool_h - 4 },
-            TextWidget:new{ text = _("Save"), face = Font:getFace("cfont", 18), bold = true,
-                fgcolor = save_focused and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
-    }, function() self:save() end)
+    if not self.save_top then
+        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }
+        bar[#bar + 1] = tapTarget(FrameContainer:new{
+            width = save_w, height = self.tool_h, padding = 0, bordersize = Size.border.thick, radius = S(6),
+            background = save_focused and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE,
+            CenterContainer:new{ dimen = Geom:new{ w = save_w - 4, h = self.tool_h - 4 },
+                TextWidget:new{ text = _("Save"), face = Font:getFace("cfont", 18), bold = true,
+                    fgcolor = save_focused and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK } },
+        }, function() self:save() end)
+    end
     self.bar_slot:clear()
     self.bar_slot[1] = bar
     if self.touch then return end -- (no key hints)
@@ -841,6 +885,7 @@ end
 function Editor:openDrawing(page)
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
     local function back()
+        self.drawing_closed_at = Editor.now()
         self:redraw()
         if self.vk then UIManager:nextTick(function() if self.input then self.input:onShowKeyboard() end end) end
     end
@@ -880,10 +925,14 @@ function Editor:openDrawing(page)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
             self.pages = res
+            if self.popup_only then return self:newDrawingDone() end
             back()
         end,
         on_cancel = function()
             if #self.pages == 0 and #(self.drawing_atts or {}) == 0 then self.pages = nil end
+            -- (a new drawing left at once: nothing to save, the Notes tab again)
+            if self.popup_only and not self:hasDrawing() then return UIManager:close(self, "full") end
+            if self.popup_only then return self:newDrawingDone() end
             -- (Mark up left at once: the note as it was, not its editor)
             if extra and not self:changed() then return UIManager:close(self, "full") end
             back()
@@ -942,6 +991,45 @@ function Editor:save()
         UIManager:show(require("ui/widget/infomessage"):new{ text = _("The note is empty."), timeout = 2 })
         return
     end
+    return self:saveText(text)
+end
+
+--- A new drawing (the Notes tab's Draw) after Done: the New drawing window
+--- (a title and tags, then Save), not the note's page; nothing drawn: closed.
+function Editor:newDrawingDone()
+    if not self:hasDrawing() then return UIManager:close(self, "full") end
+    local NewDrawing = require("gzreader_newdrawing")
+    -- (what's under: the Notes tab, painted again where the drawing screen was)
+    UIManager:setDirty("all", "full")
+    return NewDrawing.show{
+        tags = self.tags,
+        on_save = function(text)
+            Log.info("notes: a new drawing saved from its window,", self:drawingCount(), "page(s)")
+            self:saveText(text)
+        end,
+        on_back = function()
+            local n = 0
+            for _i, p in ipairs(self.pages or {}) do if not p.removed then n = n + 1 end end
+            self:openDrawing(math.max(1, n))
+        end,
+    }
+end
+
+--- The editor out of sight: a new drawing's (only its drawing screen and
+--- the New drawing window show; the Notes tab stays under them).
+function Editor:paintTo(bb, x, y)
+    if self.popup_only then return end
+    return InputContainer.paintTo(self, bb, x, y)
+end
+
+function Editor:handleEvent(ev)
+    -- (out of sight: nothing reaches it, nor what's under it)
+    if self.popup_only then return ev.handler == "onGesture" or nil end
+    return InputContainer.handleEvent(self, ev)
+end
+
+--- Saves the note as `text` with its drawings (Save, and the New drawing window's Save).
+function Editor:saveText(text)
     self.saved = true
     UIManager:close(self, "full")
     if self.on_save then
@@ -986,6 +1074,8 @@ function NoteEditor.show(opts)
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil
+    -- a new drawing: Done opens the New drawing window, the note's page never shows
+    if opts.new_drawing and e.drawing_first then e.popup_only, e.covers_fullscreen = true, false end
     UIManager:show(e, "full")
     if e.drawing_first then e:openDrawing() end
     return e

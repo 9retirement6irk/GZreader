@@ -223,8 +223,24 @@ add({ fn = function(E)
 end, after = 3 })
 add({ fn = function(E) E.zoomed_at_done = screen().sketch.zoomed end, after = 0.5 })
 add({ shot = "4-after-erase-or-undo", after = 0.5 })
-add({ fn = function(E) tapButton(E, "done") end, after = 3 })
+-- Done, and a second tap on the same spot 0.3 s later (a slow Done: the
+-- owner's finger landed on Private ▾ in the editor that came back)
+add({ fn = function(E)
+    local done = button("done")
+    E.vis_before = editor() and editor().visibility
+    tapButton(E, "done")
+    E.fingerDown(done[1], done[2], 0.3)
+    E.fingerUp(0.35)
+end, after = 3 })
 add({ shot = "5-editor-with-drawing", after = 1 })
+add({ fn = function(E)
+    local e = editor()
+    local menu = false
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget ~= e and w.widget.buttons then menu = true end end
+    check(e and e.save_top and (e.taps_ignored or 0) >= 1 and e.visibility == E.vis_before and not menu,
+        "a second tap where Done was: ignored by the editor's top row (" .. tostring(e and e.taps_ignored) .. "), still "
+            .. tostring(e and e.visibility) .. ", no menu opened")
+end, after = 0.5 })
 add({ fn = function(E)
     local e = editor()
     local Drawing = require("gzreader_drawing")
@@ -246,7 +262,8 @@ add({ fn = function(E)
     E.say("drawing file", size, "bytes")
     if path then os.execute("cp '" .. path .. "' '" .. E.out .. "/drawing-sent.canvas.png'") end
     e.input:setText("Sketch from the " .. MODEL, true)
-    e:save()
+    -- Save: at the top right now (touch)
+    if PEN then E.penTap("Save") else E.tap("Save") end
 end, after = 1 })
 add({ wait_for = function()
     local q = plugin().store.memos.queue
