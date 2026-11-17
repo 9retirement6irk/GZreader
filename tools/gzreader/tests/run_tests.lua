@@ -8961,9 +8961,55 @@ print("Notes (Memos v0.31)")
             local y2 = b._gz_y
             b:onSwipe(nil, { direction = "south", distance = 190 })
             local y3 = b._gz_y
-            b:onPan(nil, { direction = "south", distance = 800 })
+            -- a drag follows the finger: a step at once, the next only after a moment and a few pixels, the rest at the lift
+            local LiveScroll = require("gzreader_livescroll")
+            local real_now, clock = LiveScroll.now, 100
+            LiveScroll.now = function() return clock end
+            b:onPan(nil, { direction = "south", distance = 300, relative = { x = 0, y = 300 } })
+            local live1 = b._gz_y
+            clock = 100.05
+            b:onPan(nil, { direction = "south", distance = 500, relative = { x = 0, y = 500 } })
+            local live2 = b._gz_y -- (too soon after the last step)
+            clock = 100.4
+            b:onPan(nil, { direction = "south", distance = 505, relative = { x = 0, y = 505 } })
+            local live3 = b._gz_y
+            clock = 100.8
+            b:onPan(nil, { direction = "south", distance = 790, relative = { x = 0, y = 790 } })
+            b:onPan(nil, { direction = "south", distance = 800, relative = { x = 0, y = 800 } })
             local before_release = b._gz_y
             b:onGzPanRelease()
+            check(live1 == 1540 and live2 == 1540 and live3 == 1335 and before_release == 1050 and b._gz_y == 1040,
+                "scrolling: a drag moves the notes with the finger, a step at a time (" .. live1 .. ", " .. live2 .. ", " .. live3 .. ", "
+                    .. before_release .. "), settling where it lifts (" .. b._gz_y .. ")")
+            -- a drag that ends as a swipe counts once, from where the notes were when it began
+            clock = 200
+            b:onPan(nil, { direction = "north", distance = 100, relative = { x = 0, y = -100 } })
+            local followed = b._gz_y
+            b:onSwipe(nil, { direction = "north", distance = 160 })
+            check(followed == 1140 and b._gz_y == 1200 and b._gz_pan == nil, "…a swipe after following: " .. followed .. " then " .. b._gz_y .. " (not counted twice)")
+            b:onSwipe(nil, { direction = "south", distance = 160 })
+            local s1, s2 = { }, { }
+            check(LiveScroll.step(s1, 5, 1) == 0 and LiveScroll.step(s1, 40, 1) == 40 and LiveScroll.step(s1, 80, 1.05) == 0
+                and LiveScroll.step(s1, 80, 1.3) == 40 and LiveScroll.step(s2, -30, 9) == -30,
+                "live scrolling: no step under 12 px or within 0.18 s of the last; then all the way to the finger")
+            -- a drag's steps are shown with a refresh that doesn't flash; the page once more, properly, at the lift
+            local UIMq = require("ui/uimanager")
+            local real_dirty, seenq = UIMq.setDirty, {}
+            UIMq.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                seenq[#seenq + 1] = tostring(refresh)
+            end
+            LiveScroll.quiet(function()
+                UIMq:setDirty(nil, "ui")
+                UIMq:setDirty(nil, function() return "partial", { x = 1 } end)
+            end)
+            UIMq:setDirty(nil, "ui")
+            local patched = UIMq.setDirty
+            UIMq.setDirty = real_dirty
+            check(table.concat(seenq, ",") == "fast,fast,ui" and patched ~= nil and not pcall(LiveScroll.quiet, function() error("x") end)
+                and UIMq.setDirty == real_dirty,
+                "live scrolling: a step's refreshes are \"fast\" (no flash), whatever was asked; ordinary ones after (" .. table.concat(seenq, ",") .. "); put back even after an error")
+            LiveScroll.now = real_now
             local y4 = b._gz_y
             b:onSwipe(nil, { direction = "west", distance = 300 })
             local y5 = b._gz_y
@@ -8971,8 +9017,8 @@ print("Notes (Memos v0.31)")
             b:scrollBy(-5000)
             b:scrollBy(-10)
             local drawn_scrolls = drawn
-            check(y1 == 410 and y2 == 2030 and y3 == 1840 and before_release == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn_scrolls == 7,
-                "scrolling: a swipe moves the notes exactly as far as the finger went, never past the end; a drag moves when the finger lifts; a swipe sideways moves a screenful less a row; redrawn only when it moved ("
+            check(y1 == 410 and y2 == 2030 and y3 == 1840 and y4 == 1040 and y5 == 1740 and b._gz_y == 0 and drawn_scrolls == 13,
+                "scrolling: a swipe moves the notes exactly as far as the finger went, never past the end; a swipe sideways moves a screenful less a row; redrawn only when it moved ("
                 .. table.concat({ y1, y2, y3, y4, y5, drawn }, ",") .. ")")
             -- a swipe that starts above the notes (the top of the screen) isn't the notes': the quick panel opens
             b._gz_y = 600
