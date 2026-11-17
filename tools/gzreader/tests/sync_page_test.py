@@ -458,6 +458,8 @@ with sync_playwright() as pw:
             await GZSync.sendJobs({ jobs: [
                 { id: 'ok1', kind: 'progress', method: 'PUT', path: '/api/v1/app/books/1/progress', body: {} },
                 { id: 'ok2', kind: 'mark', method: 'DELETE', path: '/api/v1/bookmarks/{id}', ref: '77' },
+                { id: 'ok3', kind: 'mark', method: 'PUT', path: '/api/v2/book-notes/{id}', ref: '78', body: {} },
+                { id: 'bad5', kind: 'progress', method: 'DELETE', path: '/api/v2/users/1' },
                 { id: 'bad1', kind: 'progress', method: 'PUT', path: '.attacker.example/steal', body: {} },
                 { id: 'bad2', kind: 'progress', method: 'GET', path: '/api/v1/users/me' },
                 { id: 'bad3', kind: 'progress', method: 'DELETE', path: '/api/v1/../v2/users/1' },
@@ -468,9 +470,9 @@ with sync_playwright() as pw:
             GZSync.Report.feed({ report: { feed: GZSync.Report.FEED.replace(/[^/]+$/, 'other123') } }),
             GZSync.Report.feed({ report: { feed: 'http://127.0.0.1:9/open/feed/t' } }) ] };
     }""")
-    check(res["seen"] == ["PUT /api/v1/app/books/1/progress", "DELETE /api/v1/bookmarks/77"]
-          and {"ok1", "ok2", "bad1", "bad2", "bad3", "bad4"} <= set(res["done"]),
-          "outbox: only POST/PUT/DELETE to /api/v1/… sent; another host, GET or ../ dropped, never fetched %r" % (res["seen"],))
+    check(res["seen"] == ["PUT /api/v1/app/books/1/progress", "DELETE /api/v1/bookmarks/77", "PUT /api/v2/book-notes/78"]
+          and {"ok1", "ok2", "ok3", "bad1", "bad2", "bad3", "bad4", "bad5"} <= set(res["done"]),
+          "outbox: only POST/PUT/DELETE to /api/v1/… and the notes' /api/v2/book-notes sent; another host, GET, other /api/v2 or ../ dropped, never fetched %r" % (res["seen"],))
     check(res["feeds"][0] != "https://attacker.example/open/feed/x" and res["feeds"][1].endswith("/other123")
           and res["feeds"][2] == "http://127.0.0.1:9/open/feed/t",
           "outbox: Kindle reports go only to the developer's feed server (or one on this computer, for tests)")

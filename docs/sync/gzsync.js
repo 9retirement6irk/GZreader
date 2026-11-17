@@ -1252,11 +1252,13 @@ gets a password or token.
   // What the page sends for the Kindle: only Grimmory's own API (outbox.json is
   // a file on the Kindle's drive, so anything could have written it), with the
   // methods GZreader's jobs use. A path is put after the server's address, so
-  // it must start with /api/v1/: ".example.net/x" would be another host.
+  // it must start with /api/v1/ (or be the web reader's notes, /api/v2/book-notes):
+  // ".example.net/x" would be another host.
   var JOB_METHODS = { POST: true, PUT: true, DELETE: true };
   function jobAllowed(method, path) {
     return JOB_METHODS[method] === true && typeof path === "string"
-      && /^\/api\/v1\/[A-Za-z0-9._~%\/-]*$/.test(path) && !/(^|\/)\.\.?(\/|$)/.test(path) && path.indexOf("//") < 0;
+      && (/^\/api\/v1\/[A-Za-z0-9._~%\/-]*$/.test(path) || /^\/api\/v2\/book-notes(\/[A-Za-z0-9._~%-]+)?$/.test(path))
+      && !/(^|\/)\.\.?(\/|$)/.test(path) && path.indexOf("//") < 0;
   }
 
   // 1. what the Kindle has to send
