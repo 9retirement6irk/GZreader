@@ -2450,6 +2450,7 @@ end
 function Notes.journal(plugin)
     if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
     return require("gzreader_journalscreen").show{
+        plugin = plugin,
         settings = Notes.journalSettings(plugin),
         on_save = function(content)
             Notes.addNote(plugin, content, "PRIVATE", Notes.journalSpace(plugin))

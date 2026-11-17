@@ -173,7 +173,9 @@ API to `/api` are found too.
     **⋮ Options** (**New page**, **Erase page**, **Close without saving**)
     and **Done** (keeps the drawings with the note). The small tab under the
     bar **folds the bar away** so you can draw on the top of the page; the
-    tab stays at the top edge to bring it back.
+    tab stays at the top edge to bring it back. **Pull down** from the bar
+    (folded away: from the very top edge) for the [quick
+    panel](Using-GZreader#how-it-opens); the drawing stays as it is.
   - **A new drawing** (**Draw** on the Notes tab) is named and tagged from
     the top bar: tap its name (**Untitled drawing** ✎) to type a title,
     which becomes the note's heading; tap **Tags** for your most used tags
@@ -197,6 +199,15 @@ API to `/api` are found too.
       the shape appears when you lift. It's drawn in the pen's thickness
       and colour, and is undone and rubbed out like a stroke (Memos gets
       it as a stroke along the outline).
+    - **Text:** typed text boxes. Tap the page where one goes and type its
+      words (**Add**). The box is chosen: a frame with a handle at its
+      bottom right corner. **Drag the box** to move it; **drag its corner**
+      to make it wider or narrower (the words wrap at its width) or taller.
+      Tap a chosen box to change its words (**Delete** takes it off); tap
+      another box to choose it, or the page to choose none. Undo and Redo
+      take back moves, sizes and words; **Erase page** takes the boxes too.
+      Memos gets them as its own text boxes, so they can be edited there,
+      and text boxes made in Memos can be moved and retyped here.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other

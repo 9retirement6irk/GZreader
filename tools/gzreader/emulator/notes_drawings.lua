@@ -100,8 +100,8 @@ add({ shot = "5-edit-opens-the-drawing", after = 1 })
 add({ fn = function(E)
     local d = top()
     local sk = d and d.sketch
-    check(d and d.name == "gz_drawscreen" and sk and #sk.strokes == 6 and #sk.locked == 2,
-        "Edit on a note with a drawing opens the drawing: its 6 strokes, its ellipse and text kept")
+    check(d and d.name == "gz_drawscreen" and sk and #sk.strokes == 6 and #sk.locked == 1 and #sk:liveTexts() == 1,
+        "Edit on a note with a drawing opens the drawing: its 6 strokes, its ellipse kept, its text a box")
     local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
     E.finger({ { math.floor(W * 0.2), math.floor(H * 0.85) }, { math.floor(W * 0.5), math.floor(H * 0.9) }, { math.floor(W * 0.8), math.floor(H * 0.85) } }, 0.4)
 end, after = 2 })

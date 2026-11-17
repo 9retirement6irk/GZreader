@@ -38,6 +38,13 @@ default; in a book too). Untick one to keep only the other: one always stays
 ticked. They're KOReader's "Activate menu", which no longer shows in Settings →
 KOReader (nor its "Auto-show bottom menu", which does nothing in GZreader).
 
+While you write or draw a note (the [note editor](Notes), a drawing, a
+journal entry) a **swipe down from the top** opens the panel too, over what
+you're doing, which is still there when it closes. In a drawing, pull down
+from the top bar (or, with the bar folded away, from the very top edge):
+that never draws. On the Scribe a finger pulls; the pen still draws up to
+the edge. While the panel is open the keyboard steps aside.
+
 ### Choosing the tiles
 
 **Settings → Interface → Quick panel** lists the tiles of each group

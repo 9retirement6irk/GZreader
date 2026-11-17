@@ -387,7 +387,34 @@ function Editor:init()
             column,
         }
     end
+    -- touch: a swipe down from the top opens the quick panel, as at Home and in a book
+    if Touch.on() and self.plugin then
+        self.ges_events = self.ges_events or {}
+        self.ges_events.PullPanel = { GestureRange:new{ ges = "swipe", range = function() return self:pullZone() end } }
+    end
     self:drawChrome()
+end
+
+--- Where a swipe down opens the quick panel: the title row (and a little
+--- under it) of the page; above a quick note's window, the top of the screen.
+function Editor:pullZone()
+    local sw = Screen:getWidth()
+    if self.floating and self.box then
+        return Geom:new{ x = 0, y = 0, w = sw, h = math.max(S(60), self.box.y) }
+    end
+    return Geom:new{ x = 0, y = 0, w = sw, h = self.title_h + S(16) }
+end
+
+--- A swipe down from the top: the quick panel over the note, as at Home and
+--- in a book. The note stays as written under it; the on-screen keyboard
+--- steps aside while the panel is open and comes back after.
+function Editor:onPullPanel(_arg, ges)
+    if not (ges and ges.direction == "south") then return false end
+    local Panel = require("gzreader_panel")
+    Log.info("notes: the quick panel pulled down over the editor")
+    Panel.show(self.plugin)
+    if Panel.open then self:keyboardAside(Panel.open) end
+    return true
 end
 
 --- A quick note's window without its text box: title, toolbar, key hints,
@@ -960,6 +987,7 @@ function Editor:openDrawing(page)
         for _i, p in ipairs(extra) do list[#list + 1] = p end
     end
     DrawScreen.show{
+        plugin = self.plugin, -- (the quick panel, pulled down from the top)
         pages = list,
         choose_paper = true, -- (a new drawing: which paper first)
         start = page,
@@ -1135,7 +1163,7 @@ end
 --- sent), { att, removed = true } } or nil when they're as they were.
 function NoteEditor.show(opts)
     local atts = opts.drawing_atts or (opts.drawing_att and { opts.drawing_att }) or {}
-    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
+    local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save, plugin = opts.plugin,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
         drawing_atts = atts, extra_pages = opts.extra_pages }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so

@@ -8289,6 +8289,20 @@ print("Notes (Memos v0.31)")
         local qn_kept = qn_opts
         Notes.edit(plugin)
         check(qn_how == "page", "the Notes tab's New note: still the full page")
+        ;(function() -- a swipe down from the top of the editor: the quick panel
+            check(qn_opts.plugin == plugin and qn_kept.plugin == plugin, "the editor (page and window) is given GZreader: it can open the quick panel")
+            local PanelM = require("gzreader_panel")
+            local show_was = PanelM.show
+            local asked, aside
+            PanelM.show = function(pl) asked = pl; PanelM.open = { name = "a panel" }; return true end
+            local ed = { plugin = plugin, keyboardAside = function(_s, dlg) aside = dlg end }
+            local up = NEq.Editor.onPullPanel(ed, nil, { direction = "north" })
+            check(not up and asked == nil, "editor: a swipe up at the top does nothing")
+            local down = NEq.Editor.onPullPanel(ed, nil, { direction = "south" })
+            check(down and asked == plugin and aside ~= nil and aside == PanelM.open,
+                "editor: a swipe down opens the quick panel; the keyboard steps aside while it's open")
+            PanelM.show, PanelM.open = show_was, nil
+        end)()
         qn_opts = qn_kept
         local before_list = select(2, mctl("GET", "/__state"):gsub("GET /api/memos", ""))
         local shown_before = #UI.shown
@@ -9538,7 +9552,7 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,eraser,sep,undo,redo,more",
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
