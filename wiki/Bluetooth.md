@@ -29,6 +29,14 @@ Like Amazon's own Settings, it pairs audio devices (headphones, speakers,
 car adapters); a device that asks you to type or confirm a code may not
 pair.
 
+## The quick panel's Bluetooth tile
+
+In Controls, right after Wi‑Fi (Kindles with Bluetooth only): **a tap** turns
+Bluetooth on or off and the panel stays open; the tile shows **Bluetooth**
+(drawn black) when it's on, **Bluetooth off** when it's off, **Bluetooth…**
+while it switches. **A hold** opens Bluetooth devices, as the Settings row
+does. Settings → Interface → Quick panel can take it off the panel.
+
 ## What GZreader plays over it
 
 Not yet: audiobooks, music and read aloud aren't offered on these Kindles

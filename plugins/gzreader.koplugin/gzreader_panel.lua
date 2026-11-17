@@ -147,6 +147,7 @@ function Panel.catalog()
     return {
         { id = "controls", title = _("Controls"), tiles = {
             { id = "wifi", label = usbOnly() and _("Sync") or _("Wi-Fi") },
+            { id = "bluetooth", label = _("Bluetooth"), note = _("Kindles with Bluetooth"), available = function() return Panel.bluetooth() ~= nil end },
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
             { id = "rotate", label = _("Rotate") },
             { id = "restart", label = _("Restart") },
@@ -329,7 +330,47 @@ function Panel.wifiTile()
     end }
 end
 
---- The Controls tiles: { id, icon, label, on, run }.
+--- ZenOS's Bluetooth module where this Kindle has Bluetooth that it can
+--- manage (modules/menu/bluetooth/bluetooth.lua, gated by
+--- common/gz_bluetooth.lua); nil elsewhere.
+function Panel.bluetooth()
+    local ok, BT = pcall(require, "modules/menu/bluetooth/bluetooth")
+    if ok and type(BT) == "table" and BT.isAvailable and BT.isAvailable() then return BT end
+    return nil
+end
+
+--- The Bluetooth tile (Kindles with Bluetooth): a tap turns Bluetooth on or
+--- off, the panel staying open like the Wi-Fi tile's (`stay`, `refresh`,
+--- drawn again once the change is confirmed); a hold opens ZenOS's
+--- Bluetooth devices list (search, pair, connect). On is drawn inverted.
+function Panel.bluetoothTile()
+    local BT = Panel.bluetooth()
+    if not BT then return nil end
+    local state = BT.getCachedState()
+    if state == nil and not BT.isChanging() then state = BT.isEnabled() end
+    return { id = "bluetooth", icon = state and "bluetooth" or "bluetooth_off",
+        label = BT.isChanging() and _("Bluetooth…") or state and _("Bluetooth") or _("Bluetooth off"),
+        on = state == true, stay = true, refresh = Panel.bluetoothTile,
+        run = function()
+            BT.toggle(function(ok, reason)
+                if not ok then
+                    pcall(function()
+                        UIManager:show(require("ui/widget/infomessage"):new{
+                            text = reason or _("Could not change Bluetooth power."), timeout = 2 })
+                    end)
+                end
+                -- (the open panel draws the tile again on BluetoothStateChanged)
+            end)
+        end,
+        hold = function()
+            local fm = package.loaded["apps/filemanager/filemanager"]
+            local f = fm and fm.instance
+            local zen = (f and f.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
+            require("modules/menu/bluetooth_switcher").open(nil, false, zen)
+        end }
+end
+
+--- The Controls tiles: { id, icon, label, on, run, hold, stay }.
 function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
     local usb = usbOnly()
@@ -337,6 +378,7 @@ function Panel.controls(plugin)
         usb and { id = "wifi", icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
             or Panel.wifiTile(),
     }
+    list[#list + 1] = Panel.bluetoothTile() -- (Kindles with Bluetooth)
     if not nightGuarded() then
         list[#list + 1] = { id = "night", icon = "night", label = _("Night mode"), on = G_reader_settings:isTrue("night_mode"),
             run = function() dispatch("night_mode") end }
@@ -566,6 +608,7 @@ function PanelWidget:init()
                 key = keys and g.letters[i] or nil,
                 callback = nil }
             tile.callback = function() self:pick(t, tile) end
+            if t.hold then tile.hold = function() self:pick({ run = t.hold, full = true }) end end
             tile.gz_tile = t
             tile.key_letter = g.letters[i]
             row[#row + 1] = tile
@@ -728,6 +771,8 @@ end
 function PanelWidget:onNetworkConnected() self:refreshStaying() end
 function PanelWidget:onNetworkDisconnected() self:refreshStaying() end
 function PanelWidget:onNetworkStateChanged() self:refreshStaying() end
+-- (ZenOS's Bluetooth module says so while it switches and once it's done)
+function PanelWidget:onBluetoothStateChanged() self:refreshStaying() end
 
 function PanelWidget:paintTo(bb, x, y)
     local w, h = self.w, self.h
