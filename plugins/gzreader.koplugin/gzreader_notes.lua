@@ -1978,8 +1978,16 @@ function NoteView:build()
             flush()
             local pic = Notes.pictureFor(self.plugin, m, l.src, inner, math.floor(sh * 0.45), function()
                 if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
-            end)
-            if pic then add(VerticalSpan:new{ width = S(6) }); add(pic); add(VerticalSpan:new{ width = S(6) }) end
+            end, l.width)
+            if pic then
+                -- placed as in Memos (left, center or right; sized in the editor)
+                local pw = pic:getSize().w
+                local room = math.max(0, inner - pw)
+                local before = l.align == "center" and math.floor(room / 2) or l.align == "right" and room or 0
+                add(VerticalSpan:new{ width = S(6) })
+                add(before > 0 and HorizontalGroup:new{ HorizontalSpan:new{ width = before }, pic } or pic)
+                add(VerticalSpan:new{ width = S(6) })
+            end
         elseif not Sticky.tagsOnly(l.text) then -- (tags have their own row below)
             para[#para + 1] = Sticky.plain(l.text)
         end
@@ -2216,22 +2224,90 @@ function Notes.showNote(plugin, memo)
     return v
 end
 
---- A picture in a note (src from its Markdown): an ImageWidget, or nil while
---- it's being fetched (on_ready() runs when it's here).
-function Notes.pictureFor(plugin, m, src, max_w, max_h, on_ready)
+--- The attachment a picture in note `m` shows (src from its Markdown), or
+--- nil (a picture from elsewhere on the web).
+function Notes.pictureAttachment(m, src)
     local uid = tostring(src):match("/file/attachments/([^/%?]+)")
-    local att
-    for _i, a in ipairs(m.attachments or {}) do
-        if uid and tostring(a.name):match("attachments/(.+)$") == uid then att = a end
+    if not uid then return nil end
+    for _i, a in ipairs(m and m.attachments or {}) do
+        if tostring(a.name):match("attachments/(.+)$") == uid then return a end
     end
-    if not att and uid then att = { name = "attachments/" .. uid, filename = tostring(src):match("/file/attachments/[^/]+/([^%?]+)") or "image" } end
+    return { name = "attachments/" .. uid, filename = tostring(src):match("/file/attachments/[^/]+/([^%?]+)") or "image" }
+end
+
+--- Note `m`'s pictures for the formatted editor (gzreader_richedit.lua's
+--- `pictures`): their size (read once) and each at the size it shows at
+--- (the last one made kept). One not on the Kindle is fetched (Wi-Fi up),
+--- then on_ready().
+function Notes.editorPictures(plugin, m, on_ready)
+    local sizes, made = {}, {}
+    local asked = {}
+    local function pathOf(src)
+        local att = Notes.pictureAttachment(m, src)
+        if not att then return nil end
+        local path = Memos.filePath(att)
+        if lfs.attributes(path, "mode") ~= "file" then
+            if not asked[src] then
+                asked[src] = true
+                Notes.fetchFile(plugin, att, on_ready)
+            end
+            return nil
+        end
+        return path
+    end
+    return {
+        size = function(src)
+            if sizes[src] == nil then
+                local path = pathOf(src)
+                if not path then return nil end
+                local w, h = Sticky.imageSize(path) -- (read from the file's header)
+                if not w then -- (another kind: decoded once to measure it)
+                    local bb = Sticky.picture(path, 1e6, 1e6)
+                    if bb then w, h = bb:getWidth(), bb:getHeight(); bb:free() end
+                end
+                sizes[src] = w and { w, h } or false
+            end
+            if sizes[src] then return sizes[src][1], sizes[src][2] end
+        end,
+        bb = function(src, w, h)
+            local key = w .. "x" .. h
+            local had = made[src]
+            if had and had.key == key then return had.bb end
+            local path = pathOf(src)
+            local bb = path and Sticky.picture(path, w, h, 50)
+            if had and had.bb then had.bb:free() end
+            made[src] = { key = key, bb = bb }
+            return bb
+        end,
+        free = function()
+            for _src, x in pairs(made) do if x.bb then x.bb:free() end end
+            made = {}
+        end,
+    }
+end
+
+--- A picture's width here for its size in Memos (Sticky.pictureWidth).
+Notes.pictureWidth = Sticky.pictureWidth
+
+--- A picture in a note (src from its Markdown): an ImageWidget, or nil while
+--- it's being fetched (on_ready() runs when it's here). `width`: the size
+--- set in Memos (CSS pixels, Sticky.altSize): shown that wide (Notes.pictureWidth),
+--- enlarged if need be; else as big as fits, only shrunk.
+function Notes.pictureFor(plugin, m, src, max_w, max_h, on_ready, width)
+    local att = Notes.pictureAttachment(m, src)
     if not att then return nil end -- a picture from elsewhere on the web: not fetched
     local path = Memos.filePath(att)
     if lfs.attributes(path, "mode") ~= "file" then
         Notes.fetchFile(plugin, att, on_ready)
         return TextWidget:new{ text = _("(picture: downloading…)"), face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
     end
-    local bb = Sticky.picture(path, max_w, max_h)
+    local want = Notes.pictureWidth(width, max_w)
+    local bb
+    if want then
+        bb = Sticky.picture(path, math.max(1, want - 2 * Size.border.thin), math.max(max_h, Screen:getHeight()), 50) -- (its frame in the width)
+    else
+        bb = Sticky.picture(path, max_w, max_h)
+    end
     if not bb then return nil end
     return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
 end
@@ -2452,6 +2528,9 @@ function Notes.edit(plugin, memo, opts)
         immich = Touch.on() and not (memo and not memo.name) and #require("gzreader_immichpick").sources(plugin) > 0 and plugin or nil,
         -- the note's photos (attached, not drawings): shown in the editor, to remove or put in the text
         photo_atts = memo and memo.name and Notes.photos(memo) or nil,
+        -- the formatted page shows the note's pictures (sized there with their pull tabs)
+        -- (a new note too: a photo put in its text from Immich is on the Kindle already)
+        pictures = function(on_ready) return Notes.editorPictures(plugin, memo or { attachments = {} }, on_ready) end,
         -- an edit of a note with drawings: Edit opens them (Done goes back to the text);
         -- Draw (a new note): a page to draw on at once; Mark up (a PDF): its pages after the note's drawings
         drawing_atts = memo and Notes.drawings(memo) or nil,

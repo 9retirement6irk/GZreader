@@ -122,6 +122,9 @@ add({ fn = function(E)
     local text = e and e:text() or ""
     check(text:match("!%[IMG_0101%]%(/file/attachments/[%w%-]+/IMG_0101%.jpg%)") and strip_thumbs() == 1 and #(e.sent or {}) == 1,
         "In the text: sent at once, its picture line at the cursor, shown by + Photos")
+    local shown
+    for _i, l in ipairs(e.rich_input and e.rich_input.lines or {}) do if l.picture then shown = l end end
+    check(shown and shown.picture.w > 20, "…and the editor shows it as the picture, not its Markdown")
     if e.rich_input then e.rich_input.cur = { b = e.doc.blocks[1], i = 1 }; e.rich_input:addChars(inline_text .. "\n") end
     e:save()
 end, after = 10 })

@@ -316,10 +316,16 @@ function Editor:init()
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
         if self.rich then
+            if not self.rich_input and self.pictures and not self.picture_source then
+                self.picture_source = self.pictures(function()
+                    if not self.closed and self.rich_input then self.rich_input:relayoutPictures() end
+                end)
+            end
             self.rich_input = self.rich_input or require("gzreader_richedit"):new{
                 width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
                 doc = self.doc, editor = self, at_start = self.memo == nil,
                 hint = _("Write a note. #words become tags."),
+                pictures = self.picture_source,
             }
             return self.rich_input
         end
@@ -472,6 +478,7 @@ end
 
 function Editor:onCloseWidget()
     self.closed = true
+    if self.picture_source and self.picture_source.free then self.picture_source.free() end
     if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
 end
 
@@ -1433,7 +1440,7 @@ function NoteEditor.show(opts)
     local e = Editor:new{ memo = opts.memo, tags = opts.tags, on_save = opts.on_save,
         spaces = opts.spaces, space = opts.space, space_title = opts.space_title, can_draw = opts.can_draw,
         immich = opts.immich, photo_atts = opts.photo_atts, -- (the Photos chip; the note's photos)
-        drawing_atts = atts, extra_pages = opts.extra_pages }
+        drawing_atts = atts, extra_pages = opts.extra_pages, pictures = opts.pictures }
     -- (Draw, Edit on drawings: the drawing screen goes up with the editor, so
     -- only it is drawn; the text page shows when Done or Cancel goes back to it)
     e.drawing_first = opts.open_drawing and e:canDraw() or nil

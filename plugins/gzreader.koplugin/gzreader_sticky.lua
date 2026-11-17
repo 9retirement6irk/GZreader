@@ -307,18 +307,76 @@ function Sticky.blankLine(line)
     return rest:match("^%s*$") ~= nil
 end
 
+--- A picture's size and place, as Memos' editor (@usememos/editor, the
+--- owner's fork's web UI) writes them at the end of its alt text:
+--- `![alt|320](…)`, `![alt|320x200](…)`, `![alt|center](…)`,
+--- `![alt|right|320](…)` (CSS pixels; left, center or right).
+--- Returns { alt, width, height, align } (width etc. nil when not given).
+function Sticky.altSize(alt)
+    alt = alt or ""
+    local function num(v)
+        v = v and tonumber(v)
+        if v and v >= 1 and v <= 99999 then return math.floor(v) end
+    end
+    local function escaped(before) return (before:match("\\+$") or ""):len() % 2 == 1 end
+    -- (Lua patterns have no alternation: try each place)
+    for _i, place in ipairs({ "left", "center", "right" }) do
+        local pre, w, h = alt:match("^(.-)|" .. place .. "|([1-9]%d?%d?%d?%d?)x([1-9]%d?%d?%d?%d?)$")
+        if not pre then pre, w = alt:match("^(.-)|" .. place .. "|([1-9]%d?%d?%d?%d?)$") end
+        if not pre then pre = alt:match("^(.-)|" .. place .. "$") end
+        if pre and not escaped(pre) then
+            return { alt = pre, align = place, width = num(w), height = w and num(h) or nil }
+        end
+    end
+    local pre, w, h = alt:match("^(.-)|([1-9]%d?%d?%d?%d?)x([1-9]%d?%d?%d?%d?)$")
+    if not pre then pre, w = alt:match("^(.-)|([1-9]%d?%d?%d?%d?)$") end
+    if pre and not escaped(pre) then return { alt = pre, width = num(w), height = num(h) } end
+    return { alt = alt }
+end
+
+--- Memos' web UI shows a note's words in a column this many CSS pixels wide
+--- (max-w-2xl less its padding): a picture sized there takes the same share
+--- of the Kindle's page.
+Sticky.WEB_COLUMN = 640
+
+--- How wide (Kindle pixels) a picture `width` CSS pixels wide shows on a
+--- page `inner` wide: its share of Memos' column, never wider than the page.
+function Sticky.pictureWidth(width, inner)
+    width = width and tonumber(width)
+    if not width then return nil end
+    return math.max(1, math.min(inner, math.floor(width * inner / Sticky.WEB_COLUMN + 0.5)))
+end
+
+--- The end of a picture's alt text for `size` ({ width, height, align }):
+--- "|center|320", "|320", "" (as the web editor writes it).
+function Sticky.imageSuffix(size)
+    size = size or {}
+    local w = tonumber(size.width)
+    local tail = w and ("|" .. math.floor(w) .. (tonumber(size.height) and ("x" .. math.floor(size.height)) or "")) or ""
+    return (size.align and ("|" .. size.align) or "") .. tail
+end
+
+-- (a line that's only a picture: its start, alt text, and the rest; as Sticky.lines reads it)
+local IMAGE_LINE = "^(%s*!%[)([^%]]*)(%]%([^%)%s]+[^%)]*%)%s*)$"
+
 --- The note's lines: { kind = "text"|"check"|"heading"|"image", text, done, level, src }
+--- (a picture also: n, its number among the note's pictures; alt; width,
+--- height, align: Sticky.altSize).
 function Sticky.lines(content)
     local out = {}
+    local pictures = 0
     for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do
         if line ~= "" and Sticky.blankLine(line) then line = "" end
         local mark, rest = line:match("^%s*[%-%*] %[([ xX])%]%s*(.*)$")
         local hashes, head = line:match("^(#+)%s+(.*)$")
-        local src = line:match("^%s*!%[[^%]]*%]%(([^%)%s]+)[^%)]*%)%s*$")
+        local alt, src = line:match("^%s*!%[([^%]]*)%]%(([^%)%s]+)[^%)]*%)%s*$")
         if mark then
             out[#out + 1] = { kind = "check", done = mark ~= " ", text = rest }
         elseif src then
-            out[#out + 1] = { kind = "image", src = src }
+            pictures = pictures + 1
+            local size = Sticky.altSize(alt)
+            out[#out + 1] = { kind = "image", src = src, n = pictures, alt = size.alt,
+                width = size.width, height = size.height, align = size.align }
         elseif hashes and #hashes <= 6 then
             out[#out + 1] = { kind = "heading", level = #hashes, text = head }
         else
@@ -430,6 +488,30 @@ function Sticky.pictureLine(att)
     local fname = tostring(att.filename or "photo")
     local alt = fname:gsub("%.[%w]+$", ""):gsub("[%[%]]", "")
     return "![" .. alt .. "](/file/attachments/" .. uid .. "/" .. fname:gsub(" ", "%%20") .. ")"
+end
+
+--- Set the n-th picture's size and place ({ width, align }; nil width: as
+--- it comes; nil align: on the left), as the web editor writes them (a new
+--- width drops a height, as it does). Returns the new content.
+function Sticky.setImageSize(content, n, size)
+    local k = 0
+    local out = {}
+    for line in ((content or "") .. "\n"):gmatch("(.-)\n") do
+        local cr = line:match("\r$") and "\r" or ""
+        local body = cr ~= "" and line:sub(1, -2) or line
+        local open, alt, close = body:match(IMAGE_LINE)
+        if open then
+            k = k + 1
+            if k == n then
+                local old = Sticky.altSize(alt)
+                local height = (tonumber(size.width) == old.width) and old.height or nil
+                line = open .. old.alt .. Sticky.imageSuffix{ width = size.width, height = height, align = size.align } .. close .. cr
+            end
+        end
+        out[#out + 1] = line
+    end
+    if out[#out] == "" then table.remove(out) end
+    return table.concat(out, "\n")
 end
 
 --- Tick or untick the n-th checklist item. Returns the new content.

@@ -174,7 +174,7 @@ print("== the drawing screen and the editor take such pages")
         and dsrc:find("new = p.scene and true or nil, scene = p.scene, modified = p.scene and true or nil }", 1, true) ~= nil,
         "the drawing screen opens a page made ready (a PDF's page) as a new, changed page")
     local esrc = readAll(PLUGIN .. "/gzreader_noteeditor.lua")
-    check(esrc:find("drawing_atts = atts, extra_pages = opts.extra_pages }", 1, true) ~= nil
+    check(esrc:find("drawing_atts = atts, extra_pages = opts.extra_pages, pictures = opts.pictures }", 1, true) ~= nil
         and esrc:find("page = page or (#list + 1)", 1, true) ~= nil
         and esrc:find("if extra and not self:changed() then return UIManager:close(self, \"full\") end", 1, true) ~= nil,
         "the editor puts them after the note's drawings, shows the first; Cancel at once leaves the note as it was")
