@@ -113,6 +113,9 @@ function M.build(plugin)
     if advanced_item then
         if type(advanced_item.sub_item_table) == "table" then
             table.insert(advanced_item.sub_item_table, require("common/gz_settings").koreaderMenuItem(plugin_root))
+            -- GZreader: and last, Reset GZreader (gzreader_reset.lua)
+            advanced_item.sub_item_table[#advanced_item.sub_item_table].separator = true
+            table.insert(advanced_item.sub_item_table, require("common/gz_settings").resetItem())
         end
         about_tail[#about_tail + 1] = advanced_item
     end

@@ -8,6 +8,17 @@ GZreader checks for a new release once a day (while Wi‑Fi is on) and offers it
 
 More: [Updates and test builds](Updates-and-Test-Builds).
 
+## Resetting GZreader
+
+**Settings → About → Advanced → Reset GZreader** (the last item) puts GZreader back to how it was when you installed it, without reinstalling. It asks first. Then:
+
+- every setting goes back to its default;
+- everything GZreader downloaded is removed: the **GZreader** folder is emptied (books, audiobooks, music, and the sync page's saved keys and reports);
+- every account is forgotten on this device: Grimmory, Plex, Memos, calendars, Home Assistant, Immich. Nothing is signed out on the servers, so your other devices stay signed in;
+- GZreader restarts and the setup guide opens, as on the first start.
+
+Changes not sent yet (reading progress, notes made without Wi‑Fi) are lost. Your reading statistics, books outside the GZreader folder (for example in `documents`), the diagnostic log and the device's Wi‑Fi networks stay.
+
 ## Uninstalling
 
 **Kindles:** delete the `koreader` folder, `extensions/koreader`, `launchpad/koreader.ini` (Kindle 2/3/DX) and `documents/GZreader.sh` (Kindle 4 and newer). The **GZreader** folder with your books stays until you delete it.

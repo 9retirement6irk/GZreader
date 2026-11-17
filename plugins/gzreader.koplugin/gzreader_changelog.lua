@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Reset GZreader (About → Advanced): default settings, downloads and accounts removed, the setup guide again", text = "Settings → About → Advanced has a new last item, Reset GZreader. After you confirm, every setting goes back to its default, everything GZreader downloaded is removed (the GZreader folder is emptied: books, audiobooks, music) and every account is forgotten on this device (Grimmory, Plex, Memos, calendars, Home Assistant, Immich, the sync page's saved keys). GZreader then restarts with the setup guide, as on its first start. Your accounts aren't signed out on the servers, so your other devices stay signed in. Changes not sent yet (reading progress, notes) are lost; reading statistics, books outside the GZreader folder and the diagnostic log stay." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
