@@ -74,6 +74,16 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
+- **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
+  to a note and choose **Mark up pages** (**Open** reads it as before). Type
+  the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
+  this). They open in the drawing screen after the note's own drawings, each
+  PDF page under your ink like a notepaper; draw, rub out and turn pages as
+  usual. **Done** goes back to the note and **Save** adds the pages you drew
+  on to it as drawings, which Memos shows and opens in its drawing editor with
+  the PDF's page underneath. Pages left blank aren't kept, and the PDF itself
+  isn't changed. Each page is a picture of at most 1440 pixels on its longer
+  side (smaller for a busy scan), so very small print is best zoomed in Memos.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
   backslash escapes (`\*`, `\#`) show as Memos shows them: blank lines and

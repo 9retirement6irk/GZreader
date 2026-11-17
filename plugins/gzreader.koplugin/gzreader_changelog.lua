@@ -10,6 +10,7 @@ return {
         version = "next",
         changes = {
             { short = "Notes: a new drawing gets a title and tags in a small window", text = "Draw on the Notes tab, then Done: instead of the whole note page, a New drawing window asks for a title (the note's heading; optional) and tags (# Tag: your most used tags or a new one), then Save sends the drawing as a note. Back to drawing returns to it. Editing a note's drawings still goes back to its page." },
+            { short = "Notes: mark up a PDF's pages with the pen or a finger", text = "On touch Kindles, tapping a PDF attached to a note now asks Open or Mark up pages. Mark up pages asks which pages (for example 2, or 1-3, 7; at most 10 at a time; a one-page PDF goes straight to it) and opens them in the drawing screen, each PDF page under your ink like a notepaper, after the note's own drawings. Done goes back to the note, and Save adds the pages you drew on to the note as drawings: Memos shows them and opens them in its drawing editor with the PDF's page underneath. Pages you didn't draw on aren't kept, and the PDF itself isn't changed. Needs Memos over Wi-Fi, as drawing does." },
         },
     },
     {
