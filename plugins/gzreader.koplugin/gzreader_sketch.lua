@@ -212,89 +212,13 @@ end
 
 -- ------------------------------------------------- the pencil, for Memos
 
---- The pencil's ink as a picture, for Memos. Memos draws a drawing from its
---- strokes, and its strokes have no texture: there the pencil was a plain
---- see-through line (the owner, 2026-11-17: "the texture doesn't translate
---- over to the memos web ui"). So a saved drawing carries the pencil's ink
---- as one picture, in the scene's own units (a unit a pixel: coarser than
---- the Kindle's screen, so the grain still shows at a web page's size), and
---- the pencil's strokes are kept but not shown there (`hidePencil`).
---- Returns nil without pencil strokes, else { x, y, w, h (the scene's units,
---- whole), mem (w * h * 2 bytes: grey, alpha), n = 2 }.
-function Sketch:pencilLayer()
-    local ffi = require("ffi")
-    local strokes = {}
-    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
-    for _i, st in ipairs(self:live()) do
-        local style = Sketch.toolStyle(st.kind)
-        if style.grain and #st.points > 0 then
-            local base = self:radius(st.width)
-            local pts = {}
-            for j, p in ipairs(st.points) do
-                local sx, sy = self:toScene(p[1], p[2])
-                local r = math.max(0.8, Sketch.toolRadius(st.kind, base, p[3]) / self.per_unit)
-                pts[j] = { sx, sy, r, Sketch.grainDensity(st.kind, p[3]) }
-                x0, y0, x1, y1 = math.min(x0, sx - r), math.min(y0, sy - r), math.max(x1, sx + r), math.max(y1, sy + r)
-            end
-            strokes[#strokes + 1] = { pts = pts, gray = math.floor(style.gray * 0.55) }
-        end
-    end
-    if #strokes == 0 then return nil end
-    local lx, ly = math.floor(x0) - 1, math.floor(y0) - 1
-    local w, h = math.ceil(x1) + 1 - lx, math.ceil(y1) + 1 - ly
-    local mem = ffi.new("uint8_t[?]", w * h * 2) -- (zeroed: nothing there, see-through)
-    local hit = Sketch.grainHit
-    for _i, st in ipairs(strokes) do
-        local pts = st.pts
-        for j = 1, #pts do
-            local a, b = pts[math.max(1, j - 1)], pts[j]
-            local r, density = (a[3] + b[3]) / 2, (a[4] + b[4]) / 2
-            local ri = math.ceil(r)
-            local dx, dy = b[1] - a[1], b[2] - a[2]
-            local n = math.max(1, math.ceil(math.sqrt(dx * dx + dy * dy) / math.max(1, r * 0.7)))
-            for k = 0, n do
-                local cx, cy = a[1] + dx * k / n, a[2] + dy * k / n
-                local px, py = floor(cx + 0.5), floor(cy + 0.5)
-                for yy = py - ri, py + ri do
-                    for xx = px - ri, px + ri do
-                        local d2 = (xx - cx) * (xx - cx) + (yy - cy) * (yy - cy)
-                        local ix, iy = xx - lx, yy - ly
-                        if d2 <= r * r and ix >= 0 and iy >= 0 and ix < w and iy < h and hit(xx, yy, density, d2, r) then
-                            local i = (iy * w + ix) * 2
-                            mem[i], mem[i + 1] = st.gray, 255
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return { x = lx, y = ly, w = w, h = h, mem = mem, n = 2 }
-end
-
---- In `scene` (as it goes to Memos): the pencil's strokes kept, with their
---- tool, but not shown (the layer's picture shows their ink); and the
---- layer's picture element `el` put just over the paper. Returns how many
---- strokes were hidden.
-function Sketch.hidePencil(scene, el)
-    local hidden = 0
-    for _i, e in ipairs(scene.elements or {}) do
-        if e.type == "freedraw" then
-            local kind = Sketch.toolOf(e)
-            if Sketch.toolStyle(kind).grain then
-                e.customData = type(e.customData) == "table" and e.customData or {}
-                e.customData.gzTool = kind -- (its opacity told it apart before)
-                e.opacity = 0
-                hidden = hidden + 1
-            end
-        end
-    end
-    if el then
-        local at = 1
-        while scene.elements[at] and scene.elements[at].type == "image" and scene.elements[at].locked do at = at + 1 end
-        table.insert(scene.elements, at, el)
-    end
-    return hidden
-end
+--- (The pencil's ink is ordinary see-through strokes in a saved drawing, as
+--- the highlighter's: Memos' editor can move and erase them. For a few beta
+--- builds it was carried as one picture with the strokes hidden under it
+--- (customData.gzLayer); `fromScene` still leaves such a picture out and the
+--- strokes come back shown at the next save. The owner, 2026-11-17: Memos'
+--- note view shows the saved picture, texture and all; only its editor
+--- draws from the strokes, and there they must stay editable.)
 
 -- ------------------------------------------------------------ writing tools
 
@@ -617,12 +541,16 @@ function Sketch.fromScene(scene, opts)
                 pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
             local kind = Sketch.toolOf(el)
+            if Sketch.toolStyle(kind).grain and tonumber(el.opacity) == 0 then
+                -- (hidden under a picture of the pencil's ink by a few beta builds: shown again)
+                el.opacity = Sketch.toolStyle(kind).opacity
+            end
             -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
             local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
             self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
         elseif el.type == "image" and type(el.customData) == "table" and el.customData.gzLayer then
             -- (the picture of the pencil's ink made for Memos at the last save: made again
-            -- from the strokes at the next, so neither shown nor kept; see pencilLayer)
+            -- from the strokes at the next, so neither shown nor kept; no longer made, see above)
             self.layer_files[el.fileId or ""] = true
         elseif el.type == "text" and type(el.text) == "string" then
             -- (a text box, here or from memos: moved, resized and typed in like a new one)

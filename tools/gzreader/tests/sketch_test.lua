@@ -971,40 +971,39 @@ end)()
     local sk = sketch()
     sk.width = 7
     line(sk, 100, 1)
-    check(sk:pencilLayer() == nil, "a drawing without pencil: no layer")
     sk.writing = "pencil"
     line(sk, 200, 2)
     line(sk, 300, 3)
-    local layer = sk:pencilLayer()
-    local marked, clear = 0, 0
-    for i = 0, layer.w * layer.h - 1 do if layer.mem[i * 2 + 1] == 255 then marked = marked + 1 else clear = clear + 1 end end
-    -- (the canvas is 2 pixels a unit: the strokes run from x 50 to 250, y 100 and 150, in the scene)
-    check(layer.n == 2 and layer.x <= 50 and layer.x > 40 and layer.x + layer.w >= 250 and layer.x + layer.w < 262
-        and layer.y < 100 and layer.y > 90 and layer.y + layer.h > 150 and layer.y + layer.h < 162,
-        "the pencil's layer: over its strokes, in the scene's units (" .. layer.x .. "," .. layer.y .. " " .. layer.w .. "x" .. layer.h .. ")")
-    check(marked > 300 and clear > marked * 3 and layer.mem[0] == 0 and layer.mem[1] == 0,
-        "…specks of grey where the pencil went (" .. marked .. "), see-through elsewhere (" .. clear .. ")")
+    -- saved: the pencil's strokes are ordinary see-through strokes, shown, with their tool
+    -- (Memos' editor can move and erase them; the owner, 2026-11-17), and no picture of them
     local scene = sk:scene()
-    local n = #scene.elements
-    local hidden = Sketch.hidePencil(scene, { id = "layer", type = "image", locked = true, fileId = "f1", customData = { gzLayer = "pencil" } })
-    local shown, pencil = 0, 0
+    local shown, pictures = 0, 0
     for _i, e in ipairs(scene.elements) do
-        if e.type == "freedraw" and e.opacity == 0 and e.customData.gzTool == "pencil" then pencil = pencil + 1 end
-        if e.type == "freedraw" and e.opacity ~= 0 then shown = shown + 1 end
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then shown = shown + 1 end
+        if e.type == "image" then pictures = pictures + 1 end
     end
-    check(hidden == 2 and pencil == 2 and shown == 1 and #scene.elements == n + 1 and scene.elements[1].id == "layer",
-        "for Memos: the pencil's strokes kept with their tool but not shown, the pen's as it was, the layer under them")
-    -- opened again: the strokes are the pencil's, the layer isn't a picture of the page's (it's made again)
+    check(shown == 2 and pictures == 0 and Sketch.pencilLayer == nil and Sketch.hidePencil == nil,
+        "saved for Memos: the pencil's strokes shown (see-through, their tool kept), editable there; no picture of them")
+    -- a drawing saved by the betas that hid the strokes under a picture of them: opened, the
+    -- strokes are the pencil's, the picture and its file dropped; saved again, they show
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" then e.opacity = 0 end
+    end
+    table.insert(scene.elements, 1, { id = "layer", type = "image", locked = true, fileId = "f1", x = 0, y = 0, width = 10, height = 10,
+        customData = { gzLayer = "pencil" } })
     scene.files = { f1 = { dataURL = "x" }, other = { dataURL = "y" } }
     local back = Sketch.fromScene(scene, { canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 })
     local kinds = {}
     for _i, st in ipairs(back:live()) do kinds[#kinds + 1] = st.kind or "pen" end
     local again = back:scene()
-    local has_layer = false
-    for _i, e in ipairs(again.elements) do if e.id == "layer" then has_layer = true end end
+    local has_layer, reshown = false, 0
+    for _i, e in ipairs(again.elements) do
+        if e.id == "layer" then has_layer = true end
+        if e.type == "freedraw" and e.customData and e.customData.gzTool == "pencil" and e.opacity == 70 then reshown = reshown + 1 end
+    end
     check(table.concat(kinds, ",") == "pen,pencil,pencil" and #back.locked == 0 and not has_layer and again.files.f1 == nil and again.files.other ~= nil
-        and back:pencilLayer() ~= nil,
-        "opened again: pen, pencil, pencil; the old layer and its file dropped (not shown twice, not carried along), a new one made")
+        and reshown == 2,
+        "a drawing with the pencil as a picture (an earlier beta's): pen, pencil, pencil; the picture and its file dropped, the strokes shown again when saved")
 end)()
 
 -- the pencil's grain

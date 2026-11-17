@@ -9629,9 +9629,8 @@ print("Notes (Memos v0.31)")
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
         check(dsrc:find('if seg[7] and not seg[8] then grey = true end', 1, true) ~= nil
-            and dsrc:find('pcall(DrawScreen.addPencilLayer, scene, sk, path)', 1, true) ~= nil
-            and dsrc:find('customData = { gzLayer = "pencil" },', 1, true) ~= nil,
-            "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing carries the pencil's ink as a picture for Memos")
+            and not dsrc:find('addPencilLayer', 1, true) and not dsrc:find('gzLayer', 1, true),
+            "drawing: no refresh after a pencil stroke (it flashed the page); a saved drawing's pencil strokes stay strokes (editable in Memos), no picture of them")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")
