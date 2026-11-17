@@ -48,6 +48,22 @@ local function trim(p)
     return p
 end
 
+--- `p` as a full path. On a Kindle KOReader's own folder is "." (it runs
+--- from there) and its settings folder "./settings": relative paths, which
+--- `safeDir` refuses, so a reset once emptied only the GZreader folder.
+function Reset.absolute(p, cwd)
+    if type(p) ~= "string" or p == "" then return nil end
+    if p:sub(1, 1) ~= "/" then
+        cwd = cwd or lfs().currentdir()
+        if type(cwd) ~= "string" or cwd:sub(1, 1) ~= "/" then return nil end
+        p = cwd .. "/" .. p
+    end
+    p = p:gsub("/+", "/")
+    repeat local n; p, n = p:gsub("/%./", "/") until n == 0
+    p = p:gsub("/%.$", "")
+    return p ~= "" and p or "/"
+end
+
 --- Is `path` `dir` itself or inside it?
 function Reset.inside(path, dir)
     path, dir = trim(path), trim(dir)
@@ -130,6 +146,9 @@ function Reset.dirs(plugin, over)
     end
     if d.program == nil and plugin and type(plugin.path) == "string" then
         d.program = plugin.path
+    end
+    for _i, k in ipairs({ "data", "settings", "home", "library", "secrets", "program" }) do
+        if type(d[k]) == "string" then d[k] = Reset.absolute(d[k], over.cwd) end
     end
     return d
 end

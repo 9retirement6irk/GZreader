@@ -98,6 +98,25 @@ check(bad.library == nil, "…nor one reached through ..")
 bad = Reset.plan(nil, { data = d.data, settings = d.data, home = d.home, secrets = false })
 check(bad.skipped[1] == "settings", "settings folder = the program's folder: not emptied")
 
+-- relative folders, as on a Kindle (KOReader's folder is ".", its settings "./settings"): made full paths
+check(Reset.absolute(".", "/mnt/us/koreader") == "/mnt/us/koreader" and Reset.absolute("./settings", "/mnt/us/koreader") == "/mnt/us/koreader/settings"
+    and Reset.absolute("plugins/gzreader.koplugin", "/mnt/us/koreader/") == "/mnt/us/koreader/plugins/gzreader.koplugin"
+    and Reset.absolute("/mnt/us/./GZreader/.", "/x") == "/mnt/us/GZreader" and Reset.absolute("x", "relative") == nil,
+    "relative folders made full paths from the current folder")
+local rel = Reset.plan({ libraryDir = function() return d.library end, path = "plugins/gzreader.koplugin" },
+    { data = ".", settings = "./settings", home = d.home, secrets = false, cwd = d.data })
+local rl = {}
+for _i, e in ipairs(rel.empty) do rl[#rl + 1] = e.label .. "=" .. e.dir end
+check(#rel.skipped == 0 and rel.empty[1].dir == d.settings and rel.files[1] == d.data .. "/settings.reader.lua" and rel.library == d.library,
+    "KOReader's folder given as \".\" (a Kindle): settings, caches and the GZreader folder all emptied (" .. table.concat(rl, ",")
+    .. "; left alone: " .. table.concat(rel.skipped, ",") .. ")")
+local cwd0 = lfs.currentdir()
+lfs.chdir(d.data)
+local rel2 = Reset.plan({ libraryDir = function() return d.library end, path = "plugins/gzreader.koplugin" },
+    { data = ".", settings = "./settings", home = d.home, secrets = false })
+lfs.chdir(cwd0)
+check(#rel2.skipped == 0 and rel2.empty[1].dir == d.settings, "…from the real current folder too")
+
 -- the wipe
 local removed, nfailed = Reset.wipe(plan)
 local gone, stayed = {}, {}
