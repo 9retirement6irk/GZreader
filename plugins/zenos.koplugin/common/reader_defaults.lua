@@ -25,6 +25,9 @@ local CRE_DEFAULTS = {
     copt_nightmode_images = 1,
     copt_status_line = 1,
 }
+-- GZreader: a smaller default on big screens (the Scribe: 14), so a book's text
+-- is the size it is on a 6" Kindle (common/gz_book_font.lua)
+pcall(function() CRE_DEFAULTS.copt_font_size = require("common/gz_book_font").defaultSize() end)
 local KOPT_DEFAULTS = {
     kopt_contrast = 2.5,
     kopt_nightmode_document = 1,
