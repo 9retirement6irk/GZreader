@@ -669,7 +669,7 @@ local function flush_settings(settings, prevent_backup)
     local ok, result = pcall(settings.flush, settings)
     if not ok or result == false then return false end
     if type(settings.file) ~= "string" or settings.file == "" then return true end
-    local ok_read, persisted = pcall(dofile, settings.file)
+    local ok_read, persisted = pcall(require("gzdataload").file, settings.file) -- GZreader: read as data, not run (gzdataload.lua)
     return ok_read and deeply_equal(persisted, settings.data)
 end
 

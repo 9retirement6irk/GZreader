@@ -38,7 +38,6 @@ local function Net() return require("gzreader_net") end
 local House = {
     TAB_ID = "ct_house",
     REFRESH = 30, -- seconds, while the tab is on the screen
-    MAX_TABS = 7, -- (ZenOS's tab bar)
 }
 House.__index = House
 
@@ -74,46 +73,13 @@ end
 
 ---------------------------------------------------------------- the tab bar
 
-local function navbar()
-    local zen = require("gzreader_tabs").zen()
-    local nb = zen and type(zen.config) == "table" and zen.config.navbar
-    if type(nb) ~= "table" then return nil end
-    return nb, zen
-end
-
 --- Whether the House tab is in the tab bar.
-function House.tabShown()
-    local nb = navbar()
-    return nb ~= nil and type(nb.show_tabs) == "table" and nb.show_tabs[House.TAB_ID] == true
-end
+function House.tabShown() return require("gzreader_tabs").shown(House.TAB_ID) end
 
 --- Put the House tab in the tab bar, or take it out (as Settings → Interface
 --- → Navbar → Tabs does). False when it can't (no ZenOS, or 7 tabs already).
 function House.setTabShown(on)
-    local nb, zen = navbar()
-    if not nb then return false end
-    nb.show_tabs = type(nb.show_tabs) == "table" and nb.show_tabs or {}
-    nb.tab_order = type(nb.tab_order) == "table" and nb.tab_order or {}
-    nb.custom_tabs = type(nb.custom_tabs) == "table" and nb.custom_tabs or {}
-    local has_tab, listed = false, false
-    for _i, t in ipairs(nb.custom_tabs) do if type(t) == "table" and t.id == House.TAB_ID then has_tab = true end end
-    if not has_tab then table.insert(nb.custom_tabs, House.tabEntry()) end
-    for _i, id in ipairs(nb.tab_order) do if id == House.TAB_ID then listed = true end end
-    if not listed then table.insert(nb.tab_order, House.TAB_ID) end
-    if on and nb.show_tabs[House.TAB_ID] ~= true then
-        local count = 0
-        for _i, id in ipairs(nb.tab_order) do if nb.show_tabs[id] == true then count = count + 1 end end
-        if count >= House.MAX_TABS then
-            info(_("The tab bar has 7 tabs already: turn one off first (Settings → Interface → Navbar → Tabs)."))
-            return false
-        end
-    end
-    nb.show_tabs[House.TAB_ID] = on and true or false
-    if type(zen.saveConfig) == "function" then pcall(zen.saveConfig, zen) end
-    local reinject = rawget(_G, "__ZEN_UI_REINJECT_NAVBARS") or rawget(_G, "__ZEN_UI_REINJECT_FM_NAVBAR")
-    if type(reinject) == "function" then UIManager:scheduleIn(0, reinject) end
-    Log.info("house: tab", on and "shown" or "hidden")
-    return true
+    return require("gzreader_tabs").setShown(House.TAB_ID, on, House.tabEntry(), info)
 end
 
 --- The tab's entry in ZenOS's tab list (config/defaults.lua has the same).
@@ -223,7 +189,24 @@ function House:reload()
     if self.closed or not self.menu then return end
     self.house, self.err = HA().loadCache(), nil
     self.menu:switchItemTable(nil, self:rootItems())
-    if House.client(self.plugin):isConnected() and not House.noWifi() then self:refresh(true) end
+    self:follow()
+end
+
+--- While connected (and on Wi-Fi): Wi-Fi held and the list asked for now
+--- and every REFRESH seconds; otherwise neither. (Opening the tab, and
+--- connecting from inside it: before, a tab connected from inside never
+--- refreshed by itself until it was opened again.)
+function House:follow()
+    if self.closed then return end
+    if House.client(self.plugin):isConnected() and not House.noWifi() then
+        -- (Wi-Fi stays on while the tab is open: it's asked every REFRESH seconds)
+        pcall(function() Net().hold("house") end)
+        self:refresh(true)
+        self:schedule()
+    else
+        if self.tick then UIManager:unschedule(self.tick) end
+        pcall(function() Net().release("house") end)
+    end
 end
 
 --- Fetch the list. `asked`: you asked for it (Wi-Fi may be turned on);
@@ -418,12 +401,7 @@ function House.show(plugin)
     end
     House.instance = self
     UIManager:show(self.menu)
-    if House.client(plugin):isConnected() and not House.noWifi() then
-        -- (Wi-Fi stays on while the tab is open: it's asked every REFRESH seconds)
-        pcall(function() Net().hold("house") end)
-        self:refresh(true)
-        self:schedule()
-    end
+    if House.client(plugin):isConnected() and not House.noWifi() then self:follow() end
     return self
 end
 

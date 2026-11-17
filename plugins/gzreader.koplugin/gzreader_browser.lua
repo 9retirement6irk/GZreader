@@ -278,7 +278,7 @@ function Browser:signedOutItems(section)
         { gz_id = audio and "ab_search" or "search", gz_action = "search", text = _("Sign in to Grimmory to browse the catalog"),
             callback = function() self:openGrimmory() end },
         Browser.grimmoryItem(self, audio and "ab_account" or "grimmory"),
-        (not audio and require("gzreader_touch").audio()) and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
+        (not audio and require("gzreader_touch").player()) and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
     }
 end
 
@@ -349,8 +349,8 @@ function Browser:bookItems()
         { gz_id = "series", text = _("Series"), callback = function() self:openSeries() end },
         Browser.grimmoryItem(self, "grimmory"),
         -- (the next page, from the list: its letter on keyboard Kindles; the
-        -- bookshop doesn't draw it. Only on Kindles with a speaker.)
-        require("gzreader_touch").audio() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
+        -- bookshop doesn't draw it. Only on Kindles that play audio.)
+        require("gzreader_touch").player() and { gz_id = "audiobooks", text = _("Audiobooks"), callback = function() self:openSection("audiobooks") end } or nil,
     }
 end
 

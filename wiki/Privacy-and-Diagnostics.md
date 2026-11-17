@@ -1,4 +1,4 @@
-What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log.
+What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log, and neither is the name of your Wi-Fi network.
 
 ## Debug reports
 
@@ -21,7 +21,8 @@ problems on real Kindles can be found and fixed:
 
 Reports carry GZreader's version, the Kindle model and lines of GZreader's
 log, which can name the book or file it was working on. Never passwords,
-tokens or anything you type (except what you type for Send to the
+tokens, your Wi-Fi network's name (it's written as `<network>`, also in
+the end of KOReader's crash.log) or anything you type (except what you type for Send to the
 developer). Each Kindle is named by a random ID, not its serial number, so
 reports from two Kindles can be told apart. The Kindle 2 and DX have no
 Wi‑Fi, so they never send reports by themselves (Send to the developer
@@ -40,7 +41,9 @@ the Kindle awake and a read-only audio/speech survey into one
 
 - **Send to the developer:** first a box asks what you were doing and what
   went wrong (type as much as helps, or nothing), then that and the log go
-  straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)). Also
+  straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)).
+  It's sent in the background: you can carry on reading, and a message
+  says when it's sent. Also
   Settings → About → Advanced → Send diagnostic log to the developer. On the
   Kindle 2 and DX (no Wi‑Fi) it says **(at the next sync)**: the same box,
   then the log and what you typed wait in `.gzsync/reports/` and the
@@ -61,6 +64,17 @@ Ordinary log lines are written a few at a time (at most 5 seconds late;
 warnings and errors at once, and everything waiting when the Kindle goes to
 sleep, on exit and when you save or send the log), so a burst of sync
 logging is one write to the Kindle's storage, not one per line.
+
+**If the Kindle freezes around a book**, three lines say how much memory
+there was: `book open starting: <file>` (before anything of the book is
+read), `book closed` and `Home on screen … after the book closed`. Each has
+the free memory, the file cache, GZreader's own size, its Lua memory and, on
+a Kindle, whether GZreader was started with the Kindle's own interface
+stopped or kept in memory. These three are written at once, not a few
+seconds late, and on Kindles with 128 MB or less (Kindle 2, DX) they are
+forced onto the storage, so the last one is still there after you had to
+restart a frozen Kindle with its power switch. Save or send the log after
+the restart: the last of these lines says how far it got.
 
 **A slow download** (a book or an update) leaves its own lines, starting
 `transfer`: one at the start with what can hold a download back on this
@@ -84,6 +98,23 @@ browser (and the setup page's Diagnostics tab) build the file in
 `koreader/cache` and delete it once it's sent, and Save to the Kindle keeps
 only the newest three `gzreader-log-<date>.txt` next to the GZreader folder
 (the one just saved always stays).
+
+## Where sign-ins are kept
+
+On a Kindle, KOReader's settings are on the USB drive (`koreader/settings`),
+which any computer the Kindle is plugged into can read. GZreader keeps its
+sign-ins somewhere else: the CalDAV password, the Grimmory, Memos, Plex and
+Home Assistant tokens, the Immich key, the Access key and Cloudflare token,
+and calendar links (their keys are in the address) are kept in
+`/var/local/gzreader/secrets.lua` on the Kindle's own disk, which isn't
+shared over USB; GZreader's settings on the drive hold everything else.
+Sign-ins saved by an earlier version move there by themselves a few seconds
+after GZreader starts (the settings' backup copy is cleaned too). Going
+back to an earlier version afterwards means connecting again. On a Nook,
+GZreader's settings are already on its own disk (`/data/gzreader`).
+Kindles without Wi‑Fi keep none on the Kindle in readable form: the sync page
+keeps them in `.gzsync/keys.json`, locked with your PIN
+([Sync with a computer](Sync-with-a-Computer)).
 
 ## Remote debugging
 
@@ -138,7 +169,11 @@ typed there is redacted like the log's). `<id>` is the start of the
 Kindle's random ID (not the serial number).
 
 Sleep is not a freeze (the heartbeat says "sleep", and the watchdog notices
-the clock jump after waking). Log lines are redacted (no passwords or
-tokens). Checked with the Kindle 3's LuaJIT against a local feed: queued
+the clock jump after waking). Log lines are redacted (no passwords,
+tokens or Wi-Fi network names). Checked with the Kindle 3's LuaJIT against a local feed: queued
 messages, the freeze alert with its snapshot, "responsive again", the crash
 report, and no crash report after a normal close.
+
+The heartbeat says "sleep" from the moment the screensaver shows until the
+Kindle wakes, and after waking the watchdog counts from then, so a long
+sleep (or the seconds a Kindle takes to wake) is never reported as a freeze.

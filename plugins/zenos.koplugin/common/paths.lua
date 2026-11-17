@@ -65,7 +65,7 @@ function M.getArchiveDir()
     if archive_cache.path == path and archive_cache.stamp == stamp then return archive_cache.dir end
     local dir
     if attr then
-        local ok_settings, archive_settings = pcall(dofile, path)
+        local ok_settings, archive_settings = pcall(require("gzdataload").file, path) -- GZreader: read as data, not run (gzdataload.lua)
         dir = ok_settings and type(archive_settings) == "table" and archive_settings.archive_dir_path or nil
     end
     dir = type(dir) == "string" and dir ~= "" and M.normPath(dir:gsub("/*$", "")) or nil

@@ -25,11 +25,11 @@ local Catalog = {
     ORDER = { "books", "audiobooks", "music" },
 }
 
---- The pages this Kindle has, in order (`audio`: a speaker or headphone
---- jack; asked of gzreader_touch when nil).
+--- The pages this Kindle has, in order (`audio`: a speaker, headphone
+--- jack or Bluetooth; asked of gzreader_touch when nil).
 function Catalog.sections(audio)
     if audio == nil then
-        local ok, on = pcall(function() return require("gzreader_touch").audio() end)
+        local ok, on = pcall(function() return require("gzreader_touch").player() end)
         audio = ok and on == true
     end
     if not audio then return { "books" } end

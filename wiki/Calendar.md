@@ -39,8 +39,10 @@ Fastmail (`https://caldav.fastmail.com`), Google
   (default 14 days back, 90 ahead), asking the server to expand repeating
   events (`<C:expand>`, times in UTC). Servers that don't expand send the
   RRULE, expanded on the Kindle (DAILY / WEEKLY / MONTHLY / YEARLY with
-  INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY; EXDATE; RECURRENCE-ID). TZID times
-  that aren't expanded are read in GZreader's time zone.
+  INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY, BYMONTH, BYSETPOS, WKST; EXDATE;
+  RECURRENCE-ID): Outlook's and Apple's "first Monday" or "last weekday" of
+  the month show on that one day. TZID times that aren't expanded are read in
+  GZreader's time zone.
 - **Wi‑Fi:** only to sync, when the tab opens (at most every 15 minutes) and
   with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
 - **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,

@@ -143,7 +143,7 @@ local function state(S, flash)
     end
     st.links = { list = links, error = sec == "links" and flash.error or nil, results = flash.links_html }
     -- music (Plex): Kindles with audio
-    if require("gzreader_touch").audio() then
+    if require("gzreader_touch").player() then
         local ps = store.plex or {}
         local servers = {}
         for _i, sv in ipairs(ps.servers or {}) do
@@ -336,6 +336,7 @@ function Phone.open(plugin, opts)
         if server80 then UIManager:removeZMQ(server80); server80:stop() end
         if screen then UIManager:close(screen); screen = nil end
         pcall(function() require("gzreader_awake").release("phone") end)
+        pcall(function() require("gzreader_wifips").release("phone") end)
         plugin.pairing = nil
         Log.info("phone page closed:", reason or "back")
         Phone.afterClose(S)
@@ -874,6 +875,7 @@ function Phone.open(plugin, opts)
         end
     end
     pcall(function() require("gzreader_awake").hold("phone", { what = "phone page", still = function() return Phone.session == S end }) end) -- (uploads take a while)
+    pcall(function() require("gzreader_wifips").hold("phone") end) -- (Wi-Fi power saving off: uploads at full speed)
     Log.info("phone page open on", S.origin, "section", tostring(opts.section))
     local url = S.origin .. S.base .. (opts.section and ("#" .. opts.section) or "")
     screen = require("gzreader_pairscreen"):new{

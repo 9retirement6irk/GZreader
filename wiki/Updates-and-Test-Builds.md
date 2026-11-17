@@ -7,6 +7,14 @@ found a newer version, the quick panel's **Updates** tile reads **Update
 available** and is drawn white on black (also after a restart, until it's
 installed); tap it to see the update and install it.
 
+**Only from GitHub.** Every update check and download is made over HTTPS
+to GitHub's own addresses, and GZreader checks GitHub's certificate first
+(against KOReader's list of certificate authorities, `data/ca-bundle.crt`):
+on a Wi‑Fi network where someone else answers in GitHub's place, the check
+says the certificate isn't trusted and nothing is downloaded. A Nook or DX
+whose clock has run back to 2000 or 1970 can still check (a certificate's
+dates are only ignored while the clock is before 2026).
+
 After an update, GZreader opens a **What's new** screen once: "Updated to
 v<version>" and a short point for each change (for a test build, what it
 brings; for a release after a skipped one, both). Press Get Started (or the
@@ -41,7 +49,16 @@ the microSD card (`GZreader/.gzreader-update`, removed afterwards) and
 copied in part by part, with a copy of each part kept on the card to put
 back if one fails.
 
+A book open when the update is installed is closed first, as the Home
+button closes it (its page, bookmarks and highlights written to its file,
+its place sent to Grimmory), and then GZreader restarts at Home. Until the
+fix listed under "next" in the changelog, the restart left the book
+without saving it: it reopened at an earlier page.
+
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
 anything fails, the previous files are put back. Then GZreader restarts.
+The Kindle doesn't go to sleep while an update downloads and installs
+(the download window takes every tap, so the Kindle would otherwise think
+nobody was there).

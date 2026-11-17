@@ -298,6 +298,7 @@ function Music.download(plugin, c, opts)
     local report = dir .. "/.progress"
     os.remove(report)
     local pid = ffiutil.runInSubProcess(function()
+        require("gzreader_async").lowerPriority(require("gzreader_async").NICE) -- (page turns first, as for books)
         local out = io.open(report, "ab")
         for _n, i in ipairs(todo) do
             local t = col.tracks[i]

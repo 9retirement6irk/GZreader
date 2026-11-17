@@ -43,16 +43,21 @@ local function readLine(path)
     return line
 end
 
-local function monotonic()
-    local ok, t = pcall(function()
-        local ffi = require("ffi")
+-- CLOCK_MONOTONIC through the FFI, declared once (socket.gettime where that fails)
+local monotonic
+do
+    local ok, ffi = pcall(require, "ffi")
+    if ok then
         pcall(ffi.cdef, "struct gz_xfer_ts { long tv_sec; long tv_nsec; }; int clock_gettime(int clk, struct gz_xfer_ts *tp);")
-        local ts = ffi.new("struct gz_xfer_ts")
-        if ffi.C.clock_gettime(1, ts) ~= 0 then error("clock_gettime") end -- CLOCK_MONOTONIC
-        return tonumber(ts.tv_sec) + tonumber(ts.tv_nsec) / 1e9
-    end)
-    if ok then return t end
-    return require("socket").gettime()
+        local okts, ts = pcall(ffi.new, "struct gz_xfer_ts")
+        if okts and pcall(function() return ffi.C.clock_gettime(1, ts) end) then
+            monotonic = function()
+                ffi.C.clock_gettime(1, ts)
+                return tonumber(ts.tv_sec) + tonumber(ts.tv_nsec) / 1e9
+            end
+        end
+    end
+    if not monotonic then monotonic = function() return require("socket").gettime() end end
 end
 
 local function now() return (XferLog.clock or monotonic)() end
@@ -61,17 +66,7 @@ local function rd(path) return (XferLog.read or readLine)(path) end
 --- The Wi-Fi interface's power saving: "on", "off", or nil, why.
 function XferLog.wifiPower()
     if XferLog.wifi then return XferLog.wifi() end
-    local ok, state, err = pcall(function()
-        local ifname = "wlan0" -- (every Kindle; the Nook's is eth0)
-        local okn, NetworkMgr = pcall(require, "ui/network/manager")
-        if okn and NetworkMgr and NetworkMgr.getNetworkInterfaceName then
-            local okf, name = pcall(NetworkMgr.getNetworkInterfaceName, NetworkMgr)
-            if okf and type(name) == "string" and name ~= "" then ifname = name end
-        end
-        return require("device/nook/wifi_power").get(ifname)
-    end)
-    if not ok then return nil, tostring(state) end
-    return state, err
+    return require("gzreader_wifips").get()
 end
 
 --- Busy and total jiffies from /proc/stat's first line (all processors).

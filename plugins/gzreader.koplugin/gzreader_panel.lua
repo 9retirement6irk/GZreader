@@ -25,8 +25,11 @@ light's slider at the top. Menu, Back, or a tap below the panel closes it.
 A tile that's on (Wi-Fi, night mode, a bookmark, music or read aloud
 playing; Updates when an update was found) is drawn inverted. Touch Kindles: tap or drag the light's slider.
 Kindles with a warm light (Device:hasNaturalLight(): Paperwhite 5 and newer,
-Oasis 3, Scribe, Colorsoft) get a warmth slider under it, Cool to Warm, in
+Oasis 3, Scribe, Colorsoft) get a warmth slider under it, cool to warm, in
 the Kindle's own steps (powerd's native warmth, 0 to 24).
+Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
+slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
+Bluetooth volume 1 to 8 (the Kindle 2, 3 and DX: their volume buttons).
 
 Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
@@ -59,7 +62,33 @@ local Panel = {
     TOP_KEYS = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P" },
     SECOND_KEYS = { "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M" },
     COLUMNS = 5,
+    -- (big screens: a tile at most TILE_MAX_IN inches wide, a little more
+    -- than on a Paperwhite (0.63") or an Oasis (0.74"), so more of them go
+    -- across instead of each one growing with the screen)
+    TILE_MAX_IN = 0.8, MAX_COLUMNS = 8, BIG_SCREEN_IN = 5.0,
 }
+
+--- Whether the screen's shorter side is more than BIG_SCREEN_IN inches
+--- (the Kindle Scribe, the DX; by the device's own DPI).
+function Panel.bigScreen(dev)
+    dev = dev or Device
+    local dpi = dev.display_dpi
+    if not (dpi and dpi > 0 and dev.screen) then return false end
+    return math.min(dev.screen:getWidth(), dev.screen:getHeight()) / dpi > Panel.BIG_SCREEN_IN
+end
+
+--- How many tiles go across. COLUMNS everywhere, but on a big touch screen
+--- as many as keep each at most TILE_MAX_IN wide (at most MAX_COLUMNS): five across a
+--- Scribe made each tile over an inch wide (1.13"). Kindles with keys keep
+--- five (the letters follow the keyboard's rows: Q to T, then Y to P).
+function Panel.columns(sw, pad, gap, keys, dev)
+    dev = dev or Device
+    local cols = Panel.COLUMNS
+    if keys or not Panel.bigScreen(dev) then return cols end
+    local max_w = math.floor(dev.display_dpi * Panel.TILE_MAX_IN)
+    local fit = math.ceil((sw - 2 * pad + gap) / (max_w + gap)) -- (enough for none to be wider)
+    return math.max(cols, math.min(fit, Panel.MAX_COLUMNS))
+end
 
 local root = (debug.getinfo(1, "S").source or ""):match("^@(.*)/[^/]+$") or "plugins/gzreader.koplugin"
 local function iconFile(name) return root .. "/icons/panel/" .. name .. ".svg" end
@@ -147,6 +176,7 @@ function Panel.catalog()
     return {
         { id = "controls", title = _("Controls"), tiles = {
             { id = "wifi", label = usbOnly() and _("Sync") or _("Wi-Fi") },
+            { id = "bluetooth", label = _("Bluetooth"), note = _("Kindles with Bluetooth"), available = function() return Panel.bluetooth() ~= nil end },
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
             { id = "rotate", label = _("Rotate") },
             { id = "autorotate", label = _("Auto-rotate"), note = _("Kindles that turn the screen by themselves"), available = function() return require("gzreader_rotation").hasAuto() end },
@@ -167,8 +197,8 @@ function Panel.catalog()
             { id = "view", label = _("View") },
             { id = "sort", label = _("Sort") },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
-            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },
             { id = "tasks", label = _("Background tasks"), note = _("while one is running") },
         } },
         { id = "book", title = _("This book"), tiles = {
@@ -183,8 +213,8 @@ function Panel.catalog()
             { id = "fitpictures", label = _("Fit pictures"), note = _("EPUBs") },
             { id = "readaloud", label = _("Read aloud"), available = Touch.tts },
             { id = "note", label = _("Quick note"), note = _("while Memos is connected") },
-            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.audio },
-            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.audio },
+            { id = "music", label = _("Music"), note = _("while it plays"), available = Touch.player },
+            { id = "audiobook", label = _("Audiobook"), note = _("while one plays"), available = Touch.player },
         } },
     }
 end
@@ -311,13 +341,14 @@ end
 
 --- The Wi-Fi tile: On, Off or Auto (gzreader_net.lua); a tap goes to the
 --- next one (on → off → auto → on). On is drawn inverted; Auto's icon has an
---- "A" and still shows whether Wi-Fi is on right now.
+--- "A" and still shows whether Wi-Fi is on right now. It stays: the panel
+--- stays open and the tile is drawn again (`stay`, `refresh`).
 function Panel.wifiTile()
     local Net = require("gzreader_net")
     local mode = Net.mode()
     local d = Net.describe(mode)
-    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", run = function()
-        local next_mode = Net.nextMode(mode)
+    return { id = "wifi", icon = d.icon, label = d.tile, on = mode == "on", stay = true, refresh = Panel.wifiTile, run = function()
+        local next_mode = Net.nextMode(Net.mode())
         local switching = Net.setMode(next_mode)
         -- (KOReader says "Turning on Wi-Fi…" / "Wi-Fi off." when it switches)
         if not switching or next_mode == "auto" then
@@ -329,7 +360,47 @@ function Panel.wifiTile()
     end }
 end
 
---- The Controls tiles: { id, icon, label, on, run }.
+--- ZenOS's Bluetooth module where this Kindle has Bluetooth that it can
+--- manage (modules/menu/bluetooth/bluetooth.lua, gated by
+--- common/gz_bluetooth.lua); nil elsewhere.
+function Panel.bluetooth()
+    local ok, BT = pcall(require, "modules/menu/bluetooth/bluetooth")
+    if ok and type(BT) == "table" and BT.isAvailable and BT.isAvailable() then return BT end
+    return nil
+end
+
+--- The Bluetooth tile (Kindles with Bluetooth): a tap turns Bluetooth on or
+--- off, the panel staying open like the Wi-Fi tile's (`stay`, `refresh`,
+--- drawn again once the change is confirmed); a hold opens ZenOS's
+--- Bluetooth devices list (search, pair, connect). On is drawn inverted.
+function Panel.bluetoothTile()
+    local BT = Panel.bluetooth()
+    if not BT then return nil end
+    local state = BT.getCachedState()
+    if state == nil and not BT.isChanging() then state = BT.isEnabled() end
+    return { id = "bluetooth", icon = state and "bluetooth" or "bluetooth_off",
+        label = BT.isChanging() and _("Bluetooth…") or state and _("Bluetooth") or _("Bluetooth off"),
+        on = state == true, stay = true, refresh = Panel.bluetoothTile,
+        run = function()
+            BT.toggle(function(ok, reason)
+                if not ok then
+                    pcall(function()
+                        UIManager:show(require("ui/widget/infomessage"):new{
+                            text = reason or _("Could not change Bluetooth power."), timeout = 2 })
+                    end)
+                end
+                -- (the open panel draws the tile again on BluetoothStateChanged)
+            end)
+        end,
+        hold = function()
+            local fm = package.loaded["apps/filemanager/filemanager"]
+            local f = fm and fm.instance
+            local zen = (f and f.zenos) or rawget(_G, "__ZEN_UI_PLUGIN")
+            require("modules/menu/bluetooth_switcher").open(nil, false, zen)
+        end }
+end
+
+--- The Controls tiles: { id, icon, label, on, run, hold, stay }.
 function Panel.controls(plugin)
     -- (no Wi-Fi: syncing through a computer, gzreader_usbsync.lua)
     local usb = usbOnly()
@@ -337,6 +408,7 @@ function Panel.controls(plugin)
         usb and { id = "wifi", icon = "usb", label = _("Sync"), run = function() require("gzreader_usbsync").show(plugin) end }
             or Panel.wifiTile(),
     }
+    list[#list + 1] = Panel.bluetoothTile() -- (Kindles with Bluetooth)
     if not nightGuarded() then
         list[#list + 1] = { id = "night", icon = "night", label = _("Night mode"), on = G_reader_settings:isTrue("night_mode"),
             run = function() dispatch("night_mode") end }
@@ -381,7 +453,7 @@ end
 --- The Music tile, while music plays or is paused (its player: the CD
 --- player). Nothing else: music is browsed in the Catalog.
 local function musicTile(plugin)
-    if not Touch.audio() then return nil end
+    if not Touch.player() then return nil end
     local okm, M = pcall(require, "gzreader_music")
     local cur = okm and M.current
     if not cur then return nil end
@@ -393,7 +465,7 @@ Panel.musicTile = musicTile
 
 --- The Audiobook tile, while one plays or is paused (its player).
 local function audiobookTile(plugin)
-    if not Touch.audio() then return nil end
+    if not Touch.player() then return nil end
     local okA, Audiobook = pcall(require, "gzreader_audiobook")
     local cur = okA and Audiobook.current
     if not (cur and cur.book) then return nil end
@@ -521,11 +593,12 @@ local PanelWidget = FocusManager:extend{ name = "gzreader quick panel", modal = 
 function PanelWidget:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     local pad, gap = S(16), S(10)
-    local cols = Panel.COLUMNS
-    local tw = math.floor((sw - 2 * pad - (cols - 1) * gap) / cols)
-    local th = tw
     local keys = Touch.keys()
     self.keys = keys
+    local cols = Panel.columns(sw, pad, gap, keys)
+    self.cols = cols
+    local tw = math.floor((sw - 2 * pad - (cols - 1) * gap) / cols)
+    local th = tw
     -- (a group with every tile hidden in Settings isn't drawn)
     local groups = {}
     for _i, g in ipairs({ { title = _("Controls"), tiles = self.controls, letters = Panel.TOP_KEYS },
@@ -534,10 +607,11 @@ function PanelWidget:init()
     end
     local light = Device:hasFrontlight() and Device:isTouchDevice()
     local warmth = light and Panel.hasWarmth()
+    local volume = Panel.hasVolume()
     -- (fit the screen: smaller tiles on a short one)
     local rows = 0
     for _i, g in ipairs(groups) do rows = rows + math.ceil(#g.tiles / cols) end
-    local fixed = S(40) + (light and S(52) or 0) + (warmth and S(52) or 0) + #groups * S(30) + S(30)
+    local fixed = S(40) + (light and S(52) or 0) + (warmth and S(52) or 0) + (volume and S(52) or 0) + #groups * S(30) + S(30)
     local max_th = math.floor((sh * 0.86 - fixed - (rows - 1) * gap) / math.max(1, rows))
     th = math.max(S(60), math.min(th, max_th))
     self.layout = {}
@@ -549,6 +623,10 @@ function PanelWidget:init()
     end
     if warmth then
         self.warmth_y = y
+        y = y + S(52)
+    end
+    if volume then
+        self.volume_y = y
         y = y + S(52)
     end
     self.titles = {}
@@ -565,7 +643,10 @@ function PanelWidget:init()
             end
             local tile = Tile:new{ w = tw, h = th, icon = t.icon, label = t.label, on = t.on,
                 key = keys and g.letters[i] or nil,
-                callback = function() self:pick(t) end }
+                callback = nil }
+            tile.callback = function() self:pick(t, tile) end
+            if t.hold then tile.hold = function() self:pick({ run = t.hold, full = true }) end end
+            tile.gz_tile = t
             tile.key_letter = g.letters[i]
             row[#row + 1] = tile
             self[#self + 1] = tile
@@ -593,11 +674,13 @@ function PanelWidget:init()
     -- a tap below the panel closes it (and the light's slider)
     local whole = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.ges_events = { TapPanel = { GestureRange:new{ ges = "tap", range = whole } } }
-    if light then
+    if light or volume then
         -- drag the slider (pan while moving, then its release; a quick drag is a swipe;
-        -- the strip covers the warmth slider too when there is one)
+        -- the strip covers every slider: the light, the warmth, the volume)
         local strip = function()
-            return Geom:new{ x = 0, y = self.light_y - S(10), w = sw, h = (self.warmth_y or self.light_y) - self.light_y + S(64) }
+            local top = self.light_y or self.volume_y
+            local bottom = self.volume_y or self.warmth_y or self.light_y
+            return Geom:new{ x = 0, y = top - S(10), w = sw, h = bottom - top + S(64) }
         end
         -- (only a drag that starts with a finger put down on the slider: the
         -- swipe down that opens the panel in a book is still going when it
@@ -614,6 +697,7 @@ function PanelWidget:sliders()
     local list = {}
     if self.light_y then list[#list + 1] = { kind = "light", y = self.light_y } end
     if self.warmth_y then list[#list + 1] = { kind = "warmth", y = self.warmth_y } end
+    if self.volume_y then list[#list + 1] = { kind = "volume", y = self.volume_y } end
     return list
 end
 
@@ -631,11 +715,13 @@ end
 
 function PanelWidget:sliderInfo(kind)
     if kind == "warmth" then return self:warmthInfo() end
+    if kind == "volume" then return self:volumeInfo() end
     return self:lightInfo()
 end
 
 function PanelWidget:setSlider(kind, v, dragging)
     if kind == "warmth" then return self:setWarmth(v, dragging) end
+    if kind == "volume" then return self:setVolume(v, dragging) end
     return self:setLight(v, dragging)
 end
 
@@ -688,13 +774,47 @@ end
 
 function PanelWidget:getSize() return self.dimen end
 
-function PanelWidget:pick(t)
+function PanelWidget:pick(t, tile)
+    -- (a tile that stays, e.g. Wi-Fi: run it and draw it again, the panel open)
+    if t.stay and tile then
+        UIManager:nextTick(function()
+            if t.run then t.run() end
+            self:refreshTile(t, tile)
+        end)
+        return
+    end
     UIManager:close(self)
     if t.run then UIManager:nextTick(function()
         t.run()
         if t.full then UIManager:scheduleIn(0.4, function() UIManager:setDirty(nil, "full") end) end
     end) end
 end
+
+--- A tile that stays, drawn again from its refresh (its icon, label, on,
+--- what a tap does next), with the status row (Wi-Fi on/off).
+function PanelWidget:refreshTile(t, tile)
+    local fresh = t.refresh and t.refresh()
+    if fresh then
+        for k, v in pairs(fresh) do t[k] = v end
+        t.on = fresh.on -- (nil when off)
+        tile.icon, tile.label, tile.on = fresh.icon, fresh.label, fresh.on and true or false
+    end
+    UIManager:setDirty(self, "ui")
+end
+
+--- Wi-Fi went on or off (KOReader tells every window): the Wi-Fi tile and
+--- the status row follow while the panel is open.
+function PanelWidget:refreshStaying()
+    for _i, p in ipairs(self.placed or {}) do
+        local t = p.tile and p.tile.gz_tile
+        if t and t.stay then self:refreshTile(t, p.tile) end
+    end
+end
+function PanelWidget:onNetworkConnected() self:refreshStaying() end
+function PanelWidget:onNetworkDisconnected() self:refreshStaying() end
+function PanelWidget:onNetworkStateChanged() self:refreshStaying() end
+-- (ZenOS's Bluetooth module says so while it switches and once it's done)
+function PanelWidget:onBluetoothStateChanged() self:refreshStaying() end
 
 function PanelWidget:paintTo(bb, x, y)
     local w, h = self.w, self.h
@@ -718,6 +838,7 @@ function PanelWidget:paintTo(bb, x, y)
     rt:free()
     if self.light_y then self:paintLight(bb, x, y + self.light_y) end
     if self.warmth_y then self:paintWarmth(bb, x, y + self.warmth_y) end
+    if self.volume_y then self:paintVolume(bb, x, y + self.volume_y) end
     for _i, t in ipairs(self.titles) do
         local tw = TextWidget:new{ text = tostring(t.text):upper(), face = Font:getFace("cfont", 12), bold = true,
             fgcolor = Blitbuffer.COLOR_DARK_GRAY }
@@ -759,23 +880,43 @@ function PanelWidget:warmthInfo()
     return powerd, min, max, cur
 end
 
+--- The room between a slider's − / + button and its bar.
+function Panel.BAR_GAP() return S(20) end
+
 function PanelWidget:lightBar(x)
     local w = self.w
-    return { x = x + S(16) + S(44) + S(8), w = w - 2 * S(16) - 2 * (S(44) + S(8)) }
+    -- (S(20) from each button: half the knob (S(10)) plus room, so the knob
+    -- at either end of the bar clears the − and + buttons)
+    return { x = x + S(16) + S(44) + Panel.BAR_GAP(), w = w - 2 * S(16) - 2 * (S(44) + Panel.BAR_GAP()) }
 end
 
---- One slider row at y: − and + buttons, the bar filled up to cur (fill: its colour).
-function PanelWidget:paintSlider(bb, x, y, min, max, cur, fill)
+--- Each slider's − and + icons (icons/panel/<name>.svg): lower and higher.
+Panel.SLIDER_ICONS = {
+    light = { "light_low", "light_high" },   -- a small dim sun, a big bright one
+    warmth = { "warmth_low", "warmth_high" }, -- a snowflake (cool), a flame (warm)
+    volume = { "volume_low", "volume_high" }, -- a quiet speaker, a loud one
+}
+
+--- One slider row at y: − and + buttons (each with its kind's icon), the bar
+--- filled up to cur (fill: its colour).
+function PanelWidget:paintSlider(bb, x, y, kind, min, max, cur, fill)
     local bar = self:lightBar(x)
     local cy = y + S(20)
-    -- − and +
+    local icons = Panel.SLIDER_ICONS[kind]
+    local isz = S(28)
     for i, label in ipairs({ "\u{2212}", "+" }) do
         local bx = i == 1 and (x + S(16)) or (x + self.w - S(16) - S(44))
         bb:paintBorder(bx, y, S(44), S(40), math.max(2, S(2)), Blitbuffer.COLOR_BLACK, S(8))
-        local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 20), bold = true }
-        local ts = t:getSize()
-        t:paintTo(bb, bx + math.floor((S(44) - ts.w) / 2), y + math.floor((S(40) - ts.h) / 2))
-        t:free()
+        if icons then
+            local icon = IconWidget:new{ file = iconFile(icons[i]), width = isz, height = isz, alpha = true }
+            icon:paintTo(bb, bx + math.floor((S(44) - isz) / 2), y + math.floor((S(40) - isz) / 2))
+            icon:free()
+        else
+            local t = TextWidget:new{ text = label, face = Font:getFace("cfont", 20), bold = true }
+            local ts = t:getSize()
+            t:paintTo(bb, bx + math.floor((S(44) - ts.w) / 2), y + math.floor((S(40) - ts.h) / 2))
+            t:free()
+        end
     end
     local bh = S(10)
     bb:paintBorder(bar.x, cy - math.floor(bh / 2), bar.w, bh, math.max(2, S(2)), Blitbuffer.COLOR_BLACK, math.floor(bh / 2))
@@ -790,26 +931,18 @@ end
 
 function PanelWidget:paintLight(bb, x, y)
     local min, max, cur = select(2, self:lightInfo())
-    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_BLACK)
+    self:paintSlider(bb, x, y, "light", min, max, cur, Blitbuffer.COLOR_BLACK)
 end
 
---- The warmth: filled in grey, "Cool" and "Warm" under its ends.
+--- The warmth: filled in grey; a snowflake on −, a flame on +.
 function PanelWidget:paintWarmth(bb, x, y)
     local min, max, cur = select(2, self:warmthInfo())
-    self:paintSlider(bb, x, y, min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
-    local bar = self:lightBar(x)
-    local face = Font:getFace("cfont", 11)
-    local cool = TextWidget:new{ text = _("Cool"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    cool:paintTo(bb, bar.x, y + S(32))
-    cool:free()
-    local warm = TextWidget:new{ text = _("Warm"), face = face, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
-    warm:paintTo(bb, bar.x + bar.w - warm:getSize().w, y + S(32))
-    warm:free()
+    self:paintSlider(bb, x, y, "warmth", min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
 end
 
 --- The slider's row to refresh after a change (the bar and the knob).
 function PanelWidget:sliderDirty(kind, dragging)
-    local sy = kind == "warmth" and self.warmth_y or self.light_y
+    local sy = (kind == "warmth" and self.warmth_y) or (kind == "volume" and self.volume_y) or self.light_y
     -- (while dragging: the quick black-and-white refresh)
     UIManager:setDirty(self, function()
         return dragging and "fast" or "ui", Geom:new{ x = 0, y = sy, w = self.w, h = S(44) }
@@ -829,6 +962,42 @@ function PanelWidget:setWarmth(v, dragging)
     v = math.max(min, math.min(max, math.floor(v + 0.5)))
     powerd:setWarmth(powerd:fromNativeWarmth(v))
     self:sliderDirty("warmth", dragging)
+end
+
+---------------------------------------------------------------- the volume
+
+--- Whether the panel gets a volume slider: touch Kindles with sound (the
+--- Kindle Touch's speaker and headphones; Bluetooth Kindles, the volume of
+--- Bluetooth headphones or a speaker). The Kindle 2, 3 and DX have volume buttons.
+function Panel.hasVolume()
+    if Panel.volume_present ~= nil then return Panel.volume_present end
+    local ok, yes = pcall(function()
+        return Device:isTouchDevice() and (Touch.audio() or Touch.ivona()) and true or false
+    end)
+    return ok and yes or false
+end
+
+--- The volume: the Kindle's Bluetooth steps (1-8) or the speaker's (0-15),
+--- the same one read aloud's and the audiobook player's settings show.
+function PanelWidget:volumeInfo()
+    local TTS = require("gzreader_tts")
+    local min = TTS.hasIvona() and 1 or 0
+    local max = TTS.volumeMax()
+    local cur = math.max(min, math.min(max, TTS.volume() or min))
+    return TTS, min, max, cur
+end
+
+--- The volume: filled in grey; a quiet speaker on −, a loud one on +.
+function PanelWidget:paintVolume(bb, x, y)
+    local min, max, cur = select(2, self:volumeInfo())
+    self:paintSlider(bb, x, y, "volume", min, max, cur, Blitbuffer.COLOR_DARK_GRAY)
+end
+
+function PanelWidget:setVolume(v, dragging)
+    local TTS, min, max, cur = self:volumeInfo()
+    v = math.max(min, math.min(max, math.floor(v + 0.5)))
+    if v ~= cur then TTS.setVolume(v) end -- (the audiobook player and music use it too)
+    self:sliderDirty("volume", dragging)
 end
 
 function PanelWidget:onTapPanel(_arg, ges)

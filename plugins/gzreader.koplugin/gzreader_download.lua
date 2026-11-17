@@ -20,12 +20,19 @@ local UIManager = require("ui/uimanager")
 local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local Log = require("gzreader_log")
+local time = require("ui/time")
 local _ = require("gettext")
 local T = ffiutil.template
 
 local STALL_SECONDS = 90 -- overridable via Download.STALL_SECONDS (tests)
 local SIGSTOP, SIGCONT = 19, 18
 local POLL_SECONDS = 1
+
+--- Seconds on a clock that only goes forward, for durations. A Nook or DX
+--- whose clock had run down gets it set decades forward by the first HTTPS
+--- answer (gzreader_clock.lua): timed by the wall clock, a download running
+--- then was taken for stalled at once.
+local function secs() return time.to_s(time.now()) end
 
 local Download = {
     active = nil, -- one transfer at a time (the Kindle 3's Wi-Fi and CPU are slow)
@@ -128,9 +135,9 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
     end
 
     local job = {
-        pid = pid, read_fd = read_fd, started = os.time(), book_id = tostring(book.id),
+        pid = pid, read_fd = read_fd, started = secs(), book_id = tostring(book.id),
         title = title, expected = expected,
-        last_size = resume_from, last_change = os.time(),
+        last_size = resume_from, last_change = secs(),
         yields = 0, yielded_s = 0, -- (Download.yield: waiting for other requests)
         -- (book.gz_quiet: the book page's Download: no progress box, no opening)
         watching = not from_queue and not Download.background and not book.gz_quiet,
@@ -166,7 +173,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         Awake.release(job)
         UIManager:unschedule(job.poll)
         closeDialog()
-        local secs = os.time() - job.started
+        local took = math.floor(secs() - job.started + 0.5)
         if job.yields > 0 then
             Log.info("download book=" .. tostring(book.id), "waited", job.yielded_s, "s for", job.yields, "other request(s)")
         end
@@ -185,13 +192,13 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
                 return
             end
             local got = (lfs.attributes(dest_path, "size") or 0) - resume_from
-            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), secs .. "s",
-                secs > 0 and string.format("(%d KB/s)", math.floor(got / 1024 / secs + 0.5)) or "")
+            Log.info("download done", "book=" .. tostring(book.id), mb(lfs.attributes(dest_path, "size")), took .. "s",
+                took > 0 and string.format("(%d KB/s)", math.floor(got / 1024 / took + 0.5)) or "")
             -- (laid out in the background if the Kindle is charging: gzreader_layout.lua)
             pcall(function() require("gzreader_layout").schedule(plugin, 60) end)
         else
             if result_err == "cancelled" or tostring(result_err):match("^http_4") then os.remove(part) end
-            Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. secs .. "s",
+            Log.warn("download failed", "book=" .. tostring(book.id), tostring(result_err), "after " .. took .. "s",
                 "received " .. mb(job.last_size))
         end
         if job.watching and #Download.queue > 0 then
@@ -263,14 +270,14 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
         if job.finished then return end
         local size = lfs.attributes(part, "size") or 0
         if size ~= job.last_size then
-            job.last_size, job.last_change = size, os.time()
+            job.last_size, job.last_change = size, secs()
         end
         if dialog then
             dialog:reportProgress(expected and math.min(size, expected) or size)
         end
         if job.paused_at then
             -- waiting for another request (Download.yield): not stalled; on again after YIELD_MAX
-            if os.time() - job.paused_at >= Download.YIELD_MAX then Download.unyield(true) end
+            if secs() - job.paused_at >= Download.YIELD_MAX then Download.unyield(true) end
             return UIManager:scheduleIn(POLL_SECONDS, job.poll)
         end
         if ffiutil.isSubProcessDone(job.pid) then
@@ -284,7 +291,7 @@ function Download.start(plugin, book, dest_path, on_done, from_queue, token_read
             end
             return
         end
-        if os.time() - job.last_change >= (Download.STALL_SECONDS or STALL_SECONDS) then
+        if secs() - job.last_change >= (Download.STALL_SECONDS or STALL_SECONDS) then
             stop(T("stalled: no data for %1 s", Download.STALL_SECONDS or STALL_SECONDS))
             return
         end
@@ -318,7 +325,7 @@ function Download.yield()
     local job = Download.active
     if not job or job.finished or job.paused_at or job.yielded_enough then return end
     signal(job.pid, SIGSTOP)
-    job.paused_at = os.time()
+    job.paused_at = secs()
     job.yields = job.yields + 1
 end
 
@@ -329,10 +336,10 @@ function Download.unyield(capped)
     if not capped then job.yielded_enough = nil end
     if not job.paused_at then return end
     signal(job.pid, SIGCONT)
-    local waited = os.time() - job.paused_at
+    local waited = math.floor(secs() - job.paused_at + 0.5)
     job.yielded_s = job.yielded_s + waited
     job.paused_at = nil
-    job.last_change = os.time() -- (the stall check starts again)
+    job.last_change = secs() -- (the stall check starts again)
     if capped then
         job.yielded_enough = true
         Log.info("download: carried on after waiting", waited, "s for other requests")

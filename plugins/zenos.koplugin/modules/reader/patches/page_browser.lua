@@ -522,7 +522,15 @@ local function apply_page_browser()
         local ok, tour = pcall(require, "common/quickstart/reader_tour")
         if ok then
             tour.start(_plugin_ref, ui, function(layout)
-                return open_page_browser(ui, nil, layout)
+                -- GZreader: the book can be closed and opened again while the
+                -- tip is up (a picture book reopens with its fitted layout a
+                -- second after it opens), and the page browser of a closed book
+                -- crashed GZreader (`document` nil). Open it for the book open
+                -- now; with none, do nothing.
+                local ReaderUI = require("apps/reader/readerui")
+                local current = ReaderUI.instance
+                if not (current and current.document) then return end
+                return open_page_browser(current, nil, layout)
             end)
         end
     end

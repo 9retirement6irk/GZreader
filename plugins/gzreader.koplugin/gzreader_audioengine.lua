@@ -22,6 +22,16 @@ Sources:
           position, then cat-ing the following chunks into the decoder.
 Pause/resume: SIGSTOP/SIGCONT of the gst-launch process. Position: timed on
 the Kindle while playing.
+
+Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…; firmware 5.x):
+GStreamer 1.20 and Amazon's mixersink (into audiomgrd, out over Bluetooth),
+but no ALSA card and no MP3 or AAC decoder (Audible's audiblesrc only opens
+Audible's own files). GZreader brings its own: bin/gzdecode-armhf
+(tools/gzreader/gzdecode: minimp3 + FAAD2), which turns the same feeds into
+S16LE stereo 44100 Hz for
+  … | gzdecode mp3|aac | gst-launch-1.0 -q fdsrc fd=0 ! rawaudioparse … ! mixersink
+No audio test needed there (one way to play); the volume is the Kindle's
+Bluetooth volume (gzreader_tts: com.lab126.audiomgrd speakerVolume, 1-8).
 ]]
 
 local bit = require("bit")
@@ -34,6 +44,9 @@ local T = require("ffi/util").template
 local PID_FILE = "/tmp/gzreader-audio.pid"
 local LOG_FILE = "/tmp/gzreader-audio.log"
 local SINK = "audioconvert ! audioresample ! alsasink"
+
+local BT_TAIL = "gst-launch-1.0 -q fdsrc fd=0 ! rawaudioparse use-sink-caps=false format=pcm pcm-format=s16le"
+    .. " sample-rate=44100 num-channels=2 ! audioconvert ! audioresample ! mixersink"
 
 local Engine = {
     exec = nil,        -- injectable: function(cmd)
@@ -53,7 +66,41 @@ Engine.PLAYERS = {
     { id = "aac-typefind-mfw", formats = { aac = true }, stream = true, pipe = "typefind ! mfw_aacdecoder ! " .. SINK },
     { id = "aac-decodebin", formats = { aac = true }, stream = true, pipe = "decodebin ! " .. SINK },
     { id = "playbin", formats = { mp3 = true, aac = true }, playbin = true },
+    -- Kindles with Bluetooth: GZreader's decoder into Amazon's mixersink
+    { id = "mp3-bt", formats = { mp3 = true }, stream = true, bt = true, codec = "mp3" },
+    { id = "aac-bt", formats = { aac = true }, stream = true, bt = true, codec = "aac" },
 }
+
+--- Does this Kindle play through Amazon's mixersink (Bluetooth Kindles)?
+function Engine.bluetooth()
+    if Engine.bt_present ~= nil then return Engine.bt_present end
+    return require("gzreader_touch").btAudio()
+end
+
+--- The players this Kindle can use (the Bluetooth ones only there, the others elsewhere).
+function Engine.players()
+    local bt, list = Engine.bluetooth() and true or false, {}
+    for _i, p in ipairs(Engine.PLAYERS) do
+        if (p.bt == true) == bt then list[#list + 1] = p end
+    end
+    return list
+end
+
+--- GZreader's decoder for Bluetooth Kindles (made runnable once a run: an
+--- update's zip doesn't keep the file's permissions).
+Engine.DECODER = "bin/gzdecode-armhf"
+local decoder_ready
+function Engine.decoder()
+    local path = (Engine.root or ".") .. "/" .. Engine.DECODER
+    if not path:find("^/") then path = (lfs.currentdir() or ".") .. "/" .. path end
+    if not decoder_ready then
+        decoder_ready = true
+        local chmod = string.format("chmod 755 '%s' >/dev/null 2>&1", (path:gsub("'", "'\\''")))
+        if Engine.exec then Engine.exec(chmod) else os.execute(chmod) end
+    end
+    return path
+end
+function Engine._forgetDecoder() decoder_ready = nil end
 
 local function run(cmd)
     if Engine.exec then return Engine.exec(cmd) end
@@ -87,8 +134,13 @@ local function player(id)
     for _i, p in ipairs(Engine.PLAYERS) do if p.id == id then return p end end
 end
 
---- The pipeline chosen by the audio test for "mp3" or "aac".
+--- The pipeline chosen by the audio test for "mp3" or "aac" (Bluetooth
+--- Kindles: there's one way, no test needed).
 function Engine.chosen(fmt)
+    if Engine.bluetooth() then
+        for _i, p in ipairs(Engine.players()) do if p.formats[fmt] then return p end end
+        return nil
+    end
     local saved = G_reader_settings:readSetting("gzreader_audio_players") or {}
     return saved[fmt] and player(saved[fmt]) or nil
 end
@@ -128,6 +180,9 @@ end
 --- Returns command, position actually started at (ms).
 function Engine.command(p, src)
     local offset = src.offset_ms or 0
+    -- what the feed goes into
+    local into = "gst-launch-0.10 fdsrc ! " .. tostring(p.pipe)
+    if p.bt then into = quote(Engine.decoder()) .. " " .. p.codec .. " | " .. BT_TAIL end
     if src.kind == "chunks" then
         local k = 1
         for i, st in ipairs(src.starts or { 0 }) do if st <= offset then k = i end end
@@ -146,7 +201,7 @@ function Engine.command(p, src)
         else
             feed = string.format("i=%d; %s", k - 1, loop)
         end
-        return feed .. " | gst-launch-0.10 fdsrc ! " .. p.pipe, start + math.floor(skipped)
+        return feed .. " | " .. into, start + math.floor(skipped)
     end
     local path = abs(src.path)
     if p.playbin then
@@ -157,7 +212,7 @@ function Engine.command(p, src)
         skip = math.floor(src.size * offset / src.duration_ms / 4096)
     end
     local started = skip > 0 and math.floor(skip * 4096 * src.duration_ms / src.size) or 0
-    return string.format("dd if=%s bs=4096 skip=%d 2>/dev/null | gst-launch-0.10 fdsrc ! %s", quote(path), skip, p.pipe), started
+    return string.format("dd if=%s bs=4096 skip=%d 2>/dev/null | %s", quote(path), skip, into), started
 end
 
 ---------------------------------------------------------------- playback
@@ -197,7 +252,7 @@ function Engine.stopStray()
         run(string.format("kill -CONT %d >/dev/null 2>&1; kill -TERM %d >/dev/null 2>&1", pid, pid))
     end
     os.remove(PID_FILE)
-    run("for p in $(pidof gst-launch-0.10 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1; " .. Engine.KILL_FEEDERS)
+    run("for p in $(pidof gst-launch-0.10 gst-launch-1.0 gzdecode-armhf 2>/dev/null); do kill -CONT $p; kill -TERM $p; done >/dev/null 2>&1; " .. Engine.KILL_FEEDERS)
 end
 
 --- At GZreader's start: only the player it started itself (cheap, no shell
@@ -295,13 +350,25 @@ function Engine.active() return current ~= nil end
 
 ---------------------------------------------------------------- volume
 
-function Engine.volume() return G_reader_settings:readSetting("gzreader_tts_volume") or 10 end
---- Set the speaker to the saved volume.
+-- (Bluetooth Kindles: the Kindle's own Bluetooth volume, 1-8, the one
+-- Amazon's slider and GZreader's quick panel move; read aloud uses it too)
+function Engine.volume()
+    if Engine.bluetooth() then return require("gzreader_tts").volume() end
+    return G_reader_settings:readSetting("gzreader_tts_volume") or 10
+end
+function Engine.volumeMax()
+    if Engine.bluetooth() then return require("gzreader_tts").BT_VOLUME_MAX end
+    return 15
+end
+function Engine.volumeMin() return Engine.bluetooth() and 1 or 0 end
+--- Set the speaker to the saved volume (Bluetooth: it's the Kindle's own, nothing to do).
 function Engine.applyVolume()
+    if Engine.bluetooth() then return end
     run(string.format("lipc-set-prop -i com.lab126.audio CmdIVolume %d >/dev/null 2>&1", Engine.volume()))
 end
 
 function Engine.setVolume(v)
+    if Engine.bluetooth() then return require("gzreader_tts").setVolume(v) end
     v = math.max(0, math.min(15, v))
     G_reader_settings:saveSetting("gzreader_tts_volume", v)
     run(string.format("lipc-set-prop -i com.lab126.audio CmdIVolume %d >/dev/null 2>&1 &", v))
@@ -350,7 +417,7 @@ function Engine.test(on_done)
     local srcs = Engine.testSources()
     local plan = {}
     for _i, fmt in ipairs({ "mp3", "aac" }) do
-        for _j, p in ipairs(Engine.PLAYERS) do
+        for _j, p in ipairs(Engine.players()) do
             if p.formats[fmt] then
                 local src = srcs[fmt]
                 if p.playbin and fmt == "aac" then src = srcs.aac_file end
@@ -400,7 +467,9 @@ function Engine.test(on_done)
             })
         end)
     end
-    UIManager:show(InfoMessage:new{ text = _("Audio test: listen to the speaker or headphones. The Kindle plays a short tune with each player and asks whether you heard it."), timeout = 5 })
+    UIManager:show(InfoMessage:new{ text = Engine.bluetooth()
+        and _("Audio test: listen to your Bluetooth headphones or speaker. The Kindle plays a short tune (MP3, then M4B / AAC) and asks whether you heard it.")
+        or _("Audio test: listen to the speaker or headphones. The Kindle plays a short tune with each player and asks whether you heard it."), timeout = 5 })
     UIManager:scheduleIn(5.5, step)
 end
 

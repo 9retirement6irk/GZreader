@@ -63,6 +63,14 @@ yours in full first, charge the battery, and back up your books.
    - Leave the card in: without it GZreader says to put it back and
      doesn't start.
    - A full package pushed over it later is moved again at the next start.
+   - **Checked at every start.** Every Android app can write the card, and
+     GZreader runs as root, so the start script keeps the fingerprints
+     (SHA-256) of the code it put there (its Lua and the list of certificate
+     authorities the updater trusts) in `/data/gzreader/app-manifest` and
+     compares them before GZreader runs (a second or two). If anything else
+     changed one, GZreader doesn't start, and `gzreader-start.log` names the
+     files: push the Nook package again. Updates record their new code
+     themselves.
    - To keep everything in `/data/gzreader` (and bring it back):
      `adb shell touch /data/gzreader/app-here`, then start GZreader.
 
