@@ -55,8 +55,8 @@ add({ fn = function(E)
     local d = screen()
     local ids = {}
     for _i, b in ipairs(d.buttons) do if b.tool.writing then ids[#ids + 1] = b.tool.writing end end
-    check(d.flyout == "pen" and table.concat(ids, ",") == "pen,pencil,fountain,highlighter",
-        "the pen's panel: Pen, Pencil, Fountain pen, Highlighter (" .. table.concat(ids, ",") .. ")")
+    check(d.flyout == "pen" and table.concat(ids, ",") == "pen,fountain,marker,pencil",
+        "the pen's panel: Pen, Fountain pen, Marker, Pencil (the highlighter has its own button) (" .. table.concat(ids, ",") .. ")")
     tap(E, "t-fountain")
 end, after = 2 })
 add({ fn = function(E)
@@ -100,7 +100,7 @@ add({ fn = function(E)
     if PEN then E.pen(pts, 0.4) else E.finger(pts, 0.4) end
 end, after = 3 })
 add({ fn = function(E) tap(E, "pen") end, after = 2 })
-add({ fn = function(E) tap(E, "t-highlighter") end, after = 2 })
+add({ fn = function(E) tap(E, "highlighter") end, after = 2 })
 add({ fn = function(E)
     screen():setFlyout(nil)
     line(E, 0.65, 0.3, 0.7)
@@ -128,7 +128,7 @@ end, after = 3 })
 add({ fn = function(E)
     if PEN then
         local st = last()
-        check(st and st.kind == "fountain" and screen().writing == "highlighter",
+        check(st and st.kind == "fountain" and screen().tool == "highlighter" and screen().sketch.writing == "highlighter",
             "the shortcut button (Fountain pen) held: a fountain pen stroke; the highlighter still in hand")
         G_reader_settings:delSetting("gzreader_drawing_shortcut")
     end

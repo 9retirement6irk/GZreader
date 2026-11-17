@@ -964,11 +964,16 @@ function Editor:openDrawing(page)
         choose_paper = true, -- (a new drawing: which paper first)
         start = page,
         title = self:heading(),
+        -- (a new drawing: named and tagged from the drawing screen's top bar, as the Kindle Scribe's notebooks)
+        meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil,
         on_done = function(res)
             if res.reordered then self.pages_reordered = true end
             res.reordered = nil
+            local title, tags = res.title, res.tags
+            res.title, res.tags = nil, nil
+            self.draw_title, self.draw_tags = title, tags
             self.pages = res
-            if self.popup_only then return self:newDrawingDone() end
+            if self.popup_only then return self:newDrawingDone(title, tags) end
             back()
         end,
         on_cancel = function()
@@ -1039,9 +1044,15 @@ end
 
 --- A new drawing (the Notes tab's Draw) after Done: the New drawing window
 --- (a title and tags, then Save), not the note's page; nothing drawn: closed.
-function Editor:newDrawingDone()
+function Editor:newDrawingDone(title, tags)
     if not self:hasDrawing() then return UIManager:close(self, "full") end
     local NewDrawing = require("gzreader_newdrawing")
+    if title then
+        -- Done on the drawing screen, its name and tags given there: saved at once (no window after)
+        Log.info("notes: a new drawing saved from the drawing screen,", self:drawingCount(), "page(s),", #(tags or {}), "tag(s)")
+        UIManager:setDirty("all", "full")
+        return self:saveText(NewDrawing.content(title, tags))
+    end
     -- (what's under: the Notes tab, painted again where the drawing screen was)
     UIManager:setDirty("all", "full")
     return NewDrawing.show{

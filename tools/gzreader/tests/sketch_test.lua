@@ -639,5 +639,65 @@ print("== pen pressure and tilt (a Kindle with a pen)")
     Sketch.range = kept_range
 end)()
 
+-- shapes, the marker and the eraser's sizes (the Kindle Scribe's tools)
+;(function()
+    local function sketch()
+        return Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 1, tap_slop = 8 }
+    end
+    local function drag(sk, x0, y0, x1, y1, t)
+        local outs = {}
+        outs[1] = sk:frame({ { slot = 0, id = 1, x = x0, y = y0 } }, t)
+        outs[2] = sk:frame({ { slot = 0, id = 1, x = (x0 + x1) / 2, y = (y0 + y1) / 2 } }, t + 0.01)
+        outs[3] = sk:frame({ { slot = 0, id = 1, x = x1, y = y1 } }, t + 0.02)
+        outs[4] = sk:frame({ { slot = 0, id = -1 } }, t + 0.03)
+        return outs
+    end
+    local sq = Sketch.outline("square", 10, 20, 110, 220)
+    check(#sq == 5 and sq[1][1] == 10 and sq[3][1] == 110 and sq[3][2] == 220 and sq[5][1] == sq[1][1] and sq[5][2] == sq[1][2],
+        "a square's outline: its four corners, closed")
+    local ci = Sketch.outline("circle", 0, 0, 200, 100)
+    local minx, maxx, miny, maxy = math.huge, -math.huge, math.huge, -math.huge
+    for _i, p in ipairs(ci) do minx, maxx, miny, maxy = math.min(minx, p[1]), math.max(maxx, p[1]), math.min(miny, p[2]), math.max(maxy, p[2]) end
+    check(#ci >= 25 and math.abs(maxx - 200) < 1 and math.abs(minx) < 1 and math.abs(maxy - 100) < 1 and math.abs(miny) < 1
+        and math.abs(ci[1][1] - ci[#ci][1]) < 0.001, "a circle's outline: an oval in the box dragged, closed")
+    local tr = Sketch.outline("triangle", 0, 100, 100, 0)
+    check(#tr == 4 and tr[1][1] == 50 and tr[1][2] == 0 and tr[2][2] == 100 and tr[3][2] == 100, "a triangle: its point up, whichever way it's dragged")
+    local ar = Sketch.outline("arrow", 0, 0, 100, 0)
+    check(#Sketch.outline("line", 0, 0, 5, 5) == 2 and #ar == 5 and ar[2][1] == 100 and ar[4][1] == 100 and ar[3][1] < 100 and ar[3][2] == -ar[5][2],
+        "a line: two points; an arrow: the line and two barbs back from its tip")
+    local sk = sketch()
+    sk.tool, sk.shape, sk.width = "shape", "square", 2
+    local outs = drag(sk, 100, 100, 300, 250, 1)
+    local st = sk:live()[1]
+    check(st and #st.points == 5 and st.points[3][1] == 300 and st.points[3][2] == 250 and st.kind == nil and st.width == 2
+        and #outs[2].segments == 0 and outs[4].redraw and outs[4].stroke_done,
+        "the shape tool: nothing drawn on the way, a square from where the pen landed to where it lifted (a stroke in the pen's ink)")
+    check(sk:canUndo() and sk:undo() and #sk:live() == 0 and sk:redo() and #sk:live() == 1, "…undone and redone like any stroke")
+    local scene = sk:scene()
+    local el
+    for _i, e in ipairs(scene.elements) do if e.type == "freedraw" then el = e end end
+    check(el and #el.points == 5, "…sent to Memos as a stroke along its outline")
+    local sk2 = sketch()
+    sk2.tool, sk2.shape = "shape", "line"
+    drag(sk2, 100, 100, 102, 101, 1)
+    check(#sk2:live() == 0, "a tap with a shape in hand draws nothing")
+    -- the marker: as wide all along, black
+    check(Sketch.TOOL_STYLE.marker.flat and not Sketch.TOOL_STYLE.marker.gray and Sketch.toolRadius("marker", 4, 0.1) == Sketch.toolRadius("marker", 4, 0.9)
+        and Sketch.toolRadius("marker", 4) > Sketch.toolRadius("pen", 4)
+        and table.concat(Sketch.PEN_IDS, ",") == "pen,fountain,marker,pencil",
+        "the marker: black, wider than the pen, the same however hard it's pressed; the pen's tools in the Scribe's order")
+    -- the eraser's sizes: how near a stroke it takes it
+    local sk3 = sketch()
+    sk3.width = 1
+    drag(sk3, 100, 300, 300, 300, 1)
+    sk3.tool, sk3.eraser_width = "eraser", 1
+    drag(sk3, 200, 305, 201, 306, 2)
+    local near = #sk3:live()
+    sk3.eraser_width = 12
+    drag(sk3, 200, 305, 201, 306, 3)
+    check(near == 1 and #sk3:live() == 0 and Sketch.ERASER_WIDTHS[1] == 1 and Sketch.ERASER_WIDTHS[5] == 12,
+        "the eraser: Fine passes a stroke 5 px away, Heavy takes it")
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

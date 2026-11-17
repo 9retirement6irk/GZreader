@@ -165,18 +165,21 @@ end
 --- `flat`: no pressure; `gray`: its ink on the screen (0 black … 255 paper),
 --- painted only where it darkens, so it never lightens ink under it;
 --- `opacity`: Memos' for it. A stroke keeps its tool (`kind`; nil: the pen).
-Sketch.TOOL_IDS = { "pen", "pencil", "fountain", "highlighter" }
+Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "highlighter" }
+--- The pen button's own (the Kindle Scribe's order); the highlighter has a button to itself.
+Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
 Sketch.TOOL_STYLE = {
     pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
     pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70 },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
+    marker = { icon = "marker", scale = 1.9, flat = true }, -- (a felt tip: black, as wide all along)
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
 }
 
 --- What the pen's shortcut (side) button switches to while it's held:
 --- "eraser" (as on the Scribe out of the box) or a writing tool (Settings →
 --- Notes → Pen's shortcut button; `sketch.shortcut`).
-Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "highlighter" }
+Sketch.SHORTCUTS = { "eraser", "pen", "pencil", "fountain", "marker", "highlighter" }
 function Sketch.shortcutTool(sk)
     local v = sk and sk.shortcut
     if v == "eraser" or Sketch.TOOL_STYLE[v] then return v end
@@ -552,7 +555,7 @@ local function erase(self, contact, x, y, out)
     local steps = math.max(1, math.ceil(math.max(math.abs(cx - from[1]), math.abs(cy - from[2])) / 4))
     for k = 1, steps do
         local px, py = from[1] + (cx - from[1]) * k / steps, from[2] + (cy - from[2]) * k / steps
-        local reach = self:radius(4)
+        local reach = self:radius(self.eraser_width or 4)
         local st = self:strokeAt(px, py, reach)
         while st do
             st.gone = true
@@ -638,6 +641,13 @@ local function startContact(self, s, now, out)
         c.color = not style.gray and self.color or nil
         c.stroke = { points = {}, width = self.width, color = c.color, kind = kind }
         self.drawing_slot = s.slot
+        if self.tool == "shape" and Sketch.SHAPE_SET[self.shape or ""] then
+            -- a shape: from where the pen lands to where it lifts (drawn then), in the pen's ink
+            c.shape, c.writing, c.color = self.shape, nil, self.color
+            c.stroke = { points = {}, width = self.width, color = self.color }
+            self.contacts[s.slot] = c
+            return c
+        end
         -- a pen with pressure (and the setting on): the whole stroke has weights (not a highlighter's)
         if self.pressure_on ~= false and pen and s.pressure ~= nil and not style.flat then
             c.pressured = true
@@ -679,6 +689,11 @@ local function endContact(self, slot, out)
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
+    if c.kind == "draw" and c.shape then
+        local pts = c.moved > self.tap_slop and self:shapePoints(c.shape, c.x0, c.y0, c.x, c.y) or {}
+        for _i, p in ipairs(pts) do c.stroke.points[#c.stroke.points + 1] = p end
+        out.redraw = #pts > 0
+    end
     if c.kind == "draw" and (#c.pieces > 0 or (c.stroke and #c.stroke.points > 0)) then
         if c.stroke and #c.stroke.points > 0 then
             c.pieces[#c.pieces + 1] = c.stroke
@@ -754,7 +769,8 @@ function Sketch:frame(slots, now)
                 if c.kind == "pinch" and self.pinch then
                     local p = self.pinch
                     if s.slot == p.a then p.a1 = { s.x, s.y } elseif s.slot == p.b then p.b1 = { s.x, s.y } end
-                elseif c.kind == "draw" then addPoint(self, c, s.x, s.y, out)
+                elseif c.kind == "draw" then
+                    if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
         elseif c then
@@ -762,6 +778,67 @@ function Sketch:frame(slots, now)
         end
     end
     return out
+end
+
+-- ------------------------------------------------------------------ shapes
+
+--- The shapes (the Kindle Scribe's): drawn corner to corner, kept as a
+--- stroke along the shape's outline (Memos' drawings have no triangle, and
+--- a stroke is undone, rubbed out and sent like any other).
+Sketch.SHAPES = { "square", "circle", "triangle", "line", "arrow" }
+Sketch.SHAPE_SET = { square = true, circle = true, triangle = true, line = true, arrow = true }
+Sketch.ERASER_WIDTHS = { 1, 2, 4, 7, 12 } -- how near a stroke the eraser takes it (the pen's widths, and a wider one)
+
+--- Shape `kind`'s outline from (x0, y0) to (x1, y1), as { x, y } points.
+function Sketch.outline(kind, x0, y0, x1, y1)
+    local pts = {}
+    local function to(x, y) pts[#pts + 1] = { x, y } end
+    if kind == "square" then
+        to(x0, y0); to(x1, y0); to(x1, y1); to(x0, y1); to(x0, y0)
+    elseif kind == "circle" then
+        local cx, cy, rx, ry = (x0 + x1) / 2, (y0 + y1) / 2, math.abs(x1 - x0) / 2, math.abs(y1 - y0) / 2
+        local n = math.max(24, math.min(96, math.floor((rx + ry) / 4)))
+        for i = 0, n do
+            local a = 2 * math.pi * i / n
+            to(cx + rx * math.cos(a), cy + ry * math.sin(a))
+        end
+    elseif kind == "triangle" then
+        local top, bottom = math.min(y0, y1), math.max(y0, y1)
+        to((x0 + x1) / 2, top); to(math.max(x0, x1), bottom); to(math.min(x0, x1), bottom); to((x0 + x1) / 2, top)
+    elseif kind == "line" then
+        to(x0, y0); to(x1, y1)
+    elseif kind == "arrow" then
+        local dx, dy = x1 - x0, y1 - y0
+        local len = math.sqrt(dx * dx + dy * dy)
+        to(x0, y0); to(x1, y1)
+        if len > 0 then
+            -- the head: two barbs back from the tip, the line retraced between them
+            local h = math.max(8, math.min(len * 0.3, 40))
+            local ux, uy = dx / len, dy / len
+            local bx, by = x1 - ux * h, y1 - uy * h
+            to(bx - uy * h * 0.5, by + ux * h * 0.5); to(x1, y1); to(bx + uy * h * 0.5, by - ux * h * 0.5)
+        end
+    end
+    return pts
+end
+
+--- The outline in canvas points, from two screen points, kept on the paper.
+function Sketch:shapePoints(kind, sx0, sy0, sx1, sy1)
+    local page = self:pageRect()
+    local function at(x, y)
+        local cx, cy = x - self.canvas.x, y - self.canvas.y
+        if page then
+            cx = math.max(page.x, math.min(page.x + page.w, cx))
+            cy = math.max(page.y, math.min(page.y + page.h, cy))
+        end
+        return cx, cy
+    end
+    local x0, y0 = at(sx0, sy0)
+    local x1, y1 = at(sx1, sy1)
+    local pts = Sketch.outline(kind, x0, y0, x1, y1)
+    -- (points a stroke keeps are whole pixels apart at least: corners stay corners)
+    for _i, p in ipairs(pts) do p[1], p[2] = math.floor(p[1] + 0.5), math.floor(p[2] + 0.5) end
+    return pts
 end
 
 -- ------------------------------------------------------------------ tools

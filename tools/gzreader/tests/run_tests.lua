@@ -8124,6 +8124,18 @@ print("Notes (Memos v0.31)")
             and pshow:find("PaperList:new{", 1, true) ~= nil and not pshow:find("Grid:new", 1, true),
             "Paper: small tiles six to a row sized to the screen's width, in a grid that scrolls (no pages)")
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
+        check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
+            and dsrcp:find('add({ id = "topfold", icon = self.top_hidden and "down" or "up"', 1, true) ~= nil
+            and dsrcp:find('add({ id = "show", round = true, dark = true', 1, true) ~= nil
+            and dsrcp:find('if w.meta then res.title, res.tags = w.meta.title, w.meta.tags end', 1, true) ~= nil
+            and esrc2:find('meta = self.popup_only and { title = self.draw_title or "", tags = self.draw_tags or {}, offered = self.tags } or nil', 1, true) ~= nil
+            and esrc2:find('return self:saveText(NewDrawing.content(title, tags))', 1, true) ~= nil,
+            "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
+        local ids = {}
+        for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
+        check(table.concat(ids, ",") == "pen,highlighter,shape,eraser,sep,undo,redo,more",
+            "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
             and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil

@@ -95,16 +95,18 @@ end
 
 DrawScreen.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/draw/"
 
--- the strip down the side of the page (icons; `label`: what each does, for logs and tests)
+-- the strip down the side of the page, as the Kindle Scribe's (icons;
+-- `label`: what each does, for logs and tests). Paper and All pages are in
+-- the top bar; the side and the pen's shortcut button under More.
 DrawScreen.SIDE_TOOLS = {
     { id = "pen", icon = "pen", label = _("Pen") },
+    { id = "highlighter", icon = "highlighter", label = _("Highlighter") },
+    { id = "shape", icon = "shapes", label = _("Shapes") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
+    { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
     { id = "redo", icon = "redo", label = _("Redo") },
-    { id = "paper", icon = "paper", label = _("Paper") },
-    { id = "pages", icon = "pages", label = _("All pages") },
-    { id = "side", icon = "side", label = _("Move to the other side") },
-    { id = "hide", icon = "hide", label = _("Hide the toolbar") },
+    { id = "more", icon = "more", label = _("More") },
 }
 -- (kept: the tools by id, for callers and tests from before the side strip)
 DrawScreen.TOOLS = DrawScreen.SIDE_TOOLS
@@ -164,7 +166,15 @@ function DrawScreen.shortcut()
     return "eraser"
 end
 
-DrawScreen.WRITING_NAMES = { pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"), highlighter = _("Highlighter") }
+DrawScreen.WRITING_NAMES = { pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"), marker = _("Marker"),
+    highlighter = _("Highlighter") }
+
+--- A number setting that must be one of `list` (else `default`).
+local function oneOf(key, list, default)
+    local v = G_reader_settings and tonumber(G_reader_settings:readSetting(key))
+    for _i, w in ipairs(list) do if w == v then return v end end
+    return default
+end
 
 --- The pen's width new drawings start with (the last one chosen).
 function DrawScreen.lastWidth()
@@ -178,9 +188,16 @@ function DrawScreen:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
     self.pen_only = Sketch.penDevice(Device)
     self.top_h = S(52)
-    self.bar_h = self.top_h -- (the page starts under the top bar)
+    self.bar_h = self.top_h
+    self.top_hidden = false -- (folded away by the tab under it)
     self.tool_sz = S(48)
-    self.canvas = { x = 0, y = self.top_h, w = sw, h = sh - self.top_h }
+    -- the page is the whole screen: the top bar lies over it, and folds away (its tab)
+    self.canvas = { x = 0, y = 0, w = sw, h = sh }
+    -- a new drawing: its name and tags, set from the top bar ({ title, tags, offered })
+    if self.meta then
+        self.meta.title = self.meta.title or ""
+        self.meta.tags = self.meta.tags or {}
+    end
     self.pages = self.pages or {}
     if #self.pages == 0 then self.pages[1] = { new = true } end
     self.index = math.max(1, math.min(self.start or 1, #self.pages))
@@ -190,6 +207,12 @@ function DrawScreen:init()
     self.flyout = nil -- "pen" (its widths) or "eraser" (Clear page), open beside the toolbar
     self.tool, self.width = "pen", DrawScreen.lastWidth()
     self.writing = DrawScreen.lastWriting()
+    -- (the highlighter has a button of its own, and its own width)
+    if self.writing == "highlighter" then self.tool, self.writing = "highlighter", "pen" end
+    self.hl_width = oneOf("gzreader_drawing_hl_width", Sketch.WIDTHS, 2)
+    self.eraser_width = oneOf("gzreader_drawing_eraser_width", Sketch.ERASER_WIDTHS, 4)
+    local shape = G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_shape")
+    self.shape = Sketch.SHAPE_SET[shape or ""] and shape or "square"
     self.has_color = DrawScreen.hasColor()
     -- a Kindle with a pen: its pressure and tilt make the line heavier (a choice in the pen's panel)
     self.pressure_on = DrawScreen.pressureOn()
@@ -262,9 +285,7 @@ function DrawScreen:showPage(i, first)
     sk.pen_only = self.pen_only
     sk.holes = self.holes
     -- (the pen and its width stay as they were from page to page)
-    sk.tool, sk.width, sk.color = self.tool, self.width, self.color
-    sk.writing = self.writing or DrawScreen.lastWriting()
-    sk.pressure_on = self.pressure_on
+    self:syncTool()
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -278,28 +299,139 @@ end
 
 -- ------------------------------------------------------------- the controls
 
---- Lays out what's over the page: the top bar (Close, the note's name,
---- Done), the tools down one side, the page buttons at the bottom, and a
---- panel open beside the toolbar. `self.buttons`: { tool, rect, group }.
+DrawScreen.WIDTH_NAMES = { _("Fine"), _("Thin"), _("Medium"), _("Thick"), _("Heavy") }
+DrawScreen.SHAPE_NAMES = { square = _("Square"), circle = _("Circle"), triangle = _("Triangle"), line = _("Line"), arrow = _("Arrow") }
+
+--- The tool in hand as the sketch needs it: the highlighter is a writing
+--- tool with a width of its own; a shape is drawn in the pen's ink.
+function DrawScreen:syncTool()
+    local sk = self.sketch
+    if not sk then return end
+    local hl = self.tool == "highlighter"
+    sk.tool = hl and "pen" or self.tool
+    sk.writing = hl and "highlighter" or self.writing
+    sk.width = hl and self.hl_width or self.width
+    sk.color = self.color
+    sk.shape = self.shape
+    sk.eraser_width = self.eraser_width
+    sk.pressure_on = self.pressure_on
+end
+
+--- The rows of the panel `which` (a list, as the Kindle Scribe's: a name at
+--- the left, a picture at the right; the one in use is dark).
+function DrawScreen:flyoutRows(which)
+    local rows = {}
+    if which == "pen" then
+        for _i, id in ipairs(Sketch.PEN_IDS) do
+            rows[#rows + 1] = { id = "t-" .. id, row = true, writing = id, icon = Sketch.TOOL_STYLE[id].icon, label = DrawScreen.WRITING_NAMES[id] }
+        end
+        rows[#rows + 1] = { id = "widths", cells = "width" }
+        if self.has_color then rows[#rows + 1] = { id = "colors", cells = "color" } end
+        if self.pen_only then
+            rows[#rows + 1] = { id = "pressure", row = true, switch = self.pressure_on, label = _("Pressure and tilt") }
+        end
+    elseif which == "highlighter" then
+        for k, w in ipairs(Sketch.WIDTHS) do
+            rows[#rows + 1] = { id = "hw" .. tostring(w), row = true, hl_width = w, bar = k, label = DrawScreen.WIDTH_NAMES[k] }
+        end
+    elseif which == "shape" then
+        for _i, id in ipairs(Sketch.SHAPES) do
+            rows[#rows + 1] = { id = "s-" .. id, row = true, shape = id, icon = id, label = DrawScreen.SHAPE_NAMES[id] }
+        end
+    elseif which == "eraser" then
+        for k, w in ipairs(Sketch.ERASER_WIDTHS) do
+            rows[#rows + 1] = { id = "e" .. tostring(w), row = true, eraser_width = w, bar = k, hollow = true, label = DrawScreen.WIDTH_NAMES[k] }
+        end
+        rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
+    elseif which == "more" then
+        rows[#rows + 1] = { id = "side", row = true, label = self.toolbar_side == "left" and _("Move to right side") or _("Move to left side") }
+        if self.pen_only then
+            rows[#rows + 1] = { id = "shortcut", row = true,
+                label = T(_("Stylus shortcut: %1"), DrawScreen.SHORTCUT_NAMES[DrawScreen.shortcut()] or DrawScreen.shortcut()) }
+        end
+    elseif which == "options" then
+        rows[#rows + 1] = { id = "newpage2", row = true, label = _("New page") }
+        rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
+        if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
+        rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
+    elseif which == "tags" then
+        local seen = {}
+        local function tag(name)
+            if seen[name] then return end
+            seen[name] = true
+            rows[#rows + 1] = { id = "tag-" .. name, row = true, tagname = name, label = "#" .. name }
+        end
+        for _i, name in ipairs(self.meta and self.meta.tags or {}) do tag(name) end
+        for _i, t in ipairs(self.meta and self.meta.offered or {}) do
+            if #rows < DrawScreen.TAGS_OFFERED then tag(type(t) == "table" and t.tag or t) end
+        end
+        rows[#rows + 1] = { id = "newtag", row = true, label = "+ " .. _("New tag") }
+    end
+    return rows
+end
+DrawScreen.TAGS_OFFERED = 9
+DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
+    marker = _("Marker"), highlighter = _("Highlighter") }
+
+--- Lays out what's over the page, as the Kindle Scribe's notebook: the top
+--- bar (Back, the drawing's name, pages, paper, tags, options, Done) with a
+--- tab under it that folds it away; the tools down one side under a round
+--- button that folds them into one; the page buttons at the bottom; and a
+--- panel open beside what was tapped. `self.buttons`: { tool, rect, group }.
 function DrawScreen:layoutBar()
     local sw, sh = self.dimen.w, self.dimen.h
     local ts, pad, gap = self.tool_sz, S(3), S(8)
     self.buttons, self.holes, self.frames = {}, {}, {}
     local function add(tool, x, y, w, h, group)
-        self.buttons[#self.buttons + 1] = { tool = tool, rect = Geom:new{ x = math.floor(x), y = math.floor(y), w = math.floor(w), h = math.floor(h) }, group = group }
+        local b = { tool = tool, rect = Geom:new{ x = math.floor(x), y = math.floor(y), w = math.floor(w), h = math.floor(h) }, group = group }
+        self.buttons[#self.buttons + 1] = b
+        return b
     end
-    -- the top bar
-    add({ id = "cancel", icon = "close", label = _("Close") }, S(4), S(4), self.top_h - S(8), self.top_h - S(8), "top")
-    local done_w = S(96)
-    add({ id = "done", label = _("Done") }, sw - done_w - S(6), S(6), done_w, self.top_h - S(12), "top")
-    -- the tools
-    local tools = self.toolbar_hidden and { { id = "show", icon = self.toolbar_side == "left" and "show" or "hide", label = _("Show the toolbar") } }
-        or DrawScreen.SIDE_TOOLS
-    local tw, th = ts + 2 * pad, #tools * ts + 2 * pad
-    local tx = self.toolbar_side == "left" and gap or (sw - gap - tw)
-    local ty = self.top_h + S(12)
-    self.frames.toolbar = Geom:new{ x = tx, y = ty, w = tw, h = th }
-    for k, t in ipairs(tools) do add(t, tx + pad, ty + pad + (k - 1) * ts, ts, ts, "toolbar") end
+    -- the top bar, and its tab
+    local top = self.top_hidden and 0 or self.top_h
+    local tab_w, tab_h = S(64), S(22)
+    self.frames.tab = Geom:new{ x = math.floor((sw - tab_w) / 2), y = top == 0 and 0 or top - Size.line.medium, w = tab_w, h = tab_h }
+    add({ id = "topfold", icon = self.top_hidden and "down" or "up", small = true,
+        label = self.top_hidden and _("Show the top bar") or _("Hide the top bar") },
+        self.frames.tab.x, self.frames.tab.y, tab_w, tab_h, "tab")
+    local anchors = {}
+    if not self.top_hidden then
+        self.frames.top = Geom:new{ x = 0, y = 0, w = sw, h = self.top_h }
+        local bh = self.top_h - S(8)
+        add({ id = "cancel", icon = "back", label = _("Close") }, S(4), S(4), bh, bh, "top")
+        local done_w = S(84)
+        local x = sw - done_w - S(6)
+        add({ id = "done", label = _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
+        local icons = { { id = "options", icon = "more", label = _("Options") } }
+        if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
+        icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
+        icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
+        for _i, t in ipairs(icons) do
+            x = x - bh - S(2)
+            anchors[t.id] = add(t, x, S(4), bh, bh, "top")
+        end
+        -- the drawing's name (a new drawing's: tap to change it)
+        local left = S(4) + bh + S(6)
+        add({ id = "title", passive = not self.meta, title = true, label = _("Rename") }, left, 0, x - left - S(6), self.top_h, "top")
+    end
+    -- the tools, under their round button
+    local tx = self.toolbar_side == "left" and gap or (sw - gap - ts - 2 * pad)
+    local ty = top + tab_h + S(8)
+    self.frames.fold = Geom:new{ x = tx + pad, y = ty, w = ts, h = ts }
+    if self.toolbar_hidden then
+        add({ id = "show", round = true, dark = true, label = _("Show the toolbar") }, tx + pad, ty, ts, ts, "fold")
+    else
+        add({ id = "hide", icon = "up", round = true, label = _("Hide the toolbar") }, tx + pad, ty, ts, ts, "fold")
+        local tools = DrawScreen.SIDE_TOOLS
+        local sy = ty + ts + S(8)
+        local y = sy + pad
+        for _k, t in ipairs(tools) do
+            local h = t.sep and S(12) or ts
+            anchors[t.id] = add(t, tx + pad, y, ts, h, "toolbar")
+            y = y + h
+        end
+        self.frames.toolbar = Geom:new{ x = tx, y = sy, w = ts + 2 * pad, h = y - sy + pad }
+    end
     -- the pages: ◀ 2 / 3 ▶ +
     local lw = S(84)
     local pw = 3 * ts + lw + 2 * pad
@@ -309,62 +441,66 @@ function DrawScreen:layoutBar()
     add({ id = "page", passive = true }, px + pad + ts, py + pad, lw, ts, "pill")
     add({ id = "next", icon = "right", label = _("Next page") }, px + pad + ts + lw, py + pad, ts, ts, "pill")
     add({ id = "newpage", icon = "plus", label = _("New page") }, px + pad + 2 * ts + lw, py + pad, ts, ts, "pill")
-    -- a panel beside the toolbar
-    if self.flyout and not self.toolbar_hidden then
-        local fw, fh, row
-        local head = S(30)
+    -- a panel: beside the tool tapped, or under the top bar's button
+    local anchor = self.flyout and anchors[DrawScreen.FLYOUT_ANCHOR[self.flyout] or self.flyout]
+    if anchor then
+        local rows = self:flyoutRows(self.flyout)
+        local rh = S(44)
+        local fw = math.min(sw - 2 * gap, S(280))
         if self.flyout == "pen" then
-            -- (a row of writing tools above the thicknesses)
-            fw, fh = #Sketch.WIDTHS * (ts + S(6)) + S(18), head + 2 * ts + S(28)
-            if self.has_color then -- a second row: the colours
-                fw, fh = math.max(fw, #Sketch.COLORS * (ts + S(6)) + S(18)), fh + ts + S(8)
-            end
-            if self.pen_only then -- a Kindle with a pen: pressure and tilt, on or off
-                fw, fh = math.max(fw, S(300)), fh + ts + S(8)
-            end
-        else
-            fw, fh = S(200), head + ts + S(20)
+            fw = math.max(fw, #Sketch.WIDTHS * (ts + S(6)) + S(18), self.has_color and (#Sketch.COLORS * (ts + S(6)) + S(18)) or 0)
         end
-        local anchor = self.flyout == "pen" and 1 or 2
-        local fx = self.toolbar_side == "left" and (tx + tw + gap) or (tx - gap - fw)
-        local fy = ty + pad + (anchor - 1) * ts
+        local fh = 0
+        for _i, r in ipairs(rows) do fh = fh + (r.cells and (ts + S(10)) or rh) end
+        fh = fh + 2 * pad
+        local fx, fy
+        if anchor.group == "top" then
+            fx, fy = math.min(sw - gap - fw, math.max(gap, anchor.rect.x + anchor.rect.w - fw)), self.top_h + S(4)
+        else
+            fx = self.toolbar_side == "left" and (anchor.rect.x + anchor.rect.w + pad + S(2)) or (anchor.rect.x - pad - S(2) - fw)
+            fy = math.max(top + S(4), math.min(anchor.rect.y, sh - fh - gap))
+        end
         self.frames.flyout = Geom:new{ x = fx, y = fy, w = fw, h = fh }
-        row = fy + head + S(8)
-        if self.flyout == "pen" then
-            for k, id in ipairs(Sketch.TOOL_IDS) do
-                add({ id = "t-" .. id, writing = id, icon = Sketch.TOOL_STYLE[id].icon, label = DrawScreen.WRITING_NAMES[id] },
-                    fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
-            end
-            row = row + ts + S(8)
-            for k, w in ipairs(Sketch.WIDTHS) do
-                add({ id = "w" .. tostring(w), width = w, label = DrawScreen.WIDTH_NAMES[k] }, fx + S(12) + (k - 1) * (ts + S(6)), row, ts, ts, "flyout")
-            end
-            if self.has_color then
-                for k, col in ipairs(Sketch.COLORS) do
-                    add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(12) + (k - 1) * (ts + S(6)), row + ts + S(8), ts, ts, "flyout")
+        local y = fy + pad
+        for _i, r in ipairs(rows) do
+            if r.cells == "width" then
+                for k, w in ipairs(Sketch.WIDTHS) do
+                    add({ id = "w" .. tostring(w), width = w, label = DrawScreen.WIDTH_NAMES[k] }, fx + S(9) + (k - 1) * (ts + S(6)), y + S(5), ts, ts, "flyout")
                 end
+                y = y + ts + S(10)
+            elseif r.cells == "color" then
+                for k, col in ipairs(Sketch.COLORS) do
+                    add({ id = "c-" .. col.id, color = col.value, label = col.id }, fx + S(9) + (k - 1) * (ts + S(6)), y + S(5), ts, ts, "flyout")
+                end
+                y = y + ts + S(10)
+            else
+                add(r, fx + pad, y, fw - 2 * pad, rh, "flyout")
+                y = y + rh
             end
-            if self.pen_only then
-                add({ id = "pressure", label = self.pressure_on and _("Pressure and tilt: on") or _("Pressure and tilt: off") },
-                    fx + S(12), row + (self.has_color and 2 or 1) * (ts + S(8)), fw - S(24), ts, "flyout")
-            end
-        else
-            add({ id = "clear", label = _("Clear the page") }, fx + S(12), row, fw - S(24), ts, "flyout")
         end
+    else
+        self.flyout = nil
     end
     for _k, r in pairs(self.frames) do self.holes[#self.holes + 1] = r end
     if self.sketch then self.sketch.holes = self.holes end
 end
-
-DrawScreen.WIDTH_NAMES = { _("Extra thin"), _("Thin"), _("Medium"), _("Thick"), _("Extra thick") }
+--- (a panel opens at the button of the same name; these at another's)
+DrawScreen.FLYOUT_ANCHOR = { tags = "tag" }
 
 function DrawScreen:selected(t)
-    local sk = self.sketch
-    if t.writing then return sk.tool == "pen" and (sk.writing or "pen") == t.writing end
-    if t.width then return sk.tool == "pen" and sk.width == t.width end
-    if t.color then return sk.tool == "pen" and Sketch.inkColor(t.color) == sk.color end
-    if t.id == "pen" then return sk.tool == "pen" end
-    if t.id == "eraser" then return sk.tool == "eraser" end
+    if t.writing then return self.tool == "pen" and self.writing == t.writing end
+    if t.width then return self.tool ~= "highlighter" and self.width == t.width end
+    if t.hl_width then return self.hl_width == t.hl_width end
+    if t.shape then return self.tool == "shape" and self.shape == t.shape end
+    if t.eraser_width then return self.eraser_width == t.eraser_width end
+    if t.color then return Sketch.inkColor(t.color) == self.color end
+    if t.tagname then
+        for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
+        return false
+    end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then return self.tool == t.id end
+    if t.id == "more" or t.id == "options" then return self.flyout == t.id end
+    if t.id == "tag" then return self.flyout == "tags" end
     return false
 end
 
@@ -383,16 +519,24 @@ function DrawScreen:label(t)
     return t.label
 end
 
---- The note's name in the top bar, and what draws under it.
-function DrawScreen:heading() return self.title and self.title ~= "" and self.title or _("Drawing") end
+--- The drawing's name in the top bar (a new drawing's: yours, once given), and what draws under it.
+function DrawScreen:heading()
+    if self.meta then return self.meta.title ~= "" and self.meta.title or _("Untitled drawing") end
+    return self.title and self.title ~= "" and self.title or _("Drawing")
+end
 function DrawScreen:hint()
     local paper = Notepaper.get(self.sketch:paper())
     local on = paper and paper.id ~= "blank" and paper.label or nil
-    local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
     -- zoomed (pinch): how much, and how back
     if self.sketch.zoomed then
         return string.format("%.1f\u{00D7}", self.sketch:zoom()) .. " \u{00B7} " .. _("pinch in for the whole page")
     end
+    if self.meta and #self.meta.tags > 0 then
+        local out = {}
+        for i, name in ipairs(self.meta.tags) do out[i] = "#" .. name end
+        return table.concat(out, " ")
+    end
+    local how = self.pen_only and _("Draw with the pen; your hand can rest on the screen") or _("Draw with one finger")
     return on and (how .. " \u{00B7} " .. on) or how
 end
 
@@ -407,22 +551,81 @@ function DrawScreen:icon(name, size, dim)
     return self.icons[key]
 end
 
-local function textAt(bb, x, y, w, h, text, size, bold, color)
+local function textAt(bb, x, y, w, h, text, size, bold, color, left)
     local tw = TextWidget:new{ text = text, face = Font:getFace("cfont", size), bold = bold, fgcolor = color or Blitbuffer.COLOR_BLACK,
         max_width = w }
     local sz = tw:getSize()
-    tw:paintTo(bb, x + math.floor((w - sz.w) / 2), y + math.floor((h - sz.h) / 2))
+    tw:paintTo(bb, x + (left and 0 or math.floor((w - sz.w) / 2)), y + math.floor((h - sz.h) / 2))
     tw:free()
+    return sz.w
+end
+
+--- The picture of the tool in hand (the toolbar's buttons, and the round one when they're folded away).
+function DrawScreen:toolIcon(id)
+    if id == "pen" then return Sketch.toolStyle(self.writing).icon end
+    if id == "shape" then return self.shape or "shapes" end
+    return id == "highlighter" and "highlighter" or id == "eraser" and "eraser" or id
 end
 
 function DrawScreen:paintButton(bb, x, y, b)
     local t, r = b.tool, b.rect
     local sel, on = self:selected(t), self:enabled(t)
     local bx, by = x + r.x, y + r.y
-    if t.icon then
-        local isz = math.floor(r.h * 0.56)
-        -- (the toolbar's pen shows the writing tool in hand)
-        local icon = t.id == "pen" and Sketch.toolStyle(self.writing).icon or t.icon
+    if t.sep then
+        bb:paintRect(bx + S(6), by + math.floor(r.h / 2), r.w - S(12), Size.line.medium, Blitbuffer.COLOR_BLACK)
+    elseif t.title then
+        -- the name, and under it the hint (or the tags); a pencil after a name that can be changed
+        local w = textAt(bb, bx, by + S(4), r.w - (self.meta and S(26) or 0), S(24), self:heading(), 17, true, nil, true)
+        if self.meta then self:icon("edit", S(16)):paintTo(bb, bx + w + S(8), by + S(8)) end
+        textAt(bb, bx, by + S(27), r.w, S(20), self:hint(), 12, false, Blitbuffer.COLOR_DARK_GRAY, true)
+    elseif t.row then
+        -- a panel's row: its name, and at the right a picture, a line as thick, or a switch
+        textAt(bb, bx + S(12), by, r.w - S(70), r.h, self:label(t), 16, false, on and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, true)
+        local rx = bx + r.w - S(12)
+        if t.icon then
+            local isz = S(22)
+            self:icon(t.icon, isz):paintTo(bb, rx - isz, by + math.floor((r.h - isz) / 2))
+        elseif t.bar then
+            local h = S(2) + t.bar * S(4)
+            local w = S(56)
+            if t.hollow then
+                bb:paintBorder(rx - w, by + math.floor((r.h - h) / 2), w, h, Size.border.thin, Blitbuffer.COLOR_BLACK, math.floor(h / 2))
+            else
+                bb:paintRoundedRect(rx - w, by + math.floor((r.h - h) / 2), w, h, Blitbuffer.COLOR_GRAY_9, math.floor(h / 2))
+            end
+        elseif t.switch ~= nil then
+            local w, h = S(40), S(22)
+            local sx, sy = rx - w, by + math.floor((r.h - h) / 2)
+            bb:paintRoundedRect(sx, sy, w, h, t.switch and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE, math.floor(h / 2))
+            bb:paintBorder(sx, sy, w, h, Size.border.thin, Blitbuffer.COLOR_BLACK, math.floor(h / 2))
+            local d = h - S(6)
+            bb:paintRoundedRect(t.switch and (sx + w - d - S(3)) or (sx + S(3)), sy + S(3), d, d,
+                t.switch and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK, math.floor(d / 2))
+        elseif t.tagname and sel then
+            textAt(bb, rx - S(24), by, S(24), r.h, "\u{2713}", 16, true)
+        end
+        if sel and not t.tagname then bb:invertRect(bx, by, r.w, r.h) end
+    elseif t.round then
+        -- the toolbar's round button: a ring; the tools folded away: dark, the tool in hand on it
+        local rad = math.floor(r.w / 2)
+        if t.dark then
+            local isz = math.floor(r.h * 0.5)
+            bb:paintRoundedRect(bx, by, r.w, r.h, Blitbuffer.COLOR_WHITE, rad)
+            self:icon(self:toolIcon(self.tool), isz):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
+            -- (dark, and round: inverted a row at a time)
+            for dy = 0, r.h - 1 do
+                local off = dy + 0.5 - rad
+                local dx = math.floor(math.sqrt(math.max(0, rad * rad - off * off)))
+                if dx > 0 then bb:invertRect(bx + rad - dx, by + dy, 2 * dx, 1) end
+            end
+        else
+            local isz = math.floor(r.h * 0.5)
+            self:icon(t.icon, isz):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
+        end
+    elseif t.icon then
+        local isz = t.small and math.floor(r.h * 0.9) or math.floor(r.h * 0.56)
+        -- (the toolbar's pen shows the writing tool in hand; Shapes, the shape)
+        local icon = (t.id == "pen" or t.id == "shape") and self:toolIcon(t.id) or t.icon
         self:icon(icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
         if t.id == "pen" then
             -- the pen's width, as a dot in the corner
@@ -443,9 +646,11 @@ function DrawScreen:paintButton(bb, x, y, b)
         bb:paintRectRGB32(bx + m, by + m, r.w - 2 * m, r.h - 2 * m, DrawScreen.rgb32(t.color))
         if sel then bb:paintBorder(bx, by, r.w, r.h, Size.border.thick, Blitbuffer.COLOR_BLACK, S(6)) end
     elseif t.width then
-        bb:paintBorder(bx, by, r.w, r.h, sel and Size.border.thick or Size.border.thin, sel and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, S(6))
-        local d = math.max(1, self.sketch:radius(t.width))
-        bb:paintRoundedRect(bx + math.floor(r.w / 2) - d, by + math.floor(r.h / 2) - d, 2 * d + 1, 2 * d + 1, Blitbuffer.COLOR_BLACK, d)
+        -- a thickness: a short line as thick as the pen draws it
+        local h = math.max(2, 2 * self.sketch:radius(t.width) + 1)
+        local w = math.floor(r.w * 0.6)
+        bb:paintRoundedRect(bx + math.floor((r.w - w) / 2), by + math.floor((r.h - h) / 2), w, h, Blitbuffer.COLOR_BLACK, math.floor(h / 2))
+        if sel then bb:invertRect(bx, by, r.w, r.h) end
     elseif t.passive then
         textAt(bb, bx, by, r.w, r.h, self:label(t), 16, true)
     else
@@ -458,26 +663,22 @@ end
 --- The top bar, the toolbar, the page buttons and an open panel, over the page.
 function DrawScreen:paintBar(bb, x, y)
     local sw = self.dimen.w
-    bb:paintRect(x, y, sw, self.top_h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(x, y + self.top_h - Size.line.medium, sw, Size.line.medium, Blitbuffer.COLOR_BLACK)
-    local left, right = self.top_h + S(6), S(96) + S(16)
-    textAt(bb, x + left, y + S(4), sw - left - right, S(24), self:heading(), 17, true)
-    textAt(bb, x + left, y + S(27), sw - left - right, S(20), self:hint(), 12, false, Blitbuffer.COLOR_DARK_GRAY)
-    for _i, name in ipairs({ "toolbar", "pill", "flyout" }) do
+    if self.frames.top then
+        bb:paintRect(x, y, sw, self.top_h, Blitbuffer.COLOR_WHITE)
+        bb:paintRect(x, y + self.top_h - Size.line.medium, sw, Size.line.medium, Blitbuffer.COLOR_BLACK)
+    end
+    local function frame(name)
         local f = self.frames[name]
-        if f then
-            local radius = name == "pill" and math.floor(f.h / 2) or S(10)
-            bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, radius)
-            bb:paintBorder(x + f.x, y + f.y, f.w, f.h, name == "flyout" and Size.border.thick or Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
-        end
+        if not f then return end
+        local radius = (name == "pill" or name == "fold") and math.floor(f.h / 2) or name == "flyout" and 0 or S(8)
+        bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, radius)
+        bb:paintBorder(x + f.x, y + f.y, f.w, f.h, Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
     end
-    if self.frames.flyout then
-        local f = self.frames.flyout
-        textAt(bb, x + f.x + S(12), y + f.y + S(6), f.w - S(24), S(24),
-            self.flyout == "pen" and (self.has_color and _("Writing tool, thickness and colour") or _("Writing tool and thickness"))
-                or _("Eraser: rubs out whole strokes"), 14, true)
-    end
-    for _i, b in ipairs(self.buttons) do self:paintButton(bb, x, y, b) end
+    for _i, name in ipairs({ "tab", "fold", "toolbar", "pill" }) do frame(name) end
+    for _i, b in ipairs(self.buttons) do if b.group ~= "flyout" then self:paintButton(bb, x, y, b) end end
+    -- (an open panel over everything else)
+    frame("flyout")
+    for _i, b in ipairs(self.buttons) do if b.group == "flyout" then self:paintButton(bb, x, y, b) end end
 end
 
 function DrawScreen:paintTo(bb, x, y)
@@ -927,46 +1128,139 @@ end
 --- The pen's colour ("#rrggbb"; memos' ink: its own colour or nil), kept for next time.
 function DrawScreen:setColor(hex)
     self.color = Sketch.inkColor(hex)
-    self.tool = "pen"
+    if self.tool ~= "shape" then self.tool = "pen" end
     if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_color", self.color or Drawing.INK) end
-    self.sketch.tool, self.sketch.color = "pen", self.color
+    self:syncTool()
 end
 
+--- The tool in hand ("pen", "highlighter", "shape", "eraser"), and the pen's width.
 function DrawScreen:setTool(tool, width)
     self.tool = tool
     if width then
         self.width = width
         if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_width", width) end
     end
-    self.sketch.tool, self.sketch.width = self.tool, self.width
+    self:syncTool()
 end
 
---- The writing tool (Sketch.TOOL_IDS), kept for next time; the pen in hand.
+--- The writing tool (Sketch.TOOL_IDS), kept for next time; the pen in hand
+--- (the highlighter: its own button).
 function DrawScreen:setWriting(id)
     if not Sketch.TOOL_STYLE[id] then return end
-    self.writing = id
     if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_writing", id) end
-    self:setTool("pen")
-    self.sketch.writing = id
+    if id == "highlighter" then
+        self:setTool("highlighter")
+    else
+        self.writing = id
+        self:setTool("pen")
+    end
     Log.info("drawing: writing with the", id)
+end
+
+--- A setting kept for next time.
+local function keep(key, value)
+    if G_reader_settings then G_reader_settings:saveSetting(key, value) end
+end
+
+--- The drawing's name (a new drawing's), asked for in a small window.
+function DrawScreen:rename()
+    if not self.meta then return end
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Name this drawing"),
+        input = self.meta.title,
+        input_hint = _("Untitled drawing"),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                self.meta.title = (dialog:getInputText() or ""):gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                UIManager:close(dialog)
+                self.changed = true
+                UIManager:setDirty(self, "ui")
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- Tag `name` on the drawing, or off it when it's there.
+function DrawScreen:toggleTag(name)
+    if not self.meta then return end
+    self.meta.tags = require("gzreader_newdrawing").toggle(self.meta.tags, name)
+    self.changed = true
+end
+
+--- A tag of your own, asked for in a small window.
+function DrawScreen:newTag()
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    dialog = InputDialog:new{
+        title = _("New tag"),
+        input_hint = _("tag"),
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Add"), is_enter_default = true, callback = function()
+                local name = require("gzreader_noteeditor").cleanTag(dialog:getInputText() or "")
+                UIManager:close(dialog)
+                if name ~= "" then
+                    local had = false
+                    for _i, t in ipairs(self.meta.tags) do if t == name then had = true end end
+                    if not had then self:toggleTag(name) end
+                end
+                self:setFlyout("tags")
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- The pen's shortcut button: the next tool (Settings → Notes has the same choice).
+function DrawScreen:nextShortcut()
+    local now, list = DrawScreen.shortcut(), Sketch.SHORTCUTS
+    local k = 1
+    for i, id in ipairs(list) do if id == now then k = i end end
+    local id = list[k % #list + 1]
+    keep("gzreader_drawing_shortcut", id)
+    Log.info("drawing: the pen's shortcut button:", id)
 end
 
 function DrawScreen:use(t)
     local sk = self.sketch
+    -- a tool: taken in hand; again: its choices
+    local function tool(id)
+        if self.tool == id then self:setFlyout(self.flyout ~= id and id or nil) else self:setTool(id); self:setFlyout(nil) end
+    end
     if t.writing then self:setWriting(t.writing); self:setFlyout("pen") -- (stays open: a thickness next)
-    elseif t.width then self:setTool("pen", t.width); self:setFlyout(nil)
+    elseif t.width then self:setTool(self.tool == "shape" and "shape" or "pen", t.width); self:setFlyout(nil)
+    elseif t.hl_width then
+        self.hl_width = t.hl_width
+        keep("gzreader_drawing_hl_width", t.hl_width)
+        self:setTool("highlighter"); self:setFlyout(nil)
+    elseif t.shape then
+        self.shape = t.shape
+        keep("gzreader_drawing_shape", t.shape)
+        self:setTool("shape"); self:setFlyout(nil)
+        Log.info("drawing: shape", t.shape)
+    elseif t.eraser_width then
+        self.eraser_width = t.eraser_width
+        keep("gzreader_drawing_eraser_width", t.eraser_width)
+        self:setTool("eraser"); self:setFlyout(nil)
     elseif t.color then self:setColor(t.color); self:setFlyout(nil)
+    elseif t.tagname then self:toggleTag(t.tagname); self:setFlyout("tags")
+    elseif t.id == "newtag" then self:newTag()
+    elseif t.id == "tag" then self:setFlyout(self.flyout ~= "tags" and "tags" or nil)
+    elseif t.id == "title" then self:setFlyout(nil); self:rename()
     elseif t.id == "pressure" then
         self.pressure_on = not self.pressure_on
-        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_pressure", self.pressure_on) end
-        self.sketch.pressure_on = self.pressure_on
-        self:setFlyout("pen") -- (laid out again: its words changed)
-    elseif t.id == "pen" then
-        -- the pen; again: its thickness
-        if sk.tool == "pen" then self:setFlyout(self.flyout ~= "pen" and "pen" or nil) else self:setTool("pen"); self:setFlyout(nil) end
-    elseif t.id == "eraser" then
-        -- the eraser; again: Clear the page
-        if sk.tool == "eraser" then self:setFlyout(self.flyout ~= "eraser" and "eraser" or nil) else self:setTool("eraser"); self:setFlyout(nil) end
+        keep("gzreader_drawing_pressure", self.pressure_on)
+        self:syncTool()
+        self:setFlyout("pen") -- (laid out again: its switch changed)
+    elseif t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then tool(t.id)
+    elseif t.id == "more" or t.id == "options" then self:setFlyout(self.flyout ~= t.id and t.id or nil)
+    elseif t.id == "shortcut" then self:nextShortcut(); self:setFlyout("more")
     elseif t.id == "undo" then if sk:undo() then self:touched(); self:redrawAll() end
     elseif t.id == "redo" then if sk:redo() then self:touched(); self:redrawAll() end
     elseif t.id == "clear" then
@@ -974,20 +1268,30 @@ function DrawScreen:use(t)
         self:layoutBar()
         if sk:clear() then self:touched() end
         self:redrawAll()
-    elseif t.id == "cancel" then self:cancel()
+    elseif t.id == "whole" then
+        self.flyout = nil
+        self:layoutBar()
+        sk:unzoom()
+        self:redrawAll()
+    elseif t.id == "cancel" then self.flyout = nil; self:layoutBar(); self:cancel()
     elseif t.id == "done" then self:done()
     elseif t.id == "paper" then self:pickPaper()
     elseif t.id == "pages" then self:showPages()
     elseif t.id == "side" then
         self.toolbar_side = self.toolbar_side == "left" and "right" or "left"
-        if G_reader_settings then G_reader_settings:saveSetting("gzreader_drawing_toolbar_side", self.toolbar_side) end
+        keep("gzreader_drawing_toolbar_side", self.toolbar_side)
         self:setFlyout(nil)
     elseif t.id == "hide" or t.id == "show" then
         self.toolbar_hidden = t.id == "hide"
         self:setFlyout(nil)
+    elseif t.id == "topfold" then
+        self.top_hidden = not self.top_hidden
+        self:setFlyout(nil)
+        UIManager:setDirty(self, "ui")
+        Log.info("drawing: the top bar", self.top_hidden and "folded away" or "shown")
     elseif t.id == "prev" then if self.index > 1 then self:showPage(self.index - 1) end
     elseif t.id == "next" then if self.index < #self.pages then self:showPage(self.index + 1) end
-    elseif t.id == "newpage" then self:newPage() end
+    elseif t.id == "newpage" or t.id == "newpage2" then self.flyout = nil; self:newPage() end
 end
 
 -- ------------------------------------------------------------------ pages
@@ -1282,7 +1586,9 @@ end
 --- opts: pages ({ att, path, filename, changed, removed }: the note's
 --- drawings, or { scene }: a new page ready to draw on, e.g. a PDF's page;
 --- none: a new page), start (the page shown first),
---- on_done(pages), on_cancel; choose_paper: a new drawing (no pages) asks
+--- on_done(pages), on_cancel; meta ({ title, tags, offered }: a new
+--- drawing's name and tags, set in the top bar and given back as
+--- pages.title and pages.tags); choose_paper: a new drawing (no pages) asks
 --- which paper first, as the Kindle Scribe's Create notebook does (Cancel
 --- there: on_cancel, nothing opened).
 function DrawScreen.show(opts)
@@ -1313,9 +1619,12 @@ function DrawScreen.show(opts)
     local gone = {}
     for _i, p in ipairs(opts.pages or {}) do if p.removed then gone[#gone + 1] = p end end
     local on_done = opts.on_done
-    local w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title,
+    local w
+    w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
+            -- (a new drawing: the name and tags given in the top bar)
+            if w.meta then res.title, res.tags = w.meta.title, w.meta.tags end
             on_done(res)
         end }
     UIManager:show(w, "full")
