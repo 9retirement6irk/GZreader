@@ -46,6 +46,7 @@ local RichEdit = InputContainer:extend{
     gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
     ruled = false, -- lined paper: a rule under every line (a journal entry)
     on_show_keyboard = nil, -- told when the keyboard comes up (a tap in the text)
+    gz_hash_key = true, -- (and a # key for tags: gzreader_hashkey.lua)
     focused = true,
 }
 

@@ -397,5 +397,63 @@ do
     check(lines_drawn >= 8, "a ruled page paints its rules (" .. lines_drawn .. ")")
 end
 
+-- ------------------------------------------------------------ the keyboard while writing a note
+do
+    local HashKey = require("gzreader_hashkey")
+    local r = editor("", true)
+    check(r.gz_hash_key == true and HashKey.wants(r), "a note's page asks for the note keyboard (# and arrows on top)")
+    check(HashKey.wants({ parent = { gz_hash_key = true } }) and not HashKey.wants({}) and not HashKey.wants(nil),
+        "…a box inside a note's window too; other boxes (search, passwords) don't")
+    -- KOReader's English bottom row: ⌥ 🌐 . space ← → Enter
+    local comma = { { ",", ";" }, { ",", ";" }, label = "," }
+    local row = { { label = "⌥", width = 1.5 }, { label = "🌐" }, { ".", ":", ".", ":" },
+        { label = "_", " ", " ", " ", " ", width = 3.0 }, { label = "←" }, { label = "→" }, { label = "⮠", width = 1.5 } }
+    local function width(list)
+        local w = 0
+        for _i, k in ipairs(list) do w = w + (k.width or 1) end
+        return w
+    end
+    local before = width(row)
+    local new, saved = HashKey.row(row, comma)
+    check(new and #new == 6 and new[3] == comma and new[4] == row[3] and new[5] == row[4] and new[6] == row[7],
+        "the letters' bottom row: ⌥ 🌐 , . space ⮠ (KOReader's own comma key; ← → go up to the bar)")
+    check(new and width(new) == before, "…the space bar a key wider: the row as wide as before")
+    HashKey.restore(row, saved)
+    check(row[4].width == 3.0 and #row == 7, "…and KOReader's own row is left as it was")
+    check(HashKey.row({ row[1], row[4], row[2] }) == nil, "a short row (a one-line box) isn't changed")
+    local plain = HashKey.row(row)
+    check(plain and plain[3][1] == "," and plain[3].label == ",", "without KOReader's comma key to hand: a plain comma")
+    HashKey.restore(row, 3.0)
+    -- the bar on top: # ← ↑ ↓ →, shorter than a key, the keyboard taller by it
+    local function grp() local g = {}; function g:resetLayout() self.reset = true end; return g end
+    package.loaded["ui/widget/horizontalgroup"] = { new = function(_s, o) local g = grp(); for k, v in pairs(o or {}) do g[k] = v end; return g end }
+    package.loaded["ui/widget/horizontalspan"] = { new = function(_s, o) return { span = o.width } end }
+    package.loaded["ui/widget/verticalspan"] = { new = function(_s, o) return { vspan = o.width } end }
+    local made = {}
+    local VK = { new = function(_s, o) made[#made + 1] = o; return o end }
+    local rows = grp()
+    rows[1], rows[2] = "row 1", "row 2"
+    local center = { dimen = { w = 590, h = 380 }, rows }
+    local frame = { center, getSize = function(f) return { w = 600, h = f[1].dimen.h + 10 } end }
+    local kb = { KEYS = { 1, 2, 3, 4, 5 }, height = 400, key_padding = 2, padding = 3, layout = { "keys" }, { frame } }
+    local ok = HashKey.addBar(kb, VK)
+    local labels = {}
+    for i, k in ipairs(made) do labels[i] = k.label end
+    check(ok and table.concat(labels, " ") == "# ← ↑ ↓ →" and made[1].key == "#" and made[2].keyboard == kb,
+        "a bar on top of the keyboard: # ← ↑ ↓ → (KOReader's keys: the arrows move the cursor, # types)")
+    local key_h = math.floor((400 - 6 * 2 - 6) / 5)
+    check(made[1].height == HashKey.barHeight(key_h, 30) and made[1].height < key_h and made[1].height >= 30,
+        "…slim: about half a key high (" .. tostring(made[1].height) .. " of " .. key_h .. ")")
+    check(rows[1].reset == nil and rows[1][1] == made[1] and rows[3] == "row 1" and kb.layout[1][1] == made[1],
+        "…above the first row of keys (the 5-way reaches it too)")
+    check(center.dimen.h == 380 + made[1].height + 2 and kb.dimen.h == center.dimen.h + 10 and kb.height == 400,
+        "…the keyboard taller by it (the keys keep their size)")
+    local f = io.open(PLUGIN .. "/../zenos.koplugin/modules/global/patches/responsive_keyboard.lua")
+    local src = f and f:read("*a") or ""
+    if f then f:close() end
+    check(src:find("mod.row(bottom_row, is_comma and last_key or nil)", 1, true) and src:find("HashKey.addBar, self, VirtualKey", 1, true),
+        "ZenOS's keyboard asks for the row and the bar")
+end
+
 print(("richedit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
