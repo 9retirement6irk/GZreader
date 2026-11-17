@@ -64,6 +64,11 @@ Journal.PROMPTS = {
 }
 
 Journal.DEFAULT_ACTIVITIES = { "work", "exercise", "family", "reading", "music", "friends", "travel", "gaming", "drawing" }
+-- each one's icon, as the fork's defaults (lib/journal/settings.ts), and the icons an activity can have
+Journal.DEFAULT_ICONS = { work = "briefcase", exercise = "dumbbell", family = "users", reading = "book-open", music = "music",
+    friends = "coffee", travel = "plane", gaming = "gamepad", drawing = "palette" }
+Journal.ACTIVITY_ICONS = { "briefcase", "dumbbell", "users", "book-open", "music", "coffee", "plane", "gamepad", "palette",
+    "utensils", "tree", "heart", "star" }
 
 local function words(id) -- "current-events" → "Current events"
     local s = tostring(id):gsub("%-", " ")
@@ -116,7 +121,7 @@ end
 --- The settings a user starts with (the fork's defaultJournalSettings; only what a Kindle uses).
 function Journal.defaults()
     local acts = {}
-    for i, id in ipairs(Journal.DEFAULT_ACTIVITIES) do acts[i] = { id = id, label = words(id) } end
+    for i, id in ipairs(Journal.DEFAULT_ACTIVITIES) do acts[i] = { id = id, label = words(id), icon = Journal.DEFAULT_ICONS[id] } end
     return {
         space = "", moodTagPrefix = "mood/", feelingTagPrefix = "felt/", impactTagPrefix = "impact/", hiddenImpacts = {},
         activityTagPrefix = "did/", activities = acts, goals = {}, showPrompt = true, dateHeading = false,
@@ -149,7 +154,8 @@ function Journal.settings(stored)
         local acts = {}
         for _i, a in ipairs(stored.activities) do
             if type(a) == "table" and type(a.id) == "string" and a.id ~= "" then
-                acts[#acts + 1] = { id = a.id, label = (type(a.label) == "string" and a.label ~= "") and a.label or words(a.id) }
+                local icon = type(a.icon) == "string" and indexOf(Journal.ACTIVITY_ICONS, a.icon) and a.icon or "star"
+                acts[#acts + 1] = { id = a.id, label = (type(a.label) == "string" and a.label ~= "") and a.label or words(a.id), icon = icon }
             end
         end
         s.activities = acts
@@ -167,6 +173,25 @@ function Journal.impacts(settings)
 end
 
 --- The tags that record a state of mind, in the order they're written. Nothing without a step.
+-- the five faces the fork's mood scale replaced, read as the nearest step
+Journal.LEGACY_MOODS = { awful = "very-unpleasant", bad = "unpleasant", okay = "neutral", good = "pleasant", great = "very-pleasant" }
+
+--- The step a note's tags record (`tags` without "#"), as the web reads it
+--- (moodFromTags: the mood prefix, then a step or one of the old faces), or nil.
+function Journal.valenceFromTags(tags, prefix)
+    local p = Journal.normalizePrefix(prefix or "mood/"):lower()
+    if p == "" then return nil end
+    for _i, t in ipairs(tags or {}) do
+        t = tostring(t):lower()
+        if t:sub(1, #p) == p then
+            local v = t:sub(#p + 1)
+            if indexOf(Journal.VALENCES, v) then return v end
+            if Journal.LEGACY_MOODS[v] then return Journal.LEGACY_MOODS[v] end
+        end
+    end
+    return nil
+end
+
 --- mind: { valence, kind, feelings = {…}, impacts = {…} }
 function Journal.mindTags(mind, kind, prefixes)
     if not (mind and mind.valence and indexOf(Journal.VALENCES, mind.valence)) then return {} end

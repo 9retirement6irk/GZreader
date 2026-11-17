@@ -852,7 +852,46 @@ function Notes.noteWidth(cell_w)
     return math.max(S(60), w)
 end
 
---- The date line: letter key, date (and "not sent yet", "continued"), pin.
+--- The mood a note's tags record (a journal entry or check-in), as the web
+--- shows it beside the note's time: its step, or nil.
+function Notes.moodOf(m)
+    local prefix = Notes._mood_prefix
+    return require("gzreader_journal").valenceFromTags(m and m.tags, prefix or "mood/")
+end
+
+--- The face for a note's mood (Notes.moodOf), `size` square, or nil.
+function Notes.moodFace(m, size)
+    local v = Notes.moodOf(m)
+    return v and require("gzreader_moodface").widget{ valence = v, size = size } or nil
+end
+
+--- A note's tags as the web shows them in a note: light grey chips with
+--- rounded corners, as many on a line as fit `width`.
+function Notes.tagChips(tags, width, face)
+    local group = VerticalGroup:new{ align = "left" }
+    local gap = S(6)
+    local row, used
+    for _i, t in ipairs(tags or {}) do
+        local chip = FrameContainer:new{ background = Blitbuffer.Color8(0xE6), bordersize = 0, radius = S(5),
+            padding = 0, padding_left = S(6), padding_right = S(6), padding_top = S(1), padding_bottom = S(2), margin = 0,
+            TextWidget:new{ text = "#" .. t, face = face, max_width = width - S(12) } }
+        local w = chip:getSize().w
+        if not row or used + gap + w > width then
+            if row then group[#group + 1] = VerticalSpan:new{ width = gap } end
+            row, used = HorizontalGroup:new{ align = "center" }, 0
+            group[#group + 1] = row
+        else
+            row[#row + 1] = HorizontalSpan:new{ width = gap }
+            used = used + gap
+        end
+        row[#row + 1] = chip
+        used = used + w
+    end
+    return group
+end
+
+--- The date line: letter key, date (and "not sent yet", "continued"), the
+--- mood's face (as the web shows it beside the time), pin.
 local function noteHead(m, inner_w, shortcut, continued)
     local sc = shortcut and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(24), h = S(24) }, shortcut, "square")
     local when = Sticky.when(m.created)
@@ -861,8 +900,10 @@ local function noteHead(m, inner_w, shortcut, continued)
     return OverlapGroup:new{
         dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
         LeftContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
-            HorizontalGroup:new{ sc or HorizontalSpan:new{ width = 0 }, HorizontalSpan:new{ width = sc and S(6) or 0 },
-                TextWidget:new{ text = when, face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(50) } } },
+            HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = 0 }, HorizontalSpan:new{ width = sc and S(6) or 0 },
+                TextWidget:new{ text = when, face = Sticky.hand(15), fgcolor = Blitbuffer.COLOR_DARK_GRAY, max_width = inner_w - S(76) },
+                HorizontalSpan:new{ width = Notes.moodOf(m) and S(6) or 0 },
+                Notes.moodFace(m, math.min(S(20), S(HEAD_H))) or HorizontalSpan:new{ width = 0 } } },
         RightContainer:new{ dimen = Geom:new{ w = inner_w, h = S(HEAD_H) },
             m.pinned and TextWidget:new{ text = Sticky.ICONS.pin, face = Sticky.iconFace(15) } or HorizontalSpan:new{ width = 0 } },
     }
@@ -1760,6 +1801,7 @@ Notes.KEY_HINT = _("N note  \u{00B7}  J journal  \u{00B7}  K search  \u{00B7}  G
 --- The Notes tab (the tab bar's Notes button).
 function Notes.show(plugin)
     Notes.closeOtherTabs(Notes.TAB_ID)
+    Notes._mood_prefix = Notes.journalSettings(plugin).moodTagPrefix -- (the faces beside entries' times)
     if Notes.board and not Notes.board._gz_closed then
         Notes.reloadBoard(true)
         return Notes.board
@@ -1893,9 +1935,12 @@ function NoteView:build()
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
     local space = Notes.spaceTitle(self.plugin, m.space)
-    add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
+    local date_line = iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
         .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
-        .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
+        .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY)
+    -- (a journal entry's mood: its face beside the time, as the web shows it)
+    local face = Notes.moodFace(m, S(24))
+    add(face and HorizontalGroup:new{ align = "center", date_line, HorizontalSpan:new{ width = S(8) }, face } or date_line)
     add(VerticalSpan:new{ width = S(10) })
     local para = {}
     local function flush()
@@ -1961,9 +2006,8 @@ function NoteView:build()
     end
     add(VerticalSpan:new{ width = S(12) })
     if #(m.tags or {}) > 0 then
-        local tags = {}
-        for _i, t in ipairs(m.tags) do tags[#tags + 1] = "#" .. t end
-        add(iconLine("tag", table.concat(tags, "  "), Notes.pageFace(18, true), false))
+        -- (as the web shows tags: light grey chips)
+        add(Notes.tagChips(m.tags, inner, Notes.pageFace(16)))
     end
     if m.place then
         add(VerticalSpan:new{ width = S(4) })
@@ -2119,6 +2163,7 @@ function NoteView:onClose()
 end
 
 function Notes.showNote(plugin, memo)
+    Notes._mood_prefix = Notes.journalSettings(plugin).moodTagPrefix
     -- A note that is only a drawing (its name and tags, no words of its own) opens on
     -- its drawing, as a new one does: Done saves and comes back here (the owner, 2026-11-16).
     if memo and Notes.canDraw(plugin) and Notes.drawings(memo)[1] ~= nil

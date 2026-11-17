@@ -324,6 +324,20 @@ API to `/api` are found too.
     (the ten words nearest the step; **More feelings…** has them all) and
     **What's behind it…** (work, family, health…).
   - **What did you do?** your activities. **Goals:** tick the ones you did.
+  - **On touch Kindles it looks as the fork's web journal does:** the
+    question with small **Overall today / Right now** toggles beside it; a
+    big **face** beside a **slider** of the seven steps (tap a place on it or
+    drag along it; the face shows the step, faded until one is chosen;
+    **Clear** takes it back); feelings and causes as chips that **fill black
+    when chosen** (light grey otherwise); activities as chips with **their
+    icons** (the ones set in Memos: briefcase, dumbbell, people, book, music,
+    coffee, plane, gamepad, palette, cutlery, tree, heart, star). The faces
+    are the web's, in greys of the same lightness as its colours. Keyboard
+    Kindles and the Kindle 4 keep the rows of buttons (for the keys and the
+    5-way).
+  - **Saved entries** show their mood as the web does: the **face beside the
+    note's time** (on the board's sticky note and on its page), and on the
+    note's page the **tags as light grey chips**.
   - A **prompt** (**↻ Another** for the next one) and, right under it, your
     **words on lined paper**, typed straight in as plain text. A tap in it
     brings the keyboard; the questions above fold away while you type, so
