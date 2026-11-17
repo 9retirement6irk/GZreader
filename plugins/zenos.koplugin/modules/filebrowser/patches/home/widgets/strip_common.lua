@@ -940,11 +940,12 @@ function M.build_strip(ctx, source_key)
         local tabs_top = controls_enabled and Screen:scaleBySize(6) or 0
         local tabs_gap = controls_enabled and Screen:scaleBySize(8) or Screen:scaleBySize(6)
         local shelf_h = math.max(Screen:scaleBySize(60), reach - tabs_top - controls_height - tabs_gap)
-        -- (on a big screen, shelves as tall as the Downloads tab's, standing on the navbar)
-        local pitch_rows, pitch = require("common/gz_view").homeShelfPitch(shelf_h, Screen:scaleBySize(10))
+        -- (on a big screen, shelves as tall as the Downloads tab's and level with
+        -- them: as far above the navbar as Downloads' bottom shelf)
+        local pitch_rows, pitch, lift = require("common/gz_view").homeShelfPitch(shelf_h, Screen:scaleBySize(10))
         if pitch then
             num_rows = pitch_rows
-            shelf_h = pitch_rows * pitch - Screen:scaleBySize(10)
+            shelf_h = pitch_rows * pitch - Screen:scaleBySize(10) + lift
         end
         local content, shelf_targets, shelf_jobs, shelf_cw, shelf_ch = Shelf.build(books, {
             ctx = ctx, width = width, height = shelf_h, rows = num_rows, per_row = per_row, pitch = pitch,

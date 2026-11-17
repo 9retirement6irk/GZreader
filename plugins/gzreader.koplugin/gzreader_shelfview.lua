@@ -77,15 +77,18 @@ function View.maxRows()
 end
 
 --- How tall a shelf is in the Downloads tab as it's laid out now (board to
---- board, px), nil before it has been laid out in the bookshelf view. Home's
---- shelves take this height on big screens (gz_view.homeShelfPitch).
+--- board, px) and the pixels left under its bottom shelf; nil before it has
+--- been laid out in the bookshelf view. Home's shelves take this height on
+--- big screens, as high above the navbar (gz_view.homeShelfPitch).
 function View.rowHeight()
-    local ok, h = pcall(function()
+    local ok, h, slack = pcall(function()
         local fm = require("apps/filemanager/filemanager").instance
         local fc = fm and fm.file_chooser
-        return fc and View.applies(fc) and fc._gz_row_h or nil
+        if not (fc and View.applies(fc)) then return nil end
+        return fc._gz_row_h, fc._gz_slack
     end)
-    return ok and tonumber(h) or nil
+    if not ok then return nil end
+    return tonumber(h), tonumber(slack) or 0
 end
 
 local function areaH(row_h)
@@ -256,18 +259,20 @@ function View.recalculateDimen(menu)
         if cap then rows = math.min(rows, cap) end
         local row_h = math.floor(avail / rows)
         local per_row = math.max(3, math.floor((width - S(16) - turnRoom(row_h)) / S(Shelf().MAX_SPINE)))
-        return rows, row_h, per_row, View.perPage(menu.item_table or {}, rows, row_h, width)
+        return rows, row_h, per_row, View.perPage(menu.item_table or {}, rows, row_h, width), avail
     end
     local avail = menu.inner_dimen.h - menu.others_height
-    local rows, row_h, per_row, perpage = plan(avail)
+    local rows, row_h, per_row, perpage, used = plan(avail)
     -- one page: no page arrows, so the shelves take their room too and the
     -- bottom one stands on the tab bar (as on Home)
     local footer = menu.page_info and menu.page_info:getSize().h or 0
     if footer > 0 then
-        local r2, h2, p2, pp2 = plan(avail + footer)
-        if #menu.item_table <= pp2 then rows, row_h, per_row, perpage = r2, h2, p2, pp2 end
+        local r2, h2, p2, pp2, u2 = plan(avail + footer)
+        if #menu.item_table <= pp2 then rows, row_h, per_row, perpage, used = r2, h2, p2, pp2, u2 end
     end
     menu._gz_rows, menu._gz_per_row, menu._gz_row_h, menu._gz_width = rows, per_row, row_h, width
+    -- (the pixels left under the bottom shelf: the room doesn't divide evenly)
+    menu._gz_slack = math.max(0, used - rows * row_h)
     menu.nb_cols, menu.nb_rows = per_row, rows
     menu.perpage = perpage
     menu.page_num = math.max(1, math.ceil(#menu.item_table / menu.perpage))

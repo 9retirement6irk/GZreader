@@ -3425,13 +3425,21 @@ do
     check(hr == 2 and hp == 444, "…still two with room for three")
     check(GzView.homeShelfPitch(1000, 10, nil, 712) == nil, "…two that tall don't fit: two sharing the room, as before")
     check(GzView.homeShelfPitch(1000, 10, nil, nil) == nil, "…Downloads not laid out yet: as before")
+    local _r, _p, lift = GzView.homeShelfPitch(1000, 10, nil, 444, nil, 3)
+    check(lift == 3 and select(3, GzView.homeShelfPitch(1000, 10, nil, 444)) == 0,
+        "…lifted as far as Downloads' bottom shelf stands above the navbar (3 px), level with it")
+    check(GzView.homeShelfPitch(880, 10, nil, 444, nil, 3) == nil, "…the lift counts in what fits")
+    local SvSrc = io.open(arg[5] .. "/plugins/gzreader.koplugin/gzreader_shelfview.lua"):read("*a")
+    check(SvSrc:find("menu._gz_slack = math.max(0, used - rows * row_h)", 1, true)
+        and SvSrc:find("return fc._gz_row_h, fc._gz_slack", 1, true), "Downloads keeps the pixels left under its bottom shelf")
     dpi("KindlePaperWhite3", 1072, 1448, 300)
     check(GzView.homeShelfPitch(1000, 10, nil, 300) == nil, "Paperwhite 3: Home's shelf as before")
     local ShelfSrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua"):read("*a")
     local StripSrc = io.open(arg[5] .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):read("*a")
     check(ShelfSrc:find("if tonumber(opts.pitch) then row_h = math.floor(opts.pitch) - gap end", 1, true)
         and StripSrc:find("homeShelfPitch(shelf_h, Screen:scaleBySize(10))", 1, true)
-        and StripSrc:find("per_row = per_row, pitch = pitch,", 1, true), "Home's shelf passes the pitch to the shelves")
+        and StripSrc:find("per_row = per_row, pitch = pitch,", 1, true)
+        and StripSrc:find("shelf_h = pitch_rows * pitch - Screen:scaleBySize(10) + lift", 1, true), "Home's shelf passes the pitch to the shelves, lifted")
     check(okv and type(View.rowHeight) == "function" and View.rowHeight() == nil, "Downloads' shelf height: nil with no file manager")
     Device.display_dpi = nil
     Device.model, Device.screen = was_model, was_screen
