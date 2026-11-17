@@ -411,6 +411,7 @@ function Sync:pull(interactive, saved)
     if not self.ui.document or self.plugin.sync ~= self then return end
     local talk = self:canTalk()
     if not talk and not saved then
+        self.opening = nil -- (nothing to ask: what's read from here on is sent)
         if interactive then self.plugin:showError("unreachable") end
         return
     end
@@ -433,6 +434,7 @@ function Sync:pull(interactive, saved)
     end
     local function done(book, err)
         if not self.ui.document or self.plugin.sync ~= self then return end
+        self.opening = nil -- (Grimmory's place has been looked at: pushes may follow)
         if type(book) ~= "table" and saved and not talk then book, err = saved, nil end -- (the background was busy)
         if saved and type(book) == "table" then Log.info("sync pull book", self.book_id, "with the progress kept at download") end
         self:applyRemote(book, interactive, err)
@@ -619,7 +621,13 @@ function Sync:onReady()
     -- let the first page render before talking to the network; then the
     -- book's sync in one go (main.lua openSync: one background process for
     -- its place, queued updates, bookmarks and highlights)
+    -- Until that sync has looked at Grimmory's place, this book's place isn't
+    -- sent: a book closed straight away (a picture book reopened with its new
+    -- layout, 1 s after its first page) sent its first page and replaced
+    -- Grimmory's place with it, and its kept progress was gone too.
+    self.opening = { at = self:openingMark(), saved = saved }
     UIManager:scheduleIn(Sync.OPEN_SYNC_DELAY, function()
+        if not self.plugin:syncEnabled() then self.opening = nil end
         if self.plugin.openSync then return self.plugin:openSync(self, saved) end
         self.plugin:flushPending()
         if self.plugin:syncEnabled() then self:pull(false, saved) end
@@ -635,8 +643,31 @@ function Sync:onPageTurned()
     end
 end
 
-function Sync:onLeave()
-    if self.plugin:syncEnabled() then
+--- Where the book is now, exactly (a page turn always changes it).
+function Sync:openingMark()
+    local ok, p = pcall(self.localPosition, self)
+    if not ok or type(p) ~= "table" then return nil end
+    return tostring(p.pos or p.page or p.pct) .. " " .. tostring(p.xp)
+end
+
+--- Closed (or asleep) before the open sync looked at Grimmory, still on the
+--- page the book opened at: nothing read here to send.
+function Sync:leftUnread()
+    local o = self.opening
+    if not o or not o.at then return false end
+    return self:openingMark() == o.at
+end
+
+--- closing: the book is closing (not just the Kindle going to sleep).
+function Sync:onLeave(closing)
+    if self.plugin:syncEnabled() and self:leftUnread() then
+        if closing and self.opening.saved and type(self.entry) == "table" and not self.entry.grimmory_progress then
+            -- for the next opening (the same book reopened with its new layout)
+            self.entry.grimmory_progress = self.opening.saved
+            self.plugin:save()
+        end
+        Log.info("sync book", self.book_id, "left before Grimmory's place was looked at, still where it opened: nothing sent")
+    elseif self.plugin:syncEnabled() then
         self:push(false)
         local ok, queued = pcall(require("gzreader_ratings").check, self.plugin, self.book_id, self.entry, self.ui.doc_settings)
         if ok and queued and self:canTalk() then self.plugin:flushPending() end

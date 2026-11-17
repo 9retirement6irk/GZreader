@@ -41,6 +41,12 @@ the microSD card (`GZreader/.gzreader-update`, removed afterwards) and
 copied in part by part, with a copy of each part kept on the card to put
 back if one fails.
 
+A book open when the update is installed is closed first, as the Home
+button closes it (its page, bookmarks and highlights written to its file,
+its place sent to Grimmory), and then GZreader restarts at Home. Until the
+fix listed under "next" in the changelog, the restart left the book
+without saving it: it reopened at an earlier page.
+
 The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if

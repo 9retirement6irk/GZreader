@@ -7,6 +7,14 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Picture books: the first opening no longer sends the first page to Grimmory", text = "A picture book is reopened with its new layout a second after it first opens. Its first page was sent to Grimmory as it closed, before GZreader had looked at Grimmory's place: Grimmory's place was replaced with the first page, and the place kept from the download was lost too, so the book stayed at its start. A book closed (or the Kindle put to sleep) before its first sync, still on the page it opened at, now sends nothing, and the reopened book goes to Grimmory's place." },
+            { short = "Updates: a book open when an update installs is saved and closed before GZreader restarts", text = "Installing an update restarted GZreader with the book still open, so the book's page, bookmarks and highlights weren't written to its file and its place wasn't sent: it reopened at an earlier page (on a Kindle Scribe, at its title page). The book is now closed first, as the Home button closes it, and GZreader restarts at Home." },
+            { short = "Bookmarks: ones the book never saved are put back, not deleted in Grimmory", text = "A bookmark synced from Grimmory but missing from the book was taken as deleted on the Kindle and deleted in Grimmory too, also when it was only missing because the book's file was never written (GZreader restarted with the book open). GZreader now notes the synced bookmarks in the book's own file, with the bookmarks; a missing one is deleted in Grimmory only when that note says the book had it, otherwise it's put back from Grimmory." },
+        },
+    },
+    {
         version = "1.31.0",
         changes = {
             { short = "Kindle 2 and DX: saving no longer loads the calendar, updater and copying code", text = "On Kindles that sync through a computer, GZreader writes the sync page's outbox on every save. It loaded the calendar, the updater, copying and the automatic shelf code (and kept them in memory) to fill in a few fields; it now reads those from its own settings, and works out the version and this Kindle's name once. Less memory and CPU on the DX." },

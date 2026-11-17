@@ -4118,6 +4118,39 @@ for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
 check(reader.pos == 100, "…not again at the next opening")
 NET.connected = true
 
+print("A book closed before its open sync (a picture book reopening with its new layout)")
+;(function()
+    local entry = rplugin.sync.entry
+    local kept = { epubProgress = { percentage = 20, href = "Text/ch2.xhtml", contentSourceProgressPercent = 25 } }
+    NET.connected = false -- (what would be sent stays in the queue, where it can be looked at)
+    rplugin.store.pending.progress = {}
+    entry.grimmory_progress, entry.last_pushed_pct = kept, nil
+    reader.pos = 0; UI.scheduled = {}
+    rplugin.sync:onReady()
+    rplugin.sync:onLeave(true) -- reopened 1 s after its first page, before its open sync
+    check(rplugin.store.pending.progress["3"] == nil,
+        "closed before its open sync, still on its first page: that page isn't sent (it replaced Grimmory's place)")
+    check(entry.grimmory_progress == kept, "…and Grimmory's place kept at download waits for the reopened book")
+    UI.scheduled = {}
+    rplugin.sync:onReady()
+    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    check(reader.pos == 3700 and entry.grimmory_progress == nil, "the reopened book goes to Grimmory's place")
+    rplugin.sync:onReady()
+    reader.pos = 3900
+    rplugin.sync:onLeave(true)
+    check(rplugin.store.pending.progress["3"] ~= nil, "a page turned before the open sync: sent as usual")
+    rplugin.store.pending.progress = {}; UI.scheduled = {}
+    entry.last_pushed_pct = nil
+    rplugin.sync:onReady()
+    for f in pairs(UI.scheduled) do f() end; UI.scheduled = {}
+    rplugin.sync:onLeave(true)
+    check(rplugin.store.pending.progress["3"] ~= nil and entry.grimmory_progress == nil,
+        "after the open sync: sent as usual, even on the page it opened at")
+    rplugin.store.pending.progress = {}
+    rplugin.sync:startSession() -- (as the blocks after this one expect)
+    NET.connected = true
+end)()
+
 print("Backward positions")
 reader.pos = 5000; rplugin.sync:push(true)
 reader.pos = 5500                                  -- read on; server still has our own 83.3%
@@ -4542,6 +4575,52 @@ do
     rplugin.bookmarks:reconcile()
     for i = #anns, 1, -1 do table.remove(anns, i) end
 end
+
+print("Bookmarks: missing because the book's file wasn't saved")
+;(function()
+    local data = {}
+    readerui.doc_settings = { readSetting = function(_, k) return data[k] end,
+        saveSetting = function(_, k, v) data[k] = v end, flush = function() end }
+    local function remote() return json.decode(ctl("/state")).bookmarks end
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/4/8)&title=web1")
+    ctl("/addbm?book=3&cfi=epubcfi(/6/8!/4/6)&title=web2")
+    rplugin.bookmarks:reconcile()
+    local noted = 0
+    for _k in pairs(data.gzreader_bookmarks or {}) do noted = noted + 1 end
+    check(#anns == 2 and noted == 2, "Grimmory's bookmarks added here, and noted in the book's own file")
+    -- GZreader stopped before the book's file was written (an update's
+    -- restart, 2026-11-16): neither the bookmarks nor the note were kept
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+    data.gzreader_bookmarks = nil
+    rplugin.bookmarks:reconcile()
+    runLoop(function() return #remote() < 2 end, 1)
+    check(#remote() == 2 and #anns == 2, "missing because the book never kept them: put back here, not deleted in Grimmory")
+    table.remove(anns, 1) -- deleted from the bookmark list: the book had it
+    rplugin.bookmarks:reconcile()
+    runLoop(function() return #remote() == 1 end, 5)
+    check(#remote() == 1 and #anns == 1, "deleted from the bookmark list (the book had it): still deleted in Grimmory")
+    for _i, bm in ipairs(remote()) do ctl("/delbm?id=" .. bm.id) end
+    rplugin.bookmarks:reconcile()
+    for i = #anns, 1, -1 do table.remove(anns, i) end
+    readerui.doc_settings = nil
+end)()
+
+print("Update: an open book is closed before the restart")
+;(function()
+    local Update = require("gzreader_update")
+    local RU = require("apps/reader/readerui")
+    local was = RU.instance
+    local did = {}
+    RU.instance = { document = {}, onHome = function() did[#did + 1] = "home" end, onClose = function() did[#did + 1] = "close" end }
+    check(Update.closeBook() == true and table.concat(did, ",") == "home",
+        "a book open: closed the Home button's way (its page and bookmarks written), not just quit")
+    RU.instance = nil
+    check(Update.closeBook() == false, "no book open: nothing to close")
+    RU.instance = was
+    local src = io.open(PLUGIN .. "/gzreader_update.lua"):read("*a")
+    check(src:find("if Update.closeBook() then return UIManager:scheduleIn(1, restart) end", 1, true) ~= nil,
+        "the restart after an update closes the book first")
+end)()
 
 print("Highlights and notes: two-way sync")
 do

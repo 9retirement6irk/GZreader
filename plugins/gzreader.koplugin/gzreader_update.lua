@@ -644,6 +644,24 @@ function Update.run()
     end, { reason = "checking for updates" })
 end
 
+--- Before restarting: an open book is closed the usual way first (its page,
+--- bookmarks and highlights written to its file; its place queued for
+--- Grimmory). Restarting quit with the book open, so none of that was
+--- written: on a Kindle Scribe a book read for minutes reopened at its
+--- first page and lost the bookmarks Grimmory had given it (2026-11-16).
+--- Returns true when a book was open (the restart then waits a moment).
+function Update.closeBook()
+    local ReaderUI = package.loaded["apps/reader/readerui"]
+    local reader = ReaderUI and ReaderUI.instance
+    if not reader or not reader.document then return false end
+    Log.info("update: closing the open book before restarting")
+    -- to Home (as the Home button does): closing the reader alone leaves
+    -- nothing on screen, and KOReader then quits for good instead of restarting
+    local ok = pcall(reader.onHome, reader)
+    if not ok then pcall(reader.onClose, reader) end
+    return true
+end
+
 function Update.download(info)
     local ProgressbarDialog = require("gzreader_progress")
     local Net = require("gzreader_net")
@@ -708,8 +726,12 @@ function Update.download(info)
         UIManager:show(InfoMessage:new{ text = T(_("GZreader %1 installed. Restarting…"), info.version), timeout = 2 })
         -- (not in the middle of a request to Grimmory: a new login it brings
         -- back would be lost; 20 s at most)
-        local waited = 0
+        local waited, book_closed = 0, false
         local function restart()
+            if not book_closed then
+                book_closed = true
+                if Update.closeBook() then return UIManager:scheduleIn(1, restart) end
+            end
             local Async = package.loaded["gzreader_async"]
             if Async and (Async.busy or #(Async.queue or {}) > 0) and waited < 20 then
                 waited = waited + 1

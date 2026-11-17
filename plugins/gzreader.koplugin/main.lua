@@ -1868,7 +1868,7 @@ function Grimmory:onCloseDocument()
         self.annotations = nil
     end
     if self.sync then
-        self.sync:onLeave()
+        self.sync:onLeave(true)
         pcall(self.sync.releaseCfi, self.sync)
         self.sync = nil
     end

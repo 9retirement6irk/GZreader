@@ -28,6 +28,12 @@ KOReader-compatible endpoint.
   the page never waits for the network; JSON replies are gzip-compressed. Forward moves from other devices apply silently; going
   back asks. Offline updates are queued and sent when Wi‑Fi returns.
   Sync jumps are not added to the Back history.
+- A book closed before its first sync looked at Grimmory, still on the page
+  it opened at, sends nothing: a picture book is reopened with its new layout
+  a second after it opens, and until the fix listed under "next" in the
+  changelog that sent its first page, which replaced Grimmory's place (and
+  the place kept from the download was lost too). The reopened book now goes
+  to Grimmory's place.
 - Ratings: the stars you give a book (its status page, the end-of-book
   page) are Grimmory's personal rating for it, and the other way round.
   Grimmory rates out of 10, so 4 stars are 8 there, and 7 there are 4 stars
@@ -57,6 +63,12 @@ listed under "next" in the changelog, Grimmory's own bookmarks (and anything
 added in its web reader) were taken for audiobook bookmarks: opening the book
 again removed the bookmarks already synced from the Kindle and brought none
 in. They are still in Grimmory and come back at the next sync.
+
+GZreader also keeps a note of the synced bookmarks in the book's own settings
+file, written with the bookmarks themselves. A synced bookmark missing from
+the book counts as deleted only when that note says the book had it;
+otherwise (GZreader stopped before the book's file was written) it's put
+back from Grimmory instead of being deleted there.
 
 crengine makes a DocFragment for every spine item, image and SVG pages
 included (checked on the Kindle 3's crengine), so DocFragment[i] is the i-th
