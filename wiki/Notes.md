@@ -225,6 +225,13 @@ API to `/api` are found too.
     **Zoom:** pinch to zoom in (up to 4×) and the page follows your fingers;
     two fingers move a zoomed page, and on a Kindle with a pen one finger
     does too. Pinch in for the whole page.
+    **Notes beside your book (Kindle Scribe):** in a book, the quick panel's
+    **Notes beside the book** puts the book in one half of the screen and a
+    page for notes in the other (upright: the book on top; on its side: the
+    book at the left). The pen draws in the notes; a tap or swipe on the
+    book turns its pages. **Done** saves the note, named for the book, and
+    the book has the whole screen again. Close the notes before turning the
+    Kindle.
     **A note that's only a drawing** (a title and tags, no other words)
     opens on its drawing when you tap it; **Done** saves and goes back to
     the Notes tab.

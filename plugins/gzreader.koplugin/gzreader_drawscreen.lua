@@ -50,6 +50,7 @@ local Screen = Device.screen
 local S = function(px) return Screen:scaleBySize(px) end
 
 local DrawScreen = InputContainer:extend{
+    ox = 0, oy = 0, -- (where its corner is on the screen: not 0, 0 in a pane beside a book)
     name = "gz_drawscreen",
     covers_fullscreen = true,
     -- the note's drawings: { att (in Memos), path (a copy here, edited or new), filename, changed }
@@ -188,11 +189,24 @@ end
 function DrawScreen:init()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+    -- Beside a book (gzreader_splitview): the drawing in its part of the screen
+    -- (`pane`: { x, y, w, h }), the book in the rest. Everything here is laid out
+    -- and drawn from the pane's own corner; (ox, oy) is where that is on the screen.
+    self.ox, self.oy = 0, 0
+    if self.pane then
+        sw, sh = self.pane.w, self.pane.h
+        self.ox, self.oy = self.pane.x, self.pane.y
+        self.dimen = Geom:new{ x = self.ox, y = self.oy, w = sw, h = sh }
+        self.covers_fullscreen = false -- (the book is beside it, and is painted)
+        self._pane_slots = {}
+    end
     self.pen_only = Sketch.penDevice(Device)
     self.top_h = S(52)
     self.bar_h = self.top_h
     self.top_hidden = false -- (folded away by the tab under it)
     self.tool_sz = S(48)
+    -- (a pane is half the screen's height when the book is above it: the tools a little smaller, so all of them fit)
+    if self.pane then self.tool_sz = DrawScreen.paneToolSize(sh, self.top_h, #DrawScreen.SIDE_TOOLS) end
     -- the page is the whole screen: the top bar lies over it, and folds away (its tab)
     self.canvas = { x = 0, y = 0, w = sw, h = sh }
     -- a new drawing: its name and tags, set from the top bar ({ title, tags, offered })
@@ -290,6 +304,7 @@ function DrawScreen:showPage(i, first)
     sk.pull_zone, sk.pull_distance = self.pull_zone, S(Sketch.PULL_DISTANCE)
     -- (the pen and its width stay as they were from page to page)
     self:syncTool()
+    self:fitPane()
     self:repaintCanvas()
     if not first then UIManager:setDirty(self, "ui") end
 end
@@ -689,6 +704,12 @@ function DrawScreen:paintBar(bb, x, y)
         bb:paintRoundedRect(x + f.x, y + f.y, f.w, f.h, Blitbuffer.COLOR_WHITE, radius)
         bb:paintBorder(x + f.x, y + f.y, f.w, f.h, Size.border.thin, Blitbuffer.COLOR_BLACK, radius)
     end
+    -- (beside a book: a line between the two)
+    if self.pane then
+        local t = Size.line.thick
+        if self.pane.y > 0 then bb:paintRect(x, y, sw, t, Blitbuffer.COLOR_BLACK) end
+        if self.pane.x > 0 then bb:paintRect(x, y, t, self.dimen.h, Blitbuffer.COLOR_BLACK) end
+    end
     for _i, name in ipairs({ "tab", "fold", "toolbar", "pill" }) do frame(name) end
     for _i, b in ipairs(self.buttons) do if b.group ~= "flyout" then self:paintButton(bb, x, y, b) end end
     -- (an open panel over everything else)
@@ -744,10 +765,10 @@ function DrawScreen:ink(seg, screen_bb)
             if tint then self.tint_bb:paintRectRGB32(px, py, pw, 1, tint) end
             if shown then
                 self.canvas_bb:paintRectRGB32(px, py, pw, 1, shown)
-                if screen_bb and not under then screen_bb:paintRectRGB32(p[1] - dx, p[2] + dy, pw, 1, shown) end
+                if screen_bb and not under then screen_bb:paintRectRGB32(p[1] - dx + self.ox, p[2] + dy + self.oy, pw, 1, shown) end
             else
                 self.canvas_bb:paintRect(px, py, pw, 1, Blitbuffer.COLOR_BLACK)
-                if screen_bb and not under then screen_bb:paintRect(p[1] - dx, p[2] + dy, pw, 1, Blitbuffer.COLOR_BLACK) end
+                if screen_bb and not under then screen_bb:paintRect(p[1] - dx + self.ox, p[2] + dy + self.oy, pw, 1, Blitbuffer.COLOR_BLACK) end
             end
         end
     end
@@ -819,7 +840,7 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                     -- A refresh that shows greys takes about half a second each time, which made the
                     -- pencil lag far behind the pen (the owner, 2026-11-16). The real grey is on the
                     -- page (canvas_bb) and shows when the stroke ends.
-                    local sx, sy = p[1] - dx + k, p[2] + dy
+                    local sx, sy = p[1] - dx + k + self.ox, p[2] + dy + self.oy
                     if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0) then
                         if scr then
                             local i = sy * scr_stride + sx
@@ -1035,6 +1056,60 @@ end
 -- --------------------------------------------------------------- the input
 
 --- Takes the touch screen's contacts while this screen is on top.
+--- Beside a book: is this input frame the drawing's? It is when any of its
+--- contacts began in the pane; a frame of contacts that all began on the
+--- book goes to KOReader as usual (a tap or a swipe there turns the page).
+--- A contact belongs where it first touched, wherever it goes after.
+function DrawScreen:paneFrame(det, tevs)
+    local p, slots = self.pane, self._pane_slots
+    local ours, lifted = false, {}
+    for _i, tev in ipairs(tevs) do
+        local down = tev.id ~= nil and tev.id ~= -1
+        if down and slots[tev.slot] == nil and tev.x and tev.y then
+            local x, y = tev.x, tev.y
+            if det and det.adjustGesCoordinate then -- (the screen turned: where that is on it)
+                local ges = { ges = "tap", pos = Geom:new{ x = x, y = y, w = 0, h = 0 } }
+                pcall(det.adjustGesCoordinate, det, ges)
+                x, y = ges.pos.x, ges.pos.y
+            end
+            slots[tev.slot] = x >= p.x and y >= p.y and x < p.x + p.w and y < p.y + p.h
+        end
+        if slots[tev.slot] then ours = true end
+        if not down then lifted[#lifted + 1] = tev.slot end
+    end
+    for _i, slot in ipairs(lifted) do slots[slot] = nil end
+    return ours
+end
+
+--- Beside a book: what the drawing doesn't take (a tap or swipe on the book,
+--- a key) goes on to the book under it.
+function DrawScreen:handleEvent(event)
+    local handled = InputContainer.handleEvent(self, event)
+    if handled or not self.pane or self._closed then return handled end
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    local reader = ok and ReaderUI and ReaderUI.instance
+    if reader and UIManager:getTopmostVisibleWidget() == self then return reader:handleEvent(event) end
+    return handled
+end
+
+--- The side of a tool's button in a pane `h` tall under a top bar `top`
+--- tall, with `count` tools down the side (and the round button above them).
+function DrawScreen.paneToolSize(h, top, count)
+    local room = h - top - S(22) - S(8) - S(8) - S(12) - S(24)
+    return math.max(S(30), math.min(S(48), math.floor(room / (count + 0.4))))
+end
+
+--- Beside a book: the paper as wide as the pane (a pane is half the screen:
+--- a whole page in it would be a narrow strip), from its top; the rest is
+--- reached by moving the page (a finger, or the hand tool).
+function DrawScreen:fitPane()
+    local sk = self.sketch
+    local page = sk and sk:pageRect()
+    if not (self.pane and page and page.w > 0) then return end
+    local scale = math.min(Sketch.MAX_ZOOM or 4, self.canvas.w / page.w)
+    if scale > 1.02 then sk:zoomBy(scale, page.x, page.y, 0, 0) end
+end
+
 function DrawScreen:hook()
     local input = Device.input
     local gd = input and input.gesture_detector
@@ -1045,6 +1120,8 @@ function DrawScreen:hook()
     local screen = self
     rawset(gd, "feedEvent", function(det, tevs)
         if screen._closed or UIManager:getTopmostVisibleWidget() ~= screen then return orig(det, tevs) end
+        -- (beside a book: touches that began on the book are the book's, as KOReader reads them)
+        if screen.pane and not screen:paneFrame(det, tevs) then return orig(det, tevs) end
         -- (the pen's side button, as KOReader reads it: BTN_STYLUS or BTN_STYLUS2; held, the pen rubs out)
         if screen.sketch then
             local held = input.stylus_eraser_active == true or input.stylus_highlighter_active == true
@@ -1106,7 +1183,8 @@ function DrawScreen:onContacts(det, tevs)
         if x and y then
             local ges = { ges = "tap", pos = Geom:new{ x = x, y = y, w = 0, h = 0 } }
             if det.adjustGesCoordinate then pcall(det.adjustGesCoordinate, det, ges) end
-            x, y = ges.pos.x, ges.pos.y
+            -- (beside a book: from the pane's own corner)
+            x, y = ges.pos.x - self.ox, ges.pos.y - self.oy
         end
         local pressure, tilt_x, tilt_y = tev.gz_pressure, tev.gz_tilt_x, tev.gz_tilt_y
         if pressure ~= nil then
@@ -1190,7 +1268,7 @@ function DrawScreen:apply(out)
     if out.stroke_done then self:flushInk(true) end
     if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
         local d = self._stroke_area
-        local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }
+        local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }
         if self._stroke_grey then
             -- (a grey tool's stroke: the page painted again, so its real grey replaces the black points)
             UIManager:setDirty(self, function() return "ui", area end)
@@ -1392,7 +1470,7 @@ function DrawScreen:flushInk(done)
         self._ink_due = nil
         self._ink_shown_at = self._now or 0
         if self._stroke_stats then self._stroke_stats.shown = self._stroke_stats.shown + 1 end
-        UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+        UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })
     end
     if done then
         local st = self._stroke_stats
@@ -1727,6 +1805,8 @@ end
 
 function DrawScreen:onCloseWidget()
     self._closed = true
+    -- (beside a book: the book has the whole screen again)
+    if self.pane then pcall(function() require("gzreader_splitview").closed(self) end) end
     self:unhook()
     pcall(DrawScreen.savePenRange, self._pen_range_was)
     for _i, bb in ipairs({ "canvas_bb", "ink_bb", "color_bb", "tint_bb" }) do
@@ -1943,6 +2023,19 @@ end
 --- which paper first, as the Kindle Scribe's Create notebook does (Cancel
 --- there: on_cancel, nothing opened).
 function DrawScreen.show(opts)
+    -- Beside a book (gzreader_splitview): this drawing opens in the notes' part of the
+    -- screen, on the paper used last (no chooser over the book), named for the book.
+    local split = package.loaded["gzreader_splitview"]
+    local taken = split and split.take()
+    if taken then
+        local o = {}
+        for k, v in pairs(opts) do o[k] = v end
+        o.pane, o.choose_paper = taken.pane, nil
+        if type(o.meta) == "table" and (o.meta.title or "") == "" and (taken.title or "") ~= "" then
+            o.meta.title = T(_("Notes on %1"), taken.title)
+        end
+        opts = o
+    end
     if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then
         return require("gzreader_drawpages").showPapers{
             create = true,
@@ -1973,13 +2066,18 @@ function DrawScreen.show(opts)
     local w
     w = DrawScreen:new{ pages = pages, start = opts.start, on_cancel = opts.on_cancel, title = opts.title, meta = opts.meta,
         plugin = opts.plugin, -- (the quick panel, pulled down)
+        pane = opts.pane,
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a new drawing: the name and tags given in the top bar)
             if w.meta then res.title, res.tags = w.meta.title, w.meta.tags end
             on_done(res)
         end }
-    UIManager:show(w, "full")
+    if w.pane then
+        UIManager:show(w, "ui", nil, w.pane.x, w.pane.y)
+    else
+        UIManager:show(w, "full")
+    end
     return w
 end
 
