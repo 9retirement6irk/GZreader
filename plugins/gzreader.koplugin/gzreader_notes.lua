@@ -1935,18 +1935,23 @@ function NoteView:build()
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
     local space = Notes.spaceTitle(self.plugin, m.space)
-    local date_line = iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
+    add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
         .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
-        .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY)
-    -- (a journal entry's mood: its face beside the time, as the web shows it)
-    local face = Notes.moodFace(m, S(24))
-    add(face and HorizontalGroup:new{ align = "center", date_line, HorizontalSpan:new{ width = S(8) }, face } or date_line)
+        .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
     add(VerticalSpan:new{ width = S(10) })
     local para = {}
     local function flush()
         local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
         para = {}
         if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
+    end
+    -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
+    local mood = Notes.moodOf(m)
+    if mood then
+        add(HorizontalGroup:new{ align = "center", Notes.moodFace(m, S(30)), HorizontalSpan:new{ width = S(8) },
+            TextWidget:new{ text = require("gzreader_journal").VALENCE_LABELS[mood] or mood, face = Font:getFace("cfont", 16),
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY } })
+        add(VerticalSpan:new{ width = S(8) })
     end
     local n_check = 0
     for _i, l in ipairs(Sticky.lines(m.content)) do

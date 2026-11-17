@@ -98,7 +98,7 @@ add({ fn = function(E)
         for _i, k in ipairs(w) do walk(k) end
     end
     walk(v and v[1])
-    check(face and face.valence == "pleasant", "the entry's page: its mood's face beside the time (" .. tostring(face and face.valence) .. ")")
+    check(face and face.valence == "pleasant", "the entry's page: its mood's face and name above its text (" .. tostring(face and face.valence) .. ")")
     check(chips >= 4, "…its tags as grey chips (" .. chips .. ")")
     local f = io.open(E.out .. "/journal-look-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end

@@ -336,8 +336,8 @@ API to `/api` are found too.
     Kindles and the Kindle 4 keep the rows of buttons (for the keys and the
     5-way).
   - **Saved entries** show their mood as the web does: the **face beside the
-    note's time** (on the board's sticky note and on its page), and on the
-    note's page the **tags as light grey chips**.
+    note's time** on the board's sticky note and, on its page, the face and
+    the mood's name above the text, and the **tags as light grey chips**.
   - A **prompt** (**↻ Another** for the next one) and, right under it, your
     **words on lined paper**, typed straight in as plain text. A tap in it
     brings the keyboard; the questions above fold away while you type, so
