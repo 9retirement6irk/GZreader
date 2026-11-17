@@ -9,6 +9,7 @@ return {
     {
         version = "next",
         changes = {
+            { short = "Drawing: the pencil draws with a pencil's texture", text = "The pencil's line is no longer a flat grey band. It's drawn as graphite catching on the paper: dark grey specks with paper showing between them, sparse when you press lightly, nearly solid when you press hard, and thinner at the line's edges. The texture is the same every time a page is opened. In the picture of the drawing (on the Kindle and in Memos' note) it shows as drawn; if you open the drawing to edit it in Memos, the pencil is still a plain see-through stroke there." },
             { short = "Drawing: a long line no longer falls behind the pen", text = "The pen reports a few hundred points a second, and the screen was asked to refresh for every one of them. On a long stroke that took longer than the points came in, so the line fell further and further behind the pen. The ink is still painted at once, but it's now shown at most 60 times a second, and only 8 times a second while the drawing is more than 50 ms behind, until it has caught up. A stroke of 300 points or more writes how far behind it got to the diagnostic log (numbers only)." },
         },
     },

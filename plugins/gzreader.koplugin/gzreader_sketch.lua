@@ -22,6 +22,7 @@ Coordinates are screen pixels; strokes are kept relative to the canvas.
 
 local Drawing = require("gzreader_drawing")
 
+local bit = require("bit")
 local Sketch = {
     TOOL_FINGER = 0,
     TOOL_PEN = 1,
@@ -158,6 +159,37 @@ function Sketch.weightRadius(r, w)
     return math.max(1, math.floor(r * (0.4 + 1.2 * w) + 0.5))
 end
 
+-- ---------------------------------------------------------------- the pencil
+
+--- The paper's tooth at pixel (x, y), 0 to 1: the same for the same pixel
+--- every time (a page drawn again looks the same), uneven from one pixel
+--- to the next and in small clumps, as graphite catches on paper.
+function Sketch.grain(x, y)
+    local function hash(a, b)
+        local h = bit.bxor(bit.tobit(a * 374761393), bit.tobit(b * 668265263))
+        h = bit.bxor(h, bit.rshift(h, 15))
+        h = bit.tobit(bit.band(h, 0xFFFF) * 40503 + bit.rshift(h, 16) * 30011)
+        h = bit.bxor(h, bit.rshift(h, 13))
+        return bit.band(h, 0xFFFF) / 65536
+    end
+    return 0.65 * hash(x, y) + 0.35 * hash(math.floor(x / 2), math.floor(y / 2) + 7919)
+end
+
+--- How much of the paper a tool with a grain covers, 0 to 1, at weight `w`
+--- (the pen's pressure; none: as 0.5): light is sparse, pressed is nearly
+--- solid. nil for a tool without a grain.
+function Sketch.grainDensity(kind, w)
+    if not Sketch.toolStyle(kind).grain then return nil end
+    return 0.3 + 0.5 * math.max(0, math.min(1, w or 0.5))
+end
+
+--- True when a grained tool marks pixel (x, y), `d2` the square of its
+--- distance from the middle of a line of radius `r` (thinner at its edges).
+function Sketch.grainHit(x, y, density, d2, r)
+    local edge = r > 0 and (1 - 0.45 * math.min(1, d2 / (r * r))) or 1
+    return Sketch.grain(x, y) < density * edge
+end
+
 -- ------------------------------------------------------------ writing tools
 
 --- The writing tools (as on the Kindle Scribe): how each draws. `scale`:
@@ -172,7 +204,8 @@ Sketch.TOOL_IDS = { "pen", "fountain", "marker", "pencil", "highlighter" }
 Sketch.PEN_IDS = { "pen", "fountain", "marker", "pencil" }
 Sketch.TOOL_STYLE = {
     pen = { icon = "pen", scale = 1, lo = 0.4, hi = 1.6 },
-    pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70 },
+    -- (grain: drawn as graphite on the paper's tooth, see Sketch.grain; `gray` is the tone it reads as)
+    pencil = { icon = "pencil", scale = 0.7, lo = 0.7, hi = 1.15, gray = 0x60, opacity = 70, grain = true },
     fountain = { icon = "fountain", scale = 1, lo = 0.15, hi = 2.8, curve = 1.6 },
     marker = { icon = "marker", scale = 1.9, flat = true }, -- (a felt tip: black, as wide all along)
     highlighter = { icon = "highlighter", scale = 3.5, flat = true, gray = 0xC8, opacity = 35 },
@@ -486,7 +519,7 @@ local function appendPoint(self, contact, cx, cy, out)
     local r = Sketch.toolRadius(kind, self:radius(contact.stroke.width), w and (last and last[3] and (last[3] + w) / 2 or w) or nil)
     local from = last or { cx, cy }
     out.segments[#out.segments + 1] = { from[1] + self.canvas.x, from[2] + self.canvas.y, cx + self.canvas.x, cy + self.canvas.y, r,
-        contact.stroke.color, Sketch.toolStyle(kind).gray }
+        contact.stroke.color, Sketch.toolStyle(kind).gray, Sketch.grainDensity(kind, w) }
 end
 
 --- A drawing contact at screen (x, y). On paper, the stroke stays on it: it

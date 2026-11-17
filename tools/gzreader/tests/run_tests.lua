@@ -9557,7 +9557,7 @@ print("Notes (Memos v0.31)")
         check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
-            and dsrc:find('(gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
+            and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
             "drawing: a grey tool's ink (pencil, highlighter) shows as black points with the pen's fast refresh while drawing, its real grey when the stroke ends")
 

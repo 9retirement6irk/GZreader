@@ -743,6 +743,11 @@ end
 function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     local c = self.sketch.canvas
     local r, gray = seg[5], seg[7]
+    -- The pencil: graphite on the paper's tooth (Sketch.grain): only some of the
+    -- line's pixels are marked, more of them the harder it's pressed and fewer at
+    -- its edges, each darker than the tone the line reads as.
+    local grain = seg[8]
+    if grain then gray = math.floor(gray * 0.55) end
     local g8 = Blitbuffer.Color8(gray)
     local cw, ch = self.ink_bb:getWidth(), self.ink_bb:getHeight()
     local sw, sh = screen_bb and screen_bb:getWidth() or 0, screen_bb and screen_bb:getHeight() or 0
@@ -756,20 +761,22 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
             local dx = rows[dy]
             local px, py = p[1] - dx - c.x, p[2] + dy - c.y
             for k = 0, 2 * dx do
-                local before = (px + k >= 0 and py >= 0 and px + k < cw and py < ch) and self.ink_bb:getPixel(px + k, py):getColor8().a
+                -- (the grain goes by the page's pixel: the same wherever the stroke is drawn from)
+                local hit = not grain or Sketch.grainHit(px + k, py, grain, (k - dx) * (k - dx) + dy * dy, r)
+                local before = hit and (px + k >= 0 and py >= 0 and px + k < cw and py < ch) and self.ink_bb:getPixel(px + k, py):getColor8().a
                 if before and before > gray then
                     self.ink_bb:setPixel(px + k, py, g8)
                     if tint then self.tint_bb:setPixel(px + k, py, tint) end
                 end
-                darken(self.canvas_bb, px + k, py, cw, ch)
-                if screen_bb and not under then
+                if hit then darken(self.canvas_bb, px + k, py, cw, ch) end
+                if hit and screen_bb and not under then
                     -- On the screen, while the pen moves: black points an e-ink screen shows at once
                     -- (the pencil: all of them; the highlighter: one in four, so it reads as light).
                     -- A refresh that shows greys takes about half a second each time, which made the
                     -- pencil lag far behind the pen (the owner, 2026-11-16). The real grey is on the
                     -- page (canvas_bb) and shows when the stroke ends.
                     local sx, sy = p[1] - dx + k, p[2] + dy
-                    if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (gray < 0x80 or (sx + 2 * sy) % 4 == 0)
+                    if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)
                         and screen_bb:getPixel(sx, sy):getColor8().a > gray then
                         screen_bb:setPixel(sx, sy, Blitbuffer.COLOR_BLACK)
                     end
@@ -795,7 +802,8 @@ local function strokeSegments(sk, st)
         local a, b = pts[math.max(1, i - 1)], pts[i]
         -- (a stroke with a pen's pressure: as wide as it was pressed, as its tool draws it)
         local pr = Sketch.toolRadius(st.kind, r, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil)
-        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray }
+        out[#out + 1] = { a[1] + c.x, a[2] + c.y, b[1] + c.x, b[2] + c.y, pr, st.color, gray,
+            Sketch.grainDensity(st.kind, b[3] and (a[3] and (a[3] + b[3]) / 2 or b[3]) or nil) }
     end
     return out
 end

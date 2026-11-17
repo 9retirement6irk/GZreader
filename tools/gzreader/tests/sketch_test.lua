@@ -742,5 +742,32 @@ end)()
         "a pinch: the page zooms while the fingers are still down (2x, part of the way, 4x), told once when they lift")
 end)()
 
+-- the pencil's grain
+;(function()
+    local lo, hi, sum, same = 1, 0, 0, true
+    for y = 0, 99 do
+        for x = 0, 99 do
+            local g = Sketch.grain(x, y)
+            lo, hi, sum = math.min(lo, g), math.max(hi, g), sum + g
+            if g ~= Sketch.grain(x, y) then same = false end
+        end
+    end
+    check(same and lo >= 0 and hi < 1 and lo < 0.1 and hi > 0.9 and math.abs(sum / 10000 - 0.5) < 0.03,
+        "the paper's tooth: between 0 and 1, the same for a pixel every time, even over a patch (mean " .. string.format("%.2f", sum / 10000) .. ")")
+    local function covered(density, d2, r)
+        local n = 0
+        for y = 0, 99 do for x = 0, 99 do if Sketch.grainHit(x, y, density, d2, r) then n = n + 1 end end end
+        return n / 10000
+    end
+    local light, mid, hard = Sketch.grainDensity("pencil", 0.1), Sketch.grainDensity("pencil"), Sketch.grainDensity("pencil", 1)
+    check(light < mid and mid < hard and hard <= 0.8 and Sketch.grainDensity("pen", 0.5) == nil and Sketch.grainDensity("highlighter") == nil
+        and Sketch.grainDensity("fountain", 1) == nil,
+        "only the pencil has a grain; it covers more of the paper the harder it's pressed")
+    local cl, cm, ch, edge = covered(light, 0, 6), covered(mid, 0, 6), covered(hard, 0, 6), covered(mid, 36, 6)
+    check(cl > 0.15 and cl < cm and cm < ch and ch < 0.97 and edge < cm * 0.75,
+        string.format("…%.0f%%, %.0f%%, %.0f%% of a line's pixels marked (light, as drawn without pressure, pressed); fewer at its edge (%.0f%%)",
+            cl * 100, cm * 100, ch * 100, edge * 100))
+end)()
+
 print(string.format("sketch: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
