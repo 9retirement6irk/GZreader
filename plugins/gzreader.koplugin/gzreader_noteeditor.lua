@@ -299,7 +299,9 @@ function Editor:init()
     -- (`gzreader_richedit.lua`; Markdown when it can't be read that way).
     -- (Not in a window over the screen: a quick note keeps its text box.)
     if self.touch and NoteEditor.RICH and not self.floating then
-        local ok, doc = pcall(require("gzreader_blocks").parse, self.original)
+        -- (laid out again after a rotation: the page as it is now, gzRelayout)
+        local ok, doc = true, self._gz_doc
+        if not doc then ok, doc = pcall(require("gzreader_blocks").parse, self.original) end
         if ok then
             self.rich = true
             self.doc = doc
@@ -827,6 +829,32 @@ function Editor:changed()
     return self:text() ~= self.original or self.visibility ~= self.original_vis or self.space ~= self.original_space
         or #self:drawingChanges() > 0 or self.pages_reordered == true
 end
+
+--- The screen turned (a Kindle with auto-rotate, gzreader_rotation.lua): the
+--- page (or a quick note's window) laid out again at the new size, keeping
+--- what was written, who can see it, its space and its drawings.
+function Editor:gzRelayout()
+    local keep = {}
+    for _i, k in ipairs({ "visibility", "space", "original", "original_vis", "original_space", "pages", "pages_reordered", "saved" }) do
+        keep[k] = self[k]
+    end
+    local text = not self.rich and self:text() or nil
+    local edited = self.input and self.input.is_text_edited
+    if self.input and self.input.onCloseKeyboard then pcall(self.input.onCloseKeyboard, self.input) end
+    if self.input and self.input.free then pcall(self.input.free, self.input) end
+    self._gz_doc = self.rich and self.doc or nil
+    self.rich_input, self.input = nil, nil
+    self:init()
+    self._gz_doc = nil
+    for k, v in pairs(keep) do self[k] = v end
+    if text and self.input and self.input.setText then
+        self.input:setText(text, true)
+        self.input.is_text_edited = edited
+    end
+    self:drawChrome()
+    if self.vk then UIManager:nextTick(function() if self.input then self:keyboardBack() end end) end
+end
+require("gzreader_rotation").follow(Editor, Editor.gzRelayout)
 
 --- Draw: on touch Kindles, when the caller allows it (a new note, or one
 --- already in Memos: its drawing, or a first one).

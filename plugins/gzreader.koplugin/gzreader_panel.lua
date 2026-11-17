@@ -2,7 +2,7 @@
 GZreader's quick panel: the same panel on every Kindle (and the Nook), at
 the top of the screen. Square tiles, in two groups:
 
-  Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Restart, Sleep, Home, Updates,
+  Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Auto-rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
   Home       Manage “book” (the one highlighted), Continue, Send books,
              Search, History, View, Sort, Quick note, Music, Audiobook
@@ -149,6 +149,7 @@ function Panel.catalog()
             { id = "wifi", label = usbOnly() and _("Sync") or _("Wi-Fi") },
             { id = "night", label = _("Night mode"), available = function() return not nightGuarded() end },
             { id = "rotate", label = _("Rotate") },
+            { id = "autorotate", label = _("Auto-rotate"), note = _("Kindles that turn the screen by themselves"), available = function() return require("gzreader_rotation").hasAuto() end },
             { id = "restart", label = _("Restart") },
             { id = "sleep", label = _("Sleep") },
             { id = "home", label = _("Home"), fixed = true },
@@ -341,6 +342,7 @@ function Panel.controls(plugin)
             run = function() dispatch("night_mode") end }
     end
     list[#list + 1] = { id = "rotate", icon = "rotate", label = _("Rotate"), run = function() dispatch("iterate_rotation") end }
+    list[#list + 1] = require("gzreader_rotation").autoTile() -- (Kindles with an accelerometer: Oasis, Scribe)
     list[#list + 1] = { id = "restart", icon = "restart", label = _("Restart"), run = function() dispatch("restart") end }
     list[#list + 1] = { id = "sleep", icon = "sleep", label = _("Sleep"), run = function() dispatch("suspend") end }
     list[#list + 1] = { id = "home", icon = "home", label = _("Home"), run = function() require("gzreader_tabs").goHome() end }
