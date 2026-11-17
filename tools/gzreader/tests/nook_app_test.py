@@ -69,6 +69,7 @@ def main():
         p = os.path.join(ko, d, f)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, "w").write(d + "\n")
+    open(os.path.join(ko, "data", "ca-bundle.crt"), "w").write("-----BEGIN CERTIFICATE-----\n")
     mounts = os.path.join(work, "mounts")
     open(mounts, "w").write("/dev/block//vold/179:9 %s vfat rw 0 0\n" % card)
     log = os.path.join(work, "log")
@@ -81,7 +82,7 @@ def main():
     def start(**env):
         e = dict(os.environ, GZ=gz, GZ_NOOK_HOME=card, MOUNTS=mounts, LOG=log)
         e.update(env)
-        script = block() + STUBS + 'app_parts; echo "rc=$? bound=$APP_BOUND"\n[ -n "$THEN_EXIT" ] && unbind_app\n'
+        script = block() + STUBS + 'app_parts; echo "rc=$? bound=$APP_BOUND nobc=$KO_NO_BYTECODE_CACHE"\n[ -n "$THEN_EXIT" ] && unbind_app\n'
         r = subprocess.run(shell + ["-c", script], env=e, capture_output=True, text=True, timeout=60)
         return r
 
@@ -112,6 +113,40 @@ def main():
         r = start()
         check("rc=0" in r.stdout and bound("frontend") and "moving" not in read(log), "next start: just mounted, nothing copied")
         start(THEN_EXIT="1")
+        # GZreader's code on the card: checked before it runs
+        manifest = os.path.join(gz, "app-manifest")
+        check("plugins/gzreader.koplugin/main.lua" in (read(manifest) or "") and "frontend/ui.lua" in read(manifest)
+              and "data/ca-bundle.crt" in read(manifest) and "fonts/" not in read(manifest) and "nobc=1" in r.stdout,
+              "its code recorded (SHA-256 of the Lua and data/ca-bundle.crt) on the Nook's own disk; no bytecode cache on the card")
+        open(log, "w").close()
+        r = start(THEN_EXIT="1")
+        check("rc=0" in r.stdout and "as GZreader left it" in read(log), "the next start: the code checked, as GZreader left it")
+        def tampered(what, path, text):
+            open(log, "w").close()
+            keep = read(app, *path)
+            os.makedirs(os.path.dirname(os.path.join(app, *path)), exist_ok=True)
+            open(os.path.join(app, *path), "w").write(text)
+            r = start(THEN_EXIT="1")
+            check("rc=1" in r.stdout and "changed by something other than GZreader" in r.stdout and not bound("frontend")
+                  and "/".join(path) in read(log), what + ": GZreader doesn't start, says why (%s)" % r.stdout.strip())
+            if keep is None:
+                os.remove(os.path.join(app, *path))
+            else:
+                open(os.path.join(app, *path), "w").write(keep)
+        tampered("a Lua file on the card changed (by an app, or over USB)", ("frontend", "ui.lua"), "os.execute('evil')\n")
+        tampered("a Lua file added to the card", ("plugins", "evil.koplugin", "main.lua"), "os.execute('evil')\n")
+        tampered("the certificate authorities changed", ("data", "ca-bundle.crt"), "-----BEGIN CERTIFICATE-----\nevil\n")
+        open(os.path.join(app, "fonts", "noto", "b.ttf"), "w").write("font\n")
+        r = start(THEN_EXIT="1")
+        check("rc=0" in r.stdout, "a font added (not run): starts as usual")
+        # an update: GZreader writes the new code itself, and leaves app-manifest.renew
+        before = read(manifest)
+        open(os.path.join(app, "frontend", "ui.lua"), "w").write("frontend v2\n")
+        open(os.path.join(gz, "app-manifest.renew"), "w").write("1.32.0\n")
+        r = start(THEN_EXIT="1")
+        check("rc=0" in r.stdout and not os.path.exists(os.path.join(gz, "app-manifest.renew"))
+              and read(manifest) != before and start(THEN_EXIT="1").stdout.count("rc=0") == 1,
+              "after an update (app-manifest.renew): its code recorded again, and checked from then on")
         # a full package pushed over GZreader with adb
         os.remove(os.path.join(ko, "frontend")) if os.path.islink(os.path.join(ko, "frontend")) else None
         open(os.path.join(ko, "frontend", "new.lua"), "w").write("new\n")
