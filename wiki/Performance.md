@@ -115,7 +115,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   whose cover hasn't been read yet go through KOReader's cover extraction
   first.
 - **Background processes below the screen's priority** (`gzreader_async.lua`):
-  syncing, downloads, the library index and update checks
+  syncing, downloads (books, audiobooks and music), the library index and update checks
   run at nice 5 (longer jobs such as matching highlights at 10, cover sizing
   and other local work at 19), so a TLS handshake (seconds of CPU on a Kindle 3) doesn't hold up
   page turns.
