@@ -778,8 +778,10 @@ function DrawScreen:apply(out)
         self:touched()
         local screen_bb = Screen.bb
         local x0, y0, x1, y1
+        local grey = false
         for _i, seg in ipairs(out.segments) do
             self:ink(seg, screen_bb)
+            if seg[7] then grey = true end
             local r = seg[5]
             x0 = math.min(x0 or math.huge, seg[1] - r, seg[3] - r)
             y0 = math.min(y0 or math.huge, seg[2] - r, seg[4] - r)
@@ -791,7 +793,9 @@ function DrawScreen:apply(out)
         x1, y1 = math.min(c.x + c.w, math.ceil(x1) + 1), math.min(c.y + c.h, math.ceil(y1) + 1)
         if x1 > x0 and y1 > y0 then
             -- (the ink is on the screen already: only a refresh, no repaint)
-            UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            -- (a grey tool's ink: a refresh that shows greys — A2 and DU make it white or black)
+            UIManager:setDirty(nil, grey and "ui" or self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            if grey then self._stroke_grey = true end
             -- (the stroke's area, cleaned up once it's done)
             local d = self._stroke_area
             if d then
@@ -801,11 +805,11 @@ function DrawScreen:apply(out)
             end
         end
     end
-    if out.stroke_done and self._stroke_area and DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2" then
+    if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
         local d = self._stroke_area
         UIManager:setDirty(nil, "ui", Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })
     end
-    if out.stroke_done then self._stroke_area = nil end
+    if out.stroke_done then self._stroke_area, self._stroke_grey = nil, nil end
     if out.stroke_done then
         -- Undo and Redo wake up or go to sleep
         local shown = self._shown or {}

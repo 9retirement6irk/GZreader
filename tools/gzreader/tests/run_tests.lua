@@ -7988,11 +7988,14 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
-        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{', 1, true) ~= nil
+        check(dsrc:find('self:inkRefresh(), Geom:new{ x = x0, y = y0', 1, true) ~= nil
             and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
             and dsrc:find('UIManager:setDirty(nil, "ui", Geom:new{ x = d.x0, y = d.y0', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
+        check(dsrc:find('UIManager:setDirty(nil, grey and "ui" or self:inkRefresh(), Geom:new{', 1, true) ~= nil
+            and dsrc:find('if seg[7] then grey = true end', 1, true) ~= nil,
+            "drawing: a grey tool's ink (pencil, highlighter) goes on with \"ui\" (A2 and DU showed it white or black)")
 
         -- several drawings: a new note with two pages, both sent onto it
         local m1, m2 = drawingFile("drawing-20261113-090000.canvas.png"), drawingFile("drawing-20261113-090000-2.canvas.png")

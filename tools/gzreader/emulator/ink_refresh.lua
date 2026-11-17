@@ -76,6 +76,21 @@ add({ fn = function(E)
     check(#d.sketch:live() == 2 and seen("fast") and not seen("a2"),
         "on ruled paper: ink put on with DU (\"fast\": any grey to black), never A2 (" .. table.concat(modes, ",") .. ")")
     check(last == "ui", "…and the stroke's area cleaned up once it's done (\"ui\")")
+    -- a grey tool (the pencil) on a blank page: greys need a refresh that shows them ("ui")
+    if d.setWriting then
+        d.sketch:setPaper("blank")
+        d:redrawAll()
+        d:setWriting("pencil")
+        modes = {}
+        draw(E, 0.75)
+    end
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    if d.setWriting then
+        check(#modes > 0 and seen("ui") and not seen("a2") and not seen("fast"),
+            "the pencil on a blank page: its grey ink refreshed with \"ui\" (A2 showed it white) (" .. table.concat(modes, ",") .. ")")
+    end
     local f = io.open(E.out .. "/ink-refresh-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l in ipairs(lines) do E.say("check", l) end
