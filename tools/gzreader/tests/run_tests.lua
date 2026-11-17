@@ -6010,6 +6010,25 @@ P:setSleep(1)
 P.sleep_at = os.time() - 1
 P:tick()
 check(not P.playing, "sleep timer pauses")
+;(function()
+    -- sleep at the end of the chapter, then a chapter skipped to: that chapter's end
+    local book = { id = "sleepch", dir = WORK, title = "Chapters", tracks = { { start = 0, durationMs = 900000, file = "t.mp3", size = 4096 * 100 } },
+        chapters = { { startTimeMs = 0 }, { startTimeMs = 300000 }, { startTimeMs = 600000 } } }
+    local S = Audiobook.Player:new(plugin, book)
+    S.pos = 100000
+    S:play()
+    S:setSleep("chapter")
+    S:chapterStep(1)
+    S:tick()
+    check(S.playing and S.sleep_end_of_chapter == 2, "sleep at the end of the chapter: a chapter skipped to keeps playing, until that one ends")
+    S:skip(-60000)
+    S:tick()
+    check(S.playing and S.sleep_end_of_chapter == 1, "…and 30 s back over a chapter's start: the end of that chapter")
+    S.sleep_end_of_chapter = 0 -- (as if the chapter it was set in ended while playing)
+    S:tick()
+    check(not S.playing, "…and it pauses when the chapter ends by itself")
+    S:stop()
+end)()
 P:stop()
 check(Audiobook.current == nil, "stop clears the current player")
 ;(function()

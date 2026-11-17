@@ -54,7 +54,9 @@ again from there (MP3: to the nearest 4 KB; M4B: from the AAC frame playing
 when paused). The Kindle 3's sound pipeline doesn't come back from a
 suspended process, and a stopped one also frees the sound device for read
 aloud. Sleep (the power switch) pauses; leaving GZreader (Exit to the
-Kindle's menu, a restart) stops the audiobook and read aloud.
+Kindle's menu, a restart) stops the audiobook and read aloud. The sleep
+timer's *end of chapter* follows you: skip to another chapter (or back over a
+chapter's start) and it pauses at the end of the chapter you're in then.
 
 Position syncs with Grimmory's audiobook progress (same fields as its web
 player: position in the track and track index), every minute while
