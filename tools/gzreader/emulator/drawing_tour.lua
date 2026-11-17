@@ -61,6 +61,12 @@ add({ fn = function(E)
     check(e and e:canDraw(), "the new note's editor has Draw")
     E.tap("\u{270E} " .. "Draw")
 end, after = 2 })
+-- (a new drawing asks which paper first: Create, on the one chosen)
+add({ fn = function(E)
+    for _i, w in ipairs(require("ui/uimanager")._window_stack) do
+        if w.widget.name == "gz_paperlist" and w.widget.create then E.tap("Create") end
+    end
+end, after = 4 })
 add({ shot = "2-drawing-empty", after = 1 })
 add({ fn = function(E)
     check(screen() ~= nil and top() == screen(), "Draw opens the drawing screen")

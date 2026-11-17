@@ -9194,6 +9194,24 @@ print("Notes (Memos v0.31)")
         check(table.concat(Memos.drawingOrder(atts, { "p1", "p2", "p3" }), ",") == "a1,a2,a3,pic"
             and Memos.drawingOrder({ atts[4], atts[2], atts[1], atts[3] }, { "p1", "p2", "p3" }) == nil,
             "the pages' order: the drawings in page order, then the rest; nothing to do when they're in it")
+        -- Paper: small tiles, six to a row (four on a narrow screen), in a grid that scrolls (not
+        -- pages; checked on the Kindle Touch, Paperwhite and Scribe by emulator/paper_list.lua)
+        local psrc = io.open(PLUGIN .. "/gzreader_drawpages.lua"):read("*a")
+        local pshow = psrc:match("function Pages%.showPapers%(opts%)(.-)\nend") or ""
+        check(psrc:find("local cols = width >= 1000 and 6 or 4", 1, true) ~= nil
+            and psrc:find("local cell_w = math.floor((width - ScrollableContainer:getScrollbarWidth() - S(12) - gap * (cols + 1)) / cols)", 1, true) ~= nil
+            and psrc:find("self.scroller:initState()", 1, true) ~= nil
+            and psrc:find("local small = Notepaper.tile(paper)", 1, true) ~= nil
+            and psrc:find("self.scroller = ScrollableContainer:new{", 1, true) ~= nil
+            and psrc:find("self.cropping_widget = self.scroller", 1, true) ~= nil
+            and pshow:find("PaperList:new{", 1, true) ~= nil and not pshow:find("Grid:new", 1, true),
+            "Paper: small tiles six to a row sized to the screen's width, in a grid that scrolls (no pages)")
+        local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+        check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
+            and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
+            and esrc2:find("choose_paper = true, -- (a new drawing: which paper first)", 1, true) ~= nil
+            and psrc:find("if not self.create then return self:pick(i) end", 1, true) ~= nil,
+            "a new drawing asks which paper first (Create starts it, Cancel goes back to the note); a page's Paper: a tap picks")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")

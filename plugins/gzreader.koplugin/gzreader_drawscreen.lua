@@ -79,6 +79,12 @@ function DrawScreen.newPath()
     return dir .. "/" .. name, name
 end
 
+--- True when `pages` (a note's drawings) has none to show: a new drawing, which asks for its paper.
+function DrawScreen.asksPaper(pages)
+    for _i, p in ipairs(pages or {}) do if not p.removed then return false end end
+    return true
+end
+
 --- The paper new pages start on: the last one chosen.
 function DrawScreen.lastPaper()
     return G_reader_settings and G_reader_settings:readSetting("gzreader_drawing_paper") or "blank"
@@ -1276,8 +1282,26 @@ end
 --- opts: pages ({ att, path, filename, changed, removed }: the note's
 --- drawings, or { scene }: a new page ready to draw on, e.g. a PDF's page;
 --- none: a new page), start (the page shown first),
---- on_done(pages), on_cancel.
+--- on_done(pages), on_cancel; choose_paper: a new drawing (no pages) asks
+--- which paper first, as the Kindle Scribe's Create notebook does (Cancel
+--- there: on_cancel, nothing opened).
 function DrawScreen.show(opts)
+    if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then
+        return require("gzreader_drawpages").showPapers{
+            create = true,
+            current = DrawScreen.lastPaper(),
+            title = _("New drawing"),
+            on_pick = function(id)
+                DrawScreen.setLastPaper(id)
+                Log.info("drawing: new, on paper", id)
+                local o = {}
+                for k, v in pairs(opts) do o[k] = v end
+                o.choose_paper = nil
+                DrawScreen.show(o)
+            end,
+            on_back = function() if opts.on_cancel then opts.on_cancel() end end,
+        }
+    end
     local pages = {}
     for _i, p in ipairs(opts.pages or {}) do
         if not p.removed then

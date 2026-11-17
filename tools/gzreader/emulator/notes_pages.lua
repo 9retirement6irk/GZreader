@@ -63,6 +63,12 @@ add({ fn = function(E)
     E.restore_paint = function() Ed.paintTo = paint end
     E.tap(chip("Draw"))
 end, after = 4 })
+-- (a new drawing asks which paper first: Create, on the one chosen)
+add({ fn = function(E)
+    for _i, w in ipairs(require("ui/uimanager")._window_stack) do
+        if w.widget.name == "gz_paperlist" and w.widget.create then E.tap("Create") end
+    end
+end, after = 4 })
 add({ shot = "2-draw-opens-a-page", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
@@ -75,13 +81,13 @@ add({ fn = function(E)
     E.tap(button("paper"))
 end, after = 2 })
 add({ shot = "3-paper-list", after = 0.5 })
-add({ fn = function(E) E.tap("College ruled") end, after = 4 })
+add({ fn = function(E) E.tap("Medium ruled") end, after = 4 })
 add({ fn = function(E)
     local d = screen()
-    check(d.sketch:paper() == "college" and d.color_bb ~= nil, "Paper → College ruled: the page on it")
+    check(d.sketch:paper() == "ruled-medium" and d.color_bb ~= nil, "Paper → Medium ruled: the page on it")
     stroke(E, 0.2, 0.3, 0.7, 0.32)
 end, after = 2 })
-add({ shot = "4-college", after = 0.5 })
+add({ shot = "4-medium-ruled", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
     check(#d.sketch:live() == 1, "drawn on the paper")
@@ -89,7 +95,7 @@ add({ fn = function(E)
 end, after = 4 })
 add({ fn = function(E)
     local d = screen()
-    check(#d.pages == 2 and d.index == 2 and d.sketch:paper() == "college" and d.sketch:isEmpty(),
+    check(#d.pages == 2 and d.index == 2 and d.sketch:paper() == "ruled-medium" and d.sketch:isEmpty(),
         "+ New page: a second page, on the last paper chosen")
     E.tap(button("paper"))
 end, after = 2 })
@@ -104,7 +110,7 @@ add({ fn = function(E)
     E.tap(button("newpage"))
 end, after = 4 })
 add({ fn = function(E) E.tap(button("paper")) end, after = 2 })
-add({ fn = function(E) E.tap("Dot grid") end, after = 4 })
+add({ fn = function(E) E.tap("Dotted") end, after = 4 })
 add({ fn = function(E)
     -- from the middle of the page off its right edge (and the screen's)
     local W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
@@ -124,7 +130,7 @@ end, after = 4 })
 add({ fn = function(E) E.tap(button("prev")) end, after = 4 })
 add({ fn = function(E)
     local d = screen()
-    check(d.index == 1 and d.sketch:paper() == "college" and #d.sketch:live() == 1, "◀ ◀: back to page 1, as it was")
+    check(d.index == 1 and d.sketch:paper() == "ruled-medium" and #d.sketch:live() == 1, "◀ ◀: back to page 1, as it was")
     E.tap(button("done"))
 end, after = 4 })
 add({ shot = "7-editor", after = 0.5 })
@@ -137,7 +143,7 @@ add({ fn = function(E)
     local s1 = e.pages[1].path and Drawing.readFile(e.pages[1].path)
     local s2 = e.pages[2].path and Drawing.readFile(e.pages[2].path)
     local b1, b2 = s1 and Notepaper.background(s1), s2 and Notepaper.background(s2)
-    check(b1 and b2 and Notepaper.idOf(s1, b1) == "college" and Notepaper.idOf(s2, b2) == "graph",
+    check(b1 and b2 and Notepaper.idOf(s1, b1) == "ruled-medium" and Notepaper.idOf(s2, b2) == "graph",
         "each page's file: its paper as Memos keeps a background, then its stroke")
     for i = 1, 3 do os.execute("cp '" .. e.pages[i].path .. "' '" .. E.out .. "/page-" .. i .. ".canvas.png'") end
     e.input:setText("# " .. TITLE)
@@ -159,7 +165,7 @@ add({ fn = function(E)
         local bg = sc and Notepaper.background(sc)
         papers[i] = bg and Notepaper.idOf(sc, bg) or "?"
     end
-    check(note and #note.attachments == 3 and table.concat(papers, ",") == "college,graph,dots",
+    check(note and #note.attachments == 3 and table.concat(papers, ",") == "ruled-medium,graph,dots",
         "Save: one note in Memos with its three drawings, in page order (" .. table.concat(papers, ",") .. ")")
     E.note = note
     local Notes = require("gzreader_notes")
@@ -172,7 +178,7 @@ end, after = 6 })
 add({ shot = "7-edit-opens-pages", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
-    check(d and #d.pages == 3 and d.sketch:paper() == "college" and #d.sketch:live() == 1,
+    check(d and #d.pages == 3 and d.sketch:paper() == "ruled-medium" and #d.sketch:live() == 1,
         "Edit: the note's three drawings open as its pages, in order (page 1 on College ruled)")
     E.tap(button("next"))
 end, after = 4 })

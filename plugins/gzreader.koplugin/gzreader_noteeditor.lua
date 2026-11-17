@@ -946,6 +946,7 @@ function Editor:openDrawing(page)
     end
     DrawScreen.show{
         pages = list,
+        choose_paper = true, -- (a new drawing: which paper first)
         start = page,
         title = self:heading(),
         on_done = function(res)

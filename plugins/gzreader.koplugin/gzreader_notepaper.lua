@@ -18,15 +18,36 @@ local Notepaper = {}
 Notepaper.DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/notepaper"
 Notepaper.W, Notepaper.H = 1113, 1440
 
---- The papers, in the order the Paper button lists them.
+--- The papers, in the order the chooser lists them: the Kindle Scribe's
+--- notebook templates (the owner, 2026-11-16). Made by
+--- tools/gzreader/make_notepaper.py (graph, dots and checklist: earlier).
 Notepaper.LIST = {
     { id = "blank", label = _("Blank") },
-    { id = "college", label = _("College ruled"), file = "college.png" },
-    { id = "wide", label = _("Wide ruled"), file = "wide.png" },
-    { id = "gregg", label = _("Gregg ruled"), file = "gregg.png" },
-    { id = "dots", label = _("Dot grid"), file = "dots.png" },
+    { id = "ruled-medium", label = _("Medium ruled"), file = "ruled-medium.png" },
+    { id = "ruled-medium-margin", label = _("Medium ruled with margin"), file = "ruled-medium-margin.png" },
+    { id = "ruled-wide", label = _("Wide ruled"), file = "ruled-wide.png" },
+    { id = "ruled-wide-margin", label = _("Wide ruled with margin"), file = "ruled-wide-margin.png" },
+    { id = "ruled-narrow", label = _("Narrow ruled"), file = "ruled-narrow.png" },
+    { id = "ruled-narrow-margin", label = _("Narrow ruled with margin"), file = "ruled-narrow-margin.png" },
+    { id = "vertical", label = _("Vertical ruled"), file = "vertical.png" },
+    { id = "vertical-margin", label = _("Vertical ruled with margin"), file = "vertical-margin.png" },
     { id = "graph", label = _("Graph"), file = "graph.png" },
+    { id = "dots", label = _("Dotted"), file = "dots.png" },
     { id = "checklist", label = _("Checklist"), file = "checklist.png" },
+    { id = "daily", label = _("Daily planner"), file = "daily.png" },
+    { id = "weekly", label = _("Weekly planner"), file = "weekly.png" },
+    { id = "monthly", label = _("Monthly planner"), file = "monthly.png" },
+    { id = "habit", label = _("Habit tracker"), file = "habit.png" },
+    { id = "storyboard", label = _("Storyboard"), file = "storyboard.png" },
+    { id = "music", label = _("Music"), file = "music.png" },
+}
+
+--- The papers GZreader offered before these: no longer in the chooser, but
+--- a page drawn on one is still known as it (and stays on it).
+Notepaper.EARLIER = {
+    { id = "college", label = _("College ruled"), file = "college.png" },
+    { id = "wide", label = _("Wide ruled (punched)"), file = "wide.png" },
+    { id = "gregg", label = _("Gregg ruled"), file = "gregg.png" },
     { id = "cornell", label = _("Cornell notes"), file = "cornell.png" },
 }
 
@@ -80,6 +101,7 @@ end
 
 function Notepaper.get(id)
     for _i, p in ipairs(Notepaper.LIST) do if p.id == id then return p end end
+    for _i, p in ipairs(Notepaper.EARLIER) do if p.id == id then return p end end
     if type(id) == "string" and id:sub(1, 4) == "own:" then
         for _i, p in ipairs(Notepaper.own()) do if p.id == id then return p end end
     end
@@ -89,6 +111,13 @@ end
 function Notepaper.path(p)
     if not p then return nil end
     return p.path or (p.file and (Notepaper.DIR .. "/" .. p.file)) or nil
+end
+
+--- The small square picture the chooser shows for paper `p` (a corner of
+--- the page, its lines darkened): nil for blank and for your own papers.
+function Notepaper.tile(p)
+    if not (p and p.file) then return nil end
+    return Notepaper.DIR .. "/tiles/" .. p.file
 end
 
 local cache = {}
@@ -153,6 +182,9 @@ function Notepaper.idOf(scene, el)
     if type(url) ~= "string" then return nil end
     for _i, p in ipairs(Notepaper.LIST) do
         if p.file and Notepaper.dataURL(p.id) == url then return p.id end
+    end
+    for _i, p in ipairs(Notepaper.EARLIER) do
+        if Notepaper.dataURL(p.id) == url then return p.id end
     end
     for _i, p in ipairs(Notepaper.own()) do
         if Notepaper.dataURL(p.id) == url then return p.id end
