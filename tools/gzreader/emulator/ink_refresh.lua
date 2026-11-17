@@ -90,17 +90,18 @@ end, after = 3 })
 add({ fn = function(E)
     local d = screen()
     if d.setWriting then
-        -- (while the pen moves: black points with the pen's own fast refresh; one "ui" when the stroke ends, for the real grey)
+        -- (the pencil's specks go on as it draws, as dark as they'll be: the pen's own fast refresh, and no
+        -- refresh after the stroke, which flashed the page)
         local ui = 0
         for _i, m in ipairs(modes) do if m == "ui" then ui = ui + 1 end end
         local st = d.sketch:live()
         st = st[#st]
-        local c = d.canvas
         local mid = st.points[math.floor(#st.points / 2)]
-        local g = d.canvas_bb:getPixel(mid[1], mid[2]):getColor8().a
-        check(#modes > 3 and seen("a2") and ui == 1 and modes[#modes] == "ui" and g > 0x30 and g < 0xA0 and c ~= nil,
-            "the pencil on a blank page: shown as fast as the pen while drawing (a2), its grey once at the end (" .. ui .. " ui of "
-                .. #modes .. " refreshes; grey " .. g .. " on the page)")
+        local g = 255
+        for dy = -3, 3 do for dx = -3, 3 do g = math.min(g, d.canvas_bb:getPixel(mid[1] + dx, mid[2] + dy):getColor8().a) end end
+        check(#modes > 3 and seen("a2") and ui == 0 and g > 0x20 and g < 0x60,
+            "the pencil on a blank page: shown as fast as the pen while drawing (a2), no refresh after the stroke (" .. ui .. " ui of "
+                .. #modes .. " refreshes; specks of grey " .. g .. " on the page)")
     end
     local f = io.open(E.out .. "/ink-refresh-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end

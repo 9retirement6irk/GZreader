@@ -915,6 +915,56 @@ end)()
     check(f1.view and math.abs((hf.oy - fy0) + 40) < 0.5 and #hf:live() == 1, "…a finger Kindle: a finger moves the page with the hand, and draws again with the pen")
 end)()
 
+-- the pencil's ink as a picture for Memos
+;(function()
+    local function sketch()
+        return Sketch.new{ canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 }
+    end
+    local function line(sk, y, t)
+        sk:frame({ { slot = 0, id = 1, x = 100, y = y } }, t)
+        sk:frame({ { slot = 0, id = 1, x = 300, y = y } }, t + 0.01)
+        sk:frame({ { slot = 0, id = 1, x = 500, y = y } }, t + 0.02)
+        sk:frame({ { slot = 0, id = -1 } }, t + 0.03)
+    end
+    local sk = sketch()
+    sk.width = 7
+    line(sk, 100, 1)
+    check(sk:pencilLayer() == nil, "a drawing without pencil: no layer")
+    sk.writing = "pencil"
+    line(sk, 200, 2)
+    line(sk, 300, 3)
+    local layer = sk:pencilLayer()
+    local marked, clear = 0, 0
+    for i = 0, layer.w * layer.h - 1 do if layer.mem[i * 2 + 1] == 255 then marked = marked + 1 else clear = clear + 1 end end
+    -- (the canvas is 2 pixels a unit: the strokes run from x 50 to 250, y 100 and 150, in the scene)
+    check(layer.n == 2 and layer.x <= 50 and layer.x > 40 and layer.x + layer.w >= 250 and layer.x + layer.w < 262
+        and layer.y < 100 and layer.y > 90 and layer.y + layer.h > 150 and layer.y + layer.h < 162,
+        "the pencil's layer: over its strokes, in the scene's units (" .. layer.x .. "," .. layer.y .. " " .. layer.w .. "x" .. layer.h .. ")")
+    check(marked > 300 and clear > marked * 3 and layer.mem[0] == 0 and layer.mem[1] == 0,
+        "…specks of grey where the pencil went (" .. marked .. "), see-through elsewhere (" .. clear .. ")")
+    local scene = sk:scene()
+    local n = #scene.elements
+    local hidden = Sketch.hidePencil(scene, { id = "layer", type = "image", locked = true, fileId = "f1", customData = { gzLayer = "pencil" } })
+    local shown, pencil = 0, 0
+    for _i, e in ipairs(scene.elements) do
+        if e.type == "freedraw" and e.opacity == 0 and e.customData.gzTool == "pencil" then pencil = pencil + 1 end
+        if e.type == "freedraw" and e.opacity ~= 0 then shown = shown + 1 end
+    end
+    check(hidden == 2 and pencil == 2 and shown == 1 and #scene.elements == n + 1 and scene.elements[1].id == "layer",
+        "for Memos: the pencil's strokes kept with their tool but not shown, the pen's as it was, the layer under them")
+    -- opened again: the strokes are the pencil's, the layer isn't a picture of the page's (it's made again)
+    scene.files = { f1 = { dataURL = "x" }, other = { dataURL = "y" } }
+    local back = Sketch.fromScene(scene, { canvas = { x = 0, y = 0, w = 600, h = 800 }, per_unit = 2, tap_slop = 8 })
+    local kinds = {}
+    for _i, st in ipairs(back:live()) do kinds[#kinds + 1] = st.kind or "pen" end
+    local again = back:scene()
+    local has_layer = false
+    for _i, e in ipairs(again.elements) do if e.id == "layer" then has_layer = true end end
+    check(table.concat(kinds, ",") == "pen,pencil,pencil" and #back.locked == 0 and not has_layer and again.files.f1 == nil and again.files.other ~= nil
+        and back:pencilLayer() ~= nil,
+        "opened again: pen, pencil, pencil; the old layer and its file dropped (not shown twice, not carried along), a new one made")
+end)()
+
 -- the pencil's grain
 ;(function()
     local lo, hi, sum, same = 1, 0, 0, true

@@ -81,6 +81,27 @@ add({ fn = function(E)
     local same = true
     for i = 1, #before do if d.canvas_bb:getPixel(x0 - 31 + i, y):getColor8().a ~= before[i] then same = false end end
     check(same, "the page drawn again from its strokes: the same grain, pixel for pixel")
+    -- saved: for Memos the pencil's ink is a picture in the drawing, its strokes kept but not shown
+    local res = d:save()
+    local Drawing = require("gzreader_drawing")
+    local scene = res and Drawing.readFile(res.path)
+    local layer, hidden, pen_shown = nil, 0, 0
+    for _i, e in ipairs(scene and scene.elements or {}) do
+        if e.type == "image" and type(e.customData) == "table" and e.customData.gzLayer == "pencil" then layer = e end
+        if e.type == "freedraw" and e.opacity == 0 then hidden = hidden + 1 end
+        if e.type == "freedraw" and e.opacity == 100 then pen_shown = pen_shown + 1 end
+    end
+    local file = layer and scene.files[layer.fileId]
+    local png = file and require("ffi/sha2").base64_to_bin(file.dataURL:match(",(.*)$"))
+    check(layer and hidden == 3 and pen_shown == 1 and png and png:sub(2, 4) == "PNG" and layer.width > 400 and layer.height > 200,
+        "saved: the pencil's ink is a picture in the drawing for Memos (" .. tostring(layer and (layer.width .. "x" .. layer.height)) .. ", "
+            .. tostring(png and #png) .. " bytes), its 3 strokes kept but not shown, the pen's shown")
+    if png then local pf = io.open(E.out .. "/pencil-layer.png", "wb"); pf:write(png); pf:close() end
+    -- opened again: three pencil strokes and one pen, the layer not a picture on the page
+    local Sketch = require("gzreader_sketch")
+    local back = scene and Sketch.fromScene(scene, { canvas = d.canvas, per_unit = d.sketch.per_unit, tap_slop = 8 })
+    check(back and #back:live() == 4 and back:live()[1].kind == "pencil" and #back.locked == 0, "opened again: the same four strokes, no extra picture")
+    if res then os.remove(res.path) end
     local f = io.open(E.out .. "/pencil-texture-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l2 in ipairs(lines) do E.say("check", l2) end
