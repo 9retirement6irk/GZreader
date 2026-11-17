@@ -1187,8 +1187,8 @@ function Screen:build()
     }, kh))
     self.actions[3] = { function() self:onVolDown() end, function() self:onVolUp() end }
     gap(10)
-    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = 15,
-        value_text = T("%1 / %2", Engine.volume(), 15), label = _("volume"),
+    add(Skeuo.Dial:new{ w = inner, h = Device.screen:scaleBySize(56), value = Engine.volume(), max = Engine.volumeMax(),
+        value_text = T("%1 / %2", Engine.volume(), Engine.volumeMax()), label = _("volume"),
         letters = Touch.keys() and { "A", "S" } or nil,
         focused = self.focus and self.focus[1] == 3 and (self.focus[2] == 1 and "minus" or "plus") or nil,
         minus = function() self:onVolDown() end, plus = function() self:onVolUp() end })

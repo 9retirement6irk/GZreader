@@ -100,7 +100,7 @@ end
 --- The CD player with its library (1.22: all of music happens there); the
 --- list menu below only if it fails, or without a speaker (it says why).
 function Tab.player(plugin, opts)
-    if Tab.LIST_PLAYER or not require("gzreader_touch").audio() then return nil end
+    if Tab.LIST_PLAYER or not require("gzreader_touch").player() then return nil end
     local ok, w = pcall(function() return require("gzreader_cdscreen").show(plugin, opts) end)
     if ok then return w end
     require("gzreader_log").warn("CD player screen:", tostring(w))
@@ -262,9 +262,9 @@ end
 function Tab:rootItems(after)
     local plugin = self.plugin
     local Rows = require("gzreader_rows")
-    if not require("gzreader_touch").audio() then
+    if not require("gzreader_touch").player() then
         return Rows.mark({ Rows.about(_("No speaker on this Kindle"),
-            _("This Kindle has no speaker or headphone jack, so it can't play music. The Kindle 2, Keyboard, DX and Touch can.")) })
+            _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play music. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).")) })
     end
     local plex = Music().plex(plugin)
     local items = {}
@@ -303,7 +303,7 @@ function Tab:playerRootItems(inline, after)
     local Rows = require("gzreader_rows")
     after = after or function() self:replace(_("Music"), self:playerRootItems(inline)) end
     local plex = Music().plex(plugin)
-    if not (require("gzreader_touch").audio() and plex:isConnected()) then
+    if not (require("gzreader_touch").player() and plex:isConnected()) then
         local items = {}
         for _i, it in ipairs(self:rootItems(after)) do
             if it.text ~= _("Now playing") then items[#items + 1] = it end

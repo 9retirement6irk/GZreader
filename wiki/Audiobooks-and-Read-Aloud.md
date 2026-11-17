@@ -1,4 +1,4 @@
-Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab).
+Listening on Kindles with a speaker or headphone jack (Kindle 2, 3, DX, Touch), or with Bluetooth (Scribe, Paperwhite 5 and newer, Colorsoft…; through Bluetooth headphones or a speaker): Grimmory audiobooks, and any book read aloud in the Kindle's own voice. Music from Plex: [Music](Music). Audiobooks can also have a tab of their own: [the Audiobooks tab](Grimmory-Library#the-catalog-tab).
 
 ## Audiobooks (experimental)
 
@@ -65,6 +65,22 @@ doesn't go to sleep while audio plays; pressing the power button pauses.
 The book's description comes from Grimmory with the download (and, for
 audiobooks downloaded before 1.6.2, the next time the player opens online);
 Home's featured book shows it too.
+
+### On Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…)
+
+These Kindles have no speaker or headphone jack: audiobooks (and music)
+play through Bluetooth headphones or a speaker. Connect it first (Settings →
+General → Bluetooth, or Amazon's settings). Everything works as on the
+Kindle Touch, with these differences:
+
+- **No audio test needed.** There's one way to play here: GZreader's own
+  decoder (these Kindles have no MP3 or AAC decoder outside Audible's)
+  into the Kindle's Bluetooth sound. Settings → General → Audio → Test
+  audiobook playback still plays the two test tunes, if you want to check.
+- **Volume:** the Kindle's own Bluetooth volume, 1 to 8, the same as
+  Amazon's slider, the quick panel's volume slider and read aloud's.
+- **No headphone jack**, so nothing pauses on unplugging; turning the
+  Bluetooth device off or walking out of range is up to the Kindle.
 
 ### Audiobooks from Plex
 
@@ -210,7 +226,8 @@ starts a program, which costs the Kindle 3 a moment of CPU).
 ## Audio settings
 
 **Settings → General → Audio** (the Kindle 2, 3, DX and Touch: the Kindles
-with a speaker or a headphone jack) has Read aloud (volume, speed, the
+with a speaker or a headphone jack; on Kindles with Bluetooth: Read aloud
+and Test audiobook playback) has Read aloud (volume, speed, the
 Kindle voice), Test audiobook playback, Pause when headphones are unplugged
 and Find the headphone jack. They were at the end of Settings → Reader before; they
 are for music and audiobooks too.

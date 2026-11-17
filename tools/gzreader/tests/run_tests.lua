@@ -780,7 +780,7 @@ print("Catalog tab: Books, Audiobooks and Music pages")
     Browser.show = function(_s, o) opened_with = o end
     plugin:onShowGzAudiobooks()
     Browser.show = saved_show
-    check(opened_with == nil and tostring(captured.info):match("no speaker or headphone jack"),
+    check(opened_with == nil and tostring(captured.info):match("no speaker, headphone jack or Bluetooth"),
         "a Kindle without audio: the tab says it can't play audiobooks (no Catalog page)")
     require("gzreader_touch").audio = saved_audio
     -- ZenOS's config: the tab's label becomes Catalog once, unless you named it yourself
@@ -5992,9 +5992,10 @@ print("Read aloud on Kindles with Bluetooth: Amazon's Ivona voice (com.lab126.iv
 
     -- Settings → General → Audio on such a Kindle: Read aloud only; its dialog without Volume
     local src = io.open(PLUGIN .. "/main.lua"):read("*a")
-    check(src:find("if not Mod.Touch.audio() and not Mod.Touch.tts() then return {} end", 1, true)
-        and src:find("if not Mod.Touch.audio() then return items end", 1, true),
-        "Settings → General → Audio: Read aloud alone on a Kindle without a speaker (no audiobook test, no headphone jack)")
+    check(src:find("if not Mod.Touch.player() and not Mod.Touch.tts() then return {} end", 1, true)
+        and src:find("if not Mod.Touch.player() then return items end", 1, true)
+        and src:find("if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)", 1, true),
+        "Settings → General → Audio: without a speaker, Read aloud and (Bluetooth Kindles) the audiobook test; no headphone jack items")
     check(src:find("Mod.TTS.volumeMax()", 1, true) and not src:find("if not bt then", 1, true) and src:find("Test the Kindle voice", 1, true),
         "its read aloud settings: Volume n / 8 (the Kindle's Bluetooth volume), \"Test the Kindle voice\"")
 
@@ -6584,12 +6585,98 @@ local aacp
 for _i, p in ipairs(AEngine.PLAYERS) do if p.id == "aac-mfw" then aacp = p end end
 local acmd, ast = AEngine.command(aacp, { kind = "chunks", dir = "/b/x.m4b.chunks", starts = { 0, 15000, 30000, 45000 }, offset_ms = 40000 })
 check(acmd:match("^i=2; while %[ %-f '/b/x%.m4b%.chunks'/c%$i%.aac %]; do cat '/b/x%.m4b%.chunks'/c%$i%.aac || break; i=%$%(%(i%+1%)%); done | gst%-launch%-0%.10 fdsrc ! mfw_aacdecoder ! ") and ast == 30000, "M4B: plays the converted chunks from the one holding 0:40 (starts 0:30)")
-local pb = AEngine.command(AEngine.PLAYERS[#AEngine.PLAYERS], { kind = "file", path = "rel/x.mp3" })
+local pbp
+for _i, p in ipairs(AEngine.PLAYERS) do if p.playbin then pbp = p end end
+local pb = AEngine.command(pbp, { kind = "file", path = "rel/x.mp3" })
 check(pb:match("^gst%-launch%-0%.10 playbin uri='file:///"), "playbin gets an absolute file URI")
 for _i, p in ipairs(AEngine.PLAYERS) do
-    local c = AEngine.command(p, p.formats.mp3 and { kind = "file", path = "/x.mp3" } or { kind = "chunks", dir = "/d", starts = { 0 } })
-    check(not c:find(" %-q"), "no -q option (" .. p.id .. ")")
+    if not p.bt then
+        local c = AEngine.command(p, p.formats.mp3 and { kind = "file", path = "/x.mp3" } or { kind = "chunks", dir = "/d", starts = { 0 } })
+        check(not c:find(" %-q"), "no -q option on the Kindle 3's GStreamer 0.10 (" .. p.id .. ")")
+    end
 end
+-- Kindles with Bluetooth (Scribe…): GZreader's decoder into Amazon's mixersink
+;(function()
+    local Touch = require("gzreader_touch")
+    local saved_bt, saved_root, saved_exec = AEngine.bt_present, AEngine.root, AEngine.exec
+    local saved_set = G_reader_settings:readSetting("gzreader_audio_players")
+    -- which Kindles: a Kindle with GStreamer 1.0 and mixersink, and no speaker
+    local Device = require("device")
+    local was = { isKindle = Device.isKindle, model = Device.model, gst = Touch.GST1, mix = Touch.MIXERSINK }
+    local gst, mix = WORK .. "/gst-launch-1.0", WORK .. "/libgstmixersink.so"
+    io.open(gst, "w"):close(); io.open(mix, "w"):close()
+    Touch.GST1, Touch.MIXERSINK = gst, mix
+    Device.isKindle = function() return true end
+    Device.model = "KindleScribe"
+    Touch._forgetBtAudio()
+    check(Touch.btAudio() and Touch.player() and not Touch.audio(), "a Kindle with GStreamer 1.0 and mixersink (Scribe): plays through Bluetooth")
+    Device.model = "Kindle3"
+    Touch._forgetBtAudio()
+    check(not Touch.btAudio() and Touch.player(), "the Kindle 3: its speaker, as before (not the Bluetooth way)")
+    Device.model = "KindleScribe"
+    os.remove(mix)
+    Touch._forgetBtAudio()
+    check(not Touch.btAudio() and not Touch.player(), "no mixersink (a Paperwhite 3 on 5.x): no audiobooks or music")
+    Device.isKindle, Device.model, Touch.GST1, Touch.MIXERSINK = was.isKindle, was.model, was.gst, was.mix
+    os.remove(gst)
+    Touch._forgetBtAudio()
+    -- players: only the Bluetooth ones, no test needed
+    AEngine.bt_present = true
+    G_reader_settings:saveSetting("gzreader_audio_players", { mp3 = "mp3-mfw", aac = "aac-mfw" })
+    local ids = {}
+    for _i, p in ipairs(AEngine.players()) do ids[#ids + 1] = p.id end
+    check(table.concat(ids, ",") == "mp3-bt,aac-bt", "Bluetooth Kindles use only GZreader's decoder (" .. table.concat(ids, ",") .. ")")
+    check(AEngine.chosen("mp3").id == "mp3-bt" and AEngine.chosen("aac").id == "aac-bt" and AEngine.chosen("flac") == nil,
+        "MP3 and AAC play at once, without the audio test (an old test result is ignored)")
+    -- commands
+    local cmds = {}
+    AEngine.exec = function(c) cmds[#cmds + 1] = c; return 0 end
+    AEngine.root = "/mnt/us/koreader/plugins/gzreader.koplugin"
+    AEngine._forgetDecoder()
+    local tail = " | gst-launch-1.0 -q fdsrc fd=0 ! rawaudioparse use-sink-caps=false format=pcm pcm-format=s16le"
+        .. " sample-rate=44100 num-channels=2 ! audioconvert ! audioresample ! mixersink"
+    local dec = "'/mnt/us/koreader/plugins/gzreader.koplugin/bin/gzdecode-armhf'"
+    local c1, s1 = AEngine.command(AEngine.chosen("mp3"), { kind = "file", path = "/b/x.mp3", offset_ms = 30000, size = 4096 * 100, duration_ms = 60000 })
+    check(c1 == "dd if='/b/x.mp3' bs=4096 skip=50 2>/dev/null | " .. dec .. " mp3" .. tail and s1 == 30000,
+        "MP3: the same byte skip, into gzdecode, then mixersink: " .. c1)
+    check(cmds[1] and cmds[1]:find("chmod 755 '/mnt/us/koreader/plugins/gzreader.koplugin/bin/gzdecode%-armhf'"),
+        "the decoder is made runnable first (an update's zip loses the permission)")
+    local n = #cmds
+    local c2, s2 = AEngine.command(AEngine.chosen("aac"), { kind = "chunks", dir = "/b/x.m4b.chunks", starts = { 0, 15000, 30000, 45000 }, offset_ms = 40000 })
+    check(c2:match("^i=2; while %[ %-f '/b/x%.m4b%.chunks'/c%$i%.aac %]") and c2:sub(-#(dec .. " aac" .. tail)) == dec .. " aac" .. tail and s2 == 30000,
+        "M4B: the same chunks, into gzdecode aac, then mixersink")
+    check(#cmds == n, "made runnable once a run, not at every play")
+    -- volume: the Kindle's Bluetooth volume (1-8), as read aloud and the quick panel
+    local TTS = require("gzreader_tts")
+    local tv, tset = TTS.volume, TTS.setVolume
+    local vol, sets = 5, {}
+    TTS.volume = function() return vol end
+    TTS.setVolume = function(v) sets[#sets + 1] = v; vol = v end
+    cmds = {}
+    AEngine.setVolume(6)
+    AEngine.applyVolume()
+    check(AEngine.volume() == 6 and sets[1] == 6 and AEngine.volumeMax() == 8 and AEngine.volumeMin() == 1 and #cmds == 0,
+        "volume: the Kindle's Bluetooth volume, 1 to 8 (not the Kindle 3's CmdIVolume)")
+    TTS.volume, TTS.setVolume = tv, tset
+    -- stopping strays: the 1.0 players and the decoder too
+    cmds = {}
+    AEngine.stopStray()
+    check(table.concat(cmds, "\n"):find("pidof gst%-launch%-0%.10 gst%-launch%-1%.0 gzdecode%-armhf"), "a player left from before: GStreamer 1.0's and the decoder too")
+    AEngine.bt_present, AEngine.root, AEngine.exec = saved_bt, saved_root, saved_exec
+    AEngine._forgetDecoder()
+    G_reader_settings:saveSetting("gzreader_audio_players", saved_set)
+    -- the decoder ships with GZreader: an ARM hard-float program, with its source
+    local bf = io.open(PLUGIN .. "/bin/gzdecode-armhf", "rb")
+    local head = bf and bf:read(52) or ""
+    if bf then bf:close() end
+    local flags = #head >= 40 and (head:byte(37) + head:byte(38) * 256 + head:byte(39) * 65536 + head:byte(40) * 16777216) or 0
+    check(head:sub(1, 4) == "\127ELF" and head:byte(5) == 1 and head:byte(19) == 40 and bit.band(flags, 0x400) ~= 0,
+        "bin/gzdecode-armhf: a 32-bit ARM program, hard float (the Bluetooth Kindles' ABI)")
+    local src = io.open(PLUGIN .. "/../../tools/gzreader/gzdecode/gzdecode.c", "rb")
+    check(src ~= nil and lfs.attributes(PLUGIN .. "/../../tools/gzreader/gzdecode/faad2/COPYING", "mode") == "file",
+        "its source is in the repository (tools/gzreader/gzdecode, FAAD2's licence with it)")
+    if src then src:close() end
+end)()
 -- the audio test sources: bundled MP3 + bundled M4A converted on the Kindle
 AEngine.root = PLUGIN
 local ts = AEngine.testSources()

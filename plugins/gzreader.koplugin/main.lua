@@ -235,7 +235,7 @@ function Grimmory:init()
             pcall(self.restoreFromManifest, self)
         end
         -- audiobooks: stored in a hidden folder; Downloads → Audiobooks lists them
-        if Mod.Touch.audio() then
+        if Mod.Touch.player() then
             pcall(function() require("gzreader_abfolder").start(self) end)
             -- downloaded music: Downloads → Music (on the bookshelf, a CD player)
             pcall(function() require("gzreader_musicfolder").start(self) end)
@@ -718,7 +718,7 @@ function Grimmory:sectionItems(section)
         }
     elseif section == "reader" then
         -- (no speaker: no audiobooks; read aloud only with Amazon's Bluetooth voice)
-        if not Mod.Touch.audio() and not Mod.Touch.tts() then return {} end
+        if not Mod.Touch.player() and not Mod.Touch.tts() then return {} end
         local items = {}
         -- (read aloud: Shift + Sym, the Kindles with a keyboard)
         if Mod.Touch.tts() then
@@ -730,13 +730,15 @@ function Grimmory:sectionItems(section)
                 callback = function() self:showTtsSettings() end,
             })
         end
-        if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no audiobook test, no headphone jack)
+        if not Mod.Touch.player() then return items end
         items[#items + 1] = icon("check", {
             text = _("Test audiobook playback"),
-            help_text = _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard."),
+            help_text = Mod.Touch.audio() and _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) with each way this Kindle can play audio and asks which you heard.")
+                or _("Plays two short tunes (MP3, and AAC as in M4B audiobooks) through your Bluetooth headphones or speaker and asks whether you heard them."),
             keep_menu_open = true, -- the test's messages show over Settings
             callback = function() require("gzreader_audioengine").test() end,
         })
+        if not Mod.Touch.audio() then return items end -- (Bluetooth Kindles: no headphone jack)
         items[#items + 1] = icon("check", {
             text = _("Pause when headphones are unplugged"),
             help_text = _("Music, audiobooks and read aloud pause instead of carrying on out of the speaker. Needs to know where this Kindle says the headphones are plugged in: Find the headphone jack."),
@@ -1254,7 +1256,7 @@ function Grimmory:addLauncherEntries()
     end
     for _i, def in ipairs(LAUNCHER) do
         local e = find(cfg.entries, def[3])
-        local skip = def[5] == "audio" and not Mod.Touch.audio() -- (no speaker: not added)
+        local skip = def[5] == "audio" and not Mod.Touch.player() -- (no sound at all: not added)
         if e then
             e.gz_context = def[4] -- (1.12.2: Phone and Send books are Home's)
         elseif not skip then
@@ -1953,10 +1955,10 @@ end
 
 --- The Audiobooks tab: the Catalog, open on its Audiobooks page.
 function Grimmory:onShowGzAudiobooks(touchmenu)
-    if not require("gzreader_touch").audio() then
-        -- (a Kindle without a speaker or headphone jack: no Audiobooks page at all)
+    if not require("gzreader_touch").player() then
+        -- (a Kindle without a speaker, headphone jack or Bluetooth: no Audiobooks page at all)
         closeTouchMenu(touchmenu)
-        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker or headphone jack, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can.") })
+        UIManager:show(InfoMessage:new{ text = _("This Kindle has no speaker, headphone jack or Bluetooth, so it can't play audiobooks. The Kindle 2, Keyboard, DX and Touch can, and Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…).") })
         return true
     end
     return self:onShowGrimmoryLibrary(touchmenu, { section = "audiobooks", tab_id = "ct_audiobooks", only = true })

@@ -33,6 +33,29 @@ function Touch.audio()
     return m == "Kindle2" or m == "KindleDX" or m == "KindleDXG" or m == "Kindle3" or m == "KindleTouch"
 end
 
+--- A Kindle with Bluetooth and no speaker (Scribe, Paperwhite 5 and newer…,
+--- firmware 5.x): sound only through Amazon's mixersink (GStreamer 1.0),
+--- out over Bluetooth. GZreader plays audiobooks and music there with its
+--- own decoder (gzreader_audioengine). Looked for once (files on the Kindle).
+Touch.GST1 = "/usr/bin/gst-launch-1.0"
+Touch.MIXERSINK = "/usr/lib/gstreamer-1.0/libgstmixersink.so"
+local bt_audio
+function Touch.btAudio()
+    if bt_audio == nil then
+        local okk, kindle = pcall(function() return Device:isKindle() end)
+        local lfs = require("libs/libkoreader-lfs")
+        bt_audio = (okk and kindle and not Touch.audio()
+            and lfs.attributes(Touch.GST1, "mode") == "file"
+            and lfs.attributes(Touch.MIXERSINK, "mode") == "file") and true or false
+    end
+    return bt_audio
+end
+function Touch._forgetBtAudio() bt_audio = nil end
+
+--- Can this Kindle play audiobooks and music (a speaker or headphone jack,
+--- or Bluetooth)?
+function Touch.player() return Touch.audio() or Touch.btAudio() end
+
 --- The DX or DX Graphite: the 9.7" 824 × 1200 screen (KOReader's Kindle 2
 --- class runs the DX, so by its size).
 function Touch.dx()
