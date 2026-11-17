@@ -450,6 +450,30 @@ with sync_playwright() as pw:
     page.click("#o-beta")
     page.wait_for_function("document.querySelector('#o-update-text').innerText.includes('to 1.30.0')")
     check(page.locator("#update-note").count() == 1, "test builds off again: the release offered")
+    # outbox.json is a file on the drive (anything could have written it): only Grimmory's own API is sent from it
+    res = page.evaluate("""async () => {
+        const seen = [], real = GZSync.G.fetch, inbox = { done: [], failed: [], created: {} };
+        GZSync.G.fetch = async (p, o) => { seen.push(o.method + ' ' + p); return new Response('{}', { status: 200 }); };
+        try {
+            await GZSync.sendJobs({ jobs: [
+                { id: 'ok1', kind: 'progress', method: 'PUT', path: '/api/v1/app/books/1/progress', body: {} },
+                { id: 'ok2', kind: 'mark', method: 'DELETE', path: '/api/v1/bookmarks/{id}', ref: '77' },
+                { id: 'bad1', kind: 'progress', method: 'PUT', path: '.attacker.example/steal', body: {} },
+                { id: 'bad2', kind: 'progress', method: 'GET', path: '/api/v1/users/me' },
+                { id: 'bad3', kind: 'progress', method: 'DELETE', path: '/api/v1/../v2/users/1' },
+                { id: 'bad4', kind: 'progress', method: 'POST', path: '@attacker.example/x', body: {} } ] }, inbox);
+        } finally { GZSync.G.fetch = real; }
+        return { seen: seen, done: inbox.done, feeds: [
+            GZSync.Report.feed({ report: { feed: 'https://attacker.example/open/feed/x' } }),
+            GZSync.Report.feed({ report: { feed: GZSync.Report.FEED.replace(/[^/]+$/, 'other123') } }),
+            GZSync.Report.feed({ report: { feed: 'http://127.0.0.1:9/open/feed/t' } }) ] };
+    }""")
+    check(res["seen"] == ["PUT /api/v1/app/books/1/progress", "DELETE /api/v1/bookmarks/77"]
+          and {"ok1", "ok2", "bad1", "bad2", "bad3", "bad4"} <= set(res["done"]),
+          "outbox: only POST/PUT/DELETE to /api/v1/… sent; another host, GET or ../ dropped, never fetched %r" % (res["seen"],))
+    check(res["feeds"][0] != "https://attacker.example/open/feed/x" and res["feeds"][1].endswith("/other123")
+          and res["feeds"][2] == "http://127.0.0.1:9/open/feed/t",
+          "outbox: Kindle reports go only to the developer's feed server (or one on this computer, for tests)")
     cmp = page.evaluate("""() => [GZSync.Update.compare('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0-beta.5995ce3', '1.27.0'),
         GZSync.Update.offered('1.27.0', '1.27.0-beta.5995ce3'), GZSync.Update.compare('1.27.0', '1.27.0'),
         GZSync.Update.compare('1.10.0', '1.9.2'), GZSync.Update.compare('v1.26.10', '1.27.0-beta.1')]""")

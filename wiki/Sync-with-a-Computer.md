@@ -86,6 +86,14 @@ report a Wi‑Fi Kindle sends with **Send to the developer**:
 Passwords and tokens are never in the log; it can name books and files.
 Reports go to the developer's report feed, like a Wi‑Fi Kindle's, tagged
 `sync-page` ([Privacy and diagnostics](Privacy-and-Diagnostics#diagnostic-log)).
+The page sends them only to that feed's server, whatever the Kindle's
+outbox says.
+
+What the page sends to Grimmory for the Kindle is limited the same way:
+only GZreader's reading updates (`POST`, `PUT` or `DELETE` to Grimmory's
+`/api/v1/…`). Anything else found in `.gzsync/outbox.json` (which anyone
+with the Kindle's drive could edit) is left out and the page says so; your
+sign-in never goes anywhere but your Grimmory.
 
 **Test mode**: <https://9retirement6irk.github.io/GZreader/sync/?test> works
 with a pretend Kindle kept in the browser, to try the page (and your
