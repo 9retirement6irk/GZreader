@@ -22,6 +22,33 @@ function LiveScroll.step(state, rel, now)
     return d
 end
 
+--- Runs `fn` with every screen refresh it asks for turned into `mode`
+--- ("fast": straight to black or white, no flash; greys look rough until
+--- the next ordinary refresh). The steps of a drag are shown this way: the
+--- usual refresh flashed dark behind what changed at every step (the owner,
+--- 2026-11-16); the page is refreshed properly once when the finger lifts.
+function LiveScroll.quiet(fn, mode)
+    local UIManager = require("ui/uimanager")
+    mode = mode or LiveScroll.STEP_REFRESH
+    local orig = UIManager.setDirty
+    UIManager.setDirty = function(self, widget, refresh, region, dither)
+        if type(refresh) == "function" then
+            local inner = refresh
+            refresh = function()
+                local _, r, d = inner()
+                return mode, r, d
+            end
+        elseif refresh ~= nil then
+            refresh = mode
+        end
+        return orig(self, widget, refresh, region, dither)
+    end
+    local ok, err = pcall(fn)
+    UIManager.setDirty = orig
+    if not ok then error(err, 0) end
+end
+LiveScroll.STEP_REFRESH = "fast"
+
 local function seconds()
     local ok, time = pcall(require, "ui/time")
     if ok and time then return time.to_s(time.now()) end
@@ -53,7 +80,8 @@ function LiveScroll.on(scroller)
             local dx = self._max_scroll_offset_x > 0 and LiveScroll.step(live.x, ges.relative.x or 0, now) or 0
             if dx ~= 0 or dy ~= 0 then
                 local x0, y0 = self._scroll_offset_x, self._scroll_offset_y
-                self:_scrollBy(-dx, -dy)
+                LiveScroll.quiet(function() self:_scrollBy(-dx, -dy) end)
+                live.rough = true
                 -- (at an end it moves less than asked: what really moved is what's taken back)
                 live.moved_x = live.moved_x + self._scroll_offset_x - x0
                 live.moved_y = live.moved_y + self._scroll_offset_y - y0
@@ -61,13 +89,23 @@ function LiveScroll.on(scroller)
         end
         return handled
     end
+    -- (after steps shown roughly: the page once more, properly, even when it ends where the last step left it)
+    local function settle(self, rough)
+        if rough then require("ui/uimanager"):setDirty(self.show_parent, function() return "ui", self.dimen end) end
+    end
     function scroller:onScrollablePanRelease(arg, ges)
+        local rough = self._gz_live.rough
         if self._scrolling then takeBack(self) end
-        return release(self, arg, ges)
+        local r = release(self, arg, ges)
+        settle(self, rough)
+        return r
     end
     function scroller:onScrollableSwipe(arg, ges)
+        local rough = self._gz_live.rough
         if self._is_scrollable and ges.pos and ges.pos:intersectWith(self.dimen) then takeBack(self) end
-        return swipe(self, arg, ges)
+        local r = swipe(self, arg, ges)
+        settle(self, rough)
+        return r
     end
     return scroller
 end

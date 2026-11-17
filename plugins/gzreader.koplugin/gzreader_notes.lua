@@ -1538,7 +1538,7 @@ function Notes.Board:onSwipe(arg, ges)
         -- (a drag that ended as a swipe: from where the notes were when it began, not from where they followed to)
         local pan = self._gz_pan
         self._gz_pan = nil
-        if pan and pan.y0 ~= (self._gz_y or 0) then self._gz_y = pan.y0; self._gz_moved = true end
+        if pan and (pan.y0 ~= (self._gz_y or 0) or pan.rough) then self._gz_y = pan.y0; self._gz_moved = true end
         if self._gz_moved and not (d == "north" or d == "south" or d == "west" or d == "east") then
             self._gz_moved = nil
             self:updateItems()
@@ -1580,7 +1580,10 @@ function Notes.Board:onPan(arg, ges)
         end
         pan.rel = rel
         local LiveScroll = require("gzreader_livescroll")
-        if LiveScroll.step(pan.live, rel, LiveScroll.now()) ~= 0 then self:scrollTo(pan.y0 - rel) end
+        if LiveScroll.step(pan.live, rel, LiveScroll.now()) ~= 0 then
+            -- (a step: shown without the flash of an ordinary refresh; properly when the finger lifts)
+            LiveScroll.quiet(function() if self:scrollTo(pan.y0 - rel) then pan.rough = true end end)
+        end
         return true
     end
     return Menu.onPan(self, arg, ges)
@@ -1590,7 +1593,9 @@ function Notes.Board:onGzPanRelease()
     local pan = self._gz_pan
     self._gz_pan = nil
     if not (pan and self._gz_scroll) then return false end
-    self:scrollTo(pan.y0 - (pan.rel or 0))
+    if not self:scrollTo(pan.y0 - (pan.rel or 0)) and pan.rough then
+        UIManager:setDirty(self.show_parent or self, function() return "ui", self.dimen end)
+    end
     return true
 end
 

@@ -7851,6 +7851,23 @@ print("Notes (Memos v0.31)")
             check(LiveScroll.step(s1, 5, 1) == 0 and LiveScroll.step(s1, 40, 1) == 40 and LiveScroll.step(s1, 80, 1.05) == 0
                 and LiveScroll.step(s1, 80, 1.3) == 40 and LiveScroll.step(s2, -30, 9) == -30,
                 "live scrolling: no step under 12 px or within 0.18 s of the last; then all the way to the finger")
+            -- a drag's steps are shown with a refresh that doesn't flash; the page once more, properly, at the lift
+            local UIMq = require("ui/uimanager")
+            local real_dirty, seenq = UIMq.setDirty, {}
+            UIMq.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                seenq[#seenq + 1] = tostring(refresh)
+            end
+            LiveScroll.quiet(function()
+                UIMq:setDirty(nil, "ui")
+                UIMq:setDirty(nil, function() return "partial", { x = 1 } end)
+            end)
+            UIMq:setDirty(nil, "ui")
+            local patched = UIMq.setDirty
+            UIMq.setDirty = real_dirty
+            check(table.concat(seenq, ",") == "fast,fast,ui" and patched ~= nil and not pcall(LiveScroll.quiet, function() error("x") end)
+                and UIMq.setDirty == real_dirty,
+                "live scrolling: a step's refreshes are \"fast\" (no flash), whatever was asked; ordinary ones after (" .. table.concat(seenq, ",") .. "); put back even after an error")
             LiveScroll.now = real_now
             local y4 = b._gz_y
             b:onSwipe(nil, { direction = "west", distance = 300 })
