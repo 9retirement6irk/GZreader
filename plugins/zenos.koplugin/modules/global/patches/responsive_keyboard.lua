@@ -153,7 +153,16 @@ local function apply_responsive_keyboard()
                     end
                 end
             end
-            if not hide_comma and not simplify_bottom and not clean_x_key then
+            -- GZreader: a note's box (gz_hash_key): the comma on the bottom row, # and the arrows in a bar on top (gzreader_hashkey.lua)
+            local hash_row, hash_saved, HashKey
+            if english_letters and not simplify_bottom then
+                local ok, mod = pcall(require, "gzreader_hashkey")
+                if ok and mod.wants(self.inputbox) then
+                    HashKey = mod
+                    hash_row, hash_saved = mod.row(bottom_row, is_comma and last_key or nil)
+                end
+            end
+            if not hide_comma and not simplify_bottom and not clean_x_key and not hash_row then
                 return original_add_keys(self, ...)
             end
 
@@ -163,13 +172,30 @@ local function apply_responsive_keyboard()
                 bottom_row[4].width = 7
                 keys[5] = { bottom_row[1], bottom_row[4], bottom_row[2] }
             end
+            if hash_row then keys[5] = hash_row end
             original_add_keys(self, ...)
             if simplify_bottom then
                 bottom_row[4].width = space_width
                 keys[5] = bottom_row
             end
+            if hash_row then
+                keys[5] = bottom_row
+                HashKey.restore(bottom_row, hash_saved)
+            end
             if clean_x_key then keys[4][3] = x_key end
             if hide_comma then row[#row + 1] = last_key end
+        end
+    end
+
+    -- GZreader: writing a note, a slim bar of # and the arrow keys on top of every page (gzreader_hashkey.lua)
+    if not VirtualKeyboard._gz_note_bar then
+        VirtualKeyboard._gz_note_bar = true
+        local keys_add = VirtualKeyboard.addKeys
+        function VirtualKeyboard:addKeys(...)
+            local r = keys_add(self, ...)
+            local ok, HashKey = pcall(require, "gzreader_hashkey")
+            if ok and HashKey.wants(self.inputbox) then pcall(HashKey.addBar, self, VirtualKey) end
+            return r
         end
     end
 
