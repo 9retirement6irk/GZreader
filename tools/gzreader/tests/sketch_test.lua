@@ -132,6 +132,19 @@ print("== the eraser, undo, clear")
     local out = run(sk, { { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) }, { penGone() } }, 10)
     check(#sk:live() == 1 and out.redraw and sk:live()[1].points[1][2] == 500, "the pen's eraser end rubs out the stroke it crosses")
     check(sk:undo() and #sk:live() == 2, "undo brings it back")
+    -- the pen's side button held (the Premium Pen): the tip rubs out; let go, it draws again
+    sk.side_button = true
+    run(sk, { { hover(200, 150) }, { pen(200, 150) }, { pen(200, 260) }, { hover(200, 260) }, { penGone() } }, 12)
+    local rubbed = #sk:live() == 1 and sk.tool == "pen"
+    sk.side_button = false
+    check(rubbed and sk:undo() and #sk:live() == 2, "the side button held: the pen tip rubs out (the Pen tool stays chosen)")
+    run(sk, { { hover(700, 150) }, { pen(700, 150) }, { pen(700, 260) }, { hover(700, 260) }, { penGone() } }, 14)
+    check(#sk:live() == 3, "…let go: the tip draws again")
+    sk:undo()
+    sk.side_button = true
+    run(sk, { { finger(0, 200, 150) }, { finger(0, 200, 260) }, { lift(0) } }, 40)
+    sk.side_button = false
+    check(#sk:live() == 2, "…a finger with the button held doesn't rub out (fingers don't draw or erase on a pen Kindle)")
     sk:setTool("eraser")
     run(sk, { { hover(200, 600) }, { pen(200, 600) }, { hover(200, 600) }, { penGone() } }, 20)
     check(#sk:live() == 1, "the Eraser tool: the pen tip rubs out too")

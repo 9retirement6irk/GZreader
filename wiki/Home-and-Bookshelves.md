@@ -96,6 +96,8 @@ the book once you open one.
     touch Kindle) to open this screen straight away, as holding a Home
     widget opens its settings. Back (or the ×) returns to the shelves.
 
+  <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-bookshelf-theme.png" alt="The Bookshelf theme screen" width="300"> <img src="https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/pw-which-ornaments.png" alt="Which ornaments" width="300">
+
 - **Audiobooks** stand on the top shelf to the right of the books as a
   cassette walkman with its headphones sitting on it, and **Music** (downloaded from Plex) as a
   CD player with headphones. In lists and tiles both folders are always first,

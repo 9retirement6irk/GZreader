@@ -250,7 +250,14 @@ leaves the refresh count unchanged changed nothing on screen.
 ## README screenshots
 
 `catalog_shots.lua` takes most of `docs/screenshots/` (see its bullet
-above). Servers: the demo library and the demo Plex, and for
+above). A full set takes longer than the emulator's default 400 s: pass
+`EMU_TIMEOUT=3300` (it opens several books). The rest, all on `pw3`:
+`drawing_shots.lua` (`pw-drawing*.png`; Memos with `--sample --drawings`,
+whose "Shelf sketch" note gets the two pages `demo/make_sketches.py` draws),
+`notes_scribe.lua`'s `17-format-bar.png` (`pw-note-editor.png`),
+`shelf_theme_tiles.lua` (`pw-bookshelf-theme.png`, `pw-which-ornaments.png`)
+and `house_tab.lua` with `demo/mock_homeassistant.py` (`pw-house*.png`; on
+`k3`, `house.png`). Memos runs with `--drawings` for the Notes sets too. Servers: the demo library and the demo Plex, and for
 `GZ_SHOTS_SET=more`/`k4`/`pwmore` Memos and CalDAV too. NLTK's downloader refuses to
 go through the session's proxy; its Gutenberg zip is at
 `raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/gutenberg.zip`.
@@ -261,10 +268,10 @@ Settings shows "Update available".
 python3 tools/gzreader/emulator/demo/make_library.py <nltk gutenberg dir> <koreader>/fonts/noto /tmp/demo-lib
 python3 tools/gzreader/emulator/demo/demo_grimmory.py tools/gzreader/tests/mock_grimmory.py /tmp/demo-lib 18080 &
 python3 tools/gzreader/emulator/demo/demo_plex.py tools/gzreader/tests/mock_plex.py /tmp/demo-lib 18090 &
-python3 tools/gzreader/emulator/demo/mock_memos.py 18097 --sample &
+python3 tools/gzreader/emulator/demo/mock_memos.py 18097 --sample --drawings &
 python3 -I tools/gzreader/emulator/demo/demo_caldav.py 18095 /tmp/caldav-demo &
-tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/k3
-GZ_SHOTS_SET=more tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/more
+EMU_TIMEOUT=3300 tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/k3
+EMU_TIMEOUT=3300 GZ_SHOTS_SET=more tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/more
 GZ_EMU_MODEL=k4 GZ_SHOTS_SET=k4 tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/k4
 GZ_EMU_MODEL=pw3 GZ_SHOTS_SET=pwmore tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/pwmore
 GZ_EMU_MODEL=kt GZ_SHOTS_SET=kt tools/gzreader/emulator/run.sh tools/gzreader/emulator/catalog_shots.lua /tmp/emu/kt
