@@ -7961,6 +7961,17 @@ print("Notes (Memos v0.31)")
             and NE.nextVisibility("PUBLIC", "spaces/a") == "PRIVATE", "Alt+V goes round the choices for the note's space")
         check(NE.visibilityAfterMove("SPACE", nil) == "PRIVATE" and NE.visibilityAfterMove("SPACE", "spaces/b") == "SPACE"
             and NE.visibilityAfterMove("PUBLIC", nil) == "PUBLIC", "out of its space, Space members becomes Private (as in Memos)")
+        -- touch: Save at the top right; taps there ignored just after the drawing screen's Done
+        check(not NE.guarded(nil, 10) and NE.guarded(10, 10.2) and NE.guarded(10, 10 + NE.TAP_GUARD_S - 0.01)
+            and not NE.guarded(10, 10 + NE.TAP_GUARD_S) and not NE.guarded(10, 9),
+            "editor: the top row ignores taps for " .. NE.TAP_GUARD_S .. " s after the drawing screen closes, then takes them")
+        local nesrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+        check(nesrc:find("self.save_top = self.touch and not self.floating or nil", 1, true) ~= nil
+            and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
+            and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
+            and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 4,
+            "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
         local E = NE.Editor
         local saved_args
         local fake = setmetatable({ space = "spaces/family", original_space = "spaces/family", visibility = "SPACE",
