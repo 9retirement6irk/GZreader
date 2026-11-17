@@ -3086,6 +3086,70 @@ do
     package.loaded["ffi/archiver"], package.loaded["readhistory"], package.loaded["docsettings"] = saved_arch, saved_rh, saved_ds
 end
 
+print("The pairing server never waits on one connection (the Kindle's screen doesn't freeze)")
+;(function()
+    local srv = PairServer:new{ port = PORT + 85, exact_port = true, keep_wifi = false, handler = function(method, rpath, _h, rbody)
+        if rpath == "/big" then return 200, "text/plain", string.rep("x", 2 * 1024 * 1024) end
+        return 200, "text/plain", method .. " " .. rpath .. " " .. rbody
+    end }
+    check(srv:start(), "a pairing server started")
+    local function connect() local c = socket.tcp(); c:settimeout(2); assert(c:connect("127.0.0.1", srv.port)); return c end
+    local function polls(times) local t0 = socket.gettime(); for _i = 1, times do srv:waitEvent() end return socket.gettime() - t0 end
+    local function answer(c, seconds)
+        c:settimeout(0)
+        local got, t0 = "", socket.gettime()
+        while socket.gettime() - t0 < (seconds or 5) do
+            srv:waitEvent()
+            local piece, err, partial = c:receive(65536)
+            got = got .. (piece or partial or "")
+            if err == "closed" then return got, true end
+            socket.sleep(0.01)
+        end
+        return got, false
+    end
+    local silent = connect()
+    check(polls(10) < 0.5, "a connection that sends nothing: every poll returns at once")
+    local out = WORK .. "/pair_noblock"
+    os.execute("(curl -s -m 5 -o '" .. out .. "' 'http://127.0.0.1:" .. srv.port .. "/hello' ; echo done > '" .. out .. ".end') &")
+    for _i = 1, 300 do
+        srv:waitEvent()
+        if io.open(out .. ".end") then break end
+        socket.sleep(0.01)
+    end
+    local fh = io.open(out)
+    check(fh and fh:read("*a") == "GET /hello ", "…and another phone is answered meanwhile")
+    if fh then fh:close() end
+    local slow = connect()
+    local req = "POST /slow HTTP/1.0\r\nContent-Length: 3\r\n\r\nabc"
+    for i = 1, #req do slow:send(req:sub(i, i)); srv:waitEvent() end
+    local got = answer(slow)
+    check(got:match("^HTTP/1%.0 200") and got:find("POST /slow abc", 1, true), "a request sent a byte at a time: answered when it's all there")
+    local reader = connect()
+    reader:send("GET /big HTTP/1.0\r\n\r\n")
+    check(polls(20) < 1, "a 2 MB answer to a phone that doesn't read it: the polls still return at once")
+    got = answer(reader, 10)
+    check(#got > 2 * 1024 * 1024 and got:sub(-5) == "xxxxx", "…and it all arrives once it's read")
+    srv.REQUEST_S = 0.2
+    local idle = connect()
+    srv:waitEvent()
+    socket.sleep(0.3)
+    srv:waitEvent()
+    local _, closed = answer(idle, 1)
+    check(closed, "a connection that never finishes its request is dropped")
+    srv.REQUEST_S, srv.MAX_CONNS = 15, 3
+    local many = {}
+    for i = 1, 4 do many[i] = connect(); srv:waitEvent() end
+    local _, first_closed = answer(many[1], 1)
+    check(first_closed and #srv.conns <= 3, "at most a few connections at once: the oldest goes")
+    local bad = connect()
+    bad:send("NONSENSE\r\n\r\n")
+    got = answer(bad)
+    check(got:match("^HTTP/1%.0 400"), "a request that isn't HTTP: 400")
+    for _i, c in ipairs({ silent, slow, reader, idle, bad }) do c:close() end
+    for _i, c in ipairs(many) do c:close() end
+    srv:stop()
+end)()
+
 print("Grimmory tab covers")
 do
     local Covers = require("gzreader_covers")
