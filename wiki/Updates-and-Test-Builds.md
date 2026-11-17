@@ -53,3 +53,6 @@ The download comes over HTTPS straight from GitHub (no hashing on the
 Kindle); the zip must open and have a complete GZreader layout. Settings,
 books, `.sdr` folders, history and the GZreader folder are never touched; if
 anything fails, the previous files are put back. Then GZreader restarts.
+The Kindle doesn't go to sleep while an update downloads and installs
+(the download window takes every tap, so the Kindle would otherwise think
+nobody was there).
