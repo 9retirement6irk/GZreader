@@ -538,6 +538,10 @@ function Sketch.fromScene(scene, opts)
                 pts[#pts + 1] = { cx, cy, el.simulatePressure == false and tonumber(p[3]) or nil }
             end
             local kind = Sketch.toolOf(el)
+            if Sketch.toolStyle(kind).grain and tonumber(el.opacity) == 0 then
+                -- (hidden under a picture of the pencil's ink by a few beta builds: shown again)
+                el.opacity = Sketch.toolStyle(kind).opacity
+            end
             -- (Memos is given the tool's own width: the thickness chosen is that over its scale)
             local width = snapWidth((tonumber(el.strokeWidth) or 2) / Sketch.toolStyle(kind).scale)
             self.strokes[#self.strokes + 1] = { points = pts, width = width, color = Sketch.inkColor(el.strokeColor), el = el, kind = kind }
