@@ -109,10 +109,12 @@ Menu, Back, Home, the keyboard key and the page keys on both sides.
   ordinary buffer and copies it to the screen, about a sixth less processor
   time per key press in testing, and night mode costs nothing.
 
-## Touch Kindles (Kindle Touch, Paperwhite 3)
+## Touch Kindles (Kindle Touch, Paperwhite 3, Scribe)
 
-The Kindle Touch (4th generation) and the Paperwhite 3 (7th generation)
-run the same GZreader with ZenOS's touch interface:
+The Kindle Touch (4th generation), the Paperwhite 3 (7th generation), the
+Kindle Scribe and the other touch Kindles run the same GZreader with ZenOS's
+touch interface (on the Scribe the pen taps like a finger, and draws in
+notes: [Notes](Notes)):
 
 - **Tabs** at the bottom: Home, Downloads, Grimmory, Notes, Calendar.
 - **Swipe down from the top** for the quick panel (above), with a light

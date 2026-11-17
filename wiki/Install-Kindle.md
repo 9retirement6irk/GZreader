@@ -29,6 +29,6 @@ The setup guide runs on the first start ([After installing](Installing#after-ins
 ## Notes for these Kindles
 
 - **Kindle 4:** the 5-way, its centre button, Menu (the quick panel), Back and the page keys. Flash on every page turn is on by default. No audio. → [Using GZreader → Kindle 4](Using-GZreader#kindle-4-5-way)
-- **Kindle Touch:** touch, like the Paperwhite; it has a speaker and headphone jack, so audiobooks, music and read aloud (*Listen* in the quick panel) work. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3)
+- **Kindle Touch:** touch, like the Paperwhite; it has a speaker and headphone jack, so audiobooks, music and read aloud (*Listen* in the quick panel) work. → [Using GZreader → Touch Kindles](Using-GZreader#touch-kindles-kindle-touch-paperwhite-3-scribe)
 
 Updating and uninstalling: [Updating and uninstalling](Updating-and-Uninstalling).
