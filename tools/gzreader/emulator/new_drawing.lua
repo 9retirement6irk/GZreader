@@ -1,7 +1,7 @@
--- The New drawing window (gzreader_newdrawing.lua): the Notes tab's Draw, a
--- stroke, Done: a window "New drawing" with a title and # Tag, not the note's
--- page; Back to drawing and back; a title and a new tag; Save: the note in
--- Memos (demo/mock_memos.py on 18090) with "# title", the tag and the drawing.
+-- A new drawing (the Notes tab's Draw), as the Kindle Scribe's notebooks:
+-- which paper first (Create), a stroke, then its name and a tag from the
+-- drawing screen's top bar; Done saves the note at once (no window after):
+-- in Memos (demo/mock_memos.py on 18090) "# title", the tag and the drawing.
 --   python3 -I demo/mock_memos.py 18090 &
 --   GZ_EMU_MODEL=pw3 GZ_EMU_TREE=<tree>/koreader run.sh new_drawing.lua <out>
 -- Checks go to <out>/new-drawing-checks.txt.
@@ -19,7 +19,6 @@ local function pt(fx, fy) return { math.floor(W * fx), math.floor(H * fy) } end
 local function find(name) for _i, w in ipairs(UIM()._window_stack) do if w.widget.name == name then return w.widget end end end
 local function screen() return find("gz_drawscreen") end
 local function editor() for _i, w in ipairs(UIM()._window_stack) do if w.widget.input and w.widget.on_save then return w.widget end end end
-local function ND() return require("gzreader_newdrawing") end
 local function button(id)
     local d = screen()
     for _i, b in ipairs(d and d.buttons or {}) do
@@ -32,11 +31,6 @@ local function draw(E, fy)
     for i = 0, 10 do pts[#pts + 1] = pt(0.25 + 0.05 * i, fy + 0.02 * math.sin(i)) end
     if PEN then E.pen(pts, 0.4) else E.finger(pts, 0.4) end
 end
-local function press(d, label)
-    for _i, row in ipairs(d.buttons or {}) do
-        for _j, b in ipairs(row) do if b.text == label then return b.callback() end end
-    end
-end
 
 add({ fn = function(E)
     W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
@@ -47,50 +41,41 @@ add({ fn = function(E)
     p.store.memos = { server = "http://127.0.0.1:18090", token = "memos-test-token", prefix = "/api/v1", user = "Will" }
     require("gzreader_notes").draw(p)
 end, after = 3 })
+add({ shot = "1-which-paper", after = 0.5 })
 add({ fn = function(E)
-    local e = editor()
-    check(screen() ~= nil and e and e.popup_only and e.covers_fullscreen == false, "Draw: the drawing screen (the note's page out of sight)")
+    local l = find("gz_paperlist")
+    check(l and l.create and screen() == nil, "Draw: which paper first")
+    tapAt(E, "Create")
+end, after = 4 })
+add({ fn = function(E)
+    local e, d = editor(), screen()
+    check(d ~= nil and d.meta ~= nil and e and e.popup_only and e.covers_fullscreen == false and d:heading() == "Untitled drawing",
+        "Create: the drawing screen (the note's page out of sight), Untitled drawing in its top bar")
     draw(E, 0.4)
-end, after = 2 })
+end, after = 3 })
+add({ fn = function(E) tapAt(E, button("title")) end, after = 4 })
+add({ fn = function(E)
+    local dialog
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "Name this drawing" then dialog = w.widget end end
+    check(dialog ~= nil, "a tap on the name: Name this drawing")
+    if dialog then dialog:addTextToInput("Garden plan"); E.tap("Save") end
+end, after = 4 })
+add({ fn = function(E) tapAt(E, button("tag")) end, after = 3 })
+add({ fn = function(E) tapAt(E, button("newtag")) end, after = 4 })
+add({ fn = function(E)
+    local dialog
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "New tag" then dialog = w.widget end end
+    check(dialog ~= nil, "Tags, New tag: its window")
+    if dialog then dialog:addTextToInput("garden"); E.tap("Add") end
+end, after = 4 })
+add({ shot = "2-named-and-tagged", after = 0.5 })
+add({ fn = function(E)
+    local d = screen()
+    check(d and d:heading() == "Garden plan" and d.meta.tags[1] == "garden" and d.flyout == "tags",
+        "the name in the top bar, the tag on the drawing (" .. tostring(d and d.meta.tags[1]) .. ")")
+    tapAt(E, button("tag"))
+end, after = 3 })
 add({ fn = function(E) tapAt(E, button("done")) end, after = 3 })
-add({ shot = "1-new-drawing-window", after = 0.5 })
-add({ fn = function(E)
-    local d = ND().current
-    check(screen() == nil and d and d.title == "New drawing" and editor() and editor().popup_only,
-        "Done: the New drawing window, not the note's page")
-    press(d, "Back to drawing")
-end, after = 2 })
-add({ fn = function(E)
-    check(screen() ~= nil and #screen().sketch:live() == 1, "Back to drawing: the drawing screen again, the stroke there")
-    draw(E, 0.6)
-end, after = 2 })
-add({ fn = function(E) tapAt(E, button("done")) end, after = 3 })
-add({ fn = function(E)
-    local d = ND().current
-    check(d and d.title == "New drawing", "Done again: the window")
-    d:setInputText("Garden plan")
-    press(d, "# Tag")
-end, after = 2 })
-add({ shot = "2-tags", after = 0.5 })
-add({ fn = function(E)
-    local picker = ND().current
-    check(picker and picker.title == "Add a tag", "# Tag: your tags and New tag…")
-    for _i, row in ipairs(picker.buttons or {}) do
-        for _j, b in ipairs(row) do if b.text == "New tag…" then b.callback() end end
-    end
-end, after = 2 })
-add({ fn = function(E)
-    local d = ND().current
-    d:setInputText("garden")
-    press(d, "Add")
-end, after = 2 })
-add({ shot = "3-titled-tagged", after = 0.5 })
-add({ fn = function(E)
-    local d = ND().current
-    check(d and d.title == "New drawing" and d:getInputText() == "Garden plan" and tostring(d.description):find("#garden", 1, true),
-        "back in the window: the title kept, the tag shown (" .. tostring(d and d.description) .. ")")
-    press(d, "Save")
-end, after = 1 })
 add({ wait_for = function()
     local q = plugin().store.memos.queue
     return q and #q == 0
@@ -98,7 +83,7 @@ end, timeout = 25 })
 add({ fn = function(E)
     local open = false
     for _i, w in ipairs(UIM()._window_stack) do if w.widget.title == "New drawing" then open = true end end
-    check(editor() == nil and not open, "Save: the window and the editor closed")
+    check(editor() == nil and not open and screen() == nil, "Done: saved at once, no New drawing window after")
     local Memos = require("gzreader_memos")
     local list = Memos:new(plugin().store.memos):list(nil, nil, 20)
     local found
