@@ -1399,6 +1399,7 @@ local function drawCompact(m, select_number, cols, max_items)
     if m._gz_goto then m.page = math.max(1, math.min(m:getPageNumber(m._gz_goto), m.page_num)) end
     local per = m.perpage
     local offset = (m.page - 1) * per
+    local was_at = m._gz_scroll and m._gz_scroll.at -- (where the notes' window was: kept, for a scroll's refresh)
     m._gz_scroll = nil
     Notes.footerShown(m, true)
     local cell_w = math.floor(m.item_dimen.w / cols)
@@ -1417,8 +1418,8 @@ local function drawCompact(m, select_number, cols, max_items)
         offset, count, cell_h = sl.first * cols, sl.rows * cols, sl.cell_h
         -- (one page: ZenOS's page indicator, painted from these, stays away too)
         m.page, m.page_num = 1, 1
-        m._gz_scroll = { rows = rows, cols = cols, cell_h = cell_h, view_h = view_h, max_y = sl.max_y, shift = sl.shift }
-        port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift,
+        m._gz_scroll = { rows = rows, cols = cols, cell_h = cell_h, view_h = view_h, max_y = sl.max_y, shift = sl.shift, at = was_at }
+        port = Notes.Viewport:new{ dimen = Geom:new{ w = m.item_dimen.w, h = view_h }, shift = sl.shift, scroll = m._gz_scroll,
             VerticalGroup:new{ align = "left" } }
         table.insert(m.item_group, port)
         m._gz_scroll.port = port
@@ -1455,6 +1456,8 @@ function Notes.Viewport:getSize() return Geom:new{ w = self.dimen.w, h = self.di
 
 function Notes.Viewport:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
+    -- (where it was last painted: a scroll refreshes only there; a new window isn't placed until it's painted)
+    if self.scroll then self.scroll.at = { x = x, y = y, w = self.dimen.w, h = self.dimen.h } end
     local inner = self[1]
     local w, h = self.dimen.w, self.dimen.h
     local over = inner:getSize().h - self.shift - h
@@ -1565,8 +1568,11 @@ local function drawBoard(m, select_number)
     m:updatePageInfo(select_number) -- (5-way: the focused note's image, kept too)
     m:mergeTitleBarIntoLayout()
     Notes.dropImages()
+    -- (a scroll: only the notes' window changed; the buttons above and the tab bar under it stay as they are)
+    local only = m._gz_region
+    m._gz_region = nil
     UIManager:setDirty(m.show_parent, function()
-        return "ui", old_dimen and old_dimen:combine(m.dimen) or m.dimen
+        return "ui", only or (old_dimen and old_dimen:combine(m.dimen) or m.dimen)
     end)
 end
 
@@ -1589,8 +1595,25 @@ function Notes.Board:scrollBy(dy)
     local to = math.max(0, math.min(sc.max_y, (self._gz_y or 0) + math.floor(dy + 0.5)))
     if to == (self._gz_y or 0) then return false end
     self._gz_y = to
+    self._gz_region = self:notesRegion() -- (refreshed: the notes' window only)
     self:updateItems()
     return true
+end
+
+--- Scrolling: the notes drawn again where they are, only their window refreshed.
+function Notes.Board:redrawNotes()
+    self._gz_region = self:notesRegion()
+    self:updateItems()
+end
+
+--- Scrolling: where the notes' window is on the screen (it moved, not the
+--- buttons above it or the tab bar under it: a scroll refreshes only this;
+--- the owner, 2026-11-17), or nil before it's been drawn.
+function Notes.Board:notesRegion()
+    local sc = self._gz_scroll
+    local d = sc and sc.at
+    if not (d and tonumber(d.x) and tonumber(d.y) and tonumber(d.w) and tonumber(d.h)) then return nil end
+    return Geom:new{ x = d.x, y = d.y, w = d.w, h = d.h }
 end
 
 --- Scrolling: did this gesture start on the notes? One that starts above
@@ -1616,18 +1639,18 @@ function Notes.Board:onSwipe(arg, ges)
         if pan and (pan.y0 ~= (self._gz_y or 0) or pan.rough) then self._gz_y = pan.y0; self._gz_moved = true end
         if self._gz_moved and not (d == "north" or d == "south" or d == "west" or d == "east") then
             self._gz_moved = nil
-            self:updateItems()
+            self:redrawNotes()
             return true
         end
         local rough = pan and pan.rough
-        local function settle() if rough then require("gzreader_livescroll").settle(self.show_parent or self, self.dimen) end end
+        local function settle() if rough then require("gzreader_livescroll").settle(self.show_parent or self, self:notesRegion() or self.dimen) end end
         if d == "north" or d == "south" then
-            if not self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0)) and self._gz_moved then self:updateItems() end
+            if not self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0)) and self._gz_moved then self:redrawNotes() end
             self._gz_moved = nil
             settle()
             return true
         elseif d == "west" or d == "east" then
-            if not self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h)) and self._gz_moved then self:updateItems() end
+            if not self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h)) and self._gz_moved then self:redrawNotes() end
             self._gz_moved = nil
             settle()
             return true
@@ -1674,7 +1697,7 @@ function Notes.Board:onGzPanRelease()
     if not (pan and self._gz_scroll) then return false end
     self:scrollTo(pan.y0 - (pan.rel or 0))
     -- (after steps shown roughly: once more, cleanly; they left ghosts the ordinary refresh kept)
-    if pan.rough then require("gzreader_livescroll").settle(self.show_parent or self, self.dimen) end
+    if pan.rough then require("gzreader_livescroll").settle(self.show_parent or self, self:notesRegion() or self.dimen) end
     return true
 end
 

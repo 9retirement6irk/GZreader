@@ -66,7 +66,8 @@ API to `/api` are found too.
     roughly; an opened note that's longer than the screen follows your
     finger the same way). When your finger lifts, the page is shown once
     more cleanly, without a flash (as a page turn is), so nothing is left
-    standing twice; notes cut
+    standing twice. Only the part that moves is refreshed: the notes, not
+    the buttons above them or the tab bar (in a note, not its top bar); notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
     sideways moves most of a screenful. Full notes keep their pages. A swipe

@@ -9194,6 +9194,11 @@ print("Notes (Memos v0.31)")
             check(settled[#settled] == "partial" and LiveScroll.SETTLE_REFRESH == "partial",
                 "scrolling: once the finger lifts after steps, the notes shown again with the page-turn refresh (no flash, no ghosts left; was \"ui\": lines stood twice) ("
                     .. table.concat(settled, ",") .. ")")
+            local nsrcr = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrcr:find('self._gz_region = self:notesRegion() -- (refreshed: the notes\' window only)', 1, true) ~= nil
+                and nsrcr:find('return "ui", only or (old_dimen and old_dimen:combine(m.dimen) or m.dimen)', 1, true) ~= nil
+                and nsrcr:find('settle(self.show_parent or self, self:notesRegion() or self.dimen)', 1, true) ~= nil,
+                "scrolling: the steps and the clean refresh at the end cover only the notes' window, not the buttons above or the tab bar (emulator/live_scroll.lua checks it on the screen)")
             check(live1 == 1540 and live2 == 1540 and live3 == 1335 and before_release == 1050 and b._gz_y == 1040,
                 "scrolling: a drag moves the notes with the finger, a step at a time (" .. live1 .. ", " .. live2 .. ", " .. live3 .. ", "
                     .. before_release .. "), settling where it lifts (" .. b._gz_y .. ")")
