@@ -56,6 +56,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Journal = require("gzreader_journal")
+local MoodFace = require("gzreader_moodface")
 local Touch = require("gzreader_touch")
 local T = require("ffi/util").template
 local _ = require("gettext")
@@ -528,6 +529,243 @@ function JournalScreen:button(id, text, width, callback, on, size)
     return b
 end
 
+-- ------------------------------------------------------------ the web's look (touch)
+-- (as the owner's Memos fork's journal: a face beside a slider of the seven
+-- steps, chips that fill black when chosen, activities with their icons)
+
+JournalScreen.CHIP_GREY = 0xE6 -- a chip not chosen: the web's "well" (light grey, no border)
+JournalScreen.ICON_DIR = (debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or ".") .. "/icons/journal/"
+
+--- A chip as the web draws its small buttons: chosen, black with white
+--- words; else light grey (`ghost`: no fill, for the kind toggles). With
+--- `icon` (an activity's), its picture before the words.
+function JournalScreen:chip(spec, max_w)
+    local size = spec.size or 15
+    local text = spec.text
+    local icon_w
+    if spec.icon then
+        -- (room for the picture: spaces before the words, the icon painted over them)
+        local face = Font:getFace("cfont", size)
+        local sp = require("ui/rendertext"):sizeUtf8Text(0, 1e6, face, " ").x
+        icon_w = S(math.floor(size * 1.25))
+        text = string.rep(" ", math.ceil((icon_w + S(4)) / math.max(1, sp))) .. text
+    end
+    local b = Button:new{
+        text = text, max_width = max_w, callback = spec.callback, show_parent = self,
+        background = spec.on and Blitbuffer.COLOR_BLACK or (not spec.ghost and Blitbuffer.Color8(JournalScreen.CHIP_GREY) or nil),
+        bordersize = spec.ghost and not spec.on and 0 or Size.border.thin,
+        radius = Size.radius.button, margin = 0, padding_h = S(10), padding_v = S(4),
+        text_font_size = size, text_font_bold = spec.on and true or false,
+    }
+    if spec.ghost and not spec.on then b.frame.background = nil; b.frame.bordersize = 0 end
+    if spec.on and b.label_widget then b.label_widget.fgcolor = Blitbuffer.COLOR_WHITE end
+    if spec.icon then
+        local path = self:iconPath(spec.icon)
+        local paint = b.paintTo
+        local screen = self
+        b.paintTo = function(btn, bb, x, y)
+            paint(btn, bb, x, y)
+            local ib = path and screen:icon(path, icon_w, spec.on)
+            if ib then
+                local h = btn:getSize().h
+                local ix = x + S(10) + Size.border.thin
+                local iy = y + math.floor((h - icon_w) / 2)
+                if spec.on then bb:blitFrom(ib, ix, iy, 0, 0, icon_w, icon_w) else bb:alphablitFrom(ib, ix, iy, 0, 0, icon_w, icon_w) end
+            end
+        end
+    end
+    b.gz_id, b.gz_on = spec.id, spec.on and true or false
+    self.buttons[spec.id] = b
+    return b
+end
+
+--- An activity icon's file (icons/journal/<name>.svg; star when it isn't one).
+function JournalScreen:iconPath(name)
+    local dir = JournalScreen.ICON_DIR
+    local lfs = require("libs/libkoreader-lfs")
+    if lfs.attributes(dir .. tostring(name) .. ".svg", "mode") == "file" then return dir .. name .. ".svg" end
+    if lfs.attributes(dir .. "star.svg", "mode") == "file" then return dir .. "star.svg" end
+end
+
+--- An icon `w` square: black lines on clear (chosen: white lines on black). Kept.
+function JournalScreen:icon(path, w, white)
+    self.icons = self.icons or {}
+    local key = path .. w .. (white and "w" or "b")
+    if self.icons[key] == nil then
+        local ok, ib = pcall(require("ui/renderimage").renderSVGImageFile, require("ui/renderimage"), path, w, w)
+        if ok and ib and white then
+            -- (white on black: drawn on white, then inverted)
+            local tmp = Blitbuffer.new(w, w, Blitbuffer.TYPE_BB8)
+            tmp:fill(Blitbuffer.COLOR_WHITE)
+            tmp:alphablitFrom(ib, 0, 0, 0, 0, w, w)
+            tmp:invertRect(0, 0, w, w)
+            ib:free()
+            ib = tmp
+        end
+        self.icons[key] = ok and ib or false
+    end
+    return self.icons[key] or nil
+end
+
+--- Chips across `width`, as many on a line as fit (as the web wraps them;
+--- each line one row of the 5-way's layout).
+function JournalScreen:flow(list, width)
+    local gap = S(6)
+    local group = VerticalGroup:new{ align = "left" }
+    local row, line, used
+    for _i, spec in ipairs(list) do
+        local c = self:chip(spec, width)
+        local w = c:getSize().w
+        if not row or used + gap + w > width then
+            if row then group[#group + 1] = VerticalSpan:new{ width = gap } end
+            row, line, used = HorizontalGroup:new{ align = "center" }, {}, 0
+            group[#group + 1] = row
+            self.layout[#self.layout + 1] = line
+        else
+            row[#row + 1] = HorizontalSpan:new{ width = gap }
+            used = used + gap
+        end
+        row[#row + 1] = c
+        line[#line + 1] = c
+        used = used + w
+    end
+    return group
+end
+
+--- The slider of the seven steps (the web's range input on its coloured
+--- track, here in the faces' greys): a tap or a drag along it picks a step.
+--- Each step is also `buttons["mood-<i>"]` (where a tap picks it).
+function JournalScreen:moodSlider(width)
+    local screen = self
+    local h = S(40)
+    local Slider = InputContainer:extend{}
+    local slider = Slider:new{ dimen = Geom:new{ w = width, h = h } }
+    local n = #Journal.VALENCES
+    local pad = S(12) -- (the thumb's room at the ends)
+    local function stepX(i) return pad + math.floor((width - 2 * pad) * (i - 1) / (n - 1)) end
+    for i = 1, n do
+        screen.buttons["mood-" .. i] = { gz_id = "mood-" .. i, gz_on = screen.state.valence == Journal.VALENCES[i],
+            dimen = Geom:new{ x = 0, y = 0, w = S(24), h = h } }
+    end
+    local function pick(x)
+        local best, bd = 1, math.huge
+        for i = 1, n do
+            local d = math.abs(slider.dimen.x + stepX(i) - x)
+            if d < bd then best, bd = i, d end
+        end
+        return best
+    end
+    slider.ges_events = {
+        TapStep = { GestureRange:new{ ges = "tap", range = function() return slider.dimen end } },
+        PanStep = { GestureRange:new{ ges = "pan", range = function() return slider.dimen end } },
+        PanReleaseStep = { GestureRange:new{ ges = "pan_release", range = function() return slider.dimen end } },
+    }
+    function slider:onTapStep(_a, ges)
+        local v = Journal.VALENCES[pick(ges.pos.x)]
+        if screen.state.valence == v then screen:rebuild("mood-" .. pick(ges.pos.x)) -- (the web: a tap on the chosen step keeps it)
+        else screen:setValence(v) end
+        return true
+    end
+    function slider:onPanStep(_a, ges)
+        self.dragging = pick(ges.pos.x)
+        UIManager:setDirty(screen, function() return "fast", self.dimen end)
+        return true
+    end
+    function slider:onPanReleaseStep(_a, ges)
+        local i = ges and ges.pos and pick(ges.pos.x) or self.dragging
+        self.dragging = nil
+        if i then
+            local v = Journal.VALENCES[i]
+            if screen.state.valence ~= v then screen:setValence(v) else screen:rebuild("mood-" .. i) end
+        end
+        return true
+    end
+    function slider:paintTo(bb, x, y)
+        self.dimen.x, self.dimen.y = x, y
+        local th = S(10)
+        local ty = y + math.floor((h - th) / 2)
+        -- the track: each step's stretch in its face's grey
+        local x1 = x + pad
+        local seg = (width - 2 * pad) / (n - 1)
+        for i = 1, n do
+            local a = math.floor(x1 + seg * (i - 1.5))
+            local b2 = math.floor(x1 + seg * (i - 0.5))
+            a, b2 = math.max(x + pad - math.floor(th / 2), a), math.min(x + width - pad + math.floor(th / 2), b2)
+            local c = Blitbuffer.Color8(MoodFace.greys(Journal.VALENCES[i]).fill)
+            if i == 1 or i == n then
+                bb:paintRoundedRect(a, ty, b2 - a, th, c, math.floor(th / 2))
+                bb:paintRect(i == 1 and (a + math.floor(th / 2)) or a, ty, b2 - a - math.floor(th / 2), th, c)
+            else
+                bb:paintRect(a, ty, b2 - a, th, c)
+            end
+        end
+        -- the steps' places (where a tap picks each)
+        for i = 1, n do
+            local sb = screen.buttons["mood-" .. i]
+            sb.dimen = Geom:new{ x = x + stepX(i) - math.floor(seg / 2), y = y, w = math.max(1, math.floor(seg)), h = h }
+        end
+        -- the thumb: white with a dark ring before a step is chosen, else the step's grey ringed in white
+        local cur = self.dragging
+        if not cur then for i, v in ipairs(Journal.VALENCES) do if v == screen.state.valence then cur = i end end end
+        local r = S(11)
+        local cx, cy = x + stepX(cur or 4), y + math.floor(h / 2)
+        if cur then
+            bb:paintCircle(cx, cy, r + S(1), Blitbuffer.COLOR_DARK_GRAY, S(1))
+            bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE, S(3))
+            bb:paintCircle(cx, cy, r - S(3), Blitbuffer.Color8(MoodFace.greys(Journal.VALENCES[cur]).fill))
+        else
+            bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_WHITE)
+            bb:paintCircle(cx, cy, r, Blitbuffer.COLOR_DARK_GRAY, S(2))
+        end
+    end
+    return slider
+end
+
+--- How you felt, as the web asks it: the question and Overall today /
+--- Right now; a big face beside the step's name (Clear), the slider and its ends.
+function JournalScreen:webMood(col, inner)
+    local st = self.state
+    local function add(w) col[#col + 1] = w end
+    local question = st.kind == "now" and _("How do you feel right now?") or _("How have you felt today?")
+    local kinds = self:flow({
+        { id = "kind-today", text = Journal.KIND_LABELS.today, on = st.kind == "today", ghost = true, size = 14,
+          callback = function() st.kind = "today"; self:rebuild("kind-today") end },
+        { id = "kind-now", text = Journal.KIND_LABELS.now, on = st.kind == "now", ghost = true, size = 14,
+          callback = function() st.kind = "now"; self:rebuild("kind-now") end },
+    }, inner)
+    local kw = kinds:getSize().w
+    add(HorizontalGroup:new{ align = "center",
+        LeftContainer:new{ dimen = Geom:new{ w = inner - kw, h = kinds:getSize().h },
+            TextWidget:new{ text = question, face = Font:getFace("cfont", 16), bold = true, max_width = inner - kw - S(8) } },
+        kinds })
+    col[#col + 1] = VerticalSpan:new{ width = S(8) }
+    local face_w = S(56)
+    local right = inner - face_w - S(12)
+    local name = TextWidget:new{ text = st.valence and Journal.VALENCE_LABELS[st.valence] or _("Not chosen"),
+        face = Font:getFace("cfont", 16), bold = st.valence ~= nil,
+        fgcolor = st.valence and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY, max_width = right - S(90) }
+    local top
+    if st.valence then
+        local clear = self:chip({ id = "mood-clear", text = _("Clear"), ghost = true, size = 14,
+            callback = function() self:setValence(st.valence) end }, S(90))
+        self.layout[#self.layout + 1] = { clear }
+        top = HorizontalGroup:new{ align = "center",
+            LeftContainer:new{ dimen = Geom:new{ w = right - clear:getSize().w, h = clear:getSize().h }, name }, clear }
+    else
+        top = LeftContainer:new{ dimen = Geom:new{ w = right, h = S(30) }, name }
+    end
+    local ends = HorizontalGroup:new{ align = "center",
+        LeftContainer:new{ dimen = Geom:new{ w = math.floor(right / 2), h = S(18) },
+            TextWidget:new{ text = Journal.VALENCE_LABELS["very-unpleasant"], face = Font:getFace("cfont", 12), fgcolor = Blitbuffer.COLOR_DARK_GRAY } },
+        RightContainer:new{ dimen = Geom:new{ w = right - math.floor(right / 2), h = S(18) },
+            TextWidget:new{ text = Journal.VALENCE_LABELS["very-pleasant"], face = Font:getFace("cfont", 12), fgcolor = Blitbuffer.COLOR_DARK_GRAY } },
+    }
+    add(HorizontalGroup:new{ align = "center",
+        MoodFace.widget{ valence = st.valence or "neutral", size = face_w, faded = st.valence == nil },
+        HorizontalSpan:new{ width = S(12) },
+        VerticalGroup:new{ align = "left", top, self:moodSlider(right), ends } })
+end
+
 --- Buttons in rows of `per` across `width` (also added to the 5-way's layout).
 function JournalScreen:rows(list, per, width)
     local gap = S(6)
@@ -592,6 +830,7 @@ function JournalScreen:build()
         col[#col + 1] = self:writingBox(inner - 2 * S(4), sh - used - kb_h - S(18), { x = margin, y = used })
         return self:finish(col, sw, sh, margin)
     end
+    if self.inline then return self:buildWeb(col, inner, sw, sh, margin, gap, label) end
     -- how you felt
     label(_("How have you felt?"))
     col[#col + 1] = self:rows({
@@ -699,6 +938,70 @@ function JournalScreen:build()
         gap(8)
         label(_("The 5-way moves, Press picks. Back closes."), true)
     end
+    return self:finish(col, sw, sh, margin)
+end
+
+--- The page on touch Kindles, as the web shows it (webMood, chips, icons),
+--- then the prompt and the words under it.
+function JournalScreen:buildWeb(col, inner, sw, sh, margin, gap, label)
+    local st, set = self.state, self.settings
+    self:webMood(col, inner)
+    gap(10)
+    if st.valence then
+        label(_("What best describes this feeling?"))
+        local chips = {}
+        for _i, id in ipairs(self:feelingChips()) do
+            chips[#chips + 1] = { id = "felt-" .. id, text = Journal.words(id), on = Journal.has(st.feelings, id), size = 14,
+                callback = function() Journal.toggle(st.feelings, id); self:rebuild("felt-" .. id) end }
+        end
+        chips[#chips + 1] = { id = "more", text = _("More feelings…"), ghost = true, size = 14, callback = function() self:pickFeelings() end }
+        col[#col + 1] = self:flow(chips, inner)
+        gap(8)
+        label(_("What's behind it?"))
+        local causes = {}
+        for _i, id in ipairs(Journal.impacts(set)) do
+            causes[#causes + 1] = { id = "impact-" .. id, text = Journal.words(id), on = Journal.has(st.impacts, id), size = 14,
+                callback = function() Journal.toggle(st.impacts, id); self:rebuild("impact-" .. id) end }
+        end
+        if #causes > 8 then
+            -- (more than fit nicely: the chosen and the first few, then the list)
+            local short = {}
+            for i, c in ipairs(causes) do if i <= 7 or c.on then short[#short + 1] = c end end
+            short[#short + 1] = { id = "impact", text = _("More…"), ghost = true, size = 14, callback = function() self:pickImpacts() end }
+            causes = short
+        end
+        col[#col + 1] = self:flow(causes, inner)
+        gap(10)
+    end
+    if #set.activities > 0 then
+        label(_("What did you do?"))
+        local acts = {}
+        for _i, a in ipairs(set.activities) do
+            acts[#acts + 1] = { id = "did-" .. a.id, text = a.label, icon = a.icon or "star", on = Journal.has(st.activities, a.id), size = 15,
+                callback = function() Journal.toggle(st.activities, a.id); self:rebuild("did-" .. a.id) end }
+        end
+        col[#col + 1] = self:flow(acts, inner)
+        gap(10)
+    end
+    if #set.goals > 0 then
+        col[#col + 1] = self:flow({ { id = "goals", size = 14, on = self:goalsDone() > 0,
+            text = T(_("Goals: %1 of %2 done"), self:goalsDone(), #set.goals), callback = function() self:pickGoals() end } }, inner)
+        gap(10)
+    end
+    -- the prompt (Another at its right) and the words right under it, lined
+    if set.showPrompt then
+        local another = self:chip({ id = "prompt", text = "\u{21BB} " .. _("Another"), ghost = true, size = 14,
+            callback = function() self:nextPrompt() end }, S(140))
+        local aw = another:getSize().w
+        col[#col + 1] = HorizontalGroup:new{ align = "center",
+            LeftContainer:new{ dimen = Geom:new{ w = inner - aw - S(10), h = math.max(S(36), another:getSize().h) },
+                TextBoxWidget:new{ text = st.prompt, face = Font:getFace("cfont", 17), width = inner - aw - S(10), bold = true } },
+            HorizontalSpan:new{ width = S(10) }, another }
+        self.layout[#self.layout + 1] = { another }
+    end
+    gap(6)
+    local used = col:getSize().h + S(10)
+    col[#col + 1] = self:writingBox(inner - 2 * S(4), math.max(S(JournalScreen.MIN_BOX), sh - used - S(24)), { x = margin, y = used })
     return self:finish(col, sw, sh, margin)
 end
 
