@@ -214,6 +214,15 @@ API to `/api` are found too.
       and text boxes made in Memos can be moved and retyped here.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**.
+    - **Lasso:** draw a loop around some strokes to choose them. A dashed
+      frame goes around them, with **Copy**, **Cut** and **Delete** beside
+      it. Drag from inside the frame to move them; drag a corner to make
+      them bigger or smaller. After **Copy**, tap an empty place and
+      **Paste** appears there (the copy is kept for other drawings too,
+      until the Kindle restarts). A tap outside the frame, or another tool,
+      lets go. It chooses anything drawn on the Kindle (strokes and
+      shapes); text boxes are moved with the Text tool, and shapes made in
+      Memos stay where they are.
     - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
       page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other

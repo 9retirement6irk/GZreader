@@ -195,6 +195,122 @@ print("== the hand tool; a page opened smaller than full size (a journal's drawi
     check(not panned and #nk.strokes == 0, "the full drawing screen, not zoomed: a finger still does nothing")
 end)()
 
+print("== the lasso: choose, move, resize, copy, cut, paste")
+;(function()
+    local Lasso = require("gzreader_lasso")
+    -- its rules
+    local square = { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 0, 100 } }
+    check(Lasso.inside(square, 50, 50) and not Lasso.inside(square, 150, 50) and not Lasso.inside(square, 50, -1) and not Lasso.inside({ { 0, 0 }, { 5, 5 } }, 1, 1),
+        "inside a loop or not (a loop of two points encloses nothing)")
+    local horseshoe = { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 70, 100 }, { 70, 30 }, { 30, 30 }, { 30, 100 }, { 0, 100 } }
+    check(Lasso.inside(horseshoe, 15, 80) and not Lasso.inside(horseshoe, 50, 80) and Lasso.inside(horseshoe, 50, 15), "…a loop that bends back on itself: the hollow isn't inside")
+    local inside_st = { points = { { 20, 20 }, { 40, 40 }, { 60, 60 } } }
+    local half_st = { points = { { 90, 50 }, { 110, 50 }, { 130, 50 }, { 150, 50 } } }
+    local most_st = { points = { { 50, 50 }, { 70, 50 }, { 90, 50 }, { 110, 50 } } }
+    local gone_st = { points = { { 20, 20 }, { 30, 30 } }, gone = true }
+    local picked = Lasso.pick({ inside_st, half_st, most_st, gone_st }, square)
+    check(#picked == 2 and picked[1] == inside_st and picked[2] == most_st, "a loop chooses the strokes mostly inside it (not one mostly outside, not one rubbed out)")
+    local box = { x0 = 100, y0 = 100, x1 = 300, y1 = 200 }
+    check(Lasso.hit(box, 102, 98, 20) == "nw" and Lasso.hit(box, 310, 205, 20) == "se" and Lasso.hit(box, 295, 95, 20) == "ne" and Lasso.hit(box, 95, 205, 20) == "sw"
+        and Lasso.hit(box, 200, 150, 20) == "inside" and Lasso.hit(box, 400, 150, 20) == nil and Lasso.hit(nil, 1, 1, 20) == nil,
+        "a touch on the frame: a corner's handle, inside, or elsewhere")
+    local f, ax, ay = Lasso.scaleFor(box, "se", 300, 200, 400, 250)
+    check(math.abs(f - 1.5) < 1e-9 and ax == 100 and ay == 100, "the bottom right corner dragged out by half the frame's width: 1.5 times, from the top left corner")
+    local f2, ax2, ay2 = Lasso.scaleFor(box, "nw", 100, 100, 150, 125)
+    check(math.abs(f2 - 0.75) < 1e-9 and ax2 == 300 and ay2 == 200, "the top left corner dragged in: 0.75 times, from the bottom right corner")
+    check(Lasso.scaleFor(box, "se", 300, 200, 105, 105) == Lasso.MIN_SCALE and Lasso.scaleFor(box, "se", 300, 200, 5000, 5000) == Lasso.MAX_SCALE,
+        "never under " .. Lasso.MIN_SCALE .. " or over " .. Lasso.MAX_SCALE .. " times in one drag")
+    local after = Lasso.boxAfter(box, "se", 0, 0, 1.5, 100, 100)
+    check(after.x0 == 100 and after.y0 == 100 and after.x1 == 400 and after.y1 == 250 and Lasso.boxAfter(box, "inside", 10, -5).y0 == 95, "the frame after a drag: scaled from the corner that stays, or moved")
+
+    -- on a pen Kindle, with the pen
+    local sk = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    local oy = CANVAS.y
+    -- two strokes near each other and one far away
+    run(sk, { { hover(200, 300) }, { pen(200, 300) }, { pen(260, 300) }, { pen(320, 300) }, { hover(320, 300) },
+        { pen(200, 360) }, { pen(260, 360) }, { pen(320, 360) }, { hover(320, 360) },
+        { pen(700, 900) }, { pen(760, 900) }, { hover(760, 900) }, { penGone() } }, 0)
+    check(#sk:live() == 3, "three strokes drawn")
+    sk:setTool("lasso")
+    local loop_bits, changed = 0, false
+    local function lasso(frames, t)
+        local res = { taps = {} }
+        for i, fr in ipairs(frames) do
+            local o = sk:frame(fr, t + i * 0.4)
+            loop_bits = loop_bits + #(o.loop or {})
+            for k, v in pairs(o) do if k ~= "segments" and k ~= "taps" and v then res[k] = v end end
+        end
+        return res
+    end
+    -- a loop around the first two
+    local o = lasso({ { hover(150, 250) }, { pen(150, 250) }, { pen(400, 250) }, { pen(400, 420) }, { pen(150, 420) }, { pen(150, 260) }, { hover(150, 260) } }, 10)
+    local b = sk:selectionBox()
+    check(o.sel_changed and sk.selection and #sk.selection.strokes == 2 and loop_bits >= 4 and #sk:live() == 3 and #sk.history == 3,
+        "a loop around two of them: those two chosen (its bits given to draw, nothing drawn on the page, nothing to undo)")
+    check(b and b.x0 < 200 and b.x1 > 320 and b.y0 < 300 - oy and b.y1 > 360 - oy and b.y1 < 500 - oy, "…their frame around them both")
+    -- dragged from inside the frame: they move, the third stays
+    local far = sk:live()[3].points[1][1]
+    o = lasso({ { hover(260, 330) }, { pen(260, 330) }, { pen(300, 400) }, { pen(360, 530) }, { hover(360, 530) } }, 20)
+    local p1 = sk.selection.strokes[1].points[1]
+    check(o.redraw and o.sel_changed and o.area and math.abs(p1[1] - 300) < 1e-6 and math.abs(p1[2] - (300 - oy + 200)) < 1e-6 and sk:live()[3].points[1][1] == far
+        and o.area.y0 < 300 - oy and o.area.y1 > 560 - oy,
+        "dragged from inside the frame: the two moved as far as the pen went (100 right, 200 down), the other where it was; from where they were to where they are, drawn again")
+    check(sk:undo() and math.abs(sk:live()[1].points[1][1] - 200) < 1e-6 and sk.selection == nil, "Undo: back where they were, let go of")
+    check(sk:redo() and math.abs(sk:live()[1].points[1][1] - 300) < 1e-6, "Redo: moved again")
+    -- chosen again, a corner dragged: bigger, in proportion, from the opposite corner
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 30)
+    b = sk:selectionBox()
+    local w0, h0 = b.x1 - b.x0, b.y1 - b.y0
+    local first_before = { sk.selection.strokes[1].points[1][1], sk.selection.strokes[1].points[1][2] }
+    lasso({ { hover(b.x1 + CANVAS.x, b.y1 + oy) }, { pen(b.x1 + CANVAS.x, b.y1 + oy) }, { pen(b.x1 + CANVAS.x + w0 / 2, b.y1 + oy + 10) },
+        { pen(b.x1 + CANVAS.x + w0, b.y1 + oy + 10) }, { hover(b.x1 + CANVAS.x + w0, b.y1 + oy + 10) } }, 40)
+    local first_after = sk.selection.strokes[1].points[1]
+    check(math.abs((first_after[1] - b.x0) - 2 * (first_before[1] - b.x0)) < 1e-6 and math.abs((first_after[2] - b.y0) - 2 * (first_before[2] - b.y0)) < 1e-6,
+        "the bottom right handle dragged out by the frame's width: twice the size, from the top left corner (" .. string.format("%.0f x %.0f", w0, h0) .. " before)")
+    sk:undo()
+    -- Copy, a tap on an empty place: Paste offered there; pasted: new strokes, chosen
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 50)
+    check(sk:lassoCopy() and Lasso.clipboard and #Lasso.clipboard.strokes == 2 and math.abs(Lasso.clipboard.w - 60) < 1e-6 and math.abs(Lasso.clipboard.h - 30) < 1e-6,
+        "Copy: the two strokes kept, in the drawing's own units (60 x 30 at 2 pixels a unit)")
+    o = lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 60)
+    check(o.sel_changed and sk.selection == nil and not o.paste_at, "a tap elsewhere: lets go of them")
+    o = lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 62)
+    check(o.paste_at and o.paste_at.x == 900 and o.paste_at.y == 200, "with something copied, a tap on an empty place: Paste, there")
+    local ok, area = sk:lassoPaste(900, 200)
+    b = sk:selectionBox()
+    check(ok and #sk:live() == 5 and #sk.selection.strokes == 2 and area and math.abs((b.x0 + b.x1) / 2 - 900) < 2 and math.abs((b.y0 + b.y1) / 2 - (200 - oy)) < 2,
+        "Paste: two new strokes, their middle where the tap was, chosen (to move into place)")
+    check(sk:undo() and #sk:live() == 3, "Undo takes the pasted strokes back")
+    -- Cut: gone from the page, kept for Paste; Delete
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 70)
+    Lasso.clipboard = nil
+    local cut, cut_area = sk:lassoCut()
+    check(cut and cut_area and #sk:live() == 1 and Lasso.clipboard and sk.selection == nil, "Cut: off the page, kept for Paste")
+    check(sk:undo() and #sk:live() == 3, "Undo brings them back")
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 80)
+    Lasso.clipboard = nil
+    check(sk:lassoDelete() and #sk:live() == 1 and Lasso.clipboard == nil, "Delete: off the page, nothing kept")
+    sk:undo()
+    -- a moved stroke of an opened drawing is written where it is now
+    local st1 = sk:live()[1]
+    st1.el = { id = "from-memos" }
+    lasso({ { hover(250, 440) }, { pen(250, 440) }, { pen(500, 440) }, { pen(500, 620) }, { pen(250, 620) }, { pen(250, 450) }, { hover(250, 450) } }, 90)
+    b = sk:selectionBox()
+    lasso({ { hover(b.x0 + 20 + CANVAS.x, b.y0 + 20 + oy) }, { pen(b.x0 + 20 + CANVAS.x, b.y0 + 20 + oy) }, { pen(b.x0 + 80 + CANVAS.x, b.y0 + 20 + oy) }, { hover(b.x0 + 80 + CANVAS.x, b.y0 + 20 + oy) } }, 100)
+    check(st1.el == nil, "a stroke that came with an opened drawing, moved: saved where it is now (not as it came)")
+    -- another tool: let go of
+    lasso({ { hover(900, 200) }, { pen(900, 200) }, { hover(900, 200) } }, 110)
+    lasso({ { hover(350, 440) }, { pen(350, 440) }, { pen(600, 440) }, { pen(600, 620) }, { pen(350, 620) }, { pen(350, 450) }, { hover(350, 450) } }, 120)
+    local had = sk.selection ~= nil
+    sk:setTool("pen")
+    check(had and sk.selection == nil, "another tool taken: nothing chosen any more")
+    -- a finger on a pen Kindle doesn't lasso
+    sk:setTool("lasso")
+    run(sk, { { penGone() }, { finger(0, 150, 250) }, { finger(0, 400, 250) }, { finger(0, 400, 420) }, { finger(0, 150, 420) }, { lift(0) } }, 200, 0.4)
+    check(sk.selection == nil, "a finger on a pen Kindle doesn't lasso (fingers don't draw there)")
+    Lasso.clipboard = nil
+end)()
+
 print("== pinch to zoom")
 ;(function()
     local W, H = CANVAS.w, CANVAS.h

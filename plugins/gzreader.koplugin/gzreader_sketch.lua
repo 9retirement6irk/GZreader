@@ -719,6 +719,7 @@ local function erase(self, contact, x, y, out)
         while st do
             st.gone = true
             contact.erased[#contact.erased + 1] = st
+            if self.selection then self.selection = nil; out.sel_changed = true end
             out.redraw = true
             -- (what changed: only this much of the page needs drawing again)
             out.area = self:strokesArea({ st }, out.area)
@@ -801,6 +802,20 @@ local function startContact(self, s, now, out)
     elseif self.drawing_slot ~= nil and self.drawing_slot ~= s.slot then
         c.kind = "ignore" -- one stroke at a time
         self.stats.ignored = self.stats.ignored + 1
+    elseif self.tool == "lasso" and s.tool ~= Sketch.TOOL_ERASER and not (pen and self.side_button and Sketch.shortcutTool(self) == "eraser") then
+        -- the lasso: on what's chosen, it's moved (a corner: resized); elsewhere, a loop is drawn (a tap: lets go, or Paste)
+        local Lasso = require("gzreader_lasso")
+        local cx, cy = s.x - self.canvas.x, s.y - self.canvas.y
+        c.kind = "lasso"
+        self.drawing_slot = s.slot
+        local box = self:selectionBox()
+        c.part = box and Lasso.hit(box, cx, cy, self.lasso_handle or 24) or nil
+        if c.part then
+            -- (the strokes' own box is what moves and grows; the frame is that with a little room around it)
+            c.box0, c.pad, c.snap, c.at = self:strokesArea(self.selection.strokes), self.lasso_pad or 0, Lasso.snapshot(self.selection.strokes), now
+        else
+            c.loop = { { cx, cy } }
+        end
     elseif s.tool == Sketch.TOOL_ERASER or self.tool == "eraser" or (pen and self.side_button and Sketch.shortcutTool(self) == "eraser") then
         c.kind = "erase"
         c.erased = {}
@@ -897,11 +912,85 @@ local function applyPan(self, c, out)
     return true
 end
 
+--- The lasso's frame as the drag of contact `c` has it now (and, for a corner, the scale and the corner that stays).
+local function lassoDrag(c)
+    local Lasso = require("gzreader_lasso")
+    local pad = c.pad or 0
+    local function framed(b) return { x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad } end
+    if c.part == "inside" then return framed(Lasso.boxAfter(c.box0, "inside", c.x - c.x0, c.y - c.y0)) end
+    local f, ax, ay = Lasso.scaleFor(c.box0, c.part, c.x0, c.y0, c.x, c.y)
+    return framed(Lasso.boxAfter(c.box0, c.part, 0, 0, f, ax, ay)), f, ax, ay
+end
+
+--- The lasso's contact moved: the loop grows (`out.loop`: its new bits, in
+--- screen pixels, to draw), or the chosen strokes' frame follows, a step at
+--- a time (`out.sel_preview`; the strokes themselves move when it lifts).
+local function lassoMove(self, c, s, now, out)
+    if c.part then
+        if self.selection and c.moved > self.tap_slop and now - c.at >= Sketch.LIVE_INTERVAL then
+            self.selection.preview = lassoDrag(c)
+            out.sel_preview = true
+            c.at = now
+        end
+        return
+    end
+    local cx, cy = s.x - self.canvas.x, s.y - self.canvas.y
+    local last = c.loop[#c.loop]
+    if math.abs(cx - last[1]) + math.abs(cy - last[2]) >= 3 then
+        c.loop[#c.loop + 1] = { cx, cy }
+        out.loop = out.loop or {}
+        out.loop[#out.loop + 1] = { last[1] + self.canvas.x, last[2] + self.canvas.y, s.x, s.y }
+    end
+end
+
+--- The lasso's contact lifted.
+local function lassoEnd(self, c, out)
+    local Lasso = require("gzreader_lasso")
+    local sel = self.selection
+    if c.part then
+        if not sel then return end
+        local shown = sel.preview ~= nil
+        sel.preview = nil
+        if c.moved <= self.tap_slop then
+            if shown then out.sel_changed = true end
+            return
+        end
+        if c.part == "inside" then
+            Lasso.move(sel.strokes, c.snap, c.x - c.x0, c.y - c.y0)
+        else
+            local f, ax, ay = select(2, lassoDrag(c))
+            Lasso.scale(sel.strokes, c.snap, f, ax, ay)
+        end
+        -- (strokes of an opened drawing: written again where they are now, not as they came)
+        for _i, st in ipairs(sel.strokes) do st.el = nil end
+        self.history[#self.history + 1] = { kind = "move", strokes = sel.strokes, before = c.snap, after = Lasso.snapshot(sel.strokes) }
+        self.redone = {}
+        local b = c.box0
+        out.area = self:strokesArea(sel.strokes, { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 })
+        out.redraw, out.stroke_done, out.sel_changed = true, true, true
+        return
+    end
+    if c.moved <= self.tap_slop then
+        -- a tap: lets go of what's chosen; with nothing chosen and something copied, Paste here
+        if sel then
+            self.selection = nil
+            out.sel_changed = true
+        elseif Lasso.clipboard then
+            out.paste_at = { x = c.x0, y = c.y0 }
+        end
+        return
+    end
+    local picked = Lasso.pick(self.strokes, c.loop)
+    self.selection = #picked > 0 and { strokes = picked } or nil
+    out.sel_changed = true
+end
+
 local function endContact(self, slot, out)
     local c = self.contacts[slot]
     if not c then return end
     self.contacts[slot] = nil
     if self.drawing_slot == slot then self.drawing_slot = nil end
+    if c.kind == "lasso" then return lassoEnd(self, c, out) end
     if c.kind == "pinch" and self.pinch then return endPinch(self, out) end
     if c.kind == "pan" then
         applyPan(self, c, out)
@@ -1014,6 +1103,7 @@ function Sketch:frame(slots, now)
                     end
                 elseif c.kind == "draw" then
                     if not c.shape then addPoint(self, c, s.x, s.y, out) end -- (a shape: drawn when the pen lifts)
+                elseif c.kind == "lasso" then lassoMove(self, c, s, now, out)
                 elseif c.kind == "erase" then erase(self, c, s.x, s.y, out) end
             end
         elseif c then
@@ -1117,7 +1207,71 @@ function Sketch.inkColor(c)
 end
 
 function Sketch:setColor(c) self.color = Sketch.inkColor(c); self.tool = "pen" end
-function Sketch:setTool(tool) self.tool = tool end
+function Sketch:setTool(tool)
+    self.tool = tool
+    if tool ~= "lasso" then self.selection = nil end
+end
+
+-- ------------------------------------------------------------------ the lasso
+
+--- The frame around the chosen strokes ({ x0, y0, x1, y1 }, canvas pixels), or nil.
+function Sketch:selectionBox()
+    local sel = self.selection
+    if not sel then return nil end
+    local b = self:strokesArea(sel.strokes)
+    -- (a little room around them: the frame's lines aren't on the strokes' own)
+    local pad = self.lasso_pad or 0
+    if b and pad > 0 then b.x0, b.y0, b.x1, b.y1 = b.x0 - pad, b.y0 - pad, b.x1 + pad, b.y1 + pad end
+    return b
+end
+
+--- Lets go of the chosen strokes. True when some were chosen.
+function Sketch:clearSelection()
+    if not self.selection then return false end
+    self.selection = nil
+    return true
+end
+
+--- Copies the chosen strokes (for Paste, here or in another drawing). True when there were some.
+function Sketch:lassoCopy()
+    local sel = self.selection
+    if not sel then return false end
+    return require("gzreader_lasso").copy(sel.strokes, function(x, y) return self:toScene(x, y) end) ~= nil
+end
+
+--- Takes the chosen strokes off the page (Undo brings them back). Returns true and where they were.
+function Sketch:lassoDelete()
+    local sel = self.selection
+    if not sel then return false end
+    local area = self:strokesArea(sel.strokes)
+    for _i, st in ipairs(sel.strokes) do st.gone = true end
+    self.history[#self.history + 1] = { kind = "erase", strokes = sel.strokes }
+    self.redone = {}
+    self.selection = nil
+    return true, area
+end
+
+--- Copies the chosen strokes and takes them off the page.
+function Sketch:lassoCut()
+    if not self:lassoCopy() then return false end
+    return self:lassoDelete()
+end
+
+--- Pastes what was copied, its middle at screen point (x, y): new strokes,
+--- chosen (to move into place). Returns true and where they are.
+function Sketch:lassoPaste(x, y)
+    local Lasso = require("gzreader_lasso")
+    local clip = Lasso.clipboard
+    if not clip then return false end
+    local sx, sy = self:toScene(x - self.canvas.x, y - self.canvas.y)
+    local new = Lasso.fromClip(clip, sx, sy, function(px, py) return self:toCanvas(px, py) end)
+    if #new == 0 then return false end
+    for _i, st in ipairs(new) do self.strokes[#self.strokes + 1] = st end
+    self.history[#self.history + 1] = { kind = "add", strokes = new }
+    self.redone = {}
+    self.selection = { strokes = new }
+    return true, self:strokesArea(new)
+end
 
 function Sketch:canUndo() return #self.history > 0 end
 function Sketch:canRedo() return #(self.redone or {}) > 0 end
@@ -1126,6 +1280,13 @@ function Sketch:canRedo() return #(self.redone or {}) > 0 end
 function Sketch:redo()
     local h = table.remove(self.redone or {})
     if not h then return false end
+    self.selection = nil
+    if h.kind == "move" then
+        -- (strokes moved or resized with the lasso: where they went)
+        require("gzreader_lasso").restore(h.strokes, h.after)
+        self.history[#self.history + 1] = h
+        return true
+    end
     if h.kind == "text" then
         self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.after) or nil
         self.history[#self.history + 1] = h
@@ -1157,6 +1318,11 @@ function Sketch:undo()
     if not h then return false end
     self.redone = self.redone or {}
     self.redone[#self.redone + 1] = h
+    self.selection = nil
+    if h.kind == "move" then
+        require("gzreader_lasso").restore(h.strokes, h.before)
+        return true
+    end
     if h.kind == "text" then
         self.text_gone[h.el] = not require("gzreader_drawtext").restore(h.el, h.before) or nil
         return true
