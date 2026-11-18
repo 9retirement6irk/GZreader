@@ -38,10 +38,19 @@ and how it begins.
 - **More pages**: swipe left, press a page-turn key, or tap the arrow at the
   foot of the page.
 - **A story**: tap it (with keys: move the frame with the 5-way and press).
-  It opens as text that scrolls with your finger (and settles where you lift);
-  the page keys, or ▲ ▼ on a keyboard Kindle, move it most of a screen. At
-  the top, **QR code** shows the story's link as a code for your phone, for
-  the rest of it or its pictures, and **✕** closes it.
+  It opens as text that scrolls with your finger and stays exactly where
+  your finger leaves it, also when you lift while still moving; the page
+  keys, or ▲ ▼ on a keyboard Kindle, move it most of a screen. At the top,
+  **Aa** sets the story's text (below), **QR code** shows the story's link as
+  a code for your phone, for the rest of it or its pictures, and **✕** closes
+  it.
+- **Story text**: **Aa** at the top of a story (**Menu** on a Kindle with
+  keys) opens a box with **A−** / **A+** for the size, the typeface (Serif,
+  Sans, Classic, Typewriter) and the line spacing (Tight, Normal, Wide). The
+  story behind is set again at each tap, at the same place, so you can try
+  them; **Done** closes the box. The choices are kept, and are also in the
+  daily paper's settings under **Story text**. They set opened stories; the
+  front page keeps its own type.
 - **Close**: the cross in the corner, or Back.
 - **The quick panel**: swipe down from the top of the paper or of a story,
   as anywhere else.

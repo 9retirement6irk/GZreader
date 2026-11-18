@@ -1109,9 +1109,70 @@ function Paper.openPanel(plugin)
     return true
 end
 
---- A story's buttons at the top: its link as a QR code (when it has one), and ✕.
+---------------------------------------------------------------- a story's type
+
+Paper.FACES = {
+    { id = "serif", regular = "NotoSerif-Regular.ttf", bold = "NotoSerif-Bold.ttf" },
+    { id = "sans", regular = "NotoSans-Regular.ttf", bold = "NotoSans-Bold.ttf" },
+    { id = "classic", regular = "FreeSerif.ttf", bold = "FreeSerif.ttf" },
+    { id = "typewriter", regular = "DroidSansMono.ttf", bold = "DroidSansMono.ttf" },
+}
+Paper.SIZE_MIN, Paper.SIZE_MAX, Paper.SIZE_DEFAULT = 8, 30, 12
+Paper.SIZE_CHOICES = { 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 26, 30 }
+Paper.SPACINGS = { { id = "tight", em = 0.15 }, { id = "normal", em = 0.3 }, { id = "wide", em = 0.55 } }
+
+function Paper.faceLabel(id)
+    if id == "sans" then return _("Sans") end
+    if id == "classic" then return _("Classic") end
+    if id == "typewriter" then return _("Typewriter") end
+    return _("Serif")
+end
+
+function Paper.spacingLabel(id)
+    if id == "tight" then return _("Tight") end
+    if id == "wide" then return _("Wide") end
+    return _("Normal")
+end
+
+--- How a story is set: { face = one of FACES, size, spacing = one of
+--- SPACINGS } (Serif 12, Normal, until changed).
+function Paper.storyFont(plugin)
+    local st = Daily().store(plugin)
+    local f = type(st.font) == "table" and st.font or {}
+    local out = { face = Paper.FACES[1], spacing = Paper.SPACINGS[2] }
+    for _i, c in ipairs(Paper.FACES) do if c.id == f.face then out.face = c end end
+    for _i, c in ipairs(Paper.SPACINGS) do if c.id == f.spacing then out.spacing = c end end
+    out.size = math.max(Paper.SIZE_MIN, math.min(Paper.SIZE_MAX, math.floor(tonumber(f.size) or Paper.SIZE_DEFAULT)))
+    return out
+end
+
+--- Change one of them ("face", "size", "spacing") and keep it. A size is
+--- held between SIZE_MIN and SIZE_MAX; a face or spacing that isn't known
+--- changes nothing. Returns true when something changed.
+function Paper.setStoryFont(plugin, what, value)
+    local st = Daily().store(plugin)
+    st.font = type(st.font) == "table" and st.font or {}
+    local now = Paper.storyFont(plugin)
+    if what == "size" then
+        value = math.max(Paper.SIZE_MIN, math.min(Paper.SIZE_MAX, math.floor(tonumber(value) or now.size)))
+        if value == now.size then return false end
+        st.font.size = value
+    elseif what == "face" or what == "spacing" then
+        local known = false
+        for _i, c in ipairs(what == "face" and Paper.FACES or Paper.SPACINGS) do if c.id == value then known = true end end
+        if not known or value == (what == "face" and now.face.id or now.spacing.id) then return false end
+        st.font[what] = value
+    else
+        return false
+    end
+    plugin:save()
+    if Paper.story and not Paper.story.closed then Paper.story:rebuild() end
+    return true
+end
+
+--- A story's buttons at the top: its type (Aa), its link as a QR code (when it has one), and ✕.
 function Paper.articleButtons(item)
-    local out = {}
+    local out = { "type" }
     if item and item.link then out[#out + 1] = "qr" end
     out[#out + 1] = "close"
     return out
@@ -1143,8 +1204,28 @@ function Paper.article(plugin, item)
     if not ArticleView then
         ArticleView = InputContainer:extend{ covers_fullscreen = true, name = "gz_daily_article" }
         function ArticleView:init()
-            local sw, sh = Screen:getWidth(), Screen:getHeight()
-            self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
+            self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
+            self:build()
+            if Device:hasKeys() then
+                local g = Device.input.group
+                self.key_events = {
+                    Close = { { g.Back } },
+                    PageDown = { { g.PgFwd }, { "Down" } },
+                    PageUp = { { g.PgBack }, { "Up" } },
+                    ShowQR = { { "Press" } },
+                    ShowType = { { "Menu" } },
+                }
+            end
+            if Device:isTouchDevice() then
+                local sw, sh = self.dimen.w, self.dimen.h
+                self.ges_events = { PullPanel = { GestureRange:new{ ges = "swipe", range = function()
+                    return Geom:new{ x = 0, y = 0, w = sw, h = math.floor(sh * Paper.PULL_ZONE) } end } } }
+            end
+        end
+        --- The bar and the story, set in the type chosen (Paper.storyFont).
+        function ArticleView:build()
+            local sw, sh = self.dimen.w, self.dimen.h
+            local font = Paper.storyFont(self.plugin)
             local margin = S(18)
             local inner = sw - 2 * margin
             local bar_h = S(52)
@@ -1159,7 +1240,8 @@ function Paper.article(plugin, item)
             end
             local right = HorizontalGroup:new{ align = "center" }
             for _i, id in ipairs(Paper.articleButtons(it)) do
-                if id == "qr" then right[#right + 1] = button(_("QR code"), function() self:onShowQR() end)
+                if id == "type" then right[#right + 1] = button("Aa", function() self:onShowType() end)
+                elseif id == "qr" then right[#right + 1] = button(_("QR code"), function() self:onShowQR() end)
                 else right[#right + 1] = button("\u{2715}", function() self:onClose() end) end
                 right[#right + 1] = HorizontalSpan:new{ width = S(8) }
             end
@@ -1174,32 +1256,47 @@ function Paper.article(plugin, item)
             }
             local col = VerticalGroup:new{ align = "left",
                 VerticalSpan:new{ width = S(16) },
-                TextBoxWidget:new{ text = it.title or "", face = serifBold(18), width = inner },
+                TextBoxWidget:new{ text = it.title or "", face = face(font.face.bold, math.floor(font.size * 1.5 + 0.5), "smallinfofontbold"),
+                    width = inner, bold = font.face.bold == font.face.regular or nil },
                 VerticalSpan:new{ width = S(10) },
-                TextBoxWidget:new{ text = Paper.articleText(it), face = serif(12), width = inner },
+                TextBoxWidget:new{ text = Paper.articleText(it), face = face(font.face.regular, font.size, "smallinfofont"), width = inner,
+                    line_height = font.spacing.em },
                 VerticalSpan:new{ width = S(30) },
             }
             self.scroller = ScrollableContainer:new{
                 dimen = Geom:new{ w = sw, h = sh - bar_h - Size.line.medium }, show_parent = self,
                 HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, col },
             }
-            -- (the story moves with the finger, and settles where it lifts: gzreader_livescroll.lua)
-            require("gzreader_livescroll").on(self.scroller)
+            -- (the story moves with the finger and rests exactly where it lifts, also
+            -- when the finger is still moving as it lifts: gzreader_livescroll.lua)
+            require("gzreader_livescroll").on(self.scroller, { free = true })
             self[1] = FrameContainer:new{ width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
                 VerticalGroup:new{ bar, self.scroller } }
-            if Device:hasKeys() then
-                local g = Device.input.group
-                self.key_events = {
-                    Close = { { g.Back } },
-                    PageDown = { { g.PgFwd }, { "Down" } },
-                    PageUp = { { g.PgBack }, { "Up" } },
-                    ShowQR = { { "Press" } },
-                }
+        end
+        --- Set again after its type changed, at the same place in the story.
+        function ArticleView:rebuild()
+            local old = self.scroller
+            local at = (old and (old._max_scroll_offset_y or 0) > 0) and (old._scroll_offset_y or 0) / old._max_scroll_offset_y or 0
+            self:build()
+            UIManager:setDirty(self, "ui")
+            if at > 0 then
+                -- (how long the story is now is known once it has been drawn)
+                UIManager:scheduleIn(0.2, function()
+                    if self.closed or not self.scroller or (self.scroller._max_scroll_offset_y or 0) <= 0 then return end
+                    self.scroller:_scrollBy(0, math.floor(at * self.scroller._max_scroll_offset_y + 0.5) - (self.scroller._scroll_offset_y or 0))
+                    UIManager:setDirty(self, function() return "ui", self.scroller.dimen end)
+                end)
             end
-            if Device:isTouchDevice() then
-                self.ges_events = { PullPanel = { GestureRange:new{ ges = "swipe", range = function()
-                    return Geom:new{ x = 0, y = 0, w = sw, h = math.floor(sh * Paper.PULL_ZONE) } end } } }
-            end
+        end
+        --- Aa: the story's type. Smaller / larger, the typeface, the line spacing;
+        --- the story behind is set again at each tap.
+        function ArticleView:onShowType()
+            Paper.typeDialog(self.plugin)
+            return true
+        end
+        function ArticleView:onCloseWidget()
+            self.closed = true
+            if Paper.story == self then Paper.story = nil end
         end
         function ArticleView:scroll(dir)
             if self.scroller and self.scroller._scrollBy then self.scroller:_scrollBy(0, dir * math.floor(self.scroller.dimen.h * 0.85)) end
@@ -1221,8 +1318,72 @@ function Paper.article(plugin, item)
         function ArticleView:onClose() UIManager:close(self, "full"); return true end
     end
     local v = ArticleView:new{ item = item, plugin = plugin }
+    Paper.story = v
     UIManager:show(v, "full")
     return v
+end
+
+--- The rows of the Aa box: { { { text, on = chosen, enabled, run } … } … }.
+function Paper.typeRows(plugin)
+    local font = Paper.storyFont(plugin)
+    local rows = { {
+        { text = "A\u{2212}", enabled = font.size > Paper.SIZE_MIN, run = function() return Paper.setStoryFont(plugin, "size", font.size - 1) end },
+        { text = T(_("Size %1"), font.size), enabled = false },
+        { text = "A+", enabled = font.size < Paper.SIZE_MAX, run = function() return Paper.setStoryFont(plugin, "size", font.size + 1) end },
+    }, {}, {} }
+    for _i, c in ipairs(Paper.FACES) do
+        rows[2][#rows[2] + 1] = { text = Paper.faceLabel(c.id), on = c.id == font.face.id, run = function() return Paper.setStoryFont(plugin, "face", c.id) end }
+    end
+    for _i, c in ipairs(Paper.SPACINGS) do
+        rows[3][#rows[3] + 1] = { text = Paper.spacingLabel(c.id), on = c.id == font.spacing.id, run = function() return Paper.setStoryFont(plugin, "spacing", c.id) end }
+    end
+    return rows
+end
+
+--- The Aa box over a story (it stays up while you try sizes and faces).
+function Paper.typeDialog(plugin)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    if Paper.type_dialog then UIManager:close(Paper.type_dialog) end
+    local buttons = {}
+    for r, row in ipairs(Paper.typeRows(plugin)) do
+        buttons[r] = {}
+        for _i, b in ipairs(row) do
+            buttons[r][#buttons[r] + 1] = { text = (b.on and "\u{2713} " or "") .. b.text, enabled = b.enabled, callback = function()
+                if b.run and b.run() then Paper.typeDialog(plugin) end
+            end }
+        end
+    end
+    buttons[#buttons + 1] = { { text = _("Done"), id = "close", callback = function()
+        UIManager:close(Paper.type_dialog)
+        Paper.type_dialog = nil
+    end } }
+    Paper.type_dialog = ButtonDialog:new{ title = _("Story text"), title_align = "center", buttons = buttons,
+        tap_close_callback = function() Paper.type_dialog = nil end }
+    UIManager:show(Paper.type_dialog)
+    return Paper.type_dialog
+end
+
+--- Settings → … → Daily paper → Story text.
+function Paper.fontItems(plugin)
+    local function font() return Paper.storyFont(plugin) end
+    local faces, sizes, spacings = {}, {}, {}
+    for _i, c in ipairs(Paper.FACES) do
+        faces[#faces + 1] = { text = Paper.faceLabel(c.id), radio = true, checked_func = function() return font().face.id == c.id end,
+            callback = function() Paper.setStoryFont(plugin, "face", c.id) end }
+    end
+    for _i, n in ipairs(Paper.SIZE_CHOICES) do
+        sizes[#sizes + 1] = { text = tostring(n) .. (n == Paper.SIZE_DEFAULT and "  " .. _("(as it comes)") or ""), radio = true,
+            checked_func = function() return font().size == n end, callback = function() Paper.setStoryFont(plugin, "size", n) end }
+    end
+    for _i, c in ipairs(Paper.SPACINGS) do
+        spacings[#spacings + 1] = { text = Paper.spacingLabel(c.id), radio = true, checked_func = function() return font().spacing.id == c.id end,
+            callback = function() Paper.setStoryFont(plugin, "spacing", c.id) end }
+    end
+    return {
+        { text_func = function() return T(_("Typeface: %1"), Paper.faceLabel(font().face.id)) end, sub_item_table = faces },
+        { text_func = function() return T(_("Size: %1"), font().size) end, sub_item_table = sizes },
+        { text_func = function() return T(_("Line spacing: %1"), Paper.spacingLabel(font().spacing.id)) end, sub_item_table = spacings },
+    }
 end
 
 ---------------------------------------------------------------- settings
@@ -1489,6 +1650,12 @@ function Paper.settingsItems(plugin)
                         or _("Home's widgets can't be changed from here just now. Use Settings → Home → Widgets."))
                 end
             end,
+        },
+        {
+            text = _("Story text"),
+            help_text = _("How an opened story is set: its typeface, size and line spacing. The same can be changed while reading a story, with Aa at its top (on a Kindle with keys: Menu)."),
+            enabled_func = on,
+            sub_item_table_func = function() return Paper.fontItems(plugin) end,
         },
         {
             text = _("Whole stories"),

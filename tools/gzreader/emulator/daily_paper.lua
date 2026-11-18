@@ -24,8 +24,8 @@ local function item(title, text, hours)
         .. '<enclosure url="https://img.example.com/' .. title:gsub("%W", "-") .. '.png" type="image/png"/>' .. "<description><![CDATA["
         .. text .. "]]></description><pubDate>" .. os.date("!%a, %d %b %Y %H:%M:%S GMT", os.time() - hours * 3600) .. "</pubDate></item>"
 end
-local long = "<p>" .. string.rep("The lighthouse keeper counted the ships again, and again there were seven. ", 12) .. "</p><p>"
-    .. string.rep("Nobody on the island could say where the seventh had come from. ", 10) .. "</p>"
+local long = string.rep("<p>" .. string.rep("The lighthouse keeper counted the ships again, and again there were seven. ", 12) .. "</p><p>"
+    .. string.rep("Nobody on the island could say where the seventh had come from. ", 10) .. "</p>", 5) -- (longer than a screen: it scrolls)
 local BODIES = {
     world = "<rss><channel><title>Example World</title>"
         .. item("Seven ships seen off the northern lighthouse, where six were expected by everyone", long, 2)
@@ -195,6 +195,40 @@ add({ fn = function(E)
     check(E, opened and Panel.open ~= nil, "a swipe down from the top of a story: the quick panel")
     if Panel.open then require("ui/uimanager"):close(Panel.open) end
 end, after = 4 })
+-- the story's type: Aa, bigger, another typeface, wider lines; the story is set again at the same place
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local sc = E.story.scroller
+    E.at0 = (sc._max_scroll_offset_y or 0) > 0 and sc._scroll_offset_y / sc._max_scroll_offset_y or 0
+    E.max0 = sc._max_scroll_offset_y or 0
+    E.story:onShowType()
+    check(E, Paper.type_dialog ~= nil, "Aa opens the story's type box")
+    local rows = Paper.typeRows(plugin())
+    rows[1][3].run(); Paper.typeRows(plugin())[1][3].run(); Paper.typeRows(plugin())[1][3].run()
+    Paper.typeRows(plugin())[2][2].run()
+    Paper.typeRows(plugin())[3][3].run()
+    Paper.typeDialog(plugin())
+end, after = 5 })
+add({ shot = "daily-4b-story-type" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local UIManager = require("ui/uimanager")
+    local font = Paper.storyFont(plugin())
+    check(E, font.size == 15 and font.face.id == "sans" and font.spacing.id == "wide", "three taps on A+, Sans, Wide: kept")
+    if Paper.type_dialog then UIManager:close(Paper.type_dialog); Paper.type_dialog = nil end
+    local sc = E.story.scroller
+    check(E, sc ~= nil and (sc._max_scroll_offset_y or 0) > E.max0, "the story is set again, bigger (it's longer now: " .. tostring(sc and sc._max_scroll_offset_y) .. " > " .. tostring(E.max0) .. ")")
+    local at = (sc._max_scroll_offset_y or 0) > 0 and sc._scroll_offset_y / sc._max_scroll_offset_y or 0
+    check(E, math.abs(at - E.at0) < 0.05, "…at the same place in the story (" .. string.format("%.2f", at) .. " ~ " .. string.format("%.2f", E.at0) .. ")")
+    -- a drag that ends with the finger still moving rests where the finger was
+    local y0 = sc._scroll_offset_y
+    local pos = require("ui/geometry"):new{ x = 200, y = 400, w = 0, h = 0 }
+    sc:onScrollableTouch(nil, { pos = pos })
+    sc:onScrollablePan(nil, { pos = pos, relative = { x = 0, y = 150 }, direction = "south" })
+    sc:onScrollableSwipe(nil, { pos = pos, direction = "south", distance = 170 })
+    check(E, y0 - sc._scroll_offset_y == math.min(150, y0), "a flick down 150 px moves the story 150 px, not a screenful (" .. tostring(y0 - sc._scroll_offset_y) .. ")")
+end, after = 4 })
+add({ shot = "daily-4c-story-big" })
 add({ fn = function(E)
     local UIManager = require("ui/uimanager")
     if E.story then UIManager:close(E.story) end
