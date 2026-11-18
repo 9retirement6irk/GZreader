@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Keyboard Kindles: a note's name at the top, and Archive and Delete while editing", text = "On Kindles without a touch screen an opened note said only \"Note\" at the top. It now has the bar the touch Kindles have: the note's name, with its date, space and whether it's pinned under it (the keys are still listed at the foot, and M or Menu still has Edit, Pin, Archive and Delete). On a keyboard Kindle the editor has the same bar: the note's name, and under it who can see it, its space and its tags. Alt+M there opens a menu the touch Kindles have under ⋮: who can see it, its space, Archive note, Delete note and Close." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

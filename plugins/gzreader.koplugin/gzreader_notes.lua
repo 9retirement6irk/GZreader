@@ -2324,13 +2324,7 @@ function NoteView:build()
     self.picks = {}
     add(VerticalSpan:new{ width = S(14) })
     local space = Notes.spaceTitle(self.plugin, m.space)
-    if not Touch.on() then
-        -- (touch: the date and the rest are under the note's name in the top bar)
-        add(iconLine("date", Sticky.when(m.created) .. (space and ("   \u{00B7}   " .. T(_("in %1"), space)) or "")
-            .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
-            .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
-        add(VerticalSpan:new{ width = S(10) })
-    end
+    -- (the date and the rest are under the note's name in the top bar, on every Kindle)
     local para = {}
     local function flush()
         local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
@@ -2553,7 +2547,7 @@ function NoteView:build()
     local hint = (#self.picks > 0 and (KEYS[1] .. (#self.picks > 1 and ("\u{2013}" .. KEYS[math.min(#self.picks, #KEYS)]) or "") .. "  "
         .. (n_check > 0 and _("tick / open") or _("open")) .. "     ") or "")
         .. _("Alt+E edit     Alt+P pin     M more     Back board")
-    local title_h, footer_h = S(46), S(34)
+    local title_h, footer_h = require("gzreader_notebar").height(), S(34)
     local footer
     if not Touch.on() then
         if not Touch.keys() then -- (Kindle 4: the 5-way and Menu)
@@ -2584,15 +2578,15 @@ function NoteView:build()
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{
-            Touch.on() and self:topBar(sw, title_h, space) or CenterContainer:new{ dimen = Geom:new{ w = sw, h = title_h },
-                TextWidget:new{ text = _("Note"), face = Font:getFace("smalltfont", 22), bold = true } },
+            self:topBar(sw, title_h, space),
             self.scroller,
             footer,
         },
     }
 end
 
---- Touch: the drawing screen's top bar (gzreader_notebar.lua), as the editor has:
+--- The drawing screen's top bar (gzreader_notebar.lua), as the editor has (without a
+--- touch screen: the name and the line under it, "M more" at the right; keys do the rest):
 ---   ←  The note's name                     📌  🗃  🗑  ⋮  [Edit]
 ---      when · its space · pinned · not sent yet
 --- ← back to the board, the pin pins or unpins, 🗃 archives, 🗑 deletes (asks
@@ -2608,6 +2602,13 @@ function NoteView:topBar(sw, h, space)
     self.bar_title = heading and NoteBar.nameOf(heading) or NoteBar.nameOf(m.content) or _("Note")
     if m.archived then hint[#hint + 1] = _("archived") end
     self.bar_hint = table.concat(hint, " \u{00B7} ")
+    if not Touch.on() then
+        -- (no touch screen: the note's name and that line, as on the others; the keys are at the foot)
+        local bar = NoteBar.build{ width = sw, height = h, title = self.bar_title, hint = self.bar_hint,
+            note = Touch.keys() and _("M more") or _("Menu: more") }
+        self.bar_buttons = {}
+        return bar
+    end
     -- (an archived note: Delete, More, and Restore where Edit is)
     local icons, action = {}, { "edit", _("Edit"), function() self:onEdit() end }
     if m.archived then
