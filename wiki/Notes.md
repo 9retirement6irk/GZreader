@@ -62,8 +62,11 @@ API to `/api` are found too.
     turn it on): the Notes tab becomes one long page. A swipe or a drag up
     or down moves the notes exactly as far as your finger went, and a drag
     moves them while your finger is still down (in steps, about five a
-    second: e-ink can't follow every movement; an opened note that's longer
-    than the screen follows your finger the same way); notes cut
+    second: e-ink can't follow every movement, so the steps are shown
+    roughly; an opened note that's longer than the screen follows your
+    finger the same way). When your finger lifts, the page is shown once
+    more cleanly, without a flash (as a page turn is), so nothing is left
+    standing twice; notes cut
     off at the top and bottom show there's more (a part of the next row
     always shows). There's no page number or arrows under the notes. A swipe
     sideways moves most of a screenful. Full notes keep their pages. A swipe
@@ -144,7 +147,10 @@ API to `/api` are found too.
   change it. Back asks whether to save.
 - **Pictures in a note** show at the size and place they were given in
   Memos' web editor (dragged smaller, or set left, center or right): the
-  same share of the page as of Memos' column. In the **editor** (touch
+  same share of the page as of Memos' column. One never sized there shows
+  as Memos shows it, at its own width, again as the same share of the page
+  (a small picture isn't a thumbnail beside the others). A picture in the
+  text isn't shown again under it. In the **editor** (touch
   Kindles, the formatted page) a picture in the text shows as the picture,
   not its Markdown. Tap it to pick it: a frame, a **pull tab** on each side
   (drag one to make it wider or narrower; a centred picture grows on both

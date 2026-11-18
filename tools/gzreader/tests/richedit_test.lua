@@ -223,7 +223,8 @@ do
     local made = {}
     local function fakeBB(w, h) return { w = w, h = h, getWidth = function(b) return b.w end, getHeight = function(b) return b.h end } end
     local pictures = {
-        size = function(src) if src:match("here") then return 400, 200 end end,
+        -- (c.jpg: a photo, bigger than Memos' column; the others 400 x 200)
+        size = function(src) if src:match("here/c") then return 1600, 800 elseif src:match("here") then return 400, 200 end end,
         bb = function(src, w, h) made[#made + 1] = src .. " " .. w .. "x" .. h; return fakeBB(w, h) end,
     }
     local doc = Blocks.parse("Trip\n\n![sea|center|320](/file/attachments/here/a.jpg)\n\n![far](/file/attachments/away/b.jpg)\n\nend")
@@ -267,7 +268,11 @@ do
     local d2 = Blocks.parse("![p](/file/attachments/here/c.jpg)")
     local r2 = RE:new{ width = 300, max_height = 900, doc = d2, editor = {}, pictures = pictures }
     local l2 = r2.lines[1]
-    check(l2.picture and l2.picture.w == 300 and l2.picture.x == 0, "no size: as wide as fits (a photo only shrinks)")
+    check(l2.picture and l2.picture.w == 300 and l2.picture.x == 0, "no size, a photo wider than Memos' column: the page's width")
+    local r4 = RE:new{ width = 300, max_height = 900, doc = Blocks.parse("![small](/file/attachments/here/d.jpg)"), editor = {}, pictures = pictures }
+    check(r4.lines[1].picture and r4.lines[1].picture.w == 188 and r4.lines[1].h == 94,
+        "no size, a small picture (400 px): its own width's share of Memos' 640-pixel column (188 of 300), as Memos shows it; not as wide as fits ("
+            .. tostring(r4.lines[1].picture and r4.lines[1].picture.w) .. ")")
     r2:onTapEdit(nil, ges(100, l2.y + 10))
     local lt = r2:tabs().left
     r2:onPanEdit(nil, { start_pos = { x = lt.x + 2, y = lt.y + 2 }, relative = { x = 150, y = 0 } })
@@ -342,7 +347,7 @@ do
     local l0 = pl(pd)
     local sy = l0.y - pd.top + 10
     local first_y = pd.lines[1].y - pd.top
-    check(pd:onPanEdit(nil, { start_pos = { x = l0.picture.x + 20, y = sy }, pos = { x = 0, y = 0 }, relative = { x = 0, y = first_y + 2 - sy } }),
+    check(pd:onPanEdit(nil, { start_pos = { x = l0.picture.x + math.floor(l0.picture.w / 2), y = sy }, pos = { x = 0, y = 0 }, relative = { x = 0, y = first_y + 2 - sy } }),
         "the picture dragged (not a tab): it's being moved")
     check(pd.moving and pd.moving.at == 1 and pd.moving.line_y == first_y, "…a line where it goes (before One)")
     pd:onPanReleaseEdit(nil, {})
@@ -350,7 +355,7 @@ do
     tapPic(pd)
     local l1 = pl(pd)
     local sy1 = l1.y - pd.top + 10
-    pd:onPanEdit(nil, { start_pos = { x = l1.picture.x + 20, y = sy1 }, relative = { x = 0, y = pd.total_h - pd.top - sy1 + 50 } })
+    pd:onPanEdit(nil, { start_pos = { x = l1.picture.x + math.floor(l1.picture.w / 2), y = sy1 }, relative = { x = 0, y = pd.total_h - pd.top - sy1 + 50 } })
     pd:onPanReleaseEdit(nil, {})
     check(text(pd) == "One\n\nTwo\n\nThree\n\n![p](/file/attachments/here/b.jpg)", "dragged below the end: last … " .. show(text(pd)))
     -- a long note: dragged to the top edge, it scrolls up under the finger
@@ -362,8 +367,8 @@ do
     local lp = pl(pl2)
     local top_before = pl2.top
     local sy2 = lp.y - pl2.top + 10
-    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + 20, y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
-    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + 20, y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + math.floor(lp.picture.w / 2), y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
+    pl2:onPanEdit(nil, { start_pos = { x = lp.picture.x + math.floor(lp.picture.w / 2), y = sy2 }, relative = { x = 0, y = 5 - sy2 } })
     check(pl2.moving and pl2.top < top_before, "dragged to the page's top edge: the note scrolls up under it")
     local Screen = require("device").screen
     local rr2 = pl2:panRange()

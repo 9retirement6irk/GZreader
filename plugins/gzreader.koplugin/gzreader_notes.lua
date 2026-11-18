@@ -600,6 +600,23 @@ function Notes.isGalleryPhoto(a)
     return type(a) == "table" and tostring(a.type):match("^image/") ~= nil and not Notes.isDrawing(a) and not a.link
 end
 
+--- Note `m`'s attachments that aren't in its text (as Memos' web app leaves
+--- out of the attachments under a note the ones its text shows:
+--- filterInlineManagedAttachments). A picture in the text was shown again
+--- under it (the owner, 2026-11-17).
+function Notes.attachmentsBelow(m)
+    local inline = {}
+    for _i, l in ipairs(Sticky.lines(m and m.content)) do
+        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+        if uid then inline[uid] = true end
+    end
+    local out = {}
+    for _i, a in ipairs(m and m.attachments or {}) do
+        if not inline[tostring(a.name):match("attachments/(.+)$") or ""] then out[#out + 1] = a end
+    end
+    return out
+end
+
 --- The gallery's columns on a page `inner` wide: 3 on a big screen, else 2.
 function Notes.galleryColumns(inner) return inner >= S(560) and 3 or 2 end
 
@@ -1602,13 +1619,17 @@ function Notes.Board:onSwipe(arg, ges)
             self:updateItems()
             return true
         end
+        local rough = pan and pan.rough
+        local function settle() if rough then require("gzreader_livescroll").settle(self.show_parent or self, self.dimen) end end
         if d == "north" or d == "south" then
             if not self:scrollBy((d == "north" and 1 or -1) * (tonumber(ges.distance) or 0)) and self._gz_moved then self:updateItems() end
             self._gz_moved = nil
+            settle()
             return true
         elseif d == "west" or d == "east" then
             if not self:scrollBy((d == "west" and 1 or -1) * (sc.view_h - sc.cell_h)) and self._gz_moved then self:updateItems() end
             self._gz_moved = nil
+            settle()
             return true
         end
     end
@@ -1651,9 +1672,9 @@ function Notes.Board:onGzPanRelease()
     local pan = self._gz_pan
     self._gz_pan = nil
     if not (pan and self._gz_scroll) then return false end
-    if not self:scrollTo(pan.y0 - (pan.rel or 0)) and pan.rough then
-        UIManager:setDirty(self.show_parent or self, function() return "ui", self.dimen end)
-    end
+    self:scrollTo(pan.y0 - (pan.rel or 0))
+    -- (after steps shown roughly: once more, cleanly; they left ghosts the ordinary refresh kept)
+    if pan.rough then require("gzreader_livescroll").settle(self.show_parent or self, self.dimen) end
     return true
 end
 
@@ -1978,7 +1999,7 @@ function NoteView:build()
             flush()
             local pic = Notes.pictureFor(self.plugin, m, l.src, inner, math.floor(sh * 0.45), function()
                 if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
-            end, l.width)
+            end, l.width or "own")
             if pic then
                 -- placed as in Memos (left, center or right; sized in the editor)
                 local pw = pic:getSize().w
@@ -2029,7 +2050,7 @@ function NoteView:build()
         add(iconLine("place", m.place, Font:getFace("cfont", 17)))
     end
     local listed, gallery = {}, {}
-    for _i, a in ipairs(m.attachments or {}) do
+    for _i, a in ipairs(Notes.attachmentsBelow(m)) do -- (the ones in the text are shown there)
         if not shown[a] then
             -- (photos: pictures, as Memos' web app shows a note's attached pictures; the rest: rows)
             if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end
@@ -2288,11 +2309,16 @@ end
 
 --- A picture's width here for its size in Memos (Sticky.pictureWidth).
 Notes.pictureWidth = Sticky.pictureWidth
+--- A picture shown at its own width: no taller than this (a screenful, less the top bar).
+function Notes.ownPictureMaxH() return math.floor(Screen:getHeight() * 0.85) end
 
 --- A picture in a note (src from its Markdown): an ImageWidget, or nil while
 --- it's being fetched (on_ready() runs when it's here). `width`: the size
 --- set in Memos (CSS pixels, Sticky.altSize): shown that wide (Notes.pictureWidth),
---- enlarged if need be; else as big as fits, only shrunk.
+--- enlarged if need be; "own": none set, so as Memos shows it, the file's own
+--- width in CSS pixels (as wide a share of the page as of Memos' column; a
+--- small picture was a thumbnail beside sized ones: the owner, 2026-11-17),
+--- at most the page's height; else as big as fits, only shrunk.
 function Notes.pictureFor(plugin, m, src, max_w, max_h, on_ready, width)
     local att = Notes.pictureAttachment(m, src)
     if not att then return nil end -- a picture from elsewhere on the web: not fetched
@@ -2300,6 +2326,14 @@ function Notes.pictureFor(plugin, m, src, max_w, max_h, on_ready, width)
     if lfs.attributes(path, "mode") ~= "file" then
         Notes.fetchFile(plugin, att, on_ready)
         return TextWidget:new{ text = _("(picture: downloading…)"), face = Font:getFace("cfont", 15), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    end
+    if width == "own" then
+        local own_w = Notes.picSize(path)
+        local want = own_w and Notes.pictureWidth(own_w, max_w)
+        local bb = want and Sticky.picture(path, math.max(1, want - 2 * Size.border.thin), Notes.ownPictureMaxH(), 50)
+            or Sticky.picture(path, max_w, max_h)
+        if not bb then return nil end
+        return FrameContainer:new{ padding = 0, bordersize = Size.border.thin, ImageWidget:new{ image = bb, image_disposable = true } }
     end
     local want = Notes.pictureWidth(width, max_w)
     local bb
