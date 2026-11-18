@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Kindle Scribe: a pen / finger button in the drawing toolbar", text = "The drawing screen's toolbar on the Kindle Scribe has a pen / finger button where the hand was. Its icon is a pen while the pen draws (fingers don't, and your hand can rest on the screen). Tap it and it shows a finger: one finger draws, as on the other Kindles. Tap it again for the pen. It stays as you left it for the next drawing. The hand (move the page) is gone from the toolbar: a zoomed page moves with a finger on the Scribe while the pen draws, and with two fingers elsewhere." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

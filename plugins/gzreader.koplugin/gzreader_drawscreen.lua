@@ -15,7 +15,10 @@ strokes inside, which memos opens as a drawing you can go on editing.
 
 - A pen Kindle (the Scribe) draws with the pen only, and ignores the hand
   while the pen is near (palm rejection); the pen's other end rubs out.
-  Every other touch Kindle draws with one finger.
+  Its toolbar's pen / finger button switches to drawing with one finger
+  (and back), kept for next time. Every other touch Kindle draws with one
+  finger. A zoomed page moves with two fingers (on a pen Kindle drawing with
+  the pen, one).
 - The screen reads the touch screen's contacts itself while it's on top
   (it stands in for KOReader's gesture detector, which gets them back when
   the screen closes or a dialog covers it): `gzreader_sketch.lua` turns them
@@ -106,7 +109,8 @@ DrawScreen.SIDE_TOOLS = {
     { id = "text", icon = "text", label = _("Text") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
     { id = "lasso", icon = "lasso", label = _("Lasso") },
-    { id = "hand", icon = "hand", label = _("Move the page") },
+    -- (pen Kindles only: draw with the pen, or with a finger; gzreader_draw_with_finger)
+    { id = "fingers", icon = "stylus", pen_device = true, label = _("Draw with the pen or a finger") },
     { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
     { id = "redo", icon = "redo", label = _("Redo") },
@@ -202,9 +206,12 @@ function DrawScreen:init()
         self.covers_fullscreen = false -- (the book or the entry is beside it, and is painted)
         self._pane_slots = {}
     end
-    self.pen_only = Sketch.penDevice(Device)
+    -- a pen Kindle (the Scribe): the pen draws and a hand can rest on the screen,
+    -- or (the toolbar's pen / finger button) a finger draws, as on the other Kindles
+    self.has_pen = Sketch.penDevice(Device)
+    self.pen_only = self.has_pen and not (G_reader_settings and G_reader_settings:isTrue("gzreader_draw_with_finger"))
     -- (the Scribe: its display driver's pen mode, for ink that keeps up with the pen; gzreader_penmode)
-    self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)
+    self.pen_fast = self.has_pen and require("gzreader_penmode").supported(Device)
     self.top_h = S(52)
     self.bar_h = self.top_h
     self.top_hidden = false -- (folded away by the tab under it)
@@ -359,7 +366,7 @@ function DrawScreen:flyoutRows(which)
         end
         rows[#rows + 1] = { id = "widths", cells = "width" }
         if self.has_color then rows[#rows + 1] = { id = "colors", cells = "color" } end
-        if self.pen_only then
+        if self.has_pen then
             rows[#rows + 1] = { id = "pressure", row = true, switch = self.pressure_on, label = _("Pressure and tilt") }
         end
     elseif which == "highlighter" then
@@ -377,7 +384,7 @@ function DrawScreen:flyoutRows(which)
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
     elseif which == "more" then
         rows[#rows + 1] = { id = "side", row = true, label = self.toolbar_side == "left" and _("Move to right side") or _("Move to left side") }
-        if self.pen_only then
+        if self.has_pen then
             rows[#rows + 1] = { id = "shortcut", row = true,
                 label = T(_("Stylus shortcut: %1"), DrawScreen.SHORTCUT_NAMES[DrawScreen.shortcut()] or DrawScreen.shortcut()) }
             -- (the Scribe: the display's own pen mode, on unless turned off here)
@@ -476,9 +483,11 @@ function DrawScreen:layoutBar()
         local sy = ty + ts + S(8)
         local y = sy + pad
         for _k, t in ipairs(tools) do
+          if not t.pen_device or self.has_pen then
             local h = t.sep and S(12) or ts
             anchors[t.id] = add(t, tx + pad, y, ts, h, "toolbar")
             y = y + h
+          end
         end
         self.frames.toolbar = Geom:new{ x = tx, y = sy, w = ts + 2 * pad, h = y - sy + pad }
     end
@@ -577,7 +586,8 @@ function DrawScreen:selected(t)
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "lasso" then return self.tool == t.id end
+    if t.id == "fingers" then return not self.pen_only end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
     return false
@@ -646,6 +656,7 @@ end
 --- The picture of the tool in hand (the toolbar's buttons, and the round one when they're folded away).
 function DrawScreen:toolIcon(id)
     if id == "pen" then return Sketch.toolStyle(self.writing).icon end
+    if id == "fingers" then return self.pen_only and "stylus" or "finger" end
     if id == "shape" then return self.shape or "shapes" end
     return id == "highlighter" and "highlighter" or id == "eraser" and "eraser" or id
 end
@@ -708,7 +719,7 @@ function DrawScreen:paintButton(bb, x, y, b)
     elseif t.icon then
         local isz = t.small and math.floor(r.h * 0.9) or math.floor(r.h * 0.56)
         -- (the toolbar's pen shows the writing tool in hand; Shapes, the shape)
-        local icon = (t.id == "pen" or t.id == "shape") and self:toolIcon(t.id) or t.icon
+        local icon = (t.id == "pen" or t.id == "shape" or t.id == "fingers") and self:toolIcon(t.id) or t.icon
         self:icon(icon, isz, not on):paintTo(bb, bx + math.floor((r.w - isz) / 2), by + math.floor((r.h - isz) / 2))
         if t.id == "pen" then
             -- the pen's width, as a dot in the corner
@@ -1297,7 +1308,7 @@ function DrawScreen:hook()
     end)
     -- A Kindle with a pen: its pressure and tilt from the digitizer itself, when
     -- the device KOReader reads the pen from doesn't pass them on (gzreader_penraw).
-    if self.pen_only and not self.penraw then
+    if self.has_pen and not self.penraw then
         local PenRaw = require("gzreader_penraw")
         local raw, why = PenRaw.open()
         self.penraw = raw
@@ -1852,6 +1863,19 @@ function DrawScreen:setColor(hex)
     self:syncTool()
 end
 
+--- A pen Kindle: draw with a finger (true), as the Kindles without a pen do, or
+--- with the pen (false: fingers don't draw, a hand can rest on the screen, and
+--- a finger moves a zoomed page). Kept for next time.
+function DrawScreen:setDrawWithFinger(on)
+    if not self.has_pen then return end
+    self.pen_only = not on
+    if self.sketch then self.sketch.pen_only = self.pen_only end
+    if G_reader_settings then G_reader_settings:saveSetting("gzreader_draw_with_finger", on == true) end
+    Log.info("drawing: draw with", on and "a finger" or "the pen")
+    self:layoutBar()
+    UIManager:setDirty(self, "ui")
+end
+
 --- The tool in hand ("pen", "highlighter", "shape", "eraser"), and the pen's width.
 function DrawScreen:setTool(tool, width)
     if tool ~= "text" and self.text_sel then self.text_sel = nil; UIManager:setDirty(self, "ui") end
@@ -2023,10 +2047,8 @@ function DrawScreen:use(t)
         end
         self:layoutBar()
         UIManager:setDirty(self, "ui")
-    elseif t.id == "hand" then
-        -- the hand: the pen (or a finger) moves the page about, and nothing is drawn
-        self:setTool("hand"); self:setFlyout(nil)
-        Log.info("drawing: the hand tool")
+    elseif t.id == "fingers" then
+        self:setDrawWithFinger(self.pen_only)
     elseif t.id == "text" then
         self:setTool("text"); self:setFlyout(nil)
         Log.info("drawing: the text tool")
