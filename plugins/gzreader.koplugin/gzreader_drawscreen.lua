@@ -410,7 +410,7 @@ DrawScreen.TAGS_OFFERED = 9
 DrawScreen.SELECTION_TOOLS = {
     { id = "sel-copy", icon = "copy", label = _("Copy") },
     { id = "sel-cut", icon = "cut", label = _("Cut") },
-    { id = "sel-delete", icon = "trash", label = _("Delete") },
+    { id = "sel-delete", icon = "lasso-delete", label = _("Delete") },
 }
 DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
     marker = _("Marker"), highlighter = _("Highlighter") }
