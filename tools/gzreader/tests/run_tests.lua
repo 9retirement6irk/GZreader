@@ -2655,11 +2655,6 @@ do
     local home = labels(Panel.homeTiles(hplug, nil))
     check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
         and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort (no More); Manage only with a book… " .. home)
-    do -- Settings → About: the version row takes taps (the easter egg: easteregg_test.lua, emulator/easter_egg.lua)
-        local asrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/about_settings.lua"):read("*a")
-        check(asrc:find('local ok, Egg = pcall(require, "gzreader_easteregg")\n            if ok then Egg.versionTapped() end', 1, true) ~= nil,
-            "Settings → About: GZreader's version, tapped seven times, opens the easter egg")
-    end
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }
@@ -3086,6 +3081,11 @@ do
     local root = texts(Browser.rootItems({ api = plugin.api, plugin = plugin }))
     check(root:match("|Grimmory|$") and not root:match("Audiobooks") and table.concat(require("gzreader_catalog").sections(), ",") == "books",
         "Paperwhite: the Catalog is the Books page alone (no Audiobooks or Music) " .. root)
+    do -- Settings → About: the version row takes taps (the easter egg: easteregg_test.lua, emulator/easter_egg.lua)
+        local asrc = io.open(PLUGIN .. "/../zenos.koplugin/modules/settings/sections/about_settings.lua"):read("*a")
+        check(asrc:find('local ok, Egg = pcall(require, "gzreader_easteregg")\n            if ok then Egg.versionTapped() end', 1, true) ~= nil,
+            "Settings → About: GZreader's version, tapped seven times, opens the easter egg")
+    end
     -- the launcher: GZreader's menu, the phone page, Send books (once)
     local cfg = { entries = {}, next_id = 0 }
     local saved_model = package.loaded["modules/menu/app_launcher/model"]
