@@ -43,6 +43,13 @@ and how it begins.
 The paper shows what a feed carries. Some feeds carry whole stories; many
 carry only a sentence or two, and the paper says so under such a story.
 
+**Today's calendar events**: when you use the [Calendar](Calendar) tab, the
+front page has a **TODAY** box under the date with today's events, all-day
+ones first, then by time. They're the events the Calendar tab last synced,
+kept on the Kindle: nothing is fetched for it and nothing about them leaves
+the Kindle. Tap the box for the Calendar tab. A day without events has no
+box; **Settings → Home → Daily paper → Today's calendar events** turns it off.
+
 **Pictures**: the lead story's picture runs across the front page, a few more
 stories have theirs in the columns (eight an edition at most), and the lead's
 is on the newspaper's front page on the shelf. They are fetched with the

@@ -526,23 +526,107 @@ end
 
 --- Fill `cols` columns `col_h` tall with stories from `start` (of `n`), top
 --- to bottom, left to right. height(i) → a story's block height. Returns
---- the placements { { i, col, y } } and the first story that didn't fit
---- (n + 1 when all did). A story taller than a column gets one to itself.
+--- the placements { { i, col, y } } and the first story that isn't on the
+--- page (n + 1 when all are). A story taller than a column gets one to
+--- itself. When a story doesn't fit under the ones above it and a quarter
+--- of the column or more would stay empty, it waits for the top of the next
+--- column and the stories after it that do fit (3 at most) go there
+--- instead: no white holes under a short story.
 function Paper.fill(start, n, cols, col_h, gap, height)
-    local placed, i = {}, start
+    local placed, i, held = {}, start, nil
     for col = 1, cols do
         local y = 0
-        while i <= n do
+        if held then
+            placed[#placed + 1] = { i = held, col = col, y = 0 }
+            y = height(held) + gap
+            held = nil
+        end
+        while i <= n and y < col_h do
             local h = height(i)
-            if y > 0 and y + h > col_h then break end
+            if y > 0 and y + h > col_h then
+                if col < cols and (col_h - y) >= col_h * 0.25 then
+                    held = i
+                    i = i + 1
+                    local tried = 0
+                    while i <= n and tried < 3 do
+                        local h2 = height(i)
+                        if y + h2 > col_h then break end
+                        placed[#placed + 1] = { i = i, col = col, y = y }
+                        y = y + h2 + gap
+                        i = i + 1
+                        tried = tried + 1
+                    end
+                end
+                break
+            end
             placed[#placed + 1] = { i = i, col = col, y = y }
             y = y + h + gap
             i = i + 1
-            if y >= col_h then break end
         end
-        if i > n then break end
+        if i > n and not held then break end
     end
     return placed, i
+end
+
+--- Today's calendar events wanted on the front page? (On unless unticked.)
+function Paper.calendarOn(plugin)
+    return Daily().store(plugin).calendar ~= false
+end
+
+--- Today's events from what the Calendar tab last synced (kept on the
+--- Kindle: nothing is fetched for this): { { title, when } }, all-day ones
+--- first, then by time. `events`: the list to look in (else the kept one).
+function Paper.todayEvents(now, events)
+    now = now or os.time()
+    if not events then
+        local ok, cache = pcall(function() return require("gzreader_caldav").loadCache() end)
+        events = ok and type(cache) == "table" and cache.events or {}
+    end
+    local d = os.date("*t", now)
+    local from = os.time{ year = d.year, month = d.month, day = d.day, hour = 0 }
+    local to = os.time{ year = d.year, month = d.month, day = d.day + 1, hour = 0 }
+    local twelve = G_reader_settings and G_reader_settings:isTrue("twelve_hour_clock")
+    local out = {}
+    for _i, ev in ipairs(type(events) == "table" and events or {}) do
+        local start, finish = tonumber(ev.start), tonumber(ev.finish)
+        if start and start < to and math.max(finish or start, start + 1) > from then
+            local when
+            if ev.all_day then
+                when = _("All day")
+            elseif start < from then
+                when = _("Until") .. " " .. Paper.clockText(finish or start, twelve)
+            else
+                when = Paper.clockText(start, twelve)
+            end
+            out[#out + 1] = { title = (ev.title and ev.title ~= "") and ev.title or _("(no title)"), when = when,
+                all_day = ev.all_day == true, start = start }
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.all_day ~= b.all_day then return a.all_day end
+        if a.start ~= b.start then return a.start < b.start end
+        return a.title < b.title
+    end)
+    return out
+end
+
+--- "9:05", or "9:05 AM" with the 12-hour clock.
+function Paper.clockText(t, twelve)
+    if twelve then return (os.date("%I:%M %p", t):gsub("^0", "")) end
+    return (os.date("%H:%M", t):gsub("^0", ""))
+end
+
+--- The diary line for the front page: "All day Birthday  ·  9:00 Dentist  ·  …".
+function Paper.diaryText(list, max)
+    local parts = {}
+    for i, ev in ipairs(list) do
+        if i > (max or 8) then
+            parts[#parts + 1] = T(_("and %1 more"), #list - (max or 8))
+            break
+        end
+        parts[#parts + 1] = ev.when .. " " .. ev.title
+    end
+    return table.concat(parts, "   \u{00B7}   ")
 end
 
 local PaperPage -- (the page's widget class, made at the first show)
@@ -661,6 +745,27 @@ local function pageClass()
             self.rules[#self.rules + 1] = { y = y, h = 1 }
             y = y + S(6)
         end
+        -- today's diary: the day's calendar events in a ruled box under the date
+        self.diary = nil
+        if first and Paper.calendarOn(self.plugin) then
+            local list = Paper.todayEvents()
+            if #list > 0 then
+                local label = TextWidget:new{ text = _("TODAY"), face = Font:getFace("smallinfofontbold", 8) }
+                local lw = label:getSize().w + S(10)
+                local text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left" }
+                if text:getSize().h > text:getLineHeight() * 3 then
+                    local lh = text:getLineHeight()
+                    text:free()
+                    text = TextBoxWidget:new{ text = Paper.diaryText(list), face = serif(10), width = inner_w - lw - S(12), alignment = "left",
+                        height = lh * 3, height_adjust = true, height_overflow_show_ellipsis = true }
+                end
+                self.widgets[#self.widgets + 1] = label
+                self.widgets[#self.widgets + 1] = text
+                local box_h = text:getSize().h + S(8)
+                self.diary = { x = margin, y = y, w = inner_w, h = box_h, label = label, text = text, label_w = lw }
+                y = y + box_h + S(7)
+            end
+        end
         -- the foot: fetch, the page, the arrows
         local foot_face = Font:getFace("smallinfofont", 10)
         local fetch = TextWidget:new{ text = (edition and edition.day == D.day()) and _("Fetch again") or _("Fetch today's paper"), face = foot_face }
@@ -737,6 +842,16 @@ local function pageClass()
                 bb:paintRect(cx + d, cy - d, 2, 2, Blitbuffer.COLOR_BLACK)
             end
         end
+        if self.diary then
+            local dy = self.diary
+            bb:paintBorder(x + dy.x, y + dy.y, dy.w, dy.h, 1, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(x + dy.x, y + dy.y, dy.label_w, dy.h, Blitbuffer.COLOR_BLACK)
+            -- (white on black: the label painted, then its box turned over)
+            bb:paintRect(x + dy.x + 1, y + dy.y + 1, dy.label_w - 2, dy.h - 2, Blitbuffer.COLOR_WHITE)
+            dy.label:paintTo(bb, x + dy.x + S(5), y + dy.y + math.floor((dy.h - dy.label:getSize().h) / 2))
+            bb:invertRect(x + dy.x + 1, y + dy.y + 1, dy.label_w - 2, dy.h - 2)
+            dy.text:paintTo(bb, x + dy.x + dy.label_w + S(6), y + dy.y + S(4))
+        end
         if self.message then self.message.widget:paintTo(bb, x + self.message.x, y + self.message.y) end
         for _i, r in ipairs(self.col_rules) do bb:paintRect(x + r.x, y + r.y, 1, r.h, Blitbuffer.COLOR_GRAY) end
         for i, b in ipairs(self.blocks) do
@@ -811,6 +926,8 @@ local function pageClass()
             if px >= W * 0.5 then return "prev" end
             return nil
         end
+        local dy = self.diary
+        if dy and px >= dy.x and px < dy.x + dy.w and py >= dy.y and py < dy.y + dy.h then return "diary" end
         for i, b in ipairs(self.blocks) do
             if px >= b.x and px < b.x + b.w and py >= b.y and py < b.y + math.min(b.h, b.clip or b.h) then return i end
         end
@@ -822,6 +939,12 @@ local function pageClass()
         if what == "fetch" then Paper.refresh(self.plugin, self); return true end
         if what == "next" then return self:turn(1) end
         if what == "prev" then return self:turn(-1) end
+        if what == "diary" then
+            -- (the Calendar tab, for the day's events in full)
+            UIManager:close(self)
+            UIManager:nextTick(function() pcall(function() require("gzreader_calendar").show(self.plugin) end) end)
+            return true
+        end
         if what then self:open(what) end
         return true
     end
@@ -1104,6 +1227,17 @@ function Paper.settingsItems(plugin)
                 if st.pictures == false then st.pictures = nil else st.pictures = false end
                 plugin:save()
                 D.feedsChanged()
+            end,
+        },
+        {
+            text = _("Today's calendar events"),
+            help_text = _("Today's events from the Calendar tab's calendars in a box at the top of the front page (all-day ones first). They are the ones the Calendar tab last synced, kept on this Kindle: nothing is fetched for it, and nothing about them leaves the Kindle. A tap on the box opens the Calendar tab. Nothing is shown on a day without events."),
+            enabled_func = on,
+            checked_func = function() return on() and Paper.calendarOn(plugin) end,
+            callback = function()
+                local st = D.store(plugin)
+                if st.calendar == false then st.calendar = nil else st.calendar = false end
+                plugin:save()
             end,
         },
         { text = _("Feeds"), enabled_func = on, sub_item_table_func = function() return Paper.feedItems(plugin) end },

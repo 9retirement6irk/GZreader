@@ -476,8 +476,17 @@ while start <= 40 and pages < 50 do
     start, pages = nxt, pages + 1
 end
 local in_order = #every == 40
+table.sort(every)
 for i, v in ipairs(every) do if v ~= i then in_order = false end end
-check(in_order and seen_all, "40 stories over " .. pages .. " pages: each once, in order, none past a column's foot")
+check(in_order and seen_all, "40 stories over " .. pages .. " pages: each once, none past a column's foot")
+placed, nxt = Paper.fill(1, 4, 2, 100, 10, heights({ 40, 80, 30, 50 }))
+check(placedText(placed) == "1@1:0 3@1:50 2@2:0" and nxt == 4, "a story that doesn't fit waits for the next column's top; a shorter one after it fills the hole … " .. placedText(placed))
+placed, nxt = Paper.fill(1, 3, 2, 100, 10, heights({ 70, 80, 30 }))
+check(placedText(placed) == "1@1:0 2@2:0" and nxt == 3, "little room left under a story: nothing is moved up")
+placed, nxt = Paper.fill(1, 2, 2, 100, 10, heights({ 40, 80 }))
+check(placedText(placed) == "1@1:0 2@2:0" and nxt == 3, "the last story waiting is still placed")
+placed, nxt = Paper.fill(1, 3, 1, 100, 10, heights({ 40, 80, 30 }))
+check(placedText(placed) == "1@1:0" and nxt == 2, "in the last column nothing is passed over (the next page starts with it)")
 -- Home's folded newspaper
 local sizes = { shadow = 3, pad = 6, margin = 2, top = 2, gutter = 14, mast_h = 24, rules_h = 7, lead_h = 20, line_h = 16 }
 local L = Paper.homeLayout(576, 130, sizes)
@@ -604,6 +613,44 @@ rows = Paper.settingsItems(plugin)
 check(#rows == 1 and rows[1].enabled == false and rows[1].text:find("Wi-Fi", 1, true), "a Kindle without Wi-Fi: Settings says the paper needs it")
 net.usb = false
 
+print("== today's calendar events on the front page")
+local function tm(day, h, m) return os.time{ year = 2026, month = 11, day = day, hour = h, min = m or 0 } end
+local evs = {
+    { title = "Dentist", start = tm(17, 9, 5), finish = tm(17, 10) },
+    { title = "Yesterday", start = tm(16, 9), finish = tm(16, 10) },
+    { title = "Birthday", all_day = true, start = tm(17, 0), finish = tm(18, 0) },
+    { title = "Night shift", start = tm(16, 22), finish = tm(17, 6, 30) },
+    { title = "", start = tm(17, 18), finish = tm(17, 19) },
+    { title = "Tomorrow", start = tm(18, 0), finish = tm(18, 1) },
+    { title = "Ended at midnight", all_day = true, start = tm(16, 0), finish = tm(17, 0) },
+    { title = "No end", start = tm(17, 23, 59) },
+}
+rawset(_G, "G_reader_settings", { isTrue = function() return false end, readSetting = function() return WORK .. "/nohome/GZreader" end })
+local today_list = Paper.todayEvents(tm(17, 12), evs)
+local names = {}
+for _i, ev in ipairs(today_list) do names[#names + 1] = ev.when .. " " .. ev.title end
+check(table.concat(names, " | ") == "All day Birthday | Until 6:30 Night shift | 9:05 Dentist | 18:00 (no title) | 23:59 No end",
+    "today's events: all-day first, then by time; one running since yesterday says until when; not yesterday's or tomorrow's … " .. table.concat(names, " | "))
+rawset(_G, "G_reader_settings", { isTrue = function(_s, k) return k == "twelve_hour_clock" end, readSetting = function() return WORK .. "/nohome/GZreader" end })
+check(Paper.todayEvents(tm(17, 12), evs)[3].when == "9:05 AM" and Paper.clockText(tm(17, 18), true) == "6:00 PM", "with the 12-hour clock: 9:05 AM")
+rawset(_G, "G_reader_settings", { isTrue = function() return false end, readSetting = function() return WORK .. "/nohome/GZreader" end })
+check(#Paper.todayEvents(tm(19, 12), evs) == 0 and #Paper.todayEvents(tm(17, 12), {}) == 0, "a day without events: nothing")
+check(Paper.diaryText(today_list, 2) == "All day Birthday   \u{00B7}   Until 6:30 Night shift   \u{00B7}   and 3 more", "the diary line, and how many more")
+package.loaded["gzreader_caldav"] = { loadCache = function() return { events = { { title = "Kept", start = os.time(), finish = os.time() + 60 } } } end }
+check(Paper.todayEvents()[1].title == "Kept", "read from what the Calendar tab keeps on the Kindle (nothing fetched)")
+package.loaded["gzreader_caldav"] = { loadCache = function() error("no cache") end }
+check(#Paper.todayEvents() == 0, "no calendar: nothing, no error")
+plugin = { store = { daily = { enabled = true } }, save = function() saves = saves + 1 end }
+check(Paper.calendarOn(plugin) == true, "on unless unticked")
+rows = Paper.settingsItems(plugin)
+row("Today's calendar events").callback()
+check(Paper.calendarOn(plugin) == false and plugin.store.daily.calendar == false and row("Today's calendar events").checked_func() == false, "Settings → Home → Daily paper → Today's calendar events: unticked")
+row("Today's calendar events").callback()
+check(Paper.calendarOn(plugin) == true and plugin.store.daily.calendar == nil, "… and ticked again")
+check(row("Today's calendar events").help_text:find("nothing about them leaves the Kindle", 1, true), "the setting says the events stay on the Kindle")
+local ds = read(PLUGIN .. "/gzreader_dailyscreen.lua")
+check(ds:find("if first and Paper.calendarOn(self.plugin) then", 1, true) and ds:find('return "diary"', 1, true), "the front page draws the box when it's on, and a tap on it is the Calendar tab's")
+
 print("== pictures fetched with the paper")
 plugin = { store = { daily = { enabled = true, off = {}, feeds = { { url = "https://pics.example.com/rss", name = "Pics" } } } }, save = function() end }
 for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, false) end
@@ -653,6 +700,7 @@ local form = { enabled = "1", count = "2", f_2 = "1" }
 form["d_" .. Daily.DEFAULT_FEEDS[2].id] = "1"
 Daily.pageSave(plugin, form)
 local st2 = plugin.store.daily
+check(st2.calendar == false and ps.calendar == true and html:find('name="calendar" value="1" checked', 1, true), "Today's calendar events: ticked on the page; unticked when Save comes without it")
 check(st2.pictures == false and ps.pictures == true and html:find('name="pictures" value="1" checked', 1, true), "With pictures: ticked on the page; unticked when Save comes without it")
 check(st2.enabled == true and st2.shelf == false and st2.feeds[1].enabled == false and st2.feeds[2].enabled == nil, "Save: the switches and your feeds' ticks as sent (an unticked box isn't sent)")
 check(Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[2]) and not Daily.defaultOn(plugin, Daily.DEFAULT_FEEDS[1]) and Daily.tried_at == nil and Daily.edition.day == "",

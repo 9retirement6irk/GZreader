@@ -65,6 +65,16 @@ add({ fn = function(E)
         local n = Daily.addPictures(edition, Daily.pictureDir(), function(url) return url:find("Seven", 1, true) and bytes or (url:find("comet", 1, true) or url:find("radio", 1, true)) and bytes or nil end)
         check(E, n == 3 and Daily.picturePath(edition.sections[1].items[1]) ~= nil, "3 stories got their picture … " .. tostring(n))
     end
+    -- today's calendar events, as the Calendar tab keeps them
+    local t = os.date("*t")
+    local function at(h, m) return os.time{ year = t.year, month = t.month, day = t.day, hour = h, min = m or 0 } end
+    require("gzreader_caldav").saveCache({ at = os.time(), from = at(0), to = at(0) + 86400, events = {
+        { title = "Farmers' market", all_day = true, start = at(0), finish = at(0) + 86400 },
+        { title = "Dentist", start = at(9, 30), finish = at(10, 15) },
+        { title = "Lunch with Sam", start = at(12, 30), finish = at(13, 30) },
+        { title = "Book club: chapters 4 to 7", start = at(19), finish = at(21) },
+    } })
+    check(E, #Paper.todayEvents() == 4, "today's 4 calendar events are found")
     Daily.keep(edition)
     Daily.tried_at = os.time() -- (no network here)
     check(E, Paper.onShelf(p) and not Paper.onHome(), "on: the newspaper goes on Home's bookshelf, not in a row of its own")
@@ -129,6 +139,7 @@ add({ fn = function(E)
     check(E, page ~= nil and page.page == 1 and #page.blocks >= 3 and page.blocks[1].w > page.blocks[2].w,
         "the front page: the lead story across it, the others in columns … " .. tostring(page and #page.blocks))
     check(E, page.has_next, "more pages behind it")
+    check(E, page.diary ~= nil and page.diary.y < page.blocks[1].y and page:at(page.diary.x + 5, page.diary.y + 5) == "diary", "today's events in a box above the lead story")
     local inside = true
     for _i, b in ipairs(page.blocks) do
         if b.x < 0 or b.x + b.w > page.dimen.w or b.y + math.min(b.h, b.clip or b.h) > page.foot.y then inside = false end
