@@ -81,6 +81,16 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
+- **Folded sections** (`<details>`, such as the fork's **Text from …**
+  blocks with the words read from a drawing or a file) show as Memos' web app
+  shows them: a row with **›** and the section's title, folded. Tap it (or
+  press its letter) to open it, again to fold it. Code blocks show in a grey
+  box with their language above, the text as written.
+- **Tags** show as grey chips **where their line is**, as on the web; a tag
+  inside a sentence stays in it. A journal entry's mood, feeling, cause and
+  activity tags (`#mood/…`, `#felt/…`, `#impact/…`, `#did/…`, or the
+  prefixes set in Memos' journal settings) are always at the top, under the
+  entry's heading. There's no list of every tag at the bottom any more.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
@@ -104,6 +114,13 @@ API to `/api` are found too.
   - **Tap** to put the cursor there. Tap a checklist item's **☐** to tick it.
   - **Hold** a word to select it, and drag to stretch the selection over
     words and lines. Typing replaces the selection; ⌫ deletes it.
+  - A **folded section** (`<details>`) is a row with **›** and its title, as
+    in the web editor. Tap **›** to open it (what's in it shows indented,
+    and you edit it as any text; a thin line marks its end) and **⌄** to fold
+    it again. Tap the title for **Open / Fold**, **Rename…**, **Remove the
+    section** (what's in it stays) and **Delete the section and what's in
+    it**. Typing on the row starts a new line inside the section. Opening and
+    folding only changes how the editor shows it, not the note.
   - The keyboard has **⮠ Enter** and **← →**. Enter starts a new line (the
     next item in a list; Enter on an empty item ends the list). ⌫ at the
     start of a line joins it to the line before. Swipe up or down to scroll a
@@ -389,7 +406,8 @@ API to `/api` are found too.
     5-way).
   - **Saved entries** show their mood as the web does: the **face beside the
     note's time** on the board's sticky note and, on its page, the face and
-    the mood's name above the text, and the **tags as light grey chips**.
+    the mood's name above the text, and the **tags as light grey chips**
+    at the top, under the entry's heading.
   - A **prompt** (**↻ Another** for the next one) and, right under it, your
     **words on lined paper**, typed straight in as plain text. A tap in it
     brings the keyboard; the questions above fold away while you type, so

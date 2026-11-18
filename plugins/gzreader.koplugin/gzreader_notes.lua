@@ -916,6 +916,34 @@ function Notes.moodFace(m, size)
     return v and require("gzreader_moodface").widget{ valence = v, size = size } or nil
 end
 
+--- Is `tag` (without its #) one the journal writes: under the mood, feeling,
+--- cause (impact) or activity prefix of the journal settings (Journal.settings)?
+function Notes.isJournalTag(tag, settings)
+    local Journal = require("gzreader_journal")
+    tag = tostring(tag or ""):lower()
+    for _i, key in ipairs({ "moodTagPrefix", "feelingTagPrefix", "impactTagPrefix", "activityTagPrefix" }) do
+        local p = Journal.normalizePrefix(settings and settings[key] or "")
+        if p ~= "" and #tag > #p and tag:sub(1, #p) == p then return true end
+    end
+    return false
+end
+
+--- A code block on a note's page (Sticky.page's "code"), as the web shows
+--- one: a light grey box with rounded corners, its language small at the
+--- top, the text as written in a fixed-width face.
+function Notes.codeBox(item, width)
+    local pad = S(8)
+    local col = VerticalGroup:new{ align = "left" }
+    if item.lang and item.lang ~= "" then
+        col[#col + 1] = TextWidget:new{ text = item.lang, face = Font:getFace("cfont", 12), fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+        col[#col + 1] = VerticalSpan:new{ width = S(2) }
+    end
+    col[#col + 1] = TextBoxWidget:new{ text = item.text or "", face = Font:getFace("smallinfont", 15),
+        width = width - 2 * pad - 2 * Size.border.thin, bgcolor = Blitbuffer.Color8(0xEE) }
+    return FrameContainer:new{ background = Blitbuffer.Color8(0xEE), color = Blitbuffer.Color8(0xCC),
+        bordersize = Size.border.thin, radius = S(6), padding = pad, margin = 0, width = width, col }
+end
+
 --- A note's tags as the web shows them in a note: light grey chips with
 --- rounded corners, as many on a line as fit `width`.
 function Notes.tagChips(tags, width, face)
@@ -1990,12 +2018,6 @@ function NoteView:build()
         .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
         .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
     add(VerticalSpan:new{ width = S(10) })
-    local para = {}
-    local function flush()
-        local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-        para = {}
-        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
-    end
     -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
     local mood = Notes.moodOf(m)
     if mood then
@@ -2004,45 +2026,118 @@ function NoteView:build()
                 fgcolor = Blitbuffer.COLOR_DARK_GRAY } })
         add(VerticalSpan:new{ width = S(8) })
     end
-    local n_check = 0
-    for _i, l in ipairs(Sticky.lines(m.content)) do
-        if l.kind == "check" then
-            flush()
-            n_check = n_check + 1
-            local key = Touch.letter(KEYS[#self.picks + 1])
-            self.picks[#self.picks + 1] = { check = n_check }
-            local focused = self.focus == #self.picks
-            local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(26), h = S(26) }, key, "square")
-            add(self:tappable(#self.picks, FrameContainer:new{ padding = S(3), margin = 0, bordersize = focused and Size.border.thick or 0, width = inner,
-                HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
-                    TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
-                    HorizontalSpan:new{ width = S(8) },
-                    TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = inner - S(90),
-                        fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
-        elseif l.kind == "heading" then
-            flush()
-            add(VerticalSpan:new{ width = S(6) })
-            add(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
-                width = inner })
-        elseif l.kind == "image" then
-            flush()
-            local pic = Notes.pictureFor(self.plugin, m, l.src, inner, math.floor(sh * 0.45), function()
-                if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
-            end, l.width)
-            if pic then
-                -- placed as in Memos (left, center or right; sized in the editor)
-                local pw = pic:getSize().w
-                local room = math.max(0, inner - pw)
-                local before = l.align == "center" and math.floor(room / 2) or l.align == "right" and room or 0
-                add(VerticalSpan:new{ width = S(6) })
-                add(before > 0 and HorizontalGroup:new{ HorizontalSpan:new{ width = before }, pic } or pic)
-                add(VerticalSpan:new{ width = S(6) })
-            end
-        elseif not Sticky.tagsOnly(l.text) then -- (tags have their own row below)
-            para[#para + 1] = Sticky.plain(l.text)
+    -- the text, as the web shows it: a <details> section folded under its
+    -- title (a tap or its letter opens it), code in a grey box, a line of
+    -- tags as chips where it is; a journal entry's mood, feeling, cause and
+    -- activity tags at the top, under its heading (Notes.isJournalTag)
+    local page = Sticky.page(m.content)
+    local journal = Notes.journalSettings(self.plugin)
+    local top, top_seen = {}, {}
+    local function journalTags(items)
+        for _i, l in ipairs(items) do
+            if l.kind == "tags" then
+                for _j, t in ipairs(l.tags) do
+                    if Notes.isJournalTag(t, journal) and not top_seen[t:lower()] then
+                        top_seen[t:lower()] = true
+                        top[#top + 1] = t
+                    end
+                end
+            elseif l.kind == "details" then journalTags(l.items) end
         end
     end
-    flush()
+    journalTags(page)
+    if #top > 0 then table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" }) end
+    self.opened = self.opened or {}
+    local n_check = 0
+    local function lay(items, col, width, path)
+        local para = {}
+        local function put(w) col[#col + 1] = w end
+        local function flush()
+            local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+            para = {}
+            if t ~= "" then put(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = width }) end
+        end
+        for k, l in ipairs(items) do
+            if l.kind == "check" then
+                flush()
+                n_check = n_check + 1
+                local key = Touch.letter(KEYS[#self.picks + 1])
+                self.picks[#self.picks + 1] = { check = n_check }
+                local focused = self.focus == #self.picks
+                local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(26), h = S(26) }, key, "square")
+                put(self:tappable(#self.picks, FrameContainer:new{ padding = S(3), margin = 0, bordersize = focused and Size.border.thick or 0, width = width,
+                    HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
+                        TextWidget:new{ text = l.done and "\u{2611}" or "\u{2610}", face = Font:getFace("cfont", 26) },
+                        HorizontalSpan:new{ width = S(8) },
+                        TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(90),
+                            fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
+            elseif l.kind == "heading" then
+                flush()
+                put(VerticalSpan:new{ width = S(6) })
+                put(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
+                    width = width })
+            elseif l.kind == "image" then
+                flush()
+                local pic = Notes.pictureFor(self.plugin, m, l.src, width, math.floor(sh * 0.45), function()
+                    if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
+                end, l.width)
+                if pic then
+                    -- placed as in Memos (left, center or right; sized in the editor)
+                    local pw = pic:getSize().w
+                    local room = math.max(0, width - pw)
+                    local before = l.align == "center" and math.floor(room / 2) or l.align == "right" and room or 0
+                    put(VerticalSpan:new{ width = S(6) })
+                    put(before > 0 and HorizontalGroup:new{ HorizontalSpan:new{ width = before }, pic } or pic)
+                    put(VerticalSpan:new{ width = S(6) })
+                end
+            elseif l.kind == "toptags" or l.kind == "tags" then
+                local list = top
+                if l.kind == "tags" then
+                    list = {}
+                    for _j, t in ipairs(l.tags) do if not Notes.isJournalTag(t, journal) then list[#list + 1] = t end end
+                end
+                if #list > 0 then
+                    flush()
+                    put(VerticalSpan:new{ width = S(6) })
+                    put(Notes.tagChips(list, width, Notes.pageFace(16)))
+                    put(VerticalSpan:new{ width = S(6) })
+                end
+            elseif l.kind == "code" then
+                flush()
+                n_check = n_check + (l.checks or 0)
+                put(VerticalSpan:new{ width = S(4) })
+                put(Notes.codeBox(l, width))
+                put(VerticalSpan:new{ width = S(4) })
+            elseif l.kind == "details" then
+                flush()
+                local where = path .. "." .. k
+                local open = self.opened[where]
+                if open == nil then open = l.open end
+                local key = Touch.letter(KEYS[#self.picks + 1])
+                self.picks[#self.picks + 1] = { details = where, open = open }
+                local focused = self.focus == #self.picks
+                local sc = key and Menu.getItemShortCutIcon(nil, Geom:new{ w = S(26), h = S(26) }, key, "square")
+                put(self:tappable(#self.picks, FrameContainer:new{ padding = S(3), margin = 0, bordersize = focused and Size.border.thick or 0, width = width,
+                    HorizontalGroup:new{ align = "center", sc or HorizontalSpan:new{ width = Touch.keys() and S(26) or 0 }, HorizontalSpan:new{ width = Touch.keys() and S(10) or 0 },
+                        require("gzreader_chevron").widget{ size = S(22), open = open },
+                        HorizontalSpan:new{ width = S(6) },
+                        TextWidget:new{ text = (l.summary and l.summary ~= "") and l.summary or _("Details"),
+                            face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(80) } } }))
+                if open then
+                    local sub = VerticalGroup:new{ align = "left" }
+                    lay(l.items, sub, width - S(28), where)
+                    put(HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = S(28) }, sub })
+                    put(VerticalSpan:new{ width = S(6) })
+                else
+                    n_check = n_check + Sticky.pageChecks(l.items) -- (Sticky.toggle counts them)
+                end
+            else
+                para[#para + 1] = Sticky.plain(l.text)
+            end
+        end
+        flush()
+    end
+    lay(page, g, inner, "")
     -- the note's drawings, after its text, as wide as the page (a tap opens one)
     local shown = {}
     local sheets = Notes.drawings(m)
@@ -2069,10 +2164,8 @@ function NoteView:build()
         end
     end
     add(VerticalSpan:new{ width = S(12) })
-    if #(m.tags or {}) > 0 then
-        -- (as the web shows tags: light grey chips)
-        add(Notes.tagChips(m.tags, inner, Notes.pageFace(16)))
-    end
+    -- (tags: as chips where their line is, a journal entry's at the top; a
+    -- tag inside a sentence stays in it, as on the web)
     if m.place then
         add(VerticalSpan:new{ width = S(4) })
         add(iconLine("place", m.place, Font:getFace("cfont", 17)))
@@ -2161,10 +2254,16 @@ function NoteView:build()
     end
     local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
     local content_h = sh - title_h - footer_h
+    local kept_y = self.scroller and self.scroller._scroll_offset_y or 0
     self.scroller = ScrollableContainer:new{
         dimen = Geom:new{ w = sw, h = content_h }, show_parent = self,
         HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = margin }, g },
     }
+    if kept_y > 0 then
+        -- (laid out again, after a tick or a section opened: still where you were)
+        self.scroller:initState()
+        self.scroller._scroll_offset_y = math.min(kept_y, self.scroller._max_scroll_offset_y or 0)
+    end
     require("gzreader_livescroll").on(self.scroller) -- (the note moves with the finger)
     self[1] = FrameContainer:new{
         width = sw, height = sh, padding = 0, bordersize = 0, background = Blitbuffer.COLOR_WHITE,
@@ -2226,6 +2325,12 @@ function NoteView:pickIndex(idx)
         self:refresh()
     elseif pick.att then
         Notes.tapAttachment(self.plugin, self.memo, pick.att)
+    elseif pick.details then
+        -- a folded section opens (or folds again) where it is
+        self.opened = self.opened or {}
+        self.opened[pick.details] = not pick.open
+        if not Touch.on() then self.focus = idx end -- (the frame shows where the keys are)
+        self:refresh()
     end
     return true
 end

@@ -68,6 +68,8 @@ RichEdit.MIN_PICTURE = 40 -- the narrowest a picture is dragged to
 RichEdit.TEXT_SIZE = 20
 RichEdit.HEADING_SIZE = { 28, 24, 22, 21, 20, 20 }
 RichEdit.MONO_SIZE = 16
+RichEdit.SECTION_INDENT = 24 -- what's inside an open <details> section, this much to the right (scaled)
+RichEdit.CHEVRON = 22 -- a section's chevron (scaled); a tap this far into its row opens or folds it
 
 -- ------------------------------------------------------------ faces, widths
 
@@ -161,7 +163,35 @@ function RichEdit.layout(doc, width, pictured)
     local lines = {}
     local y = 0
     local prev, prev_num
+    local depth, folded = 0, 0 -- (open <details> sections around the block; inside a folded one: how deep)
     for _k, b in ipairs(doc.blocks) do
+        if folded > 0 then
+            -- (inside a folded section: not shown, its end included)
+            if b.section == "start" then folded = folded + 1 elseif b.section == "end" then folded = folded - 1 end
+            goto next_block
+        end
+        if b.section == "start" or (b.section == "end" and depth > 0) then
+            -- a <details> section's start: a row with a chevron and its title, a
+            -- tap on the chevron opens or folds it (RichEdit.SECTION); its end: a thin line
+            if prev then y = y + S(8) end
+            if b.section == "end" then depth = depth - 1 end
+            local face = RichEdit.face(RichEdit.TEXT_SIZE)
+            local lh, base = lineMetrics(face)
+            local x0 = S(RichEdit.SECTION_INDENT) * depth
+            local h = b.section == "start" and lh or S(10)
+            local xs = {}
+            for _i = 1, #b.chars + 1 do xs[#xs + 1] = x0 end
+            local info = b.section == "start" and Blocks.sectionStart(table.concat(b.chars)) or nil
+            lines[#lines + 1] = { b = b, a = 1, z = #b.chars, y = y, h = h, base = base, x0 = x0, xs = xs, w = {},
+                st = { size = RichEdit.TEXT_SIZE }, first = true, last = true,
+                section = { start = b.section == "start", folded = b.folded, title = info and info.title or "" } }
+            y = y + h
+            if b.section == "start" then
+                if b.folded then folded = 1 else depth = depth + 1 end
+            end
+            prev, prev_num = b, nil
+            goto next_block
+        end
         local num
         if b.kind == "ordered" then
             num = (prev and prev.kind == "ordered" and (prev.indent or "") == (b.indent or "")) and ((prev_num or 1) + 1) or (b.num or 1)
@@ -176,8 +206,10 @@ function RichEdit.layout(doc, width, pictured)
         if pictured then pw, ph, pic = pictured(b) end
         if pw then
             -- a picture: one line as tall as it, placed as in Memos
-            local room = math.max(0, width - pw)
-            local px = pic.align == "center" and math.floor(room / 2) or pic.align == "right" and room or 0
+            local sx = S(RichEdit.SECTION_INDENT) * depth
+            if sx > 0 and pw > width - sx then ph, pw = math.max(1, math.floor(ph * (width - sx) / pw)), width - sx end
+            local room = math.max(0, width - sx - pw)
+            local px = sx + (pic.align == "center" and math.floor(room / 2) or pic.align == "right" and room or 0)
             local xs = {}
             for _i = 1, #b.chars do xs[#xs + 1] = px end
             xs[#xs + 1] = px + pw
@@ -190,7 +222,7 @@ function RichEdit.layout(doc, width, pictured)
         end
         local base_face = RichEdit.face(st.size, st.bold, false, st.mono)
         local lh, base = lineMetrics(base_face)
-        local indent = S(28) * math.floor(#(b.indent or "") / 2)
+        local indent = S(28) * math.floor(#(b.indent or "") / 2) + S(RichEdit.SECTION_INDENT) * depth
         local gutter = (b.kind == "bullet" or b.kind == "task" or b.kind == "ordered") and S(40) or 0
         local x0 = indent + gutter
         local maxw = math.max(S(40), width - x0)
@@ -325,6 +357,10 @@ end
 --- Lays out again after a change (and the flat text for the keyboard).
 function RichEdit:relayout()
     self.lines, self.total_h = RichEdit.layout(self.doc, self.width, function(b) return self:pictured(b) end)
+    if not RichEdit.lineOf(self.lines, self.cur) and self:unfoldAround(self.cur.b) then
+        -- (the cursor went into a folded section, by an arrow key or a search: it opens)
+        self.lines, self.total_h = RichEdit.layout(self.doc, self.width, function(b) return self:pictured(b) end)
+    end
     local list, pos = {}, nil
     for k, b in ipairs(self.doc.blocks) do
         if k > 1 then list[#list + 1] = "\n" end
@@ -394,6 +430,15 @@ function RichEdit:addChars(chars)
         self.doc.changed = true
         if chars == "\n" then return self:update("structure") end
     end
+    if self:sectionLine(self.cur.b) then
+        -- (a section's row or end takes no typing: the words go on a new line after it, inside an open section)
+        local sb = self.cur.b
+        if sb.section == "start" and sb.folded then sb.folded = false end
+        self.anchor = nil
+        self.cur = { b = Blocks.split(self.doc, sb, #sb.chars + 1), i = 1 }
+        self.doc.changed = true
+        if chars == "\n" then return self:update("structure") end
+    end
     local structure = self:deleteSelection()
     local b = self.cur.b
     local raw = b.kind == "raw" or b.kind == "image"
@@ -419,6 +464,125 @@ function RichEdit:addChars(chars)
         end
     end
     self:update(structure and "structure" or true)
+end
+
+--- Opens the folded <details> sections block `b` is in. True when any was.
+function RichEdit:unfoldAround(b)
+    local opened, stack = false, {}
+    for _k, x in ipairs(self.doc.blocks) do
+        if x == b then break end
+        if x.section == "start" then stack[#stack + 1] = x
+        elseif x.section == "end" and #stack > 0 then stack[#stack] = nil end
+    end
+    for _i, s in ipairs(stack) do
+        if s.folded then s.folded = false; opened = true end
+    end
+    return opened
+end
+
+--- The section row or end line block `b` shows as (RichEdit.layout), if any.
+function RichEdit:sectionLine(b)
+    for _i, l in ipairs(self.lines or {}) do
+        if l.section and l.b == b then return l end
+    end
+end
+
+--- A <details> section's start: open it or fold it (how the editor shows
+--- it; the note keeps how it was written). The cursor, if it was inside, goes to its row.
+function RichEdit:toggleSection(b)
+    b.folded = not b.folded
+    if b.folded then
+        local inside, depth = false, 0
+        for _k, x in ipairs(self.doc.blocks) do
+            if x == b then inside = true
+            elseif inside then
+                if x == self.cur.b or (self.anchor and x == self.anchor.b) then
+                    self.anchor = nil
+                    self.cur = { b = b, i = #b.chars + 1 }
+                    break
+                end
+                if x.section == "start" then depth = depth + 1
+                elseif x.section == "end" then
+                    if depth == 0 then break end
+                    depth = depth - 1
+                end
+            end
+        end
+    end
+    self:update(nil, true)
+end
+
+--- The section's title, from a dialog; or the section taken away (its words
+--- kept) or deleted with them.
+function RichEdit:sectionMenu(b)
+    local _ = require("gettext")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local info = Blocks.sectionStart(table.concat(b.chars)) or { title = "", open = false }
+    local dialog
+    local function run(fn) return function() UIManager:close(dialog); fn() end end
+    dialog = ButtonDialog:new{
+        title = info.title ~= "" and info.title or _("Section"),
+        buttons = {
+            { { text = b.folded and _("Open") or _("Fold"), callback = run(function() self:toggleSection(b) end) } },
+            { { text = _("Rename…"), callback = run(function() self:renameSection(b) end) } },
+            { { text = _("Remove the section (keep what's in it)"), callback = run(function() self:removeSection(b, false) end) } },
+            { { text = _("Delete the section and what's in it"), callback = run(function() self:removeSection(b, true) end) } },
+        },
+    }
+    UIManager:show(dialog)
+end
+
+function RichEdit:renameSection(b)
+    local _ = require("gettext")
+    local InputDialog = require("ui/widget/inputdialog")
+    local info = Blocks.sectionStart(table.concat(b.chars)) or { title = "", open = false }
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Section title"), input = info.title,
+        buttons = { {
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local t = dialog:getInputText():gsub("\n", " ")
+                UIManager:close(dialog)
+                Blocks.setText(b, Blocks.sectionMarkdown(t, info.open))
+                self:update("structure")
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+--- Takes section `b` away: its start and its end; with `everything`, what's in it too.
+function RichEdit:removeSection(b, everything)
+    local blocks = self.doc.blocks
+    local from, to
+    local depth = 0
+    for k, x in ipairs(blocks) do
+        if x == b then from = k
+        elseif from then
+            if x.section == "start" then depth = depth + 1
+            elseif x.section == "end" then
+                if depth == 0 then to = k; break end
+                depth = depth - 1
+            end
+        end
+    end
+    if not from then return end
+    to = to or (everything and #blocks or nil)
+    if everything then
+        for k = to, from, -1 do table.remove(blocks, k) end
+    else
+        if to then table.remove(blocks, to) end
+        table.remove(blocks, from)
+    end
+    if blocks[from] then blocks[from].moved = true end
+    if #blocks == 0 then blocks[1] = Blocks.new("paragraph") end
+    self.doc.changed = true
+    local at = blocks[math.min(from, #blocks)]
+    self.anchor = nil
+    self.cur = { b = at, i = 1 }
+    self:update("structure")
 end
 
 --- The cursor is on a picture shown as one.
@@ -627,6 +791,12 @@ end
 
 function RichEdit:delChar()
     if self:deleteSelection() then return self:update("structure") end
+    if self:sectionLine(self.cur.b) then
+        -- (not into a section's Markdown: to the line before; the section goes by its menu)
+        local prev = self.doc.blocks[(Blocks.indexOf(self.doc, self.cur.b) or 1) - 1]
+        if prev then self:setCursor({ b = prev, i = #prev.chars + 1 }) end
+        return self:update()
+    end
     local b, i = self.cur.b, self.cur.i
     if i > 1 then
         Blocks.delete(b, i - 1, i - 1)
@@ -977,6 +1147,17 @@ function RichEdit:onTapEdit(_arg, ges)
     end
     if self.picked and self:tabAt(x, y) then return true end
     self.picked = nil
+    -- a section's row: the chevron opens or folds it, its title has the section's menu
+    if l and l.section and l.section.start then
+        if x < l.x0 + S(RichEdit.CHEVRON) + S(16) then self:toggleSection(l.b) else self:sectionMenu(l.b) end
+        return true
+    end
+    if l and l.section then -- (its end: the cursor on the line after it)
+        local nxt = self.doc.blocks[(Blocks.indexOf(self.doc, l.b) or 0) + 1]
+        if nxt then self:setCursor({ b = nxt, i = 1 }) end
+        self:update()
+        return true
+    end
     -- a checklist item's box: ticks it
     if l and l.first and l.b.kind == "task" and x < l.x0 and y + self.top >= l.y then
         Blocks.toggleDone(l.b)
@@ -1156,6 +1337,8 @@ function RichEdit:paintTo(bb, x, y)
         local ly = l.y - top
         if l.picture and ly + l.h > 0 and ly < h then
             self:paintPicture(bb, x, y, l, ly)
+        elseif l.section and ly >= 0 and ly + l.h <= h then
+            self:paintSection(bb, x, y, l, ly)
         elseif ly + l.h > 0 and ly < h then
             if ly >= 0 and ly + l.h <= h then
                 local st, b = l.st, l.b
@@ -1205,8 +1388,14 @@ function RichEdit:paintTo(bb, x, y)
             end
         end
     end
-    -- the cursor (not on a picture: it's picked instead)
-    if not p and not self:onPicture() then
+    -- the cursor (not on a picture: it's picked instead; a section's row: framed)
+    local on_section = self:sectionLine(self.cur.b)
+    if not p and on_section and on_section.section.start then
+        local ly = on_section.y - top
+        if ly >= 0 and ly + on_section.h <= h then
+            bb:paintBorder(x + on_section.x0, y + ly, self.width - on_section.x0, on_section.h, cursorWidth(), Blitbuffer.COLOR_BLACK)
+        end
+    elseif not p and not on_section and not self:onPicture() then
         local li, cx = RichEdit.lineOf(self.lines, self.cur)
         local l = li and self.lines[li]
         if l then
@@ -1220,6 +1409,23 @@ function RichEdit:paintTo(bb, x, y)
     if top > 0 then bb:paintRect(x, y, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
     if top + h < self.total_h then bb:paintRect(x, y + h - 1, self.width, 1, Blitbuffer.COLOR_DARK_GRAY) end
     self:paintBar(bb, x, y)
+end
+
+--- A <details> section's row: its chevron (› folded, ⌄ open) and its title,
+--- as Memos' web editor shows it; its end: a short light line.
+function RichEdit:paintSection(bb, x, y, l, ly)
+    local _ = require("gettext")
+    if not l.section.start then
+        bb:paintRect(x + l.x0, y + ly + math.floor(l.h / 2), S(40), 1, Blitbuffer.COLOR_LIGHT_GRAY)
+        return
+    end
+    local cs = S(RichEdit.CHEVRON)
+    require("gzreader_chevron").paint(bb, x + l.x0, y + ly + math.floor((l.h - cs) / 2), cs, not l.section.folded)
+    local face = RichEdit.face(RichEdit.TEXT_SIZE)
+    local title = l.section.title ~= "" and l.section.title or _("Details")
+    local room = self.width - l.x0 - cs - S(8)
+    if RenderText:sizeUtf8Text(0, room, face, title, true).x > room then title = RenderText:truncateTextByWidth(title, face, room, true) end
+    RenderText:renderUtf8Text(bb, x + l.x0 + cs + S(8), y + ly + l.base, face, title, true, false, Blitbuffer.COLOR_BLACK)
 end
 
 --- A picture's line: the picture (the part on the page), its frame and pull
