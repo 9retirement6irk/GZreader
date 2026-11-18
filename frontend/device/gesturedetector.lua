@@ -287,6 +287,12 @@ end
 
 function Contact:isTwoFingerTap(buddy_contact)
     local gesture_detector = self.ges_dec
+    -- GZreader: a contact with no first event recorded isn't a two-finger tap
+    -- (on a Kindle Scribe, pen and palm left one so, and this crashed:
+    -- "attempt to index field 'initial_tev' (a nil value)").
+    if not (self.initial_tev and self.current_tev and buddy_contact.initial_tev and buddy_contact.current_tev) then
+        return false
+    end
 
     local time_diff0 = self.current_tev.timev - self.initial_tev.timev
     if time_diff0 < 0 then

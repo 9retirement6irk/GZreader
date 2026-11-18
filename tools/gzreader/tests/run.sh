@@ -69,6 +69,9 @@ echo "== the drawing screen's input (finger; pen only, palm rejection)"
 echo "== pen Kindles: the pen and the touch screen kept apart (KOReader's input.lua)"
 (cd "$T" && luajit peninput_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
 [ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+echo "== a two-finger tap without a first event (KOReader's gesture detector)"
+(cd "$T" && luajit twofinger_test.lua "$REPO" "$KOBASE") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
 
 echo "== mark up a PDF (its pages as drawing pages)"
 (cd "$T" && luajit pdfmarkup_test.lua "$REPO/plugins/gzreader.koplugin" "$T/lib" "$KOBASE" "$WORK/pdfmarkup") 2>&1 | grep -E "FAIL|passed"
