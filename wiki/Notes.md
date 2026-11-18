@@ -222,8 +222,19 @@ API to `/api` are found too.
       the shape appears when you lift. It's drawn in the pen's thickness
       and colour, and is undone and rubbed out like a stroke (Memos gets
       it as a stroke along the outline).
+    - **Text:** typed text boxes. Tap the page where one goes and type its
+      words (**Add**). The box is chosen: a frame with a handle at its
+      bottom right corner. **Drag the box** to move it; **drag its corner**
+      to make it wider or narrower (the words wrap at its width) or taller.
+      Tap a chosen box to change its words (**Delete** takes it off); tap
+      another box to choose it, or the page to choose none. Undo and Redo
+      take back moves, sizes and words; **Erase page** takes the boxes too.
+      Memos gets them as its own text boxes, so they can be edited there,
+      and text boxes made in Memos can be moved and retyped here.
     - **Eraser:** rubs out whole strokes, as in Memos; five sizes (how near
       a stroke it has to pass) and **Erase page**.
+    - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
+      page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Undo**, **Redo**, and **⋮**: **Move to right side** (for the other
       hand; kept) and, with a pen, **Stylus shortcut** (what the pen's side
       button does; each tap takes the next tool).
