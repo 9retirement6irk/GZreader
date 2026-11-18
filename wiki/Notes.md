@@ -265,7 +265,8 @@ API to `/api` are found too.
   - **Paper:** shows the papers as a grid of small square tiles, six to a row
     (four on a narrow screen), as the Kindle Scribe's notebook templates:
     **Blank**, **Medium ruled**, **Wide ruled** and **Narrow ruled** (each
-    also **with margin**), **Vertical ruled** (and **with margin**),
+    also **with margin**: notebook paper, with a red margin line and three
+    punched holes), **Vertical ruled** (and **with margin**),
     **Graph**, **Dotted**, **Checklist**, **Daily planner**, **Weekly
     planner**, **Monthly planner**, **Habit tracker**, **Storyboard** and
     **Music**, then your own. The page's paper has a thick border. Tap one

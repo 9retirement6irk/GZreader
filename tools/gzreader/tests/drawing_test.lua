@@ -322,6 +322,14 @@ print("== notepaper: a background as memos keeps one")
     check(msc.files[msc.elements[1].fileId].dataURL == Notepaper.dataURL("music")
         and require("ffi/sha2").base64_to_bin(Notepaper.dataURL("music"):match(",(.*)$")) == io.open(Notepaper.path(Notepaper.get("music")), "rb"):read("*a"),
         "a page on a paper carries the paper's own PNG to Memos, byte for byte (its colours with it)")
+    -- notebook paper: the margin papers have their three punched holes (pale grey discs left of the margin line)
+    ;(function()
+        local f = io.open(Notepaper.path(Notepaper.get("ruled-medium-margin")), "rb"); local now = f:read("*a"); f:close()
+        f = io.open(Notepaper.path(Notepaper.get("ruled-medium-margin-plain")), "rb"); local was = f:read("*a"); f:close()
+        check(now ~= was and #now > 0 and #was > 0 and Notepaper.get("ruled-medium-margin").label == "Medium ruled with margin"
+            and Notepaper.get("ruled-wide-margin-plain") ~= nil and Notepaper.get("ruled-narrow-margin-plain") ~= nil,
+            "the margin papers are notebook paper again (punched holes); the ones without are kept for pages drawn on them")
+    end)()
     for _i, p in ipairs(Notepaper.EARLIER) do
         local sc = Notepaper.scene(p.id)
         check(not seen[p.id] and sc.elements[1] and Notepaper.idOf(sc, sc.elements[1]) == p.id,

@@ -49,6 +49,10 @@ Notepaper.EARLIER = {
     { id = "wide", label = _("Wide ruled (punched)"), file = "wide.png" },
     { id = "gregg", label = _("Gregg ruled"), file = "gregg.png" },
     { id = "cornell", label = _("Cornell notes"), file = "cornell.png" },
+    -- (the margin papers before they had their punched holes)
+    { id = "ruled-medium-margin-plain", label = _("Medium ruled with margin (no holes)"), file = "ruled-medium-margin-plain.png" },
+    { id = "ruled-wide-margin-plain", label = _("Wide ruled with margin (no holes)"), file = "ruled-wide-margin-plain.png" },
+    { id = "ruled-narrow-margin-plain", label = _("Narrow ruled with margin (no holes)"), file = "ruled-narrow-margin-plain.png" },
 }
 
 Notepaper.MAX_SIDE, Notepaper.MAX_BYTES = 1440, 600 * 1024
