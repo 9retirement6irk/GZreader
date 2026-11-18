@@ -1598,6 +1598,9 @@ local function drawCompact(m, select_number, cols, max_items)
         table.insert(layout_row, item)
     end
     m._gz_first = offset + 1
+    -- (what the pages before and after are made of: Notes.aheadSpecs)
+    m._gz_ahead = port and { kind = "scroll", offset = offset, count = count, screen = cols * rows, cell_w = cell_w, cell_h = cell_h }
+        or { kind = "compact", per = per, cell_w = cell_w, cell_h = cell_h }
     return select_number
 end
 
@@ -1689,7 +1692,123 @@ local function drawFull(m, select_number, cols, max_items)
     m._gz_selected = nil
     table.insert(m.item_group, row)
     m._gz_first = page[1] and page[1].note or 1
+    m._gz_ahead = { kind = "full", pages = pages, sizes = sizes, col_w = col_w }
     return select_number
+end
+
+---------------------------------------------------------------- drawn ahead
+
+-- Turning a page of the board was the slowest thing left on the Notes tab:
+-- every note on the new page painted and tilted. A page already seen costs
+-- nothing (its notes' images are kept), so once the board has been still
+-- for a moment the notes of the next page, then of the one before, are
+-- drawn too: one note at a time, between whatever else the Kindle is asked
+-- to do, and nothing if the board is drawn again first (a scroll, a page
+-- turn) or something is over it. Not on a Kindle with little memory (the 2
+-- and DX: Notes.keepImages).
+Notes.AHEAD_DELAY = 0.5 -- seconds the board is still before it starts
+Notes.AHEAD_GAP = 0.05  -- …and between two notes
+Notes.ahead_run = 0     -- (the board's draws: a newer one ends the older one's drawing ahead)
+
+--- The notes the board `m` would show a page on, then a page back, as its
+--- last draw laid them out: { entry, look, shortcut, w, h, part, size,
+--- focused } each, what a StickyItem there is made with.
+function Notes.aheadSpecs(m)
+    local a = m._gz_ahead
+    local out = {}
+    if type(a) ~= "table" then return out end
+    local function add(e, spec)
+        if type(e) == "table" and e.memo then
+            spec.entry = e
+            out[#out + 1] = spec
+        end
+    end
+    if a.kind == "scroll" then
+        -- one long page: the rows under what's drawn, then the rows above (the nearest first)
+        if Touch.keys() then return out end -- (a letter by where a note is on screen: not known ahead)
+        for idx = a.offset + a.count + 1, a.offset + a.count + a.screen do
+            add(m.item_table[idx], { look = Sticky.look(idx), w = a.cell_w, h = a.cell_h })
+        end
+        for idx = a.offset, math.max(1, a.offset - a.screen + 1), -1 do
+            add(m.item_table[idx], { look = Sticky.look(idx), w = a.cell_w, h = a.cell_h })
+        end
+        return out
+    end
+    local page, last = m.page or 1, m.page_num or 1
+    local after = page < last and page + 1 or 1 -- (as Menu's page keys go round)
+    local before = page > 1 and page - 1 or last
+    local function onPage(p)
+        local first = #out + 1
+        if a.kind == "full" then
+            local letter, n = {}, 0
+            for k, part in ipairs(a.pages[p] or {}) do
+                if not letter[part.note] then n = n + 1; letter[part.note] = n end
+                add(m.item_table[part.note], { look = Sticky.look(k), shortcut = Touch.letter(KEYS[letter[part.note]]),
+                    part = part, size = a.sizes[part.note], w = a.col_w, h = part.h })
+            end
+        else
+            for i = 1, a.per do
+                add(m.item_table[(p - 1) * a.per + i], { look = Sticky.look(i), shortcut = Touch.letter(KEYS[i]), w = a.cell_w, h = a.cell_h })
+            end
+        end
+        -- Kindles with keys: a page turn puts the 5-way on the page's first note, drawn with its frame
+        local top = out[first]
+        if top and not Touch.on() then
+            local framed = { focused = true }
+            for key, value in pairs(top) do framed[key] = value end
+            out[#out + 1] = framed
+        end
+    end
+    if after ~= page then onPage(after) end
+    if before ~= page and before ~= after then onPage(before) end
+    return out
+end
+
+--- Makes sure the image of the note `spec` describes is kept. True when it
+--- had to be painted (false: it was there already).
+function Notes.aheadDraw(m, spec)
+    local as_item = { shortcut = spec.shortcut, look = spec.look, focused = spec.focused == true, part = spec.part, size = spec.size,
+        dimen = { w = spec.w, h = spec.h } }
+    local kept = Notes.images[Notes.imageKey(as_item, spec.entry.memo)]
+    if kept then
+        kept.gen = Notes.image_gen -- (still wanted after the next draw's clear-out)
+        return false
+    end
+    -- (made as the board makes it: its init paints the note and keeps the image)
+    StickyItem:new{ entry = spec.entry, menu = m, look = spec.look, show_parent = m.show_parent, shortcut = spec.shortcut,
+        focused = spec.focused == true, part = spec.part, size = spec.size, dimen = Geom:new{ w = spec.w, h = spec.h } }
+    return true
+end
+
+--- After a draw of board `m`: its neighbouring pages' notes drawn ahead (see above).
+function Notes.drawAhead(m)
+    Notes.ahead_run = Notes.ahead_run + 1
+    local run = Notes.ahead_run
+    if not Notes.keepImages() then return false end
+    local specs, i, painted = nil, 0, 0
+    local function step()
+        if run ~= Notes.ahead_run or m._gz_closed or Notes.board ~= m or not Notes.onTop() then return end
+        specs = specs or Notes.aheadSpecs(m)
+        while true do
+            i = i + 1
+            local spec = specs[i]
+            if not spec then
+                if painted > 0 then Log.info("notes:", painted, "notes drawn ahead") end
+                return
+            end
+            local ok, drew = pcall(Notes.aheadDraw, m, spec)
+            if not ok then
+                Log.warn("notes: drawing ahead stopped:", tostring(drew))
+                return
+            end
+            if drew then -- (one note a turn)
+                painted = painted + 1
+                return UIManager:scheduleIn(Notes.AHEAD_GAP, step)
+            end
+        end
+    end
+    UIManager:scheduleIn(Notes.AHEAD_DELAY, step)
+    return true
 end
 
 local function drawBoard(m, select_number)
@@ -1707,7 +1826,7 @@ local function drawBoard(m, select_number)
     local view = Notes.view(m.plugin)
     local cols = NL.columns(view.columns, m.inner_dimen.w, S(NL.AUTO_MIN_W))
     local max_items = Touch.keys() and #KEYS or nil -- (a letter for every note)
-    m._gz_pages, m._gz_keyed = nil, {}
+    m._gz_pages, m._gz_keyed, m._gz_ahead = nil, {}, nil
     local page = m.page
     m:_recalculateDimen(false) -- (the room for the notes)
     if view.display == "full" and m.item_table[1] and m.item_table[1].memo then
@@ -1723,6 +1842,7 @@ local function drawBoard(m, select_number)
     UIManager:setDirty(m.show_parent, function()
         return "ui", old_dimen and old_dimen:combine(m.dimen) or m.dimen
     end)
+    Notes.drawAhead(m)
 end
 
 -- The board: a Menu (ZenOS puts its tab bar under it) whose page is drawn as

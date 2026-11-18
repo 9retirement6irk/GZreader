@@ -7940,6 +7940,107 @@ print("Notes (Memos v0.31)")
             "full: the page a note is on (after a change of layout the board shows that page)")
         check(#NL.paginate({}, 2, 100) == 0 and #NL.paginate({ { top = 20, blocks = {} } }, 2, 100) == 1, "full: no notes; a note with nothing but its top")
 
+        -- the board draws its neighbouring pages' notes ahead while it's still (a page turn then only shows them)
+        ;(function()
+            local Tch = require("gzreader_touch")
+            local UIMa = require("ui/uimanager")
+            local Lay = require("gzreader_layout")
+            local saved = { on = Tch.on, keys = Tch.keys, sched = UIMa.scheduleIn, mem = Lay.memTotalKB, draw = Notes.aheadDraw,
+                top = Notes.onTop, board = Notes.board }
+            local function entries(count)
+                local t = {}
+                for i = 1, count do t[i] = { memo = { name = "memos/a" .. i, content = "note " .. i } } end
+                return t
+            end
+            local function listed(specs)
+                local t = {}
+                for i, one in ipairs(specs) do t[i] = one.entry.memo.name:match("a(%d+)$") .. (one.focused and "f" or "") end
+                return table.concat(t, " ")
+            end
+            Tch.on, Tch.keys = function() return true end, function() return false end
+            local m = { item_table = entries(20), page = 2, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            local specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "13 14 15 16 17 18 1 2 3 4 5 6", "ahead (compact): the next page's notes, then the page before's (" .. listed(specs) .. ")")
+            check(specs[1].w == 300 and specs[1].h == 200 and specs[1].look == Sticky.look(1) and specs[8].look == Sticky.look(2)
+                and specs[1].shortcut == nil and not specs[1].focused, "ahead (compact): each with its place's look and size, no letter on a touch Kindle")
+            m.page = 4
+            check(listed(Notes.aheadSpecs(m)) == "1 2 3 4 5 6 13 14 15 16 17 18", "ahead: after the last page comes the first (as the page keys go round)")
+            m.page, m.page_num = 1, 2
+            check(listed(Notes.aheadSpecs(m)) == "7 8 9 10 11 12", "ahead: with two pages, the other one once")
+            m.page_num = 1
+            m.item_table = { { text = "No notes yet." } }
+            check(#Notes.aheadSpecs(m) == 0 and #Notes.aheadSpecs({ item_table = entries(3) }) == 0, "ahead: one page, a message, or a board not drawn yet: nothing")
+            Tch.on, Tch.keys = function() return false end, function() return true end
+            m = { item_table = entries(20), page = 1, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "7 8 9 10 11 12 7f 19 20 19f" and specs[1].shortcut == "Q" and specs[2].shortcut == "W" and specs[7].shortcut == "Q",
+                "ahead (keys): letters as the page gives them, and each page's first note with the 5-way's frame too (" .. listed(specs) .. ")")
+            -- Full: pages of parts; a note's parts share its letter
+            local sizes = { { sig = "s1" }, { sig = "s2" }, { sig = "s3" }, { sig = "s4" } }
+            local full_pages = { { { note = 1, col = 1, from = 1, to = 4, h = 100 } },
+                { { note = 2, col = 1, from = 1, to = 9, h = 300 }, { note = 2, col = 2, from = 10, to = 12, h = 90 }, { note = 3, col = 2, from = 1, to = 2, h = 80 } },
+                { { note = 4, col = 1, from = 1, to = 3, h = 120 } } }
+            m = { item_table = entries(4), page = 1, page_num = 3, _gz_ahead = { kind = "full", pages = full_pages, sizes = sizes, col_w = 280 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "2 2 3 2f 4 4f" and specs[1].shortcut == "Q" and specs[2].shortcut == "Q" and specs[3].shortcut == "W"
+                and specs[2].part == full_pages[2][2] and specs[2].size == sizes[2] and specs[2].h == 90 and specs[2].w == 280 and specs[3].look == Sticky.look(3),
+                "ahead (full): the next page's parts with their note's letter, measure and height (" .. listed(specs) .. ")")
+            -- Scroll up and down: the rows under what's drawn, then the rows above
+            Tch.on, Tch.keys = function() return true end, function() return false end
+            m = { item_table = entries(20), page = 1, page_num = 1, _gz_ahead = { kind = "scroll", offset = 4, count = 8, screen = 6, cell_w = 300, cell_h = 180 } }
+            specs = Notes.aheadSpecs(m)
+            check(listed(specs) == "13 14 15 16 17 18 4 3 2 1" and specs[1].look == Sticky.look(13) and specs[7].look == Sticky.look(4),
+                "ahead (scrolling): the rows below, then the rows above from the nearest (" .. listed(specs) .. ")")
+            Tch.keys = function() return true end
+            check(#Notes.aheadSpecs(m) == 0, "ahead (scrolling): not with letter keys (a letter goes by where the note is on screen)")
+            Tch.keys = function() return false end
+
+            -- one note a turn, after the board was still; ended by a newer draw, a window over it, the tab closed
+            local timers = {}
+            UIMa.scheduleIn = function(_u, sec, fn) timers[#timers + 1] = { s = sec, fn = fn } end
+            local function turnOne() local t = table.remove(timers, 1); if t then t.fn() end; return t end
+            local drawn = {}
+            Notes.aheadDraw = function(_m, one)
+                drawn[#drawn + 1] = one.entry.memo.name
+                return one.entry.memo.name ~= "memos/a14" -- (a14: its image was kept already)
+            end
+            Notes.onTop = function() return true end
+            Lay.memTotalKB = function() return 512 * 1024 end
+            m = { item_table = entries(20), page = 2, page_num = 4, _gz_ahead = { kind = "compact", per = 6, cell_w = 300, cell_h = 200 } }
+            Notes.board = m
+            check(Notes.drawAhead(m) == true and #timers == 1 and timers[1].s == Notes.AHEAD_DELAY and #drawn == 0, "ahead: starts only once the board has been still")
+            turnOne()
+            check(#drawn == 1 and #timers == 1 and timers[1].s == Notes.AHEAD_GAP, "ahead: one note, then a pause for whatever else is asked")
+            turnOne()
+            check(#drawn == 3 and drawn[2] == "memos/a14", "ahead: a note whose image is kept already costs no turn (" .. #drawn .. ")")
+            for _i = 1, 30 do turnOne() end
+            check(#drawn == 12 and #timers == 0, "ahead: both pages' notes, then it's done (" .. #drawn .. ")")
+            drawn = {}
+            Notes.drawAhead(m); turnOne()
+            Notes.drawAhead(m) -- (the board drawn again: a page turn, a scroll)
+            local before_new = #drawn
+            turnOne() -- (the older run's next turn)
+            check(before_new == 1 and #drawn == 1 and #timers == 1, "ahead: a newer draw of the board ends the older one's")
+            Notes.onTop = function() return false end
+            turnOne()
+            check(#drawn == 1 and #timers == 0, "ahead: nothing while a window is over the board")
+            Notes.onTop = function() return true end
+            Notes.drawAhead(m); m._gz_closed = true; turnOne()
+            check(#drawn == 1 and #timers == 0, "ahead: nothing once the tab is closed")
+            m._gz_closed = nil
+            Lay.memTotalKB = function() return 125 * 1024 end
+            check(Notes.drawAhead(m) == false and #timers == 0, "ahead: not on a Kindle with little memory (the 2 and DX)")
+            Notes.aheadDraw = function() error("boom") end
+            Lay.memTotalKB = function() return 512 * 1024 end
+            Notes.drawAhead(m)
+            check(pcall(turnOne) and #timers == 0, "ahead: a note that can't be drawn ends it quietly")
+            Tch.on, Tch.keys, UIMa.scheduleIn, Lay.memTotalKB, Notes.aheadDraw = saved.on, saved.keys, saved.sched, saved.mem, saved.draw
+            Notes.onTop, Notes.board = saved.top, saved.board
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(src:find("    Notes.drawAhead(m)\nend\n\n-- The board: a Menu", 1, true) and src:find('m._gz_ahead = { kind = "full", pages = pages, sizes = sizes, col_w = col_w }', 1, true)
+                and src:find('or { kind = "compact", per = per, cell_w = cell_w, cell_h = cell_h }', 1, true), "ahead: started by each draw of the board, from what that draw laid out")
+        end)()
+
         -- the sticky note's tilt: long notes tilted less, so they never grow more than a 300 px one
         check(Sticky.tilt(2.4, 264, 172, 300) == 2.4, "tilt: notes up to 300 px (the board before layouts) keep their angle")
         check(math.abs(Sticky.tilt(2.4, 528, 172, 300) - 2.4 * 300 / 528) < 1e-9 and math.abs(Sticky.tilt(-2, 100, 600, 300) + 1) < 1e-9,
