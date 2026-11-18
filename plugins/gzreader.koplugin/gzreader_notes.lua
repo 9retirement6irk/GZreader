@@ -567,8 +567,8 @@ end
 --- page shows them after its text, the board as its picture.
 function Notes.drawings(m)
     local inline = {}
-    for _i, l in ipairs(Sticky.lines(m.content)) do
-        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+    for _i, l in ipairs(Sticky.imageLines(m.content)) do
+        local uid = tostring(l.src):match("/file/attachments/([^/%?]+)")
         if uid then inline[uid] = true end
     end
     local out = {}
@@ -1261,8 +1261,8 @@ end
 --- order, then its other picture attachments.
 function Notes.pictureAttachments(m)
     local out, seen = {}, {}
-    for _i, l in ipairs(Sticky.lines(m.content)) do
-        local uid = l.kind == "image" and tostring(l.src):match("/file/attachments/([^/%?]+)")
+    for _i, l in ipairs(Sticky.imageLines(m.content)) do
+        local uid = tostring(l.src):match("/file/attachments/([^/%?]+)")
         if uid then
             for _j, a in ipairs(m.attachments or {}) do
                 if not seen[a] and tostring(a.name):match("attachments/(.+)$") == uid then
@@ -1386,6 +1386,28 @@ function Notes.measure(m, note_w, page_h)
     return c
 end
 
+-- A sync, a filter or the tab opened again brings the same notes as new
+-- tables: a note's measure is also kept under its text, so only notes that
+-- changed are laid out again (the Full view measured every kept note anew
+-- after each sync). Notes.measure itself still checks the text and what
+-- else the measure depends on (its `sig`).
+Notes.measured_text = Sticky.keep(600) -- (Settings → Notes keeps 500 at most)
+
+--- `measure(m, note_w, page_h)` with what was measured for the same text
+--- before handed to it as note `m`'s own.
+function Notes.measureKept(measure, m, note_w, page_h)
+    local key = type(m.content) == "string" and m.content or nil
+    if key and not Notes.measured[m] then Notes.measured[m] = Notes.measured_text.get(key) end
+    local c = measure(m, note_w, page_h)
+    if key then Notes.measured_text.set(key, c) end
+    return c
+end
+
+do
+    local measure = Notes.measure
+    function Notes.measure(m, note_w, page_h) return Notes.measureKept(measure, m, note_w, page_h) end
+end
+
 Notes.fetching = {}
 
 --- What the Notes tab keeps on the Kindle: notes (bytes), attachments (bytes, files).
@@ -1475,10 +1497,21 @@ function Notes.fetchFile(plugin, att, on_done)
     end, "notes: attachment")
 end
 
+-- A note's entry on the board: its `text` (the note made plain) is worked
+-- out when something asks for it. The board draws notes from `memo`, and
+-- making every kept note plain at each reload (the tab opened, a note
+-- closed, a sync) was most of the time a reload took.
+local BoardEntry = { __index = function(e, key)
+    if key ~= "text" then return nil end
+    local text = Sticky.preview(e.memo.content)
+    rawset(e, "text", text)
+    return text
+end }
+
 local function boardItems(plugin)
     local items = {}
     for _i, m in ipairs(Notes.sorted(Notes.visible(), plugin)) do
-        items[#items + 1] = { memo = m, text = Sticky.preview(m.content) }
+        items[#items + 1] = setmetatable({ memo = m }, BoardEntry)
     end
     if #items == 0 then
         if Notes.last_error then -- not "no notes": say why they didn't load
@@ -1497,6 +1530,8 @@ local function boardItems(plugin)
     end
     return items
 end
+
+Notes._boardItems = boardItems -- (tests)
 
 --- Draw the board's page as sticky notes (replaces Menu:updateItems).
 -- Compact: a grid of `cols` columns, every note the same size.
