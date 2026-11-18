@@ -105,6 +105,7 @@ DrawScreen.SIDE_TOOLS = {
     { id = "shape", icon = "shapes", label = _("Shapes") },
     { id = "text", icon = "text", label = _("Text") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
+    { id = "lasso", icon = "lasso", label = _("Lasso") },
     { id = "hand", icon = "hand", label = _("Move the page") },
     { id = "sep", sep = true, passive = true },
     { id = "undo", icon = "undo", label = _("Undo") },
@@ -337,6 +338,12 @@ function DrawScreen:syncTool()
     sk.shape = self.shape
     sk.eraser_width = self.eraser_width
     sk.pressure_on = self.pressure_on
+    -- the lasso: how near a corner of the frame counts as its handle; another tool lets go of what's chosen
+    sk.lasso_handle, sk.lasso_pad = S(26), S(10)
+    if self.tool ~= "lasso" then
+        self.paste_at = nil
+        if sk:clearSelection() then self:layoutBar(); UIManager:setDirty(self, "ui") end
+    end
     -- text boxes: their corner handle, and how tall their lines are
     sk.text_handle = S(44)
     sk.text_height = function(el) return self:textHeight(el) end
@@ -400,6 +407,12 @@ function DrawScreen:flyoutRows(which)
     return rows
 end
 DrawScreen.TAGS_OFFERED = 9
+--- Beside what the lasso chose (the Kindle Scribe's: copy, cut; and delete).
+DrawScreen.SELECTION_TOOLS = {
+    { id = "sel-copy", icon = "copy", label = _("Copy") },
+    { id = "sel-cut", icon = "cut", label = _("Cut") },
+    { id = "sel-delete", icon = "lasso-delete", label = _("Delete") },
+}
 DrawScreen.SHORTCUT_NAMES = { eraser = _("Eraser"), pen = _("Pen"), pencil = _("Pencil"), fountain = _("Fountain pen"),
     marker = _("Marker"), highlighter = _("Highlighter") }
 
@@ -513,6 +526,31 @@ function DrawScreen:layoutBar()
     else
         self.flyout = nil
     end
+    -- the lasso: Copy, Cut, Delete beside what's chosen (not while it's being dragged); Paste where an empty place was tapped
+    local sk0 = self.sketch
+    local box = sk0 and sk0.selection and not sk0.selection.preview and sk0:selectionBox()
+    if box then
+        local cv = self.canvas
+        local bs = S(44)
+        local mw, mh = bs + 2 * pad, 3 * bs + 2 * pad
+        local mx = cv.x + box.x0 - mw - S(14)
+        local tools = self.frames.toolbar or self.frames.fold
+        local blocked = self.toolbar_side == "left" and tools and mx < tools.x + tools.w + S(6)
+        if mx < gap or blocked then mx = cv.x + box.x1 + S(14) end
+        mx = math.max(gap, math.min(sw - mw - gap, mx))
+        local my = math.max(top + tab_h + S(4), math.min(sh - mh - gap, cv.y + box.y0))
+        self.frames.selmenu = Geom:new{ x = math.floor(mx), y = math.floor(my), w = mw, h = mh }
+        for k, t in ipairs(DrawScreen.SELECTION_TOOLS) do
+            add(t, mx + pad, my + pad + (k - 1) * bs, bs, bs, "selection")
+        end
+    end
+    if self.paste_at and not box then
+        local qw, qh = S(120), S(52)
+        local qx = math.max(gap, math.min(sw - qw - gap, self.paste_at.x - qw / 2))
+        local qy = math.max(top + tab_h + S(4), math.min(sh - qh - gap, self.paste_at.y - qh - S(12)))
+        self.frames.paste = Geom:new{ x = math.floor(qx), y = math.floor(qy), w = qw, h = qh }
+        add({ id = "paste", label = _("Paste") }, qx + pad, qy + pad, qw - 2 * pad, qh - 2 * pad, "selection")
+    end
     for _k, r in pairs(self.frames) do self.holes[#self.holes + 1] = r end
     -- a pull down from the top bar (or, folded away, the top edge) opens the quick panel
     self.pull_zone = top > 0 and top or DrawScreen.EDGE()
@@ -534,7 +572,7 @@ function DrawScreen:selected(t)
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" then return self.tool == t.id end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
     return false
@@ -720,7 +758,7 @@ function DrawScreen:paintBar(bb, x, y)
         if self.pane.y > 0 then bb:paintRect(x, y, sw, t, Blitbuffer.COLOR_BLACK) end
         if self.pane.x > 0 then bb:paintRect(x, y, t, self.dimen.h, Blitbuffer.COLOR_BLACK) end
     end
-    for _i, name in ipairs({ "tab", "fold", "toolbar", "pill" }) do frame(name) end
+    for _i, name in ipairs({ "tab", "fold", "toolbar", "pill", "selmenu", "paste" }) do frame(name) end
     for _i, b in ipairs(self.buttons) do if b.group ~= "flyout" then self:paintButton(bb, x, y, b) end end
     -- (an open panel over everything else)
     frame("flyout")
@@ -732,6 +770,7 @@ function DrawScreen:paintTo(bb, x, y)
     local c = self.canvas
     bb:blitFrom(self.canvas_bb, x + c.x, y + c.y, 0, 0, c.w, c.h)
     self:paintSelection(bb, x + c.x, y + c.y)
+    self:paintLasso(bb, x + c.x, y + c.y)
     self:paintBar(bb, x, y)
     self._shown = { undo = self.sketch:canUndo(), redo = self.sketch:canRedo() }
 end
@@ -1414,6 +1453,35 @@ function DrawScreen:apply(out)
             end
         end
     end
+    -- the lasso
+    if out.loop then
+        -- (its loop as it's drawn: dashes on the screen only, gone when the pen lifts)
+        local screen_bb = Screen.bb
+        local t = math.max(2, S(3))
+        local x0, y0, x1, y1
+        for _i, seg in ipairs(out.loop) do
+            self._loop_phase = DrawScreen.dashed(screen_bb, seg[1] + self.ox, seg[2] + self.oy, seg[3] + self.ox, seg[4] + self.oy, t, self._loop_phase)
+            x0, y0 = math.min(x0 or seg[1], seg[1], seg[3]), math.min(y0 or seg[2], seg[2], seg[4])
+            x1, y1 = math.max(x1 or seg[1], seg[1], seg[3]), math.max(y1 or seg[2], seg[2], seg[4])
+        end
+        self:showInk(math.floor(x0) - 1, math.floor(y0) - 1, math.ceil(x1) + t + 1, math.ceil(y1) + t + 1)
+    end
+    if out.paste_at then
+        self.paste_at = out.paste_at
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
+    end
+    if out.sel_preview then UIManager:setDirty(self, "ui") end
+    if out.sel_changed then
+        -- (chosen, let go of, moved: the loop goes, the frame and its buttons are where they belong)
+        self._loop_phase = nil
+        self.paste_at = nil
+        self:flushInk()
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
+        local sel = self.sketch.selection
+        Log.info("drawing: lasso,", sel and #sel.strokes or 0, "strokes chosen")
+    end
     if out.stroke_done then self:flushInk(true) end
     if out.stroke_done then
         local d = self._stroke_area
@@ -1518,6 +1586,44 @@ function DrawScreen:paintText(el)
     tw:paintTo(self.canvas_bb, math.floor(cx), math.floor(cy))
     tw:paintTo(self.ink_bb, math.floor(cx), math.floor(cy))
     tw:free()
+end
+
+--- A dashed line from (x0, y0) to (x1, y1) on `bb` (`phase`: where in the dash it starts; returns where it ends).
+function DrawScreen.dashed(bb, x0, y0, x1, y1, t, phase)
+    local dx, dy = x1 - x0, y1 - y0
+    local len = math.sqrt(dx * dx + dy * dy)
+    local on, period = S(7), S(13)
+    phase = phase or 0
+    local n = math.max(1, math.ceil(len / 2))
+    for i = 0, n do
+        local d = len * i / n
+        if (phase + d) % period < on then
+            bb:paintRect(math.floor(x0 + dx * i / n), math.floor(y0 + dy * i / n), t, t, Blitbuffer.COLOR_BLACK)
+        end
+    end
+    return (phase + len) % period
+end
+
+--- What the lasso chose: a dashed frame with a handle at each corner (where
+--- it's being dragged to, while it is). On the screen only, never in the PNG.
+function DrawScreen:paintLasso(bb, x, y)
+    local sk = self.sketch
+    local sel = sk and sk.selection
+    if not sel then return end
+    local box = sel.preview or sk:selectionBox()
+    if not box then return end
+    local t = math.max(2, S(2))
+    local x0, y0, x1, y1 = x + math.floor(box.x0), y + math.floor(box.y0), x + math.ceil(box.x1), y + math.ceil(box.y1)
+    DrawScreen.dashed(bb, x0, y0, x1, y0, t)
+    DrawScreen.dashed(bb, x1, y0, x1, y1, t)
+    DrawScreen.dashed(bb, x0, y1, x1, y1, t)
+    DrawScreen.dashed(bb, x0, y0, x0, y1, t)
+    local hs = S(16)
+    for _i, p in ipairs({ { x0, y0 }, { x1, y0 }, { x0, y1 }, { x1, y1 } }) do
+        local hx, hy = p[1] - math.floor(hs / 2), p[2] - math.floor(hs / 2)
+        bb:paintRect(hx, hy, hs, hs, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(hx + t, hy + t, hs - 2 * t, hs - 2 * t, Blitbuffer.COLOR_WHITE)
+    end
 end
 
 --- The chosen box: a frame around it and its resize handle (on the screen only, never in the PNG).
@@ -1842,6 +1948,12 @@ function DrawScreen:use(t)
     local function tool(id)
         if self.tool == id then self:setFlyout(self.flyout ~= id and id or nil) else self:setTool(id); self:setFlyout(nil) end
     end
+    -- (Paste was on offer and something else was tapped: put away)
+    if self.paste_at and t.id ~= "paste" then
+        self.paste_at = nil
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
+    end
     if t.writing then self:setWriting(t.writing); self:setFlyout("pen") -- (stays open: a thickness next)
     elseif t.width then self:setTool(self.tool == "shape" and "shape" or "pen", t.width); self:setFlyout(nil)
     elseif t.hl_width then
@@ -1868,6 +1980,44 @@ function DrawScreen:use(t)
         self:syncTool()
         self:setFlyout("pen") -- (laid out again: its switch changed)
     elseif t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" then tool(t.id)
+    elseif t.id == "lasso" then
+        -- the lasso: a loop around strokes chooses them (to move, resize, copy, cut, delete)
+        self:setTool("lasso"); self:setFlyout(nil)
+        Log.info("drawing: the lasso")
+    elseif t.id == "sel-copy" then
+        -- (as the Kindle's: copied, and let go of; a tap on an empty place then offers Paste)
+        local n = sk.selection and #sk.selection.strokes or 0
+        if sk:lassoCopy() then
+            sk:clearSelection()
+            Log.info("drawing: lasso,", n, "strokes copied")
+        end
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
+    elseif t.id == "sel-cut" or t.id == "sel-delete" then
+        local n = sk.selection and #sk.selection.strokes or 0
+        local changed, area
+        if t.id == "sel-cut" then changed, area = sk:lassoCut() else changed, area = sk:lassoDelete() end
+        if changed then
+            self:touched()
+            Log.info("drawing: lasso,", n, "strokes", t.id == "sel-cut" and "cut" or "deleted")
+            self:layoutBar()
+            if not self:repaintArea(area) then self:repaintCanvas() end
+        else
+            self:layoutBar()
+        end
+        UIManager:setDirty(self, "ui")
+    elseif t.id == "paste" then
+        local at = self.paste_at
+        self.paste_at = nil
+        local changed, area
+        if at then changed, area = sk:lassoPaste(at.x, at.y) end
+        if changed then
+            self:touched()
+            Log.info("drawing: lasso,", #sk.selection.strokes, "strokes pasted")
+            if not self:repaintArea(area) then self:repaintCanvas() end
+        end
+        self:layoutBar()
+        UIManager:setDirty(self, "ui")
     elseif t.id == "hand" then
         -- the hand: the pen (or a finger) moves the page about, and nothing is drawn
         self:setTool("hand"); self:setFlyout(nil)

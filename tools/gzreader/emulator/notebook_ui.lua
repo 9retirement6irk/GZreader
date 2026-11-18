@@ -47,7 +47,7 @@ add({ fn = function(E)
     local d = screen()
     check(ids("top") == "cancel,done,options,tag,paper,pages,title" and d.canvas.y == 0 and d.canvas.h == H,
         "the top bar: Back, the name, pages, paper, tags, options, Done (" .. ids("top") .. "); the page is the whole screen")
-    check(ids("toolbar") == "pen,highlighter,shape,text,eraser,hand,sep,undo,redo,more" and ids("fold") == "hide",
+    check(ids("toolbar") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more" and ids("fold") == "hide",
         "the tools: pen, highlighter, shapes, text, eraser, hand; undo, redo, more; a round button above (" .. ids("toolbar") .. ")")
     check(d:heading() == "Untitled drawing", "a new drawing: Untitled drawing, a pencil after it")
     tap(E, (button("pen")))

@@ -10113,6 +10113,13 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
+            -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
+            check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
+                and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil
+                and dsrcs:find('function DrawScreen:paintLasso(bb, x, y)', 1, true) ~= nil
+                and dsrcs:find('if at then changed, area = sk:lassoPaste(at.x, at.y) end', 1, true) ~= nil
+                and dsrcs:find('if self.paste_at and t.id ~= "paste" then', 1, true) ~= nil,
+                "drawing: a lasso among the tools; what it chooses gets a frame with Copy, Cut, Delete; a tap on an empty place offers Paste")
             -- a journal entry's drawing: the same drawing screen, in a pane under the prompt
             local jsrc = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
             check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil
@@ -10170,7 +10177,7 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,hand,sep,undo,redo,more",
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more",
             "drawing: the tools down the side, as the Scribe's: " .. table.concat(ids, ","))
         check(dsrcp:find("if opts.choose_paper and DrawScreen.asksPaper(opts.pages) then", 1, true) ~= nil
             and dsrcp:find("on_back = function() if opts.on_cancel then opts.on_cancel() end end", 1, true) ~= nil
