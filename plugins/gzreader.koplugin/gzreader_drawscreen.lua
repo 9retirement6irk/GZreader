@@ -1024,6 +1024,7 @@ function DrawScreen:unhook()
     if not gd then return end
     rawset(gd, "feedEvent", self._own_feed)
     self._gd = nil
+    if self._ink_timer then UIManager:unschedule(self._ink_timer); self._ink_timer = nil end
     if self.penraw then
         -- (numbers only: where the pen's pressure came from, for a report)
         Log.info("drawing: pen pressure from KOReader's events:", self._pressure_events or 0, "frames; from the digitizer:",
@@ -1061,7 +1062,14 @@ function DrawScreen:onContacts(det, tevs)
             pressure = pressure, tilt_x = tilt_x, tilt_y = tilt_y }
         if tev.timev and not now then now = time.to_s(tev.timev) end
     end
-    now = now or time.to_s(time.now())
+    -- How far behind the pen this frame is handled (the pen's samples are stamped by the
+    -- kernel on the clock KOReader reads): behind, the ink is shown less often until it has
+    -- caught up (DrawScreen.inkInterval).
+    local real = time.to_s(time.now())
+    self._lag = now and math.max(0, real - now) or 0
+    if self._lag > 5 then self._lag = 0 end -- (not the same clock: nothing to go by)
+    self._now = real
+    now = now or real
     local out = self.sketch:frame(slots, now)
     self:apply(out)
 end
@@ -1104,7 +1112,7 @@ function DrawScreen:apply(out)
         if x1 > x0 and y1 > y0 then
             -- (the ink is on the screen already: only a refresh, no repaint)
             -- (a grey tool's ink is on the screen as black points for now: the same fast refresh as the pen's)
-            UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })
+            self:showInk(x0, y0, x1, y1)
             if grey then self._stroke_grey = true end
             -- (the stroke's area, cleaned up once it's done)
             local d = self._stroke_area
@@ -1115,6 +1123,7 @@ function DrawScreen:apply(out)
             end
         end
     end
+    if out.stroke_done then self:flushInk(true) end
     if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
         local d = self._stroke_area
         local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }
@@ -1139,6 +1148,62 @@ end
 --- a PDF page, a picture) its black came out light, so a stroke had gaps
 --- wherever it crossed a ruled line (the owner's Scribe, 2026-11-16). With
 --- a picture under the page: DU ("fast"), which goes from any grey to black.
+--- How often the new ink is put on the screen, in seconds, for a pen `lag`
+--- seconds ahead of what's handled. A pen reports a few hundred points a
+--- second; a screen refresh for each took longer than the points came in,
+--- so a long line fell further and further behind the pen (the owner,
+--- 2026-11-17). The ink is always painted at once; it's shown at most this
+--- often: 60 times a second, and only 8 while the drawing is behind, so
+--- the handling catches up instead of falling further back.
+function DrawScreen.inkInterval(lag)
+    if (lag or 0) > DrawScreen.LAG_LIMIT then return DrawScreen.INK_BEHIND end
+    return DrawScreen.INK_STEP
+end
+DrawScreen.INK_STEP, DrawScreen.INK_BEHIND, DrawScreen.LAG_LIMIT = 1 / 60, 1 / 8, 0.05
+
+--- New ink in the screen rectangle (x0, y0)-(x1, y1): shown now, or with what comes next.
+function DrawScreen:showInk(x0, y0, x1, y1)
+    local d = self._ink_due
+    if d then
+        d.x0, d.y0, d.x1, d.y1 = math.min(d.x0, x0), math.min(d.y0, y0), math.max(d.x1, x1), math.max(d.y1, y1)
+    else
+        self._ink_due = { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }
+    end
+    local st = self._stroke_stats or { frames = 0, shown = 0, lag = 0 }
+    self._stroke_stats = st
+    st.frames, st.lag = st.frames + 1, math.max(st.lag, self._lag or 0)
+    local now = self._now or 0
+    if now - (self._ink_shown_at or 0) >= DrawScreen.inkInterval(self._lag) then return self:flushInk() end
+    -- (the pen held still after this: what's due is shown a moment later all the same)
+    if not self._ink_timer then
+        self._ink_timer = function()
+            self._ink_timer = nil
+            if not self._closed then self:flushInk() end
+        end
+        UIManager:scheduleIn(DrawScreen.INK_BEHIND, self._ink_timer)
+    end
+end
+
+--- Shows the ink that's due. `done`: the stroke ended (a long one's numbers go to the log).
+function DrawScreen:flushInk(done)
+    local d = self._ink_due
+    if d then
+        self._ink_due = nil
+        self._ink_shown_at = self._now or 0
+        if self._stroke_stats then self._stroke_stats.shown = self._stroke_stats.shown + 1 end
+        UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+    end
+    if done then
+        local st = self._stroke_stats
+        self._stroke_stats = nil
+        -- (numbers only, for a report: how a long stroke kept up)
+        if st and st.frames >= DrawScreen.LONG_STROKE then
+            Log.info(string.format("drawing: a long stroke: %d frames, shown %d times, at most %.0f ms behind the pen", st.frames, st.shown, st.lag * 1000))
+        end
+    end
+end
+DrawScreen.LONG_STROKE = 300
+
 function DrawScreen.inkRefreshFor(locked)
     for _i, el in ipairs(locked or {}) do
         if el.type == "image" then return "fast" end

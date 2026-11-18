@@ -9496,6 +9496,37 @@ print("Notes (Memos v0.31)")
                 and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
                 "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
         end)()
+        -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
+        ;(function()
+            local DS = require("gzreader_drawscreen")
+            local UIMi = require("ui/uimanager")
+            local real_dirty, real_sched = UIMi.setDirty, UIMi.scheduleIn
+            local shown, timers = {}, 0
+            UIMi.setDirty = function(_s, _w, _mode, region) shown[#shown + 1] = region end
+            UIMi.scheduleIn = function() timers = timers + 1 end
+            local d = setmetatable({ inkRefresh = function() return "a2" end }, { __index = function(_t, k) return rawget(DS, k) end })
+            -- 240 points a second for a second, the handling keeping up
+            for i = 0, 239 do
+                d._now, d._lag = 10 + i / 240, 0.002
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local keeping_up = #shown
+            d:flushInk(true)
+            local last = #shown > keeping_up -- (the rest of it, shown at the end)
+            -- the same, the handling 200 ms behind the pen
+            shown = {}
+            for i = 0, 239 do
+                d._now, d._lag = 20 + i / 240, 0.2
+                d:showInk(i, 100, i + 4, 104)
+            end
+            local behind = #shown
+            d:flushInk(true)
+            UIMi.setDirty, UIMi.scheduleIn = real_dirty, real_sched
+            check(keeping_up >= 50 and keeping_up <= 62 and behind >= 7 and behind <= 9 and timers >= 1
+                and last and d._ink_due == nil and DS.inkInterval(0.2) > DS.inkInterval(0),
+                "drawing: 240 pen points a second are shown " .. keeping_up .. " times (not 240), " .. behind
+                    .. " while 200 ms behind (so it catches up); what's due is shown when the stroke ends")
+        end)()
         local dsrcp = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         -- the drawing screen as the Kindle Scribe's notebook (walked through by emulator/notebook_ui.lua)
         check(dsrcp:find('self.canvas = { x = 0, y = 0, w = sw, h = sh }', 1, true) ~= nil
@@ -9517,13 +9548,14 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
-        check(dsrc:find('self:inkRefresh(), Geom:new{ x = x0, y = y0', 1, true) ~= nil
+        check(dsrc:find('self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0', 1, true) ~= nil
             and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
             and dsrc:find('local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(nil, "ui", area)', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
-        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = x0, y = y0, w = x1 - x0, h = y1 - y0 })', 1, true) ~= nil
+        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
+            and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(self, function() return "ui", area end)', 1, true) ~= nil,
