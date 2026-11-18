@@ -2655,6 +2655,18 @@ do
     local home = labels(Panel.homeTiles(hplug, nil))
     check(home:match("|Continue|") and home:match("|Send books|") and home:match("|Sort|") and not home:match("|More|")
         and not home:match("Manage") and not home:match("Contents"), "panel at Home: Continue, Send books, Sort (no More); Manage only with a book… " .. home)
+    do -- auto brightness (autolight_test.lua has the curve; emulator/auto_light.lua the tile and the looks)
+        local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+        local msrc_a = io.open(PLUGIN .. "/main.lua"):read("*a")
+        check(psrc:find('list[#list + 1] = require("gzreader_autolight").tile()', 1, true) ~= nil
+            and psrc:find('if not dragging then pcall(function() require("gzreader_autolight").userSet(v) end) end', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onSuspend()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").onResume()', 1, true) ~= nil
+            and msrc_a:find('require("gzreader_autolight").start()', 1, true) ~= nil,
+            "auto brightness: the quick panel's tile, the slider teaches it, no looks while asleep, it starts with GZreader")
+        local AL = require("gzreader_autolight")
+        check(AL.tile() == nil or AL.available(), "…no tile on a Kindle without a light sensor")
+    end
     -- Settings opens ZenOS's Settings page with the ZenOS plugin instance
     local opened = {}
     package.loaded["modules/settings/zen_settings_page"] = { show = function(z, o) opened[#opened + 1] = { z = z, o = o } end }

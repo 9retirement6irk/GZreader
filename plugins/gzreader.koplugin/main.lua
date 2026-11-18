@@ -94,6 +94,8 @@ function Grimmory:init()
         pcall(function() require("gzreader_timezone").apply() end)
         -- Home and books keep the screen's rotation (once; gzreader_rotation.lua)
         pcall(function() require("gzreader_rotation").setup() end)
+        -- (auto brightness, when it was on: the light follows the room from the start)
+        pcall(function() require("gzreader_autolight").start() end)
         local pause = Grimmory.tuneGC()
         if pause then Log.info("memory: 128 MB Kindle, garbage collector pause", pause) end
     end
@@ -1893,6 +1895,7 @@ function Grimmory:onNetworkDisconnected()
 end
 
 function Grimmory:onSuspend()
+    pcall(function() require("gzreader_autolight").onSuspend() end) -- (no looks at the sensor while asleep)
     if Grimmory.save_soon or Grimmory.recent_written then pcall(self.saveFull, self) end
     local Music = package.loaded["gzreader_music"]
     if Music then pcall(Music.pauseAll) end
@@ -1913,6 +1916,7 @@ end
 Grimmory.WAKE_SYNC_AFTER = 15 * 60 -- Wi-Fi only when needed: sync on wake after a long sleep
 
 function Grimmory:onResume()
+    pcall(function() require("gzreader_autolight").onResume() end) -- (the light set for the room at once)
     pcall(function() require("gzreader_remote").onResume() end)
     Net.onResume()
     UIManager:scheduleIn(5, function() self:flushPending() end)

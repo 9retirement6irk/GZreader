@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Auto brightness on Kindles with a light sensor", text = "Kindles with a light sensor (Voyage, Oasis 2 and 3, Paperwhite 5 Signature, Scribe, Colorsoft) can now set the front light by the room, as the Kindle's own Auto brightness does: the quick panel's Auto light tile turns it on. The light is dim in a dark room and brighter as the room gets brighter, changing gently (a hand passing over the sensor doesn't make it jump). Move the light yourself while it's on and it remembers how much brighter or dimmer you like it, everywhere. It looks at the sensor every 15 seconds while the Kindle is awake (not while it sleeps), and sets the light for the room as soon as it wakes. A light you've turned off stays off." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

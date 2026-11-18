@@ -75,6 +75,14 @@ typed, its tags, space and drawings stay), a quick note's window and a
 journal entry are laid out again for the new shape, and so is the Notes tab
 when you go back to it. The drawing screen keeps the shape it opened with.
 
+On a Kindle with a light sensor (Voyage, Oasis 2 and 3, Paperwhite 5
+Signature, Scribe, Colorsoft), Controls also has **Auto light** (off until
+you turn it on). On, the front light follows the room: dim in the dark,
+brighter in a bright room, changing gently every 15 seconds or so while the
+Kindle is awake, and at once when it wakes. Move the light's slider yourself
+while it's on and it remembers how much brighter or dimmer you like it. A
+light you've turned off stays off.
+
 ## Keyboard (Kindle 2, 3, DX)
 
 The Kindle 2 and DX have a number row, so 1–9 switch the tabs there too.

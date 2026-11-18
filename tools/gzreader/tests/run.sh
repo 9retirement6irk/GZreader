@@ -26,6 +26,10 @@ export TZ=America/New_York
 echo "== luacheck"
 (cd "$REPO" && luacheck -q plugins/gzreader.koplugin plugins/zenos.koplugin tools/gzreader/emulator frontend/device/nook frontend/device.lua) || failed=$((failed + 1))
 
+echo "== auto brightness (the light follows the room: Kindles with a light sensor)"
+(cd "$T" && luajit autolight_test.lua "$REPO/plugins/gzreader.koplugin") 2>&1 | grep -E "FAIL|passed"
+[ "${PIPESTATUS[0]}" -eq 0 ] || failed=$((failed + 1))
+
 echo "== GZreader's changes to upstream files kept"
 python3 "$T/keeps.py" || failed=$((failed + 1))
 
