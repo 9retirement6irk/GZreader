@@ -105,7 +105,8 @@ API to `/api` are found too.
   usual. **Done** goes back to the note and **Save** adds the pages you drew
   on to it as drawings, which Memos shows and opens in its drawing editor with
   the PDF's page underneath. Pages left blank aren't kept, and the PDF itself
-  isn't changed. Each page is a picture of at most 1440 pixels on its longer
+  isn't changed. A colour PDF stays in colour: the Kindle shows it in greys
+  as you draw (in colour on a colour Kindle), Memos in its colours. Each page is a picture of at most 1440 pixels on its longer
   side (smaller for a busy scan), so very small print is best zoomed in Memos.
 - **Notes from Memos' rich editor** (Memos 26.11 and newer): its empty
   paragraphs (`&nbsp;`), characters written as codes (`&amp;`, `&#124;`) and
