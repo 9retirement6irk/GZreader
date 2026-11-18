@@ -81,16 +81,6 @@ API to `/api` are found too.
   other documents open in the reader, pictures in the image viewer; each is
   downloaded once into `cache/gzreader-notes`). **Alt+E** edits, **Alt+P**
   pins, page keys scroll a long note.
-- **Folded sections** (`<details>`, such as the fork's **Text from …**
-  blocks with the words read from a drawing or a file) show as Memos' web app
-  shows them: a row with **›** and the section's title, folded. Tap it (or
-  press its letter) to open it, again to fold it. Code blocks show in a grey
-  box with their language above, the text as written.
-- **Tags** show as grey chips **where their line is**, as on the web; a tag
-  inside a sentence stays in it. A journal entry's mood, feeling, cause and
-  activity tags (`#mood/…`, `#felt/…`, `#impact/…`, `#did/…`, or the
-  prefixes set in Memos' journal settings) are always at the top, under the
-  entry's heading. There's no list of every tag at the bottom any more.
 - **Mark up a PDF** (touch Kindles, Memos over Wi‑Fi): tap a PDF attached
   to a note and choose **Mark up pages** (**Open** reads it as before). Type
   the pages (`2`, `1-3, 7`; at most 10 at a time; a PDF of one page skips
@@ -107,6 +97,16 @@ API to `/api` are found too.
   the characters themselves. On touch Kindles the editor shows them that way
   too (see **Editing on a touch Kindle**); on keyboard Kindles the editor
   shows the note as it's written.
+- **Folded sections** (`<details>`, such as the fork's **Text from …**
+  blocks with the words read from a drawing or a file) show as Memos' web app
+  shows them: a row with **›** and the section's title, folded. Tap it (or
+  press its letter) to open it, again to fold it. Code blocks show in a grey
+  box with their language above, the text as written.
+- **Tags** show as grey chips **where their line is**, as on the web; a tag
+  inside a sentence stays in it. A journal entry's mood, feeling, cause and
+  activity tags (`#mood/…`, `#felt/…`, `#impact/…`, `#did/…`, or the
+  prefixes set in Memos' journal settings) are always at the top, under the
+  entry's heading. There's no list of every tag at the bottom any more.
 - **Editing on a touch Kindle** works like Memos' web editor. The note shows
   formatted on one page (headings big, lists with • and numbers, checklists
   with ☐ ☑, **bold** and *italic*), with no Markdown and no `&nbsp;` to see,

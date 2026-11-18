@@ -9332,7 +9332,7 @@ print("Notes (Memos v0.31)")
             local b = nsrc6:find("\nfunction ", a + 10, true)
             local page = nsrc6:sub(a, b)
             local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
-            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 5
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 6
                 and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
                 "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
             check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil

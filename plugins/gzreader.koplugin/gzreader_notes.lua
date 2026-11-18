@@ -2018,6 +2018,12 @@ function NoteView:build()
         .. (m.pinned and ("   \u{00B7}   " .. _("pinned")) or "")
         .. (m.pending and ("   \u{00B7}   " .. _("not sent yet")) or ""), Font:getFace("cfont", 15), false, Blitbuffer.COLOR_DARK_GRAY))
     add(VerticalSpan:new{ width = S(10) })
+    local para = {}
+    local function flush()
+        local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+        para = {}
+        if t ~= "" then add(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = inner }) end
+    end
     -- a journal entry's mood: its face (as the web shows it by the note's time) and the step's name
     local mood = Notes.moodOf(m)
     if mood then
@@ -2049,17 +2055,12 @@ function NoteView:build()
     if #top > 0 then table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" }) end
     self.opened = self.opened or {}
     local n_check = 0
-    local function lay(items, col, width, path)
-        local para = {}
-        local function put(w) col[#col + 1] = w end
-        local function flush()
-            local t = table.concat(para, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
-            para = {}
-            if t ~= "" then put(TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = width }) end
-        end
+    -- (items into a column `width` wide: `put` adds a widget, `say` a line to the
+    -- paragraph being gathered, `done` writes it; the page's own at the top)
+    local function lay(items, width, path, put, say, done)
         for k, l in ipairs(items) do
             if l.kind == "check" then
-                flush()
+                done()
                 n_check = n_check + 1
                 local key = Touch.letter(KEYS[#self.picks + 1])
                 self.picks[#self.picks + 1] = { check = n_check }
@@ -2072,12 +2073,12 @@ function NoteView:build()
                         TextWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(90),
                             fgcolor = l.done and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_BLACK } } }))
             elseif l.kind == "heading" then
-                flush()
+                done()
                 put(VerticalSpan:new{ width = S(6) })
                 put(TextBoxWidget:new{ text = Sticky.plain(l.text), face = Notes.pageFace(Notes.PAGE_HEADING[l.level] or Notes.PAGE_TEXT, true),
                     width = width })
             elseif l.kind == "image" then
-                flush()
+                done()
                 local pic = Notes.pictureFor(self.plugin, m, l.src, width, math.floor(sh * 0.45), function()
                     if not self.closed then self:build(); UIManager:setDirty(self, "ui") end
                 end, l.width)
@@ -2097,19 +2098,19 @@ function NoteView:build()
                     for _j, t in ipairs(l.tags) do if not Notes.isJournalTag(t, journal) then list[#list + 1] = t end end
                 end
                 if #list > 0 then
-                    flush()
+                    done()
                     put(VerticalSpan:new{ width = S(6) })
                     put(Notes.tagChips(list, width, Notes.pageFace(16)))
                     put(VerticalSpan:new{ width = S(6) })
                 end
             elseif l.kind == "code" then
-                flush()
+                done()
                 n_check = n_check + (l.checks or 0)
                 put(VerticalSpan:new{ width = S(4) })
                 put(Notes.codeBox(l, width))
                 put(VerticalSpan:new{ width = S(4) })
             elseif l.kind == "details" then
-                flush()
+                done()
                 local where = path .. "." .. k
                 local open = self.opened[where]
                 if open == nil then open = l.open end
@@ -2125,19 +2126,26 @@ function NoteView:build()
                             face = Notes.pageFace(Notes.PAGE_TEXT), max_width = width - S(80) } } }))
                 if open then
                     local sub = VerticalGroup:new{ align = "left" }
-                    lay(l.items, sub, width - S(28), where)
+                    local sub_words = {}
+                    local function sub_done()
+                        local t = table.concat(sub_words, "\n"):gsub("^%s+", ""):gsub("%s+$", "")
+                        sub_words = {}
+                        if t ~= "" then sub[#sub + 1] = TextBoxWidget:new{ text = t, face = Notes.pageFace(Notes.PAGE_TEXT), width = width - S(28) } end
+                    end
+                    lay(l.items, width - S(28), where, function(w) sub[#sub + 1] = w end,
+                        function(t) sub_words[#sub_words + 1] = t end, sub_done)
                     put(HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = S(28) }, sub })
                     put(VerticalSpan:new{ width = S(6) })
                 else
                     n_check = n_check + Sticky.pageChecks(l.items) -- (Sticky.toggle counts them)
                 end
             else
-                para[#para + 1] = Sticky.plain(l.text)
+                say(Sticky.plain(l.text))
             end
         end
-        flush()
+        done()
     end
-    lay(page, g, inner, "")
+    lay(page, inner, "", add, function(t) para[#para + 1] = t end, flush)
     -- the note's drawings, after its text, as wide as the page (a tap opens one)
     local shown = {}
     local sheets = Notes.drawings(m)
