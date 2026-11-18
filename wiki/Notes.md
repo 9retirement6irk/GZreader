@@ -210,7 +210,9 @@ API to `/api` are found too.
     - **Pen:** **Pen**, **Fountain pen** (pressure matters much more: light
       is very thin, pressing swells the line to almost three times),
       **Marker** (black, broad, the same width however you press) and
-      **Pencil** (a thinner grey line); then five thicknesses, **Fine** to
+      **Pencil** (a thinner line with a pencil's texture: dark grey specks
+      with paper between them, sparse when you press lightly and nearly
+      solid when you press hard); then five thicknesses, **Fine** to
       **Heavy**; on a colour screen eight **colours**; on a Kindle with a
       pen, **Pressure and tilt** on or off.
     - **Highlighter:** a broad light grey band that stays under your
