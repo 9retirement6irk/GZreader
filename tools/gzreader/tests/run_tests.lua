@@ -10198,11 +10198,6 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end', 1, true) ~= nil
                 and dsrcs:find('if not area or sk.zoomed then return false end', 1, true) ~= nil,
                 "drawing: a rubbed-out stroke, an Undo, a Redo draw and refresh only their part of the page (all of it when zoomed in)")
-            -- pen ↔ hand (emulator/pen_hand.lua taps it)
-            check(dsrcs:find('icons[#icons + 1] = { id = "penhand", icon = holding and back_icon or "hand",', 1, true) ~= nil
-                and dsrcs:find('elseif t.id == "penhand" or (t.id == "hand" and self.tool == "hand") then', 1, true) ~= nil
-                and dsrcs:find("function DrawScreen:toggleHand()", 1, true) ~= nil,
-                "drawing: pen ↔ hand in one tap (the top bar's button, or the hand's own tapped again)")
             -- the lasso (sketch_test.lua checks choosing, moving, growing, copying; emulator/lasso.lua checks it on the screen)
             check(dsrcs:find('{ id = "lasso", icon = "lasso", label = _("Lasso") },', 1, true) ~= nil
                 and dsrcs:find('{ id = "sel-copy", icon = "copy", label = _("Copy") },', 1, true) ~= nil
@@ -10210,6 +10205,11 @@ print("Notes (Memos v0.31)")
                 and dsrcs:find('if at then changed, area = sk:lassoPaste(at.x, at.y) end', 1, true) ~= nil
                 and dsrcs:find('if self.paste_at and t.id ~= "paste" then', 1, true) ~= nil,
                 "drawing: a lasso among the tools; what it chooses gets a frame with Copy, Cut, Delete; a tap on an empty place offers Paste")
+            -- pen ↔ hand (emulator/pen_hand.lua taps it)
+            check(dsrcs:find('icons[#icons + 1] = { id = "penhand", icon = holding and back_icon or "hand",', 1, true) ~= nil
+                and dsrcs:find('elseif t.id == "penhand" or (t.id == "hand" and self.tool == "hand") then', 1, true) ~= nil
+                and dsrcs:find("function DrawScreen:toggleHand()", 1, true) ~= nil,
+                "drawing: pen ↔ hand in one tap (the top bar's button, or the hand's own tapped again)")
             -- a journal entry's drawing: the same drawing screen, in a pane under the prompt
             local jsrc = io.open(PLUGIN .. "/gzreader_journalscreen.lua"):read("*a")
             check(jsrc:find('pane = { x = rect.x, y = rect.y, w = rect.w, h = rect.h },', 1, true) ~= nil

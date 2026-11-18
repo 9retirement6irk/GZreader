@@ -452,12 +452,12 @@ function DrawScreen:layoutBar()
         local x = sw - done_w - S(6)
         add({ id = "done", label = self.journal and _("Save") or _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
         local icons = { { id = "options", icon = "more", label = _("Options") } }
-        -- pen ↔ hand at one tap (the hand in hand: the pen's icon, back to what was in hand)
-        local holding = self.tool == "hand"
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
         icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
         icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
         if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end -- (back to typing the entry)
+        -- pen ↔ hand at one tap (the hand in hand: the pen's icon, back to what was in hand)
+        local holding = self.tool == "hand"
         local back = self.before_hand
         local back_icon = (back == nil or back == "pen") and (self.writing or "pen") or back == "shape" and "shapes" or back
         icons[#icons + 1] = { id = "penhand", icon = holding and back_icon or "hand",
