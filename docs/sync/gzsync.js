@@ -1852,6 +1852,8 @@ gets a password or token.
       if (q.op === "create") r = await M.req("POST", "/memos", memoCreateBody(q));
       else if (q.op === "update") { var ub = memoUpdateBody(q); r = await M.req("PATCH", "/" + q.name, ub.body, { updateMask: ub.mask }); }
       else if (q.op === "pin") r = await M.req("PATCH", "/" + q.name, { name: q.name, pinned: q.pinned === true }, { updateMask: "pinned" });
+      else if (q.op === "archive") r = await M.req("PATCH", "/" + q.name, { name: q.name, state: q.archived === true ? "ARCHIVED" : "NORMAL" }, { updateMask: "state" });
+      else if (q.op === "delete") { r = await M.req("DELETE", "/" + q.name); if (r.status === 404) r = { ok: true }; }
       else { done.push(q.id); continue; }
       if (r.ok) { done.push(q.id); sentNow++; }
       else if (r.status === 401 || r.status === 403) throw new Error("Memos didn't accept the access token.");
