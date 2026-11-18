@@ -162,14 +162,6 @@ function M.build(plugin)
         for _i, item in ipairs(gz_interface) do list[#list + 1] = item end
     end
 
-    -- GZreader: the daily paper (feeds fetched once a day, read on Home) at
-    -- the end of Home's own rows
-    local gz_home = gz_section("home")
-    if #gz_home > 0 and type(home_item.sub_item_table) == "table" then
-        local list = home_item.sub_item_table
-        for _i, item in ipairs(gz_home) do list[#list + 1] = item end
-    end
-
     -- GZreader: no Downloads section (ZenOS's Library section, which sets up
     -- the Downloads tab): its rows (Appearance, Folders, Books, Context menu)
     -- come after Home's own, in Home (owner, 2026-11-11).
@@ -277,6 +269,20 @@ function M.build(plugin)
     root_items.needs_refresh = true
     root_items.refresh_func  = function()
         return M.build(plugin).sub_item_table
+    end
+
+    -- GZreader: the daily paper (feeds fetched once a day, read on Home) in
+    -- Connections, before Copy to or from another GZreader (and Home Assistant)
+    local gz_connections = gz_section("connections")
+    for _i, item in ipairs(root_items) do
+        local list = type(item) == "table" and item._zen_settings_root == "gzreader" and item.sub_item_table
+        if type(list) == "table" and #gz_connections > 0 then
+            local at = #list + 1
+            for j, it in ipairs(list) do
+                if type(it) == "table" and it.text == _("Copy to or from another GZreader") then at = j end
+            end
+            for k, it in ipairs(gz_connections) do table.insert(list, at + k - 1, it) end
+        end
     end
 
     -- GZreader: Home Assistant (the House tab) in Connections, before Copy to

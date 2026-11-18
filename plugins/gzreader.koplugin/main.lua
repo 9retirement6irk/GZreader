@@ -809,8 +809,9 @@ function Grimmory:sectionItems(section)
             }))
         end
         return items
-    elseif section == "home" then
+    elseif section == "connections" then
         -- the daily paper (gzreader_daily.lua): feeds fetched once a day, read on Home
+        -- (in Connections with the other things fetched from the web: the owner, 2026-11-18)
         return {
             icon("history", {
                 text = _("Daily paper"),

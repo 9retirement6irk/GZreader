@@ -1,6 +1,6 @@
 -- The daily paper (gzreader_daily.lua): turned on, an edition made from two
 -- feeds given here (no network), the newspaper on Home's bookshelf (empty,
--- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story, and Settings → Home → Daily paper → Feeds. Any model.
+-- then beside books: GZ_EMU_BOOK = an EPUB; with pictures: GZ_EMU_PICTURE), the optional headlines row, the paper's front page and second page, a story (it scrolls; the quick panel from the top), and Settings → Connections → Daily paper → Feeds. Any model.
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh daily_paper.lua <out>
 -- Checks in <out>/daily-checks.txt.
 local s = { start = 14 }
@@ -176,8 +176,38 @@ add({ shot = "daily-4-story" })
 add({ fn = function(E)
     local UIManager = require("ui/uimanager")
     local top = UIManager:getTopmostVisibleWidget()
-    check(E, top and top.title and top.title:find("Seven ships", 1, true) ~= nil, "a story opened as text")
-    if top then UIManager:close(top) end
+    check(E, top and top.name == "gz_daily_article" and top.item.title:find("Seven ships", 1, true) ~= nil, "a story opened as text")
+    E.story = top
+    -- it scrolls freely: a long story is taller than the screen, and the page key moves it part of a screen
+    local sc = top and top.scroller
+    if sc then sc:initState() end
+    E.y0 = sc and sc._scroll_offset_y or 0
+    if top then top:onPageDown() end
+end, after = 3 })
+add({ fn = function(E)
+    local sc = E.story and E.story.scroller
+    local moved = sc and (sc._scroll_offset_y or 0) - E.y0 or 0
+    check(E, sc ~= nil and sc._scrollBy ~= nil, "…in a scrolling view (a ScrollableContainer, not pages)")
+    check(E, moved > 0 or (sc and (sc._max_scroll_offset_y or 0) == 0), "…the page key moves it on (" .. tostring(moved) .. " px)")
+    -- a swipe down from the top of a story: the quick panel
+    local opened = E.story:onPullPanel(nil, { direction = "south", pos = { x = 100, y = 10 } })
+    local Panel = require("gzreader_panel")
+    check(E, opened and Panel.open ~= nil, "a swipe down from the top of a story: the quick panel")
+    if Panel.open then require("ui/uimanager"):close(Panel.open) end
+end, after = 4 })
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
+    if E.story then UIManager:close(E.story) end
+    local Paper = require("gzreader_dailyscreen")
+    -- …and from the top of the paper itself
+    local page = Paper.instance
+    local opened = page and page:onGzSwipe(nil, { direction = "south", pos = { x = 100, y = 10 } })
+    local Panel = require("gzreader_panel")
+    check(E, opened and Panel.open ~= nil, "a swipe down from the top of the paper: the quick panel")
+    if Panel.open then UIManager:close(Panel.open) end
+end, after = 4 })
+add({ fn = function(E)
+    local UIManager = require("ui/uimanager")
     local Paper = require("gzreader_dailyscreen")
     if Paper.instance then UIManager:close(Paper.instance) end
 end, after = 6 })
@@ -186,7 +216,7 @@ add({ fn = function(E)
     check(E, Paper.instance == nil, "the paper closed")
     pcall(function() require("modules/settings/zen_settings_page").closeActive() end)
     require("modules/settings/zen_settings_page").show(require("apps/filemanager/filemanager").instance.zenos,
-        { path = { { key = "text", value = "Home" }, { key = "text", value = "Daily paper" } } })
+        { path = { { key = "text", value = "Connections" }, { key = "text", value = "Daily paper" } } })
 end, after = 10 })
 add({ shot = "daily-5-settings" })
 add({ fn = function(E)
