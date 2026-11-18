@@ -394,8 +394,11 @@ function Editor:init()
                 if self.input.free then pcall(self.input.free, self.input) end
                 self.input = box(text_h - over)
                 column[2] = self.input
-                column:resetLayout()
             end
+            -- (measured with stand-ins for the toolbar and the keys' line: laid out again with the real ones)
+            self.bar_slot:clear()
+            self.hint_slot:clear()
+            column:resetLayout()
         end
     end
     if self.floating then
