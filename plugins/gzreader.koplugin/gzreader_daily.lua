@@ -198,7 +198,7 @@ function Daily.pageState(plugin)
         own[#own + 1] = { n = i, name = f.name, site = Daily.site(f.url), topic = f.topic, on = f.enabled ~= false }
     end
     local edition = Daily.load()
-    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false,
+    return { enabled = st.enabled == true, shelf = st.shelf ~= false, pictures = st.pictures ~= false, calendar = st.calendar ~= false,
         defaults = defaults, own = own, max = Daily.MAX_FEEDS,
         stories = edition and Daily.count(edition) or nil, day = edition and edition.day or nil }
 end
@@ -212,6 +212,7 @@ function Daily.pageSave(plugin, form)
     st.enabled = form.enabled == "1" or nil
     if form.shelf == "1" then st.shelf = nil else st.shelf = false end
     if form.pictures == "1" then st.pictures = nil else st.pictures = false end
+    if form.calendar == "1" then st.calendar = nil else st.calendar = false end
     for _i, f in ipairs(Daily.DEFAULT_FEEDS) do Daily.setDefaultOn(plugin, f, form["d_" .. f.id] == "1") end
     if tonumber(form.count) == #st.feeds then
         for i, f in ipairs(st.feeds) do
