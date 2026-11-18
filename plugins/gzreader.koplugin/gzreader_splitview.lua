@@ -12,7 +12,11 @@ How:
 - the drawing screen opens with `pane` (gzreader_drawscreen): it takes
   `Split.pending` when it's shown, so the note editor between the two needs
   to know nothing about it;
-- when the drawing screen closes, `closed` gives the book the whole screen.
+- when the drawing screen closes, `closed` gives the book the whole screen;
+- the book's refreshes (a page turn asks for the whole screen) are kept to
+  its part (`bookRefresh`): the notes don't flash with every page, and
+  KOReader's every-few-pages flash is a flash of the book's part only (the
+  owner, 2026-11-17).
 
 `Split.rects(w, h, share)` is the layout, on its own (tested).
 ]]
@@ -58,6 +62,39 @@ function Split.available()
         return Split.fits(Screen:getWidth(), Screen:getHeight(), Screen:getDPI(), Device:isTouchDevice())
     end)
     return ok and yes == true
+end
+
+--- A refresh `widget` asks for while the split view is open: the book's (the
+--- reader, as every page turn asks: no region, the whole screen) kept to its
+--- part. Returns the region to use (the one asked for otherwise).
+function Split.bookRegion(widget, region)
+    local a = Split.active
+    if not a or region ~= nil or widget == nil then return region end
+    local ui = a.reader
+    if widget ~= ui and not (ui and widget == ui.dialog) then return region end
+    return Geom:new{ x = a.book.x, y = a.book.y, w = a.book.w, h = a.book.h }
+end
+
+--- UIManager:setDirty, once: the book's refreshes go through Split.bookRegion
+--- (also those given as a function, as KOReader's own often are).
+function Split.hookRefresh()
+    if Split._hooked then return end
+    Split._hooked = true
+    local orig = UIManager.setDirty
+    UIManager.setDirty = function(self, widget, refresh, region, dither)
+        if Split.active and widget ~= nil and widget ~= "all" then
+            if type(refresh) == "function" then
+                local inner = refresh
+                refresh = function()
+                    local mode, r, d = inner()
+                    return mode, Split.bookRegion(widget, r), d
+                end
+            else
+                region = Split.bookRegion(widget, region)
+            end
+        end
+        return orig(self, widget, refresh, region, dither)
+    end
 end
 
 --- The open book laid out in `g` (a Geom from the screen's corner): its
@@ -106,6 +143,7 @@ function Split.open(plugin)
     local Notes = require("gzreader_notes")
     if not Notes.client(plugin):isConnected() then return Notes.showConnect(plugin) end
     local book, pane = Split.rects(Screen:getWidth(), Screen:getHeight())
+    Split.hookRefresh()
     Split.active = { reader = ui, book = book, pane = pane }
     local ok, err = pcall(Split.setReader, ui, Geom:new(book))
     if not ok then
@@ -153,7 +191,8 @@ function Split.tile(plugin)
     if not Split.available() or Split.active then return nil end
     local store = plugin and plugin.store and plugin.store.memos
     if not (type(store) == "table" and require("gzreader_memos"):new(store):isConnected()) then return nil end
-    return { id = "split", icon = "quicknote", label = _("Notes beside the book"), run = function() Split.open(plugin) end }
+    -- (just "Notes": "Notes beside the book" was cut off on the tile)
+    return { id = "split", icon = "quicknote", label = _("Notes"), run = function() Split.open(plugin) end }
 end
 
 return Split
