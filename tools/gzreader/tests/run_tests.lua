@@ -10262,8 +10262,8 @@ print("Notes (Memos v0.31)")
             "drawing: the page is the whole screen, the top bar and the tools fold away; a new drawing's name and tags come from the top bar and Done saves it")
         local ids = {}
         for _i, t in ipairs(require("gzreader_drawscreen").SIDE_TOOLS) do ids[#ids + 1] = t.id end
-        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,fingers,sep,undo,redo,more",
-            "drawing: the tools down the side, as the Scribe's (no hand; pen / finger on pen Kindles): " .. table.concat(ids, ","))
+        check(table.concat(ids, ",") == "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more",
+            "drawing: the tools down the side, as the Scribe's (pen / finger on pen Kindles): " .. table.concat(ids, ","))
         -- the pen / finger button (pen Kindles): what draws, kept for next time
         do
             local DS = require("gzreader_drawscreen")

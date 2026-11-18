@@ -91,11 +91,11 @@ add({ fn = function(E)
         "✎: the drawing screen, under the entry's prompt, on lined paper")
     check(p and p.y > 40 and p.y < sh / 3 and p.y + p.h == sh and p.x == 0, "…the prompt above it, the drawing the rest of the screen (from y " .. tostring(p and p.y) .. ")")
     local all = true
-    for _i, id in ipairs({ "pen", "highlighter", "shape", "text", "eraser", "undo", "redo", "more", "paper", "pages", "options", "typing", "cancel" }) do
+    for _i, id in ipairs({ "pen", "highlighter", "shape", "text", "eraser", "hand", "undo", "redo", "more", "paper", "pages", "options", "typing", "cancel" }) do
         if not button(id) then all = false end
     end
-    check(all and (button("fingers") ~= nil) == PEN and not button("hand"),
-        "…the drawing screen's tools: pen, highlighter, shapes, text, eraser, " .. (PEN and "pen / finger, " or "") .. "undo, redo, more; paper, pages, options; Aa; ←")
+    check(all and (button("fingers") ~= nil) == PEN,
+        "…the drawing screen's tools: pen, highlighter, shapes, text, eraser, hand, " .. (PEN and "pen / finger, " or "") .. "undo, redo, more; paper, pages, options; Aa; ←")
     local save
     for _i, b in ipairs(d.buttons) do if b.tool.id == "done" then save = b.tool.label end end
     check(save == "Save", "…its Save saves the entry (" .. tostring(save) .. ")")
@@ -133,19 +133,20 @@ add({ fn = function(E)
     check(d and d.sketch.zoomed and d.sketch:zoom() > E.zoom_was * 1.5 and #d.sketch:live() == strokes_before + 1,
         "two fingers spread: the page bigger (" .. string.format("%.2f", d.sketch:zoom()) .. "x), nothing drawn by them")
     pan_before = d.sketch.oy
-    if PEN then
-        drag(E, area()) -- (a pen Kindle: a finger moves a zoomed page)
-    else
-        -- (where fingers draw: two fingers move it)
-        local a2 = area()
-        local cx, cy = a2.x + math.floor(a2.w / 2), a2.y + math.floor(a2.h / 2)
-        E.pinch({ cx - 120, cy + 100 }, { cx + 120, cy + 100 }, { cx - 120, cy - 100 }, { cx + 120, cy - 100 }, 0.5)
+    if PEN then drag(E, area()) else tapAt(E, button("hand")) end -- (a pen Kindle: a finger moves a zoomed page)
+end, after = 3 })
+add({ fn = function(E)
+    if not PEN then
+        local d = screen()
+        check(d and d.tool == "hand", "the hand tool: in hand")
+        drag(E, area())
     end
 end, after = 3 })
 add({ fn = function(E)
     local d = screen()
     check(d and d.sketch.oy > pan_before and #d.sketch:live() == strokes_before + 1,
-        (PEN and "a finger" or "two fingers") .. " dragged up: the page moved, nothing drawn")
+        (PEN and "a finger" or "the hand") .. " dragged up: the page moved, nothing drawn")
+    if not PEN then tapAt(E, button("pen")) end
 end, after = 2 })
 add({ fn = function(E) stroke(E, area(), 0.5) end, after = 3 })
 add({ fn = function(E)

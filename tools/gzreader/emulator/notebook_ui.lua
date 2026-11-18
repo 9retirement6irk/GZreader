@@ -47,9 +47,9 @@ add({ fn = function(E)
     local d = screen()
     check(ids("top") == "cancel,done,options,tag,paper,pages,title" and d.canvas.y == 0 and d.canvas.h == H,
         "the top bar: Back, the name, pages, paper, tags, options, Done (" .. ids("top") .. "); the page is the whole screen")
-    local want = PEN and "pen,highlighter,shape,text,eraser,lasso,fingers,sep,undo,redo,more" or "pen,highlighter,shape,text,eraser,lasso,sep,undo,redo,more"
+    local want = PEN and "pen,highlighter,shape,text,eraser,lasso,hand,fingers,sep,undo,redo,more" or "pen,highlighter,shape,text,eraser,lasso,hand,sep,undo,redo,more"
     check(ids("toolbar") == want and ids("fold") == "hide",
-        "the tools: pen, highlighter, shapes, text, eraser, lasso" .. (PEN and ", pen / finger" or "") .. "; undo, redo, more; a round button above (" .. ids("toolbar") .. ")")
+        "the tools: pen, highlighter, shapes, text, eraser, lasso, hand" .. (PEN and ", pen / finger" or "") .. "; undo, redo, more; a round button above (" .. ids("toolbar") .. ")")
     check(d:heading() == "Untitled drawing", "a new drawing: Untitled drawing, a pencil after it")
     tap(E, (button("pen")))
 end, after = 3 })
@@ -112,9 +112,30 @@ add({ fn = function(E)
     draw(E, { { W * 0.3, H * 0.7 }, { W * 0.5, H * 0.7 }, { W * 0.7, H * 0.7 } })
 end, after = 3 })
 add({ shot = "5-shapes-drawn", after = 0.5 })
+-- the hand: zoomed in, the pen (a finger where fingers draw) moves the page and draws nothing
+add({ fn = function(E)
+    local d = screen()
+    d.sketch:zoomBy(2, W / 2, H / 2, W / 2, H / 2)
+    d:redrawAll()
+    tap(E, (button("hand")))
+end, after = 3 })
+add({ fn = function(E)
+    local d = screen()
+    E.hand_oy, E.hand_n = d.sketch.oy, #d.sketch:live()
+    check(d.tool == "hand" and d.sketch.tool == "hand", "the hand button: the hand in hand")
+    draw(E, { { W * 0.5, H * 0.5 }, { W * 0.5, H * 0.45 }, { W * 0.5, H * 0.4 } })
+end, after = 3 })
+add({ shot = "5b-moved-with-the-hand", after = 0.5 })
+add({ fn = function(E)
+    local d = screen()
+    check(math.abs(d.sketch.oy - E.hand_oy) > H * 0.03 and #d.sketch:live() == E.hand_n,
+        "a drag with it: the zoomed page moves (" .. math.floor(d.sketch.oy - E.hand_oy) .. " of the page), nothing drawn")
+    d.sketch:unzoom(); d:redrawAll()
+end, after = 3 })
 -- a pen Kindle: the pen / finger button. The pen draws and a finger doesn't; tapped, a finger draws; again, back to the pen
 add({ fn = function(E)
     local d = screen()
+    d:setTool("pen") -- (the hand put down)
     E.fing_n = #d.sketch:live()
     if PEN then
         check(d.pen_only and d.sketch.pen_only and d:toolIcon("fingers") == "stylus", "the pen / finger button: drawing with the pen (its icon a pen)")
@@ -138,7 +159,7 @@ add({ fn = function(E)
         E.finger({ { W * 0.3, H * 0.6 }, { W * 0.4, H * 0.6 }, { W * 0.5, H * 0.6 } }, 0.4)
     end
 end, after = 3 })
-add({ shot = "5b-drawn-with-a-finger", after = 0.5 })
+add({ shot = "5c-drawn-with-a-finger", after = 0.5 })
 add({ fn = function(E)
     local d = screen()
     if PEN then

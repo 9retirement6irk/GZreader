@@ -17,8 +17,8 @@ strokes inside, which memos opens as a drawing you can go on editing.
   while the pen is near (palm rejection); the pen's other end rubs out.
   Its toolbar's pen / finger button switches to drawing with one finger
   (and back), kept for next time. Every other touch Kindle draws with one
-  finger. A zoomed page moves with two fingers (on a pen Kindle drawing with
-  the pen, one).
+  finger. The toolbar's hand moves a zoomed page with the pen (or a finger);
+  so do two fingers (on a pen Kindle drawing with the pen, one).
 - The screen reads the touch screen's contacts itself while it's on top
   (it stands in for KOReader's gesture detector, which gets them back when
   the screen closes or a dialog covers it): `gzreader_sketch.lua` turns them
@@ -109,6 +109,7 @@ DrawScreen.SIDE_TOOLS = {
     { id = "text", icon = "text", label = _("Text") },
     { id = "eraser", icon = "eraser", label = _("Eraser") },
     { id = "lasso", icon = "lasso", label = _("Lasso") },
+    { id = "hand", icon = "hand", label = _("Move the page") },
     -- (pen Kindles only: draw with the pen, or with a finger; gzreader_draw_with_finger)
     { id = "fingers", icon = "stylus", pen_device = true, label = _("Draw with the pen or a finger") },
     { id = "sep", sep = true, passive = true },
@@ -586,7 +587,7 @@ function DrawScreen:selected(t)
         for _i, name in ipairs(self.meta and self.meta.tags or {}) do if name == t.tagname then return true end end
         return false
     end
-    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "lasso" then return self.tool == t.id end
+    if t.id == "pen" or t.id == "highlighter" or t.id == "shape" or t.id == "eraser" or t.id == "text" or t.id == "hand" or t.id == "lasso" then return self.tool == t.id end
     if t.id == "fingers" then return not self.pen_only end
     if t.id == "more" or t.id == "options" then return self.flyout == t.id end
     if t.id == "tag" then return self.flyout == "tags" end
@@ -2047,6 +2048,10 @@ function DrawScreen:use(t)
         end
         self:layoutBar()
         UIManager:setDirty(self, "ui")
+    elseif t.id == "hand" then
+        -- the hand: the pen (or a finger) moves the page about, and nothing is drawn
+        self:setTool("hand"); self:setFlyout(nil)
+        Log.info("drawing: the hand tool")
     elseif t.id == "fingers" then
         self:setDrawWithFinger(self.pen_only)
     elseif t.id == "text" then

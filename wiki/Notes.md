@@ -322,6 +322,8 @@ API to `/api` are found too.
       lets go. It chooses anything drawn on the Kindle (strokes and
       shapes); text boxes are moved with the Text tool, and shapes made in
       Memos stay where they are.
+    - **Hand:** the pen (or a finger, where fingers draw) takes hold of the
+      page and moves it; nothing is drawn. For a page you've zoomed in on.
     - **Pen / finger** (Kindle Scribe): what draws. Its icon is a pen while
       the pen draws (fingers don't, and your hand can rest on the screen);
       tap it and it shows a finger: one finger draws, as on the other

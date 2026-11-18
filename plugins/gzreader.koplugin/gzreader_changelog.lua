@@ -9,7 +9,7 @@ return {
     {
         version = "next",
         changes = {
-            { short = "Kindle Scribe: a pen / finger button in the drawing toolbar", text = "The drawing screen's toolbar on the Kindle Scribe has a pen / finger button where the hand was. Its icon is a pen while the pen draws (fingers don't, and your hand can rest on the screen). Tap it and it shows a finger: one finger draws, as on the other Kindles. Tap it again for the pen. It stays as you left it for the next drawing. The hand (move the page) is gone from the toolbar: a zoomed page moves with a finger on the Scribe while the pen draws, and with two fingers elsewhere." },
+            { short = "Kindle Scribe: a pen / finger button in the drawing toolbar", text = "The drawing screen's toolbar on the Kindle Scribe has a pen / finger button under the hand. Its icon is a pen while the pen draws (fingers don't, and your hand can rest on the screen). Tap it and it shows a finger: one finger draws, as on the other Kindles. Tap it again for the pen. It stays as you left it for the next drawing." },
         },
     },
     {
