@@ -116,6 +116,15 @@ Kindles without Wi‑Fi keep none on the Kindle in readable form: the sync page
 keeps them in `.gzsync/keys.json`, locked with your PIN
 ([Sync with a computer](Sync-with-a-Computer)).
 
+## Sites the daily paper asks
+
+With the [daily paper](Daily-Paper) on (it's off unless you turn it on), the
+Kindle fetches the feeds you ticked once a day, straight from their sites
+(BBC, NPR and the others listed there, or the ones you added). Each site sees
+the Kindle's internet address and that GZreader asked, as with any web page;
+no account, cookie or anything about you is sent, and feed addresses are
+never written to the log.
+
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:

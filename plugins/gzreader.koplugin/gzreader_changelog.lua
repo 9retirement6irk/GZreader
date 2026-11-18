@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "A daily paper on Home: news feeds you choose, fetched once a day", text = "New: a daily paper. Turn it on in Settings → Home → Daily paper and Home gets a folded newspaper above your books, with the day's headlines; a tap (or the 5-way on the row) opens it laid out as a newspaper: the nameplate, the lead story across the page and the others in columns under their sections (World, Technology, Science, Books, Curiosities, and your own), with more pages behind (swipe, the page keys or the arrow at the foot). A story opens as text to page through, with a QR code of its link for your phone. Once a day, from 5 in the morning, GZreader fetches the feeds you ticked over Wi-Fi (RSS and Atom: the lists of newest stories most news sites and blogs publish) and keeps the edition on the Kindle, so it reads with Wi-Fi off. It comes with a few feeds to tick (BBC News, NPR, Ars Technica, NASA, Literary Hub, Atlas Obscura and others); add your own in Settings → Home → Daily paper → Feeds, by typing an address or with a feeds.txt in the GZreader folder. The paper shows what a feed carries: some carry whole stories, many a summary. It is off until you turn it on: fetching a feed tells its site this Kindle's internet address, as opening the site in a browser would, and nothing else is sent. Feed addresses are never written to the log. Not on the Kindles without Wi-Fi (2, DX) yet." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },
