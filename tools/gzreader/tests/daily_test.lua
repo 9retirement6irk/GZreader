@@ -507,6 +507,8 @@ row("On Home's bookshelf").callback()
 check(Paper.onShelf(plugin) and plugin.store.daily.shelf == nil, "ticked again")
 local pw, ph = Paper.shelfSize(300, 150)
 check(ph == 240 and pw == 168, "on the shelf: a little lower than the books, a front page's shape … " .. pw .. "x" .. ph)
+check(Paper.spineWidth(300) == 30 and Paper.spineWidth(100) == 16 and Paper.spineWidth(300) * 5 < ph,
+    "on its side it's a folded paper's thickness, far narrower than its front page")
 pw, ph = Paper.shelfSize(300, 400)
 check(pw == 192, "never much wider than it is tall … " .. pw)
 row("Headlines as a row on Home").callback()
@@ -564,6 +566,8 @@ check(zs:find('gz_section("home")', 1, true), "ZenOS's Settings asks GZreader fo
 local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
 check(sh:find('rawget(_G, "__GZ_SHELF_PAPER")', 1, true) and sh:find("opts.gz_home", 1, true) and sh:find("gz_paper = true", 1, true),
     "ZenOS's shelf asks for the newspaper, on Home's first shelf only")
+check(sh:find("i == picked and slot.gz_paper", 1, true) and sh:find("slot.face:paintTo", 1, true) and sh:find("ctx.focusHomeTarget(slot.target)", 1, true),
+    "… stands it on its side, and turns it to its front page when it's picked, as a book shows its cover")
 check(read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua"):find("gz_home = true", 1, true), "Home's shelf says it's Home's")
 local src = read(PLUGIN .. "/gzreader_daily.lua") .. read(PLUGIN .. "/gzreader_dailyscreen.lua")
 check(not src:find("Log%.[a-z]+%([^\n]*%f[%w]url%f[%W][^\n]*%)") or not src:find("Log%.[a-z]+%([^\n]*[^%.]url[,%)]"), "no log line takes a feed's address")

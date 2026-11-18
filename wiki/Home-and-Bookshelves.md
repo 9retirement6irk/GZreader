@@ -148,9 +148,10 @@ pages darker, with a ribbon bookmark where you are.
 
 ## The daily paper on Home
 
-A **newspaper** can stand on Home's bookshelf beside your books: the day's
-headlines from the news feeds you choose, fetched once a day; a tap opens it,
-laid out as a newspaper. It's off until you turn it on in **Settings → Home →
+A folded **newspaper** can stand on Home's bookshelf beside your books, on its
+side as they are: the day's headlines from the news feeds you choose, fetched
+once a day. Picked, it shows its front page; another tap opens it, laid out
+as a newspaper. It's off until you turn it on in **Settings → Home →
 Daily paper**. → [Daily paper](Daily-Paper)
 
 ## Sleep screen

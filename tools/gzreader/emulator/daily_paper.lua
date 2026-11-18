@@ -79,6 +79,31 @@ end, after = 12 })
 add({ shot = "daily-1b-home-books" })
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")
+    local at = Paper.home and Paper.home.spine_at
+    check(E, at ~= nil and at.w < at.h / 5, "the newspaper stands on its side among the books")
+    if at and require("device"):isTouchDevice() then
+        E.tap({ at.x + math.floor(at.w / 2), at.y + math.floor(at.h / 2) })
+    else
+        -- (keys: the 5-way's place put on it)
+        local menu = Paper.home.menu
+        for i, t in ipairs(menu._zen_home_focus_targets or {}) do
+            if t.key == "gz:daily-paper" then menu._zen_home_focus_index, menu._zen_home_focus_id, menu._zen_home_focus_key = i, t.id, t.key end
+        end
+        require("ui/uimanager"):setDirty(require("apps/filemanager/filemanager").instance, "ui")
+    end
+end, after = 8 })
+add({ shot = "daily-1b2-home-picked" })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
+    local menu = Paper.home.menu
+    local picked = false
+    for _i, t in ipairs(menu._zen_home_focus_targets or {}) do
+        if t.key == "gz:daily-paper" and menu._zen_home_focus_id == t.id then picked = true end
+    end
+    check(E, picked and Paper.instance == nil, "picked: it turns to its front page, and isn't opened yet")
+end, after = 2 })
+add({ fn = function(E)
+    local Paper = require("gzreader_dailyscreen")
     local ok = Paper.setOnHome(true)
     check(E, ok == true and Paper.onHome(), "the headlines row can be ticked on as well")
 end, after = 10 })

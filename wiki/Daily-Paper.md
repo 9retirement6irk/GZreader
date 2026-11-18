@@ -8,10 +8,14 @@ Wi‑Fi.
 
 ## Turning it on
 
-**Settings → Home → Daily paper**, and tick **Daily paper**. A newspaper
-appears on Home's bookshelf, standing at the start of the first shelf beside
-your books: its name, the date and the day's lead headline on its front page.
-It takes a book's room on the shelf and nothing else on Home.
+**Settings → Home → Daily paper**, and tick **Daily paper**. A folded
+newspaper appears on Home's bookshelf, standing on its side at the start of
+the first shelf like the books beside it: you see its fold and the edges of
+its pages. It takes a thin book's room on the shelf and nothing else on Home.
+
+Pick it as you pick a book (tap it; with keys, move to it with the 5-way) and
+it turns to show its front page: its name, the date and the day's lead
+headline.
 
 - **On Home's bookshelf** takes it off the shelf and puts it back. (The shelf
   is Home's Bookshelf view; with another view, use the row below, or **Read
@@ -23,8 +27,8 @@ It takes a book's room on the shelf and nothing else on Home.
 
 ## Reading it
 
-Tap the newspaper on the shelf (on a Kindle with keys: move to it with the
-5-way and press). It opens laid out as a newspaper: the nameplate and the date, the
+Tap the newspaper's front page on the shelf (so: a tap to turn it, a tap to
+open it; with keys, move to it with the 5-way and press). It opens laid out as a newspaper: the nameplate and the date, the
 lead story across the page, and the other stories in columns (two, or three
 on a DX or a Scribe), each with its section, its headline, where it's from
 and how it begins.

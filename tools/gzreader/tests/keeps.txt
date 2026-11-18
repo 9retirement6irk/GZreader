@@ -79,7 +79,7 @@
 2 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/cover_common.lua
 14 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/featured_common.lua
 7 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/grimmory_stats.lua
-32 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
+38 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua
 8 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/stats_triplet.lua
 18 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_common.lua
 1 plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/strip_controls.lua

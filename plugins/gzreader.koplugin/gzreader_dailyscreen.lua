@@ -1,9 +1,10 @@
 --[[--
 The daily paper on the screen (the edition itself: gzreader_daily.lua).
 
-- On Home's bookshelf: a newspaper standing among the books at the start of
-  the first shelf (its front page small: the name, the date, the lead
-  headline). A tap (the 5-way: move to it, press) opens the paper. ZenOS's
+- On Home's bookshelf: a folded newspaper on its side among the books, at
+  the start of the first shelf. Picked (a tap, the 5-way) it turns to show
+  its front page small (the name, the date, the lead headline), as a book
+  shows its cover; a second tap (a press) opens the paper. ZenOS's
   shelf.lua asks for it through __GZ_SHELF_PAPER.
 - Optional, off: Home's "Daily paper" widget, a wider folded newspaper with
   the headlines as a row above the books.
@@ -218,9 +219,16 @@ function Paper.shelfSize(area_h, cover_w)
     return math.max(math.floor(h * 0.7), math.min(cover_w or 0, math.floor(h * 0.8))), h
 end
 
+--- How thick the folded newspaper is, on its side.
+function Paper.spineWidth(area_h)
+    return math.max(16, math.floor(area_h * 0.1))
+end
+
 --- The newspaper standing among Home's books (ZenOS's shelf.lua asks
---- through __GZ_SHELF_PAPER): { widget, w, h, open } or nil. Its front page
---- small: the name, the date, the lead headline, and columns of grey lines.
+--- through __GZ_SHELF_PAPER): { spine, spine_w, h, face, face_w, face_h,
+--- open } or nil. On its side until it's picked, as the books are: the fold
+--- with the name along it. Picked, its front page small: the name, the date,
+--- the lead headline, and columns of grey lines.
 function Paper.shelfItem(plugin, ctx, area_h, cover_w)
     if not Paper.onShelf(plugin) then return nil end
     local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -298,11 +306,74 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
     widget.free = function()
         mast:free(); date:free(); lead:free()
     end
+    -- on its side, folded
+    local spine_w = Paper.spineWidth(area_h)
+    local spine_bb
+    local spine = drawn(spine_w, h, function(bb, x, y)
+        if not spine_bb then
+            -- drawn lying down (h wide, spine_w tall; its left end is the top),
+            -- then stood up, as the books' spines are. A folded newspaper from
+            -- the side: the fold, rounded, with a sliver of the front page's
+            -- print on it; behind it the edges of the sheets, none quite as
+            -- tall as the next.
+            local lying = Blitbuffer.new(h, spine_w, Blitbuffer.TYPE_BB8)
+            lying:fill(Blitbuffer.COLOR_WHITE)
+            local fold_w = math.floor(spine_w * 0.56)
+            local px1 = math.max(1, S(1))
+            -- the sheets' edges: fine lines of uneven grey, their tops stepped
+            for ly = fold_w, spine_w - 1 do
+                local n = ly - fold_w
+                local top = S(3) + ((n * 37 + 11) % 5) * px1
+                if n % 2 == 0 then
+                    lying:paintRect(top, ly, h - top, 1, Blitbuffer.gray(0.30 + ((n * 13) % 4) * 0.09))
+                else
+                    lying:paintRect(top, ly, h - top, 1, Blitbuffer.gray(0.06))
+                end
+            end
+            -- the last sheet's edge, and the line where the fold meets the sheets
+            lying:paintRect(S(3), spine_w - 1, h - S(3), 1, Blitbuffer.gray(0.6))
+            lying:paintRect(S(2), fold_w - 1, h - S(2), 1, Blitbuffer.gray(0.45))
+            -- the fold: its outer curve shaded, its top corner rounded off
+            local r = math.max(2, S(3))
+            lying:paintRect(r, 0, h - r, 1, Blitbuffer.gray(0.7))
+            lying:paintRect(r, 1, h - r, 1, Blitbuffer.gray(0.22))
+            lying:paintRect(r, 2, h - r, 1, Blitbuffer.gray(0.10))
+            for k = 0, r - 1 do
+                lying:paintRect(0, k, r - k, 1, Blitbuffer.COLOR_WHITE)
+                lying:paintRect(r - k, k, 1, 1, Blitbuffer.gray(0.7))
+            end
+            lying:paintRect(0, r, 1, fold_w - r, Blitbuffer.gray(0.7)) -- (the top edge of the folded page)
+            -- the front page's print showing on the fold: its name, then the
+            -- lines of a column seen end on
+            local name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(8), max_width = math.floor(h * 0.55) }
+            local ns = name:getSize()
+            local nx, ny = S(7), math.max(3, math.floor((fold_w - ns.h) / 2))
+            name:paintTo(lying, nx, ny)
+            name:free()
+            local cx = nx + ns.w + S(6)
+            lying:paintRect(cx, S(4), px1, fold_w - S(7), Blitbuffer.COLOR_BLACK) -- (the rule under the name)
+            local step = math.max(3, S(3))
+            for lx = cx + step + px1, h - S(4), step do
+                local short = ((lx * 7) % 6 == 0) and math.floor(fold_w / 3) or 0
+                lying:paintRect(lx, S(4), 1, fold_w - S(7) - short, Blitbuffer.gray(0.35))
+            end
+            spine_bb = lying:rotatedCopy(270)
+            lying:free()
+            -- the foot, on the board
+            spine_bb:paintRect(0, h - 1, spine_w, 1, Blitbuffer.gray(0.7))
+        end
+        bb:blitFrom(spine_bb, x, y, 0, 0, spine_w, h)
+        Paper.home.spine_at = { x = x, y = y, w = spine_w, h = h }
+    end)
+    spine.free = function()
+        if spine_bb then spine_bb:free(); spine_bb = nil end
+    end
     -- (the shelf is drawn again when an edition comes; today's is asked for when it's missing)
     Paper.home = { menu = ctx and ctx.menu, shelf = true }
     D.listen("home", Paper.redrawHome)
     UIManager:nextTick(function() pcall(D.maybeRefresh, plugin) end)
-    return { widget = widget, w = w, h = h, open = function() Paper.show(plugin) end }
+    return { spine = spine, spine_w = spine_w, h = h, face = widget, face_w = w, face_h = h,
+        open = function() Paper.show(plugin) end }
 end
 
 --- Home's shelf (or the paper's row) again: an edition came, or a try began
