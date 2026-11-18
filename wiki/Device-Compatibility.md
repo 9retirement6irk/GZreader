@@ -39,18 +39,18 @@ The firmware version is in the Kindle's Settings → Device Options → Device I
 
 ## What each device does
 
-| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Nook 1st Edition (test) | Nook Simple Touch (test) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | the colour touchscreen's buttons and keyboard | touch |
-| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes | yes |
-| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
-| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
-| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | yes, through Bluetooth headphones or a speaker ([Bluetooth](Bluetooth)) | — (not yet) | — (no audio) |
-| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | yes, Amazon's voice through Bluetooth (Read aloud in the quick panel) | — | — |
-| Volume buttons | yes | — | — | — | — (the Bluetooth volume: the quick panel's slider) | — | — |
-| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Kindle's own | the Nook's own | the Nook's own |
-| Flash on every page turn (default) | on | on | off | off | off | off | off |
-| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | the home screen item | its app icon | adb or a terminal app |
+| | Kindle 2, 3, DX | Kindle 4 | Kindle Touch | Paperwhite 3 | Kindle Scribe | Kobo (test) | Nook 1st Edition (test) | Nook Simple Touch (test) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Use | keyboard, 5-way | 5-way, Menu | touch | touch | touch and pen (pressure; the side button erases; your hand can rest on the screen) | touch; page keys on Libra, Sage, Elipsa, Forma (a pen draws as a finger) | the colour touchscreen's buttons and keyboard | touch |
+| Wi‑Fi | Kindle 3; the Kindle 2 and DX have none: [sync with a computer](Sync-with-a-Computer) | yes | yes | yes | yes | yes (KOReader's own for Kobos) | yes | yes |
+| Screen | 600 × 800 (DX 824 × 1200), 16 greys | 600 × 800, 16 greys | 600 × 800 | 1072 × 1448, 300 dpi | 1860 × 2480, 300 dpi | Clara HD 1072 × 1448, Libra 2 1264 × 1680, 300 dpi (others as KOReader knows them); light and warmth | 600 × 800 + a 480 × 144 colour touchscreen | 600 × 800 (GlowLight: frontlight) |
+| Faster drawing (shadow screen) | yes | yes | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) | (not needed) |
+| Audiobooks, music | yes | — (no audio) | yes (player buttons) | — (no audio) | yes, through Bluetooth headphones or a speaker ([Bluetooth](Bluetooth)) | — (no speaker; Kobo's Bluetooth only in its own software) | — (not yet) | — (no audio) |
+| Read aloud (Kindle voice) | yes (Shift + Sym) | — | yes (Listen in the quick panel) | — | yes, Amazon's voice through Bluetooth (Read aloud in the quick panel) | — | — | — |
+| Volume buttons | yes | — | — | — | — (the Bluetooth volume: the quick panel's slider) | — | — | — |
+| Clock | UTC: set Settings → General → Time and date → Time zone | same | the Kindle's own | the Kindle's own | the Kindle's own | the Kobo's own | the Nook's own | the Nook's own |
+| Flash on every page turn (default) | on | on | off | off | off | off | off | off |
+| Start from | KUAL, Shift G G | KUAL | KUAL or the home screen item | the home screen item | the home screen item | NickelMenu or KFMon | its app icon | adb or a terminal app |
 
 **Ghosting** (a grey trace of the last pages): the Kindle 2, 3, DX and 4 have no REAGL, so a page turn without a flash leaves a trace that adds up. Settings → General → Screen → E-ink settings → **Flash on every page turn** flashes the screen clean at every turn, as the Kindle's own reader does; it's on by default on those Kindles and can be turned on on any device. Off: a flash every 6 pages (quicker turns).
 

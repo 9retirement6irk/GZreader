@@ -21,7 +21,7 @@ Scribe's pen; see your calendars; switch your Home Assistant lights.
 | **[Feature overview](Feature-Overview)** | Everything it does, with links to the details |
 | **[Changes from KOReader and ZenOS](Changes-from-KOReader-and-ZenOS)** | What GZreader does differently |
 | **[Installing](Installing)** | Which package, step by step, for each device |
-| **[Jailbreaking and rooting](Jailbreaking-and-Rooting)** | Before installing: jailbreak the Kindle or root the Nook |
+| **[Jailbreaking and rooting](Jailbreaking-and-Rooting)** | Before installing: jailbreak the Kindle or root the Nook (a Kobo needs neither) |
 
 ## Using GZreader
 

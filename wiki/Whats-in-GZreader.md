@@ -10,7 +10,7 @@ GZreader is a package of KOReader with a few of its plugins, ZenOS, and GZreader
 | `autosuspend.koplugin` | Battery. |
 | `gzreader.koplugin` | GZreader itself: the setup page (QR code or address + PIN: connections, sending books), the Grimmory library browser, downloads, progress, bookmark and highlight sync, the quick panel, Notes, Calendar, Music, audiobooks, read aloud, sync with a computer, updates, debug reports and diagnostics. |
 
-Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB), and GZreader's launchers for each Kindle (KUAL, the Kindle 2/3/DX launchpad, a home-screen item on touch Kindles, an app icon on the Nook 1st Edition).
+Added: an English dictionary (Open English WordNet, CC BY 4.0, 11 MB), and GZreader's launchers for each Kindle (KUAL, the Kindle 2/3/DX launchpad, a home-screen item on touch Kindles, NickelMenu and KFMon entries on Kobos, an app icon on the Nook 1st Edition).
 
 ## What's left out
 
@@ -31,4 +31,4 @@ Each release has one package per kind of device, plus the update every device do
 | `gzreader-nook-<version>.zip` | Nook Simple Touch, with or without GlowLight (test build) | [Nook Simple Touch](Install-Nook-Simple-Touch) |
 | `gzreader-update.zip` | Every device: what Settings → General → Updates and the sync page install (Lua only, ~6 MB, the same for all) | [Updates](Updates-and-Test-Builds) |
 
-The Lua code is the same in every package; what differs is KOReader's native programs for that device (built by KOReader for the Kindles, and by GZreader without floating point for the Nook 1st Edition) and the launchers.
+The Lua code is the same in every package; what differs is KOReader's native programs for that device (built by KOReader for the Kindles and Kobos, and by GZreader without floating point for the Nook 1st Edition) and the launchers.

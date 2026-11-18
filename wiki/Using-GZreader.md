@@ -1,9 +1,9 @@
-How you drive GZreader on each device: the quick panel (the same on all of them), then keys, the 5-way and touch. The Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
+How you drive GZreader on each device: the quick panel (the same on all of them), then keys, the 5-way and touch. Kobos are used as touch Kindles: [Kobo](Kobo). The Nooks: [Nook 1st Edition](Nook-1st-Edition), [Nook Simple Touch](Nook-Simple-Touch).
 
 ## The quick panel
 
-One panel of square tiles, on every Kindle and Nook: **Menu** opens it (on a
-touch Kindle, a tap at the top or a swipe down from the top; [which of
+One panel of square tiles, on every Kindle, Kobo and Nook: **Menu** opens it (on a
+touch Kindle or a Kobo, a tap at the top or a swipe down from the top; [which of
 them](Using-GZreader#how-it-opens)). Each tile has a letter for the
 keyboard; the 5-way moves between them too. A highlighted tile shows white on
 black when it's on (Wi‑Fi, night mode, a bookmark on this page).
@@ -14,7 +14,7 @@ keep each tile under an inch wide (seven on a Scribe, eight turned sideways).
   and DX: **Sync**, [with a computer](Sync-with-a-Computer)), [Bluetooth](Bluetooth) (Kindles with Bluetooth: a tap turns it
   on or off, the panel staying open; a hold opens Bluetooth devices), Night mode, Rotate, Restart, Sleep, Home,
   Updates, Settings, Diagnostics (while diagnostic logging is on, Settings →
-  General) and Exit to Kindle (Exit to Nook).
+  General) and Exit to Kindle (Exit to Kobo, Exit to Nook).
 - **Home:** Manage book (the highlighted book), Continue, Send books, Search,
   History, View and Sort; **Quick note** while [Memos](Notes) is connected;
   **Music** and **Audiobook** while one plays or is

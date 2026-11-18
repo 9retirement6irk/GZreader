@@ -1,4 +1,4 @@
-GZreader runs next to the device's own software, so a Kindle has to be **jailbroken** (allowed to run software Amazon didn't sign) and a Nook **rooted**. Neither is done by GZreader: these are community methods, and the guides linked below are where they're kept up to date. Read the guide for your device in full first, charge the battery, and back up your books.
+GZreader runs next to the device's own software, so a Kindle has to be **jailbroken** (allowed to run software Amazon didn't sign) and a Nook **rooted**. A Kobo needs neither: see [Kobos](#kobos). Neither is done by GZreader: these are community methods, and the guides linked below are where they're kept up to date. Read the guide for your device in full first, charge the battery, and back up your books.
 
 > Jailbreaking and rooting are at your own risk. Methods change as firmware changes: when this page and the linked guide disagree, follow the guide.
 
