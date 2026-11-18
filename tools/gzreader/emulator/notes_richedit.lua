@@ -38,10 +38,10 @@ local function key(e, label)
     end
 end
 -- a button of the formatting bar that comes up at the selection (1: Head, 5: B), from where
--- it was drawn; 8: Save, in the row under the title
+-- it was drawn; 8: Done (saves), in the top bar
 local BAR = { [1] = "heading", [5] = "bold" }
 local function tool(e, i)
-    if i == 8 then return "Save" end
+    if i == 8 then return "Done" end -- (the top bar's Done saves)
     local r = e.input
     local rect = r:barRect()
     for k, t in ipairs(require("gzreader_richedit").BAR) do
@@ -68,6 +68,16 @@ add({ fn = function(E)
     local Notes = require("gzreader_notes")
     for _i, n in ipairs(Notes.notes or {}) do if n.name == note.name then Notes.edit(plugin(), n) end end
 end, after = 4 })
+add({ fn = function(E) E.tap(centre(editor().bar_buttons.options.dimen)) end, after = 2 })
+add({ fn = function(E)
+    local e = editor()
+    local d = e and e.options_dialog
+    local open = false
+    for _i, w in ipairs(UIM()._window_stack) do if w.widget == d then open = true end end
+    check(open and E.findText("Who can see it: Private") ~= nil and E.findText("Close") ~= nil and not e.input:isKeyboardVisible(),
+        "⋮: who can see it, Draw, Close (the keyboard steps aside)")
+    if d then UIM():close(d) end
+end, after = 2 })
 add({ shot = "1-opened", after = 1 })
 add({ fn = function(E)
     local e = editor()
@@ -84,6 +94,11 @@ add({ fn = function(E)
         "…a slim bar on top of the keyboard: # and the arrow keys")
     check(comma and stop and comma.dimen.y == stop.dimen.y and comma.dimen.x < stop.dimen.x,
         "…and a comma on the letters page, before the full stop")
+    local bb = e.bar_buttons or {}
+    check(bb.back and bb.draw and bb.tag and bb.options and bb.done and e.bar_title == "Weekend"
+        and bb.back.dimen.x < bb.draw.dimen.x and bb.draw.dimen.x < bb.tag.dimen.x and bb.tag.dimen.x < bb.options.dimen.x
+        and bb.options.dimen.x < bb.done.dimen.x and e.title_h == require("device").screen:scaleBySize(52),
+        "the drawing screen's top bar: ← the note's name … ✎ # ⋮ Done")
     check(e:text() == CONTENT and not e:changed(), "nothing changed yet: it would be saved exactly as it was")
     E.tap((point(e, "stove", 6)))
 end, after = 2 })

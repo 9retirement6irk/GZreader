@@ -8555,8 +8555,13 @@ print("Notes (Memos v0.31)")
             and nesrc:find("self.save_top and self:topTap(FrameContainer:new{", 1, true) ~= nil
             and nesrc:find("if not self.save_top then\n        bar[#bar + 1] = HorizontalSpan:new{ width = S(10) }", 1, true) ~= nil
             and nesrc:find("self.drawing_closed_at = Editor.now()", 1, true) ~= nil
-            and select(2, nesrc:gsub("self:topTap%(", "")) == 4,
+            and select(2, nesrc:gsub("self:topTap%(", "")) == 6,
             "editor (touch, full page): Save at the top right, not in the row under the title; Draw, space, visibility and Save guarded")
+        check(nesrc:find("self.title_slot[1] = self.save_top and self:notebookBar(sw) or OverlapGroup:new{", 1, true) ~= nil
+            and nesrc:find('local t = guarded and self:topTap(w, fn) or tapTarget(w, fn)', 1, true) ~= nil
+            and nesrc:find('iconButton("back", "back", function() self:onCloseDialog() end)', 1, true) ~= nil
+            and nesrc:find('TextWidget:new{ text = _("Done"), face = Font:getFace("cfont", 16), bold = true } }, function() self:save() end)', 1, true) ~= nil,
+            "editor (touch, full page): the drawing screen's top bar: ← (not guarded) … ✎ # ⋮ Done (guarded); Done saves")
         -- a new drawing's window: a title and tags, then Save
         local ND = require("gzreader_newdrawing")
         check(ND.content("Garden plan", { "home", "#garden", "home" }) == "# Garden plan\n\n#home #garden"
