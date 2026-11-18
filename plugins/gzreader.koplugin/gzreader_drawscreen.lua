@@ -852,6 +852,17 @@ end
 --- A grey tool's ink (the pencil, the highlighter: seg[7], 0 black … 255
 --- paper): painted only where it darkens a pixel, so ink already there (and
 --- written over a highlighter later) stays as dark as it was.
+--- A grey page's bytes, to read and write its pixels directly (one byte
+--- each, a row every `stride` bytes): nil for a page in colour or turned,
+--- which goes through Blitbuffer's own getPixel and setPixel. A pencil or
+--- highlighter line touches every pixel under it several times; through
+--- getPixel each of those made two small objects, thousands a second, and
+--- the grey tools drew far slower than the pen (the owner, 2026-11-17).
+function DrawScreen.bytes(bb)
+    if not bb or bb:getType() ~= Blitbuffer.TYPE_BB8 or bb:getRotation() ~= 0 or bb:getInverse() ~= 0 then return nil end
+    return ffi.cast("uint8_t *", bb.data), tonumber(bb.stride)
+end
+
 function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     local c = self.sketch.canvas
     local r, gray = seg[5], seg[7]
@@ -862,25 +873,42 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
     if grain then gray = math.floor(gray * 0.55) end
     local g8 = Blitbuffer.Color8(gray)
     local cw, ch = self.ink_bb:getWidth(), self.ink_bb:getHeight()
+    local ink, ink_stride = DrawScreen.bytes(self.ink_bb)
+    local page, page_stride = DrawScreen.bytes(self.canvas_bb)
+    local scr, scr_stride = DrawScreen.bytes(screen_bb)
+    local grainHit = Sketch.grainHit
     local sw, sh = screen_bb and screen_bb:getWidth() or 0, screen_bb and screen_bb:getHeight() or 0
     local function darken(bb, x, y, bw, bh)
         if x < 0 or y < 0 or x >= bw or y >= bh then return end
         if bb:getPixel(x, y):getColor8().a > gray then bb:setPixel(x, y, g8) end
     end
-    for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], r)) do
+    -- (the pencil's specks hide the scallops of discs set a little further apart: fewer to paint)
+    for _i, p in ipairs(Sketch.stamps(seg[1], seg[2], seg[3], seg[4], grain and 1.4 * r or r)) do
         local under = screen_bb and self:underControls(p[1], p[2], r)
         for dy = -r, r do
             local dx = rows[dy]
             local px, py = p[1] - dx - c.x, p[2] + dy - c.y
             for k = 0, 2 * dx do
                 -- (the grain goes by the page's pixel: the same wherever the stroke is drawn from)
-                local hit = not grain or Sketch.grainHit(px + k, py, grain, (k - dx) * (k - dx) + dy * dy, r)
-                local before = hit and (px + k >= 0 and py >= 0 and px + k < cw and py < ch) and self.ink_bb:getPixel(px + k, py):getColor8().a
-                if before and before > gray then
-                    self.ink_bb:setPixel(px + k, py, g8)
-                    if tint then self.tint_bb:setPixel(px + k, py, tint) end
+                local x = px + k
+                local hit = not grain or grainHit(x, py, grain, (k - dx) * (k - dx) + dy * dy, r)
+                local on_page = hit and x >= 0 and py >= 0 and x < cw and py < ch
+                if on_page and ink then
+                    local i = py * ink_stride + x
+                    if ink[i] > gray then
+                        ink[i] = gray
+                        if tint then self.tint_bb:setPixel(x, py, tint) end
+                    end
+                elseif on_page and self.ink_bb:getPixel(x, py):getColor8().a > gray then
+                    self.ink_bb:setPixel(x, py, g8)
+                    if tint then self.tint_bb:setPixel(x, py, tint) end
                 end
-                if hit then darken(self.canvas_bb, px + k, py, cw, ch) end
+                if on_page and page then
+                    local i = py * page_stride + x
+                    if page[i] > gray then page[i] = gray end
+                elseif on_page then
+                    darken(self.canvas_bb, x, py, cw, ch)
+                end
                 if hit and screen_bb and not under then
                     -- On the screen, while the pen moves: black points an e-ink screen shows at once
                     -- (the pencil: all of them; the highlighter: one in four, so it reads as light).
@@ -888,9 +916,13 @@ function DrawScreen:inkGray(seg, screen_bb, rows, tint)
                     -- pencil lag far behind the pen (the owner, 2026-11-16). The real grey is on the
                     -- page (canvas_bb) and shows when the stroke ends.
                     local sx, sy = p[1] - dx + k, p[2] + dy
-                    if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)
-                        and screen_bb:getPixel(sx, sy):getColor8().a > gray then
-                        screen_bb:setPixel(sx, sy, Blitbuffer.COLOR_BLACK)
+                    if sx >= 0 and sy >= 0 and sx < sw and sy < sh and (grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0) then
+                        if scr then
+                            local i = sy * scr_stride + sx
+                            if scr[i] > gray then scr[i] = 0 end
+                        elseif screen_bb:getPixel(sx, sy):getColor8().a > gray then
+                            screen_bb:setPixel(sx, sy, Blitbuffer.COLOR_BLACK)
+                        end
                     end
                 end
             end
@@ -1194,8 +1226,12 @@ function DrawScreen:onContacts(det, tevs)
     if self._lag > 5 then self._lag = 0 end -- (not the same clock: nothing to go by)
     self._now = real
     now = now or real
+    local cpu = os.clock()
     local out = self.sketch:frame(slots, now)
     self:apply(out)
+    -- (how long a stroke's frames took to handle, for the long strokes' line in the log)
+    local st = self._stroke_stats
+    if st then st.cpu = (st.cpu or 0) + os.clock() - cpu end
 end
 
 local function intersects(a, x0, y0, x1, y1)
@@ -1335,7 +1371,8 @@ function DrawScreen:flushInk(done)
         self._stroke_stats = nil
         -- (numbers only, for a report: how a long stroke kept up)
         if st and st.frames >= DrawScreen.LONG_STROKE then
-            Log.info(string.format("drawing: a long stroke: %d frames, shown %d times, at most %.0f ms behind the pen", st.frames, st.shown, st.lag * 1000))
+            Log.info(string.format("drawing: a long stroke: %d frames, shown %d times, at most %.0f ms behind the pen, %.2f ms a frame to handle",
+                st.frames, st.shown, st.lag * 1000, (st.cpu or 0) * 1000 / st.frames))
         end
     end
 end
