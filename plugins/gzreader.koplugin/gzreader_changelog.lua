@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Drawing: move and size a picture from Immich, then and later with the lasso", text = "A picture put on a drawing from Immich (⋮ → Picture from Immich…) is chosen with the lasso as it's placed: drag inside its frame to move it, a corner to make it bigger or smaller, then tap elsewhere. Later the lasso chooses pictures as it does strokes (a loop round a picture's middle), and they move, resize, copy, paste and delete with them; Undo takes each step back. The page's paper is never chosen. Pictures added in Memos can be moved and sized the same way." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

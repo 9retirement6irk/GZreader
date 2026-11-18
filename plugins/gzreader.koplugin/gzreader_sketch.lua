@@ -504,7 +504,7 @@ end
 --- its pixels a file of the scene (`data_url`, `mime`). It's kept like
 --- memos' own pictures (shown, under the ink, not changed here); undo takes
 --- it off. Returns the element.
-function Sketch:addPicture(data_url, mime, w, h, cx, cy, now)
+function Sketch:addPicture(data_url, mime, w, h, cx, cy, now, no_history)
     if not self.base then self.base = Drawing.newScene() end
     local base = self.base
     base.files = type(base.files) == "table" and base.files or {}
@@ -520,8 +520,10 @@ function Sketch:addPicture(data_url, mime, w, h, cx, cy, now)
     base.elements = base.elements or Drawing.list()
     base.elements[#base.elements + 1] = el
     self.locked[#self.locked + 1] = el
-    self.history[#self.history + 1] = { kind = "picture", el = el, strokes = {} }
-    self.redone = {}
+    if not no_history then
+        self.history[#self.history + 1] = { kind = "picture", el = el, strokes = {} }
+        self.redone = {}
+    end
     return el
 end
 
@@ -868,7 +870,8 @@ local function startContact(self, s, now, out)
         c.part = box and Lasso.hit(box, cx, cy, self.lasso_handle or 24) or nil
         if c.part then
             -- (the strokes' own box is what moves and grows; the frame is that with a little room around it)
-            c.box0, c.pad, c.snap, c.at = self:strokesArea(self.selection.strokes), self.lasso_pad or 0, Lasso.snapshot(self.selection.strokes), now
+            c.box0, c.pad, c.snap, c.at = self:selectionArea(self.selection), self.lasso_pad or 0, Lasso.snapshot(self.selection.strokes), now
+            c.psnap = Sketch.pictureSnapshot(self.selection.pictures)
         else
             c.loop = { { cx, cy } }
         end
@@ -1013,16 +1016,19 @@ local function lassoEnd(self, c, out)
         end
         if c.part == "inside" then
             Lasso.move(sel.strokes, c.snap, c.x - c.x0, c.y - c.y0)
+            self:picturesMoved(sel.pictures, c.psnap or {}, c.x - c.x0, c.y - c.y0)
         else
             local f, ax, ay = select(2, lassoDrag(c))
             Lasso.scale(sel.strokes, c.snap, f, ax, ay)
+            self:picturesMoved(sel.pictures, c.psnap or {}, 0, 0, f, ax, ay)
         end
         -- (strokes of an opened drawing: written again where they are now, not as they came)
         for _i, st in ipairs(sel.strokes) do st.el = nil end
-        self.history[#self.history + 1] = { kind = "move", strokes = sel.strokes, before = c.snap, after = Lasso.snapshot(sel.strokes) }
+        self.history[#self.history + 1] = { kind = "move", strokes = sel.strokes, before = c.snap, after = Lasso.snapshot(sel.strokes),
+            pictures = sel.pictures, pbefore = c.psnap, pafter = Sketch.pictureSnapshot(sel.pictures) }
         self.redone = {}
         local b = c.box0
-        out.area = self:strokesArea(sel.strokes, { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 })
+        out.area = self:selectionArea(sel, { x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y1 })
         out.redraw, out.stroke_done, out.sel_changed = true, true, true
         return
     end
@@ -1037,7 +1043,13 @@ local function lassoEnd(self, c, out)
         return
     end
     local picked = Lasso.pick(self.strokes, c.loop)
-    self.selection = #picked > 0 and { strokes = picked } or nil
+    -- (and the pictures put on the page whose middle the loop goes round)
+    local pics = {}
+    for _i, el in ipairs(self:movablePictures()) do
+        local b = self:pictureBox(el)
+        if Lasso.inside(c.loop, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2) then pics[#pics + 1] = el end
+    end
+    self.selection = (#picked > 0 or #pics > 0) and { strokes = picked, pictures = pics } or nil
     out.sel_changed = true
 end
 
@@ -1270,11 +1282,89 @@ end
 
 -- ------------------------------------------------------------------ the lasso
 
---- The frame around the chosen strokes ({ x0, y0, x1, y1 }, canvas pixels), or nil.
+--- The pictures the lasso can choose: put on the page (from Immich, or in
+--- Memos), not its paper or a PDF's page under it (those are `locked`).
+function Sketch:movablePictures()
+    local out = {}
+    for _i, el in ipairs(self.locked) do
+        if el.type == "image" and el.locked ~= true and not el.isDeleted then out[#out + 1] = el end
+    end
+    return out
+end
+
+--- Picture `el`'s box on the canvas ({ x0, y0, x1, y1 }).
+function Sketch:pictureBox(el)
+    local x, y = tonumber(el.x) or 0, tonumber(el.y) or 0
+    local x0, y0 = self:toCanvas(x, y)
+    local x1, y1 = self:toCanvas(x + (tonumber(el.width) or 0), y + (tonumber(el.height) or 0))
+    return { x0 = math.min(x0, x1), y0 = math.min(y0, y1), x1 = math.max(x0, x1), y1 = math.max(y0, y1) }
+end
+
+--- What `sel` covers (its strokes and pictures), canvas pixels, added to `area` if given.
+function Sketch:selectionArea(sel, area)
+    area = self:strokesArea(sel.strokes, area)
+    for _i, el in ipairs(sel.pictures or {}) do
+        local b = self:pictureBox(el)
+        if area then
+            area.x0, area.y0, area.x1, area.y1 = math.min(area.x0, b.x0), math.min(area.y0, b.y0), math.max(area.x1, b.x1), math.max(area.y1, b.y1)
+        else
+            area = b
+        end
+    end
+    return area
+end
+
+--- The pictures as they are now: { [el] = { x, y, width, height } }.
+function Sketch.pictureSnapshot(pictures)
+    local snap = {}
+    for _i, el in ipairs(pictures or {}) do snap[el] = { el.x, el.y, el.width, el.height } end
+    return snap
+end
+
+local function touchedPicture(el)
+    el.version = (tonumber(el.version) or 1) + 1
+    el.versionNonce = Drawing.randomSeed()
+    el.updated = os.time() * 1000
+end
+
+--- The pictures put back as in `snap`.
+function Sketch.pictureRestore(pictures, snap)
+    for _i, el in ipairs(pictures or {}) do
+        local v = snap[el]
+        if v then el.x, el.y, el.width, el.height = v[1], v[2], v[3], v[4]; touchedPicture(el) end
+    end
+end
+
+--- The pictures moved by (dx, dy) canvas pixels, or (f) scaled by f from canvas
+--- point (ax, ay), from where `snap` has them.
+function Sketch:picturesMoved(pictures, snap, dx, dy, f, ax, ay)
+    local sax, say
+    if f then sax, say = self:toScene(ax, ay) end
+    for _i, el in ipairs(pictures or {}) do
+        local v = snap[el] or { el.x, el.y, el.width, el.height }
+        if f then
+            el.x, el.y = sax + (v[1] - sax) * f, say + (v[2] - say) * f
+            el.width, el.height = v[3] * f, v[4] * f
+        else
+            el.x, el.y = v[1] + dx / self.per_unit, v[2] + dy / self.per_unit
+        end
+        touchedPicture(el)
+    end
+end
+
+--- Chooses pictures `els` with the lasso (as just put on the page: to move and size them).
+function Sketch:selectPictures(els)
+    if not els or #els == 0 then return false end
+    self.tool = "lasso"
+    self.selection = { strokes = {}, pictures = els }
+    return true
+end
+
+--- The frame around what's chosen ({ x0, y0, x1, y1 }, canvas pixels), or nil.
 function Sketch:selectionBox()
     local sel = self.selection
     if not sel then return nil end
-    local b = self:strokesArea(sel.strokes)
+    local b = self:selectionArea(sel)
     -- (a little room around them: the frame's lines aren't on the strokes' own)
     local pad = self.lasso_pad or 0
     if b and pad > 0 then b.x0, b.y0, b.x1, b.y1 = b.x0 - pad, b.y0 - pad, b.x1 + pad, b.y1 + pad end
@@ -1292,16 +1382,26 @@ end
 function Sketch:lassoCopy()
     local sel = self.selection
     if not sel then return false end
-    return require("gzreader_lasso").copy(sel.strokes, function(x, y) return self:toScene(x, y) end) ~= nil
+    local pics = {}
+    local files = self.base and type(self.base.files) == "table" and self.base.files or {}
+    for _i, el in ipairs(sel.pictures or {}) do
+        local f = files[el.fileId]
+        if type(f) == "table" and f.dataURL then
+            pics[#pics + 1] = { x = tonumber(el.x) or 0, y = tonumber(el.y) or 0, w = tonumber(el.width) or 0, h = tonumber(el.height) or 0,
+                mime = f.mimeType, data = f.dataURL }
+        end
+    end
+    return require("gzreader_lasso").copy(sel.strokes, function(x, y) return self:toScene(x, y) end, pics) ~= nil
 end
 
 --- Takes the chosen strokes off the page (Undo brings them back). Returns true and where they were.
 function Sketch:lassoDelete()
     local sel = self.selection
     if not sel then return false end
-    local area = self:strokesArea(sel.strokes)
+    local area = self:selectionArea(sel)
     for _i, st in ipairs(sel.strokes) do st.gone = true end
-    self.history[#self.history + 1] = { kind = "erase", strokes = sel.strokes }
+    for _i, el in ipairs(sel.pictures or {}) do dropPicture(self, el) end
+    self.history[#self.history + 1] = { kind = "erase", strokes = sel.strokes, pictures = sel.pictures }
     self.redone = {}
     self.selection = nil
     return true, area
@@ -1321,12 +1421,16 @@ function Sketch:lassoPaste(x, y)
     if not clip then return false end
     local sx, sy = self:toScene(x - self.canvas.x, y - self.canvas.y)
     local new = Lasso.fromClip(clip, sx, sy, function(px, py) return self:toCanvas(px, py) end)
-    if #new == 0 then return false end
+    local pics = {}
+    for _i, p in ipairs(Lasso.clipPictures(clip, sx, sy)) do
+        pics[#pics + 1] = self:addPicture(p.data, p.mime, p.w, p.h, p.x + p.w / 2, p.y + p.h / 2, nil, true)
+    end
+    if #new == 0 and #pics == 0 then return false end
     for _i, st in ipairs(new) do self.strokes[#self.strokes + 1] = st end
-    self.history[#self.history + 1] = { kind = "add", strokes = new }
+    self.history[#self.history + 1] = { kind = "add", strokes = new, pictures = pics }
     self.redone = {}
-    self.selection = { strokes = new }
-    return true, self:strokesArea(new)
+    self.selection = { strokes = new, pictures = pics }
+    return true, self:selectionArea(self.selection)
 end
 
 function Sketch:canUndo() return #self.history > 0 end
@@ -1364,7 +1468,7 @@ end
 --- The part of the page an undone or redone step changes: its strokes'
 --- (nil for a step with text boxes or the whole page: all of it is drawn again).
 function Sketch:stepArea(h)
-    if (h.kind ~= "add" and h.kind ~= "erase") or (h.texts and #h.texts > 0) then return nil end
+    if (h.kind ~= "add" and h.kind ~= "erase") or (h.texts and #h.texts > 0) or (h.pictures and #h.pictures > 0) then return nil end
     return self:strokesArea(h.strokes)
 end
 
@@ -1412,8 +1516,20 @@ end
 -- undo and redo of a picture put on the page (Sketch:addPicture): around the strokes' own
 do
     local strokes_undo, strokes_redo = Sketch.undo, Sketch.redo
+    -- (the lasso's steps with pictures in them: moved, resized, deleted, pasted)
+    local function picturesBack(self, h, undoing)
+        if not (h and h.pictures and #h.pictures > 0) then return end
+        if h.kind == "move" then
+            Sketch.pictureRestore(h.pictures, undoing and h.pbefore or h.pafter)
+        elseif (h.kind == "erase") == undoing then
+            for _i, el in ipairs(h.pictures) do putPicture(self, el) end
+        else
+            for _i, el in ipairs(h.pictures) do dropPicture(self, el) end
+        end
+    end
     function Sketch:undo()
         local h = self.history[#self.history]
+        picturesBack(self, h, true)
         if h and h.kind == "picture" then
             table.remove(self.history)
             self.redone = self.redone or {}
@@ -1425,6 +1541,7 @@ do
     end
     function Sketch:redo()
         local h = self.redone and self.redone[#self.redone]
+        picturesBack(self, h, false)
         if h and h.kind == "picture" then
             table.remove(self.redone)
             putPicture(self, h.el)
