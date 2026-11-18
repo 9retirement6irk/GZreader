@@ -241,6 +241,25 @@ function M.koreaderMenuItem(plugin_root, native)
     }
 end
 
+--- About → Advanced → Reset GZreader: settings to their defaults, downloads
+--- and accounts gone, a restart into the setup guide (gzreader_reset.lua
+--- asks first).
+function M.resetItem()
+    local _ = require("gettext")
+    return {
+        icon_glyph = require("common/inline_icon_map").restart,
+        text = _("Reset GZreader"),
+        help_text = _("Every setting back to its default, every download removed from this device, every account forgotten on it; then GZreader restarts with the setup guide. Asks first."),
+        callback = function(touchmenu)
+            local g = M.gzreader()
+            local ok, Reset = pcall(require, "gzreader_reset")
+            if not (g and ok) then return end
+            if touchmenu and touchmenu.closeMenu then touchmenu:closeMenu() end
+            Reset.confirm(g)
+        end,
+    }
+end
+
 --- About's first two lines: GZreader's version, then what it's built on.
 function M.aboutLines(gz_version, zen_version, ko_version)
     local _ = require("gettext")

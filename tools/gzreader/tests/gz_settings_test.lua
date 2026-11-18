@@ -157,8 +157,16 @@ if okb then
         "General: no Advanced, no Send debug reports automatically (both in About now) " .. gen)
     check(texts(about_rows):find("|Report a bug|Send debug reports automatically|Advanced|$") ~= nil and not texts(about_rows):find("Usage statistics", 1, true),
         "About ends with Send debug reports automatically, then Advanced (no Usage statistics) " .. texts(about_rows))
-    check(adv == "|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser (QR code)|Save diagnostic log (USB)|KOReader settings|",
-        "About → Advanced: the diagnostic log's items, then KOReader settings " .. adv)
+    check(adv == "|Diagnostic logging|Send diagnostic log to the developer|Send diagnostic log to a browser (QR code)|Save diagnostic log (USB)|KOReader settings|Reset GZreader|",
+        "About → Advanced: the diagnostic log's items, then KOReader settings, then Reset GZreader " .. adv)
+    -- Reset GZreader: last, under a line, asks GZreader's reset (gzreader_reset.lua)
+    local reset = advanced.sub_item_table[6]
+    local asked_reset, menu_closed
+    package.loaded["gzreader_reset"] = { confirm = function(g) asked_reset = g end }
+    pcall(reset.callback, { closeMenu = function() menu_closed = true end })
+    package.loaded["gzreader_reset"] = nil
+    check(advanced.sub_item_table[5].separator == true and reset.icon_glyph ~= nil and asked_reset == gz and menu_closed,
+        "Reset GZreader: last, under a line, with an icon; it closes Settings and asks first (gzreader_reset.confirm)")
     check(advanced.sub_item_table[4].separator == true, "a line under them")
     -- KOReader settings: KOReader's whole menu, nothing left out
     local ko = advanced.sub_item_table[5]
