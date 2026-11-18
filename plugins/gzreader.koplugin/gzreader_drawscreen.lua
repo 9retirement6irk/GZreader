@@ -1128,7 +1128,8 @@ end
 function DrawScreen:fitPane()
     local sk = self.sketch
     local page = sk and sk:pageRect()
-    if not (self.pane and page and page.w > 0) then return end
+    -- (a journal's drawing is as wide as the screen: the whole page shows, as in the full screen)
+    if not (self.pane and page and page.w > 0) or self.journal then return end
     local scale = math.min(Sketch.MAX_ZOOM or 4, self.canvas.w / page.w)
     if scale > 1.02 then sk:zoomBy(scale, page.x, page.y, 0, 0) end
 end

@@ -9583,8 +9583,9 @@ print("Notes (Memos v0.31)")
             check(dsrcs:find('add({ id = "done", label = self.journal and _("Save") or _("Done") }', 1, true) ~= nil
                 and dsrcs:find('if self.journal then icons[#icons + 1] = { id = "typing", label = _("Aa") } end', 1, true) ~= nil
                 and dsrcs:find('self.flyout = nil; self.after = "entry"; self:done()', 1, true) ~= nil
-                and jsrc:find('if after == "save" then', 1, true) ~= nil,
-                "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry")
+                and jsrc:find('if after == "save" then', 1, true) ~= nil
+                and dsrcs:find('if not (self.pane and page and page.w > 0) or self.journal then return end', 1, true) ~= nil,
+                "journal's drawing: ← back to the entry (kept), Aa to typing, Save saves the entry; the whole page shows (not fitted to the width)")
         end)()
         -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
         ;(function()
