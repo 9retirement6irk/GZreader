@@ -9704,6 +9704,75 @@ print("Notes (Memos v0.31)")
                 and dsrcq:find('require("gzreader_penraw").close(self.penraw)', 1, true) ~= nil,
                 "drawing: the digitizer's pressure goes to the pen's slot when KOReader's event has none; read only on pen Kindles, closed with the screen")
         end)()
+        -- split view: the book in one half of a big screen, the notes in the other
+        ;(function()
+            local Split = require("gzreader_splitview")
+            -- while it's open, the book's refreshes (a page turn: no region, the whole screen) are kept to its part
+            local fake_ui = { dialog = nil }
+            fake_ui.dialog = fake_ui
+            Split.active = { reader = fake_ui, book = { x = 0, y = 0, w = 1860, h = 1240 }, pane = { x = 0, y = 1240, w = 1860, h = 1240 } }
+            local g1 = Split.bookRegion(fake_ui, nil)
+            local given = { x = 5, y = 5, w = 10, h = 10 }
+            -- (ui/geometry is a stub here: the region's size is checked on the screen by emulator/split_view.lua)
+            check(g1 ~= nil and g1 ~= given and Split.bookRegion(fake_ui, given) == given
+                and Split.bookRegion({}, nil) == nil and Split.bookRegion("all", nil) == nil,
+                "split view: a page turn's refresh (the book's, no region) only over the book's part; a region asked for, or another window's, as asked")
+            local UIMsp = require("ui/uimanager")
+            local real_sd, got = UIMsp.setDirty, {}
+            UIMsp.setDirty = function(_s, w, refresh, region)
+                if type(refresh) == "function" then local m, r = refresh(); refresh, region = m, r end
+                got[#got + 1] = { w = w, mode = refresh, region = region }
+            end
+            Split._hooked = nil
+            Split.hookRefresh()
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp:setDirty(fake_ui, function() return "full" end)
+            UIMsp:setDirty("all", "full")
+            Split.active = nil
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp.setDirty, Split._hooked = real_sd, nil
+            check(#got == 4 and got[1].region ~= nil and got[2].mode == "full" and got[2].region ~= nil
+                and got[3].region == nil and got[4].region == nil,
+                "split view: the book's page turns (and its every-few-pages flash) refresh only its part; closed, as before")
+            local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+            local ssrc = io.open(PLUGIN .. "/gzreader_splitview.lua"):read("*a")
+            check(psrc:find('{ id = "split", label = _("Notes"),', 1, true) ~= nil and ssrc:find('label = _("Notes"), run = function() Split.open(plugin) end', 1, true) ~= nil,
+                "split view: its tile is just \"Notes\" (\"Notes beside the book\" was cut off)")
+            local b, n = Split.rects(1860, 2480)
+            local lb, ln = Split.rects(2480, 1860)
+            check(b.x == 0 and b.y == 0 and b.w == 1860 and b.h == 1240 and n.x == 0 and n.y == 1240 and n.w == 1860 and n.h == 1240
+                and lb.x == 0 and lb.y == 0 and lb.w == 1240 and lb.h == 1860 and ln.x == 1240 and ln.y == 0 and ln.w == 1240 and ln.h == 1860,
+                "split view: upright, the book above the notes; on its side, the book left of them; the book always from the screen's corner")
+            local b2, n2 = Split.rects(1860, 2480, 0.9)
+            check(b2.h == math.floor(2480 * 0.7) and n2.y == b2.h and n2.h == 2480 - b2.h, "split view: neither part under three tenths of the screen")
+            check(Split.fits(1860, 2480, 300, true) and Split.fits(2480, 1860, 300, true) and not Split.fits(1072, 1448, 300, true)
+                and not Split.fits(1860, 2480, 300, false) and not Split.fits(600, 800, 167, true) and not Split.fits(nil, nil, nil, true),
+                "split view: on the Scribe (6.2 inches across) either way up; not a Paperwhite or a Kindle Touch, nor without a touch screen")
+            -- the drawing screen in a pane: which input frames are its own
+            local DS = require("gzreader_drawscreen")
+            local d = setmetatable({ pane = { x = 0, y = 1240, w = 1860, h = 1240 }, _pane_slots = {} }, { __index = function(_t, k) return rawget(DS, k) end })
+            local function frame(list) return d:paneFrame(nil, list) end
+            local r1 = frame({ { slot = 0, id = 1, x = 900, y = 300 } })               -- a finger lands on the book
+            local r2 = frame({ { slot = 0, id = 1, x = 900, y = 1500 } })              -- and wanders into the notes
+            local r3 = frame({ { slot = 0, id = -1 } })                                -- lifts
+            local r4 = frame({ { slot = 4, id = 7, x = 500, y = 2000 } })              -- the pen lands in the notes
+            local r5 = frame({ { slot = 4, id = 7, x = 500, y = 900 } })               -- and wanders onto the book
+            local r6 = frame({ { slot = 4, id = 7, x = 500, y = 900 }, { slot = 0, id = 2, x = 300, y = 300 } }) -- a finger on the book meanwhile
+            local r7 = frame({ { slot = 4, id = -1 }, { slot = 0, id = 2, x = 300, y = 300 } })
+            local r8 = frame({ { slot = 0, id = 2, x = 310, y = 300 } })
+            check(r1 == false and r2 == false and r3 == false and r4 == true and r5 == true and r6 == true and r7 == true and r8 == false
+                and d._pane_slots[4] == nil,
+                "split view: a touch belongs where it began (the book's go to KOReader, the notes' to the drawing), wherever it moves after")
+            local dsrcs = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            -- (the sizes themselves are checked on the Scribe's screen by emulator/split_view.lua: every tool fits the pane)
+            check(dsrcs:find('if self.pane then self.tool_sz = DrawScreen.paneToolSize(sh, self.top_h, #DrawScreen.SIDE_TOOLS) end', 1, true) ~= nil,
+                "split view: the tools made smaller to fit a short pane")
+            check(dsrcs:find('if screen.pane and not screen:paneFrame(det, tevs) then return orig(det, tevs) end', 1, true) ~= nil
+                and dsrcs:find('if reader and UIManager:getTopmostVisibleWidget() == self then return reader:handleEvent(event) end', 1, true) ~= nil
+                and dsrcs:find('if self.pane then pcall(function() require("gzreader_splitview").closed(self) end) end', 1, true) ~= nil
+                and dsrcs:find('x, y = ges.pos.x - self.ox, ges.pos.y - self.oy', 1, true) ~= nil,
+                "split view: the drawing screen passes the book's touches on, works from its pane's corner, and gives the book its screen back when it closes")
+        end)()
         -- a long stroke keeps up with the pen: the ink shown at most 60 times a second, 8 while behind
         ;(function()
             local DS = require("gzreader_drawscreen")
@@ -9712,7 +9781,7 @@ print("Notes (Memos v0.31)")
             local shown, timers = {}, 0
             UIMi.setDirty = function(_s, _w, _mode, region) shown[#shown + 1] = region end
             UIMi.scheduleIn = function() timers = timers + 1 end
-            local d = setmetatable({ inkRefresh = function() return "a2" end }, { __index = function(_t, k) return rawget(DS, k) end })
+            local d = setmetatable({ inkRefresh = function() return "a2" end, ox = 0, oy = 0 }, { __index = function(_t, k) return rawget(DS, k) end })
             -- 240 points a second for a second, the handling keeping up
             for i = 0, 239 do
                 d._now, d._lag = 10 + i / 240, 0.002
@@ -9756,13 +9825,13 @@ print("Notes (Memos v0.31)")
         local dsrc = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
         check(dsrc:find("if not p.modified then", 1, true) ~= nil and esrc2:find("elseif p.changed and p.path then", 1, true) ~= nil,
             "a drawing opened and left as it was: nothing sent")
-        check(dsrc:find('self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0', 1, true) ~= nil
+        check(dsrc:find('self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy', 1, true) ~= nil
             and dsrc:find('if el.type == "image" then return "fast" end', 1, true) ~= nil
             and not dsrc:find('setDirty(nil, "a2"', 1, true)
-            and dsrc:find('local area = Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
+            and dsrc:find('local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }', 1, true) ~= nil
             and dsrc:find('UIManager:setDirty(nil, "ui", area)', 1, true) ~= nil,
             "drawing: ink over a paper or picture goes on with DU (not A2: gaps at its lines), its area cleaned up after")
-        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0, y = d.y0, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
+        check(dsrc:find('UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })', 1, true) ~= nil
             and dsrc:find('self:showInk(x0, y0, x1, y1)', 1, true) ~= nil
             and not dsrc:find('grey and "ui"', 1, true)
             and dsrc:find('(grain or gray < 0x80 or (sx + 2 * sy) % 4 == 0)', 1, true) ~= nil
