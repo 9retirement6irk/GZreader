@@ -9817,6 +9817,61 @@ print("Calendar tab")
     local b1, b2 = by["Call with Berlin office"], by["Call with Berlin office (after the US change)"]
     check(b1 and os.date("!%H:%M", b1[1].start) == "15:00" and b2 and os.date("!%H:%M", b2[1].start) == "15:00",
         "Europe/Berlin 16:00 in CET is 15:00 UTC (its own time zone rules)")
+    -- any year: a Kindle's clock reaches only 1901-2038 (32-bit), and an iCloud link's
+    -- time zone starts in 1883: os.time gave nil, "attempt to perform arithmetic on local 't'"
+    ;(function()
+        local ok_all = true
+        for _i, t in ipairs({ 0, 1794034621, -11676096000, -2717640000, 4102444800, 951782400, 1709208000 }) do
+            local f = CalDAV.utcFields(t)
+            if CalDAV.timegm(f) ~= t then ok_all = false end
+            if t >= -2^31 and t < 2^31 then
+                local g = os.date("!*t", t)
+                if g.year ~= f.year or g.month ~= f.month or g.day ~= f.day or g.hour ~= f.hour or g.wday ~= f.wday or g.yday ~= f.yday then ok_all = false end
+            end
+        end
+        check(ok_all and CalDAV.timegm{ year = 1601, month = 1, day = 1, hour = 0 } == -11644473600
+            and CalDAV.timegm{ year = 2026, month = 13, day = 1, hour = 0 } == CalDAV.timegm{ year = 2027, month = 1, day = 1, hour = 0 }
+            and CalDAV.timegm{ year = 2026, month = 2, day = 29, hour = 0 } == CalDAV.timegm{ year = 2026, month = 3, day = 1, hour = 0 },
+            "dates by arithmetic: 1601 to 2100, leap days, months past their end")
+        -- the Kindle's clock: os.time gives nil outside 1901-2038
+        local real_time = os.time
+        os.time = function(f)
+            if f and (f.year < 1902 or f.year > 2037) then return nil end
+            return real_time(f)
+        end
+        local ics = table.concat({ "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Apple Inc.//iCloud//EN",
+            "BEGIN:VTIMEZONE", "TZID:America/New_York",
+            "BEGIN:STANDARD", "DTSTART:18831118T120358", "TZOFFSETFROM:-045602", "TZOFFSETTO:-0500", "TZNAME:EST", "END:STANDARD",
+            "BEGIN:DAYLIGHT", "DTSTART:20070311T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU", "TZOFFSETFROM:-0500", "TZOFFSETTO:-0400", "TZNAME:EDT", "END:DAYLIGHT",
+            "BEGIN:STANDARD", "DTSTART:20071104T020000", "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU", "TZOFFSETFROM:-0400", "TZOFFSETTO:-0500", "TZNAME:EST", "END:STANDARD",
+            "END:VTIMEZONE",
+            "BEGIN:VEVENT", "UID:a@example.com", "SUMMARY:Dentist", "DTSTART;TZID=America/New_York:20260714T093000",
+            "DTEND;TZID=America/New_York:20260714T103000", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:b@example.com", "SUMMARY:Birthday", "DTSTART;VALUE=DATE:18990101", "DTEND;VALUE=DATE:18990102",
+            "RRULE:FREQ=YEARLY", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:c@example.com", "SUMMARY:Standup", "DTSTART;TZID=America/New_York:20260105T090000",
+            "DTEND;TZID=America/New_York:20260105T091500", "RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20991231T235959Z", "END:VEVENT",
+            "END:VCALENDAR" }, "\r\n")
+        local okp, evs = pcall(CalDAV.parseEvents, ics)
+        local occ, occ2 = {}, {}
+        if okp then
+            local from = real_time{ year = 2026, month = 7, day = 1, hour = 0 }
+            okp, occ = pcall(CalDAV.occurrences, evs, from, from + 31 * 86400)
+            local jan = real_time{ year = 2027, month = 1, day = 1, hour = 0 }
+            if okp then okp, occ2 = pcall(CalDAV.occurrences, evs, jan - 86400, jan + 2 * 86400) end
+        end
+        os.time = real_time
+        local dentist, standups, birthday
+        for _i, ev in ipairs(okp and occ2 or {}) do if ev.title == "Birthday" then birthday = ev end end
+        for _i, ev in ipairs(okp and occ or {}) do
+            if ev.title == "Dentist" then dentist = ev end
+            if ev.title == "Standup" then standups = (standups or 0) + 1 end
+        end
+        check(okp and dentist and dentist.start == 1784035800 and standups == 4 and birthday
+            and os.date("*t", birthday.start).month == 1 and os.date("*t", birthday.start).year == 2027,
+            "an iCloud link with a time zone from 1883, on a Kindle's clock: read (the dentist at 9:30 EDT, Mondays to 2099, a birthday from 1899) "
+            .. tostring(not okp and occ or (dentist and dentist.start)))
+    end)()
     local summer = CalDAV.parseEvents(io.open(PLUGIN .. "/../../tools/gzreader/emulator/demo/proton_sample.ics"):read("*a"))
     local sc
     for _i, e in ipairs(summer) do if e.title == "Summer call (Berlin CEST)" then sc = e end end

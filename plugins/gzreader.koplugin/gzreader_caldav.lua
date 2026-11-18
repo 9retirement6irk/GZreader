@@ -278,14 +278,73 @@ local function unescape(s)
     return (s or ""):gsub("\\[nN]", "\n"):gsub("\\([,;\\])", "%1")
 end
 
---- os.time for UTC fields (summer time included).
+-- Dates worked out by arithmetic, not os.time / os.date: on a Kindle those
+-- only reach 1901–2038 (a 32-bit clock), and calendars have dates outside
+-- that. An iCloud link's time zone starts in 1883 (DTSTART:18831118T120358),
+-- and os.time gave nil: "attempt to perform arithmetic on local 't'".
+
+--- Days since 1970-01-01 for a (proleptic Gregorian) date.
+local function daysFromCivil(y, m, d)
+    y = m <= 2 and y - 1 or y
+    local era = math.floor(y / 400)
+    local yoe = y - era * 400
+    local doy = math.floor((153 * ((m + 9) % 12) + 2) / 5) + d - 1
+    return era * 146097 + yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy - 719468
+end
+
+--- The other way: days since 1970-01-01 -> year, month, day.
+local function civilFromDays(z)
+    z = z + 719468
+    local era = math.floor(z / 146097)
+    local doe = z - era * 146097
+    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+    local mp = math.floor((5 * doy + 2) / 153)
+    local d = doy - math.floor((153 * mp + 2) / 5) + 1
+    local m = mp < 10 and mp + 3 or mp - 9
+    return yoe + era * 400 + (m <= 2 and 1 or 0), m, d
+end
+
+--- os.time for UTC fields, any year (fields as os.time takes them: the hour
+--- 12 when missing; months and days past their end carry over).
 local function timegm(f)
-    local t = os.time(f)
-    local lt, ut = os.date("*t", t), os.date("!*t", t)
-    ut.isdst = lt.isdst
-    return t + (os.time(lt) - os.time(ut))
+    local y, m = f.year, f.month or 1
+    y, m = y + math.floor((m - 1) / 12), (m - 1) % 12 + 1
+    return (daysFromCivil(y, m, 1) + (f.day or 1) - 1) * 86400
+        + (f.hour or 12) * 3600 + (f.min or 0) * 60 + (f.sec or 0)
 end
 CalDAV.timegm = timegm
+
+--- os.date("!*t", t), any year: { year, month, day, hour, min, sec, wday, yday }.
+local function utcFields(t)
+    local days = math.floor(t / 86400)
+    local s = t - days * 86400
+    local y, m, d = civilFromDays(days)
+    return { year = y, month = m, day = d, hour = math.floor(s / 3600), min = math.floor(s % 3600 / 60), sec = s % 60,
+        wday = (days + 4) % 7 + 1, yday = days - daysFromCivil(y, 1, 1) + 1, isdst = false }
+end
+CalDAV.utcFields = utcFields
+
+--- os.time for the Kindle's own time zone; outside the years the Kindle's
+--- clock reaches, the offset it has now.
+local function localTime(f)
+    local t = os.time(f)
+    if t then return t end
+    local now = os.time()
+    return timegm(f) - (timegm(os.date("*t", now)) - now)
+end
+CalDAV.localTime = localTime
+
+--- localFields(t) in the Kindle's time zone, any year (outside the years
+--- the Kindle's clock reaches: the offset it has now).
+local function localFields(t)
+    if t >= -2147483648 and t < 2147483648 then return os.date("*t", t) end
+    local now = os.time()
+    local f = utcFields(t + (timegm(os.date("*t", now)) - now))
+    f.isdst = nil
+    return f
+end
+CalDAV.localFields = localFields
 
 ---------------------------------------------------------------- time zones (VTIMEZONE)
 
@@ -310,7 +369,7 @@ local function transitionIn(year, rule, at)
     local list = {}
     for d = 1, 31 do
         local t = wallTime{ year = year, month = month, day = d, hour = 12 }
-        local f = os.date("!*t", t)
+        local f = utcFields(t)
         if f.month ~= month then break end
         if f.wday == wd then list[#list + 1] = d end
     end
@@ -323,13 +382,13 @@ end
 --- The UTC offset (s) in force at `wall` (wall-clock time as UTC epoch) in a VTIMEZONE.
 function CalDAV.zoneOffset(zone, wall)
     local best_t, best_off
-    local year = tonumber(os.date("!%Y", wall))
+    local year = utcFields(wall).year
     for _i, c in ipairs(zone) do
         local cands = {}
         if c.rule and (c.rule.FREQ or ""):upper() == "YEARLY" and c.rule.BYMONTH then
             local untilt = c.rule.UNTIL and CalDAV.parseTime(c.rule.UNTIL)
             for y = year - 1, year do
-                local t = transitionIn(y, c.rule, os.date("!*t", c.start))
+                local t = transitionIn(y, c.rule, utcFields(c.start))
                 if t and t >= c.start and not (untilt and t - (c.from or 0) > untilt) then cands[#cands + 1] = t end
             end
         else
@@ -383,7 +442,7 @@ function CalDAV.parseTime(value, params, zones)
     if value:match("^%d%d%d%d%d%d%d%d$") or params.VALUE == "DATE" then
         local y, m, d = value:match("^(%d%d%d%d)(%d%d)(%d%d)")
         if not y then return nil end
-        return os.time{ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0 }, true
+        return localTime{ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 0 }, true
     end
     local Y, M, D, h, mi, sec, z = value:match("^(%d%d%d%d)(%d%d)(%d%d)T(%d%d)(%d%d)(%d%d)(Z?)$")
     if not Y then return nil end
@@ -395,7 +454,7 @@ function CalDAV.parseTime(value, params, zones)
         return wall - CalDAV.zoneOffset(zone, wall), false
     end
     f.isdst = nil
-    return os.time(f), false -- floating, or a TZID without its VTIMEZONE: the Kindle's time zone
+    return localTime(f), false -- floating, or a TZID without its VTIMEZONE: the Kindle's time zone
 end
 
 --- An iCalendar DURATION in seconds.
@@ -462,13 +521,13 @@ end
 local WEEKDAYS = { SU = 1, MO = 2, TU = 3, WE = 4, TH = 5, FR = 6, SA = 7 }
 
 local function addMonths(t, n)
-    local d = os.date("*t", t)
+    local d = localFields(t)
     d.month = d.month + n
     d.isdst = nil
-    return os.time(d)
+    return localTime(d)
 end
 
-local function daysInMonth(y, m) return os.date("*t", os.time{ year = y, month = m + 1, day = 0, hour = 12 }).day end
+local function daysInMonth(y, m) return daysFromCivil(m == 12 and y + 1 or y, m == 12 and 1 or m + 1, 1) - daysFromCivil(y, m, 1) end
 
 --- BYSETPOS: of a period's candidates (sorted), the ones at these places
 --- (1 the first, -1 the last).
@@ -508,7 +567,7 @@ function CalDAV.expandRule(ev, from, to, max)
     local count = tonumber(rule.COUNT)
     local untilt = rule.UNTIL and CalDAV.parseTime(rule.UNTIL)
     local months = numSet(rule.BYMONTH)
-    local s = os.date("*t", ev.start)
+    local s = localFields(ev.start)
     local out, n = {}, 0
     local function emit(t)
         if t < ev.start then return true end
@@ -519,7 +578,7 @@ function CalDAV.expandRule(ev, from, to, max)
         return #out < max and t < to
     end
     local function at(y, mo, d)
-        return os.time{ year = y, month = mo, day = d, hour = s.hour, min = s.min, sec = s.sec }
+        return localTime{ year = y, month = mo, day = d, hour = s.hour, min = s.min, sec = s.sec }
     end
     local guard = 0
     if freq == "DAILY" then
@@ -533,13 +592,13 @@ function CalDAV.expandRule(ev, from, to, max)
         local t = ev.start
         while guard < 20000 do
             guard = guard + 1
-            local d = os.date("*t", t)
+            local d = localFields(t)
             if (not wdays or wdays[d.wday]) and (not months or months[d.month]) then
                 if not emit(t) then break end
             elseif t >= to or (untilt and t > untilt) then
                 break
             end
-            d.day = d.day + interval; d.isdst = nil; t = os.time(d)
+            d.day = d.day + interval; d.isdst = nil; t = localTime(d)
         end
     elseif freq == "WEEKLY" then
         local wkst = WEEKDAYS[(rule.WKST or "MO"):upper()] or 2
@@ -550,29 +609,29 @@ function CalDAV.expandRule(ev, from, to, max)
         end
         if #offsets == 0 then offsets = { (s.wday - wkst) % 7 } end
         table.sort(offsets)
-        local week = os.time{ year = s.year, month = s.month, day = s.day - (s.wday - wkst) % 7, hour = 12 }
+        local week = localTime{ year = s.year, month = s.month, day = s.day - (s.wday - wkst) % 7, hour = 12 }
         local done = false
         while not done and guard < 5000 do
             guard = guard + 1
-            local w = os.date("*t", week)
+            local w = localFields(week)
             for i, off in ipairs(offsets) do
                 local t = at(w.year, w.month, w.day + off)
-                if offsets[i - 1] ~= off and (not months or months[os.date("*t", t).month]) then
+                if offsets[i - 1] ~= off and (not months or months[localFields(t).month]) then
                     if not emit(t) then done = true; break end
                 end
             end
             if not done and (week >= to + 7 * 86400 or (untilt and week > untilt)) then done = true end
-            w.day = w.day + 7 * interval; w.isdst = nil; week = os.time(w)
+            w.day = w.day + 7 * interval; w.isdst = nil; week = localTime(w)
         end
     elseif freq == "MONTHLY" or freq == "YEARLY" then
         -- YEARLY with BYMONTH goes month by month through each year it's in
         local by_month = freq == "YEARLY" and months ~= nil
         local step = freq == "MONTHLY" and interval or (by_month and 1 or 12 * interval)
-        local base = os.time{ year = s.year, month = by_month and 1 or s.month, day = 1, hour = 12 }
+        local base = localTime{ year = s.year, month = by_month and 1 or s.month, day = 1, hour = 12 }
         local done = false
         while not done and guard < 4000 do
             guard = guard + 1
-            local m = os.date("*t", base)
+            local m = localFields(base)
             local cands = {}
             local dim = daysInMonth(m.year, m.month)
             local in_period = true
@@ -584,7 +643,7 @@ function CalDAV.expandRule(ev, from, to, max)
             if not in_period then
                 cands = {}
             elseif rule.BYDAY and (freq == "MONTHLY" or rule.BYMONTH) then
-                local first_wday = os.date("*t", os.time{ year = m.year, month = m.month, day = 1, hour = 12 }).wday
+                local first_wday = utcFields(timegm{ year = m.year, month = m.month, day = 1, hour = 12 }).wday
                 for nth, code in rule.BYDAY:gmatch("([+-]?%d*)(%a%a)") do
                     local wd = WEEKDAYS[code:upper()]
                     local list = {}

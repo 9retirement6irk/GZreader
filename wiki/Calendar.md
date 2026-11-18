@@ -11,6 +11,9 @@ iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only
   falling back to HTTP. Links are secret: kept in GZreader's settings, never
   logged (requests show the server only, `rawRequest`'s `log_url`). Times use
   the file's own VTIMEZONE rules; repeating events are expanded on the Kindle.
+  Dates are worked out without the Kindle's clock (which reaches only 1901 to
+  2037), so iCloud's shared links (their time zones start in 1883), birthdays
+  from before 1901 and events repeating past 2037 are read too.
   Settings → Connections → Calendar → Calendar links: show / rename / remove,
   or the same on the setup page (*Add or edit links with QR code*), which
   also replaces a link that changed.
