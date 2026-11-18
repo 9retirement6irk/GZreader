@@ -501,6 +501,13 @@ function M.build(ctx)
         },
     })
 
+    -- GZreader: Auto light (gzreader_autolight.lua) turned off: the brightness schedule
+    -- (or light / dark mode brightness) takes the light over
+    local function gz_auto_light_off()
+        local okA, AutoLight = pcall(require, "gzreader_autolight")
+        if okA and AutoLight.isOn() then AutoLight.set(false) end
+    end
+
     -- Brightness
     table.insert(items, {
         icon_glyph = icons.schedule_brightness,
@@ -520,6 +527,7 @@ function M.build(ctx)
                     trigger_brightness_schedule_reschedule()
                     if config.features.brightness_schedule then
                         disable_autowarmth()
+                        gz_auto_light_off() -- GZreader: the schedule and Auto light would fight over the light
                     end
                 end,
             },
@@ -538,6 +546,7 @@ function M.build(ctx)
                     trigger_brightness_schedule_reschedule()
                     if config.brightness_schedule.use_mode_values then
                         disable_autowarmth()
+                        gz_auto_light_off() -- GZreader
                     end
                 end,
             },
@@ -655,6 +664,27 @@ function M.build(ctx)
             },
         },
     })
+
+    -- GZreader: Auto light and its adjustments first in Brightness (Kindles with a light
+    -- sensor); turning it on turns the brightness schedule and light / dark mode brightness off
+    do
+        local brightness = items[#items]
+        local okA, AutoLight = pcall(require, "gzreader_autolight")
+        if okA and type(brightness.sub_item_table) == "table" then
+            local rows = AutoLight.settingsItems{
+                picker = utils.show_value_picker,
+                on_enable = function()
+                    local cfg = get_brightness_schedule_config()
+                    config.features.brightness_schedule = false
+                    config.brightness_schedule.use_mode_values = false
+                    plugin:saveConfig()
+                    trigger_brightness_schedule_reschedule()
+                    return cfg
+                end,
+            }
+            for i, row in ipairs(rows) do table.insert(brightness.sub_item_table, i, row) end
+        end
+    end
 
     -- Warmth
     table.insert(items, {

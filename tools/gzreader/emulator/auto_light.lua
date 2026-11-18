@@ -32,11 +32,25 @@ add({ fn = function(E)
     A().read = function() return ROOM end
     local D = require("device")
     E.real_pd = D.getPowerDevice
+    -- (anything else asked of it: the real one's)
+    local real = E.real_pd(D)
+    setmetatable(PD, { __index = function(_t, k)
+        local v = real[k]
+        if type(v) == "function" then return function(_self, ...) return v(real, ...) end end
+        return v
+    end })
     D.getPowerDevice = function() return PD end
     A().LOOK_EVERY = 1
 end, after = 2 })
 if MODEL ~= "scribe" then
-    add({ fn = function(E) check(tile() == nil and not A().available(), "no light sensor (" .. MODEL .. "): no Auto light tile") end, after = 1 })
+    add({ fn = function(E)
+        check(tile() == nil and not A().available(), "no light sensor (" .. MODEL .. "): no Auto light tile")
+        local zen = require("apps/filemanager/filemanager").instance.zenos or rawget(_G, "__ZEN_UI_PLUGIN")
+        local items = require("modules/settings/sections/global_settings").build({ config = zen.config, plugin = zen, settings_apply = function() end })
+        local first
+        for _i, it in ipairs(items) do if it.text == "Brightness" then first = it.sub_item_table[1] end end
+        check(first and first.text == "Enable brightness schedule", "…and Settings → Brightness starts with the schedule, as before")
+    end, after = 1 })
 else
     add({ fn = function(E)
         local t = tile()
@@ -93,8 +107,68 @@ else
     end, after = 4 })
     add({ fn = function(E)
         check((A().changes or 0) == E.before_off and powerd():isFrontlightOff(), "the light turned off: auto brightness leaves it off")
+        powerd():turnOnFrontlight()
+        ROOM = 100
+    end, after = 2 })
+    -- Settings → General → Schedules → Brightness: Auto light first, with its adjustments
+    add({ fn = function(E)
+        pcall(function() require("modules/settings/zen_settings_page").closeActive() end)
+        local fm = require("apps/filemanager/filemanager").instance
+        require("modules/settings/zen_settings_page").show(fm.zenos or rawget(_G, "__ZEN_UI_PLUGIN"), { path = {
+            { key = "text", value = "General" }, { key = "text", value = "Schedules" }, { key = "text", value = "Brightness" } } })
+    end, after = 6 })
+    add({ shot = "1-settings-brightness", after = 0.5 })
+    add({ fn = function(E)
+        -- the rows as Settings builds them
+        local zen = require("apps/filemanager/filemanager").instance.zenos or rawget(_G, "__ZEN_UI_PLUGIN")
+        local items = require("modules/settings/sections/global_settings").build({ config = zen.config, plugin = zen, settings_apply = function() end })
+        local br
+        for _i, it in ipairs(items) do if it.text == "Brightness" then br = it end end
+        local rows = br and br.sub_item_table or {}
+        local function txt(r) return r.text or (r.text_func and r.text_func()) or "" end
+        local names = {}
+        for i = 1, 7 do names[i] = rows[i] and txt(rows[i]) or "" end
+        E.rows = rows
+        check(names[1] == "Auto light" and names[2]:find("^Brighter or dimmer") and names[3]:find("^Never dimmer than") and names[4]:find("^Never brighter than")
+            and names[5]:find("^Follows the room") and names[6] == "Forget my adjustments" and names[7]:find("^Now: ")
+            and txt(rows[8]) == "Enable brightness schedule",
+            "Settings → Brightness: Auto light and its adjustments first, then the schedule (" .. table.concat(names, " | ") .. ")")
+        check(rows[1].checked_func() == true and names[7]:find("lux", 1, true) ~= nil, "…Auto light ticked (it's on); Now: the room's light and the light's level (" .. names[7] .. ")")
+        -- brighter or dimmer: +20%
+        for _i, sub in ipairs(rows[2].sub_item_table) do if sub.text == "+20%" then sub.callback() end end
+        check(math.abs((G_reader_settings:readSetting(A().OFFSET) or 0) - 0.2) < 0.001 and txt(rows[2]) == "Brighter or dimmer: +20%", "Brighter or dimmer → +20%: kept, and the row says so")
+        -- never brighter than 10 (the picker: answered as if 10 were chosen)
+        rows[4].callback()
+    end, after = 2 })
+    add({ fn = function(E)
+        local d = UIM():getTopmostVisibleWidget()
+        check(d and d.value_max == 24 and d.callback ~= nil, "Never brighter than: a picker of the light's levels (0–" .. tostring(d and d.value_max) .. ")")
+        if d and d.callback then d.callback(10); UIM():close(d) end
+        ROOM = 5000
+    end, after = 4 })
+    add({ fn = function(E)
+        local cur = powerd():frontlightIntensity()
+        check(G_reader_settings:readSetting(A().HIGHEST) == 10 and cur <= 10, "…set to 10: in daylight the light stays at 10 at most (" .. cur .. ")")
+        -- quickly
+        for _i, sub in ipairs(E.rows[5].sub_item_table) do if sub.text:find("^Quickly") then sub.callback() end end
+        check(A().speed() == "fast" and A().SPEEDS.fast.every == 5, "Follows the room → Quickly: kept")
+        -- the schedule turned on: Auto light goes off (they'd fight)
+        E.rows[8].callback()
+        check(not A().isOn(), "Enable brightness schedule: Auto light turns off")
+        E.rows[8].callback() -- (the schedule off again)
+        -- Auto light on again: the schedule goes off
+        E.rows[8].callback()
+        E.rows[1].callback()
+        local zen = require("apps/filemanager/filemanager").instance.zenos or rawget(_G, "__ZEN_UI_PLUGIN")
+        check(A().isOn() and zen.config.features.brightness_schedule == false, "Auto light on: the brightness schedule turns off")
+        -- forget my adjustments
+        E.rows[6].callback()
+        check(G_reader_settings:readSetting(A().OFFSET) == nil and G_reader_settings:readSetting(A().HIGHEST) == nil and A().speed() == "normal",
+            "Forget my adjustments: back to as the room asks, the whole range, normal speed")
+        pcall(function() require("modules/settings/zen_settings_page").closeActive() end)
         A().set(false)
-    end, after = 1 })
+    end, after = 3 })
+
 end
 add({ fn = function(E)
     A().read = nil

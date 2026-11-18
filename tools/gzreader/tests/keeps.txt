@@ -114,7 +114,7 @@
 17 plugins/zenos.koplugin/modules/settings/sections/about_settings.lua
 7 plugins/zenos.koplugin/modules/settings/sections/advanced_settings.lua
 7 plugins/zenos.koplugin/modules/settings/sections/general_settings.lua
-9 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
+19 plugins/zenos.koplugin/modules/settings/sections/global_settings.lua
 19 plugins/zenos.koplugin/modules/settings/sections/interface_settings.lua
 8 plugins/zenos.koplugin/modules/settings/sections/library_settings.lua
 11 plugins/zenos.koplugin/modules/settings/sections/library_settings/home_settings.lua
