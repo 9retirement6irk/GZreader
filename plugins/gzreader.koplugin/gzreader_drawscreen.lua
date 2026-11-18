@@ -391,6 +391,11 @@ function DrawScreen:flyoutRows(which)
         rows[#rows + 1] = { id = "clear", row = true, label = _("Erase page") }
         if self.sketch and self.sketch.zoomed then rows[#rows + 1] = { id = "whole", row = true, label = _("Whole page") } end
         rows[#rows + 1] = { id = "cancel", row = true, label = _("Close without saving") }
+        -- (a note that's already there: its archive and delete, as in its own menus)
+        if self.note_actions then
+            rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }
+            rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }
+        end
     elseif which == "tags" then
         local seen = {}
         local function tag(name)
@@ -2067,6 +2072,12 @@ function DrawScreen:use(t)
         -- a journal entry's drawing: back to typing (the drawing kept)
         Log.info("drawing: journal, back to typing")
         self.after = "typing"; self:done()
+    elseif t.id == "archive-note" or t.id == "delete-note" then
+        self.flyout = nil
+        self:layoutBar()
+        self:redrawAll()
+        Log.info("drawing:", t.id)
+        if t.id == "archive-note" then self.note_actions.archive(self) else self.note_actions.delete(self) end
     elseif t.id == "done" then
         -- (a journal entry's: Save, the drawing kept and the entry saved)
         if self.journal then self.after = "save" end
@@ -2483,6 +2494,7 @@ function DrawScreen.show(opts)
         plugin = opts.plugin, -- (the quick panel, pulled down)
         pane = opts.pane,
         journal = opts.journal, -- { under }: a journal entry's drawing, in `pane` under its prompt (the entry: `under`)
+        note_actions = opts.note_actions, -- { archive(screen), delete(screen) }: a note that's already there
         on_done = on_done and function(res)
             for _i, p in ipairs(gone) do res[#res + 1] = p end
             -- (a journal entry's: what comes next, "entry", "typing" or "save")

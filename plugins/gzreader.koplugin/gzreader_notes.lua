@@ -481,6 +481,18 @@ function Notes.drop(name, archived)
     return true
 end
 
+--- An opened note's screen (NoteView) for `m` closed: archived or deleted
+--- from its editor or drawing, it would show a note that's gone.
+function Notes.closeViews(m)
+    for _i, w in ipairs(UIManager._window_stack or {}) do
+        local v = w.widget
+        if v.memo and v.scroller and (v.memo == m or (m.name and v.memo.name == m.name)) then
+            v.closed = true
+            UIManager:close(v)
+        end
+    end
+end
+
 --- Archive a note (`archived` true) or bring it back from the archive
 --- (false): queued and sent soon, off the board's list at once.
 function Notes.archive(plugin, m, archived)
@@ -488,6 +500,7 @@ function Notes.archive(plugin, m, archived)
     Notes.enqueue(plugin, { op = "archive", name = m.name, archived = archived == true })
     m.archived = archived == true or nil
     Notes.drop(m.name, archived == true)
+    Notes.closeViews(m)
     Log.info("notes: a note", archived and "archived" or "brought back from the archive")
     Notes.sendSoon(plugin)
     Notes.reloadBoard(true)
@@ -523,6 +536,7 @@ function Notes.delete(plugin, m)
             if Notes.notes[i].local_id == m.local_id then table.remove(Notes.notes, i) end
         end
     end
+    Notes.closeViews(m)
     Log.info("notes: a note deleted", m.name and "(in Memos)" or "(not sent yet)")
     Notes.reloadBoard(true)
     return true
@@ -2600,13 +2614,13 @@ end
 function NoteView:onArchive(archived)
     if Notes.archive(self.plugin, self.memo, archived) then
         info(archived and _("Archived. Notes → Archived notes shows it.") or _("Restored: it's back with your notes."), 2)
-        self:onClose()
+        if not self.closed then self:onClose() end -- (Notes.archive may have closed it already)
     end
     return true
 end
 
 function NoteView:onDelete()
-    Notes.confirmDelete(self.plugin, self.memo, function() self:onClose() end)
+    Notes.confirmDelete(self.plugin, self.memo, function() if not self.closed then self:onClose() end end)
     return true
 end
 

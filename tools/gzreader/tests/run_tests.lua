@@ -8942,6 +8942,30 @@ print("Notes (Memos v0.31)")
                 and vsrc:find('back = function() self:onClose() end', 1, true) ~= nil
                 and not vsrc:find('{ _("More"), function() self:onOptions() end }', 1, true),
                 "an opened note (touch): the same top bar, ← name … pin, Archive, Delete, ⋮, Edit (archived: Delete, ⋮, Restore); no buttons along the bottom")
+            -- Archive note / Delete note… in the editor's ⋮ and the drawing screen's ⋮ (a note that's there)
+            local esrc3 = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
+            local dsrc3 = io.open(PLUGIN .. "/gzreader_drawscreen.lua"):read("*a")
+            check(esrc3:find('{ { text = _("Archive note"), align = "left", callback = run(function() self:archiveNote() end) } }', 1, true) ~= nil
+                and esrc3:find('{ { text = _("Delete note…"), align = "left", callback = run(function() self:deleteNote() end) } }', 1, true) ~= nil
+                and esrc3:find("note_actions = self.memo and {", 1, true) ~= nil
+                and esrc3:find("screen:done() -- (what was drawn is saved first, then the note archived)", 1, true) ~= nil
+                and dsrc3:find('if self.note_actions then', 1, true) ~= nil
+                and dsrc3:find('rows[#rows + 1] = { id = "archive-note", row = true, label = _("Archive note") }', 1, true) ~= nil
+                and dsrc3:find('rows[#rows + 1] = { id = "delete-note", row = true, label = _("Delete note…") }', 1, true) ~= nil,
+                "the editor's ⋮ and the drawing screen's ⋮ (a note that's there): Archive note (saved first), Delete note…")
+            -- an opened note under the editor goes when its note is archived or deleted
+            local UIMq = require("ui/uimanager")
+            local shown_was = UIMq._window_stack
+            local closed = {}
+            local close_was = UIMq.close
+            local mv = { memo = { name = "memos/x1" }, scroller = {} }
+            local mv2 = { memo = { name = "memos/x2" }, scroller = {} }
+            UIMq._window_stack = { { widget = mv }, { widget = mv2 } }
+            UIMq.close = function(_s, w) closed[#closed + 1] = w end
+            Notes.closeViews({ name = "memos/x1" })
+            check(#closed == 1 and closed[1] == mv and mv.closed and not mv2.closed,
+                "a note archived or deleted from its editor: its opened screen under it closes too (only its own)")
+            UIMq._window_stack, UIMq.close = shown_was, close_was
         end)()
         -- a new drawing's window: a title and tags, then Save
         local ND = require("gzreader_newdrawing")
