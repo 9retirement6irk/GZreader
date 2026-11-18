@@ -736,7 +736,7 @@ local function buildGrimmoryPage(ctx)
         title       = _("Set up from your browser"),
         description = _("Scan the QR code with your phone, or open this Kindle's address in any browser on the same Wi‑Fi, to connect Grimmory, Notes and Calendar, or to send books.") .. "\n"
             .. (not require("device"):isTouchDevice() and _("Later: Menu → Send books.")
-                or _("Later: swipe down → Send books.")),
+                or _("Later: swipe down → Connect.")),
         choice_type = "radio",
         choices     = choices,
         on_apply    = function(sel)

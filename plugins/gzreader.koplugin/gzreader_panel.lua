@@ -4,7 +4,7 @@ the top of the screen. Square tiles, in two groups:
 
   Controls   Wi-Fi (on, off, auto), Night mode, Rotate, Auto-rotate, Restart, Sleep, Home, Updates,
              Settings, Diagnostics (with diagnostic logging on), Exit
-  Home       Manage “book” (the one highlighted), Continue, Send books,
+  Home       Manage “book” (the one highlighted), Continue, Connect,
              Search, History, View, Sort, Quick note, Music, Audiobook
   This book  Sync with Grimmory, Contents, Bookmark, Bookmarks, Go to page,
              Search book, Font, Layout, Fit pictures, Read aloud, Quick note,
@@ -191,7 +191,7 @@ function Panel.catalog()
         { id = "home", title = _("Home"), tiles = {
             { id = "manage", label = _("Manage book"), note = _("the book highlighted") },
             { id = "continue", label = _("Continue") },
-            { id = "send", label = _("Send books"), available = function() return not usbOnly() end },
+            { id = "send", label = _("Connect"), note = _("your phone or computer: send books, set up"), available = function() return not usbOnly() end },
             { id = "search", label = _("Search") },
             { id = "history", label = _("History") },
             { id = "view", label = _("View") },
@@ -496,7 +496,8 @@ function Panel.homeTiles(plugin, book)
     end
     list[#list + 1] = { id = "continue", icon = "continue", label = _("Continue"), run = function() dispatch("open_previous_document") end }
     if not require("gzreader_net").usb then -- (no Wi-Fi: Sync, in Controls)
-        list[#list + 1] = { id = "send", icon = "send", label = _("Send books"), run = function() plugin:openPhonePage("books") end }
+        -- (Connect: the page your phone or computer opens, at its first tab; Send books is one of them)
+        list[#list + 1] = { id = "send", icon = "connect", label = _("Connect"), run = function() plugin:openPhonePage(nil) end }
     end
     list[#list + 1] = { id = "search", icon = "search", label = _("Search"), run = function() dispatch("file_search") end }
     list[#list + 1] = { id = "history", icon = "history", label = _("History"), full = true, run = function() dispatch("history") end }

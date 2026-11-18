@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Quick panel: Send books is now Connect", text = "The quick panel's Send books tile at Home is now called Connect, with its own icon, because the page it opens does much more than send books: it sets up Grimmory, Notes, Calendar and Music from your phone or computer. It opens that page at its first tab; Send books is one tap away there. If you'd hidden the tile it stays hidden." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },
