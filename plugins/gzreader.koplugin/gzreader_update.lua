@@ -62,6 +62,12 @@ local Update = {
     root = nil,         -- koreader dir (default: current dir)
 }
 
+--- What every request says it is: GZreader/<version> (socketutil.USER_AGENT; "GZreader" where that can't be loaded).
+local function userAgent()
+    local ok, su = pcall(require, "socketutil")
+    return ok and type(su) == "table" and su.USER_AGENT or "GZreader"
+end
+
 local function root() return Update.root or (lfs.currentdir() or ".") end
 
 function Update.apiUrl()
@@ -189,7 +195,7 @@ function Update.get(u, path, accept)
                 url = u, method = "GET", sink = sink, redirect = false, create = create,
                 -- downloads accept anything: GitHub's API answers 415 to
                 -- "application/octet-stream" for a release's source code zip
-                headers = { ["User-Agent"] = "GZreader", ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
+                headers = { ["User-Agent"] = userAgent(), ["Accept"] = accept or (path and "*/*" or "application/vnd.github+json") },
             })
         end)
         socketutil:reset_timeout()

@@ -1,5 +1,10 @@
 What GZreader sends to its developer (you choose), and how to send a diagnostic log when something goes wrong. Passwords and tokens stay on the device and are never written to its log, and neither is the name of your Wi-Fi network.
 
+**What servers see.** Every request GZreader makes (to Grimmory, Memos,
+Immich, Plex, calendars, Home Assistant, news feeds and story pages, GitHub
+for updates) says it comes from `GZreader/<version>`, e.g. `GZreader/1.34.0`:
+no Kindle model, no KOReader version, nothing about you.
+
 ## Debug reports
 
 GZreader sends no usage statistics (up to 1.28.1 it sent anonymous ones,

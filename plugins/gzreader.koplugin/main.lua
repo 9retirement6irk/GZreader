@@ -40,6 +40,8 @@ local Mod = setmetatable({}, { __index = function(t, k)
     return v
 end })
 local Log = require("gzreader_log")
+-- (every request from here on says GZreader/<version>, also those made before anything else loads socketutil)
+require("socketutil")
 local Index = require("gzreader_index")
 local JSON = require("gzreader_json")
 local Bookmarks = require("gzreader_bookmarks")

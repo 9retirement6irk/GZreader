@@ -38,7 +38,7 @@ local CURRENT_PLUGIN_NAME = PLUGIN_ROOT:gsub("/+$", ""):match("([^/]+)$")
 local RELEASE_ASSET_NAME = CURRENT_PLUGIN_NAME == LEGACY_PLUGIN_NAME
     and (LEGACY_PLUGIN_NAME .. ".zip")
     or (CANONICAL_PLUGIN_NAME .. ".zip")
-local USER_AGENT = CANONICAL_PLUGIN_NAME
+local USER_AGENT = require("socketutil").USER_AGENT -- GZreader: every request says GZreader/<version>
 
 local M = {}
 

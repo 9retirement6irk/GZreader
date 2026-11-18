@@ -45,7 +45,7 @@ local function https_post_json(url, payload_str)
         url    = url,
         method = "POST",
         headers = {
-            ["User-Agent"]     = "zenos.koplugin",
+            ["User-Agent"]     = require("socketutil").USER_AGENT, -- GZreader
             ["Content-Type"]   = "application/json",
             ["Content-Length"] = tostring(#payload_str),
         },

@@ -23,6 +23,7 @@
 7 frontend/luasettings.lua
 1 frontend/pluginloader.lua
 1 frontend/readhistory.lua
+9 frontend/socketutil.lua
 6 frontend/ui/elements/common_info_menu_table.lua
 1 frontend/ui/elements/filemanager_menu_order.lua
 1 frontend/ui/elements/page_overlap.lua

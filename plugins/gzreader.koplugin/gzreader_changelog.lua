@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Every request now says GZreader and its version", text = "What GZreader sends to servers to say what it is (its user agent) was LuaSocket's name, KOReader's version, or something else depending on the request. Every request now says GZreader/ and the version, for example GZreader/1.34.0: to Grimmory, Memos, Immich, Plex, calendars, Home Assistant, the daily paper's feeds and pages, GitHub for updates, and the bug report. Nothing else is in it (no Kindle model, no KOReader version)." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },
