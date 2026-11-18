@@ -7924,6 +7924,81 @@ print("Notes (Memos v0.31)")
             check(same_size and worst <= 2, "tilt: the same size and picture as before (" .. cases .. " cases, at most " .. worst .. " levels apart)")
         end)()
 
+        -- a big picture (a phone's photo) is shrunk once for a sticky note: its small copy is kept and read after that
+        ;(function()
+            local lfs = require("libs/libkoreader-lfs")
+            local dir = WORK .. "/small-pictures"
+            os.execute("rm -rf '" .. dir .. "' && mkdir -p '" .. dir .. "/kept'")
+            local function put(to, bytes) local out = io.open(to, "wb"); out:write(bytes); out:close() end
+            local decoded = {}
+            local function image(pw, ph)
+                return { getWidth = function() return pw end, getHeight = function() return ph end,
+                    writePNG = function(_s, to) put(to, "pic " .. pw .. " " .. ph) end, free = function() end }
+            end
+            local real_render = package.loaded["ui/renderimage"]
+            package.loaded["ui/renderimage"] = {
+                renderImageData = function(_s, raw)
+                    local pw, ph = raw:match("^pic (%d+) (%d+)")
+                    if not pw then error("not a picture") end
+                    decoded[#decoded + 1] = pw .. "x" .. ph
+                    return image(tonumber(pw), tonumber(ph))
+                end,
+                scaleBlitBuffer = function(_s, _bb, pw, ph) return image(pw, ph) end,
+            }
+            local real_dir, real_written = Sticky.small_dir, Sticky.small_written
+            Sticky.small_dir, Sticky.small_written = function() return dir .. "/kept" end, 0
+            local function kept()
+                local count = 0
+                for name in lfs.dir(dir .. "/kept") do if name:match("%.png$") then count = count + 1 end end
+                return count
+            end
+            put(dir .. "/photo.jpg", "pic 4000 3000")
+            local bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and bb:getHeight() == 300 and #decoded == 1 and kept() == 1,
+                "pictures: a photo shown much smaller is shrunk and its small copy kept")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and bb:getHeight() == 300 and #decoded == 2 and decoded[2] == "400x300",
+                "pictures: drawn again, only the small copy is read (" .. tostring(decoded[2]) .. ")")
+            Sticky.picture(dir .. "/photo.jpg", 200, 150)
+            check(decoded[3] == "4000x3000" and kept() == 2, "pictures: another size asked for is shrunk from the file, and kept too")
+            put(dir .. "/photo.jpg", "pic 3000 2000 edited")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(decoded[#decoded] == "3000x2000" and bb:getWidth() == 400 and bb:getHeight() == 266 and kept() == 3,
+                "pictures: a file that changed (a drawing edited) is read again, not its old small copy")
+            decoded = {}
+            put(dir .. "/small.png", "pic 500 400")
+            Sticky.picture(dir .. "/small.png", 400, 300); Sticky.picture(dir .. "/small.png", 400, 300)
+            put(dir .. "/drawing.png", "pic 100 80")
+            local grown = Sticky.picture(dir .. "/drawing.png", 400, 300, 3)
+            check(#decoded == 3 and kept() == 3 and grown:getWidth() == 300, "pictures: one shown about its own size, or enlarged, has no small copy")
+            Sticky.picture(dir .. "/photo.jpg", math.huge, math.huge)
+            check(Sticky.smallPath(dir .. "/photo.jpg", math.huge, math.huge) == nil and Sticky.smallPath(dir .. "/nothing.jpg", 400, 300) == nil
+                and kept() == 3, "pictures: the whole picture asked for (its size), or a file that isn't there: none")
+            put(Sticky.smallPath(dir .. "/photo.jpg", 400, 300), "not a picture any more")
+            bb = Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(bb and bb:getWidth() == 400 and decoded[#decoded] == "3000x2000", "pictures: a small copy that can't be read is made again from the file")
+            Sticky.small_dir = nil
+            local so_far = #decoded
+            Sticky.picture(dir .. "/photo.jpg", 400, 300)
+            check(decoded[so_far + 1] == "3000x2000" and kept() == 3, "pictures: with no folder for them (outside the Notes tab), as before")
+            Sticky.small_dir = dir .. "/kept"
+            for i = 1, 6 do put(dir .. "/kept/old" .. i .. ".png", string.rep("x", 100)) end
+            local by_number = Sticky.pruneSmall(nil, 5, 1e9) == 4 and kept() == 5
+            Sticky.pruneSmall(nil, 100, 120)
+            local left = 0
+            for name in lfs.dir(dir .. "/kept") do
+                if name:match("%.png$") then left = left + lfs.attributes(dir .. "/kept/" .. name, "size") end
+            end
+            check(by_number and left <= 120 and kept() < 5, "pictures: the small copies are kept under a number of files and a size (" .. left .. ")")
+            check(Sticky.dropSmall() >= 1 and kept() == 0, "pictures: Free up space removes them all")
+            Sticky.small_dir, Sticky.small_written = real_dir, real_written
+            package.loaded["ui/renderimage"] = real_render
+            local src = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            local set = io.open(PLUGIN .. "/gzreader_notesettings.lua"):read("*a")
+            check(src:find("Sticky.small_dir = Notes.smallDir", 1, true) and src:find('Memos.filesDir() .. "-small"', 1, true)
+                and set:find('require("gzreader_sticky").dropSmall()', 1, true), "pictures: the Notes tab keeps them beside its attachments; Settings → Notes removes them")
+        end)()
+
         -- the board keeps each note's image: drawn again only when what it shows changes
         ;(function()
             local Scr = require("device").screen

@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Notes: a note with a photo shows quickly after the first time", text = "A photo from a phone is around 12 megapixels. To show it a few hundred pixels wide on a sticky note, or in the note's page, GZreader decoded the whole file and shrank it every time that note was drawn again: on the Notes tab's pages, when you came back from a note, after a sync. For one photo that took longer than everything else on the page (0.4 s on an emulated Paperwhite 3, more on a real Kindle), with the whole picture in memory for a moment. Now a picture that's shown much smaller than its file is shrunk once, and the small version is kept on the Kindle and read from then on (a few thousandths of a second). The small versions take little room (at most 12 MB, the oldest going first) and Settings → Notes → Free up space removes them together with the downloaded attachments." },
+        },
+    },
+    {
         version = "1.32.0",
         changes = {
             { short = "Kindle 2 and DX: notes sync with the web reader's Notes tab through the sync page", text = "Kindles without Wi-Fi (Kindle 2, DX): notes now sync with Grimmory's web reader through the sync page, as they do over Wi-Fi. A note typed on the Kindle shows in the web reader's Notes tab after the next sync, and a note written in the web reader comes to the Kindle with the next sync (on the highlight at that place, or as a highlight of its own). Before, a note made on the Kindle only reached Grimmory inside its highlight, which the web reader doesn't show, and the web reader's notes never came to the Kindle." },

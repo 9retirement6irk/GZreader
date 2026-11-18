@@ -174,6 +174,7 @@ function NoteSettings.storageItems(plugin)
                     for name in require("libs/libkoreader-lfs").dir(dir) do
                         if name ~= "." and name ~= ".." and os.remove(dir .. "/" .. name) then n = n + 1 end
                     end
+                    pcall(function() require("gzreader_sticky").dropSmall() end) -- (and the small copies of pictures)
                     Log.info("notes: removed all attachments", n)
                     info(T(_("Removed %1 files."), n), 2)
                     if touchmenu and touchmenu.backToUpperMenu then pcall(touchmenu.backToUpperMenu, touchmenu) end

@@ -272,19 +272,111 @@ function Sticky.fitSize(w, h, max_w, max_h, grow)
     return math.max(1, math.floor(w * sc)), math.max(1, math.floor(h * sc))
 end
 
---- A picture file shrunk to fit max_w x max_h (a new image), or nil.
---- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
-function Sticky.picture(path, max_w, max_h, grow)
+-- Small copies. A photo from a phone is 12 megapixels: to show it a few
+-- hundred pixels wide on a sticky note the whole file was decoded (the whole
+-- picture in memory; 0.4 s on an emulated Paperwhite 3) and shrunk, each
+-- time its note was drawn again. A picture shown much smaller
+-- than its file is now shrunk once: the small picture is kept as a PNG
+-- (exactly what was shown) under the file's place, size and date and the
+-- size asked for, and read back in a few milliseconds.
+Sticky.small_dir = nil               -- where they're kept: a folder, or a function giving it (the Notes tab's); nil: none kept
+Sticky.SMALL_MIN = 4                 -- kept when the file has at least this many times the pixels shown
+Sticky.SMALL_FILES = 240             -- at most this many, and
+Sticky.SMALL_BYTES = 12 * 1024 * 1024 -- this much: the oldest go first
+Sticky.small_written = 0
+
+local function lfs() return require("libs/libkoreader-lfs") end
+
+local function smallDir()
+    local dir = Sticky.small_dir
+    if type(dir) == "function" then dir = dir() end
+    return type(dir) == "string" and dir or nil
+end
+
+--- Where the small copy of picture file `path` for max_w x max_h (and
+--- `grow`) is kept, or nil: no folder set, no such file, or no size to fit
+--- (Notes.picSize asks for the whole picture).
+function Sticky.smallPath(path, max_w, max_h, grow)
+    local dir = smallDir()
+    if not dir or type(max_w) ~= "number" or type(max_h) ~= "number" then return nil end
+    if not (max_w >= 1 and max_w < 1e5 and max_h >= 1 and max_h < 1e5) then return nil end
+    local a = lfs().attributes(path)
+    if type(a) ~= "table" or a.mode ~= "file" then return nil end
+    local h = 5381
+    for i = 1, #path do h = (h * 33 + path:byte(i)) % 4294967296 end
+    return string.format("%s/%08x-%d-%d-%dx%d%s.png", dir, h, a.size or 0, a.modification or 0, math.floor(max_w),
+        math.floor(max_h), (grow and grow > 1) and ("-g" .. tostring(grow)) or "")
+end
+
+--- Keeps image `bb` as the small copy `small`; every so often the oldest
+--- are let go (Sticky.pruneSmall). True when it's written.
+function Sticky.keepSmall(bb, small)
+    local dir = small:match("^(.*)/[^/]+$")
+    local tmp = small .. ".tmp"
+    local ok = pcall(function() bb:writePNG(tmp) end)
+    if not (ok and (lfs().attributes(tmp, "size") or 0) > 0 and os.rename(tmp, small)) then
+        os.remove(tmp)
+        return false
+    end
+    Sticky.small_written = Sticky.small_written + 1
+    if Sticky.small_written % 16 == 1 then Sticky.pruneSmall(dir) end
+    return true
+end
+
+--- The small copies in `dir` kept under SMALL_FILES and SMALL_BYTES (the
+--- oldest removed first). Returns how many were removed.
+function Sticky.pruneSmall(dir, max_files, max_bytes)
+    dir = dir or smallDir()
+    if not dir or lfs().attributes(dir, "mode") ~= "directory" then return 0 end
+    max_files, max_bytes = max_files or Sticky.SMALL_FILES, max_bytes or Sticky.SMALL_BYTES
+    local list, total = {}, 0
+    for name in lfs().dir(dir) do
+        local a = name:sub(1, 1) ~= "." and lfs().attributes(dir .. "/" .. name)
+        if type(a) == "table" and a.mode == "file" then
+            list[#list + 1] = { path = dir .. "/" .. name, size = a.size or 0, t = a.modification or 0 }
+            total = total + (a.size or 0)
+        end
+    end
+    table.sort(list, function(x, y) return x.t < y.t end)
+    local removed = 0
+    for i, f in ipairs(list) do
+        if #list - i + 1 <= max_files and total <= max_bytes then break end
+        if os.remove(f.path) then removed = removed + 1 end
+        total = total - f.size
+    end
+    return removed
+end
+
+--- Every small copy removed (Settings → Notes → Free up space). Returns how many.
+function Sticky.dropSmall()
+    return Sticky.pruneSmall(nil, 0, 0)
+end
+
+local function decodeFile(path)
     local f = io.open(path, "rb")
     if not f then return nil end
     local data = f:read("*a")
     f:close()
     local RenderImage = require("ui/renderimage")
     local ok, bb = pcall(RenderImage.renderImageData, RenderImage, data, #data, false)
-    if not ok or not bb then return nil end
-    local w, h = Sticky.fitSize(bb:getWidth(), bb:getHeight(), max_w, max_h, grow)
-    if w ~= bb:getWidth() or h ~= bb:getHeight() then
-        bb = RenderImage:scaleBlitBuffer(bb, w, h, true)
+    return ok and bb or nil
+end
+
+--- A picture file shrunk to fit max_w x max_h (a new image), or nil.
+--- `grow`: enlarged to fit too, at most that many times (Sticky.fitSize).
+--- A picture much bigger than that is shrunk once: its small copy is kept
+--- and read the next time (Sticky.smallPath).
+function Sticky.picture(path, max_w, max_h, grow)
+    local small = Sticky.smallPath(path, max_w, max_h, grow)
+    local bb = small and decodeFile(small)
+    if bb then return bb end
+    bb = decodeFile(path)
+    if not bb then return nil end
+    local bw, bh = bb:getWidth(), bb:getHeight()
+    local w, h = Sticky.fitSize(bw, bh, max_w, max_h, grow)
+    if w ~= bw or h ~= bh then
+        bb = require("ui/renderimage"):scaleBlitBuffer(bb, w, h, true)
+        if small and bb and w * h * Sticky.SMALL_MIN <= bw * bh then Sticky.keepSmall(bb, small) end
     end
     return bb
 end
