@@ -134,6 +134,21 @@ add({ fn = function(E)
     local uid = a[1] and tostring(a[1].name):match("attachments/(.+)$")
     check(m and #a == 1 and uid and m.content:find("/file/attachments/" .. uid, 1, true),
         "Save: the new note made with the photo, its text showing it (the fork accepts it)")
+    -- its page: the photo where the text has it, not again in a gallery under it (as Memos)
+    if m then require("gzreader_notes").showNote(plugin(), m) end
+end, after = 6 })
+add({ shot = "5c2-in-text-page", after = 0.5 })
+add({ fn = function(E)
+    local v = view()
+    local pics = 0
+    local function walk(w)
+        if type(w) ~= "table" then return end
+        if w.image and w.dimen and w.dimen.w > 20 then pics = pics + 1 end
+        for _i, k in ipairs(w) do walk(k) end
+    end
+    walk(v and v[1])
+    check(v and pics == 1, "its page: the photo in the text once, not again under it (" .. pics .. " pictures)")
+    if v then UIM():close(v) end
     -- editing the first note: its photos in the editor
     require("gzreader_notes").edit(plugin(), memoWith(note_text))
 end, after = 6 })

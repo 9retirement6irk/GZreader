@@ -146,11 +146,16 @@ end
 
 --- How big a picture `nw` x `nh` (its file) shows on a page `width` wide:
 --- a size set in Memos takes its share of Memos' column (Sticky.pictureWidth),
---- enlarged if need be; else as big as fits `max_h`, only shrunk.
+--- enlarged if need be; none set, its own width as Memos shows it (the file's
+--- pixels as CSS pixels: the same share of the column, so a small picture
+--- isn't a thumbnail beside sized ones), no taller than `max_h`.
 function RichEdit.pictureSize(pic, nw, nh, width, max_h)
     local want = Sticky.pictureWidth(pic.width, width)
     if want then return want, math.max(1, math.floor(nh * want / nw + 0.5)) end
-    return Sticky.fitSize(nw, nh, width, max_h)
+    local own = Sticky.pictureWidth(nw, width) or width
+    local h = math.max(1, math.floor(nh * own / nw + 0.5))
+    if max_h and h > max_h then return Sticky.fitSize(nw, nh, width, max_h, 50) end
+    return own, h
 end
 
 --- Lays the note out `width` wide: the screen lines, each

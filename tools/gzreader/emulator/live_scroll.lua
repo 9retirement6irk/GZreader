@@ -15,6 +15,26 @@ local function plugin() local fm = require("apps/filemanager/filemanager").insta
 local function N() return require("gzreader_notes") end
 local function view() for _i, w in ipairs(UIM()._window_stack) do if w.widget.scroller and w.widget.memo then return w.widget end end end
 local W, H
+--- The screen's refreshes from now on, recorded (mode, region); `stop()` gives them back.
+local function record()
+    local got, real = {}, UIM()._refresh
+    UIM()._refresh = function(self, mode, region, dither)
+        got[#got + 1] = { mode = mode, region = region and { x = region.x, y = region.y, w = region.w, h = region.h } }
+        return real(self, mode, region, dither)
+    end
+    return function() UIM()._refresh = real; return got end
+end
+--- Refreshes that reach outside `area` (whole-screen ones included), as text.
+local function outside(got, area)
+    local out, all = {}, {}
+    for _i, r in ipairs(got) do
+        local g = r.region
+        local t = tostring(r.mode) .. (g and ("@" .. g.x .. "," .. g.y .. " " .. g.w .. "x" .. g.h) or "@all")
+        all[#all + 1] = t
+        if not g or g.y < area.y - 1 or g.y + g.h > area.y + area.h + 1 or g.x < area.x - 1 or g.x + g.w > area.x + area.w + 1 then out[#out + 1] = t end
+    end
+    return out, all
+end
 
 add({ fn = function()
     W, H = require("device").screen:getWidth(), require("device").screen:getHeight()
@@ -29,6 +49,8 @@ add({ fn = function() N().setScrolling(plugin(), true) end, after = 4 })
 add({ fn = function(E)
     local b = N().board
     check(b._gz_scroll ~= nil and b._gz_y == 0 and b._gz_scroll.max_y > 130, "the notes list scrolls (Layout → Scroll up and down)")
+    E.board_area = b:notesRegion()
+    E.stop = record()
     E.fingerDown(W * 0.5, H * 0.75)
     E.fingerMove(W * 0.5, H * 0.75 - 60, 0.3)
     E.fingerMove(W * 0.5, H * 0.75 - 120, 0.6)
@@ -46,6 +68,13 @@ add({ fn = function(E)
     local b = N().board
     local want = math.min(260, b._gz_scroll.max_y)
     check(b._gz_y == want and b._gz_pan == nil, "lifted (slowly) 260 px up: the notes settled there, or at their end (" .. b._gz_y .. " of " .. want .. " px)")
+    local got = E.stop()
+    local a = E.board_area or { x = 0, y = 0, w = 0, h = 0 }
+    local out, all = outside(got, a)
+    local settled = got[#got] and got[#got].mode == "partial"
+    check(E.board_area and #got > 1 and #out == 0 and settled,
+        "the list's steps and the clean refresh at the end: only the notes' window (" .. a.x .. "," .. a.y .. " " .. a.w .. "x" .. a.h
+            .. "), not the buttons above or the tab bar under it (" .. table.concat(all, " ") .. ")")
     -- an opened note longer than the screen
     local memo = { name = "memos/live", content = ("A long note.\n\n" .. string.rep("Line after line of it, to scroll through.\n\n", 60)),
         visibility = "PRIVATE", createTime = "2026-11-16T10:00:00Z", updateTime = "2026-11-16T10:00:00Z" }
@@ -56,6 +85,7 @@ add({ fn = function(E)
     check(v and v.scroller._gz_live ~= nil, "an opened note: its page follows the finger too")
     if not v then return end
     v.scroller:initState()
+    E.stop = record()
     E.fingerDown(W * 0.5, H * 0.7)
     E.fingerMove(W * 0.5, H * 0.7 - 80, 0.3)
     E.fingerMove(W * 0.5, H * 0.7 - 150, 0.7)
@@ -72,6 +102,12 @@ add({ fn = function(E)
     local v = view()
     local y = v and v.scroller:getScrolledOffset().y or -1
     check(y == 300, "lifted 300 px up: the note settled there, the drag counted once (" .. y .. " px)")
+    local got = E.stop()
+    local d = v and v.scroller.dimen or { x = 0, y = 0, w = 0, h = 0 }
+    local out, all = outside(got, d)
+    check(v and #got > 1 and #out == 0 and got[#got].mode == "partial" and d.y > 0,
+        "an opened note's steps and the clean refresh at the end: only its scrolling part (" .. d.x .. "," .. d.y .. " " .. d.w .. "x" .. d.h
+            .. "), not its top bar (" .. table.concat(all, " ") .. ")")
     local f = io.open(E.out .. "/live-scroll-checks.txt", "w")
     if f then f:write(table.concat(lines, "\n") .. "\n"); f:close() end
     for _i, l in ipairs(lines) do E.say("check", l) end

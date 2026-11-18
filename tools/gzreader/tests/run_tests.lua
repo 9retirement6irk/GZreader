@@ -7842,6 +7842,10 @@ print("Notes (Memos v0.31)")
         check(Sticky.preview(note):find("|", 1, true) == nil, "the board's preview doesn't show the size")
         check(Notes.pictureWidth(320, 1000) == 500 and Notes.pictureWidth(160, 1000) == 250 and Notes.pictureWidth(2000, 1000) == 1000
             and Notes.pictureWidth(nil, 1000) == nil, "a size takes its share of Memos' 640-pixel column, at most the page")
+        -- none set: its own width, as Memos shows it (the file's pixels as CSS pixels); the editor's: richedit_test.lua
+        local nsrc3 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+        check(nsrc3:find('end, l.width or "own")', 1, true) ~= nil and nsrc3:find('if width == "own" then', 1, true) ~= nil,
+            "the note's page: a picture with no size at its own width (as the editor and Memos)")
     end
     local now = os.time()
     check(Sticky.when(os.date("!%Y-%m-%dT%H:%M:%SZ", now), now):match("^Today %d+:%d%d [AP]M$"), "date: today with the time (UTC turned local)")
@@ -9632,7 +9636,22 @@ print("Notes (Memos v0.31)")
             b:onPan(nil, { direction = "south", distance = 790, relative = { x = 0, y = 790 } })
             b:onPan(nil, { direction = "south", distance = 800, relative = { x = 0, y = 800 } })
             local before_release = b._gz_y
+            local UIMs = require("ui/uimanager")
+            local real_dirty_s, settled = UIMs.setDirty, {}
+            UIMs.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                settled[#settled + 1] = tostring(refresh)
+            end
             b:onGzPanRelease()
+            UIMs.setDirty = real_dirty_s
+            check(settled[#settled] == "partial" and LiveScroll.SETTLE_REFRESH == "partial",
+                "scrolling: once the finger lifts after steps, the notes shown again with the page-turn refresh (no flash, no ghosts left; was \"ui\": lines stood twice) ("
+                    .. table.concat(settled, ",") .. ")")
+            local nsrcr = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrcr:find('self._gz_region = self:notesRegion() -- (refreshed: the notes\' window only)', 1, true) ~= nil
+                and nsrcr:find('return "ui", only or (old_dimen and old_dimen:combine(m.dimen) or m.dimen)', 1, true) ~= nil
+                and nsrcr:find('settle(self.show_parent or self, self:notesRegion() or self.dimen)', 1, true) ~= nil,
+                "scrolling: the steps and the clean refresh at the end cover only the notes' window, not the buttons above or the tab bar (emulator/live_scroll.lua checks it on the screen)")
             check(live1 == 1540 and live2 == 1540 and live3 == 1335 and before_release == 1050 and b._gz_y == 1040,
                 "scrolling: a drag moves the notes with the finger, a step at a time (" .. live1 .. ", " .. live2 .. ", " .. live3 .. ", "
                     .. before_release .. "), settling where it lifts (" .. b._gz_y .. ")")
@@ -9664,6 +9683,24 @@ print("Notes (Memos v0.31)")
             check(table.concat(seenq, ",") == "fast,fast,ui" and patched ~= nil and not pcall(LiveScroll.quiet, function() error("x") end)
                 and UIMq.setDirty == real_dirty,
                 "live scrolling: a step's refreshes are \"fast\" (no flash), whatever was asked; ordinary ones after (" .. table.concat(seenq, ",") .. "); put back even after an error")
+            -- an opened note (a ScrollableContainer): the same once the finger lifts after steps
+            local sc_dirty = {}
+            UIMq.setDirty = function(_s, _w, refresh)
+                if type(refresh) == "function" then refresh = (refresh()) end
+                sc_dirty[#sc_dirty + 1] = tostring(refresh)
+            end
+            local fake = { _scroll_offset_x = 0, _scroll_offset_y = 0, _max_scroll_offset_x = 0, show_parent = {}, dimen = { x = 0, y = 0, w = 10, h = 10 },
+                onScrollablePan = function(self) self._scrolling = true; return true end,
+                onScrollablePanRelease = function(self) self._scrolling = false; return true end,
+                onScrollableSwipe = function() return true end,
+                _scrollBy = function(self, _dx, dy) self._scroll_offset_y = self._scroll_offset_y + dy; UIMq:setDirty(self.show_parent, "ui") end }
+            LiveScroll.on(fake)
+            clock = 300
+            fake:onScrollablePan(nil, { relative = { x = 0, y = -100 } })
+            fake:onScrollablePanRelease(nil, {})
+            UIMq.setDirty = real_dirty
+            check(table.concat(sc_dirty, ",") == "fast,partial", "an opened note: a step \"fast\", then once more with the page-turn refresh at the lift ("
+                .. table.concat(sc_dirty, ",") .. ")")
             LiveScroll.now = real_now
             local y4 = b._gz_y
             b:onSwipe(nil, { direction = "west", distance = 300 })
@@ -10291,8 +10328,18 @@ print("Notes (Memos v0.31)")
             "a picture already coming: the board and the page are told when it's here (one download)")
         local nsrc2 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
         check(nsrc2:find("if Notes.isDrawing(drawing) then", 1, true) and nsrc2:find("local sheets = Notes.drawings(m)\n    for i, a in ipairs(sheets) do", 1, true)
-            and nsrc2:find("if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end", 1, true),
-            "drawings: on the board's cards and the note's page, not repeated under Attachments")
+            and nsrc2:find("if Notes.isGalleryPhoto(a) then gallery[#gallery + 1] = a else listed[#listed + 1] = a end", 1, true)
+            and nsrc2:find("for _i, a in ipairs(Notes.attachmentsBelow(m)) do -- (the ones in the text are shown there)", 1, true),
+            "drawings: on the board's cards and the note's page, not repeated under Attachments; nor the pictures in the text")
+        -- a note's attachments under its text: not the ones its text shows (as Memos' web app)
+        local inl = { content = "Christmas List:\n\n- iFish\n\n![fish](/file/attachments/u1/fish.jpg)\n\n- speaker\n\n![s|200](/file/attachments/u3/s.png)",
+            attachments = { { name = "attachments/u1", type = "image/jpeg", filename = "fish.jpg" }, { name = "attachments/u2", type = "image/png", filename = "other.png" },
+                { name = "attachments/u3", type = "image/png", filename = "s.png" }, { name = "attachments/u4", type = "application/pdf", filename = "list.pdf" } } }
+        local below = {}
+        for _i, a in ipairs(Notes.attachmentsBelow(inl)) do below[#below + 1] = a.filename end
+        check(table.concat(below, ",") == "other.png,list.pdf" and #Notes.attachmentsBelow({ content = "x" }) == 0
+            and #Notes.attachmentsBelow({ content = "no pictures", attachments = inl.attachments }) == 4,
+            "under a note: only the attachments its text doesn't show (" .. table.concat(below, ",") .. "); the pictures in the text not again")
 
         -- the editor: Draw for new notes on touch Kindles, a note can be just a drawing
         local esrc = io.open(PLUGIN .. "/gzreader_noteeditor.lua"):read("*a")
