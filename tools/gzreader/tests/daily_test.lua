@@ -972,7 +972,7 @@ local main = read(PLUGIN .. "/main.lua")
 check(main:find("function Grimmory:dailySettingsItems()", 1, true) and main:find('return require("gzreader_dailyscreen").settingsItems(self)', 1, true), "the plugin gives Settings → Accounts and services its Daily paper page")
 check(main:find('require("gzreader_dailyscreen").install(self)', 1, true), "the plugin registers Home's widget at start")
 local zs = read(REPO .. "/plugins/zenos.koplugin/modules/settings/zen_settings.lua")
-local tree = io.open(arg[1] .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua"):read("*a")
+local tree = read(REPO .. "/plugins/zenos.koplugin/common/gz_settings_tree.lua")
 check(tree:find('row(_("Daily paper"), _("Feeds"), "dailySettingsItems", "history")', 1, true) ~= nil,
     "Settings → Accounts and services has the daily paper (with the other things fetched from the web)")
 local sh = read(REPO .. "/plugins/zenos.koplugin/modules/filebrowser/patches/home/widgets/shelf.lua")
