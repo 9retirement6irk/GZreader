@@ -452,6 +452,11 @@ function DrawScreen:layoutBar()
         local x = sw - done_w - S(6)
         add({ id = "done", label = self.journal and _("Save") or _("Done") }, x, S(6), done_w, self.top_h - S(12), "top")
         local icons = { { id = "options", icon = "more", label = _("Options") } }
+        if self.note_actions then
+            -- (a note that's already there: Archive and Delete in the bar, as an opened note has; also in ⋮)
+            icons[#icons + 1] = { id = "delete-note", icon = "trash", label = _("Delete note…") }
+            icons[#icons + 1] = { id = "archive-note", icon = "archive", label = _("Archive note") }
+        end
         if self.meta then icons[#icons + 1] = { id = "tag", icon = "tag", label = _("Tags") } end
         icons[#icons + 1] = { id = "paper", icon = "paper", label = _("Paper") }
         icons[#icons + 1] = { id = "pages", icon = "pages", label = _("All pages") }
