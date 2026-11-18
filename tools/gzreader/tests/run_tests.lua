@@ -9526,6 +9526,37 @@ print("Notes (Memos v0.31)")
         -- split view: the book in one half of a big screen, the notes in the other
         ;(function()
             local Split = require("gzreader_splitview")
+            -- while it's open, the book's refreshes (a page turn: no region, the whole screen) are kept to its part
+            local fake_ui = { dialog = nil }
+            fake_ui.dialog = fake_ui
+            Split.active = { reader = fake_ui, book = { x = 0, y = 0, w = 1860, h = 1240 }, pane = { x = 0, y = 1240, w = 1860, h = 1240 } }
+            local g1 = Split.bookRegion(fake_ui, nil)
+            local given = { x = 5, y = 5, w = 10, h = 10 }
+            -- (ui/geometry is a stub here: the region's size is checked on the screen by emulator/split_view.lua)
+            check(g1 ~= nil and g1 ~= given and Split.bookRegion(fake_ui, given) == given
+                and Split.bookRegion({}, nil) == nil and Split.bookRegion("all", nil) == nil,
+                "split view: a page turn's refresh (the book's, no region) only over the book's part; a region asked for, or another window's, as asked")
+            local UIMsp = require("ui/uimanager")
+            local real_sd, got = UIMsp.setDirty, {}
+            UIMsp.setDirty = function(_s, w, refresh, region)
+                if type(refresh) == "function" then local m, r = refresh(); refresh, region = m, r end
+                got[#got + 1] = { w = w, mode = refresh, region = region }
+            end
+            Split._hooked = nil
+            Split.hookRefresh()
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp:setDirty(fake_ui, function() return "full" end)
+            UIMsp:setDirty("all", "full")
+            Split.active = nil
+            UIMsp:setDirty(fake_ui, "partial")
+            UIMsp.setDirty, Split._hooked = real_sd, nil
+            check(#got == 4 and got[1].region ~= nil and got[2].mode == "full" and got[2].region ~= nil
+                and got[3].region == nil and got[4].region == nil,
+                "split view: the book's page turns (and its every-few-pages flash) refresh only its part; closed, as before")
+            local psrc = io.open(PLUGIN .. "/gzreader_panel.lua"):read("*a")
+            local ssrc = io.open(PLUGIN .. "/gzreader_splitview.lua"):read("*a")
+            check(psrc:find('{ id = "split", label = _("Notes"),', 1, true) ~= nil and ssrc:find('label = _("Notes"), run = function() Split.open(plugin) end', 1, true) ~= nil,
+                "split view: its tile is just \"Notes\" (\"Notes beside the book\" was cut off)")
             local b, n = Split.rects(1860, 2480)
             local lb, ln = Split.rects(2480, 1860)
             check(b.x == 0 and b.y == 0 and b.w == 1860 and b.h == 1240 and n.x == 0 and n.y == 1240 and n.w == 1860 and n.h == 1240
