@@ -10,8 +10,10 @@ Wi‑Fi.
 
 **Settings → Home → Daily paper**, and tick **Daily paper**. A folded
 newspaper appears on Home's bookshelf, standing on its side at the start of
-the first shelf like the books beside it: you see its fold and the edges of
-its pages. It takes a thin book's room on the shelf and nothing else on Home.
+the first shelf like the books beside it, nearly as tall as they are: you see
+its fold with the paper's name running up it, the day's lead headline, and
+the edges of its pages. It takes a thick book's room on the shelf and nothing
+else on Home.
 
 Pick it as you pick a book (tap it; with keys, move to it with the 5-way) and
 it turns to show its front page: its name, the date and the day's lead

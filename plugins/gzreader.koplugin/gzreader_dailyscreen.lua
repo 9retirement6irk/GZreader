@@ -251,9 +251,15 @@ function Paper.shelfSize(area_h, cover_w)
     return math.max(math.floor(h * 0.7), math.min(cover_w or 0, math.floor(h * 0.8))), h
 end
 
---- How thick the folded newspaper is, on its side.
+--- How thick the folded newspaper is, on its side: a fat paper, a fifth as
+--- thick as the books are tall.
 function Paper.spineWidth(area_h)
-    return math.max(16, math.floor(area_h * 0.1))
+    return math.max(24, math.floor(area_h * 0.2))
+end
+
+--- … and how tall: nearly as tall as the room the books stand in.
+function Paper.spineHeight(area_h)
+    return math.floor(area_h * 0.93)
 end
 
 --- The newspaper standing among Home's books (ZenOS's shelf.lua asks
@@ -350,64 +356,99 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
         mast:free(); date:free(); lead:free()
         if shelf_pic then shelf_pic:free(); shelf_pic = nil end
     end
-    -- on its side, folded
-    local spine_w = Paper.spineWidth(area_h)
+    -- on its side: a folded newspaper standing among the books, nearly as
+    -- tall as they are and a good deal thicker than a thin book. Seen from
+    -- the fold: the front page wrapped round it (its name up the fold, a
+    -- rule, the lead headline, a picture and columns of print), the fold's
+    -- curve shaded, and behind it the edges of the sheets, none quite as
+    -- tall as the next.
+    local spine_w, spine_h = Paper.spineWidth(area_h), Paper.spineHeight(area_h)
     local spine_bb
-    local spine = drawn(spine_w, h, function(bb, x, y)
+    local spine = drawn(spine_w, spine_h, function(bb, x, y)
         if not spine_bb then
-            -- drawn lying down (h wide, spine_w tall; its left end is the top),
-            -- then stood up, as the books' spines are. A folded newspaper from
-            -- the side: the fold, rounded, with a sliver of the front page's
-            -- print on it; behind it the edges of the sheets, none quite as
-            -- tall as the next.
-            local lying = Blitbuffer.new(h, spine_w, Blitbuffer.TYPE_BB8)
+            -- drawn lying down (spine_h wide, spine_w tall; its left end is the
+            -- top, its upper edge the fold), then stood up as the books' spines are
+            local L = spine_h
+            local lying = Blitbuffer.new(L, spine_w, Blitbuffer.TYPE_BB8)
             lying:fill(Blitbuffer.COLOR_WHITE)
-            local fold_w = math.floor(spine_w * 0.56)
             local px1 = math.max(1, S(1))
+            local edges = math.max(5, math.floor(spine_w * 0.2))
+            local fold_w = spine_w - edges
             -- the sheets' edges: fine lines of uneven grey, their tops stepped
             for ly = fold_w, spine_w - 1 do
                 local n = ly - fold_w
-                local top = S(3) + ((n * 37 + 11) % 5) * px1
-                if n % 2 == 0 then
-                    lying:paintRect(top, ly, h - top, 1, Blitbuffer.gray(0.30 + ((n * 13) % 4) * 0.09))
-                else
-                    lying:paintRect(top, ly, h - top, 1, Blitbuffer.gray(0.06))
-                end
+                local top = S(4) + ((n * 37 + 11) % 6) * px1
+                lying:paintRect(top, ly, L - top, 1, n % 2 == 0 and Blitbuffer.gray(0.30 + ((n * 13) % 4) * 0.09) or Blitbuffer.gray(0.06))
             end
-            -- the last sheet's edge, and the line where the fold meets the sheets
-            lying:paintRect(S(3), spine_w - 1, h - S(3), 1, Blitbuffer.gray(0.6))
-            lying:paintRect(S(2), fold_w - 1, h - S(2), 1, Blitbuffer.gray(0.45))
-            -- the fold: its outer curve shaded, its top corner rounded off
-            local r = math.max(2, S(3))
-            lying:paintRect(r, 0, h - r, 1, Blitbuffer.gray(0.7))
-            lying:paintRect(r, 1, h - r, 1, Blitbuffer.gray(0.22))
-            lying:paintRect(r, 2, h - r, 1, Blitbuffer.gray(0.10))
+            lying:paintRect(S(4), spine_w - 1, L - S(4), 1, Blitbuffer.gray(0.6))
+            lying:paintRect(S(2), fold_w - 1, L - S(2), 1, Blitbuffer.gray(0.5))
+            lying:paintRect(S(2), fold_w - 2, L - S(2), 1, Blitbuffer.gray(0.12))
+            -- the fold's curve: darker towards its outer edge, its top corner rounded
+            local r = math.max(3, S(5))
+            local shades = { 0.75, 0.32, 0.2, 0.12, 0.07, 0.03 }
+            for k, g in ipairs(shades) do lying:paintRect(r, k - 1, L - r, 1, Blitbuffer.gray(g)) end
             for k = 0, r - 1 do
-                lying:paintRect(0, k, r - k, 1, Blitbuffer.COLOR_WHITE)
-                lying:paintRect(r - k, k, 1, 1, Blitbuffer.gray(0.7))
+                local cut = r - math.floor(math.sqrt(math.max(0, r * r - (r - k) * (r - k))) + 0.5)
+                lying:paintRect(0, k, cut, 1, Blitbuffer.COLOR_WHITE)
+                lying:paintRect(cut, k, px1, 1, Blitbuffer.gray(0.75))
             end
-            lying:paintRect(0, r, 1, fold_w - r, Blitbuffer.gray(0.7)) -- (the top edge of the folded page)
-            -- the front page's print showing on the fold: its name, then the
-            -- lines of a column seen end on
-            local name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(8), max_width = math.floor(h * 0.55) }
+            lying:paintRect(0, r, 1, fold_w - r, Blitbuffer.gray(0.75)) -- (the folded page's top edge)
+            -- the front page, wrapped round the fold. Its band of print:
+            local band_y, band_h = #shades + S(1), fold_w - #shades - S(4)
+            -- the name, as big as the band lets it be
+            local name
+            for size = 20, 6, -1 do
+                if name then name:free() end
+                name = TextWidget:new{ text = _("The Daily Paper"), face = serifBold(size) }
+                if name:getSize().h <= band_h and name:getSize().w <= math.floor(L * 0.5) then break end
+            end
             local ns = name:getSize()
-            local nx, ny = S(7), math.max(3, math.floor((fold_w - ns.h) / 2))
-            name:paintTo(lying, nx, ny)
+            local cx = S(9)
+            name:paintTo(lying, cx, band_y + math.max(0, math.floor((band_h - ns.h) / 2)))
             name:free()
-            local cx = nx + ns.w + S(6)
-            lying:paintRect(cx, S(4), px1, fold_w - S(7), Blitbuffer.COLOR_BLACK) -- (the rule under the name)
+            cx = cx + ns.w + S(5)
+            -- the rules under the name
+            lying:paintRect(cx, band_y, math.max(2, S(2)), band_h, Blitbuffer.COLOR_BLACK)
+            lying:paintRect(cx + math.max(2, S(2)) + px1, band_y, 1, band_h, Blitbuffer.COLOR_BLACK)
+            cx = cx + math.max(2, S(2)) + px1 + S(4)
+            -- the lead headline, in two lines when the band takes them
+            local room = L - cx - S(6)
+            local head_room = math.floor(room * 0.55)
+            if head_room > S(40) then
+                local hl = TextBoxWidget:new{ text = words, face = serifBold(band_h >= S(40) and 7 or 6), width = head_room, alignment = "left" }
+                local lines = math.max(1, math.floor(band_h / hl:getLineHeight()))
+                if hl:getSize().h > hl:getLineHeight() * lines then
+                    local lh = hl:getLineHeight()
+                    hl:free()
+                    hl = TextBoxWidget:new{ text = words, face = serifBold(band_h >= S(40) and 7 or 6), width = head_room, alignment = "left",
+                        height = lh * lines, height_adjust = true, height_overflow_show_ellipsis = true }
+                end
+                hl:paintTo(lying, cx, band_y + math.max(0, math.floor((band_h - hl:getSize().h) / 2)))
+                hl:free()
+                cx = cx + head_room + S(5)
+                lying:paintRect(cx - S(3), band_y, 1, band_h, Blitbuffer.gray(0.5))
+            end
+            -- a picture, then columns of print seen end on
+            local pic_len = math.min(math.floor(band_h * 1.2), math.floor((L - cx) * 0.4))
+            if pic_len > S(10) then
+                lying:paintRect(cx, band_y + px1, pic_len, band_h - 2 * px1, Blitbuffer.gray(0.3))
+                lying:paintBorder(cx, band_y + px1, pic_len, band_h - 2 * px1, 1, Blitbuffer.gray(0.6))
+                cx = cx + pic_len + S(4)
+            end
             local step = math.max(3, S(3))
-            for lx = cx + step + px1, h - S(4), step do
-                local short = ((lx * 7) % 6 == 0) and math.floor(fold_w / 3) or 0
-                lying:paintRect(lx, S(4), 1, fold_w - S(7) - short, Blitbuffer.gray(0.35))
+            local half = math.floor(band_h / 2)
+            for lx = cx, L - S(5), step do
+                local short = ((lx * 7) % 5 == 0) and math.floor(half / 3) or 0
+                lying:paintRect(lx, band_y, 1, half - S(2) - short, Blitbuffer.gray(0.4))
+                lying:paintRect(lx, band_y + half + S(1), 1, band_h - half - S(1) - (((lx * 3) % 4 == 0) and math.floor(half / 4) or 0), Blitbuffer.gray(0.4))
             end
             spine_bb = lying:rotatedCopy(270)
             lying:free()
             -- the foot, on the board
-            spine_bb:paintRect(0, h - 1, spine_w, 1, Blitbuffer.gray(0.7))
+            spine_bb:paintRect(0, spine_h - 1, spine_w, 1, Blitbuffer.gray(0.75))
         end
-        bb:blitFrom(spine_bb, x, y, 0, 0, spine_w, h)
-        Paper.home.spine_at = { x = x, y = y, w = spine_w, h = h }
+        bb:blitFrom(spine_bb, x, y, 0, 0, spine_w, spine_h)
+        Paper.home.spine_at = { x = x, y = y, w = spine_w, h = spine_h }
     end)
     spine.free = function()
         if spine_bb then spine_bb:free(); spine_bb = nil end
@@ -416,7 +457,7 @@ function Paper.shelfItem(plugin, ctx, area_h, cover_w)
     Paper.home = { menu = ctx and ctx.menu, shelf = true }
     D.listen("home", Paper.redrawHome)
     UIManager:nextTick(function() pcall(D.maybeRefresh, plugin) end)
-    return { spine = spine, spine_w = spine_w, h = h, face = widget, face_w = w, face_h = h,
+    return { spine = spine, spine_w = spine_w, h = spine_h, face = widget, face_w = w, face_h = h,
         open = function() Paper.show(plugin) end }
 end
 

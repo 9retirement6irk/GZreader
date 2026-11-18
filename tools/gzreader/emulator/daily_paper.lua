@@ -110,7 +110,7 @@ add({ shot = "daily-1b-home-books" })
 add({ fn = function(E)
     local Paper = require("gzreader_dailyscreen")
     local at = Paper.home and Paper.home.spine_at
-    check(E, at ~= nil and at.w < at.h / 5, "the newspaper stands on its side among the books")
+    check(E, at ~= nil and at.w < at.h / 3 and at.w > at.h / 6, "the newspaper stands on its side among the books, a fat folded paper")
     if at and require("device"):isTouchDevice() then
         E.tap({ at.x + math.floor(at.w / 2), at.y + math.floor(at.h / 2) })
     else
