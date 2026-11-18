@@ -174,3 +174,13 @@ notes: [Notes](Notes)):
 - Everything is sized for the screen (the Paperwhite's 1072 × 1448 at 300
   dpi): Home's text is the same size as on a Kindle 3. The Kindle's own time zone is used (the time zone setting is for the
   Kindles without one).
+
+## A secret
+
+As on an Android phone, tap GZreader's version in **Settings → About**
+seven times (from the fourth tap it counts down). A game opens: the
+**15 puzzle**. Slide the tiles back into order: tap a tile in the gap's
+row or column (it and any between slide over), or on a Kindle without a
+touch screen use the 5-way (▲ slides the tile below the gap up, and so
+on). Tiles in their right place turn grey. It counts your moves and keeps
+your best; ✕ (or Back) closes it.
