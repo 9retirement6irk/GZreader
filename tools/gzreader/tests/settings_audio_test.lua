@@ -1,7 +1,7 @@
--- Settings → General → Audio: GZreader's read aloud, audiobook test and
--- headphone settings (they come with its Reader items) in their own submenu
--- in General, before Time and date; anything else of GZreader's for Reader
--- stays at the end of Reader. ZenOS's settings modules are real; the rest
+-- Settings → Audio: GZreader's read aloud, audiobook test and headphone
+-- settings (they come with its Reader items) in their own section on the
+-- first page, after Sleep and wallpaper; anything else of GZreader's for
+-- Reader stays at the end of Reader. ZenOS's settings modules are real; the rest
 -- are stubs.
 --   luajit settings_audio_test.lua <plugins/zenos.koplugin>
 local ZEN = arg[1]
@@ -20,6 +20,7 @@ local real = {
     ["modules/settings/sections/interface_settings"] = true,
     ["modules/settings/zen_settings_utils"] = true,
     ["common/gz_settings"] = true,
+    ["common/gz_settings_tree"] = true,
 }
 -- what GZreader's plugin gives Settings (main.lua Grimmory:sectionItems)
 local reader_items
@@ -96,14 +97,16 @@ end
 
 -- a Kindle 3 / Touch (a speaker): the four audio items, plus one more of GZreader's Reader items
 local root = build(items("Read aloud", "Test audiobook playback", "Pause when headphones are unplugged",
-    "Find the headphone jack", "Lay out new books while charging"))
-local general = find(root, "General").sub_item_table
-local gen = texts(general)
-print("    General: " .. gen)
-check(gen:find("|Audio|Time and date|", 1, true) ~= nil, "General: Audio, just before Time and date")
-local a = find(general, "Audio")
-check(a and texts(a.sub_item_table) == "|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|",
-    "General → Audio: Read aloud, Test audiobook playback, Pause when headphones are unplugged, Find the headphone jack")
+    "Find the headphone jack", "Something else"))
+print("    Settings: " .. texts(root))
+check(texts(root):find("|Sleep and wallpaper|Audio|", 1, true) ~= nil and find(root, "Audio").separator == true
+        and find(root, "Bluetooth") == nil and #root <= 9,
+    "Settings: Audio after Sleep and wallpaper, then a line; Bluetooth in Audio, not on the first page (nine rows at most) " .. texts(root))
+check(not texts(find(root, "General").sub_item_table):find("|Audio|", 1, true), "not in General any more")
+local a = find(root, "Audio")
+check(a and a._zen_settings_root == "audio" and texts(a.sub_item_table) == "|Bluetooth|Read aloud|Test audiobook playback|Pause when headphones are unplugged|Find the headphone jack|"
+        and a.sub_item_table[1].separator == true,
+    "Audio: Bluetooth (a line under it), Read aloud, Test audiobook playback, Pause when headphones are unplugged, Find the headphone jack " .. texts(a and a.sub_item_table))
 check(a and type(a.icon_file) == "string" and a.icon_file:find("tab_music", 1, true) ~= nil, "Audio has the Music tab's icon")
 check(a and type(a.sub_item_table[1].callback) == "function", "its rows are GZreader's own (they still run)")
 local reader = texts(find(root, "Reader").sub_item_table)
@@ -111,11 +114,11 @@ print("    Reader: " .. reader)
 for _i, gone in ipairs(GzS.AUDIO_ITEMS) do
     check(not reader:find("|" .. gone .. "|", 1, true), "not in Reader any more: " .. gone)
 end
-check(reader:find("|Lay out new books while charging|$") ~= nil, "GZreader's other Reader items stay at the end of Reader")
+check(reader:find("|Something else|$") ~= nil, "GZreader's other Reader items stay at the end of Reader")
 
 -- a Kindle without a speaker (GZreader gives no Reader items): no Audio
 root = build({})
-check(find(find(root, "General").sub_item_table, "Audio") == nil, "no speaker: no Audio in General")
+check(find(root, "Audio") == nil and find(root, "Bluetooth") ~= nil, "no speaker: no Audio, Bluetooth on the first page")
 
 print(ok_count .. " passed, " .. fail .. " failed")
 os.exit(fail == 0 and 0 or 1)

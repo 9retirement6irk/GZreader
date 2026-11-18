@@ -1,4 +1,4 @@
--- Settings → General → Screen on the emulated Kindle, built by the real code
+-- Settings → Display and light → Screen on the emulated Kindle, built by the real code
 -- from KOReader's real menu: Settings starts with General; General → Screen
 -- is KOReader's Screen menu without Sleep screen and Rotation; its E-ink
 -- settings have Full refresh rate, then GZreader's flash rows; Settings →
@@ -49,9 +49,9 @@ end
 local function report(_E)
     local r = root()
     print("[emu] screen: root = " .. texts(r))
-    local general = sub(find(r, "General"))
-    print("[emu] screen: general = " .. texts(general))
-    local screen = sub(find(general, "Screen"))
+    local display = sub(find(r, "Display and light"))
+    print("[emu] screen: display and light = " .. texts(display))
+    local screen = sub(find(display, "Screen"))
     print("[emu] screen: screen = " .. texts(screen))
     local eink = sub(find(screen, "E-ink settings"))
     print("[emu] screen: e-ink = " .. texts(eink))
@@ -81,9 +81,9 @@ return {
     start = 12,
     { key = "Back", after = 4 },
     { fn = report, after = 2 },
-    { fn = open({ "General", "Screen" }), after = 4 },
+    { fn = open({ "Display and light", "Screen" }), after = 4 },
     { shot = "general-screen" },
-    { fn = open({ "General", "Screen", "E-ink settings" }), after = 4 },
+    { fn = open({ "Display and light", "Screen", "E-ink settings" }), after = 4 },
     { shot = "general-screen-eink" },
     -- the real Settings page (icons, ticks), opened straight to the path
     { fn = function(_E)
@@ -91,7 +91,7 @@ return {
         if _G.__gz_emu_menu then UIManager:close(_G.__gz_emu_menu); _G.__gz_emu_menu = nil end
         local fm = require("apps/filemanager/filemanager").instance
         require("modules/settings/zen_settings_page").show(fm.zenos or rawget(_G, "__ZEN_UI_PLUGIN"), { path = {
-            { key = "text", value = "General" }, { key = "text", value = "Screen" }, { key = "text", value = "E-ink settings" } } })
+            { key = "text", value = "Display and light" }, { key = "text", value = "Screen" }, { key = "text", value = "E-ink settings" } } })
     end, after = 6 },
     { shot = "settings-page-eink" },
     { fn = function(_E)

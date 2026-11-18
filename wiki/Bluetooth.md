@@ -6,9 +6,10 @@ generation and later, Oasis, Paperwhite 4 and newer, Scribe, Colorsoft. On
 the Kindle 2, 3, DX, 4, Touch, the Paperwhites 2 and 3 and the Nooks there is
 no Bluetooth row (they have no Bluetooth, or no way to manage it).
 
-## Settings → General → Bluetooth
+## Settings → Audio → Bluetooth
 
-The row comes right after Wi‑Fi.
+The row is the first in Settings → Audio: a Kindle's Bluetooth is for
+headphones and speakers.
 
 - **The tick** turns Bluetooth on or off. Turning it off disconnects what
   was connected first.
@@ -35,7 +36,7 @@ In Controls, right after Wi‑Fi (Kindles with Bluetooth only): **a tap** turns
 Bluetooth on or off and the panel stays open; the tile shows **Bluetooth**
 (drawn black) when it's on, **Bluetooth off** when it's off, **Bluetooth…**
 while it switches. **A hold** opens Bluetooth devices, as the Settings row
-does. Settings → Interface → Quick panel can take it off the panel.
+does. Settings → Home and tabs → Quick panel can take it off the panel.
 
 ## What GZreader plays over it
 

@@ -283,7 +283,7 @@ function Browser:signedOutItems(section)
 end
 
 --- The Grimmory card's list: the account and what to do with it; signed
---- out, the ways to sign in (as Settings → Connections → Grimmory).
+--- out, the ways to sign in (as Settings → Accounts and services → Books).
 --- The Grimmory card's list, as ZenOS rows (gzreader_rows.lua): who you're
 --- signed in as (the account and server on the right), then what to do,
 --- each with its icon and arrow, and About Grimmory. `self`: the browser
@@ -500,7 +500,7 @@ end
 --- The Audiobooks page: search, then a compartment each (gz_kind "section";
 --- gz_contents: what stands in it in the Bookshelf view).
 function Browser:audiobookItems()
-    -- (audiobooks from a Plex library instead: Settings → Connections → Plex → Audiobooks)
+    -- (audiobooks from a Plex library instead: Settings → Accounts and services → Audiobooks)
     local PA = require("gzreader_plexaudio")
     local plex_sec = PA.section(self.plugin)
     if plex_sec then return PA.items(self, plex_sec) end

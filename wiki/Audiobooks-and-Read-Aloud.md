@@ -69,13 +69,12 @@ Home's featured book shows it too.
 ### On Kindles with Bluetooth (Scribe, Paperwhite 5 and newer…)
 
 These Kindles have no speaker or headphone jack: audiobooks (and music)
-play through Bluetooth headphones or a speaker. Connect it first (Settings →
-General → Bluetooth, or Amazon's settings). Everything works as on the
+play through Bluetooth headphones or a speaker. Connect it first (Settings → Audio → Bluetooth, or Amazon's settings). Everything works as on the
 Kindle Touch, with these differences:
 
 - **No audio test needed.** There's one way to play here: GZreader's own
   decoder (these Kindles have no MP3 or AAC decoder outside Audible's)
-  into the Kindle's Bluetooth sound. Settings → General → Audio → Test
+  into the Kindle's Bluetooth sound. Settings → Audio → Test
   audiobook playback still plays the two test tunes, if you want to check.
 - **Volume:** the Kindle's own Bluetooth volume, 1 to 8, the same as
   Amazon's slider, the quick panel's volume slider and read aloud's.
@@ -85,7 +84,7 @@ Kindle Touch, with these differences:
 ### Audiobooks from Plex
 
 Audiobooks can come from a library on your Plex server instead of Grimmory:
-Settings → Connections → Plex → **Audiobooks** (or *Plex* in the Music tab)
+Settings → Accounts and services → Music → **Audiobooks** (or *Plex* in the Music tab)
 lists *Grimmory* and the server's music libraries; Plex keeps audiobooks in a
 music library, an album per book with the author as its artist. With a Plex
 library picked, the Catalog's Audiobooks page shows it: **Search
@@ -142,7 +141,7 @@ and text only.
 
 Amazon never documented the request format. The speech daemon (`ttsd`)
 writes which field it's missing to the system log ("unable to read id"), so
-Settings → General → Audio → Read aloud → Find the Kindle voice (test) adds the missing
+Settings → Audio → Read aloud → Find the Kindle voice (test) adds the missing
 fields one by one until `ttsd` accepts the request, plays "Voice test" and
 asks whether you heard it; the request shape is then saved. Text goes to the voice a
 sentence at a time (split only when a sentence passes 30 words at a comma,
@@ -153,7 +152,7 @@ characters already said. Turn pages yourself and it carries on from the page
 you stop at (once, 0.3 s after the last turn). The speech
 service doesn't report when a sentence ends, so the next sentence starts
 after a time computed from its length and the speed setting (Read-aloud
-settings: Settings → General → Audio → Read aloud → Slower / Faster). The diagnostic log records every step.
+settings: Settings → Audio → Read aloud → Slower / Faster). The diagnostic log records every step.
 
 Kindle 2 and DX (firmware 2.x): there's no `lipc-hash-prop` and the speech
 service has an older interface (`com.lab126.tts`: `playFile`). Find the Kindle
@@ -169,13 +168,13 @@ paths the speech service knows about.
 These Kindles have no speaker: read aloud uses **Amazon's own voice** (the
 Ivona voice behind Assistive Reader, in English, German, Spanish, French,
 Italian and Portuguese) and speaks through **Bluetooth headphones or a
-speaker** — connect one first (Settings → General → Bluetooth, or Amazon's
+speaker** — connect one first (Settings → Audio → Bluetooth, or Amazon's
 Settings). Without one, Read aloud says so instead of starting.
 
 - In a book, **Read aloud** in the quick panel starts and stops it; the
   sentence being read is highlighted and pages turn by themselves, as on the
   Kindle 3.
-- **Settings → General → Audio → Read aloud** has **Quieter / Louder**,
+- **Settings → Audio → Read aloud** has **Quieter / Louder**,
   Slower / Faster and **Test the Kindle voice** (there's nothing to find on
   these Kindles). Quieter / Louder moves the Kindle's own Bluetooth volume,
   the one Amazon's quick-settings slider moves, in its 8 steps (it's Amazon's
@@ -209,10 +208,10 @@ service sends a message instead when they go in or out (`audioHS` from
 it found, one small listener waits for the message while something plays.
 
 When headphones are unplugged while music, an audiobook or read aloud plays,
-GZreader pauses it (Settings → General → Audio → *Pause when headphones
+GZreader pauses it (Settings → Audio → *Pause when headphones
 are unplugged*), so it doesn't carry on out of the speaker. Kindles don't all say
 where they show the jack: GZreader looks for a headphone switch the way Linux
-reports one; if this Kindle doesn't have that, **Settings → General → Audio → Find
+reports one; if this Kindle doesn't have that, **Settings → Audio → Find
 the headphone jack** asks you to plug in and unplug headphones and keeps the
 place that changed. If nothing changes, the Kindle doesn't tell, and nothing
 is paused (send the log: it lists what was looked at).
@@ -225,7 +224,7 @@ starts a program, which costs the Kindle 3 a moment of CPU).
 
 ## Audio settings
 
-**Settings → General → Audio** (the Kindle 2, 3, DX and Touch: the Kindles
+**Settings → Audio** (the Kindle 2, 3, DX and Touch: the Kindles
 with a speaker or a headphone jack; on Kindles with Bluetooth: Read aloud
 and Test audiobook playback) has Read aloud (volume, speed, the
 Kindle voice), Test audiobook playback, Pause when headphones are unplugged

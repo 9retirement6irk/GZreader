@@ -4,8 +4,7 @@ The Kindle 2 and the Kindle DX have no Wi‑Fi. GZreader notices (from the
 model) and syncs through a web page on a computer instead, with the Kindle
 plugged in over USB: <https://9retirement6irk.github.io/GZreader/sync/>
 (Chrome or Edge, on Windows, Mac, Linux or a Chromebook; other browsers can't
-write to a USB drive). Any other Kindle can sync this way too: Settings →
-Connections → Sync through a computer.
+write to a USB drive). Any other Kindle can sync this way too: Settings → General → Transfer → Sync through a computer.
 
 1. On the Kindle: Menu (the quick panel) → **Sync** → **Connect to computer (USB drive)**. KOReader turns the
    Kindle's USB drive off while it runs, so GZreader steps aside and waits;
@@ -26,7 +25,7 @@ Connections → Sync through a computer.
    - **Content**: what to bring, browsed as in the Kindle's Catalog tab:
      Books and Audiobooks (Recently added, A–Z, Libraries, Shelves, Authors,
      Series, search) and Music (Plex albums A–Z, playlists, search). With
-     audiobooks from Plex on the Kindle (Settings → Connections → Plex →
+     audiobooks from Plex on the Kindle (Settings → Accounts and services → Music →
      Audiobooks), Audiobooks lists that Plex library (Recently added, A–Z,
      Authors, search); *Audiobooks from…* switches between Grimmory and the
      server's libraries on the page. Each is
@@ -71,7 +70,7 @@ A Kindle without Wi‑Fi sends its diagnostic log through the page, the same
 report a Wi‑Fi Kindle sends with **Send to the developer**:
 
 - **On the Kindle:** Diagnostics (quick panel) → **Send to the developer (at
-  the next sync)**, or Settings → About → Advanced → Send diagnostic log to the
+  the next sync)**, or Settings → Privacy and diagnostics → Send diagnostic log to the
   developer. A box asks what you were doing and what went wrong; the log and
   what you typed are saved in `.gzsync/reports/` (the newest three). At your
   next sync the page sends them and deletes them; if it can't reach the

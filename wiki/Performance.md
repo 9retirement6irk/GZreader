@@ -104,7 +104,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   book, 20 page turns, the quick panel and moves on Home, against
   `perf_baseline.json` (more than 50% more CPU fails the check).
 
-- Covers are pre-sized (Settings → Interface → Pre-size covers). ZenOS scales
+- Covers are pre-sized (Settings → General → Performance → Pre-size covers). ZenOS scales
   every cover to the exact size of where it's shown; on the Kindle 3 that took
   ~4 s of CPU per Home screen (the cover strip), and its memory cache starts
   empty after every restart. GZreader keeps each final-size cover as a raw
@@ -175,7 +175,7 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   so a 2,000-book index is 40 requests: now on one connection. Off: a file
   named `gz-no-keepalive` in the `koreader` folder.
 - **Request helper (experimental, off by default)** (`gzreader_reqhelper.lua`):
-  with Settings → Connections → Grimmory → Keep connections open
+  with Settings → General → Performance → Keep connections open
   (experimental) ticked (or a file named `gz-request-helper` in the
   `koreader` folder; not offered on Kindles without Wi‑Fi), a small
   separate LuaJIT process runs while Wi‑Fi is on and keeps the connections

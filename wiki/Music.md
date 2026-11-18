@@ -27,8 +27,7 @@ albums and tracks together).
 
 ![The Catalog's Music page](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/catalog-music.png) ![An album playing in the CD player](https://raw.githubusercontent.com/9retirement6irk/GZreader/main/docs/screenshots/cd-player.png)
 
-There is also a **Music tab**, off until you turn it on: Settings →
-Connections → Plex (Music) → Music tab, or Settings → Interface → Navbar →
+There is also a **Music tab**, off until you turn it on: Settings → Accounts and services → Music → Music tab, or Settings → Home and tabs → Tab bar →
 Tabs → Music (or in the setup guide's tab page). The tab bar holds up
 to 7 tabs. While music plays or is paused, the quick panel has a **Music**
 tile (*Music ▶* while it plays), at Home and in a book: it opens Now playing.
@@ -76,8 +75,7 @@ shelves each one is a CD facing out with its cover, its name on a plate under
 it.
 
 **Music library**: a Plex server can have several music libraries. GZreader
-uses the server's first until you pick another in Settings → Connections →
-Plex → **Music library** (or *Plex* in the Music tab, which shows you · server). Artists,
+uses the server's first until you pick another in Settings → Accounts and services → Music → **Music library** (or *Plex* in the Music tab, which shows you · server). Artists,
 Albums, Recently added and Recently played come from the one picked; with
 more than one music library on the server, Playlists and Search keep to it
 too. The choice is kept per server, and the sync page (Kindles without

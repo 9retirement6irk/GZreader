@@ -11,7 +11,7 @@ iCal address, Outlook's published ICS…) and/or a **CalDAV account**, read-only
   falling back to HTTP. Links are secret: kept in GZreader's settings, never
   logged (requests show the server only, `rawRequest`'s `log_url`). Times use
   the file's own VTIMEZONE rules; repeating events are expanded on the Kindle.
-  Settings → Connections → Calendar → Calendar links: show / rename / remove,
+  Settings → Accounts and services → Calendar → Calendar links: show / rename / remove,
   or the same on the setup page (*Add or edit links with QR code*), which
   also replaces a link that changed.
 
@@ -45,7 +45,7 @@ Fastmail (`https://caldav.fastmail.com`), Google
   GZreader's time zone.
 - **Wi‑Fi:** only to sync, when the tab opens (at most every 15 minutes) and
   with M → Refresh. Events are kept on the Kindle (`settings/gzreader-calendar.json`).
-- **Settings → Connections → Calendar (CalDAV):** connection, calendars shown,
+- **Settings → Accounts and services → Calendar:** connection, calendars shown,
   the layout it opens in, week start (Sunday / Monday), sync range, storage.
   M → Calendar settings in the tab opens this same Settings page; the
   calendar is drawn again when you close it.

@@ -147,7 +147,7 @@ print("== which pages follow")
     check(journal:match('require%("gzreader_rotation"%)%.follow%(JournalScreen,'), "a journal entry")
     local panel = source("gzreader_panel.lua")
     check(panel:match('{ id = "autorotate", label = _%("Auto%-rotate"%)') and panel:match('require%("gzreader_rotation"%)%.autoTile%(%)'),
-        "the panel has the tile (and Settings → Interface → Quick panel a tick for it)")
+        "the panel has the tile (and Settings → Home and tabs → Quick panel a tick for it)")
     local f = io.open(PLUGIN .. "/icons/panel/autorotate.svg"); local g = io.open(PLUGIN .. "/icons/panel/autorotate_off.svg")
     check(f and g, "its icons, on and off"); if f then f:close() end; if g then g:close() end
 end)()

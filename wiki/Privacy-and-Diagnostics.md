@@ -8,7 +8,7 @@ deleted). What it can still send its developer is **debug reports**, so
 problems on real Kindles can be found and fixed:
 
 - **Send debug reports automatically** (the setup guide's **Debug Reports**
-  page, or **Settings → About → Send debug reports automatically**), off
+  page, or **Settings → Privacy and diagnostics → Send debug reports automatically**), off
   unless you choose it: when GZreader starts, how the previous run ended,
   warnings and errors from its log, freezes and crashes. They go out only
   while Wi‑Fi is already on; GZreader never turns Wi‑Fi on for them. See
@@ -32,8 +32,7 @@ works there, at the next sync).
 
 `koreader/gzreader.log` (rotates at 512 KB): requests with status and timing,
 pairing, SSO, downloads, sync, bookmarks, updates, read aloud. Passwords and
-tokens are never written. Diagnostic logging is on by default (Settings →
-About → Advanced → Diagnostic logging, at the top of Advanced with
+tokens are never written. Diagnostic logging is on by default (Settings → Privacy and diagnostics → Diagnostic logging, at the top, with
 sending and saving the log); while it's on, the quick panel has
 **Diagnostics**, which bundles the log, the tail of `crash.log`, what keeps
 the Kindle awake and a read-only audio/speech survey into one
@@ -44,15 +43,15 @@ the Kindle awake and a read-only audio/speech survey into one
   straight to GZreader's developer over Wi‑Fi (see [Remote debugging](#remote-debugging)).
   It's sent in the background: you can carry on reading, and a message
   says when it's sent. Also
-  Settings → About → Advanced → Send diagnostic log to the developer. On the
+  Settings → Privacy and diagnostics → Report a problem. On the
   Kindle 2 and DX (no Wi‑Fi) it says **(at the next sync)**: the same box,
   then the log and what you typed wait in `.gzsync/reports/` and the
   [sync page](Sync-with-a-Computer#sending-diagnostics-to-the-developer) sends them at your next sync.
 - **Send to a browser (QR code):** scan the code (same Wi‑Fi), tap
   Download, then attach the file wherever you need it. Also the setup
-  page's Diagnostics tab and Settings → About → Advanced.
+  page's Diagnostics tab and Settings → Privacy and diagnostics → Advanced.
 - **Save to the Kindle:** next to the GZreader folder, to copy over USB.
-  Also Settings → About → Advanced → Save diagnostic log (USB).
+  Also Settings → Privacy and diagnostics → Save diagnostic log (USB).
 
 With diagnostic logging **off**, GZreader writes nothing to `gzreader.log`
 and doesn't time book openings either (the `book open:` line), so it spends
@@ -119,7 +118,7 @@ keeps them in `.gzsync/keys.json`, locked with your PIN
 ## Remote debugging
 
 For freezes and hard reboots, where the Kindle's own log may be lost:
-with **Send debug reports automatically** on (Settings → About, or the
+with **Send debug reports automatically** on (Settings → Privacy and diagnostics, or the
 setup guide), GZreader reports to the developer's feed
 (Tianji `…/open/feed/<id>/send`, `/state/upsert`, `/state/resolve`);
 releases to one feed, test builds to another (`gzreader_remote.lua`
@@ -156,9 +155,7 @@ tally is written to `gzreader-remote/profile` every ~5 s of CPU, also while
 GZreader is stuck in one long call, and goes into the watchdog's reports,
 with each GZreader process's state, CPU over 2 s, memory and wait channel.
 
-**Send to the developer** (Diagnostics in the quick panel; Settings →
-About → Advanced → Send diagnostic log to the developer; Settings →
-About → Report a bug)
+**Send to the developer** (Diagnostics in the quick panel; Settings → Privacy and diagnostics → Report a problem)
 asks what you were doing and what went wrong, then sends that with the
 whole diagnostic log (the same file "Save to the Kindle" writes) to a feed
 of its own (`R.REPORT_FEED`, the same for releases and test builds),

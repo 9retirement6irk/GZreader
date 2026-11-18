@@ -1,5 +1,5 @@
 -- The Grimmory and Notes tabs with ZenOS's status row (no close button),
--- and Settings → Connections → Memos (Notes): connection, synced tags, storage used / free up
+-- and Settings → Accounts and services → Notes: connection, synced tags, storage used / free up
 -- space, notes kept, attachment limit. With demo/demo_grimmory.py on
 -- 127.0.0.1:18080 and demo/mock_memos.py --sample on 18090.
 local readme = dofile("/root/work/koreader/tools/gzreader/emulator/readme_shots.lua")

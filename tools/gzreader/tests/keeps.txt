@@ -122,7 +122,7 @@
 3 plugins/zenos.koplugin/modules/settings/sections/reader_settings.lua
 3 plugins/zenos.koplugin/modules/settings/sections/updates_settings.lua
 3 plugins/zenos.koplugin/modules/settings/zen_bugreporter.lua
-66 plugins/zenos.koplugin/modules/settings/zen_settings.lua
+25 plugins/zenos.koplugin/modules/settings/zen_settings.lua
 2 plugins/zenos.koplugin/modules/settings/zen_settings_page.lua
 12 plugins/zenos.koplugin/modules/settings/zen_updater.lua
 6 reader.lua

@@ -12,7 +12,7 @@ Radicale, Baïkal, Google…), read-only, in four layouts.
 - Offline: the synced range of events is kept on the Kindle
   (gzreader-calendar.json); Wi-Fi is only used to sync: when the tab opens
   (at most every 15 minutes) and with M → Refresh.
-- Settings → Connections → Calendar (CalDAV): connection, which calendars,
+- Settings → Accounts and services → Calendar: connection, which calendars,
   default layout, week start, sync range, storage.
 
 The tab is a KOReader Menu (so ZenOS puts its tab bar under it) whose page
@@ -76,7 +76,7 @@ function Calendar.client(plugin)
     return CalDAV:new(plugin.store.caldav)
 end
 
---- Settings → Connections → Calendar (kept when you disconnect).
+--- Settings → Accounts and services → Calendar (kept when you disconnect).
 function Calendar.prefs(plugin)
     plugin.store.calendar_prefs = plugin.store.calendar_prefs or {}
     local p = plugin.store.calendar_prefs
@@ -569,7 +569,7 @@ local function inRange(day)
 end
 
 local function outOfRangeText()
-    return _("Not synced this far.\n\nSettings → Connections → Calendar → Sync range sets how far ahead and back events are kept.")
+    return _("Not synced this far.\n\nSettings → Accounts and services → Calendar → Sync range sets how far ahead and back events are kept.")
 end
 
 --- The desk, and a planner sheet bound on the left: the desk canvas and the
@@ -1110,11 +1110,11 @@ function Calendar.showOptions(plugin)
     dialog = Calendar.keyedDialog(_("Calendar") .. "\n" .. synced, rows)
 end
 
---- Settings → Connections → Calendar (CalDAV), from the tab (M → Calendar
+--- Settings → Accounts and services → Calendar, from the tab (M → Calendar
 --- settings): ZenOS's own Settings page opened there (the same rows,
 --- Calendar.settingsItems), like every other settings page. The calendar is
 --- drawn again when Settings closes (layout, week start, calendars shown…).
-Calendar.SETTINGS_PATH = { _("Connections"), _("Calendar (CalDAV)") }
+Calendar.SETTINGS_PATH = { _("Accounts and services"), _("Calendar") }
 
 function Calendar.showSettings(plugin)
     local ok, page = pcall(function()
@@ -1566,7 +1566,31 @@ local function size(bytes)
     return string.format("%d KB", math.floor(bytes / 1024 + 0.5))
 end
 
---- Settings → Connections → Calendar (CalDAV).
+--- Settings → Accounts and services → Calendar.
+--- Settings → General → Storage → Calendar: the events kept, the last sync,
+--- and Free up space (until 1.32.0 on the Calendar settings page).
+function Calendar.storageItems(_plugin)
+    local lfs = require("libs/libkoreader-lfs")
+    local bytes = lfs.attributes(CalDAV.cachePath(), "size") or 0
+    if not Calendar.events then Calendar.loadCache() end
+    local function confirm(text, ok_text, fn)
+        UIManager:show(require("ui/widget/confirmbox"):new{ text = text, ok_text = ok_text, ok_callback = fn })
+    end
+    return {
+        { text = T(_("Events kept: %1 (%2)"), #(Calendar.events or {}), size(bytes)), enabled = false },
+        { text = Calendar.cached_at and T(_("Last synced: %1"), os.date("%b %d, ", Calendar.cached_at) .. clock(Calendar.cached_at))
+            or _("Not synced yet"), enabled = false, separator = true },
+        { text = _("Free up space: remove kept events"), enabled = bytes > 0, callback = function(tm)
+            confirm(_("Remove the events kept on this Kindle?\n\nThey stay on the server and are fetched again the next time you open the Calendar tab with Wi-Fi."),
+                _("Remove"), function()
+                    os.remove(CalDAV.cachePath())
+                    Calendar.events, Calendar.cached_at, Calendar.range = {}, nil, nil
+                    if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
+                end)
+        end },
+    }
+end
+
 function Calendar.settingsItems(plugin)
     local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
     local okc, icons = pcall(require, "common/inline_icon_map")
@@ -1594,6 +1618,42 @@ function Calendar.settingsItems(plugin)
         if Calendar.board and not Calendar.board._gz_closed then Calendar.syncOnOpen(plugin) end
     end
     return {
+        icon("connect", {
+            text_func = function()
+                if not connected_() then return _("CalDAV account: none") end
+                local s = store()
+                return T(_("CalDAV account: %1 · %2"), s.username or "?", ((s.server or ""):gsub("^https?://", ""):gsub("/.*$", "")))
+            end,
+            sub_item_table_func = function()
+                local s = store()
+                local items = {}
+                if connected_() then
+                    items[#items + 1] = { text = T(_("Signed in as %1"), s.username or "?"), enabled = false }
+                    items[#items + 1] = { text = s.server or "", enabled = false, separator = true }
+                end
+                items[#items + 1] = { text = connected_() and _("Connect again with QR code") or _("Connect with QR code"),
+                    callback = function(tm)
+                        if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
+                        require("gzreader_net").run(function() Calendar.qrConnect(plugin) end, { reason = "connecting a calendar" })
+                    end }
+                items[#items + 1] = { text = connected_() and _("Connect again by typing") or _("Connect by typing"),
+                    callback = function(tm)
+                        if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
+                        Calendar.typeConnect(plugin)
+                    end }
+                if connected_() then
+                    items[#items].separator = true
+                    items[#items + 1] = { text = _("Disconnect"), callback = function(tm)
+                        confirm(_("Disconnect the CalDAV account?\n\nIts saved password and the events kept on this Kindle are removed (calendar links stay). Your calendars on the server stay as they are."),
+                            _("Disconnect"), function()
+                                Calendar.disconnect(plugin)
+                                if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
+                            end)
+                    end }
+                end
+                return items
+            end,
+        }),
         icon("download", {
             text_func = function() return T(_("Calendar links: %1"), #Calendar.feeds(plugin)) end,
             help_text = _("Subscription links calendars share (webcal:// or https://…ics), e.g. Proton Calendar: Settings → Calendars → Share → Share with anyone. Several can be added; each is fetched when the Calendar tab syncs. Links are secret: they're kept in GZreader's settings and never written to the log."),
@@ -1650,42 +1710,6 @@ function Calendar.settingsItems(plugin)
                 return items
             end,
         }),
-        icon("connect", {
-            text_func = function()
-                if not connected_() then return _("CalDAV account: none") end
-                local s = store()
-                return T(_("CalDAV account: %1 · %2"), s.username or "?", ((s.server or ""):gsub("^https?://", ""):gsub("/.*$", "")))
-            end,
-            sub_item_table_func = function()
-                local s = store()
-                local items = {}
-                if connected_() then
-                    items[#items + 1] = { text = T(_("Signed in as %1"), s.username or "?"), enabled = false }
-                    items[#items + 1] = { text = s.server or "", enabled = false, separator = true }
-                end
-                items[#items + 1] = { text = connected_() and _("Connect again with QR code") or _("Connect with QR code"),
-                    callback = function(tm)
-                        if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
-                        require("gzreader_net").run(function() Calendar.qrConnect(plugin) end, { reason = "connecting a calendar" })
-                    end }
-                items[#items + 1] = { text = connected_() and _("Connect again by typing") or _("Connect by typing"),
-                    callback = function(tm)
-                        if tm and tm.closeMenu then pcall(tm.closeMenu, tm) end
-                        Calendar.typeConnect(plugin)
-                    end }
-                if connected_() then
-                    items[#items].separator = true
-                    items[#items + 1] = { text = _("Disconnect"), callback = function(tm)
-                        confirm(_("Disconnect the CalDAV account?\n\nIts saved password and the events kept on this Kindle are removed (calendar links stay). Your calendars on the server stay as they are."),
-                            _("Disconnect"), function()
-                                Calendar.disconnect(plugin)
-                                if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
-                            end)
-                    end }
-                end
-                return items
-            end,
-        }),
         icon("calendar", {
             text_func = function()
                 local on, all = 0, 0
@@ -1730,6 +1754,7 @@ function Calendar.settingsItems(plugin)
         icon("sync", {
             text_func = function() return T(_("Sync range: %1 days back, %2 ahead"), prefs.days_back, prefs.days_ahead) end,
             help_text = _("Events in this range are fetched and kept on the Kindle for offline use. A longer range takes longer to sync."),
+            separator = true,
             sub_item_table = {
                 { text = _("Days ahead"), sub_item_table = choice({ 30, 90, 180, 365 }, function() return prefs.days_ahead end,
                     function(v) prefs.days_ahead = v; resync() end, function(v) return T(_("%1 days"), v) end) },
@@ -1737,29 +1762,16 @@ function Calendar.settingsItems(plugin)
                     function(v) prefs.days_back = v; resync() end, function(v) return T(_("%1 days"), v) end) },
             },
         }),
+        -- (last, as on every service's page: a tap opens Settings → General →
+        -- Storage → Calendar, with the rows that were here: Calendar.storageItems)
         icon("disk", {
             text_func = function()
                 local lfs = require("libs/libkoreader-lfs")
                 return T(_("Storage used: %1"), size(lfs.attributes(CalDAV.cachePath(), "size") or 0))
             end,
-            sub_item_table_func = function()
-                local lfs = require("libs/libkoreader-lfs")
-                local bytes = lfs.attributes(CalDAV.cachePath(), "size") or 0
-                if not Calendar.events then Calendar.loadCache() end
-                return {
-                    { text = T(_("Events kept: %1 (%2)"), #(Calendar.events or {}), size(bytes)), enabled = false },
-                    { text = Calendar.cached_at and T(_("Last synced: %1"), os.date("%b %d, ", Calendar.cached_at) .. clock(Calendar.cached_at))
-                        or _("Not synced yet"), enabled = false, separator = true },
-                    { text = _("Free up space: remove kept events"), enabled = bytes > 0, callback = function(tm)
-                        confirm(_("Remove the events kept on this Kindle?\n\nThey stay on the server and are fetched again the next time you open the Calendar tab with Wi-Fi."),
-                            _("Remove"), function()
-                                os.remove(CalDAV.cachePath())
-                                Calendar.events, Calendar.cached_at, Calendar.range = {}, nil, nil
-                                if tm and tm.backToUpperMenu then pcall(tm.backToUpperMenu, tm) end
-                            end)
-                    end },
-                }
-            end,
+            help_text = _("What the events kept for offline use take on this Kindle. Tap for Settings → General → Storage → Calendar, where you can free it."),
+            keep_menu_open = true,
+            callback = function() require("gzreader_storage").open("calendar") end,
         }),
     }
 end

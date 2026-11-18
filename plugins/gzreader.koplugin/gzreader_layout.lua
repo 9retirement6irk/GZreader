@@ -22,7 +22,7 @@ out again; and the check, run beside a layout, failed for lack of memory). It st
 charger is unplugged, a book is opened or a download starts; a book that
 fails twice isn't tried again. The background process
 is the one the kernel ends first if memory runs out (oom_score_adj).
-Settings → Reader → Lay out new books while charging.
+Settings → General → Performance → Lay out new books while charging.
 ]]
 
 local Log = require("gzreader_log")

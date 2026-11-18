@@ -67,7 +67,7 @@ Phone.SSO_RELAY = "https://9retirement6irk.github.io/GZreader/oauth2-callback"
 
 --- Where the identity provider sends the phone after signing in, and
 --- whether it's a hand-off page (true) or the Kindle itself (false).
---- Settings → Connections → Grimmory → Single sign-on redirect: "relay"
+--- Settings → Accounts and services → Books → Single sign-on redirect: "relay"
 --- (GZreader's page, the default), "kindle" (this Kindle's own address, as
 --- before 1.11: kept for Kindles that signed in that way), or the address
 --- of the same page hosted elsewhere (https://…/oauth2-callback).
@@ -557,7 +557,7 @@ function Phone.open(plugin, opts)
         S.changes.house = true
         local name = plugin.store.homeassistant.name or _("Home Assistant")
         toast(T(_("House: connected to %1."), name))
-        return back({ ok = true, text = T(_("Connected to %1. Turn the House tab on in Settings → Connections → Home Assistant."), name), section = "house" })
+        return back({ ok = true, text = T(_("Connected to %1. Turn the House tab on in Settings → Accounts and services → House."), name), section = "house" })
     end
     routes["/house/disconnect"] = function()
         require("gzreader_homeassistant").disconnect(plugin)

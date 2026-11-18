@@ -198,6 +198,14 @@ function NoteSettings.storageItems(plugin)
 end
 
 function NoteSettings.items(plugin)
+    local rows = NoteSettings._items(plugin)
+    local out = {}
+    for i = 1, table.maxn(rows) do if rows[i] then out[#out + 1] = rows[i] end end
+    if out[#out - 1] then out[#out - 1].separator = true end -- (a line above Storage used)
+    return out
+end
+
+function NoteSettings._items(plugin)
     local Notes = require("gzreader_notes")
     local okI, IconItem = pcall(require, "common/ui/icon_menu_item")
     local okc, icons = pcall(require, "common/inline_icon_map")
@@ -310,13 +318,6 @@ function NoteSettings.items(plugin)
             text_func = function() return syncLabel(plugin) end,
             enabled_func = connected,
             sub_item_table_func = function() return NoteSettings.syncItems(plugin) end,
-        }),
-        icon("disk", {
-            text_func = function()
-                local a, b = Notes.storage()
-                return T(_("Storage used: %1"), size(a + b))
-            end,
-            sub_item_table_func = function() return NoteSettings.storageItems(plugin) end,
             separator = true,
         }),
         icon("view_mosaic", {
@@ -336,7 +337,19 @@ function NoteSettings.items(plugin)
             help_text = _("Attachments and pictures you open are downloaded once and kept. Past this limit, the ones used longest ago are removed (they stay in Memos)."),
             sub_item_table = files_items,
         }),
-        NoteSettings.shortcutItem(icon),
+        NoteSettings.shortcutItem(icon) or false,
+        -- (last, as on every service's page: what's kept on the Kindle; a tap
+        -- opens Settings → General → Storage → Notes, with the Free up space
+        -- rows that were here: NoteSettings.storageItems, gzreader_storage)
+        icon("disk", {
+            text_func = function()
+                local a, b = Notes.storage()
+                return T(_("Storage used: %1"), size(a + b))
+            end,
+            help_text = _("What your notes and their attachments take on this Kindle. Tap for Settings → General → Storage → Notes, where you can free it."),
+            keep_menu_open = true,
+            callback = function() require("gzreader_storage").open("notes") end,
+        }),
     }
 end
 

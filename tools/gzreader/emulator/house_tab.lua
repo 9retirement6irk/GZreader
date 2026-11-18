@@ -1,7 +1,6 @@
 -- The House tab (Home Assistant), with demo/mock_homeassistant.py on
 -- 127.0.0.1:18095: connected, the tab turned on in the tab bar, the rooms,
--- a dimmable light's dimmer, the thermostat, and Settings → Connections →
--- Home Assistant (House).
+-- a dimmable light's dimmer, the thermostat, and Settings → Accounts and services → House.
 --   python3 -I demo/mock_homeassistant.py 18095 &
 --   GZ_EMU_TREE=<tree>/koreader ./run.sh house_tab.lua <out>
 local s = { start = 12, { key = "Back", after = 4 } }
@@ -39,7 +38,7 @@ add({ fn = function(E)
     if House.instance then UIManager:close(House.instance.menu) end
     require("modules/settings/zen_settings_page").closeActive()
     require("modules/settings/zen_settings_page").show(require("gzreader_tabs").zen(), { path = {
-        { key = "text", value = "Connections" }, { key = "text", value = "Home Assistant (House)" } } })
+        { key = "text", value = "Accounts and services" }, { key = "text", value = "House" } } })
 end, after = 10 })
 add({ shot = "house-5-settings" })
 return s

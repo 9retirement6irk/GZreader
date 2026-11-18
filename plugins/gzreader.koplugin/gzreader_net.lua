@@ -1,6 +1,6 @@
 --[[--
 Wi-Fi: on, off or auto (the quick panel's Wi-Fi tile cycles through them;
-Settings → General → Wi-Fi offers them too). The mode is kept in
+Settings → Wi-Fi offers them too). The mode is kept in
 G_reader_settings "gzreader_wifi_mode"; until 1.28 it was two settings
 ("Wi-Fi only when needed" and "you turned it off"), read by Net.mode() when
 no mode has been saved yet.
@@ -319,8 +319,7 @@ function Net._switch()
     Dispatcher:execute({ toggle_wifi = true })
 end
 
---- Choose On, Off or Auto (the quick panel's tile, Settings → General →
---- Wi-Fi). Returns true when Wi-Fi itself is being switched (KOReader shows
+--- Choose On, Off or Auto (the quick panel's tile, Settings → Wi-Fi). Returns true when Wi-Fi itself is being switched (KOReader shows
 --- "Turning on Wi-Fi…" then).
 function Net.setMode(m)
     if not VALID[m] then return end
@@ -359,7 +358,7 @@ function Net.describe(m)
         help = _("Saves battery: GZreader turns Wi-Fi on by itself for browsing Grimmory, downloads, updates and syncing when a book opens or closes (and on wake after 15 minutes or more), then turns it off after a minute of not being used. Reading-position and bookmark changes made in between wait and go with the next sync.") }
 end
 
---- Settings → General → Wi-Fi: On, Off, Auto (zenos common/gz_settings.lua
+--- Settings → Wi-Fi: On, Off, Auto (zenos common/gz_settings.lua
 --- wifiItem adds ZenOS's network list under them).
 function Net.menuItem()
     local _ = require("gettext")

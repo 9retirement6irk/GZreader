@@ -1,4 +1,4 @@
--- GZreader: the Home wallpaper (Settings → Interface → Wallpaper) from a
+-- GZreader: the Home wallpaper (Settings → Sleep and wallpaper → Home background) from a
 -- picture of your Immich album (gzreader_immich.lua keeps them on the
 -- Kindle). The picture is copied to FILE and library_background.path points
 -- at it, so the pictures the album's next refresh removes never take the
@@ -141,19 +141,19 @@ function M.toggle(gz)
     return result
 end
 
---- Settings → Interface → Wallpaper → Picture from Immich.
+--- Settings → Sleep and wallpaper → Home background → Picture from Immich.
 function M.menuItem()
     local _ = require("gettext")
     return {
         text = _("Picture from Immich"),
-        help_text = _("A picture from the Immich album chosen in Settings → Connections → Immich (Photos); another one each time new pictures come from the album."),
+        help_text = _("A picture from the Immich album chosen in Settings → Accounts and services → Photos; another one each time new pictures come from the album."),
         checked_func = function() return M.isOn() end,
         keep_menu_open = true,
         callback = function(touchmenu_instance)
             local r = M.toggle(gzreader())
             local msg
             if r == "no_album" then
-                msg = _("Connect Immich and choose an album first: Settings → Connections → Immich (Photos).")
+                msg = _("Connect Immich and choose an album first: Settings → Accounts and services → Photos.")
             elseif r == "waiting" then
                 msg = _("The wallpaper changes to a picture from Immich once the album's pictures are on the Kindle.")
             end

@@ -2,9 +2,10 @@
 -- entries side by side; related ones go into a submenu each:
 --   Notes and footnotes    Annotation viewer, Footnotes and pinned pages
 --   Gestures and controls  Bottom swipe gesture, Reader controls, Page Browser
+--   Closing a book         End of book, Restore library location on exit
 -- A group takes the place of its first entry found; entries that aren't in
--- a group (Appearance, Highlight / Lookup, End of book, Restore library
--- location on exit, GZreader's own) stay where they are. A group with none of
+-- a group (Appearance, Highlight / Lookup, Table of contents, GZreader's own)
+-- stay where they are. A group with none of
 -- its entries isn't made. Deep links into these entries
 -- (zen_settings_page.show paths) go through the group: M.path().
 
@@ -19,6 +20,8 @@ M.GROUPS = {
       members = { "Annotation viewer", "Footnotes and pinned pages" } },
     { text = "Gestures and controls", icon = "bottom_swipe",
       members = { "Bottom swipe gesture", "Reader controls", "Page Browser" } },
+    { text = "Closing a book", icon = "end_book",
+      members = { "End of book", "Restore library location on exit" } },
 }
 
 --- `items` (the Reader section's rows) with each group's entries in their group.

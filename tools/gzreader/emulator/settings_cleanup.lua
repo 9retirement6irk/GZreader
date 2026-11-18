@@ -49,7 +49,9 @@ local function report(_E)
     print("[emu] settings: about = " .. texts(about))
     local general = sub(find(root, "General"))
     print("[emu] settings: general = " .. texts(general))
-    print("[emu] settings: advanced = " .. texts(sub(find(general, "Advanced"))))
+    local privacy = sub(find(root, "Privacy and diagnostics"))
+    print("[emu] settings: privacy = " .. texts(privacy))
+    print("[emu] settings: advanced = " .. texts(sub(find(privacy, "Advanced"))))
     local ko = sub(find(root, "KOReader"))
     print("[emu] settings: koreader = " .. texts(ko))
     local all = ids(ko, {}, 0, {})
@@ -86,6 +88,8 @@ return {
     { fn = report, after = 2 },
     { fn = open({ "About" }), after = 4 },
     { shot = "about" },
-    { fn = open({ "General", "Advanced" }), after = 4 },
-    { shot = "general-advanced" },
+    { fn = open({ "Privacy and diagnostics" }), after = 4 },
+    { shot = "privacy" },
+    { fn = open({ "Privacy and diagnostics", "Advanced" }), after = 4 },
+    { shot = "privacy-advanced" },
 }

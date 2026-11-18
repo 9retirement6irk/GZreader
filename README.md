@@ -81,8 +81,7 @@ tried is in [device compatibility](https://github.com/9retirement6irk/GZreader/w
   day, week, month.
 - 🎵 **Music** *(Kindles with audio)*: albums and playlists from **Plex**, played
   while you read, in a portable CD player with its queue on the back of the case. The
-  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings →
-  Interface → Navbar → Tabs.
+  quick panel gets a Music tile while it plays. A Music tab of its own is in Settings → Home and tabs → Tab bar → Tabs.
 - 🏠 **House:** your [Home Assistant](https://www.home-assistant.io) rooms on a
   tab: switch lights (and dim them), switches, thermostats, locks, garage doors and
   scenes, straight over your Wi‑Fi.
@@ -121,7 +120,7 @@ All the details are in **[the wiki](https://github.com/9retirement6irk/GZreader/
    newer the **GZreader** item on the Kindle's home screen. The setup
    guide shows a QR code for your phone, and an address and PIN for any browser.
 
-Updates come by themselves (Settings → General → Updates). Step-by-step help
+Updates come by themselves (Settings → General → Software update). Step-by-step help
 for each package, uninstalling and the Nooks: [Installing](https://github.com/9retirement6irk/GZreader/wiki/Installing) in the wiki.
 
 ## Privacy

@@ -31,7 +31,7 @@ Touch Kindles with sound (the Kindle Touch; Bluetooth Kindles) get a volume
 slider under those: TTS.volume, the speaker's 0 to 15 or the Kindle's
 Bluetooth volume 1 to 8 (the Kindle 2, 3 and DX: their volume buttons).
 
-Settings → Interface → Quick panel shows or hides each tile (Panel.CATALOG;
+Settings → Home and tabs → Quick panel shows or hides each tile (Panel.CATALOG;
 the hidden ones in G_reader_settings "gzreader_panel_hidden", as
 "<group>:<id>"). Home, Settings and Exit to Kindle are always there; a group
 with every tile hidden isn't drawn. Letters follow the tiles shown.
@@ -259,7 +259,7 @@ local function shown(group, list)
     return out
 end
 
---- Settings → Interface → Quick panel: a tick per tile, by group.
+--- Settings → Home and tabs → Quick panel: a tick per tile, by group.
 --- How the quick panel opens on a touch Kindle: a tap at the top, a swipe
 --- down from the top, or both. It's KOReader's "Activate menu" (G_reader_settings
 --- activate_menu: "swipe_tap", the default, "tap" or "swipe"), which opens the

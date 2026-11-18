@@ -2456,7 +2456,7 @@ gets a password or token.
       Browse.open(Browse.cats(tab)[0][0]);
     },
     // Audiobooks from a Plex library: the one the Kindle takes them from
-    // (Settings → Connections → Plex → Audiobooks), or one picked here
+    // (Settings → Accounts and services → Audiobooks), or one picked here
     // ("Audiobooks from…"); audioSrc "grimmory": Grimmory's.
     audioSrc: null,
     plexAudio: function () {
@@ -2734,7 +2734,7 @@ gets a password or token.
         Browse.navItem("Plex: " + x.title, on ? "in use" : null, null, function () { pick({ key: String(x.key), title: x.title }); });
       });
       $("#b-results").appendChild(el("li", { class: "small muted" },
-        "On the Kindle: Settings → Connections → Plex → Audiobooks. Plex audiobooks come to the Kindle with the next sync, and play there like Grimmory's."));
+        "On the Kindle: Settings → Accounts and services → Audiobooks. Plex audiobooks come to the Kindle with the next sync, and play there like Grimmory's."));
     },
     plexAudioItems: function (items) {
       items.forEach(function (it) {

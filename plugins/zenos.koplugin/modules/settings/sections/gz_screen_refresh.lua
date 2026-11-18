@@ -1,5 +1,4 @@
--- GZreader: the flash settings of GZreader and ZenOS, shown in Settings →
--- General → Screen → E-ink settings after KOReader's Full refresh rate
+-- GZreader: the flash settings of GZreader and ZenOS, shown in Settings → Display and light → Screen → E-ink settings after KOReader's Full refresh rate
 -- (common/gz_settings.lua screenItem; until 1.28.3 they were General →
 -- Screen refresh):
 --   Flash on every page turn       (the Kindles' page turns; gzreader_eink)
