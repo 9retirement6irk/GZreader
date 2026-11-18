@@ -7,6 +7,12 @@
 -- text alone (the screen shows its first sentence).
 return {
     {
+        version = "next",
+        changes = {
+            { short = "Debug reports say GZreader/<version>, and a failing one no longer holds up the rest", text = "Debug reports are sent by GZreader's watchdog, a separate small process, and its requests still said LuaSocket (LuaSocket's own name) rather than GZreader/<version> as GZreader's other requests do. Now they say GZreader/<version> too. And when the report feed answered one report with a server error (500), the watchdog tried it again every 5 seconds for as long as it kept failing, and every report after it waited. Now it tries again later and later (10 seconds, 20, 40… up to 10 minutes apart), and after 6 server errors it sets that report aside so the ones after it are sent." },
+        },
+    },
+    {
         version = "1.33.0",
         changes = {
             { short = "Drawing: the pencil and the highlighter draw much faster", text = "The pencil and the highlighter were several times slower than the pen: every pixel under the line was read and written through a slow route, several times over. They now write the page's pixels directly, the pencil's texture is looked up instead of worked out for each pixel, and its line is painted in fewer steps. In GZreader's emulator the highlighter's ink takes about a tenth of the time it did and the pencil's about a quarter, close to the pen's. A long stroke's line in the diagnostic log now also says how long each of its frames took to handle." },

@@ -143,7 +143,10 @@ General → Remote debugging, with your own feed; that setting is gone.)
 `gzreader_remote.lua` queues messages as JSON files in
 `koreader/gzreader-remote/spool`; `gzreader_watchdog.lua`, a separate
 low-priority LuaJIT process, sends them when Wi‑Fi is on (GZreader never turns
-Wi‑Fi on for them) and watches a heartbeat GZreader writes every 15 s (to
+Wi‑Fi on for them), as `GZreader/<version>` like GZreader's other requests. A
+message the feed answers with a server error is tried again later and later (up
+to 10 minutes apart); after 6 such answers it's set aside
+(`spool/*.failed`, the newest 5 kept) so the ones after it still go. It also watches a heartbeat GZreader writes every 15 s (to
 `/tmp`, which is in memory, so it doesn't wear the Kindle's storage; the copy
 in `gzreader-remote/heartbeat` is updated when GZreader starts, sleeps, wakes
 or exits, and every 10 minutes):

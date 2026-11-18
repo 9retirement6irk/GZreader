@@ -16,7 +16,12 @@ Started by gzreader_remote.lua (run from the koreader folder):
   watchdog.pid
 
 Every few seconds it sends what's in spool/ (kept until sent, e.g. while
-Wi-Fi is off), and watches GZreader:
+Wi-Fi is off), as GZreader/<version> (the user agent of every request
+GZreader makes; LuaSocket's own name until 1.34). A message the feed answers
+with a server error (5xx) is tried again later and later (10 s, 20 s… up to
+10 minutes apart), and after MAX_5XX answers like that it's set aside
+(spool/*.failed, the newest few kept) so the ones after it still go. It
+watches GZreader:
 - heartbeat older than STALL seconds while running: GZreader (or the whole
   Kindle) is unresponsive. It sends an alert with what's on the Kindle right
   then (memory, load, processes, the end of the log) and opens a "frozen"
@@ -39,7 +44,8 @@ local ltn12 = require("ltn12")
 local socket_ok, socket = pcall(require, "socket")
 
 local W = { STALL = tonumber(os.getenv("GZ_WD_STALL")) or 120, TICK = tonumber(os.getenv("GZ_WD_TICK")) or 5,
-    LOG = "gzreader.log", CRASH = "crash.log" }
+    LOG = "gzreader.log", CRASH = "crash.log",
+    MAX_5XX = tonumber(os.getenv("GZ_WD_MAX_5XX")) or 6, MAX_WAIT = tonumber(os.getenv("GZ_WD_MAX_WAIT")) or 600, KEEP_FAILED = 5 }
 
 local function now() return os.time() end
 local function sleep(s)
@@ -136,6 +142,16 @@ end
 
 local ENDPOINT = { send = "/send", state = "/state/upsert", resolve = "/state/resolve" }
 
+--- "GZreader/1.34.0": what every request of GZreader's says it is (as
+--- socketutil.lua's), from gzreader-version in the koreader folder (where
+--- the watchdog runs); "GZreader/dev" without one.
+function W.userAgent()
+    local v = readFile("gzreader-version")
+    v = v and v:match("^%s*v?([%w%.%-]+)") or "dev"
+    return "GZreader/" .. v
+end
+local USER_AGENT = W.userAgent()
+
 local function post(url, payload)
     if not okh then return false end
     http.TIMEOUT = 20
@@ -143,7 +159,8 @@ local function post(url, payload)
     local ok, code = pcall(function()
         local c = select(2, http.request{
             url = url, method = "POST",
-            headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#payload) },
+            headers = { ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#payload),
+                ["User-Agent"] = USER_AGENT },
             source = ltn12.source.string(payload), sink = ltn12.sink.table(sink),
         })
         return c
@@ -152,6 +169,7 @@ local function post(url, payload)
     return code ~= nil, code
 end
 
+local failing = {} -- spool name -> { n = server errors, next_at }: tried again later and later
 local function flush()
     local base = config()
     if not base then return end
@@ -166,10 +184,32 @@ local function flush()
         local kind = name:match("%-(%a+)%.json$")
         local payload = readFile(dir .. "/spool/" .. name)
         if payload and ENDPOINT[kind] then
+            local f = failing[name]
+            if f and now() < f.next_at then return end -- (the feed failed it: not yet; the rest wait, in order)
             local reached, code = post(base .. ENDPOINT[kind], payload)
             if not reached then return end -- offline: try again later
-            if code and code >= 500 then return end
-            os.remove(dir .. "/spool/" .. name) -- sent (or rejected for good: 4xx)
+            if code and code >= 500 then
+                f = f or { n = 0 }
+                f.n = f.n + 1
+                failing[name] = f
+                if f.n < W.MAX_5XX then
+                    f.next_at = now() + math.min(W.TICK * 2 ^ f.n, W.MAX_WAIT)
+                    return
+                end
+                -- the feed keeps failing this one: set aside, the others go
+                io.stderr:write("watchdog: ", name, " set aside after ", f.n, " server errors (", code, ")\n")
+                os.rename(dir .. "/spool/" .. name, dir .. "/spool/" .. name .. ".failed")
+                failing[name] = nil
+                local failed = {}
+                for _j, line in ipairs(listDir(dir .. "/spool")) do
+                    if line:match("%.failed$") then failed[#failed + 1] = line end
+                end
+                table.sort(failed)
+                while #failed > W.KEEP_FAILED do os.remove(dir .. "/spool/" .. table.remove(failed, 1)) end
+            else
+                failing[name] = nil
+                os.remove(dir .. "/spool/" .. name) -- sent (or rejected for good: 4xx)
+            end
         else
             os.remove(dir .. "/spool/" .. name)
         end
@@ -284,7 +324,9 @@ while true do
         -- send it (Wi-Fi may still be up for a moment), then stop
         for _i = 1, 12 do
             flush()
-            if #listDir(dir .. "/spool") == 0 then break end
+            local left = 0
+            for _j, line in ipairs(listDir(dir .. "/spool")) do if line:match("%.json$") then left = left + 1 end end
+            if left == 0 then break end -- (all sent; one set aside, *.failed, isn't waited for)
             sleep(5)
         end
         os.remove(dir .. "/watchdog.pid")
