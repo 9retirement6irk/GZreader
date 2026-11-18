@@ -4160,7 +4160,9 @@ print("Requests queued together run in one background process")
     -- one alone, as before
     local alone
     Async.run(api, function() return "x", 2 end, function(a, second) alone = { a, second } end, "alone")
-    runLoop(function() return alone ~= nil end, 15)
+    -- (its answer comes as soon as the process writes it; the process is
+    -- collected, and Async.busy cleared, a moment later: wait for both)
+    runLoop(function() return alone ~= nil and not Async.busy end, 15)
     check(alone and alone[1] == "x" and alone[2] == 2 and not Async.busy and #Async.queue == 0, "a single request: as before")
     Async.sync = saved_sync
 end)()
