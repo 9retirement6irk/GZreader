@@ -53,6 +53,9 @@ local RichEdit = InputContainer:extend{
     at_start = false, -- the cursor at the start (a new note), else at the end
     hint = nil,
     on_change = nil,
+    -- a keyboard Kindle: no on-screen keyboard (the page is all of max_height), the
+    -- Kindle's keys type here and the 5-way moves the cursor (RichEdit:onKeyPress)
+    keys = false,
     gz_multiline = true, -- (the on-screen keyboard keeps Enter and ← →)
     gz_hash_key = true, -- (and a # key for tags: gzreader_hashkey.lua)
     focused = true,
@@ -306,10 +309,16 @@ end
 
 function RichEdit:init()
     self.lines = {}
-    local VirtualKeyboard = require("ui/widget/virtualkeyboard")
-    self.keyboard = VirtualKeyboard:new{ keyboard_layer = 2, inputbox = self }
-    local kb_h = self.keyboard.dimen and self.keyboard.dimen.h or math.floor(Screen:getHeight() * 0.4)
-    self.height = math.max(S(80), (self.max_height or Screen:getHeight()) - kb_h)
+    if self.keys then
+        self.height = math.max(S(80), self.max_height or Screen:getHeight())
+        self.focused = true
+        self.parent = self.editor -- (Back: InputText's key handler closes its parent)
+    else
+        local VirtualKeyboard = require("ui/widget/virtualkeyboard")
+        self.keyboard = VirtualKeyboard:new{ keyboard_layer = 2, inputbox = self }
+        local kb_h = self.keyboard.dimen and self.keyboard.dimen.h or math.floor(Screen:getHeight() * 0.4)
+        self.height = math.max(S(80), (self.max_height or Screen:getHeight()) - kb_h)
+    end
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
     self.top = 0
     if #self.doc.blocks == 0 then self.doc.blocks[1] = Blocks.new("paragraph") end
@@ -950,6 +959,88 @@ function RichEdit:onCloseWidget()
         self.keyboard:hideKeyboard()
         if self.keyboard.free then self.keyboard:free() end
     end
+end
+
+-- ------------------------------------------------------------ a keyboard Kindle's keys
+
+-- (Alt + the top row types 1–0, as in the Markdown text box: gzreader_noteeditor.lua)
+local ALT_DIGITS = { Q = "1", W = "2", E = "3", R = "4", T = "5", Y = "6", U = "7", I = "8", O = "9", P = "0" }
+
+--- Where the cursor is, to tell whether a key moved it.
+local function at(self) return self.cur.b, self.cur.i, self.top end
+
+--- Ticks or unticks the checklist item the cursor is on (Alt+X). True when it is one.
+function RichEdit:tickHere()
+    local b = self.cur.b
+    if b.kind ~= "task" then return false end
+    Blocks.toggleDone(b)
+    self:update(true)
+    return true
+end
+
+-- (what InputText's key handler asks of a text box that this page has under other names, or not at all)
+function RichEdit:goToHome() return self:goToStartOfLine() end
+function RichEdit:goToEnd() return self:goToEndOfLine() end
+function RichEdit:delNextChar()
+    local b, i = at(self)
+    self:rightChar()
+    local b2, i2 = at(self)
+    if b2 ~= b or i2 ~= i then self:delChar() end
+end
+function RichEdit:toggleKeyboard() end
+function RichEdit:holdTextBox() end
+
+--- A key of a keyboard Kindle (`keys`): the letters type (the Kindle's own
+--- handling, InputText's: Shift, Sym + a letter, Del, Shift + Del a word);
+--- Alt + a letter is the editor's shortcut (Alt+B bold, Alt+L list, …) and
+--- Alt + the top row a digit; ◀ ▶ ▲ ▼ move the cursor (▼ on the last line
+--- and ▲ on the first go on to the editor: its toolbar), with Shift they
+--- select; Press is a new line, or opens / folds the section whose row the
+--- cursor is on; Sym opens the symbols.
+function RichEdit:onKeyPress(key)
+    if not self.keys or not self.focused then return false end
+    local mod = key.modifiers or {}
+    if mod.Alt and not mod.Shift then
+        if self.editor and self.editor.onShortcut and self.editor:onShortcut(key.key) then return true end
+        local d = ALT_DIGITS[key.key] or (tostring(key.key):match("^%d$") and key.key)
+        if d then self:addChars(d); return true end
+    end
+    if key.key and tostring(key.key):match("^%d$") and not mod.Alt then
+        self:addChars(key.key)
+        return true
+    end
+    if key["SymPress"] then
+        local ok, GzSymbols = pcall(require, "gzsymbols")
+        if ok and GzSymbols.wanted(require("device")) then GzSymbols.show(self) end
+        return true
+    end
+    local arrow = key["Left"] and "leftChar" or key["Right"] and "rightChar" or key["Up"] and "upLine" or key["Down"] and "downLine"
+    if arrow and mod.Shift and not mod.Alt then
+        -- Shift + the 5-way: selects from where the cursor was
+        local anchor = self.anchor or { b = self.cur.b, i = self.cur.i }
+        local want = self.want_x
+        self[arrow](self)
+        if arrow == "upLine" or arrow == "downLine" then self.want_x = self.want_x or want end
+        self.anchor = anchor
+        self:update(nil, true)
+        return true
+    end
+    if not (mod.Shift or mod.Alt or mod.Ctrl or mod.Sym) then
+        if key["Up"] or key["Down"] then
+            local b, i, top = at(self)
+            self[arrow](self)
+            local b2, i2, top2 = at(self)
+            -- (didn't move: the first or last line; on to the editor, whose toolbar is under the page)
+            return not (b2 == b and i2 == i and top2 == top)
+        elseif key["Press"] then
+            local sl = self:sectionLine(self.cur.b)
+            if sl and sl.section.start then
+                self:toggleSection(self.cur.b)
+                return true
+            end
+        end
+    end
+    return require("ui/widget/inputtext").onKeyPress(self, key)
 end
 
 -- ------------------------------------------------------------ the toolbar

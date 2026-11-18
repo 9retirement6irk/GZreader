@@ -73,6 +73,8 @@ NoteEditor.TOOLS = {
 NoteEditor.RICH = true
 
 -- The toolbar on touch Kindles (the formatted page): on the selection, or the cursor's line or word.
+-- (the Markdown row's tools on the formatted page of a keyboard Kindle: gzreader_richedit.lua's names)
+NoteEditor.RICH_ID = { list = "bullet", check = "task", numbered = "ordered", heading = "heading", italic = "italic", bold = "bold" }
 NoteEditor.RICH_TOOLS = {
     { id = "heading", label = "H " .. _("Head") },
     { id = "bullet", label = "\u{2022} " .. _("List") },
@@ -299,7 +301,10 @@ function Editor:init()
     -- touch: the note formatted, typed into as in Memos' web editor
     -- (`gzreader_richedit.lua`; Markdown when it can't be read that way).
     -- (Not in a window over the screen: a quick note keeps its text box.)
-    if self.touch and NoteEditor.RICH and not self.floating then
+    -- (a keyboard Kindle too: the same page, typed on with its keys; the Kindle 4, whose 5-way
+    -- types on the on-screen keyboard, and a quick note's window keep the Markdown text box)
+    local keys_page = not self.touch and not self.dpad and not self.floating
+    if (self.touch or keys_page) and NoteEditor.RICH and not self.floating then
         -- (laid out again after a rotation: the page as it is now, gzRelayout)
         local ok, doc = true, self._gz_doc
         if not doc then ok, doc = pcall(require("gzreader_blocks").parse, self.original) end
@@ -317,7 +322,7 @@ function Editor:init()
     -- its tags under it), without buttons: Alt+M has the rest (who can see it, space, Archive, Delete)
     self.keys_bar = not self.touch and not self.dpad and not self.floating or nil
     if self.save_top or self.keys_bar then self.title_h = S(52) end
-    if self.rich then self.tool_h = S(50) end -- (the row under the title: the note's sheets, and Save off touch)
+    if self.rich and self.touch then self.tool_h = S(50) end -- (the row under the title: the note's sheets)
     local function box(h)
         -- (the formatted page: made once, its own height above its keyboard)
         if self.rich then
@@ -327,7 +332,8 @@ function Editor:init()
                 end)
             end
             self.rich_input = self.rich_input or require("gzreader_richedit"):new{
-                width = self.inner, max_height = sh - self.title_h - self.tool_h - S(16),
+                width = self.inner, max_height = self.keys_bar and h or (sh - self.title_h - self.tool_h - S(16)),
+                keys = self.keys_bar,
                 doc = self.doc, editor = self, at_start = self.memo == nil,
                 hint = _("Write a note. #words become tags."),
                 pictures = self.picture_source,
@@ -390,12 +396,21 @@ function Editor:init()
             self.bar_slot[1] = VerticalSpan:new{ width = self.tool_h }
             self.hint_slot[1] = VerticalSpan:new{ width = self.footer_h }
             local over = column:getSize().h - sh
-            if over > 0 then
+            if over > 0 and self.rich then
+                -- (the formatted page: any height)
+                local page = self.input
+                page.height = math.max(S(80), page.height - over)
+                page.dimen.h = page.height
+                page:keepCursorInView()
+            elseif over > 0 then
                 if self.input.free then pcall(self.input.free, self.input) end
                 self.input = box(text_h - over)
                 column[2] = self.input
-                column:resetLayout()
             end
+            -- (measured with stand-ins for the toolbar and the keys' line: laid out again with the real ones)
+            self.bar_slot:clear()
+            self.hint_slot:clear()
+            column:resetLayout()
         end
     end
     if self.floating then
@@ -598,7 +613,7 @@ function Editor:drawChrome()
     local save_gap = self.save_top and 0 or S(10)
     local tools = self:tools()
     local tool_w = math.floor((self.inner - save_w - save_gap) / math.max(1, #tools))
-    if self.rich then
+    if self.rich and self.touch then
         -- the formatted page: formatting comes up at the selection (gzreader_richedit.lua's bar);
         -- this row is the note's sheets (its drawings), and Save (at the top on touch)
         local strip = self:sheetStrip(self.inner - save_w - save_gap)
@@ -760,7 +775,8 @@ end
 
 --- The toolbar's tools: the Markdown ones (keyboard Kindles, a quick note's window). The
 --- formatted page has none in a row: its bar comes up at the selection.
-function Editor:tools() return self.rich and {} or NoteEditor.TOOLS end
+--- (A keyboard Kindle's formatted page keeps the row: there's nothing to tap or hold on.)
+function Editor:tools() return (self.rich and self.touch) and {} or NoteEditor.TOOLS end
 
 --- The note's sheets shown in the editor: { page (its number), path (its picture, if it's here) }.
 function Editor:sheets()
@@ -878,11 +894,18 @@ function Editor:apply(new_text, cursor)
 end
 
 function Editor:useTool(i)
-    if self.rich then
+    if self.rich and self.touch then
         return self:save() -- (its row has only Save: formatting is the bar at the selection)
     end
     local t = NoteEditor.TOOLS[i]
     if not t then return self:save() end
+    if self.rich then
+        -- a keyboard Kindle's formatted page: the tool on the cursor's line or word (or the selection)
+        self.last_tool = i
+        if t.id == "tag" then return self:pickTag() end
+        self.input:useTool(NoteEditor.RICH_ID[t.id] or t.id)
+        return self:backToText()
+    end
     local pos = self.input.charpos or (#self.input.charlist + 1)
     self.last_tool = i
     if t.prefix then
@@ -957,6 +980,8 @@ function Editor:onShortcut(k)
     end
     if k == "A" and self.has_spaces then self:pickSpace(); return true end
     if k == "M" and self.keys_bar then self:barOptions(); return true end
+    -- (the formatted page: Alt+X ticks the checklist item the cursor is on)
+    if k == "X" and self.rich and self.keys_bar then return self.input:tickHere() end
     for i, t in ipairs(NoteEditor.TOOLS) do
         if t.key == k then self:useTool(i); return true end
     end
