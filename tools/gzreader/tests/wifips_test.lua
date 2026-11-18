@@ -128,5 +128,26 @@ check(not PS.transfer("audiobook-prepare-x") and not PS.transfer("house") and no
         "no network name read, no shell commands")
 end)()
 
+
+print("== the Kindle 3, and drivers where \"off\" doesn't take")
+reset("on")
+PS.model = "Kindle3"
+PS.hold("update")
+PS.release("update")
+check(#sets == 0 and #lines == 0, "Kindle 3: power saving never touched (its update download crawled and broke off)")
+PS.model = "KindlePaperWhite3"
+reset("on")
+stub.set = function(_ifname, on) sets[#sets + 1] = on; return true end -- (accepted, still "on")
+PS.hold("download")
+check(#sets == 2 and sets[1] == false and sets[2] == true and not PS.restore and PS.ignored
+    and lines[1] == "wifi: power saving didn't turn off (driver); left on",
+    "\"off\" accepted but still on: put back at once, logged")
+PS.release("download")
+sets = {}
+PS.hold("download")
+PS.release("download")
+check(#sets == 0, "…and not asked again")
+PS.ignored, PS.model = false, nil
+
 print(string.format("Wi-Fi power saving: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)
