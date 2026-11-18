@@ -275,5 +275,30 @@ print("== marks read back as set (generated)")
         .. (first and ("\n         " .. bad .. " differ, e.g. " .. first) or ""))
 end)()
 
+-- a <details> section (Memos' web editor, the fork's "Text from …" blocks): its start and end blocks of their own
+;(function()
+    local md = "## Tuesday\n\n<details>\n<summary>Text from a &amp; b.png</summary>\n\n```text\nWork took most\n```\n\n</details>\n\nafter"
+    local doc = Blocks.parse(md)
+    local k = {}
+    for _i, b in ipairs(doc.blocks) do k[#k + 1] = b.kind .. (b.section and (":" .. b.section) or "") end
+    check(table.concat(k, ",") == "heading,raw:start,raw,raw:end,paragraph", "a <details> section: its start, what's in it, its end (" .. table.concat(k, ",") .. ")")
+    check(doc.blocks[2].folded == true and Blocks.write(doc) == md, "…folded as the web shows it; written back exactly as it was")
+    local s1 = Blocks.sectionStart(table.concat(doc.blocks[2].chars))
+    local s2 = Blocks.sectionStart("<details open><summary>Inner &lt;1&gt;</summary>")
+    check(s1 and s1.title == "Text from a & b.png" and not s1.open and s2 and s2.open and s2.title == "Inner <1>"
+        and Blocks.sectionStart("<details>").title == "" and Blocks.sectionStart("<detailsx>") == nil
+        and Blocks.sectionStart("<details>\nwords") == nil,
+        "a section's start: open or not, its title as plain text")
+    check(Blocks.sectionMarkdown("A & <b>", false) == "<details>\n<summary>A &amp; &lt;b&gt;</summary>"
+        and Blocks.sectionMarkdown("x", true) == "<details open>\n<summary>x</summary>",
+        "a section's start written as the web editor writes it (the title escaped)")
+    local tight = Blocks.parse("<details open><summary>T</summary>\nline one\n</details>\nmore")
+    local k2 = {}
+    for _i, b in ipairs(tight.blocks) do k2[#k2 + 1] = b.kind .. (b.section and (":" .. b.section) or "") end
+    check(table.concat(k2, ",") == "raw:start,paragraph,raw:end,paragraph" and tight.blocks[1].folded == false
+        and Blocks.write(tight) == "<details open><summary>T</summary>\nline one\n</details>\nmore",
+        "…written without blank lines: still its own blocks, open, kept as written (" .. table.concat(k2, ",") .. ")")
+end)()
+
 print(string.format("blocks: %d passed, %d failed", pass, fail))
 os.exit(fail == 0 and 0 or 1)

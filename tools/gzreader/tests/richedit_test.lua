@@ -607,5 +607,73 @@ do
         "ZenOS's keyboard asks for the row and the bar")
 end
 
+-- ------------------------------------------------------------ a <details> section (as the web editor shows it)
+do
+    package.preload["gettext"] = package.preload["gettext"] or function() return function(t) return t end end
+    local md = "## Tuesday\n\n<details>\n<summary>Text from a.png</summary>\n\n```text\nWork took most\n```\n\n</details>\n\nafter"
+    local r = editor(md, false)
+    local function lineOf(b) for _i, l in ipairs(r.lines) do if l.b == b then return l end end end
+    local start, code, stop, after = block(r, 2), block(r, 3), block(r, 4), block(r, 5)
+    local row = lineOf(start)
+    check(row and row.section and row.section.start and row.section.folded and row.section.title == "Text from a.png"
+        and lineOf(code) == nil and lineOf(stop) == nil and lineOf(after) ~= nil,
+        "a <details> section: a row with its title, folded (what's in it and its end not shown)")
+    -- the chevron opens it: what's in it indented, its end a thin line
+    r:onTapEdit(nil, ges(5, row.y + 5))
+    local cl = lineOf(code)
+    check(start.folded == false and cl and cl.x0 == RE.SECTION_INDENT and lineOf(stop) and lineOf(stop).section
+        and lineOf(after).x0 == 0 and text(r) == md,
+        "a tap on the chevron opens it: what's in it indented, its end a line; the note unchanged")
+    -- folding again with the cursor inside: the cursor goes to its row
+    r:setCursor({ b = code, i = 2 })
+    r:onTapEdit(nil, ges(5, lineOf(start).y + 5))
+    check(start.folded == true and r.cur.b == start and lineOf(code) == nil, "folded again: a cursor inside goes to its row")
+    -- typing on the row: a new line inside the section, which opens
+    r:addChars("hello")
+    check(start.folded == false and r.cur.b == block(r, 3) and Blocks.plain(block(r, 3)) == "hello"
+        and text(r) == "## Tuesday\n\n<details>\n<summary>Text from a.png</summary>\n\nhello\n\n```text\nWork took most\n```\n\n</details>\n\nafter",
+        "typing on a section's row: a new line inside it, the section kept (" .. show(text(r)) .. ")")
+    -- ⌫ on its row doesn't eat its Markdown
+    r:setCursor({ b = start, i = #start.chars + 1 })
+    r:delChar()
+    check(r.cur.b == block(r, 1) and text(r):find("<summary>Text from a.png</summary>", 1, true) ~= nil, "⌫ on a section's row: to the line before, the section kept")
+    -- an arrow key into a folded section opens it
+    start.folded = true
+    r:update()
+    r:setCursor({ b = code, i = 1 })
+    r:update()
+    check(start.folded == false and lineOf(code) ~= nil, "the cursor going into a folded section (arrow keys) opens it")
+    -- drawn: the chevron, the title (cut to fit), the end's line; the cursor on the row frames it
+    require("ui/rendertext").truncateTextByWidth = function(_s, t) return t end
+    drawn = {}
+    local framed = 0
+    r:setCursor({ b = start, i = 1 })
+    r:update()
+    r:paintTo({ paintRect = function() end, paintBorder = function() framed = framed + 1 end }, 0, 0)
+    local title_drawn
+    for _i, d in ipairs(drawn) do if d.text == "Text from a.png" and d.x == RE.CHEVRON + 8 then title_drawn = true end end
+    check(title_drawn and framed == 1, "drawn: the chevron and the title beside it; the cursor on the row frames it")
+    -- its menu: rename, remove (keeping what's in it), delete with it
+    local shown
+    package.loaded["ui/widget/buttondialog"] = { new = function(_s, o) shown = o; return o end }
+    local UIM = require("ui/uimanager")
+    local real_show = UIM.show
+    UIM.show = function() end
+    r:onTapEdit(nil, ges(150, lineOf(start).y + 5))
+    check(shown and shown.title == "Text from a.png" and #shown.buttons == 4, "a tap on a section's title: its menu (open or fold, rename, remove, delete)")
+    Blocks.setText(start, Blocks.sectionMarkdown("New & title", false))
+    r:update("structure")
+    check(lineOf(start).section.title == "New & title" and text(r):find("<summary>New &amp; title</summary>", 1, true) ~= nil, "renamed: the title escaped as the web writes it")
+    r:removeSection(start, false)
+    check(kinds(r) == "heading,paragraph,raw,paragraph" and text(r) == "## Tuesday\n\nhello\n\n```text\nWork took most\n```\n\nafter",
+        "Remove the section: its start and end go, what was in it stays (" .. show(text(r)) .. ")")
+    local r2 = editor("one\n\n<details open><summary>S</summary>\n\nin it\n\n</details>\n\ntwo", false)
+    check(block(r2, 2).folded == false, "<details open>: shown open")
+    r2:removeSection(block(r2, 2), true)
+    check(text(r2) == "one\n\ntwo", "Delete the section: with what's in it (" .. show(text(r2)) .. ")")
+    UIM.show = real_show
+    package.loaded["ui/widget/buttondialog"] = nil
+end
+
 print(("richedit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

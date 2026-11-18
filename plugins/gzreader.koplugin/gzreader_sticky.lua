@@ -692,4 +692,87 @@ function Sticky.when(iso, now)
     return months[dt.month] .. " " .. dt.day .. ", " .. dt.year
 end
 
+--- A note laid out for its page, as Memos' web app shows it: Sticky.lines,
+--- with three more kinds of item:
+---   { kind = "details", summary, open, items }: a `<details>` section
+---     (`<summary>` its title, `open` when written open), folded on the web
+---     until tapped; `items` what's inside it, laid out alike.
+---   { kind = "code", text, lang, checks }: a fenced code block (the text as
+---     written; `checks` how many lines in it look like a checklist item, so
+---     the page still counts the note's checklist items as Sticky.toggle does).
+---   { kind = "tags", tags }: a line of only #tags (shown as chips there).
+--- A `<details>` without its `</details>` runs to the note's end.
+function Sticky.page(content)
+    local raw = {}
+    for line in ((content or "") .. "\n"):gmatch("(.-)\r?\n") do raw[#raw + 1] = line end
+    local items = Sticky.lines(content) -- (one item per line, in order)
+    local top = {}
+    local cur, stack = top, {}
+    local fence -- the open code block: { mark, item }
+    for i, l in ipairs(items) do
+        local r = raw[i] or ""
+        if fence then
+            if r:match("^%s*" .. fence.mark:gsub("%p", "%%%0") .. "%s*$") then
+                fence = nil
+            else
+                local f = fence.item
+                f.text = f.text and (f.text .. "\n" .. r) or r
+                if l.kind == "check" then f.checks = f.checks + 1 end
+            end
+        else
+            local mark, lang = r:match("^%s*(```+)%s*([^`]*)$")
+            if not mark then mark, lang = r:match("^%s*(~~~+)%s*(.*)$") end
+            local open_attr, after = r:match("^%s*<details(%s*[^>]*)>%s*(.*)$")
+            local summary = r:match("^%s*<summary>(.-)</summary>%s*$")
+            if mark then
+                local item = { kind = "code", lang = lang:match("^(%S*)"), checks = 0 }
+                cur[#cur + 1] = item
+                fence = { mark = mark, item = item }
+            elseif open_attr then
+                local d = { kind = "details", summary = after:match("^<summary>(.-)</summary>"), items = {},
+                    open = open_attr:match("%f[%w]open%f[^%w]") ~= nil }
+                cur[#cur + 1] = d
+                stack[#stack + 1] = cur
+                cur = d.items
+            elseif summary and #stack > 0 and #cur == 0 then
+                -- (the title, on the line after <details>)
+                local d = stack[#stack][#stack[#stack]]
+                if d.summary == nil then d.summary = summary else cur[#cur + 1] = l end
+            elseif r:match("^%s*</details>%s*$") and #stack > 0 then
+                while #cur > 0 and cur[#cur].kind == "text" and cur[#cur].text == "" do table.remove(cur) end
+                cur = table.remove(stack)
+            elseif l.kind == "text" and Sticky.tagsOnly(l.text) then
+                local tags = {}
+                for t in l.text:gmatch("#([%w_%-/]+)") do tags[#tags + 1] = t end
+                cur[#cur + 1] = { kind = "tags", tags = tags }
+            elseif not (l.kind == "text" and l.text == "" and #cur == 0 and #stack > 0) then
+                cur[#cur + 1] = l
+            end
+        end
+    end
+    local function titles(list)
+        for _i, d in ipairs(list) do
+            if d.kind == "details" then
+                if d.summary then d.summary = Sticky.plain(d.summary) end
+                titles(d.items)
+            end
+        end
+    end
+    titles(top)
+    while #top > 0 and top[#top].kind == "text" and top[#top].text == "" do table.remove(top) end
+    return top
+end
+
+--- How many checklist items Sticky.toggle counts in page items (Sticky.page),
+--- inside folded sections and code blocks too.
+function Sticky.pageChecks(items)
+    local n = 0
+    for _i, l in ipairs(items or {}) do
+        if l.kind == "check" then n = n + 1
+        elseif l.kind == "code" then n = n + (l.checks or 0)
+        elseif l.kind == "details" then n = n + Sticky.pageChecks(l.items) end
+    end
+    return n
+end
+
 return Sticky

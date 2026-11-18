@@ -19,6 +19,8 @@ Markdown). No UI: `blocks_test.lua`.
 
 A block: { kind = "paragraph" | "heading" | "bullet" | "ordered" | "task" |
 "image" | "raw", level (heading 1–6), done (task), num (ordered), indent,
+section ("start" / "end": a raw block that starts or ends a <details>
+section; a start's `folded`, how the editor shows it, from `open`),
 marker, chars = { utf-8 characters }, marks = { per character: a mark set
 or false }, src (its Markdown as read), sep (what came before it), dirty }.
 A mark set: { b, i, s, c (code), link = url } (shared, never changed).
@@ -441,6 +443,33 @@ local function startsBlock(line)
         or isHtml(line) or isImageLine(line)
 end
 
+--- A `<details>` section's start (`<details>` or `<details open>`, its
+--- `<summary>` on the same line or the next, as Memos' web editor writes
+--- it): { open, title } (the title as plain text), or nil.
+function Blocks.sectionStart(text)
+    text = tostring(text or "")
+    local attrs, rest = text:match("^[ \t]*<details([^>]*)>[ \t]*(.-)[ \t]*$")
+    if not attrs or (attrs ~= "" and not attrs:match("^%s")) then return nil end
+    local title = ""
+    if rest ~= "" then
+        title = rest:gsub("^\n[ \t]*", ""):match("^<summary>(.-)</summary>$")
+        if not title then return nil end
+    end
+    title = title:gsub("&(#?[%w]+);", function(e)
+        local named = { amp = "&", lt = "<", gt = ">", quot = '"', apos = "'", nbsp = NBSP }
+        if named[e] then return named[e] end
+        local cp = tonumber(e:match("^#(%d+)$") or "") or tonumber(e:match("^#[xX](%x+)$") or "", 16)
+        return cp and cp > 0 and cp < 0x110000 and utf8char(cp) or nil
+    end)
+    return { open = attrs:match("%f[%w]open%f[^%w]") ~= nil, title = title }
+end
+
+--- A section's start written with `title` (open when `open`), as the web editor writes it.
+function Blocks.sectionMarkdown(title, open)
+    local esc = tostring(title or ""):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+    return "<details" .. (open and " open" or "") .. ">\n<summary>" .. esc .. "</summary>"
+end
+
 --- Memos Markdown `content` as a document: { blocks, original, lead, tail }.
 function Blocks.parse(content)
     content = tostring(content or "")
@@ -489,6 +518,16 @@ function Blocks.parse(content)
             i = i + 1
         elseif isImageLine(line) then
             add(newBlock("image", line), i, i)
+            i = i + 1
+        elseif Blocks.sectionStart(line) then
+            -- a <details> section's start (its <summary> on the line or the next)
+            local j = i
+            if not line:find("<summary>", 1, true) and lines[i + 1] and lines[i + 1]:match("^[ \t]*<summary>.-</summary>[ \t]*$") then j = i + 1 end
+            local text = table.concat(lines, "\n", i, j)
+            add(newBlock("raw", text, { section = "start", folded = not Blocks.sectionStart(text).open }), i, j)
+            i = j + 1
+        elseif line:match("^[ \t]*</details>[ \t]*$") then
+            add(newBlock("raw", line, { section = "end" }), i, i)
             i = i + 1
         elseif isHtml(line) then
             local j = i

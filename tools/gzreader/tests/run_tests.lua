@@ -7787,6 +7787,32 @@ print("Notes (Memos v0.31)")
     check(Sticky.firstImage(md) == "/file/attachments/abc/p.png", "first picture found")
     check(Sticky.tagsOnly("#travel #hiking") and not Sticky.tagsOnly("#idea buy milk") and not Sticky.tagsOnly(""), "a line of only tags")
     check(Sticky.preview("Title\n\nbody\n\n#a #b") == "Title\nbody", "sticky preview: no blank lines, tag line left out")
+    ;(function() -- a note's page as the web lays it out: <details> sections, code blocks, tag lines
+        local md = "## Tuesday\n\n#mood/neutral #felt/drained #trip\n\n<details>\n<summary>Text from a &amp; b.png</summary>\n\n"
+            .. "```text\nWork took most of my energy.\n- [ ] not a real box\n#notatag\n```\n\n</details>\n\n- [ ] after\n"
+            .. "<details open><summary>Inner</summary>\nline\n<details>\n<summary>Deeper</summary>\n- [x] deep box\n</details>\n</details>\n"
+            .. "<details>\n<summary>Never closed</summary>\nrest"
+        local p = Sticky.page(md)
+        local kinds = {}
+        for _i, l in ipairs(p) do if not (l.kind == "text" and l.text == "") then kinds[#kinds + 1] = l.kind end end
+        local d1 = p[5]
+        local code = d1 and d1.items[1]
+        check(table.concat(kinds, ",") == "heading,tags,details,check,details,details", "note page: a heading, a tag line, a section, a box, two more sections (" .. table.concat(kinds, ",") .. ")")
+        check(d1 and d1.kind == "details" and d1.summary == "Text from a & b.png" and not d1.open and #d1.items == 1
+            and code.kind == "code" and code.lang == "text" and code.text == "Work took most of my energy.\n- [ ] not a real box\n#notatag"
+            and code.checks == 1,
+            "note page: a <details> section folded under its title (entities read), its code block as written (" .. tostring(code and code.text):gsub("\n", "\\n") .. ")")
+        local inner = p[8]
+        check(inner and inner.kind == "details" and inner.open and inner.summary == "Inner" and inner.items[1].text == "line"
+            and inner.items[2].kind == "details" and inner.items[2].summary == "Deeper" and inner.items[2].items[1].kind == "check",
+            "note page: <details open> written open, its title on the same line; a section inside a section")
+        check(p[9] and p[9].kind == "details" and p[9].items[1].text == "rest", "note page: a section never closed runs to the end")
+        check(Sticky.pageChecks(p) == 3 and select(2, md:gsub("%- %[[ x]%]", "")) == 3,
+            "note page: checklist items counted as Sticky.toggle counts them (in code and folded sections too)")
+        check(p[3].kind == "tags" and table.concat(p[3].tags, " ") == "mood/neutral felt/drained trip", "note page: a line of tags, its tags in order")
+        check(#Sticky.page("") == 0 and Sticky.page("```\nx")[1].text == "x" and Sticky.page("</details>\nplain")[1].kind == "text",
+            "note page: empty; an unclosed code block; a stray </details> left as text")
+    end)()
     ;(function() -- Memos 26.11's rich editor: "&nbsp;" for an empty paragraph, entities, backslash escapes
         local rich = "First paragraph.\n\n&nbsp;\n\nSecond&nbsp;one: Tom &amp; Jerry &lt;3\n\n\\* not a bullet, 2 \\* 3 \\_x\\_\n\n&#35; not a heading &#124; pipe&#10;next"
         local pv = Sticky.preview(rich)
@@ -9793,13 +9819,48 @@ print("Notes (Memos v0.31)")
             local b = nsrc6:find("\nfunction ", a + 10, true)
             local page = nsrc6:sub(a, b)
             local cards = nsrc6:sub(nsrc6:find("function StickyItem:draw()", 1, true), nsrc6:find("local NoteView = InputContainer", 1, true))
-            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 4
+            check(not page:find("Sticky.hand(", 1, true) and select(2, page:gsub("Notes%.pageFace%(", "")) == 6
                 and select(2, cards:gsub("Sticky%.hand%(", "")) >= 5,
                 "a note's page: the editor's font throughout; the Notes tab's sticky notes: still the handwriting font")
             check(resrc:find("RichEdit.TEXT_SIZE = " .. Notes.PAGE_TEXT, 1, true) ~= nil
                 and resrc:find("RichEdit.HEADING_SIZE = { " .. table.concat(Notes.PAGE_HEADING, ", ") .. " }", 1, true) ~= nil
                 and nsrc6:find('Font:getFace(bold and "NotoSans-Bold.ttf" or "cfont", size)', 1, true) ~= nil,
                 "…at the editor's sizes and faces (RichEdit.TEXT_SIZE, HEADING_SIZE, cfont / Noto Sans Bold)")
+        end
+        -- a note's page: a <details> section folded under its title, opened by a
+        -- tap (or its letter) where it is; the boxes after it still tick the
+        -- right line; a journal entry's tags at the top, other tag lines in place
+        do
+            local Journal = require("gzreader_journal")
+            check(Notes.isJournalTag("mood/neutral", Journal.settings(nil)) and Notes.isJournalTag("Felt/Drained", Journal.settings(nil))
+                and Notes.isJournalTag("did/work", Journal.settings(nil)) and Notes.isJournalTag("impact/family", Journal.settings(nil))
+                and not Notes.isJournalTag("trip", Journal.settings(nil)) and not Notes.isJournalTag("mood/", Journal.settings(nil))
+                and not Notes.isJournalTag("moody", Journal.settings(nil))
+                and Notes.isJournalTag("feel/x", Journal.settings({ feelingTagPrefix = "feel" })),
+                "journal tags: under the mood, feeling, cause or activity prefix (as set in Memos' journal settings)")
+            local real_save = Notes.saveContent
+            local saved
+            Notes.saveContent = function(_p, m) saved = m.content end
+            local memo = { name = "memos/details-1", attachments = {}, tags = { "mood/neutral", "trip" },
+                content = "## Tuesday\n\n#mood/neutral #felt/drained #trip\n\n<details>\n<summary>Text from a.png</summary>\n\n"
+                    .. "```text\n- [ ] in code\n```\n\n</details>\n\n- [ ] after\n" }
+            -- (the page itself is laid out in the emulator: tools/gzreader/emulator/notes_details.lua)
+            local refreshed = 0
+            local v = setmetatable({ memo = memo, plugin = plugin, opened = {}, focus = false, refresh = function() refreshed = refreshed + 1 end,
+                picks = { { details = ".5", open = false }, { check = 2 } } }, { __index = Notes._NoteView })
+            v:pickIndex(1)
+            local opened = v.opened[".5"] == true and refreshed == 1
+            v.picks[1].open = true
+            v:pickIndex(1)
+            local folded = v.opened[".5"] == false and refreshed == 2
+            v:pickIndex(2)
+            check(opened and folded and saved and saved:find("- [x] after", 1, true) and saved:find("- [ ] in code", 1, true),
+                "note page: a section's row opens and folds it (laid out again); the box after it, the note's second, ticks its own line")
+            Notes.saveContent = real_save
+            local nsrc7 = io.open(PLUGIN .. "/gzreader_notes.lua"):read("*a")
+            check(nsrc7:find('table.insert(page, page[1] and page[1].kind == "heading" and 2 or 1, { kind = "toptags" })', 1, true)
+                and not nsrc7:find("add(Notes.tagChips(m.tags", 1, true),
+                "note page: a journal entry's tags at the top under its heading; no list of every tag at the bottom")
         end
         -- S sorts (keyboard Kindles)
         local sorted_shown
