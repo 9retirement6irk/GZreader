@@ -719,6 +719,33 @@ end
 Sketch.distToSegment = distToSegment
 
 --- The live stroke under canvas point (x, y) within `reach` pixels, or nil.
+--- The canvas rectangle stroke `st` is drawn in ({ x0, y0, x1, y1 }, a little over: as wide as its tool can make it).
+function Sketch:strokeBox(st)
+    local r = Sketch.toolRadius(st.kind, self:radius(st.width), 1) + 2
+    local x0, y0, x1, y1
+    for _i, p in ipairs(st.points) do
+        x0, y0 = math.min(x0 or p[1], p[1]), math.min(y0 or p[2], p[2])
+        x1, y1 = math.max(x1 or p[1], p[1]), math.max(y1 or p[2], p[2])
+    end
+    if not x0 then return nil end
+    return { x0 = math.floor(x0 - r), y0 = math.floor(y0 - r), x1 = math.ceil(x1 + r), y1 = math.ceil(y1 + r) }
+end
+
+--- The rectangle around `strokes` (and `area`, when given): what changes on the page when they come or go.
+function Sketch:strokesArea(strokes, area)
+    for _i, st in ipairs(strokes or {}) do
+        local b = self:strokeBox(st)
+        if b then
+            if area then
+                area.x0, area.y0, area.x1, area.y1 = math.min(area.x0, b.x0), math.min(area.y0, b.y0), math.max(area.x1, b.x1), math.max(area.y1, b.y1)
+            else
+                area = b
+            end
+        end
+    end
+    return area
+end
+
 function Sketch:strokeAt(x, y, reach)
     for i = #self.strokes, 1, -1 do
         local st = self.strokes[i]
@@ -749,6 +776,8 @@ local function erase(self, contact, x, y, out)
             st.gone = true
             contact.erased[#contact.erased + 1] = st
             out.redraw = true
+            -- (what changed: only this much of the page needs drawing again)
+            out.area = self:strokesArea({ st }, out.area)
             st = self:strokeAt(px, py, reach)
         end
     end
@@ -1168,7 +1197,14 @@ function Sketch:redo()
         for _i, st in ipairs(h.strokes) do st.gone = true end
     end
     self.history[#self.history + 1] = h
-    return true
+    return true, self:stepArea(h)
+end
+
+--- The part of the page an undone or redone step changes: its strokes'
+--- (nil for a step with text boxes or the whole page: all of it is drawn again).
+function Sketch:stepArea(h)
+    if (h.kind ~= "add" and h.kind ~= "erase") or (h.texts and #h.texts > 0) then return nil end
+    return self:strokesArea(h.strokes)
 end
 
 --- Takes back the last stroke, erase or clear. True when something changed.
@@ -1191,7 +1227,7 @@ function Sketch:undo()
     local kept = {}
     for _i, st in ipairs(self.strokes) do if not st.undone then kept[#kept + 1] = st end end
     self.strokes = kept
-    return true
+    return true, self:stepArea(h)
 end
 
 --- Clears the page (undo brings it back). True when something changed.

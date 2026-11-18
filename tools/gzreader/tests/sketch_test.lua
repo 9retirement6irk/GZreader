@@ -327,6 +327,27 @@ print("== the eraser, undo, clear")
     -- the pen's other end crosses the first stroke
     local out = run(sk, { { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) }, { penGone() } }, 10)
     check(#sk:live() == 1 and out.redraw and sk:live()[1].points[1][2] == 500, "the pen's eraser end rubs out the stroke it crosses")
+    -- what changed on the page: the rubbed-out stroke's place (only that is drawn again and refreshed)
+    local sk2 = Sketch.new{ canvas = CANVAS, pen_only = true, pen_slot = PEN_SLOT, per_unit = 2 }
+    run(sk2, { { hover(100, 200) }, { pen(100, 200) }, { pen(300, 200) }, { hover(300, 200) }, { penGone() } }, 0)
+    local area
+    for i, fr in ipairs({ { hover(200, 150, ERASER) }, { pen(200, 150, ERASER) }, { pen(200, 260, ERASER) }, { hover(200, 260, ERASER) } }) do
+        local o = sk2:frame(fr, 10 + i * 0.01)
+        area = o.area or area
+    end
+    -- (the page's own pixels: the canvas starts at CANVAS.x, CANVAS.y on the screen)
+    local ly = 200 - CANVAS.y
+    check(area and area.x0 <= 100 - CANVAS.x and area.x0 > 80 - CANVAS.x and area.x1 >= 300 - CANVAS.x and area.x1 < 320 - CANVAS.x
+        and area.y0 < ly and area.y0 > ly - 20 and area.y1 > ly and area.y1 < ly + 20,
+        "…and says where it was: the stroke's own rectangle (" .. tostring(area and (area.x0 .. "," .. area.y0 .. " to " .. area.x1 .. "," .. area.y1)) .. "), not the whole page")
+    local back, back_area = sk2:undo()
+    local again, again_area = sk2:redo()
+    check(back and back_area and back_area.x0 == area.x0 and back_area.y1 == area.y1 and again and again_area and again_area.x1 == area.x1,
+        "Undo and Redo of it say the same rectangle")
+    sk2:undo() -- (the stroke back on the page)
+    check(sk2:clear(), "the page cleared")
+    local cleared, clear_area = sk2:undo()
+    check(cleared and clear_area == nil, "Undo of a cleared page: the whole page (no rectangle)")
     check(sk:undo() and #sk:live() == 2, "undo brings it back")
     -- the pen's side button held (the Premium Pen): the tip rubs out; let go, it draws again
     sk.side_button = true

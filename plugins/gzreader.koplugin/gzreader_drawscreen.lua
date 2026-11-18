@@ -202,6 +202,8 @@ function DrawScreen:init()
         self._pane_slots = {}
     end
     self.pen_only = Sketch.penDevice(Device)
+    -- (the Scribe: its display driver's pen mode, for ink that keeps up with the pen; gzreader_penmode)
+    self.pen_fast = self.pen_only and require("gzreader_penmode").supported(Device)
     self.top_h = S(52)
     self.bar_h = self.top_h
     self.top_hidden = false -- (folded away by the tab under it)
@@ -371,6 +373,10 @@ function DrawScreen:flyoutRows(which)
         if self.pen_only then
             rows[#rows + 1] = { id = "shortcut", row = true,
                 label = T(_("Stylus shortcut: %1"), DrawScreen.SHORTCUT_NAMES[DrawScreen.shortcut()] or DrawScreen.shortcut()) }
+            -- (the Scribe: the display's own pen mode, on unless turned off here)
+            if require("gzreader_penmode").capable(Device) then
+                rows[#rows + 1] = { id = "penmode", row = true, switch = self.pen_fast == true, label = _("Fast ink (Kindle pen mode)") }
+            end
         end
     elseif which == "options" then
         rows[#rows + 1] = { id = "newpage2", row = true, label = _("New page") }
@@ -1057,6 +1063,90 @@ function DrawScreen:redrawAll()
     UIManager:setDirty(self, "ui")
 end
 
+--- Only `area` of the page ({ x0, y0, x1, y1 }, canvas pixels) drawn again
+--- from what's in it, and only that refreshed: a rubbed-out stroke, an Undo.
+--- The whole page was drawn again from every stroke for each, and the whole
+--- screen refreshed (the owner, 2026-11-17: "it can be very slow"). Returns
+--- false when it can't be done just for a part (zoomed in: the paper is
+--- scaled for the view; a shape or text box there): the caller draws it all.
+function DrawScreen:repaintArea(area)
+    local sk, c = self.sketch, self.canvas
+    if not area or sk.zoomed then return false end
+    local x0, y0 = math.max(0, area.x0), math.max(0, area.y0)
+    local x1, y1 = math.min(c.w, area.x1), math.min(c.h, area.y1)
+    local w, h = x1 - x0, y1 - y0
+    if w <= 0 or h <= 0 then return true end
+    if w * h > 0.5 * c.w * c.h then return false end -- (most of the page: all of it is as quick)
+    local function crosses(ax0, ay0, ax1, ay1) return ax1 > x0 and ax0 < x1 and ay1 > y0 and ay0 < y1 end
+    -- (shapes and text made in Memos, text boxes: drawn whole; with one in the area, the whole page)
+    local pictures = {}
+    for _i, el in ipairs(sk.locked) do
+        local ex0, ey0 = sk:toCanvas(tonumber(el.x) or 0, tonumber(el.y) or 0)
+        local ex1, ey1 = sk:toCanvas((tonumber(el.x) or 0) + (tonumber(el.width) or 0), (tonumber(el.y) or 0) + (tonumber(el.height) or 0))
+        if el.type == "image" then
+            pictures[#pictures + 1] = { el = el, x = math.floor(ex0 + 0.5), y = math.floor(ey0 + 0.5),
+                w = math.floor(ex1 + 0.5) - math.floor(ex0 + 0.5), h = math.floor(ey1 + 0.5) - math.floor(ey0 + 0.5) }
+        elseif crosses(math.min(ex0, ex1) - S(8), math.min(ey0, ey1) - S(8), math.max(ex0, ex1) + S(8), math.max(ey0, ey1) + S(8)) then
+            return false
+        end
+    end
+    if #sk:liveTexts() > 0 then
+        local DrawText = require("gzreader_drawtext")
+        for _i, el in ipairs(sk:liveTexts()) do
+            local r = DrawText.rect(el, function(sx, sy) return sk:toCanvas(sx, sy) end)
+            if crosses(r.x - S(8), r.y - S(8), r.x + r.w + S(8), r.y + r.h + S(8)) then return false end
+        end
+    end
+    -- the pictures' parts first (their cached pictures at this size; one that can't be had: the whole page)
+    local parts = {}
+    for _i, p in ipairs(pictures) do
+        if p.w >= 2 and p.h >= 2 and crosses(p.x, p.y, p.x + p.w, p.y + p.h) then
+            local bb = self:picture(p.el, p.w, p.h)
+            if not bb then return false end
+            parts[#parts + 1] = { bb = bb, p = p }
+        end
+    end
+    -- the area as an empty page…
+    self.canvas_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
+    self.ink_bb:paintRect(x0, y0, w, h, Blitbuffer.COLOR_WHITE)
+    if self.tint_bb then self.tint_bb:paintRectRGB32(x0, y0, w, h, DrawScreen.rgb32(Drawing.INK)) end
+    if self.color_bb then self.color_bb:paintRectRGB32(x0, y0, w, h, DrawScreen.rgb32(Drawing.PAPER)) end
+    -- …its paper…
+    for _i, part in ipairs(parts) do
+        local p = part.p
+        local dx0, dy0 = math.max(x0, p.x), math.max(y0, p.y)
+        local dx1, dy1 = math.min(x1, p.x + p.w), math.min(y1, p.y + p.h)
+        if dx1 > dx0 and dy1 > dy0 then
+            self.canvas_bb:blitFrom(part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0)
+            if self.color_bb then self.color_bb:blitFrom(part.bb, dx0, dy0, dx0 - p.x, dy0 - p.y, dx1 - dx0, dy1 - dy0) end
+        end
+    end
+    -- …and the bits of line that cross it (highlighters under the rest, as on the whole page;
+    -- a bit reaching outside paints what's there already again: the same pixels)
+    local list = sk:live()
+    local cur = sk:current()
+    if cur then list[#list + 1] = cur end
+    for pass = 1, 2 do
+        for _i, st in ipairs(list) do
+            if (st.kind == "highlighter") == (pass == 1) then
+                local b = sk:strokeBox(st)
+                if b and crosses(b.x0, b.y0, b.x1, b.y1) then
+                    for _j, seg in ipairs(strokeSegments(sk, st)) do
+                        local r = seg[5] + 2
+                        if crosses(math.min(seg[1], seg[3]) - c.x - r, math.min(seg[2], seg[4]) - c.y - r,
+                            math.max(seg[1], seg[3]) - c.x + r, math.max(seg[2], seg[4]) - c.y + r) then
+                            self:ink(seg)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local shown = Geom:new{ x = x0 + c.x + self.ox, y = y0 + c.y + self.oy, w = w, h = h }
+    UIManager:setDirty(self, function() return "ui", shown end)
+    return true
+end
+
 -- --------------------------------------------------------------- the input
 
 --- Takes the touch screen's contacts while this screen is on top.
@@ -1173,6 +1263,10 @@ function DrawScreen:hook()
             Log.info("drawing: the pen's digitizer not read:", tostring(why))
         end
     end
+    if self.pen_fast then
+        require("gzreader_penmode").hook(Screen, UIManager)
+        Log.info("drawing: the Kindle's pen mode will be used for ink")
+    end
     -- (a tap still under way, e.g. the one that opened this screen, is forgotten)
     pcall(gd.dropContacts, gd)
     if input.clearTimeouts then pcall(input.clearTimeouts, input) end
@@ -1184,6 +1278,17 @@ function DrawScreen:unhook()
     rawset(gd, "feedEvent", self._own_feed)
     self._gd = nil
     if self._ink_timer then UIManager:unschedule(self._ink_timer); self._ink_timer = nil end
+    if self._settle_timer then UIManager:unschedule(self._settle_timer); self._settle_timer = nil end
+    do
+        local PenMode = require("gzreader_penmode")
+        local st = PenMode.unhook()
+        if st then
+            -- (numbers only, for a report: how the pen mode went)
+            Log.info(string.format("drawing: pen mode: on %d times, %d runs of ink in %d updates, %d the ordinary way; waited %.0f ms before and %.0f ms after%s",
+                st.entered or 0, st.runs or 0, st.updates or 0, self._ink_ordinary or 0, (st.waited_before or 0) * 1000, (st.waited_after or 0) * 1000,
+                PenMode.failed and ("; refused: " .. tostring(PenMode.failed)) or ""))
+        end
+    end
     if self.penraw then
         -- (numbers only: where the pen's pressure came from, for a report)
         Log.info("drawing: pen pressure from KOReader's events:", self._pressure_events or 0, "frames; from the digitizer:",
@@ -1251,19 +1356,37 @@ function DrawScreen:apply(out)
         self.flyout = nil
         self:layoutBar()
         out.redraw = true
+        out.area = nil -- (the panel's place too: the whole screen)
     end
     if out.panned then UIManager:setDirty(self, "ui") end
     if out.redraw then
         -- (the view moved, by a pinch or a finger: the page itself is as it was)
         if not out.view then self:touched() end
-        self:redrawAll()
+        -- (a stroke rubbed out: only where it was)
+        if out.view or not self:repaintArea(out.area) then self:redrawAll() end
     elseif #out.segments > 0 then
         self:touched()
         local screen_bb = Screen.bb
         local x0, y0, x1, y1
         local grey = false
+        -- (ink again before what was left for a pause was done: it waits for the next pause)
+        if self._settle_timer then UIManager:unschedule(self._settle_timer); self._settle_timer = nil end
+        local c0 = self.canvas
         for _i, seg in ipairs(out.segments) do
             self:ink(seg, screen_bb)
+            if self.pen_fast then
+                -- (pen mode: each bit of line as a small update of its own; PenMode.split joins them)
+                local r = seg[5]
+                local sx0 = math.max(c0.x, math.floor(math.min(seg[1], seg[3]) - r) - 1)
+                local sy0 = math.max(c0.y, math.floor(math.min(seg[2], seg[4]) - r) - 1)
+                local sx1 = math.min(c0.x + c0.w, math.ceil(math.max(seg[1], seg[3]) + r) + 1)
+                local sy1 = math.min(c0.y + c0.h, math.ceil(math.max(seg[2], seg[4]) + r) + 1)
+                if sx1 > sx0 and sy1 > sy0 then
+                    local list = self._pen_rects or {}
+                    self._pen_rects = list
+                    list[#list + 1] = { x = sx0 + self.ox, y = sy0 + self.oy, w = sx1 - sx0, h = sy1 - sy0 }
+                end
+            end
             -- (a grey tool without a grain, the highlighter: its real grey needs a refresh when the
             -- stroke ends. The pencil's specks are on the screen already as it draws, as dark as
             -- they'll be: no refresh after, which flashed the page at every stroke; the owner, 2026-11-17)
@@ -1292,26 +1415,70 @@ function DrawScreen:apply(out)
         end
     end
     if out.stroke_done then self:flushInk(true) end
-    if out.stroke_done and self._stroke_area and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2") then
-        local d = self._stroke_area
-        local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }
-        if self._stroke_grey then
-            -- (a grey tool's stroke: the page painted again, so its real grey replaces the black points)
-            UIManager:setDirty(self, function() return "ui", area end)
-        else
-            UIManager:setDirty(nil, "ui", area)
-        end
-    end
-    if out.stroke_done then self._stroke_area, self._stroke_grey = nil, nil end
     if out.stroke_done then
+        local d = self._stroke_area
+        local clean = d and (self._stroke_grey or DrawScreen.inkRefreshFor(self.sketch.locked) ~= "a2")
         -- Undo and Redo wake up or go to sleep
         local shown = self._shown or {}
-        if shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo() then self:refreshBar() end
+        local bar = shown.undo ~= self.sketch:canUndo() or shown.redo ~= self.sketch:canRedo()
+        if self.pen_fast and require("gzreader_penmode").on then
+            -- Pen mode: nothing else may be on its way to the screen while ink is. What a
+            -- stroke leaves to do (its area shown properly, a highlighter's grey, Undo waking
+            -- up) waits for a pause in the writing (the Kindle's notebook does nothing at
+            -- the end of a stroke either), all of it at once.
+            local w = self._settle or {}
+            self._settle = w
+            if clean then
+                if w.x0 then
+                    w.x0, w.y0, w.x1, w.y1 = math.min(w.x0, d.x0), math.min(w.y0, d.y0), math.max(w.x1, d.x1), math.max(w.y1, d.y1)
+                else
+                    w.x0, w.y0, w.x1, w.y1 = d.x0, d.y0, d.x1, d.y1
+                end
+                w.grey = w.grey or self._stroke_grey or false
+            end
+            w.bar = w.bar or bar
+            if w.x0 or w.bar then
+                if self._settle_timer then UIManager:unschedule(self._settle_timer) end
+                self._settle_timer = function()
+                    self._settle_timer = nil
+                    if not self._closed then self:settle() end
+                end
+                UIManager:scheduleIn(DrawScreen.SETTLE, self._settle_timer)
+            end
+        else
+            if clean then self:cleanStroke(d, self._stroke_grey) end
+            if bar then self:refreshBar() end
+        end
+        self._stroke_area, self._stroke_grey = nil, nil
     end
     for _i, tap in ipairs(out.taps) do self:tapAt(tap.x, tap.y) end
     if out.text_tap then self:textTap(out.text_tap) end
     if out.pull then self:pullPanel() end
 end
+
+--- A finished stroke's area shown properly: a grey tool's (the highlighter:
+--- the page painted again, so its real grey replaces the black points), or
+--- ink on a paper (shown with a refresh that keeps the paper's greys).
+function DrawScreen:cleanStroke(d, grey)
+    local area = Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 }
+    if grey then
+        UIManager:setDirty(self, function() return "ui", area end)
+    else
+        UIManager:setDirty(nil, "ui", area)
+    end
+end
+
+--- Pen mode: what the strokes left for a pause in the writing, done now
+--- (these are ordinary updates: gzreader_penmode turns pen mode off for them).
+function DrawScreen:settle()
+    local w = self._settle
+    self._settle = nil
+    if not w then return end
+    if w.x0 then self:cleanStroke(w, w.grey) end
+    if w.bar then self:refreshBar() end
+end
+--- Seconds without ink before a stroke's leftovers are done in pen mode.
+DrawScreen.SETTLE = 0.5
 
 --- The quick panel over the drawing (a pull down from the top), as at Home
 --- and in a book. The drawing stays as it is under it; while the panel is
@@ -1496,7 +1663,22 @@ function DrawScreen:flushInk(done)
         self._ink_due = nil
         self._ink_shown_at = self._now or 0
         if self._stroke_stats then self._stroke_stats.shown = self._stroke_stats.shown + 1 end
-        UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+        local rects = self._pen_rects
+        self._pen_rects = nil
+        local fast = false
+        if self.pen_fast and rects and #rects > 0 then
+            -- (the Scribe's pen mode: small updates sent to the screen at once, not at the next repaint)
+            local PenMode = require("gzreader_penmode")
+            fast = PenMode.ink(Screen, rects)
+            if PenMode.failed then
+                self.pen_fast = false
+                Log.info("drawing: the Kindle's pen mode can't be used here, ink shown as before:", tostring(PenMode.failed))
+            end
+        end
+        if not fast then
+            if self.pen_fast then self._ink_ordinary = (self._ink_ordinary or 0) + 1 end
+            UIManager:setDirty(nil, self:inkRefresh(), Geom:new{ x = d.x0 + self.ox, y = d.y0 + self.oy, w = d.x1 - d.x0, h = d.y1 - d.y0 })
+        end
     end
     if done then
         local st = self._stroke_stats
@@ -1534,7 +1716,15 @@ end
 
 --- The toolbar (and the other controls) drawn again.
 function DrawScreen:refreshBar()
-    UIManager:setDirty(self, "ui")
+    -- (Undo or Redo woke up or went to sleep: only the tools change, so only they are
+    -- refreshed; it was the whole screen, after the first stroke of every drawing)
+    local f = self.frames and self.frames.toolbar
+    if f and f.w and f.w > 0 then
+        local area = Geom:new{ x = f.x + self.ox, y = f.y + self.oy, w = f.w, h = f.h }
+        UIManager:setDirty(self, function() return "ui", area end)
+    else
+        UIManager:setDirty(self, "ui")
+    end
 end
 
 function DrawScreen:setFlyout(which)
@@ -1687,8 +1877,28 @@ function DrawScreen:use(t)
         Log.info("drawing: the text tool")
     elseif t.id == "more" or t.id == "options" then self:setFlyout(self.flyout ~= t.id and t.id or nil)
     elseif t.id == "shortcut" then self:nextShortcut(); self:setFlyout("more")
-    elseif t.id == "undo" then if sk:undo() then self:touched(); self:redrawAll() end
-    elseif t.id == "redo" then if sk:redo() then self:touched(); self:redrawAll() end
+    elseif t.id == "penmode" then
+        local PenMode = require("gzreader_penmode")
+        local on = not self.pen_fast
+        keep(PenMode.SETTING, on)
+        if on then
+            PenMode.failed = nil -- (asked for again: tried again)
+            self.pen_fast = PenMode.supported(Device)
+            if self.pen_fast then PenMode.hook(Screen, UIManager) end
+        else
+            self.pen_fast = false
+            PenMode.unhook()
+        end
+        Log.info("drawing: the Kindle's pen mode", self.pen_fast and "on" or "off")
+        self:setFlyout("more")
+    elseif t.id == "undo" or t.id == "redo" then
+        local changed, area
+        if t.id == "undo" then changed, area = sk:undo() else changed, area = sk:redo() end
+        if changed then
+            self:touched()
+            -- (a stroke taken back or put back: only where it is; and the tools, for Undo and Redo themselves)
+            if self:repaintArea(area) then self:refreshBar() else self:redrawAll() end
+        end
     elseif t.id == "clear" then
         self.flyout = nil
         self:layoutBar()
