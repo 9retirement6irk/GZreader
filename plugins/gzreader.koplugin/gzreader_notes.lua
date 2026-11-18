@@ -1304,6 +1304,18 @@ end
 ---------------------------------------------------------------- full view: measuring
 
 Notes.pic_sizes = {} -- path → { w, h }
+
+--- Where the small copies of big pictures are kept (gzreader_sticky.lua's
+--- Sticky.picture: a photo is shrunk once for a sticky note, not at every draw).
+local small_dir
+function Notes.smallDir()
+    if not small_dir then
+        small_dir = Memos.filesDir() .. "-small"
+        lfs.mkdir(small_dir)
+    end
+    return small_dir
+end
+Sticky.small_dir = Notes.smallDir
 Notes.measured = setmetatable({}, { __mode = "k" }) -- note → its measure (Notes.measure)
 Notes.PIC_MAX = 0.4 -- full view: a picture at most this much of the page's height
 

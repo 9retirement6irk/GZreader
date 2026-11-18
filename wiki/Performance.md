@@ -105,6 +105,17 @@ What GZreader does to be quick on the Kindle 3 and other old Kindles.
   both and got "not found" (two requests and two warnings in the log every
   time). What a server lacks is now remembered for 6 hours (and asked again
   when you connect again), so a sync is the notes and your tags only.
+- **A photo in a note is shrunk once** (`gzreader_sticky.lua`): a photo from
+  a phone is around 12 megapixels, and to show it a few hundred pixels wide
+  on a sticky note (or in the note's page) the whole file was decoded and
+  shrunk every time that note was drawn again: the whole picture in memory
+  for a moment, and more time than the rest of the page. A picture shown at a
+  quarter of its pixels or less now has its small version kept on the Kindle
+  (a PNG of exactly what was shown, in `cache/gzreader-notes-small`, at most
+  240 files or 12 MB, the oldest going first; Settings → Notes → Free up
+  space removes them with the attachments), and that is what's read from
+  then on. In the emulator (Paperwhite 3): a 12-megapixel photo 0.35–0.41 s
+  the first time, 0.003 s after; a 3-megapixel one 0.10–0.16 s, then 0.003 s.
 - **Less of ZenOS loaded at start**: ZenOS's own updater (about 1,900
   lines, unused: GZreader's updater replaces it) isn't loaded at all; a
   small `gz_updater.lua` answers ZenOS instead, and GZreader's updater is
